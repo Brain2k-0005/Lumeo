@@ -14,6 +14,7 @@
   "cssVars": [
     "--color-foreground"
   ],
+  "gotchas": [],
   "api": {
     "name": "StreamingText",
     "category": "AI",
@@ -47,7 +48,23 @@
         "name": "Prose",
         "type": "bool",
         "default": null,
-        "description": null,
+        "description": "Applies Tailwind Typography (prose) styling to the rendered output. Meaningful on its own only when Markdown (or a consumer's own markup via MarkdownRenderer) produces real block/inline elements for the prose styles to target.",
+        "isCascading": false,
+        "captureUnmatched": false
+      },
+      {
+        "name": "Markdown",
+        "type": "bool",
+        "default": null,
+        "description": "Renders Text as markdown instead of plain text. Uses MarkdownRenderer when supplied, otherwise a built-in dependency-free CommonMark subset (headings, lists, bold/italic, inline + fenced code, links, blockquotes). Incremental fade-in is disabled in this mode because markdown re-parses the whole string each update.",
+        "isCascading": false,
+        "captureUnmatched": false
+      },
+      {
+        "name": "MarkdownRenderer",
+        "type": "Func<string, MarkupString>?",
+        "default": null,
+        "description": "Optional render hook: converts the raw markdown Text into a MarkupString. Supply this to plug in a full renderer (Markdig, etc.). The delegate is responsible for producing SAFE HTML — sanitise untrusted input before returning. Ignored unless Markdown is true.",
         "isCascading": false,
         "captureUnmatched": false
       },
@@ -71,6 +88,7 @@
     "events": [],
     "enums": [],
     "records": [],
+    "gotchas": [],
     "cssVars": [
       "--color-foreground"
     ],
@@ -81,11 +99,11 @@
       },
       {
         "title": "Streaming Simulation",
-        "code": "<StreamingText Text=\"@_text\" IsStreaming=\"@_streaming\" />\r\n\r\n@code {\r\n    private string _text = string.Empty;\r\n    private bool _streaming;\r\n\r\n    // Update _text incrementally as tokens arrive from your AI API\r\n}"
+        "code": "<StreamingText Text=\"@_text\" IsStreaming=\"@_streaming\" />\n\n@code {\n    private string _text = string.Empty;\n    private bool _streaming;\n\n    // Update _text incrementally as tokens arrive from your AI API\n}"
       },
       {
         "title": "With Blinking Cursor While Streaming",
-        "code": "<StreamingText Text=\"@_text\" IsStreaming=\"@_streaming\" />\r\n<!-- IsStreaming=true shows a blinking cursor at the end -->\r\n<!-- Set IsStreaming=false when the response is complete -->"
+        "code": "<StreamingText Text=\"@_text\" IsStreaming=\"@_streaming\" />\n<!-- IsStreaming=true shows a blinking cursor at the end -->\n<!-- Set IsStreaming=false when the response is complete -->"
       }
     ],
     "subComponents": {},
@@ -104,7 +122,7 @@
   "source": [
     {
       "path": "UI/StreamingText/StreamingText.razor",
-      "content": "@namespace Lumeo\r\n\r\n<span class=\"@RootClass\" @attributes=\"AdditionalAttributes\">\r\n    @if (!string.IsNullOrEmpty(_alreadyRendered))\r\n    {\r\n        <span>@_alreadyRendered</span>\r\n    }\r\n    @if (!string.IsNullOrEmpty(_newSuffix))\r\n    {\r\n        <span class=\"animate-in fade-in duration-200\">@_newSuffix</span>\r\n    }\r\n    @if (IsStreaming)\r\n    {\r\n        <span class=\"ml-0.5 inline-block align-baseline bg-current animate-pulse\" style=\"width: 2px; height: 1em;\">&nbsp;</span>\r\n    }\r\n</span>\r\n\r\n@code {\r\n    [Parameter] public string? Text { get; set; }\r\n    [Parameter] public bool IsStreaming { get; set; }\r\n    [Parameter] public bool Prose { get; set; }\r\n    [Parameter] public string? Class { get; set; }\r\n    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }\r\n\r\n    private string _alreadyRendered = string.Empty;\r\n    private string _newSuffix = string.Empty;\r\n    private int _previousLength;\r\n\r\n    private string RootClass =>\r\n        $\"{(Prose ? \"prose prose-sm max-w-none \" : string.Empty)}whitespace-pre-wrap break-words text-foreground {Class}\".Trim();\r\n\r\n    protected override void OnParametersSet()\r\n    {\r\n        var text = Text ?? string.Empty;\r\n        if (text.Length >= _previousLength)\r\n        {\r\n            _alreadyRendered = text.Substring(0, _previousLength);\r\n            _newSuffix = text.Substring(_previousLength);\r\n        }\r\n        else\r\n        {\r\n            // Text shrank or was replaced — reset the diff window entirely.\r\n            _alreadyRendered = text;\r\n            _newSuffix = string.Empty;\r\n        }\r\n        _previousLength = text.Length;\r\n    }\r\n}\r\n"
+      "content": "@namespace Lumeo\n\n@if (Markdown)\n{\n    <div class=\"@RootClass\" role=\"status\" aria-live=\"polite\" aria-atomic=\"false\" @attributes=\"AdditionalAttributes\">\n        @RenderedMarkdown\n        @if (IsStreaming)\n        {\n            <span class=\"ml-0.5 inline-block align-baseline bg-current animate-pulse\" style=\"width: 2px; height: 1em;\">&nbsp;</span>\n        }\n    </div>\n}\nelse\n{\n    <span class=\"@RootClass\" role=\"status\" aria-live=\"polite\" aria-atomic=\"false\" @attributes=\"AdditionalAttributes\">\n        @if (!string.IsNullOrEmpty(_alreadyRendered))\n        {\n            <span>@_alreadyRendered</span>\n        }\n        @if (!string.IsNullOrEmpty(_newSuffix))\n        {\n            <span class=\"animate-in fade-in duration-200\">@_newSuffix</span>\n        }\n        @if (IsStreaming)\n        {\n            <span class=\"ml-0.5 inline-block align-baseline bg-current animate-pulse\" style=\"width: 2px; height: 1em;\">&nbsp;</span>\n        }\n    </span>\n}\n\n@code {\n    [Parameter] public string? Text { get; set; }\n    [Parameter] public bool IsStreaming { get; set; }\n\n    /// <summary>\n    /// Applies Tailwind Typography (<c>prose</c>) styling to the rendered output.\n    /// Meaningful on its own only when <see cref=\"Markdown\"/> (or a consumer's\n    /// own markup via <see cref=\"MarkdownRenderer\"/>) produces real block/inline\n    /// elements for the prose styles to target.\n    /// </summary>\n    [Parameter] public bool Prose { get; set; }\n\n    /// <summary>\n    /// Renders <see cref=\"Text\"/> as markdown instead of plain text. Uses\n    /// <see cref=\"MarkdownRenderer\"/> when supplied, otherwise a built-in\n    /// dependency-free CommonMark subset (headings, lists, bold/italic, inline\n    /// + fenced code, links, blockquotes). Incremental fade-in is disabled in\n    /// this mode because markdown re-parses the whole string each update.\n    /// </summary>\n    [Parameter] public bool Markdown { get; set; }\n\n    /// <summary>\n    /// Optional render hook: converts the raw markdown <see cref=\"Text\"/> into a\n    /// <see cref=\"MarkupString\"/>. Supply this to plug in a full renderer\n    /// (Markdig, etc.). The delegate is responsible for producing SAFE HTML —\n    /// sanitise untrusted input before returning. Ignored unless\n    /// <see cref=\"Markdown\"/> is <c>true</c>.\n    /// </summary>\n    [Parameter] public Func<string, MarkupString>? MarkdownRenderer { get; set; }\n\n    [Parameter] public string? Class { get; set; }\n    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }\n\n    private string _alreadyRendered = string.Empty;\n    private string _newSuffix = string.Empty;\n    private int _previousLength;\n\n    // In markdown mode whitespace-pre-wrap would break block layout, so it's\n    // only applied in plain-text mode. Prose styling is the point of markdown\n    // mode, so it's always available via the Prose flag.\n    private string RootClass =>\n        Cx.Merge(\n            Cx.When(Prose, \"prose prose-sm max-w-none\"),\n            Cx.When(!Markdown, \"whitespace-pre-wrap\"),\n            \"break-words text-foreground\",\n            Class);\n\n    private MarkupString RenderedMarkdown\n    {\n        get\n        {\n            var text = Text ?? string.Empty;\n            if (text.Length == 0) return default;\n            return MarkdownRenderer is not null\n                ? MarkdownRenderer(text)\n                : (MarkupString)LumeoMarkdown.ToHtml(text);\n        }\n    }\n\n    protected override void OnParametersSet()\n    {\n        var text = Text ?? string.Empty;\n        if (text.Length >= _previousLength)\n        {\n            _alreadyRendered = text.Substring(0, _previousLength);\n            _newSuffix = text.Substring(_previousLength);\n        }\n        else\n        {\n            // Text shrank or was replaced — reset the diff window entirely.\n            _alreadyRendered = text;\n            _newSuffix = string.Empty;\n        }\n        _previousLength = text.Length;\n    }\n}\n"
     }
   ],
   "slots": [],
@@ -113,7 +131,8 @@
   "relatedComponents": [],
   "keyboardInteractions": [],
   "tests": [
-    "tests/Lumeo.Tests/Components/StreamingText/StreamingTextTests.cs"
+    "tests/Lumeo.Tests/Components/StreamingText/StreamingTextTests.cs",
+    "tests/Lumeo.Tests/Internal/CxMergeTests.cs"
   ],
-  "mdSummary": "# StreamingText\r\n\r\nToken-by-token streaming text renderer for AI responses.\r\n\r\n**Package:** `Lumeo` · **Category:** AI\r\n**Docs:** https://lumeo.nativ.sh/components/streaming-text\r\n\r\n## Parameters\r\n| Owner | Name | Type | Default | Description |\r\n|---|---|---|---|---|\r\n| StreamingText | Text | `string?` | `` |  |\r\n| StreamingText | IsStreaming | `bool` | `` |  |\r\n| StreamingText | Prose | `bool` | `` |  |\r\n| StreamingText | Class | `string?` | `` |  |\r\n| StreamingText | AdditionalAttributes | `Dictionary<string, object>?` | `` |  |\r\n\r\n## Slots\r\n- (none)\r\n\r\n## Events\r\n- (none)\r\n\r\n## Sub-components\r\n- (none)\r\n\r\n## Cascading values it expects\r\n- (none)\r\n\r\n## Services it injects\r\n- (none)\r\n\r\n## Keyboard\r\n—\r\n\r\n## Example\r\n```razor\r\n<StreamingText />\r\n```\r\n\r\n## CSS variables\r\n`--color-foreground`\r\n\r\n## Files\r\n- `UI/StreamingText/StreamingText.razor`\r\n"
+  "mdSummary": "# StreamingText\n\nToken-by-token streaming text renderer for AI responses.\n\n**Package:** `Lumeo` · **Category:** AI\n**Docs:** https://lumeo.nativ.sh/components/streaming-text\n\n## Parameters\n| Owner | Name | Type | Default | Description |\n|---|---|---|---|---|\n| StreamingText | Text | `string?` | `` |  |\n| StreamingText | IsStreaming | `bool` | `` |  |\n| StreamingText | Prose | `bool` | `` | Applies Tailwind Typography (prose) styling to the rendered output. Meaningful on its own only when Markdown (or a consumer's own markup via MarkdownRenderer) produces real block/inline elements for the prose styles to target. |\n| StreamingText | Markdown | `bool` | `` | Renders Text as markdown instead of plain text. Uses MarkdownRenderer when supplied, otherwise a built-in dependency-free CommonMark subset (headings, lists, bold/italic, inline + fenced code, links, blockquotes). Incremental fade-in is disabled in this mode because markdown re-parses the whole string each update. |\n| StreamingText | MarkdownRenderer | `Func<string, MarkupString>?` | `` | Optional render hook: converts the raw markdown Text into a MarkupString. Supply this to plug in a full renderer (Markdig, etc.). The delegate is responsible for producing SAFE HTML — sanitise untrusted input before returning. Ignored unless Markdown is true. |\n| StreamingText | Class | `string?` | `` |  |\n| StreamingText | AdditionalAttributes | `Dictionary<string, object>?` | `` |  |\n\n## Slots\n- (none)\n\n## Events\n- (none)\n\n## Sub-components\n- (none)\n\n## Cascading values it expects\n- (none)\n\n## Services it injects\n- (none)\n\n## Keyboard\n—\n\n## Example\n```razor\n<StreamingText />\n```\n\n## CSS variables\n`--color-foreground`\n\n## Files\n- `UI/StreamingText/StreamingText.razor`\n"
 }

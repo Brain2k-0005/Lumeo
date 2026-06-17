@@ -11,17 +11,23 @@
     "UI/Table/TableBody.razor",
     "UI/Table/TableCaption.razor",
     "UI/Table/TableCell.razor",
+    "UI/Table/TableEmpty.razor",
+    "UI/Table/TableFooter.razor",
     "UI/Table/TableHead.razor",
     "UI/Table/TableHeader.razor",
-    "UI/Table/TableRow.razor"
+    "UI/Table/TableRow.razor",
+    "UI/Table/TableSkeleton.razor"
   ],
-  "dependencies": [],
+  "dependencies": [
+    "skeleton"
+  ],
   "packageDependencies": [],
   "cssVars": [
     "--color-border",
     "--color-muted",
     "--color-muted-foreground"
   ],
+  "gotchas": [],
   "api": {
     "name": "Table",
     "category": "Data Display",
@@ -33,9 +39,12 @@
       "UI/Table/TableBody.razor",
       "UI/Table/TableCaption.razor",
       "UI/Table/TableCell.razor",
+      "UI/Table/TableEmpty.razor",
+      "UI/Table/TableFooter.razor",
       "UI/Table/TableHead.razor",
       "UI/Table/TableHeader.razor",
-      "UI/Table/TableRow.razor"
+      "UI/Table/TableRow.razor",
+      "UI/Table/TableSkeleton.razor"
     ],
     "namespace": "Lumeo",
     "inheritsFrom": null,
@@ -46,6 +55,14 @@
         "type": "RenderFragment?",
         "default": null,
         "description": null,
+        "isCascading": false,
+        "captureUnmatched": false
+      },
+      {
+        "name": "Striped",
+        "type": "bool",
+        "default": null,
+        "description": "When true, body rows alternate background (zebra striping) via a tbody tr:nth-child(even) rule so dense data tables are easier to scan. Applied with CSS variables only — no hardcoded colors.",
         "isCascading": false,
         "captureUnmatched": false
       },
@@ -69,6 +86,7 @@
     "events": [],
     "enums": [],
     "records": [],
+    "gotchas": [],
     "cssVars": [
       "--color-border",
       "--color-muted",
@@ -77,19 +95,19 @@
     "examples": [
       {
         "title": "Default",
-        "code": "<Table>\r\n    <TableCaption>A list of recent invoices.</TableCaption>\r\n    <TableHeader>\r\n        <TableRow>\r\n            <TableHead>Invoice</TableHead>\r\n            <TableHead>Status</TableHead>\r\n            <TableHead>Method</TableHead>\r\n            <TableHead Class=\"text-right\">Amount</TableHead>\r\n        </TableRow>\r\n    </TableHeader>\r\n    <TableBody>\r\n        @foreach (var invoice in _invoices)\r\n        {\r\n            <TableRow>\r\n                <TableCell Class=\"font-medium\">@invoice.Id</TableCell>\r\n                <TableCell>@invoice.Status</TableCell>\r\n                <TableCell>@invoice.Method</TableCell>\r\n                <TableCell Class=\"text-right\">@invoice.Amount</TableCell>\r\n            </TableRow>\r\n        }\r\n    </TableBody>\r\n</Table>"
+        "code": "<Table>\n    <TableCaption>A list of recent invoices.</TableCaption>\n    <TableHeader>\n        <TableRow>\n            <TableHead>Invoice</TableHead>\n            <TableHead>Status</TableHead>\n            <TableHead>Method</TableHead>\n            <TableHead Class=\"text-right\">Amount</TableHead>\n        </TableRow>\n    </TableHeader>\n    <TableBody>\n        @foreach (var invoice in _invoices)\n        {\n            <TableRow>\n                <TableCell Class=\"font-medium\">@invoice.Id</TableCell>\n                <TableCell>@invoice.Status</TableCell>\n                <TableCell>@invoice.Method</TableCell>\n                <TableCell Class=\"text-right\">@invoice.Amount</TableCell>\n            </TableRow>\n        }\n    </TableBody>\n</Table>"
       },
       {
         "title": "Simple Table",
-        "code": "<Table>\r\n    <TableHeader>\r\n        <TableRow>\r\n            <TableHead>Name</TableHead>\r\n            <TableHead>Role</TableHead>\r\n            <TableHead>Department</TableHead>\r\n        </TableRow>\r\n    </TableHeader>\r\n    <TableBody>\r\n        <TableRow>\r\n            <TableCell Class=\"font-medium\">Alice Johnson</TableCell>\r\n            <TableCell>Engineer</TableCell>\r\n            <TableCell>Engineering</TableCell>\r\n        </TableRow>\r\n        <TableRow>\r\n            <TableCell Class=\"font-medium\">Bob Smith</TableCell>\r\n            <TableCell>Designer</TableCell>\r\n            <TableCell>Product</TableCell>\r\n        </TableRow>\r\n    </TableBody>\r\n</Table>"
+        "code": "<Table>\n    <TableHeader>\n        <TableRow>\n            <TableHead>Name</TableHead>\n            <TableHead>Role</TableHead>\n            <TableHead>Department</TableHead>\n        </TableRow>\n    </TableHeader>\n    <TableBody>\n        <TableRow>\n            <TableCell Class=\"font-medium\">Alice Johnson</TableCell>\n            <TableCell>Engineer</TableCell>\n            <TableCell>Engineering</TableCell>\n        </TableRow>\n        <TableRow>\n            <TableCell Class=\"font-medium\">Bob Smith</TableCell>\n            <TableCell>Designer</TableCell>\n            <TableCell>Product</TableCell>\n        </TableRow>\n    </TableBody>\n</Table>"
       },
       {
         "title": "Table with Status Badges",
-        "code": "<Table>\r\n    <TableHeader>\r\n        <TableRow>\r\n            <TableHead>Task</TableHead>\r\n            <TableHead>Assignee</TableHead>\r\n            <TableHead>Priority</TableHead>\r\n            <TableHead>Status</TableHead>\r\n        </TableRow>\r\n    </TableHeader>\r\n    <TableBody>\r\n        @foreach (var task in _tasks)\r\n        {\r\n            <TableRow>\r\n                <TableCell Class=\"font-medium\">@task.Name</TableCell>\r\n                <TableCell>@task.Assignee</TableCell>\r\n                <TableCell><Badge Variant=\"@task.PriorityVariant\">@task.Priority</Badge></TableCell>\r\n                <TableCell><Badge Variant=\"@task.StatusVariant\">@task.Status</Badge></TableCell>\r\n            </TableRow>\r\n        }\r\n    </TableBody>\r\n</Table>"
+        "code": "<Table>\n    <TableHeader>\n        <TableRow>\n            <TableHead>Task</TableHead>\n            <TableHead>Assignee</TableHead>\n            <TableHead>Priority</TableHead>\n            <TableHead>Status</TableHead>\n        </TableRow>\n    </TableHeader>\n    <TableBody>\n        @foreach (var task in _tasks)\n        {\n            <TableRow>\n                <TableCell Class=\"font-medium\">@task.Name</TableCell>\n                <TableCell>@task.Assignee</TableCell>\n                <TableCell><Badge Variant=\"@task.PriorityVariant\">@task.Priority</Badge></TableCell>\n                <TableCell><Badge Variant=\"@task.StatusVariant\">@task.Status</Badge></TableCell>\n            </TableRow>\n        }\n    </TableBody>\n</Table>"
       },
       {
         "title": "Table with Pagination",
-        "code": "<Table>\r\n    <TableHeader>\r\n        <TableRow>\r\n            <TableHead>Invoice</TableHead>\r\n            <TableHead>Status</TableHead>\r\n            <TableHead>Method</TableHead>\r\n            <TableHead Class=\"text-right\">Amount</TableHead>\r\n        </TableRow>\r\n    </TableHeader>\r\n    <TableBody>\r\n        @foreach (var invoice in _invoices.Skip(_pageStart).Take(_pageSize))\r\n        {\r\n            <TableRow>\r\n                <TableCell Class=\"font-medium\">@invoice.Id</TableCell>\r\n                <TableCell>@invoice.Status</TableCell>\r\n                <TableCell>@invoice.Method</TableCell>\r\n                <TableCell Class=\"text-right\">@invoice.Amount</TableCell>\r\n            </TableRow>\r\n        }\r\n    </TableBody>\r\n</Table>\r\n<Flex Align=\"center\" Justify=\"end\" Gap=\"2\" Class=\"mt-4\">\r\n    <Button Variant=\"Button.ButtonVariant.Outline\" Size=\"Button.ButtonSize.Sm\"\r\n            Disabled=\"@(_tablePage <= 1)\" OnClick=\"@(() => GoTablePage(_tablePage - 1))\">\r\n        <DynamicIcon Name=\"ChevronLeft\" Class=\"h-4 w-4\" /> Previous\r\n    </Button>\r\n    <Lumeo.Text As=\"span\" Size=\"sm\" Color=\"muted\">Page @_tablePage of @_tablePages</Lumeo.Text>\r\n    <Button Variant=\"Button.ButtonVariant.Outline\" Size=\"Button.ButtonSize.Sm\"\r\n            Disabled=\"@(_tablePage >= _tablePages)\" OnClick=\"@(() => GoTablePage(_tablePage + 1))\">\r\n        Next <DynamicIcon Name=\"ChevronRight\" Class=\"h-4 w-4\" />\r\n    </Button>\r\n</Flex>"
+        "code": "<Table>\n    <TableHeader>\n        <TableRow>\n            <TableHead>Invoice</TableHead>\n            <TableHead>Status</TableHead>\n            <TableHead>Method</TableHead>\n            <TableHead Class=\"text-right\">Amount</TableHead>\n        </TableRow>\n    </TableHeader>\n    <TableBody>\n        @foreach (var invoice in _invoices.Skip(_pageStart).Take(_pageSize))\n        {\n            <TableRow>\n                <TableCell Class=\"font-medium\">@invoice.Id</TableCell>\n                <TableCell>@invoice.Status</TableCell>\n                <TableCell>@invoice.Method</TableCell>\n                <TableCell Class=\"text-right\">@invoice.Amount</TableCell>\n            </TableRow>\n        }\n    </TableBody>\n</Table>\n<Flex Align=\"center\" Justify=\"end\" Gap=\"2\" Class=\"mt-4\">\n    <Button Variant=\"Button.ButtonVariant.Outline\" Size=\"Button.ButtonSize.Sm\"\n            Disabled=\"@(_tablePage <= 1)\" OnClick=\"@(() => GoTablePage(_tablePage - 1))\">\n        <DynamicIcon Name=\"ChevronLeft\" Class=\"h-4 w-4\" /> Previous\n    </Button>\n    <Lumeo.Text As=\"span\" Size=\"sm\" Color=\"muted\">Page @_tablePage of @_tablePages</Lumeo.Text>\n    <Button Variant=\"Button.ButtonVariant.Outline\" Size=\"Button.ButtonSize.Sm\"\n            Disabled=\"@(_tablePage >= _tablePages)\" OnClick=\"@(() => GoTablePage(_tablePage + 1))\">\n        Next <DynamicIcon Name=\"ChevronRight\" Class=\"h-4 w-4\" />\n    </Button>\n</Flex>"
       }
     ],
     "subComponents": {
@@ -128,6 +146,7 @@
         "events": [],
         "enums": [],
         "records": [],
+        "gotchas": [],
         "parseFailed": false,
         "parseError": null
       },
@@ -166,6 +185,7 @@
         "events": [],
         "enums": [],
         "records": [],
+        "gotchas": [],
         "parseFailed": false,
         "parseError": null
       },
@@ -177,6 +197,14 @@
         "implements": [],
         "parameters": [
           {
+            "name": "Density",
+            "type": "Lumeo.Density?",
+            "default": null,
+            "description": null,
+            "isCascading": true,
+            "captureUnmatched": false
+          },
+          {
             "name": "ChildContent",
             "type": "RenderFragment?",
             "default": null,
@@ -204,12 +232,68 @@
         "events": [],
         "enums": [],
         "records": [],
+        "gotchas": [],
         "parseFailed": false,
         "parseError": null
       },
-      "TableHead": {
-        "componentName": "TableHead",
-        "fileName": "TableHead.razor",
+      "TableEmpty": {
+        "componentName": "TableEmpty",
+        "fileName": "TableEmpty.razor",
+        "namespace": "Lumeo",
+        "inheritsFrom": null,
+        "implements": [],
+        "parameters": [
+          {
+            "name": "ColumnCount",
+            "type": "int",
+            "default": "1",
+            "description": "Number of columns to span. Defaults to 1; set it to your column count so the empty message centers across the full table width.",
+            "isCascading": false,
+            "captureUnmatched": false
+          },
+          {
+            "name": "Text",
+            "type": "string?",
+            "default": null,
+            "description": "Optional plain-text message. Ignored when ChildContent is supplied. Falls back to the localized \"No results\" string.",
+            "isCascading": false,
+            "captureUnmatched": false
+          },
+          {
+            "name": "ChildContent",
+            "type": "RenderFragment?",
+            "default": null,
+            "description": null,
+            "isCascading": false,
+            "captureUnmatched": false
+          },
+          {
+            "name": "Class",
+            "type": "string?",
+            "default": null,
+            "description": null,
+            "isCascading": false,
+            "captureUnmatched": false
+          },
+          {
+            "name": "AdditionalAttributes",
+            "type": "Dictionary<string, object>?",
+            "default": null,
+            "description": null,
+            "isCascading": false,
+            "captureUnmatched": true
+          }
+        ],
+        "events": [],
+        "enums": [],
+        "records": [],
+        "gotchas": [],
+        "parseFailed": false,
+        "parseError": null
+      },
+      "TableFooter": {
+        "componentName": "TableFooter",
+        "fileName": "TableFooter.razor",
         "namespace": "Lumeo",
         "inheritsFrom": null,
         "implements": [],
@@ -242,6 +326,54 @@
         "events": [],
         "enums": [],
         "records": [],
+        "gotchas": [],
+        "parseFailed": false,
+        "parseError": null
+      },
+      "TableHead": {
+        "componentName": "TableHead",
+        "fileName": "TableHead.razor",
+        "namespace": "Lumeo",
+        "inheritsFrom": null,
+        "implements": [],
+        "parameters": [
+          {
+            "name": "Density",
+            "type": "Lumeo.Density?",
+            "default": null,
+            "description": null,
+            "isCascading": true,
+            "captureUnmatched": false
+          },
+          {
+            "name": "ChildContent",
+            "type": "RenderFragment?",
+            "default": null,
+            "description": null,
+            "isCascading": false,
+            "captureUnmatched": false
+          },
+          {
+            "name": "Class",
+            "type": "string?",
+            "default": null,
+            "description": null,
+            "isCascading": false,
+            "captureUnmatched": false
+          },
+          {
+            "name": "AdditionalAttributes",
+            "type": "Dictionary<string, object>?",
+            "default": null,
+            "description": null,
+            "isCascading": false,
+            "captureUnmatched": true
+          }
+        ],
+        "events": [],
+        "enums": [],
+        "records": [],
+        "gotchas": [],
         "parseFailed": false,
         "parseError": null
       },
@@ -280,6 +412,7 @@
         "events": [],
         "enums": [],
         "records": [],
+        "gotchas": [],
         "parseFailed": false,
         "parseError": null
       },
@@ -318,6 +451,62 @@
         "events": [],
         "enums": [],
         "records": [],
+        "gotchas": [],
+        "parseFailed": false,
+        "parseError": null
+      },
+      "TableSkeleton": {
+        "componentName": "TableSkeleton",
+        "fileName": "TableSkeleton.razor",
+        "namespace": "Lumeo",
+        "inheritsFrom": null,
+        "implements": [],
+        "parameters": [
+          {
+            "name": "Rows",
+            "type": "int",
+            "default": "3",
+            "description": "Number of placeholder rows. Defaults to 3.",
+            "isCascading": false,
+            "captureUnmatched": false
+          },
+          {
+            "name": "Columns",
+            "type": "int",
+            "default": "4",
+            "description": "Number of placeholder cells per row — match your column count. Defaults to 4.",
+            "isCascading": false,
+            "captureUnmatched": false
+          },
+          {
+            "name": "Animation",
+            "type": "Skeleton.SkeletonAnimation",
+            "default": "Skeleton.SkeletonAnimation.Pulse",
+            "description": "Skeleton animation style. Defaults to Pulse.",
+            "isCascading": false,
+            "captureUnmatched": false
+          },
+          {
+            "name": "Class",
+            "type": "string?",
+            "default": null,
+            "description": null,
+            "isCascading": false,
+            "captureUnmatched": false
+          },
+          {
+            "name": "AdditionalAttributes",
+            "type": "Dictionary<string, object>?",
+            "default": null,
+            "description": null,
+            "isCascading": false,
+            "captureUnmatched": true
+          }
+        ],
+        "events": [],
+        "enums": [],
+        "records": [],
+        "gotchas": [],
         "parseFailed": false,
         "parseError": null
       }
@@ -346,6 +535,14 @@
       "url": "https://github.com/Brain2k-0005/Lumeo/tree/master/src/Lumeo/UI/Table/TableCell.razor"
     },
     {
+      "file": "UI/Table/TableEmpty.razor",
+      "url": "https://github.com/Brain2k-0005/Lumeo/tree/master/src/Lumeo/UI/Table/TableEmpty.razor"
+    },
+    {
+      "file": "UI/Table/TableFooter.razor",
+      "url": "https://github.com/Brain2k-0005/Lumeo/tree/master/src/Lumeo/UI/Table/TableFooter.razor"
+    },
+    {
       "file": "UI/Table/TableHead.razor",
       "url": "https://github.com/Brain2k-0005/Lumeo/tree/master/src/Lumeo/UI/Table/TableHead.razor"
     },
@@ -356,36 +553,52 @@
     {
       "file": "UI/Table/TableRow.razor",
       "url": "https://github.com/Brain2k-0005/Lumeo/tree/master/src/Lumeo/UI/Table/TableRow.razor"
+    },
+    {
+      "file": "UI/Table/TableSkeleton.razor",
+      "url": "https://github.com/Brain2k-0005/Lumeo/tree/master/src/Lumeo/UI/Table/TableSkeleton.razor"
     }
   ],
   "source": [
     {
       "path": "UI/Table/Table.razor",
-      "content": "@namespace Lumeo\r\n\r\n<div class=\"relative w-full overflow-auto\">\r\n    <table class=\"@CssClass\" @attributes=\"AdditionalAttributes\">\r\n        @ChildContent\r\n    </table>\r\n</div>\r\n\r\n@code {\r\n    [Parameter] public RenderFragment? ChildContent { get; set; }\r\n    [Parameter] public string? Class { get; set; }\r\n    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }\r\n\r\n    private string CssClass => $\"w-full caption-bottom text-sm {Class}\".Trim();\r\n}\r\n"
+      "content": "@namespace Lumeo\n\n<div class=\"relative w-full overflow-auto\">\n    <table class=\"@CssClass\" @attributes=\"AdditionalAttributes\">\n        @ChildContent\n    </table>\n</div>\n\n@code {\n    [Parameter] public RenderFragment? ChildContent { get; set; }\n\n    /// <summary>\n    /// When true, body rows alternate background (zebra striping) via a\n    /// <c>tbody tr:nth-child(even)</c> rule so dense data tables are easier to\n    /// scan. Applied with CSS variables only — no hardcoded colors.\n    /// </summary>\n    [Parameter] public bool Striped { get; set; }\n\n    [Parameter] public string? Class { get; set; }\n    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }\n\n    private string CssClass => Cx.Merge(\n        \"w-full caption-bottom text-sm\",\n        Striped ? \"[&_tbody_tr:nth-child(even)]:bg-muted/50\" : null,\n        Class);\n}\n"
     },
     {
       "path": "UI/Table/TableBody.razor",
-      "content": "@namespace Lumeo\r\n\r\n<tbody class=\"@CssClass\" @attributes=\"AdditionalAttributes\">\r\n    @ChildContent\r\n</tbody>\r\n\r\n@code {\r\n    [Parameter] public RenderFragment? ChildContent { get; set; }\r\n    [Parameter] public string? Class { get; set; }\r\n    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }\r\n\r\n    private string CssClass => $\"[&_tr:last-child]:border-0 {Class}\".Trim();\r\n}\r\n"
+      "content": "@namespace Lumeo\n\n<tbody class=\"@CssClass\" @attributes=\"AdditionalAttributes\">\n    @ChildContent\n</tbody>\n\n@code {\n    [Parameter] public RenderFragment? ChildContent { get; set; }\n    [Parameter] public string? Class { get; set; }\n    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }\n\n    private string CssClass => Cx.Merge(\"[&_tr:last-child]:border-0\", Class);\n}\n"
     },
     {
       "path": "UI/Table/TableCaption.razor",
-      "content": "@namespace Lumeo\r\n\r\n<caption class=\"@CssClass\" @attributes=\"AdditionalAttributes\">\r\n    @ChildContent\r\n</caption>\r\n\r\n@code {\r\n    [Parameter] public RenderFragment? ChildContent { get; set; }\r\n    [Parameter] public string? Class { get; set; }\r\n    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }\r\n\r\n    private string CssClass => $\"mt-4 text-sm text-muted-foreground {Class}\".Trim();\r\n}\r\n"
+      "content": "@namespace Lumeo\n\n<caption class=\"@CssClass\" @attributes=\"AdditionalAttributes\">\n    @ChildContent\n</caption>\n\n@code {\n    [Parameter] public RenderFragment? ChildContent { get; set; }\n    [Parameter] public string? Class { get; set; }\n    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }\n\n    private string CssClass => Cx.Merge(\"mt-4 text-sm text-muted-foreground\", Class);\n}\n"
     },
     {
       "path": "UI/Table/TableCell.razor",
-      "content": "@namespace Lumeo\r\n\r\n<td class=\"@CssClass\" @attributes=\"AdditionalAttributes\">\r\n    @ChildContent\r\n</td>\r\n\r\n@code {\r\n    [Parameter] public RenderFragment? ChildContent { get; set; }\r\n    [Parameter] public string? Class { get; set; }\r\n    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }\r\n\r\n    private string CssClass => $\"p-2 align-middle [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px] {Class}\".Trim();\r\n}\r\n"
+      "content": "@namespace Lumeo\n\n<td class=\"@CssClass\" @attributes=\"AdditionalAttributes\">\n    @ChildContent\n</td>\n\n@code {\n    [CascadingParameter] private Lumeo.Density? Density { get; set; }\n    [Parameter] public RenderFragment? ChildContent { get; set; }\n    [Parameter] public string? Class { get; set; }\n    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }\n\n    // Cell padding tracks the ambient DensityScope so rows tighten in dense\n    // data grids; Comfortable reproduces the historical `p-2`.\n    private string PadClass => Density switch\n    {\n        Lumeo.Density.Compact => \"px-2 py-1\",\n        Lumeo.Density.Spacious => \"p-4\",\n        _ => \"p-2\"\n    };\n\n    private string CssClass => Cx.Merge(PadClass, \"align-middle [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px]\", Class);\n}\n"
+    },
+    {
+      "path": "UI/Table/TableEmpty.razor",
+      "content": "@namespace Lumeo\n@inject Lumeo.Services.Localization.ILumeoLocalizer L\n\n@* Empty-state row for an otherwise-structured Table. Drop inside <TableBody>\n   when the data set is empty so the table keeps its frame instead of\n   collapsing to a bare header. Spans every column via colspan. *@\n<tr @attributes=\"AdditionalAttributes\">\n    <td colspan=\"@SafeColumnCount\" class=\"@CssClass\">\n        @if (ChildContent is not null)\n        {\n            @ChildContent\n        }\n        else\n        {\n            @(Text ?? L[\"Common.NoResults\"])\n        }\n    </td>\n</tr>\n\n@code {\n    /// <summary>Number of columns to span. Defaults to 1; set it to your column\n    /// count so the empty message centers across the full table width.</summary>\n    [Parameter] public int ColumnCount { get; set; } = 1;\n\n    // Guard against a 0 / negative colspan — invalid HTML that can break the\n    // table layout. Consumers occasionally bind ColumnCount to a not-yet-loaded\n    // column collection (count 0).\n    private int SafeColumnCount => ColumnCount < 1 ? 1 : ColumnCount;\n\n    /// <summary>Optional plain-text message. Ignored when <see cref=\"ChildContent\"/>\n    /// is supplied. Falls back to the localized \"No results\" string.</summary>\n    [Parameter] public string? Text { get; set; }\n\n    [Parameter] public RenderFragment? ChildContent { get; set; }\n    [Parameter] public string? Class { get; set; }\n    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }\n\n    private string CssClass => Cx.Merge(\"h-24 p-4 text-center align-middle text-sm text-muted-foreground\", Class);\n}\n"
+    },
+    {
+      "path": "UI/Table/TableFooter.razor",
+      "content": "@namespace Lumeo\n\n<tfoot class=\"@CssClass\" @attributes=\"AdditionalAttributes\">\n    @ChildContent\n</tfoot>\n\n@code {\n    [Parameter] public RenderFragment? ChildContent { get; set; }\n    [Parameter] public string? Class { get; set; }\n    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }\n\n    // Mirrors shadcn's TableFooter: a top border, muted fill and medium weight\n    // for summary / totals rows, with the last row's bottom border removed so\n    // it sits flush against the table edge.\n    private string CssClass => Cx.Merge(\"border-t border-border/40 bg-muted/50 font-medium [&>tr]:last:border-b-0\", Class);\n}\n"
     },
     {
       "path": "UI/Table/TableHead.razor",
-      "content": "@namespace Lumeo\r\n\r\n<th class=\"@CssClass\" @attributes=\"AdditionalAttributes\">\r\n    @ChildContent\r\n</th>\r\n\r\n@code {\r\n    [Parameter] public RenderFragment? ChildContent { get; set; }\r\n    [Parameter] public string? Class { get; set; }\r\n    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }\r\n\r\n    private string CssClass => $\"h-10 px-2 text-left align-middle font-medium text-muted-foreground [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px] {Class}\".Trim();\r\n}\r\n"
+      "content": "@namespace Lumeo\n\n<th class=\"@CssClass\" @attributes=\"AdditionalAttributes\">\n    @ChildContent\n</th>\n\n@code {\n    [CascadingParameter] private Lumeo.Density? Density { get; set; }\n    [Parameter] public RenderFragment? ChildContent { get; set; }\n    [Parameter] public string? Class { get; set; }\n    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }\n\n    // Header row height tracks the ambient DensityScope; Comfortable\n    // reproduces the historical `h-10 px-2`.\n    private string SizeClass => Density switch\n    {\n        Lumeo.Density.Compact => \"h-8 px-2\",\n        Lumeo.Density.Spacious => \"h-12 px-4\",\n        _ => \"h-10 px-2\"\n    };\n\n    private string CssClass => Cx.Merge(SizeClass, \"text-left align-middle font-medium text-muted-foreground [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px]\", Class);\n}\n"
     },
     {
       "path": "UI/Table/TableHeader.razor",
-      "content": "@namespace Lumeo\r\n\r\n<thead class=\"@CssClass\" @attributes=\"AdditionalAttributes\">\r\n    @ChildContent\r\n</thead>\r\n\r\n@code {\r\n    [Parameter] public RenderFragment? ChildContent { get; set; }\r\n    [Parameter] public string? Class { get; set; }\r\n    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }\r\n\r\n    private string CssClass => $\"[&_tr]:border-b [&_tr]:border-border/40 {Class}\".Trim();\r\n}\r\n"
+      "content": "@namespace Lumeo\n\n<thead class=\"@CssClass\" @attributes=\"AdditionalAttributes\">\n    @ChildContent\n</thead>\n\n@code {\n    [Parameter] public RenderFragment? ChildContent { get; set; }\n    [Parameter] public string? Class { get; set; }\n    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }\n\n    private string CssClass => Cx.Merge(\"[&_tr]:border-b [&_tr]:border-border/40\", Class);\n}\n"
     },
     {
       "path": "UI/Table/TableRow.razor",
-      "content": "@namespace Lumeo\r\n\r\n<tr class=\"@CssClass\" @attributes=\"AdditionalAttributes\">\r\n    @ChildContent\r\n</tr>\r\n\r\n@code {\r\n    [Parameter] public RenderFragment? ChildContent { get; set; }\r\n    [Parameter] public string? Class { get; set; }\r\n    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }\r\n\r\n    private string CssClass => $\"border-b border-border/40 transition-colors hover:bg-muted/50 data-[state=selected]:bg-muted {Class}\".Trim();\r\n}\r\n"
+      "content": "@namespace Lumeo\n\n<tr class=\"@CssClass\" @attributes=\"AdditionalAttributes\">\n    @ChildContent\n</tr>\n\n@code {\n    [Parameter] public RenderFragment? ChildContent { get; set; }\n    [Parameter] public string? Class { get; set; }\n    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }\n\n    private string CssClass => Cx.Merge(\"border-b border-border/40 transition-colors hover:bg-muted/50 data-[state=selected]:bg-muted\", Class);\n}\n"
+    },
+    {
+      "path": "UI/Table/TableSkeleton.razor",
+      "content": "@namespace Lumeo\n\n@* Loading placeholder for a Table. Renders <c>Rows</c> × <c>Columns</c> of\n   shimmering skeleton cells so the table keeps its shape while data loads.\n   Emits plain <tr> rows so it drops straight inside an existing <TableBody>\n   (same pattern as <TableEmpty>). *@\n@for (var r = 0; r < Rows; r++)\n{\n    <tr class=\"border-b border-border/40\" aria-hidden=\"true\" @attributes=\"@(r == 0 ? AdditionalAttributes : null)\">\n        @for (var c = 0; c < Columns; c++)\n        {\n            <td class=\"p-2 align-middle\">\n                <Skeleton Class=\"@CellClass\" Animation=\"Animation\" />\n            </td>\n        }\n    </tr>\n}\n\n@code {\n    /// <summary>Number of placeholder rows. Defaults to 3.</summary>\n    [Parameter] public int Rows { get; set; } = 3;\n\n    /// <summary>Number of placeholder cells per row — match your column count.\n    /// Defaults to 4.</summary>\n    [Parameter] public int Columns { get; set; } = 4;\n\n    /// <summary>Skeleton animation style. Defaults to <see cref=\"Skeleton.SkeletonAnimation.Pulse\"/>.</summary>\n    [Parameter] public Skeleton.SkeletonAnimation Animation { get; set; } = Skeleton.SkeletonAnimation.Pulse;\n\n    // This helper renders a multi-row fragment (Rows × <tr>) with no single root,\n    // so unmatched attributes (test hooks / data-* / ARIA) are forwarded onto the\n    // first placeholder row. Per-cell styling is via Class.\n    [Parameter] public string? Class { get; set; }\n    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }\n\n    private string CellClass => Cx.Merge(\"h-4 w-full\", Class);\n}\n"
     }
   ],
   "slots": [
@@ -415,6 +628,18 @@
     },
     {
       "name": "ChildContent",
+      "owner": "TableEmpty",
+      "type": "RenderFragment?",
+      "description": null
+    },
+    {
+      "name": "ChildContent",
+      "owner": "TableFooter",
+      "type": "RenderFragment?",
+      "description": null
+    },
+    {
+      "name": "ChildContent",
       "owner": "TableHead",
       "type": "RenderFragment?",
       "description": null
@@ -432,8 +657,19 @@
       "description": null
     }
   ],
-  "serviceDependencies": [],
-  "cascadingDependencies": [],
+  "serviceDependencies": [
+    {
+      "service": "ILumeoLocalizer",
+      "namespace": "Lumeo.Services.Localization"
+    }
+  ],
+  "cascadingDependencies": [
+    {
+      "name": "Density",
+      "type": "Lumeo.Density?",
+      "required": false
+    }
+  ],
   "relatedComponents": [
     {
       "name": "TableBody",
@@ -448,6 +684,14 @@
       "reason": "sub-component"
     },
     {
+      "name": "TableEmpty",
+      "reason": "sub-component"
+    },
+    {
+      "name": "TableFooter",
+      "reason": "sub-component"
+    },
+    {
       "name": "TableHead",
       "reason": "sub-component"
     },
@@ -458,6 +702,14 @@
     {
       "name": "TableRow",
       "reason": "sub-component"
+    },
+    {
+      "name": "TableSkeleton",
+      "reason": "sub-component"
+    },
+    {
+      "name": "Skeleton",
+      "reason": "used internally"
     }
   ],
   "keyboardInteractions": [],
@@ -467,5 +719,5 @@
     "tests/Lumeo.Tests/Components/DataTable/DataTableTests.cs",
     "tests/Lumeo.Tests/Components/Table/TableTests.cs"
   ],
-  "mdSummary": "# Table\r\n\r\nMinimal styled HTML table with header, row, cell components.\r\n\r\n**Package:** `Lumeo` · **Category:** Data Display/Tables\r\n**Docs:** https://lumeo.nativ.sh/components/table\r\n\r\n## Parameters\r\n| Owner | Name | Type | Default | Description |\r\n|---|---|---|---|---|\r\n| Table | ChildContent | `RenderFragment?` | `` |  |\r\n| Table | Class | `string?` | `` |  |\r\n| Table | AdditionalAttributes | `Dictionary<string, object>?` | `` |  |\r\n| TableBody | ChildContent | `RenderFragment?` | `` |  |\r\n| TableBody | Class | `string?` | `` |  |\r\n| TableBody | AdditionalAttributes | `Dictionary<string, object>?` | `` |  |\r\n| TableCaption | ChildContent | `RenderFragment?` | `` |  |\r\n| TableCaption | Class | `string?` | `` |  |\r\n| TableCaption | AdditionalAttributes | `Dictionary<string, object>?` | `` |  |\r\n| TableCell | ChildContent | `RenderFragment?` | `` |  |\r\n| TableCell | Class | `string?` | `` |  |\r\n| TableCell | AdditionalAttributes | `Dictionary<string, object>?` | `` |  |\r\n| TableHead | ChildContent | `RenderFragment?` | `` |  |\r\n| TableHead | Class | `string?` | `` |  |\r\n| TableHead | AdditionalAttributes | `Dictionary<string, object>?` | `` |  |\r\n| TableHeader | ChildContent | `RenderFragment?` | `` |  |\r\n| TableHeader | Class | `string?` | `` |  |\r\n| TableHeader | AdditionalAttributes | `Dictionary<string, object>?` | `` |  |\r\n| TableRow | ChildContent | `RenderFragment?` | `` |  |\r\n| TableRow | Class | `string?` | `` |  |\r\n| TableRow | AdditionalAttributes | `Dictionary<string, object>?` | `` |  |\r\n\r\n## Slots\r\n- `ChildContent` (Table) — RenderFragment slot\r\n- `ChildContent` (TableBody) — RenderFragment slot\r\n- `ChildContent` (TableCaption) — RenderFragment slot\r\n- `ChildContent` (TableCell) — RenderFragment slot\r\n- `ChildContent` (TableHead) — RenderFragment slot\r\n- `ChildContent` (TableHeader) — RenderFragment slot\r\n- `ChildContent` (TableRow) — RenderFragment slot\r\n\r\n## Events\r\n- (none)\r\n\r\n## Sub-components\r\n- `TableBody`, `TableCaption`, `TableCell`, `TableHead`, `TableHeader`, `TableRow`\r\n\r\n## Cascading values it expects\r\n- (none)\r\n\r\n## Services it injects\r\n- (none)\r\n\r\n## Keyboard\r\n—\r\n\r\n## Example\r\n```razor\r\n<Table />\r\n```\r\n\r\n## CSS variables\r\n`--color-border`, `--color-muted`, `--color-muted-foreground`\r\n\r\n## Files\r\n- `UI/Table/Table.razor`\r\n- `UI/Table/TableBody.razor`\r\n- `UI/Table/TableCaption.razor`\r\n- `UI/Table/TableCell.razor`\r\n- `UI/Table/TableHead.razor`\r\n- `UI/Table/TableHeader.razor`\r\n- `UI/Table/TableRow.razor`\r\n"
+  "mdSummary": "# Table\n\nMinimal styled HTML table with header, row, cell components.\n\n**Package:** `Lumeo` · **Category:** Data Display/Tables\n**Docs:** https://lumeo.nativ.sh/components/table\n\n## Parameters\n| Owner | Name | Type | Default | Description |\n|---|---|---|---|---|\n| Table | ChildContent | `RenderFragment?` | `` |  |\n| Table | Striped | `bool` | `` | When true, body rows alternate background (zebra striping) via a tbody tr:nth-child(even) rule so dense data tables are easier to scan. Applied with CSS variables only — no hardcoded colors. |\n| Table | Class | `string?` | `` |  |\n| Table | AdditionalAttributes | `Dictionary<string, object>?` | `` |  |\n| TableBody | ChildContent | `RenderFragment?` | `` |  |\n| TableBody | Class | `string?` | `` |  |\n| TableBody | AdditionalAttributes | `Dictionary<string, object>?` | `` |  |\n| TableCaption | ChildContent | `RenderFragment?` | `` |  |\n| TableCaption | Class | `string?` | `` |  |\n| TableCaption | AdditionalAttributes | `Dictionary<string, object>?` | `` |  |\n| TableCell | Density | `Lumeo.Density?` | `` |  |\n| TableCell | ChildContent | `RenderFragment?` | `` |  |\n| TableCell | Class | `string?` | `` |  |\n| TableCell | AdditionalAttributes | `Dictionary<string, object>?` | `` |  |\n| TableEmpty | ColumnCount | `int` | `1` | Number of columns to span. Defaults to 1; set it to your column count so the empty message centers across the full table width. |\n| TableEmpty | Text | `string?` | `` | Optional plain-text message. Ignored when ChildContent is supplied. Falls back to the localized \"No results\" string. |\n| TableEmpty | ChildContent | `RenderFragment?` | `` |  |\n| TableEmpty | Class | `string?` | `` |  |\n| TableEmpty | AdditionalAttributes | `Dictionary<string, object>?` | `` |  |\n| TableFooter | ChildContent | `RenderFragment?` | `` |  |\n| TableFooter | Class | `string?` | `` |  |\n| TableFooter | AdditionalAttributes | `Dictionary<string, object>?` | `` |  |\n| TableHead | Density | `Lumeo.Density?` | `` |  |\n| TableHead | ChildContent | `RenderFragment?` | `` |  |\n| TableHead | Class | `string?` | `` |  |\n| TableHead | AdditionalAttributes | `Dictionary<string, object>?` | `` |  |\n| TableHeader | ChildContent | `RenderFragment?` | `` |  |\n| TableHeader | Class | `string?` | `` |  |\n| TableHeader | AdditionalAttributes | `Dictionary<string, object>?` | `` |  |\n| TableRow | ChildContent | `RenderFragment?` | `` |  |\n| TableRow | Class | `string?` | `` |  |\n| TableRow | AdditionalAttributes | `Dictionary<string, object>?` | `` |  |\n| TableSkeleton | Rows | `int` | `3` | Number of placeholder rows. Defaults to 3. |\n| TableSkeleton | Columns | `int` | `4` | Number of placeholder cells per row — match your column count. Defaults to 4. |\n| TableSkeleton | Animation | `Skeleton.SkeletonAnimation` | `Skeleton.SkeletonAnimation.Pulse` | Skeleton animation style. Defaults to Pulse. |\n| TableSkeleton | Class | `string?` | `` |  |\n| TableSkeleton | AdditionalAttributes | `Dictionary<string, object>?` | `` |  |\n\n## Slots\n- `ChildContent` (Table) — RenderFragment slot\n- `ChildContent` (TableBody) — RenderFragment slot\n- `ChildContent` (TableCaption) — RenderFragment slot\n- `ChildContent` (TableCell) — RenderFragment slot\n- `ChildContent` (TableEmpty) — RenderFragment slot\n- `ChildContent` (TableFooter) — RenderFragment slot\n- `ChildContent` (TableHead) — RenderFragment slot\n- `ChildContent` (TableHeader) — RenderFragment slot\n- `ChildContent` (TableRow) — RenderFragment slot\n\n## Events\n- (none)\n\n## Sub-components\n- `TableBody`, `TableCaption`, `TableCell`, `TableEmpty`, `TableFooter`, `TableHead`, `TableHeader`, `TableRow`, `TableSkeleton`\n\n## Cascading values it expects\n- `Density` (`Lumeo.Density?`)\n\n## Services it injects\n- `ILumeoLocalizer` (Lumeo.Services.Localization)\n\n## Keyboard\n—\n\n## Example\n```razor\n<Table />\n```\n\n## CSS variables\n`--color-border`, `--color-muted`, `--color-muted-foreground`\n\n## Files\n- `UI/Table/Table.razor`\n- `UI/Table/TableBody.razor`\n- `UI/Table/TableCaption.razor`\n- `UI/Table/TableCell.razor`\n- `UI/Table/TableEmpty.razor`\n- `UI/Table/TableFooter.razor`\n- `UI/Table/TableHead.razor`\n- `UI/Table/TableHeader.razor`\n- `UI/Table/TableRow.razor`\n- `UI/Table/TableSkeleton.razor`\n"
 }

@@ -28,6 +28,7 @@
     "--color-secondary-foreground",
     "--radius"
   ],
+  "gotchas": [],
   "api": {
     "name": "Kanban",
     "category": "Drag & Drop",
@@ -52,6 +53,22 @@
         "captureUnmatched": false
       },
       {
+        "name": "OnCardDrop",
+        "type": "EventCallback<DropEventArgs>",
+        "default": null,
+        "description": "Raised when a card is dropped onto a column (mouse/touch drag) and the board can resolve which card moved, from which column, to which column and at what index. Fires only when cards carry a CardId and columns a ColumnId; otherwise the per-column OnDrop still fires with the raw event for fully-manual boards.",
+        "isCascading": false,
+        "captureUnmatched": false
+      },
+      {
+        "name": "OnCardMove",
+        "type": "EventCallback<MoveEventArgs>",
+        "default": null,
+        "description": "Raised when a card is moved via the keyboard (arrow keys on a focused card): Left/Right move it to the previous/next column, Up/Down reorder it within its column. Provides the keyboard-accessible alternative to drag-and-drop. Requires CardId on cards and ColumnId on columns so the board can resolve the move.",
+        "isCascading": false,
+        "captureUnmatched": false
+      },
+      {
         "name": "Class",
         "type": "string?",
         "default": null,
@@ -68,9 +85,48 @@
         "captureUnmatched": true
       }
     ],
-    "events": [],
-    "enums": [],
-    "records": [],
+    "events": [
+      {
+        "name": "OnCardDrop",
+        "type": "EventCallback<DropEventArgs>",
+        "description": "Raised when a card is dropped onto a column (mouse/touch drag) and the board can resolve which card moved, from which column, to which column and at what index. Fires only when cards carry a CardId and columns a ColumnId; otherwise the per-column OnDrop still fires with the raw event for fully-manual boards."
+      },
+      {
+        "name": "OnCardMove",
+        "type": "EventCallback<MoveEventArgs>",
+        "description": "Raised when a card is moved via the keyboard (arrow keys on a focused card): Left/Right move it to the previous/next column, Up/Down reorder it within its column. Provides the keyboard-accessible alternative to drag-and-drop. Requires CardId on cards and ColumnId on columns so the board can resolve the move."
+      }
+    ],
+    "enums": [
+      {
+        "name": "MoveDirection",
+        "values": [
+          "Left",
+          "Right",
+          "Up",
+          "Down"
+        ],
+        "description": "The direction of a keyboard-initiated card move."
+      }
+    ],
+    "records": [
+      {
+        "name": "DropEventArgs",
+        "signature": "DropEventArgs(string CardId, string? FromColumnId, string ToColumnId, int ToIndex)",
+        "description": "Payload describing a drag-drop of a card between/within columns."
+      },
+      {
+        "name": "MoveEventArgs",
+        "signature": "MoveEventArgs(string CardId, string FromColumnId, MoveDirection Direction)",
+        "description": "Payload describing a keyboard-initiated card move."
+      },
+      {
+        "name": "BoardContext",
+        "signature": "BoardContext",
+        "description": "A single stable instance cascaded per board. Tracks the in-flight drag so a column's drop handler can read which card is being dragged and from where — the HTML5 DataTransfer is unreliable (and empty under the touch shim), so the board carries the drag identity itself."
+      }
+    ],
+    "gotchas": [],
     "cssVars": [
       "--color-border",
       "--color-card",
@@ -87,7 +143,7 @@
     "examples": [
       {
         "title": "Drag &amp; Drop Board",
-        "code": "<Kanban>\r\n    <KanbanColumn Title=\"To Do\" Badge=\"3\">\r\n        <KanbanCard Title=\"Design landing page\"\r\n                    Labels=\"@(new List<KanbanCard.KanbanLabel> { new() { Text = \"Design\", Color = \"primary\" } })\" />\r\n        <KanbanCard Title=\"Write API docs\"\r\n                    Labels=\"@(new List<KanbanCard.KanbanLabel> { new() { Text = \"Docs\", Color = \"secondary\" } })\" />\r\n    </KanbanColumn>\r\n    <KanbanColumn Title=\"In Progress\" Badge=\"1\">\r\n        <KanbanCard Title=\"Build auth flow\"\r\n                    Description=\"Login and register flow.\"\r\n                    Labels=\"@(new List<KanbanCard.KanbanLabel> { new() { Text = \"High\", Color = \"destructive\" } })\" />\r\n    </KanbanColumn>\r\n    <KanbanColumn Title=\"Done\" Badge=\"1\">\r\n        <KanbanCard Title=\"Project setup\" Labels=\"@(new List<KanbanCard.KanbanLabel> { new() { Text = \"Done\", Color = \"success\" } })\" />\r\n    </KanbanColumn>\r\n</Kanban>"
+        "code": "<Kanban>\n    <KanbanColumn Title=\"To Do\" Badge=\"3\">\n        <KanbanCard Title=\"Design landing page\"\n                    Labels=\"@(new List<KanbanCard.KanbanLabel> { new() { Text = \"Design\", Color = \"primary\" } })\" />\n        <KanbanCard Title=\"Write API docs\"\n                    Labels=\"@(new List<KanbanCard.KanbanLabel> { new() { Text = \"Docs\", Color = \"secondary\" } })\" />\n    </KanbanColumn>\n    <KanbanColumn Title=\"In Progress\" Badge=\"1\">\n        <KanbanCard Title=\"Build auth flow\"\n                    Description=\"Login and register flow.\"\n                    Labels=\"@(new List<KanbanCard.KanbanLabel> { new() { Text = \"High\", Color = \"destructive\" } })\" />\n    </KanbanColumn>\n    <KanbanColumn Title=\"Done\" Badge=\"1\">\n        <KanbanCard Title=\"Project setup\" Labels=\"@(new List<KanbanCard.KanbanLabel> { new() { Text = \"Done\", Color = \"success\" } })\" />\n    </KanbanColumn>\n</Kanban>"
       },
       {
         "title": "With Add Card Button",
@@ -95,7 +151,7 @@
       },
       {
         "title": "Custom Header",
-        "code": "<KanbanColumn>\r\n    <HeaderContent>\r\n        <Flex Class=\"items-center gap-2\">\r\n            <Lumeo.Text Class=\"text-sm font-medium\">Sprint 4</Lumeo.Text>\r\n            <Badge Variant=\"Badge.BadgeVariant.Secondary\">5</Badge>\r\n        </Flex>\r\n    </HeaderContent>\r\n    <KanbanCard Title=\"Task A\" />\r\n</KanbanColumn>"
+        "code": "<KanbanColumn>\n    <HeaderContent>\n        <Flex Class=\"items-center gap-2\">\n            <Lumeo.Text Class=\"text-sm font-medium\">Sprint 4</Lumeo.Text>\n            <Badge Variant=\"Badge.BadgeVariant.Secondary\">5</Badge>\n        </Flex>\n    </HeaderContent>\n    <KanbanCard Title=\"Task A\" />\n</KanbanColumn>"
       }
     ],
     "subComponents": {
@@ -104,8 +160,26 @@
         "fileName": "KanbanCard.razor",
         "namespace": "Lumeo",
         "inheritsFrom": null,
-        "implements": [],
+        "implements": [
+          "IAsyncDisposable"
+        ],
         "parameters": [
+          {
+            "name": "Board",
+            "type": "Kanban.BoardContext?",
+            "default": null,
+            "description": null,
+            "isCascading": true,
+            "captureUnmatched": false
+          },
+          {
+            "name": "Column",
+            "type": "KanbanColumn.ColumnContext?",
+            "default": null,
+            "description": null,
+            "isCascading": true,
+            "captureUnmatched": false
+          },
           {
             "name": "Title",
             "type": "string?",
@@ -163,6 +237,22 @@
             "captureUnmatched": false
           },
           {
+            "name": "CardId",
+            "type": "string?",
+            "default": null,
+            "description": "Stable id for this card, written into the board's drop/move payloads.",
+            "isCascading": false,
+            "captureUnmatched": false
+          },
+          {
+            "name": "Index",
+            "type": "int",
+            "default": null,
+            "description": "This card's position within its column. Lets the board compute a precise insert index when another card is dropped onto this one.",
+            "isCascading": false,
+            "captureUnmatched": false
+          },
+          {
             "name": "Class",
             "type": "string?",
             "default": null,
@@ -188,6 +278,7 @@
         ],
         "enums": [],
         "records": [],
+        "gotchas": [],
         "parseFailed": false,
         "parseError": null
       },
@@ -198,6 +289,14 @@
         "inheritsFrom": null,
         "implements": [],
         "parameters": [
+          {
+            "name": "Board",
+            "type": "Kanban.BoardContext?",
+            "default": null,
+            "description": null,
+            "isCascading": true,
+            "captureUnmatched": false
+          },
           {
             "name": "Title",
             "type": "string?",
@@ -250,7 +349,15 @@
             "name": "OnDrop",
             "type": "EventCallback<DragEventArgs>",
             "default": null,
-            "description": null,
+            "description": "Raw drop event. Still fired for fully-manual boards that track drag state themselves. For an enriched payload (which card, from/to column, index) give the column a ColumnId, give cards a CardId, and handle Kanban.OnCardDrop at the board level.",
+            "isCascading": false,
+            "captureUnmatched": false
+          },
+          {
+            "name": "ColumnId",
+            "type": "string?",
+            "default": null,
+            "description": "Stable id for this column, written into the board's drop/move payloads.",
             "isCascading": false,
             "captureUnmatched": false
           },
@@ -280,11 +387,18 @@
           {
             "name": "OnDrop",
             "type": "EventCallback<DragEventArgs>",
-            "description": null
+            "description": "Raw drop event. Still fired for fully-manual boards that track drag state themselves. For an enriched payload (which card, from/to column, index) give the column a ColumnId, give cards a CardId, and handle Kanban.OnCardDrop at the board level."
           }
         ],
         "enums": [],
-        "records": [],
+        "records": [
+          {
+            "name": "ColumnContext",
+            "signature": "ColumnContext",
+            "description": "Cascaded to child cards so a card can advertise the insert index when it is the drag-over target."
+          }
+        ],
+        "gotchas": [],
         "parseFailed": false,
         "parseError": null
       }
@@ -312,15 +426,15 @@
   "source": [
     {
       "path": "UI/Kanban/Kanban.razor",
-      "content": "@namespace Lumeo\r\n\r\n<div class=\"@CssClass\" @attributes=\"AdditionalAttributes\">\r\n    @ChildContent\r\n</div>\r\n\r\n@code {\r\n    [Parameter] public RenderFragment? ChildContent { get; set; }\r\n    [Parameter] public string? Class { get; set; }\r\n    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }\r\n\r\n    private string CssClass => $\"flex gap-4 overflow-x-auto p-4 {Class}\".Trim();\r\n}\r\n"
+      "content": "@namespace Lumeo\n\n<CascadingValue Value=\"_context\" IsFixed=\"false\">\n    <div class=\"@CssClass\" @attributes=\"AdditionalAttributes\">\n        @ChildContent\n    </div>\n</CascadingValue>\n\n@code {\n    [Parameter] public RenderFragment? ChildContent { get; set; }\n\n    /// <summary>\n    /// Raised when a card is dropped onto a column (mouse/touch drag) and the\n    /// board can resolve which card moved, from which column, to which column\n    /// and at what index. Fires only when cards carry a <c>CardId</c> and\n    /// columns a <c>ColumnId</c>; otherwise the per-column <c>OnDrop</c> still\n    /// fires with the raw event for fully-manual boards.\n    /// </summary>\n    [Parameter] public EventCallback<DropEventArgs> OnCardDrop { get; set; }\n\n    /// <summary>\n    /// Raised when a card is moved via the keyboard (arrow keys on a focused\n    /// card): Left/Right move it to the previous/next column, Up/Down reorder\n    /// it within its column. Provides the keyboard-accessible alternative to\n    /// drag-and-drop. Requires <c>CardId</c> on cards and <c>ColumnId</c> on\n    /// columns so the board can resolve the move.\n    /// </summary>\n    [Parameter] public EventCallback<MoveEventArgs> OnCardMove { get; set; }\n\n    [Parameter] public string? Class { get; set; }\n    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }\n\n    private string CssClass => Cx.Merge(\"flex gap-4 overflow-x-auto p-4\", Class);\n\n    private BoardContext _context = default!;\n\n    protected override void OnInitialized() => _context = new BoardContext(this);\n\n    internal Task NotifyCardDrop(DropEventArgs args) => OnCardDrop.InvokeAsync(args);\n    internal Task NotifyCardMove(MoveEventArgs args) => OnCardMove.InvokeAsync(args);\n\n    /// <summary>The direction of a keyboard-initiated card move.</summary>\n    public enum MoveDirection { Left, Right, Up, Down }\n\n    /// <summary>Payload describing a drag-drop of a card between/within columns.</summary>\n    public sealed record DropEventArgs(string CardId, string? FromColumnId, string ToColumnId, int ToIndex);\n\n    /// <summary>Payload describing a keyboard-initiated card move.</summary>\n    public sealed record MoveEventArgs(string CardId, string FromColumnId, MoveDirection Direction);\n\n    /// <summary>\n    /// A single stable instance cascaded per board. Tracks the in-flight drag so a\n    /// column's drop handler can read which card is being dragged and from where —\n    /// the HTML5 DataTransfer is unreliable (and empty under the touch shim), so the\n    /// board carries the drag identity itself.\n    /// </summary>\n    public sealed record BoardContext\n    {\n        private readonly Kanban _board;\n        public BoardContext(Kanban board) => _board = board;\n\n        public string? DraggingCardId { get; private set; }\n        public string? DraggingFromColumnId { get; private set; }\n\n        public bool HasCardDropHandler => _board.OnCardDrop.HasDelegate;\n        public bool HasCardMoveHandler => _board.OnCardMove.HasDelegate;\n\n        public void BeginDrag(string cardId, string? fromColumnId)\n        {\n            DraggingCardId = cardId;\n            DraggingFromColumnId = fromColumnId;\n        }\n\n        public void EndDrag()\n        {\n            DraggingCardId = null;\n            DraggingFromColumnId = null;\n        }\n\n        public Task NotifyDrop(DropEventArgs args) => _board.NotifyCardDrop(args);\n        public Task NotifyMove(MoveEventArgs args) => _board.NotifyCardMove(args);\n    }\n}\n"
     },
     {
       "path": "UI/Kanban/KanbanCard.razor",
-      "content": "@namespace Lumeo\r\n\r\n<div class=\"@CssClass\"\r\n     draggable=\"@(Draggable ? \"true\" : \"false\")\"\r\n     role=\"@(OnClick.HasDelegate ? \"button\" : null)\"\r\n     tabindex=\"@(OnClick.HasDelegate ? \"0\" : null)\"\r\n     @onclick=\"OnClick\"\r\n     @onkeydown=\"HandleKeyDown\"\r\n     @attributes=\"AdditionalAttributes\">\r\n\r\n    @if (Labels is not null && Labels.Count > 0)\r\n    {\r\n        <div class=\"flex flex-wrap gap-1 mb-2\">\r\n            @foreach (var label in Labels)\r\n            {\r\n                <span class=\"@GetLabelClass(label.Color) inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium\">\r\n                    @label.Text\r\n                </span>\r\n            }\r\n        </div>\r\n    }\r\n\r\n    @if (ChildContent is not null)\r\n    {\r\n        @ChildContent\r\n    }\r\n    else\r\n    {\r\n        <p class=\"text-sm font-medium leading-snug\">@Title</p>\r\n        @if (!string.IsNullOrEmpty(Description))\r\n        {\r\n            <p class=\"mt-1 text-xs text-muted-foreground line-clamp-2\">@Description</p>\r\n        }\r\n    }\r\n\r\n    @if (!string.IsNullOrEmpty(Avatar))\r\n    {\r\n        <div class=\"mt-2 flex justify-end\">\r\n            <img src=\"@Avatar\" alt=\"Assignee\" class=\"w-6 h-6 rounded-full object-cover border border-border/40\" />\r\n        </div>\r\n    }\r\n</div>\r\n\r\n@code {\r\n    [Parameter] public string? Title { get; set; }\r\n    [Parameter] public string? Description { get; set; }\r\n    [Parameter] public RenderFragment? ChildContent { get; set; }\r\n    [Parameter] public List<KanbanLabel>? Labels { get; set; }\r\n    [Parameter] public string? Avatar { get; set; }\r\n    [Parameter] public EventCallback OnClick { get; set; }\r\n    [Parameter] public bool Draggable { get; set; } = true;\r\n    [Parameter] public string? Class { get; set; }\r\n    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }\r\n\r\n    private string CssClass => $\"bg-card rounded-lg border border-border/40 p-3 shadow-sm cursor-pointer hover:shadow-md transition-shadow focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-2 {Class}\".Trim();\r\n\r\n    private async Task HandleKeyDown(KeyboardEventArgs e)\r\n    {\r\n        if (!OnClick.HasDelegate) return;\r\n        if (e.Key is \"Enter\" or \" \") await OnClick.InvokeAsync();\r\n    }\r\n\r\n    private static string GetLabelClass(string color) => color switch\r\n    {\r\n        \"primary\" => \"bg-primary/10 text-primary\",\r\n        \"destructive\" => \"bg-destructive/10 text-destructive\",\r\n        \"warning\" => \"bg-warning-light text-warning-text\",\r\n        \"success\" => \"bg-success-light text-success-text\",\r\n        \"secondary\" => \"bg-secondary text-secondary-foreground\",\r\n        _ => \"bg-muted text-muted-foreground\"\r\n    };\r\n\r\n    public class KanbanLabel\r\n    {\r\n        public string Text { get; set; } = \"\";\r\n        public string Color { get; set; } = \"primary\";\r\n    }\r\n}\r\n"
+      "content": "@namespace Lumeo\n@implements IAsyncDisposable\n@inject Lumeo.Services.Localization.ILumeoLocalizer L\n@inject Lumeo.Services.IComponentInteropService Interop\n\n<div class=\"@CssClass\"\n     id=\"@_cardId\"\n     draggable=\"@(Draggable ? \"true\" : \"false\")\"\n     role=\"@(IsInteractive ? \"button\" : null)\"\n     tabindex=\"@(IsInteractive ? \"0\" : null)\"\n     aria-roledescription=\"@(KeyboardMovable ? L[\"Kanban.CardRoleDescription\"] : null)\"\n     @ondragstart=\"HandleDragStart\"\n     @ondragend=\"HandleDragEnd\"\n     @ondragover=\"HandleDragOver\"\n     @onclick=\"OnClick\"\n     @onkeydown=\"HandleKeyDown\"\n     @attributes=\"AdditionalAttributes\">\n\n    @if (Labels is not null && Labels.Count > 0)\n    {\n        <div class=\"flex flex-wrap gap-1 mb-2\">\n            @foreach (var label in Labels)\n            {\n                <span class=\"@GetLabelClass(label.Color) inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium\">\n                    @label.Text\n                </span>\n            }\n        </div>\n    }\n\n    @if (ChildContent is not null)\n    {\n        @ChildContent\n    }\n    else\n    {\n        <p class=\"text-sm font-medium leading-snug\">@Title</p>\n        @if (!string.IsNullOrEmpty(Description))\n        {\n            <p class=\"mt-1 text-xs text-muted-foreground line-clamp-2\">@Description</p>\n        }\n    }\n\n    @if (!string.IsNullOrEmpty(Avatar))\n    {\n        <div class=\"mt-2 flex justify-end\">\n            <img src=\"@Avatar\" alt=\"Assignee\" class=\"w-6 h-6 rounded-full object-cover border border-border/40\" />\n        </div>\n    }\n</div>\n\n@code {\n    [CascadingParameter] private Kanban.BoardContext? Board { get; set; }\n    [CascadingParameter] private KanbanColumn.ColumnContext? Column { get; set; }\n\n    [Parameter] public string? Title { get; set; }\n    [Parameter] public string? Description { get; set; }\n    [Parameter] public RenderFragment? ChildContent { get; set; }\n    [Parameter] public List<KanbanLabel>? Labels { get; set; }\n    [Parameter] public string? Avatar { get; set; }\n    [Parameter] public EventCallback OnClick { get; set; }\n    [Parameter] public bool Draggable { get; set; } = true;\n\n    /// <summary>Stable id for this card, written into the board's drop/move payloads.</summary>\n    [Parameter] public string? CardId { get; set; }\n\n    /// <summary>This card's position within its column. Lets the board compute a\n    /// precise insert index when another card is dropped onto this one.</summary>\n    [Parameter] public int Index { get; set; }\n\n    [Parameter] public string? Class { get; set; }\n    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }\n\n    private string CssClass => Cx.Merge(\"bg-card rounded-lg border border-border/40 p-3 shadow-sm cursor-pointer hover:shadow-md transition-shadow focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-2\", Class);\n\n    private readonly string _cardId = LumeoIds.New(\"kanban-card\");\n\n    // The card joins the board's keyboard-move flow when it has an id and the\n    // board exposes a move handler. It is interactive (focusable) when it can be\n    // clicked OR keyboard-moved.\n    private bool KeyboardMovable => CardId is { Length: > 0 } && Board is { HasCardMoveHandler: true };\n    private bool IsInteractive => OnClick.HasDelegate || KeyboardMovable;\n\n    // When keyboard-movable, suppress the browser default (page/column scroll)\n    // for the arrow keys so they reorder/move the card instead. Registered\n    // against the id the DOM actually carries (a consumer id in the splat wins\n    // over the generated one); re-registered when that id or movability changes.\n    private string? _pdRegisteredId;\n\n    protected override async Task OnAfterRenderAsync(bool firstRender)\n    {\n        var targetId = KeyboardMovable ? LumeoIds.Effective(AdditionalAttributes, _cardId) : null;\n        if (_pdRegisteredId == targetId) return;\n        try\n        {\n            if (_pdRegisteredId is not null)\n                await Interop.UnregisterPreventDefaultKeys(_pdRegisteredId);\n            if (targetId is not null)\n                await Interop.RegisterPreventDefaultKeys(targetId, new[]\n                {\n                    new Lumeo.Services.PreventDefaultKeyRule(\"ArrowLeft\", SkipEditable: true),\n                    new Lumeo.Services.PreventDefaultKeyRule(\"ArrowRight\", SkipEditable: true),\n                    new Lumeo.Services.PreventDefaultKeyRule(\"ArrowUp\", SkipEditable: true),\n                    new Lumeo.Services.PreventDefaultKeyRule(\"ArrowDown\", SkipEditable: true),\n                });\n            _pdRegisteredId = targetId;\n        }\n        catch (JSDisconnectedException) { }\n        catch (ObjectDisposedException) { }\n        catch (InvalidOperationException) { } // JS interop unavailable during prerender\n    }\n\n    private void HandleDragStart()\n    {\n        // Record the drag identity on the board so the destination column can\n        // emit an enriched drop payload (DataTransfer is unreliable / empty\n        // under the touch shim). A consumer-supplied @ondragstart splatted via\n        // AdditionalAttributes still runs and wins, keeping manual boards working.\n        if (CardId is { Length: > 0 } id && Board is { } board)\n            board.BeginDrag(id, Column?.ColumnId);\n    }\n\n    private void HandleDragEnd()\n    {\n        Board?.EndDrag();\n    }\n\n    private void HandleDragOver()\n    {\n        // Advertise this card's slot as the insert target while hovered.\n        Column?.SetPendingIndex(Index);\n    }\n\n    private async Task HandleKeyDown(KeyboardEventArgs e)\n    {\n        if (KeyboardMovable && Column?.ColumnId is { } fromColumn)\n        {\n            var dir = e.Key switch\n            {\n                \"ArrowLeft\" => (Kanban.MoveDirection?)Kanban.MoveDirection.Left,\n                \"ArrowRight\" => Kanban.MoveDirection.Right,\n                \"ArrowUp\" => Kanban.MoveDirection.Up,\n                \"ArrowDown\" => Kanban.MoveDirection.Down,\n                _ => null\n            };\n            if (dir is { } d && Board is { } board)\n            {\n                await board.NotifyMove(new Kanban.MoveEventArgs(CardId!, fromColumn, d));\n                return;\n            }\n        }\n\n        if (OnClick.HasDelegate && e.Key is \"Enter\" or \" \")\n            await OnClick.InvokeAsync();\n    }\n\n    public async ValueTask DisposeAsync()\n    {\n        if (_pdRegisteredId is null) return;\n        try { await Interop.UnregisterPreventDefaultKeys(_pdRegisteredId); }\n        catch (JSDisconnectedException) { }\n        catch (ObjectDisposedException) { }\n        catch (InvalidOperationException) { }\n    }\n\n    private static string GetLabelClass(string color) => color switch\n    {\n        \"primary\" => \"bg-primary/10 text-primary\",\n        \"destructive\" => \"bg-destructive/10 text-destructive\",\n        \"warning\" => \"bg-warning-light text-warning-text\",\n        \"success\" => \"bg-success-light text-success-text\",\n        \"secondary\" => \"bg-secondary text-secondary-foreground\",\n        _ => \"bg-muted text-muted-foreground\"\n    };\n\n    public class KanbanLabel\n    {\n        public string Text { get; set; } = \"\";\n        public string Color { get; set; } = \"primary\";\n    }\n}\n"
     },
     {
       "path": "UI/Kanban/KanbanColumn.razor",
-      "content": "@namespace Lumeo\r\n@inject Lumeo.Services.Localization.ILumeoLocalizer L\r\n\r\n<div class=\"@CssClass\" @attributes=\"AdditionalAttributes\">\r\n    <div class=\"flex items-center justify-between px-3 py-2 border-b border-border/40\">\r\n        @if (HeaderContent is not null)\r\n        {\r\n            @HeaderContent\r\n        }\r\n        else\r\n        {\r\n            <div class=\"flex items-center gap-2\">\r\n                <span class=\"font-medium text-sm\">@Title</span>\r\n                @if (Badge.HasValue)\r\n                {\r\n                    <span class=\"inline-flex items-center justify-center min-w-5 h-5 px-1.5 rounded-full bg-muted text-muted-foreground text-xs font-medium\">\r\n                        @Badge.Value\r\n                    </span>\r\n                }\r\n            </div>\r\n        }\r\n    </div>\r\n\r\n    <div class=\"flex-1 overflow-y-auto p-2 flex flex-col gap-2 min-h-16\"\r\n         @ondragover:preventDefault\r\n         @ondrop=\"HandleDrop\">\r\n        @ChildContent\r\n    </div>\r\n\r\n    @if (AllowAdd)\r\n    {\r\n        <div class=\"p-2 border-t border-border/40\">\r\n            <button type=\"button\"\r\n                    class=\"w-full flex items-center gap-2 px-3 py-2 rounded-md text-sm text-muted-foreground hover:bg-muted/50 hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-2\"\r\n                    @onclick=\"OnAdd\">\r\n                <Blazicon Svg=\"Lucide.Plus\" class=\"h-3.5 w-3.5\" />\r\n                @L[\"Kanban.AddCard\"]\r\n            </button>\r\n        </div>\r\n    }\r\n</div>\r\n\r\n@code {\r\n    [Parameter] public string? Title { get; set; }\r\n    [Parameter] public RenderFragment? ChildContent { get; set; }\r\n    [Parameter] public int? Badge { get; set; }\r\n    [Parameter] public RenderFragment? HeaderContent { get; set; }\r\n    [Parameter] public bool AllowAdd { get; set; }\r\n    [Parameter] public EventCallback OnAdd { get; set; }\r\n    [Parameter] public EventCallback<DragEventArgs> OnDrop { get; set; }\r\n\r\n    private async Task HandleDrop(DragEventArgs e) => await OnDrop.InvokeAsync(e);\r\n    [Parameter] public string? Class { get; set; }\r\n    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }\r\n\r\n    private string CssClass => $\"flex flex-col w-72 shrink-0 rounded-lg bg-muted/30 border border-border/40 max-h-full {Class}\".Trim();\r\n}\r\n"
+      "content": "@namespace Lumeo\n@inject Lumeo.Services.Localization.ILumeoLocalizer L\n\n<CascadingValue Value=\"_columnContext\" IsFixed=\"false\">\n    <div class=\"@CssClass\" @attributes=\"AdditionalAttributes\">\n        <div class=\"flex items-center justify-between px-3 py-2 border-b border-border/40\">\n            @if (HeaderContent is not null)\n            {\n                @HeaderContent\n            }\n            else\n            {\n                <div class=\"flex items-center gap-2\">\n                    <span class=\"font-medium text-sm\">@Title</span>\n                    @if (Badge.HasValue)\n                    {\n                        <span class=\"inline-flex items-center justify-center min-w-5 h-5 px-1.5 rounded-full bg-muted text-muted-foreground text-xs font-medium\">\n                            @Badge.Value\n                        </span>\n                    }\n                </div>\n            }\n        </div>\n\n        <div class=\"flex-1 overflow-y-auto p-2 flex flex-col gap-2 min-h-16\"\n             @ondragover:preventDefault\n             @ondragenter=\"OnColumnDragEnter\"\n             @ondrop=\"HandleDrop\">\n            @ChildContent\n        </div>\n\n        @if (AllowAdd)\n        {\n            <div class=\"p-2 border-t border-border/40\">\n                <button type=\"button\"\n                        class=\"w-full flex items-center gap-2 px-3 py-2 rounded-md text-sm text-muted-foreground hover:bg-muted/50 hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-2\"\n                        @onclick=\"OnAdd\">\n                    <Blazicon Svg=\"Lucide.Plus\" class=\"h-3.5 w-3.5\" />\n                    @L[\"Kanban.AddCard\"]\n                </button>\n            </div>\n        }\n    </div>\n</CascadingValue>\n\n@code {\n    [CascadingParameter] private Kanban.BoardContext? Board { get; set; }\n\n    [Parameter] public string? Title { get; set; }\n    [Parameter] public RenderFragment? ChildContent { get; set; }\n    [Parameter] public int? Badge { get; set; }\n    [Parameter] public RenderFragment? HeaderContent { get; set; }\n    [Parameter] public bool AllowAdd { get; set; }\n    [Parameter] public EventCallback OnAdd { get; set; }\n\n    /// <summary>\n    /// Raw drop event. Still fired for fully-manual boards that track drag state\n    /// themselves. For an enriched payload (which card, from/to column, index)\n    /// give the column a <c>ColumnId</c>, give cards a <c>CardId</c>, and handle\n    /// <c>Kanban.OnCardDrop</c> at the board level.\n    /// </summary>\n    [Parameter] public EventCallback<DragEventArgs> OnDrop { get; set; }\n\n    /// <summary>Stable id for this column, written into the board's drop/move payloads.</summary>\n    [Parameter] public string? ColumnId { get; set; }\n\n    [Parameter] public string? Class { get; set; }\n    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }\n\n    private string CssClass => Cx.Merge(\"flex flex-col w-72 shrink-0 rounded-lg bg-muted/30 border border-border/40 max-h-full\", Class);\n\n    private ColumnContext _columnContext = default!;\n\n    // The insert index a hovered card last advertised; -1 means \"append\" (drop\n    // landed on the column body, not on a specific card).\n    private int _pendingIndex = -1;\n\n    protected override void OnInitialized() => _columnContext = new ColumnContext(this);\n\n    private async Task HandleDrop(DragEventArgs e)\n    {\n        var board = Board;\n        try\n        {\n            // Legacy raw-event path is always honored.\n            await OnDrop.InvokeAsync(e);\n\n            // Enriched path: only when we can resolve the dragged card + this column.\n            if (board is not null && board.DraggingCardId is { } cardId && ColumnId is { } toColumn\n                && board.HasCardDropHandler)\n            {\n                var toIndex = _pendingIndex < 0 ? int.MaxValue : _pendingIndex;\n                await board.NotifyDrop(new Kanban.DropEventArgs(cardId, board.DraggingFromColumnId, toColumn, toIndex));\n            }\n        }\n        finally\n        {\n            // Always clear drag state, even if a handler above threw, so the board\n            // doesn't stay stuck mid-drag.\n            _pendingIndex = -1;\n            board?.EndDrag();\n        }\n    }\n\n    // Hovering the column body (not a card) targets the end of the column.\n    private void OnColumnDragEnter() => _pendingIndex = -1;\n\n    /// <summary>Cascaded to child cards so a card can advertise the insert index\n    /// when it is the drag-over target.</summary>\n    public sealed record ColumnContext\n    {\n        private readonly KanbanColumn _column;\n        public ColumnContext(KanbanColumn column) => _column = column;\n\n        public string? ColumnId => _column.ColumnId;\n\n        /// <summary>A card reports the insert index when the pointer is over it.</summary>\n        public void SetPendingIndex(int index) => _column._pendingIndex = index;\n    }\n}\n"
     }
   ],
   "slots": [
@@ -353,9 +467,24 @@
     {
       "service": "ILumeoLocalizer",
       "namespace": "Lumeo.Services.Localization"
+    },
+    {
+      "service": "IComponentInteropService",
+      "namespace": "Lumeo.Services"
     }
   ],
-  "cascadingDependencies": [],
+  "cascadingDependencies": [
+    {
+      "name": "Board",
+      "type": "Kanban.BoardContext?",
+      "required": false
+    },
+    {
+      "name": "Column",
+      "type": "KanbanColumn.ColumnContext?",
+      "required": false
+    }
+  ],
   "relatedComponents": [
     {
       "name": "KanbanCard",
@@ -368,7 +497,8 @@
   ],
   "keyboardInteractions": [],
   "tests": [
+    "tests/Lumeo.Tests/Components/Kanban/KanbanDragDropTests.cs",
     "tests/Lumeo.Tests/Components/Kanban/KanbanTests.cs"
   ],
-  "mdSummary": "# Kanban\r\n\r\nDrag-and-drop board with swimlanes.\r\n\r\n**Package:** `Lumeo` · **Category:** Drag & Drop\r\n**Docs:** https://lumeo.nativ.sh/components/kanban\r\n\r\n## Parameters\r\n| Owner | Name | Type | Default | Description |\r\n|---|---|---|---|---|\r\n| Kanban | ChildContent | `RenderFragment?` | `` |  |\r\n| Kanban | Class | `string?` | `` |  |\r\n| Kanban | AdditionalAttributes | `Dictionary<string, object>?` | `` |  |\r\n| KanbanCard | Title | `string?` | `` |  |\r\n| KanbanCard | Description | `string?` | `` |  |\r\n| KanbanCard | ChildContent | `RenderFragment?` | `` |  |\r\n| KanbanCard | Labels | `List<KanbanLabel>?` | `` |  |\r\n| KanbanCard | Avatar | `string?` | `` |  |\r\n| KanbanCard | OnClick | `EventCallback` | `` |  |\r\n| KanbanCard | Draggable | `bool` | `true` |  |\r\n| KanbanCard | Class | `string?` | `` |  |\r\n| KanbanCard | AdditionalAttributes | `Dictionary<string, object>?` | `` |  |\r\n| KanbanColumn | Title | `string?` | `` |  |\r\n| KanbanColumn | ChildContent | `RenderFragment?` | `` |  |\r\n| KanbanColumn | Badge | `int?` | `` |  |\r\n| KanbanColumn | HeaderContent | `RenderFragment?` | `` |  |\r\n| KanbanColumn | AllowAdd | `bool` | `` |  |\r\n| KanbanColumn | OnAdd | `EventCallback` | `` |  |\r\n| KanbanColumn | OnDrop | `EventCallback<DragEventArgs>` | `` |  |\r\n| KanbanColumn | Class | `string?` | `` |  |\r\n| KanbanColumn | AdditionalAttributes | `Dictionary<string, object>?` | `` |  |\r\n\r\n## Slots\r\n- `ChildContent` (Kanban) — RenderFragment slot\r\n- `ChildContent` (KanbanCard) — RenderFragment slot\r\n- `ChildContent` (KanbanColumn) — RenderFragment slot\r\n- `HeaderContent` (KanbanColumn) — RenderFragment slot\r\n\r\n## Events\r\n- (none)\r\n\r\n## Sub-components\r\n- `KanbanCard`, `KanbanColumn`\r\n\r\n## Cascading values it expects\r\n- (none)\r\n\r\n## Services it injects\r\n- `ILumeoLocalizer` (Lumeo.Services.Localization)\r\n\r\n## Keyboard\r\n—\r\n\r\n## Example\r\n```razor\r\n<Kanban />\r\n```\r\n\r\n## CSS variables\r\n`--color-border`, `--color-card`, `--color-destructive`, `--color-foreground`, `--color-muted`, `--color-muted-foreground`, `--color-primary`, `--color-ring`, `--color-secondary`, `--color-secondary-foreground`, `--radius`\r\n\r\n## Files\r\n- `UI/Kanban/Kanban.razor`\r\n- `UI/Kanban/KanbanCard.razor`\r\n- `UI/Kanban/KanbanColumn.razor`\r\n"
+  "mdSummary": "# Kanban\n\nDrag-and-drop board with swimlanes.\n\n**Package:** `Lumeo` · **Category:** Drag & Drop\n**Docs:** https://lumeo.nativ.sh/components/kanban\n\n## Parameters\n| Owner | Name | Type | Default | Description |\n|---|---|---|---|---|\n| Kanban | ChildContent | `RenderFragment?` | `` |  |\n| Kanban | OnCardDrop | `EventCallback<DropEventArgs>` | `` | Raised when a card is dropped onto a column (mouse/touch drag) and the board can resolve which card moved, from which column, to which column and at what index. Fires only when cards carry a CardId and columns a ColumnId; otherwise the per-column OnDrop still fires with the raw event for fully-manual boards. |\n| Kanban | OnCardMove | `EventCallback<MoveEventArgs>` | `` | Raised when a card is moved via the keyboard (arrow keys on a focused card): Left/Right move it to the previous/next column, Up/Down reorder it within its column. Provides the keyboard-accessible alternative to drag-and-drop. Requires CardId on cards and ColumnId on columns so the board can resolve the move. |\n| Kanban | Class | `string?` | `` |  |\n| Kanban | AdditionalAttributes | `Dictionary<string, object>?` | `` |  |\n| KanbanCard | Board | `Kanban.BoardContext?` | `` |  |\n| KanbanCard | Column | `KanbanColumn.ColumnContext?` | `` |  |\n| KanbanCard | Title | `string?` | `` |  |\n| KanbanCard | Description | `string?` | `` |  |\n| KanbanCard | ChildContent | `RenderFragment?` | `` |  |\n| KanbanCard | Labels | `List<KanbanLabel>?` | `` |  |\n| KanbanCard | Avatar | `string?` | `` |  |\n| KanbanCard | OnClick | `EventCallback` | `` |  |\n| KanbanCard | Draggable | `bool` | `true` |  |\n| KanbanCard | CardId | `string?` | `` | Stable id for this card, written into the board's drop/move payloads. |\n| KanbanCard | Index | `int` | `` | This card's position within its column. Lets the board compute a precise insert index when another card is dropped onto this one. |\n| KanbanCard | Class | `string?` | `` |  |\n| KanbanCard | AdditionalAttributes | `Dictionary<string, object>?` | `` |  |\n| KanbanColumn | Board | `Kanban.BoardContext?` | `` |  |\n| KanbanColumn | Title | `string?` | `` |  |\n| KanbanColumn | ChildContent | `RenderFragment?` | `` |  |\n| KanbanColumn | Badge | `int?` | `` |  |\n| KanbanColumn | HeaderContent | `RenderFragment?` | `` |  |\n| KanbanColumn | AllowAdd | `bool` | `` |  |\n| KanbanColumn | OnAdd | `EventCallback` | `` |  |\n| KanbanColumn | OnDrop | `EventCallback<DragEventArgs>` | `` | Raw drop event. Still fired for fully-manual boards that track drag state themselves. For an enriched payload (which card, from/to column, index) give the column a ColumnId, give cards a CardId, and handle Kanban.OnCardDrop at the board level. |\n| KanbanColumn | ColumnId | `string?` | `` | Stable id for this column, written into the board's drop/move payloads. |\n| KanbanColumn | Class | `string?` | `` |  |\n| KanbanColumn | AdditionalAttributes | `Dictionary<string, object>?` | `` |  |\n\n## Slots\n- `ChildContent` (Kanban) — RenderFragment slot\n- `ChildContent` (KanbanCard) — RenderFragment slot\n- `ChildContent` (KanbanColumn) — RenderFragment slot\n- `HeaderContent` (KanbanColumn) — RenderFragment slot\n\n## Events\n- `OnCardDrop` (`EventCallback<DropEventArgs>`) — Raised when a card is dropped onto a column (mouse/touch drag) and the board can resolve which card moved, from which column, to which column and at what index. Fires only when cards carry a CardId and columns a ColumnId; otherwise the per-column OnDrop still fires with the raw event for fully-manual boards.\n- `OnCardMove` (`EventCallback<MoveEventArgs>`) — Raised when a card is moved via the keyboard (arrow keys on a focused card): Left/Right move it to the previous/next column, Up/Down reorder it within its column. Provides the keyboard-accessible alternative to drag-and-drop. Requires CardId on cards and ColumnId on columns so the board can resolve the move.\n\n## Sub-components\n- `KanbanCard`, `KanbanColumn`\n\n## Cascading values it expects\n- `Board` (`Kanban.BoardContext?`)\n- `Column` (`KanbanColumn.ColumnContext?`)\n\n## Services it injects\n- `ILumeoLocalizer` (Lumeo.Services.Localization)\n- `IComponentInteropService` (Lumeo.Services)\n\n## Keyboard\n—\n\n## Example\n```razor\n<Kanban />\n```\n\n## CSS variables\n`--color-border`, `--color-card`, `--color-destructive`, `--color-foreground`, `--color-muted`, `--color-muted-foreground`, `--color-primary`, `--color-ring`, `--color-secondary`, `--color-secondary-foreground`, `--radius`\n\n## Files\n- `UI/Kanban/Kanban.razor`\n- `UI/Kanban/KanbanCard.razor`\n- `UI/Kanban/KanbanColumn.razor`\n"
 }

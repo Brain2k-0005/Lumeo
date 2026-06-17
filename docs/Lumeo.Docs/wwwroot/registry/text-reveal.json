@@ -14,6 +14,7 @@
   "cssVars": [
     "--color-foreground"
   ],
+  "gotchas": [],
   "api": {
     "name": "TextReveal",
     "category": "Motion",
@@ -73,6 +74,7 @@
     "events": [],
     "enums": [],
     "records": [],
+    "gotchas": [],
     "cssVars": [
       "--color-foreground"
     ],
@@ -91,7 +93,7 @@
       },
       {
         "title": "Hero Heading",
-        "code": "<TextReveal Text=\"The Blazor component library designed for modern applications.\"\r\n             Class=\"text-3xl font-bold leading-tight\" Stagger=\"80\" />"
+        "code": "<TextReveal Text=\"The Blazor component library designed for modern applications.\"\n             Class=\"text-3xl font-bold leading-tight\" Stagger=\"80\" />"
       }
     ],
     "subComponents": {},
@@ -110,7 +112,7 @@
   "source": [
     {
       "path": "UI/TextReveal/TextReveal.razor",
-      "content": "@namespace Lumeo\r\n@implements IAsyncDisposable\r\n@inject ComponentInteropService Interop\r\n\r\n<span id=\"@_elementId\" class=\"@CssClass\" @attributes=\"AdditionalAttributes\">\r\n    @for (var i = 0; i < _words.Length; i++)\r\n    {\r\n        <span data-motion-word>@_words[i]</span>\r\n        @if (i < _words.Length - 1)\r\n        {\r\n            @(\" \")\r\n        }\r\n    }\r\n</span>\r\n\r\n@code {\r\n    [Parameter] public string Text { get; set; } = string.Empty;\r\n    [Parameter] public int Stagger { get; set; } = 80;\r\n    [Parameter] public double Threshold { get; set; } = 0.3;\r\n    [Parameter] public string? Class { get; set; }\r\n    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }\r\n\r\n    private readonly string _elementId = $\"lumeo-reveal-{Guid.NewGuid():N}\";\r\n    private string[] _words = Array.Empty<string>();\r\n    private bool _registered;\r\n\r\n    private string CssClass => string.Join(\" \", new[] { \"lumeo-reveal\", Class }.Where(s => !string.IsNullOrWhiteSpace(s)));\r\n\r\n    protected override void OnParametersSet()\r\n    {\r\n        _words = string.IsNullOrEmpty(Text)\r\n            ? Array.Empty<string>()\r\n            : Text.Split(' ', StringSplitOptions.RemoveEmptyEntries);\r\n    }\r\n\r\n    protected override async Task OnAfterRenderAsync(bool firstRender)\r\n    {\r\n        if (firstRender && !_registered)\r\n        {\r\n            _registered = true;\r\n            try\r\n            {\r\n                await Interop.MotionRevealText(_elementId, Stagger, Threshold);\r\n            }\r\n            catch (JSDisconnectedException) { }\r\n        }\r\n    }\r\n\r\n    public async ValueTask DisposeAsync()\r\n    {\r\n        if (_registered)\r\n        {\r\n            await Interop.MotionDisposeObserver(_elementId);\r\n        }\r\n    }\r\n}\r\n"
+      "content": "@namespace Lumeo\n@implements IAsyncDisposable\n@inject ComponentInteropService Interop\n\n<span id=\"@_elementId\" class=\"@CssClass\" @attributes=\"AdditionalAttributes\">\n    @for (var i = 0; i < _words.Length; i++)\n    {\n        <span data-motion-word>@_words[i]</span>\n        @if (i < _words.Length - 1)\n        {\n            @(\" \")\n        }\n    }\n</span>\n\n@code {\n    [Parameter] public string Text { get; set; } = string.Empty;\n    [Parameter] public int Stagger { get; set; } = 80;\n    [Parameter] public double Threshold { get; set; } = 0.3;\n    [Parameter] public string? Class { get; set; }\n    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }\n\n    private readonly string _elementId = $\"lumeo-reveal-{Guid.NewGuid():N}\";\n    private string[] _words = Array.Empty<string>();\n    private bool _registered;\n\n    private string CssClass => string.Join(\" \", new[] { \"lumeo-reveal\", Class }.Where(s => !string.IsNullOrWhiteSpace(s)));\n\n    protected override void OnParametersSet()\n    {\n        _words = string.IsNullOrEmpty(Text)\n            ? Array.Empty<string>()\n            : Text.Split(' ', StringSplitOptions.RemoveEmptyEntries);\n    }\n\n    protected override async Task OnAfterRenderAsync(bool firstRender)\n    {\n        if (firstRender && !_registered)\n        {\n            _registered = true;\n            try\n            {\n                await Interop.MotionRevealText(_elementId, Stagger, Threshold);\n            }\n            catch (JSDisconnectedException) { }\n        }\n    }\n\n    public async ValueTask DisposeAsync()\n    {\n        if (!_registered) return;\n        try { await Interop.MotionDisposeObserver(_elementId); }\n        catch (JSDisconnectedException) { }\n    }\n}\n"
     }
   ],
   "slots": [],
@@ -126,5 +128,5 @@
   "tests": [
     "tests/Lumeo.Tests/Components/TextReveal/TextRevealTests.cs"
   ],
-  "mdSummary": "# TextReveal\r\n\r\nWord-by-word reveal animation on scroll.\r\n\r\n**Package:** `Lumeo.Motion` · **Category:** Motion\r\n**Docs:** https://lumeo.nativ.sh/components/text-reveal\r\n\r\n## Parameters\r\n| Owner | Name | Type | Default | Description |\r\n|---|---|---|---|---|\r\n| TextReveal | Text | `string` | `string.Empty` |  |\r\n| TextReveal | Stagger | `int` | `80` |  |\r\n| TextReveal | Threshold | `double` | `0.3` |  |\r\n| TextReveal | Class | `string?` | `` |  |\r\n| TextReveal | AdditionalAttributes | `Dictionary<string, object>?` | `` |  |\r\n\r\n## Slots\r\n- (none)\r\n\r\n## Events\r\n- (none)\r\n\r\n## Sub-components\r\n- (none)\r\n\r\n## Cascading values it expects\r\n- (none)\r\n\r\n## Services it injects\r\n- `ComponentInteropService` ()\r\n\r\n## Keyboard\r\n—\r\n\r\n## Example\r\n```razor\r\n<TextReveal />\r\n```\r\n\r\n## CSS variables\r\n`--color-foreground`\r\n\r\n## Files\r\n- `UI/TextReveal/TextReveal.razor`\r\n"
+  "mdSummary": "# TextReveal\n\nWord-by-word reveal animation on scroll.\n\n**Package:** `Lumeo.Motion` · **Category:** Motion\n**Docs:** https://lumeo.nativ.sh/components/text-reveal\n\n## Parameters\n| Owner | Name | Type | Default | Description |\n|---|---|---|---|---|\n| TextReveal | Text | `string` | `string.Empty` |  |\n| TextReveal | Stagger | `int` | `80` |  |\n| TextReveal | Threshold | `double` | `0.3` |  |\n| TextReveal | Class | `string?` | `` |  |\n| TextReveal | AdditionalAttributes | `Dictionary<string, object>?` | `` |  |\n\n## Slots\n- (none)\n\n## Events\n- (none)\n\n## Sub-components\n- (none)\n\n## Cascading values it expects\n- (none)\n\n## Services it injects\n- `ComponentInteropService` ()\n\n## Keyboard\n—\n\n## Example\n```razor\n<TextReveal />\n```\n\n## CSS variables\n`--color-foreground`\n\n## Files\n- `UI/TextReveal/TextReveal.razor`\n"
 }
