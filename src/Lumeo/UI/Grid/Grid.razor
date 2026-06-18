@@ -4,12 +4,35 @@
 
 @code {
     [Parameter] public int Columns { get; set; } = 1;
+    /// <summary>
+    /// When true the grid collapses to 1 column on mobile and 2 on small screens,
+    /// expanding to <see cref="Columns"/> only at the <c>lg</c> breakpoint — so a
+    /// many-column grid stays readable on phones. Uses statically-known responsive
+    /// utility strings (purge-safe) for 1–6 columns; falls back to a fixed
+    /// <c>grid-cols-N</c> for other counts. Off by default (unchanged behavior). (#250)
+    /// </summary>
+    [Parameter] public bool Responsive { get; set; }
     [Parameter] public string? Gap { get; set; } = "4";
     [Parameter] public string? RowGap { get; set; }
     [Parameter] public string? ColGap { get; set; }
     [Parameter] public RenderFragment? ChildContent { get; set; }
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    // Static, fully-spelled responsive class strings so Tailwind's content scan
+    // compiles them (dynamic `sm:grid-cols-{n}` interpolation would be purged).
+    private string ColumnsClass => !Responsive
+        ? $"grid-cols-{Columns}"
+        : Columns switch
+        {
+            <= 1 => "grid-cols-1",
+            2 => "grid-cols-1 sm:grid-cols-2",
+            3 => "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3",
+            4 => "grid-cols-1 sm:grid-cols-2 lg:grid-cols-4",
+            5 => "grid-cols-1 sm:grid-cols-2 lg:grid-cols-5",
+            6 => "grid-cols-1 sm:grid-cols-2 lg:grid-cols-6",
+            _ => $"grid-cols-{Columns}"
+        };
 
     private string CssClass
     {
@@ -18,7 +41,7 @@
             var gap = !string.IsNullOrEmpty(Gap) ? $"gap-{Gap}" : "";
             var rowGap = !string.IsNullOrEmpty(RowGap) ? $"gap-y-{RowGap}" : "";
             var colGap = !string.IsNullOrEmpty(ColGap) ? $"gap-x-{ColGap}" : "";
-            return Cx.Merge($"grid grid-cols-{Columns}", gap, rowGap, colGap, Class);
+            return Cx.Merge($"grid {ColumnsClass}", gap, rowGap, colGap, Class);
         }
     }
 }
