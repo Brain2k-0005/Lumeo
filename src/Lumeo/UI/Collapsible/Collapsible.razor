@@ -34,8 +34,19 @@
 
     private async Task Toggle()
     {
-        Open = !Open;
-        await OpenChanged.InvokeAsync(Open);
+        var next = !Open;
+        // Controlled (Open is bound via OpenChanged): let the parent own state —
+        // fire the callback and render from the parent's next value instead of
+        // mutating our own [Parameter], which desyncs if the parent rejects or
+        // ignores the change. Uncontrolled: self-manage. (#238)
+        if (OpenChanged.HasDelegate)
+        {
+            await OpenChanged.InvokeAsync(next);
+        }
+        else
+        {
+            Open = next;
+        }
     }
 
     public record CollapsibleContext(bool IsOpen, EventCallback Toggle, string TriggerId, string ContentId);
