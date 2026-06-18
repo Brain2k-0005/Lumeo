@@ -5,6 +5,15 @@ All notable changes to Lumeo will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.0] - 2026-06-18
+
+Bundled feature batch (component capability gaps), all additive and opt-in.
+
+### Added
+- **Barcode (#291)**: `OnError` callback (fires the encoding error message, or `null` on a successful encode) as a validation hook; the quiet zone now scales with `BarWidth` (10× the narrow module) instead of a fixed 10px.
+- **Highlighter (#293)**: opt-in `RegexMode` — `Highlight`/`HighlightTerms` are treated as regular-expression patterns instead of literal text; invalid patterns fall back to plain rendering.
+- **Grid (#250)**: opt-in `Responsive` — collapses to 1 column (mobile) / 2 (sm) and expands to `Columns` at `lg`, using purge-safe static utility strings for 1–6 columns. Off by default.
+
 ## [3.16.0] - 2026-06-18
 
 a11y / i18n polish and small improvements following 3.15.0.
