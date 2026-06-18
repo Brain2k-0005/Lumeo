@@ -19,12 +19,14 @@
         {
             @ChildContent
         }
-        else if (Data is not null)
+        else if (_chartValues is not null)
         {
             @* #276: delegate to the full Sparkline so the inline chart is as
                capable (Type / Area / per-point tooltips) as the standalone
-               component, instead of a hardcoded less-capable polyline. *@
-            <Sparkline Values="@Data" Type="@Type" ShowArea="@ShowArea" ShowLast="@ShowLast"
+               component, instead of a hardcoded less-capable polyline. A single
+               data point can't form a line, so the chart is only rendered for
+               two or more points (matching the pre-#276 contract). *@
+            <Sparkline Values="@_chartValues" Type="@Type" ShowArea="@ShowArea" ShowLast="@ShowLast"
                        ShowTooltips="@ShowTooltips" Color="@SparkColor" Height="@SparkHeight"
                        Class="h-full w-full" aria-hidden="true" />
         }
@@ -52,6 +54,16 @@
 
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    // Materialized once per parameter set: the inline chart needs at least two
+    // points to draw a line, so anything shorter renders nothing (no stray svg).
+    private IReadOnlyList<double>? _chartValues;
+
+    protected override void OnParametersSet()
+    {
+        var list = Data as IReadOnlyList<double> ?? Data?.ToList();
+        _chartValues = list is { Count: >= 2 } ? list : null;
+    }
 
     private int SparkHeight => Size switch
     {
