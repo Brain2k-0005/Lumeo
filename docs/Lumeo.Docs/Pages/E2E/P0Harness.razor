@@ -1,0 +1,45 @@
+@page "/e2e/p0-harness"
+
+@* E2E-only harness for the #172 / #173 P0 regression checks (Lumeo.Tests.E2E).
+   Deliberately minimal, deterministic and NOT linked in navigation. These two
+   bugs are real-browser cascade/layout effects that bUnit cannot see (it has no
+   layout engine), so the assertions run in Playwright against this page.
+
+   #172 — a center-aligned DropdownMenu makes the parent content use
+   translateX(-50%). Before the transform-free positionFixed fix that transform
+   established a containing block, so the nested fixed sub-content resolved
+   against the transformed parent instead of the viewport and opened off-target.
+   #173 — icons sit in a text-sm context so the bug (every icon collapsing to
+   1em = 14px because Blazicons' unlayered svg rule beat the @layer utilities)
+   is distinguishable from the correct rem-based utility sizes (16/20/24px). *@
+
+<PageTitle>P0 harness</PageTitle>
+
+<div class="p-10 space-y-12">
+    <h1 class="text-xl font-bold">P0 regression harness (#172 / #173)</h1>
+
+    <section class="flex justify-center">
+        <DropdownMenu>
+            <DropdownMenuTrigger>
+                <Button data-testid="p0-dd-trigger" Variant="Button.ButtonVariant.Outline">Open menu</Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent Align="Lumeo.Align.Center">
+                <DropdownMenuItem>Item one</DropdownMenuItem>
+                <DropdownMenuSub>
+                    <DropdownMenuSubTrigger data-testid="p0-sub-trigger">Open submenu</DropdownMenuSubTrigger>
+                    <DropdownMenuSubContent data-testid="p0-sub-content">
+                        <DropdownMenuItem>Sub item A</DropdownMenuItem>
+                        <DropdownMenuItem>Sub item B</DropdownMenuItem>
+                    </DropdownMenuSubContent>
+                </DropdownMenuSub>
+                <DropdownMenuItem>Item two</DropdownMenuItem>
+            </DropdownMenuContent>
+        </DropdownMenu>
+    </section>
+
+    <section class="text-sm">
+        <span data-testid="p0-icon-md" class="inline-flex align-middle"><Icon Name="Search" Size="Lumeo.Size.Md" /></span>
+        <span data-testid="p0-icon-lg" class="inline-flex align-middle"><Icon Name="Search" Size="Lumeo.Size.Lg" /></span>
+        <span data-testid="p0-icon-xl" class="inline-flex align-middle"><Icon Name="Search" Size="Lumeo.Size.Xl" /></span>
+    </section>
+</div>
