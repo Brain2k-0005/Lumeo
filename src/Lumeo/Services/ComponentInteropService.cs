@@ -427,10 +427,10 @@ public sealed class ComponentInteropService : IComponentInteropService
 
     // --- Drawer Snap Points (3.19) ---
 
-    public async ValueTask RegisterDrawerSnap(string elementId, string direction, Func<Task> dismissHandler, Func<int, Task> snapHandler, IReadOnlyList<double> snapPoints, int activeIndex, int? activationPx, int? firePx, double? velocity)
+    public async ValueTask RegisterDrawerSnap(string elementId, string direction, Func<Task<bool>> dismissHandler, Func<int, Task> snapHandler, IReadOnlyList<double> snapPoints, int activeIndex, bool dismissible, int? activationPx, int? firePx, double? velocity)
     {
         var module = await GetModuleAsync();
-        await _swipe.RegisterDrawerSnap(module, GetSelfRef(), elementId, direction, dismissHandler, snapHandler, snapPoints, activeIndex, activationPx, firePx, velocity);
+        await _swipe.RegisterDrawerSnap(module, GetSelfRef(), elementId, direction, dismissHandler, snapHandler, snapPoints, activeIndex, dismissible, activationPx, firePx, velocity);
     }
 
     public async ValueTask SetDrawerSnap(string elementId, int index)
@@ -447,6 +447,9 @@ public sealed class ComponentInteropService : IComponentInteropService
 
     [JSInvokable]
     public async Task OnDrawerSnapChange(string elementId, int index) => await _swipe.OnDrawerSnapChange(elementId, index);
+
+    [JSInvokable]
+    public async Task<bool> OnDrawerSnapDismiss(string elementId) => await _swipe.OnDrawerSnapDismiss(elementId);
 
     // --- Sortable Touch (rc.44 mobile fix) ---
 

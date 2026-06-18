@@ -506,9 +506,22 @@ function createBubbleMenu(editor, dotNetRef, instanceId, opts) {
                 e.preventDefault(); focusButton(0); break;
             case 'End':
                 e.preventDefault(); focusButton(buttons.length - 1); break;
+            case 'Tab':
+                // The toolbar lives at document.body, outside any modal focus
+                // trap around the editor. Returning focus to the editor on Tab
+                // keeps focus contained in that trap instead of escaping to a
+                // body-level element. (#345 review)
+                e.preventDefault(); editor.commands.focus(); break;
             case 'Escape':
                 e.preventDefault(); editor.commands.focus(); break;
         }
+    });
+
+    // Hide the toolbar once focus leaves it entirely (e.g. a click elsewhere) —
+    // the editor's own blur handler only covers the editor losing focus, so
+    // without this the keyboard-focused toolbar could stay stuck open. (#345)
+    root.addEventListener('focusout', (e) => {
+        if (!root.contains(e.relatedTarget)) root.style.display = 'none';
     });
 
     const focusToolbar = () => {
@@ -542,18 +555,26 @@ function createBubbleMenu(editor, dotNetRef, instanceId, opts) {
         root.style.left = left + 'px';
     }
 
-    editor.on('selectionUpdate', update);
+    // Named handlers so destroy() can unregister them (editor.on stacks
+    // listeners on re-creation otherwise). (#345 review)
+    const onSelectionUpdate = () => update();
     // Keep the menu open while keyboard focus is inside it (moving focus into
     // the floating toolbar blurs the editor).
-    editor.on('blur', () => { setTimeout(() => {
+    const onBlur = () => { setTimeout(() => {
         if (!editor.isFocused && !root.contains(document.activeElement)) root.style.display = 'none';
-    }, 200); });
-    editor.on('focus', update);
+    }, 200); };
+    const onFocus = () => update();
+    editor.on('selectionUpdate', onSelectionUpdate);
+    editor.on('blur', onBlur);
+    editor.on('focus', onFocus);
 
     return {
         update,
         focusToolbar,
         destroy() {
+            try { editor.off('selectionUpdate', onSelectionUpdate); } catch (_) {}
+            try { editor.off('blur', onBlur); } catch (_) {}
+            try { editor.off('focus', onFocus); } catch (_) {}
             try { editor.view.dom.removeEventListener('keydown', onEditorKeydown); } catch (_) {}
             try { root.remove(); } catch (_) {}
         },

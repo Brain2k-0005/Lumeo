@@ -1054,9 +1054,15 @@ export function registerDrawerSnap(elementId, direction, dotnetRef, options) {
     const sign = (direction === 'up') ? -1 : +1;
     const EASING = 'transform 0.32s cubic-bezier(0.32, 0.72, 0, 1)';
     const velocityOverride = options && options.velocity;
-    const DISMISS_VELOCITY = (typeof velocityOverride === 'number' && velocityOverride > 0) ? velocityOverride : 0.4;
+    // Honor an explicit 0 (distance-only), matching the swipe path — only a
+    // non-number falls back to the default. (#345 review)
+    const DISMISS_VELOCITY = (typeof velocityOverride === 'number') ? velocityOverride : 0.4;
+    const hasVelocityDismiss = DISMISS_VELOCITY > 0;
     const VELOCITY_WINDOW_MS = 100;
     const DISMISS_FRACTION = 0.5; // drag this far from the lowest snap toward closed → dismiss
+    // A protected drawer (PreventClose) still snaps between points; it just
+    // never dismisses — dragging past the lowest snap settles back there. (#345)
+    const dismissAllowed = !(options && options.dismissible === false);
 
     const lastIndex = snapPoints.length - 1;
     let activeIndex = (options && Number.isInteger(options.activeIndex))
@@ -1121,24 +1127,29 @@ export function registerDrawerSnap(elementId, direction, dotnetRef, options) {
             const dt = b.t - a.t;
             if (dt > 0) velocity = (b.pos - a.pos) / dt;
         }
-        const flickDismiss = Math.sign(velocity) === sign && Math.abs(velocity) >= DISMISS_VELOCITY;
-        const flickOpen = Math.sign(velocity) === -sign && Math.abs(velocity) >= DISMISS_VELOCITY;
+        const flickDismiss = hasVelocityDismiss && Math.sign(velocity) === sign && Math.abs(velocity) >= DISMISS_VELOCITY;
+        const flickOpen = hasVelocityDismiss && Math.sign(velocity) === -sign && Math.abs(velocity) >= DISMISS_VELOCITY;
 
         // Distance dragged past the lowest snap, toward fully closed.
         const lowest = offsetFor(0);
         const distPastLowest = (currentOffset - lowest) * sign;
         const gapToClosed = Math.abs(closedOffset() - lowest) || 1;
 
+        // Would this release close the drawer — a flick-down at/below the lowest
+        // snap, or dragged most of the way past it?
+        const wantDismiss =
+            (flickDismiss && (activeIndex === 0 || distPastLowest > 0)) ||
+            (!flickDismiss && !flickOpen && distPastLowest > gapToClosed * DISMISS_FRACTION);
+
         let dismiss = false;
         let targetIndex = activeIndex;
-
-        if (flickDismiss) {
-            if (activeIndex === 0 || distPastLowest > 0) dismiss = true;
-            else targetIndex = activeIndex - 1;
+        if (wantDismiss) {
+            if (dismissAllowed) dismiss = true;
+            else targetIndex = 0;          // protected: settle at the lowest snap instead of closing
+        } else if (flickDismiss) {
+            targetIndex = Math.max(0, activeIndex - 1);
         } else if (flickOpen) {
             targetIndex = Math.min(lastIndex, activeIndex + 1);
-        } else if (distPastLowest > gapToClosed * DISMISS_FRACTION) {
-            dismiss = true;
         } else {
             // Settle to the nearest snap by position.
             let best = 0, bestDist = Infinity;
@@ -1152,7 +1163,16 @@ export function registerDrawerSnap(elementId, direction, dotnetRef, options) {
         el.style.transition = EASING;
         if (dismiss) {
             el.style.transform = `translateY(${closedOffset()}px)`;
-            dotnetRef.invokeMethodAsync('OnSwipeDismiss', elementId);
+            // Respect OnBeforeClose: if C# vetoes the dismiss, snap back to the
+            // active snap instead of leaving the panel translated off-screen. (#345)
+            Promise.resolve(dotnetRef.invokeMethodAsync('OnDrawerSnapDismiss', elementId))
+                .then(ok => {
+                    if (ok === false) {
+                        el.style.transition = EASING;
+                        el.style.transform = `translateY(${offsetFor(activeIndex)}px)`;
+                    }
+                })
+                .catch(() => {});
         } else {
             el.style.transform = `translateY(${offsetFor(targetIndex)}px)`;
             if (targetIndex !== activeIndex) {
