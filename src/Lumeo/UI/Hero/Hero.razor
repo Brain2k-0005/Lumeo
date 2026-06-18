@@ -7,7 +7,7 @@
     illustration. Layout collapses to a single column under sm:.
 *@
 
-<section class="@CssClass" @attributes="AdditionalAttributes">
+<section class="@CssClass" aria-labelledby="@TitleId" @attributes="AdditionalAttributes">
     <div class="@($"mx-auto max-w-6xl px-6 py-16 sm:py-24 {GridClass}")">
         <div class="@($"flex flex-col {AlignClass}")">
             @if (Eyebrow is not null)
@@ -18,7 +18,7 @@
             }
             @if (!string.IsNullOrEmpty(Title))
             {
-                <h1 class="text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight text-foreground">@Title</h1>
+                <h1 id="@TitleId" class="text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight text-foreground">@Title</h1>
             }
             @TitleSlot
             @if (!string.IsNullOrEmpty(Subtitle))
@@ -55,6 +55,12 @@
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     private string CssClass => Cx.Merge("w-full", Class);
+
+    // Name the <section> landmark via its heading so AT exposes it as a region
+    // with an accessible name (#297). Null when there's no Title — a TitleSlot-
+    // only consumer can still supply aria-label/aria-labelledby via attributes.
+    private readonly string _titleId = $"hero-title-{Guid.NewGuid():N}";
+    private string? TitleId => string.IsNullOrEmpty(Title) ? null : _titleId;
 
     private string GridClass => Media is not null
         ? "grid gap-10 lg:grid-cols-2 items-center"

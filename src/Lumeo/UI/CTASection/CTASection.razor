@@ -6,11 +6,11 @@
     slot for primary / secondary buttons.
 *@
 
-<section class="@CssClass" @attributes="AdditionalAttributes">
+<section class="@CssClass" aria-labelledby="@TitleId" @attributes="AdditionalAttributes">
     <div class="mx-auto max-w-4xl px-6 py-16 sm:py-20 text-center">
         @if (!string.IsNullOrEmpty(Title))
         {
-            <h2 class="text-3xl sm:text-4xl font-bold tracking-tight text-foreground">@Title</h2>
+            <h2 id="@TitleId" class="text-3xl sm:text-4xl font-bold tracking-tight text-foreground">@Title</h2>
         }
         @TitleSlot
         @if (!string.IsNullOrEmpty(Subtitle))
@@ -35,4 +35,10 @@
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     private string CssClass => Cx.Merge("w-full bg-muted/40 border-y border-border/40", Class);
+
+    // Name the <section> landmark via its heading so AT exposes it as a region
+    // with an accessible name (#298). Null when there's no Title — a TitleSlot-
+    // only consumer can still supply aria-label/aria-labelledby via attributes.
+    private readonly string _titleId = $"cta-title-{Guid.NewGuid():N}";
+    private string? TitleId => string.IsNullOrEmpty(Title) ? null : _titleId;
 }
