@@ -9,7 +9,9 @@
   "files": [
     "UI/SparkCard/SparkCard.razor"
   ],
-  "dependencies": [],
+  "dependencies": [
+    "sparkline"
+  ],
   "packageDependencies": [],
   "cssVars": [
     "--color-border",
@@ -79,6 +81,46 @@
         "type": "SparkCardVariant",
         "default": "SparkCardVariant.Default",
         "description": null,
+        "isCascading": false,
+        "captureUnmatched": false
+      },
+      {
+        "name": "Type",
+        "type": "Sparkline.SparkType",
+        "default": "Sparkline.SparkType.Line",
+        "description": "Inline sparkline shape (Line / Area / Bars). (#276)",
+        "isCascading": false,
+        "captureUnmatched": false
+      },
+      {
+        "name": "ShowArea",
+        "type": "bool",
+        "default": null,
+        "description": "Fill the area under a line sparkline. (#276)",
+        "isCascading": false,
+        "captureUnmatched": false
+      },
+      {
+        "name": "ShowLast",
+        "type": "bool",
+        "default": null,
+        "description": "Mark the most recent point. (#276)",
+        "isCascading": false,
+        "captureUnmatched": false
+      },
+      {
+        "name": "ShowTooltips",
+        "type": "bool",
+        "default": null,
+        "description": "Per-point markers + hover tooltips on the inline sparkline. (#276)",
+        "isCascading": false,
+        "captureUnmatched": false
+      },
+      {
+        "name": "SparkColor",
+        "type": "string?",
+        "default": null,
+        "description": "Override the sparkline color (CSS color / var). (#276)",
         "isCascading": false,
         "captureUnmatched": false
       },
@@ -156,7 +198,7 @@
   "source": [
     {
       "path": "UI/SparkCard/SparkCard.razor",
-      "content": "@namespace Lumeo\n\n<div class=\"@RootClasses\" @attributes=\"AdditionalAttributes\">\n    <div class=\"flex items-baseline justify-between gap-3\">\n        <div class=\"min-w-0\">\n            @if (!string.IsNullOrEmpty(Label))\n            {\n                <div class=\"@LabelClass\">@Label</div>\n            }\n            @if (!string.IsNullOrEmpty(Value))\n            {\n                <div class=\"@ValueClass\">@Value</div>\n            }\n        </div>\n    </div>\n\n    <div class=\"@SparklineHeightClass w-full\">\n        @if (ChildContent is not null)\n        {\n            @ChildContent\n        }\n        else if (Data is not null && _points is not null)\n        {\n            <svg viewBox=\"0 0 100 30\" preserveAspectRatio=\"none\" class=\"h-full w-full overflow-visible\" aria-hidden=\"true\">\n                <polyline points=\"@_points\"\n                          fill=\"none\"\n                          stroke=\"var(--color-primary, currentColor)\"\n                          stroke-width=\"1.5\"\n                          stroke-linecap=\"round\"\n                          stroke-linejoin=\"round\"\n                          vector-effect=\"non-scaling-stroke\" />\n            </svg>\n        }\n    </div>\n</div>\n\n@code {\n    [Parameter] public string? Label { get; set; }\n    [Parameter] public string? Value { get; set; }\n    [Parameter] public IEnumerable<double>? Data { get; set; }\n    [Parameter] public RenderFragment? ChildContent { get; set; }\n    [Parameter] public Lumeo.Size Size { get; set; } = Lumeo.Size.Md;\n    [Parameter] public SparkCardVariant Variant { get; set; } = SparkCardVariant.Default;\n    [Parameter] public string? Class { get; set; }\n    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }\n\n    private string? _points;\n\n    protected override void OnParametersSet()\n    {\n        _points = ComputePoints(Data);\n    }\n\n    private static string? ComputePoints(IEnumerable<double>? data)\n    {\n        if (data is null) return null;\n        var list = data.ToList();\n        if (list.Count < 2) return null;\n\n        var min = list.Min();\n        var max = list.Max();\n        var range = max - min;\n        if (range == 0) range = 1;\n\n        var sb = new System.Text.StringBuilder();\n        var n = list.Count;\n        for (int i = 0; i < n; i++)\n        {\n            var x = (double)i / (n - 1) * 100.0;\n            // Invert Y so higher values are visually higher (SVG y goes down)\n            var yNorm = (list[i] - min) / range;\n            var y = 28.0 - yNorm * 26.0 + 1.0; // padding 1 top/bottom, area height 26\n            if (i > 0) sb.Append(' ');\n            sb.Append(x.ToString(\"0.##\", System.Globalization.CultureInfo.InvariantCulture));\n            sb.Append(',');\n            sb.Append(y.ToString(\"0.##\", System.Globalization.CultureInfo.InvariantCulture));\n        }\n        return sb.ToString();\n    }\n\n    private string SizePadding => Size switch\n    {\n        Lumeo.Size.Sm => \"p-3\",\n        Lumeo.Size.Lg => \"p-6\",\n        _ => \"p-5\"\n    };\n\n    private string SparklineHeightClass => Size switch\n    {\n        Lumeo.Size.Sm => \"mt-2 h-8\",\n        Lumeo.Size.Lg => \"mt-4 h-14\",\n        _ => \"mt-3 h-10\"\n    };\n\n    private string LabelClass => Size switch\n    {\n        Lumeo.Size.Sm => \"text-xs text-muted-foreground truncate\",\n        Lumeo.Size.Lg => \"text-base text-muted-foreground truncate\",\n        _ => \"text-sm text-muted-foreground truncate\"\n    };\n\n    private string ValueClass => Size switch\n    {\n        Lumeo.Size.Sm => \"mt-0.5 text-lg font-semibold tracking-tight text-foreground\",\n        Lumeo.Size.Lg => \"mt-1.5 text-3xl font-semibold tracking-tight text-foreground\",\n        _ => \"mt-1 text-2xl font-semibold tracking-tight text-foreground\"\n    };\n\n    private string VariantClasses => Variant switch\n    {\n        SparkCardVariant.Bordered => \"rounded-xl border-2 border-border/50 bg-card text-card-foreground\",\n        SparkCardVariant.Filled => \"rounded-xl border border-border/40 bg-muted text-card-foreground\",\n        _ => \"rounded-xl border border-border/40 bg-card text-card-foreground\"\n    };\n\n    private string RootClasses =>\n        Cx.Merge(VariantClasses, SizePadding, Class);\n\n    /// <summary>\n    /// Default = standard card border. Bordered = thicker 2px border. Filled = muted background.\n    /// </summary>\n    public enum SparkCardVariant { Default, Bordered, Filled }\n}\n"
+      "content": "@namespace Lumeo\n\n<div class=\"@RootClasses\" @attributes=\"AdditionalAttributes\">\n    <div class=\"flex items-baseline justify-between gap-3\">\n        <div class=\"min-w-0\">\n            @if (!string.IsNullOrEmpty(Label))\n            {\n                <div class=\"@LabelClass\">@Label</div>\n            }\n            @if (!string.IsNullOrEmpty(Value))\n            {\n                <div class=\"@ValueClass\">@Value</div>\n            }\n        </div>\n    </div>\n\n    <div class=\"@SparklineHeightClass w-full\">\n        @if (ChildContent is not null)\n        {\n            @ChildContent\n        }\n        else if (_chartValues is not null)\n        {\n            @* #276: delegate to the full Sparkline so the inline chart is as\n               capable (Type / Area / per-point tooltips) as the standalone\n               component, instead of a hardcoded less-capable polyline. A single\n               data point can't form a line, so the chart is only rendered for\n               two or more points (matching the pre-#276 contract). *@\n            <Sparkline Values=\"@_chartValues\" Type=\"@Type\" ShowArea=\"@ShowArea\" ShowLast=\"@ShowLast\"\n                       ShowTooltips=\"@ShowTooltips\" Color=\"@SparkColor\" Height=\"@SparkHeight\"\n                       Class=\"h-full w-full\" aria-hidden=\"true\" />\n        }\n    </div>\n</div>\n\n@code {\n    [Parameter] public string? Label { get; set; }\n    [Parameter] public string? Value { get; set; }\n    [Parameter] public IEnumerable<double>? Data { get; set; }\n    [Parameter] public RenderFragment? ChildContent { get; set; }\n    [Parameter] public Lumeo.Size Size { get; set; } = Lumeo.Size.Md;\n    [Parameter] public SparkCardVariant Variant { get; set; } = SparkCardVariant.Default;\n\n    /// <summary>Inline sparkline shape (Line / Area / Bars). (#276)</summary>\n    [Parameter] public Sparkline.SparkType Type { get; set; } = Sparkline.SparkType.Line;\n    /// <summary>Fill the area under a line sparkline. (#276)</summary>\n    [Parameter] public bool ShowArea { get; set; }\n    /// <summary>Mark the most recent point. (#276)</summary>\n    [Parameter] public bool ShowLast { get; set; }\n    /// <summary>Per-point markers + hover tooltips on the inline sparkline. (#276)</summary>\n    [Parameter] public bool ShowTooltips { get; set; }\n    /// <summary>Override the sparkline color (CSS color / var). (#276)</summary>\n    [Parameter] public string? SparkColor { get; set; }\n\n    [Parameter] public string? Class { get; set; }\n    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }\n\n    // Materialized once per parameter set: the inline chart needs at least two\n    // points to draw a line, so anything shorter renders nothing (no stray svg).\n    private IReadOnlyList<double>? _chartValues;\n\n    protected override void OnParametersSet()\n    {\n        var list = Data as IReadOnlyList<double> ?? Data?.ToList();\n        _chartValues = list is { Count: >= 2 } ? list : null;\n    }\n\n    private int SparkHeight => Size switch\n    {\n        Lumeo.Size.Sm => 32,\n        Lumeo.Size.Lg => 56,\n        _ => 40\n    };\n\n    private string SizePadding => Size switch\n    {\n        Lumeo.Size.Sm => \"p-3\",\n        Lumeo.Size.Lg => \"p-6\",\n        _ => \"p-5\"\n    };\n\n    private string SparklineHeightClass => Size switch\n    {\n        Lumeo.Size.Sm => \"mt-2 h-8\",\n        Lumeo.Size.Lg => \"mt-4 h-14\",\n        _ => \"mt-3 h-10\"\n    };\n\n    private string LabelClass => Size switch\n    {\n        Lumeo.Size.Sm => \"text-xs text-muted-foreground truncate\",\n        Lumeo.Size.Lg => \"text-base text-muted-foreground truncate\",\n        _ => \"text-sm text-muted-foreground truncate\"\n    };\n\n    private string ValueClass => Size switch\n    {\n        Lumeo.Size.Sm => \"mt-0.5 text-lg font-semibold tracking-tight text-foreground\",\n        Lumeo.Size.Lg => \"mt-1.5 text-3xl font-semibold tracking-tight text-foreground\",\n        _ => \"mt-1 text-2xl font-semibold tracking-tight text-foreground\"\n    };\n\n    private string VariantClasses => Variant switch\n    {\n        SparkCardVariant.Bordered => \"rounded-xl border-2 border-border/50 bg-card text-card-foreground\",\n        SparkCardVariant.Filled => \"rounded-xl border border-border/40 bg-muted text-card-foreground\",\n        _ => \"rounded-xl border border-border/40 bg-card text-card-foreground\"\n    };\n\n    private string RootClasses =>\n        Cx.Merge(VariantClasses, SizePadding, Class);\n\n    /// <summary>\n    /// Default = standard card border. Bordered = thicker 2px border. Filled = muted background.\n    /// </summary>\n    public enum SparkCardVariant { Default, Bordered, Filled }\n}\n"
     }
   ],
   "slots": [
@@ -169,10 +211,16 @@
   ],
   "serviceDependencies": [],
   "cascadingDependencies": [],
-  "relatedComponents": [],
+  "relatedComponents": [
+    {
+      "name": "Sparkline",
+      "reason": "used internally"
+    }
+  ],
   "keyboardInteractions": [],
   "tests": [
+    "tests/Lumeo.Tests/Components/Features/GoalBatch2Tests.cs",
     "tests/Lumeo.Tests/Components/SparkCard/SparkCardTests.cs"
   ],
-  "mdSummary": "# SparkCard\n\nSmall dashboard card with an inline sparkline chart.\n\n**Package:** `Lumeo` · **Category:** Dashboard\n**Docs:** https://lumeo.nativ.sh/components/spark-card\n\n## Parameters\n| Owner | Name | Type | Default | Description |\n|---|---|---|---|---|\n| SparkCard | Label | `string?` | `` |  |\n| SparkCard | Value | `string?` | `` |  |\n| SparkCard | Data | `IEnumerable<double>?` | `` |  |\n| SparkCard | ChildContent | `RenderFragment?` | `` |  |\n| SparkCard | Size | `Lumeo.Size` | `Lumeo.Size.Md` |  |\n| SparkCard | Variant | `SparkCardVariant` | `SparkCardVariant.Default` |  |\n| SparkCard | Class | `string?` | `` |  |\n| SparkCard | AdditionalAttributes | `Dictionary<string, object>?` | `` |  |\n\n## Slots\n- `ChildContent` (SparkCard) — RenderFragment slot\n\n## Events\n- (none)\n\n## Sub-components\n- (none)\n\n## Cascading values it expects\n- (none)\n\n## Services it injects\n- (none)\n\n## Keyboard\n—\n\n## Example\n```razor\n<SparkCard />\n```\n\n## CSS variables\n`--color-border`, `--color-card`, `--color-card-foreground`, `--color-foreground`, `--color-muted`, `--color-muted-foreground`, `--radius`\n\n## Files\n- `UI/SparkCard/SparkCard.razor`\n"
+  "mdSummary": "# SparkCard\n\nSmall dashboard card with an inline sparkline chart.\n\n**Package:** `Lumeo` · **Category:** Dashboard\n**Docs:** https://lumeo.nativ.sh/components/spark-card\n\n## Parameters\n| Owner | Name | Type | Default | Description |\n|---|---|---|---|---|\n| SparkCard | Label | `string?` | `` |  |\n| SparkCard | Value | `string?` | `` |  |\n| SparkCard | Data | `IEnumerable<double>?` | `` |  |\n| SparkCard | ChildContent | `RenderFragment?` | `` |  |\n| SparkCard | Size | `Lumeo.Size` | `Lumeo.Size.Md` |  |\n| SparkCard | Variant | `SparkCardVariant` | `SparkCardVariant.Default` |  |\n| SparkCard | Type | `Sparkline.SparkType` | `Sparkline.SparkType.Line` | Inline sparkline shape (Line / Area / Bars). (#276) |\n| SparkCard | ShowArea | `bool` | `` | Fill the area under a line sparkline. (#276) |\n| SparkCard | ShowLast | `bool` | `` | Mark the most recent point. (#276) |\n| SparkCard | ShowTooltips | `bool` | `` | Per-point markers + hover tooltips on the inline sparkline. (#276) |\n| SparkCard | SparkColor | `string?` | `` | Override the sparkline color (CSS color / var). (#276) |\n| SparkCard | Class | `string?` | `` |  |\n| SparkCard | AdditionalAttributes | `Dictionary<string, object>?` | `` |  |\n\n## Slots\n- `ChildContent` (SparkCard) — RenderFragment slot\n\n## Events\n- (none)\n\n## Sub-components\n- (none)\n\n## Cascading values it expects\n- (none)\n\n## Services it injects\n- (none)\n\n## Keyboard\n—\n\n## Example\n```razor\n<SparkCard />\n```\n\n## CSS variables\n`--color-border`, `--color-card`, `--color-card-foreground`, `--color-foreground`, `--color-muted`, `--color-muted-foreground`, `--radius`\n\n## Files\n- `UI/SparkCard/SparkCard.razor`\n"
 }
