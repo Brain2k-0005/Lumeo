@@ -1,6 +1,6 @@
 # Lumeo component catalog
 
-All 155 components by category, plus 16 full-page patterns and the 58 theme tokens. Generated from `components-api.json` (`node skills/lumeo/gen-catalog.mjs`).
+All 163 components by category, plus 16 full-page patterns and the 58 theme tokens. Generated from `components-api.json` (`node skills/lumeo/gen-catalog.mjs`).
 
 > This is the **offline fallback**. When the `lumeo-mcp` server is connected, prefer `lumeo_search` / `lumeo_get_component` / `lumeo_get_example` — they give the live, complete per-parameter API.
 
@@ -29,9 +29,9 @@ Satellite packages: a component tagged **[Charts]** needs `Lumeo.Charts`, **[Dat
 - **Barcode** — Inline SVG Code 128B barcode renderer (scannable).
 - **Calendar** — Date picker calendar grid with single, range, and multi-select modes.
 - **Card** — Flexible container with header, content, and footer slots. _(sub-components: CardContent, CardFooter, CardHeader)_
-- **Chart** **[Charts]** — Declarative chart wrapper over ECharts — 30+ types supported. _(sub-components: AreaChart, BarChart, BoxPlotChart, CalendarHeatmapChart, CandlestickChart, ChartSkeleton, DonutChart, EffectScatterChart, FunnelChart, GaugeChart, GeoMapChart, GraphChart, HeatmapChart, LineChart, LiquidFillChart, MixedChart, NightingaleChart, ParallelChart, PictorialBarChart, PieChart, PolarBarChart, RadarChart, RadialChart, SankeyChart, ScatterChart, SunburstChart, ThemeRiverChart, TreeChart, TreemapChart, WaterfallChart, WordCloudChart)_
+- **Chart** **[Charts]** — Declarative chart wrapper over ECharts — 30+ types supported. _(sub-components: AreaChart, BarChart, BoxPlotChart, CalendarHeatmapChart, CandlestickChart, ChartReferenceZone, ChartSkeleton, ChartThreshold, ChartTooltip, DonutChart, EffectScatterChart, FunnelChart, GaugeChart, GeoMapChart, GraphChart, HeatmapChart, LineChart, LiquidFillChart, MixedChart, NightingaleChart, ParallelChart, PictorialBarChart, PieChart, PolarBarChart, RadarChart, RadialChart, SankeyChart, ScatterChart, SunburstChart, ThemeRiverChart, TreeChart, TreemapChart, WaterfallChart, WordCloudChart)_
 - **Chip** — Compact removable tag, optionally toggleable. _(sub-components: ChipGroup)_
-- **DataGrid** **[DataGrid]** — Enterprise grid: sort, filter, inline edit, multi-level group (client + server), pin, virtualize, export. _(sub-components: DataGridBody, DataGridCell, DataGridColumnDef, DataGridColumnFilter, DataGridColumnVisibility, DataGridDetailRow, DataGridFooter, DataGridGroupRow, DataGridHeader, DataGridHeaderCell, DataGridPagination, DataGridRow, DataGridToolbar, DataGridToolbarColumns, DataGridToolbarCopySelected, DataGridToolbarExport, DataGridToolbarFullscreen, DataGridToolbarLayouts, ToolbarContent)_
+- **DataGrid** **[DataGrid]** — Enterprise grid: sort, filter, inline edit, multi-level group (client + server), pin, virtualize, export. _(sub-components: DataGridBody, DataGridCell, DataGridColumnDef, DataGridColumnFilter, DataGridColumnGroup, DataGridColumnVisibility, DataGridDetailRow, DataGridFooter, DataGridGroupRow, DataGridHeader, DataGridHeaderCell, DataGridPagination, DataGridRow, DataGridToolbar, DataGridToolbarColumns, DataGridToolbarCopySelected, DataGridToolbarExport, DataGridToolbarFullscreen, DataGridToolbarLayouts, ToolbarContent)_
 - **DataTable** **[DataGrid]** — Table with sorting, pagination, and row selection built in. _(sub-components: DataTableSortableHeader)_
 - **Descriptions** — Key-value pair list for read-only entity details. _(sub-components: DescriptionsItem)_
 - **FileManager** — Headless file and folder explorer — folder tree, breadcrumb path, list/grid views, lazy loading, inline rename, context-menu operations.
@@ -50,7 +50,7 @@ Satellite packages: a component tagged **[Charts]** needs `Lumeo.Charts`, **[Dat
 - **Sparkline** — Inline SVG trend chart primitive — line, area, or bars for tables and KPI strips.
 - **Statistic** — Big-number statistic display with label and unit.
 - **Steps** — Numbered step indicator for wizards and progress flows. _(sub-components: StepsItem)_
-- **Table** — Minimal styled HTML table with header, row, cell components. _(sub-components: TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow)_
+- **Table** — Minimal styled HTML table with header, row, cell components. _(sub-components: TableBody, TableCaption, TableCell, TableEmpty, TableFooter, TableHead, TableHeader, TableRow, TableSkeleton)_
 - **Timeline** — Vertical event timeline with icons and connectors. _(sub-components: TimelineItem)_
 - **TreeView** — Hierarchical tree with expand/collapse and selection. _(sub-components: TreeViewNode)_
 - **Watermark** — Repeating diagonal watermark overlay.
@@ -79,7 +79,8 @@ Satellite packages: a component tagged **[Charts]** needs `Lumeo.Charts`, **[Dat
 - **Checkbox** — Binary input with indeterminate state and accessible label.
 - **CodeEditor** **[CodeEditor]** — Source-code editor wrapping CodeMirror 6 with on-demand language packs, dark/light/auto theming, and line numbers.
 - **ColorPicker** — Hue + saturation/value picker with hex input.
-- **Combobox** — Searchable select with filtering, custom values, and grouping. _(sub-components: ComboboxContent, ComboboxCreate, ComboboxEmpty, ComboboxInput, ComboboxItem)_
+- **Combobox** — Searchable select with filtering, custom values, and grouping. _(sub-components: ComboboxContent, ComboboxCreate, ComboboxEmpty, ComboboxGroup, ComboboxInput, ComboboxItem)_
+- **ConfirmButton** — Confirm Button component.
 - **DatePicker** — Calendar popover for picking a single date or range. _(sub-components: DateRangePicker, DateWheelPicker)_
 - **DateTimePicker** — Combined date + time picker with timezone awareness.
 - **FileUpload** — Drag-and-drop file dropzone with progress and validation.
@@ -90,6 +91,7 @@ Satellite packages: a component tagged **[Charts]** needs `Lumeo.Charts`, **[Dat
 - **Mention** — Textarea with @-trigger dropdown for mentioning users.
 - **NumberInput** — Numeric input with stepper buttons and locale formatting.
 - **OtpInput** — One-time password input, auto-advances between boxes.
+- **OverlayForm** — Overlay Form component.
 - **PasswordInput** — Password field with show/hide toggle and strength meter.
 - **QueryBuilder** — Visual AND/OR predicate-tree builder; serializes to JSON or a LINQ predicate. _(sub-components: QueryBuilderGroup)_
 - **RadioGroup** — Grouped radio buttons with horizontal or vertical layout. _(sub-components: RadioGroupCard, RadioGroupItem)_
@@ -105,6 +107,7 @@ Satellite packages: a component tagged **[Charts]** needs `Lumeo.Charts`, **[Dat
 - **Toggle** — Two-state button with pressed/unpressed styling.
 - **ToggleGroup** — Group of toggles with single or multiple selection. _(sub-components: ToggleGroupItem)_
 - **TreeSelect** — Select input with a hierarchical tree dropdown.
+- **UploadTrigger** — Upload Trigger component.
 
 ## Layout
 
@@ -118,6 +121,13 @@ Satellite packages: a component tagged **[Charts]** needs `Lumeo.Charts`, **[Dat
 - **Separator** — Horizontal or vertical dividing rule.
 - **Spacer** — Flex-grow spacer that pushes siblings apart.
 - **Stack** — Vertical flex wrapper with gap prop.
+
+## Marketing
+
+- **CTASection** — CTASection component.
+- **FeatureGrid** — Feature Grid component.
+- **FeatureItem** — Feature Item component.
+- **Hero** — Hero component.
 
 ## Motion
 
@@ -184,6 +194,7 @@ Satellite packages: a component tagged **[Charts]** needs `Lumeo.Charts`, **[Dat
 - **AudioPlayer** — Audio Player component.
 - **ButtonGroup** — Button Group component.
 - **ConsentBanner** — Consent Banner component.
+- **DensityScope** — Density Scope component.
 - **DropdownButton** — Dropdown Button component.
 - **Icon** — Icon wrapper — renders Lucide icons via Blazicons.
 - **Kbd** — Keyboard shortcut glyph — renders <kbd> with styling.
