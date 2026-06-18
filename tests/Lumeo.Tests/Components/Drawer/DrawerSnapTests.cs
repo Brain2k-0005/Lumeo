@@ -26,7 +26,8 @@ public class DrawerSnapTests : IAsyncLifetime
         bool open,
         double[]? snapPoints = null,
         int? activeSnap = null,
-        EventCallback<int>? activeSnapChanged = null)
+        EventCallback<int>? activeSnapChanged = null,
+        bool preventClose = false)
     {
         return _ctx.Render(builder =>
         {
@@ -38,7 +39,8 @@ public class DrawerSnapTests : IAsyncLifetime
                 if (snapPoints is not null) b.AddAttribute(1, "SnapPoints", snapPoints);
                 if (activeSnap is not null) b.AddAttribute(2, "ActiveSnapPoint", activeSnap.Value);
                 if (activeSnapChanged is not null) b.AddAttribute(3, "ActiveSnapPointChanged", activeSnapChanged.Value);
-                b.AddAttribute(4, "ChildContent", (RenderFragment)(inner => inner.AddContent(0, "Snap content")));
+                if (preventClose) b.AddAttribute(4, "PreventClose", true);
+                b.AddAttribute(5, "ChildContent", (RenderFragment)(inner => inner.AddContent(0, "Snap content")));
                 b.CloseComponent();
             }));
             builder.CloseComponent();
@@ -94,6 +96,18 @@ public class DrawerSnapTests : IAsyncLifetime
         var cb = EventCallback.Factory.Create<int>(_ctx, (int i) => reported = i);
         var cut = RenderDrawer(open: true, snapPoints: new[] { 0.4, 1.0 }, activeSnap: 0, activeSnapChanged: cb);
         Assert.NotEmpty(cut.FindAll("[role='dialog']"));
+    }
+
+    [Fact]
+    public void PreventClose_With_SnapPoints_Still_Renders_In_Snap_Mode()
+    {
+        // #345: a protected drawer with snap points must still snap (gesture
+        // registered with dismissible=false), not fall back to a fully-open
+        // static panel. At the render level: dialog present, slide-in suppressed.
+        var cut = RenderDrawer(open: true, snapPoints: new[] { 0.4, 1.0 }, preventClose: true);
+        var panel = cut.Find("[role='dialog']").GetAttribute("class") ?? "";
+        Assert.DoesNotContain("animate-slide-in", panel);
+        Assert.Contains("Snap content", cut.Markup);
     }
 
     [Fact]

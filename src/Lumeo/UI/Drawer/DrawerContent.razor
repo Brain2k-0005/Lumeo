@@ -102,6 +102,12 @@ else if (Context.IsOpen)
     // programmatic ActiveSnapPoint change from an echo of a gesture-driven one.
     private int _appliedSnap = -1;
 
+    // Which gesture path was actually registered on open, so cleanup and
+    // programmatic updates target the right one even if SnapPoints/Side change
+    // while the drawer stays open (PR #345 review).
+    private bool _gestureRegistered;
+    private bool _registeredWithSnap;
+
     private string PositionClasses => Side switch
     {
         Lumeo.Side.Top => "inset-x-0 top-0 rounded-b-[10px] max-h-[96vh]",
@@ -156,23 +162,7 @@ else if (Context.IsOpen)
             {
                 await Interop.AttachOverlaySlideEnd(_contentId);
             }
-            if (!PreventClose)
-            {
-                if (UsesSnapPoints)
-                {
-                    _appliedSnap = InitialSnapIndex;
-                    await Interop.RegisterDrawerSnap(_contentId, SwipeDirection, HandleSwipe, HandleSnapChange,
-                        SnapPoints!, _appliedSnap,
-                        GestureOpts.Value.SwipeDismissThresholdPx, GestureOpts.Value.SwipeDismissFirePx, GestureOpts.Value.SwipeDismissVelocity);
-                    // Surface the resolved initial snap if the consumer hadn't pinned it there.
-                    if (_appliedSnap != ActiveSnapPoint) await ActiveSnapPointChanged.InvokeAsync(_appliedSnap);
-                }
-                else
-                {
-                    await Interop.RegisterDrawerSwipe(_contentId, SwipeDirection, HandleSwipe,
-                        GestureOpts.Value.SwipeDismissThresholdPx, GestureOpts.Value.SwipeDismissFirePx, GestureOpts.Value.SwipeDismissVelocity);
-                }
-            }
+            await RegisterGestureAsync();
             _wasOpen = true;
         }
         else if (!Context.IsOpen && _wasOpen)
@@ -197,11 +187,56 @@ else if (Context.IsOpen)
         }
     }
 
+    // Registers the appropriate gesture for the current state and records which
+    // one (so cleanup/updates target it even if SnapPoints/Side change later).
+    private async Task RegisterGestureAsync()
+    {
+        if (UsesSnapPoints)
+        {
+            _appliedSnap = InitialSnapIndex;
+            // dismissible: a PreventClose drawer still snaps between points but
+            // never closes (the gesture settles at the lowest snap instead).
+            await Interop.RegisterDrawerSnap(_contentId, SwipeDirection,
+                () => Context.TryDismiss("swipe"), HandleSnapChange,
+                SnapPoints!, _appliedSnap, !PreventClose,
+                GestureOpts.Value.SwipeDismissThresholdPx, GestureOpts.Value.SwipeDismissFirePx, GestureOpts.Value.SwipeDismissVelocity);
+            _registeredWithSnap = true;
+            _gestureRegistered = true;
+            if (_appliedSnap != ActiveSnapPoint) await ActiveSnapPointChanged.InvokeAsync(_appliedSnap);
+        }
+        else if (!PreventClose)
+        {
+            await Interop.RegisterDrawerSwipe(_contentId, SwipeDirection, HandleSwipe,
+                GestureOpts.Value.SwipeDismissThresholdPx, GestureOpts.Value.SwipeDismissFirePx, GestureOpts.Value.SwipeDismissVelocity);
+            _registeredWithSnap = false;
+            _gestureRegistered = true;
+        }
+    }
+
+    private async Task UnregisterGestureAsync()
+    {
+        if (!_gestureRegistered) return;
+        if (_registeredWithSnap) await Interop.UnregisterDrawerSnap(_contentId);
+        else await Interop.UnregisterDrawerSwipe(_contentId);
+        _gestureRegistered = false;
+    }
+
     protected override async Task OnParametersSetAsync()
     {
+        if (!_wasOpen) return;
+
+        // SnapPoints/Side changed while open → the gesture mode flipped (e.g.
+        // empty→populated SnapPoints); re-register so the right JS is attached.
+        if (_registeredWithSnap != UsesSnapPoints)
+        {
+            await UnregisterGestureAsync();
+            await RegisterGestureAsync();
+            return;
+        }
+
         // Consumer moved the drawer programmatically (set ActiveSnapPoint to a
         // new in-range index that didn't originate from a gesture) → push to JS.
-        if (_wasOpen && UsesSnapPoints && SnapPoints is not null
+        if (_registeredWithSnap && SnapPoints is not null
             && ActiveSnapPoint >= 0 && ActiveSnapPoint < SnapPoints.Count
             && ActiveSnapPoint != _appliedSnap)
         {
@@ -221,8 +256,7 @@ else if (Context.IsOpen)
     {
         try
         {
-            if (UsesSnapPoints) await Interop.UnregisterDrawerSnap(_contentId);
-            else await Interop.UnregisterDrawerSwipe(_contentId);
+            await UnregisterGestureAsync();
             await Interop.RemoveFocusTrap(_contentId);
             await Interop.UnlockScroll();
         }

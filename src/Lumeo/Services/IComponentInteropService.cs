@@ -159,8 +159,8 @@ public interface IComponentInteropService : IAsyncDisposable, IDisposable
     /// fires with the new index on each settle; <paramref name="dismissHandler"/>
     /// fires on close. Default impl falls back to plain swipe-dismiss.
     /// </summary>
-    ValueTask RegisterDrawerSnap(string elementId, string direction, Func<Task> dismissHandler, Func<int, Task> snapHandler, IReadOnlyList<double> snapPoints, int activeIndex, int? activationPx, int? firePx, double? velocity) =>
-        RegisterDrawerSwipe(elementId, direction, dismissHandler, activationPx, firePx);
+    ValueTask RegisterDrawerSnap(string elementId, string direction, Func<Task<bool>> dismissHandler, Func<int, Task> snapHandler, IReadOnlyList<double> snapPoints, int activeIndex, bool dismissible, int? activationPx, int? firePx, double? velocity) =>
+        RegisterDrawerSwipe(elementId, direction, () => dismissHandler(), activationPx, firePx);
     /// <summary>Programmatically move a snap-point drawer to <paramref name="index"/>.</summary>
     ValueTask SetDrawerSnap(string elementId, int index) => ValueTask.CompletedTask;
     ValueTask UnregisterDrawerSnap(string elementId) => UnregisterDrawerSwipe(elementId);
