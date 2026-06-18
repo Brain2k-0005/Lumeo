@@ -2,6 +2,7 @@
 
 <div class="@CssClass"
      style="flex: @(Size.ToString("F2", System.Globalization.CultureInfo.InvariantCulture)) 1 0; min-width: 0; min-height: 0; overflow: auto;"
+     data-collapsed="@(IsCollapsed ? "true" : null)"
      @attributes="AdditionalAttributes">
     @ChildContent
 </div>
@@ -12,11 +13,25 @@
     [Parameter] public double DefaultSize { get; set; } = 50;
     [Parameter] public double MinSize { get; set; } = 10;
     [Parameter] public double MaxSize { get; set; } = 90;
+
+    /// <summary>
+    /// When true, the panel can collapse to <see cref="CollapsedSize"/> — by
+    /// dragging its handle below (roughly) half the MinSize, or via the
+    /// group's <c>ToggleCollapse</c> from the cascading context. Restores on
+    /// drag-out / toggle. (#257)
+    /// </summary>
+    [Parameter] public bool Collapsible { get; set; }
+
+    /// <summary>Percentage the panel occupies while collapsed. Default 0.
+    /// Only meaningful when <see cref="Collapsible"/> is true.</summary>
+    [Parameter] public double CollapsedSize { get; set; }
+
     [Parameter] public RenderFragment? ChildContent { get; set; }
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     private double Size => Context?.GetPanelSize(Order) ?? DefaultSize;
+    private bool IsCollapsed => Context?.IsPanelCollapsed(Order) ?? false;
 
     private string CssClass => Cx.Merge("relative", Class);
 
@@ -24,7 +39,8 @@
     {
         // DefaultSize is consumed by the group: when no group-level DefaultSizes
         // are provided it seeds the shared size list from these registrations
-        // (see ResizablePanelGroup.OnAfterRender).
-        Context?.RegisterPanel?.Invoke(Order, DefaultSize, MinSize, MaxSize);
+        // (see ResizablePanelGroup.OnAfterRender). Collapse config travels with
+        // the registration so the group can snap/restore this panel.
+        Context?.RegisterPanel?.Invoke(Order, DefaultSize, MinSize, MaxSize, Collapsible, CollapsedSize);
     }
 }

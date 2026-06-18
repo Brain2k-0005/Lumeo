@@ -17,6 +17,19 @@ public interface IComponentInteropService : IAsyncDisposable, IDisposable
     ValueTask FocusElement(string elementId);
     ValueTask FocusMenuItemByIndex(string containerId, int index);
     ValueTask<int> GetMenuItemCount(string containerId);
+
+    /// <summary>
+    /// Type-to-focus (Radix menu typeahead). Focuses the first enabled menu item
+    /// in <paramref name="containerId"/> whose text content starts with
+    /// <paramref name="query"/> (case-insensitive), searching after
+    /// <paramref name="currentIndex"/> first then wrapping, and returns its index
+    /// (or <c>-1</c> when nothing matches). Shared by DropdownMenu / Menubar /
+    /// MegaMenu via the <see cref="MenuTypeahead"/> buffer helper. Default
+    /// implementation returns <c>-1</c> so existing implementers / test doubles
+    /// keep compiling.
+    /// </summary>
+    ValueTask<int> FocusMenuItemByTypeahead(string containerId, string query, int currentIndex) =>
+        ValueTask.FromResult(-1);
     ValueTask LockScroll();
     ValueTask UnlockScroll();
     /// <summary>Toggles a class on <c>document.documentElement</c>. Useful for
@@ -75,9 +88,36 @@ public interface IComponentInteropService : IAsyncDisposable, IDisposable
     ValueTask PositionFixed(string contentId, string referenceId, string align, bool matchWidth, string side, int offset) =>
         PositionFixed(contentId, referenceId, align, matchWidth, side);
     ValueTask UnpositionFixed(string contentId);
+
+    /// <summary>
+    /// Positions a fixed-position element at the viewport point (<paramref name="x"/>,
+    /// <paramref name="y"/>) and clamps it inside the viewport (flipping up/left of the
+    /// point if it would overflow). Used by ContextMenu, which opens at raw click
+    /// coordinates with no anchor element. Default implementation is a no-op so
+    /// existing implementers (and test doubles) keep compiling.
+    /// </summary>
+    ValueTask PositionAtPoint(string contentId, double x, double y) => ValueTask.CompletedTask;
+
+    // Toolbar roving focus (Radix Toolbar keyboard model). Default no-ops so
+    // existing implementers/test doubles keep compiling.
+
+    /// <summary>Initialise a single-tab-stop roving tabindex over the toolbar's items.</summary>
+    ValueTask InitToolbarRoving(string toolbarId) => ValueTask.CompletedTask;
+    /// <summary>Move focus <paramref name="delta"/> items from the focused toolbar item (clamped, no wrap).</summary>
+    ValueTask MoveToolbarFocus(string toolbarId, int delta) => ValueTask.CompletedTask;
+    /// <summary>Focus the first (<paramref name="last"/>=false) or last toolbar item.</summary>
+    ValueTask FocusToolbarEdge(string toolbarId, bool last) => ValueTask.CompletedTask;
     ValueTask<ElementRect?> GetElementRect(string elementId);
     ValueTask<double> GetElementDimension(string elementId, string dimension);
     ValueTask<double> GetScrollTop(string elementId);
+
+    /// <summary>
+    /// Attaches a non-passive touchmove guard so PullToRefresh can claim a
+    /// downward drag at scrollTop 0 instead of the browser consuming it as
+    /// native overscroll. No-op off touch devices. See <c>registerPullToRefresh</c>.
+    /// </summary>
+    ValueTask RegisterPullToRefresh(string elementId);
+    ValueTask UnregisterPullToRefresh(string elementId);
 
     // Wheel pickers (DateWheelPicker / TimeWheelPicker) — read/write scrollTop on
     // an ElementReference. Used to detect the centre-aligned snap target and to
@@ -149,6 +189,25 @@ public interface IComponentInteropService : IAsyncDisposable, IDisposable
     ValueTask RegisterScrollspy(string containerId, int offset, bool smooth, Func<string?, Task> handler);
     ValueTask UnregisterScrollspy(string containerId);
     ValueTask ScrollspyScrollTo(string containerId, string sectionId, bool smooth);
+    /// <summary>
+    /// Click-scroll overload that honours the Scrollspy <c>Offset</c> (#246) so a
+    /// programmatic jump lands at the same scroll position the observer treats
+    /// as "active" (e.g. clearing a sticky header). The default implementation
+    /// ignores the offset and forwards to the 3-arg overload so existing
+    /// implementers / test doubles keep compiling unchanged.
+    /// </summary>
+    ValueTask ScrollspyScrollTo(string containerId, string sectionId, bool smooth, int offset) =>
+        ScrollspyScrollTo(containerId, sectionId, smooth);
+
+    // Tabs overflow scroll arrows (#239) — observes the scrollable tablist and
+    // reports (canScrollStart, canScrollEnd) on scroll/resize so the list can
+    // show/hide its overflow chevrons; TabsScrollBy nudges the list by a chunk.
+    // Default no-ops so existing implementers / test doubles keep compiling.
+    ValueTask RegisterTabsOverflow(string listId, Func<bool, bool, Task> handler) => ValueTask.CompletedTask;
+    ValueTask UnregisterTabsOverflow(string listId) => ValueTask.CompletedTask;
+    /// <summary>Scrolls the tablist by <paramref name="delta"/> px (smooth).
+    /// Horizontal scrolls scrollLeft; vertical scrolls scrollTop.</summary>
+    ValueTask TabsScrollBy(string listId, double delta, bool horizontal) => ValueTask.CompletedTask;
 
     // Toast Swipe
     ValueTask RegisterToastSwipe(string elementId, string toastId, Func<string, Task> handler);
@@ -187,12 +246,26 @@ public interface IComponentInteropService : IAsyncDisposable, IDisposable
     /// can't be scrolled, programmatically or otherwise.</summary>
     ValueTask ScrollSelectorIntoView(string selector);
 
+    /// <summary>Scrolls the element with id <paramref name="elementId"/> into view
+    /// within its nearest scroll container. Used by keyboard-navigated lists
+    /// (e.g. the Command palette active item) to keep the highlighted row
+    /// visible. <paramref name="block"/> maps to <c>scrollIntoView</c>'s block
+    /// option ("nearest" by default so already-visible rows don't jump). Default
+    /// implementation is a no-op so existing implementers / test doubles keep
+    /// compiling.</summary>
+    ValueTask ScrollIntoView(string elementId, string block = "nearest") => ValueTask.CompletedTask;
+
     // Affix
     ValueTask RegisterAffix(string elementId, int offsetTop, int? offsetBottom, string? target, Func<bool, Task> handler);
     ValueTask UnregisterAffix(string elementId);
 
     // Mention / Textarea Caret
     ValueTask<ComponentInteropService.TextareaCaretInfo> GetTextareaCaretPosition(string elementId);
+
+    // InputMask caret (selectionStart of a text <input>) — read/restore so masked
+    // edits insert/delete at the caret instead of jumping to the end.
+    ValueTask<int> GetInputCaret(string elementId) => ValueTask.FromResult(0);
+    ValueTask SetInputCaret(string elementId, int position) => ValueTask.CompletedTask;
 
     // Tabs (active indicator measurement for animated underline)
     ValueTask<ComponentInteropService.TabMeasurement?> TabsMeasure(string elementId);
@@ -212,6 +285,26 @@ public interface IComponentInteropService : IAsyncDisposable, IDisposable
     ValueTask RippleAttachAsync(Microsoft.AspNetCore.Components.ElementReference element);
     ValueTask RippleDetachAsync(Microsoft.AspNetCore.Components.ElementReference element);
 
+    /// <summary>
+    /// Core-side <c>prefers-reduced-motion: reduce</c> query (mirrors the
+    /// Lumeo.Motion helper) for core components that animate via Blazor/JS and
+    /// can't be fully neutralised by a CSS <c>@media</c> block alone. Default
+    /// returns <c>false</c> (motion allowed) so existing implementers/test
+    /// doubles keep compiling unchanged.
+    /// </summary>
+    ValueTask<bool> PrefersReducedMotion() => ValueTask.FromResult(false);
+
+    /// <summary>
+    /// Resolves a pointer's viewport coordinates (<paramref name="clientX"/>,
+    /// <paramref name="clientY"/>) into coordinates relative to the element
+    /// identified by <paramref name="hostElementId"/>. Used by TouchRipple so a
+    /// ripple is centred on the click point even when the pointer lands on a
+    /// nested child (where <c>OffsetX/OffsetY</c> would be relative to the
+    /// child, not the ripple host). Default returns (0,0) for test doubles.
+    /// </summary>
+    ValueTask<RipplePoint> TouchRippleCoords(string hostElementId, double clientX, double clientY)
+        => ValueTask.FromResult(new RipplePoint(0, 0));
+
     // HTMLMediaElement helpers (AudioPlayer, 3.1.0). Pass-through to play()/pause()
     // and a couple of property setters so Lumeo components never touch IJSRuntime
     // directly. play() rejects when autoplay is blocked — the JS side swallows
@@ -220,6 +313,8 @@ public interface IComponentInteropService : IAsyncDisposable, IDisposable
     ValueTask PauseMedia(Microsoft.AspNetCore.Components.ElementReference element);
     ValueTask SetMediaVolume(Microsoft.AspNetCore.Components.ElementReference element, double volume, bool muted);
     ValueTask SeekMedia(Microsoft.AspNetCore.Components.ElementReference element, double seconds);
+    /// <summary>Sets the media element's <c>playbackRate</c> (clamped 0.25–4×).</summary>
+    ValueTask SetPlaybackRate(Microsoft.AspNetCore.Components.ElementReference element, double rate) => ValueTask.CompletedTask;
     /// <summary>
     /// Reads the live <c>duration</c> and <c>currentTime</c> off an
     /// HTMLMediaElement. Required because Blazor's media event args don't
@@ -236,7 +331,20 @@ public interface IComponentInteropService : IAsyncDisposable, IDisposable
     ValueTask RemoveFromLocalStorage(string key);
 
     // Motion primitives
-    ValueTask MotionTickNumber(string elementId, double from, double to, int durationMs, int decimals, string separator = ",");
+
+    /// <summary>
+    /// Queries the browser's <c>prefers-reduced-motion: reduce</c> media query
+    /// via the Lumeo.Motion JS module. Lets a component branch in C# (skip a
+    /// burst, snap to the end value) before scheduling any JS-driven animation
+    /// that a CSS <c>@media</c> block can't reach. The default implementation
+    /// returns <c>false</c> (motion allowed) so existing implementers and test
+    /// doubles keep compiling and behave exactly as before.
+    /// </summary>
+    ValueTask<bool> MotionPrefersReducedMotion() => ValueTask.FromResult(false);
+
+    /// <param name="separator">Thousands group separator (locale-aware; supplied by NumberTicker).</param>
+    /// <param name="decimalSeparator">Decimal separator (locale-aware). Defaults to "." for back-compat.</param>
+    ValueTask MotionTickNumber(string elementId, double from, double to, int durationMs, int decimals, string separator = ",", string decimalSeparator = ".");
     ValueTask MotionDisposeTicker(string elementId);
     ValueTask MotionRevealText(string elementId, int staggerMs, double threshold);
     ValueTask MotionBlurFade(string elementId, int delayMs, bool once, bool forceHidden = false);

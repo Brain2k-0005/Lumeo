@@ -12,11 +12,9 @@
   "dependencies": [],
   "packageDependencies": [],
   "cssVars": [
-    "--color-border",
-    "--color-muted",
-    "--color-muted-foreground",
-    "--radius"
+    "--color-foreground"
   ],
+  "gotchas": [],
   "api": {
     "name": "ScrollArea",
     "category": "Layout",
@@ -39,6 +37,22 @@
         "captureUnmatched": false
       },
       {
+        "name": "Type",
+        "type": "ScrollAreaType",
+        "default": "ScrollAreaType.Auto",
+        "description": "When the scrollbars become visible. Mirrors Radix UI's ScrollArea type: Auto (default) — bars show only when the content overflows. Always — bars are always visible and the gutter is reserved (no layout shift when content grows). Scroll — bars show while scrolling. Hover — bars show on hover / focus within. Implemented cross-browser via the lumeo-scrollarea CSS (Firefox scrollbar-* + WebKit pseudo-elements). Firefox exposes only a thin bar, so the Hover/Scroll auto-hide granularity is a WebKit/overlay enhancement that degrades gracefully to a persistent thin bar there.",
+        "isCascading": false,
+        "captureUnmatched": false
+      },
+      {
+        "name": "FocusRingGutter",
+        "type": "bool",
+        "default": null,
+        "description": "Adds a 4px inline gutter (-mx-1 px-1, net-zero layout) so a focusable control's focus ring isn't clipped at the left/right edge. Per CSS spec overflow-auto on one axis promotes the other to auto too, so a full-width &lt;Input&gt; flush against the scroll box loses its box-shadow ring on that edge. Opt-in (default false) because the negative margin makes the element 4px wider per side — only enable when the scroll area holds focusable controls (forms, menus), not when it wraps edge-aligned content like a table.",
+        "isCascading": false,
+        "captureUnmatched": false
+      },
+      {
         "name": "Class",
         "type": "string?",
         "default": null,
@@ -56,26 +70,39 @@
       }
     ],
     "events": [],
-    "enums": [],
+    "enums": [
+      {
+        "name": "ScrollAreaType",
+        "values": [
+          "Auto",
+          "Always",
+          "Scroll",
+          "Hover"
+        ],
+        "description": "Scrollbar visibility strategy. See Type."
+      }
+    ],
     "records": [],
+    "gotchas": [],
     "cssVars": [
-      "--color-border",
-      "--color-muted",
-      "--color-muted-foreground",
-      "--radius"
+      "--color-foreground"
     ],
     "examples": [
       {
         "title": "Vertical Scroll",
-        "code": "<ScrollArea Class=\"h-72 rounded-md border p-4\">\r\n    <h4 class=\"mb-4 text-sm font-medium leading-none\">Tags</h4>\r\n    @foreach (var tag in _tags)\r\n    {\r\n        <div class=\"text-sm py-2 border-b\">@tag</div>\r\n    }\r\n</ScrollArea>"
+        "code": "<ScrollArea Class=\"h-72 rounded-md border p-4\">\n    <h4 class=\"mb-4 text-sm font-medium leading-none\">Tags</h4>\n    @foreach (var tag in _tags)\n    {\n        <div class=\"text-sm py-2 border-b\">@tag</div>\n    }\n</ScrollArea>"
       },
       {
         "title": "Chat Messages",
-        "code": "<ScrollArea Class=\"h-64 rounded-md border p-4\">\r\n    <div class=\"space-y-3\">\r\n        @foreach (var msg in _messages)\r\n        {\r\n            <div class=\"@($\"flex flex-col {(msg.Mine ? \"items-end\" : \"items-start\")}\")>\r\n                <div class=\"@($\"rounded-lg px-3 py-2 text-sm {(msg.Mine ? \"bg-primary text-primary-foreground\" : \"bg-muted text-foreground\")}\")>\r\n                    @msg.Text\r\n                </div>\r\n            </div>\r\n        }\r\n    </div>\r\n</ScrollArea>"
+        "code": "<ScrollArea Class=\"h-64 rounded-md border p-4\">\n    <div class=\"space-y-3\">\n        @foreach (var msg in _messages)\n        {\n            <div class=\"@($\"flex flex-col {(msg.Mine ? \"items-end\" : \"items-start\")}\")>\n                <div class=\"@($\"rounded-lg px-3 py-2 text-sm {(msg.Mine ? \"bg-primary text-primary-foreground\" : \"bg-muted text-foreground\")}\")>\n                    @msg.Text\n                </div>\n            </div>\n        }\n    </div>\n</ScrollArea>"
       },
       {
         "title": "Horizontal Scroll",
-        "code": "<ScrollArea Class=\"w-full whitespace-nowrap rounded-md border p-4\">\r\n    <div class=\"flex gap-4\">\r\n        @for (var i = 1; i <= 12; i++)\r\n        {\r\n            <div class=\"flex-shrink-0 w-32 h-20 rounded-md bg-muted flex items-center justify-center\">\r\n                Item @i\r\n            </div>\r\n        }\r\n    </div>\r\n</ScrollArea>"
+        "code": "<ScrollArea Class=\"w-full whitespace-nowrap rounded-md border p-4\">\n    <div class=\"flex gap-4\">\n        @for (var i = 1; i <= 12; i++)\n        {\n            <div class=\"flex-shrink-0 w-32 h-20 rounded-md bg-muted flex items-center justify-center\">\n                Item @i\n            </div>\n        }\n    </div>\n</ScrollArea>"
+      },
+      {
+        "title": "Focus Ring Gutter",
+        "code": "@* padding on the inner wrapper, not the ScrollArea root *@\n<ScrollArea FocusRingGutter=\"true\" Class=\"h-64 rounded-md border\">\n    <Stack Gap=\"3\" Class=\"p-4\">\n        <FormField Label=\"Full name\"><Input placeholder=\"Full name\" /></FormField>\n        <FormField Label=\"Email\"><Input placeholder=\"Email\" /></FormField>\n        <Button Class=\"w-full\">Save</Button>\n    </Stack>\n</ScrollArea>"
       }
     ],
     "subComponents": {},
@@ -94,7 +121,7 @@
   "source": [
     {
       "path": "UI/ScrollArea/ScrollArea.razor",
-      "content": "@namespace Lumeo\r\n\r\n<div class=\"@CssClass\" @attributes=\"AdditionalAttributes\">\r\n    @ChildContent\r\n</div>\r\n\r\n@code {\r\n    [Parameter] public RenderFragment? ChildContent { get; set; }\r\n    [Parameter] public string? Class { get; set; }\r\n    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }\r\n\r\n    private string CssClass => $\"relative overflow-auto [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-border hover:[&::-webkit-scrollbar-thumb]:bg-muted-foreground/30 {Class}\".Trim();\r\n}\r\n"
+      "content": "@namespace Lumeo\n\n<div data-scroll-type=\"@TypeString\" class=\"@CssClass\" @attributes=\"AdditionalAttributes\">\n    @ChildContent\n</div>\n\n@code {\n    [Parameter] public RenderFragment? ChildContent { get; set; }\n\n    /// <summary>\n    /// When the scrollbars become visible. Mirrors Radix UI's ScrollArea\n    /// <c>type</c>:\n    /// <list type=\"bullet\">\n    /// <item><see cref=\"ScrollAreaType.Auto\"/> (default) — bars show only when\n    /// the content overflows.</item>\n    /// <item><see cref=\"ScrollAreaType.Always\"/> — bars are always visible and\n    /// the gutter is reserved (no layout shift when content grows).</item>\n    /// <item><see cref=\"ScrollAreaType.Scroll\"/> — bars show while scrolling.</item>\n    /// <item><see cref=\"ScrollAreaType.Hover\"/> — bars show on hover / focus\n    /// within.</item>\n    /// </list>\n    /// Implemented cross-browser via the <c>lumeo-scrollarea</c> CSS (Firefox\n    /// <c>scrollbar-*</c> + WebKit pseudo-elements). Firefox exposes only a thin\n    /// bar, so the Hover/Scroll auto-hide granularity is a WebKit/overlay\n    /// enhancement that degrades gracefully to a persistent thin bar there.\n    /// </summary>\n    [Parameter] public ScrollAreaType Type { get; set; } = ScrollAreaType.Auto;\n\n    /// <summary>Adds a 4px inline gutter (<c>-mx-1 px-1</c>, net-zero layout)\n    /// so a focusable control's focus ring isn't clipped at the left/right\n    /// edge. Per CSS spec <c>overflow-auto</c> on one axis promotes the other\n    /// to <c>auto</c> too, so a full-width <c>&lt;Input&gt;</c> flush against\n    /// the scroll box loses its box-shadow ring on that edge. Opt-in (default\n    /// false) because the negative margin makes the element 4px wider per side\n    /// — only enable when the scroll area holds focusable controls (forms,\n    /// menus), not when it wraps edge-aligned content like a table.</summary>\n    [Parameter] public bool FocusRingGutter { get; set; }\n\n    [Parameter] public string? Class { get; set; }\n    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }\n\n    // Overflow is owned by the per-type CSS rule (data-scroll-type) so the mode\n    // can reserve a gutter or force a persistent bar; the base class only\n    // carries position + the cross-browser scrollbar paint (lumeo-scrollarea).\n    private const string Base = \"relative lumeo-scrollarea\";\n\n    private string TypeString => Type switch\n    {\n        ScrollAreaType.Always => \"always\",\n        ScrollAreaType.Scroll => \"scroll\",\n        ScrollAreaType.Hover => \"hover\",\n        _ => \"auto\"\n    };\n\n    private string CssClass => Cx.Merge(Base, Cx.When(FocusRingGutter, \"-mx-1 px-1\"), Class);\n\n    /// <summary>Scrollbar visibility strategy. See <see cref=\"ScrollArea.Type\"/>.</summary>\n    public enum ScrollAreaType\n    {\n        /// <summary>Bars show only when content overflows. Default.</summary>\n        Auto,\n        /// <summary>Bars always visible; gutter reserved.</summary>\n        Always,\n        /// <summary>Bars show while scrolling.</summary>\n        Scroll,\n        /// <summary>Bars show on hover / focus-within.</summary>\n        Hover\n    }\n}\n"
     }
   ],
   "slots": [
@@ -112,5 +139,5 @@
   "tests": [
     "tests/Lumeo.Tests/Components/ScrollArea/ScrollAreaTests.cs"
   ],
-  "mdSummary": "# ScrollArea\r\n\r\nStyled custom scrollbar container.\r\n\r\n**Package:** `Lumeo` · **Category:** Layout\r\n**Docs:** https://lumeo.nativ.sh/components/scroll-area\r\n\r\n## Parameters\r\n| Owner | Name | Type | Default | Description |\r\n|---|---|---|---|---|\r\n| ScrollArea | ChildContent | `RenderFragment?` | `` |  |\r\n| ScrollArea | Class | `string?` | `` |  |\r\n| ScrollArea | AdditionalAttributes | `Dictionary<string, object>?` | `` |  |\r\n\r\n## Slots\r\n- `ChildContent` (ScrollArea) — RenderFragment slot\r\n\r\n## Events\r\n- (none)\r\n\r\n## Sub-components\r\n- (none)\r\n\r\n## Cascading values it expects\r\n- (none)\r\n\r\n## Services it injects\r\n- (none)\r\n\r\n## Keyboard\r\n—\r\n\r\n## Example\r\n```razor\r\n<ScrollArea />\r\n```\r\n\r\n## CSS variables\r\n`--color-border`, `--color-muted`, `--color-muted-foreground`, `--radius`\r\n\r\n## Files\r\n- `UI/ScrollArea/ScrollArea.razor`\r\n"
+  "mdSummary": "# ScrollArea\n\nStyled custom scrollbar container.\n\n**Package:** `Lumeo` · **Category:** Layout\n**Docs:** https://lumeo.nativ.sh/components/scroll-area\n\n## Parameters\n| Owner | Name | Type | Default | Description |\n|---|---|---|---|---|\n| ScrollArea | ChildContent | `RenderFragment?` | `` |  |\n| ScrollArea | Type | `ScrollAreaType` | `ScrollAreaType.Auto` | When the scrollbars become visible. Mirrors Radix UI's ScrollArea type: Auto (default) — bars show only when the content overflows. Always — bars are always visible and the gutter is reserved (no layout shift when content grows). Scroll — bars show while scrolling. Hover — bars show on hover / focus within. Implemented cross-browser via the lumeo-scrollarea CSS (Firefox scrollbar-* + WebKit pseudo-elements). Firefox exposes only a thin bar, so the Hover/Scroll auto-hide granularity is a WebKit/overlay enhancement that degrades gracefully to a persistent thin bar there. |\n| ScrollArea | FocusRingGutter | `bool` | `` | Adds a 4px inline gutter (-mx-1 px-1, net-zero layout) so a focusable control's focus ring isn't clipped at the left/right edge. Per CSS spec overflow-auto on one axis promotes the other to auto too, so a full-width &lt;Input&gt; flush against the scroll box loses its box-shadow ring on that edge. Opt-in (default false) because the negative margin makes the element 4px wider per side — only enable when the scroll area holds focusable controls (forms, menus), not when it wraps edge-aligned content like a table. |\n| ScrollArea | Class | `string?` | `` |  |\n| ScrollArea | AdditionalAttributes | `Dictionary<string, object>?` | `` |  |\n\n## Slots\n- `ChildContent` (ScrollArea) — RenderFragment slot\n\n## Events\n- (none)\n\n## Sub-components\n- (none)\n\n## Cascading values it expects\n- (none)\n\n## Services it injects\n- (none)\n\n## Keyboard\n—\n\n## Example\n```razor\n<ScrollArea />\n```\n\n## CSS variables\n`--color-foreground`\n\n## Files\n- `UI/ScrollArea/ScrollArea.razor`\n"
 }

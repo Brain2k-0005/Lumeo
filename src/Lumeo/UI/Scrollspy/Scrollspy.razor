@@ -20,24 +20,62 @@
     private readonly string _containerId = LumeoIds.New("scrollspy");
     private ScrollspyContext _context = default!;
     private string? _currentActiveId;
+    // Last ActiveId we observed as a parameter. Lets OnParametersSet tell a
+    // genuine external set (consumer drove ActiveId) apart from the echo of our
+    // own ActiveIdChanged callback, so two-way control scrolls to the new
+    // target without fighting scroll-driven updates.
+    private string? _lastParamActiveId;
+    private bool _pendingProgrammaticScroll;
 
     private string CssClass => Cx.Merge("relative", Class);
 
     protected override void OnInitialized()
     {
         _currentActiveId = ActiveId;
+        _lastParamActiveId = ActiveId;
         _context = new ScrollspyContext(_currentActiveId, EventCallback.Factory.Create<string>(this, OnNavigate));
+    }
+
+    protected override void OnParametersSet()
+    {
+        // Two-way control input (#246): when the consumer sets ActiveId to a new
+        // value, scroll that section into view (honouring Offset). Compared
+        // against _lastParamActiveId — not _currentActiveId — so the echo of our
+        // own ActiveIdChanged doesn't re-trigger a scroll.
+        if (ActiveId != _lastParamActiveId)
+        {
+            _lastParamActiveId = ActiveId;
+            if (!string.IsNullOrEmpty(ActiveId) && ActiveId != _currentActiveId)
+            {
+                _currentActiveId = ActiveId;
+                _context = new ScrollspyContext(_currentActiveId, EventCallback.Factory.Create<string>(this, OnNavigate));
+                _pendingProgrammaticScroll = true;
+            }
+        }
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (!firstRender) return;
-        try
+        if (firstRender)
         {
-            await Interop.RegisterScrollspy(_containerId, Offset, Smooth, OnScrollspyUpdate);
+            try
+            {
+                await Interop.RegisterScrollspy(_containerId, Offset, Smooth, OnScrollspyUpdate);
+            }
+            catch (JSDisconnectedException) { }
+            catch (ObjectDisposedException) { }
         }
-        catch (JSDisconnectedException) { }
-        catch (ObjectDisposedException) { }
+
+        if (_pendingProgrammaticScroll && _currentActiveId is not null)
+        {
+            _pendingProgrammaticScroll = false;
+            try
+            {
+                await Interop.ScrollspyScrollTo(_containerId, _currentActiveId, Smooth, Offset);
+            }
+            catch (JSDisconnectedException) { }
+            catch (ObjectDisposedException) { }
+        }
     }
 
     private async Task OnScrollspyUpdate(string? activeId)
@@ -45,6 +83,10 @@
         if (_currentActiveId != activeId)
         {
             _currentActiveId = activeId;
+            // Keep the param mirror in sync so the resulting ActiveIdChanged
+            // echo (consumer round-trips it back into ActiveId) is not mistaken
+            // for an external set in OnParametersSet.
+            _lastParamActiveId = activeId;
             _context = new ScrollspyContext(_currentActiveId, EventCallback.Factory.Create<string>(this, OnNavigate));
             await ActiveIdChanged.InvokeAsync(activeId ?? string.Empty);
             await InvokeAsync(StateHasChanged);
@@ -53,7 +95,19 @@
 
     private async Task OnNavigate(string sectionId)
     {
-        await Interop.ScrollspyScrollTo(_containerId, sectionId, Smooth);
+        // Clicking a link scrolls (Offset-aware) AND reflects the selection back
+        // through ActiveIdChanged so the bound value tracks clicks, not just
+        // scroll. The scroll observer will also fire as the page moves, but
+        // updating eagerly keeps a controlled consumer in sync immediately.
+        await Interop.ScrollspyScrollTo(_containerId, sectionId, Smooth, Offset);
+        if (_currentActiveId != sectionId)
+        {
+            _currentActiveId = sectionId;
+            _lastParamActiveId = sectionId;
+            _context = new ScrollspyContext(_currentActiveId, EventCallback.Factory.Create<string>(this, OnNavigate));
+            await ActiveIdChanged.InvokeAsync(sectionId);
+            await InvokeAsync(StateHasChanged);
+        }
     }
 
     public async ValueTask DisposeAsync()

@@ -107,6 +107,12 @@ public sealed class ComponentInteropService : IComponentInteropService
         return await _focus.GetMenuItemCount(module, containerId);
     }
 
+    public async ValueTask<int> FocusMenuItemByTypeahead(string containerId, string query, int currentIndex)
+    {
+        var module = await GetModuleAsync();
+        return await _focus.FocusMenuItemByTypeahead(module, containerId, query, currentIndex);
+    }
+
     public async ValueTask LockScroll()
     {
         var module = await GetModuleAsync();
@@ -252,6 +258,44 @@ public sealed class ComponentInteropService : IComponentInteropService
         await _floatingPosition.UnpositionFixed(module, contentId);
     }
 
+    public async ValueTask PositionAtPoint(string contentId, double x, double y)
+    {
+        var module = await GetModuleAsync();
+        await _floatingPosition.PositionAtPoint(module, contentId, x, y);
+    }
+
+    // --- Toolbar roving focus (lives in components.js, always loaded) ---
+
+    public async ValueTask InitToolbarRoving(string toolbarId)
+    {
+        try
+        {
+            var module = await GetModuleAsync();
+            await module.InvokeVoidAsync("initToolbarRoving", toolbarId);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
+    public async ValueTask MoveToolbarFocus(string toolbarId, int delta)
+    {
+        try
+        {
+            var module = await GetModuleAsync();
+            await module.InvokeVoidAsync("moveToolbarFocus", toolbarId, delta);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
+    public async ValueTask FocusToolbarEdge(string toolbarId, bool last)
+    {
+        try
+        {
+            var module = await GetModuleAsync();
+            await module.InvokeVoidAsync("focusToolbarEdge", toolbarId, last);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
     // --- Element Rect ---
 
     public async ValueTask<ElementRect?> GetElementRect(string elementId)
@@ -276,6 +320,28 @@ public sealed class ComponentInteropService : IComponentInteropService
             return await module.InvokeAsync<double>("getScrollTop", elementId);
         }
         catch (JSDisconnectedException) { return 0; }
+    }
+
+    // --- PullToRefresh gesture guard (#308) ---
+
+    public async ValueTask RegisterPullToRefresh(string elementId)
+    {
+        try
+        {
+            var module = await GetModuleAsync();
+            await module.InvokeVoidAsync("registerPullToRefresh", elementId);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
+    public async ValueTask UnregisterPullToRefresh(string elementId)
+    {
+        try
+        {
+            var module = await GetModuleAsync();
+            await module.InvokeVoidAsync("unregisterPullToRefresh", elementId);
+        }
+        catch (JSDisconnectedException) { }
     }
 
     // --- Wheel Pickers (DateWheelPicker / TimeWheelPicker) ---
@@ -524,12 +590,48 @@ public sealed class ComponentInteropService : IComponentInteropService
     public async ValueTask ScrollspyScrollTo(string containerId, string sectionId, bool smooth)
     {
         var module = await GetModuleAsync();
-        await _scroll.ScrollspyScrollTo(module, containerId, sectionId, smooth);
+        await _scroll.ScrollspyScrollTo(module, containerId, sectionId, smooth, 0);
+    }
+
+    public async ValueTask ScrollspyScrollTo(string containerId, string sectionId, bool smooth, int offset)
+    {
+        var module = await GetModuleAsync();
+        await _scroll.ScrollspyScrollTo(module, containerId, sectionId, smooth, offset);
     }
 
     [JSInvokable]
     public async Task OnScrollspyUpdate(string containerId, string? activeId)
         => await _scroll.OnScrollspyUpdate(containerId, activeId);
+
+    // --- Tabs overflow scroll arrows ---
+
+    public async ValueTask RegisterTabsOverflow(string listId, Func<bool, bool, Task> handler)
+    {
+        var module = await GetModuleAsync();
+        await _scroll.RegisterTabsOverflow(module, GetSelfRef(), listId, handler);
+    }
+
+    public async ValueTask UnregisterTabsOverflow(string listId)
+    {
+        // Runs during component teardown — swallow a circuit drop so the rest of
+        // the dispose chain still executes.
+        try
+        {
+            var module = await GetModuleAsync();
+            await _scroll.UnregisterTabsOverflow(module, listId);
+        }
+        catch (Microsoft.JSInterop.JSDisconnectedException) { }
+    }
+
+    public async ValueTask TabsScrollBy(string listId, double delta, bool horizontal)
+    {
+        var module = await GetModuleAsync();
+        await _scroll.TabsScrollBy(module, listId, delta, horizontal);
+    }
+
+    [JSInvokable]
+    public async Task OnTabsOverflowChange(string listId, bool canScrollStart, bool canScrollEnd)
+        => await _scroll.OnTabsOverflowChange(listId, canScrollStart, canScrollEnd);
 
     // --- Toast Swipe ---
 
@@ -644,6 +746,16 @@ public sealed class ComponentInteropService : IComponentInteropService
         await _floatingPosition.ScrollSelectorIntoView(module, selector);
     }
 
+    public async ValueTask ScrollIntoView(string elementId, string block = "nearest")
+    {
+        try
+        {
+            var module = await GetModuleAsync();
+            await _floatingPosition.ScrollIntoView(module, elementId, block);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
     // --- Affix ---
 
     public async ValueTask RegisterAffix(string elementId, int offsetTop, int? offsetBottom, string? target, Func<bool, Task> handler)
@@ -669,7 +781,37 @@ public sealed class ComponentInteropService : IComponentInteropService
         return await _utility.GetTextareaCaretPosition(module, elementId);
     }
 
-    public record TextareaCaretInfo(double Top, double Left, int SelectionStart);
+    /// <summary><see cref="Top"/>/<see cref="Left"/> are viewport-relative (legacy).
+    /// <see cref="OffsetTop"/>/<see cref="OffsetLeft"/> are relative to the textarea's
+    /// offset parent (its <c>position: relative</c> wrapper) so a caret-anchored
+    /// dropdown can be positioned absolutely and track the textarea on scroll.
+    /// <see cref="LineHeight"/> is the computed line height so callers can drop the
+    /// dropdown one line below the caret.</summary>
+    public record TextareaCaretInfo(double Top, double Left, int SelectionStart, double OffsetTop = 0, double OffsetLeft = 0, double LineHeight = 20);
+
+    // --- InputMask caret (text input selectionStart) ---
+    // Read/restore the caret of a masked text <input> so edits insert and delete
+    // at the caret rather than snapping to the end after re-masking.
+
+    public async ValueTask<int> GetInputCaret(string elementId)
+    {
+        try
+        {
+            var module = await GetModuleAsync();
+            return await module.InvokeAsync<int>("getInputCaret", elementId);
+        }
+        catch (JSDisconnectedException) { return 0; }
+    }
+
+    public async ValueTask SetInputCaret(string elementId, int position)
+    {
+        try
+        {
+            var module = await GetModuleAsync();
+            await module.InvokeVoidAsync("setInputCaret", elementId, position);
+        }
+        catch (JSDisconnectedException) { }
+    }
 
     // --- BackToTop ---
 
@@ -732,6 +874,28 @@ public sealed class ComponentInteropService : IComponentInteropService
         catch (JSDisconnectedException) { }
     }
 
+    // --- Reduced motion (core) + TouchRipple coordinate resolution ---
+
+    public async ValueTask<bool> PrefersReducedMotion()
+    {
+        try
+        {
+            var module = await GetModuleAsync();
+            return await module.InvokeAsync<bool>("prefersReducedMotion");
+        }
+        catch (JSDisconnectedException) { return false; }
+    }
+
+    public async ValueTask<RipplePoint> TouchRippleCoords(string hostElementId, double clientX, double clientY)
+    {
+        try
+        {
+            var module = await GetModuleAsync();
+            return await module.InvokeAsync<RipplePoint>("touchRippleCoords", hostElementId, clientX, clientY);
+        }
+        catch (JSDisconnectedException) { return new RipplePoint(0, 0); }
+    }
+
     // --- HTMLMediaElement helpers (AudioPlayer 3.1.0) ---
 
     public async ValueTask PlayMedia(Microsoft.AspNetCore.Components.ElementReference element)
@@ -770,6 +934,16 @@ public sealed class ComponentInteropService : IComponentInteropService
         {
             var module = await GetModuleAsync();
             await module.InvokeVoidAsync("seekMedia", element, seconds);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
+    public async ValueTask SetPlaybackRate(Microsoft.AspNetCore.Components.ElementReference element, double rate)
+    {
+        try
+        {
+            var module = await GetModuleAsync();
+            await module.InvokeVoidAsync("setPlaybackRate", element, rate);
         }
         catch (JSDisconnectedException) { }
     }
@@ -824,10 +998,10 @@ public sealed class ComponentInteropService : IComponentInteropService
     // lazily via GetMotionModuleAsync(). The C# API surface is unchanged so
     // existing consumers of IComponentInteropService keep working as-is.
 
-    public async ValueTask MotionTickNumber(string elementId, double from, double to, int durationMs, int decimals, string separator = ",")
+    public async ValueTask MotionTickNumber(string elementId, double from, double to, int durationMs, int decimals, string separator = ",", string decimalSeparator = ".")
     {
         var module = await GetMotionModuleAsync();
-        await module.InvokeVoidAsync("motion.tickNumber", elementId, from, to, durationMs, decimals, separator);
+        await module.InvokeVoidAsync("motion.tickNumber", elementId, from, to, durationMs, decimals, separator, decimalSeparator);
     }
 
     public async ValueTask MotionDisposeTicker(string elementId)
@@ -860,6 +1034,16 @@ public sealed class ComponentInteropService : IComponentInteropService
             await module.InvokeVoidAsync("motion.disposeObserver", elementId);
         }
         catch (JSDisconnectedException) { }
+    }
+
+    public async ValueTask<bool> MotionPrefersReducedMotion()
+    {
+        try
+        {
+            var module = await GetMotionModuleAsync();
+            return await module.InvokeAsync<bool>("motion.prefersReducedMotion");
+        }
+        catch (JSDisconnectedException) { return false; }
     }
 
     public async ValueTask MotionAnimatedBeam(string elementId, string fromId, string toId, object options)

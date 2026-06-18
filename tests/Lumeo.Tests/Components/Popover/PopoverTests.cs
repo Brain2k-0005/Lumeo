@@ -86,15 +86,15 @@ public class PopoverTests : IAsyncLifetime
     }
 
     // --- Trigger aria-expanded ---
-    // Blazor renders bool false as absent (null) and bool true as "" (HTML boolean attribute)
+    // #219 — aria-expanded now renders lowercase ARIA tokens ("true"/"false")
+    // rather than Blazor's bool-attribute presence/absence.
 
     [Fact]
     public void Trigger_Has_Aria_Expanded_False_When_Closed()
     {
         var cut = RenderPopover(isOpen: false);
         var trigger = cut.Find("[role='button']");
-        // When false, Blazor omits the attribute entirely
-        Assert.Null(trigger.GetAttribute("aria-expanded"));
+        Assert.Equal("false", trigger.GetAttribute("aria-expanded"));
     }
 
     [Fact]
@@ -102,8 +102,25 @@ public class PopoverTests : IAsyncLifetime
     {
         var cut = RenderPopover(isOpen: true);
         var trigger = cut.Find("[role='button']");
-        // When true, Blazor renders aria-expanded as "" (HTML boolean attribute presence)
-        Assert.NotNull(trigger.GetAttribute("aria-expanded"));
+        Assert.Equal("true", trigger.GetAttribute("aria-expanded"));
+    }
+
+    [Fact]
+    public void Trigger_Has_Aria_Controls_Pointing_At_Content_When_Open()
+    {
+        var cut = RenderPopover(isOpen: true);
+        var trigger = cut.Find("[role='button']");
+        var controls = trigger.GetAttribute("aria-controls");
+        Assert.False(string.IsNullOrEmpty(controls));
+        // The referenced content element must exist in the DOM.
+        Assert.NotNull(cut.Find($"#{controls}"));
+    }
+
+    [Fact]
+    public void Content_Has_Role_Dialog_When_Open()
+    {
+        var cut = RenderPopover(isOpen: true);
+        Assert.NotNull(cut.Find("[role='dialog']"));
     }
 
     // --- Custom Class on PopoverContent ---
@@ -177,10 +194,11 @@ public class PopoverTests : IAsyncLifetime
             builder.CloseComponent();
         });
 
-        // Find the content div (tabindex="-1") and fire keydown Escape
-        var contentDiv = cut.FindAll("div").FirstOrDefault(d => d.GetAttribute("tabindex") == "-1");
-        Assert.NotNull(contentDiv);
-        contentDiv!.KeyDown(new Microsoft.AspNetCore.Components.Web.KeyboardEventArgs { Key = "Escape" });
+        // Fire keydown Escape on the dialog content (the @onkeydown handler).
+        // The wrapper also carries tabindex=-1 (focus-restore target), so match
+        // on role=dialog to be unambiguous.
+        var contentDiv = cut.Find("[role='dialog']");
+        contentDiv.KeyDown(new Microsoft.AspNetCore.Components.Web.KeyboardEventArgs { Key = "Escape" });
 
         Assert.False(closedValue);
     }

@@ -40,12 +40,18 @@
         }
     }
 
-    /// <summary>Programmatically trigger a confetti burst from the configured origin.</summary>
+    /// <summary>Programmatically trigger a confetti burst from the configured origin.
+    /// No-ops under <c>prefers-reduced-motion: reduce</c> — a burst is purely
+    /// decorative, so reduced motion means no animation (and no instant flash of
+    /// particles). The JS layer enforces the same gate; this short-circuits the
+    /// interop round-trip and keeps the behaviour assertable from C#.</summary>
     public async Task Fire()
     {
         if (!_registered) return;
         try
         {
+            if (await Interop.MotionPrefersReducedMotion()) return;
+
             var colors = Colors ?? new[] { "#ff595e", "#ffca3a", "#6a4c93", "#1982c4", "#8ac926", "#ff6b6b" };
             await Interop.MotionConfettiFire(_elementId, new
             {

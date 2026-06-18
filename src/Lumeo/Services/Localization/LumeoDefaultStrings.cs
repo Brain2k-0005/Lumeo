@@ -193,7 +193,11 @@ internal static partial class LumeoDefaultStrings
         ["DateTimePicker.OpenCalendar"] = "Open calendar",
         ["DatePicker.OpenCalendar"] = "Open calendar",
         ["DatePicker.InvalidDate"] = "Invalid date",
+        ["DatePicker.MultipleSelected"] = "{0} selected",
         ["TimePicker.Placeholder"] = "Select time",
+        ["TimePicker.HoursLabel"] = "Hours",
+        ["TimePicker.MinutesLabel"] = "Minutes",
+        ["TimePicker.SecondsLabel"] = "Seconds",
 
         // ── Tour ────────────────────────────────────────────────────
         ["Tour.Skip"] = "Skip",
@@ -221,6 +225,8 @@ internal static partial class LumeoDefaultStrings
         ["Common.Copied"] = "Copied",
         ["Common.More"] = "More",
         ["Common.Back"] = "Back",
+        ["Common.Expand"] = "Expand",
+        ["Common.Collapse"] = "Collapse",
         ["Common.Next"] = "Next",
         ["Common.ShowMore"] = "Show more",
         ["Common.ShowLess"] = "Show less",
@@ -235,8 +241,10 @@ internal static partial class LumeoDefaultStrings
         ["Transfer.MoveRight"] = "Move right",
         ["Transfer.MoveLeft"] = "Move left",
         ["Transfer.NoItems"] = "No items",
+        ["Transfer.SelectAll"] = "Select all",
         ["TreeSelect.Placeholder"] = "Select…",
         ["TreeSelect.NoResults"] = "No results",
+        ["TreeSelect.ClearSelection"] = "Clear selection",
         ["TagInput.Placeholder"] = "Add tag…",
 
         // ── Cascader ────────────────────────────────────────────────
@@ -260,6 +268,7 @@ internal static partial class LumeoDefaultStrings
         ["Window.Minimize"] = "Minimize",
         ["Window.Maximize"] = "Maximize",
         ["Window.Restore"] = "Restore",
+        ["Window.Resize"] = "Resize",
 
         // ── Empty state defaults ────────────────────────────────────
         ["Empty.Title"] = "Nothing here yet",
@@ -267,15 +276,21 @@ internal static partial class LumeoDefaultStrings
 
         // ── Kanban ──────────────────────────────────────────────────────
         ["Kanban.AddCard"] = "Add card",
+        ["Kanban.CardRoleDescription"] = "Draggable card",
 
         // ── Carousel ────────────────────────────────────────────────────
         ["Carousel.PreviousSlide"] = "Previous slide",
         ["Carousel.NextSlide"] = "Next slide",
         ["Carousel.SlideXofY"] = "Slide {0} of {1}",
+        ["Carousel.Indicators"] = "Slide indicators",
+        ["Carousel.GoToSlide"] = "Go to slide {0}",
 
         // ── NumberInput ─────────────────────────────────────────────
         ["NumberInput.Decrease"] = "Decrease",
         ["NumberInput.Increase"] = "Increase",
+
+        // ── OtpInput ────────────────────────────────────────────────
+        ["OtpInput.DigitLabel"] = "Digit {0} of {1}",
 
         // ── DateTimePicker ──────────────────────────────────────────
         ["DateTimePicker.ClearDate"] = "Clear date",
@@ -337,6 +352,8 @@ internal static partial class LumeoDefaultStrings
         ["PickList.MoveSelected"] = "Move selected",
         ["PickList.MoveBackSelected"] = "Move back selected",
         ["PickList.MoveBackAll"] = "Move back all",
+        ["PickList.MoveUp"] = "Move up",
+        ["PickList.MoveDown"] = "Move down",
         ["PickList.SourceHeader"] = "Available",
         ["PickList.TargetHeader"] = "Selected",
         ["PickList.NoItems"] = "No items",
@@ -448,9 +465,13 @@ internal static partial class LumeoDefaultStrings
 
         // ── ImageCompare ────────────────────────────────────────────
         ["ImageCompare.Slider"] = "Image compare slider",
+        ["ImageCompare.Before"] = "Before",
+        ["ImageCompare.ValueText"] = "{0} {1}%",
 
         // ── PromptInput ─────────────────────────────────────────────
         ["PromptInput.Send"] = "Send",
+        ["PromptInput.Stop"] = "Stop",
+        ["PromptInput.Attach"] = "Attach file",
 
         // ── Editor (RichTextEditor) ─────────────────────────────────
         ["Editor.StartWriting"] = "Start writing…",
@@ -471,6 +492,16 @@ internal static partial class LumeoDefaultStrings
         ["AudioPlayer.Mute"] = "Mute",
         ["AudioPlayer.Unmute"] = "Unmute",
         ["AudioPlayer.Download"] = "Download audio",
+        ["AudioPlayer.SkipBack"] = "Skip back {0} seconds",
+        ["AudioPlayer.SkipForward"] = "Skip forward {0} seconds",
+        ["AudioPlayer.PlaybackRate"] = "Playback speed {0}×",
+        ["AudioPlayer.Volume"] = "Volume",
+
+        // ── SignaturePad ────────────────────────────────────────────
+        ["SignaturePad.Label"] = "Signature pad",
+        ["SignaturePad.Clear"] = "Clear signature",
+        ["SignaturePad.Download"] = "Download signature",
+        ["SignaturePad.Cleared"] = "Signature cleared",
     };
 
     internal static readonly IReadOnlyDictionary<string, string> De = new Dictionary<string, string>
@@ -654,7 +685,11 @@ internal static partial class LumeoDefaultStrings
         ["DateTimePicker.OpenCalendar"] = "Kalender öffnen",
         ["DatePicker.OpenCalendar"] = "Kalender öffnen",
         ["DatePicker.InvalidDate"] = "Ungültiges Datum",
+        ["DatePicker.MultipleSelected"] = "{0} ausgewählt",
         ["TimePicker.Placeholder"] = "Uhrzeit wählen",
+        ["TimePicker.HoursLabel"] = "Stunden",
+        ["TimePicker.MinutesLabel"] = "Minuten",
+        ["TimePicker.SecondsLabel"] = "Sekunden",
 
         // ── Tour ────────────────────────────────────────────────────
         ["Tour.Skip"] = "Überspringen",
@@ -696,8 +731,10 @@ internal static partial class LumeoDefaultStrings
         ["Transfer.MoveRight"] = "Nach rechts verschieben",
         ["Transfer.MoveLeft"] = "Nach links verschieben",
         ["Transfer.NoItems"] = "Keine Einträge",
+        ["Transfer.SelectAll"] = "Alle auswählen",
         ["TreeSelect.Placeholder"] = "Auswählen…",
         ["TreeSelect.NoResults"] = "Keine Ergebnisse",
+        ["TreeSelect.ClearSelection"] = "Auswahl leeren",
         ["TagInput.Placeholder"] = "Tag hinzufügen…",
 
         // ── Cascader ────────────────────────────────────────────────
@@ -720,6 +757,8 @@ internal static partial class LumeoDefaultStrings
         ["Carousel.PreviousSlide"] = "Vorherige Folie",
         ["Carousel.NextSlide"] = "Nächste Folie",
         ["Carousel.SlideXofY"] = "Folie {0} von {1}",
+        ["Carousel.Indicators"] = "Folienanzeiger",
+        ["Carousel.GoToSlide"] = "Zu Folie {0}",
 
         // ── Stepper ─────────────────────────────────────────────────
         ["Stepper.Back"] = "Zurück",
@@ -733,10 +772,14 @@ internal static partial class LumeoDefaultStrings
         ["Window.Minimize"] = "Minimieren",
         ["Window.Maximize"] = "Maximieren",
         ["Window.Restore"] = "Wiederherstellen",
+        ["Window.Resize"] = "Größe ändern",
 
         // ── NumberInput ─────────────────────────────────────────────
         ["NumberInput.Decrease"] = "Verringern",
         ["NumberInput.Increase"] = "Erhöhen",
+
+        // ── OtpInput ────────────────────────────────────────────────
+        ["OtpInput.DigitLabel"] = "Ziffer {0} von {1}",
 
         // ── DateTimePicker ──────────────────────────────────────────
         ["DateTimePicker.ClearDate"] = "Datum löschen",
@@ -798,6 +841,8 @@ internal static partial class LumeoDefaultStrings
         ["PickList.MoveSelected"] = "Auswahl verschieben",
         ["PickList.MoveBackSelected"] = "Auswahl zurück verschieben",
         ["PickList.MoveBackAll"] = "Alle zurück verschieben",
+        ["PickList.MoveUp"] = "Nach oben verschieben",
+        ["PickList.MoveDown"] = "Nach unten verschieben",
         ["PickList.SourceHeader"] = "Verfügbar",
         ["PickList.TargetHeader"] = "Ausgewählt",
         ["PickList.NoItems"] = "Keine Einträge",
@@ -909,9 +954,13 @@ internal static partial class LumeoDefaultStrings
 
         // ── ImageCompare ────────────────────────────────────────────
         ["ImageCompare.Slider"] = "Bildvergleichs-Schieberegler",
+        ["ImageCompare.Before"] = "Vorher",
+        ["ImageCompare.ValueText"] = "{0} {1} %",
 
         // ── PromptInput ─────────────────────────────────────────────
         ["PromptInput.Send"] = "Senden",
+        ["PromptInput.Stop"] = "Stopp",
+        ["PromptInput.Attach"] = "Datei anhängen",
 
         // ── Editor (RichTextEditor) ─────────────────────────────────
         ["Editor.StartWriting"] = "Schreiben beginnen…",
@@ -932,6 +981,16 @@ internal static partial class LumeoDefaultStrings
         ["AudioPlayer.Mute"] = "Stummschalten",
         ["AudioPlayer.Unmute"] = "Stummschaltung aufheben",
         ["AudioPlayer.Download"] = "Audio herunterladen",
+        ["AudioPlayer.SkipBack"] = "{0} Sekunden zurück",
+        ["AudioPlayer.SkipForward"] = "{0} Sekunden vor",
+        ["AudioPlayer.PlaybackRate"] = "Wiedergabegeschwindigkeit {0}×",
+        ["AudioPlayer.Volume"] = "Lautstärke",
+
+        // ── SignaturePad ────────────────────────────────────────────
+        ["SignaturePad.Label"] = "Unterschriftsfeld",
+        ["SignaturePad.Clear"] = "Unterschrift löschen",
+        ["SignaturePad.Download"] = "Unterschrift herunterladen",
+        ["SignaturePad.Cleared"] = "Unterschrift gelöscht",
     };
 
     internal static void ApplyDefaults(LumeoLocalizationOptions options)

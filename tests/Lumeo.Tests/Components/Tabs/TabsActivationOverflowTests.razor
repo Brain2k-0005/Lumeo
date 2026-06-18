@@ -1,0 +1,166 @@
+@inherits Bunit.BunitContext
+@using Lumeo.Services
+@using Lumeo.Tests.Helpers
+@using Microsoft.AspNetCore.Components.Web
+@using Microsoft.Extensions.DependencyInjection
+
+@code {
+    // #239 — manual vs automatic arrow-key activation, and overflow scroll
+    // arrows on a Scrollable TabsList.
+
+    private readonly TrackingInteropService _interop = new();
+
+    public TabsActivationOverflowTests()
+    {
+        this.AddLumeoServices();
+        Services.AddSingleton<IComponentInteropService>(_interop);
+    }
+
+    // --- Activation: Automatic (default) ---
+
+    [Fact]
+    public void Automatic_ArrowRight_Activates_Next_Tab()
+    {
+        var active = "a";
+        var cut = Render(@<Tabs ActiveValue="@active" ActiveValueChanged="@((string v) => active = v)">
+            <TabsList>
+                <TabsTrigger Value="a">A</TabsTrigger>
+                <TabsTrigger Value="b">B</TabsTrigger>
+            </TabsList>
+        </Tabs>);
+
+        cut.FindAll("[role='tab']")[0].KeyDown(new KeyboardEventArgs { Key = "ArrowRight" });
+
+        Assert.Equal("b", active);
+    }
+
+    // --- Activation: Manual ---
+
+    [Fact]
+    public void Manual_ArrowRight_Moves_Focus_Without_Activating()
+    {
+        var active = "a";
+        var cut = Render(@<Tabs ActiveValue="@active" ActiveValueChanged="@((string v) => active = v)" Activation="Tabs.TabsActivation.Manual">
+            <TabsList>
+                <TabsTrigger Value="a">A</TabsTrigger>
+                <TabsTrigger Value="b">B</TabsTrigger>
+            </TabsList>
+        </Tabs>);
+
+        var second = cut.FindAll("[role='tab']")[1].GetAttribute("id");
+        cut.FindAll("[role='tab']")[0].KeyDown(new KeyboardEventArgs { Key = "ArrowRight" });
+
+        // Focus moved to the second tab, but the active value did not change.
+        Assert.Equal("a", active);
+        Assert.Contains(second, _interop.FocusElementCalls);
+    }
+
+    [Fact]
+    public void Manual_Enter_Activates_Focused_Tab()
+    {
+        var active = "a";
+        var cut = Render(@<Tabs ActiveValue="@active" ActiveValueChanged="@((string v) => active = v)" Activation="Tabs.TabsActivation.Manual">
+            <TabsList>
+                <TabsTrigger Value="a">A</TabsTrigger>
+                <TabsTrigger Value="b">B</TabsTrigger>
+            </TabsList>
+        </Tabs>);
+
+        // User tab-focuses B then presses Enter to activate it.
+        cut.FindAll("[role='tab']")[1].KeyDown(new KeyboardEventArgs { Key = "Enter" });
+
+        Assert.Equal("b", active);
+    }
+
+    [Fact]
+    public void Manual_Space_Activates_Focused_Tab()
+    {
+        var active = "a";
+        var cut = Render(@<Tabs ActiveValue="@active" ActiveValueChanged="@((string v) => active = v)" Activation="Tabs.TabsActivation.Manual">
+            <TabsList>
+                <TabsTrigger Value="a">A</TabsTrigger>
+                <TabsTrigger Value="b">B</TabsTrigger>
+            </TabsList>
+        </Tabs>);
+
+        cut.FindAll("[role='tab']")[1].KeyDown(new KeyboardEventArgs { Key = " " });
+
+        Assert.Equal("b", active);
+    }
+
+    // --- Overflow scroll arrows ---
+
+    [Fact]
+    public void Scrollable_Registers_Overflow_Observer()
+    {
+        var cut = Render(@<Tabs ActiveValue="a">
+            <TabsList Scrollable="true">
+                <TabsTrigger Value="a">A</TabsTrigger>
+                <TabsTrigger Value="b">B</TabsTrigger>
+            </TabsList>
+        </Tabs>);
+
+        var listId = cut.Find("[role='tablist']").GetAttribute("id");
+        Assert.Contains(listId, _interop.TabsOverflowRegistrations);
+    }
+
+    [Fact]
+    public async Task End_Arrow_Appears_When_Can_Scroll_End_And_Scrolls()
+    {
+        var cut = Render(@<Tabs ActiveValue="a">
+            <TabsList Scrollable="true">
+                <TabsTrigger Value="a">A</TabsTrigger>
+                <TabsTrigger Value="b">B</TabsTrigger>
+                <TabsTrigger Value="c">C</TabsTrigger>
+            </TabsList>
+        </Tabs>);
+
+        var listId = cut.Find("[role='tablist']").GetAttribute("id");
+
+        // No arrows until JS reports overflow.
+        Assert.Empty(cut.FindAll("button[aria-hidden='true']"));
+
+        await cut.InvokeAsync(() => _interop.RaiseTabsOverflow(listId!, canScrollStart: false, canScrollEnd: true));
+
+        // The end arrow now renders; clicking it scrolls forward.
+        var arrows = cut.FindAll("button[aria-hidden='true']");
+        Assert.Single(arrows);
+        arrows[0].Click();
+
+        var call = Assert.Single(_interop.TabsScrollByCalls);
+        Assert.True(call.Delta > 0); // toward the end
+        Assert.True(call.Horizontal);
+    }
+
+    [Fact]
+    public async Task Both_Arrows_Appear_When_Scrollable_Both_Ways()
+    {
+        var cut = Render(@<Tabs ActiveValue="b">
+            <TabsList Scrollable="true">
+                <TabsTrigger Value="a">A</TabsTrigger>
+                <TabsTrigger Value="b">B</TabsTrigger>
+                <TabsTrigger Value="c">C</TabsTrigger>
+            </TabsList>
+        </Tabs>);
+
+        var listId = cut.Find("[role='tablist']").GetAttribute("id");
+        await cut.InvokeAsync(() => _interop.RaiseTabsOverflow(listId!, canScrollStart: true, canScrollEnd: true));
+
+        Assert.Equal(2, cut.FindAll("button[aria-hidden='true']").Count);
+    }
+
+    [Fact]
+    public void Arrows_Disabled_When_Arrows_False()
+    {
+        var cut = Render(@<Tabs ActiveValue="a">
+            <TabsList Scrollable="true" Arrows="false">
+                <TabsTrigger Value="a">A</TabsTrigger>
+                <TabsTrigger Value="b">B</TabsTrigger>
+            </TabsList>
+        </Tabs>);
+
+        var listId = cut.Find("[role='tablist']").GetAttribute("id");
+        // Observer not even registered when arrows are off.
+        Assert.DoesNotContain(listId, _interop.TabsOverflowRegistrations);
+    }
+}

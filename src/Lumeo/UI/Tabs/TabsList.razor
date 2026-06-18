@@ -1,5 +1,6 @@
 @namespace Lumeo
 @inject Lumeo.Services.IComponentInteropService Interop
+@inject Lumeo.Services.ThemeService Theme
 @implements IAsyncDisposable
 
 @{
@@ -27,18 +28,34 @@
 
 @if (Scrollable)
 {
-    <div class="overflow-hidden">
-        <div id="@_listId" role="tablist" aria-orientation="@OrientationStr" class="@CssClass overflow-x-auto scrollbar-none" style="@IndicatorStyle" data-sliding-pill="@(UsePillIndicator ? "true" : null)" @attributes="AdditionalAttributes">
-            @ChildContent
-            @if (TrailingContent is not null)
-            {
-                @TrailingContent
-            }
-            @if (RenderIndicator)
-            {
-                <span aria-hidden="true" class="@IndicatorClass" data-ready="@(_indicatorReady ? "true" : "false")"></span>
-            }
+    <div class="relative flex items-center @(IsVertical ? "flex-col" : "")">
+        @if (ShowArrows && _canScrollStart)
+        {
+            <button type="button" tabindex="-1" aria-hidden="true"
+                    class="@ArrowClass" @onclick="ScrollToStart">
+                <Blazicon Svg="@StartArrowIcon" class="h-4 w-4" />
+            </button>
+        }
+        <div class="overflow-hidden flex-1 min-w-0">
+            <div id="@_listId" role="tablist" aria-orientation="@OrientationStr" class="@CssClass overflow-x-auto scrollbar-none" style="@IndicatorStyle" data-sliding-pill="@(UsePillIndicator ? "true" : null)" @attributes="AdditionalAttributes">
+                @ChildContent
+                @if (TrailingContent is not null)
+                {
+                    @TrailingContent
+                }
+                @if (RenderIndicator)
+                {
+                    <span aria-hidden="true" class="@IndicatorClass" data-ready="@(_indicatorReady ? "true" : "false")"></span>
+                }
+            </div>
         </div>
+        @if (ShowArrows && _canScrollEnd)
+        {
+            <button type="button" tabindex="-1" aria-hidden="true"
+                    class="@ArrowClass" @onclick="ScrollToEnd">
+                <Blazicon Svg="@EndArrowIcon" class="h-4 w-4" />
+            </button>
+        }
     </div>
 }
 else
@@ -62,6 +79,16 @@ else
     [Parameter] public RenderFragment? ChildContent { get; set; }
     [Parameter] public RenderFragment? TrailingContent { get; set; }
     [Parameter] public bool Scrollable { get; set; }
+
+    /// <summary>
+    /// When true (and <see cref="Scrollable"/>), shows chevron buttons at the
+    /// start/end of the list that scroll it when the tabs overflow. The arrows
+    /// auto-hide at the scroll boundaries (and entirely when nothing
+    /// overflows). Default true — a scrollable list with no way to reach
+    /// off-screen tabs by mouse is a usability gap (#239). Set false to keep
+    /// the bare scroll/swipe affordance.
+    /// </summary>
+    [Parameter] public bool Arrows { get; set; } = true;
 
     /// <summary>
     /// When true, each enabled <see cref="TabsTrigger"/> becomes draggable
@@ -145,10 +172,28 @@ else
     private bool _indicatorReady;
     private string? _lastMeasuredValue;
     private bool _touchRegistered;
+    private bool _overflowRegistered;
+    private bool _canScrollStart;
+    private bool _canScrollEnd;
 
     private bool IsVertical => Context?.Orientation == Lumeo.Orientation.Vertical;
     private string OrientationStr => IsVertical ? "vertical" : "horizontal";
     private Tabs.TabsVariant CurrentVariant => Context?.Variant ?? Tabs.TabsVariant.Default;
+
+    private bool ShowArrows => Scrollable && Arrows;
+
+    // Chevrons point along the scroll axis: horizontal lists scroll left/right,
+    // vertical lists scroll up/down. RTL flips the horizontal pair so "start"
+    // always points toward the visual beginning.
+    private Blazicons.SvgIcon StartArrowIcon => IsVertical
+        ? Blazicons.Lucide.ChevronUp
+        : (Theme.CurrentDirection == LayoutDirection.Rtl ? Blazicons.Lucide.ChevronRight : Blazicons.Lucide.ChevronLeft);
+    private Blazicons.SvgIcon EndArrowIcon => IsVertical
+        ? Blazicons.Lucide.ChevronDown
+        : (Theme.CurrentDirection == LayoutDirection.Rtl ? Blazicons.Lucide.ChevronLeft : Blazicons.Lucide.ChevronRight);
+
+    private string ArrowClass =>
+        "z-10 flex shrink-0 items-center justify-center rounded-md text-muted-foreground hover:text-foreground cursor-pointer transition-colors h-8 w-6";
 
     private bool RenderIndicator => Context?.AnimatedIndicator == true && !IsVertical;
 
@@ -169,6 +214,31 @@ else
             {
                 await Interop.RegisterSortableTouch(_listId, HandleTouchDrop);
                 _touchRegistered = true;
+            }
+            catch (JSDisconnectedException) { }
+            catch (InvalidOperationException) { } // prerender
+        }
+
+        if (ShowArrows && !_overflowRegistered)
+        {
+            try
+            {
+                await Interop.RegisterTabsOverflow(_listId, OnOverflowChange);
+                _overflowRegistered = true;
+            }
+            catch (JSDisconnectedException) { }
+            catch (InvalidOperationException) { } // prerender
+        }
+        else if (!ShowArrows && _overflowRegistered)
+        {
+            // Scrollable/Arrows toggled off after first render — tear the observer
+            // down and clear the stale scroll-state so the arrows disappear.
+            try
+            {
+                await Interop.UnregisterTabsOverflow(_listId);
+                _overflowRegistered = false;
+                _canScrollStart = false;
+                _canScrollEnd = false;
             }
             catch (JSDisconnectedException) { }
             catch (InvalidOperationException) { } // prerender
@@ -213,7 +283,39 @@ else
             catch (JSDisconnectedException) { }
             _touchRegistered = false;
         }
+        if (_overflowRegistered)
+        {
+            try { await Interop.UnregisterTabsOverflow(_listId); }
+            catch (JSDisconnectedException) { }
+            _overflowRegistered = false;
+        }
     }
+
+    // JS reports whether the list can still scroll toward the start / end; drive
+    // the arrow visibility from it.
+    private Task OnOverflowChange(bool canScrollStart, bool canScrollEnd)
+    {
+        if (_canScrollStart == canScrollStart && _canScrollEnd == canScrollEnd) return Task.CompletedTask;
+        _canScrollStart = canScrollStart;
+        _canScrollEnd = canScrollEnd;
+        StateHasChanged();
+        return Task.CompletedTask;
+    }
+
+    // Each arrow nudges the list by ~75% of its visible extent toward that edge.
+    private async Task ScrollToStart()
+    {
+        try { await Interop.TabsScrollBy(_listId, -ScrollChunkPx, !IsVertical); }
+        catch (JSDisconnectedException) { }
+    }
+
+    private async Task ScrollToEnd()
+    {
+        try { await Interop.TabsScrollBy(_listId, ScrollChunkPx, !IsVertical); }
+        catch (JSDisconnectedException) { }
+    }
+
+    private const double ScrollChunkPx = 200;
 
     private void HandleDragStart(string value)
     {

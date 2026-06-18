@@ -165,4 +165,138 @@ public class PromptInputTests : IAsyncLifetime
 
         Assert.Equal("pi", cut.Find("div").GetAttribute("data-testid"));
     }
+
+    // ── #304: Stop button ────────────────────────────────────────────────────
+
+    [Fact]
+    public void Loading_With_OnStop_Renders_Stop_Button_Not_Send()
+    {
+        var cut = _ctx.Render<Lumeo.PromptInput>(p => p
+            .Add(x => x.IsLoading, true)
+            .Add(x => x.OnStop, EventCallback.Factory.Create(this, () => { })));
+
+        Assert.NotNull(cut.Find("button[aria-label='Stop']"));
+        Assert.Empty(cut.FindAll("button[aria-label='Send']"));
+    }
+
+    [Fact]
+    public void Loading_Without_OnStop_Keeps_Disabled_Send()
+    {
+        // Back-compat: no Stop handler → original disabled-spinner Send button.
+        var cut = _ctx.Render<Lumeo.PromptInput>(p => p
+            .Add(x => x.IsLoading, true));
+
+        Assert.Empty(cut.FindAll("button[aria-label='Stop']"));
+        Assert.True(cut.Find("button[aria-label='Send']").HasAttribute("disabled"));
+    }
+
+    [Fact]
+    public async Task Stop_Button_Click_Invokes_OnStop()
+    {
+        var stopped = false;
+        var cut = _ctx.Render<Lumeo.PromptInput>(p => p
+            .Add(x => x.IsLoading, true)
+            .Add(x => x.OnStop, EventCallback.Factory.Create(this, () => stopped = true)));
+
+        await cut.Find("button[aria-label='Stop']").ClickAsync(new MouseEventArgs());
+
+        Assert.True(stopped);
+    }
+
+    [Fact]
+    public void Not_Loading_Renders_Send_Even_With_OnStop_Bound()
+    {
+        var cut = _ctx.Render<Lumeo.PromptInput>(p => p
+            .Add(x => x.IsLoading, false)
+            .Add(x => x.OnStop, EventCallback.Factory.Create(this, () => { })));
+
+        Assert.NotNull(cut.Find("button[aria-label='Send']"));
+        Assert.Empty(cut.FindAll("button[aria-label='Stop']"));
+    }
+
+    // ── #304: attachments ────────────────────────────────────────────────────
+
+    [Fact]
+    public void Attachments_Slot_Renders_When_Provided()
+    {
+        var cut = _ctx.Render<Lumeo.PromptInput>(p => p
+            .Add(x => x.Attachments, (RenderFragment)(b => b.AddMarkupContent(0, "<span data-testid='att'>file.png</span>"))));
+
+        Assert.NotNull(cut.Find("[data-testid='att']"));
+    }
+
+    [Fact]
+    public void Attach_Button_Renders_When_Enabled()
+    {
+        var cut = _ctx.Render<Lumeo.PromptInput>(p => p
+            .Add(x => x.ShowAttachButton, true));
+
+        Assert.NotNull(cut.Find("button[aria-label='Attach file']"));
+    }
+
+    [Fact]
+    public void Attach_Button_Hidden_By_Default()
+    {
+        var cut = _ctx.Render<Lumeo.PromptInput>();
+
+        Assert.Empty(cut.FindAll("button[aria-label='Attach file']"));
+    }
+
+    [Fact]
+    public async Task Attach_Button_Click_Invokes_OnAttach()
+    {
+        var attached = false;
+        var cut = _ctx.Render<Lumeo.PromptInput>(p => p
+            .Add(x => x.ShowAttachButton, true)
+            .Add(x => x.OnAttach, EventCallback.Factory.Create(this, () => attached = true)));
+
+        await cut.Find("button[aria-label='Attach file']").ClickAsync(new MouseEventArgs());
+
+        Assert.True(attached);
+    }
+
+    // ── #304: character counter ──────────────────────────────────────────────
+
+    [Fact]
+    public void Counter_Hidden_By_Default()
+    {
+        var cut = _ctx.Render<Lumeo.PromptInput>(p => p.Add(x => x.Value, "hello"));
+
+        // No counter element rendered when neither MaxLength nor ShowCounter set.
+        Assert.DoesNotContain("aria-live=\"polite\"", cut.Markup);
+    }
+
+    [Fact]
+    public void Counter_Shows_Count_Over_Limit_When_MaxLength_Set()
+    {
+        var cut = _ctx.Render<Lumeo.PromptInput>(p => p
+            .Add(x => x.Value, "hello")
+            .Add(x => x.MaxLength, 100));
+
+        Assert.Contains("5/100", cut.Markup);
+        Assert.Equal("100", cut.Find("textarea").GetAttribute("maxlength"));
+    }
+
+    [Fact]
+    public void Counter_Turns_Destructive_Near_Limit()
+    {
+        var cut = _ctx.Render<Lumeo.PromptInput>(p => p
+            .Add(x => x.Value, new string('a', 96))
+            .Add(x => x.MaxLength, 100));
+
+        // 96/100 is within the last 10% → destructive color class applied.
+        var counter = cut.FindAll("span").First(s => (s.TextContent ?? "").Contains("96/100"));
+        Assert.Contains("text-destructive", counter.GetAttribute("class"));
+    }
+
+    [Fact]
+    public void ShowCounter_Shows_Raw_Count_Without_MaxLength()
+    {
+        var cut = _ctx.Render<Lumeo.PromptInput>(p => p
+            .Add(x => x.Value, "abc")
+            .Add(x => x.ShowCounter, true));
+
+        Assert.Contains(">3<", cut.Markup);
+        Assert.False(cut.Find("textarea").HasAttribute("maxlength"));
+    }
 }

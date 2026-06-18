@@ -18,6 +18,7 @@
 
 <div id="@_wrapperId" class="relative inline-block @Class" @attributes="AdditionalAttributes">
     <button type="button"
+            id="@_triggerId"
             class="@TriggerClass"
             @onclick="ToggleOpen"
             disabled="@Disabled"
@@ -26,15 +27,33 @@
             aria-required="@(Required ? "true" : "false")"
             aria-invalid="@(EffectiveInvalid ? "true" : "false")">
         <span class="@(Cx.Join("flex-1 truncate text-left", Cx.When(displayText == (Placeholder ?? L["TreeSelect.Placeholder"]), "text-muted-foreground")))">@displayText</span>
-        @{ var chevronClass = Cx.Join("h-4 w-4 shrink-0 opacity-50 transition-transform", Cx.When(_isOpen, "rotate-180")); }
-        <Blazicon Svg="Lucide.ChevronDown" class="@chevronClass" />
+        <span class="ml-1 flex shrink-0 items-center gap-1">
+            @if (Clearable && !Disabled && HasSelection())
+            {
+                <span role="button"
+                      tabindex="0"
+                      class="rounded-full p-0.5 hover:bg-foreground/20 focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-1"
+                      aria-label="@L["TreeSelect.ClearSelection"]"
+                      @onclick="Clear"
+                      @onclick:stopPropagation="true"
+                      @onkeydown="HandleClearKeyDown"
+                      @onkeydown:stopPropagation="true">
+                    <Blazicon Svg="Lucide.X" class="h-3.5 w-3.5 text-muted-foreground" />
+                </span>
+            }
+            @{ var chevronClass = Cx.Join("h-4 w-4 opacity-50 transition-transform", Cx.When(_isOpen, "rotate-180")); }
+            <Blazicon Svg="Lucide.ChevronDown" class="@chevronClass" />
+        </span>
     </button>
 
     @if (_isOpen)
     {
         <div id="@_contentId"
              class="fixed z-50 min-w-[12rem] overflow-hidden rounded-md border border-border/40 bg-popover shadow-lg animate-fade-in"
-             role="tree">
+             role="tree"
+             aria-multiselectable="@(Multiple ? "true" : null)"
+             tabindex="-1"
+             @onkeydown="HandleKeyDown">
             @if (Searchable)
             {
                 <div class="p-2 border-b border-border/40">
@@ -43,10 +62,13 @@
                            placeholder="@L["Combobox.SearchPlaceholder"]"
                            value="@_searchText"
                            @oninput="OnSearchInput"
+                           @onkeydown="OnSearchKeyDown"
+                           @onkeydown:stopPropagation="true"
                            @onclick:stopPropagation="true" />
                 </div>
             }
             <div class="max-h-60 overflow-y-auto p-1">
+                @{ _flatVisible = null; }
                 @foreach (var item in Items)
                 {
                     <div @key="item.Value">@RenderTreeItem(item, 0)</div>
@@ -88,6 +110,7 @@
     [Parameter] public EventCallback<List<string>?> ValuesChanged { get; set; }
     [Parameter] public bool Disabled { get; set; }
     [Parameter] public bool ExpandAll { get; set; }
+    [Parameter] public bool Clearable { get; set; }
     [Parameter] public bool Required { get; set; }
     [Parameter] public bool Invalid { get; set; }
     [Parameter] public string? ErrorText { get; set; }
@@ -101,22 +124,37 @@
     private bool InsideFormField => FormField is not null;
 
     private readonly string _wrapperId = LumeoIds.New("treeselect");
+    private readonly string _triggerId = LumeoIds.New("treeselect-trigger");
     private readonly string _contentId = LumeoIds.New("treeselect-content");
     private bool _isOpen;
     private bool _registered;
     private bool _disposed;
     private string _searchText = "";
     private readonly HashSet<string> _expandedNodes = new();
+    private List<TreeSelectItem>? _previousItems;
+
+    // Roving tabindex / WAI-ARIA tree keyboard navigation state. Exactly one
+    // visible treeitem is tabbable (_activeItem); the rest are reachable via
+    // arrow keys. _flatVisible is the depth-first list of currently-visible
+    // nodes, rebuilt lazily (invalidated on every render of the panel body).
+    private readonly Dictionary<string, string> _nodeIds = new();
+    private List<TreeSelectItem>? _flatVisible;
+    private TreeSelectItem? _activeItem;
 
     private string TriggerClass =>
         $"flex h-9 w-full items-center justify-between rounded-md border {(EffectiveInvalid ? "border-destructive" : "border-input")} bg-background px-3 py-2 text-sm shadow-sm transition-colors disabled:cursor-not-allowed disabled:opacity-50 hover:bg-accent/50 focus:outline-none focus:ring-1 {(EffectiveInvalid ? "focus:ring-destructive/20" : "focus:ring-ring")}".Trim();
 
-    protected override void OnInitialized()
+    // ExpandAll must re-apply when Items arrive/replace asynchronously — the
+    // original OnInitialized-only pass never ran for late-bound data, so an
+    // async tree never auto-expanded. Track the Items reference and re-expand
+    // whenever it changes.
+    protected override void OnParametersSet()
     {
-        if (ExpandAll)
+        if (ExpandAll && !ReferenceEquals(Items, _previousItems))
         {
             ExpandAllNodes(Items);
         }
+        _previousItems = Items;
     }
 
     private void ExpandAllNodes(List<TreeSelectItem> items)
@@ -195,7 +233,7 @@
         {
             Value = item.Value;
             await ValueChanged.InvokeAsync(item.Value);
-            await CloseDropdown();
+            await CloseDropdown(restoreFocus: true);
         }
     }
 
@@ -219,10 +257,19 @@
     {
         _isOpen = true;
         _searchText = "";
+        // Seed the roving focus on the first selected node if one is visible,
+        // otherwise the first node; the panel itself takes focus so arrow keys
+        // are handled even before a treeitem is focused.
+        _flatVisible = null;
         StateHasChanged();
         await Task.Yield();
         if (_disposed) return;
         await Interop.PositionFixed(_contentId, _wrapperId, "start", true, "bottom");
+        // Mark registered as soon as the first global registration lands so
+        // CloseDropdown/DisposeAsync actually run UnpositionFixed / UnregisterClickOutside /
+        // UnregisterPreventDefaultKeys. Previously this flag was never set after open, so
+        // every close short-circuited teardown and leaked the global registrations.
+        _registered = true;
         if (_disposed) return;
         await Interop.RegisterClickOutside(_contentId, _wrapperId, async () =>
         {
@@ -230,17 +277,49 @@
             await InvokeAsync(StateHasChanged);
         });
         if (_disposed) return;
-        _registered = true;
+        // Suppress the browser default (page/overflow scroll) for the tree
+        // navigation keys, scoped to the panel. SkipEditable keeps the search
+        // input's own caret/typing keys alive.
+        try
+        {
+            await Interop.RegisterPreventDefaultKeys(_contentId, new[]
+            {
+                new Lumeo.Services.PreventDefaultKeyRule("ArrowDown", SkipEditable: true),
+                new Lumeo.Services.PreventDefaultKeyRule("ArrowUp", SkipEditable: true),
+                new Lumeo.Services.PreventDefaultKeyRule("ArrowLeft", SkipEditable: true),
+                new Lumeo.Services.PreventDefaultKeyRule("ArrowRight", SkipEditable: true),
+                new Lumeo.Services.PreventDefaultKeyRule("Home", SkipEditable: true),
+                new Lumeo.Services.PreventDefaultKeyRule("End", SkipEditable: true),
+            });
+        }
+        catch (JSDisconnectedException) { }
+        if (_disposed) return;
+        EnsureFlatVisible();
+        if (_activeItem is not null)
+        {
+            try { await Interop.FocusElement(GetNodeId(_activeItem)); } catch (JSDisconnectedException) { }
+        }
+        else
+        {
+            try { await Interop.FocusElement(_contentId); } catch (JSDisconnectedException) { }
+        }
     }
 
-    private async Task CloseDropdown()
+    private async Task CloseDropdown(bool restoreFocus = false)
     {
         _isOpen = false;
         if (_registered)
         {
             try { await Interop.UnpositionFixed(_contentId); } catch (JSDisconnectedException) { }
             try { await Interop.UnregisterClickOutside(_contentId); } catch (JSDisconnectedException) { }
+            try { await Interop.UnregisterPreventDefaultKeys(_contentId); } catch (JSDisconnectedException) { }
             _registered = false;
+        }
+        // Escape / Enter close: return focus to the trigger so keyboard users
+        // aren't stranded (the panel that held focus is now gone).
+        if (restoreFocus && !_disposed)
+        {
+            try { await Interop.FocusElement(_triggerId); } catch (JSDisconnectedException) { }
         }
     }
 
@@ -299,13 +378,18 @@
         var isSelected = IsSelected(item.Value);
         var isLeaf = !hasChildren;
         var paddingLeft = depth * 16 + 8;
+        // In Multiple mode every node (leaf OR parent) is selectable, so the
+        // selected highlight + check mark apply to parents too.
+        var showSelected = isSelected && (isLeaf || Multiple);
 
         <div role="treeitem"
+             id="@GetNodeId(item)"
+             tabindex="@GetTabIndex(item)"
              aria-selected="@(Multiple ? null : isSelected.ToString().ToLowerInvariant())"
              aria-checked="@GetAriaCheckedString(item, hasChildren)"
-             aria-expanded="@(hasChildren ? isExpanded : null)"
+             aria-expanded="@(hasChildren ? isExpanded.ToString().ToLowerInvariant() : null)"
              aria-level="@(depth + 1)">
-            <div class="@GetItemClass(isSelected, item.Disabled, isLeaf)"
+            <div class="@GetItemClass(showSelected, item.Disabled)"
                  style="padding-left: @(paddingLeft)px"
                  @onclick="() => HandleItemClick(item, hasChildren)"
                  @onclick:stopPropagation="true">
@@ -313,6 +397,8 @@
                 {
                     <button type="button"
                             class="mr-1 rounded hover:bg-accent p-0.5 focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-1"
+                            tabindex="-1"
+                            aria-label="@L[isExpanded ? "Common.Collapse" : "Common.Expand"]"
                             @onclick="() => ToggleNode(item.Value)"
                             @onclick:stopPropagation="true">
                         @{ var chevronRightClass = Cx.Join("h-3.5 w-3.5 transition-transform", Cx.When(isExpanded, "rotate-90")); }
@@ -331,7 +417,7 @@
 
                 <span class="flex-1 truncate text-sm">@item.Label</span>
 
-                @if (isSelected && isLeaf)
+                @if (showSelected)
                 {
                     <Blazicon Svg="Lucide.Check" class="h-4 w-4 text-primary shrink-0" />
                 }
@@ -349,17 +435,208 @@
         </div>
     };
 
+    // Clicking a row: in single-select a parent expands and a leaf selects.
+    // In Multiple mode every node is selectable (AntD's default checkable
+    // behavior), so a parent click toggles its own value into the selection;
+    // the chevron button (separate hit target) still drives expand/collapse.
     private async Task HandleItemClick(TreeSelectItem item, bool hasChildren)
     {
-        if (hasChildren)
+        _activeItem = item;
+        if (hasChildren && !Multiple)
             ToggleNode(item.Value);
         else
             await SelectItem(item);
     }
 
-    private string GetItemClass(bool isSelected, bool disabled, bool isLeaf) => Cx.Join(
+    // ---- Clear ----
+
+    private bool HasSelection() => Multiple ? Values is { Count: > 0 } : !string.IsNullOrEmpty(Value);
+
+    private async Task Clear()
+    {
+        if (Multiple)
+        {
+            if (Values is null || Values.Count == 0) return;
+            Values = null;
+            await ValuesChanged.InvokeAsync(null);
+        }
+        else
+        {
+            if (string.IsNullOrEmpty(Value)) return;
+            Value = null;
+            await ValueChanged.InvokeAsync(null!);
+        }
+    }
+
+    private async Task HandleClearKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key is "Enter" or " ") await Clear();
+    }
+
+    // ---- WAI-ARIA tree keyboard navigation (roving tabindex) ----
+    // Mirrors the TreeView pattern: Down/Up move through visible nodes in
+    // depth-first order, Home/End jump to first/last, Right expands then
+    // descends, Left collapses then ascends, Enter/Space selects (or expands a
+    // parent in single mode), Escape closes and restores focus to the trigger.
+
+    /// <summary>Deterministic per-node element id, stable for the component's
+    /// lifetime, used as the focus target for keyboard navigation.</summary>
+    private string GetNodeId(TreeSelectItem item)
+    {
+        if (!_nodeIds.TryGetValue(item.Value, out var id))
+        {
+            id = $"{_contentId}-node-{_nodeIds.Count}";
+            _nodeIds[item.Value] = id;
+        }
+        return id;
+    }
+
+    /// <summary>Roving tabindex: exactly one visible node is in the tab order.</summary>
+    private int GetTabIndex(TreeSelectItem item)
+    {
+        EnsureFlatVisible();
+        return ReferenceEquals(item, _activeItem) ? 0 : -1;
+    }
+
+    private void EnsureFlatVisible()
+    {
+        if (_flatVisible is not null) return;
+        _flatVisible = new List<TreeSelectItem>();
+        AppendVisible(Items, _flatVisible);
+        if (_activeItem is null || !_flatVisible.Any(i => ReferenceEquals(i, _activeItem)))
+            _activeItem = _flatVisible.Count > 0 ? _flatVisible[0] : null;
+    }
+
+    private void AppendVisible(List<TreeSelectItem> items, List<TreeSelectItem> result)
+    {
+        foreach (var item in items)
+        {
+            if (!IsVisible(item)) continue;
+            result.Add(item);
+            if (item.Children is { Count: > 0 } && _expandedNodes.Contains(item.Value))
+                AppendVisible(item.Children, result);
+        }
+    }
+
+    private static TreeSelectItem? FindParent(List<TreeSelectItem> items, TreeSelectItem child)
+    {
+        foreach (var item in items)
+        {
+            if (item.Children is not { Count: > 0 }) continue;
+            if (item.Children.Any(c => ReferenceEquals(c, child))) return item;
+            var found = FindParent(item.Children, child);
+            if (found is not null) return found;
+        }
+        return null;
+    }
+
+    // Keydown from the search box: caret-movement keys (and typing a space) stay
+    // with the input; the rest (Escape to close, Up/Down to move the active node,
+    // Enter to select/expand) drive the tree. Propagation to the panel's
+    // HandleKeyDown is stopped on the input so each key is handled exactly once —
+    // without this, ArrowLeft/Right/Home/End in the search box also moved or
+    // collapsed/expanded tree nodes while editing the query.
+    private async Task OnSearchKeyDown(KeyboardEventArgs e)
+    {
+        switch (e.Key)
+        {
+            case "ArrowLeft":
+            case "ArrowRight":
+            case "Home":
+            case "End":
+            case " ":
+                return; // belongs to the text box (caret move / space)
+            default:
+                await HandleKeyDown(e);
+                return;
+        }
+    }
+
+    private async Task HandleKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape")
+        {
+            await CloseDropdown(restoreFocus: true);
+            return;
+        }
+
+        EnsureFlatVisible();
+        var flat = _flatVisible!;
+        if (flat.Count == 0) return;
+
+        // No active node yet (panel had focus): act on the first node.
+        var current = _activeItem ?? flat[0];
+        var hasChildren = current.Children is { Count: > 0 };
+        var isExpanded = _expandedNodes.Contains(current.Value);
+
+        switch (e.Key)
+        {
+            case "Enter":
+            case " ":
+                await HandleItemClick(current, hasChildren);
+                return;
+
+            case "ArrowRight":
+                if (hasChildren && !isExpanded)
+                {
+                    _expandedNodes.Add(current.Value);
+                    _flatVisible = null;
+                    StateHasChanged();
+                }
+                else if (hasChildren && isExpanded)
+                {
+                    await MoveActiveTo(current.Children!.FirstOrDefault(IsVisible));
+                }
+                return;
+
+            case "ArrowLeft":
+                if (hasChildren && isExpanded)
+                {
+                    _expandedNodes.Remove(current.Value);
+                    _flatVisible = null;
+                    StateHasChanged();
+                }
+                else
+                {
+                    await MoveActiveTo(FindParent(Items, current));
+                }
+                return;
+
+            case "ArrowDown":
+            {
+                var idx = flat.FindIndex(i => ReferenceEquals(i, current));
+                await MoveActiveTo(idx >= 0 && idx < flat.Count - 1 ? flat[idx + 1] : null);
+                return;
+            }
+
+            case "ArrowUp":
+            {
+                var idx = flat.FindIndex(i => ReferenceEquals(i, current));
+                await MoveActiveTo(idx > 0 ? flat[idx - 1] : null);
+                return;
+            }
+
+            case "Home":
+                await MoveActiveTo(flat[0]);
+                return;
+
+            case "End":
+                await MoveActiveTo(flat[^1]);
+                return;
+        }
+    }
+
+    private async Task MoveActiveTo(TreeSelectItem? target)
+    {
+        if (target is null || ReferenceEquals(target, _activeItem)) return;
+        _activeItem = target;
+        StateHasChanged();
+        try { await Interop.FocusElement(GetNodeId(target)); } catch (JSDisconnectedException) { }
+    }
+
+    private string GetItemClass(bool showSelected, bool disabled) => Cx.Join(
         "flex items-center gap-1 rounded-md py-1.5 pr-2 cursor-pointer transition-colors",
-        disabled ? "opacity-50 cursor-not-allowed" : isSelected && isLeaf ? "bg-accent text-accent-foreground" : "hover:bg-accent/60");
+        disabled ? "opacity-50 cursor-not-allowed" : showSelected ? "bg-accent text-accent-foreground" : "hover:bg-accent/60");
 
     public async ValueTask DisposeAsync()
     {
@@ -368,6 +645,7 @@
         {
             try { await Interop.UnpositionFixed(_contentId); } catch (JSDisconnectedException) { }
             try { await Interop.UnregisterClickOutside(_contentId); } catch (JSDisconnectedException) { }
+            try { await Interop.UnregisterPreventDefaultKeys(_contentId); } catch (JSDisconnectedException) { }
         }
     }
 

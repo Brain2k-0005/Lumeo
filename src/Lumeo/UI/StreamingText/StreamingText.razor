@@ -1,24 +1,63 @@
 @namespace Lumeo
 
-<span class="@RootClass" role="status" aria-live="polite" aria-atomic="false" @attributes="AdditionalAttributes">
-    @if (!string.IsNullOrEmpty(_alreadyRendered))
-    {
-        <span>@_alreadyRendered</span>
-    }
-    @if (!string.IsNullOrEmpty(_newSuffix))
-    {
-        <span class="animate-in fade-in duration-200">@_newSuffix</span>
-    }
-    @if (IsStreaming)
-    {
-        <span class="ml-0.5 inline-block align-baseline bg-current animate-pulse" style="width: 2px; height: 1em;">&nbsp;</span>
-    }
-</span>
+@if (Markdown)
+{
+    <div class="@RootClass" role="status" aria-live="polite" aria-atomic="false" @attributes="AdditionalAttributes">
+        @RenderedMarkdown
+        @if (IsStreaming)
+        {
+            <span class="ml-0.5 inline-block align-baseline bg-current animate-pulse" style="width: 2px; height: 1em;">&nbsp;</span>
+        }
+    </div>
+}
+else
+{
+    <span class="@RootClass" role="status" aria-live="polite" aria-atomic="false" @attributes="AdditionalAttributes">
+        @if (!string.IsNullOrEmpty(_alreadyRendered))
+        {
+            <span>@_alreadyRendered</span>
+        }
+        @if (!string.IsNullOrEmpty(_newSuffix))
+        {
+            <span class="animate-in fade-in duration-200">@_newSuffix</span>
+        }
+        @if (IsStreaming)
+        {
+            <span class="ml-0.5 inline-block align-baseline bg-current animate-pulse" style="width: 2px; height: 1em;">&nbsp;</span>
+        }
+    </span>
+}
 
 @code {
     [Parameter] public string? Text { get; set; }
     [Parameter] public bool IsStreaming { get; set; }
+
+    /// <summary>
+    /// Applies Tailwind Typography (<c>prose</c>) styling to the rendered output.
+    /// Meaningful on its own only when <see cref="Markdown"/> (or a consumer's
+    /// own markup via <see cref="MarkdownRenderer"/>) produces real block/inline
+    /// elements for the prose styles to target.
+    /// </summary>
     [Parameter] public bool Prose { get; set; }
+
+    /// <summary>
+    /// Renders <see cref="Text"/> as markdown instead of plain text. Uses
+    /// <see cref="MarkdownRenderer"/> when supplied, otherwise a built-in
+    /// dependency-free CommonMark subset (headings, lists, bold/italic, inline
+    /// + fenced code, links, blockquotes). Incremental fade-in is disabled in
+    /// this mode because markdown re-parses the whole string each update.
+    /// </summary>
+    [Parameter] public bool Markdown { get; set; }
+
+    /// <summary>
+    /// Optional render hook: converts the raw markdown <see cref="Text"/> into a
+    /// <see cref="MarkupString"/>. Supply this to plug in a full renderer
+    /// (Markdig, etc.). The delegate is responsible for producing SAFE HTML —
+    /// sanitise untrusted input before returning. Ignored unless
+    /// <see cref="Markdown"/> is <c>true</c>.
+    /// </summary>
+    [Parameter] public Func<string, MarkupString>? MarkdownRenderer { get; set; }
+
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
@@ -26,8 +65,27 @@
     private string _newSuffix = string.Empty;
     private int _previousLength;
 
+    // In markdown mode whitespace-pre-wrap would break block layout, so it's
+    // only applied in plain-text mode. Prose styling is the point of markdown
+    // mode, so it's always available via the Prose flag.
     private string RootClass =>
-        Cx.Merge((Prose ? "prose prose-sm max-w-none " : string.Empty), "whitespace-pre-wrap break-words text-foreground", Class);
+        Cx.Merge(
+            Cx.When(Prose, "prose prose-sm max-w-none"),
+            Cx.When(!Markdown, "whitespace-pre-wrap"),
+            "break-words text-foreground",
+            Class);
+
+    private MarkupString RenderedMarkdown
+    {
+        get
+        {
+            var text = Text ?? string.Empty;
+            if (text.Length == 0) return default;
+            return MarkdownRenderer is not null
+                ? MarkdownRenderer(text)
+                : (MarkupString)LumeoMarkdown.ToHtml(text);
+        }
+    }
 
     protected override void OnParametersSet()
     {

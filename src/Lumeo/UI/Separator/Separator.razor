@@ -3,24 +3,44 @@
 @if (Orientation == Lumeo.Orientation.Horizontal && ChildContent != null)
 {
     <div class="@(Cx.Merge("flex items-center gap-3", Class))" @attributes="AdditionalAttributes">
-        <div class="h-px flex-1 bg-border"></div>
+        <div role="none" class="h-px flex-1 bg-border"></div>
         <span class="text-xs text-muted-foreground">@ChildContent</span>
-        <div class="h-px flex-1 bg-border"></div>
+        <div role="none" class="h-px flex-1 bg-border"></div>
     </div>
 }
 else if (Orientation == Lumeo.Orientation.Horizontal)
 {
-    <div role="none" class="@(Cx.Merge("shrink-0 bg-border h-px w-full", Class))" @attributes="AdditionalAttributes"></div>
+    <div role="@Role" aria-orientation="@AriaOrientation" class="@(Cx.Merge("shrink-0 bg-border h-px w-full", Class))" @attributes="AdditionalAttributes"></div>
 }
 else
 {
-    <div role="none" class="@(Cx.Merge("shrink-0 bg-border h-full w-px", Class))" @attributes="AdditionalAttributes"></div>
+    <div role="@Role" aria-orientation="@AriaOrientation" class="@(Cx.Merge("shrink-0 bg-border h-full w-px", Class))" @attributes="AdditionalAttributes"></div>
 }
 
 @code {
     [Parameter] public Lumeo.Orientation Orientation { get; set; } = Lumeo.Orientation.Horizontal;
+
+    /// <summary>
+    /// When true (the default), the separator is purely visual and exposes
+    /// <c>role="none"</c> with no orientation — assistive tech skips it,
+    /// matching Radix's <c>decorative</c> default. Set to <c>false</c> for a
+    /// semantic separator that conveys structure (e.g. between menu groups or
+    /// list sections): the element then carries <c>role="separator"</c> plus an
+    /// <c>aria-orientation</c> matching <see cref="Orientation"/>. The implicit
+    /// ARIA orientation of a separator is <c>horizontal</c>, so a vertical one
+    /// must declare it explicitly.
+    /// </summary>
+    [Parameter] public bool Decorative { get; set; } = true;
+
     [Parameter] public RenderFragment? ChildContent { get; set; }
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
+    private string Role => Decorative ? "none" : "separator";
+
+    // aria-orientation only carries meaning on a non-decorative separator. ARIA
+    // forbids it on role="none"/"presentation", so it's null when decorative.
+    private string? AriaOrientation => Decorative
+        ? null
+        : (Orientation == Lumeo.Orientation.Vertical ? "vertical" : "horizontal");
 }

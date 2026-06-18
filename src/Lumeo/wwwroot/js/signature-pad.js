@@ -47,6 +47,52 @@ function clearCanvas(pad) {
     const ctx = getCtx(pad);
     ctx.clearRect(0, 0, pad.canvas.width, pad.canvas.height);
     pad.isEmpty = true;
+    pad.strokes = [];
+    pad.currentStroke = null;
+}
+
+// Builds an SVG document from the recorded vector strokes and returns it as a
+// base64 data URL. Each stroke becomes a quadratic-smoothed <path> matching the
+// on-canvas rendering. Returns null when there's nothing drawn (so the .NET
+// side can treat empty the same as the PNG path).
+function buildSvgDataUrl(pad) {
+    if (!pad.strokes || pad.strokes.length === 0) return null;
+    const w = pad.canvas.width;
+    const h = pad.canvas.height;
+    const round = (n) => Math.round(n * 100) / 100;
+    const paths = [];
+    for (const stroke of pad.strokes) {
+        const pts = stroke && stroke.points;
+        if (!pts || pts.length === 0) continue;
+        // Each stroke carries the color/width active when it was drawn, so a
+        // mid-signature setStrokeStyle change is preserved in the export rather
+        // than every stroke inheriting the final global style.
+        const color = stroke.color;
+        const width = stroke.width;
+        if (pts.length === 1) {
+            // A lone tap: render a filled dot of the stroke radius.
+            const p = pts[0];
+            paths.push(`<circle cx="${round(p.x)}" cy="${round(p.y)}" r="${round(width / 2)}" fill="${color}" />`);
+            continue;
+        }
+        let d = `M ${round(pts[0].x)} ${round(pts[0].y)}`;
+        // Quadratic smoothing through midpoints, mirroring the canvas path.
+        for (let i = 1; i < pts.length; i++) {
+            const prev = pts[i - 1];
+            const cur = pts[i];
+            const midX = (prev.x + cur.x) / 2;
+            const midY = (prev.y + cur.y) / 2;
+            d += ` Q ${round(prev.x)} ${round(prev.y)} ${round(midX)} ${round(midY)}`;
+        }
+        paths.push(`<path d="${d}" fill="none" stroke="${color}" stroke-width="${width}" stroke-linecap="round" stroke-linejoin="round" />`);
+    }
+    if (paths.length === 0) return null;
+    const svg =
+        `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">` +
+        `${paths.join('')}</svg>`;
+    // Encode as a UTF-8-safe base64 data URL.
+    const b64 = btoa(unescape(encodeURIComponent(svg)));
+    return `data:image/svg+xml;base64,${b64}`;
 }
 
 export function init(elementId, options, dotnetRef) {
@@ -71,6 +117,12 @@ export function init(elementId, options, dotnetRef) {
         lastPoint: null,
         debounceTimer: 0,
         handlers: {},
+        // Recorded vector strokes for real SVG export. Each stroke is
+        // { points: [{x,y}…], color, width } capturing the style active when it
+        // was drawn; replayed as <path>/<circle> elements in getSvgDataUrl.
+        // Raster (PNG) export still reads the canvas directly.
+        strokes: [],
+        currentStroke: null,
     };
 
     // Resolve `currentColor` to the computed text color of the canvas so the
@@ -97,6 +149,12 @@ export function init(elementId, options, dotnetRef) {
         pad.isDrawing = true;
         const p = pointFromEvent(pad, e);
         pad.lastPoint = p;
+        // Start recording a new vector stroke for SVG export.
+        pad.currentStroke = { points: [{ x: p.x, y: p.y }], color: pad.strokeColor, width: pad.strokeWidth };
+        pad.strokes.push(pad.currentStroke);
+        // A tap-only dot is still a real signature — mark non-empty now so it
+        // exports (move events would otherwise be the only thing clearing this).
+        pad.isEmpty = false;
         const ctx = getCtx(pad);
         ctx.beginPath();
         ctx.moveTo(p.x, p.y);
@@ -125,6 +183,7 @@ export function init(elementId, options, dotnetRef) {
         ctx.moveTo(mid.x, mid.y);
         pad.lastPoint = p;
         pad.isEmpty = false;
+        if (pad.currentStroke) pad.currentStroke.points.push({ x: p.x, y: p.y });
     };
 
     const endStroke = (e) => {
@@ -138,7 +197,7 @@ export function init(elementId, options, dotnetRef) {
         clearTimeout(pad.debounceTimer);
         pad.debounceTimer = setTimeout(() => {
             if (!pad.dotnetRef) return;
-            const dataUrl = pad.isEmpty ? null : canvas.toDataURL(pad.mimeType);
+            const dataUrl = pad.isEmpty ? null : exportDataUrl(pad, pad.mimeType);
             try {
                 pad.dotnetRef.invokeMethodAsync('OnStrokeEnded', dataUrl);
             } catch { /* circuit torn down — swallow */ }
@@ -166,11 +225,25 @@ export function clear(elementId) {
     clearCanvas(pad);
 }
 
+// Central export: SVG mime → real vector export from recorded strokes;
+// anything else → raster canvas.toDataURL. Falls back to PNG only if there are
+// no recorded strokes to vectorise (e.g. an image loaded via loadDataUrl).
+function exportDataUrl(pad, mimeType) {
+    const mt = mimeType || pad.mimeType;
+    if (mt === 'image/svg+xml') {
+        const svg = buildSvgDataUrl(pad);
+        if (svg) return svg;
+        // No vector data (image was loaded, not drawn) — fall back to raster.
+        return pad.canvas.toDataURL('image/png');
+    }
+    return pad.canvas.toDataURL(mt);
+}
+
 export function getDataUrl(elementId, mimeType) {
     const pad = pads.get(elementId);
     if (!pad) return null;
     if (pad.isEmpty) return null;
-    return pad.canvas.toDataURL(mimeType || pad.mimeType);
+    return exportDataUrl(pad, mimeType);
 }
 
 export function setStrokeStyle(elementId, color, width) {

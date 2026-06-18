@@ -16,7 +16,7 @@
 
     @if (Items is { Count: > 0 })
     {
-        <CascadingValue Value="_context" IsFixed="true">
+        <CascadingValue Value="_context" IsFixed="false">
             @for (var i = 0; i < _displayItems.Count; i++)
             {
                 var item = _displayItems[i];
@@ -88,6 +88,10 @@
         _context = new TreeViewContext(this);
     }
 
+    // Set when a declarative ExpandAll pass needs to pull in lazy children;
+    // consumed once by OnParametersSetAsync so the load runs a single time.
+    private bool _expandAllNeedsLazyLoad;
+
     protected override void OnParametersSet()
     {
         if (SelectedValues is not null)
@@ -102,28 +106,119 @@
         if (itemsChanged)
         {
             if (ExpandAll)
+            {
                 ApplyExpandAll(Items ?? [], true);
+                // #201: with lazy children, also fetch the not-yet-loaded branches.
+                if (LoadChildren is not null)
+                    _expandAllNeedsLazyLoad = true;
+            }
             RebuildDisplay();
         }
         else if (expandAllChanged)
         {
             ApplyExpandAll(Items ?? [], ExpandAll);
+            if (ExpandAll && LoadChildren is not null)
+                _expandAllNeedsLazyLoad = true;
             RebuildDisplay();
         }
     }
 
+    protected override async Task OnParametersSetAsync()
+    {
+        if (!_expandAllNeedsLazyLoad) return;
+        _expandAllNeedsLazyLoad = false;
+        var gen = ++_expandGeneration;
+        await LoadAndExpandAllAsync(Items ?? [], gen);
+        if (gen != _expandGeneration) return; // superseded by a collapse/expand
+        _flatVisible = null;
+        RebuildDisplay();
+        StateHasChanged();
+    }
+
+    /// <summary>Expands every node in the tree. Already-loaded nodes expand
+    /// synchronously; when <see cref="LoadChildren"/> is configured, lazy children
+    /// are then fetched and expanded in the background. Await
+    /// <see cref="ExpandAllNodesAsync"/> instead when you need the lazy load to
+    /// complete before continuing.</summary>
     public void ExpandAllNodes()
     {
         ApplyExpandAll(Items ?? [], true);
+        _flatVisible = null;
+        StateHasChanged();
+
+        // #201: ExpandAll must also pull in lazily-loaded children. Fire-and-forget
+        // so the synchronous void contract is preserved; the async pass re-renders
+        // as each level resolves.
+        if (LoadChildren is not null)
+            _ = ExpandAllNodesAsync();
+    }
+
+    /// <summary>Expands every node, awaiting <see cref="LoadChildren"/> for any
+    /// not-yet-loaded lazy branches so the whole tree is realized on completion.</summary>
+    // Bumped on every expand-all / collapse-all so a stale background lazy-expand
+    // pass (started before a later collapse) detects it lost the race and bails
+    // instead of re-expanding the tree the user just collapsed.
+    private int _expandGeneration;
+
+    public async Task ExpandAllNodesAsync()
+    {
+        var gen = ++_expandGeneration;
+        ApplyExpandAll(Items ?? [], true);
+        if (LoadChildren is not null)
+            await LoadAndExpandAllAsync(Items ?? [], gen);
+        if (gen != _expandGeneration) return; // superseded by a newer expand/collapse
         _flatVisible = null;
         StateHasChanged();
     }
 
     public void CollapseAllNodes()
     {
+        _expandGeneration++; // cancel any in-flight lazy expand pass
         ApplyExpandAll(Items ?? [], false);
         _flatVisible = null;
         StateHasChanged();
+    }
+
+    /// <summary>Recursively expands nodes, fetching lazy children via
+    /// <see cref="LoadChildren"/> for branches that haven't been loaded yet, then
+    /// descending into the freshly-loaded subtrees. Re-renders after each fetch so
+    /// the tree fills in progressively. Safe when <see cref="LoadChildren"/> is null
+    /// (it simply recurses over already-loaded children).</summary>
+    private async Task LoadAndExpandAllAsync(List<TreeViewItem<T>> items, int gen)
+    {
+        foreach (var item in items)
+        {
+            if (gen != _expandGeneration) return; // a newer collapse/expand superseded us
+            item.IsExpanded = true;
+
+            // A lazy, not-yet-loaded, non-leaf branch: fetch it once.
+            if (LoadChildren is not null && !item.ChildrenLoaded && !item.IsLeaf
+                && item.Children is not { Count: > 0 })
+            {
+                item.IsLoading = true;
+                _flatVisible = null;
+                StateHasChanged();
+                try
+                {
+                    item.Children = await LoadChildren(item);
+                    // Bail if the user collapsed / re-expanded while we awaited — don't
+                    // resurrect a tree they just collapsed (finally resets IsLoading).
+                    if (gen != _expandGeneration) return;
+                    item.ChildrenLoaded = true;
+                    // Mirror the per-node lazy-load cascade (rc.42): a fully-checked
+                    // parent propagates its check to freshly-loaded children.
+                    if (item.IsChecked && !item.IsIndeterminate && item.Children is { Count: > 0 })
+                        SetChildrenChecked(item.Children, true);
+                }
+                finally
+                {
+                    item.IsLoading = false;
+                }
+            }
+
+            if (item.Children is { Count: > 0 })
+                await LoadAndExpandAllAsync(item.Children, gen);
+        }
     }
 
     private async Task HandleItemClick(TreeViewItem<T> item)

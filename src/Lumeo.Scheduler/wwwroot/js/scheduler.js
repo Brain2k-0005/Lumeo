@@ -234,7 +234,12 @@ export const scheduler = {
     setEvents(id, events) {
         const inst = instances.get(id);
         if (!inst) return;
-        inst.calendar.removeAllEvents();
+        // removeAllEvents() only clears event OBJECTS, not the event SOURCES that
+        // hold them. addEventSource() then APPENDS a new source on every data
+        // update, so the source list grew unboundedly (memory + duplicate-source
+        // overhead). Remove every existing source (including the initial `events`
+        // option source) before adding the fresh one.
+        inst.calendar.getEventSources().forEach(s => s.remove());
         const arr = Array.isArray(events) ? events.map(normalizeEvent) : [];
         inst.calendar.addEventSource(arr);
     },

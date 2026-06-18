@@ -35,6 +35,99 @@ const DEFAULT_WORKER_URL = _cdn('pdfJsWorker', 'https://cdn.jsdelivr.net/npm/pdf
 
 let _pdfjsPromise = null;
 
+// Inject the pdf.js text-layer CSS once. The satellite ships only JS, so rather
+// than asking consumers to add a <link>, we self-inject the minimal styles that
+// make the transparent text spans positioned, selectable, and screen-reader
+// readable while staying invisible over the canvas. Scoped to .lumeo-pdf-text-layer.
+let _textLayerCssInjected = false;
+function ensureTextLayerCss() {
+    if (_textLayerCssInjected || typeof document === 'undefined') return;
+    _textLayerCssInjected = true;
+    const style = document.createElement('style');
+    style.id = 'lumeo-pdf-text-layer-css';
+    style.textContent = `
+.lumeo-pdf-text-layer {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+    opacity: 1;
+    line-height: 1;
+    text-align: initial;
+    text-size-adjust: none;
+    forced-color-adjust: none;
+    transform-origin: 0 0;
+    z-index: 1;
+    caret-color: CanvasText;
+}
+.lumeo-pdf-text-layer :is(span, br) {
+    color: transparent;
+    position: absolute;
+    white-space: pre;
+    cursor: text;
+    transform-origin: 0% 0%;
+}
+/* Make selection visible even though the glyphs themselves are transparent. */
+.lumeo-pdf-text-layer ::selection { background: rgba(0, 100, 255, 0.30); }
+.lumeo-pdf-text-layer span.markedContent { top: 0; height: 0; }
+`;
+    document.head.appendChild(style);
+}
+
+// Render (or re-render) the pdf.js text layer for a page into the sibling
+// <div id="${canvasId}-text">. Transparent, absolutely-positioned spans aligned
+// to the canvas via the CSS viewport so the page text is selectable / readable.
+// Supports both the pre-4.4 renderTextLayer() function (the pinned 4.0.379) and
+// the newer TextLayer class (in case a consumer overrides the CDN to a later
+// build). Failures are swallowed — a missing text layer must never break the
+// canvas render.
+async function renderTextLayerForPage(pdfjs, inst, canvasId, page, cssViewport) {
+    if (typeof document === 'undefined') return;
+    const container = document.getElementById(`${canvasId}-text`);
+    if (!container) return;
+
+    ensureTextLayerCss();
+
+    // Reset any previous content and abort an in-flight text-layer render.
+    if (inst.textLayerTask) {
+        try { inst.textLayerTask.cancel(); } catch { /* ignore */ }
+        inst.textLayerTask = null;
+    }
+    container.replaceChildren();
+
+    // pdf.js positions the spans in CSS px; size the container to match the canvas
+    // CSS box and set --scale-factor, which the span transforms reference.
+    container.style.width = `${Math.floor(cssViewport.width)}px`;
+    container.style.height = `${Math.floor(cssViewport.height)}px`;
+    container.style.setProperty('--scale-factor', String(cssViewport.scale));
+
+    try {
+        const textContent = await page.getTextContent();
+
+        if (typeof pdfjs.renderTextLayer === 'function') {
+            const task = pdfjs.renderTextLayer({
+                textContentSource: textContent,
+                container,
+                viewport: cssViewport,
+            });
+            inst.textLayerTask = task;
+            await task.promise;
+            inst.textLayerTask = null;
+        } else if (typeof pdfjs.TextLayer === 'function') {
+            const tl = new pdfjs.TextLayer({
+                textContentSource: textContent,
+                container,
+                viewport: cssViewport,
+            });
+            inst.textLayerTask = { cancel: () => { try { tl.cancel(); } catch { /* ignore */ } } };
+            await tl.render();
+            inst.textLayerTask = null;
+        }
+    } catch (e) {
+        if (e && e.name === 'RenderingCancelledException') return;
+        console.warn(`Lumeo.PdfViewer: text layer render failed for '${canvasId}'`, e);
+    }
+}
+
 // pdf.js v4 instantiates its worker via `new Worker(workerSrc, { type: 'module' })`.
 // When workerSrc is on a different origin (jsdelivr) some browsers refuse the
 // module-worker fetch with an opaque CORS error.  Pre-fetching the worker
@@ -124,11 +217,13 @@ export async function load(canvasId, src) {
     const task = pdfjs.getDocument({ url: src });
     const doc = await task.promise;
     _instances.set(canvasId, {
+        pdfjs,              // keep the lib handle so renderPage can build the text layer
         doc,
         src,
         currentPage: 0,
         currentZoom: 0,
         renderTask: null,
+        textLayerTask: null,
         renderLock: Promise.resolve(),
         pageTexts: null,    // lazily populated on first search: array of string per page (1-indexed)
         pageTextItems: null, // lazily populated: array of [{str, x, y, w, h}] per page (1-indexed)
@@ -219,6 +314,11 @@ async function doRenderPage(inst, canvasId, pageNum, zoom) {
     }
     inst.currentPage = safePage;
     inst.currentZoom = safeZoom;
+
+    // Render the selectable/accessible text layer aligned to the freshly painted
+    // canvas. Done after the canvas so the visible page is never blocked by it; a
+    // text-layer failure is swallowed inside the helper.
+    await renderTextLayerForPage(inst.pdfjs, inst, canvasId, page, cssViewport);
 }
 
 export async function destroy(canvasId) {
@@ -226,8 +326,14 @@ export async function destroy(canvasId) {
     if (!inst) return;
     try {
         if (inst.renderTask) { try { inst.renderTask.cancel(); } catch { /* ignore */ } }
+        if (inst.textLayerTask) { try { inst.textLayerTask.cancel(); } catch { /* ignore */ } }
         if (inst.doc) { await inst.doc.destroy(); }
     } catch { /* swallow */ }
+    // Clear the text-layer spans so a re-mounted canvas doesn't show stale text.
+    if (typeof document !== 'undefined') {
+        const tl = document.getElementById(`${canvasId}-text`);
+        if (tl) tl.replaceChildren();
+    }
     inst.pageTexts = null;
     inst.pageTextItems = null;
     _instances.delete(canvasId);

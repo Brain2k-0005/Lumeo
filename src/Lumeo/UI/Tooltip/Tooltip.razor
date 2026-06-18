@@ -3,12 +3,20 @@
 @inject Lumeo.Services.IComponentInteropService Interop
 
 @{
-    var context = new TooltipContext(_isOpen, _wrapperId);
+    var context = new TooltipContext(_isOpen, _wrapperId, _contentId);
 }
 
+@* aria-describedby links the trigger region to the role=tooltip content so
+   screen readers announce it — the tooltip's whole a11y purpose. @onfocusin /
+   @onfocusout bubble from the focusable child (e.g. a Button), giving keyboard
+   parity with hover; Escape dismisses per the WAI-ARIA tooltip pattern. *@
 <div id="@_wrapperId" class="relative inline-flex"
+     aria-describedby="@(_isOpen ? _contentId : null)"
      @onmouseenter="HandleMouseEnter"
      @onmouseleave="HandleMouseLeave"
+     @onfocusin="HandleFocusIn"
+     @onfocusout="HandleFocusOut"
+     @onkeydown="HandleKeyDown"
      @onclick="HandleTap"
      @attributes="AdditionalAttributes">
     <CascadingValue Value="context" IsFixed="false">
@@ -23,7 +31,11 @@
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     private readonly string _wrapperId = LumeoIds.New("tooltip-wrapper");
+    // Stable content id shared with TooltipContent so the trigger's
+    // aria-describedby can reference it.
+    private readonly string _contentId = LumeoIds.New("tooltip-content");
     private bool _hovered;
+    private bool _focused;
     // rc.44 — on touch devices a tap "pins" the tooltip open until the next
     // tap elsewhere (registerClickOutside also now listens for touchstart, so
     // dismissal works equally on mobile).
@@ -31,7 +43,7 @@
     private bool _clickOutsideRegistered;
     private readonly DelayedDispatch _dispatch = new();
 
-    private bool _isOpen => _hovered || _pinned;
+    private bool _isOpen => _hovered || _pinned || _focused;
 
     private void HandleMouseEnter()
     {
@@ -71,6 +83,37 @@
         }
     }
 
+    // Keyboard parity: focusing the trigger (or any focusable child) shows the
+    // tooltip immediately; blur hides it. Radix opens HoverCard/Tooltip on
+    // keyboard focus so keyboard-only users can read it.
+    private void HandleFocusIn()
+    {
+        _dispatch.Cancel();
+        _focused = true;
+        StateHasChanged();
+    }
+
+    private void HandleFocusOut()
+    {
+        _focused = false;
+        StateHasChanged();
+    }
+
+    // Escape dismisses the tooltip (clears hover + focus state) per WAI-ARIA.
+    private void HandleKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape")
+        {
+            // Clear the pinned (tap-to-stick) state too, otherwise Escape leaves a
+            // pinned tooltip open.
+            _dispatch.Cancel();
+            _pinned = false;
+            _hovered = false;
+            _focused = false;
+            StateHasChanged();
+        }
+    }
+
     // Tap toggles the pinned state. The first tap on a touch device fires
     // both `mouseenter` (browser-emulated) and `click` — that's fine: pin
     // simply sticks open. A second tap on the trigger unpins.
@@ -107,5 +150,5 @@
         }
     }
 
-    public record TooltipContext(bool IsOpen, string WrapperId);
+    public record TooltipContext(bool IsOpen, string WrapperId, string ContentId);
 }

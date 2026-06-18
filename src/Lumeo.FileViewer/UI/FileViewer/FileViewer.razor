@@ -182,6 +182,46 @@
                 case FileKind.Text:
                     <pre class="h-full overflow-auto whitespace-pre-wrap break-words bg-background px-4 py-3 text-xs text-foreground">@_fetchedText</pre>
                     break;
+                case FileKind.Office:
+                    @* Office docs can't be rendered inline without a heavy
+                       server-side converter or an embedded viewer iframe (which
+                       leaks the URL to a third party). Be explicit about that and
+                       offer the two safe escape hatches: download, and — only for
+                       publicly reachable http(s) URLs — open in the Microsoft
+                       Office web viewer. *@
+                    <EmptyState Class="py-12"
+                                Title="@OfficePreviewTitle"
+                                Description="Office documents can't be previewed inline. Download the file, or open it in an external viewer.">
+                        <IconContent>
+                            <Blazicon Svg="@KindIcon" class="h-10 w-10" />
+                        </IconContent>
+                        <Action>
+                            <div class="flex flex-wrap items-center justify-center gap-2">
+                                @if (!string.IsNullOrEmpty(Src))
+                                {
+                                    <a href="@Src"
+                                       download="@DisplayName"
+                                       target="_blank"
+                                       rel="noopener"
+                                       class="inline-flex h-9 items-center gap-2 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 focus:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring">
+                                        <Blazicon Svg="Lucide.Download" class="h-4 w-4" />
+                                        <span>Download</span>
+                                    </a>
+                                }
+                                @if (OfficeOnlineViewerUrl is not null)
+                                {
+                                    <a href="@OfficeOnlineViewerUrl"
+                                       target="_blank"
+                                       rel="noopener"
+                                       class="inline-flex h-9 items-center gap-2 rounded-md border border-input bg-background px-4 text-sm font-medium hover:bg-accent hover:text-accent-foreground transition-colors focus:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring">
+                                        <Blazicon Svg="Lucide.ExternalLink" class="h-4 w-4" />
+                                        <span>Open in viewer</span>
+                                    </a>
+                                }
+                            </div>
+                        </Action>
+                    </EmptyState>
+                    break;
                 default:
                     <EmptyState Class="py-12"
                                 Title="Preview unavailable"
@@ -261,9 +301,28 @@
     /// <summary>
     /// Plug a custom <see cref="HttpClient"/> for the text fetches. Use this
     /// to attach a pre-configured Authorization handler instead of mutating
-    /// the default client. Wins over <see cref="ConfigureRequest"/>.
+    /// the default client. Highest precedence — wins over
+    /// <see cref="HttpClientName"/>, DI, and the factory.
     /// </summary>
     [Parameter] public HttpClient? HttpClient { get; set; }
+
+    /// <summary>
+    /// Name of the client to pull from a DI-registered <c>IHttpClientFactory</c>
+    /// for the text fetches (Markdown/Code/JSON/CSV/Text). When the factory is
+    /// registered (the common case once <c>AddHttpClient()</c> has been called)
+    /// this is the recommended way to get a correctly-pooled client and avoid
+    /// socket exhaustion. Ignored when an explicit <see cref="HttpClient"/> is
+    /// supplied. Null/empty uses the factory's default client.
+    /// </summary>
+    [Parameter] public string? HttpClientName { get; set; }
+
+    /// <summary>
+    /// Show an "Open in viewer" action on the Office-document fallback panel that
+    /// opens the file in the Microsoft Office web viewer. Off by default because
+    /// it sends the document URL to a Microsoft endpoint and only works for
+    /// publicly reachable absolute http(s) URLs.
+    /// </summary>
+    [Parameter] public bool EnableOfficeOnlineViewer { get; set; }
 
     /// <summary>
     /// Hook to mutate the outgoing <see cref="HttpRequestMessage"/> before
@@ -358,6 +417,7 @@
         FileKind.Json => "JSON",
         FileKind.Csv => "CSV",
         FileKind.Text => "Text file",
+        FileKind.Office => "Office document",
         _ => "File",
     };
 
@@ -372,8 +432,44 @@
         FileKind.Json => Lucide.Braces,
         FileKind.Csv => Lucide.Table,
         FileKind.Text => Lucide.FileText,
+        FileKind.Office => Lucide.FileText,
         _ => Lucide.File,
     };
+
+    // Title for the Office fallback panel — names the specific format from the
+    // extension so the message is concrete ("Word document" beats "Office
+    // document" when we can tell which one it is).
+    private string OfficePreviewTitle
+    {
+        get
+        {
+            var ext = FileTypeDetector.ExtensionFor(Src);
+            return ext switch
+            {
+                ".doc" or ".docx" => "Word document",
+                ".xls" or ".xlsx" => "Excel spreadsheet",
+                ".ppt" or ".pptx" => "PowerPoint presentation",
+                _ => "Office document",
+            };
+        }
+    }
+
+    // URL for the Microsoft Office web viewer, or null when it can't apply.
+    // The viewer fetches the document server-side, so it only works for
+    // publicly reachable absolute http(s) URLs — never blob:/data:/relative
+    // URLs (those would just render an error inside the iframe). Gated behind
+    // EnableOfficeOnlineViewer because it sends the document URL to a Microsoft
+    // endpoint, which some deployments must not do.
+    private string? OfficeOnlineViewerUrl
+    {
+        get
+        {
+            if (!EnableOfficeOnlineViewer || string.IsNullOrWhiteSpace(Src)) return null;
+            if (!Uri.TryCreate(Src, UriKind.Absolute, out var uri)) return null;
+            if (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps) return null;
+            return "https://view.officeapps.live.com/op/view.aspx?src=" + Uri.EscapeDataString(Src!);
+        }
+    }
 
     protected override async Task OnParametersSetAsync()
     {
@@ -478,7 +574,8 @@
             {
                 using var req = new HttpRequestMessage(HttpMethod.Head, Src);
                 if (ConfigureRequest is not null) await ConfigureRequest(req);
-                using var client = GetHttpClient();
+                // Do NOT dispose: the client is shared/factory/DI-owned now.
+                var client = GetHttpClient();
                 using var resp = await client.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, token);
                 if (resp.IsSuccessStatusCode)
                 {
@@ -502,20 +599,57 @@
         _ => false,
     };
 
-    // Why no IHttpClientFactory fallback: it lives in the Microsoft.Extensions.Http
-    // package, which the standard Blazor WASM template does NOT pull in by default
-    // (templates register a single HttpClient via builder.Services.AddScoped). Taking
-    // that dep just to support `factory.CreateClient(...)` adds weight that 95% of
-    // consumers wouldn't use. Server / WebApp consumers who want a named client can
-    // pre-create it and pass via the HttpClient parameter.
+    // Process-wide last-resort client. Only ever created when NONE of the
+    // preferred sources (explicit param, IHttpClientFactory, DI HttpClient)
+    // are available — e.g. a bare WASM app that forgot to register one. Static
+    // + lazy so we allocate at most one for the whole app instead of a fresh
+    // socket-leaking HttpClient per fetch (the old per-call `new HttpClient()`).
+    private static HttpClient? _fallbackClient;
+    private static readonly object _fallbackLock = new();
+
+    // IHttpClientFactory lives in Microsoft.Extensions.Http, a package the bare
+    // Blazor WASM template does NOT pull in — and adding a hard reference would
+    // force the weight on the 95% of consumers who never call AddHttpClient().
+    // So we resolve the factory *by type, via reflection* off the service
+    // provider: when AddHttpClient() WAS called the factory is registered and we
+    // use it (correct pooling, no socket exhaustion); when it wasn't, the type
+    // is simply absent and we fall through. Resolved once and cached.
+    private static readonly Type? _factoryType =
+        Type.GetType("System.Net.Http.IHttpClientFactory, Microsoft.Extensions.Http");
+
+    // Client resolution precedence (none of these is owned by the caller, so
+    // callers must NOT dispose the returned client):
+    //   1. explicit HttpClient parameter,
+    //   2. IHttpClientFactory from DI (recommended; replaces the old transient),
+    //   3. an HttpClient registered directly in DI (standard Blazor WASM),
+    //   4. a cached process-wide fallback client.
     private HttpClient GetHttpClient()
     {
         if (HttpClient is not null) return HttpClient;
-        var fromDi = Services.GetService(typeof(HttpClient)) as HttpClient;
-        if (fromDi is not null) return fromDi;
-        // Last-resort: a transient client. Anti-pattern at scale, but a viewer
-        // that throws on missing DI is worse UX than a single allocation.
-        return new HttpClient();
+
+        if (_factoryType is not null && Services.GetService(_factoryType) is { } factory)
+        {
+            // IHttpClientFactory only declares CreateClient(string); the
+            // parameterless overload is an extension method, so reflecting for
+            // Type.EmptyTypes returns null and a registered factory would be
+            // skipped whenever HttpClientName is empty. Always call
+            // CreateClient(string) with the default ("") name so the factory is
+            // honoured per the precedence documented above.
+            var createClient = _factoryType.GetMethod("CreateClient", new[] { typeof(string) });
+            var created = createClient?.Invoke(factory, new object?[] { HttpClientName ?? string.Empty });
+            if (created is HttpClient fromFactory) return fromFactory;
+        }
+
+        if (Services.GetService(typeof(HttpClient)) is HttpClient fromDi) return fromDi;
+
+        if (_fallbackClient is null)
+        {
+            lock (_fallbackLock)
+            {
+                _fallbackClient ??= new HttpClient();
+            }
+        }
+        return _fallbackClient;
     }
 
     private async Task<string> FetchTextAsync(string src, CancellationToken token)

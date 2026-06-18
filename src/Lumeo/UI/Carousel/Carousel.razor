@@ -19,10 +19,32 @@
    @onkeydown:preventDefault="true" cancelled EVERY key bubbling through the
    region — Tab couldn't leave (keyboard trap) and typing/Space inside
    interactive slide content was dead. *@
-<div id="@EffectiveRootId" role="region" aria-roledescription="carousel" class="@CssClass" @onkeydown="HandleKeyDown" @attributes="AdditionalAttributes">
+<div id="@EffectiveRootId" role="region" aria-roledescription="carousel" class="@CssClass"
+     @onkeydown="HandleKeyDown"
+     @onpointerenter="OnPointerEnter" @onpointerleave="OnPointerLeave"
+     @onfocusin="OnFocusIn" @onfocusout="OnFocusOut"
+     @attributes="AdditionalAttributes">
     <CascadingValue Value="context" IsFixed="false">
         @ChildContent
     </CascadingValue>
+    @if (ShowIndicators && _items.Count > 1)
+    {
+        @* Indicator dots — one per slide, current is highlighted. Each jumps
+           straight to its slide. Rendered in a tablist-ish row; buttons carry
+           an aria-label so they're operable by name. *@
+        <div class="@IndicatorWrapClass" role="group" aria-label="@L["Carousel.Indicators"]">
+            @for (var i = 0; i < _items.Count; i++)
+            {
+                var index = i;
+                var isActive = index == _currentIndex;
+                <button type="button"
+                        class="@IndicatorDotClass(isActive)"
+                        aria-label="@L["Carousel.GoToSlide", index + 1]"
+                        aria-current="@(isActive ? "true" : null)"
+                        @onclick="() => ScrollTo(index)"></button>
+            }
+        </div>
+    }
     @* Visually-hidden live region announces slide changes to assistive
        tech. Auto-play decks or programmatic ScrollTo would otherwise be
        silent. Polite (not assertive) so it doesn't interrupt other speech. *@
@@ -37,13 +59,32 @@
     [Parameter] public Lumeo.Orientation Orientation { get; set; } = Lumeo.Orientation.Horizontal;
     [Parameter] public bool Loop { get; set; }
     [Parameter] public bool Disabled { get; set; }
+
+    /// <summary>Advance slides automatically on a timer. Pairs well with
+    /// <see cref="Loop"/> so the deck wraps instead of stopping at the end.</summary>
+    [Parameter] public bool Autoplay { get; set; }
+
+    /// <summary>Autoplay tick interval in milliseconds. Defaults to 4000.</summary>
+    [Parameter] public int AutoplayInterval { get; set; } = 4000;
+
+    /// <summary>Pause autoplay while the pointer is over the carousel or focus
+    /// is inside it (so users can read / interact). Defaults to true.</summary>
+    [Parameter] public bool PauseOnHover { get; set; } = true;
+
+    /// <summary>Render clickable indicator dots (one per slide) below the deck.</summary>
+    [Parameter] public bool ShowIndicators { get; set; }
+
     [Parameter] public RenderFragment? ChildContent { get; set; }
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     private int _currentIndex;
+    private System.Timers.Timer? _autoplayTimer;
+    private bool _hovered;
+    private bool _focused;
     private bool _canScrollPrev;
     private bool _canScrollNext = true;
+    private bool _isDisposed;
     private readonly string _rootId = LumeoIds.New("carousel-root");
     private readonly string _contentId = LumeoIds.New("carousel");
     // A consumer-supplied `id` in AdditionalAttributes overrides the generated
@@ -59,6 +100,16 @@
 
     private string CssClass => Cx.Merge("relative", Class);
 
+    // Indicator dots sit centered on the cross-axis edge: bottom for a
+    // horizontal deck, right for a vertical one.
+    private string IndicatorWrapClass => Orientation == Lumeo.Orientation.Horizontal
+        ? "absolute inset-x-0 bottom-2 z-10 flex items-center justify-center gap-2"
+        : "absolute inset-y-0 right-2 z-10 flex flex-col items-center justify-center gap-2";
+
+    private static string IndicatorDotClass(bool active) => Cx.Merge(
+        "h-2 w-2 rounded-full transition-colors focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-2",
+        active ? "bg-primary" : "bg-primary/30 hover:bg-primary/50");
+
     private string SlideAnnouncement => _items.Count > 0
         ? L["Carousel.SlideXofY", _currentIndex + 1, _items.Count]
         : string.Empty;
@@ -66,12 +117,43 @@
     private void RegisterItem(object token)
     {
         if (!_items.Contains(token)) _items.Add(token);
+        OnItemsChanged();
     }
 
-    private void UnregisterItem(object token) => _items.Remove(token);
+    private void UnregisterItem(object token)
+    {
+        if (_items.Remove(token)) OnItemsChanged();
+    }
+
+    // CarouselItems register during their OnInitialized as the deck renders its
+    // ChildContent — AFTER this component's own render. The indicator dots are
+    // driven off _items.Count, so re-render once membership settles to paint
+    // them (and keep the count accurate). Guarded on the count to avoid a loop.
+    private int _lastRenderedItemCount = -1;
+    private void OnItemsChanged()
+    {
+        if (_items.Count != _lastRenderedItemCount)
+            InvokeAsync(StateHasChanged);
+    }
+
+    protected override void OnParametersSet()
+    {
+        // Honor Autoplay / AutoplayInterval / Disabled / PauseOnHover changes
+        // pushed by the parent at any time.
+        SyncAutoplay();
+    }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
+        // Snapshot the settled item count so OnItemsChanged only re-renders when
+        // it actually changes (avoids a render loop from registration).
+        _lastRenderedItemCount = _items.Count;
+
+        // Items register during the first child render; start autoplay only
+        // once we actually have slides to advance through.
+        if (firstRender && Autoplay)
+            SyncAutoplay();
+
         try
         {
             if (firstRender)
@@ -176,6 +258,70 @@
         StateHasChanged();
     }
 
+    // Jump straight to a slide (used by the indicator dots). Clamped to the
+    // known item range so a stale index can't scroll past the ends.
+    private async Task ScrollTo(int index)
+    {
+        if (Disabled) return;
+        if (_items.Count == 0) return;
+        index = Math.Clamp(index, 0, _items.Count - 1);
+        _currentIndex = index;
+        await Interop.CarouselScrollTo(_contentId, index);
+        StateHasChanged();
+    }
+
+    // --- Autoplay ---
+
+    private bool AutoplayActive => Autoplay && !Disabled && !(PauseOnHover && (_hovered || _focused));
+
+    private void SyncAutoplay()
+    {
+        if (AutoplayActive)
+        {
+            if (_autoplayTimer is null)
+            {
+                _autoplayTimer = new System.Timers.Timer { AutoReset = true };
+                _autoplayTimer.Elapsed += OnAutoplayTick;
+            }
+            // Guard the interval — a 0/negative would throw on Timers.Timer.
+            _autoplayTimer.Interval = Math.Max(250, AutoplayInterval);
+            _autoplayTimer.Enabled = true;
+        }
+        else if (_autoplayTimer is not null)
+        {
+            _autoplayTimer.Enabled = false;
+        }
+    }
+
+    private void OnAutoplayTick(object? sender, System.Timers.ElapsedEventArgs e)
+    {
+        // Marshal back onto the renderer's sync context. Advance, wrapping to
+        // the first slide at the end (autoplay implies continuous motion even
+        // without Loop set, otherwise it would stall on the last slide).
+        _ = InvokeAsync(async () =>
+        {
+            // Guard the dispose race: the timer can fire and queue this callback
+            // just as DisposeAsync runs, so bail if we've been torn down.
+            if (!AutoplayActive || _isDisposed) return;
+            // Best-effort autoplay: a circuit drop / disposal mid-scroll must not
+            // surface as an unobserved task exception.
+            try
+            {
+                if (_canScrollNext)
+                    await ScrollNext();
+                else
+                    await ScrollTo(0);
+            }
+            catch (JSDisconnectedException) { }
+            catch (ObjectDisposedException) { }
+        });
+    }
+
+    private void OnPointerEnter() { _hovered = true; SyncAutoplay(); }
+    private void OnPointerLeave() { _hovered = false; SyncAutoplay(); }
+    private void OnFocusIn() { _focused = true; SyncAutoplay(); }
+    private void OnFocusOut() { _focused = false; SyncAutoplay(); }
+
     private async Task HandleKeyDown(KeyboardEventArgs e)
     {
         if (Disabled) return;
@@ -195,6 +341,13 @@
 
     public async ValueTask DisposeAsync()
     {
+        _isDisposed = true;
+        if (_autoplayTimer is not null)
+        {
+            _autoplayTimer.Elapsed -= OnAutoplayTick;
+            _autoplayTimer.Dispose();
+            _autoplayTimer = null;
+        }
         try
         {
             await Interop.UnregisterCarouselSwipe(_contentId);

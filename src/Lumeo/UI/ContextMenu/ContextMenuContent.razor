@@ -19,9 +19,14 @@
     private readonly string _contentId = LumeoIds.New("context-menu-content");
     private bool _registered;
     private int _focusedIndex = -1;
+    private double _positionedX = double.NaN;
+    private double _positionedY = double.NaN;
 
     private string CssClass => Cx.Merge("fixed z-50 min-w-[8rem] overflow-hidden rounded-md border border-border/40 bg-popover p-1 text-popover-foreground shadow-lg animate-fade-in", Class);
 
+    // Initial inline placement at the raw click point; OnAfterRenderAsync then
+    // clamps the menu inside the viewport. The root menu previously rendered
+    // partly off-screen near the bottom/right edges (submenus already flip).
     private string PositionStyle => string.Create(System.Globalization.CultureInfo.InvariantCulture, $"position: fixed; left: {Context.X}px; top: {Context.Y}px");
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -36,15 +41,30 @@
             _registered = true;
             _focusedIndex = -1;
 
+            await ClampToViewport();
+
             // Move focus to the menu container so Escape/ArrowUp/ArrowDown reach
             // the @onkeydown handler. Without this, focus stays on the trigger
             // element and keyboard nav silently breaks (per WAI-ARIA menu pattern).
             try { await Interop.FocusElement(_contentId); } catch (JSDisconnectedException) { }
         }
+        else if (Context.IsOpen && _registered && (Context.X != _positionedX || Context.Y != _positionedY))
+        {
+            // Re-opened at new coordinates (right-click elsewhere while still open).
+            await ClampToViewport();
+        }
         else if (!Context.IsOpen && _registered)
         {
             await Cleanup();
         }
+    }
+
+    private async Task ClampToViewport()
+    {
+        _positionedX = Context.X;
+        _positionedY = Context.Y;
+        try { await Interop.PositionAtPoint(_contentId, Context.X, Context.Y); }
+        catch (JSDisconnectedException) { }
     }
 
     private async Task HandleKeyDown(KeyboardEventArgs e)
@@ -105,6 +125,8 @@
         }
         catch (JSDisconnectedException) { }
         _registered = false;
+        _positionedX = double.NaN;
+        _positionedY = double.NaN;
     }
 
     public async ValueTask DisposeAsync()

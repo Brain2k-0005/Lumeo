@@ -1,7 +1,14 @@
 @namespace Lumeo
+@inject Lumeo.Services.IComponentInteropService Interop
 
 @{
-    var context = new AccordionContext(Type, _openItems, EventCallback.Factory.Create<string>(this, ToggleItem));
+    var context = new AccordionContext(
+        Type,
+        OpenItems,
+        EventCallback.Factory.Create<string>(this, ToggleItem),
+        RegisterTrigger,
+        UnregisterTrigger,
+        EventCallback.Factory.Create<(string Value, int Delta, bool ToEdge, bool Last)>(this, MoveFocus));
 }
 
 <div class="@CssClass" @attributes="AdditionalAttributes">
@@ -13,12 +20,69 @@
 @code {
     [Parameter] public RenderFragment? ChildContent { get; set; }
     [Parameter] public AccordionType Type { get; set; } = AccordionType.Single;
+
+    /// <summary>Initial open items for the <b>uncontrolled</b> usage. Ignored
+    /// once <see cref="Value"/> / <see cref="Values"/> drive the component.</summary>
     [Parameter] public List<string>? DefaultValues { get; set; }
+
+    /// <summary>
+    /// Controlled open item for <see cref="AccordionType.Single"/>. When non-null
+    /// the accordion is controlled — its open state comes entirely from this
+    /// parameter and toggles are reported via <see cref="ValueChanged"/> (the
+    /// consumer owns the state). Pair with <c>@bind-Value</c>. An empty string
+    /// means "all collapsed". Leave null for the uncontrolled behaviour seeded by
+    /// <see cref="DefaultValues"/>.
+    /// </summary>
+    [Parameter] public string? Value { get; set; }
+
+    /// <summary>Two-way callback for <see cref="Value"/> (Single mode).</summary>
+    [Parameter] public EventCallback<string> ValueChanged { get; set; }
+
+    /// <summary>
+    /// Controlled open items for <see cref="AccordionType.Multiple"/>. When
+    /// non-null the accordion is controlled. Pair with <c>@bind-Values</c>.
+    /// Leave null for the uncontrolled behaviour seeded by
+    /// <see cref="DefaultValues"/>.
+    /// </summary>
+    [Parameter] public IReadOnlyList<string>? Values { get; set; }
+
+    /// <summary>Two-way callback for <see cref="Values"/> (Multiple mode).</summary>
+    [Parameter] public EventCallback<IReadOnlyList<string>> ValuesChanged { get; set; }
+
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     private readonly HashSet<string> _openItems = new();
     private bool _initialized;
+
+    // Ordered trigger registry: value -> (triggerId, disabled). Maintained by
+    // AccordionTrigger so roving ArrowUp/Down/Home/End can move focus between
+    // triggers in DOM order, skipping disabled ones (WAI-ARIA accordion).
+    private readonly List<(string Value, string TriggerId, bool Disabled)> _triggers = new();
+
+    // Controlled when either controlled parameter is supplied (non-null).
+    private bool IsControlled => Value is not null || Values is not null;
+
+    // The set the cascade reads from: the controlled parameters when controlled,
+    // else the internal uncontrolled set.
+    private HashSet<string> OpenItems
+    {
+        get
+        {
+            if (!IsControlled) return _openItems;
+            var set = new HashSet<string>();
+            if (Type == AccordionType.Multiple)
+            {
+                if (Values is not null)
+                    foreach (var v in Values) set.Add(v);
+            }
+            else if (!string.IsNullOrEmpty(Value))
+            {
+                set.Add(Value);
+            }
+            return set;
+        }
+    }
 
     private string CssClass => Cx.Merge(Class);
 
@@ -30,12 +94,32 @@
             {
                 _openItems.Add(value);
             }
-            _initialized = true;
         }
+        _initialized = true;
     }
 
-    private Task ToggleItem(string value)
+    private async Task ToggleItem(string value)
     {
+        if (IsControlled)
+        {
+            // Compute the next state from the controlled parameters and report
+            // it; never mutate the consumer's source of truth directly.
+            var open = OpenItems;
+            if (Type == AccordionType.Multiple)
+            {
+                var next = new List<string>(open);
+                if (next.Contains(value)) next.Remove(value);
+                else next.Add(value);
+                await ValuesChanged.InvokeAsync(next);
+            }
+            else
+            {
+                var next = open.Contains(value) ? string.Empty : value;
+                await ValueChanged.InvokeAsync(next);
+            }
+            return;
+        }
+
         if (_openItems.Contains(value))
         {
             _openItems.Remove(value);
@@ -49,12 +133,66 @@
             _openItems.Add(value);
         }
         StateHasChanged();
-        return Task.CompletedTask;
+    }
+
+    private void RegisterTrigger(string value, string triggerId, bool disabled)
+    {
+        var idx = _triggers.FindIndex(t => t.Value == value);
+        if (idx >= 0) _triggers[idx] = (value, triggerId, disabled);
+        else _triggers.Add((value, triggerId, disabled));
+    }
+
+    private void UnregisterTrigger(string value)
+    {
+        var idx = _triggers.FindIndex(t => t.Value == value);
+        if (idx >= 0) _triggers.RemoveAt(idx);
+    }
+
+    // Roving focus across triggers. Delta ±1 steps to the next/previous enabled
+    // trigger (no wrap, matching Radix); ToEdge focuses the first/last enabled
+    // trigger (Home/End). Focus is moved via the interop FocusElement helper.
+    private async Task MoveFocus((string Value, int Delta, bool ToEdge, bool Last) args)
+    {
+        if (_triggers.Count == 0) return;
+        string? targetId = null;
+
+        if (args.ToEdge)
+        {
+            targetId = args.Last
+                ? _triggers.LastOrDefault(t => !t.Disabled).TriggerId
+                : _triggers.FirstOrDefault(t => !t.Disabled).TriggerId;
+        }
+        else
+        {
+            var current = _triggers.FindIndex(t => t.Value == args.Value);
+            if (current < 0) return;
+            var idx = current;
+            for (var i = 0; i < _triggers.Count; i++)
+            {
+                idx += args.Delta;
+                if (idx < 0 || idx >= _triggers.Count) return; // no wrap
+                if (!_triggers[idx].Disabled) { targetId = _triggers[idx].TriggerId; break; }
+            }
+        }
+
+        if (!string.IsNullOrEmpty(targetId))
+        {
+            try { await Interop.FocusElement(targetId); }
+            catch (JSDisconnectedException) { }
+            catch (ObjectDisposedException) { }
+            catch (InvalidOperationException) { } // prerender
+        }
     }
 
     public enum AccordionType { Single, Multiple }
 
-    public record AccordionContext(AccordionType Type, HashSet<string> OpenItems, EventCallback<string> Toggle)
+    public record AccordionContext(
+        AccordionType Type,
+        HashSet<string> OpenItems,
+        EventCallback<string> Toggle,
+        Action<string, string, bool> RegisterTrigger,
+        Action<string> UnregisterTrigger,
+        EventCallback<(string Value, int Delta, bool ToEdge, bool Last)> MoveFocus)
     {
         public bool IsOpen(string value) => OpenItems.Contains(value);
     }

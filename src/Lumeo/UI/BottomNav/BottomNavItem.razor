@@ -84,10 +84,15 @@ else
     {
         if (IsActive is not null) { _active = IsActive.Value; return; }
         if (string.IsNullOrEmpty(Href)) { _active = false; return; }
-        var current = "/" + Nav.ToBaseRelativePath(Nav.Uri).TrimEnd('/');
+        // Compare PATHS only: the query string and fragment never participate in
+        // NavLink-style active matching, so a navigation to /orders?status=open
+        // or /docs#install must still light up an Href="/orders" item (#243).
+        var current = "/" + StripQueryAndFragment(Nav.ToBaseRelativePath(Nav.Uri)).TrimEnd('/');
         // Normalize target so root ("/") stays as "/" — TrimEnd('/') alone would
-        // turn it into "" and make every path StartsWith match it.
-        var raw = Href.StartsWith('/') ? Href : "/" + Href;
+        // turn it into "" and make every path StartsWith match it. The Href may
+        // also carry its own query/fragment; strip those before comparing.
+        var hrefPath = StripQueryAndFragment(Href);
+        var raw = hrefPath.StartsWith('/') ? hrefPath : "/" + hrefPath;
         var target = raw == "/" ? "/" : raw.TrimEnd('/');
         if (target == "/")
         {
@@ -97,6 +102,15 @@ else
         }
         _active = string.Equals(current, target, StringComparison.OrdinalIgnoreCase)
                   || current.StartsWith(target + "/", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static readonly char[] QueryFragmentChars = { '?', '#' };
+
+    // Drops everything from the first '?' or '#' onward, whichever comes first.
+    private static string StripQueryAndFragment(string path)
+    {
+        var cut = path.IndexOfAny(QueryFragmentChars);
+        return cut >= 0 ? path[..cut] : path;
     }
 
     private async Task HandleClick()

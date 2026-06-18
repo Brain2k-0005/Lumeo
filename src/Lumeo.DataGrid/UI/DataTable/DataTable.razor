@@ -2,32 +2,41 @@
 @typeparam TItem
 
 <div class="relative w-full overflow-auto" @attributes="AdditionalAttributes">
-    <table class="@CssClass">
-        <thead class="[&_tr]:border-b [&_tr]:border-border/40">
-            <tr class="border-b border-border/40 transition-colors hover:bg-muted/50">
+    @* role="grid" + aria-row/colcount give AT the table's shape. aria-rowcount
+       includes the header row (+1). aria-multiselectable is only set when the
+       selection checkboxes are present. Consumer-supplied <th>/<td> in the
+       Header/Row templates keep their native table semantics; we add row/cell
+       roles on the markup we own (rows + the selection column). *@
+    <table class="@CssClass"
+           role="grid"
+           aria-rowcount="@(_itemsList.Count + 1)"
+           aria-colcount="@(AriaColCount > 0 ? AriaColCount : null)"
+           aria-multiselectable="@(Selectable ? "true" : null)">
+        <thead class="[&_tr]:border-b [&_tr]:border-border/40" role="rowgroup">
+            <tr class="border-b border-border/40 transition-colors hover:bg-muted/50" role="row" aria-rowindex="1">
                 @if (Selectable)
                 {
-                    <th class="h-10 w-10 px-2 text-left align-middle font-medium text-muted-foreground">
-                        <Checkbox Checked="@IsAllSelected" IsIndeterminate="@IsSomeSelected" CheckedChanged="@ToggleSelectAll" />
+                    <th class="h-10 w-10 px-2 text-left align-middle font-medium text-muted-foreground" role="columnheader" scope="col">
+                        <Checkbox Checked="@IsAllSelected" IsIndeterminate="@IsSomeSelected" CheckedChanged="@ToggleSelectAll" AriaLabel="Select all rows" />
                     </th>
                 }
                 @HeaderTemplate
             </tr>
         </thead>
-        <tbody class="[&_tr:last-child]:border-0">
+        <tbody class="[&_tr:last-child]:border-0" role="rowgroup">
             @if (IsLoading)
             {
                 @for (var i = 0; i < SkeletonRows; i++)
                 {
-                    <tr class="border-b border-border/40">
+                    <tr class="border-b border-border/40" role="row" aria-hidden="true">
                         @LoadingTemplate
                     </tr>
                 }
             }
             else if (Items is null || !Items.Any())
             {
-                <tr>
-                    <td colspan="100" class="p-8">
+                <tr role="row">
+                    <td colspan="100" class="p-8" role="gridcell">
                         @if (EmptyTemplate is not null)
                         {
                             @EmptyTemplate
@@ -44,11 +53,15 @@
             else if (Virtualize)
             {
                 <Microsoft.AspNetCore.Components.Web.Virtualization.Virtualize Items="@_itemsList" Context="item" SpacerElement="tr" ItemSize="@(ItemSize > 0 ? ItemSize : 41f)">
-                    <tr class="border-b border-border/40 transition-colors hover:bg-muted/50">
+                    @* Keyed identically to the non-virtualized path so Blazor
+                       diffs rows by identity, not position — without this the
+                       virtualized rows were unkeyed and recycling reused the
+                       wrong row state (checkbox/edit state) when scrolling. *@
+                    <tr @key="DataGridRowKeys.KeyFor(item)" class="border-b border-border/40 transition-colors hover:bg-muted/50" role="row" aria-selected="@(Selectable ? (SelectedItems?.Contains(item) == true ? "true" : "false") : null)">
                         @if (Selectable)
                         {
-                            <td class="w-10 px-2 py-2 align-middle">
-                                <Checkbox Checked="@(SelectedItems?.Contains(item) == true)" CheckedChanged="@(c => ToggleItem(item, c))" />
+                            <td class="w-10 px-2 py-2 align-middle" role="gridcell">
+                                <Checkbox Checked="@(SelectedItems?.Contains(item) == true)" CheckedChanged="@(c => ToggleItem(item, c))" AriaLabel="Select row" />
                             </td>
                         }
                         @RowTemplate!(item)
@@ -59,11 +72,11 @@
             {
                 @foreach (var item in _itemsList)
                 {
-                    <tr @key="DataGridRowKeys.KeyFor(item)" class="border-b border-border/40 transition-colors hover:bg-muted/50">
+                    <tr @key="DataGridRowKeys.KeyFor(item)" class="border-b border-border/40 transition-colors hover:bg-muted/50" role="row" aria-selected="@(Selectable ? (SelectedItems?.Contains(item) == true ? "true" : "false") : null)">
                         @if (Selectable)
                         {
-                            <td class="w-10 px-2 py-2 align-middle">
-                                <Checkbox Checked="@(SelectedItems?.Contains(item) == true)" CheckedChanged="@(c => ToggleItem(item, c))" />
+                            <td class="w-10 px-2 py-2 align-middle" role="gridcell">
+                                <Checkbox Checked="@(SelectedItems?.Contains(item) == true)" CheckedChanged="@(c => ToggleItem(item, c))" AriaLabel="Select row" />
                             </td>
                         }
                         @RowTemplate!(item)
@@ -97,6 +110,15 @@
     [Parameter] public HashSet<TItem>? SelectedItems { get; set; }
     [Parameter] public EventCallback<HashSet<TItem>> SelectedItemsChanged { get; set; }
 
+    /// <summary>
+    /// Total column count reported via <c>aria-colcount</c> on the grid
+    /// (including the selection column when <see cref="Selectable"/> is on).
+    /// Set this when the header/row templates render a fixed number of columns
+    /// so assistive tech can announce "column X of N". 0 (default) omits the
+    /// attribute since the count can't be inferred from consumer templates.
+    /// </summary>
+    [Parameter] public int AriaColCount { get; set; }
+
     // Virtualization
     /// <summary>Virtualize the row list using Blazor's &lt;Virtualize&gt; — only renders rows in the viewport.</summary>
     [Parameter] public bool Virtualize { get; set; }
@@ -120,29 +142,29 @@
         _isSomeSelected = SelectedItems is not null && SelectedItems.Count > 0 && !_isAllSelected;
     }
 
+    // Selection mutations emit a NEW HashSet each time rather than mutating the
+    // bound instance in place. Mutating-in-place broke `@bind-SelectedItems`:
+    // the parent's field still pointed at the same reference, so SetParametersAsync
+    // saw "no change" and downstream comparisons / change detection no-opped.
+    // Returning a fresh set gives the callback a distinct identity per change —
+    // the ref-stable contract two-way binding and EventCallback consumers expect.
     private async Task ToggleSelectAll(bool select)
     {
         if (Items is null) return;
-        SelectedItems ??= [];
-        if (select)
-        {
-            foreach (var item in Items) SelectedItems.Add(item);
-        }
-        else
-        {
-            SelectedItems.Clear();
-        }
+        var next = select ? new HashSet<TItem>(Items) : new HashSet<TItem>();
+        SelectedItems = next;
         RefreshSelectionCache();
-        await SelectedItemsChanged.InvokeAsync(SelectedItems);
+        await SelectedItemsChanged.InvokeAsync(next);
     }
 
     private async Task ToggleItem(TItem item, bool selected)
     {
-        SelectedItems ??= [];
-        if (selected) SelectedItems.Add(item);
-        else SelectedItems.Remove(item);
+        var next = SelectedItems is null ? new HashSet<TItem>() : new HashSet<TItem>(SelectedItems);
+        if (selected) next.Add(item);
+        else next.Remove(item);
+        SelectedItems = next;
         RefreshSelectionCache();
-        await SelectedItemsChanged.InvokeAsync(SelectedItems);
+        await SelectedItemsChanged.InvokeAsync(next);
     }
 
     private void RefreshSelectionCache()

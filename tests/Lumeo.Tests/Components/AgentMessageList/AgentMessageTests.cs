@@ -149,4 +149,74 @@ public class AgentMessageTests : IAsyncLifetime
 
         Assert.Contains("am-x", cut.Find("div").GetAttribute("class"));
     }
+
+    // ── #303: timestamp renders in the message's own offset, never server-tz ──
+
+    [Fact]
+    public void Timestamp_Renders_In_Its_Own_Offset_Not_Server_Local()
+    {
+        // 14:30 at +00:00 must read "14:30" regardless of the server's time zone.
+        // The old ToLocalTime() shifted this to the server zone (the #303 bug).
+        var ts = new DateTimeOffset(2026, 4, 20, 14, 30, 0, TimeSpan.Zero);
+        var cut = _ctx.Render<Lumeo.AgentMessage>(p => p
+            .Add(m => m.Role, Lumeo.AgentMessage.AgentMessageRole.Assistant)
+            .Add(m => m.Timestamp, ts)
+            .AddChildContent("hi"));
+
+        Assert.Equal("14:30", cut.Find("time").TextContent);
+    }
+
+    [Fact]
+    public void Timestamp_Preserves_NonZero_Offset()
+    {
+        // 09:00 at +02:00 stays 09:00 (rendered in its carried offset).
+        var ts = new DateTimeOffset(2026, 4, 20, 9, 0, 0, TimeSpan.FromHours(2));
+        var cut = _ctx.Render<Lumeo.AgentMessage>(p => p
+            .Add(m => m.Role, Lumeo.AgentMessage.AgentMessageRole.User)
+            .Add(m => m.Timestamp, ts)
+            .AddChildContent("hi"));
+
+        Assert.Equal("09:00", cut.Find("time").TextContent);
+    }
+
+    [Fact]
+    public void Explicit_TimeZone_Converts_The_Timestamp()
+    {
+        // 14:30 UTC converted to UTC+5:30 → 20:00.
+        var ts = new DateTimeOffset(2026, 4, 20, 14, 30, 0, TimeSpan.Zero);
+        var tz = TimeZoneInfo.CreateCustomTimeZone("test+0530", TimeSpan.FromMinutes(330), "test", "test");
+        var cut = _ctx.Render<Lumeo.AgentMessage>(p => p
+            .Add(m => m.Role, Lumeo.AgentMessage.AgentMessageRole.Assistant)
+            .Add(m => m.Timestamp, ts)
+            .Add(m => m.TimeZone, tz)
+            .AddChildContent("hi"));
+
+        Assert.Equal("20:00", cut.Find("time").TextContent);
+    }
+
+    [Fact]
+    public void Custom_TimestampFormat_Is_Honored()
+    {
+        var ts = new DateTimeOffset(2026, 4, 20, 14, 30, 0, TimeSpan.Zero);
+        var cut = _ctx.Render<Lumeo.AgentMessage>(p => p
+            .Add(m => m.Role, Lumeo.AgentMessage.AgentMessageRole.Assistant)
+            .Add(m => m.Timestamp, ts)
+            .Add(m => m.TimestampFormat, "yyyy-MM-dd HH:mm")
+            .Add(m => m.TimestampCulture, System.Globalization.CultureInfo.InvariantCulture)
+            .AddChildContent("hi"));
+
+        Assert.Equal("2026-04-20 14:30", cut.Find("time").TextContent);
+    }
+
+    [Fact]
+    public void Timestamp_Emits_Iso_Utc_Datetime_Attribute()
+    {
+        var ts = new DateTimeOffset(2026, 4, 20, 9, 0, 0, TimeSpan.FromHours(2)); // = 07:00Z
+        var cut = _ctx.Render<Lumeo.AgentMessage>(p => p
+            .Add(m => m.Role, Lumeo.AgentMessage.AgentMessageRole.Assistant)
+            .Add(m => m.Timestamp, ts)
+            .AddChildContent("hi"));
+
+        Assert.Equal("2026-04-20T07:00:00Z", cut.Find("time").GetAttribute("datetime"));
+    }
 }

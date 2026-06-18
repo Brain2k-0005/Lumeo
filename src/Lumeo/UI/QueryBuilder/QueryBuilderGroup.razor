@@ -91,6 +91,10 @@
                             {
                                 @Ctx.ValueEditorTemplate(rule)
                             }
+                            else if (rule.Operator is "in" or "notIn")
+                            {
+                                @RenderMultiValueEditor(field, rule)
+                            }
                             else if (!QueryBuilderOperators.NoValueOperators.Contains(rule.Operator))
                             {
                                 @RenderValueEditor(field, rule, isSecond: false)
@@ -212,10 +216,15 @@
         await Ctx.NotifyChanged();
     }
 
+    private static bool IsMultiValue(string op) => op is "in" or "notIn";
+
     private async Task OnOperatorChanged(QueryRule rule, string? newOp)
     {
         if (string.IsNullOrEmpty(newOp) || rule.Operator == newOp) return;
         var wasRange = QueryBuilderOperators.RangeOperators.Contains(rule.Operator);
+        // Toggling between single-value and multi-value ("in"/"notIn") editors changes the
+        // value shape (scalar vs comma-joined list), so clear a stale value on that transition.
+        if (IsMultiValue(rule.Operator) != IsMultiValue(newOp)) rule.Value = null;
         rule.Operator = newOp;
         if (!QueryBuilderOperators.RangeOperators.Contains(newOp)) rule.Value2 = null;
         if (QueryBuilderOperators.NoValueOperators.Contains(newOp)) { rule.Value = null; rule.Value2 = null; }
@@ -336,6 +345,71 @@
                 builder.CloseElement();
                 break;
             }
+        }
+    };
+
+    // Splits a stored comma-joined value into the set of currently-selected values, matching the
+    // expression compiler's Split(',', RemoveEmptyEntries | TrimEntries) in QueryBuilderSerialization.
+    private static IReadOnlyCollection<string> SelectedValues(QueryRule rule) =>
+        (rule.Value?.ToString() ?? "")
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+    // Value editor for the multi-value "in"/"notIn" operators. For Select fields this renders a
+    // checkbox per option and stores the selected values as a comma-joined string (preserving option
+    // order) so the compiler's OR/AND-of-equals set works. Non-Select fields fall back to a single
+    // comma-separated text input.
+    private RenderFragment RenderMultiValueEditor(QueryField field, QueryRule rule) => builder =>
+    {
+        if (field.Type == QueryFieldType.Select && field.Options is { Count: > 0 } options)
+        {
+            var selected = new HashSet<string>(SelectedValues(rule));
+            builder.OpenElement(0, "div");
+            builder.AddAttribute(1, "class", "flex flex-wrap items-center gap-x-3 gap-y-1");
+            builder.AddAttribute(2, "role", "group");
+            builder.AddAttribute(3, "aria-label", "Values");
+            var seq = 4;
+            foreach (var (val, label) in options)
+            {
+                var optionValue = val;
+                var isChecked = selected.Contains(optionValue);
+                builder.OpenElement(seq++, "label");
+                builder.AddAttribute(seq++, "class", "inline-flex items-center gap-1.5 text-sm text-foreground");
+                builder.OpenElement(seq++, "input");
+                builder.AddAttribute(seq++, "type", "checkbox");
+                builder.AddAttribute(seq++, "class", "h-4 w-4 rounded border-input accent-primary");
+                builder.AddAttribute(seq++, "checked", isChecked);
+                builder.AddAttribute(seq++, "aria-label", label);
+                builder.AddAttribute(seq++, "onchange",
+                    Microsoft.AspNetCore.Components.EventCallback.Factory.Create<Microsoft.AspNetCore.Components.ChangeEventArgs>(
+                        this, async e =>
+                        {
+                            var nowChecked = e.Value is bool b && b;
+                            var current = new HashSet<string>(SelectedValues(rule));
+                            if (nowChecked) current.Add(optionValue); else current.Remove(optionValue);
+                            // Re-emit in declared option order so output is stable.
+                            var joined = string.Join(",", options.Where(o => current.Contains(o.Value)).Select(o => o.Value));
+                            await SetValue(rule, isSecond: false, joined);
+                        }));
+                builder.CloseElement();
+                builder.AddContent(seq++, label);
+                builder.CloseElement();
+            }
+            builder.CloseElement();
+        }
+        else
+        {
+            // Fallback for non-Select fields configured with a custom "in"/"notIn" operator:
+            // a single comma-separated text input.
+            builder.OpenElement(0, "input");
+            builder.AddAttribute(1, "type", "text");
+            builder.AddAttribute(2, "class", InputClass);
+            builder.AddAttribute(3, "value", AsString(rule.Value));
+            builder.AddAttribute(4, "placeholder", "Comma-separated values");
+            builder.AddAttribute(5, "aria-label", "Comma-separated values");
+            builder.AddAttribute(6, "onchange",
+                Microsoft.AspNetCore.Components.EventCallback.Factory.Create<Microsoft.AspNetCore.Components.ChangeEventArgs>(
+                    this, async e => await SetValue(rule, isSecond: false, e.Value?.ToString())));
+            builder.CloseElement();
         }
     };
 }

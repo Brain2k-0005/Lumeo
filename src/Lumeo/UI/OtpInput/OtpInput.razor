@@ -21,9 +21,11 @@
                 @foreach (var idx in group)
                 {
                     var index = idx;
-                    <input id="@($"{_baseId}-{index}")"
+                    <input @key="@($"{index}:{GetChar(index)}:{_cellNonce[index]}")"
+                           id="@($"{_baseId}-{index}")"
                            aria-required="@Required.ToString().ToLowerInvariant()"
                            aria-invalid="@EffectiveInvalid.ToString().ToLowerInvariant()"
+                           aria-label="@(string.Format(L["OtpInput.DigitLabel"], index + 1, Length))"
                            type="@(Masked ? "password" : "text")"
                            inputmode="@InputModeAttr"
                            maxlength="1"
@@ -58,6 +60,7 @@
 
 @implements IAsyncDisposable
 @inject IComponentInteropService Interop
+@inject Lumeo.Services.Localization.ILumeoLocalizer L
 
 @code {
     [CascadingParameter] private FormField.FormFieldContext? FormField { get; set; }
@@ -93,6 +96,21 @@
     private bool InsideFormField => FormField is not null;
 
     private readonly string _baseId = LumeoIds.New("otp");
+
+    // Per-cell render nonce. Bumping a cell's nonce changes that input's @key so
+    // Blazor recreates the element with its model value — used to discard a
+    // rejected keystroke that the browser already painted (#178), without
+    // re-keying the other cells (which would steal focus).
+    private int[] _cellNonce = System.Array.Empty<int>();
+
+    protected override void OnParametersSet()
+    {
+        if (Length < 0)
+            throw new ArgumentOutOfRangeException(nameof(Length), "Length cannot be negative.");
+
+        if (_cellNonce.Length != Length)
+            _cellNonce = new int[Length];
+    }
 
     private string CssClass => Cx.Merge("flex items-center gap-2", Class);
 
@@ -155,8 +173,9 @@
     private async Task HandlePaste(string text)
     {
         var filtered = FilterInput(text);
-        var padded = filtered.PadRight(Length).Substring(0, Length);
-        Value = padded.TrimEnd();
+        // Truncate to capacity; do NOT pad — padding produced trailing/interior
+        // whitespace that leaked into the surfaced value (#178).
+        Value = filtered.Length > Length ? filtered[..Length] : filtered;
         await ValueChanged.InvokeAsync(Value);
 
         if (Value.Length == Length)
@@ -181,51 +200,99 @@
         return new string(input.Where(IsValidChar).ToArray());
     }
 
+    // Editing buffer of fixed Length. Empty cells use the NUL sentinel rather
+    // than a space, so they never surface as whitespace in the emitted value.
+    private const char Empty = '\0';
+
+    private char[] CellsFromValue()
+    {
+        var cells = new char[Length];
+        for (var i = 0; i < Length; i++)
+            cells[i] = i < Value.Length ? Value[i] : Empty;
+        return cells;
+    }
+
+    // Collapse the buffer to a clean, gap-free string. Interior empties (e.g. a
+    // mid-field clear) contribute nothing, so the value is never space-padded.
+    private static string BuildValue(char[] cells)
+        => new(cells.Where(c => c != Empty).ToArray());
+
     private async Task HandleInput(int index, ChangeEventArgs e)
     {
         var input = e.Value?.ToString() ?? "";
-        if (input.Length > 0)
+        if (input.Length == 0)
+            return;
+
+        var lastChar = input[^1];
+        if (!IsValidChar(lastChar))
         {
-            var lastChar = input[^1];
-            if (!IsValidChar(lastChar)) return;
+            // The browser already painted the rejected character. Bumping this
+            // cell's nonce re-keys only this input so Blazor recreates it from the
+            // model value, instantly discarding the invalid char (#178). Recreating
+            // the element drops focus, so restore it to the same cell.
+            _cellNonce[index]++;
+            StateHasChanged();
+            try { await Interop.FocusElement($"{_baseId}-{index}"); }
+            catch (JSDisconnectedException) { }
+            return;
+        }
 
-            var chars = Value.PadRight(Length).ToCharArray();
-            chars[index] = lastChar;
-            Value = new string(chars).TrimEnd();
-            await ValueChanged.InvokeAsync(Value);
+        var cells = CellsFromValue();
+        cells[index] = lastChar;
+        Value = BuildValue(cells);
+        await ValueChanged.InvokeAsync(Value);
 
-            if (index < Length - 1)
-            {
-                await Interop.FocusElement($"{_baseId}-{index + 1}");
-            }
+        if (index < Length - 1)
+        {
+            await Interop.FocusElement($"{_baseId}-{index + 1}");
+        }
 
-            if (Value.Length == Length)
-            {
-                await OnComplete.InvokeAsync(Value);
-            }
+        if (Value.Length == Length)
+        {
+            await OnComplete.InvokeAsync(Value);
         }
     }
 
     private async Task HandleKeyDown(int index, KeyboardEventArgs e)
     {
-        if (e.Key == "Backspace" || e.Key == "Delete")
+        switch (e.Key)
         {
-            var chars = Value.PadRight(Length).ToCharArray();
-            if (GetChar(index) != "")
-            {
-                chars[index] = ' ';
-                Value = new string(chars).TrimEnd();
-                await ValueChanged.InvokeAsync(Value);
+            case "ArrowLeft":
                 if (index > 0)
                     await Interop.FocusElement($"{_baseId}-{index - 1}");
-            }
-            else if (index > 0)
-            {
-                chars[index - 1] = ' ';
-                Value = new string(chars).TrimEnd();
-                await ValueChanged.InvokeAsync(Value);
+                return;
+            case "ArrowRight":
+                if (index < Length - 1)
+                    await Interop.FocusElement($"{_baseId}-{index + 1}");
+                return;
+            case "Home":
+                await Interop.FocusElement($"{_baseId}-0");
+                return;
+            case "End":
+                await Interop.FocusElement($"{_baseId}-{Length - 1}");
+                return;
+            case "Backspace":
+            case "Delete":
+                break;
+            default:
+                return;
+        }
+
+        var cells = CellsFromValue();
+        if (GetChar(index) != "")
+        {
+            cells[index] = Empty;
+            Value = BuildValue(cells);
+            await ValueChanged.InvokeAsync(Value);
+            if (index > 0)
                 await Interop.FocusElement($"{_baseId}-{index - 1}");
-            }
+        }
+        else if (index > 0)
+        {
+            cells[index - 1] = Empty;
+            Value = BuildValue(cells);
+            await ValueChanged.InvokeAsync(Value);
+            await Interop.FocusElement($"{_baseId}-{index - 1}");
         }
     }
 

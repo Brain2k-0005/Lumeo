@@ -11,9 +11,10 @@
 // -----------------------
 //   - Core (`@codemirror/state`, `@codemirror/view`, `@codemirror/language`,
 //     `@codemirror/commands`, `@codemirror/search`, `@codemirror/autocomplete`)
-//     is dynamic-imported once on first init, cached in `_corePromise`.
-//   - Language packs are lazy-loaded per `language` arg, cached in
-//     `_langCache` so switching back to a language is instant.
+//     is dynamic-imported once per ESM base on first init, cached in
+//     `_corePromiseByBase`.
+//   - Language packs are lazy-loaded per `language` arg, cached per base in
+//     `_langCacheByBase` so switching back to a language is instant.
 //   - Themes: the One Dark theme is dynamic-imported when needed; the light
 //     theme is CodeMirror's built-in default.
 //   - All imports go through `https://esm.sh/` — CDN already serves these
@@ -23,36 +24,54 @@
 // at init time and re-evaluates via a MutationObserver on the html element's
 // class attribute, so Lumeo's ThemeSwitcher flips CodeMirror instantly.
 
-// ESM base — overridable via `window.lumeoCdn.codeMirrorBase` so airgapped /
-// self-hosted consumers can swap esm.sh for their own bundle directory.
+// ESM base — overridable three ways, in precedence order:
+//   1. the per-component `esmBase` option (C# `EsmBase` parameter) — wins,
+//   2. the global `window.lumeoCdn.codeMirrorBase`,
+//   3. the public esm.sh CDN.
+// All three let airgapped / self-hosted / strict-CSP consumers swap esm.sh for
+// their own ESM mirror directory. `_esmBase` is resolved on first init and
+// reused for every later import so the global core/lang/theme caches stay keyed
+// to a single origin.
 function _cdn(key, fallback) {
     return (typeof window !== 'undefined' && window.lumeoCdn && window.lumeoCdn[key]) || fallback;
 }
-const ESM = _cdn('codeMirrorBase', 'https://esm.sh').replace(/\/$/, '');
+const DEFAULT_ESM = _cdn('codeMirrorBase', 'https://esm.sh').replace(/\/$/, '');
+let _esmBase = DEFAULT_ESM;
+function _resolveBase(options) {
+    const fromOpts = options && typeof options.esmBase === 'string' ? options.esmBase.trim() : '';
+    if (fromOpts) _esmBase = fromOpts.replace(/\/$/, '');
+    return _esmBase;
+}
 const CM_VERSION = '6';       // major; esm.sh resolves to latest 6.x
 const LANG_VERSION = '6';     // language packs
 
 // Instances keyed by elementId.
 const _instances = new Map();
 
-let _corePromise = null;
-const _langCache = new Map();
-let _oneDarkPromise = null;
+// Module caches are keyed by RESOLVED ESM base: two editors pointing at
+// different bases (esm.sh vs a self-hosted mirror) must never share module
+// instances — CodeMirror rejects extensions built from a different copy of
+// @codemirror/state, so a cross-origin cache hit breaks the editor.
+const _corePromiseByBase = new Map();      // base -> Promise<core>
+const _langCacheByBase = new Map();        // base -> Map<langKey, Promise<ext>>
+const _oneDarkPromiseByBase = new Map();   // base -> Promise<ext>
+const _minimapPromiseByBase = new Map();   // base -> Promise<ext|null>
 
-async function loadCore() {
-    if (_corePromise) return _corePromise;
-    _corePromise = (async () => {
+async function loadCore(base = _esmBase) {
+    if (_corePromiseByBase.has(base)) return _corePromiseByBase.get(base);
+    const promise = (async () => {
         const [state, view, language, commands, search, autocomplete] = await Promise.all([
-            import(`${ESM}/@codemirror/state@${CM_VERSION}`),
-            import(`${ESM}/@codemirror/view@${CM_VERSION}`),
-            import(`${ESM}/@codemirror/language@${CM_VERSION}`),
-            import(`${ESM}/@codemirror/commands@${CM_VERSION}`),
-            import(`${ESM}/@codemirror/search@${CM_VERSION}`),
-            import(`${ESM}/@codemirror/autocomplete@${CM_VERSION}`),
+            import(`${base}/@codemirror/state@${CM_VERSION}`),
+            import(`${base}/@codemirror/view@${CM_VERSION}`),
+            import(`${base}/@codemirror/language@${CM_VERSION}`),
+            import(`${base}/@codemirror/commands@${CM_VERSION}`),
+            import(`${base}/@codemirror/search@${CM_VERSION}`),
+            import(`${base}/@codemirror/autocomplete@${CM_VERSION}`),
         ]);
         return { state, view, language, commands, search, autocomplete };
     })();
-    return _corePromise;
+    _corePromiseByBase.set(base, promise);
+    return promise;
 }
 
 // Maps the user-facing language string to (npm pkg, factory fn name on its exports).
@@ -72,22 +91,27 @@ const LANG_MAP = {
     plaintext:  null, // no language extension
 };
 
-async function loadLanguage(language) {
+async function loadLanguage(language, base = _esmBase) {
     const key = (language || 'plaintext').toLowerCase();
     const spec = LANG_MAP[key];
     if (!spec) return null;
 
-    if (_langCache.has(key)) return _langCache.get(key);
+    let langCache = _langCacheByBase.get(base);
+    if (!langCache) {
+        langCache = new Map();
+        _langCacheByBase.set(base, langCache);
+    }
+    if (langCache.has(key)) return langCache.get(key);
 
     const promise = (async () => {
-        const core = await loadCore();
+        const core = await loadCore(base);
         if (spec.legacy) {
             // C# (and other clike dialects) live in @codemirror/legacy-modes — they wrap
             // CodeMirror 5 modes via StreamLanguage. Bundle is small (~10KB) and saves
             // us pulling a separate tree-sitter grammar for an admin-form-grade editor.
             const [legacyLang, clike] = await Promise.all([
-                import(`${ESM}/@codemirror/language@${CM_VERSION}`),
-                import(`${ESM}/@codemirror/legacy-modes@${LANG_VERSION}/mode/clike`),
+                import(`${base}/@codemirror/language@${CM_VERSION}`),
+                import(`${base}/@codemirror/legacy-modes@${LANG_VERSION}/mode/clike`),
             ]);
             const StreamLanguage = legacyLang.StreamLanguage;
             const mode = clike[spec.mode] || clike.default?.[spec.mode];
@@ -95,23 +119,44 @@ async function loadLanguage(language) {
             return StreamLanguage.define(mode);
         }
 
-        const mod = await import(`${ESM}/${spec.pkg}@${LANG_VERSION}`);
+        const mod = await import(`${base}/${spec.pkg}@${LANG_VERSION}`);
         const fn = mod[spec.factory] || mod.default?.[spec.factory] || mod.default;
         if (typeof fn !== 'function') return null;
         return spec.opts ? fn(spec.opts) : fn();
     })();
 
-    _langCache.set(key, promise);
+    langCache.set(key, promise);
     return promise;
 }
 
-async function loadOneDark() {
-    if (_oneDarkPromise) return _oneDarkPromise;
-    _oneDarkPromise = (async () => {
-        const mod = await import(`${ESM}/@codemirror/theme-one-dark@${CM_VERSION}`);
+async function loadOneDark(base = _esmBase) {
+    if (_oneDarkPromiseByBase.has(base)) return _oneDarkPromiseByBase.get(base);
+    const promise = (async () => {
+        const mod = await import(`${base}/@codemirror/theme-one-dark@${CM_VERSION}`);
         return mod.oneDark || mod.default?.oneDark || mod.default;
     })();
-    return _oneDarkPromise;
+    _oneDarkPromiseByBase.set(base, promise);
+    return promise;
+}
+
+// Minimap — CodeMirror 6 has no built-in minimap, so we lazily pull the
+// community `@replit/codemirror-minimap` extension from the same ESM base.
+// Cached after first load. Returns null (and the editor renders without a
+// minimap) if the import fails — e.g. offline with no self-hosted mirror.
+async function loadMinimap(base = _esmBase) {
+    if (_minimapPromiseByBase.has(base)) return _minimapPromiseByBase.get(base);
+    const promise = (async () => {
+        try {
+            const mod = await import(`${base}/@replit/codemirror-minimap`);
+            return mod.showMinimap || mod.default?.showMinimap || mod.default || null;
+        } catch (_) {
+            // Reset so a later toggle can retry (e.g. network came back).
+            _minimapPromiseByBase.delete(base);
+            return null;
+        }
+    })();
+    _minimapPromiseByBase.set(base, promise);
+    return promise;
 }
 
 function isPageDark() {
@@ -129,7 +174,7 @@ function resolveDark(theme) {
     return isPageDark();
 }
 
-async function buildExtensions(opts, core) {
+async function buildExtensions(opts, core, base = _esmBase) {
     const { state, view, language, commands, search, autocomplete } = core;
     const exts = [];
 
@@ -178,13 +223,28 @@ async function buildExtensions(opts, core) {
     }
 
     // Language extension (lazy).
-    const langExt = await loadLanguage(opts.language);
+    const langExt = await loadLanguage(opts.language, base);
     if (langExt) exts.push(langExt);
 
     // Theme.
     if (resolveDark(opts.theme)) {
-        const oneDark = await loadOneDark();
+        const oneDark = await loadOneDark(base);
         if (oneDark) exts.push(oneDark);
+    }
+
+    // Minimap (lazy, optional). Degrades to no-minimap if the package can't load.
+    if (opts.minimap) {
+        const showMinimap = await loadMinimap(base);
+        if (showMinimap && typeof showMinimap.compute === 'function') {
+            exts.push(showMinimap.compute([], () => ({
+                create: () => {
+                    const dom = document.createElement('div');
+                    return { dom };
+                },
+                displayText: 'characters',
+                showOverlay: 'always',
+            })));
+        }
     }
 
     return exts;
@@ -200,10 +260,15 @@ export async function init(elementId, options, dotNetRef) {
     // Wipe any previous content (HMR / re-init safety).
     host.innerHTML = '';
 
-    const core = await loadCore();
+    // Resolve the per-instance ESM base (C# EsmBase) before any import, and
+    // thread it through every loader so this editor's modules all come from the
+    // same origin (and are cached under that base).
+    const base = _resolveBase(options);
+
+    const core = await loadCore(base);
     const { state, view } = core;
 
-    const exts = await buildExtensions(options, core);
+    const exts = await buildExtensions(options, core, base);
 
     // Change listener — fire dotNetRef.OnEditorChange with the latest doc on every edit.
     // CodeMirror's `EditorView.updateListener` fires synchronously per transaction;
@@ -257,6 +322,7 @@ export async function init(elementId, options, dotNetRef) {
         view: editorView,
         dotNetRef,
         options: { ...options },
+        base,
         themeObserver,
         debounceTimer: () => debounceTimer,
     });
@@ -265,8 +331,8 @@ export async function init(elementId, options, dotNetRef) {
 async function rebuild(elementId) {
     const inst = _instances.get(elementId);
     if (!inst) return;
-    const core = await loadCore();
-    const exts = await buildExtensions(inst.options, core);
+    const core = await loadCore(inst.base);
+    const exts = await buildExtensions(inst.options, core, inst.base);
     // Track the change listener: must re-attach so doc changes still propagate.
     const listener = core.view.EditorView.updateListener.of((update) => {
         if (update.docChanged) {
@@ -331,6 +397,16 @@ export async function setReadOnly(elementId, readOnly) {
     const inst = _instances.get(elementId);
     if (!inst) return;
     inst.options.readOnly = readOnly;
+    await rebuild(elementId);
+}
+
+export async function setMinimap(elementId, minimap) {
+    const inst = _instances.get(elementId);
+    if (!inst) return;
+    if (inst.options.minimap === minimap) return;
+    inst.options.minimap = minimap;
+    // rebuild() re-runs buildExtensions, which adds/drops the minimap extension
+    // while preserving doc + selection (it copies them into the new state).
     await rebuild(elementId);
 }
 

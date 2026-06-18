@@ -23,15 +23,26 @@
             </Footer>
         </OverlayForm>
 
-    <gotcha>Renders an empty shell (nothing visible) until Model is set — the EditContext is deferred to avoid crashing EditForm on a null Model, so a missing Model fails silently rather than throwing.</gotcha>
+    <gotcha>A missing Model no longer fails silently: the EditContext is still
+    deferred (EditForm crashes on a null Model + null EditContext), but instead of
+    an invisible empty shell the component now renders a dev-visible diagnostic
+    so the misconfiguration is obvious during development.</gotcha>
 *@
 
 @if (_editContext is null)
 {
-    @* No Model supplied yet — render an empty shell rather than crashing
-       the EditForm. This is the path the lib-wide ComponentContractTests
-       hit when they instantiate every component with default parameters. *@
-    <div class="@CssClass" @attributes="AdditionalAttributes"></div>
+    @* No Model supplied — render a dev-visible diagnostic instead of crashing
+       EditForm (which dies on a null Model + null EditContext) or silently
+       emitting an empty shell. The root still carries AdditionalAttributes so
+       the library-wide contract tests, which render every component with
+       default parameters, keep passing. *@
+    <div class="@CssClass" @attributes="AdditionalAttributes">
+        <div role="alert" class="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+            <strong class="font-semibold">OverlayForm:</strong>
+            no <code class="font-mono">Model</code> was supplied. Set the required
+            <code class="font-mono">Model</code> parameter to the object the form edits.
+        </div>
+    </div>
 }
 else
 {

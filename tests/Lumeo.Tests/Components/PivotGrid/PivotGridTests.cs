@@ -252,6 +252,82 @@ public class PivotGridTests : IAsyncLifetime
         Assert.Contains("Grand Total", cut.Markup);
     }
 
+    // ---- Regression: row path-key collision (#212) ------------------------
+
+    // Normalised visible text of every <tbody> row (whitespace collapsed).
+    private static List<string> BodyRowTexts(IRenderedComponent<L.PivotGrid<Sale>> cut)
+        => cut.FindAll("tbody tr")
+              .Select(r => System.Text.RegularExpressions.Regex.Replace(r.TextContent, @"\s+", ""))
+              .ToList();
+
+    [Fact]
+    public void Colliding_Row_Paths_Keep_Their_Own_Leaf_Cell_Aggregates()
+    {
+        // Two two-level leaf paths whose segments concatenate to the SAME string
+        // but split differently: ["a","bc"] (=> 111) and ["ab","c"] (=> 222). With
+        // the old empty-join key both leaves became "L1|abc", so the second leaf
+        // clobbered the first in the per-row cell cache (cache[node.Key] = perCol)
+        // and the "bc" leaf row rendered 222 instead of its own 111.
+        //
+        // Subtotals / grand totals are disabled so each value comes only from its
+        // own leaf data cell. Expected rows: a/111, bc/111, ab/222, c/222.
+        var data = new List<Sale>
+        {
+            new("a",  "bc", 2023, 111m),
+            new("ab", "c",  2023, 222m),
+        };
+
+        var cut = _ctx.Render<L.PivotGrid<Sale>>(p => p
+            .Add(g => g.Items, data)
+            .Add(g => g.RowFields, RowFields(2))           // [Region, Country]
+            .Add(g => g.ColumnFields, ColumnFields())      // [Year]
+            .Add(g => g.Measures, SumMeasure())
+            .Add(g => g.ShowSubtotals, false)
+            .Add(g => g.ShowRowGrandTotal, false)
+            .Add(g => g.ShowColumnGrandTotal, false)
+            .Add(g => g.Collapsible, false));
+
+        var rows = BodyRowTexts(cut);
+        // The leaf rows must carry their own aggregates. Pre-fix the "bc" leaf
+        // rendered "bc222" (clobbered by the colliding ["ab","c"] leaf).
+        Assert.Contains("bc111", rows);
+        Assert.Contains("c222", rows);
+        Assert.DoesNotContain("bc222", rows);
+    }
+
+    [Fact]
+    public void Colliding_Leaf_Cells_Resolve_To_Different_Year_Columns()
+    {
+        // Same collision, but the two leaves carry their amounts in DIFFERENT year
+        // columns (a/bc in 2023, ab/c in 2024). If the leaves shared a cache key the
+        // surviving bucket would only have one year populated, so the "bc" leaf would
+        // lose its 2023 value entirely (rendering 0 in both year columns).
+        var data = new List<Sale>
+        {
+            new("a",  "bc", 2023, 111m),
+            new("ab", "c",  2024, 222m),
+        };
+
+        var cut = _ctx.Render<L.PivotGrid<Sale>>(p => p
+            .Add(g => g.Items, data)
+            .Add(g => g.RowFields, RowFields(2))
+            .Add(g => g.ColumnFields, ColumnFields())
+            .Add(g => g.Measures, SumMeasure())
+            .Add(g => g.ShowSubtotals, false)
+            .Add(g => g.ShowRowGrandTotal, false)
+            .Add(g => g.ShowColumnGrandTotal, false)
+            .Add(g => g.Collapsible, false));
+
+        var rows = BodyRowTexts(cut);
+        // Two year columns => leaf row text is the label followed by the two cells.
+        // bc has 111 in 2023 and 0 in 2024; c has 0 in 2023 and 222 in 2024.
+        Assert.Contains(rows, r => r.StartsWith("bc") && r.Contains("111"));
+        Assert.Contains(rows, r => r.StartsWith("c") && r.Contains("222") && !r.StartsWith("bc"));
+        // Pre-fix the surviving bucket only had the ["ab","c"]/2024 item, so the bc
+        // leaf would not contain its 111 at all.
+        Assert.DoesNotContain(rows, r => r.StartsWith("bc") && r.Contains("222"));
+    }
+
     [Fact]
     public void Empty_Items_Shows_EmptyContent()
     {

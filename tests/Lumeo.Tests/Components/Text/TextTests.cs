@@ -142,4 +142,65 @@ public class TextTests : IAsyncLifetime
         var cls = cut.Find("p").GetAttribute("class") ?? "";
         Assert.DoesNotContain("text-totally-not-a-real-token", cls);
     }
+
+    // --- #294: widened semantic element set ---
+
+    [Theory]
+    [InlineData("em")]
+    [InlineData("b")]
+    [InlineData("i")]
+    [InlineData("label")]
+    [InlineData("mark")]
+    public void As_Renders_Widened_Semantic_Elements(string tag)
+    {
+        var cut = _ctx.Render<Lumeo.Text>(p => p
+            .Add(t => t.As, tag)
+            .AddChildContent("Semantic"));
+
+        var el = cut.Find(tag);
+        Assert.Equal("Semantic", el.TextContent);
+    }
+
+    // --- #294: LineClamp ---
+
+    [Theory]
+    [InlineData(1, "line-clamp-1")]
+    [InlineData(2, "line-clamp-2")]
+    [InlineData(3, "line-clamp-3")]
+    public void LineClamp_In_Range_Adds_LineClamp_Class(int n, string expected)
+    {
+        var cut = _ctx.Render<Lumeo.Text>(p => p
+            .Add(t => t.LineClamp, n)
+            .AddChildContent("Clamped"));
+
+        var cls = cut.Find("p").GetAttribute("class");
+        Assert.Contains(expected, cls);
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(4)]
+    [InlineData(-1)]
+    public void LineClamp_Out_Of_Range_Adds_No_Class(int n)
+    {
+        var cut = _ctx.Render<Lumeo.Text>(p => p
+            .Add(t => t.LineClamp, n)
+            .AddChildContent("Clamped"));
+
+        var cls = cut.Find("p").GetAttribute("class") ?? "";
+        Assert.DoesNotContain("line-clamp-", cls);
+    }
+
+    [Fact]
+    public void Truncate_Wins_Over_LineClamp_When_Both_Set()
+    {
+        var cut = _ctx.Render<Lumeo.Text>(p => p
+            .Add(t => t.Truncate, true)
+            .Add(t => t.LineClamp, 2)
+            .AddChildContent("Both"));
+
+        var cls = cut.Find("p").GetAttribute("class") ?? "";
+        Assert.Contains("truncate", cls);
+        Assert.DoesNotContain("line-clamp-", cls);
+    }
 }

@@ -164,10 +164,13 @@ public class SheetTests : IAsyncLifetime
     {
         var cut = RenderSheet(isOpen: true);
         var allDivs = cut.FindAll("div");
+        // #217 — the backdrop now uses the theme-aware --color-overlay-backdrop
+        // token via inline style (was a hardcoded bg-black/80 utility).
         var hasBackdrop = allDivs.Any(d =>
         {
             var cls = d.GetAttribute("class") ?? "";
-            return cls.Contains("bg-black") && cls.Contains("fixed") && cls.Contains("inset-0");
+            var style = d.GetAttribute("style") ?? "";
+            return style.Contains("--color-overlay-backdrop") && cls.Contains("fixed") && cls.Contains("inset-0");
         });
         Assert.True(hasBackdrop, "Backdrop should be present when sheet is open");
     }
@@ -384,10 +387,10 @@ public class SheetTests : IAsyncLifetime
         var markup = cut.Markup;
         Assert.Contains("USER_BODY", markup);
 
-        // Backdrop appears in CSS class "bg-black/80" — escaped in HTML attribute
-        // as "bg-black\/80" or just "bg-black/80" depending on the renderer.
-        // We expect EXACTLY ONE backdrop element, not two.
-        var backdropCount = System.Text.RegularExpressions.Regex.Matches(markup, "bg-black\\\\?\\/80").Count;
+        // The backdrop is now identified by the --color-overlay-backdrop inline
+        // style (was bg-black/80). We expect EXACTLY ONE backdrop element — the
+        // passthrough nested SheetContent must not paint a second one.
+        var backdropCount = System.Text.RegularExpressions.Regex.Matches(markup, "--color-overlay-backdrop").Count;
         Assert.Equal(1, backdropCount);
     }
 

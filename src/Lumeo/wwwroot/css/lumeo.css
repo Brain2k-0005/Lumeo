@@ -624,6 +624,73 @@ input[type="range"]::-moz-range-thumb {
   animation: toast-in 0.3s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
+/* Exit animations for Sheet (and any future slide-in overlay) — the close
+   counterpart to fade-in / slide-in-from-*. The component keeps the panel
+   mounted for the duration of these animations, then unmounts it, so the user
+   sees it slide/fade out instead of vanishing instantly. Exit easing is the
+   accelerate curve (fast-out) which reads better for dismissals. The slide-out
+   keyframes intentionally finish at a translated (off-screen) transform: the
+   element is removed from the DOM right after, so the lingering transform never
+   establishes a containing block for fixed descendants (unlike the slide-in
+   case, which clears its transform via AttachOverlaySlideEnd). */
+@keyframes fade-out {
+  from { opacity: 1; }
+  to   { opacity: 0; }
+}
+
+@keyframes slide-out-to-bottom {
+  from { transform: translateY(0); }
+  to   { transform: translateY(100%); }
+}
+
+@keyframes slide-out-to-top {
+  from { transform: translateY(0); }
+  to   { transform: translateY(-100%); }
+}
+
+@keyframes slide-out-to-left {
+  from { transform: translateX(0); }
+  to   { transform: translateX(-100%); }
+}
+
+@keyframes slide-out-to-right {
+  from { transform: translateX(0); }
+  to   { transform: translateX(100%); }
+}
+
+.animate-fade-out {
+  animation: fade-out 0.2s cubic-bezier(0.4, 0, 1, 1) both;
+}
+
+.animate-slide-out-to-bottom {
+  animation: slide-out-to-bottom 0.25s cubic-bezier(0.4, 0, 1, 1) both;
+}
+
+.animate-slide-out-to-top {
+  animation: slide-out-to-top 0.25s cubic-bezier(0.4, 0, 1, 1) both;
+}
+
+.animate-slide-out-to-left {
+  animation: slide-out-to-left 0.25s cubic-bezier(0.4, 0, 1, 1) both;
+}
+
+.animate-slide-out-to-right {
+  animation: slide-out-to-right 0.25s cubic-bezier(0.4, 0, 1, 1) both;
+}
+
+/* Overlay exit animations honor reduced-motion too: collapse the duration so
+   dismissal is instant (animationend still fires for listeners) instead of a
+   visible slide. */
+@media (prefers-reduced-motion: reduce) {
+  .animate-fade-out,
+  .animate-slide-out-to-bottom,
+  .animate-slide-out-to-top,
+  .animate-slide-out-to-left,
+  .animate-slide-out-to-right {
+    animation-duration: 1ms !important;
+  }
+}
+
 /* =====================================================
  * === motion ===
  * Keyframes and utilities for the motion primitives:
@@ -682,6 +749,14 @@ input[type="range"]::-moz-range-thumb {
   animation-play-state: paused;
 }
 
+/* Marquee — reduced motion: stop auto-scrolling; content stays static and visible. */
+@media (prefers-reduced-motion: reduce) {
+  .lumeo-marquee-track {
+    animation: none;
+    transform: none;
+  }
+}
+
 /* --- BorderBeam --- */
 @property --lumeo-beam-angle {
   syntax: '<angle>';
@@ -724,6 +799,13 @@ input[type="range"]::-moz-range-thumb {
   pointer-events: none;
 }
 
+/* BorderBeam — reduced motion: stop the rotating conic sweep. */
+@media (prefers-reduced-motion: reduce) {
+  .lumeo-border-beam::before {
+    animation: none;
+  }
+}
+
 /* --- ShimmerButton --- */
 @keyframes lumeo-shimmer-sweep {
   0%   { transform: translateX(-150%); }
@@ -752,6 +834,14 @@ input[type="range"]::-moz-range-thumb {
   animation: lumeo-shimmer-sweep 2.5s linear infinite;
   pointer-events: none;
   mix-blend-mode: overlay;
+}
+
+/* ShimmerButton — reduced motion: drop the sweeping highlight entirely. */
+@media (prefers-reduced-motion: reduce) {
+  .lumeo-shimmer::before {
+    animation: none;
+    display: none;
+  }
 }
 
 /* --- Sparkles --- */
@@ -795,6 +885,15 @@ input[type="range"]::-moz-range-thumb {
   will-change: transform, opacity;
 }
 
+/* Sparkles — reduced motion: silence the decorative twinkle. The wrapped
+   children stay visible; only the ornamental sparkle layer is suppressed. */
+@media (prefers-reduced-motion: reduce) {
+  .lumeo-sparkle {
+    animation: none;
+    opacity: 0;
+  }
+}
+
 /* --- TextReveal --- */
 .lumeo-reveal [data-motion-word] {
   display: inline-block;
@@ -807,6 +906,15 @@ input[type="range"]::-moz-range-thumb {
 .lumeo-reveal[data-motion-revealed="true"] [data-motion-word] {
   opacity: 1;
   transform: translateY(0);
+}
+
+/* TextReveal — reduced motion: reveal every word at once, no per-word stagger. */
+@media (prefers-reduced-motion: reduce) {
+  .lumeo-reveal [data-motion-word] {
+    transition: none;
+    opacity: 1;
+    transform: none;
+  }
 }
 
 /* --- BlurFade ---
@@ -833,6 +941,18 @@ input[type="range"]::-moz-range-thumb {
   opacity: 1;
   filter: blur(0);
   transform: translateY(0);
+}
+
+/* BlurFade — reduced motion: show content immediately, no blur/translate. */
+@media (prefers-reduced-motion: reduce) {
+  .lumeo-blur-fade {
+    transition: none;
+  }
+  .lumeo-blur-fade[data-motion-visible="false"] {
+    opacity: 1;
+    filter: blur(0);
+    transform: none;
+  }
 }
 
 /* =====================================================
@@ -1230,6 +1350,16 @@ input[type="range"]::-moz-range-thumb {
   to   { transform: translateX(0); }
 }
 
+/* Exit counterparts: a left-anchored sheet in RTL exits toward the visual
+   left (positive X), and vice-versa — swap the left/right slide-out names so
+   the dismissal direction tracks the (mirrored) anchor edge. */
+[dir="rtl"] .animate-slide-out-to-left {
+  animation-name: slide-out-to-right;
+}
+[dir="rtl"] .animate-slide-out-to-right {
+  animation-name: slide-out-to-left;
+}
+
 /* Toast default slides from the right-hand edge. In RTL the visual edge
  * that the toast emerges from is the left, so flip the X direction. */
 [dir="rtl"] .toast-enter,
@@ -1416,6 +1546,13 @@ input[type="range"]::-moz-range-thumb {
     animation: none;
     display: none;
   }
+  /* TouchRipple — the component skips spawning spans under reduced motion
+     (see TouchRipple.razor); this neutralises any span already in flight when
+     the OS setting changes, matching the press-feedback ripple above. */
+  .lumeo-touch-ripple-span {
+    animation: none;
+    display: none;
+  }
 }
 
 
@@ -1539,5 +1676,63 @@ input[type="range"]::-moz-range-thumb {
     transform: none !important;
     stroke-dashoffset: 0 !important;
   }
+}
+
+/* ScrollArea (#256) — cross-browser scrollbar styling + Type visibility modes.
+   The global "* { scrollbar-width: thin }" rule above gives Firefox a styled
+   bar; here we add the webkit thumb/track for the ScrollArea box itself and let
+   data-scroll-type switch when the bar is shown. Firefox only exposes
+   thin/none, so on Firefox "always"/"auto"/"scroll"/"hover" all render the
+   thin bar (no overlay-on-hover granularity), which is the best the platform
+   allows without a custom JS overlay. */
+.lumeo-scrollarea {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border) transparent;
+}
+.lumeo-scrollarea::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+.lumeo-scrollarea::-webkit-scrollbar-track {
+  background: transparent;
+}
+.lumeo-scrollarea::-webkit-scrollbar-thumb {
+  background-color: var(--color-border);
+  border-radius: 9999px;
+}
+.lumeo-scrollarea::-webkit-scrollbar-thumb:hover {
+  background-color: color-mix(in oklab, var(--color-muted-foreground) 30%, transparent);
+}
+
+/* auto (default): scrollbars present whenever content overflows — overlay
+   browsers (macOS) still auto-hide them when idle, matching Radix "auto". */
+.lumeo-scrollarea[data-scroll-type="auto"] {
+  overflow: auto;
+}
+
+/* always: reserve and keep the gutter/bar visible at all times. */
+.lumeo-scrollarea[data-scroll-type="always"] {
+  overflow: scroll;
+  scrollbar-gutter: stable;
+}
+
+/* scroll: bar appears while scrolling. overflow:overlay where supported keeps
+   the bar off the content box; falls back to auto elsewhere. */
+.lumeo-scrollarea[data-scroll-type="scroll"] {
+  overflow: auto;
+}
+
+/* hover: the webkit bar is transparent until the box (or scrollbar) is
+   hovered, mirroring Radix "hover". Firefox keeps its thin bar (no hover
+   granularity available). */
+.lumeo-scrollarea[data-scroll-type="hover"] {
+  overflow: auto;
+}
+.lumeo-scrollarea[data-scroll-type="hover"]::-webkit-scrollbar-thumb {
+  background-color: transparent;
+}
+.lumeo-scrollarea[data-scroll-type="hover"]:hover::-webkit-scrollbar-thumb,
+.lumeo-scrollarea[data-scroll-type="hover"]:focus-within::-webkit-scrollbar-thumb {
+  background-color: var(--color-border);
 }
 

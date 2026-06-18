@@ -21,7 +21,7 @@ else if (Role == AgentMessageRole.User)
                 <div class="flex items-center gap-2 text-xs text-muted-foreground">
                     @if (Timestamp.HasValue)
                     {
-                        <span>@FormatTimestamp(Timestamp.Value)</span>
+                        <time datetime="@IsoTimestamp(Timestamp.Value)">@FormatTimestamp(Timestamp.Value)</time>
                     }
                     @if (!string.IsNullOrEmpty(Name))
                     {
@@ -60,7 +60,7 @@ else
                     }
                     @if (Timestamp.HasValue)
                     {
-                        <span>@FormatTimestamp(Timestamp.Value)</span>
+                        <time datetime="@IsoTimestamp(Timestamp.Value)">@FormatTimestamp(Timestamp.Value)</time>
                     }
                 </div>
             }
@@ -80,6 +80,24 @@ else
     [Parameter] public RenderFragment? Avatar { get; set; }
     [Parameter] public string? Name { get; set; }
     [Parameter] public DateTimeOffset? Timestamp { get; set; }
+
+    /// <summary>
+    /// Time zone to render <see cref="Timestamp"/> in. When set, the timestamp
+    /// is converted to this zone — pass the END USER'S zone here (in Blazor
+    /// Server the component runs on the server, so the previous
+    /// <c>ToLocalTime()</c> showed the SERVER'S zone, which is the bug #303
+    /// fixed). When <c>null</c>, the timestamp is rendered in the offset it
+    /// already carries (a <see cref="DateTimeOffset"/> knows its own offset), so
+    /// it is deterministic and server-independent.
+    /// </summary>
+    [Parameter] public TimeZoneInfo? TimeZone { get; set; }
+
+    /// <summary>Custom format string for the visible timestamp (default <c>"HH:mm"</c>).</summary>
+    [Parameter] public string TimestampFormat { get; set; } = "HH:mm";
+
+    /// <summary>Culture used to format the timestamp (defaults to <see cref="System.Globalization.CultureInfo.CurrentCulture"/>).</summary>
+    [Parameter] public System.Globalization.CultureInfo? TimestampCulture { get; set; }
+
     [Parameter] public bool IsStreaming { get; set; }
     [Parameter] public RenderFragment? ChildContent { get; set; }
     [Parameter] public string? Class { get; set; }
@@ -98,11 +116,22 @@ else
 
     private string ToolWrapperClass => Cx.Merge("w-full", Class);
 
-    private static string FormatTimestamp(DateTimeOffset ts)
+    // Render in the explicit TimeZone when supplied, otherwise in the offset the
+    // DateTimeOffset already carries — never the server's local zone. Culture is
+    // explicit so the displayed time doesn't drift with the server thread's
+    // culture either.
+    private string FormatTimestamp(DateTimeOffset ts)
     {
-        var local = ts.ToLocalTime();
-        return local.ToString("HH:mm");
+        var resolved = TimeZone is not null
+            ? TimeZoneInfo.ConvertTime(ts, TimeZone)
+            : ts;
+        return resolved.ToString(TimestampFormat, TimestampCulture ?? System.Globalization.CultureInfo.CurrentCulture);
     }
+
+    // Machine-readable, unambiguous source-of-truth for the <time> element:
+    // always UTC ISO-8601 so assistive tech / client scripts can re-localize.
+    private static string IsoTimestamp(DateTimeOffset ts) =>
+        ts.UtcDateTime.ToString("yyyy-MM-ddTHH:mm:ssZ", System.Globalization.CultureInfo.InvariantCulture);
 
     public enum AgentMessageRole
     {

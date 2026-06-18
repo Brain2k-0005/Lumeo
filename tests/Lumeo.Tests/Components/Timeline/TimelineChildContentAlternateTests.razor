@@ -1,0 +1,94 @@
+@inherits Bunit.BunitContext
+
+@code {
+    // #280 — TimelineItem ChildContent composition + alternate (zig-zag) layout,
+    // plus identity-keyed index stability (shared with Steps #244).
+
+    public TimelineChildContentAlternateTests() { this.AddLumeoServices(); }
+
+    [Fact]
+    public void Item_Renders_ChildContent()
+    {
+        var cut = Render(@<Timeline>
+            <TimelineItem Title="Shipped">
+                <button data-testid="track">Track order</button>
+            </TimelineItem>
+        </Timeline>);
+
+        Assert.NotNull(cut.Find("[data-testid='track']"));
+        Assert.Contains("Shipped", cut.Markup);
+    }
+
+    [Fact]
+    public void Item_Renders_ChildContent_Without_Structured_Fields()
+    {
+        var cut = Render(@<Timeline>
+            <TimelineItem>
+                <span data-testid="custom">Just custom</span>
+            </TimelineItem>
+        </Timeline>);
+
+        Assert.NotNull(cut.Find("[data-testid='custom']"));
+    }
+
+    [Fact]
+    public void Alternate_Layout_Splits_Items_Left_And_Right()
+    {
+        var cut = Render(@<Timeline Layout="Timeline.TimelineLayout.Alternate">
+            <TimelineItem Title="Even">Even body</TimelineItem>
+            <TimelineItem Title="Odd">Odd body</TimelineItem>
+        </Timeline>);
+
+        // Even index item aligns its content to the right (text-right pr-4),
+        // odd index pads on the left (pl-4).
+        Assert.Contains("text-right", cut.Markup);
+        Assert.Contains("pl-4", cut.Markup);
+    }
+
+    [Fact]
+    public void Alternate_Ignored_For_Horizontal()
+    {
+        var cut = Render(@<Timeline Orientation="Lumeo.Orientation.Horizontal" Layout="Timeline.TimelineLayout.Alternate">
+            <TimelineItem Title="One">Body</TimelineItem>
+        </Timeline>);
+
+        // Horizontal falls back to the row layout — no zig-zag side classes.
+        Assert.DoesNotContain("text-right pr-4", cut.Markup);
+    }
+
+    [Fact]
+    public void Default_Layout_Is_Single_Column()
+    {
+        var cut = Render(@<Timeline>
+            <TimelineItem Title="One">Body</TimelineItem>
+            <TimelineItem Title="Two">Body</TimelineItem>
+        </Timeline>);
+
+        Assert.DoesNotContain("text-right pr-4", cut.Markup);
+    }
+
+    [Fact]
+    public void Indices_Stable_After_Rerender_In_Alternate()
+    {
+        var cut = Render(@<Timeline Layout="Timeline.TimelineLayout.Alternate">
+            <TimelineItem Title="A">a</TimelineItem>
+            <TimelineItem Title="B">b</TimelineItem>
+            <TimelineItem Title="C">c</TimelineItem>
+        </Timeline>);
+
+        // First item (index 0, even) renders on the right-aligned (left side).
+        var before = cut.Markup;
+
+        for (var i = 0; i < 3; i++)
+        {
+            cut.Render();
+        }
+
+        // The side assignment is identity-keyed, so repeated renders don't flip
+        // sides (which a render-time counter would, by re-incrementing without a
+        // reset under independent child re-renders).
+        Assert.Equal(
+            System.Text.RegularExpressions.Regex.Matches(before, "text-right").Count,
+            System.Text.RegularExpressions.Regex.Matches(cut.Markup, "text-right").Count);
+    }
+}

@@ -30,6 +30,14 @@ public sealed class ConsentService
     private readonly IJSRuntime _js;
     private Dictionary<string, bool> _state = new(StringComparer.OrdinalIgnoreCase);
     private bool _loaded;
+    // Tracks whether the user has explicitly answered the banner, independent
+    // of how many non-necessary categories ended up stored. Without this,
+    // HasDecided keyed off _state.Count alone, so an all-Required category set
+    // (where SetManyAsync stores nothing — required keys are either "necessary"
+    // and skipped, or simply not toggleable) left HasDecided false forever and
+    // the banner re-showed on every load. Any persisted decision sets this; a
+    // present storage entry restores it on load; ResetAsync clears it.
+    private bool _decided;
 
     public ConsentService(IJSRuntime js)
     {
@@ -49,7 +57,7 @@ public sealed class ConsentService
     /// True once the user has answered the banner (accepted, rejected, or
     /// customized). While false, the banner should be visible.
     /// </summary>
-    public bool HasDecided => _state.Count > 0;
+    public bool HasDecided => _decided;
 
     /// <summary>
     /// Has the user granted consent for this category? Unknown categories
@@ -82,6 +90,9 @@ public sealed class ConsentService
             if (parsed is not null)
             {
                 _state = new Dictionary<string, bool>(parsed, StringComparer.OrdinalIgnoreCase);
+                // A persisted entry — even an empty map for an all-Required
+                // configuration — means the user already decided.
+                _decided = true;
             }
         }
         catch (JSException) { /* localStorage blocked (cookies disabled) — treat as no decision yet */ }
@@ -106,6 +117,10 @@ public sealed class ConsentService
             _state[k] = v;
         }
 
+        // The user acted — record the decision even if nothing was stored
+        // (e.g. every category is Required), so HasDecided flips and the
+        // banner dismisses for good.
+        _decided = true;
         await PersistAsync();
         OnChange?.Invoke();
     }
@@ -114,6 +129,7 @@ public sealed class ConsentService
     public async Task ResetAsync()
     {
         _state.Clear();
+        _decided = false;
         try
         {
             await _js.InvokeVoidAsync("localStorage.removeItem", StorageKey);

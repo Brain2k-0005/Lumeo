@@ -56,6 +56,11 @@ public static class FileTypeDetector
         [".txt"] = FileKind.Text, [".log"] = FileKind.Text,
         [".ini"] = FileKind.Text, [".conf"] = FileKind.Text, [".cfg"] = FileKind.Text,
         [".env"] = FileKind.Text,
+        // Office — Word / Excel / PowerPoint (OOXML + legacy binary). Not
+        // renderable inline; FileViewer shows a graceful download fallback.
+        [".doc"] = FileKind.Office, [".docx"] = FileKind.Office,
+        [".xls"] = FileKind.Office, [".xlsx"] = FileKind.Office,
+        [".ppt"] = FileKind.Office, [".pptx"] = FileKind.Office,
     };
 
     // Maps a Code-kind extension to the language token Lumeo.CodeEditor's
@@ -97,6 +102,14 @@ public static class FileTypeDetector
         ["text/x-yaml"] = FileKind.Code,
         ["application/x-yaml"] = FileKind.Code,
         ["application/sql"] = FileKind.Code,
+        // Office — OOXML
+        ["application/vnd.openxmlformats-officedocument.wordprocessingml.document"] = FileKind.Office,
+        ["application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"] = FileKind.Office,
+        ["application/vnd.openxmlformats-officedocument.presentationml.presentation"] = FileKind.Office,
+        // Office — legacy binary
+        ["application/msword"] = FileKind.Office,
+        ["application/vnd.ms-excel"] = FileKind.Office,
+        ["application/vnd.ms-powerpoint"] = FileKind.Office,
     };
 
     /// <summary>

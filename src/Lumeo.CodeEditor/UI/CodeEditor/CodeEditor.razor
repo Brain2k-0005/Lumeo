@@ -41,11 +41,26 @@
     [Parameter] public bool ReadOnly { get; set; }
 
     /// <summary>
-    /// CodeMirror 6 does not ship a native minimap. Kept for API symmetry with
-    /// Monaco-style wrappers; today this is a no-op. A future revision may
-    /// render a custom minimap using the scrollDOM viewport API.
+    /// Shows a scrollbar-side minimap of the document. CodeMirror 6 has no
+    /// built-in minimap, so this lazily loads the <c>@@replit/codemirror-minimap</c>
+    /// extension from <see cref="EsmBase"/> on first enable. If that import fails
+    /// (e.g. offline with no self-hosted copy of the package) the editor degrades
+    /// gracefully — the rest of the editor keeps working, just without a minimap.
+    /// Toggling at runtime adds/removes the extension without losing selection
+    /// or scroll position.
     /// </summary>
     [Parameter] public bool ShowMinimap { get; set; }
+
+    /// <summary>
+    /// Base URL the CodeMirror core, language packs, theme, and minimap are
+    /// imported from. Defaults to the public esm.sh CDN. Point this at a
+    /// self-hosted ESM mirror (or a path served by your own app) for
+    /// air-gapped / offline / strict-CSP deployments — e.g.
+    /// <c>EsmBase="/_content/MyApp/esm"</c> or <c>EsmBase="https://esm.myco.internal"</c>.
+    /// A trailing slash is optional. When null, falls back to the global
+    /// <c>window.lumeoCdn.codeMirrorBase</c> override (if set) and then esm.sh.
+    /// </summary>
+    [Parameter] public string? EsmBase { get; set; }
 
     [Parameter] public int TabSize { get; set; } = 4;
     [Parameter] public bool UseTabs { get; set; }
@@ -71,6 +86,7 @@
     private string? _lastLanguage;
     private string? _lastTheme;
     private bool? _lastReadOnly;
+    private bool? _lastShowMinimap;
 
     private string RootClass
         => $"rounded-lg border border-border/40 overflow-hidden bg-card {Class}".Trim();
@@ -79,7 +95,6 @@
     {
         if (firstRender)
         {
-            _module = await Interop.ImportModuleAsync("./_content/Lumeo.CodeEditor/js/code-editor.js");
             _selfRef = DotNetObjectReference.Create(this);
 
             var options = new
@@ -93,14 +108,44 @@
                 useTabs = UseTabs,
                 wordWrap = WordWrap,
                 placeholder = Placeholder,
+                minimap = ShowMinimap,
+                esmBase = EsmBase,
             };
 
-            await _module.InvokeVoidAsync("init", _editorId, options, _selfRef);
-            _initialized = true;
-            _lastSyncedValue = Value;
-            _lastLanguage = Language;
-            _lastTheme = Theme;
-            _lastReadOnly = ReadOnly;
+            // Guard the whole init path: if the module import or the JS init
+            // throws (offline with no self-hosted ESM mirror, CSP block, circuit
+            // drop mid-init), we must not leave a half-built instance behind —
+            // dispose the DotNetObjectReference and the partially-loaded module
+            // so there's no managed/JS object leak. _initialized stays false so
+            // later parameter syncs and DisposeAsync short-circuit cleanly.
+            try
+            {
+                _module = await Interop.ImportModuleAsync("./_content/Lumeo.CodeEditor/js/code-editor.js");
+                await _module.InvokeVoidAsync("init", _editorId, options, _selfRef);
+                _initialized = true;
+                _lastSyncedValue = Value;
+                _lastLanguage = Language;
+                _lastTheme = Theme;
+                _lastReadOnly = ReadOnly;
+                _lastShowMinimap = ShowMinimap;
+            }
+            catch (JSDisconnectedException)
+            {
+                await CleanupAfterFailedInitAsync();
+            }
+            catch (ObjectDisposedException)
+            {
+                await CleanupAfterFailedInitAsync();
+            }
+            catch (JSException)
+            {
+                // Init genuinely failed (bad bundle URL, ESM import error). Tear
+                // down so we don't leak, then rethrow so a host that wants to
+                // surface the failure still can — Blazor logs it as an unhandled
+                // OnAfterRenderAsync task otherwise, which is the desired signal.
+                await CleanupAfterFailedInitAsync();
+                throw;
+            }
             return;
         }
 
@@ -131,9 +176,33 @@
                 _lastReadOnly = ReadOnly;
                 await _module.InvokeVoidAsync("setReadOnly", _editorId, ReadOnly);
             }
+
+            if (_lastShowMinimap != ShowMinimap)
+            {
+                _lastShowMinimap = ShowMinimap;
+                await _module.InvokeVoidAsync("setMinimap", _editorId, ShowMinimap);
+            }
         }
         catch (JSDisconnectedException) { }
         catch (ObjectDisposedException) { }
+    }
+
+    // Best-effort teardown for a failed first-render init. Disposes whatever was
+    // allocated before the failure (module ref + DotNetObjectReference) and never
+    // throws — it runs from inside catch blocks.
+    private async Task CleanupAfterFailedInitAsync()
+    {
+        _initialized = false;
+        if (_module is not null)
+        {
+            try { await _module.DisposeAsync(); }
+            catch (JSDisconnectedException) { }
+            catch (ObjectDisposedException) { }
+            catch (Exception) { /* never throw from cleanup */ }
+            _module = null;
+        }
+        _selfRef?.Dispose();
+        _selfRef = null;
     }
 
     [JSInvokable]

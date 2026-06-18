@@ -1,11 +1,21 @@
 @namespace Lumeo
 @implements IAsyncDisposable
+@inject Lumeo.Services.Localization.ILumeoLocalizer L
 
-<div class="@WrapperClass" role="img" aria-label="Signature pad" @attributes="AdditionalAttributes">
+@* The wrapper is the labelled region; Escape/Delete clears when focus is
+   inside it so keyboard / switch-access users aren't forced to mouse the clear
+   button. tabindex makes the region focusable for that handler. *@
+<div class="@WrapperClass"
+     role="group"
+     aria-label="@L["SignaturePad.Label"]"
+     tabindex="0"
+     @onkeydown="HandleKeyDownAsync"
+     @attributes="AdditionalAttributes">
     <canvas id="@_canvasId"
             width="@Width"
             height="@Height"
             class="@CanvasClass"
+            aria-hidden="true"
             style="background: @BackgroundColor;"></canvas>
 
     @if (string.IsNullOrEmpty(Value))
@@ -23,7 +33,7 @@
                 <Button Variant="Button.ButtonVariant.Ghost"
                         Size="Button.ButtonSize.Icon"
                         OnClick="HandleDownloadAsync"
-                        aria-label="Download signature">
+                        aria-label="@L["SignaturePad.Download"]">
                     <Blazicon Svg="Lucide.Download" class="h-4 w-4" />
                 </Button>
             }
@@ -32,12 +42,17 @@
                 <Button Variant="Button.ButtonVariant.Ghost"
                         Size="Button.ButtonSize.Icon"
                         OnClick="ClearAsync"
-                        aria-label="Clear signature">
+                        Disabled="@string.IsNullOrEmpty(Value)"
+                        aria-label="@L["SignaturePad.Clear"]">
                     <Blazicon Svg="Lucide.Eraser" class="h-4 w-4" />
                 </Button>
             }
         </Flex>
     }
+
+    @* Polite live region so a screen reader hears when the pad is cleared —
+       the visual change (blank canvas) is otherwise silent. *@
+    <span aria-live="polite" class="sr-only">@_statusMessage</span>
 </div>
 
 @inject IComponentInteropService Interop
@@ -57,11 +72,12 @@
     [Parameter] public bool ShowDownloadButton { get; set; }
 
     /// <summary>
-    /// Export format for the emitted data URL. <c>"png"</c> is the safe default
-    /// (universal browser support, transparent backgrounds work). <c>"svg"</c>
-    /// would require capturing strokes as path data rather than raster pixels;
-    /// not implemented in this initial 3.1.0 cut — falls back to PNG. TODO:
-    /// real SVG export by recording pointer paths client-side.
+    /// Export format for the emitted data URL. <c>"png"</c> is the default
+    /// (universal browser support, transparent backgrounds). <c>"svg"</c>
+    /// produces a real vector export: the JS pad records each pointer path and
+    /// replays it as <c>&lt;path&gt;</c> elements, so the signature scales
+    /// crisply at any size. (A signature loaded from an existing raster data
+    /// URL has no vector data to export and falls back to PNG.)
     /// </summary>
     [Parameter] public string Format { get; set; } = "png";
 
@@ -71,6 +87,8 @@
     [Parameter] public EventCallback OnClear { get; set; }
 
     [Parameter] public string? Placeholder { get; set; } = "Sign here";
+
+    private string? _statusMessage;
 
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
@@ -154,6 +172,7 @@
     {
         Value = dataUrl;
         _lastSyncedValue = dataUrl;
+        _statusMessage = null; // drop any stale "cleared" announcement
         await ValueChanged.InvokeAsync(dataUrl);
         await OnSign.InvokeAsync();
         StateHasChanged();
@@ -164,9 +183,22 @@
         await Interop.SignaturePadClear(_canvasId);
         Value = null;
         _lastSyncedValue = null;
+        _statusMessage = L["SignaturePad.Cleared"];
         await ValueChanged.InvokeAsync(null);
         await OnClear.InvokeAsync();
         StateHasChanged();
+    }
+
+    // Escape / Delete / Backspace clear the pad when it (or a child) has focus,
+    // so the canvas is operable without a pointer (#192). No-op while disabled
+    // or already empty.
+    private async Task HandleKeyDownAsync(KeyboardEventArgs e)
+    {
+        if (Disabled || string.IsNullOrEmpty(Value)) return;
+        if (e.Key is "Escape" or "Delete" or "Backspace")
+        {
+            await ClearAsync();
+        }
     }
 
     private async Task HandleDownloadAsync()
