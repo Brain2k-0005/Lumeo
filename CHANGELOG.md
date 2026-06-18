@@ -5,6 +5,19 @@ All notable changes to Lumeo will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.19.0] - 2026-06-18
+
+Two P1 audit features from the backlog. Additive and opt-in.
+
+### Added
+- **Drawer (#218)**: vaul-style snap points — `SnapPoints` (ascending fractions, e.g. `[0.4, 0.75, 1]`) + two-way `ActiveSnapPoint`/`ActiveSnapPointChanged`. A Top/Bottom drawer rests at fractional heights, drags between them, and dismisses below the lowest snap; programmatically setting `ActiveSnapPoint` moves it. A `PreventClose` drawer still snaps but never dismisses.
+- **Drawer (#218)**: velocity/flick dismiss — a fast flick in the dismiss direction closes even below the distance threshold, tunable via `LumeoGestureOptions.SwipeDismissVelocity` (default `0.4` px/ms; `0` = distance-only).
+
+### Improved
+- **Drawer (#218)**: the backdrop now uses the `--color-overlay-backdrop` theme token instead of a hardcoded `bg-black/80`, matching Sheet/Dialog (light + dark).
+- **RichTextEditor (#320)**: the floating bubble toolbar is keyboard-operable — `Alt+F10` moves focus into it (ARIA Authoring-Practices pattern), arrow/Home/End rove between buttons, `Escape`/`Tab` return focus to the editor (staying inside any modal focus trap), and it hides once focus leaves.
+- **RichTextEditor (#320)**: the slash/mention suggestion listbox wires `aria-activedescendant` (+ `aria-controls`/`aria-expanded`) on the editor so screen readers announce the highlighted option as you arrow through.
+
 ## [3.18.0] - 2026-06-18
 
 Bundled audit-backlog batch closing the remaining cleanly-doable component gaps in a single release. All additive and opt-in — existing usage is unchanged.
