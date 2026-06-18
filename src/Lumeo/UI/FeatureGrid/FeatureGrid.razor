@@ -6,11 +6,11 @@
     or pass raw ChildContent for full control.
 *@
 
-<section class="@CssClass" @attributes="AdditionalAttributes">
+<section class="@CssClass" aria-labelledby="@TitleId" @attributes="AdditionalAttributes">
     <div class="mx-auto max-w-6xl px-6 py-16">
         @if (!string.IsNullOrEmpty(Title))
         {
-            <h2 class="text-3xl font-bold tracking-tight text-foreground text-center">@Title</h2>
+            <h2 id="@TitleId" class="text-3xl font-bold tracking-tight text-foreground text-center">@Title</h2>
         }
         @if (!string.IsNullOrEmpty(Subtitle))
         {
@@ -31,6 +31,11 @@
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     private string CssClass => Cx.Merge("w-full", Class);
+
+    // Name the <section> landmark via its heading so AT exposes it as a region
+    // with an accessible name (#299). Null when there's no Title.
+    private readonly string _titleId = $"featuregrid-title-{Guid.NewGuid():N}";
+    private string? TitleId => string.IsNullOrEmpty(Title) ? null : _titleId;
 
     private string ColumnsClass => Columns switch
     {
