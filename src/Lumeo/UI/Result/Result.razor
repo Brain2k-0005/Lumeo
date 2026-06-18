@@ -1,6 +1,6 @@
 @namespace Lumeo
 
-<div role="status" class="@CssClass" @attributes="AdditionalAttributes">
+<div role="@AriaRole" class="@CssClass" @attributes="AdditionalAttributes">
     <div class="flex flex-col items-center text-center">
         <div class="@IconContainerClasses">
             @if (IconContent is not null)
@@ -42,6 +42,13 @@
     [Parameter] public RenderFragment? Extra { get; set; }
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    // Error-ish outcomes are assertive (role="alert") so AT interrupts; success/
+    // info/not-found are polite (role="status"). A consumer role via attributes
+    // still wins (splatted last). (#284)
+    private string AriaRole => Status is ResultStatus.Error or ResultStatus.Forbidden or ResultStatus.ServerError
+        ? "alert"
+        : "status";
 
     private string CssClass => Cx.Merge(SizePaddingClass, "px-6", Class);
 
