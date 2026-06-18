@@ -171,10 +171,36 @@ function createSuggestionRenderer(label, instanceId) {
     let lastProps = null;
     let scrollHandler = null;
 
+    // #320 — wire aria-activedescendant on the editor textbox to the active
+    // option so screen readers announce the highlighted suggestion as the user
+    // arrows through the listbox (the listbox itself never takes DOM focus).
+    const listboxId = 'lumeo-rte-lb-' + Math.random().toString(36).slice(2, 9);
+    const optionId = (i) => `${listboxId}-opt-${i}`;
+    function editorDom() { return editor && editor.view && editor.view.dom; }
+    function syncActiveDescendant() {
+        const dom = editorDom();
+        if (!dom) return;
+        if (items && items.length > 0) {
+            dom.setAttribute('aria-controls', listboxId);
+            dom.setAttribute('aria-expanded', 'true');
+            dom.setAttribute('aria-activedescendant', optionId(selectedIndex));
+        } else {
+            clearActiveDescendant();
+        }
+    }
+    function clearActiveDescendant() {
+        const dom = editorDom();
+        if (!dom) return;
+        dom.removeAttribute('aria-activedescendant');
+        dom.removeAttribute('aria-expanded');
+        dom.removeAttribute('aria-controls');
+    }
+
     function ensureRoot() {
         if (root) return root;
         root = document.createElement('div');
         root.className = 'lumeo-rte-suggestion';
+        root.id = listboxId;
         root.setAttribute('role', 'listbox');
         root.setAttribute('aria-label', label || 'Suggestions');
         // rc.43: tag with instance id so destroy() can find orphaned popups
@@ -199,6 +225,7 @@ function createSuggestionRenderer(label, instanceId) {
         ensureRoot();
         if (!items || items.length === 0) {
             root.innerHTML = '<div style="padding:0.5rem 0.625rem;color:var(--color-muted-foreground);font-size:0.8125rem">No results</div>';
+            clearActiveDescendant();
             return;
         }
         const html = items.map((it, i) => {
@@ -206,7 +233,7 @@ function createSuggestionRenderer(label, instanceId) {
             const subtitle = it.subtitle ? `<div style="font-size:0.75rem;color:var(--color-muted-foreground);line-height:1.1">${escapeHtml(it.subtitle)}</div>` : '';
             const icon = it.icon ? `<span style="display:inline-flex;align-items:center;width:1rem;height:1rem;color:var(--color-muted-foreground);margin-right:0.5rem">${iconSvg(it.icon)}</span>` : '';
             const bg = sel ? 'background:var(--color-accent);color:var(--color-accent-foreground);' : '';
-            return `<div role="option" data-index="${i}" aria-selected="${sel}" style="display:flex;align-items:flex-start;padding:0.4rem 0.55rem;border-radius:0.375rem;cursor:pointer;${bg}">
+            return `<div role="option" id="${optionId(i)}" data-index="${i}" aria-selected="${sel}" style="display:flex;align-items:flex-start;padding:0.4rem 0.55rem;border-radius:0.375rem;cursor:pointer;${bg}">
                 ${icon}
                 <div style="flex:1;min-width:0">
                     <div style="font-weight:500">${escapeHtml(it.label || it.id || '')}</div>
@@ -215,6 +242,7 @@ function createSuggestionRenderer(label, instanceId) {
             </div>`;
         }).join('');
         root.innerHTML = html;
+        syncActiveDescendant();
         root.querySelectorAll('[data-index]').forEach(el => {
             // mousedown: only prevent focus-loss; don't pick yet (would race with re-render).
             el.addEventListener('mousedown', (e) => { e.preventDefault(); });
@@ -239,6 +267,7 @@ function createSuggestionRenderer(label, instanceId) {
                     node.style.background = sel ? 'var(--color-accent)' : '';
                     node.style.color = sel ? 'var(--color-accent-foreground)' : '';
                 });
+                syncActiveDescendant();
             });
         });
     }
@@ -298,6 +327,7 @@ function createSuggestionRenderer(label, instanceId) {
 
     function destroy() {
         detachScrollHandler();
+        clearActiveDescendant();
         lastProps = null;
         if (root) {
             try { root.remove(); } catch (_) {}
@@ -449,6 +479,64 @@ function createBubbleMenu(editor, dotNetRef, instanceId, opts) {
 
     document.body.appendChild(root);
 
+    // --- Keyboard a11y (#320) ---
+    // The floating toolbar is now keyboard-reachable: Alt+F10 (the ARIA
+    // Authoring-Practices shortcut for "move focus into a toolbar") moves focus
+    // here when a selection is active; Arrow/Home/End rove between the buttons
+    // via a roving tabindex; Escape returns focus to the editor.
+    const buttons = Array.from(root.querySelectorAll('button'));
+    let focusIndex = 0;
+    const applyRoving = () => buttons.forEach((b, i) => { b.tabIndex = i === focusIndex ? 0 : -1; });
+    const focusButton = (i) => {
+        focusIndex = Math.max(0, Math.min(buttons.length - 1, i));
+        applyRoving();
+        if (buttons[focusIndex]) buttons[focusIndex].focus();
+    };
+    applyRoving();
+
+    root.addEventListener('keydown', (e) => {
+        switch (e.key) {
+            case 'ArrowRight':
+            case 'ArrowDown':
+                e.preventDefault(); focusButton((focusIndex + 1) % buttons.length); break;
+            case 'ArrowLeft':
+            case 'ArrowUp':
+                e.preventDefault(); focusButton((focusIndex - 1 + buttons.length) % buttons.length); break;
+            case 'Home':
+                e.preventDefault(); focusButton(0); break;
+            case 'End':
+                e.preventDefault(); focusButton(buttons.length - 1); break;
+            case 'Tab':
+                // The toolbar lives at document.body, outside any modal focus
+                // trap around the editor. Returning focus to the editor on Tab
+                // keeps focus contained in that trap instead of escaping to a
+                // body-level element. (#345 review)
+                e.preventDefault(); editor.commands.focus(); break;
+            case 'Escape':
+                e.preventDefault(); editor.commands.focus(); break;
+        }
+    });
+
+    // Hide the toolbar once focus leaves it entirely (e.g. a click elsewhere) —
+    // the editor's own blur handler only covers the editor losing focus, so
+    // without this the keyboard-focused toolbar could stay stuck open. (#345)
+    root.addEventListener('focusout', (e) => {
+        if (!root.contains(e.relatedTarget)) root.style.display = 'none';
+    });
+
+    const focusToolbar = () => {
+        if (root.style.display === 'none' || buttons.length === 0) return false;
+        focusButton(0);
+        return true;
+    };
+
+    const onEditorKeydown = (e) => {
+        if (e.altKey && (e.key === 'F10' || e.code === 'F10')) {
+            if (focusToolbar()) e.preventDefault();
+        }
+    };
+    editor.view.dom.addEventListener('keydown', onEditorKeydown);
+
     function update() {
         const { from, to, empty } = editor.state.selection;
         if (empty || !editor.isFocused) {
@@ -457,20 +545,39 @@ function createBubbleMenu(editor, dotNetRef, instanceId, opts) {
         }
         const start = editor.view.coordsAtPos(from);
         const end = editor.view.coordsAtPos(to);
+        const wasHidden = root.style.display === 'none';
         root.style.display = 'flex';
+        // Re-arm roving so Alt+F10 always enters at the first button.
+        if (wasHidden) { focusIndex = 0; applyRoving(); }
         const top = Math.max(0, start.top - 44);
         const left = Math.max(8, (start.left + end.left) / 2 - root.offsetWidth / 2);
         root.style.top = top + 'px';
         root.style.left = left + 'px';
     }
 
-    editor.on('selectionUpdate', update);
-    editor.on('blur', () => { setTimeout(() => { if (!editor.isFocused) root.style.display = 'none'; }, 200); });
-    editor.on('focus', update);
+    // Named handlers so destroy() can unregister them (editor.on stacks
+    // listeners on re-creation otherwise). (#345 review)
+    const onSelectionUpdate = () => update();
+    // Keep the menu open while keyboard focus is inside it (moving focus into
+    // the floating toolbar blurs the editor).
+    const onBlur = () => { setTimeout(() => {
+        if (!editor.isFocused && !root.contains(document.activeElement)) root.style.display = 'none';
+    }, 200); };
+    const onFocus = () => update();
+    editor.on('selectionUpdate', onSelectionUpdate);
+    editor.on('blur', onBlur);
+    editor.on('focus', onFocus);
 
     return {
         update,
-        destroy() { try { root.remove(); } catch (_) {} },
+        focusToolbar,
+        destroy() {
+            try { editor.off('selectionUpdate', onSelectionUpdate); } catch (_) {}
+            try { editor.off('blur', onBlur); } catch (_) {}
+            try { editor.off('focus', onFocus); } catch (_) {}
+            try { editor.view.dom.removeEventListener('keydown', onEditorKeydown); } catch (_) {}
+            try { root.remove(); } catch (_) {}
+        },
     };
 }
 

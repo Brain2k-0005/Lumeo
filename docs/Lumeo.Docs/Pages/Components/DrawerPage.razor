@@ -140,6 +140,41 @@
         </Drawer>
     </ComponentDemo>
 
+    <ComponentDemo Title="Snap points (touch)" Code="@_snapCode">
+        <Stack Gap="3">
+            <Lumeo.Text Size="sm" Color="muted">
+                Bottom drawer with snap points at 40% / 75% / 100%. On a touch device (or DevTools device emulation),
+                drag the handle to move between snaps; a quick flick down dismisses. On desktop it opens at the active
+                snap so you can still see the resting position. Active snap: <strong>@((int)(_snapPoints[_snapIndex] * 100))%</strong> (index @_snapIndex).
+            </Lumeo.Text>
+            <div>
+                <Drawer @bind-Open="_snapOpen">
+                    <DrawerTrigger>
+                        <Button Variant="Button.ButtonVariant.Outline">Open Snap Drawer</Button>
+                    </DrawerTrigger>
+                    <DrawerContent SnapPoints="_snapPoints" @bind-ActiveSnapPoint="_snapIndex">
+                        <DrawerHeader>
+                            <DrawerTitle>Snap Drawer</DrawerTitle>
+                            <DrawerDescription>Drag the handle to snap between 40%, 75%, and full height.</DrawerDescription>
+                        </DrawerHeader>
+                        <Stack Gap="2" Class="p-4">
+                            @foreach (var i in Enumerable.Range(1, 8))
+                            {
+                                <Flex Justify="between" Class="text-sm border-b border-border/40 pb-2">
+                                    <Lumeo.Text As="span" Size="sm" Color="muted">Row @i</Lumeo.Text>
+                                    <Lumeo.Text As="span" Size="sm" Weight="medium">Detail @i</Lumeo.Text>
+                                </Flex>
+                            }
+                        </Stack>
+                        <DrawerFooter>
+                            <DrawerClose><Button Class="w-full">Close</Button></DrawerClose>
+                        </DrawerFooter>
+                    </DrawerContent>
+                </Drawer>
+            </div>
+        </Stack>
+    </ComponentDemo>
+
     <ComponentDemo Title="Side — interactive" Code="@_sideInteractiveCode">
         <Stack Gap="4">
             <Lumeo.Text Size="sm" Color="muted">Pick a value to see it applied live.</Lumeo.Text>
@@ -339,6 +374,24 @@
                             <td class="p-3 font-mono text-xs text-muted-foreground">Bottom</td>
                             <td class="p-3 text-muted-foreground">Side the drawer slides in from. Values: Top, Right, Bottom, Left.</td>
                         </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">SnapPoints</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">IReadOnlyList&lt;double&gt;?</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">null</td>
+                            <td class="p-3 text-muted-foreground">vaul-style resting heights as ascending fractions (0&lt;f≤1), e.g. [0.4, 0.75, 1]. Top/Bottom only; the panel rests at one, drags between them, and dismisses below the lowest.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">ActiveSnapPoint</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">int</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">-1</td>
+                            <td class="p-3 text-muted-foreground">Index into SnapPoints of the current snap (two-way via @@bind-ActiveSnapPoint). -1 opens at the most-open (last) snap.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">ActiveSnapPointChanged</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">EventCallback&lt;int&gt;</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">—</td>
+                            <td class="p-3 text-muted-foreground">Fires when the drawer settles on a new snap (drag/flick).</td>
+                        </tr>
 </tbody>
                 </table>
             </Stack>
@@ -364,6 +417,35 @@
     private bool _guardOpen;
     private bool _guardDirty;
     private string? _guardNote;
+
+    // Snap points demo (#218)
+    private bool _snapOpen;
+    private int _snapIndex = 1;                      // open at 75%
+    private double[] _snapPoints = { 0.4, 0.75, 1.0 };
+
+    private string _snapCode = @"<Drawer @bind-Open=""_snapOpen"">
+    <DrawerTrigger>
+        <Button Variant=""Button.ButtonVariant.Outline"">Open Snap Drawer</Button>
+    </DrawerTrigger>
+    <DrawerContent SnapPoints=""_snapPoints"" @bind-ActiveSnapPoint=""_snapIndex"">
+        <DrawerHeader>
+            <DrawerTitle>Snap Drawer</DrawerTitle>
+            <DrawerDescription>Drag the handle to snap between 40%, 75%, and full height.</DrawerDescription>
+        </DrawerHeader>
+        <Stack Gap=""2"" Class=""p-4"">
+            @* …content… *@
+        </Stack>
+        <DrawerFooter>
+            <DrawerClose><Button Class=""w-full"">Close</Button></DrawerClose>
+        </DrawerFooter>
+    </DrawerContent>
+</Drawer>
+
+@code {
+    private bool _snapOpen;
+    private int _snapIndex = 1;                      // open at 75%
+    private double[] _snapPoints = { 0.4, 0.75, 1.0 };
+}";
 
     private Task GuardDrawerClose(Lumeo.DismissEventArgs e)
     {

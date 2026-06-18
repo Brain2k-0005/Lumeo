@@ -849,6 +849,7 @@ export function unregisterPinchZoom(elementId) {
 // --- Drawer Swipe ---
 
 const drawerHandlers = new Map();
+const drawerSnapHandlers = new Map();
 
 export function registerDrawerSwipe(elementId, direction, dotnetRef, options) {
     const el = document.getElementById(elementId);
@@ -887,12 +888,21 @@ export function registerDrawerSwipe(elementId, direction, dotnetRef, options) {
     const DISMISS_THRESHOLD = (typeof fireOverride === 'number') ? fireOverride : 100;
     const RUBBER_BAND_START = 150;
     const RUBBER_BAND_FACTOR = 0.5;
+    // 3.19 — velocity/flick dismiss. A fast flick in the dismiss direction
+    // closes even if the raw distance never reached DISMISS_THRESHOLD, which is
+    // how a native bottom-sheet feels. px/ms; 0 (or absent) keeps the historical
+    // distance-only behaviour. Measured over the last VELOCITY_WINDOW_MS of move
+    // samples so a slow drag that ends with a tiny twitch doesn't false-fire.
+    const velocityOverride = options && options.velocity;
+    const DISMISS_VELOCITY = (typeof velocityOverride === 'number') ? velocityOverride : 0;
+    const VELOCITY_WINDOW_MS = 100;
 
     let startX = 0, startY = 0;
     let currentPos = 0;
     let isDragging = false;
     let active = false;       // gesture passed activation threshold
     let aborted = false;      // axis-lock determined this gesture is for the wrong axis
+    let samples = [];         // recent {pos, t} on the active axis for velocity
 
     const onTouchStart = (e) => {
         startX = e.touches[0].clientX;
@@ -901,6 +911,7 @@ export function registerDrawerSwipe(elementId, direction, dotnetRef, options) {
         isDragging = true;
         active = false;
         aborted = false;
+        samples = [{ pos: currentPos, t: performance.now() }];
         el.style.transition = 'none';
     };
 
@@ -911,6 +922,12 @@ export function registerDrawerSwipe(elementId, direction, dotnetRef, options) {
         const dx = x - startX;
         const dy = y - startY;
         currentPos = isHorizontal ? x : y;
+
+        const now = performance.now();
+        samples.push({ pos: currentPos, t: now });
+        // Keep only the trailing window so end-velocity reflects the flick,
+        // not the whole drag.
+        while (samples.length > 2 && now - samples[0].t > VELOCITY_WINDOW_MS) samples.shift();
 
         if (!active) {
             // Wait for the finger to travel far enough to commit to a gesture,
@@ -972,10 +989,23 @@ export function registerDrawerSwipe(elementId, direction, dotnetRef, options) {
             return;
         }
         const delta = currentPos - (isHorizontal ? startX : startY);
+        // End velocity (px/ms) along the active axis, measured over the trailing
+        // sample window so it reflects the release flick rather than the whole drag.
+        let velocity = 0;
+        if (samples.length >= 2) {
+            const last = samples[samples.length - 1];
+            const first = samples[0];
+            const dt = last.t - first.t;
+            if (dt > 0) velocity = (last.pos - first.pos) / dt;
+        }
         // Dismiss threshold is measured on raw axis delta (intent), not the
         // rubber-banded visual translate, so the gesture feels predictable
-        // regardless of how far the rubber-band let the sheet travel.
-        const shouldDismiss = Math.sign(delta) === dismissSign && Math.abs(delta) > DISMISS_THRESHOLD;
+        // regardless of how far the rubber-band let the sheet travel. A fast
+        // flick in the dismiss direction also fires, even below the distance.
+        const correctDir = Math.sign(delta) === dismissSign;
+        const farEnough = Math.abs(delta) > DISMISS_THRESHOLD;
+        const fastEnough = DISMISS_VELOCITY > 0 && Math.sign(velocity) === dismissSign && Math.abs(velocity) >= DISMISS_VELOCITY;
+        const shouldDismiss = correctDir && (farEnough || fastEnough);
         if (shouldDismiss) {
             dotnetRef.invokeMethodAsync('OnSwipeDismiss', elementId);
         } else {
@@ -1001,6 +1031,191 @@ export function unregisterDrawerSwipe(elementId) {
             el.style.transform = '';
         }
         drawerHandlers.delete(elementId);
+    }
+}
+
+// --- Drawer Snap Points (vaul-style) ---
+//
+// A drawer with snap points rests at one of several fractional heights
+// (e.g. [0.4, 0.75, 1] = 40% / 75% / fully open) instead of only open/closed.
+// Dragging moves between snaps; on release it settles to the nearest snap
+// (velocity-biased), and dragging/flicking below the lowest snap dismisses.
+// Vertical only — the C# side calls this only for Top/Bottom drawers; Left/Right
+// keep the plain swipe-to-dismiss path above.
+export function registerDrawerSnap(elementId, direction, dotnetRef, options) {
+    const el = document.getElementById(elementId);
+    if (!el) return;
+
+    const snapPoints = (options && Array.isArray(options.snapPoints)) ? options.snapPoints.slice() : [];
+    if (snapPoints.length === 0) return;
+
+    // dismissSign: +1 = a bottom drawer hides by translating DOWN; -1 = a top
+    // drawer hides by translating UP. The same sign drives "more closed".
+    const sign = (direction === 'up') ? -1 : +1;
+    const EASING = 'transform 0.32s cubic-bezier(0.32, 0.72, 0, 1)';
+    const velocityOverride = options && options.velocity;
+    // Honor an explicit 0 (distance-only), matching the swipe path — only a
+    // non-number falls back to the default. (#345 review)
+    const DISMISS_VELOCITY = (typeof velocityOverride === 'number') ? velocityOverride : 0.4;
+    const hasVelocityDismiss = DISMISS_VELOCITY > 0;
+    const VELOCITY_WINDOW_MS = 100;
+    const DISMISS_FRACTION = 0.5; // drag this far from the lowest snap toward closed → dismiss
+    // A protected drawer (PreventClose) still snaps between points; it just
+    // never dismisses — dragging past the lowest snap settles back there. (#345)
+    const dismissAllowed = !(options && options.dismissible === false);
+
+    const lastIndex = snapPoints.length - 1;
+    let activeIndex = (options && Number.isInteger(options.activeIndex))
+        ? Math.max(0, Math.min(lastIndex, options.activeIndex))
+        : lastIndex;
+
+    let H = el.offsetHeight || 0;
+    const offsetFor = (i) => sign * H * (1 - snapPoints[i]);
+    const closedOffset = () => sign * H;
+
+    // Open sequence: commit the fully-closed transform synchronously (before
+    // the browser paints), then rAF up to the active snap. JS owns the
+    // transform for the drawer's whole lifetime, so Blazor re-renders (which
+    // don't write transform) never reset it.
+    H = el.offsetHeight || H;
+    el.style.transition = 'none';
+    el.style.transform = `translateY(${closedOffset()}px)`;
+    void el.offsetHeight; // force reflow so the closed state is the paint baseline
+    requestAnimationFrame(() => {
+        el.style.transition = EASING;
+        el.style.transform = `translateY(${offsetFor(activeIndex)}px)`;
+    });
+
+    let startY = 0, baseOffset = 0, isDragging = false, samples = [];
+
+    const clampOffset = (off) => {
+        const openLimit = offsetFor(lastIndex);   // most-open snap
+        const closed = closedOffset();            // fully hidden
+        // Don't allow dragging more open than the top snap, nor past fully closed.
+        let lo = Math.min(openLimit, closed), hi = Math.max(openLimit, closed);
+        return Math.max(lo, Math.min(hi, off));
+    };
+
+    const onTouchStart = (e) => {
+        H = el.offsetHeight || H;
+        startY = e.touches[0].clientY;
+        baseOffset = offsetFor(activeIndex);
+        isDragging = true;
+        samples = [{ pos: startY, t: performance.now() }];
+        el.style.transition = 'none';
+    };
+
+    const onTouchMove = (e) => {
+        if (!isDragging) return;
+        const y = e.touches[0].clientY;
+        const now = performance.now();
+        samples.push({ pos: y, t: now });
+        while (samples.length > 2 && now - samples[0].t > VELOCITY_WINDOW_MS) samples.shift();
+        const proposed = clampOffset(baseOffset + (y - startY));
+        el.style.transform = `translateY(${proposed}px)`;
+    };
+
+    const onTouchEnd = (e) => {
+        if (!isDragging) return;
+        isDragging = false;
+        const endY = (e.changedTouches && e.changedTouches[0]) ? e.changedTouches[0].clientY : startY;
+        const currentOffset = clampOffset(baseOffset + (endY - startY));
+
+        let velocity = 0;
+        if (samples.length >= 2) {
+            const a = samples[0], b = samples[samples.length - 1];
+            const dt = b.t - a.t;
+            if (dt > 0) velocity = (b.pos - a.pos) / dt;
+        }
+        const flickDismiss = hasVelocityDismiss && Math.sign(velocity) === sign && Math.abs(velocity) >= DISMISS_VELOCITY;
+        const flickOpen = hasVelocityDismiss && Math.sign(velocity) === -sign && Math.abs(velocity) >= DISMISS_VELOCITY;
+
+        // Distance dragged past the lowest snap, toward fully closed.
+        const lowest = offsetFor(0);
+        const distPastLowest = (currentOffset - lowest) * sign;
+        const gapToClosed = Math.abs(closedOffset() - lowest) || 1;
+
+        // Would this release close the drawer — a flick-down at/below the lowest
+        // snap, or dragged most of the way past it?
+        const wantDismiss =
+            (flickDismiss && (activeIndex === 0 || distPastLowest > 0)) ||
+            (!flickDismiss && !flickOpen && distPastLowest > gapToClosed * DISMISS_FRACTION);
+
+        let dismiss = false;
+        let targetIndex = activeIndex;
+        if (wantDismiss) {
+            if (dismissAllowed) dismiss = true;
+            else targetIndex = 0;          // protected: settle at the lowest snap instead of closing
+        } else if (flickDismiss) {
+            targetIndex = Math.max(0, activeIndex - 1);
+        } else if (flickOpen) {
+            targetIndex = Math.min(lastIndex, activeIndex + 1);
+        } else {
+            // Settle to the nearest snap by position.
+            let best = 0, bestDist = Infinity;
+            for (let i = 0; i < snapPoints.length; i++) {
+                const d = Math.abs(currentOffset - offsetFor(i));
+                if (d < bestDist) { bestDist = d; best = i; }
+            }
+            targetIndex = best;
+        }
+
+        el.style.transition = EASING;
+        if (dismiss) {
+            el.style.transform = `translateY(${closedOffset()}px)`;
+            // Respect OnBeforeClose: if C# vetoes the dismiss, snap back to the
+            // active snap instead of leaving the panel translated off-screen. (#345)
+            Promise.resolve(dotnetRef.invokeMethodAsync('OnDrawerSnapDismiss', elementId))
+                .then(ok => {
+                    if (ok === false) {
+                        el.style.transition = EASING;
+                        el.style.transform = `translateY(${offsetFor(activeIndex)}px)`;
+                    }
+                })
+                .catch(() => {});
+        } else {
+            el.style.transform = `translateY(${offsetFor(targetIndex)}px)`;
+            if (targetIndex !== activeIndex) {
+                activeIndex = targetIndex;
+                dotnetRef.invokeMethodAsync('OnDrawerSnapChange', elementId, targetIndex);
+            }
+        }
+    };
+
+    el.addEventListener('touchstart', onTouchStart, { passive: true });
+    el.addEventListener('touchmove', onTouchMove, { passive: true });
+    el.addEventListener('touchend', onTouchEnd);
+
+    drawerSnapHandlers.set(elementId, {
+        onTouchStart, onTouchMove, onTouchEnd,
+        // setActive lets C# move the drawer programmatically (two-way ActiveSnapPoint).
+        setActive(i) {
+            if (!Number.isInteger(i) || i < 0 || i > lastIndex || i === activeIndex) return;
+            activeIndex = i;
+            H = el.offsetHeight || H;
+            el.style.transition = EASING;
+            el.style.transform = `translateY(${offsetFor(i)}px)`;
+        }
+    });
+}
+
+export function setDrawerSnap(elementId, index) {
+    const h = drawerSnapHandlers.get(elementId);
+    if (h) h.setActive(index);
+}
+
+export function unregisterDrawerSnap(elementId) {
+    const handlers = drawerSnapHandlers.get(elementId);
+    if (handlers) {
+        const el = document.getElementById(elementId);
+        if (el) {
+            el.removeEventListener('touchstart', handlers.onTouchStart);
+            el.removeEventListener('touchmove', handlers.onTouchMove);
+            el.removeEventListener('touchend', handlers.onTouchEnd);
+            el.style.transform = '';
+            el.style.transition = '';
+        }
+        drawerSnapHandlers.delete(elementId);
     }
 }
 
