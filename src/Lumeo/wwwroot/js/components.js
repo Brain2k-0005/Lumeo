@@ -2318,15 +2318,28 @@ export function registerBackToTop(id, dotnetRef, threshold) {
     }
 
     const effectiveThreshold = threshold || 300;
-    const handler = () => {
+    // Throttle to one check per animation frame — a raw scroll handler fires
+    // dozens of times per gesture and each call crosses the JS<->.NET interop
+    // boundary. We also only invoke when the visibility actually flips. (#247)
+    let rafPending = false;
+    let lastVisible = null;
+    const compute = () => {
+        rafPending = false;
         const scrollY = window.scrollY || document.documentElement.scrollTop;
         const visible = scrollY > effectiveThreshold;
+        if (visible === lastVisible) return;
+        lastVisible = visible;
         dotnetRef.invokeMethodAsync('OnScrollVisibilityChanged', id, visible);
+    };
+    const handler = () => {
+        if (rafPending) return;
+        rafPending = true;
+        requestAnimationFrame(compute);
     };
 
     window.addEventListener('scroll', handler, { passive: true });
     backToTopHandlers.set(id, { handler, dotnetRef });
-    handler(); // initial check
+    compute(); // initial check (synchronous)
 }
 
 export function unregisterBackToTop(id) {
