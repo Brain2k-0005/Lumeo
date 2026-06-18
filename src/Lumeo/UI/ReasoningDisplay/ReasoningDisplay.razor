@@ -19,7 +19,14 @@
     </summary>
 
     <div class="@BodyClass">
-        <p class="m-0 whitespace-pre-wrap break-words">@Text</p>
+        @if (Markdown)
+        {
+            <div class="prose prose-sm max-w-none break-words">@RenderedMarkdown</div>
+        }
+        else
+        {
+            <p class="m-0 whitespace-pre-wrap break-words">@Text</p>
+        }
     </div>
 </details>
 
@@ -31,6 +38,24 @@
     [Parameter] public bool DefaultOpen { get; set; }
     [Parameter] public Lumeo.Size Size { get; set; } = Lumeo.Size.Md;
     [Parameter] public ReasoningVariant Variant { get; set; } = ReasoningVariant.Default;
+
+    /// <summary>
+    /// Renders <see cref="Text"/> as markdown instead of plain text — reasoning
+    /// traces from models are usually markdown (lists, bold, code). Uses
+    /// <see cref="MarkdownRenderer"/> when supplied, otherwise the built-in
+    /// dependency-free CommonMark subset. Pairs naturally with
+    /// <see cref="ReasoningVariant.Detailed"/>. (#305)
+    /// </summary>
+    [Parameter] public bool Markdown { get; set; }
+
+    /// <summary>
+    /// Optional render hook converting the raw markdown <see cref="Text"/> into a
+    /// <see cref="MarkupString"/> (plug in Markdig etc.). The delegate must return
+    /// SAFE HTML — sanitise untrusted input. Ignored unless <see cref="Markdown"/>
+    /// is <c>true</c>.
+    /// </summary>
+    [Parameter] public Func<string, MarkupString>? MarkdownRenderer { get; set; }
+
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
@@ -84,6 +109,20 @@
             if (!string.IsNullOrEmpty(Summary)) return Summary!;
             if (DurationMs is long ms) return $"Reasoned for {ms / 1000.0:0.#}s";
             return IsStreaming ? "Thinking…" : "Reasoning";
+        }
+    }
+
+    // Mirrors StreamingText: HTML-escape-first allow-list renderer by default,
+    // or a consumer-supplied renderer. LumeoMarkdown output is XSS-safe. (#305)
+    private MarkupString RenderedMarkdown
+    {
+        get
+        {
+            var text = Text ?? string.Empty;
+            if (text.Length == 0) return default;
+            return MarkdownRenderer is not null
+                ? MarkdownRenderer(text)
+                : (MarkupString)Lumeo.Internal.LumeoMarkdown.ToHtml(text);
         }
     }
 
