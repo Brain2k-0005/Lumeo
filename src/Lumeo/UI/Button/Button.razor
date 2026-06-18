@@ -1,36 +1,55 @@
 @namespace Lumeo
 @inject Lumeo.Services.IComponentInteropService Interop
 
-<button @ref="_el" type="@TypeAttr" class="@CssClass" disabled="@(IsLoading || Disabled)" @attributes="AdditionalAttributes" @onclick="OnClick" @onclick:stopPropagation="StopPropagation" @onclick:preventDefault="PreventDefault">
-    @if (IsLoading)
-    {
-        <Spinner Class="h-4 w-4" />
-        @if (LoadingText != null)
+@{
+    // Shared inner content so the <button> and <a> render paths stay identical.
+    RenderFragment inner = @<text>
+        @if (IsLoading)
         {
-            <span>@LoadingText</span>
+            <Spinner Class="h-4 w-4" />
+            @if (LoadingText != null)
+            {
+                <span>@LoadingText</span>
+            }
+            else
+            {
+                @ChildContent
+            }
+            @if (RightIcon != null)
+            {
+                @RightIcon
+            }
         }
         else
         {
+            @if (LeftIcon != null)
+            {
+                @LeftIcon
+            }
             @ChildContent
+            @if (RightIcon != null)
+            {
+                @RightIcon
+            }
         }
-        @if (RightIcon != null)
-        {
-            @RightIcon
-        }
-    }
-    else
-    {
-        @if (LeftIcon != null)
-        {
-            @LeftIcon
-        }
-        @ChildContent
-        @if (RightIcon != null)
-        {
-            @RightIcon
-        }
-    }
-</button>
+    </text>;
+}
+@if (Href is not null)
+{
+    @* Link-button (#269): polymorphic render as <a> for the common "link styled
+       as a button" case. <a> can't be natively disabled, so a disabled/loading
+       link gets aria-disabled + pointer-events-none/opacity directly (the
+       `disabled:` utility variant only targets a real :disabled element). *@
+    <a @ref="_el" href="@Href" class="@LinkCssClass"
+       aria-disabled="@((IsLoading || Disabled) ? "true" : null)"
+       tabindex="@((IsLoading || Disabled) ? "-1" : null)"
+       @attributes="AdditionalAttributes" @onclick="OnClick"
+       @onclick:stopPropagation="StopPropagation" @onclick:preventDefault="PreventDefault">@inner</a>
+}
+else
+{
+    <button @ref="_el" type="@TypeAttr" class="@CssClass" disabled="@(IsLoading || Disabled)" @attributes="AdditionalAttributes" @onclick="OnClick" @onclick:stopPropagation="StopPropagation" @onclick:preventDefault="PreventDefault">@inner</button>
+}
 
 @code {
     [Parameter] public RenderFragment? ChildContent { get; set; }
@@ -51,6 +70,16 @@
     [Parameter] public bool Disabled { get; set; }
     [Parameter] public bool IsLoading { get; set; }
     [Parameter] public string? LoadingText { get; set; }
+
+    /// <summary>
+    /// When set, the button renders as an <c>&lt;a href&gt;</c> styled exactly like
+    /// a button — the Blazor-idiomatic polymorphism for the common "link that
+    /// looks like a button" case (#269). All visual props (Variant/Size/icons)
+    /// still apply; <see cref="Disabled"/>/<see cref="IsLoading"/> map to
+    /// <c>aria-disabled</c> + non-interactive styling since a link can't be
+    /// natively disabled. Leave null for a normal <c>&lt;button&gt;</c>.
+    /// </summary>
+    [Parameter] public string? Href { get; set; }
 
     /// <summary>HTML button type. Defaults to <see cref="ButtonType.Button"/>
     /// — explicitly NOT submit. The HTML spec says &lt;button&gt; inside
@@ -94,6 +123,10 @@
         Cx.When(IsLoading, "pointer-events-none opacity-70"),
         Cx.When(FullWidth, "w-full"),
         Class);
+
+    // Link variant can't use the `disabled:` utilities (no :disabled state on
+    // <a>), so fold the inactive styling in directly.
+    private string LinkCssClass => Cx.Merge(CssClass, Cx.When(IsLoading || Disabled, "pointer-events-none opacity-50"));
 
     private const string BaseClasses = "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50";
 

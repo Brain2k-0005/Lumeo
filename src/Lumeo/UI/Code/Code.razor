@@ -1,13 +1,50 @@
 @namespace Lumeo
 
-<code class="@CssClass" @attributes="AdditionalAttributes">@ChildContent</code>
+<code class="@CssClass" data-language="@Language" @attributes="AdditionalAttributes">@Body</code>
 
 @code {
     [Parameter] public string Variant { get; set; } = "inline";
     [Parameter] public string? Size { get; set; }
+
+    /// <summary>
+    /// Raw source to render (block variant). When set together with
+    /// <see cref="Highlighter"/> the output is syntax-highlighted; otherwise the
+    /// source is rendered as escaped plain text. Falls back to
+    /// <see cref="ChildContent"/> when null. (#196)
+    /// </summary>
+    [Parameter] public string? Source { get; set; }
+
+    /// <summary>Language hint (e.g. "csharp", "ts") — emitted as <c>data-language</c>
+    /// and passed to <see cref="Highlighter"/>.</summary>
+    [Parameter] public string? Language { get; set; }
+
+    /// <summary>
+    /// Pluggable syntax highlighter: <c>(code, language) =&gt; safe HTML</c>. Plug in
+    /// Prism / Shiki / highlight.js (or a server-side highlighter). The delegate
+    /// MUST return SAFE HTML — escape untrusted source. Core ships no built-in
+    /// highlighter on purpose (dependency-free), mirroring
+    /// <c>StreamingText.MarkdownRenderer</c>. Ignored unless <see cref="Source"/> is set.
+    /// </summary>
+    [Parameter] public Func<string, string?, MarkupString>? Highlighter { get; set; }
+
     [Parameter] public RenderFragment? ChildContent { get; set; }
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private RenderFragment Body => builder =>
+    {
+        if (Source is not null)
+        {
+            if (Highlighter is not null)
+                builder.AddContent(0, Highlighter(Source, Language)); // consumer-sanitized HTML
+            else
+                builder.AddContent(0, Source);                        // escaped plain text
+        }
+        else
+        {
+            builder.AddContent(0, ChildContent);
+        }
+    };
 
     private string BaseClasses => Variant switch
     {
