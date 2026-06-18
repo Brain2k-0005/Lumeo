@@ -1,7 +1,7 @@
 @namespace Lumeo
 
 <Badge Variant="Badge.BadgeVariant.Secondary" Class="@($"flex items-center gap-1 pl-2 pr-1 {Class}".Trim())" @attributes="AdditionalAttributes">
-    @Label: @Value
+    @DisplayText
     <button type="button" class="ml-1 rounded-full hover:bg-muted p-0.5 focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-1" aria-label="@($"Remove {Label} filter")" @onclick="OnDismiss">
         <Blazicon Svg="Lucide.X" class="h-3 w-3" />
     </button>
@@ -9,8 +9,13 @@
 
 @code {
     [Parameter] public string Label { get; set; } = "";
+    /// <summary>Optional comparison operator shown between Label and Value
+    /// (e.g. "=", "&gt;", "contains"). When null the pill reads "Label: Value". (#319)</summary>
+    [Parameter] public string? Operator { get; set; }
     [Parameter] public string Value { get; set; } = "";
     [Parameter] public EventCallback OnDismiss { get; set; }
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private string DisplayText => string.IsNullOrEmpty(Operator) ? $"{Label}: {Value}" : $"{Label} {Operator} {Value}";
 }
