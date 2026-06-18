@@ -5,6 +5,23 @@ All notable changes to Lumeo will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.18.0] - 2026-06-18
+
+Bundled audit-backlog batch closing the remaining cleanly-doable component gaps in a single release. All additive and opt-in — existing usage is unchanged.
+
+### Added
+- **Pagination (#210)**: opt-in data-driven mode — set `Page` + `TotalPages` (or `TotalItems` + `PageSize`) and the component renders the full page list itself (prev/next, first/last boundaries, sibling window, `…` ellipsis gaps) and raises `PageChanged`. `SiblingCount`/`BoundaryCount` tune the window. The original `ChildContent` composition still works.
+- **Button (#269)**: `Href` — when set, the button renders as an `<a>` link-button (shared loading/icon/content), with `aria-disabled` + `pointer-events-none` when disabled or loading.
+- **Heading (#295)**: `As` — render the heading as any element (e.g. a `div` styled as a heading) while keeping the visual `Level`/`Size`, for correct document outline without forcing an `h1`–`h6` tag.
+- **Code (#196)**: `Source` + `Language` (emitted as `data-language`) and a pluggable `Highlighter` hook (`Func<string, string?, MarkupString>`) so a syntax highlighter can be supplied; without one, `Source` is HTML-escaped.
+- **Filter (#319)**: `FilterBar` gains a data-driven `Filters` model (`FilterDescriptor` = Field / Operator / Value) that auto-renders a dismissable `FilterPill` per descriptor and raises `OnRemoveFilter`; `FilterPill` gains an `Operator` (renders `Field op Value`, or `Field: Value` without one). The `Pills` slot still composes alongside.
+- **Sparkline (#275)**: opt-in `ShowTooltips` — a marker dot at every point with a native SVG `<title>` (hover value), no JS. Off by default.
+- **Statistic (#273)**: `ValueContent` slot overriding the formatted value — drop in a `NumberTicker` (Lumeo.Motion) for an animated count-up instead of duplicating animation in core.
+- **Gauge (#277)**: `LabelContent` slot overriding the center/label text — same composable pattern for an animated value.
+
+### Improved
+- **SparkCard (#276)**: the inline chart now delegates to the full `Sparkline`, so it gains `Type` (Line/Area/Bars), `ShowArea`, `ShowLast`, `ShowTooltips` and `SparkColor` instead of a hardcoded less-capable polyline. A single data point still renders no chart (two-point minimum preserved).
+
 ## [3.17.0] - 2026-06-18
 
 Bundled feature batch (component capability gaps), all additive and opt-in.
