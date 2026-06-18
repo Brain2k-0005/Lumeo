@@ -102,4 +102,28 @@ public class FeatureBatchTests
         Assert.Empty(cut.FindAll("mark"));
         Assert.Contains("hello", cut.Markup);
     }
+
+    [Fact]
+    public void Grid_responsive_uses_breakpoint_columns()
+    {
+        using var ctx = NewCtx();
+        var cut = ctx.Render<Lumeo.Grid>(p => p
+            .Add(x => x.Columns, 3)
+            .Add(x => x.Responsive, true));
+
+        var cls = cut.Find("div").GetAttribute("class") ?? "";
+        Assert.Contains("sm:grid-cols-2", cls);
+        Assert.Contains("lg:grid-cols-3", cls);
+    }
+
+    [Fact]
+    public void Grid_default_stays_fixed_columns()
+    {
+        using var ctx = NewCtx();
+        var cut = ctx.Render<Lumeo.Grid>(p => p.Add(x => x.Columns, 3));
+
+        var cls = cut.Find("div").GetAttribute("class") ?? "";
+        Assert.Contains("grid-cols-3", cls);
+        Assert.DoesNotContain("sm:grid-cols", cls);
+    }
 }
