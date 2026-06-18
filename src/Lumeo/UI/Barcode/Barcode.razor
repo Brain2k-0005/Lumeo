@@ -55,10 +55,19 @@
     [Parameter] public bool ShowText { get; set; } = true;
     [Parameter] public string Color { get; set; } = "foreground";
     [Parameter] public string BackgroundColor { get; set; } = "background";
+    /// <summary>
+    /// Fired after (re)encoding with the human-readable error message, or
+    /// <c>null</c> when the value encoded successfully — a validation hook so a
+    /// consumer can surface its own UI / gate a submit. (#291)
+    /// </summary>
+    [Parameter] public EventCallback<string?> OnError { get; set; }
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
-    private const int QuietZone = 10;
+    // Quiet zone scales with the narrow-module width (the spec mandates ~10×
+    // the narrow module, not a fixed pixel count) so a wide BarWidth keeps a
+    // scanner-readable margin. (#291)
+    private double QuietZone => 10 * BarWidth;
 
     private List<(double Width, bool IsBar)> _modules = new();
 
@@ -79,7 +88,21 @@
         ? $"Barcode: {_text}"
         : $"Barcode error: {_error}";
 
-    protected override void OnParametersSet() => Rebuild();
+    private string? _lastError;
+    private bool _reportedOnce;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        Rebuild();
+        // Report the validation result once per change (including clearing to
+        // null on a successful encode) — never on every unrelated param set.
+        if (OnError.HasDelegate && (!_reportedOnce || _error != _lastError))
+        {
+            _reportedOnce = true;
+            _lastError = _error;
+            await OnError.InvokeAsync(_error);
+        }
+    }
 
     private void Rebuild()
     {
