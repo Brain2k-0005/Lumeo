@@ -20,6 +20,13 @@
     [Parameter] public IEnumerable<string>? HighlightTerms { get; set; }
     [Parameter] public bool CaseSensitive { get; set; }
     [Parameter] public bool WholeWord { get; set; }
+    /// <summary>
+    /// Treat <see cref="Highlight"/> / <see cref="HighlightTerms"/> as regular-
+    /// expression patterns instead of literal text (the default). Invalid
+    /// patterns fall back to rendering the text un-highlighted. <see cref="WholeWord"/>
+    /// is ignored in this mode — express boundaries in the pattern itself. (#293)
+    /// </summary>
+    [Parameter] public bool RegexMode { get; set; }
     [Parameter] public string? HighlightClass { get; set; }
     [Parameter] public string Tag { get; set; } = "mark";
     [Parameter] public string? Class { get; set; }
@@ -72,6 +79,9 @@
         // Build a combined regex: alternate longest-first
         var escaped = terms.Select(t =>
         {
+            // RegexMode: use the term verbatim as a pattern. Otherwise escape it
+            // to a literal and optionally anchor on word boundaries.
+            if (RegexMode) return t;
             var e = System.Text.RegularExpressions.Regex.Escape(t);
             return WholeWord ? $@"\b{e}\b" : e;
         });
