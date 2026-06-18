@@ -383,93 +383,64 @@ export function positionFixed(contentId, referenceId, align, matchWidth, side, o
             content.style.width = `${refRect.width}px`;
         }
 
-        // Calculate preferred position
-        let top, left, right;
-        let transform = '';
+        // --- Transform-free positioning (#172) ---------------------------------
+        // Position with explicit top/left ONLY; never set a CSS `transform` on
+        // overlay content. A transformed ancestor establishes a containing block
+        // for its `position:fixed` descendants — which is exactly why a nested
+        // overlay (DropdownMenuSubContent, popover-in-popover, ContextMenu/Menubar
+        // sub-content) positioned via this same function resolved against the
+        // transformed parent instead of the viewport and rendered off-screen.
+        // Folding the former translateX/Y(-50%/-100%) offsets into the computed
+        // coordinates keeps the visual result identical while leaving the overlay
+        // transform-free, so nested fixed overlays resolve against the viewport.
+        content.style.transform = '';
 
-        if (resolvedSide === 'top') {
-            top = refRect.top - gap;
-            switch (align) {
-                case 'center':
-                    left = refRect.left + refRect.width / 2;
-                    transform = 'translateX(-50%) translateY(-100%)';
-                    break;
-                case 'end':
-                    left = refRect.right;
-                    transform = 'translateX(-100%) translateY(-100%)';
-                    break;
-                default:
-                    left = refRect.left;
-                    transform = 'translateY(-100%)';
-                    break;
-            }
-        } else if (resolvedSide === 'left') {
-            left = refRect.left - gap;
-            transform = 'translateX(-100%)';
-            switch (align) {
-                case 'center':
-                    top = refRect.top + refRect.height / 2;
-                    transform = 'translateX(-100%) translateY(-50%)';
-                    break;
-                case 'end':
-                    top = refRect.bottom;
-                    transform = 'translateX(-100%) translateY(-100%)';
-                    break;
-                default:
-                    top = refRect.top;
-                    break;
-            }
-        } else if (resolvedSide === 'right') {
-            left = refRect.right + gap;
-            switch (align) {
-                case 'center':
-                    top = refRect.top + refRect.height / 2;
-                    transform = 'translateY(-50%)';
-                    break;
-                case 'end':
-                    top = refRect.bottom;
-                    transform = 'translateY(-100%)';
-                    break;
-                default:
-                    top = refRect.top;
-                    break;
-            }
-        } else {
-            // bottom (default)
-            top = refRect.bottom + gap;
-            switch (align) {
-                case 'center':
-                    left = refRect.left + refRect.width / 2;
-                    transform = 'translateX(-50%)';
-                    break;
-                case 'end':
-                    left = refRect.right;
-                    transform = 'translateX(-100%)';
-                    break;
-                default:
-                    left = refRect.left;
-                    break;
-            }
-        }
-
-        // Apply initial position
-        content.style.top = `${top}px`;
-        content.style.left = left != null ? `${left}px` : '';
-        content.style.right = right != null ? `${right}px` : '';
-        content.style.transform = transform;
-
-        // Viewport bounds check (synchronous — no rAF to avoid stale refs).
-        // Reset any prior maxHeight so we measure the natural content size
-        // (otherwise a previous tight clamp would stick across reopens).
+        // Reset any prior clamp so we measure the natural content size first
+        // (otherwise a previous tight maxHeight would skew the measurement).
         content.style.maxHeight = '';
         content.style.overflow = '';
 
-        // Force a synchronous layout BEFORE measuring. Without this, an
-        // in-flight animation scale-up or a Blazor render that hasn't
-        // committed yet can return stale / pre-final dimensions —
-        // empirically observed: cr.height = 1574 when the popover's
-        // settled height was 310. Reading offsetHeight forces the
-        // browser to flush layout.
+        // Measure the natural box. matchWidth was already applied above, so width
+        // (and therefore wrap-dependent height) is final. offsetWidth/Height force
+        // a synchronous layout flush — without it an in-flight animation scale or
+        // an uncommitted Blazor render can report stale dimensions (empirically
+        // cr.height = 1574 when the settled height was 310).
+        void content.offsetHeight;
+        let cw = content.offsetWidth;
+        let ch = content.offsetHeight;
+
+        // Compute explicit top/left for the requested side + align. The size
+        // shifts replace the former transforms: translateX(-50%) -> -cw/2,
+        // translateX(-100%) -> -cw, translateY(-50%) -> -ch/2,
+        // translateY(-100%) -> -ch.
+        let top, left;
+        if (resolvedSide === 'top') {
+            top = refRect.top - gap - ch;
+            if (align === 'center') left = refRect.left + refRect.width / 2 - cw / 2;
+            else if (align === 'end') left = refRect.right - cw;
+            else left = refRect.left;
+        } else if (resolvedSide === 'left') {
+            left = refRect.left - gap - cw;
+            if (align === 'center') top = refRect.top + refRect.height / 2 - ch / 2;
+            else if (align === 'end') top = refRect.bottom - ch;
+            else top = refRect.top;
+        } else if (resolvedSide === 'right') {
+            left = refRect.right + gap;
+            if (align === 'center') top = refRect.top + refRect.height / 2 - ch / 2;
+            else if (align === 'end') top = refRect.bottom - ch;
+            else top = refRect.top;
+        } else {
+            // bottom (default)
+            top = refRect.bottom + gap;
+            if (align === 'center') left = refRect.left + refRect.width / 2 - cw / 2;
+            else if (align === 'end') left = refRect.right - cw;
+            else left = refRect.left;
+        }
+
+        // Apply, then re-measure for the flip/clamp guards below.
+        content.style.top = `${top}px`;
+        content.style.left = `${left}px`;
+        content.style.right = '';
         void content.offsetHeight;
         const cr = content.getBoundingClientRect();
 
@@ -479,6 +450,8 @@ export function positionFixed(contentId, referenceId, align, matchWidth, side, o
         // parent flex container — observed at ~1574px inside a Sheet) ends
         // up with `top: triggerTop - contentHeight - gap` going far negative,
         // rendering off-screen at the top. Clamp to viewport with maxHeight.
+        // (Transform-free: recompute `top` directly instead of stripping a
+        // translateY from a transform string.)
         if (resolvedSide === 'bottom' && cr.bottom > window.innerHeight) {
             const newRefRect = reference.getBoundingClientRect();
             const spaceAbove = newRefRect.top - 8;        // 8px breathing room
@@ -486,13 +459,11 @@ export function positionFixed(contentId, referenceId, align, matchWidth, side, o
             if (spaceAbove >= cr.height + gap) {
                 // Flip up — fits naturally
                 content.style.top = `${newRefRect.top - cr.height - gap}px`;
-                content.style.transform = transform.replace('translateY(-100%)', '').trim() || '';
             } else if (spaceAbove > spaceBelow) {
                 // More room above than below — flip up and cap height
                 content.style.top = `8px`;
                 content.style.maxHeight = `${spaceAbove - gap}px`;
                 content.style.overflow = 'auto';
-                content.style.transform = transform.replace('translateY(-100%)', '').trim() || '';
             } else {
                 // Stick below the trigger and cap height to viewport
                 content.style.top = `${newRefRect.bottom + gap}px`;
@@ -507,12 +478,10 @@ export function positionFixed(contentId, referenceId, align, matchWidth, side, o
             const spaceBelow = window.innerHeight - newRefRect.bottom - 8;
             if (spaceBelow >= cr.height + gap) {
                 content.style.top = `${newRefRect.bottom + gap}px`;
-                content.style.transform = transform.replace('translateY(-100%)', '').replace('translateX(-50%) translateY(-100%)', 'translateX(-50%)').trim() || '';
             } else if (spaceBelow > spaceAbove) {
                 content.style.top = `${newRefRect.bottom + gap}px`;
                 content.style.maxHeight = `${spaceBelow}px`;
                 content.style.overflow = 'auto';
-                content.style.transform = transform.replace('translateY(-100%)', '').replace('translateX(-50%) translateY(-100%)', 'translateX(-50%)').trim() || '';
             } else {
                 content.style.top = `8px`;
                 content.style.maxHeight = `${spaceAbove - gap}px`;
@@ -521,12 +490,10 @@ export function positionFixed(contentId, referenceId, align, matchWidth, side, o
         }
         // Clamp horizontal
         if (cr.right > window.innerWidth) {
-            content.style.left = `${window.innerWidth - cr.width - 8}px`;
-            content.style.transform = '';
+            content.style.left = `${Math.max(8, window.innerWidth - cr.width - 8)}px`;
         }
         if (cr.left < 0) {
             content.style.left = '8px';
-            content.style.transform = '';
         }
 
         // Universal final guard: ensure the popover (a) never exceeds the
