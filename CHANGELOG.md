@@ -5,6 +5,21 @@ All notable changes to Lumeo will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.15.0] - 2026-06-18
+
+Follow-up to the 3.14.0 audit pass: the two P0 cascade/layout fixes (browser-verified by new Playwright e2e coverage) plus a small a11y/i18n polish batch.
+
+### Fixed
+- **Overlays (#172)**: `positionFixed` — the shared positioner for Popover, Select, DropdownMenu, ContextMenu, Menubar and Tooltip — now positions with explicit `top`/`left` only and never sets a CSS `transform`. A transformed overlay established a containing block for its `position:fixed` descendants, so a nested overlay (`DropdownMenuSubContent`, popover-in-popover, ContextMenu/Menubar submenu) resolved against the transformed parent instead of the viewport and opened off-screen. All viewport flip/clamp guards are preserved; visually identical for the existing cases.
+- **Icon (#173)**: size utilities (`h-/w-/size-`) now win under Tailwind v4. Blazicons injects an unlayered `svg[blazicon]{width:1em}` rule that beat `@layer utilities`, silently collapsing every icon to the font size; an unlayered, higher-specificity `revert-layer` reset defers sizing back to the utilities layer (a consumer's own `Class` override still wins). Effective on the unlayered `<link>` path; layered-import consumers add the reset themselves (documented inline).
+- **RingProgress (#278)**: `aria-valuenow` is clamped/rounded into `[aria-valuemin, aria-valuemax]`.
+
+### Improved
+- **Hero (#297) / CTASection (#298) / FeatureGrid (#299)**: the `<section>` landmark now carries an accessible name via `aria-labelledby` → its heading, so assistive tech exposes it as a named region.
+
+### Added
+- **Spinner (#282) / Skeleton (#281)**: `AriaLabel` parameter (defaults to "Loading") so the screen-reader name is localizable without a visible label.
+
 ## [3.14.0] - 2026-06-17
 
 Library-wide audit-remediation release. Building on the 3.13.0 audit, this release closes accessibility (keyboard/ARIA), lifecycle, interop-safety, culture and motion gaps across ~60 components, adds several audit-flagged feature gaps, and honors `prefers-reduced-motion` across the Motion package. Full per-component detail is tracked in audit issues #171–#335.
