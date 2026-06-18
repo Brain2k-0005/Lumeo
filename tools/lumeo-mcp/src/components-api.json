@@ -1,10 +1,10 @@
 {
   "$schema": "https://lumeo.nativ.sh/components-api-schema.json",
-  "version": "3.18.0",
-  "generated": "2026-06-18T11:35:30.7258789Z",
+  "version": "3.19.0",
+  "generated": "2026-06-18T14:34:47.9181102Z",
   "stats": {
     "componentCount": 163,
-    "totalParameters": 4099,
+    "totalParameters": 4102,
     "totalEnums": 74,
     "totalRecords": 71,
     "serviceCount": 33,
@@ -820,6 +820,12 @@
           "summary": null
         },
         {
+          "name": "RegisterDrawerSwipe",
+          "returnType": "ValueTask",
+          "signature": "RegisterDrawerSwipe(string elementId, string direction, Func<Task> handler, int? activationPx, int? firePx, double? velocity)",
+          "summary": null
+        },
+        {
           "name": "UnregisterDrawerSwipe",
           "returnType": "ValueTask",
           "signature": "UnregisterDrawerSwipe(string elementId)",
@@ -829,6 +835,36 @@
           "name": "OnSwipeDismiss",
           "returnType": "Task",
           "signature": "OnSwipeDismiss(string elementId)",
+          "summary": null
+        },
+        {
+          "name": "RegisterDrawerSnap",
+          "returnType": "ValueTask",
+          "signature": "RegisterDrawerSnap(string elementId, string direction, Func<Task<bool>> dismissHandler, Func<int, Task> snapHandler, IReadOnlyList<double> snapPoints, int activeIndex, bool dismissible, int? activationPx, int? firePx, double? velocity)",
+          "summary": null
+        },
+        {
+          "name": "SetDrawerSnap",
+          "returnType": "ValueTask",
+          "signature": "SetDrawerSnap(string elementId, int index)",
+          "summary": null
+        },
+        {
+          "name": "UnregisterDrawerSnap",
+          "returnType": "ValueTask",
+          "signature": "UnregisterDrawerSnap(string elementId)",
+          "summary": null
+        },
+        {
+          "name": "OnDrawerSnapChange",
+          "returnType": "Task",
+          "signature": "OnDrawerSnapChange(string elementId, int index)",
+          "summary": null
+        },
+        {
+          "name": "OnDrawerSnapDismiss",
+          "returnType": "Task<bool>",
+          "signature": "OnDrawerSnapDismiss(string elementId)",
           "summary": null
         },
         {
@@ -2058,9 +2094,33 @@
           "summary": "3.0.1 — extended overload that accepts swipe-to-close thresholds. Both parameters are optional; passing null falls back to the JS hardcoded defaults so existing callers keep working unchanged. Mirrors the LumeoGestureOptions bag."
         },
         {
+          "name": "RegisterDrawerSwipe",
+          "returnType": "ValueTask",
+          "signature": "RegisterDrawerSwipe(string elementId, string direction, Func<Task> handler, int? activationPx, int? firePx, double? velocity)",
+          "summary": "3.19 — adds (px/ms): a flick faster than this in the dismiss direction closes the drawer even below . Default impl ignores it so non-overriding implementations keep working."
+        },
+        {
           "name": "UnregisterDrawerSwipe",
           "returnType": "ValueTask",
           "signature": "UnregisterDrawerSwipe(string elementId)",
+          "summary": null
+        },
+        {
+          "name": "RegisterDrawerSnap",
+          "returnType": "ValueTask",
+          "signature": "RegisterDrawerSnap(string elementId, string direction, Func<Task<bool>> dismissHandler, Func<int, Task> snapHandler, IReadOnlyList<double> snapPoints, int activeIndex, bool dismissible, int? activationPx, int? firePx, double? velocity)",
+          "summary": "Registers a snap-point gesture: the drawer rests at one of (fractions 0&lt;f≤1), drags between them, and dismisses when flicked/dragged below the lowest. fires with the new index on each settle; fires on close. Default impl falls back to plain swipe-dismiss."
+        },
+        {
+          "name": "SetDrawerSnap",
+          "returnType": "ValueTask",
+          "signature": "SetDrawerSnap(string elementId, int index)",
+          "summary": "Programmatically move a snap-point drawer to ."
+        },
+        {
+          "name": "UnregisterDrawerSnap",
+          "returnType": "ValueTask",
+          "signature": "UnregisterDrawerSnap(string elementId)",
           "summary": null
         },
         {
@@ -25563,8 +25623,8 @@
           "code": "<Drawer @bind-Open=\"_preventDrawerOpen\">\n    <DrawerTrigger>\n        <Button Variant=\"Button.ButtonVariant.Outline\">Open Protected Drawer</Button>\n    </DrawerTrigger>\n    <DrawerContent PreventClose=\"true\">\n        <DrawerHeader>\n            <DrawerTitle>Confirm Action</DrawerTitle>\n            <DrawerDescription>You must choose an option to continue.</DrawerDescription>\n        </DrawerHeader>\n        <Stack Gap=\"2\" Class=\"p-4\">\n            <Button Class=\"w-full\" OnClick=\"@(() => _preventDrawerOpen = false)\">Confirm</Button>\n            <Button Variant=\"Button.ButtonVariant.Outline\" Class=\"w-full\" OnClick=\"@(() => _preventDrawerOpen = false)\">Cancel</Button>\n        </Stack>\n    </DrawerContent>\n</Drawer>\n\n@code {\n    private bool _preventDrawerOpen;\n}"
         },
         {
-          "title": "Side — interactive",
-          "code": "<Segmented @bind-Value=\"_drawerSideSel\" Options=\"_drawerSideOptions\" />\n<Drawer @bind-Open=\"_open\">\n    <DrawerTrigger>\n        <Button Variant=\"Button.ButtonVariant.Outline\">Open Drawer (@_drawerSideSel)</Button>\n    </DrawerTrigger>\n    <DrawerContent Side=\"@_activeSide\">\n        <DrawerHeader>\n            <DrawerTitle>@_drawerSideSel Drawer</DrawerTitle>\n            <DrawerDescription>Slides in from the @_drawerSideSel.ToLower().</DrawerDescription>\n        </DrawerHeader>\n        <DrawerFooter>\n            <DrawerClose><Button Class=\"w-full\">Close</Button></DrawerClose>\n        </DrawerFooter>\n    </DrawerContent>\n</Drawer>\n\n@code {\n    private string _drawerSideSel = \"Bottom\";\n    private Lumeo.Side _activeSide => Enum.Parse<Lumeo.Side>(_drawerSideSel);\n    private List<Segmented.SegmentedOption> _drawerSideOptions = new()\n    {\n        new() { Label = \"Top\", Value = \"Top\" },\n        new() { Label = \"Right\", Value = \"Right\" },\n        new() { Label = \"Bottom\", Value = \"Bottom\" },\n        new() { Label = \"Left\", Value = \"Left\" },\n    };\n}"
+          "title": "Snap points (touch)",
+          "code": "<Drawer @bind-Open=\"_snapOpen\">\n    <DrawerTrigger>\n        <Button Variant=\"Button.ButtonVariant.Outline\">Open Snap Drawer</Button>\n    </DrawerTrigger>\n    <DrawerContent SnapPoints=\"_snapPoints\" @bind-ActiveSnapPoint=\"_snapIndex\">\n        <DrawerHeader>\n            <DrawerTitle>Snap Drawer</DrawerTitle>\n            <DrawerDescription>Drag the handle to snap between 40%, 75%, and full height.</DrawerDescription>\n        </DrawerHeader>\n        <Stack Gap=\"2\" Class=\"p-4\">\n            @* …content… *@\n        </Stack>\n        <DrawerFooter>\n            <DrawerClose><Button Class=\"w-full\">Close</Button></DrawerClose>\n        </DrawerFooter>\n    </DrawerContent>\n</Drawer>\n\n@code {\n    private bool _snapOpen;\n    private int _snapIndex = 1;                      // open at 75%\n    private double[] _snapPoints = { 0.4, 0.75, 1.0 };\n}"
         }
       ],
       "subComponents": {
@@ -25673,6 +25733,30 @@
               "captureUnmatched": false
             },
             {
+              "name": "SnapPoints",
+              "type": "IReadOnlyList<double>?",
+              "default": null,
+              "description": "vaul-style snap points: fractional resting heights in ascending order, each 0 &lt; f ≤ 1 (e.g. [0.4, 0.75, 1] = 40% / 75% / fully open). When set on a Top/Bottom drawer, the panel rests at one of these heights, drags between them, and dismisses when flicked/dragged below the lowest. Ignored for Left/Right (which keep plain swipe-to-dismiss). (#218)",
+              "isCascading": false,
+              "captureUnmatched": false
+            },
+            {
+              "name": "ActiveSnapPoint",
+              "type": "int",
+              "default": "-1",
+              "description": "Index into SnapPoints of the current resting snap. Two-way bindable: updates as the user drags between snaps, and setting it moves the drawer programmatically. -1 (default) opens at the most-open (last) snap. (#218)",
+              "isCascading": false,
+              "captureUnmatched": false
+            },
+            {
+              "name": "ActiveSnapPointChanged",
+              "type": "EventCallback<int>",
+              "default": null,
+              "description": null,
+              "isCascading": false,
+              "captureUnmatched": false
+            },
+            {
               "name": "Class",
               "type": "string?",
               "default": null,
@@ -25697,7 +25781,13 @@
               "captureUnmatched": true
             }
           ],
-          "events": [],
+          "events": [
+            {
+              "name": "ActiveSnapPointChanged",
+              "type": "EventCallback<int>",
+              "description": null
+            }
+          ],
           "enums": [
             {
               "name": "DrawerAnimation",
