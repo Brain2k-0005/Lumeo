@@ -14,6 +14,7 @@
   "cssVars": [
     "--color-foreground"
   ],
+  "gotchas": [],
   "api": {
     "name": "Affix",
     "category": "Navigation",
@@ -95,17 +96,18 @@
     ],
     "enums": [],
     "records": [],
+    "gotchas": [],
     "cssVars": [
       "--color-foreground"
     ],
     "examples": [
       {
         "title": "Basic Affix",
-        "code": "<Affix OffsetTop=\"80\">\r\n    <div class=\"bg-background border rounded-lg p-4 shadow-sm\">\r\n        This content sticks at 80px from top.\r\n    </div>\r\n</Affix>"
+        "code": "<Affix OffsetTop=\"80\">\n    <div class=\"bg-background border rounded-lg p-4 shadow-sm\">\n        This content sticks at 80px from top.\n    </div>\n</Affix>"
       },
       {
         "title": "Interactive: Anchor & Offset",
-        "code": "@* Top anchor *@\r\n<Affix OffsetTop=\"80\">\r\n    <Badge Class=\"px-4 py-1.5 text-sm shadow\">Affixed — Top 80px</Badge>\r\n</Affix>\r\n\r\n@* Bottom anchor *@\r\n<Affix OffsetBottom=\"40\">\r\n    <Badge Class=\"px-4 py-1.5 text-sm shadow\">Affixed — Bottom 40px</Badge>\r\n</Affix>"
+        "code": "@* Top anchor *@\n<Affix OffsetTop=\"80\">\n    <Badge Class=\"px-4 py-1.5 text-sm shadow\">Affixed — Top 80px</Badge>\n</Affix>\n\n@* Bottom anchor *@\n<Affix OffsetBottom=\"40\">\n    <Badge Class=\"px-4 py-1.5 text-sm shadow\">Affixed — Bottom 40px</Badge>\n</Affix>"
       }
     ],
     "subComponents": {},
@@ -124,7 +126,7 @@
   "source": [
     {
       "path": "UI/Affix/Affix.razor",
-      "content": "@namespace Lumeo\r\n@implements IAsyncDisposable\r\n\r\n<div id=\"@_elementId\" class=\"@CssClass\" @attributes=\"AdditionalAttributes\">\r\n    @ChildContent\r\n</div>\r\n\r\n@inject IComponentInteropService Interop\r\n\r\n@code {\r\n    [Parameter] public RenderFragment? ChildContent { get; set; }\r\n    [Parameter] public int OffsetTop { get; set; } = 0;\r\n    [Parameter] public int? OffsetBottom { get; set; }\r\n    [Parameter] public string? Target { get; set; }\r\n    [Parameter] public EventCallback<bool> OnChange { get; set; }\r\n    [Parameter] public string? Class { get; set; }\r\n    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }\r\n\r\n    private readonly string _elementId = LumeoIds.New(\"affix\");\r\n    private bool _registered;\r\n    private bool _isFixed;\r\n\r\n    private string CssClass => Class ?? \"\";\r\n\r\n    protected override async Task OnAfterRenderAsync(bool firstRender)\r\n    {\r\n        if (!firstRender) return;\r\n        if (_registered) return;\r\n        try\r\n        {\r\n            await Interop.RegisterAffix(_elementId, OffsetTop, OffsetBottom, Target, async (isFixed) =>\r\n            {\r\n                if (_isFixed != isFixed)\r\n                {\r\n                    _isFixed = isFixed;\r\n                    await OnChange.InvokeAsync(isFixed);\r\n                    await InvokeAsync(StateHasChanged);\r\n                }\r\n            });\r\n            _registered = true;\r\n        }\r\n        catch (JSDisconnectedException) { }\r\n        catch (ObjectDisposedException) { }\r\n    }\r\n\r\n    public async ValueTask DisposeAsync()\r\n    {\r\n        if (_registered)\r\n        {\r\n            try { await Interop.UnregisterAffix(_elementId); } catch (JSDisconnectedException) { }\r\n        }\r\n    }\r\n}\r\n"
+      "content": "@namespace Lumeo\n@implements IAsyncDisposable\n\n<div id=\"@_elementId\" class=\"@CssClass\" @attributes=\"AdditionalAttributes\">\n    @ChildContent\n</div>\n\n@inject IComponentInteropService Interop\n\n@code {\n    [Parameter] public RenderFragment? ChildContent { get; set; }\n    [Parameter] public int OffsetTop { get; set; } = 0;\n    [Parameter] public int? OffsetBottom { get; set; }\n    [Parameter] public string? Target { get; set; }\n    [Parameter] public EventCallback<bool> OnChange { get; set; }\n    [Parameter] public string? Class { get; set; }\n    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }\n\n    private readonly string _elementId = LumeoIds.New(\"affix\");\n    private bool _registered;\n    private bool _isFixed;\n\n    private string CssClass => Class ?? \"\";\n\n    protected override async Task OnAfterRenderAsync(bool firstRender)\n    {\n        if (!firstRender) return;\n        if (_registered) return;\n        try\n        {\n            await Interop.RegisterAffix(_elementId, OffsetTop, OffsetBottom, Target, async (isFixed) =>\n            {\n                if (_isFixed != isFixed)\n                {\n                    _isFixed = isFixed;\n                    await OnChange.InvokeAsync(isFixed);\n                    await InvokeAsync(StateHasChanged);\n                }\n            });\n            _registered = true;\n        }\n        catch (JSDisconnectedException) { }\n        catch (ObjectDisposedException) { }\n    }\n\n    public async ValueTask DisposeAsync()\n    {\n        if (_registered)\n        {\n            try { await Interop.UnregisterAffix(_elementId); } catch (JSDisconnectedException) { }\n        }\n    }\n}\n"
     }
   ],
   "slots": [
@@ -146,9 +148,11 @@
   "keyboardInteractions": [],
   "tests": [
     "tests/Lumeo.Docs.Tests/Helpers/DocsTestContext.cs",
+    "tests/Lumeo.Tests/Components/Affix/AffixResizeTests.cs",
     "tests/Lumeo.Tests/Components/Affix/AffixTests.cs",
+    "tests/Lumeo.Tests/Helpers/TrackingInteropService.cs",
     "tests/Lumeo.Tests/Services/Interop/InteropAdapterTests.cs",
     "tests/Lumeo.Tests/Services/StrictInteropTests.cs"
   ],
-  "mdSummary": "# Affix\r\n\r\nPins an element to the viewport edge as the user scrolls.\r\n\r\n**Package:** `Lumeo` · **Category:** Navigation\r\n**Docs:** https://lumeo.nativ.sh/components/affix\r\n\r\n## Parameters\r\n| Owner | Name | Type | Default | Description |\r\n|---|---|---|---|---|\r\n| Affix | ChildContent | `RenderFragment?` | `` |  |\r\n| Affix | OffsetTop | `int` | `0` |  |\r\n| Affix | OffsetBottom | `int?` | `` |  |\r\n| Affix | Target | `string?` | `` |  |\r\n| Affix | OnChange | `EventCallback<bool>` | `` |  |\r\n| Affix | Class | `string?` | `` |  |\r\n| Affix | AdditionalAttributes | `Dictionary<string, object>?` | `` |  |\r\n\r\n## Slots\r\n- `ChildContent` (Affix) — RenderFragment slot\r\n\r\n## Events\r\n- `OnChange` (`EventCallback<bool>`)\r\n\r\n## Sub-components\r\n- (none)\r\n\r\n## Cascading values it expects\r\n- (none)\r\n\r\n## Services it injects\r\n- `IComponentInteropService` ()\r\n\r\n## Keyboard\r\n—\r\n\r\n## Example\r\n```razor\r\n<Affix />\r\n```\r\n\r\n## CSS variables\r\n`--color-foreground`\r\n\r\n## Files\r\n- `UI/Affix/Affix.razor`\r\n"
+  "mdSummary": "# Affix\n\nPins an element to the viewport edge as the user scrolls.\n\n**Package:** `Lumeo` · **Category:** Navigation\n**Docs:** https://lumeo.nativ.sh/components/affix\n\n## Parameters\n| Owner | Name | Type | Default | Description |\n|---|---|---|---|---|\n| Affix | ChildContent | `RenderFragment?` | `` |  |\n| Affix | OffsetTop | `int` | `0` |  |\n| Affix | OffsetBottom | `int?` | `` |  |\n| Affix | Target | `string?` | `` |  |\n| Affix | OnChange | `EventCallback<bool>` | `` |  |\n| Affix | Class | `string?` | `` |  |\n| Affix | AdditionalAttributes | `Dictionary<string, object>?` | `` |  |\n\n## Slots\n- `ChildContent` (Affix) — RenderFragment slot\n\n## Events\n- `OnChange` (`EventCallback<bool>`)\n\n## Sub-components\n- (none)\n\n## Cascading values it expects\n- (none)\n\n## Services it injects\n- `IComponentInteropService` ()\n\n## Keyboard\n—\n\n## Example\n```razor\n<Affix />\n```\n\n## CSS variables\n`--color-foreground`\n\n## Files\n- `UI/Affix/Affix.razor`\n"
 }

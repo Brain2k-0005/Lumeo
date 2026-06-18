@@ -33,6 +33,15 @@
     [Parameter] public EventCallback<DateOnly?> RangeStartChanged { get; set; }
     [Parameter] public DateOnly? RangeEnd { get; set; }
     [Parameter] public EventCallback<DateOnly?> RangeEndChanged { get; set; }
+    /// <summary>When true the grid selects a set of independent days: clicking a
+    /// day (or Enter/Space on it) toggles it in/out of <see cref="Values"/>.
+    /// Takes precedence over single <see cref="Value"/> selection; ignored when
+    /// <see cref="IsRange"/> is set.</summary>
+    [Parameter] public bool IsMultiple { get; set; }
+    /// <summary>The selected days in multiple-selection mode. Pair with
+    /// <see cref="ValuesChanged"/> for two-way binding.</summary>
+    [Parameter] public List<DateOnly>? Values { get; set; }
+    [Parameter] public EventCallback<List<DateOnly>?> ValuesChanged { get; set; }
     [Parameter] public int NumberOfMonths { get; set; } = 1;
     [Parameter] public bool ShowWeekNumbers { get; set; }
     [Parameter] public bool ShowYearPicker { get; set; }
@@ -73,6 +82,15 @@
     private DateOnly? _hoverDate;
     private CalendarView _currentView = CalendarView.Days;
     private bool _swipeAttached;
+    // Roving-tabindex focus target for keyboard grid navigation (WAI-ARIA grid
+    // pattern). Exactly one day button is tabbable (tabindex=0) — the focused
+    // day — every other day carries tabindex=-1. Lazily seeded from the
+    // selected/today/first-of-month day so the initial Tab lands somewhere sane.
+    private DateOnly? _focusedDate;
+    // Tracks the id the prevent-default-keys listener was registered against so
+    // we can re-register when the day-grid element id changes and unregister on
+    // dispose (mirrors TreeViewNode's page-scroll suppression).
+    private string? _pdRegisteredId;
     // Last-seen bound anchor (Value, or RangeStart in range mode). Used to
     // detect *external* value changes in OnParametersSet without stomping the
     // user's manual month navigation on unrelated re-renders.
@@ -82,18 +100,24 @@
 
     protected override void OnInitialized()
     {
-        _currentView = InitialView;
-        _lastSeenAnchor = IsRange ? RangeStart : Value;
+        // ShowYearPicker is a convenience shortcut that opens straight into the
+        // year-picker view. When set it wins over InitialView so consumers can
+        // request the year grid without knowing the CalendarView enum.
+        _currentView = ShowYearPicker ? CalendarView.Years : InitialView;
+        // CurrentAnchor folds in multiple/range/single precedence so the
+        // displayed month seeds correctly regardless of selection mode.
+        _lastSeenAnchor = CurrentAnchor;
         DisplayDate = _lastSeenAnchor ?? DateOnly.FromDateTime(DateTime.Today);
     }
 
     protected override void OnParametersSet()
     {
-        // When the bound Value (or RangeStart) changes from outside — e.g. the
-        // parent sets Value programmatically on an inline calendar — navigate
-        // the visible month to it. Only react to actual changes: re-renders
-        // that leave the anchor untouched must not reset manual browsing.
-        var anchor = IsRange ? RangeStart : Value;
+        // When the bound anchor (Value, RangeStart, or the first selected day in
+        // multiple mode) changes from outside — e.g. the parent sets it
+        // programmatically on an inline calendar — navigate the visible month to
+        // it. Only react to actual changes: re-renders that leave the anchor
+        // untouched must not reset manual browsing.
+        var anchor = CurrentAnchor;
         if (anchor != _lastSeenAnchor)
         {
             _lastSeenAnchor = anchor;
@@ -104,29 +128,65 @@
         }
     }
 
+    // The day the displayed month tracks for external value changes: in
+    // multiple mode the earliest selected day, in range mode the start, else
+    // the single Value.
+    private DateOnly? CurrentAnchor =>
+        IsMultiple ? (Values is { Count: > 0 } ? Values.Min() : null)
+        : IsRange ? RangeStart
+        : Value;
+
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (!SwipeEnabled || NumberOfMonths != 1) return;
+        if (NumberOfMonths != 1) return;
 
-        // Attach swipe only in Days view — the day grid element only exists in
-        // that view. When the user switches to Months/Years and back, the grid
-        // div is recreated so we must re-register on each Days → hidden → Days
-        // transition rather than once on first render.
-        var shouldAttach = _currentView == CalendarView.Days;
-        if (shouldAttach && !_swipeAttached)
+        // The day grid element only exists in the Days view. Both the swipe
+        // handler and the page-scroll suppression for the keyboard-nav keys
+        // attach to it, so they register on each Days → hidden → Days transition
+        // (Months/Years recreate the grid div) and unregister when it goes away.
+        var inDaysView = _currentView == CalendarView.Days;
+
+        if (inDaysView && SwipeEnabled && !_swipeAttached)
         {
             _swipeAttached = true;
             try { await Interop.RegisterHorizontalSwipe(_elementId, OnSwipeAsync, GestureOpts.Value.SwipeThresholdPx, GestureOpts.Value.VerticalDeadZonePx); }
             catch (JSDisconnectedException) { _swipeAttached = false; }
             catch (InvalidOperationException) { _swipeAttached = false; } // JS unavailable during prerender
         }
-        else if (!shouldAttach && _swipeAttached)
+        else if ((!inDaysView || !SwipeEnabled) && _swipeAttached)
         {
             _swipeAttached = false;
             try { await Interop.UnregisterHorizontalSwipe(_elementId); }
             catch (JSDisconnectedException) { }
         }
+
+        // Suppress page scroll for the arrow / Home / End / PageUp / PageDown
+        // keys while the day grid is visible — without this the first keypress
+        // scrolls the page as focus also moves (same pattern as TreeViewNode).
+        if (inDaysView && _pdRegisteredId != _elementId)
+        {
+            try
+            {
+                await Interop.RegisterPreventDefaultKeys(_elementId, NavKeyRules);
+                _pdRegisteredId = _elementId;
+            }
+            catch (JSDisconnectedException) { }
+            catch (InvalidOperationException) { } // JS unavailable during prerender
+        }
+        else if (!inDaysView && _pdRegisteredId is not null)
+        {
+            try { await Interop.UnregisterPreventDefaultKeys(_pdRegisteredId); }
+            catch (JSDisconnectedException) { }
+            _pdRegisteredId = null;
+        }
     }
+
+    // Keys whose browser default (page scroll) is suppressed on the day grid.
+    private static readonly PreventDefaultKeyRule[] NavKeyRules =
+    [
+        new("ArrowLeft"), new("ArrowRight"), new("ArrowUp"), new("ArrowDown"),
+        new("Home"), new("End"), new("PageUp"), new("PageDown"),
+    ];
 
     private Task OnSwipeAsync(string direction)
     {
@@ -141,9 +201,16 @@
 
     public async ValueTask DisposeAsync()
     {
-        if (!_swipeAttached) return;
-        try { await Interop.UnregisterHorizontalSwipe(_elementId); }
-        catch (Microsoft.JSInterop.JSDisconnectedException) { }
+        if (_swipeAttached)
+        {
+            try { await Interop.UnregisterHorizontalSwipe(_elementId); }
+            catch (Microsoft.JSInterop.JSDisconnectedException) { }
+        }
+        if (_pdRegisteredId is not null)
+        {
+            try { await Interop.UnregisterPreventDefaultKeys(_pdRegisteredId); }
+            catch (Microsoft.JSInterop.JSDisconnectedException) { }
+        }
     }
 
     private bool IsPrevMonthDisabled =>
@@ -258,7 +325,9 @@
     {
         var isCurrentMonth = day.Month == monthDate.Month;
         var isDisabled = IsDisabled(day);
-        var isSelected = !IsRange && Value.HasValue && day == Value.Value;
+        var isSelected = IsMultiple
+            ? (Values?.Contains(day) ?? false)
+            : (!IsRange && Value.HasValue && day == Value.Value);
         var isToday = day == DateOnly.FromDateTime(DateTime.Today);
 
         // 'relative' kept on every day so DateBadge slots can absolute-position inside.
@@ -307,6 +376,23 @@
     {
         if (IsDisabled(day)) return;
 
+        // Keep the roving-tabindex target on the just-selected day so it stays
+        // the tabbable cell (and keyboard focus stays put after Enter/Space).
+        _focusedDate = day;
+
+        if (IsMultiple)
+        {
+            // Toggle the day in/out of the selected set; keep the result sorted
+            // so consumers get a stable, chronological list.
+            var next = Values is null ? new List<DateOnly>() : new List<DateOnly>(Values);
+            if (!next.Remove(day)) next.Add(day);
+            next.Sort();
+            Values = next;
+            DisplayDate = new DateOnly(day.Year, day.Month, 1);
+            await ValuesChanged.InvokeAsync(next);
+            return;
+        }
+
         if (IsRange)
         {
             if (!RangeStart.HasValue || (RangeStart.HasValue && RangeEnd.HasValue))
@@ -350,6 +436,172 @@
         {
             _hoverDate = day;
         }
+    }
+
+    // ---- WAI-ARIA grid keyboard navigation (roving tabindex) ----
+
+    /// <summary>Whether <paramref name="day"/> renders as the selected day —
+    /// drives <c>aria-selected</c> on the grid cell. In multiple mode every day
+    /// in <see cref="Values"/> is selected; in range mode the two endpoints are
+    /// the selected cells; otherwise the single <see cref="Value"/>.</summary>
+    private bool IsDaySelected(DateOnly day) => IsMultiple
+        ? (Values?.Contains(day) ?? false)
+        : IsRange
+            ? (RangeStart.HasValue && day == RangeStart.Value) || (RangeEnd.HasValue && day == RangeEnd.Value)
+            : Value.HasValue && day == Value.Value;
+
+    /// <summary>Deterministic per-day element id used as the keyboard focus
+    /// target. Scoped to the rendered month panel so the same calendar date
+    /// appearing as a trailing/leading day in another panel gets a distinct id.</summary>
+    private string DayId(DateOnly monthDate, DateOnly day)
+        => $"{_elementId}-{monthDate.Year:D4}{monthDate.Month:D2}-{day:yyyyMMdd}";
+
+    /// <summary>Full, culture-localized date for the day button's
+    /// <c>aria-label</c> (e.g. "Saturday, June 14, 2025"). Uses the same
+    /// CurrentCulture the month/day headers are formatted with.</summary>
+    private string DayAriaLabel(DateOnly day)
+        => day.ToDateTime(TimeOnly.MinValue).ToString("D", System.Globalization.CultureInfo.CurrentCulture);
+
+    /// <summary>The window of months currently on screen. Keyboard focus must
+    /// land on a day that belongs to one of these months' own days.</summary>
+    private DateOnly FirstDisplayedMonth => new(DisplayDate.Year, DisplayDate.Month, 1);
+    private DateOnly LastDisplayedMonthEnd
+    {
+        get
+        {
+            var last = DisplayDate.AddMonths(NumberOfMonths - 1);
+            return new DateOnly(last.Year, last.Month, DateTime.DaysInMonth(last.Year, last.Month));
+        }
+    }
+
+    /// <summary>Lazily seeds the roving-tabindex target and keeps it inside the
+    /// displayed month window. Preference order: the selected day, then today,
+    /// then the first of the displayed month — so the first Tab into the grid
+    /// lands somewhere meaningful.</summary>
+    private void EnsureFocusedDate()
+    {
+        bool InWindow(DateOnly d) => d >= FirstDisplayedMonth && d <= LastDisplayedMonthEnd;
+
+        if (_focusedDate is { } f && InWindow(f)) return;
+
+        var preferred = IsRange ? (RangeEnd ?? RangeStart) : Value;
+        var today = DateOnly.FromDateTime(DateTime.Today);
+        var seed =
+            preferred is { } p && InWindow(p) ? p :
+            InWindow(today) ? today :
+            FirstDisplayedMonth;
+
+        // The tabbable day must be interactive (a native-disabled button can't
+        // be Tab-focused), so nudge the seed forward to the first enabled day in
+        // the window when the natural choice is disabled.
+        if (IsDisabled(seed))
+            seed = SkipDisabled(seed, 1);
+        _focusedDate = seed;
+    }
+
+    /// <summary>Roving tabindex: exactly one day button — the focused day, shown
+    /// as a current-month cell — is in the tab sequence; every other day carries
+    /// -1 and is reached with the arrow keys. The current-month guard keeps the
+    /// count at one even though leading/trailing days repeat the date.</summary>
+    private string DayTabIndex(DateOnly day, DateOnly monthDate)
+    {
+        EnsureFocusedDate();
+        return day == _focusedDate && day.Month == monthDate.Month ? "0" : "-1";
+    }
+
+    /// <summary>Keeps the roving tabindex aligned when a day receives DOM focus
+    /// directly (mouse click or Tab) rather than via arrow-key navigation.</summary>
+    private void OnDayFocus(DateOnly day)
+    {
+        if (_focusedDate != day)
+            _focusedDate = day;
+    }
+
+    /// <summary>WAI-ARIA grid navigation. Arrow keys move one day (±1) or one
+    /// week (±7); Home/End jump to the start/end of the focused week;
+    /// PageUp/PageDown change month; Enter/Space select the focused day.
+    /// Moving across a month boundary navigates the displayed month and keeps
+    /// focus on the correct day.</summary>
+    private async Task HandleDayKeyDownAsync(KeyboardEventArgs e, DateOnly monthDate, DateOnly day)
+    {
+        // Only the tabbable (current-month) cell drives navigation, so repeated
+        // leading/trailing copies of the same date don't double-handle the key.
+        if (day != _focusedDate || day.Month != monthDate.Month) return;
+
+        switch (e.Key)
+        {
+            // Directional keys move first, then skip over disabled days (mouse
+            // can't select them either) so focus never lands on a non-interactive
+            // native-disabled button. SkipDisabled starts at the moved date and
+            // continues in the same direction.
+            case "ArrowLeft":  await MoveFocusToAsync(SkipDisabled(day.AddDays(-1), -1)); break;
+            case "ArrowRight": await MoveFocusToAsync(SkipDisabled(day.AddDays(1), 1)); break;
+            case "ArrowUp":    await MoveFocusToAsync(SkipDisabled(day.AddDays(-7), -1)); break;
+            case "ArrowDown":  await MoveFocusToAsync(SkipDisabled(day.AddDays(7), 1)); break;
+            case "Home":       await MoveFocusToAsync(SkipDisabled(StartOfWeek(day), 1)); break;
+            case "End":        await MoveFocusToAsync(SkipDisabled(StartOfWeek(day).AddDays(6), -1)); break;
+            case "PageUp":     await MoveFocusToAsync(SkipDisabled(day.AddMonths(-1), 1)); break;
+            case "PageDown":   await MoveFocusToAsync(SkipDisabled(day.AddMonths(1), -1)); break;
+            // Enter/Space are intentionally NOT handled here: the day cell is a
+            // native <button> whose @onclick already calls SelectDay, so handling
+            // the key here too fired SelectDay twice — in range mode that set
+            // RangeStart and RangeEnd to the same day in a single keypress.
+        }
+    }
+
+    /// <summary>Returns the first non-disabled day at or beyond <paramref name="from"/>
+    /// stepping by <paramref name="step"/> days. Bounded so a fully-disabled run
+    /// (or hitting Min/MaxDate) settles rather than looping; if everything in
+    /// range is disabled it falls back to the original day (selection there is a
+    /// no-op anyway, matching the mouse).</summary>
+    private DateOnly SkipDisabled(DateOnly from, int step)
+    {
+        var candidate = from;
+        for (var i = 0; i < 62 && IsDisabled(candidate); i++)
+        {
+            // AddDays THROWS (it does not clamp) once the result would leave DateOnly's
+            // 0001-01-01..9999-12-31 range, so stop there. Min/MaxDate constraints
+            // normally settle this loop long before the type bounds are reached.
+            DateOnly next;
+            try { next = candidate.AddDays(step); }
+            catch (ArgumentOutOfRangeException) { break; }
+            candidate = next;
+        }
+        return IsDisabled(candidate) ? from : candidate;
+    }
+
+    private DateOnly StartOfWeek(DateOnly day)
+    {
+        var offset = ((int)day.DayOfWeek - (int)EffectiveFirstDayOfWeek + 7) % 7;
+        return day.AddDays(-offset);
+    }
+
+    /// <summary>Moves the roving focus to <paramref name="target"/>, navigating
+    /// the displayed month if the target falls outside the current window, then
+    /// pushes DOM focus onto the target day button via JS interop.</summary>
+    private async Task MoveFocusToAsync(DateOnly target)
+    {
+        // No enabled day in the requested direction (whole run disabled, or the
+        // clamp at Min/MaxDate landed on a disabled day): keep focus put so the
+        // tabbable day never becomes a non-focusable native-disabled button.
+        if (IsDisabled(target)) return;
+
+        _focusedDate = target;
+
+        // Pull the displayed month onto the target so the day actually renders
+        // as a current-month cell (the tabbable one) in some visible panel.
+        if (target < FirstDisplayedMonth || target > LastDisplayedMonthEnd)
+            DisplayDate = new DateOnly(target.Year, target.Month, 1);
+
+        StateHasChanged();
+
+        // The day's home-month panel owns the tabbable copy. With a single month
+        // that's DisplayDate; with several it's the panel whose month matches.
+        var ownerMonth = NumberOfMonths == 1
+            ? DisplayDate
+            : new DateOnly(target.Year, target.Month, 1);
+        try { await Interop.FocusElement(DayId(ownerMonth, target)); }
+        catch (JSDisconnectedException) { }
     }
 
     private void PreviousMonth() => DisplayDate = DisplayDate.AddMonths(-1);
@@ -514,41 +766,62 @@
         else
         {
             var gridCols = ShowWeekNumbers ? "grid-cols-8" : "grid-cols-7";
-            var gridId = (SwipeEnabled && NumberOfMonths == 1) ? _elementId : null;
-            <div id="@gridId" class="grid @gridCols gap-0 text-center">
-                @if (ShowWeekNumbers)
-                {
-                    <div class="text-xs font-medium text-muted-foreground py-1">#</div>
-                }
-                @foreach (var day in GetDayHeaders())
-                {
-                    <div class="text-xs font-medium text-muted-foreground py-1">@day</div>
-                }
+            // Single-month grids carry the per-instance id so JS can attach swipe
+            // and the page-scroll suppression for the keyboard nav keys. Multi-
+            // month panels share one component so the id is omitted there to
+            // avoid duplicate-id collisions (keyboard focus still works — each
+            // day button has its own deterministic id).
+            var gridId = NumberOfMonths == 1 ? _elementId : null;
+            @* role="grid" + role="row"/role="gridcell" give the day grid proper
+               table semantics for assistive tech. The week rows use the `contents`
+               display so the flat CSS grid layout (and ShowWeekNumbers column) is
+               unchanged — the row wrappers add no box, only ARIA structure. *@
+            <div id="@gridId" role="grid" aria-label="@monthDate.ToString("MMMM yyyy")" class="grid @gridCols gap-0 text-center">
+                <div role="row" class="contents">
+                    @if (ShowWeekNumbers)
+                    {
+                        <div role="columnheader" class="text-xs font-medium text-muted-foreground py-1">#</div>
+                    }
+                    @foreach (var day in GetDayHeaders())
+                    {
+                        <div role="columnheader" class="text-xs font-medium text-muted-foreground py-1">@day</div>
+                    }
+                </div>
 
                 @{ var calDays = GetCalendarDays(monthDate); }
                 @for (var row = 0; row < 6; row++)
                 {
-                    @if (ShowWeekNumbers)
-                    {
-                        var weekDate = calDays[row * 7];
-                        <div class="inline-flex items-center justify-center h-8 w-8 text-xs text-muted-foreground">@GetIsoWeekNumber(weekDate)</div>
-                    }
-                    @for (var col = 0; col < 7; col++)
-                    {
-                        var d = calDays[row * 7 + col];
-                        var dt = d.ToDateTime(TimeOnly.MinValue);
-                        var tooltip = DateTooltip?.Invoke(dt);
-                        var badge = DateBadge?.Invoke(dt);
-                        <div class="@RangeBarClasses(d, monthDate, col)">
-                            <button type="button" class="@DayClasses(d, monthDate)" disabled="@IsDisabled(d)" title="@tooltip" @onclick="() => SelectDay(d)" @onmouseenter="() => OnDayHover(d)">
-                                @d.Day
-                                @if (badge is not null)
-                                {
-                                    <span class="absolute -bottom-0.5 -right-0.5 pointer-events-none flex">@badge</span>
-                                }
-                            </button>
-                        </div>
-                    }
+                    var weekRow = row;
+                    <div role="row" class="contents">
+                        @if (ShowWeekNumbers)
+                        {
+                            var weekDate = calDays[weekRow * 7];
+                            <div role="rowheader" class="inline-flex items-center justify-center h-8 w-8 text-xs text-muted-foreground">@GetIsoWeekNumber(weekDate)</div>
+                        }
+                        @for (var col = 0; col < 7; col++)
+                        {
+                            var d = calDays[weekRow * 7 + col];
+                            var dt = d.ToDateTime(TimeOnly.MinValue);
+                            var tooltip = DateTooltip?.Invoke(dt);
+                            var badge = DateBadge?.Invoke(dt);
+                            var isSelectedDay = IsDaySelected(d);
+                            <div role="gridcell" aria-selected="@isSelectedDay.ToString().ToLowerInvariant()" class="@RangeBarClasses(d, monthDate, col)">
+                                <button type="button" id="@DayId(monthDate, d)" tabindex="@DayTabIndex(d, monthDate)"
+                                        aria-label="@DayAriaLabel(d)"
+                                        aria-pressed="@(IsMultiple ? ((Values?.Contains(d) ?? false) ? "true" : "false") : null)"
+                                        class="@DayClasses(d, monthDate)" disabled="@IsDisabled(d)" title="@tooltip"
+                                        @onclick="() => SelectDay(d)" @onmouseenter="() => OnDayHover(d)"
+                                        @onfocus="() => OnDayFocus(d)"
+                                        @onkeydown="e => HandleDayKeyDownAsync(e, monthDate, d)">
+                                    @d.Day
+                                    @if (badge is not null)
+                                    {
+                                        <span class="absolute -bottom-0.5 -right-0.5 pointer-events-none flex">@badge</span>
+                                    }
+                                </button>
+                            </div>
+                        }
+                    </div>
                 }
             </div>
         }

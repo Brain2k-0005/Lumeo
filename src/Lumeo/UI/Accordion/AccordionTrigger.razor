@@ -1,6 +1,16 @@
 @namespace Lumeo
+@implements IAsyncDisposable
+@inject Lumeo.Services.IComponentInteropService Interop
 
-<button type="button" id="@ItemContext.TriggerId" class="@CssClass" aria-expanded="@IsOpen" aria-controls="@ItemContext.ContentId" disabled="@IsDisabled" @onclick="Toggle" @attributes="AdditionalAttributes">
+<button type="button"
+        id="@ItemContext.TriggerId"
+        class="@CssClass"
+        aria-expanded="@IsOpen"
+        aria-controls="@ItemContext.ContentId"
+        disabled="@IsDisabled"
+        @onclick="Toggle"
+        @onkeydown="HandleKeyDown"
+        @attributes="AdditionalAttributes">
     @ChildContent
     <Blazicon Svg="Lucide.ChevronDown" class="@IconClasses" />
 </button>
@@ -14,6 +24,52 @@
 
     private bool IsOpen => Context.IsOpen(ItemContext.Value);
     private bool IsDisabled => ItemContext.Disabled;
+    private string? _registeredValue;
+    private bool _pdRegistered;
+
+    protected override void OnParametersSet()
+    {
+        // Register every parameter set (idempotent) so the parent's roving-focus
+        // registry tracks the current value, trigger id and Disabled flag. If
+        // the item's Value changed, drop the stale registry entry first.
+        if (_registeredValue is not null && _registeredValue != ItemContext.Value)
+        {
+            Context.UnregisterTrigger(_registeredValue);
+        }
+        Context.RegisterTrigger(ItemContext.Value, ItemContext.TriggerId, ItemContext.Disabled);
+        _registeredValue = ItemContext.Value;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender || _pdRegistered) return;
+        try
+        {
+            // Suppress page scroll for the roving keys ONLY — a blanket
+            // @onkeydown:preventDefault would also swallow Space/Enter (the
+            // button's native toggle) and Tab. Key-selective JS preventDefault
+            // keeps those working (same pattern as Tabs / Splitter).
+            await Interop.RegisterPreventDefaultKeys(
+                ItemContext.TriggerId,
+                new[] { "ArrowUp", "ArrowDown", "Home", "End" }
+                    .Select(k => new PreventDefaultKeyRule(k)).ToArray());
+            _pdRegistered = true;
+        }
+        catch (JSDisconnectedException) { }
+        catch (ObjectDisposedException) { }
+        catch (InvalidOperationException) { } // JS unavailable during prerender
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_registeredValue is not null)
+            Context.UnregisterTrigger(_registeredValue);
+        if (!_pdRegistered) return;
+        try { await Interop.UnregisterPreventDefaultKeys(ItemContext.TriggerId); }
+        catch (JSDisconnectedException) { }
+        catch (ObjectDisposedException) { }
+        catch (InvalidOperationException) { }
+    }
 
     private string CssClass => Cx.Merge("flex flex-1 w-full items-center justify-between py-4 text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 rounded-sm", (IsDisabled ? "cursor-not-allowed" : "cursor-pointer hover:underline"), Class);
 
@@ -25,5 +81,30 @@
     {
         if (IsDisabled) return;
         await Context.Toggle.InvokeAsync(ItemContext.Value);
+    }
+
+    // WAI-ARIA accordion keyboard model: ArrowDown/ArrowUp move focus between
+    // headers (no wrap), Home/End jump to the first/last header. Enter/Space
+    // toggle, but the native <button> already does that on keydown, so we don't
+    // re-handle them here. preventDefault on the arrows/Home/End stops the page
+    // from scrolling while the focus moves.
+    private async Task HandleKeyDown(KeyboardEventArgs e)
+    {
+        if (IsDisabled) return;
+        switch (e.Key)
+        {
+            case "ArrowDown":
+                await Context.MoveFocus.InvokeAsync((ItemContext.Value, 1, false, false));
+                break;
+            case "ArrowUp":
+                await Context.MoveFocus.InvokeAsync((ItemContext.Value, -1, false, false));
+                break;
+            case "Home":
+                await Context.MoveFocus.InvokeAsync((ItemContext.Value, 0, true, false));
+                break;
+            case "End":
+                await Context.MoveFocus.InvokeAsync((ItemContext.Value, 0, true, true));
+                break;
+        }
     }
 }

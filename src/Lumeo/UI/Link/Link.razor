@@ -1,29 +1,75 @@
 @namespace Lumeo
 
-<a href="@Href" class="@CssClass" @attributes="AllAttributes">@ChildContent</a>
+<a class="@CssClass" @attributes="AllAttributes">@ChildContent</a>
 
 @code {
     [Parameter] public string? Href { get; set; }
     [Parameter] public bool External { get; set; }
+
+    /// <summary>
+    /// Renders the link as non-interactive: no <c>href</c>, <c>aria-disabled="true"</c>,
+    /// <c>tabindex="-1"</c> (removed from the tab order) and pointer events disabled.
+    /// </summary>
+    [Parameter] public bool Disabled { get; set; }
+
+    /// <summary>
+    /// Value for the <c>aria-current</c> attribute when this link represents the
+    /// current item (e.g. <c>"page"</c> for the active nav link). Null omits it.
+    /// </summary>
+    [Parameter] public string? AriaCurrent { get; set; }
+
     [Parameter] public string Variant { get; set; } = "default";
     [Parameter] public string? Size { get; set; }
     [Parameter] public RenderFragment? ChildContent { get; set; }
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
-    private Dictionary<string, object>? AllAttributes
+    private Dictionary<string, object> AllAttributes
     {
         get
         {
-            if (!External)
-                return AdditionalAttributes;
-
             var attrs = AdditionalAttributes != null
                 ? new Dictionary<string, object>(AdditionalAttributes)
                 : new Dictionary<string, object>();
 
-            attrs["target"] = "_blank";
-            attrs["rel"] = "noopener noreferrer";
+            if (Disabled)
+            {
+                // A disabled link is inert: drop href so it can't navigate, and
+                // remove it from the tab order. pointer-events are killed via CSS.
+                attrs.Remove("href");
+                attrs["aria-disabled"] = "true";
+                attrs["tabindex"] = "-1";
+                return attrs;
+            }
+
+            // href: only emit when we actually have one. Rendering href="" (the
+            // old behaviour for Href=null) makes the anchor navigate to the
+            // current page root rather than being inert.
+            if (!string.IsNullOrEmpty(Href))
+            {
+                attrs["href"] = Href;
+            }
+
+            if (External)
+            {
+                attrs["target"] = "_blank";
+            }
+
+            // rel-safety: any link that opens in a new browsing context
+            // (target=_blank, whether set via External or AdditionalAttributes)
+            // needs rel="noopener noreferrer" to close the reverse-tabnabbing
+            // hole. Respect a caller-supplied rel if present.
+            if (attrs.TryGetValue("target", out var target)
+                && string.Equals(target?.ToString(), "_blank", StringComparison.OrdinalIgnoreCase)
+                && !attrs.ContainsKey("rel"))
+            {
+                attrs["rel"] = "noopener noreferrer";
+            }
+
+            if (!string.IsNullOrEmpty(AriaCurrent))
+            {
+                attrs["aria-current"] = AriaCurrent;
+            }
 
             return attrs;
         }
@@ -36,19 +82,9 @@
         _ => "text-primary underline-offset-4 hover:underline"
     };
 
-    private string CssClass
-    {
-        get
-        {
-            var classes = new List<string> { VariantClasses };
-
-            if (!string.IsNullOrEmpty(Size))
-                classes.Add($"text-{Size}");
-
-            if (!string.IsNullOrEmpty(Class))
-                classes.Add(Class);
-
-            return string.Join(" ", classes);
-        }
-    }
+    private string CssClass => Cx.Join(
+        VariantClasses,
+        Cx.When(!string.IsNullOrEmpty(Size), $"text-{Size}"),
+        Cx.When(Disabled, "pointer-events-none opacity-50"),
+        Class);
 }

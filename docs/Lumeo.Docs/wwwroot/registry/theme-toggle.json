@@ -21,6 +21,7 @@
     "--color-ring",
     "--radius"
   ],
+  "gotchas": [],
   "api": {
     "name": "ThemeToggle",
     "category": "Utility",
@@ -37,6 +38,14 @@
     ],
     "parameters": [
       {
+        "name": "Class",
+        "type": "string?",
+        "default": null,
+        "description": null,
+        "isCascading": false,
+        "captureUnmatched": false
+      },
+      {
         "name": "AdditionalAttributes",
         "type": "Dictionary<string, object>?",
         "default": null,
@@ -48,6 +57,7 @@
     "events": [],
     "enums": [],
     "records": [],
+    "gotchas": [],
     "cssVars": [
       "--color-accent",
       "--color-accent-foreground",
@@ -63,11 +73,11 @@
       },
       {
         "title": "In a Navbar",
-        "code": "<Flex Align=\"center\" Justify=\"between\" Class=\"rounded-lg border bg-card px-4 py-2\">\r\n    <Lumeo.Text As=\"span\" Weight=\"semibold\">My App</Lumeo.Text>\r\n    <Flex Align=\"center\" Gap=\"2\">\r\n        <Button Variant=\"Button.ButtonVariant.Ghost\" Size=\"Button.ButtonSize.Sm\">About</Button>\r\n        <ThemeToggle />\r\n    </Flex>\r\n</Flex>"
+        "code": "<Flex Align=\"center\" Justify=\"between\" Class=\"rounded-lg border bg-card px-4 py-2\">\n    <Lumeo.Text As=\"span\" Weight=\"semibold\">My App</Lumeo.Text>\n    <Flex Align=\"center\" Gap=\"2\">\n        <Button Variant=\"Button.ButtonVariant.Ghost\" Size=\"Button.ButtonSize.Sm\">About</Button>\n        <ThemeToggle />\n    </Flex>\n</Flex>"
       },
       {
         "title": "With Label",
-        "code": "<Flex Align=\"center\" Gap=\"3\" Class=\"rounded-lg border bg-card px-4 py-3\">\r\n    <ThemeToggle />\r\n    <Stack Gap=\"0\">\r\n        <Lumeo.Text Size=\"sm\" Weight=\"medium\">Dark Mode</Lumeo.Text>\r\n        <Lumeo.Text Size=\"xs\" Color=\"muted\">Toggle light and dark theme</Lumeo.Text>\r\n    </Stack>\r\n</Flex>"
+        "code": "<Flex Align=\"center\" Gap=\"3\" Class=\"rounded-lg border bg-card px-4 py-3\">\n    <ThemeToggle />\n    <Stack Gap=\"0\">\n        <Lumeo.Text Size=\"sm\" Weight=\"medium\">Dark Mode</Lumeo.Text>\n        <Lumeo.Text Size=\"xs\" Color=\"muted\">Toggle light and dark theme</Lumeo.Text>\n    </Stack>\n</Flex>"
       }
     ],
     "subComponents": {},
@@ -86,7 +96,7 @@
   "source": [
     {
       "path": "UI/ThemeToggle/ThemeToggle.razor",
-      "content": "@namespace Lumeo\r\n@using Lumeo.Services\r\n@using Blazicons\r\n@implements IDisposable\r\n@inject ThemeService Theme\r\n@inject Lumeo.Services.Localization.ILumeoLocalizer L\r\n\r\n<button class=\"inline-flex items-center justify-center h-9 w-9 cursor-pointer rounded-md border border-input bg-background shadow-sm hover:bg-accent hover:text-accent-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2\"\r\n        @onclick=\"ToggleTheme\"\r\n        title=\"@L[\"Theme.Toggle\"]\"\r\n        @attributes=\"AdditionalAttributes\">\r\n    @if (_isDark)\r\n    {\r\n        <Blazicon Svg=\"Lucide.Sun\" class=\"h-4 w-4\" />\r\n    }\r\n    else\r\n    {\r\n        <Blazicon Svg=\"Lucide.Moon\" class=\"h-4 w-4\" />\r\n    }\r\n</button>\r\n\r\n@code {\r\n    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }\r\n\r\n    private bool _isDark;\r\n\r\n    protected override async Task OnAfterRenderAsync(bool firstRender)\r\n    {\r\n        if (firstRender)\r\n        {\r\n            await Theme.InitializeAsync();\r\n            _isDark = Theme.IsDark;\r\n            Theme.OnThemeChanged += OnThemeChanged;\r\n            StateHasChanged();\r\n        }\r\n    }\r\n\r\n    private async Task ToggleTheme()\r\n    {\r\n        _isDark = !_isDark;\r\n        await Theme.ToggleModeAsync();\r\n    }\r\n\r\n    private void OnThemeChanged()\r\n    {\r\n        _isDark = Theme.IsDark;\r\n        InvokeAsync(StateHasChanged);\r\n    }\r\n\r\n    public void Dispose()\r\n    {\r\n        Theme.OnThemeChanged -= OnThemeChanged;\r\n    }\r\n}\r\n"
+      "content": "@namespace Lumeo\n@using Lumeo.Services\n@using Blazicons\n@implements IDisposable\n@inject ThemeService Theme\n@inject Lumeo.Services.Localization.ILumeoLocalizer L\n\n<button type=\"button\"\n        class=\"@CssClass\"\n        @onclick=\"ToggleTheme\"\n        title=\"@L[\"Theme.Toggle\"]\"\n        aria-label=\"@L[\"Theme.Toggle\"]\"\n        aria-pressed=\"@_isDark.ToString().ToLowerInvariant()\"\n        @attributes=\"AdditionalAttributes\">\n    @if (_isDark)\n    {\n        <Blazicon Svg=\"Lucide.Sun\" class=\"h-4 w-4\" aria-hidden=\"true\" />\n    }\n    else\n    {\n        <Blazicon Svg=\"Lucide.Moon\" class=\"h-4 w-4\" aria-hidden=\"true\" />\n    }\n</button>\n\n@code {\n    [Parameter] public string? Class { get; set; }\n    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }\n\n    private bool _isDark;\n\n    private string CssClass => Cx.Merge(\n        \"inline-flex items-center justify-center h-9 w-9 cursor-pointer rounded-md border border-input bg-background shadow-sm hover:bg-accent hover:text-accent-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2\",\n        Class);\n\n    protected override async Task OnAfterRenderAsync(bool firstRender)\n    {\n        if (firstRender)\n        {\n            try\n            {\n                await Theme.InitializeAsync();\n            }\n            catch (JSDisconnectedException) { return; }\n            catch (ObjectDisposedException) { return; }\n            _isDark = Theme.IsDark;\n            Theme.OnThemeChanged += OnThemeChanged;\n            StateHasChanged();\n        }\n    }\n\n    private async Task ToggleTheme()\n    {\n        _isDark = !_isDark;\n        await Theme.ToggleModeAsync();\n    }\n\n    private void OnThemeChanged()\n    {\n        _isDark = Theme.IsDark;\n        InvokeAsync(StateHasChanged);\n    }\n\n    public void Dispose()\n    {\n        Theme.OnThemeChanged -= OnThemeChanged;\n    }\n}\n"
     }
   ],
   "slots": [],
@@ -106,5 +116,5 @@
   "tests": [
     "tests/Lumeo.Tests/Components/ThemeToggle/ThemeToggleTests.cs"
   ],
-  "mdSummary": "# ThemeToggle\r\n\r\nDark/light mode toggle button.\r\n\r\n**Package:** `Lumeo` · **Category:** Utility\r\n**Docs:** https://lumeo.nativ.sh/components/theme-toggle\r\n\r\n## Parameters\r\n| Owner | Name | Type | Default | Description |\r\n|---|---|---|---|---|\r\n| ThemeToggle | AdditionalAttributes | `Dictionary<string, object>?` | `` |  |\r\n\r\n## Slots\r\n- (none)\r\n\r\n## Events\r\n- (none)\r\n\r\n## Sub-components\r\n- (none)\r\n\r\n## Cascading values it expects\r\n- (none)\r\n\r\n## Services it injects\r\n- `ThemeService` ()\r\n- `ILumeoLocalizer` (Lumeo.Services.Localization)\r\n\r\n## Keyboard\r\n—\r\n\r\n## Example\r\n```razor\r\n<ThemeToggle />\r\n```\r\n\r\n## CSS variables\r\n`--color-accent`, `--color-accent-foreground`, `--color-background`, `--color-input`, `--color-ring`, `--radius`\r\n\r\n## Files\r\n- `UI/ThemeToggle/ThemeToggle.razor`\r\n"
+  "mdSummary": "# ThemeToggle\n\nDark/light mode toggle button.\n\n**Package:** `Lumeo` · **Category:** Utility\n**Docs:** https://lumeo.nativ.sh/components/theme-toggle\n\n## Parameters\n| Owner | Name | Type | Default | Description |\n|---|---|---|---|---|\n| ThemeToggle | Class | `string?` | `` |  |\n| ThemeToggle | AdditionalAttributes | `Dictionary<string, object>?` | `` |  |\n\n## Slots\n- (none)\n\n## Events\n- (none)\n\n## Sub-components\n- (none)\n\n## Cascading values it expects\n- (none)\n\n## Services it injects\n- `ThemeService` ()\n- `ILumeoLocalizer` (Lumeo.Services.Localization)\n\n## Keyboard\n—\n\n## Example\n```razor\n<ThemeToggle />\n```\n\n## CSS variables\n`--color-accent`, `--color-accent-foreground`, `--color-background`, `--color-input`, `--color-ring`, `--radius`\n\n## Files\n- `UI/ThemeToggle/ThemeToggle.razor`\n"
 }

@@ -44,9 +44,11 @@ public class TagInputPreventDefaultTests : IAsyncLifetime
         var invocation = _module.VerifyInvoke("registerPreventDefaultKeys");
         Assert.Equal(inputId, invocation.Arguments[0]);
         var rules = Assert.IsAssignableFrom<IReadOnlyList<PreventDefaultKeyRule>>(invocation.Arguments[1]);
-        var rule = Assert.Single(rules);
-        Assert.Equal("Enter", rule.Key);
-        Assert.True(rule.SkipComposing); // IME safety
+        // Enter (with IME safety) plus the ArrowUp/Down combobox-navigation keys.
+        var enter = Assert.Single(rules, r => r.Key == "Enter");
+        Assert.True(enter.SkipComposing); // IME safety
+        Assert.Contains(rules, r => r.Key == "ArrowDown");
+        Assert.Contains(rules, r => r.Key == "ArrowUp");
     }
 
     [Fact]

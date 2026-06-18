@@ -1,12 +1,21 @@
 @namespace Lumeo
 
 @{
-    var context = new MegaMenuContext(_activeItemId, EventCallback.Factory.Create<string?>(this, SetActiveItemId));
+    var context = new MegaMenuContext(
+        _activeItemId,
+        EventCallback.Factory.Create<string?>(this, SetActiveItemId),
+        Orientation,
+        _itemIds,
+        _disabledItemIds,
+        _rovingItemId ?? _itemIds.FirstOrDefault(id => !_disabledItemIds.Contains(id)),
+        RegisterItem,
+        UnregisterItem,
+        SetRovingItem);
 }
 
 <nav class="@CssClass" @attributes="AdditionalAttributes">
     <CascadingValue Value="context" IsFixed="false">
-        <ul class="@ListCssClass" role="menubar">
+        <ul class="@ListCssClass" role="menubar" aria-orientation="@OrientationStr">
             @ChildContent
         </ul>
     </CascadingValue>
@@ -19,8 +28,19 @@
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     private string? _activeItemId;
+    // Ordered list of registered top-level trigger ids (DOM order) backing the
+    // roving-tabindex arrow navigation across the menubar (WAI-ARIA menubar).
+    private readonly List<string> _itemIds = [];
+    // Trigger ids registered with Disabled=true — roving arrow/Home/End nav skips
+    // these so focus never lands on a non-interactive trigger.
+    private readonly HashSet<string> _disabledItemIds = [];
+    // The single item currently in the tab order (tabindex=0). Null until the
+    // first item registers; the context falls back to the first enabled item.
+    private string? _rovingItemId;
 
     private string CssClass => Cx.Merge("relative", Class);
+
+    private string OrientationStr => Orientation == Lumeo.Orientation.Vertical ? "vertical" : "horizontal";
 
     private string ListCssClass => Orientation == Lumeo.Orientation.Vertical
         ? "flex flex-col gap-1"
@@ -33,5 +53,71 @@
         return Task.CompletedTask;
     }
 
-    public record MegaMenuContext(string? ActiveItemId, EventCallback<string?> SetActiveItemId);
+    private void RegisterItem(string triggerId, bool disabled)
+    {
+        var shouldRender = false;
+
+        if (!_itemIds.Contains(triggerId))
+        {
+            _itemIds.Add(triggerId);
+            shouldRender = true;
+        }
+
+        // Track disabled state so roving nav can skip non-interactive triggers.
+        // Re-render on a change even for an already-registered item so the
+        // menubar tabindex stays in sync when a trigger enables/disables.
+        var disabledChanged = disabled
+            ? _disabledItemIds.Add(triggerId)
+            : _disabledItemIds.Remove(triggerId);
+        if (disabledChanged) shouldRender = true;
+
+        // The tab stop must be an enabled trigger — a disabled one can't receive
+        // focus, which would strand keyboard users at the menubar entry point.
+        if (_rovingItemId is null || _disabledItemIds.Contains(_rovingItemId))
+        {
+            var next = _itemIds.FirstOrDefault(id => !_disabledItemIds.Contains(id));
+            if (_rovingItemId != next)
+            {
+                _rovingItemId = next;
+                shouldRender = true;
+            }
+        }
+
+        if (shouldRender) StateHasChanged();
+    }
+
+    private void UnregisterItem(string triggerId)
+    {
+        _disabledItemIds.Remove(triggerId);
+        if (_itemIds.Remove(triggerId))
+        {
+            if (_rovingItemId == triggerId)
+            {
+                _rovingItemId = _itemIds.FirstOrDefault(id => !_disabledItemIds.Contains(id));
+            }
+            StateHasChanged();
+        }
+    }
+
+    // Roving update from an item gaining focus / arrow navigation. Kept in the
+    // parent so exactly one trigger carries tabindex=0 at any time.
+    private void SetRovingItem(string triggerId)
+    {
+        if (_rovingItemId != triggerId)
+        {
+            _rovingItemId = triggerId;
+            StateHasChanged();
+        }
+    }
+
+    public record MegaMenuContext(
+        string? ActiveItemId,
+        EventCallback<string?> SetActiveItemId,
+        Lumeo.Orientation Orientation,
+        IReadOnlyList<string> ItemIds,
+        IReadOnlySet<string> DisabledItemIds,
+        string? RovingItemId,
+        Action<string, bool> RegisterItem,
+        Action<string> UnregisterItem,
+        Action<string> SetRovingItem);
 }

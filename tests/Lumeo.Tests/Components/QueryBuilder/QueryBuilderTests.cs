@@ -192,9 +192,99 @@ public class QueryBuilderTests : IAsyncLifetime
         Assert.False(fn(new Person { Name = "Bob", Age = 40 }));      // name fails
     }
 
+    // --- "in" / "notIn" multi-value editor (regression: #211) ---
+
+    [Fact]
+    public void InOperator_On_Select_Renders_Checkbox_Per_Option_Not_A_Single_Select()
+    {
+        var query = new QueryGroup
+        {
+            Rules = { new QueryRule { Field = "status", Operator = "in", Value = "" } }
+        };
+
+        var cut = _ctx.Render<Lumeo.QueryBuilder>(p => p
+            .Add(q => q.Fields, Fields())
+            .Add(q => q.Query, query));
+
+        // One checkbox per option (Open, Closed) — a multi-select UI, not a single <select>.
+        var checkboxes = cut.FindAll("input[type=checkbox]");
+        Assert.Equal(2, checkboxes.Count);
+        Assert.Equal("Open", checkboxes[0].GetAttribute("aria-label"));
+        Assert.Equal("Closed", checkboxes[1].GetAttribute("aria-label"));
+
+        // The only <select> elements are the field + operator pickers — no value <select>.
+        var valueSelects = cut.FindAll("select").Where(s => s.GetAttribute("aria-label") == "Value").ToList();
+        Assert.Empty(valueSelects);
+    }
+
+    [Fact]
+    public void InOperator_Checking_Two_Options_Stores_CommaJoined_Value()
+    {
+        QueryGroup? captured = null;
+        var query = new QueryGroup
+        {
+            Rules = { new QueryRule { Field = "status", Operator = "in", Value = "" } }
+        };
+
+        var cut = _ctx.Render<Lumeo.QueryBuilder>(p => p
+            .Add(q => q.Fields, Fields())
+            .Add(q => q.Query, query)
+            .Add(q => q.QueryChanged, EventCallback.Factory.Create<QueryGroup>(this, g => captured = g)));
+
+        // Re-issue FindAll after each Change: the value mutation re-renders and invalidates
+        // previously-found element handles (their event handler IDs change).
+        cut.FindAll("input[type=checkbox]")[1].Change(true); // Closed
+        cut.FindAll("input[type=checkbox]")[0].Change(true); // Open
+
+        // Stored value is comma-joined in declared option order regardless of click order.
+        var rule = (QueryRule)captured!.Rules[0];
+        Assert.Equal("open,closed", rule.Value);
+
+        // Unchecking removes just that value.
+        cut.FindAll("input[type=checkbox]")[0].Change(false); // uncheck Open
+        rule = (QueryRule)captured!.Rules[0];
+        Assert.Equal("closed", rule.Value);
+    }
+
+    [Fact]
+    public void InOperator_CommaJoined_Value_Compiles_To_MultiValue_OrPredicate()
+    {
+        // End-to-end: the editor's comma-joined output drives a correct multi-value query.
+        var query = new QueryGroup
+        {
+            Rules = { new QueryRule { Field = nameof(Person.Status), Operator = "in", Value = "open,pending" } }
+        };
+
+        var predicate = Lumeo.QueryBuilder.ToExpression<Person>(query);
+        Assert.NotNull(predicate);
+        var fn = predicate!.Compile();
+
+        Assert.True(fn(new Person { Status = "open" }));      // first selected value
+        Assert.True(fn(new Person { Status = "pending" }));   // second selected value
+        Assert.False(fn(new Person { Status = "closed" }));   // a third, unselected value
+    }
+
+    [Fact]
+    public void NotInOperator_CommaJoined_Value_Compiles_To_Negated_Predicate()
+    {
+        var query = new QueryGroup
+        {
+            Rules = { new QueryRule { Field = nameof(Person.Status), Operator = "notIn", Value = "open,pending" } }
+        };
+
+        var predicate = Lumeo.QueryBuilder.ToExpression<Person>(query);
+        Assert.NotNull(predicate);
+        var fn = predicate!.Compile();
+
+        Assert.False(fn(new Person { Status = "open" }));
+        Assert.False(fn(new Person { Status = "pending" }));
+        Assert.True(fn(new Person { Status = "closed" }));    // not in the set
+    }
+
     private sealed class Person
     {
         public string Name { get; set; } = "";
         public int Age { get; set; }
+        public string Status { get; set; } = "";
     }
 }

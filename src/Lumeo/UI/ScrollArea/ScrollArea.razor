@@ -1,11 +1,30 @@
 @namespace Lumeo
 
-<div class="@CssClass" @attributes="AdditionalAttributes">
+<div data-scroll-type="@TypeString" class="@CssClass" @attributes="AdditionalAttributes">
     @ChildContent
 </div>
 
 @code {
     [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    /// <summary>
+    /// When the scrollbars become visible. Mirrors Radix UI's ScrollArea
+    /// <c>type</c>:
+    /// <list type="bullet">
+    /// <item><see cref="ScrollAreaType.Auto"/> (default) — bars show only when
+    /// the content overflows.</item>
+    /// <item><see cref="ScrollAreaType.Always"/> — bars are always visible and
+    /// the gutter is reserved (no layout shift when content grows).</item>
+    /// <item><see cref="ScrollAreaType.Scroll"/> — bars show while scrolling.</item>
+    /// <item><see cref="ScrollAreaType.Hover"/> — bars show on hover / focus
+    /// within.</item>
+    /// </list>
+    /// Implemented cross-browser via the <c>lumeo-scrollarea</c> CSS (Firefox
+    /// <c>scrollbar-*</c> + WebKit pseudo-elements). Firefox exposes only a thin
+    /// bar, so the Hover/Scroll auto-hide granularity is a WebKit/overlay
+    /// enhancement that degrades gracefully to a persistent thin bar there.
+    /// </summary>
+    [Parameter] public ScrollAreaType Type { get; set; } = ScrollAreaType.Auto;
 
     /// <summary>Adds a 4px inline gutter (<c>-mx-1 px-1</c>, net-zero layout)
     /// so a focusable control's focus ring isn't clipped at the left/right
@@ -20,7 +39,31 @@
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
-    private const string Base = "relative overflow-auto [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-border hover:[&::-webkit-scrollbar-thumb]:bg-muted-foreground/30";
+    // Overflow is owned by the per-type CSS rule (data-scroll-type) so the mode
+    // can reserve a gutter or force a persistent bar; the base class only
+    // carries position + the cross-browser scrollbar paint (lumeo-scrollarea).
+    private const string Base = "relative lumeo-scrollarea";
+
+    private string TypeString => Type switch
+    {
+        ScrollAreaType.Always => "always",
+        ScrollAreaType.Scroll => "scroll",
+        ScrollAreaType.Hover => "hover",
+        _ => "auto"
+    };
 
     private string CssClass => Cx.Merge(Base, Cx.When(FocusRingGutter, "-mx-1 px-1"), Class);
+
+    /// <summary>Scrollbar visibility strategy. See <see cref="ScrollArea.Type"/>.</summary>
+    public enum ScrollAreaType
+    {
+        /// <summary>Bars show only when content overflows. Default.</summary>
+        Auto,
+        /// <summary>Bars always visible; gutter reserved.</summary>
+        Always,
+        /// <summary>Bars show while scrolling.</summary>
+        Scroll,
+        /// <summary>Bars show on hover / focus-within.</summary>
+        Hover
+    }
 }

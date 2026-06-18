@@ -63,6 +63,14 @@ public sealed class TrackingInteropService : IComponentInteropService
     /// <summary>Value returned by GetMenuItemCount; defaults to 0 (= no-op nav).</summary>
     public int MenuItemCount { get; set; }
 
+    // Typeahead tracking (#222 DropdownMenu / #225 Menubar / #226 MegaMenu) —
+    // records each (containerId, query, currentIndex) call. The returned matched
+    // index is configurable so tests can drive the focus-follow assertion.
+    private readonly List<(string ContainerId, string Query, int CurrentIndex)> _typeaheadCalls = new();
+    public IReadOnlyList<(string ContainerId, string Query, int CurrentIndex)> TypeaheadCalls => _typeaheadCalls;
+    /// <summary>Index returned by FocusMenuItemByTypeahead; defaults to -1 (no match).</summary>
+    public int TypeaheadMatchIndex { get; set; } = -1;
+
     // ---- All remaining members are silent no-ops ----
 
     public ValueTask RegisterClickOutside(string elementId, string? triggerElementId, Func<Task> handler)
@@ -89,9 +97,24 @@ public sealed class TrackingInteropService : IComponentInteropService
         return ValueTask.CompletedTask;
     }
     public ValueTask<int> GetMenuItemCount(string containerId) => ValueTask.FromResult(MenuItemCount);
+    public ValueTask<int> FocusMenuItemByTypeahead(string containerId, string query, int currentIndex)
+    {
+        _typeaheadCalls.Add((containerId, query, currentIndex));
+        return ValueTask.FromResult(TypeaheadMatchIndex);
+    }
     public ValueTask LockScroll() => ValueTask.CompletedTask;
     public ValueTask UnlockScroll() => ValueTask.CompletedTask;
-    public ValueTask SetHtmlClass(string className, bool active) => ValueTask.CompletedTask;
+
+    // Records (className, active) for each SetHtmlClass call so tests can assert
+    // html-class lifecycle (e.g. fullscreen-active added on enter / removed on
+    // teardown).
+    private readonly List<(string ClassName, bool Active)> _setHtmlClassCalls = new();
+    public IReadOnlyList<(string ClassName, bool Active)> SetHtmlClassCalls => _setHtmlClassCalls;
+    public ValueTask SetHtmlClass(string className, bool active)
+    {
+        _setHtmlClassCalls.Add((className, active));
+        return ValueTask.CompletedTask;
+    }
     public ValueTask SetupFocusTrap(string elementId, string? initialFocusSelector = null)
     {
         _focusTrapSetups.Add((elementId, initialFocusSelector));
@@ -107,15 +130,74 @@ public sealed class TrackingInteropService : IComponentInteropService
     public ValueTask UnregisterSvDrag(string elementId) => ValueTask.CompletedTask;
     public ValueTask RegisterPinchZoom(string elementId, Func<double, Task> handler) => ValueTask.CompletedTask;
     public ValueTask UnregisterPinchZoom(string elementId) => ValueTask.CompletedTask;
-    public ValueTask<ViewportSize> GetViewportSize() => ValueTask.FromResult(new ViewportSize(0, 0));
+    /// <summary>Viewport size returned by <see cref="GetViewportSize"/>; defaults to 0×0
+    /// (no clamping) so existing tests are unaffected. Set it to exercise viewport
+    /// clamping (e.g. Window resize/drag bounds).</summary>
+    public ViewportSize ViewportSize { get; set; } = new(0, 0);
+    public ValueTask<ViewportSize> GetViewportSize() => ValueTask.FromResult(ViewportSize);
     // 2.1.3: viewport listener no-ops (IResponsiveService is exercised separately via NoOpInterop)
     public ValueTask<ViewportSize?> RegisterViewportListener(DotNetObjectReference<ResponsiveService> dotnetRef) => ValueTask.FromResult<ViewportSize?>(new ViewportSize(0, 0));
     public ValueTask UnregisterViewportListener() => ValueTask.CompletedTask;
     public ValueTask PositionFixed(string contentId, string referenceId, string align = "start", bool matchWidth = false, string side = "bottom") => ValueTask.CompletedTask;
     public ValueTask UnpositionFixed(string contentId) => ValueTask.CompletedTask;
+
+    // ContextMenu root-menu viewport clamp (#224) — opens at click coords with
+    // no anchor, so it calls PositionAtPoint rather than PositionFixed.
+    private readonly List<(string ContentId, double X, double Y)> _positionAtPointCalls = new();
+    public IReadOnlyList<(string ContentId, double X, double Y)> PositionAtPointCalls => _positionAtPointCalls;
+    public ValueTask PositionAtPoint(string contentId, double x, double y)
+    {
+        _positionAtPointCalls.Add((contentId, x, y));
+        return ValueTask.CompletedTask;
+    }
+
+    // Toolbar roving focus (#235).
+    private readonly List<string> _initToolbarRovingCalls = new();
+    private readonly List<(string ToolbarId, int Delta)> _moveToolbarFocusCalls = new();
+    private readonly List<(string ToolbarId, bool Last)> _focusToolbarEdgeCalls = new();
+    public IReadOnlyList<string> InitToolbarRovingCalls => _initToolbarRovingCalls;
+    public IReadOnlyList<(string ToolbarId, int Delta)> MoveToolbarFocusCalls => _moveToolbarFocusCalls;
+    public IReadOnlyList<(string ToolbarId, bool Last)> FocusToolbarEdgeCalls => _focusToolbarEdgeCalls;
+    public ValueTask InitToolbarRoving(string toolbarId)
+    {
+        _initToolbarRovingCalls.Add(toolbarId);
+        return ValueTask.CompletedTask;
+    }
+    public ValueTask MoveToolbarFocus(string toolbarId, int delta)
+    {
+        _moveToolbarFocusCalls.Add((toolbarId, delta));
+        return ValueTask.CompletedTask;
+    }
+    public ValueTask FocusToolbarEdge(string toolbarId, bool last)
+    {
+        _focusToolbarEdgeCalls.Add((toolbarId, last));
+        return ValueTask.CompletedTask;
+    }
     public ValueTask<ElementRect?> GetElementRect(string elementId) => ValueTask.FromResult<ElementRect?>(null);
-    public ValueTask<double> GetElementDimension(string elementId, string dimension) => ValueTask.FromResult(0.0);
+    /// <summary>Value returned by <see cref="GetElementDimension"/> — defaults to
+    /// 0 (so size-dependent paths short-circuit, preserving old behaviour). Set
+    /// it to a positive pixel size to exercise Splitter/Resizable drag math.</summary>
+    public double ElementDimension { get; set; }
+    public ValueTask<double> GetElementDimension(string elementId, string dimension) => ValueTask.FromResult(ElementDimension);
     public ValueTask<double> GetScrollTop(string elementId) => ValueTask.FromResult(0.0);
+
+    // PullToRefresh gesture-guard registration tracking (#308) — tests assert
+    // the non-passive touchmove guard is wired on first render and torn down.
+    private readonly List<string> _pullToRefreshRegistrations = new();
+    private readonly List<string> _pullToRefreshUnregistrations = new();
+    public IReadOnlyList<string> PullToRefreshRegistrations => _pullToRefreshRegistrations;
+    public IReadOnlyList<string> PullToRefreshUnregistrations => _pullToRefreshUnregistrations;
+    public ValueTask RegisterPullToRefresh(string elementId)
+    {
+        _pullToRefreshRegistrations.Add(elementId);
+        return ValueTask.CompletedTask;
+    }
+    public ValueTask UnregisterPullToRefresh(string elementId)
+    {
+        _pullToRefreshUnregistrations.Add(elementId);
+        return ValueTask.CompletedTask;
+    }
+
     public ValueTask<double> WheelScrollTop(ElementReference element) => ValueTask.FromResult(0.0);
 
     // Wheel-picker scroll tracking — used to assert that DateWheelPicker /
@@ -160,8 +242,26 @@ public sealed class TrackingInteropService : IComponentInteropService
         _tabSwipeUnregistrations.Add(elementId);
         return ValueTask.CompletedTask;
     }
-    public ValueTask RegisterSortableTouch(string containerId, Func<int, int, Task> handler) => ValueTask.CompletedTask;
-    public ValueTask UnregisterSortableTouch(string containerId) => ValueTask.CompletedTask;
+    // Sortable touch tracking — used to assert SortableList (re-)registers its
+    // touch handler against the CURRENT Disabled state (a list mounted Disabled
+    // then enabled must still wire up touch) and drops it again when disabled.
+    private readonly List<string> _sortableTouchRegistrations = new();
+    private readonly List<string> _sortableTouchUnregistrations = new();
+    public int RegisterSortableTouchCallCount => _sortableTouchRegistrations.Count;
+    public IReadOnlyList<string> RegisterSortableTouchContainerIds => _sortableTouchRegistrations;
+    public int UnregisterSortableTouchCallCount => _sortableTouchUnregistrations.Count;
+    public IReadOnlyList<string> UnregisterSortableTouchContainerIds => _sortableTouchUnregistrations;
+
+    public ValueTask RegisterSortableTouch(string containerId, Func<int, int, Task> handler)
+    {
+        _sortableTouchRegistrations.Add(containerId);
+        return ValueTask.CompletedTask;
+    }
+    public ValueTask UnregisterSortableTouch(string containerId)
+    {
+        _sortableTouchUnregistrations.Add(containerId);
+        return ValueTask.CompletedTask;
+    }
     public ValueTask RegisterCarouselSwipe(string elementId, string orientation, Func<string, Task> swipeHandler, Func<double, double, int, Task> scrollHandler) => ValueTask.CompletedTask;
     public ValueTask UnregisterCarouselSwipe(string elementId) => ValueTask.CompletedTask;
     public ValueTask CarouselScrollTo(string elementId, int index, string behavior = "smooth") => ValueTask.CompletedTask;
@@ -179,11 +279,72 @@ public sealed class TrackingInteropService : IComponentInteropService
     public ValueTask UnregisterGallerySwipe(string elementId) => ValueTask.CompletedTask;
     public ValueTask RegisterResizeHandle(string elementId, string direction, Func<double, Task> resizeHandler, Func<Task> resizeEndHandler) => ValueTask.CompletedTask;
     public ValueTask UnregisterResizeHandle(string elementId) => ValueTask.CompletedTask;
-    public ValueTask RegisterScrollspy(string containerId, int offset, bool smooth, Func<string?, Task> handler) => ValueTask.CompletedTask;
+    // Scrollspy tracking (#246) — assert click/programmatic scroll honours the
+    // Offset, and the registered observer offset.
+    private readonly List<(string ContainerId, int Offset, bool Smooth)> _scrollspyRegistrations = new();
+    private readonly List<(string ContainerId, string SectionId, bool Smooth, int Offset)> _scrollspyScrollToCalls = new();
+    public IReadOnlyList<(string ContainerId, int Offset, bool Smooth)> ScrollspyRegistrations => _scrollspyRegistrations;
+    public IReadOnlyList<(string ContainerId, string SectionId, bool Smooth, int Offset)> ScrollspyScrollToCalls => _scrollspyScrollToCalls;
+    public ValueTask RegisterScrollspy(string containerId, int offset, bool smooth, Func<string?, Task> handler)
+    {
+        _scrollspyRegistrations.Add((containerId, offset, smooth));
+        return ValueTask.CompletedTask;
+    }
     public ValueTask UnregisterScrollspy(string containerId) => ValueTask.CompletedTask;
-    public ValueTask ScrollspyScrollTo(string containerId, string sectionId, bool smooth) => ValueTask.CompletedTask;
-    public ValueTask RegisterToastSwipe(string elementId, string toastId, Func<string, Task> handler) => ValueTask.CompletedTask;
-    public ValueTask UnregisterToastSwipe(string toastId, string elementId) => ValueTask.CompletedTask;
+    public ValueTask ScrollspyScrollTo(string containerId, string sectionId, bool smooth)
+    {
+        _scrollspyScrollToCalls.Add((containerId, sectionId, smooth, 0));
+        return ValueTask.CompletedTask;
+    }
+    public ValueTask ScrollspyScrollTo(string containerId, string sectionId, bool smooth, int offset)
+    {
+        _scrollspyScrollToCalls.Add((containerId, sectionId, smooth, offset));
+        return ValueTask.CompletedTask;
+    }
+    // Toast swipe tracking (#232) — the swipe-to-dismiss gesture is wired in
+    // JS + service but was never registered by any component. Tests assert the
+    // provider now registers per toast and can drive a dismissal via the
+    // captured handler.
+    private readonly List<(string ElementId, string ToastId, Func<string, Task> Handler)> _toastSwipeRegistrations = new();
+    private readonly List<(string ToastId, string ElementId)> _toastSwipeUnregistrations = new();
+    public IReadOnlyList<(string ElementId, string ToastId, Func<string, Task> Handler)> ToastSwipeRegistrations => _toastSwipeRegistrations;
+    public IReadOnlyList<(string ToastId, string ElementId)> ToastSwipeUnregistrations => _toastSwipeUnregistrations;
+
+    public ValueTask RegisterToastSwipe(string elementId, string toastId, Func<string, Task> handler)
+    {
+        _toastSwipeRegistrations.Add((elementId, toastId, handler));
+        return ValueTask.CompletedTask;
+    }
+    public ValueTask UnregisterToastSwipe(string toastId, string elementId)
+    {
+        _toastSwipeUnregistrations.Add((toastId, elementId));
+        return ValueTask.CompletedTask;
+    }
+
+    // Tabs overflow scroll arrows (#239) — capture the observer handler so tests
+    // can drive arrow visibility, and record TabsScrollBy nudges.
+    private readonly Dictionary<string, Func<bool, bool, Task>> _tabsOverflowHandlers = new();
+    private readonly List<(string ListId, double Delta, bool Horizontal)> _tabsScrollByCalls = new();
+    public IReadOnlyCollection<string> TabsOverflowRegistrations => _tabsOverflowHandlers.Keys.ToList();
+    public IReadOnlyList<(string ListId, double Delta, bool Horizontal)> TabsScrollByCalls => _tabsScrollByCalls;
+    /// <summary>Simulates a JS overflow report for the given tablist.</summary>
+    public Task RaiseTabsOverflow(string listId, bool canScrollStart, bool canScrollEnd) =>
+        _tabsOverflowHandlers.TryGetValue(listId, out var h) ? h(canScrollStart, canScrollEnd) : Task.CompletedTask;
+    public ValueTask RegisterTabsOverflow(string listId, Func<bool, bool, Task> handler)
+    {
+        _tabsOverflowHandlers[listId] = handler;
+        return ValueTask.CompletedTask;
+    }
+    public ValueTask UnregisterTabsOverflow(string listId)
+    {
+        _tabsOverflowHandlers.Remove(listId);
+        return ValueTask.CompletedTask;
+    }
+    public ValueTask TabsScrollBy(string listId, double delta, bool horizontal)
+    {
+        _tabsScrollByCalls.Add((listId, delta, horizontal));
+        return ValueTask.CompletedTask;
+    }
     public ValueTask SetupAutoResize(string elementId, int maxRows) => ValueTask.CompletedTask;
     public ValueTask UnregisterAutoResize(string elementId) => ValueTask.CompletedTask;
     public ValueTask RegisterOtpPaste(string baseId, int length, Func<string, Task> handler) => ValueTask.CompletedTask;
@@ -191,6 +352,18 @@ public sealed class TrackingInteropService : IComponentInteropService
     public ValueTask RegisterPreventDefaultKeys(string elementId, IReadOnlyList<PreventDefaultKeyRule> rules) => ValueTask.CompletedTask;
     public ValueTask UnregisterPreventDefaultKeys(string elementId) => ValueTask.CompletedTask;
     public ValueTask ScrollSelectorIntoView(string selector) => ValueTask.CompletedTask;
+
+    // Scroll-into-view tracking — Command palette scrolls its active item into
+    // view on keyboard navigation (#214); tests assert the call fires with the
+    // highlighted item's id.
+    private readonly List<(string ElementId, string Block)> _scrollIntoViewCalls = new();
+    public IReadOnlyList<(string ElementId, string Block)> ScrollIntoViewCalls => _scrollIntoViewCalls;
+    public ValueTask ScrollIntoView(string elementId, string block = "nearest")
+    {
+        _scrollIntoViewCalls.Add((elementId, block));
+        return ValueTask.CompletedTask;
+    }
+
     // Column resize tracking — used to assert that the JS pointerdown listener
     // is wired during the first render, not lazily on the first pointerdown
     // (the lazy path lost the originating event so the first drag was a no-op).
@@ -227,9 +400,40 @@ public sealed class TrackingInteropService : IComponentInteropService
     }
 
     public ValueTask<ElementRect?> GetElementRectBySelector(string selector) => ValueTask.FromResult<ElementRect?>(null);
-    public ValueTask RegisterAffix(string elementId, int offsetTop, int? offsetBottom, string? target, Func<bool, Task> handler) => ValueTask.CompletedTask;
-    public ValueTask UnregisterAffix(string elementId) => ValueTask.CompletedTask;
+
+    // Affix registration tracking (#248) — assert the sticky element is wired
+    // with the consumer's offsets so the resize/rotate width-recompute path
+    // stays reachable.
+    private readonly List<(string ElementId, int OffsetTop, int? OffsetBottom, string? Target)> _affixRegistrations = new();
+    private readonly List<string> _affixUnregistrations = new();
+    public IReadOnlyList<(string ElementId, int OffsetTop, int? OffsetBottom, string? Target)> AffixRegistrations => _affixRegistrations;
+    public IReadOnlyList<string> AffixUnregistrations => _affixUnregistrations;
+    public ValueTask RegisterAffix(string elementId, int offsetTop, int? offsetBottom, string? target, Func<bool, Task> handler)
+    {
+        _affixRegistrations.Add((elementId, offsetTop, offsetBottom, target));
+        return ValueTask.CompletedTask;
+    }
+    public ValueTask UnregisterAffix(string elementId)
+    {
+        _affixUnregistrations.Add(elementId);
+        return ValueTask.CompletedTask;
+    }
     public ValueTask<ComponentInteropService.TextareaCaretInfo> GetTextareaCaretPosition(string elementId) => ValueTask.FromResult(new ComponentInteropService.TextareaCaretInfo(0, 0, 0));
+
+    // InputMask caret (#177). GetInputCaret returns InputCaret (default 0) so tests
+    // can stage where the caret sits; SetInputCaret records each restore so tests
+    // can assert the component repositions the caret after a masked edit.
+    private readonly List<(string ElementId, int Position)> _setInputCaretCalls = new();
+    public IReadOnlyList<(string ElementId, int Position)> SetInputCaretCalls => _setInputCaretCalls;
+    /// <summary>Caret position returned by <see cref="GetInputCaret"/>; defaults to 0.</summary>
+    public int InputCaret { get; set; }
+    public ValueTask<int> GetInputCaret(string elementId) => ValueTask.FromResult(InputCaret);
+    public ValueTask SetInputCaret(string elementId, int position)
+    {
+        _setInputCaretCalls.Add((elementId, position));
+        return ValueTask.CompletedTask;
+    }
+
     public ValueTask RegisterBackToTop(string id, int threshold, Func<bool, Task> handler) => ValueTask.CompletedTask;
     public ValueTask UnregisterBackToTop(string id) => ValueTask.CompletedTask;
     public ValueTask ScrollToTop() => ValueTask.CompletedTask;
@@ -237,10 +441,35 @@ public sealed class TrackingInteropService : IComponentInteropService
     public ValueTask CopyToClipboard(string text) => ValueTask.CompletedTask;
     public ValueTask RippleAttachAsync(ElementReference element) => ValueTask.CompletedTask;
     public ValueTask RippleDetachAsync(ElementReference element) => ValueTask.CompletedTask;
+
+    // Core reduced-motion gate (shares the PrefersReducedMotion flag with the
+    // Motion override below) + TouchRipple coordinate resolution. TouchRipple
+    // tests set TouchRippleCoordsResult to assert the ripple span uses the
+    // host-relative coords the JS helper returns (nested-target fix #310).
+    public ValueTask<bool> PrefersReducedMotion() => ValueTask.FromResult(ReducedMotion);
+    public RipplePoint TouchRippleCoordsResult { get; set; } = new RipplePoint(0, 0);
+    private readonly List<(string HostId, double X, double Y)> _touchRippleCoordsCalls = new();
+    public IReadOnlyList<(string HostId, double X, double Y)> TouchRippleCoordsCalls => _touchRippleCoordsCalls;
+    public ValueTask<RipplePoint> TouchRippleCoords(string hostElementId, double clientX, double clientY)
+    {
+        _touchRippleCoordsCalls.Add((hostElementId, clientX, clientY));
+        return ValueTask.FromResult(TouchRippleCoordsResult);
+    }
     public ValueTask SaveToLocalStorage(string key, string value) => ValueTask.CompletedTask;
     public ValueTask<string?> LoadFromLocalStorage(string key) => ValueTask.FromResult<string?>(null);
     public ValueTask RemoveFromLocalStorage(string key) => ValueTask.CompletedTask;
-    public ValueTask MotionTickNumber(string elementId, double from, double to, int durationMs, int decimals, string separator = ",") => ValueTask.CompletedTask;
+    // Reduced-motion gate (#310/#327/#328) — tests set ReducedMotion to
+    // exercise the no-op / instant-settle branch of JS-driven motion primitives.
+    // Shared by both the Motion and the core reduced-motion queries.
+    public bool ReducedMotion { get; set; }
+    private int _prefersReducedMotionCallCount;
+    public int MotionPrefersReducedMotionCallCount => _prefersReducedMotionCallCount;
+    public ValueTask<bool> MotionPrefersReducedMotion()
+    {
+        _prefersReducedMotionCallCount++;
+        return ValueTask.FromResult(ReducedMotion);
+    }
+    public ValueTask MotionTickNumber(string elementId, double from, double to, int durationMs, int decimals, string separator = ",", string decimalSeparator = ".") => ValueTask.CompletedTask;
     public ValueTask MotionDisposeTicker(string elementId) => ValueTask.CompletedTask;
     public ValueTask MotionRevealText(string elementId, int staggerMs, double threshold) => ValueTask.CompletedTask;
     public ValueTask MotionBlurFade(string elementId, int delayMs, bool once, bool forceHidden = false) => ValueTask.CompletedTask;
@@ -292,6 +521,7 @@ public sealed class TrackingInteropService : IComponentInteropService
     public ValueTask PauseMedia(Microsoft.AspNetCore.Components.ElementReference element) => ValueTask.CompletedTask;
     public ValueTask SetMediaVolume(Microsoft.AspNetCore.Components.ElementReference element, double volume, bool muted) => ValueTask.CompletedTask;
     public ValueTask SeekMedia(Microsoft.AspNetCore.Components.ElementReference element, double seconds) => ValueTask.CompletedTask;
+    public ValueTask SetPlaybackRate(Microsoft.AspNetCore.Components.ElementReference element, double rate) => ValueTask.CompletedTask;
     public ValueTask<Lumeo.Services.MediaState> GetMediaState(Microsoft.AspNetCore.Components.ElementReference element) => ValueTask.FromResult(new Lumeo.Services.MediaState(0, 0));
     public ValueTask SignaturePadInit(string elementId, object options, Microsoft.JSInterop.DotNetObjectReference<Lumeo.SignaturePad> dotNetRef) => ValueTask.CompletedTask;
     public ValueTask SignaturePadClear(string elementId) => ValueTask.CompletedTask;

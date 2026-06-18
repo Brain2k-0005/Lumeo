@@ -57,7 +57,10 @@ public class SheetFocusManagementTests : IAsyncLifetime
 
         Assert.False(cut.Instance.InnerOpen);          // sheet handled Escape and closed
         Assert.True(cut.Instance.OuterOpen);           // outer dialog was never asked to close
-        Assert.Single(cut.FindAll("[role='dialog']")); // only the outer dialog remains
+        // #217 — the sheet now plays an exit animation before unmounting, so it
+        // lingers in the DOM briefly. Wait for it to leave; only the outer dialog
+        // should remain.
+        cut.WaitForAssertion(() => Assert.Single(cut.FindAll("[role='dialog']")));
     }
 
     [Fact]

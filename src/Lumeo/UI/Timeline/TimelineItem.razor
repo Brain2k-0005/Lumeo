@@ -1,4 +1,14 @@
 @namespace Lumeo
+@implements IDisposable
+
+@{
+    // Re-read the stable registry index every render (mirrors Steps #244) so it
+    // stays correct when items are added/removed — and so the alternate layout
+    // assigns a deterministic left/right side per item.
+    _index = Context?.Parent is not null ? Context.Parent.GetItemIndex(this) : 0;
+    var isAlternate = Context?.IsAlternate == true;
+    var sideRight = isAlternate && (_index % 2 == 1);
+}
 
 @if (Context?.Orientation == Lumeo.Orientation.Horizontal)
 {
@@ -15,21 +25,42 @@
                 }
             </div>
             <div class="mt-2 flex flex-col items-center text-center">
-                @if (!string.IsNullOrEmpty(Title))
-                {
-                    <p class="text-sm font-medium text-foreground">@Title</p>
-                }
-                @if (!string.IsNullOrEmpty(Description))
-                {
-                    <p class="text-xs text-muted-foreground">@Description</p>
-                }
-                @if (!string.IsNullOrEmpty(Time))
-                {
-                    <p class="text-xs text-muted-foreground/70">@Time</p>
-                }
+                @ContentBlock
             </div>
         </div>
         <div class="@HorizontalConnectorClasses" @key="@($"tl-h-{_index}-{ConnectorState}")"></div>
+    </div>
+}
+else if (isAlternate)
+{
+    @* Vertical alternate (zig-zag): a centered rail with the content on the
+       left for even indices and the right for odd ones. *@
+    <div class="@AlternateCssClass" style="@AnimationStyle" @attributes="AdditionalAttributes">
+        <div class="flex-1 @(sideRight ? "" : "text-right pr-4")">
+            @if (!sideRight)
+            {
+                @ContentBlock
+            }
+        </div>
+        <div class="flex flex-col items-center self-stretch">
+            <div class="@DotClasses">
+                @if (IconContent is not null)
+                {
+                    @IconContent
+                }
+                else
+                {
+                    <div class="h-2.5 w-2.5 rounded-full @DotInnerFillClass"></div>
+                }
+            </div>
+            <div class="@VerticalConnectorClasses" @key="@($"tl-a-{_index}-{ConnectorState}")"></div>
+        </div>
+        <div class="flex-1 @(sideRight ? "pl-4" : "")">
+            @if (sideRight)
+            {
+                @ContentBlock
+            }
+        </div>
     </div>
 }
 else
@@ -49,18 +80,7 @@ else
             <div class="@VerticalConnectorClasses" @key="@($"tl-v-{_index}-{ConnectorState}")"></div>
         </div>
         <div class="ml-3 pb-6">
-            @if (!string.IsNullOrEmpty(Title))
-            {
-                <p class="text-sm font-medium text-foreground">@Title</p>
-            }
-            @if (!string.IsNullOrEmpty(Description))
-            {
-                <p class="text-xs text-muted-foreground">@Description</p>
-            }
-            @if (!string.IsNullOrEmpty(Time))
-            {
-                <p class="mt-1 text-xs text-muted-foreground/70">@Time</p>
-            }
+            @ContentBlock
         </div>
     </div>
 }
@@ -76,6 +96,14 @@ else
     [Parameter] public string? Time { get; set; }
 
     /// <summary>
+    /// Free-form content rendered in the item's body, after the structured
+    /// Title / Description / Time (any of which may be omitted). Use this to
+    /// compose richer entries — buttons, badges, avatars, nested markup — that
+    /// the fixed fields can't express. Works in every orientation/layout.
+    /// </summary>
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    /// <summary>
     /// When set, marks this item as the "active" (current) item. When the
     /// parent <see cref="Timeline"/> has <c>Animated="true"</c>, this item's
     /// indicator pulses. If the parent also sets <c>ActiveIndex</c>, that
@@ -87,14 +115,36 @@ else
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     private int _index;
+    private Timeline? _registeredParent;
 
-    protected override void OnParametersSet()
+    protected override void OnInitialized()
     {
-        if (Context?.Parent is not null)
-        {
-            _index = Context.Parent.GetNextIndex();
-        }
+        _registeredParent = Context?.Parent;
+        _registeredParent?.RegisterItem(this);
     }
+
+    public void Dispose() => _registeredParent?.UnregisterItem(this);
+
+    // Shared body — structured fields then optional free-form ChildContent.
+    private RenderFragment ContentBlock => __builder =>
+    {
+        @if (!string.IsNullOrEmpty(Title))
+        {
+            <p class="text-sm font-medium text-foreground">@Title</p>
+        }
+        @if (!string.IsNullOrEmpty(Description))
+        {
+            <p class="text-xs text-muted-foreground">@Description</p>
+        }
+        @if (!string.IsNullOrEmpty(Time))
+        {
+            <p class="text-xs text-muted-foreground/70">@Time</p>
+        }
+        @if (ChildContent is not null)
+        {
+            <div class="mt-1">@ChildContent</div>
+        }
+    };
 
     private bool IsAnimated => Context?.Animated == true;
     private bool IsHorizontal => Context?.Orientation == Lumeo.Orientation.Horizontal;
@@ -221,6 +271,15 @@ else
         get
         {
             var baseClasses = Cx.Merge("flex flex-row", Class);
+            return IsAnimated ? $"{baseClasses} lumeo-timeline-enter-vertical" : baseClasses;
+        }
+    }
+
+    private string AlternateCssClass
+    {
+        get
+        {
+            var baseClasses = Cx.Merge("flex flex-row items-stretch", Class);
             return IsAnimated ? $"{baseClasses} lumeo-timeline-enter-vertical" : baseClasses;
         }
     }

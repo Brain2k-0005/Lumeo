@@ -5,6 +5,48 @@ All notable changes to Lumeo will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.14.0] - 2026-06-17
+
+Library-wide audit-remediation release. Building on the 3.13.0 audit, this release closes accessibility (keyboard/ARIA), lifecycle, interop-safety, culture and motion gaps across ~60 components, adds several audit-flagged feature gaps, and honors `prefers-reduced-motion` across the Motion package. Full per-component detail is tracked in audit issues #171–#335.
+
+### Added
+- **Calendar / DatePicker**: multiple-date selection (`IsMultiple` + `Values`/`ValuesChanged`).
+- **Transfer**: per-panel select-all and per-item `Disabled`.
+- **PickList**: within-list keyboard reordering + listbox ARIA.
+- **Carousel**: autoplay with pause-on-hover/focus and indicator dots.
+- **Table**: `TableFooter`, `TableEmpty`, `TableSkeleton` and a striped helper.
+- **Tabs**: manual activation mode and overflow scroll arrows.
+- **Sidebar**: mobile off-canvas sheet and a keyboard toggle shortcut.
+- **Resizable**: collapsible panels, `OnLayout`, and persisted/saved layout round-trip.
+- **Text**: `LineClamp` plus a wider semantic-element set.
+- **Watermark**: optional image-source watermark mode.
+- **ToolCallCard**: copy-to-clipboard for input/output.
+- **AudioPlayer**: playback-rate, skip and volume controls.
+- **ThemeSwitcher**: live OS `prefers-color-scheme` and cross-tab sync.
+
+### Improved
+- **prefers-reduced-motion** is now honored across `Lumeo.Motion` (AnimatedBeam, BlurFade, BorderBeam, Marquee, NumberTicker, ShimmerButton, Sparkles, TextReveal, Confetti, Dock, TouchRipple) and overlay exit animations; NumberTicker now formats with the current culture's group/decimal separators.
+- **Keyboard / ARIA**: roving-tabindex, arrow/Home/End navigation, typeahead and focus management added or hardened across Select, Combobox, TreeSelect, Cascader, Mention, Command, Menubar, MegaMenu, DropdownMenu, ToggleGroup, Segmented, Calendar, Accordion, Steps, Toolbar, SpeedDial and Sortable — disabled items are skipped consistently and keyboard activation no longer double-fires.
+- **Overlays**: Sheet/Dialog/Popover/Tooltip focus management, theme-token backdrops, exit animations and Escape handling hardened (a pinned Tooltip now dismisses on Escape; the Sheet no longer flickers on close).
+- **Interop safety**: JS-disconnect/disposal guards added across component teardown; the `prefers-reduced-motion` query and theme listeners are pruned/guarded on async failure.
+
+### Fixed
+- **Splitter**: dead `Collapsible` wired up, late-added panes are now sized, drags clamp at min/max (instead of being rejected), a collapsed pane re-expands on drag-out, and an `OnAfterRender` redistribution loop that could overflow the stack is closed.
+- **CodeEditor**: core/language/theme/minimap module caches are keyed by resolved ESM base, so two editors pointing at different bases no longer share modules.
+- **DataGrid**: a Select column's operator is preserved on Apply instead of being reset to `Contains`.
+- **FileViewer**: `IHttpClientFactory` resolution honors a registered factory for the default (unnamed) client.
+- **Calendar / DateTimePicker / TimePicker**: Min/Max enforcement on the time columns, keyboard grid/list navigation, and AM/PM inference when no value is selected.
+- **SignaturePad**: real per-stroke SVG export, tap-only signatures are no longer dropped, and clear/keyboard a11y.
+- **Avatar**: image→fallback chain and a working `AvatarGroup` `Max`/`+N` overflow.
+- **BottomNav**: active-route matching ignores query/fragment.
+- **Scrollspy / Affix / ScrollArea / Timeline / Separator**: offset-aware click-scroll, resize-aware fixed width, cross-browser scrollbars, alternate layout and semantic `role`.
+- **Markdown**: link URLs containing `_`/`*` are no longer corrupted by the emphasis passes.
+- **Window**: shared z-index is assigned atomically.
+
+### Deferred
+- **#172** (nested-overlay positioning under a transformed parent) and **#173** (Icon sizing under Tailwind v4) require real-browser verification and ship in a dedicated follow-up PR.
+- **#320** (RichTextEditor TipTap extensions) and **#196** (Code syntax highlighting) pend an npm/bundle build step.
+
 ## [3.13.2] - 2026-06-12
 
 ### Fixed

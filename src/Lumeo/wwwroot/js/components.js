@@ -597,6 +597,47 @@ export function unpositionFixed(contentId) {
     try { fn(); } catch (_) { positionCleanups.delete(contentId); }
 }
 
+// Position a fixed element so its top-left starts at the point (x, y) — used by
+// ContextMenu, which opens at raw click coordinates with no anchor element so
+// positionFixed (reference-element based) doesn't apply. Clamps the element
+// into the viewport: if it would overflow the right/bottom edge it flips to
+// open up/left of the point (native context-menu behaviour), and as a final
+// guard keeps it >= 8px from every edge. Returns nothing; safe if missing.
+export function positionAtPoint(contentId, x, y) {
+    const el = document.getElementById(contentId);
+    if (!el) return;
+
+    const margin = 8;
+    el.style.position = 'fixed';
+    el.style.transform = '';
+    // Place at the raw point first, then measure the natural size.
+    el.style.left = `${x}px`;
+    el.style.top = `${y}px`;
+    void el.offsetHeight; // force layout flush before measuring
+    const rect = el.getBoundingClientRect();
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+
+    let left = x;
+    let top = y;
+
+    // Horizontal: flip to the left of the cursor if it overflows the right edge,
+    // then clamp so it never sits past either edge.
+    if (left + rect.width > vw - margin) {
+        left = x - rect.width;
+    }
+    left = Math.max(margin, Math.min(left, vw - rect.width - margin));
+
+    // Vertical: flip above the cursor if it overflows the bottom edge, then clamp.
+    if (top + rect.height > vh - margin) {
+        top = y - rect.height;
+    }
+    top = Math.max(margin, Math.min(top, vh - rect.height - margin));
+
+    el.style.left = `${left}px`;
+    el.style.top = `${top}px`;
+}
+
 // --- Viewport Size ---
 
 export function getViewportSize() {
@@ -629,6 +670,72 @@ export function getScrollTop(elementId) {
     const el = document.getElementById(elementId);
     if (!el) return 0;
     return el.scrollTop || 0;
+}
+
+// --- Pull-to-refresh gesture guard (#308) ---
+//
+// PullToRefresh's wrapper IS the scroll container. With CSS `touch-action:
+// pan-y` the browser owns vertical panning, so a downward drag at scrollTop 0
+// is consumed as native (over)scroll and the Blazor pointermove deltas that
+// drive the rubber-band never get a chance — the gesture is "stolen". A
+// non-passive touchmove listener that calls preventDefault() ONLY while the
+// container is at the top AND the finger is moving down hands that case to us,
+// while leaving normal upward/inner scrolling fully native. This is the piece
+// CSS alone can't express (touch-action can't say "only intercept downward at
+// the top"). Pointer Events stay the source of truth for the visual offset.
+const pullToRefreshHandlers = new Map();
+
+export function registerPullToRefresh(elementId) {
+    unregisterPullToRefresh(elementId);
+    const el = document.getElementById(elementId);
+    if (!el) return;
+
+    let startY = 0;
+    let tracking = false;
+
+    const onTouchStart = (e) => {
+        if (!e.touches || e.touches.length !== 1) { tracking = false; return; }
+        // Only arm when already at the very top — otherwise this is a normal
+        // inner scroll and must stay native.
+        tracking = (el.scrollTop || 0) <= 0;
+        startY = e.touches[0].clientY;
+    };
+
+    const onTouchMove = (e) => {
+        if (!tracking || !e.touches || e.touches.length !== 1) return;
+        const dy = e.touches[0].clientY - startY;
+        // Downward pull while pinned at the top → claim it so the browser
+        // doesn't overscroll/native-refresh. Upward (dy <= 0) stays native so
+        // the user can scroll into content.
+        if (dy > 0 && (el.scrollTop || 0) <= 0) {
+            if (e.cancelable) e.preventDefault();
+        } else {
+            tracking = false;
+        }
+    };
+
+    const onTouchEnd = () => { tracking = false; };
+
+    const handlers = { onTouchStart, onTouchMove, onTouchEnd };
+    el.addEventListener('touchstart', onTouchStart, { passive: true });
+    // Must be non-passive so preventDefault is honored.
+    el.addEventListener('touchmove', onTouchMove, { passive: false });
+    el.addEventListener('touchend', onTouchEnd, { passive: true });
+    el.addEventListener('touchcancel', onTouchEnd, { passive: true });
+    pullToRefreshHandlers.set(elementId, { el, handlers });
+}
+
+export function unregisterPullToRefresh(elementId) {
+    const entry = pullToRefreshHandlers.get(elementId);
+    if (!entry) return;
+    const { el, handlers } = entry;
+    try {
+        el.removeEventListener('touchstart', handlers.onTouchStart);
+        el.removeEventListener('touchmove', handlers.onTouchMove);
+        el.removeEventListener('touchend', handlers.onTouchEnd);
+        el.removeEventListener('touchcancel', handlers.onTouchEnd);
+    } catch (_) { /* noop */ }
+    pullToRefreshHandlers.delete(elementId);
 }
 
 // --- Wheel picker helpers (DateWheelPicker / TimeWheelPicker) ---
@@ -1446,7 +1553,7 @@ export function unregisterScrollspy(containerId) {
     }
 }
 
-export function scrollspyScrollTo(containerId, sectionId, smooth) {
+export function scrollspyScrollTo(containerId, sectionId, smooth, offset = 0) {
     const container = document.getElementById(containerId);
     if (!container) return;
 
@@ -1454,10 +1561,67 @@ export function scrollspyScrollTo(containerId, sectionId, smooth) {
     const section = document.getElementById(sectionId);
     if (!section) return;
 
+    // Honour the same Offset the observer uses to decide the active section
+    // (#246): subtract it so a click lands the section top below a sticky
+    // header instead of flush with the viewport top (which would re-activate
+    // the *previous* section). Clamp at 0 so we never request a negative top.
     viewport.scrollTo({
-        top: section.offsetTop,
+        top: Math.max(0, section.offsetTop - offset),
         behavior: smooth ? 'smooth' : 'auto'
     });
+}
+
+// --- Tabs overflow scroll arrows (#239) ---
+
+const tabsOverflowHandlers = new Map();
+
+export function registerTabsOverflow(listId, dotnetRef) {
+    // Idempotent: drop any prior listeners/observer for this id so a re-register
+    // (e.g. ShowArrows toggled off→on) never stacks duplicate handlers.
+    unregisterTabsOverflow(listId);
+    const el = document.getElementById(listId);
+    if (!el) return;
+
+    const report = () => {
+        // Horizontal tablists scroll on X, vertical on Y. A 1px slack absorbs
+        // sub-pixel rounding so the end arrow hides exactly at the end.
+        const horizontal = el.scrollWidth > el.clientWidth;
+        const canStart = horizontal ? el.scrollLeft > 1 : el.scrollTop > 1;
+        const canEnd = horizontal
+            ? el.scrollLeft < el.scrollWidth - el.clientWidth - 1
+            : el.scrollTop < el.scrollHeight - el.clientHeight - 1;
+        dotnetRef.invokeMethodAsync('OnTabsOverflowChange', listId, canStart, canEnd);
+    };
+
+    el.addEventListener('scroll', report, { passive: true });
+    // A ResizeObserver catches container resizes AND content changes (tabs
+    // added/removed) that flip whether the list overflows at all.
+    let ro = null;
+    if (typeof ResizeObserver !== 'undefined') {
+        ro = new ResizeObserver(report);
+        ro.observe(el);
+    }
+    window.addEventListener('resize', report, { passive: true });
+    tabsOverflowHandlers.set(listId, { el, report, ro });
+
+    requestAnimationFrame(report);
+}
+
+export function unregisterTabsOverflow(listId) {
+    const h = tabsOverflowHandlers.get(listId);
+    if (h) {
+        h.el.removeEventListener('scroll', h.report);
+        window.removeEventListener('resize', h.report);
+        if (h.ro) h.ro.disconnect();
+        tabsOverflowHandlers.delete(listId);
+    }
+}
+
+export function tabsScrollBy(listId, delta, horizontal) {
+    const el = document.getElementById(listId);
+    if (!el) return;
+    if (horizontal) el.scrollBy({ left: delta, behavior: 'smooth' });
+    else el.scrollBy({ top: delta, behavior: 'smooth' });
 }
 
 // --- Toast Swipe ---
@@ -1577,7 +1741,14 @@ function getMenuItems(containerId) {
 export function focusMenuItemByIndex(containerId, index) {
     const items = getMenuItems(containerId);
     if (index >= 0 && index < items.length) {
-        items[index].focus();
+        const item = items[index];
+        item.focus();
+        // Keep the focused item visible in a scrollable menu (long DropdownMenu /
+        // Menubar content). block:'nearest' avoids jumping when the item is
+        // already on-screen — matches Radix's scroll-into-view-on-highlight.
+        if (typeof item.scrollIntoView === 'function') {
+            item.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+        }
         return index;
     }
     return -1;
@@ -1585,6 +1756,99 @@ export function focusMenuItemByIndex(containerId, index) {
 
 export function getMenuItemCount(containerId) {
     return getMenuItems(containerId).length;
+}
+
+// --- Toolbar roving focus (Radix Toolbar keyboard model) ---
+//
+// A toolbar is a single tab stop; Arrow keys move focus between its focusable
+// items. We resolve the focusable items at call time (so dynamically added/
+// removed items are handled) and manage a roving tabindex: the focused item is
+// tabindex=0, the rest are tabindex=-1, so Shift+Tab/Tab enter/leave the
+// toolbar at the last-focused item.
+
+function getToolbarItems(toolbarId) {
+    const container = document.getElementById(toolbarId);
+    if (!container) return [];
+    // Focusable interactive descendants, excluding disabled ones and the
+    // overflow trigger button (it has its own dropdown semantics).
+    const selector = 'button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+    return Array.from(container.querySelectorAll(selector))
+        .filter(el => !el.closest('[data-toolbar-overflow-trigger]'));
+}
+
+function applyToolbarRovingTabindex(items, activeIndex) {
+    for (let i = 0; i < items.length; i++) {
+        items[i].setAttribute('tabindex', i === activeIndex ? '0' : '-1');
+    }
+}
+
+// Initialise the roving tabindex so only the first item is in the tab order.
+// Called when the toolbar mounts; safe to call repeatedly.
+export function initToolbarRoving(toolbarId) {
+    const items = getToolbarItems(toolbarId);
+    if (items.length === 0) return;
+    // If one item already holds focus, keep it; otherwise make the first the stop.
+    const focusedIndex = items.findIndex(el => el === document.activeElement);
+    applyToolbarRovingTabindex(items, focusedIndex >= 0 ? focusedIndex : 0);
+}
+
+// Move focus `delta` items from the currently focused item (clamped, no wrap —
+// matches Radix RovingFocus default). Returns the new index, or -1.
+export function moveToolbarFocus(toolbarId, delta) {
+    const items = getToolbarItems(toolbarId);
+    if (items.length === 0) return -1;
+    let current = items.findIndex(el => el === document.activeElement);
+    if (current < 0) current = 0;
+    let next = current + delta;
+    next = Math.max(0, Math.min(next, items.length - 1));
+    applyToolbarRovingTabindex(items, next);
+    items[next].focus();
+    return next;
+}
+
+// Focus the first (last=false) or last (last=true) toolbar item — Home/End.
+export function focusToolbarEdge(toolbarId, last) {
+    const items = getToolbarItems(toolbarId);
+    if (items.length === 0) return -1;
+    const index = last ? items.length - 1 : 0;
+    applyToolbarRovingTabindex(items, index);
+    items[index].focus();
+    return index;
+}
+
+// Type-to-focus (Radix menu typeahead). Finds the first enabled menu item whose
+// trimmed text content starts with `query` (case-insensitive), scanning AFTER
+// `currentIndex` first so a repeated keystroke cycles through same-prefix items,
+// then wrapping to the start. Focuses + scrolls the match into view and returns
+// its index, or -1 when nothing matches (the caller keeps the current focus).
+// The query buffer + reset timing live in C# (shared MenuTypeahead helper); this
+// function only does the DOM text match so it stays SSR-free and reusable across
+// DropdownMenu / Menubar / MegaMenu.
+export function focusMenuItemByTypeahead(containerId, query, currentIndex) {
+    const items = getMenuItems(containerId);
+    if (items.length === 0 || !query) return -1;
+    const q = query.toLowerCase();
+
+    const matches = (el) => (el.textContent || '').trim().toLowerCase().startsWith(q);
+
+    // Single-char buffer: start one past the current item so the same letter
+    // advances to the next candidate. Multi-char buffer: start at the current
+    // item so "se" can still match the item the user is already on.
+    const start = (currentIndex >= 0 && currentIndex < items.length)
+        ? (query.length === 1 ? currentIndex + 1 : currentIndex)
+        : 0;
+
+    for (let i = 0; i < items.length; i++) {
+        const idx = (start + i) % items.length;
+        if (matches(items[idx])) {
+            items[idx].focus();
+            if (typeof items[idx].scrollIntoView === 'function') {
+                items[idx].scrollIntoView({ block: 'nearest', inline: 'nearest' });
+            }
+            return idx;
+        }
+    }
+    return -1;
 }
 
 // --- OTP Paste ---
@@ -1940,6 +2204,17 @@ export function scrollSelectorIntoView(selector) {
     el.scrollIntoView({ behavior: 'instant', block: 'center', inline: 'nearest' });
 }
 
+// Scrolls an element (by id) into view inside its nearest scroll container.
+// Used by keyboard-navigated lists (Command palette active item) to keep the
+// highlighted row visible as Arrow/Home/End move it. block: 'nearest' avoids
+// yanking the whole list when the row is already visible; only off-screen rows
+// scroll. No-op when the element is absent (e.g. filtered out this render).
+export function scrollIntoViewById(elementId, block) {
+    const el = document.getElementById(elementId);
+    if (!el) return;
+    el.scrollIntoView({ behavior: 'instant', block: block || 'nearest', inline: 'nearest' });
+}
+
 // --- Affix: scroll-based sticky positioning ---
 
 const affixHandlers = new Map();
@@ -1954,6 +2229,26 @@ export function registerAffix(elementId, offsetTop, offsetBottom, targetSelector
     const placeholder = document.createElement('div');
     placeholder.style.display = 'none';
     let isFixed = false;
+
+    // While affixed, the element is position:fixed with an inline width frozen
+    // at the moment it stuck. The placeholder still occupies the element's slot
+    // in normal flow, so it reflows with the parent on a window resize / device
+    // rotation. Re-sync the fixed element's width (and the placeholder's frozen
+    // box) to the live placeholder geometry so a responsive affixed bar tracks
+    // its container instead of staying stale at its first-render width.
+    const syncFixedWidth = () => {
+        if (!isFixed) return;
+        // Reading el.offsetWidth while fixed returns the frozen width; the
+        // placeholder is the in-flow proxy, so measure it instead. Temporarily
+        // drop the recorded width so the placeholder reflows to its natural
+        // (parent-driven) size before we re-read it.
+        placeholder.style.width = '';
+        const naturalWidth = placeholder.getBoundingClientRect().width;
+        if (naturalWidth > 0) {
+            placeholder.style.width = naturalWidth + 'px';
+            el.style.width = naturalWidth + 'px';
+        }
+    };
 
     const onScroll = () => {
         const rect = (isFixed ? placeholder : el).getBoundingClientRect();
@@ -2009,10 +2304,18 @@ export function registerAffix(elementId, offsetTop, offsetBottom, targetSelector
         }
     };
 
+    // On resize/rotate, first re-measure the affixed width from the reflowed
+    // placeholder, then re-evaluate the stick/unstick boundary (the viewport
+    // height the offsetBottom branch compares against also changes).
+    const onResize = () => {
+        syncFixedWidth();
+        onScroll();
+    };
+
     const eventTarget = scrollTarget === window ? window : scrollTarget;
     eventTarget.addEventListener('scroll', onScroll, { passive: true });
-    window.addEventListener('resize', onScroll, { passive: true });
-    affixHandlers.set(elementId, { onScroll, placeholder, eventTarget });
+    window.addEventListener('resize', onResize, { passive: true });
+    affixHandlers.set(elementId, { onScroll, onResize, placeholder, eventTarget });
 
     // Initial check
     requestAnimationFrame(onScroll);
@@ -2022,7 +2325,7 @@ export function unregisterAffix(elementId) {
     const handler = affixHandlers.get(elementId);
     if (handler) {
         handler.eventTarget.removeEventListener('scroll', handler.onScroll);
-        window.removeEventListener('resize', handler.onScroll);
+        window.removeEventListener('resize', handler.onResize);
         if (handler.placeholder.parentNode) handler.placeholder.remove();
         const el = document.getElementById(elementId);
         if (el) {
@@ -2071,11 +2374,29 @@ export function scrollToTop() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
+// --- InputMask: read / restore a text input's caret (selectionStart) ---
+// Used by InputMask to keep the caret put after re-masking: getInputCaret reads
+// it before the value is rewritten, setInputCaret restores it (collapsed) after.
+
+export function getInputCaret(elementId) {
+    const el = document.getElementById(elementId);
+    if (!el || typeof el.selectionStart !== 'number') return 0;
+    return el.selectionStart;
+}
+
+export function setInputCaret(elementId, position) {
+    const el = document.getElementById(elementId);
+    if (!el || typeof el.setSelectionRange !== 'function') return;
+    const len = (el.value || '').length;
+    const pos = Math.max(0, Math.min(position, len));
+    try { el.setSelectionRange(pos, pos); } catch { /* element not focusable yet */ }
+}
+
 // --- Mention: get textarea caret coordinates ---
 
 export function getTextareaCaretPosition(elementId) {
     const el = document.getElementById(elementId);
-    if (!el) return { top: 0, left: 0, selectionStart: 0 };
+    if (!el) return { top: 0, left: 0, offsetTop: 0, offsetLeft: 0, lineHeight: 20, selectionStart: 0 };
 
     const { selectionStart } = el;
     const elRect = el.getBoundingClientRect();
@@ -2095,11 +2416,23 @@ export function getTextareaCaretPosition(elementId) {
     div.appendChild(span);
     document.body.appendChild(div);
 
+    // Viewport-relative coordinates (kept for back-compat with any caller).
     const top = elRect.top + span.offsetTop - el.scrollTop;
     const left = elRect.left + span.offsetLeft - el.scrollLeft;
+
+    // Caret position relative to the textarea's offsetParent (the Mention
+    // component's `position: relative` wrapper). The dropdown is positioned
+    // absolutely against that wrapper so it tracks the textarea on page /
+    // container scroll instead of staying pinned at a stale viewport point
+    // (#205). offsetTop/Left already account for the textarea's own position
+    // within the wrapper.
+    const caretTop = el.offsetTop + span.offsetTop - el.scrollTop;
+    const caretLeft = el.offsetLeft + span.offsetLeft - el.scrollLeft;
+    const lineHeight = parseFloat(style.lineHeight) || (parseFloat(style.fontSize) * 1.2) || 20;
+
     document.body.removeChild(div);
 
-    return { top, left, selectionStart };
+    return { top, left, offsetTop: caretTop, offsetLeft: caretLeft, lineHeight, selectionStart };
 }
 
 // --- LocalStorage ---
@@ -2497,6 +2830,34 @@ function detachRipple(el) {
 
 export const ripple = { attach: attachRipple, detach: detachRipple };
 
+/* =============================================================
+ * Reduced-motion gate (core) — mirror of the Lumeo.Motion helper
+ * so core components (TouchRipple, …) can branch in C# before
+ * spawning a JS/Blazor animation that a CSS `@media` block can't
+ * fully neutralise. CSS-only animations stay gated in lumeo.css.
+ * A function, not a cached bool, so an OS-setting toggle mid-
+ * session is honoured next interaction. SSR/test-host safe.
+ * ============================================================= */
+export function prefersReducedMotion() {
+    return typeof window !== 'undefined'
+        && typeof window.matchMedia === 'function'
+        && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+}
+
+/* TouchRipple — resolve the pointer's coordinates relative to the ripple
+ * HOST element (the element the listener is bound to), not the event target.
+ * The component previously used PointerEventArgs.OffsetX/OffsetY, which the
+ * DOM defines relative to whatever child the pointer actually landed on — so
+ * a ripple hosted around an icon/label spawned the circle at the child's
+ * origin, visibly offset. Reading the host's getBoundingClientRect() and
+ * subtracting from clientX/clientY fixes nested targets across browsers. */
+export function touchRippleCoords(hostId, clientX, clientY) {
+    const host = document.getElementById(hostId);
+    if (!host) return { x: 0, y: 0 };
+    const rect = host.getBoundingClientRect();
+    return { x: clientX - rect.left, y: clientY - rect.top };
+}
+
 // Haptic feedback. No-op on browsers that don't expose Vibration API
 // (e.g. iOS Safari) or when user has disabled motion. Safe to call without guards.
 export function vibrate(ms) {
@@ -2598,6 +2959,13 @@ export function setMediaVolume(el, volume, muted) {
 export function seekMedia(el, seconds) {
     if (!el) return;
     try { el.currentTime = Math.max(0, seconds); } catch { /* swallow */ }
+}
+
+export function setPlaybackRate(el, rate) {
+    if (!el) return;
+    // Clamp to the range browsers actually honor; values outside ~0.25–4 are
+    // ignored or throw on some engines.
+    try { el.playbackRate = Math.max(0.25, Math.min(4, rate)); } catch { /* swallow */ }
 }
 
 // Reads the live `duration` and `currentTime` off a media element. Blazor

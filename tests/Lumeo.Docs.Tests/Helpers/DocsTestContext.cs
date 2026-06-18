@@ -164,6 +164,8 @@ internal sealed class NoopInteropService : IComponentInteropService
 
     // Scroll utilities (rc.49 — wheel pickers, getScrollTop)
     public ValueTask<double> GetScrollTop(string elementId) => ValueTask.FromResult(0.0);
+    public ValueTask RegisterPullToRefresh(string elementId) => ValueTask.CompletedTask;
+    public ValueTask UnregisterPullToRefresh(string elementId) => ValueTask.CompletedTask;
     public ValueTask<double> WheelScrollTop(ElementReference element) => ValueTask.FromResult(0.0);
     public ValueTask WheelScrollTo(ElementReference element, double top) => ValueTask.CompletedTask;
 
@@ -173,7 +175,7 @@ internal sealed class NoopInteropService : IComponentInteropService
     public ValueTask RemoveFromLocalStorage(string key) => ValueTask.CompletedTask;
 
     // Motion primitives
-    public ValueTask MotionTickNumber(string elementId, double from, double to, int durationMs, int decimals, string separator = ",") => ValueTask.CompletedTask;
+    public ValueTask MotionTickNumber(string elementId, double from, double to, int durationMs, int decimals, string separator = ",", string decimalSeparator = ".") => ValueTask.CompletedTask;
     public ValueTask MotionDisposeTicker(string elementId) => ValueTask.CompletedTask;
     public ValueTask MotionRevealText(string elementId, int staggerMs, double threshold) => ValueTask.CompletedTask;
     public ValueTask MotionBlurFade(string elementId, int delayMs, bool once, bool forceHidden = false) => ValueTask.CompletedTask;
@@ -234,6 +236,7 @@ internal sealed class NoopInteropService : IComponentInteropService
     public ValueTask PauseMedia(Microsoft.AspNetCore.Components.ElementReference element) => ValueTask.CompletedTask;
     public ValueTask SetMediaVolume(Microsoft.AspNetCore.Components.ElementReference element, double volume, bool muted) => ValueTask.CompletedTask;
     public ValueTask SeekMedia(Microsoft.AspNetCore.Components.ElementReference element, double seconds) => ValueTask.CompletedTask;
+    public ValueTask SetPlaybackRate(Microsoft.AspNetCore.Components.ElementReference element, double rate) => ValueTask.CompletedTask;
     public ValueTask<Lumeo.Services.MediaState> GetMediaState(Microsoft.AspNetCore.Components.ElementReference element) => ValueTask.FromResult(new Lumeo.Services.MediaState(0, 0));
     public ValueTask SignaturePadInit(string elementId, object options, Microsoft.JSInterop.DotNetObjectReference<Lumeo.SignaturePad> dotNetRef) => ValueTask.CompletedTask;
     public ValueTask SignaturePadClear(string elementId) => ValueTask.CompletedTask;

@@ -7,6 +7,7 @@ internal sealed class ScrollInterop
     private readonly Dictionary<string, Func<string?, Task>> _scrollspyHandlers = new();
     private readonly Dictionary<string, Func<bool, Task>> _backToTopHandlers = new();
     private readonly Dictionary<string, Func<bool, Task>> _affixHandlers = new();
+    private readonly Dictionary<string, Func<bool, bool, Task>> _tabsOverflowHandlers = new();
 
     // --- Scrollspy ---
 
@@ -32,9 +33,10 @@ internal sealed class ScrollInterop
         IJSObjectReference module,
         string containerId,
         string sectionId,
-        bool smooth)
+        bool smooth,
+        int offset)
     {
-        await module.InvokeVoidAsync("scrollspyScrollTo", containerId, sectionId, smooth);
+        await module.InvokeVoidAsync("scrollspyScrollTo", containerId, sectionId, smooth, offset);
     }
 
     public async Task OnScrollspyUpdate(string containerId, string? activeId)
@@ -42,6 +44,37 @@ internal sealed class ScrollInterop
         if (_scrollspyHandlers.TryGetValue(containerId, out var handler))
         {
             await handler(activeId);
+        }
+    }
+
+    // --- Tabs overflow scroll arrows ---
+
+    public async ValueTask RegisterTabsOverflow(
+        IJSObjectReference module,
+        DotNetObjectReference<ComponentInteropService> selfRef,
+        string listId,
+        Func<bool, bool, Task> handler)
+    {
+        _tabsOverflowHandlers[listId] = handler;
+        await module.InvokeVoidAsync("registerTabsOverflow", listId, selfRef);
+    }
+
+    public async ValueTask UnregisterTabsOverflow(IJSObjectReference module, string listId)
+    {
+        _tabsOverflowHandlers.Remove(listId);
+        await module.InvokeVoidAsync("unregisterTabsOverflow", listId);
+    }
+
+    public async ValueTask TabsScrollBy(IJSObjectReference module, string listId, double delta, bool horizontal)
+    {
+        await module.InvokeVoidAsync("tabsScrollBy", listId, delta, horizontal);
+    }
+
+    public async Task OnTabsOverflowChange(string listId, bool canScrollStart, bool canScrollEnd)
+    {
+        if (_tabsOverflowHandlers.TryGetValue(listId, out var handler))
+        {
+            await handler(canScrollStart, canScrollEnd);
         }
     }
 
@@ -111,5 +144,6 @@ internal sealed class ScrollInterop
         _scrollspyHandlers.Clear();
         _backToTopHandlers.Clear();
         _affixHandlers.Clear();
+        _tabsOverflowHandlers.Clear();
     }
 }

@@ -77,7 +77,11 @@
 }
 else if (Inline)
 {
-        @if (Mode == DatePickerMode.Month)
+        @if (Mode == DatePickerMode.Multiple)
+        {
+            <Calendar IsMultiple="true" Values="@Values" ValuesChanged="HandleValuesSelected" MinDate="@MinDate" MaxDate="@MaxDate" IsDateDisabled="@IsDateDisabled" DateClass="@DateClass" DateTooltip="@DateTooltip" DateBadge="@DateBadge" NumberOfMonths="@EffectiveNumberOfMonths" FirstDayOfWeek="@FirstDayOfWeek" ShowWeekNumbers="@ShowWeekNumbers" />
+        }
+        else if (Mode == DatePickerMode.Month)
         {
             <Calendar Value="@Value" ValueChanged="HandleDateSelected" MinDate="@MinDate" MaxDate="@MaxDate" IsDateDisabled="@IsDateDisabled" DateClass="@DateClass" DateTooltip="@DateTooltip" DateBadge="@DateBadge" InitialView="@Calendar.CalendarView.Months" FirstDayOfWeek="@FirstDayOfWeek" ShowWeekNumbers="@ShowWeekNumbers" />
         }
@@ -147,7 +151,7 @@ else
 {
     <Popover @bind-Open="_isOpen">
         <PopoverTrigger>
-            @if (AllowKeyboardInput && Mode != DatePickerMode.Range && TriggerContent == null)
+            @if (AllowKeyboardInput && Mode != DatePickerMode.Range && Mode != DatePickerMode.Multiple && TriggerContent == null)
             {
                 @* No leading Lucide.Calendar here — the trailing CalendarDays
                    button (below) already provides the visual + click target.
@@ -198,6 +202,17 @@ else
                 @if (TriggerContent != null)
                 {
                     @TriggerContent
+                }
+                else if (Mode == DatePickerMode.Multiple)
+                {
+                    @if (Values is { Count: > 0 })
+                    {
+                        <span>@MultipleSummary</span>
+                    }
+                    else
+                    {
+                        <span class="text-muted-foreground group-hover:text-accent-foreground">@EffectivePlaceholder</span>
+                    }
                 }
                 else if (Mode == DatePickerMode.Range)
                 {
@@ -258,7 +273,11 @@ else
             }
         </PopoverTrigger>
         <PopoverContent Align="Lumeo.Align.Start" Class="w-auto p-0">
-            @if (Mode == DatePickerMode.Month)
+            @if (Mode == DatePickerMode.Multiple)
+            {
+                <Calendar IsMultiple="true" Values="@Values" ValuesChanged="HandleValuesSelected" MinDate="@MinDate" MaxDate="@MaxDate" IsDateDisabled="@IsDateDisabled" DateClass="@DateClass" DateTooltip="@DateTooltip" DateBadge="@DateBadge" NumberOfMonths="@EffectiveNumberOfMonths" FirstDayOfWeek="@FirstDayOfWeek" ShowWeekNumbers="@ShowWeekNumbers" />
+            }
+            else if (Mode == DatePickerMode.Month)
             {
                 <Calendar Value="@Value" ValueChanged="HandleDateSelected" MinDate="@MinDate" MaxDate="@MaxDate" IsDateDisabled="@IsDateDisabled" DateClass="@DateClass" DateTooltip="@DateTooltip" DateBadge="@DateBadge" InitialView="@Calendar.CalendarView.Months" FirstDayOfWeek="@FirstDayOfWeek" ShowWeekNumbers="@ShowWeekNumbers" />
             }
@@ -343,7 +362,7 @@ else
 @inject IComponentInteropService Interop
 
 @code {
-    public enum DatePickerMode { Single, Range, Month, Year }
+    public enum DatePickerMode { Single, Range, Month, Year, Multiple }
 
     /// <summary>
     /// Visual style of the picker.
@@ -418,6 +437,13 @@ else
     [Parameter] public EventCallback<DateOnly?> RangeStartChanged { get; set; }
     [Parameter] public DateOnly? RangeEnd { get; set; }
     [Parameter] public EventCallback<DateOnly?> RangeEndChanged { get; set; }
+
+    /// <summary>The selected days for <see cref="DatePickerMode.Multiple"/>.
+    /// Clicking a day (or Enter/Space on it) toggles it in/out of the set; the
+    /// popover stays open so several days can be picked in one session. Pair
+    /// with <see cref="ValuesChanged"/> for two-way binding.</summary>
+    [Parameter] public List<DateOnly>? Values { get; set; }
+    [Parameter] public EventCallback<List<DateOnly>?> ValuesChanged { get; set; }
     [Parameter] public bool ShowTimePicker { get; set; }
     [Parameter] public TimeSpan? Time { get; set; }
     [Parameter] public EventCallback<TimeSpan?> TimeChanged { get; set; }
@@ -683,7 +709,34 @@ else
 
     private int EffectiveNumberOfMonths => NumberOfMonths > 1 ? NumberOfMonths : (Mode == DatePickerMode.Range ? 2 : 1);
 
-    private bool HasValue => Mode == DatePickerMode.Range ? RangeStart.HasValue : Value.HasValue;
+    private bool HasValue => Mode switch
+    {
+        DatePickerMode.Range => RangeStart.HasValue,
+        DatePickerMode.Multiple => Values is { Count: > 0 },
+        _ => Value.HasValue
+    };
+
+    /// <summary>Trigger summary for multiple-selection: lists up to three dates
+    /// in the active format, then collapses to a localized "N selected" count so
+    /// the trigger never overflows.</summary>
+    private string MultipleSummary
+    {
+        get
+        {
+            if (Values is not { Count: > 0 }) return string.Empty;
+            if (Values.Count <= 3)
+                return string.Join(", ", Values.OrderBy(d => d).Select(d => d.ToString(EffectiveFormat, EffectiveCulture)));
+            return string.Format(EffectiveCulture, L["DatePicker.MultipleSelected"], Values.Count);
+        }
+    }
+
+    private async Task HandleValuesSelected(List<DateOnly>? values)
+    {
+        Values = values;
+        await ValuesChanged.InvokeAsync(values);
+        // Multiple mode intentionally keeps the popover open so the user can
+        // toggle several days in one session (like range's first click).
+    }
 
     private string CssClass => Cx.Merge("group flex h-9 w-full items-center rounded-md border", (EffectiveInvalid ? "border-destructive ring-1 ring-destructive/20" : "border-input"), "bg-transparent px-3 py-2 text-sm shadow-sm hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50", Class);
 
@@ -772,6 +825,11 @@ else
             RangeEnd = null;
             await RangeStartChanged.InvokeAsync(null);
             await RangeEndChanged.InvokeAsync(null);
+        }
+        else if (Mode == DatePickerMode.Multiple)
+        {
+            Values = null;
+            await ValuesChanged.InvokeAsync(null);
         }
         else
         {

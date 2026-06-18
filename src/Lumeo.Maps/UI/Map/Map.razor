@@ -269,6 +269,7 @@
         if (_module is null || !_initialized) return;
         var payload = _standalonePopups.Select(p => new
         {
+            id = p.PopupId,
             lat = p.Lat,
             lon = p.Lon,
             isOpen = p.IsOpen,
@@ -276,8 +277,17 @@
             closeOnClick = p.CloseOnClick,
             html = p.GetHtml(),
             hostId = p.HasRichContent ? p.HostId : null,
+            // Per-popup ref so JS can fire OnPopupClosed back to the right popup
+            // when the user dismisses it; without this the two-way IsOpen binding
+            // never updated and IsOpen desynced.
+            dotNetRef = p.SelfRef,
         }).ToArray();
-        var json = System.Text.Json.JsonSerializer.Serialize(payload);
+        // Diff key from serializable fields only — payload carries a per-popup
+        // DotNetObjectReference (dotNetRef) that System.Text.Json has no converter
+        // for; serializing it would walk the referenced component and throw,
+        // aborting the sync before setStandalonePopups runs.
+        var json = System.Text.Json.JsonSerializer.Serialize(
+            payload.Select(p => new { p.id, p.lat, p.lon, p.isOpen, p.closeButton, p.closeOnClick, p.html, p.hostId }).ToArray());
         if (json == _lastPopupJson) return;
         _lastPopupJson = json;
         try

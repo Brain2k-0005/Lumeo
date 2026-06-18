@@ -4,7 +4,7 @@
 
 @if (Context.IsOpen)
 {
-    <div id="@Context.ContentId" role="listbox" class="@CssClass"
+    <div id="@Context.ContentId" role="listbox" aria-multiselectable="@(Context.Multiple ? "true" : null)" class="@CssClass"
          @onkeydown="HandleKeyDown" tabindex="-1" @attributes="AdditionalAttributes">
         @if (Context.Searchable)
         {
@@ -30,13 +30,19 @@
             var filteredItems = FilteredItems;
             @if (Context.Virtualize)
             {
-                <Virtualize Items="@filteredItems" Context="item" ItemSize="@Context.ItemSize">
-                    @RenderBoundItem(item)
+                @* Pair each item with its positional index up-front. IndexOf would return
+                   the FIRST equal item, so duplicate values collapsed to one id and desynced
+                   from Select.BuildBoundNavItems' positional indexing. *@
+                var indexedItems = filteredItems.Select((it, idx) => (Item: it, Index: idx)).ToList();
+                <Virtualize Items="@indexedItems" Context="entry" ItemSize="@Context.ItemSize">
+                    @RenderBoundItem(entry.Item, entry.Index)
                 </Virtualize>
             }
             else if (Context.ItemGroup is not null)
             {
-                @* Grouped rendering *@
+                @* Grouped rendering. Walk groups in order with a running index so each row's id
+                   matches the flattened (GroupBy→SelectMany) order the parent uses for nav. *@
+                var boundIndex = 0;
                 @foreach (var group in filteredItems.GroupBy(i => Context.ItemGroup(i) ?? ""))
                 {
                     <div role="group">
@@ -46,16 +52,16 @@
                         }
                         @foreach (var item in group)
                         {
-                            @RenderBoundItem(item)
+                            @RenderBoundItem(item, boundIndex++)
                         }
                     </div>
                 }
             }
             else
             {
-                @foreach (var item in filteredItems)
+                @for (var i = 0; i < filteredItems.Count; i++)
                 {
-                    @RenderBoundItem(item)
+                    @RenderBoundItem(filteredItems[i], i)
                 }
             }
 
@@ -112,14 +118,18 @@
         }
     }
 
-    private RenderFragment RenderBoundItem(object item) => builder =>
+    private RenderFragment RenderBoundItem(object item, int index) => builder =>
     {
         var value = Context.ItemValue(item);
         var isSelected = Context.Multiple
             ? Context.Values != null && Context.Values.Contains(value)
             : Context.Value == value;
         var isDisabled = Context.ItemDisabled?.Invoke(item) ?? false;
-        var itemId = $"select-item-bound-{value.GetHashCode():X}";
+        // Index-based, not value.GetHashCode(): two values whose hashes collide would
+        // otherwise share a DOM id, so aria-activedescendant / Enter would land on the
+        // wrong row. The index is the item's position in the filtered (+ grouped) sequence
+        // — the same basis Select.BuildBoundNavItems uses, keeping the two in sync.
+        var itemId = $"{Context.ContentId}-bound-{index}";
 
         // Bound items are rendered inline (no component instance), so they cannot self-register
         // the way SelectItem does. Keyboard nav instead derives its list on the parent Select

@@ -2,20 +2,24 @@
 @implements IAsyncDisposable
 @inject Lumeo.Services.Localization.ILumeoLocalizer L
 
-<div id="@_wrapperId" class="@PositionClass @Class" @attributes="AdditionalAttributes">
+<div id="@_wrapperId" class="@PositionClass @Class" @onkeydown="HandleKeyDown" @attributes="AdditionalAttributes">
     @if (_isOpen)
     {
-        <div id="@_contentId" class="@ItemsContainerClass">
+        <div id="@_contentId" role="menu" aria-orientation="@MenuOrientation" aria-label="@L["Common.Actions"]" class="@ItemsContainerClass">
             @foreach (var item in Items)
             {
                 <div class="@(Cx.Join("flex", Cx.When(Direction == SpeedDialDirection.Left || Direction == SpeedDialDirection.Right, "flex-col"), "items-center gap-2", Cx.When(Direction == SpeedDialDirection.Right || Direction == SpeedDialDirection.Down, "flex-row-reverse")))">
-                    <span class="whitespace-nowrap rounded-md bg-popover border border-border/40 px-2 py-1 text-xs text-popover-foreground shadow-md">
+                    @* Label is decorative here — the action button carries the
+                       accessible name via aria-label, so hide the visual span. *@
+                    <span class="whitespace-nowrap rounded-md bg-popover border border-border/40 px-2 py-1 text-xs text-popover-foreground shadow-md" aria-hidden="true">
                         @item.Label
                     </span>
                     <button type="button"
+                            role="menuitem"
                             class="flex h-10 w-10 cursor-pointer items-center justify-center rounded-full bg-secondary text-secondary-foreground shadow-md transition-all hover:bg-secondary/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
                             @onclick="() => HandleItemClick(item)"
                             disabled="@item.Disabled"
+                            aria-label="@item.Label"
                             title="@item.Label">
                         @if (!string.IsNullOrEmpty(item.Icon))
                         {
@@ -27,10 +31,12 @@
         </div>
     }
 
-    <button type="button"
+    <button id="@_triggerId"
+            type="button"
             class="@TriggerClass"
             @onclick="ToggleOpen"
-            aria-expanded="@_isOpen"
+            aria-expanded="@(_isOpen ? "true" : "false")"
+            aria-haspopup="menu"
             aria-label="@L["Common.Actions"]"
             disabled="@Disabled">
         @if (!string.IsNullOrEmpty(Icon))
@@ -64,8 +70,15 @@
 
     private readonly string _wrapperId = LumeoIds.New("speeddial");
     private readonly string _contentId = LumeoIds.New("speeddial-content");
+    private readonly string _triggerId = LumeoIds.New("speeddial-trigger");
     private bool _isOpen;
     private bool _registered;
+    private int _focusedIndex = -1;
+
+    // The action menu is laid out vertically for Up/Down directions and
+    // horizontally for Left/Right.
+    private string MenuOrientation =>
+        Direction is SpeedDialDirection.Left or SpeedDialDirection.Right ? "horizontal" : "vertical";
 
     private string PositionClass => Position switch
     {
@@ -117,6 +130,7 @@
     private async Task Open()
     {
         _isOpen = true;
+        _focusedIndex = -1;
         StateHasChanged();
         await Task.Yield();
         await Interop.RegisterClickOutside(_wrapperId, null, async () =>
@@ -125,24 +139,94 @@
             await InvokeAsync(StateHasChanged);
         });
         _registered = true;
+
+        // Move focus to the first action so arrow keys work immediately and
+        // keyboard users land inside the menu (MUI SpeedDial behaviour).
+        var count = await Interop.GetMenuItemCount(_contentId);
+        if (count > 0)
+        {
+            _focusedIndex = 0;
+            try { await Interop.FocusMenuItemByIndex(_contentId, 0); } catch (JSDisconnectedException) { }
+        }
     }
 
-    private async Task Close()
+    private async Task Close(bool restoreFocus = false)
     {
         _isOpen = false;
+        _focusedIndex = -1;
         if (_registered)
         {
             try { await Interop.UnregisterClickOutside(_wrapperId); }
             catch (JSDisconnectedException) { }
             _registered = false;
         }
+        if (restoreFocus)
+        {
+            try { await Interop.FocusElement(_triggerId); } catch (JSDisconnectedException) { }
+        }
+    }
+
+    // MUI SpeedDial keyboard model: arrows move between actions, Escape closes
+    // and returns focus to the trigger, Enter/Space/ArrowUp/ArrowDown open the
+    // menu from the (focused) trigger.
+    private async Task HandleKeyDown(KeyboardEventArgs e)
+    {
+        if (Disabled) return;
+
+        if (!_isOpen)
+        {
+            // From the trigger: open on activation / arrow into the menu.
+            if (e.Key is "Enter" or " " or "ArrowUp" or "ArrowDown" or "ArrowLeft" or "ArrowRight")
+            {
+                await Open();
+            }
+            return;
+        }
+
+        switch (e.Key)
+        {
+            case "Escape":
+                await Close(restoreFocus: true);
+                break;
+            case "ArrowDown":
+            case "ArrowRight":
+                await MoveFocus(1);
+                break;
+            case "ArrowUp":
+            case "ArrowLeft":
+                await MoveFocus(-1);
+                break;
+            case "Home":
+                await FocusIndex(0);
+                break;
+            case "End":
+                {
+                    var count = await Interop.GetMenuItemCount(_contentId);
+                    if (count > 0) await FocusIndex(count - 1);
+                    break;
+                }
+        }
+    }
+
+    private async Task MoveFocus(int delta)
+    {
+        var count = await Interop.GetMenuItemCount(_contentId);
+        if (count <= 0) return;
+        _focusedIndex = ((_focusedIndex < 0 ? 0 : _focusedIndex) + delta % count + count) % count;
+        try { await Interop.FocusMenuItemByIndex(_contentId, _focusedIndex); } catch (JSDisconnectedException) { }
+    }
+
+    private async Task FocusIndex(int index)
+    {
+        _focusedIndex = index;
+        try { await Interop.FocusMenuItemByIndex(_contentId, index); } catch (JSDisconnectedException) { }
     }
 
     private async Task HandleItemClick(SpeedDialItem item)
     {
         if (Disabled || item.Disabled) return;
         await item.OnClick.InvokeAsync();
-        await Close();
+        await Close(restoreFocus: true);
     }
 
     public async ValueTask DisposeAsync()

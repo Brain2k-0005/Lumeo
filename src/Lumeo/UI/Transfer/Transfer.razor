@@ -6,7 +6,15 @@
     <div class="flex-1 border border-border/40 rounded-lg overflow-hidden">
         <div class="px-3 py-2 border-b border-border/40 bg-muted/30">
             <div class="flex items-center justify-between">
-                <span class="text-sm font-medium">@(SourceTitle ?? L["Transfer.SourceHeader"])</span>
+                <label class="flex items-center gap-2 cursor-pointer">
+                    @if (ShowSelectAll)
+                    {
+                        <Checkbox Checked="@SourceAllSelected" IsIndeterminate="@SourcePartiallySelected"
+                                  CheckedChanged="ToggleSelectAllSource"
+                                  AriaLabel="@L["Transfer.SelectAll"]" />
+                    }
+                    <span class="text-sm font-medium">@(SourceTitle ?? L["Transfer.SourceHeader"])</span>
+                </label>
                 <span class="text-xs text-muted-foreground">@_selectedSource.Count / @(SourceItems?.Count ?? 0)</span>
             </div>
         </div>
@@ -24,8 +32,8 @@
             {
                 @foreach (var item in FilteredSourceItems)
                 {
-                    <label @key="item.Value" class="flex items-center gap-2 px-2 py-1.5 rounded-md cursor-pointer hover:bg-accent/50 transition-colors text-sm">
-                        <Checkbox Checked="@_selectedSource.Contains(item.Value)" CheckedChanged="b => ToggleSourceItem(item.Value, b)" />
+                    <label @key="item.Value" class="@ItemRowClass(item.Disabled)">
+                        <Checkbox Checked="@_selectedSource.Contains(item.Value)" Disabled="@item.Disabled" CheckedChanged="b => ToggleSourceItem(item.Value, b)" />
                         <span class="truncate">@item.Label</span>
                     </label>
                 }
@@ -51,7 +59,15 @@
     <div class="flex-1 border border-border/40 rounded-lg overflow-hidden">
         <div class="px-3 py-2 border-b border-border/40 bg-muted/30">
             <div class="flex items-center justify-between">
-                <span class="text-sm font-medium">@(TargetTitle ?? L["Transfer.TargetHeader"])</span>
+                <label class="flex items-center gap-2 cursor-pointer">
+                    @if (ShowSelectAll)
+                    {
+                        <Checkbox Checked="@TargetAllSelected" IsIndeterminate="@TargetPartiallySelected"
+                                  CheckedChanged="ToggleSelectAllTarget"
+                                  AriaLabel="@L["Transfer.SelectAll"]" />
+                    }
+                    <span class="text-sm font-medium">@(TargetTitle ?? L["Transfer.TargetHeader"])</span>
+                </label>
                 <span class="text-xs text-muted-foreground">@_selectedTarget.Count / @(TargetItems?.Count ?? 0)</span>
             </div>
         </div>
@@ -69,8 +85,8 @@
             {
                 @foreach (var item in FilteredTargetItems)
                 {
-                    <label @key="item.Value" class="flex items-center gap-2 px-2 py-1.5 rounded-md cursor-pointer hover:bg-accent/50 transition-colors text-sm">
-                        <Checkbox Checked="@_selectedTarget.Contains(item.Value)" CheckedChanged="b => ToggleTargetItem(item.Value, b)" />
+                    <label @key="item.Value" class="@ItemRowClass(item.Disabled)">
+                        <Checkbox Checked="@_selectedTarget.Contains(item.Value)" Disabled="@item.Disabled" CheckedChanged="b => ToggleTargetItem(item.Value, b)" />
                         <span class="truncate">@item.Label</span>
                     </label>
                 }
@@ -92,6 +108,11 @@
     [Parameter] public string? TargetTitle { get; set; }
     [Parameter] public EventCallback<TransferChangeEventArgs> OnChange { get; set; }
     [Parameter] public bool ShowSearch { get; set; }
+    /// <summary>When true (default), each panel header shows a select-all
+    /// checkbox that toggles every enabled, currently-visible (filtered) item in
+    /// that panel. The checkbox reflects an indeterminate state when only some
+    /// items are selected.</summary>
+    [Parameter] public bool ShowSelectAll { get; set; } = true;
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
@@ -158,24 +179,91 @@
     private void OnSourceSearch(ChangeEventArgs e) => _sourceSearch = e.Value?.ToString() ?? "";
     private void OnTargetSearch(ChangeEventArgs e) => _targetSearch = e.Value?.ToString() ?? "";
 
+    private static string ItemRowClass(bool disabled) =>
+        disabled
+            ? "flex items-center gap-2 px-2 py-1.5 rounded-md text-sm opacity-50 cursor-not-allowed"
+            : "flex items-center gap-2 px-2 py-1.5 rounded-md cursor-pointer hover:bg-accent/50 transition-colors text-sm";
+
     private void ToggleSourceItem(string value, bool selected)
     {
+        if (IsDisabled(SourceItems, value)) return;
         if (selected) _selectedSource.Add(value);
         else _selectedSource.Remove(value);
     }
 
     private void ToggleTargetItem(string value, bool selected)
     {
+        if (IsDisabled(TargetItems, value)) return;
         if (selected) _selectedTarget.Add(value);
         else _selectedTarget.Remove(value);
+    }
+
+    private static bool IsDisabled(List<TransferItem>? items, string value)
+        => items?.FirstOrDefault(i => i.Value == value)?.Disabled ?? false;
+
+    // ---- Select-all (per panel, enabled + visible items only) ----
+    private IEnumerable<TransferItem> SelectableSource => FilteredSourceItems.Where(i => !i.Disabled);
+    private IEnumerable<TransferItem> SelectableTarget => FilteredTargetItems.Where(i => !i.Disabled);
+
+    private bool SourceAllSelected
+    {
+        get
+        {
+            var selectable = SelectableSource.ToList();
+            return selectable.Count > 0 && selectable.All(i => _selectedSource.Contains(i.Value));
+        }
+    }
+    private bool SourcePartiallySelected
+    {
+        get
+        {
+            var count = SelectableSource.Count(i => _selectedSource.Contains(i.Value));
+            return count > 0 && !SourceAllSelected;
+        }
+    }
+    private bool TargetAllSelected
+    {
+        get
+        {
+            var selectable = SelectableTarget.ToList();
+            return selectable.Count > 0 && selectable.All(i => _selectedTarget.Contains(i.Value));
+        }
+    }
+    private bool TargetPartiallySelected
+    {
+        get
+        {
+            var count = SelectableTarget.Count(i => _selectedTarget.Contains(i.Value));
+            return count > 0 && !TargetAllSelected;
+        }
+    }
+
+    private void ToggleSelectAllSource(bool selected)
+    {
+        foreach (var item in SelectableSource)
+        {
+            if (selected) _selectedSource.Add(item.Value);
+            else _selectedSource.Remove(item.Value);
+        }
+    }
+
+    private void ToggleSelectAllTarget(bool selected)
+    {
+        foreach (var item in SelectableTarget)
+        {
+            if (selected) _selectedTarget.Add(item.Value);
+            else _selectedTarget.Remove(item.Value);
+        }
     }
 
     private async Task MoveToTarget()
     {
         var source = SourceItems ?? [];
         var target = TargetItems ?? [];
-        var moved = source.Where(i => _selectedSource.Contains(i.Value)).ToList();
-        var remaining = source.Where(i => !_selectedSource.Contains(i.Value)).ToList();
+        // A selected row the parent flipped to Disabled must not move — it stays
+        // in the source list (matches the contract that disabled rows can't move).
+        var moved = source.Where(i => _selectedSource.Contains(i.Value) && !i.Disabled).ToList();
+        var remaining = source.Where(i => !_selectedSource.Contains(i.Value) || i.Disabled).ToList();
         target = [..target, ..moved];
 
         SourceItems = remaining;
@@ -191,8 +279,8 @@
     {
         var source = SourceItems ?? [];
         var target = TargetItems ?? [];
-        var moved = target.Where(i => _selectedTarget.Contains(i.Value)).ToList();
-        var remaining = target.Where(i => !_selectedTarget.Contains(i.Value)).ToList();
+        var moved = target.Where(i => _selectedTarget.Contains(i.Value) && !i.Disabled).ToList();
+        var remaining = target.Where(i => !_selectedTarget.Contains(i.Value) || i.Disabled).ToList();
         source = [..source, ..moved];
 
         SourceItems = source;
@@ -204,6 +292,9 @@
         await OnChange.InvokeAsync(new TransferChangeEventArgs("left", moved));
     }
 
-    public record TransferItem(string Label, string Value);
+    /// <summary>A transfer row. A <see cref="Disabled"/> item can't be selected
+    /// or moved (its checkbox is disabled and a select-all skips it) and renders
+    /// dimmed.</summary>
+    public record TransferItem(string Label, string Value, bool Disabled = false);
     public record TransferChangeEventArgs(string Direction, List<TransferItem> MovedItems);
 }

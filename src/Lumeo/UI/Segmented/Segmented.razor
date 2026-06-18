@@ -1,6 +1,8 @@
 @namespace Lumeo
+@implements IAsyncDisposable
+@inject IComponentInteropService Interop
 
-<div class="@CssClass" role="radiogroup" @attributes="AdditionalAttributes">
+<div id="@_id" class="@CssClass" role="radiogroup" @onkeydown="HandleKeyDown" @attributes="AdditionalAttributes">
     @if (Options is not null)
     {
         @* Data-driven mode: a flat List<SegmentedOption> handed in via the
@@ -9,8 +11,10 @@
         {
             var isActive = option.Value == Value;
             <button type="button"
+                    id="@OptionId(option.Value)"
                     role="radio"
                     aria-checked="@isActive.ToString().ToLower()"
+                    tabindex="@GetTabIndex(option.Value, option.Disabled)"
                     class="@GetItemClasses(isActive)"
                     disabled="@option.Disabled"
                     @onclick="() => SelectOption(option.Value)">
@@ -55,6 +59,20 @@
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     private SegmentedContext _context = default!;
+    private readonly string _id = LumeoIds.New("segmented");
+
+    // Ordered item registry. In Options mode it is rebuilt from Options every
+    // parameter set; in compound mode SegmentedItem children register themselves.
+    // Drives roving tabindex (only ONE item is in the tab sequence) and arrow-key
+    // navigation between segments.
+    private readonly List<string> _itemValues = new();
+    private readonly Dictionary<string, string> _itemIds = new();
+    private readonly Dictionary<string, bool> _itemDisabled = new();
+
+    // Stable per-option element id (Options mode). Indexed rather than slugged
+    // from the value so it is always a valid HTML id regardless of value text.
+    private string OptionId(string value)
+        => _itemIds.TryGetValue(value, out var id) ? id : $"{_id}-opt{_itemValues.IndexOf(value)}";
 
     private Lumeo.Density EffectiveDensity => Density ?? InheritedDensity ?? Lumeo.Density.Comfortable;
 
@@ -76,10 +94,52 @@
 
     protected override void OnParametersSet()
     {
+        if (Options is not null)
+        {
+            // Rebuild the registry from the declarative Options each parameter
+            // set so reordering / disabling stays in sync for arrow navigation.
+            _itemValues.Clear();
+            _itemIds.Clear();
+            _itemDisabled.Clear();
+            for (var i = 0; i < Options.Count; i++)
+            {
+                var opt = Options[i];
+                if (_itemValues.Contains(opt.Value))
+                    throw new InvalidOperationException(
+                        $"Duplicate SegmentedOption.Value '{opt.Value}' is not supported — each option needs a unique Value.");
+                _itemValues.Add(opt.Value);
+                _itemIds[opt.Value] = $"{_id}-opt{i}";
+                _itemDisabled[opt.Value] = opt.Disabled;
+            }
+        }
+
         _context = new SegmentedContext(
             Value,
             EventCallback.Factory.Create<string>(this, SelectOption),
-            GetItemClasses);
+            GetItemClasses,
+            GetTabIndex,
+            _itemValues,
+            _itemIds,
+            _itemDisabled);
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        try
+        {
+            // Suppress page scroll for the keys the radiogroup consumes. A native
+            // key-selective preventDefault is the only race-free way to cancel the
+            // current event (Blazor's @onkeydown:preventDefault lags one keystroke).
+            await Interop.RegisterPreventDefaultKeys(
+                _id,
+                new[] { "ArrowDown", "ArrowRight", "ArrowUp", "ArrowLeft", "Home", "End" }
+                    .Select(k => new Lumeo.Services.PreventDefaultKeyRule(k)).ToArray());
+            _pdRegistered = true;
+        }
+        catch (JSDisconnectedException) { }
+        catch (ObjectDisposedException) { }
+        catch (InvalidOperationException) { } // JS interop unavailable during prerender
     }
 
     private string CssClass => Cx.Merge(
@@ -104,6 +164,83 @@
         await ValueChanged.InvokeAsync(value);
     }
 
+    // Roving tabindex: only the selected segment (or, when nothing is selected,
+    // the first ENABLED segment) is in the tab sequence. Everything else is
+    // tabindex=-1 and reachable only via arrow keys.
+    private string GetTabIndex(string value, bool disabled)
+    {
+        if (disabled) return "-1";
+        // A selected Value that is missing or itself disabled can't hold the tab
+        // stop — fall back to the first enabled segment so the radiogroup always
+        // has exactly one entry point.
+        var selectedIsEnabled = !string.IsNullOrEmpty(Value)
+            && _itemValues.Contains(Value) && !IsItemDisabled(Value);
+        if (selectedIsEnabled && Value == value) return "0";
+        if (!selectedIsEnabled
+            && _itemValues.FirstOrDefault(v => !IsItemDisabled(v)) == value) return "0";
+        return "-1";
+    }
+
+    private bool IsItemDisabled(string value) =>
+        _itemDisabled.TryGetValue(value, out var d) && d;
+
+    private async Task HandleKeyDown(KeyboardEventArgs e)
+    {
+        if (_itemValues.Count == 0) return;
+
+        // The "current" segment for navigation is the selected one, falling back
+        // to the first enabled segment (which holds the lone tab stop).
+        var current = !string.IsNullOrEmpty(Value) && _itemValues.Contains(Value) && !IsItemDisabled(Value)
+            ? Value!
+            : _itemValues.FirstOrDefault(v => !IsItemDisabled(v));
+        if (current is null) return;
+        var idx = _itemValues.IndexOf(current);
+
+        string? target = e.Key switch
+        {
+            "ArrowDown" or "ArrowRight" => FindNextEnabled(idx, 1),
+            "ArrowUp" or "ArrowLeft" => FindNextEnabled(idx, -1),
+            "Home" => _itemValues.FirstOrDefault(v => !IsItemDisabled(v)),
+            "End" => _itemValues.LastOrDefault(v => !IsItemDisabled(v)),
+            _ => null
+        };
+        if (target is null) return;
+
+        // Radiogroup model: arrows move selection AND focus together.
+        await SelectOption(target);
+        if (_itemIds.TryGetValue(target, out var id))
+        {
+            try { await Interop.FocusElement(id); }
+            catch (JSDisconnectedException) { }
+        }
+    }
+
+    private string? FindNextEnabled(int currentIdx, int direction)
+    {
+        if (_itemValues.Count == 0) return null;
+        var idx = currentIdx;
+        for (var i = 0; i < _itemValues.Count; i++)
+        {
+            idx += direction;
+            if (idx < 0) idx = _itemValues.Count - 1;
+            else if (idx >= _itemValues.Count) idx = 0;
+            if (idx == currentIdx) return null;
+            if (!IsItemDisabled(_itemValues[idx])) return _itemValues[idx];
+        }
+        return null;
+    }
+
+    private bool _pdRegistered;
+
+    public async ValueTask DisposeAsync()
+    {
+        if (!_pdRegistered) return;
+        try { await Interop.UnregisterPreventDefaultKeys(_id); }
+        catch (JSDisconnectedException) { }
+        catch (ObjectDisposedException) { }
+        catch (InvalidOperationException) { }
+    }
+
     public class SegmentedOption
     {
         public string Label { get; set; } = "";
@@ -117,10 +254,15 @@
 
     /// <summary>Cascading context for compound-mode <see cref="SegmentedItem"/>
     /// children — they read the active value + the parent's item-class function
-    /// (so style stays consistent with Options-mode) and invoke
-    /// <see cref="Select"/> on click.</summary>
+    /// (so style stays consistent with Options-mode), register themselves into
+    /// the shared item registry (for roving tabindex + arrow navigation) and
+    /// invoke <see cref="Select"/> on click.</summary>
     public sealed record SegmentedContext(
         string? Value,
         EventCallback<string> Select,
-        Func<bool, string> GetItemClasses);
+        Func<bool, string> GetItemClasses,
+        Func<string, bool, string> GetTabIndex,
+        List<string> ItemValues,
+        Dictionary<string, string> ItemIds,
+        Dictionary<string, bool> ItemDisabled);
 }

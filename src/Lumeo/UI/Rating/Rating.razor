@@ -1,5 +1,7 @@
 @namespace Lumeo
+@implements IAsyncDisposable
 @inject Lumeo.Services.Localization.ILumeoLocalizer L
+@inject IComponentInteropService Interop
 
 @if (Label is not null && !InsideFormField)
 {
@@ -12,7 +14,7 @@
     </label>
 }
 
-<div class="@CssClass" role="radiogroup" aria-label="@L["Rating.Rate"]" @onkeydown="HandleKeyDown" @onpointerup="HandlePointerUp" @onpointerleave="HandlePointerLeaveContainer" @onpointercancel="HandlePointerUp" @attributes="AdditionalAttributes">
+<div id="@_id" class="@CssClass" role="radiogroup" aria-label="@L["Rating.Rate"]" aria-orientation="horizontal" @onkeydown="HandleKeyDown" @onpointerup="HandlePointerUp" @onpointerleave="HandlePointerLeaveContainer" @onpointercancel="HandlePointerUp" @attributes="AdditionalAttributes">
     @for (int i = 1; i <= Max; i++)
     {
         var starIndex = i;
@@ -22,6 +24,8 @@
         @if (IconContent is not null)
         {
             <button type="button"
+                    role="radio"
+                    aria-checked="@((isFull || isHalf).ToString().ToLowerInvariant())"
                     class="@GetStarClasses(isFull || isHalf) @SizeClasses @StarInteractClasses"
                     tabindex="@GetStarTabIndex(starIndex)"
                     disabled="@ReadOnly"
@@ -37,6 +41,8 @@
         else
         {
             <button type="button"
+                    role="radio"
+                    aria-checked="@((isFull || isHalf).ToString().ToLowerInvariant())"
                     class="@SizeClasses @StarInteractClasses relative"
                     tabindex="@GetStarTabIndex(starIndex)"
                     disabled="@ReadOnly"
@@ -107,6 +113,8 @@
 
     private bool EffectiveInvalid => Invalid || FormField?.HasError == true;
     private bool InsideFormField => FormField is not null;
+
+    private readonly string _id = LumeoIds.New("rating");
 
     private int _hoverValue;
 
@@ -259,6 +267,12 @@
             case "ArrowDown":
                 newValue = Math.Max(Value - step, 0);
                 break;
+            case "Home":
+                newValue = 0;
+                break;
+            case "End":
+                newValue = Max;
+                break;
             default:
                 return;
         }
@@ -270,4 +284,50 @@
         }
     }
 
+    // The arrow / Home / End keys all change the rating; without suppressing the
+    // browser default they ALSO scroll the page (#189). A native key-selective
+    // preventDefault is the only race-free way to cancel the current event —
+    // Blazor's @onkeydown:preventDefault is applied at render time and so lags
+    // one keystroke. We never register while ReadOnly (no value change to make).
+    private bool _pdRegistered;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (ReadOnly)
+        {
+            // A rating toggled to ReadOnly after mounting should release the
+            // suppression so arrow keys scroll normally again.
+            if (_pdRegistered)
+            {
+                try { await Interop.UnregisterPreventDefaultKeys(_id); }
+                catch (JSDisconnectedException) { }
+                catch (ObjectDisposedException) { }
+                catch (InvalidOperationException) { }
+                _pdRegistered = false;
+            }
+            return;
+        }
+
+        if (_pdRegistered) return;
+        try
+        {
+            await Interop.RegisterPreventDefaultKeys(
+                _id,
+                new[] { "ArrowDown", "ArrowRight", "ArrowUp", "ArrowLeft", "Home", "End" }
+                    .Select(k => new Lumeo.Services.PreventDefaultKeyRule(k)).ToArray());
+            _pdRegistered = true;
+        }
+        catch (JSDisconnectedException) { }
+        catch (ObjectDisposedException) { }
+        catch (InvalidOperationException) { } // JS interop unavailable during prerender
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (!_pdRegistered) return;
+        try { await Interop.UnregisterPreventDefaultKeys(_id); }
+        catch (JSDisconnectedException) { }
+        catch (ObjectDisposedException) { }
+        catch (InvalidOperationException) { }
+    }
 }

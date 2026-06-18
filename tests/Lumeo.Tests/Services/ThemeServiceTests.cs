@@ -266,6 +266,44 @@ public class ThemeServiceTests
         Assert.True(changed);
     }
 
+    // --- OnExternalThemeChange (#312/#313 live OS + cross-tab sync) ---
+
+    [Fact]
+    public async Task OnExternalThemeChange_Rereads_State_From_JS()
+    {
+        _js.SetResult("themeManager.getMode", "system");
+        _js.SetResult("themeManager.getScheme", "violet");
+        _js.SetResult("themeManager.isDark", true);
+
+        await _service.OnExternalThemeChange();
+
+        Assert.Equal("violet", _service.CurrentScheme);
+        Assert.True(_service.IsDark);
+    }
+
+    [Fact]
+    public async Task OnExternalThemeChange_Fires_OnThemeChanged()
+    {
+        var changed = false;
+        _service.OnThemeChanged += () => changed = true;
+
+        await _service.OnExternalThemeChange();
+
+        Assert.True(changed);
+    }
+
+    [Fact]
+    public async Task InitializeAsync_Registers_The_Theme_Listener()
+    {
+        _js.SetResult("themeManager.getMode", "system");
+        _js.SetResult("themeManager.getScheme", "zinc");
+        _js.SetResult("themeManager.isDark", false);
+
+        await _service.InitializeAsync();
+
+        Assert.Contains("themeManager.registerThemeListener", _js.VoidCalls);
+    }
+
     // --- ThemeMode enum ---
 
     [Fact]
@@ -296,12 +334,19 @@ public class ThemeServiceTests
     private sealed class FakeJSRuntime : IJSRuntime
     {
         private readonly Dictionary<string, object?> _results = new();
+        private readonly List<string> _calls = new();
+
+        /// <summary>Every identifier invoked (typed or void), in call order.</summary>
+        public IReadOnlyList<string> VoidCalls => _calls;
 
         public void SetResult(string identifier, object? value) =>
             _results[identifier] = value;
 
-        public ValueTask<TValue> InvokeAsync<TValue>(string identifier, object?[]? args) =>
-            ValueTask.FromResult(_results.TryGetValue(identifier, out var val) ? (TValue)val! : default!);
+        public ValueTask<TValue> InvokeAsync<TValue>(string identifier, object?[]? args)
+        {
+            _calls.Add(identifier);
+            return ValueTask.FromResult(_results.TryGetValue(identifier, out var val) ? (TValue)val! : default!);
+        }
 
         public ValueTask<TValue> InvokeAsync<TValue>(string identifier, CancellationToken cancellationToken, object?[]? args) =>
             InvokeAsync<TValue>(identifier, args);

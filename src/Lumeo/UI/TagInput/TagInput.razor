@@ -48,15 +48,18 @@
     <div class="relative flex-1 min-w-[80px]">
         <input id="@_inputId"
                type="text"
+               role="combobox"
                class="w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed"
                placeholder="@(Tags is { Count: > 0 } ? "" : (Placeholder ?? L["TagInput.Placeholder"]))"
                value="@_inputValue"
                name="@(Name ?? FormField?.Name)"
                aria-required="@(Required ? "true" : "false")"
                aria-invalid="@(EffectiveInvalid ? "true" : "false")"
+               aria-autocomplete="list"
                aria-haspopup="listbox"
                aria-expanded="@(_showSuggestions && FilteredSuggestions.Count > 0 ? "true" : "false")"
                aria-controls="@_suggestionsId"
+               aria-activedescendant="@ActiveDescendantId"
                @oninput="OnInput"
                @onkeydown="OnKeyDown"
                @onfocus="() => _showSuggestions = FilteredSuggestions.Count > 0"
@@ -68,10 +71,13 @@
             <div id="@_suggestionsId" role="listbox" class="fixed z-50 min-w-[150px] overflow-hidden rounded-md border border-border/40 bg-popover p-1 text-popover-foreground shadow-lg animate-fade-in">
                 @foreach (var (suggestion, index) in FilteredSuggestions.Select((s, i) => (s, i)))
                 {
+                    var isActive = index == _activeSuggestion;
                     <button type="button"
+                            id="@OptionId(index)"
                             role="option"
-                            aria-selected="false"
-                            class="flex w-full items-center rounded-sm px-2 py-1.5 text-sm hover:bg-accent hover:text-accent-foreground focus:bg-accent focus:text-accent-foreground focus:outline-none cursor-pointer transition-colors"
+                            aria-selected="@(isActive ? "true" : "false")"
+                            class="@($"flex w-full items-center rounded-sm px-2 py-1.5 text-sm focus:outline-none cursor-pointer transition-colors {(isActive ? "bg-accent text-accent-foreground" : "hover:bg-accent hover:text-accent-foreground")}")"
+                            @onmouseenter="() => _activeSuggestion = index"
                             @onclick="() => SelectSuggestion(suggestion)">
                         @if (SuggestionTemplate is not null)
                         {
@@ -151,7 +157,17 @@
     private string _inputValue = "";
     private bool _showSuggestions;
     private string? _validationError;
+    // Index of the keyboard-highlighted suggestion, or -1 when none is active.
+    // Drives aria-activedescendant + the active-row highlight; Enter commits it.
+    private int _activeSuggestion = -1;
     private readonly string _inputId = LumeoIds.New("taginput");
+
+    private string OptionId(int index) => $"{_suggestionsId}-opt{index}";
+
+    private string? ActiveDescendantId =>
+        _showSuggestions && _activeSuggestion >= 0 && _activeSuggestion < FilteredSuggestions.Count
+            ? OptionId(_activeSuggestion)
+            : null;
 
     /// <summary>Programmatically move focus to the inner text input.</summary>
     public ValueTask FocusAsync() => Interop.FocusElement(_inputId);
@@ -219,6 +235,9 @@
     {
         _inputValue = e.Value?.ToString() ?? "";
         _validationError = null;
+        // The filtered set changes on every keystroke, so the previous highlight
+        // is meaningless — reset to "no active option".
+        _activeSuggestion = -1;
 
         // Multi-separator splitting on every input event so paste handling works.
         if (Separators is { Length: > 0 } && Separators.Any(sep => !string.IsNullOrEmpty(sep) && _inputValue.Contains(sep)))
@@ -238,10 +257,34 @@
 
     private async Task OnKeyDown(KeyboardEventArgs e)
     {
+        var suggestions = FilteredSuggestions;
+
         switch (e.Key)
         {
+            case "ArrowDown":
+                if (suggestions.Count == 0) break;
+                // Open the list (if it was closed) and move the highlight down,
+                // wrapping back to the top after the last row.
+                _showSuggestions = true;
+                _activeSuggestion = _activeSuggestion < 0 || _activeSuggestion >= suggestions.Count - 1
+                    ? 0
+                    : _activeSuggestion + 1;
+                break;
+            case "ArrowUp":
+                if (suggestions.Count == 0) break;
+                _showSuggestions = true;
+                _activeSuggestion = _activeSuggestion <= 0
+                    ? suggestions.Count - 1
+                    : _activeSuggestion - 1;
+                break;
             case "Enter":
-                if (!string.IsNullOrWhiteSpace(_inputValue))
+                // A highlighted suggestion wins over free-text entry, matching the
+                // combobox contract (Down then Enter picks that row).
+                if (_showSuggestions && _activeSuggestion >= 0 && _activeSuggestion < suggestions.Count)
+                {
+                    await SelectSuggestion(suggestions[_activeSuggestion]);
+                }
+                else if (!string.IsNullOrWhiteSpace(_inputValue))
                 {
                     await TryAddFreeText(_inputValue.Trim());
                     if (_validationError is null)
@@ -259,6 +302,7 @@
                 break;
             case "Escape":
                 _showSuggestions = false;
+                _activeSuggestion = -1;
                 break;
         }
     }
@@ -347,6 +391,7 @@
         await AddTag(suggestion);
         _inputValue = "";
         _showSuggestions = false;
+        _activeSuggestion = -1;
         await Interop.FocusElement(_inputId);
     }
 
@@ -359,14 +404,20 @@
     {
         if (firstRender)
         {
-            // Enter must add a tag, not submit an enclosing <form>. A native
-            // JS listener is the only race-free way to suppress the browser
-            // default for the current event (Blazor's :preventDefault flag is
-            // applied at render time). SkipComposing keeps IME composition
-            // commits (isComposing / keyCode 229) working.
+            // Enter must add a tag, not submit an enclosing <form>; ArrowUp/Down
+            // must drive the suggestions listbox (combobox contract), not jump the
+            // text caret to start/end. A native JS listener is the only race-free
+            // way to suppress the browser default for the current event (Blazor's
+            // :preventDefault flag is applied at render time). SkipComposing keeps
+            // IME composition commits (isComposing / keyCode 229) working.
             try
             {
-                await Interop.RegisterPreventDefaultKeys(_inputId, new[] { new Lumeo.Services.PreventDefaultKeyRule("Enter", SkipComposing: true) });
+                await Interop.RegisterPreventDefaultKeys(_inputId, new[]
+                {
+                    new Lumeo.Services.PreventDefaultKeyRule("Enter", SkipComposing: true),
+                    new Lumeo.Services.PreventDefaultKeyRule("ArrowDown"),
+                    new Lumeo.Services.PreventDefaultKeyRule("ArrowUp"),
+                });
                 _pdRegistered = true;
             }
             catch (JSDisconnectedException) { }

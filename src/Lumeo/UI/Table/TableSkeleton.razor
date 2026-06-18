@@ -1,0 +1,37 @@
+@namespace Lumeo
+
+@* Loading placeholder for a Table. Renders <c>Rows</c> × <c>Columns</c> of
+   shimmering skeleton cells so the table keeps its shape while data loads.
+   Emits plain <tr> rows so it drops straight inside an existing <TableBody>
+   (same pattern as <TableEmpty>). *@
+@for (var r = 0; r < Rows; r++)
+{
+    <tr class="border-b border-border/40" aria-hidden="true" @attributes="@(r == 0 ? AdditionalAttributes : null)">
+        @for (var c = 0; c < Columns; c++)
+        {
+            <td class="p-2 align-middle">
+                <Skeleton Class="@CellClass" Animation="Animation" />
+            </td>
+        }
+    </tr>
+}
+
+@code {
+    /// <summary>Number of placeholder rows. Defaults to 3.</summary>
+    [Parameter] public int Rows { get; set; } = 3;
+
+    /// <summary>Number of placeholder cells per row — match your column count.
+    /// Defaults to 4.</summary>
+    [Parameter] public int Columns { get; set; } = 4;
+
+    /// <summary>Skeleton animation style. Defaults to <see cref="Skeleton.SkeletonAnimation.Pulse"/>.</summary>
+    [Parameter] public Skeleton.SkeletonAnimation Animation { get; set; } = Skeleton.SkeletonAnimation.Pulse;
+
+    // This helper renders a multi-row fragment (Rows × <tr>) with no single root,
+    // so unmatched attributes (test hooks / data-* / ARIA) are forwarded onto the
+    // first placeholder row. Per-cell styling is via Class.
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private string CellClass => Cx.Merge("h-4 w-full", Class);
+}

@@ -5,9 +5,11 @@
 @if (!Overflow)
 {
     <div role="toolbar"
-         aria-orientation="horizontal"
+         id="@_toolbarId"
+         aria-orientation="@OrientationStr"
          tabindex="0"
          class="@CssClass"
+         @onkeydown="HandleKeyDown"
          @attributes="AdditionalAttributes">
         @ChildContent
     </div>
@@ -15,9 +17,11 @@
 else
 {
     <div role="toolbar"
-         aria-orientation="horizontal"
-         class="@CssClassOverflow"
          id="@_toolbarId"
+         aria-orientation="@OrientationStr"
+         tabindex="0"
+         class="@CssClassOverflow"
+         @onkeydown="HandleKeyDown"
          @attributes="AdditionalAttributes">
         <CascadingValue Value="_overflowCtx" IsFixed="false">
             @ChildContent
@@ -76,6 +80,14 @@ else
     /// <summary>aria-label for the "⋯" overflow button. Default: "More".</summary>
     [Parameter] public string? OverflowLabel { get; set; }
 
+    /// <summary>
+    /// Layout/keyboard orientation. Horizontal (default) uses Left/Right arrows
+    /// to move between items; Vertical uses Up/Down. Drives <c>aria-orientation</c>.
+    /// </summary>
+    [Parameter] public ToolbarOrientation Orientation { get; set; } = ToolbarOrientation.Horizontal;
+
+    private string OrientationStr => Orientation == ToolbarOrientation.Vertical ? "vertical" : "horizontal";
+
     // ── State ─────────────────────────────────────────────────────────────────
 
     private bool _overflowOpen;
@@ -108,7 +120,14 @@ else
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (!firstRender) return;
-        if (!Overflow || VisibleCount != -1) return; // manual mode — nothing to wire up
+
+        // Make the toolbar a single tab stop with a roving tabindex over its
+        // items (Radix Toolbar keyboard model). Runs in every mode.
+        try { await Interop.InitToolbarRoving(_toolbarId); }
+        catch (JSDisconnectedException) { }
+        catch (ObjectDisposedException) { }
+
+        if (!Overflow || VisibleCount != -1) return; // manual mode — nothing else to wire up
 
         try
         {
@@ -121,6 +140,32 @@ else
         }
         catch (JSDisconnectedException) { }
         catch (ObjectDisposedException) { }
+    }
+
+    // Radix Toolbar keyboard model: the orientation-aligned arrows move focus
+    // between items (clamped, no wrap), Home/End jump to the first/last. The
+    // perpendicular arrows are left to the browser so e.g. a vertical menu
+    // inside a horizontal toolbar still works.
+    private async Task HandleKeyDown(KeyboardEventArgs e)
+    {
+        var horizontal = Orientation == ToolbarOrientation.Horizontal;
+        switch (e.Key)
+        {
+            case "ArrowRight" when horizontal:
+            case "ArrowDown" when !horizontal:
+                await Interop.MoveToolbarFocus(_toolbarId, 1);
+                break;
+            case "ArrowLeft" when horizontal:
+            case "ArrowUp" when !horizontal:
+                await Interop.MoveToolbarFocus(_toolbarId, -1);
+                break;
+            case "Home":
+                await Interop.FocusToolbarEdge(_toolbarId, last: false);
+                break;
+            case "End":
+                await Interop.FocusToolbarEdge(_toolbarId, last: true);
+                break;
+        }
     }
 
     /// <summary>
@@ -157,13 +202,18 @@ else
     }
 
     // ── CSS ──────────────────────────────────────────────────────────────────
+    private string FlexDirection => Orientation == ToolbarOrientation.Vertical ? "flex-col" : "flex-row";
+
     private string CssClass =>
-        Cx.Merge("flex items-center gap-1 p-1 bg-card border border-border/40 rounded-lg", Class);
+        Cx.Merge($"flex {FlexDirection} items-center gap-1 p-1 bg-card border border-border/40 rounded-lg", Class);
 
     private string CssClassOverflow =>
-        Cx.Merge("flex items-center gap-1 p-1 bg-card border border-border/40 rounded-lg overflow-hidden", Class);
+        Cx.Merge($"flex {FlexDirection} items-center gap-1 p-1 bg-card border border-border/40 rounded-lg overflow-hidden", Class);
 
     // ── Context record ────────────────────────────────────────────────────────
+
+    /// <summary>Toolbar layout/keyboard orientation.</summary>
+    public enum ToolbarOrientation { Horizontal, Vertical }
 
     /// <summary>Slot that a child item should render for in overflow mode.</summary>
     public enum ToolbarRenderSlot { Visible, Dropdown }

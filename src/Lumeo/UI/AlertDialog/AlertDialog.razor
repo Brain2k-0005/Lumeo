@@ -1,7 +1,7 @@
 @namespace Lumeo
 
 @{
-    var context = new AlertDialogContext(Open, EventCallback.Factory.Create<bool>(this, SetOpen), _titleId, _descriptionId, TryDismiss);
+    var context = new AlertDialogContext(EffectiveOpen, EventCallback.Factory.Create<bool>(this, SetOpen), _titleId, _descriptionId, TryDismiss);
 }
 
 <CascadingValue Value="context" IsFixed="false">
@@ -12,6 +12,14 @@
     [Parameter] public RenderFragment? ChildContent { get; set; }
     [Parameter] public bool Open { get; set; }
     [Parameter] public EventCallback<bool> OpenChanged { get; set; }
+
+    /// <summary>
+    /// Uncontrolled initial open state (Radix <c>defaultOpen</c>). Used only
+    /// when the consumer does NOT bind <see cref="Open"/>: the dialog then owns
+    /// its open state internally, seeded from this value. Ignored when
+    /// <see cref="Open"/> is supplied (controlled mode).
+    /// </summary>
+    [Parameter] public bool DefaultOpen { get; set; }
 
     /// <summary>
     /// Fires before any user-initiated dismiss (Escape key, the Cancel
@@ -31,10 +39,40 @@
     private readonly string _titleId = LumeoIds.New("alertdialog-title");
     private readonly string _descriptionId = LumeoIds.New("alertdialog-desc");
 
+    // Controlled-vs-uncontrolled disambiguation: a bool param can't be
+    // "undefined", so we inspect which parameters the consumer actually supplied.
+    private bool _controlled;
+    private bool _open;
+
+    private bool EffectiveOpen => _controlled ? Open : _open;
+
+    public override Task SetParametersAsync(ParameterView parameters)
+    {
+        // The legacy IsOpen alias is obsolete but still a valid bound parameter,
+        // so we must honour it when deciding controlled-ness (suppress CS0618 for
+        // the nameof — we're intentionally probing the alias).
+#pragma warning disable CS0618
+        _controlled = parameters.TryGetValue<bool>(nameof(Open), out _)
+            || parameters.TryGetValue<bool>(nameof(IsOpen), out _)
+            || OpenChanged.HasDelegate;
+#pragma warning restore CS0618
+        return base.SetParametersAsync(parameters);
+    }
+
+    protected override void OnInitialized()
+    {
+        if (!_controlled) _open = DefaultOpen;
+    }
+
     private async Task SetOpen(bool value)
     {
+        _open = value;
         Open = value;
         await OpenChanged.InvokeAsync(value);
+        // Re-render so the cascaded context picks up EffectiveOpen — the
+        // Escape/Cancel paths reach here via TryDismiss as a direct method call,
+        // so an uncontrolled dialog (no OpenChanged) needs this to close.
+        StateHasChanged();
     }
 
     private async Task<bool> TryDismiss(string reason)

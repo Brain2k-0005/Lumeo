@@ -1,6 +1,8 @@
 @namespace Lumeo
 @typeparam TItem
+@implements IAsyncDisposable
 @inject Lumeo.Services.Localization.ILumeoLocalizer L
+@inject IComponentInteropService Interop
 
 <div class="@CssClass"
      style="display:grid;grid-template-columns:1fr auto 1fr;gap:0.75rem;align-items:stretch;"
@@ -21,15 +23,21 @@
                        @oninput="OnSourceSearch" />
             </div>
         }
-        <div class="overflow-y-auto p-1" style="height:@Height;">
+        <div id="@_sourceListId" role="listbox" aria-label="@(SourceTitle ?? L["PickList.SourceHeader"])" aria-multiselectable="true" class="overflow-y-auto p-1" style="height:@Height;">
             @if (FilteredSourceItems.Count > 0)
             {
-                @foreach (var item in FilteredSourceItems)
+                @for (var i = 0; i < FilteredSourceItems.Count; i++)
                 {
+                    var index = i;
+                    var item = FilteredSourceItems[index];
                     var selected = _sourceSelected.Contains(item);
-                    <button @key="(object?)item" type="button"
+                    <button @key="(object?)item" type="button" id="@ItemId(_sourceListId, index)"
+                            role="option" aria-selected="@(selected ? "true" : "false")"
+                            tabindex="@(index == SourceFocusIndex ? "0" : "-1")"
                             class="@RowClass(selected)"
-                            @onclick="() => ToggleSource(item)">
+                            @onclick="() => ToggleSource(item)"
+                            @onfocus="() => _sourceFocusIndex = index"
+                            @onkeydown="e => HandleSourceKeyDown(e, index)">
                         @if (ItemTemplate != null)
                         {
                             @ItemTemplate(item)
@@ -66,9 +74,20 @@
 
     @* Target panel *@
     <div class="flex flex-col border border-border/40 rounded-lg overflow-hidden bg-card" style="min-width:0;">
-        <div class="px-3 py-2 border-b border-border/40 bg-muted/30 flex items-center justify-between">
-            <span class="text-sm font-medium">@(TargetTitle ?? L["PickList.TargetHeader"])</span>
-            <span class="text-xs text-muted-foreground">@_targetSelected.Count / @_targetItems.Count</span>
+        <div class="px-3 py-2 border-b border-border/40 bg-muted/30 flex items-center justify-between gap-2">
+            <span class="text-sm font-medium truncate">@(TargetTitle ?? L["PickList.TargetHeader"])</span>
+            <div class="flex items-center gap-1.5 shrink-0">
+                @if (Reorderable)
+                {
+                    <button type="button" class="@ReorderButtonClass" @onclick="MoveSelectedUp" disabled="@(!CanReorder)" title="@L["PickList.MoveUp"]" aria-label="@L["PickList.MoveUp"]">
+                        <Blazicon Svg="Lucide.ChevronUp" class="h-3.5 w-3.5" />
+                    </button>
+                    <button type="button" class="@ReorderButtonClass" @onclick="MoveSelectedDown" disabled="@(!CanReorder)" title="@L["PickList.MoveDown"]" aria-label="@L["PickList.MoveDown"]">
+                        <Blazicon Svg="Lucide.ChevronDown" class="h-3.5 w-3.5" />
+                    </button>
+                }
+                <span class="text-xs text-muted-foreground">@_targetSelected.Count / @_targetItems.Count</span>
+            </div>
         </div>
         @if (ShowSearch)
         {
@@ -79,15 +98,21 @@
                        @oninput="OnTargetSearch" />
             </div>
         }
-        <div class="overflow-y-auto p-1" style="height:@Height;">
+        <div id="@_targetListId" role="listbox" aria-label="@(TargetTitle ?? L["PickList.TargetHeader"])" aria-multiselectable="true" class="overflow-y-auto p-1" style="height:@Height;">
             @if (FilteredTargetItems.Count > 0)
             {
-                @foreach (var item in FilteredTargetItems)
+                @for (var i = 0; i < FilteredTargetItems.Count; i++)
                 {
+                    var index = i;
+                    var item = FilteredTargetItems[index];
                     var selected = _targetSelected.Contains(item);
-                    <button @key="(object?)item" type="button"
+                    <button @key="(object?)item" type="button" id="@ItemId(_targetListId, index)"
+                            role="option" aria-selected="@(selected ? "true" : "false")"
+                            tabindex="@(index == TargetFocusIndex ? "0" : "-1")"
                             class="@RowClass(selected)"
-                            @onclick="() => ToggleTarget(item)">
+                            @onclick="() => ToggleTarget(item)"
+                            @onfocus="() => _targetFocusIndex = index"
+                            @onkeydown="e => HandleTargetKeyDown(e, index)">
                         @if (ItemTemplate != null)
                         {
                             @ItemTemplate(item)
@@ -117,6 +142,12 @@
     /// <summary>Target panel header. Defaults to the localized "Selected".</summary>
     [Parameter] public string? TargetTitle { get; set; }
     [Parameter] public bool ShowSearch { get; set; } = true;
+    /// <summary>When true (default), the target list can be reordered: header
+    /// up/down buttons and Alt+ArrowUp/ArrowDown on a focused target item move
+    /// the selected items within the target order, emitting
+    /// <see cref="SelectedItemsChanged"/>. Reorder is gated while a target search
+    /// is active (a filtered view has no stable order to shuffle).</summary>
+    [Parameter] public bool Reorderable { get; set; } = true;
     [Parameter] public string Height { get; set; } = "320px";
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
@@ -128,9 +159,23 @@
     private string _sourceSearch = "";
     private string _targetSearch = "";
 
+    // Roving-tabindex focus targets (one tabbable option per list).
+    private int _sourceFocusIndex;
+    private int _targetFocusIndex;
+    private readonly string _sourceListId = LumeoIds.New("picklist-src");
+    private readonly string _targetListId = LumeoIds.New("picklist-tgt");
+
+    private static string ItemId(string listId, int index) => $"{listId}-{index}";
+
+    // Clamp the roving index into the current filtered list so a tabbable
+    // option always exists even after items move between panels.
+    private int SourceFocusIndex => FilteredSourceItems.Count == 0 ? 0 : Math.Clamp(_sourceFocusIndex, 0, FilteredSourceItems.Count - 1);
+    private int TargetFocusIndex => FilteredTargetItems.Count == 0 ? 0 : Math.Clamp(_targetFocusIndex, 0, FilteredTargetItems.Count - 1);
+
     private string CssClass => Cx.Merge("w-full", Class);
 
     private const string ButtonClass = "inline-flex items-center justify-center h-8 w-8 rounded-md border border-border/60 bg-background hover:bg-accent hover:text-accent-foreground transition-colors focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-2 disabled:opacity-40 disabled:cursor-not-allowed";
+    private const string ReorderButtonClass = "inline-flex items-center justify-center h-6 w-6 rounded-md border border-border/60 bg-background hover:bg-accent hover:text-accent-foreground transition-colors focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-1 disabled:opacity-40 disabled:cursor-not-allowed";
 
     private string RowClass(bool selected) =>
         selected
@@ -211,6 +256,105 @@
         if (!_targetSelected.Add(item)) _targetSelected.Remove(item);
     }
 
+    // ---- Keyboard operation (WAI-ARIA listbox) ----
+    // Arrow keys move the roving focus within a list; Home/End jump to the
+    // ends; Space/Enter toggle selection. In the target list Alt+ArrowUp /
+    // Alt+ArrowDown reorder the selected item(s) one slot (#203).
+    private async Task HandleSourceKeyDown(KeyboardEventArgs e, int index)
+    {
+        switch (e.Key)
+        {
+            case "ArrowDown": await MoveSourceFocus(index + 1); break;
+            case "ArrowUp": await MoveSourceFocus(index - 1); break;
+            case "Home": await MoveSourceFocus(0); break;
+            case "End": await MoveSourceFocus(FilteredSourceItems.Count - 1); break;
+            // Enter/Space intentionally not handled: each row is a native <button>
+            // whose @onclick already toggles it — handling the key here too would
+            // double-toggle (select then immediately deselect).
+        }
+    }
+
+    private async Task HandleTargetKeyDown(KeyboardEventArgs e, int index)
+    {
+        // Alt + Up/Down reorders within the target list rather than moving focus.
+        if (e.AltKey && (e.Key == "ArrowUp" || e.Key == "ArrowDown"))
+        {
+            await ReorderTarget(e.Key == "ArrowUp" ? -1 : 1);
+            return;
+        }
+
+        switch (e.Key)
+        {
+            case "ArrowDown": await MoveTargetFocus(index + 1); break;
+            case "ArrowUp": await MoveTargetFocus(index - 1); break;
+            case "Home": await MoveTargetFocus(0); break;
+            case "End": await MoveTargetFocus(FilteredTargetItems.Count - 1); break;
+            // Enter/Space intentionally not handled: native <button> @onclick already toggles.
+        }
+    }
+
+    private async Task MoveSourceFocus(int target)
+    {
+        var count = FilteredSourceItems.Count;
+        if (count == 0) return;
+        _sourceFocusIndex = Math.Clamp(target, 0, count - 1);
+        StateHasChanged();
+        try { await Interop.FocusElement(ItemId(_sourceListId, _sourceFocusIndex)); }
+        catch (JSDisconnectedException) { }
+    }
+
+    private async Task MoveTargetFocus(int target)
+    {
+        var count = FilteredTargetItems.Count;
+        if (count == 0) return;
+        _targetFocusIndex = Math.Clamp(target, 0, count - 1);
+        StateHasChanged();
+        try { await Interop.FocusElement(ItemId(_targetListId, _targetFocusIndex)); }
+        catch (JSDisconnectedException) { }
+    }
+
+    /// <summary>Whether the target list can currently be reordered: enabled, no
+    /// active target search (a filtered view has no stable global order), and at
+    /// least one item selected.</summary>
+    private bool CanReorder => Reorderable && string.IsNullOrWhiteSpace(_targetSearch) && _targetSelected.Count > 0;
+
+    private Task MoveSelectedUp() => ReorderTarget(-1);
+    private Task MoveSelectedDown() => ReorderTarget(1);
+
+    /// <summary>Shifts every selected target item one slot in <paramref name="direction"/>
+    /// (-1 up, +1 down) within the target order, preserving relative order of the
+    /// moved block and clamping at the ends. Iterates from the leading edge so a
+    /// multi-item selection slides as a contiguous-ish block without items
+    /// hopping over each other.</summary>
+    private async Task ReorderTarget(int direction)
+    {
+        if (!CanReorder) return;
+
+        var list = _targetItems;
+        // Process in the order that lets each move "see" already-moved neighbours:
+        // moving up walks top→bottom, moving down walks bottom→top.
+        var indices = Enumerable.Range(0, list.Count)
+            .Where(i => _targetSelected.Contains(list[i]));
+        if (direction > 0) indices = indices.Reverse();
+
+        var moved = false;
+        foreach (var i in indices.ToList())
+        {
+            var swap = i + direction;
+            if (swap < 0 || swap >= list.Count) continue;
+            // Don't swap past another selected item that hasn't been pulled along.
+            if (_targetSelected.Contains(list[swap])) continue;
+            (list[i], list[swap]) = (list[swap], list[i]);
+            moved = true;
+        }
+
+        if (!moved) return;
+        // Assign a fresh list reference so FilteredTargetItems recomputes against
+        // the reordered order (the cache keys on ReferenceEquals of the list).
+        _targetItems = new List<TItem>(list);
+        await SelectedItemsChanged.InvokeAsync(_targetItems.ToList());
+    }
+
     private Task MoveSelectedToTarget() => MoveToTarget(_sourceSelected.ToList());
     private Task MoveAllToTarget() => MoveToTarget(_sourceItems.ToList());
     private Task MoveSelectedToSource() => MoveToSource(_targetSelected.ToList());
@@ -241,5 +385,38 @@
         _sourceItems = _sourceItems.Concat(toMove.Where(i => !_sourceItems.Contains(i))).ToList();
         _targetSelected.Clear();
         await SelectedItemsChanged.InvokeAsync(_targetItems.ToList());
+    }
+
+    // Suppress page scroll for the list-navigation keys so the first keypress
+    // moves the roving focus without also scrolling the page (same pattern as
+    // Calendar's day grid). Registered once against each list container.
+    private bool _navKeysRegistered;
+    private static readonly PreventDefaultKeyRule[] ListNavKeys =
+    [
+        new("ArrowUp"), new("ArrowDown"), new("Home"), new("End"),
+    ];
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender || _navKeysRegistered) return;
+        _navKeysRegistered = true;
+        try
+        {
+            await Interop.RegisterPreventDefaultKeys(_sourceListId, ListNavKeys);
+            await Interop.RegisterPreventDefaultKeys(_targetListId, ListNavKeys);
+        }
+        catch (JSDisconnectedException) { _navKeysRegistered = false; }
+        catch (InvalidOperationException) { _navKeysRegistered = false; } // prerender
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (!_navKeysRegistered) return;
+        try
+        {
+            await Interop.UnregisterPreventDefaultKeys(_sourceListId);
+            await Interop.UnregisterPreventDefaultKeys(_targetListId);
+        }
+        catch (JSDisconnectedException) { }
     }
 }

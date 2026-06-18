@@ -42,12 +42,12 @@
         </button>
 
         <div class="flex items-center gap-2 absolute bottom-4 left-1/2 -translate-x-1/2">
-            <button type="button" class="text-white/80 hover:text-white p-1.5 rounded-md bg-white/10 hover:bg-white/20 transition-colors focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-black/80" @onclick="ZoomOut" @onclick:stopPropagation="true">
-                <Blazicon Svg="Lucide.ZoomOut" class="h-5 w-5" />
+            <button type="button" aria-label="Zoom out" class="text-white/80 hover:text-white p-1.5 rounded-md bg-white/10 hover:bg-white/20 transition-colors focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-black/80" @onclick="ZoomOut" @onclick:stopPropagation="true">
+                <Blazicon Svg="Lucide.ZoomOut" class="h-5 w-5" aria-hidden="true" />
             </button>
-            <span class="text-white/80 text-sm min-w-[3rem] text-center">@($"{_zoom}%")</span>
-            <button type="button" class="text-white/80 hover:text-white p-1.5 rounded-md bg-white/10 hover:bg-white/20 transition-colors focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-black/80" @onclick="ZoomIn" @onclick:stopPropagation="true">
-                <Blazicon Svg="Lucide.ZoomIn" class="h-5 w-5" />
+            <span class="text-white/80 text-sm min-w-[3rem] text-center" aria-live="polite" aria-label="@($"Zoom {_zoom} percent")">@($"{_zoom}%")</span>
+            <button type="button" aria-label="Zoom in" class="text-white/80 hover:text-white p-1.5 rounded-md bg-white/10 hover:bg-white/20 transition-colors focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-black/80" @onclick="ZoomIn" @onclick:stopPropagation="true">
+                <Blazicon Svg="Lucide.ZoomIn" class="h-5 w-5" aria-hidden="true" />
             </button>
         </div>
 
@@ -121,17 +121,30 @@
             _showPreview = true;
             _zoom = 100;
             await Interop.LockScroll();
-            // Focus the overlay so Escape / +/- keys work without a click.
-            _shouldFocusPreview = true;
+            // Install the focus trap on next render once the overlay is in the
+            // DOM. The trap also focuses the first focusable control (so Escape
+            // / +/- work without a click) and restores focus to the trigger on
+            // close, satisfying the aria-modal="true" contract.
+            _shouldTrapPreview = true;
         }
     }
 
-    private bool _shouldFocusPreview;
+    private bool _shouldTrapPreview;
+    private bool _previewTrapped;
 
     private async Task ClosePreview()
     {
         _showPreview = false;
-        try { await Interop.UnlockScroll(); } catch (JSDisconnectedException) { }
+        try
+        {
+            if (_previewTrapped)
+            {
+                _previewTrapped = false;
+                await Interop.RemoveFocusTrap(_previewId);
+            }
+            await Interop.UnlockScroll();
+        }
+        catch (JSDisconnectedException) { }
     }
 
     private void ZoomIn()
@@ -157,10 +170,11 @@
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (_shouldFocusPreview && _showPreview)
+        if (_shouldTrapPreview && _showPreview)
         {
-            _shouldFocusPreview = false;
-            try { await Interop.FocusElement(_previewId); } catch (JSDisconnectedException) { }
+            _shouldTrapPreview = false;
+            _previewTrapped = true;
+            try { await Interop.SetupFocusTrap(_previewId); } catch (JSDisconnectedException) { }
         }
 
         if (firstRender && Zoomable && !_pinchRegistered)
@@ -192,7 +206,16 @@
     {
         if (_showPreview)
         {
-            try { await Interop.UnlockScroll(); } catch (JSDisconnectedException) { }
+            try
+            {
+                if (_previewTrapped)
+                {
+                    _previewTrapped = false;
+                    await Interop.RemoveFocusTrap(_previewId);
+                }
+                await Interop.UnlockScroll();
+            }
+            catch (JSDisconnectedException) { }
         }
         if (_pinchRegistered)
         {

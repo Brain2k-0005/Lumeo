@@ -340,6 +340,84 @@ window.themeManager = {
         var stored = localStorage.getItem('lumeo.direction');
         return stored === 'rtl' ? 'rtl' : 'ltr';
     },
+    // --- Live OS-scheme + cross-tab sync (#312/#313) ---
+    //
+    // _themeListeners holds the .NET refs that asked to be told when the theme
+    // changes from OUTSIDE this component instance: the OS flipping
+    // prefers-color-scheme while we're in "system" mode, or another browser tab
+    // writing a theme-* localStorage key. We re-apply the DOM in both cases and
+    // notify .NET so ThemeService can re-read state and raise OnThemeChanged.
+    _themeListeners: [],
+    _mediaQuery: null,
+    _onSystemSchemeChange: function () {
+        // Only react when the user hasn't pinned a mode — "system" means follow
+        // the OS. (init() already encodes this precedence.)
+        var mode = localStorage.getItem('theme-mode') || localStorage.getItem('theme');
+        if (!mode) {
+            if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
+                document.documentElement.classList.add('dark');
+            } else {
+                document.documentElement.classList.remove('dark');
+            }
+        }
+        themeManager._notifyListeners();
+    },
+    _onStorage: function (e) {
+        // Another tab changed a theme key — re-apply our whole DOM from storage
+        // so this tab matches, then notify. Ignore unrelated keys.
+        if (e && e.key && e.key.indexOf('theme') === -1 && e.key !== 'lumeo.direction') return;
+        themeManager.init();
+        themeManager._notifyListeners();
+    },
+    _notifyListeners: function () {
+        // Fire the in-page event too so non-.NET consumers (charts) repaint.
+        try { document.dispatchEvent(new CustomEvent('lumeo:theme-changed')); } catch (_) { }
+        for (let i = themeManager._themeListeners.length - 1; i >= 0; i--) {
+            const ref = themeManager._themeListeners[i];
+            try {
+                // invokeMethodAsync returns a Promise; a disconnected circuit
+                // rejects asynchronously, so prune the dead ref in .catch too —
+                // the sync catch alone would leak it. const ref keeps each
+                // closure bound to its own listener.
+                ref.invokeMethodAsync('OnExternalThemeChange').catch(function () {
+                    const idx = themeManager._themeListeners.indexOf(ref);
+                    if (idx >= 0) themeManager._themeListeners.splice(idx, 1);
+                });
+            } catch (_) {
+                const idx = themeManager._themeListeners.indexOf(ref);
+                if (idx >= 0) themeManager._themeListeners.splice(idx, 1);
+            }
+        }
+    },
+    registerThemeListener: function (dotnetRef) {
+        themeManager._themeListeners.push(dotnetRef);
+        // Wire the global listeners once, lazily, on first registration.
+        if (!themeManager._mediaQuery) {
+            themeManager._mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+            // addEventListener('change') is the modern API; addListener is the
+            // Safari < 14 fallback.
+            if (themeManager._mediaQuery.addEventListener) {
+                themeManager._mediaQuery.addEventListener('change', themeManager._onSystemSchemeChange);
+            } else if (themeManager._mediaQuery.addListener) {
+                themeManager._mediaQuery.addListener(themeManager._onSystemSchemeChange);
+            }
+            window.addEventListener('storage', themeManager._onStorage);
+        }
+    },
+    unregisterThemeListener: function (dotnetRef) {
+        var idx = themeManager._themeListeners.indexOf(dotnetRef);
+        if (idx >= 0) themeManager._themeListeners.splice(idx, 1);
+        // Tear the global listeners down once the last subscriber leaves.
+        if (themeManager._themeListeners.length === 0 && themeManager._mediaQuery) {
+            if (themeManager._mediaQuery.removeEventListener) {
+                themeManager._mediaQuery.removeEventListener('change', themeManager._onSystemSchemeChange);
+            } else if (themeManager._mediaQuery.removeListener) {
+                themeManager._mediaQuery.removeListener(themeManager._onSystemSchemeChange);
+            }
+            window.removeEventListener('storage', themeManager._onStorage);
+            themeManager._mediaQuery = null;
+        }
+    },
     copyText: function (text) {
         if (navigator.clipboard && navigator.clipboard.writeText) {
             return navigator.clipboard.writeText(text);

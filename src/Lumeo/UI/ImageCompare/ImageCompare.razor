@@ -61,11 +61,19 @@
         </span>
     }
 
-    @* Transparent range input layered on top — the browser handles drag math. *@
+    @* Transparent range input layered on top — the browser handles drag math.
+       role=slider + aria-value* give screen-reader / voice-control users a
+       spoken position ("Before 60%") and the full 0–100 keyboard travel. *@
     <input type="range" min="0" max="100" step="0.1"
            value="@_position.ToString("F2", System.Globalization.CultureInfo.InvariantCulture)"
            @oninput="OnInput"
+           role="slider"
            aria-label="@L["ImageCompare.Slider"]"
+           aria-orientation="@(Orientation == Lumeo.Orientation.Horizontal ? "horizontal" : "vertical")"
+           aria-valuemin="0"
+           aria-valuemax="100"
+           aria-valuenow="@Math.Round(_position).ToString(System.Globalization.CultureInfo.InvariantCulture)"
+           aria-valuetext="@ValueText"
            class="lumeo-image-compare-slider"
            style="@SliderStyle" />
 </div>
@@ -88,6 +96,18 @@
 
     private string PositionPct => $"{_position.ToString("F2", System.Globalization.CultureInfo.InvariantCulture)}%";
 
+    // Spoken position for assistive tech, e.g. "Before 60%". Uses the rounded
+    // integer so screen readers don't read a long decimal on every drag tick.
+    private string ValueText
+    {
+        get
+        {
+            var pct = Math.Round(_position).ToString(System.Globalization.CultureInfo.InvariantCulture);
+            var label = string.IsNullOrEmpty(BeforeLabel) ? L["ImageCompare.Before"] : BeforeLabel;
+            return L["ImageCompare.ValueText", label, pct];
+        }
+    }
+
     private string ClipPath => Orientation == Lumeo.Orientation.Horizontal
         ? $"inset(0 {(100 - _position).ToString("F2", System.Globalization.CultureInfo.InvariantCulture)}% 0 0)"
         : $"inset(0 0 {(100 - _position).ToString("F2", System.Globalization.CultureInfo.InvariantCulture)}% 0)";
@@ -99,14 +119,17 @@
 
     protected override void OnInitialized()
     {
-        _position = Math.Clamp(InitialPosition, 1, 99);
+        // Full 0–100 travel: a consumer can pin the divider hard left/right to
+        // show one image completely. The old [1,99] clamp left a sliver of the
+        // other image that could never be cleared (#288).
+        _position = Math.Clamp(InitialPosition, 0, 100);
     }
 
     private void OnInput(ChangeEventArgs e)
     {
         if (e.Value is string s && double.TryParse(s, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var v))
         {
-            _position = Math.Clamp(v, 1, 99);
+            _position = Math.Clamp(v, 0, 100);
         }
     }
 }

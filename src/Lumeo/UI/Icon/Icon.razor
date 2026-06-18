@@ -1,7 +1,7 @@
 @namespace Lumeo
 @using Blazicons
 
-<Blazicon Svg="@ResolvedSvg" class="@CssClass" @attributes="AdditionalAttributes" />
+<Blazicon Svg="@ResolvedSvg" class="@CssClass" @attributes="A11yAttributes" />
 
 @code {
     /// <summary>
@@ -20,12 +20,63 @@
     /// <summary>Size preset. Sets Tailwind <c>h-{n} w-{n}</c> on the SVG. Defaults to <see cref="Lumeo.Size.Md"/> (h-4 w-4).</summary>
     [Parameter] public Lumeo.Size Size { get; set; } = Lumeo.Size.Md;
 
+    /// <summary>
+    /// Accessible name for the icon. When set, the icon is exposed to assistive
+    /// technology as <c>role="img"</c> with this string as its <c>aria-label</c>
+    /// (and a <c>&lt;title&gt;</c> for tooltip/hover parity). When left null the
+    /// icon is treated as <b>decorative</b> and hidden from screen readers via
+    /// <c>aria-hidden="true"</c> — the correct default for icons that sit beside
+    /// a visible text label (a button's own text already conveys the meaning).
+    /// A consumer-supplied <c>role</c>/<c>aria-label</c>/<c>aria-hidden</c>/
+    /// <c>aria-labelledby</c> in attributes always wins over these defaults.
+    /// </summary>
+    [Parameter] public string? Title { get; set; }
+
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     private SvgIcon ResolvedSvg => Svg ?? MapName(Name);
 
     private string CssClass => Cx.Merge(SizeClass, Class);
+
+    // Decorative-by-default a11y: an icon with no Title is hidden from screen
+    // readers (aria-hidden), an icon WITH a Title is announced (role=img +
+    // aria-label). Either way a consumer-supplied aria-*/role attribute wins —
+    // we only fill in what they didn't set, so existing call sites that already
+    // pass aria-hidden / aria-label keep their exact behaviour.
+    private IReadOnlyDictionary<string, object>? A11yAttributes
+    {
+        get
+        {
+            var consumerSetsAria =
+                AdditionalAttributes is not null &&
+                (AdditionalAttributes.ContainsKey("role")
+                 || AdditionalAttributes.ContainsKey("aria-label")
+                 || AdditionalAttributes.ContainsKey("aria-labelledby")
+                 || AdditionalAttributes.ContainsKey("aria-hidden")
+                 || AdditionalAttributes.ContainsKey("title"));
+
+            if (consumerSetsAria)
+                return AdditionalAttributes;
+
+            var merged = AdditionalAttributes is null
+                ? new Dictionary<string, object>()
+                : new Dictionary<string, object>(AdditionalAttributes);
+
+            if (!string.IsNullOrWhiteSpace(Title))
+            {
+                merged["role"] = "img";
+                merged["aria-label"] = Title;
+                merged["title"] = Title;
+            }
+            else
+            {
+                merged["aria-hidden"] = "true";
+            }
+
+            return merged;
+        }
+    }
 
     private string SizeClass => Size switch
     {

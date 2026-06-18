@@ -79,4 +79,16 @@ public class ThemeToggleTests : IAsyncLifetime
         var button = cut.Find("button");
         Assert.NotEmpty(button.InnerHtml);
     }
+
+    [Fact]
+    public void Class_Parameter_Is_Merged_Onto_Button()
+    {
+        var cut = _ctx.Render<L.ThemeToggle>(p => p.Add(b => b.Class, "my-toggle"));
+
+        var button = cut.Find("button");
+        var cls = button.GetAttribute("class");
+        Assert.Contains("my-toggle", cls);
+        // Base classes are preserved alongside the custom class.
+        Assert.Contains("inline-flex", cls);
+    }
 }

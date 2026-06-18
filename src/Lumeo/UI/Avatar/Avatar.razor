@@ -1,9 +1,12 @@
 @namespace Lumeo
+@implements IDisposable
 
-<div class="@CssClass" role="@(AriaLabel is null ? null : "img")" aria-label="@AriaLabel" @attributes="AdditionalAttributes">
-    <div class="@InnerClasses">
-        @ChildContent
-    </div>
+<div class="@CssClass" style="@HiddenStyle" role="@(AriaLabel is null ? null : "img")" aria-label="@AriaLabel" @attributes="AdditionalAttributes">
+    <CascadingValue Value="_imageContext" IsFixed="false">
+        <div class="@InnerClasses">
+            @ChildContent
+        </div>
+    </CascadingValue>
     @if (Status != AvatarStatus.None)
     {
         <span class="absolute bottom-0 right-0 block h-2.5 w-2.5 rounded-full ring-2 ring-background @StatusColor"></span>
@@ -11,6 +14,8 @@
 </div>
 
 @code {
+    [CascadingParameter] private AvatarGroup.AvatarGroupContext? GroupContext { get; set; }
+
     [Parameter] public RenderFragment? ChildContent { get; set; }
     /// <summary>Avatar size. Supported values: <see cref="Lumeo.Size.Sm"/>,
     /// <see cref="Lumeo.Size.Md"/> (default), <see cref="Lumeo.Size.Lg"/>,
@@ -26,6 +31,35 @@
     [Parameter] public string? AriaLabel { get; set; }
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    // Image→fallback coordination. AvatarImage reports load success/failure;
+    // AvatarFallback subscribes and only paints itself while the image hasn't
+    // successfully loaded (mirrors Radix's <Avatar.Image>/<Avatar.Fallback>).
+    private readonly AvatarImageContext _imageContext = new();
+
+    // Group capping: an Avatar inside an AvatarGroup with Max set registers for
+    // an ordinal slot. Slots beyond Max are visually hidden so the group can
+    // render a single "+N" overflow chip in their place.
+    private readonly object _groupToken = new();
+    private bool _hiddenByGroup;
+
+    protected override void OnInitialized()
+    {
+        GroupContext?.Register(_groupToken);
+    }
+
+    protected override void OnParametersSet()
+    {
+        // Recompute visibility against the group each render — the group's Max
+        // or member set can change after our initial registration.
+        _hiddenByGroup = GroupContext?.IsHidden(_groupToken) ?? false;
+    }
+
+    public void Dispose() => GroupContext?.Unregister(_groupToken);
+
+    // Hidden group members keep their layout slot collapsed; using display:none
+    // (rather than not rendering) keeps the cascading image context stable.
+    private string? HiddenStyle => _hiddenByGroup ? "display: none;" : null;
 
     // Outer wrapper inherits ShapeClasses too so consumer-supplied borders / rings
     // (e.g. border-2 border-background in an AvatarGroup) follow the avatar's
@@ -62,4 +96,24 @@
 
     public enum AvatarShape { Circle, Square }
     public enum AvatarStatus { None, Online, Offline, Away, Busy }
+
+    /// <summary>
+    /// Shared mutable state for the image→fallback chain. <see cref="AvatarImage"/>
+    /// flips <see cref="ImageLoaded"/> false on <c>onerror</c> (or when its
+    /// <c>Src</c> is blank); <see cref="AvatarFallback"/> renders only while the
+    /// image is NOT loaded. State changes fan out to subscribers via
+    /// <see cref="OnChange"/> so both children re-render together.
+    /// </summary>
+    public sealed class AvatarImageContext
+    {
+        public bool ImageLoaded { get; private set; }
+        public event Action? OnChange;
+
+        public void SetLoaded(bool loaded)
+        {
+            if (ImageLoaded == loaded) return;
+            ImageLoaded = loaded;
+            OnChange?.Invoke();
+        }
+    }
 }

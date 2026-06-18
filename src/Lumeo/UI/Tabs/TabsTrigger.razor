@@ -285,8 +285,23 @@
 
         if (nextValue is not null && Context.TabIds.TryGetValue(nextValue, out var ids))
         {
-            await Context.SetValue.InvokeAsync(nextValue);
+            // Automatic: arrow keys both activate and move focus.
+            // Manual: arrow keys only move focus — the user presses Enter/Space
+            // (handled below, or via the button's native click) to activate.
+            if (Context.Activation == Tabs.TabsActivation.Automatic)
+            {
+                await Context.SetValue.InvokeAsync(nextValue);
+            }
             await Interop.FocusElement(ids.TabId);
+            return;
+        }
+
+        // Manual activation: Enter/Space activates the currently focused tab.
+        // (In Automatic mode the focused tab is already active, so this is a
+        // harmless no-op; the native button click also covers mouse/Space.)
+        if ((e.Key == "Enter" || e.Key == " " || e.Key == "Spacebar") && Context.Activation == Tabs.TabsActivation.Manual)
+        {
+            await Context.SetValue.InvokeAsync(Value);
         }
     }
 

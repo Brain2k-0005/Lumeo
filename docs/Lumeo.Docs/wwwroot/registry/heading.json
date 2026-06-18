@@ -14,6 +14,7 @@
   "cssVars": [
     "--color-foreground"
   ],
+  "gotchas": [],
   "api": {
     "name": "Heading",
     "category": "Typography",
@@ -87,21 +88,22 @@
     "events": [],
     "enums": [],
     "records": [],
+    "gotchas": [],
     "cssVars": [
       "--color-foreground"
     ],
     "examples": [
       {
         "title": "All Levels",
-        "code": "<Heading Level=\"1\">Heading Level 1</Heading>\r\n<Heading Level=\"2\">Heading Level 2</Heading>\r\n<Heading Level=\"3\">Heading Level 3</Heading>\r\n<Heading Level=\"4\">Heading Level 4</Heading>\r\n<Heading Level=\"5\">Heading Level 5</Heading>\r\n<Heading Level=\"6\">Heading Level 6</Heading>"
+        "code": "<Heading Level=\"1\">Heading Level 1</Heading>\n<Heading Level=\"2\">Heading Level 2</Heading>\n<Heading Level=\"3\">Heading Level 3</Heading>\n<Heading Level=\"4\">Heading Level 4</Heading>\n<Heading Level=\"5\">Heading Level 5</Heading>\n<Heading Level=\"6\">Heading Level 6</Heading>"
       },
       {
         "title": "Custom Sizes",
-        "code": "<Heading Level=\"2\" Size=\"sm\">h2 with small text</Heading>\r\n<Heading Level=\"3\" Size=\"3xl\">h3 with 3xl text</Heading>\r\n<Heading Level=\"4\" Size=\"lg\" Weight=\"normal\">h4 with lg text, normal weight</Heading>"
+        "code": "<Heading Level=\"2\" Size=\"sm\">h2 with small text</Heading>\n<Heading Level=\"3\" Size=\"3xl\">h3 with 3xl text</Heading>\n<Heading Level=\"4\" Size=\"lg\" Weight=\"normal\">h4 with lg text, normal weight</Heading>"
       },
       {
         "title": "Tracking",
-        "code": "<Heading Level=\"1\">Default tight tracking</Heading>\r\n<Heading Level=\"1\" Tracking=\"normal\">Normal tracking</Heading>\r\n<Heading Level=\"1\" Tracking=\"wide\">Wide tracking</Heading>"
+        "code": "<Heading Level=\"1\">Default tight tracking</Heading>\n<Heading Level=\"1\" Tracking=\"normal\">Normal tracking</Heading>\n<Heading Level=\"1\" Tracking=\"wide\">Wide tracking</Heading>"
       },
       {
         "title": "Level — interactive",
@@ -124,7 +126,7 @@
   "source": [
     {
       "path": "UI/Heading/Heading.razor",
-      "content": "@namespace Lumeo\r\n\r\n@switch (Level)\r\n{\r\n    case 1:\r\n        <h1 class=\"@CssClass\" @attributes=\"AdditionalAttributes\">@ChildContent</h1>\r\n        break;\r\n    case 2:\r\n        <h2 class=\"@CssClass\" @attributes=\"AdditionalAttributes\">@ChildContent</h2>\r\n        break;\r\n    case 3:\r\n        <h3 class=\"@CssClass\" @attributes=\"AdditionalAttributes\">@ChildContent</h3>\r\n        break;\r\n    case 4:\r\n        <h4 class=\"@CssClass\" @attributes=\"AdditionalAttributes\">@ChildContent</h4>\r\n        break;\r\n    case 5:\r\n        <h5 class=\"@CssClass\" @attributes=\"AdditionalAttributes\">@ChildContent</h5>\r\n        break;\r\n    default:\r\n        <h6 class=\"@CssClass\" @attributes=\"AdditionalAttributes\">@ChildContent</h6>\r\n        break;\r\n}\r\n\r\n@code {\r\n    [Parameter] public int Level { get; set; } = 2;\r\n    [Parameter] public string? Size { get; set; }\r\n    [Parameter] public string? Weight { get; set; }\r\n    [Parameter] public string? Tracking { get; set; }\r\n    [Parameter] public RenderFragment? ChildContent { get; set; }\r\n    [Parameter] public string? Class { get; set; }\r\n    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }\r\n\r\n    private string ResolvedSize => Size ?? Level switch\r\n    {\r\n        1 => \"4xl\",\r\n        2 => \"3xl\",\r\n        3 => \"2xl\",\r\n        4 => \"xl\",\r\n        5 => \"lg\",\r\n        _ => \"base\"\r\n    };\r\n\r\n    private string ResolvedWeight => Weight ?? Level switch\r\n    {\r\n        1 or 2 => \"bold\",\r\n        3 or 4 => \"semibold\",\r\n        _ => \"medium\"\r\n    };\r\n\r\n    private string? ResolvedTracking => Tracking ?? Level switch\r\n    {\r\n        1 or 2 => \"tight\",\r\n        _ => null\r\n    };\r\n\r\n    private string CssClass\r\n    {\r\n        get\r\n        {\r\n            var classes = new List<string>\r\n            {\r\n                $\"text-{ResolvedSize}\",\r\n                $\"font-{ResolvedWeight}\",\r\n                \"text-foreground\"\r\n            };\r\n\r\n            if (!string.IsNullOrEmpty(ResolvedTracking))\r\n                classes.Add($\"tracking-{ResolvedTracking}\");\r\n\r\n            if (!string.IsNullOrEmpty(Class))\r\n                classes.Add(Class);\r\n\r\n            return string.Join(\" \", classes);\r\n        }\r\n    }\r\n}\r\n"
+      "content": "@namespace Lumeo\n\n@* Level is clamped to [1..6] so an accidental Level=0 / Level=42 still\n   renders a real <h*> instead of dropping into the default <h6> tag\n   silently. The clamp drives both the rendered tag AND the visual size\n   below, so the two stay consistent (a Level=0 input doesn't render as\n   an h6 with h1 sizing). *@\n@switch (ClampedLevel)\n{\n    case 1:\n        <h1 class=\"@CssClass\" @attributes=\"AdditionalAttributes\">@ChildContent</h1>\n        break;\n    case 2:\n        <h2 class=\"@CssClass\" @attributes=\"AdditionalAttributes\">@ChildContent</h2>\n        break;\n    case 3:\n        <h3 class=\"@CssClass\" @attributes=\"AdditionalAttributes\">@ChildContent</h3>\n        break;\n    case 4:\n        <h4 class=\"@CssClass\" @attributes=\"AdditionalAttributes\">@ChildContent</h4>\n        break;\n    case 5:\n        <h5 class=\"@CssClass\" @attributes=\"AdditionalAttributes\">@ChildContent</h5>\n        break;\n    default:\n        <h6 class=\"@CssClass\" @attributes=\"AdditionalAttributes\">@ChildContent</h6>\n        break;\n}\n\n@code {\n    [Parameter] public int Level { get; set; } = 2;\n    [Parameter] public string? Size { get; set; }\n    [Parameter] public string? Weight { get; set; }\n    [Parameter] public string? Tracking { get; set; }\n    [Parameter] public RenderFragment? ChildContent { get; set; }\n    [Parameter] public string? Class { get; set; }\n    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }\n\n    private int ClampedLevel => Math.Clamp(Level, 1, 6);\n\n    private string ResolvedSize => Size ?? ClampedLevel switch\n    {\n        1 => \"4xl\",\n        2 => \"3xl\",\n        3 => \"2xl\",\n        4 => \"xl\",\n        5 => \"lg\",\n        _ => \"base\"\n    };\n\n    private string ResolvedWeight => Weight ?? ClampedLevel switch\n    {\n        1 or 2 => \"bold\",\n        3 or 4 => \"semibold\",\n        _ => \"medium\"\n    };\n\n    private string? ResolvedTracking => Tracking ?? ClampedLevel switch\n    {\n        1 or 2 => \"tight\",\n        _ => null\n    };\n\n    private string CssClass\n    {\n        get\n        {\n            var classes = new List<string>\n            {\n                $\"text-{ResolvedSize}\",\n                $\"font-{ResolvedWeight}\",\n                \"text-foreground\"\n            };\n\n            if (!string.IsNullOrEmpty(ResolvedTracking))\n                classes.Add($\"tracking-{ResolvedTracking}\");\n\n            if (!string.IsNullOrEmpty(Class))\n                classes.Add(Class);\n\n            return string.Join(\" \", classes);\n        }\n    }\n}\n"
     }
   ],
   "slots": [
@@ -140,9 +142,10 @@
   "relatedComponents": [],
   "keyboardInteractions": [],
   "tests": [
+    "tests/Lumeo.Tests/Components/Command/CommandKeyboardNavTests.cs",
     "tests/Lumeo.Tests/Components/Command/CommandTests.cs",
     "tests/Lumeo.Tests/Components/Heading/HeadingTests.cs",
     "tests/Lumeo.Tests/Editor/WordImporterTests.cs"
   ],
-  "mdSummary": "# Heading\r\n\r\nSemantic h1-h6 heading with Lumeo typographic scale.\r\n\r\n**Package:** `Lumeo` · **Category:** Typography\r\n**Docs:** https://lumeo.nativ.sh/components/heading\r\n\r\n## Parameters\r\n| Owner | Name | Type | Default | Description |\r\n|---|---|---|---|---|\r\n| Heading | Level | `int` | `2` |  |\r\n| Heading | Size | `string?` | `` |  |\r\n| Heading | Weight | `string?` | `` |  |\r\n| Heading | Tracking | `string?` | `` |  |\r\n| Heading | ChildContent | `RenderFragment?` | `` |  |\r\n| Heading | Class | `string?` | `` |  |\r\n| Heading | AdditionalAttributes | `Dictionary<string, object>?` | `` |  |\r\n\r\n## Slots\r\n- `ChildContent` (Heading) — RenderFragment slot\r\n\r\n## Events\r\n- (none)\r\n\r\n## Sub-components\r\n- (none)\r\n\r\n## Cascading values it expects\r\n- (none)\r\n\r\n## Services it injects\r\n- (none)\r\n\r\n## Keyboard\r\n—\r\n\r\n## Example\r\n```razor\r\n<Heading />\r\n```\r\n\r\n## CSS variables\r\n`--color-foreground`\r\n\r\n## Files\r\n- `UI/Heading/Heading.razor`\r\n"
+  "mdSummary": "# Heading\n\nSemantic h1-h6 heading with Lumeo typographic scale.\n\n**Package:** `Lumeo` · **Category:** Typography\n**Docs:** https://lumeo.nativ.sh/components/heading\n\n## Parameters\n| Owner | Name | Type | Default | Description |\n|---|---|---|---|---|\n| Heading | Level | `int` | `2` |  |\n| Heading | Size | `string?` | `` |  |\n| Heading | Weight | `string?` | `` |  |\n| Heading | Tracking | `string?` | `` |  |\n| Heading | ChildContent | `RenderFragment?` | `` |  |\n| Heading | Class | `string?` | `` |  |\n| Heading | AdditionalAttributes | `Dictionary<string, object>?` | `` |  |\n\n## Slots\n- `ChildContent` (Heading) — RenderFragment slot\n\n## Events\n- (none)\n\n## Sub-components\n- (none)\n\n## Cascading values it expects\n- (none)\n\n## Services it injects\n- (none)\n\n## Keyboard\n—\n\n## Example\n```razor\n<Heading />\n```\n\n## CSS variables\n`--color-foreground`\n\n## Files\n- `UI/Heading/Heading.razor`\n"
 }

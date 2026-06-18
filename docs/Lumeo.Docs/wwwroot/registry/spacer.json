@@ -14,6 +14,7 @@
   "cssVars": [
     "--color-foreground"
   ],
+  "gotchas": [],
   "api": {
     "name": "Spacer",
     "category": "Layout",
@@ -31,7 +32,15 @@
         "name": "Size",
         "type": "string?",
         "default": null,
-        "description": null,
+        "description": "Tailwind size token (e.g. \"4\", \"px\"). When set, renders a fixed-size square spacer. When unset, renders a flex-grow spacer that fills available space along the parent flex axis.",
+        "isCascading": false,
+        "captureUnmatched": false
+      },
+      {
+        "name": "Orientation",
+        "type": "Lumeo.Orientation",
+        "default": "Lumeo.Orientation.Horizontal",
+        "description": "Hints which axis the parent flex container uses so the grow-spacer collapses to zero on the cross-axis instead of expanding it. Default Horizontal keeps the historical behaviour (flex-1 inside a row). Switch to Vertical when the parent is a column stack — without it, the spacer's flex-1 took width from the column instead of pushing siblings to opposite ends.",
         "isCascading": false,
         "captureUnmatched": false
       },
@@ -55,17 +64,18 @@
     "events": [],
     "enums": [],
     "records": [],
+    "gotchas": [],
     "cssVars": [
       "--color-foreground"
     ],
     "examples": [
       {
         "title": "Flex Spacer",
-        "code": "<Flex Align=\"center\">\r\n    <Text Weight=\"semibold\">Brand</Text>\r\n    <Spacer />\r\n    <Button Variant=\"Button.ButtonVariant.Outline\" Size=\"Button.ButtonSize.Sm\">Login</Button>\r\n</Flex>"
+        "code": "<Flex Align=\"center\">\n    <Text Weight=\"semibold\">Brand</Text>\n    <Spacer />\n    <Button Variant=\"Button.ButtonVariant.Outline\" Size=\"Button.ButtonSize.Sm\">Login</Button>\n</Flex>"
       },
       {
         "title": "Fixed Size",
-        "code": "<Stack Direction=\"Lumeo.Orientation.Horizontal\" Align=\"center\">\r\n    <Avatar />\r\n    <Spacer Size=\"4\" />\r\n    <Stack Gap=\"0\">\r\n        <Text Weight=\"medium\" Size=\"sm\">Jane Doe</Text>\r\n        <Text Color=\"muted\" Size=\"xs\">jane@example.com</Text>\r\n    </Stack>\r\n</Stack>"
+        "code": "<Stack Direction=\"Lumeo.Orientation.Horizontal\" Align=\"center\">\n    <Avatar />\n    <Spacer Size=\"4\" />\n    <Stack Gap=\"0\">\n        <Text Weight=\"medium\" Size=\"sm\">Jane Doe</Text>\n        <Text Color=\"muted\" Size=\"xs\">jane@example.com</Text>\n    </Stack>\n</Stack>"
       }
     ],
     "subComponents": {},
@@ -84,7 +94,7 @@
   "source": [
     {
       "path": "UI/Spacer/Spacer.razor",
-      "content": "@namespace Lumeo\r\n\r\n@if (string.IsNullOrEmpty(Size))\r\n{\r\n    <div class=\"@($\"flex-1 {Class}\".Trim())\" @attributes=\"AdditionalAttributes\"></div>\r\n}\r\nelse\r\n{\r\n    <div class=\"@($\"w-{Size} h-{Size} {Class}\".Trim())\" @attributes=\"AdditionalAttributes\"></div>\r\n}\r\n\r\n@code {\r\n    [Parameter] public string? Size { get; set; }\r\n    [Parameter] public string? Class { get; set; }\r\n    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }\r\n}\r\n"
+      "content": "@namespace Lumeo\n\n@if (string.IsNullOrEmpty(Size))\n{\n    <div class=\"@(Cx.Merge(GrowClass, Class))\" @attributes=\"AdditionalAttributes\"></div>\n}\nelse\n{\n    <div class=\"@(Cx.Merge($\"w-{Size}\", $\"h-{Size}\", Class))\" @attributes=\"AdditionalAttributes\"></div>\n}\n\n@code {\n    /// <summary>Tailwind size token (e.g. <c>\"4\"</c>, <c>\"px\"</c>). When set,\n    /// renders a fixed-size square spacer. When unset, renders a flex-grow\n    /// spacer that fills available space along the parent flex axis.</summary>\n    [Parameter] public string? Size { get; set; }\n\n    /// <summary>Hints which axis the parent flex container uses so the\n    /// grow-spacer collapses to zero on the cross-axis instead of\n    /// expanding it. Default <see cref=\"Orientation.Horizontal\"/> keeps\n    /// the historical behaviour (flex-1 inside a row). Switch to\n    /// <see cref=\"Orientation.Vertical\"/> when the parent is a column\n    /// stack — without it, the spacer's <c>flex-1</c> took width from\n    /// the column instead of pushing siblings to opposite ends.</summary>\n    [Parameter] public Lumeo.Orientation Orientation { get; set; } = Lumeo.Orientation.Horizontal;\n\n    [Parameter] public string? Class { get; set; }\n    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }\n\n    private string GrowClass => Orientation == Lumeo.Orientation.Vertical ? \"flex-1 w-0\" : \"flex-1 h-0\";\n}\n"
     }
   ],
   "slots": [],
@@ -95,5 +105,5 @@
   "tests": [
     "tests/Lumeo.Tests/Components/Spacer/SpacerTests.cs"
   ],
-  "mdSummary": "# Spacer\r\n\r\nFlex-grow spacer that pushes siblings apart.\r\n\r\n**Package:** `Lumeo` · **Category:** Layout\r\n**Docs:** https://lumeo.nativ.sh/components/spacer\r\n\r\n## Parameters\r\n| Owner | Name | Type | Default | Description |\r\n|---|---|---|---|---|\r\n| Spacer | Size | `string?` | `` |  |\r\n| Spacer | Class | `string?` | `` |  |\r\n| Spacer | AdditionalAttributes | `Dictionary<string, object>?` | `` |  |\r\n\r\n## Slots\r\n- (none)\r\n\r\n## Events\r\n- (none)\r\n\r\n## Sub-components\r\n- (none)\r\n\r\n## Cascading values it expects\r\n- (none)\r\n\r\n## Services it injects\r\n- (none)\r\n\r\n## Keyboard\r\n—\r\n\r\n## Example\r\n```razor\r\n<Spacer />\r\n```\r\n\r\n## CSS variables\r\n`--color-foreground`\r\n\r\n## Files\r\n- `UI/Spacer/Spacer.razor`\r\n"
+  "mdSummary": "# Spacer\n\nFlex-grow spacer that pushes siblings apart.\n\n**Package:** `Lumeo` · **Category:** Layout\n**Docs:** https://lumeo.nativ.sh/components/spacer\n\n## Parameters\n| Owner | Name | Type | Default | Description |\n|---|---|---|---|---|\n| Spacer | Size | `string?` | `` | Tailwind size token (e.g. \"4\", \"px\"). When set, renders a fixed-size square spacer. When unset, renders a flex-grow spacer that fills available space along the parent flex axis. |\n| Spacer | Orientation | `Lumeo.Orientation` | `Lumeo.Orientation.Horizontal` | Hints which axis the parent flex container uses so the grow-spacer collapses to zero on the cross-axis instead of expanding it. Default Horizontal keeps the historical behaviour (flex-1 inside a row). Switch to Vertical when the parent is a column stack — without it, the spacer's flex-1 took width from the column instead of pushing siblings to opposite ends. |\n| Spacer | Class | `string?` | `` |  |\n| Spacer | AdditionalAttributes | `Dictionary<string, object>?` | `` |  |\n\n## Slots\n- (none)\n\n## Events\n- (none)\n\n## Sub-components\n- (none)\n\n## Cascading values it expects\n- (none)\n\n## Services it injects\n- (none)\n\n## Keyboard\n—\n\n## Example\n```razor\n<Spacer />\n```\n\n## CSS variables\n`--color-foreground`\n\n## Files\n- `UI/Spacer/Spacer.razor`\n"
 }

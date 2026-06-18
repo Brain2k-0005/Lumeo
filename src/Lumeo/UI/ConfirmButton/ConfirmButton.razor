@@ -68,25 +68,41 @@
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
+    // Re-entrancy guard: a fast double-click (or Enter-then-click) would
+    // otherwise open a second confirm dialog on top of the first AND fire
+    // OnConfirm twice. We gate on the in-flight flag so only one dialog can be
+    // open per trigger at a time; it's reset in a finally so a throwing
+    // OnConfirm handler can't wedge the button permanently shut.
+    private bool _inFlight;
+
     private async Task HandleClick()
     {
-        var opts = new Lumeo.Services.AlertDialogOptions
+        if (_inFlight) return;
+        _inFlight = true;
+        try
         {
-            Title = Title ?? L["ConfirmButton.Title"],
-            Description = Description,
-            ConfirmText = ConfirmText ?? L["ConfirmButton.Confirm"],
-            CancelText = CancelText ?? L["ConfirmButton.Cancel"],
-            IsDestructive = IsDestructive,
-        };
+            var opts = new Lumeo.Services.AlertDialogOptions
+            {
+                Title = Title ?? L["ConfirmButton.Title"],
+                Description = Description,
+                ConfirmText = ConfirmText ?? L["ConfirmButton.Confirm"],
+                CancelText = CancelText ?? L["ConfirmButton.Cancel"],
+                IsDestructive = IsDestructive,
+            };
 
-        var result = await Overlay.ShowAlertDialogAsync(opts);
-        if (result.Cancelled)
-        {
-            if (OnCancel.HasDelegate) await OnCancel.InvokeAsync();
+            var result = await Overlay.ShowAlertDialogAsync(opts);
+            if (result.Cancelled)
+            {
+                if (OnCancel.HasDelegate) await OnCancel.InvokeAsync();
+            }
+            else
+            {
+                if (OnConfirm.HasDelegate) await OnConfirm.InvokeAsync();
+            }
         }
-        else
+        finally
         {
-            if (OnConfirm.HasDelegate) await OnConfirm.InvokeAsync();
+            _inFlight = false;
         }
     }
 }

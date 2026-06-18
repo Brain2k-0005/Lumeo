@@ -2,13 +2,25 @@
 
 <div class="@CssClass" @attributes="AdditionalAttributes">
     @ChildContent
-    <div aria-hidden="true" class="pointer-events-none absolute inset-0 z-10"
-         style="background-image: url('data:image/svg+xml,@(EncodedSvg)'); background-repeat: repeat;">
+    <div aria-hidden="true" class="pointer-events-none absolute inset-0 z-10" style="@OverlayStyle">
     </div>
 </div>
 
 @code {
     [Parameter] public string? Text { get; set; }
+
+    /// <summary>Optional image URL to tile as the watermark instead of <see cref="Text"/>.
+    /// When set, the image is repeated edge-to-edge; <see cref="ImageWidth"/>/<see cref="ImageHeight"/>
+    /// control each tile's size and <see cref="Opacity"/> dims it. Takes precedence over
+    /// <see cref="Text"/> when both are provided.</summary>
+    [Parameter] public string? Image { get; set; }
+
+    /// <summary>Tile width in px for the <see cref="Image"/> watermark. Default 120.</summary>
+    [Parameter] public int ImageWidth { get; set; } = 120;
+
+    /// <summary>Tile height in px for the <see cref="Image"/> watermark. Default 64.</summary>
+    [Parameter] public int ImageHeight { get; set; } = 64;
+
     [Parameter] public RenderFragment? ChildContent { get; set; }
     [Parameter] public int Rotation { get; set; } = -22;
     [Parameter] public int Gap { get; set; } = 100;
@@ -18,6 +30,30 @@
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     private string CssClass => Cx.Merge("relative", Class);
+
+    // Image mode wins when an Image URL is supplied; otherwise fall back to the
+    // generated SVG text watermark (empty when no Text either).
+    private string OverlayStyle => !string.IsNullOrEmpty(Image)
+        ? ImageOverlayStyle
+        : FormattableString.Invariant($"background-image: url('data:image/svg+xml,{EncodedSvg}'); background-repeat: repeat;");
+
+    private string ImageOverlayStyle
+    {
+        get
+        {
+            // Tile the image at its own ImageWidth × ImageHeight, repeated edge to
+            // edge, with the whole layer dimmed by Opacity. (Gap is text-mode tile
+            // spacing — a non-distorting CSS image gap isn't expressible in a single
+            // background, so it doesn't apply here.) Escape any " in the URL.
+            var safeUrl = Image!.Replace("\"", "%22");
+            var w = Math.Max(ImageWidth, 1);
+            var h = Math.Max(ImageHeight, 1);
+            // FormattableString.Invariant: Opacity is a double — comma-decimal
+            // locales would emit an invalid value otherwise (mirrors the SVG path).
+            return FormattableString.Invariant(
+                $"background-image: url(\"{safeUrl}\"); background-repeat: repeat; background-size: {w}px {h}px; opacity: {Opacity};");
+        }
+    }
 
     private string EncodedSvg
     {

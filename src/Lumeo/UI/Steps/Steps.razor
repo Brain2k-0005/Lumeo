@@ -2,7 +2,6 @@
 
 @{
     var context = new StepsContext(CurrentStep, Clickable, EventCallback.Factory.Create<int>(this, OnStepClick), Orientation, Animated, _direction, _replayKey, this);
-    _index = 0;
 }
 
 <div class="@CssClass" role="list" @attributes="AdditionalAttributes">
@@ -28,7 +27,14 @@
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
-    private int _index;
+    // Identity-keyed item registry (#244). Each StepsItem registers itself once
+    // in OnInitialized and reads its index back from this ordered list, so the
+    // index stays stable across independent child re-renders. The previous
+    // model reset a counter in the parent's render block and incremented it
+    // from each item's OnParametersSet — an item re-rendering on its own (e.g.
+    // a changed Status) without a preceding parent reset drifted every
+    // subsequent item's number.
+    private readonly List<StepsItem> _items = new();
 
     // Direction tracking for opt-in Animated mode. `_direction` drives which
     // keyframe the connector plays (forward draw-in vs. backward unwind).
@@ -39,7 +45,19 @@
     private int _replayKey;
     private bool _initialized;
 
-    internal int GetNextIndex() => _index++;
+    internal void RegisterItem(StepsItem item)
+    {
+        if (!_items.Contains(item))
+            _items.Add(item);
+    }
+
+    internal void UnregisterItem(StepsItem item) => _items.Remove(item);
+
+    internal int GetItemIndex(StepsItem item)
+    {
+        var idx = _items.IndexOf(item);
+        return idx < 0 ? 0 : idx;
+    }
 
     protected override void OnParametersSet()
     {

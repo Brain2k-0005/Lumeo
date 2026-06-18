@@ -20,12 +20,14 @@
               placeholder="@Placeholder"
               disabled="@Disabled"
               name="@(Name ?? FormField?.Name)"
+              role="combobox"
               aria-required="@(Required ? "true" : "false")"
               aria-invalid="@(EffectiveInvalid ? "true" : "false")"
+              aria-autocomplete="list"
               aria-haspopup="listbox"
-              aria-expanded="@(_showDropdown ? "true" : "false")"
+              aria-expanded="@((_showDropdown && FilteredOptions.Any()) ? "true" : "false")"
               aria-controls="@_dropdownId"
-              aria-activedescendant="@(_showDropdown ? OptionElementId(_activeIndex) : null)"
+              aria-activedescendant="@((_showDropdown && FilteredOptions.Any()) ? OptionElementId(_activeIndex) : null)"
               @ref="_textareaRef"
               @oninput="HandleInput"
               @onkeydown="HandleKeyDown"
@@ -35,7 +37,7 @@
     @if (_showDropdown && FilteredOptions.Any())
     {
         <div id="@_dropdownId" class="@DropdownCssClass" role="listbox"
-             style="position: fixed; left: @(_caretLeft)px; top: @(_caretTop + 20)px;">
+             style="position: absolute; left: @(_caretLeft.ToString(System.Globalization.CultureInfo.InvariantCulture))px; top: @(_caretTop.ToString(System.Globalization.CultureInfo.InvariantCulture))px;">
             @foreach (var (option, index) in FilteredOptions.Select((o, i) => (o, i)))
             {
                 var isActive = index == _activeIndex;
@@ -159,8 +161,13 @@
                 _triggerStartIndex = triggerIndex;
                 _showDropdown = true;
                 _activeIndex = 0;
-                _caretTop = caretInfo.Top;
-                _caretLeft = caretInfo.Left;
+                // Anchor the dropdown one line below the caret, positioned
+                // absolutely against the component's relative wrapper so it
+                // tracks the textarea on scroll (#205). OffsetTop/Left are
+                // wrapper-relative; falling back to the legacy viewport values
+                // keeps the test double (which only fills Top/Left) sane.
+                _caretTop = caretInfo.OffsetTop + caretInfo.LineHeight;
+                _caretLeft = caretInfo.OffsetLeft;
 
                 if (OnSearch.HasDelegate)
                 {

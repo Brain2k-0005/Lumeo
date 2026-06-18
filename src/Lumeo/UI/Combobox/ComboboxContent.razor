@@ -4,7 +4,7 @@
 
 @if (Context.IsOpen)
 {
-    <div id="@Context.ContentId" role="listbox" class="@CssClass"
+    <div id="@Context.ContentId" role="listbox" aria-multiselectable="@(Context.Multiple ? "true" : null)" class="@CssClass"
          @onkeydown="HandleKeyDown" tabindex="-1" @attributes="AdditionalAttributes">
         @if (Context.IsSearchLoading)
         {
@@ -19,12 +19,19 @@
             var filteredItems = FilteredItems;
             @if (Context.Virtualize)
             {
-                <Virtualize Items="@filteredItems" Context="item" ItemSize="@Context.ItemSize">
-                    @RenderBoundItem(item)
+                @* Pair each item with its positional index up-front. IndexOf would return
+                   the FIRST equal item, so duplicate values collapsed to one id and desynced
+                   from Combobox.BuildBoundNavItems' positional indexing. *@
+                var indexedItems = filteredItems.Select((it, idx) => (Item: it, Index: idx)).ToList();
+                <Virtualize Items="@indexedItems" Context="entry" ItemSize="@Context.ItemSize">
+                    @RenderBoundItem(entry.Item, entry.Index)
                 </Virtualize>
             }
             else if (Context.ItemGroup is not null)
             {
+                @* Walk groups in order with a running index so each row's id matches the
+                   flattened (GroupBy→SelectMany) order the parent uses for keyboard nav. *@
+                var boundIndex = 0;
                 @foreach (var group in filteredItems.GroupBy(i => Context.ItemGroup(i) ?? ""))
                 {
                     <div role="group">
@@ -34,16 +41,16 @@
                         }
                         @foreach (var item in group)
                         {
-                            @RenderBoundItem(item)
+                            @RenderBoundItem(item, boundIndex++)
                         }
                     </div>
                 }
             }
             else
             {
-                @foreach (var item in filteredItems)
+                @for (var i = 0; i < filteredItems.Count; i++)
                 {
-                    @RenderBoundItem(item)
+                    @RenderBoundItem(filteredItems[i], i)
                 }
             }
 
@@ -144,14 +151,18 @@
         }).ToList();
     }
 
-    private RenderFragment RenderBoundItem(object item) => builder =>
+    private RenderFragment RenderBoundItem(object item, int index) => builder =>
     {
         var value = Context.ItemValue(item);
         var isSelected = Context.Multiple
             ? Context.Values?.Contains(value) == true
             : Context.Value == value;
         var isDisabled = Context.ItemDisabled?.Invoke(item) ?? false;
-        var itemId = $"combobox-item-bound-{value.GetHashCode():X}";
+        // Per-instance ContentId prefix + position index (never value.GetHashCode()):
+        // hash-derived ids collided across equal values AND across two open Comboboxes.
+        // The index is the item's position in the filtered (+ grouped) sequence — the same
+        // basis Combobox.BuildBoundNavItems uses, keeping the rendered id and nav id in sync.
+        var itemId = $"{Context.ContentId}-bound-{index}";
         var isFocused = Context.FocusedItemId == itemId;
 
         builder.OpenElement(0, "button");
@@ -159,28 +170,33 @@
         builder.AddAttribute(2, "id", itemId);
         builder.AddAttribute(3, "role", "option");
         builder.AddAttribute(4, "aria-selected", isSelected.ToString().ToLower());
+        // Disabled bound rows mirror Select: announce aria-disabled and swap the interactive
+        // styling for the muted/not-allowed treatment (BuildBoundNavItems already drops them
+        // from keyboard nav, and onclick is suppressed below).
+        builder.AddAttribute(5, "aria-disabled", isDisabled.ToString().ToLower());
         var cssClass = Cx.Join(
-            "relative flex w-full cursor-pointer select-none items-center gap-2 rounded-sm py-1.5 pl-2 pr-8 text-sm outline-none hover:bg-accent hover:text-accent-foreground",
-            Cx.When(isFocused, "bg-accent text-accent-foreground"));
-        builder.AddAttribute(5, "class", cssClass);
+            "relative flex w-full select-none items-center gap-2 rounded-sm py-1.5 pl-2 pr-8 text-sm outline-none",
+            isDisabled ? "opacity-50 cursor-not-allowed pointer-events-none" : "cursor-pointer hover:bg-accent hover:text-accent-foreground",
+            Cx.When(isFocused && !isDisabled, "bg-accent text-accent-foreground"));
+        builder.AddAttribute(6, "class", cssClass);
         if (!isDisabled)
         {
-            builder.AddAttribute(6, "onclick", EventCallback.Factory.Create(this, () => Context.OnSelect.InvokeAsync(value)));
+            builder.AddAttribute(7, "onclick", EventCallback.Factory.Create(this, () => Context.OnSelect.InvokeAsync(value)));
         }
-        builder.OpenElement(7, "span");
-        builder.AddAttribute(8, "class", "flex h-3.5 w-3.5 items-center justify-center");
+        builder.OpenElement(8, "span");
+        builder.AddAttribute(9, "class", "flex h-3.5 w-3.5 items-center justify-center");
         if (isSelected)
         {
-            builder.OpenComponent<Blazicons.Blazicon>(9);
-            builder.AddAttribute(10, "Svg", Blazicons.Lucide.Check);
-            builder.AddAttribute(11, "class", "h-3.5 w-3.5");
+            builder.OpenComponent<Blazicons.Blazicon>(10);
+            builder.AddAttribute(11, "Svg", Blazicons.Lucide.Check);
+            builder.AddAttribute(12, "class", "h-3.5 w-3.5");
             builder.CloseComponent();
         }
         builder.CloseElement(); // span
 
         if (Context.ItemTemplate is not null)
         {
-            builder.AddContent(12, Context.ItemTemplate(item));
+            builder.AddContent(13, Context.ItemTemplate(item));
         }
         else
         {
@@ -190,9 +206,9 @@
             var icon = Context.ItemIcon?.Invoke(item);
             if (icon is not null)
             {
-                builder.OpenElement(12, "span");
-                builder.AddAttribute(13, "class", "flex h-4 w-4 shrink-0 items-center justify-center text-muted-foreground");
-                builder.AddContent(14, icon);
+                builder.OpenElement(13, "span");
+                builder.AddAttribute(14, "class", "flex h-4 w-4 shrink-0 items-center justify-center text-muted-foreground");
+                builder.AddContent(15, icon);
                 builder.CloseElement();
             }
 
@@ -200,21 +216,21 @@
             var description = Context.ItemDescription?.Invoke(item);
             if (!string.IsNullOrEmpty(description))
             {
-                builder.OpenElement(15, "span");
-                builder.AddAttribute(16, "class", "flex min-w-0 flex-col");
-                builder.OpenElement(17, "span");
-                builder.AddAttribute(18, "class", "truncate");
-                builder.AddContent(19, label);
+                builder.OpenElement(16, "span");
+                builder.AddAttribute(17, "class", "flex min-w-0 flex-col");
+                builder.OpenElement(18, "span");
+                builder.AddAttribute(19, "class", "truncate");
+                builder.AddContent(20, label);
                 builder.CloseElement();
-                builder.OpenElement(20, "span");
-                builder.AddAttribute(21, "class", "truncate text-xs text-muted-foreground");
-                builder.AddContent(22, description);
+                builder.OpenElement(21, "span");
+                builder.AddAttribute(22, "class", "truncate text-xs text-muted-foreground");
+                builder.AddContent(23, description);
                 builder.CloseElement();
                 builder.CloseElement();
             }
             else
             {
-                builder.AddContent(23, label);
+                builder.AddContent(24, label);
             }
         }
         builder.CloseElement(); // button

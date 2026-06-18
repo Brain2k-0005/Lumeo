@@ -15,7 +15,11 @@ public sealed class OverlayService : IOverlayService
     /// the next overlay's backdrop.</summary>
     public const int Step = 10;
 
-    private int _openCount;
+    // Active overlay id → assigned backdrop tier. Replaces the old monotonic
+    // counter, which leaked: closing an overlay just decremented the count, so a
+    // newly opened overlay could be handed a tier a still-open overlay already
+    // owned (out-of-order close → z-index collision / stacking bug, #228).
+    private readonly Dictionary<string, int> _activeTiers = new();
 
     public event Action<OverlayInstance>? OnShow;
     public event Action<string, object?, bool>? OnClose;
@@ -63,7 +67,7 @@ public sealed class OverlayService : IOverlayService
             Type = OverlayType.AlertDialog,
             Title = alertOptions.Title,
             AlertOptions = alertOptions,
-            ZIndex = AllocateZIndex(),
+            ZIndex = AllocateZIndex(id),
             Tcs = tcs
         };
         OnShow?.Invoke(instance);
@@ -72,29 +76,32 @@ public sealed class OverlayService : IOverlayService
 
     public void Close(string overlayId, object? result = null)
     {
-        ReleaseZIndex();
+        ReleaseZIndex(overlayId);
         OnClose?.Invoke(overlayId, result, false);
     }
 
     public void Cancel(string overlayId)
     {
-        ReleaseZIndex();
+        ReleaseZIndex(overlayId);
         OnClose?.Invoke(overlayId, null, true);
     }
 
-    private int AllocateZIndex()
+    private int AllocateZIndex(string overlayId)
     {
-        // Monotonic counter — each new overlay sits Step tiers above the
-        // previous one. We release on Close/Cancel so a long-running app
-        // doesn't drift the value to infinity, but stacking remains
-        // strictly increasing for the lifetime of any single open chain.
-        _openCount++;
-        return BaseZIndex + _openCount * Step;
+        // A newly opened overlay must stack ABOVE every currently-open overlay,
+        // so allocate one tier above the current maximum (or the base tier when
+        // none are open). Tracking per-id (not a bare counter) makes the release
+        // exact: closing one overlay frees only its tier and, once they're all
+        // closed, the max resets to the base — no unbounded drift, no collision
+        // when overlays close out of order (#228).
+        var tier = (_activeTiers.Count == 0 ? BaseZIndex : _activeTiers.Values.Max()) + Step;
+        _activeTiers[overlayId] = tier;
+        return tier;
     }
 
-    private void ReleaseZIndex()
+    private void ReleaseZIndex(string overlayId)
     {
-        if (_openCount > 0) _openCount--;
+        _activeTiers.Remove(overlayId);
     }
 
     private Task<OverlayResult> ShowAsync(
@@ -114,7 +121,7 @@ public sealed class OverlayService : IOverlayService
             Title = title,
             Parameters = parameters,
             Options = options ?? new OverlayOptions(),
-            ZIndex = AllocateZIndex(),
+            ZIndex = AllocateZIndex(id),
             Tcs = tcs
         };
         OnShow?.Invoke(instance);

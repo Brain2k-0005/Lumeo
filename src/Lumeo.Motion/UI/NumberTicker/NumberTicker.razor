@@ -21,8 +21,13 @@
     [Parameter] public int Decimals { get; set; } = 0;
     [Parameter] public string? Prefix { get; set; }
     [Parameter] public string? Suffix { get; set; }
-    /// <summary>Thousands group separator (default ","). Set to empty string to suppress.</summary>
-    [Parameter] public string ThousandsSeparator { get; set; } = ",";
+    /// <summary>
+    /// Thousands group separator. When null (the default) the separator is taken
+    /// from <see cref="System.Globalization.CultureInfo.CurrentCulture"/> so the
+    /// count-up matches the user's locale (e.g. <c>1.234</c> in de-DE). Set to an
+    /// explicit string to override, or to empty string to suppress grouping.
+    /// </summary>
+    [Parameter] public string? ThousandsSeparator { get; set; }
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
@@ -32,7 +37,30 @@
 
     private string CssClass => string.Join(" ", new[] { "tabular-nums inline-flex items-baseline", Class }.Where(s => !string.IsNullOrWhiteSpace(s)));
 
-    private string InitialNumberText => StartValue.ToString("N" + Decimals);
+    // Locale-aware grouping/decimal separators. ThousandsSeparator overrides the
+    // group separator when supplied; the decimal separator always follows the
+    // current culture so the count-up (driven in JS) and the initial/final C#
+    // render agree exactly.
+    private System.Globalization.NumberFormatInfo NumberFormat => System.Globalization.CultureInfo.CurrentCulture.NumberFormat;
+    private string GroupSeparator => ThousandsSeparator ?? NumberFormat.NumberGroupSeparator;
+    private string DecimalSeparator => NumberFormat.NumberDecimalSeparator;
+
+    private string InitialNumberText => FormatValue(StartValue);
+
+    // Mirrors the JS formatter (motion.js formatNumber) so the pre-animation
+    // value and the animated values share identical grouping/decimal handling.
+    private string FormatValue(double value)
+    {
+        var nfi = (System.Globalization.NumberFormatInfo)NumberFormat.Clone();
+        nfi.NumberDecimalSeparator = DecimalSeparator;
+        nfi.NumberGroupSeparator = GroupSeparator;
+        // Empty group separator → suppress grouping entirely.
+        if (GroupSeparator.Length == 0)
+        {
+            nfi.NumberGroupSizes = new[] { 0 };
+        }
+        return value.ToString("N" + Decimals, nfi);
+    }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -54,7 +82,7 @@
     {
         try
         {
-            await Interop.MotionTickNumber(_elementId, from, to, DurationMs, Decimals, ThousandsSeparator);
+            await Interop.MotionTickNumber(_elementId, from, to, DurationMs, Decimals, GroupSeparator, DecimalSeparator);
         }
         catch (JSDisconnectedException) { }
     }

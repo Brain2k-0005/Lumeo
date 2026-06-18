@@ -4,36 +4,70 @@
 @implements IAsyncDisposable
 
 <div class="@RootClass" @attributes="AdditionalAttributes">
+    @if (Attachments is not null)
+    {
+        <div class="mb-1.5 flex flex-wrap items-center gap-2">
+            @Attachments
+        </div>
+    }
+
     <textarea id="@_textareaId"
               class="w-full resize-none bg-transparent px-2 py-1.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
               style="@TextareaStyle"
               placeholder="@Placeholder"
               rows="1"
               disabled="@IsLoading"
+              maxlength="@MaxLengthAttr"
               value="@Value"
               @oninput="HandleInput"
               @onkeydown="HandleKeyDown"></textarea>
 
     <div class="mt-1 flex items-center justify-between gap-2">
         <div class="flex items-center gap-1 text-muted-foreground">
+            @if (ShowAttachButton)
+            {
+                <button type="button"
+                        class="@AttachButtonClass"
+                        disabled="@IsLoading"
+                        aria-label="@L["PromptInput.Attach"]"
+                        @onclick="HandleAttachClick">
+                    <Blazicon Svg="Lucide.Paperclip" class="h-4 w-4" />
+                </button>
+            }
             @LeadingContent
         </div>
         <div class="flex items-center gap-2 text-xs text-muted-foreground">
+            @if (ShowCharacterCounter)
+            {
+                <span class="@CounterClass" aria-live="polite">@CounterText</span>
+            }
             @TrailingContent
-            <button type="button"
-                    class="@SendButtonClass"
-                    disabled="@IsSendDisabled"
-                    aria-label="@L["PromptInput.Send"]"
-                    @onclick="HandleSendClick">
-                @if (IsLoading)
-                {
-                    <Spinner Size="Lumeo.Size.Sm" Class="text-primary-foreground" />
-                }
-                else
-                {
-                    <Icon Name="ArrowUp" Size="Lumeo.Size.Sm" />
-                }
-            </button>
+            @if (IsLoading && OnStop.HasDelegate)
+            {
+                <button type="button"
+                        class="@StopButtonClass"
+                        aria-label="@L["PromptInput.Stop"]"
+                        @onclick="HandleStopClick">
+                    <Blazicon Svg="Lucide.Square" class="h-4 w-4" />
+                </button>
+            }
+            else
+            {
+                <button type="button"
+                        class="@SendButtonClass"
+                        disabled="@IsSendDisabled"
+                        aria-label="@L["PromptInput.Send"]"
+                        @onclick="HandleSendClick">
+                    @if (IsLoading)
+                    {
+                        <Spinner Size="Lumeo.Size.Sm" Class="text-primary-foreground" />
+                    }
+                    else
+                    {
+                        <Blazicon Svg="Lucide.ArrowUp" class="h-4 w-4" />
+                    }
+                </button>
+            }
         </div>
     </div>
 </div>
@@ -46,7 +80,36 @@
     [Parameter] public int MinHeight { get; set; } = 56;
     [Parameter] public bool IsLoading { get; set; }
     [Parameter] public EventCallback<string> OnSend { get; set; }
+
+    /// <summary>
+    /// Invoked when the user clicks the Stop button. The Stop button only
+    /// replaces Send while <see cref="IsLoading"/> is true AND this callback is
+    /// bound — so a consumer that doesn't support cancellation keeps the
+    /// previous disabled-spinner behaviour unchanged.
+    /// </summary>
+    [Parameter] public EventCallback OnStop { get; set; }
+
     [Parameter] public bool DisableSendOnEmpty { get; set; } = true;
+
+    /// <summary>Optional slot for attachment chips/thumbnails, rendered above the textarea.</summary>
+    [Parameter] public RenderFragment? Attachments { get; set; }
+
+    /// <summary>Shows a built-in paperclip attach button in the leading area that invokes <see cref="OnAttach"/>.</summary>
+    [Parameter] public bool ShowAttachButton { get; set; }
+
+    /// <summary>Invoked when the built-in attach button is clicked (only when <see cref="ShowAttachButton"/> is true).</summary>
+    [Parameter] public EventCallback OnAttach { get; set; }
+
+    /// <summary>
+    /// Hard character limit. When set, the textarea enforces <c>maxlength</c> and a
+    /// "count/limit" counter is shown. The counter turns into a destructive color
+    /// as the limit is approached.
+    /// </summary>
+    [Parameter] public int? MaxLength { get; set; }
+
+    /// <summary>Forces the character counter to render even when <see cref="MaxLength"/> is not set (shows the raw count).</summary>
+    [Parameter] public bool ShowCounter { get; set; }
+
     [Parameter] public RenderFragment? LeadingContent { get; set; }
     [Parameter] public RenderFragment? TrailingContent { get; set; }
     [Parameter] public string? Class { get; set; }
@@ -62,6 +125,34 @@
 
     private string SendButtonClass =>
         "inline-flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50";
+
+    // Stop reuses the send footprint but in a neutral/secondary surface so it
+    // reads as "halt" rather than "submit".
+    private string StopButtonClass =>
+        "inline-flex h-8 w-8 items-center justify-center rounded-lg bg-secondary text-secondary-foreground transition-colors hover:bg-secondary/80 focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-2";
+
+    private string AttachButtonClass =>
+        "inline-flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50";
+
+    // Counter shows whenever a limit is set or ShowCounter forces it.
+    private bool ShowCharacterCounter => ShowCounter || MaxLength.HasValue;
+    private int CurrentLength => Value?.Length ?? 0;
+    private string CounterText => MaxLength.HasValue ? $"{CurrentLength}/{MaxLength.Value}" : CurrentLength.ToString();
+
+    // Turn destructive within the last 10% (min 10 chars) of the budget.
+    private string CounterClass
+    {
+        get
+        {
+            if (!MaxLength.HasValue) return "tabular-nums";
+            var threshold = MaxLength.Value - Math.Max(10, MaxLength.Value / 10);
+            return CurrentLength >= threshold
+                ? "tabular-nums font-medium text-destructive"
+                : "tabular-nums";
+        }
+    }
+
+    private string? MaxLengthAttr => MaxLength?.ToString();
 
     private bool IsSendDisabled =>
         IsLoading || (DisableSendOnEmpty && string.IsNullOrWhiteSpace(Value));
@@ -119,6 +210,10 @@
     }
 
     private Task HandleSendClick() => TrySendAsync();
+
+    private Task HandleStopClick() => OnStop.InvokeAsync();
+
+    private Task HandleAttachClick() => OnAttach.InvokeAsync();
 
     private async Task TrySendAsync()
     {

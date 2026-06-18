@@ -64,4 +64,66 @@ public class ImageCompareTests : IAsyncLifetime
             .Add(c => c.Orientation, L.Orientation.Vertical));
         Assert.Contains("ns-resize", cut.Markup);
     }
+
+    // --- Full 0–100 travel + ARIA valuetext (#288) ---
+
+    [Fact]
+    public void Slider_Has_Slider_Role_And_Value_Bounds()
+    {
+        var cut = _ctx.Render<L.ImageCompare>(p => p
+            .Add(c => c.BeforeSrc, "/b.jpg")
+            .Add(c => c.AfterSrc, "/a.jpg"));
+        var slider = cut.Find("input[type='range']");
+        Assert.Equal("slider", slider.GetAttribute("role"));
+        Assert.Equal("0", slider.GetAttribute("aria-valuemin"));
+        Assert.Equal("100", slider.GetAttribute("aria-valuemax"));
+    }
+
+    [Fact]
+    public void Initial_Position_Zero_Is_Allowed()
+    {
+        // The old [1,99] clamp could never reach 0; now it can.
+        var cut = _ctx.Render<L.ImageCompare>(p => p
+            .Add(c => c.BeforeSrc, "/b.jpg")
+            .Add(c => c.AfterSrc, "/a.jpg")
+            .Add(c => c.InitialPosition, 0));
+        var slider = cut.Find("input[type='range']");
+        Assert.Equal("0", slider.GetAttribute("aria-valuenow"));
+    }
+
+    [Fact]
+    public void Initial_Position_Hundred_Is_Allowed()
+    {
+        var cut = _ctx.Render<L.ImageCompare>(p => p
+            .Add(c => c.BeforeSrc, "/b.jpg")
+            .Add(c => c.AfterSrc, "/a.jpg")
+            .Add(c => c.InitialPosition, 100));
+        var slider = cut.Find("input[type='range']");
+        Assert.Equal("100", slider.GetAttribute("aria-valuenow"));
+    }
+
+    [Fact]
+    public void Slider_Has_ValueText()
+    {
+        var cut = _ctx.Render<L.ImageCompare>(p => p
+            .Add(c => c.BeforeSrc, "/b.jpg")
+            .Add(c => c.AfterSrc, "/a.jpg")
+            .Add(c => c.BeforeLabel, "Before")
+            .Add(c => c.InitialPosition, 50));
+        var slider = cut.Find("input[type='range']");
+        var vt = slider.GetAttribute("aria-valuetext") ?? "";
+        Assert.Contains("Before", vt);
+        Assert.Contains("50", vt);
+    }
+
+    [Fact]
+    public void Input_Beyond_Range_Clamps_To_Hundred()
+    {
+        var cut = _ctx.Render<L.ImageCompare>(p => p
+            .Add(c => c.BeforeSrc, "/b.jpg")
+            .Add(c => c.AfterSrc, "/a.jpg"));
+        var slider = cut.Find("input[type='range']");
+        slider.Input("1000"); // beyond max — must clamp to 100
+        Assert.Equal("100", cut.Find("input[type='range']").GetAttribute("aria-valuenow"));
+    }
 }

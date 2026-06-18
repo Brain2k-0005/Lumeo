@@ -1,0 +1,336 @@
+{
+  "name": "FileViewer",
+  "category": "Data Display",
+  "subcategory": null,
+  "description": "Universal file preview — auto-detects type from MIME / extension and renders PDF, images, video, audio, Markdown, JSON, CSV, source code (CodeMirror), and plain text inline; unknown types fall back to a download CTA. Pluggable per-kind renderer overrides; auth-aware HttpClient hook.",
+  "thumbnail": "/preview-cards/file-viewer.webp",
+  "hasDocsPage": true,
+  "nugetPackage": "Lumeo.FileViewer",
+  "files": [
+    "UI/FileViewer/FileKind.cs",
+    "UI/FileViewer/FileTypeDetector.cs",
+    "UI/FileViewer/FileViewer.razor",
+    "UI/FileViewer/FileViewerRenderContext.cs"
+  ],
+  "dependencies": [
+    "code-editor",
+    "empty-state",
+    "icon",
+    "list",
+    "pdf-viewer",
+    "spinner"
+  ],
+  "packageDependencies": [
+    "Blazicons.Lucide"
+  ],
+  "cssVars": [
+    "--color-accent",
+    "--color-accent-foreground",
+    "--color-background",
+    "--color-border",
+    "--color-card",
+    "--color-foreground",
+    "--color-input",
+    "--color-muted",
+    "--color-muted-foreground",
+    "--color-primary",
+    "--color-primary-foreground",
+    "--color-ring",
+    "--radius"
+  ],
+  "gotchas": [],
+  "api": {
+    "name": "FileViewer",
+    "category": "Data Display",
+    "subcategory": null,
+    "description": "Universal file preview — auto-detects type from MIME / extension and renders PDF, images, video, audio, Markdown, JSON, CSV, source code (CodeMirror), and plain text inline; unknown types fall back to a download CTA. Pluggable per-kind renderer overrides; auth-aware HttpClient hook.",
+    "nugetPackage": "Lumeo",
+    "files": [
+      "UI/FileViewer/FileKind.cs",
+      "UI/FileViewer/FileTypeDetector.cs",
+      "UI/FileViewer/FileViewer.razor",
+      "UI/FileViewer/FileViewerRenderContext.cs"
+    ],
+    "namespace": "Lumeo",
+    "inheritsFrom": null,
+    "implements": [
+      "IAsyncDisposable"
+    ],
+    "parameters": [
+      {
+        "name": "Src",
+        "type": "string?",
+        "default": null,
+        "description": null,
+        "isCascading": false,
+        "captureUnmatched": false
+      },
+      {
+        "name": "Kind",
+        "type": "FileKind",
+        "default": "FileKind.Auto",
+        "description": "Override detection with an explicit kind. Default Auto.",
+        "isCascading": false,
+        "captureUnmatched": false
+      },
+      {
+        "name": "MimeType",
+        "type": "string?",
+        "default": null,
+        "description": "Explicit MIME type from your backend (e.g. \"application/pdf\"). Wins over HEAD and extension detection but loses to an explicit Kind override.",
+        "isCascading": false,
+        "captureUnmatched": false
+      },
+      {
+        "name": "FileName",
+        "type": "string?",
+        "default": null,
+        "description": "Human-readable file name. Used for the toolbar label, the download attribute, and the aria-label. Falls back to the last URL path segment when not provided.",
+        "isCascading": false,
+        "captureUnmatched": false
+      },
+      {
+        "name": "AutoHead",
+        "type": "bool",
+        "default": null,
+        "description": "Issue a HEAD request to inspect Content-Type when neither Kind nor MimeType is set. Off by default because many CDNs and signed URLs reject HEAD with 405 / 403.",
+        "isCascading": false,
+        "captureUnmatched": false
+      },
+      {
+        "name": "MaxBytes",
+        "type": "long",
+        "default": "10L * 1024 * 1024",
+        "description": "Cap on the number of bytes fetched for text-based kinds (Markdown, Code, JSON, CSV, Text). Default 10 MB. Excess content is truncated and a one-line notice is appended.",
+        "isCascading": false,
+        "captureUnmatched": false
+      },
+      {
+        "name": "MaxCsvRows",
+        "type": "int",
+        "default": "1000",
+        "description": "Cap on the number of CSV rows rendered. Default 1000.",
+        "isCascading": false,
+        "captureUnmatched": false
+      },
+      {
+        "name": "ShowToolbar",
+        "type": "bool",
+        "default": "true",
+        "description": "Show the top toolbar (file name + download). Default true.",
+        "isCascading": false,
+        "captureUnmatched": false
+      },
+      {
+        "name": "ShowDownload",
+        "type": "bool",
+        "default": "true",
+        "description": "Show the download button in the toolbar. Default true.",
+        "isCascading": false,
+        "captureUnmatched": false
+      },
+      {
+        "name": "ShowFileName",
+        "type": "bool",
+        "default": "true",
+        "description": "Show the file name in the toolbar. Default true.",
+        "isCascading": false,
+        "captureUnmatched": false
+      },
+      {
+        "name": "HttpClient",
+        "type": "HttpClient?",
+        "default": null,
+        "description": "Plug a custom HttpClient for the text fetches. Use this to attach a pre-configured Authorization handler instead of mutating the default client. Highest precedence — wins over HttpClientName, DI, and the factory.",
+        "isCascading": false,
+        "captureUnmatched": false
+      },
+      {
+        "name": "HttpClientName",
+        "type": "string?",
+        "default": null,
+        "description": "Name of the client to pull from a DI-registered IHttpClientFactory for the text fetches (Markdown/Code/JSON/CSV/Text). When the factory is registered (the common case once AddHttpClient() has been called) this is the recommended way to get a correctly-pooled client and avoid socket exhaustion. Ignored when an explicit HttpClient is supplied. Null/empty uses the factory's default client.",
+        "isCascading": false,
+        "captureUnmatched": false
+      },
+      {
+        "name": "EnableOfficeOnlineViewer",
+        "type": "bool",
+        "default": null,
+        "description": "Show an \"Open in viewer\" action on the Office-document fallback panel that opens the file in the Microsoft Office web viewer. Off by default because it sends the document URL to a Microsoft endpoint and only works for publicly reachable absolute http(s) URLs.",
+        "isCascading": false,
+        "captureUnmatched": false
+      },
+      {
+        "name": "ConfigureRequest",
+        "type": "Func<HttpRequestMessage, Task>?",
+        "default": null,
+        "description": "Hook to mutate the outgoing HttpRequestMessage before it's sent — typical use is adding an Authorization header for signed-but-not-presigned URLs.",
+        "isCascading": false,
+        "captureUnmatched": false
+      },
+      {
+        "name": "CustomRenderers",
+        "type": "IReadOnlyDictionary<FileKind, RenderFragment<FileViewerRenderContext>>?",
+        "default": null,
+        "description": "Per-kind renderer overrides. The fragment receives a FileViewerRenderContext with the resolved URL, kind, the fetched text (when applicable) and the display name. When provided for a given kind, the built-in renderer is bypassed for that kind.",
+        "isCascading": false,
+        "captureUnmatched": false
+      },
+      {
+        "name": "LoadingTemplate",
+        "type": "RenderFragment?",
+        "default": null,
+        "description": "Custom loading view. Default is a centered Spinner.",
+        "isCascading": false,
+        "captureUnmatched": false
+      },
+      {
+        "name": "OnKindDetected",
+        "type": "EventCallback<FileKind>",
+        "default": null,
+        "description": "Fires once detection settles, with the resolved kind.",
+        "isCascading": false,
+        "captureUnmatched": false
+      },
+      {
+        "name": "OnLoaded",
+        "type": "EventCallback",
+        "default": null,
+        "description": "Fires when the file is fully rendered (text fetched, if any).",
+        "isCascading": false,
+        "captureUnmatched": false
+      },
+      {
+        "name": "OnError",
+        "type": "EventCallback<string>",
+        "default": null,
+        "description": "Fires on any detection or fetch error, with a message.",
+        "isCascading": false,
+        "captureUnmatched": false
+      },
+      {
+        "name": "Class",
+        "type": "string?",
+        "default": null,
+        "description": null,
+        "isCascading": false,
+        "captureUnmatched": false
+      },
+      {
+        "name": "AdditionalAttributes",
+        "type": "Dictionary<string, object>?",
+        "default": null,
+        "description": null,
+        "isCascading": false,
+        "captureUnmatched": true
+      }
+    ],
+    "events": [
+      {
+        "name": "OnKindDetected",
+        "type": "EventCallback<FileKind>",
+        "description": "Fires once detection settles, with the resolved kind."
+      },
+      {
+        "name": "OnLoaded",
+        "type": "EventCallback",
+        "description": "Fires when the file is fully rendered (text fetched, if any)."
+      },
+      {
+        "name": "OnError",
+        "type": "EventCallback<string>",
+        "description": "Fires on any detection or fetch error, with a message."
+      }
+    ],
+    "enums": [
+      {
+        "name": "ViewState",
+        "values": [
+          "Detecting",
+          "Fetching",
+          "Loaded",
+          "Error"
+        ],
+        "description": null
+      }
+    ],
+    "records": [],
+    "gotchas": [],
+    "cssVars": [
+      "--color-accent",
+      "--color-accent-foreground",
+      "--color-background",
+      "--color-border",
+      "--color-card",
+      "--color-foreground",
+      "--color-input",
+      "--color-muted",
+      "--color-muted-foreground",
+      "--color-primary",
+      "--color-primary-foreground",
+      "--color-ring",
+      "--radius"
+    ],
+    "examples": [],
+    "subComponents": {},
+    "parseFailed": false,
+    "parseError": null
+  },
+  "$schema": "https://lumeo.nativ.sh/registry-component-schema.json",
+  "key": "file-viewer",
+  "docsUrl": "https://lumeo.nativ.sh/components/file-viewer",
+  "sourceUrl": [
+    {
+      "file": "UI/FileViewer/FileKind.cs",
+      "url": "https://github.com/Brain2k-0005/Lumeo/tree/master/src/Lumeo/UI/FileViewer/FileKind.cs"
+    },
+    {
+      "file": "UI/FileViewer/FileTypeDetector.cs",
+      "url": "https://github.com/Brain2k-0005/Lumeo/tree/master/src/Lumeo/UI/FileViewer/FileTypeDetector.cs"
+    },
+    {
+      "file": "UI/FileViewer/FileViewer.razor",
+      "url": "https://github.com/Brain2k-0005/Lumeo/tree/master/src/Lumeo/UI/FileViewer/FileViewer.razor"
+    },
+    {
+      "file": "UI/FileViewer/FileViewerRenderContext.cs",
+      "url": "https://github.com/Brain2k-0005/Lumeo/tree/master/src/Lumeo/UI/FileViewer/FileViewerRenderContext.cs"
+    }
+  ],
+  "source": [
+    {
+      "path": "UI/FileViewer/FileKind.cs",
+      "content": ""
+    },
+    {
+      "path": "UI/FileViewer/FileTypeDetector.cs",
+      "content": ""
+    },
+    {
+      "path": "UI/FileViewer/FileViewer.razor",
+      "content": ""
+    },
+    {
+      "path": "UI/FileViewer/FileViewerRenderContext.cs",
+      "content": ""
+    }
+  ],
+  "slots": [
+    {
+      "name": "LoadingTemplate",
+      "owner": "FileViewer",
+      "type": "RenderFragment?",
+      "description": "Custom loading view. Default is a centered Spinner."
+    }
+  ],
+  "serviceDependencies": [],
+  "cascadingDependencies": [],
+  "relatedComponents": [],
+  "keyboardInteractions": [],
+  "tests": [
+    "tests/Lumeo.Tests/Components/FileViewer/FileViewerCsvTests.cs",
+    "tests/Lumeo.Tests/Components/FileViewer/FileViewerOfficeTests.cs"
+  ],
+  "mdSummary": "# FileViewer\n\nUniversal file preview — auto-detects type from MIME / extension and renders PDF, images, video, audio, Markdown, JSON, CSV, source code (CodeMirror), and plain text inline; unknown types fall back to a download CTA. Pluggable per-kind renderer overrides; auth-aware HttpClient hook.\n\n**Package:** `Lumeo.FileViewer` · **Category:** Data Display\n**Docs:** https://lumeo.nativ.sh/components/file-viewer\n\n## Parameters\n| Owner | Name | Type | Default | Description |\n|---|---|---|---|---|\n| FileViewer | Src | `string?` | `` |  |\n| FileViewer | Kind | `FileKind` | `FileKind.Auto` | Override detection with an explicit kind. Default Auto. |\n| FileViewer | MimeType | `string?` | `` | Explicit MIME type from your backend (e.g. \"application/pdf\"). Wins over HEAD and extension detection but loses to an explicit Kind override. |\n| FileViewer | FileName | `string?` | `` | Human-readable file name. Used for the toolbar label, the download attribute, and the aria-label. Falls back to the last URL path segment when not provided. |\n| FileViewer | AutoHead | `bool` | `` | Issue a HEAD request to inspect Content-Type when neither Kind nor MimeType is set. Off by default because many CDNs and signed URLs reject HEAD with 405 / 403. |\n| FileViewer | MaxBytes | `long` | `10L * 1024 * 1024` | Cap on the number of bytes fetched for text-based kinds (Markdown, Code, JSON, CSV, Text). Default 10 MB. Excess content is truncated and a one-line notice is appended. |\n| FileViewer | MaxCsvRows | `int` | `1000` | Cap on the number of CSV rows rendered. Default 1000. |\n| FileViewer | ShowToolbar | `bool` | `true` | Show the top toolbar (file name + download). Default true. |\n| FileViewer | ShowDownload | `bool` | `true` | Show the download button in the toolbar. Default true. |\n| FileViewer | ShowFileName | `bool` | `true` | Show the file name in the toolbar. Default true. |\n| FileViewer | HttpClient | `HttpClient?` | `` | Plug a custom HttpClient for the text fetches. Use this to attach a pre-configured Authorization handler instead of mutating the default client. Highest precedence — wins over HttpClientName, DI, and the factory. |\n| FileViewer | HttpClientName | `string?` | `` | Name of the client to pull from a DI-registered IHttpClientFactory for the text fetches (Markdown/Code/JSON/CSV/Text). When the factory is registered (the common case once AddHttpClient() has been called) this is the recommended way to get a correctly-pooled client and avoid socket exhaustion. Ignored when an explicit HttpClient is supplied. Null/empty uses the factory's default client. |\n| FileViewer | EnableOfficeOnlineViewer | `bool` | `` | Show an \"Open in viewer\" action on the Office-document fallback panel that opens the file in the Microsoft Office web viewer. Off by default because it sends the document URL to a Microsoft endpoint and only works for publicly reachable absolute http(s) URLs. |\n| FileViewer | ConfigureRequest | `Func<HttpRequestMessage, Task>?` | `` | Hook to mutate the outgoing HttpRequestMessage before it's sent — typical use is adding an Authorization header for signed-but-not-presigned URLs. |\n| FileViewer | CustomRenderers | `IReadOnlyDictionary<FileKind, RenderFragment<FileViewerRenderContext>>?` | `` | Per-kind renderer overrides. The fragment receives a FileViewerRenderContext with the resolved URL, kind, the fetched text (when applicable) and the display name. When provided for a given kind, the built-in renderer is bypassed for that kind. |\n| FileViewer | LoadingTemplate | `RenderFragment?` | `` | Custom loading view. Default is a centered Spinner. |\n| FileViewer | OnKindDetected | `EventCallback<FileKind>` | `` | Fires once detection settles, with the resolved kind. |\n| FileViewer | OnLoaded | `EventCallback` | `` | Fires when the file is fully rendered (text fetched, if any). |\n| FileViewer | OnError | `EventCallback<string>` | `` | Fires on any detection or fetch error, with a message. |\n| FileViewer | Class | `string?` | `` |  |\n| FileViewer | AdditionalAttributes | `Dictionary<string, object>?` | `` |  |\n\n## Slots\n- `LoadingTemplate` (FileViewer) — Custom loading view. Default is a centered Spinner.\n\n## Events\n- `OnKindDetected` (`EventCallback<FileKind>`) — Fires once detection settles, with the resolved kind.\n- `OnLoaded` (`EventCallback`) — Fires when the file is fully rendered (text fetched, if any).\n- `OnError` (`EventCallback<string>`) — Fires on any detection or fetch error, with a message.\n\n## Sub-components\n- (none)\n\n## Cascading values it expects\n- (none)\n\n## Services it injects\n- (none)\n\n## Keyboard\n—\n\n## Example\n```razor\n<FileViewer />\n```\n\n## CSS variables\n`--color-accent`, `--color-accent-foreground`, `--color-background`, `--color-border`, `--color-card`, `--color-foreground`, `--color-input`, `--color-muted`, `--color-muted-foreground`, `--color-primary`, `--color-primary-foreground`, `--color-ring`, `--radius`\n\n## Files\n- `UI/FileViewer/FileKind.cs`\n- `UI/FileViewer/FileTypeDetector.cs`\n- `UI/FileViewer/FileViewer.razor`\n- `UI/FileViewer/FileViewerRenderContext.cs`\n"
+}

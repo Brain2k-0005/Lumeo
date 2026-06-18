@@ -1,3 +1,4 @@
+using System.Globalization;
 using Bunit;
 using Xunit;
 using Lumeo.Tests.Helpers;
@@ -111,5 +112,98 @@ public class NumberTickerTests : IAsyncLifetime
             }));
 
         Assert.Equal("ticker", cut.Find("span").GetAttribute("data-testid"));
+    }
+
+    // --- Culture-aware formatting (#330) ---
+    // The initial/final value must use CurrentCulture's grouping + decimal
+    // separators rather than a hardcoded "," / "." pair, so the rendered number
+    // matches the user's locale (and matches the JS count-up which is fed the
+    // same separators).
+
+    private static void WithCulture(string name, Action body)
+    {
+        var prev = CultureInfo.CurrentCulture;
+        try
+        {
+            CultureInfo.CurrentCulture = CultureInfo.GetCultureInfo(name);
+            body();
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = prev;
+        }
+    }
+
+    [Fact]
+    public void Initial_Value_Uses_CurrentCulture_Group_Separator()
+    {
+        // de-DE groups thousands with "." → 1.234.567
+        WithCulture("de-DE", () =>
+        {
+            var cut = _ctx.Render<Lumeo.NumberTicker>(p => p
+                .Add(n => n.Value, 2_000_000)
+                .Add(n => n.StartValue, 1_234_567));
+
+            Assert.Contains(">1.234.567<", cut.Markup);
+        });
+    }
+
+    [Fact]
+    public void Initial_Value_Uses_CurrentCulture_Decimal_Separator()
+    {
+        // de-DE uses "," as the decimal separator → 3,14
+        WithCulture("de-DE", () =>
+        {
+            var cut = _ctx.Render<Lumeo.NumberTicker>(p => p
+                .Add(n => n.Value, 10)
+                .Add(n => n.StartValue, 3.14)
+                .Add(n => n.Decimals, 2));
+
+            Assert.Contains(">3,14<", cut.Markup);
+        });
+    }
+
+    [Fact]
+    public void EnUs_Culture_Formats_With_Comma_Group_And_Dot_Decimal()
+    {
+        WithCulture("en-US", () =>
+        {
+            var cut = _ctx.Render<Lumeo.NumberTicker>(p => p
+                .Add(n => n.Value, 5_000)
+                .Add(n => n.StartValue, 1_234.5)
+                .Add(n => n.Decimals, 1));
+
+            Assert.Contains(">1,234.5<", cut.Markup);
+        });
+    }
+
+    [Fact]
+    public void Explicit_ThousandsSeparator_Overrides_Culture_Grouping()
+    {
+        // Even in de-DE, an explicit ThousandsSeparator="," wins for grouping,
+        // while the decimal separator still follows the culture (",").
+        WithCulture("de-DE", () =>
+        {
+            var cut = _ctx.Render<Lumeo.NumberTicker>(p => p
+                .Add(n => n.Value, 9_999)
+                .Add(n => n.StartValue, 1_234)
+                .Add(n => n.ThousandsSeparator, ","));
+
+            Assert.Contains(">1,234<", cut.Markup);
+        });
+    }
+
+    [Fact]
+    public void Empty_ThousandsSeparator_Suppresses_Grouping()
+    {
+        WithCulture("en-US", () =>
+        {
+            var cut = _ctx.Render<Lumeo.NumberTicker>(p => p
+                .Add(n => n.Value, 9_999)
+                .Add(n => n.StartValue, 1_234)
+                .Add(n => n.ThousandsSeparator, ""));
+
+            Assert.Contains(">1234<", cut.Markup);
+        });
     }
 }

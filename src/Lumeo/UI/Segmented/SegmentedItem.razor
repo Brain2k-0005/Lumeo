@@ -1,11 +1,14 @@
 @namespace Lumeo
+@implements IDisposable
 
 @if (Context is not null)
 {
     var isActive = Value == Context.Value;
     <button type="button"
+            id="@_itemId"
             role="radio"
             aria-checked="@isActive.ToString().ToLower()"
+            tabindex="@Context.GetTabIndex(Value, Disabled)"
             class="@Context.GetItemClasses(isActive)"
             disabled="@Disabled"
             @onclick="HandleClick"
@@ -34,9 +37,45 @@
 
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
+    private readonly string _itemId = LumeoIds.New("segmented-item");
+    private string? _registeredValue;
+
+    protected override void OnParametersSet()
+    {
+        if (Context is null) return;
+
+        // Register into the parent's shared registry (ownership-guarded re-key so
+        // we never delete a sibling's live entry) so roving tabindex + arrow
+        // navigation see this segment in DOM order with its current Disabled state.
+        if (_registeredValue is not null && _registeredValue != Value
+            && Context.ItemIds.TryGetValue(_registeredValue, out var oldId) && oldId == _itemId)
+        {
+            Context.ItemValues.Remove(_registeredValue);
+            Context.ItemIds.Remove(_registeredValue);
+            Context.ItemDisabled.Remove(_registeredValue);
+        }
+        if (!Context.ItemValues.Contains(Value))
+            Context.ItemValues.Add(Value);
+        Context.ItemIds[Value] = _itemId;
+        Context.ItemDisabled[Value] = Disabled;
+        _registeredValue = Value;
+    }
+
     private async Task HandleClick()
     {
         if (Context is null || Disabled) return;
         await Context.Select.InvokeAsync(Value);
+    }
+
+    public void Dispose()
+    {
+        // Conditionally-removed segments must leave the registry (ownership-guarded).
+        if (Context is not null && _registeredValue is not null
+            && Context.ItemIds.TryGetValue(_registeredValue, out var id) && id == _itemId)
+        {
+            Context.ItemValues.Remove(_registeredValue);
+            Context.ItemIds.Remove(_registeredValue);
+            Context.ItemDisabled.Remove(_registeredValue);
+        }
     }
 }

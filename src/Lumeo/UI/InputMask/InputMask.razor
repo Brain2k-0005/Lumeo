@@ -1,4 +1,5 @@
 @namespace Lumeo
+@inject IComponentInteropService Interop
 
 @if (Label is not null && !InsideFormField)
 {
@@ -11,7 +12,8 @@
     </label>
 }
 
-<input class="@CssClass"
+<input id="@_id"
+       class="@CssClass"
        value="@_displayValue"
        placeholder="@EffectivePlaceholder"
        disabled="@Disabled"
@@ -19,7 +21,6 @@
        aria-required="@(Required ? "true" : "false")"
        aria-invalid="@(EffectiveInvalid ? "true" : "false")"
        @oninput="HandleInput"
-       @onkeydown="HandleKeyDown"
        @attributes="AdditionalAttributes" />
 
 @if (!InsideFormField)
@@ -55,8 +56,13 @@
     private bool EffectiveInvalid => Invalid || FormField?.HasError == true;
     private bool InsideFormField => FormField is not null;
 
+    private readonly string _id = LumeoIds.New("inputmask");
+
     private string _displayValue = "";
     private string _rawValue = "";
+    // Set in HandleInput to ask OnAfterRender to restore the caret to this display
+    // index. -1 means "no pending restore".
+    private int _pendingCaret = -1;
 
     private string CssClass => Cx.Merge("flex h-9 w-full rounded-md border", (EffectiveInvalid ? "border-destructive focus-visible:ring-destructive/20" : "border-input focus-visible:ring-ring"), "bg-transparent px-3 py-1 text-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-[1.5px] disabled:cursor-not-allowed disabled:opacity-50", Class);
 
@@ -148,21 +154,87 @@
         return raw.ToString();
     }
 
+    // Single source of truth for value changes — both typing AND deletion arrive
+    // here as native input events, so ValueChanged fires exactly once per edit.
+    // The previous component also handled Backspace in @onkeydown and fired
+    // ValueChanged a SECOND time, and that branch always dropped the LAST raw char
+    // (_rawValue[..^1]) regardless of the caret. Deleting via the native input
+    // event is inherently caret-correct: the browser removes the char under the
+    // caret and we re-derive the raw value from the resulting display (#177).
     private async Task HandleInput(ChangeEventArgs e)
     {
         var inputVal = e.Value?.ToString() ?? "";
+
+        // Read the caret BEFORE we rewrite the value — the DOM still holds the
+        // post-edit string the browser produced, so selectionStart is meaningful.
+        int browserCaret;
+        try { browserCaret = await Interop.GetInputCaret(_id); }
+        catch (JSDisconnectedException) { browserCaret = inputVal.Length; }
+
         _rawValue = ExtractRaw(inputVal);
         _displayValue = ApplyMask(_rawValue);
         await ValueChanged.InvokeAsync(_rawValue);
+
+        // Map the browser caret (in the typed string) onto the re-masked display:
+        // count the significant chars before the caret, then land just after that
+        // many filled slots (skipping any literals in between) so the next
+        // keystroke fills the next slot rather than snapping to the end (#177).
+        var rawBeforeCaret = CountRawBefore(inputVal, browserCaret);
+        _pendingCaret = DisplayCaretForRawCount(rawBeforeCaret);
     }
 
-    private async Task HandleKeyDown(Microsoft.AspNetCore.Components.Web.KeyboardEventArgs e)
+    // How many mask-significant characters sit at or before the caret in the raw
+    // (browser) string. Walks the mask in lockstep with the input so literal
+    // characters the user typed over don't inflate the count.
+    private int CountRawBefore(string inputVal, int caret)
     {
-        if (e.Key == "Backspace" && _rawValue.Length > 0)
+        if (string.IsNullOrEmpty(Mask)) return Math.Min(caret, inputVal.Length);
+
+        var count = 0;
+        var maskIndex = 0;
+        var limit = Math.Min(caret, inputVal.Length);
+        for (var i = 0; i < limit && maskIndex < Mask.Length; i++)
         {
-            _rawValue = _rawValue[..^1];
-            _displayValue = ApplyMask(_rawValue);
-            await ValueChanged.InvokeAsync(_rawValue);
+            while (maskIndex < Mask.Length && !IsMaskChar(Mask[maskIndex]))
+                maskIndex++;
+            if (maskIndex >= Mask.Length) break;
+            if (MatchesMaskChar(Mask[maskIndex], inputVal[i]))
+            {
+                count++;
+                maskIndex++;
+            }
         }
+        return count;
+    }
+
+    // Display index positioned right after the Nth filled significant slot, with
+    // any immediately-following literals consumed so the caret rests at the next
+    // typeable slot (mirrors how InputMask libraries advance past separators).
+    private int DisplayCaretForRawCount(int rawCount)
+    {
+        if (string.IsNullOrEmpty(Mask)) return Math.Min(rawCount, _displayValue.Length);
+
+        var filled = 0;
+        var i = 0;
+        for (; i < _displayValue.Length && i < Mask.Length; i++)
+        {
+            if (filled >= rawCount) break;
+            if (IsMaskChar(Mask[i])) filled++;
+        }
+        // Skip trailing literal chars so the next input lands on a significant slot.
+        while (i < _displayValue.Length && i < Mask.Length && !IsMaskChar(Mask[i]))
+            i++;
+        return i;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_pendingCaret < 0) return;
+        var pos = _pendingCaret;
+        _pendingCaret = -1;
+        try { await Interop.SetInputCaret(_id, pos); }
+        catch (JSDisconnectedException) { }
+        catch (ObjectDisposedException) { }
+        catch (InvalidOperationException) { } // JS interop unavailable during prerender
     }
 }

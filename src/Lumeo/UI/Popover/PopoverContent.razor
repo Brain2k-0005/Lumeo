@@ -3,7 +3,7 @@
 
 @if (Context.IsOpen)
 {
-    <div id="@_contentId" class="@CssClass" @onkeydown="HandleKeyDown" tabindex="-1" @attributes="AdditionalAttributes">
+    <div id="@_contentId" role="dialog" class="@CssClass" @onkeydown="HandleKeyDown" tabindex="-1" @attributes="AdditionalAttributes">
         @ChildContent
         @if (ShowArrow)
         {
@@ -23,7 +23,9 @@
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
-    private readonly string _contentId = LumeoIds.New("popover-content");
+    // Use the content id provided by the Popover parent so the trigger's
+    // aria-controls points at this element and focus management can target it.
+    private string _contentId => Context.ContentId;
     private bool _registered;
 
     private string CssClass => Cx.Merge(
@@ -71,6 +73,11 @@
                 await InvokeAsync(StateHasChanged);
             });
             _registered = true;
+
+            // Move focus into the dialog content on open. Without this, focus
+            // stays on the trigger and the content's @onkeydown handler never
+            // receives Escape (Radix-equivalent dialog popovers manage focus).
+            try { await Interop.FocusElement(_contentId); } catch (JSDisconnectedException) { }
         }
         else if (!Context.IsOpen && _registered)
         {
@@ -87,6 +94,9 @@
     {
         try { await Interop.UnpositionFixed(_contentId); } catch (JSDisconnectedException) { }
         try { await Interop.UnregisterClickOutside(_contentId); } catch (JSDisconnectedException) { }
+        // Return focus to the trigger region on close so keyboard users aren't
+        // dropped back to the document body.
+        try { await Interop.FocusElement(Context.WrapperId); } catch (JSDisconnectedException) { }
         _registered = false;
     }
 

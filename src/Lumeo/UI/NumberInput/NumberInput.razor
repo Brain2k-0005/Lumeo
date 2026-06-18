@@ -209,27 +209,65 @@
     private async Task OnInputChange(ChangeEventArgs e)
     {
         var raw = e.Value?.ToString();
-        // Try invariant first (what the native <input type="number"> reports), then the
-        // effective culture as a fallback for consumers that render via FormatType=Text
-        // or feed values programmatically.
-        if (double.TryParse(raw, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var parsed)
-            || double.TryParse(raw, System.Globalization.NumberStyles.Any, EffectiveCulture, out parsed))
+
+        // Empty / whitespace clears the field to null. Without this the failed
+        // parse below short-circuited and the value got stuck at its last number,
+        // so the control could never be emptied (#176).
+        if (string.IsNullOrWhiteSpace(raw))
+        {
+            await SetValue(null);
+            return;
+        }
+
+        // Parse order is decided by the decimal separator actually present in the
+        // string. The native <input type="number"> reports an invariant '.' decimal,
+        // but a consumer rendering via FormatType=Text (or pasting) can deliver a
+        // culture-formatted value such as the de-DE "1,5". If the effective culture's
+        // decimal separator is a comma and the string contains one, parse with the
+        // culture FIRST — otherwise an invariant parse would read "1,5" as the integer
+        // 15 (comma = thousands) and the comma decimal would never round-trip (#176).
+        var cultureDecimal = EffectiveCulture.NumberFormat.NumberDecimalSeparator;
+        var preferCulture = cultureDecimal != "." && raw.Contains(cultureDecimal, StringComparison.Ordinal);
+
+        bool ok;
+        double parsed;
+        if (preferCulture)
+        {
+            ok = double.TryParse(raw, System.Globalization.NumberStyles.Any, EffectiveCulture, out parsed)
+                || double.TryParse(raw, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out parsed);
+        }
+        else
+        {
+            ok = double.TryParse(raw, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out parsed)
+                || double.TryParse(raw, System.Globalization.NumberStyles.Any, EffectiveCulture, out parsed);
+        }
+
+        if (ok)
         {
             await SetValue(parsed);
         }
     }
 
-    private async Task SetValue(double newValue)
+    private async Task SetValue(double? newValue)
     {
-        if (Min.HasValue && newValue < Min.Value) newValue = Min.Value;
-        if (Max.HasValue && newValue > Max.Value) newValue = Max.Value;
+        if (newValue is null)
+        {
+            if (Value is null) return;
+            Value = null;
+            await ValueChanged.InvokeAsync(null);
+            return;
+        }
+
+        var v = newValue.Value;
+        if (Min.HasValue && v < Min.Value) v = Min.Value;
+        if (Max.HasValue && v > Max.Value) v = Max.Value;
 
         if (Precision.HasValue)
         {
-            newValue = Math.Round(newValue, Precision.Value);
+            v = Math.Round(v, Precision.Value);
         }
 
-        Value = newValue;
+        Value = v;
         await ValueChanged.InvokeAsync(Value);
     }
 }

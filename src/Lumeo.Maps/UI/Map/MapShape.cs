@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace Lumeo;
 
 /// <summary>
@@ -5,6 +7,17 @@ namespace Lumeo;
 /// to send polylines, polygons, circles, arcs (and GeoJSON layers) over to
 /// map.js. Property names match the camelCase shape `createShape` reads in JS.
 /// </summary>
+/// <remarks>
+/// Marked polymorphic so that when the shapes are serialized through the
+/// declared base type (<c>MapShape[]</c> in <c>Map.razor</c>), derived payloads
+/// such as <see cref="MapHeatmapShape"/> still emit their own properties
+/// (<c>Radius</c>/<c>ColorRamp</c>/<c>Opacity</c>). Without this the JS interop
+/// serializer dropped them and <c>&lt;MapHeatmap&gt;</c> params were inert. The
+/// <c>$shapeKind</c> discriminator is ignored by map.js (it reads <c>type</c>).
+/// </remarks>
+[JsonPolymorphic(TypeDiscriminatorPropertyName = "$shapeKind")]
+[JsonDerivedType(typeof(MapShape), "shape")]
+[JsonDerivedType(typeof(MapHeatmapShape), "heatmap")]
 internal class MapShape
 {
     public string Type { get; set; } = "polyline";
@@ -58,11 +71,13 @@ internal class MapShape
 /// </summary>
 internal sealed class MapHeatmapShape : MapShape
 {
+    // Default the inherited Opacity rather than shadowing it with `new double`:
+    // a shadowed same-named property makes System.Text.Json's polymorphic contract
+    // treat base and derived Opacity as two distinct members, emitting a duplicate
+    // `opacity` key (or throwing during contract resolution) and breaking shape sync.
+    public MapHeatmapShape() => Opacity = 0.8;
+
     public int Radius { get; set; } = 20;
-    /// <summary>Replaces the base <see cref="MapShape.Opacity"/> so heatmap
-    /// opacity can be serialized as a top-level <c>opacity</c> field (the
-    /// base property is <c>double?</c> already, we just ensure a default).</summary>
-    public new double Opacity { get; set; } = 0.8;
     /// <summary>Optional custom color-ramp stops for the MapLibre heatmap layer.
     /// Serialized as a raw JSON array of alternating stop/color pairs.</summary>
     public object[]? ColorRamp { get; set; }

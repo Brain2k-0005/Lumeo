@@ -1,0 +1,39 @@
+@namespace Lumeo
+@inject Lumeo.Services.Localization.ILumeoLocalizer L
+
+@* Empty-state row for an otherwise-structured Table. Drop inside <TableBody>
+   when the data set is empty so the table keeps its frame instead of
+   collapsing to a bare header. Spans every column via colspan. *@
+<tr @attributes="AdditionalAttributes">
+    <td colspan="@SafeColumnCount" class="@CssClass">
+        @if (ChildContent is not null)
+        {
+            @ChildContent
+        }
+        else
+        {
+            @(Text ?? L["Common.NoResults"])
+        }
+    </td>
+</tr>
+
+@code {
+    /// <summary>Number of columns to span. Defaults to 1; set it to your column
+    /// count so the empty message centers across the full table width.</summary>
+    [Parameter] public int ColumnCount { get; set; } = 1;
+
+    // Guard against a 0 / negative colspan — invalid HTML that can break the
+    // table layout. Consumers occasionally bind ColumnCount to a not-yet-loaded
+    // column collection (count 0).
+    private int SafeColumnCount => ColumnCount < 1 ? 1 : ColumnCount;
+
+    /// <summary>Optional plain-text message. Ignored when <see cref="ChildContent"/>
+    /// is supplied. Falls back to the localized "No results" string.</summary>
+    [Parameter] public string? Text { get; set; }
+
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private string CssClass => Cx.Merge("h-24 p-4 text-center align-middle text-sm text-muted-foreground", Class);
+}

@@ -21,6 +21,7 @@
 
     private readonly string _contentId = LumeoIds.New("menubar-content");
     private readonly MenubarKeyNavGuard _keyNavGuard = new();
+    private readonly Lumeo.Services.MenuTypeahead _typeahead = new();
     private bool _registered;
     private int _focusedIndex = -1;
 
@@ -135,6 +136,18 @@
                     }
                     break;
                 }
+            default:
+                // Typeahead parity with DropdownMenu (Radix type-to-focus).
+                // Printable single chars (not modifier combos) accumulate a query
+                // that jumps focus to the first matching item; everything else
+                // falls through so Tab/Enter/Space keep native behaviour.
+                if (!e.CtrlKey && !e.AltKey && !e.MetaKey && Lumeo.Services.MenuTypeahead.IsTypeaheadKey(e.Key))
+                {
+                    var query = _typeahead.Push(e.Key);
+                    var matched = await Interop.FocusMenuItemByTypeahead(_contentId, query, _focusedIndex);
+                    if (matched >= 0) _focusedIndex = matched;
+                }
+                break;
         }
     }
 
@@ -143,6 +156,7 @@
         try { await Interop.UnpositionFixed(_contentId); } catch (JSDisconnectedException) { }
         try { await Interop.UnregisterClickOutside(_contentId); } catch (JSDisconnectedException) { }
         try { await Interop.UnregisterPreventDefaultKeys(_contentId); } catch (JSDisconnectedException) { }
+        _typeahead.Reset();
         _registered = false;
     }
 
