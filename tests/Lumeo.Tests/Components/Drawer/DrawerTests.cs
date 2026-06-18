@@ -125,7 +125,10 @@ public class DrawerTests : IAsyncLifetime
         var hasBackdrop = allDivs.Any(d =>
         {
             var cls = d.GetAttribute("class") ?? "";
-            return cls.Contains("bg-black") && cls.Contains("fixed") && cls.Contains("inset-0");
+            var style = d.GetAttribute("style") ?? "";
+            // #218: backdrop now uses the --color-overlay-backdrop token (inline
+            // style) instead of a hardcoded bg-black/80 class, matching Sheet/Dialog.
+            return style.Contains("overlay-backdrop") && cls.Contains("fixed") && cls.Contains("inset-0");
         });
         Assert.True(hasBackdrop, "Backdrop should be present when drawer is open");
     }
@@ -138,7 +141,10 @@ public class DrawerTests : IAsyncLifetime
         var hasBackdrop = allDivs.Any(d =>
         {
             var cls = d.GetAttribute("class") ?? "";
-            return cls.Contains("bg-black") && cls.Contains("fixed") && cls.Contains("inset-0");
+            var style = d.GetAttribute("style") ?? "";
+            // #218: backdrop now uses the --color-overlay-backdrop token (inline
+            // style) instead of a hardcoded bg-black/80 class, matching Sheet/Dialog.
+            return style.Contains("overlay-backdrop") && cls.Contains("fixed") && cls.Contains("inset-0");
         });
         Assert.False(hasBackdrop, "Backdrop should not be present when drawer is closed");
     }

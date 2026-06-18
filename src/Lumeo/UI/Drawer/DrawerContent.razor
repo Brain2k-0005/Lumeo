@@ -20,7 +20,9 @@
 else if (Context.IsOpen)
 {
     <div class="fixed inset-0" style="z-index:@BackdropZ">
-        <div class="fixed inset-0 bg-black/80 animate-fade-in" style="z-index:@BackdropZ" @onclick="HandleBackdropClick"></div>
+        @* Backdrop — theme-aware --color-overlay-backdrop token (was a hardcoded
+           bg-black/80 that ignored the token, unlike Sheet/Dialog). #218 *@
+        <div class="fixed inset-0 animate-fade-in" style="background-color:var(--color-overlay-backdrop);z-index:@BackdropZ" @onclick="HandleBackdropClick"></div>
         @* @onkeydown:stopPropagation — keys handled inside this modal must not
            bubble into ancestor overlays (an Escape would cascade-close them).
            See DialogContent for the full rationale. *@
@@ -44,6 +46,25 @@ else if (Context.IsOpen)
     [Parameter] public Lumeo.Side Side { get; set; } = Lumeo.Side.Bottom;
     [Parameter] public DrawerAnimation Animation { get; set; } = DrawerAnimation.Slide;
     [Parameter] public bool PreventClose { get; set; }
+
+    /// <summary>
+    /// vaul-style snap points: fractional resting heights in ascending order,
+    /// each <c>0 &lt; f ≤ 1</c> (e.g. <c>[0.4, 0.75, 1]</c> = 40% / 75% / fully
+    /// open). When set on a Top/Bottom drawer, the panel rests at one of these
+    /// heights, drags between them, and dismisses when flicked/dragged below the
+    /// lowest. Ignored for Left/Right (which keep plain swipe-to-dismiss). (#218)
+    /// </summary>
+    [Parameter] public IReadOnlyList<double>? SnapPoints { get; set; }
+
+    /// <summary>
+    /// Index into <see cref="SnapPoints"/> of the current resting snap. Two-way
+    /// bindable: updates as the user drags between snaps, and setting it moves
+    /// the drawer programmatically. <c>-1</c> (default) opens at the most-open
+    /// (last) snap. (#218)
+    /// </summary>
+    [Parameter] public int ActiveSnapPoint { get; set; } = -1;
+    [Parameter] public EventCallback<int> ActiveSnapPointChanged { get; set; }
+
     [Parameter] public string? Class { get; set; }
     /// <summary>Backdrop z-index. Content sits at <c>ZIndex + 1</c>. Defaults
     /// to <see cref="OverlayService.BaseZIndex"/>; <see cref="OverlayProvider"/>
@@ -64,6 +85,23 @@ else if (Context.IsOpen)
 
     private bool ShowDragHandle => Side is Lumeo.Side.Top or Lumeo.Side.Bottom;
 
+    // Snap points only apply to vertical drawers (vaul is vertical-only).
+    private bool UsesSnapPoints => SnapPoints is { Count: > 0 } && Side is Lumeo.Side.Top or Lumeo.Side.Bottom;
+
+    // Clamp the requested initial snap into range; -1 (default) → most-open (last).
+    private int InitialSnapIndex
+    {
+        get
+        {
+            var last = (SnapPoints?.Count ?? 1) - 1;
+            return (ActiveSnapPoint >= 0 && ActiveSnapPoint <= last) ? ActiveSnapPoint : last;
+        }
+    }
+
+    // Last index we pushed to / received from JS, to distinguish a consumer's
+    // programmatic ActiveSnapPoint change from an echo of a gesture-driven one.
+    private int _appliedSnap = -1;
+
     private string PositionClasses => Side switch
     {
         Lumeo.Side.Top => "inset-x-0 top-0 rounded-b-[10px] max-h-[96vh]",
@@ -73,7 +111,9 @@ else if (Context.IsOpen)
         _ => "inset-x-0 bottom-0 rounded-t-[10px] max-h-[96vh]"
     };
 
-    private string AnimationClass => Animation switch
+    // Snap mode: the JS gesture owns the transform (slide-in + resting offset),
+    // so the CSS slide-in keyframe is suppressed to avoid fighting it.
+    private string AnimationClass => UsesSnapPoints ? "" : Animation switch
     {
         DrawerAnimation.None => "",
         DrawerAnimation.Fade => "animate-fade-in",
@@ -111,13 +151,27 @@ else if (Context.IsOpen)
             await Interop.SetupFocusTrap(_contentId);
             // Same animationend cleanup as SheetContent — bypasses Blazor
             // event roundtrip + filters strictly on slide-in-from-* names.
-            if (Animation == DrawerAnimation.Slide)
+            // Skipped in snap mode: the JS snap gesture owns the transform.
+            if (!UsesSnapPoints && Animation == DrawerAnimation.Slide)
             {
                 await Interop.AttachOverlaySlideEnd(_contentId);
             }
             if (!PreventClose)
             {
-                await Interop.RegisterDrawerSwipe(_contentId, SwipeDirection, HandleSwipe, GestureOpts.Value.SwipeDismissThresholdPx, GestureOpts.Value.SwipeDismissFirePx);
+                if (UsesSnapPoints)
+                {
+                    _appliedSnap = InitialSnapIndex;
+                    await Interop.RegisterDrawerSnap(_contentId, SwipeDirection, HandleSwipe, HandleSnapChange,
+                        SnapPoints!, _appliedSnap,
+                        GestureOpts.Value.SwipeDismissThresholdPx, GestureOpts.Value.SwipeDismissFirePx, GestureOpts.Value.SwipeDismissVelocity);
+                    // Surface the resolved initial snap if the consumer hadn't pinned it there.
+                    if (_appliedSnap != ActiveSnapPoint) await ActiveSnapPointChanged.InvokeAsync(_appliedSnap);
+                }
+                else
+                {
+                    await Interop.RegisterDrawerSwipe(_contentId, SwipeDirection, HandleSwipe,
+                        GestureOpts.Value.SwipeDismissThresholdPx, GestureOpts.Value.SwipeDismissFirePx, GestureOpts.Value.SwipeDismissVelocity);
+                }
             }
             _wasOpen = true;
         }
@@ -132,6 +186,30 @@ else if (Context.IsOpen)
 
     private Task HandleSwipe() => Dismiss("swipe");
 
+    // Invoked from JS when a drag settles on a new snap. Mirror it into the
+    // two-way ActiveSnapPoint without re-pushing to JS (it's already there).
+    private async Task HandleSnapChange(int index)
+    {
+        _appliedSnap = index;
+        if (index != ActiveSnapPoint)
+        {
+            await ActiveSnapPointChanged.InvokeAsync(index);
+        }
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        // Consumer moved the drawer programmatically (set ActiveSnapPoint to a
+        // new in-range index that didn't originate from a gesture) → push to JS.
+        if (_wasOpen && UsesSnapPoints && SnapPoints is not null
+            && ActiveSnapPoint >= 0 && ActiveSnapPoint < SnapPoints.Count
+            && ActiveSnapPoint != _appliedSnap)
+        {
+            _appliedSnap = ActiveSnapPoint;
+            await Interop.SetDrawerSnap(_contentId, ActiveSnapPoint);
+        }
+    }
+
     private async Task HandleKeyDown(KeyboardEventArgs e)
     {
         if (e.Key == "Escape" && !PreventClose) await Dismiss("escape");
@@ -143,7 +221,8 @@ else if (Context.IsOpen)
     {
         try
         {
-            await Interop.UnregisterDrawerSwipe(_contentId);
+            if (UsesSnapPoints) await Interop.UnregisterDrawerSnap(_contentId);
+            else await Interop.UnregisterDrawerSwipe(_contentId);
             await Interop.RemoveFocusTrap(_contentId);
             await Interop.UnlockScroll();
         }

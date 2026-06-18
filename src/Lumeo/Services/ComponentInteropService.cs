@@ -409,6 +409,13 @@ public sealed class ComponentInteropService : IComponentInteropService
         await _swipe.RegisterDrawerSwipe(module, GetSelfRef(), elementId, direction, handler, activationPx, firePx);
     }
 
+    // 3.19 — adds velocity/flick dismiss (px/ms) on top of the distance thresholds.
+    public async ValueTask RegisterDrawerSwipe(string elementId, string direction, Func<Task> handler, int? activationPx, int? firePx, double? velocity)
+    {
+        var module = await GetModuleAsync();
+        await _swipe.RegisterDrawerSwipe(module, GetSelfRef(), elementId, direction, handler, activationPx, firePx, velocity);
+    }
+
     public async ValueTask UnregisterDrawerSwipe(string elementId)
     {
         var module = await GetModuleAsync();
@@ -417,6 +424,29 @@ public sealed class ComponentInteropService : IComponentInteropService
 
     [JSInvokable]
     public async Task OnSwipeDismiss(string elementId) => await _swipe.OnSwipeDismiss(elementId);
+
+    // --- Drawer Snap Points (3.19) ---
+
+    public async ValueTask RegisterDrawerSnap(string elementId, string direction, Func<Task> dismissHandler, Func<int, Task> snapHandler, IReadOnlyList<double> snapPoints, int activeIndex, int? activationPx, int? firePx, double? velocity)
+    {
+        var module = await GetModuleAsync();
+        await _swipe.RegisterDrawerSnap(module, GetSelfRef(), elementId, direction, dismissHandler, snapHandler, snapPoints, activeIndex, activationPx, firePx, velocity);
+    }
+
+    public async ValueTask SetDrawerSnap(string elementId, int index)
+    {
+        var module = await GetModuleAsync();
+        await _swipe.SetDrawerSnap(module, elementId, index);
+    }
+
+    public async ValueTask UnregisterDrawerSnap(string elementId)
+    {
+        var module = await GetModuleAsync();
+        await _swipe.UnregisterDrawerSnap(module, elementId);
+    }
+
+    [JSInvokable]
+    public async Task OnDrawerSnapChange(string elementId, int index) => await _swipe.OnDrawerSnapChange(elementId, index);
 
     // --- Sortable Touch (rc.44 mobile fix) ---
 

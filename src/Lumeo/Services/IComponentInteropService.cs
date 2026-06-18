@@ -142,7 +142,28 @@ public interface IComponentInteropService : IAsyncDisposable, IDisposable
     /// <param name="firePx">Pull-distance above which release triggers a dismiss.</param>
     ValueTask RegisterDrawerSwipe(string elementId, string direction, Func<Task> handler, int? activationPx, int? firePx) =>
         RegisterDrawerSwipe(elementId, direction, handler);
+    /// <summary>
+    /// 3.19 — adds <paramref name="velocity"/> (px/ms): a flick faster than this
+    /// in the dismiss direction closes the drawer even below <paramref name="firePx"/>.
+    /// Default impl ignores it so non-overriding implementations keep working.
+    /// </summary>
+    ValueTask RegisterDrawerSwipe(string elementId, string direction, Func<Task> handler, int? activationPx, int? firePx, double? velocity) =>
+        RegisterDrawerSwipe(elementId, direction, handler, activationPx, firePx);
     ValueTask UnregisterDrawerSwipe(string elementId);
+
+    // Drawer Snap Points (3.19) — vaul-style fractional resting heights.
+    /// <summary>
+    /// Registers a snap-point gesture: the drawer rests at one of
+    /// <paramref name="snapPoints"/> (fractions 0&lt;f≤1), drags between them, and
+    /// dismisses when flicked/dragged below the lowest. <paramref name="snapHandler"/>
+    /// fires with the new index on each settle; <paramref name="dismissHandler"/>
+    /// fires on close. Default impl falls back to plain swipe-dismiss.
+    /// </summary>
+    ValueTask RegisterDrawerSnap(string elementId, string direction, Func<Task> dismissHandler, Func<int, Task> snapHandler, IReadOnlyList<double> snapPoints, int activeIndex, int? activationPx, int? firePx, double? velocity) =>
+        RegisterDrawerSwipe(elementId, direction, dismissHandler, activationPx, firePx);
+    /// <summary>Programmatically move a snap-point drawer to <paramref name="index"/>.</summary>
+    ValueTask SetDrawerSnap(string elementId, int index) => ValueTask.CompletedTask;
+    ValueTask UnregisterDrawerSnap(string elementId) => UnregisterDrawerSwipe(elementId);
 
     // Tab Swipe — horizontal swipe switches between TabsContent panels
     ValueTask RegisterTabSwipe(string elementId, bool wrap, Func<string, Task> handler);
