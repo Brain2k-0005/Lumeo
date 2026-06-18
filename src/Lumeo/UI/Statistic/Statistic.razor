@@ -10,7 +10,7 @@
         {
             <span class="@ValueClass">@Prefix</span>
         }
-        <span class="@ValueClass">@FormattedValue</span>
+        <span class="@ValueClass">@ValueBody</span>
         @if (Suffix is not null)
         {
             <span class="@SuffixClass">@Suffix</span>
@@ -38,6 +38,12 @@
 @code {
     [Parameter] public string? Title { get; set; }
     [Parameter] public string? Value { get; set; }
+    /// <summary>
+    /// Custom value content — overrides <see cref="Value"/>. Drop in a
+    /// <c>&lt;NumberTicker&gt;</c> (Lumeo.Motion) here for an animated count-up,
+    /// rather than duplicating animation logic in core. (#273)
+    /// </summary>
+    [Parameter] public RenderFragment? ValueContent { get; set; }
     [Parameter] public RenderFragment? Prefix { get; set; }
     [Parameter] public RenderFragment? Suffix { get; set; }
     [Parameter] public int? Precision { get; set; }
@@ -57,6 +63,12 @@
     [Parameter] public StatisticVariant Variant { get; set; } = StatisticVariant.Default;
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private RenderFragment ValueBody => builder =>
+    {
+        if (ValueContent is not null) builder.AddContent(0, ValueContent);
+        else builder.AddContent(1, FormattedValue);
+    };
 
     private string CssClass => Cx.Merge(VariantClass, Class);
 
