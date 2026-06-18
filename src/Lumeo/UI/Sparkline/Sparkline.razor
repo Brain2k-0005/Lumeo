@@ -19,6 +19,12 @@
     [Parameter] public SparkType Type { get; set; } = SparkType.Line;
     [Parameter] public bool ShowArea { get; set; }
     [Parameter] public bool ShowLast { get; set; }
+    /// <summary>
+    /// Render a marker dot at every data point with a native SVG <c>&lt;title&gt;</c>
+    /// (hover tooltip showing the value) — point highlight + tooltips with no JS.
+    /// Off by default. (#275)
+    /// </summary>
+    [Parameter] public bool ShowTooltips { get; set; }
     [Parameter] public double StrokeWidth { get; set; } = 1.5;
     [Parameter] public string? AriaLabel { get; set; } = "Trend";
     [Parameter] public string? Class { get; set; }
@@ -127,6 +133,21 @@
             }
             var r = (Type == SparkType.Area || ShowArea) ? 2.75 : 2.25;
             sb.Append($"<circle cx=\"{F(lx)}\" cy=\"{F(ly)}\" r=\"{F(r)}\" fill=\"{color}\" />");
+        }
+
+        // Per-point markers + native <title> hover tooltips (#275). Opt-in.
+        if (ShowTooltips)
+        {
+            var n = list.Count;
+            var slot = 100.0 / n;
+            for (int i = 0; i < n; i++)
+            {
+                var cx = Type == SparkType.Bars
+                    ? i * slot + slot / 2.0
+                    : (n == 1 ? 50.0 : (double)i / (n - 1) * 100.0);
+                var cy = ScaleY(list[i]);
+                sb.Append($"<circle cx=\"{F(cx)}\" cy=\"{F(cy)}\" r=\"1.75\" fill=\"{color}\"><title>{F(list[i])}</title></circle>");
+            }
         }
 
         return sb.ToString();
