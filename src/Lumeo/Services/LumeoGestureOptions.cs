@@ -31,4 +31,12 @@ public sealed class LumeoGestureOptions
 
     /// <summary>Pull-down distance (px) above which a swipe-to-close fires after release. Default 100. Below this value the overlay snaps back.</summary>
     public int SwipeDismissFirePx { get; set; } = 100;
+
+    /// <summary>
+    /// Flick velocity (px/ms) above which a Drawer swipe dismisses on release
+    /// regardless of how far it travelled — a fast flick closes even below
+    /// <see cref="SwipeDismissFirePx"/>. Default 0.4. Set 0 to disable
+    /// velocity dismissal (distance-only, the pre-3.19 behaviour).
+    /// </summary>
+    public double SwipeDismissVelocity { get; set; } = 0.4;
 }

@@ -5,6 +5,9 @@ namespace Lumeo.Services.Interop;
 internal sealed class SwipeInterop
 {
     private readonly Dictionary<string, Func<Task>> _drawerSwipeHandlers = new();
+    private readonly Dictionary<string, Func<int, Task>> _drawerSnapHandlers = new();
+    // Snap dismiss returns whether the close was honored, so JS can snap back on an OnBeforeClose veto.
+    private readonly Dictionary<string, Func<Task<bool>>> _drawerSnapDismissHandlers = new();
     private readonly Dictionary<string, Func<string, Task>> _carouselSwipeHandlers = new();
     private readonly Dictionary<string, Func<double, double, int, Task>> _carouselScrollHandlers = new();
     private readonly Dictionary<string, Func<string, Task>> _toastSwipeHandlers = new();
@@ -21,10 +24,62 @@ internal sealed class SwipeInterop
         string direction,
         Func<Task> handler,
         int? activationPx = null,
-        int? firePx = null)
+        int? firePx = null,
+        double? velocity = null)
     {
         _drawerSwipeHandlers[elementId] = handler;
-        await module.InvokeVoidAsync("registerDrawerSwipe", elementId, direction, selfRef, new { activationPx, firePx });
+        await module.InvokeVoidAsync("registerDrawerSwipe", elementId, direction, selfRef, new { activationPx, firePx, velocity });
+    }
+
+    // --- Drawer Snap Points (3.19) ---
+
+    public async ValueTask RegisterDrawerSnap(
+        IJSObjectReference module,
+        DotNetObjectReference<ComponentInteropService> selfRef,
+        string elementId,
+        string direction,
+        Func<Task<bool>> dismissHandler,
+        Func<int, Task> snapHandler,
+        IReadOnlyList<double> snapPoints,
+        int activeIndex,
+        bool dismissible = true,
+        int? activationPx = null,
+        int? firePx = null,
+        double? velocity = null)
+    {
+        _drawerSnapDismissHandlers[elementId] = dismissHandler;
+        _drawerSnapHandlers[elementId] = snapHandler;
+        await module.InvokeVoidAsync("registerDrawerSnap", elementId, direction, selfRef,
+            new { snapPoints, activeIndex, dismissible, activationPx, firePx, velocity });
+    }
+
+    public async Task<bool> OnDrawerSnapDismiss(string elementId)
+    {
+        if (_drawerSnapDismissHandlers.TryGetValue(elementId, out var handler))
+        {
+            return await handler();
+        }
+        return true;
+    }
+
+    public async ValueTask SetDrawerSnap(IJSObjectReference module, string elementId, int index)
+    {
+        await module.InvokeVoidAsync("setDrawerSnap", elementId, index);
+    }
+
+    public async ValueTask UnregisterDrawerSnap(IJSObjectReference module, string elementId)
+    {
+        _drawerSnapDismissHandlers.Remove(elementId);
+        _drawerSnapHandlers.Remove(elementId);
+        await module.InvokeVoidAsync("unregisterDrawerSnap", elementId);
+    }
+
+    public async Task OnDrawerSnapChange(string elementId, int index)
+    {
+        if (_drawerSnapHandlers.TryGetValue(elementId, out var handler))
+        {
+            await handler(index);
+        }
     }
 
     public async ValueTask RegisterDrawerSwipe(
@@ -221,6 +276,8 @@ internal sealed class SwipeInterop
     public void Clear()
     {
         _drawerSwipeHandlers.Clear();
+        _drawerSnapHandlers.Clear();
+        _drawerSnapDismissHandlers.Clear();
         _carouselSwipeHandlers.Clear();
         _carouselScrollHandlers.Clear();
         _toastSwipeHandlers.Clear();
