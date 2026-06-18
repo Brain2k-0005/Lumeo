@@ -2,9 +2,18 @@
 
 <div class="@($"space-y-4 {Class}".Trim())" @attributes="AdditionalAttributes">
     @ChildContent
-    @if (Pills != null)
+    @if ((Filters is not null && Filters.Count > 0) || Pills != null)
     {
         <div class="flex items-center gap-2 flex-wrap">
+            @if (Filters is not null)
+            {
+                @foreach (var f in Filters)
+                {
+                    var desc = f;
+                    <FilterPill Label="@desc.Field" Operator="@desc.Operator" Value="@(desc.Value ?? "")"
+                                OnDismiss="@(() => OnRemoveFilter.InvokeAsync(desc))" />
+                }
+            }
             @Pills
         </div>
     }
@@ -18,6 +27,20 @@
     [Parameter] public RenderFragment? ChildContent { get; set; }
     [Parameter] public RenderFragment? Pills { get; set; }
     [Parameter] public RenderFragment? Actions { get; set; }
+
+    /// <summary>
+    /// Data-driven filter model (#319): when supplied, the bar renders a dismissable
+    /// <see cref="FilterPill"/> per descriptor (Field / Operator / Value) and raises
+    /// <see cref="OnRemoveFilter"/> on dismiss. The <see cref="Pills"/> slot still
+    /// works and renders alongside, so this is purely additive.
+    /// </summary>
+    [Parameter] public IReadOnlyList<FilterDescriptor>? Filters { get; set; }
+    [Parameter] public EventCallback<FilterDescriptor> OnRemoveFilter { get; set; }
+
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    /// <summary>A single active filter: a field, an optional comparison operator
+    /// (e.g. "=", "&gt;", "contains"), and a display value.</summary>
+    public record FilterDescriptor(string Field, string? Operator = null, string? Value = null);
 }

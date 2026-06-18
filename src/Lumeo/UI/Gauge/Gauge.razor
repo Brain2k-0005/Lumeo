@@ -22,7 +22,7 @@
         @if (ShowValue)
         {
             <span class="text-xs text-foreground font-medium mt-1 block text-center"
-                  style="width: @(Size)px">@DisplayValue</span>
+                  style="width: @(Size)px">@LabelBody</span>
         }
     </div>
 }
@@ -69,7 +69,7 @@ else
         @if (ShowValue)
         {
             <span class="absolute inset-0 flex items-center justify-center text-foreground font-medium pointer-events-none"
-                  style="font-size: @(LabelFontSize)px; @LabelOffset">@DisplayValue</span>
+                  style="font-size: @(LabelFontSize)px; @LabelOffset">@LabelBody</span>
         }
     </div>
 }
@@ -82,12 +82,24 @@ else
     [Parameter] public int Size { get; set; } = 120;
     [Parameter] public int StrokeWidth { get; set; } = 8;
     [Parameter] public string? Label { get; set; }
+    /// <summary>
+    /// Custom center/label content — overrides the default text. Drop in a
+    /// <c>&lt;NumberTicker&gt;</c> (Lumeo.Motion) here for an animated value, instead
+    /// of duplicating count-up animation in core. (#277)
+    /// </summary>
+    [Parameter] public RenderFragment? LabelContent { get; set; }
     [Parameter] public bool ShowValue { get; set; } = true;
     [Parameter] public string Color { get; set; } = "primary";
     [Parameter] public string TrackColor { get; set; } = "muted";
     [Parameter] public IReadOnlyList<GaugeThreshold>? Thresholds { get; set; }
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private RenderFragment LabelBody => builder =>
+    {
+        if (LabelContent is not null) builder.AddContent(0, LabelContent);
+        else builder.AddContent(1, DisplayValue);
+    };
 
     private double Percentage => Max > Min
         ? Math.Clamp((Value - Min) / (Max - Min) * 100.0, 0.0, 100.0)

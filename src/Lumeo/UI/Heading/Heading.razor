@@ -5,30 +5,49 @@
    silently. The clamp drives both the rendered tag AND the visual size
    below, so the two stay consistent (a Level=0 input doesn't render as
    an h6 with h1 sizing). *@
-@switch (ClampedLevel)
+@if (!string.IsNullOrEmpty(As))
 {
-    case 1:
-        <h1 class="@CssClass" @attributes="AdditionalAttributes">@ChildContent</h1>
-        break;
-    case 2:
-        <h2 class="@CssClass" @attributes="AdditionalAttributes">@ChildContent</h2>
-        break;
-    case 3:
-        <h3 class="@CssClass" @attributes="AdditionalAttributes">@ChildContent</h3>
-        break;
-    case 4:
-        <h4 class="@CssClass" @attributes="AdditionalAttributes">@ChildContent</h4>
-        break;
-    case 5:
-        <h5 class="@CssClass" @attributes="AdditionalAttributes">@ChildContent</h5>
-        break;
-    default:
-        <h6 class="@CssClass" @attributes="AdditionalAttributes">@ChildContent</h6>
-        break;
+    @* asChild-style polymorphism (#295): render the heading's visual styles on a
+       caller-chosen element (e.g. a hero title that shouldn't be a document
+       heading). Visual only — add role="heading"/aria-level via attributes if you
+       want heading semantics on a non-h* element. *@
+    @RenderAs
+}
+else
+{
+    switch (ClampedLevel)
+    {
+        case 1:
+            <h1 class="@CssClass" @attributes="AdditionalAttributes">@ChildContent</h1>
+            break;
+        case 2:
+            <h2 class="@CssClass" @attributes="AdditionalAttributes">@ChildContent</h2>
+            break;
+        case 3:
+            <h3 class="@CssClass" @attributes="AdditionalAttributes">@ChildContent</h3>
+            break;
+        case 4:
+            <h4 class="@CssClass" @attributes="AdditionalAttributes">@ChildContent</h4>
+            break;
+        case 5:
+            <h5 class="@CssClass" @attributes="AdditionalAttributes">@ChildContent</h5>
+            break;
+        default:
+            <h6 class="@CssClass" @attributes="AdditionalAttributes">@ChildContent</h6>
+            break;
+    }
 }
 
 @code {
     [Parameter] public int Level { get; set; } = 2;
+    /// <summary>
+    /// Render the heading's visual styling on this element tag instead of the
+    /// semantic <c>h{Level}</c> (e.g. <c>"p"</c>, <c>"div"</c>, <c>"span"</c>) —
+    /// the asChild-style escape hatch for "looks like a heading, isn't one in the
+    /// document outline". Visual only; supply role/aria-level via attributes for
+    /// heading semantics. Null = the normal <c>h{Level}</c>. (#295)
+    /// </summary>
+    [Parameter] public string? As { get; set; }
     [Parameter] public string? Size { get; set; }
     [Parameter] public string? Weight { get; set; }
     [Parameter] public string? Tracking { get; set; }
@@ -37,6 +56,16 @@
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     private int ClampedLevel => Math.Clamp(Level, 1, 6);
+
+    private RenderFragment RenderAs => builder =>
+    {
+        builder.OpenElement(0, As!);
+        builder.AddAttribute(1, "class", CssClass);
+        if (AdditionalAttributes is not null)
+            builder.AddMultipleAttributes(2, AdditionalAttributes);
+        builder.AddContent(3, ChildContent);
+        builder.CloseElement();
+    };
 
     private string ResolvedSize => Size ?? ClampedLevel switch
     {
