@@ -46,17 +46,26 @@ else if (Variant == SpinnerVariant.Bars)
     [Parameter] public Lumeo.Size Size { get; set; } = Lumeo.Size.Md;
     [Parameter] public SpinnerVariant Variant { get; set; } = SpinnerVariant.Ring;
     [Parameter] public string? Label { get; set; }
+    /// <summary>
+    /// Screen-reader name when there is no visible <see cref="Label"/>. Defaults
+    /// to "Loading"; set it to a localized string (or pass <c>aria-label</c>
+    /// directly) so the spinner announces in the app's language.
+    /// </summary>
+    [Parameter] public string? AriaLabel { get; set; }
     [Parameter] public string? Color { get; set; }
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     private string WrapperClass => Cx.Merge("inline-flex items-center gap-2", Color, Class);
 
-    // Always advertise an accessible name to AT. Falls back to the visible
-    // Label when present, otherwise "Loading" — the SVG/Dots/Bars are marked
-    // aria-hidden because their shapes carry no semantic meaning by
-    // themselves, so without this the spinner is invisible to screen readers.
-    private string AriaLabelOrDefault => string.IsNullOrEmpty(Label) ? "Loading" : Label!;
+    // Always advertise an accessible name to AT. Prefers an explicit AriaLabel
+    // (localizable), then the visible Label, then "Loading" — the SVG/Dots/Bars
+    // are aria-hidden because their shapes carry no semantic meaning, so without
+    // this the spinner is invisible to screen readers. A consumer-supplied
+    // aria-label via attributes still wins (splatted last).
+    private string AriaLabelOrDefault =>
+        !string.IsNullOrEmpty(AriaLabel) ? AriaLabel! :
+        !string.IsNullOrEmpty(Label) ? Label! : "Loading";
 
     private string RingCssClass => Cx.Join("animate-spin", SizeClasses);
 
