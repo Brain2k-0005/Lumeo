@@ -525,6 +525,33 @@ export function positionFixed(contentId, referenceId, align, matchWidth, side, o
                 content.style.overflow = 'auto';
             }
         }
+
+        // --- Containing-block compensation (transformed ancestor) -------------
+        // position:fixed resolves against the nearest transformed / filtered /
+        // backdrop-filtered ancestor (which becomes its containing block), NOT
+        // the viewport. When such an ancestor exists — e.g. this content is a
+        // SelectContent / DropdownMenuSubContent rendered inside a centered
+        // Dialog (which uses transform) — every top/left we wrote above lands
+        // offset by the ancestor's origin, so the popover renders off its
+        // trigger. All the math above is in viewport space, so content.style.
+        // top/left already hold the INTENDED viewport coordinates; measuring the
+        // residual between intended and actual yields exactly the ancestor's
+        // origin offset, which we fold back. This re-runs on every scroll/resize
+        // (update is the rAF handler), so it stays correct as the page moves —
+        // and is a no-op (offset ~ 0) when no transformed ancestor exists, so it
+        // never affects the common page-level case. Compensating here instead of
+        // reparenting the node to <body> keeps Blazor's DOM ownership intact.
+        const intendedTop = parseFloat(content.style.top);
+        const intendedLeft = parseFloat(content.style.left);
+        const settled = content.getBoundingClientRect();
+        if (Number.isFinite(intendedTop)) {
+            const offY = settled.top - intendedTop;
+            if (Math.abs(offY) > 0.5) content.style.top = `${intendedTop - offY}px`;
+        }
+        if (Number.isFinite(intendedLeft)) {
+            const offX = settled.left - intendedLeft;
+            if (Math.abs(offX) > 0.5) content.style.left = `${intendedLeft - offX}px`;
+        }
     }
 
     // Initial position
