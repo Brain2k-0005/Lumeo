@@ -120,4 +120,68 @@ public class BottomNavTests : IAsyncLifetime
 
         Assert.Equal("bn", cut.Find("nav").GetAttribute("data-testid"));
     }
+
+    [Fact]
+    public void ReserveSpace_False_By_Default_Renders_No_Spacer()
+    {
+        var cut = _ctx.Render<Lumeo.BottomNav>();
+
+        Assert.Empty(cut.FindAll(".lumeo-bottom-nav-spacer"));
+    }
+
+    [Fact]
+    public void ReserveSpace_True_When_Fixed_Renders_AriaHidden_Spacer()
+    {
+        var cut = _ctx.Render<Lumeo.BottomNav>(p => p
+            .Add(n => n.Fixed, true)
+            .Add(n => n.ReserveSpace, true));
+
+        var spacer = cut.Find(".lumeo-bottom-nav-spacer");
+        Assert.Equal("true", spacer.GetAttribute("aria-hidden"));
+
+        // Pin the reserved height: the default token (4rem — the real Default nav
+        // content height is 3.875rem) + the safe-area inset exactly once. Guards
+        // against a regression to the under-reserving 3.5rem the first cut shipped.
+        var style = spacer.GetAttribute("style") ?? "";
+        Assert.Contains("var(--lumeo-bottom-nav-height, 4rem)", style);
+        Assert.Contains("env(safe-area-inset-bottom", style);
+        Assert.DoesNotContain("3.5rem", style);
+    }
+
+    [Fact]
+    public void ReserveSpace_Spacer_Is_Sibling_Immediately_Before_Nav()
+    {
+        var cut = _ctx.Render<Lumeo.BottomNav>(p => p
+            .Add(n => n.Fixed, true)
+            .Add(n => n.ReserveSpace, true));
+
+        var spacer = cut.Find(".lumeo-bottom-nav-spacer");
+        Assert.Equal("NAV", spacer.NextElementSibling?.TagName);
+    }
+
+    [Fact]
+    public void ReserveSpace_Pill_Variant_Reserves_Extra_Float_Gap()
+    {
+        // The Pill bar floats with a pb-3 (0.75rem) gap below it, so its spacer
+        // must reserve more than the Default variant — not silently share the token.
+        var cut = _ctx.Render<Lumeo.BottomNav>(p => p
+            .Add(n => n.Fixed, true)
+            .Add(n => n.ReserveSpace, true)
+            .Add(n => n.Variant, Lumeo.BottomNav.BottomNavVariant.Pill));
+
+        var style = cut.Find(".lumeo-bottom-nav-spacer").GetAttribute("style") ?? "";
+        Assert.Contains("0.75rem", style);
+    }
+
+    [Fact]
+    public void ReserveSpace_Ignored_When_Not_Fixed()
+    {
+        // An inline nav already occupies flow space, so reserving more would
+        // double-pad. The spacer must only appear for a fixed (overlapping) bar.
+        var cut = _ctx.Render<Lumeo.BottomNav>(p => p
+            .Add(n => n.Fixed, false)
+            .Add(n => n.ReserveSpace, true));
+
+        Assert.Empty(cut.FindAll(".lumeo-bottom-nav-spacer"));
+    }
 }
