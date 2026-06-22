@@ -40,15 +40,15 @@
        as a button" case. <a> can't be natively disabled, so a disabled/loading
        link gets aria-disabled + pointer-events-none/opacity directly (the
        `disabled:` utility variant only targets a real :disabled element). *@
-    <a @ref="_el" href="@Href" class="@LinkCssClass"
+    <a @ref="_el" href="@Href" id="@Slot?.Id" class="@LinkCssClass"
        aria-disabled="@((IsLoading || Disabled) ? "true" : null)"
        tabindex="@((IsLoading || Disabled) ? "-1" : null)"
-       @attributes="AdditionalAttributes" @onclick="OnClick"
+       @attributes="MergedAttributes" @onclick="HandleClick"
        @onclick:stopPropagation="StopPropagation" @onclick:preventDefault="PreventDefault">@inner</a>
 }
 else
 {
-    <button @ref="_el" type="@TypeAttr" class="@CssClass" disabled="@(IsLoading || Disabled)" @attributes="AdditionalAttributes" @onclick="OnClick" @onclick:stopPropagation="StopPropagation" @onclick:preventDefault="PreventDefault">@inner</button>
+    <button @ref="_el" type="@TypeAttr" id="@Slot?.Id" class="@CssClass" disabled="@(IsLoading || Disabled)" @attributes="MergedAttributes" @onclick="HandleClick" @onclick:stopPropagation="StopPropagation" @onclick:preventDefault="PreventDefault">@inner</button>
 }
 
 @code {
@@ -112,9 +112,17 @@ else
 
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
+    // When this Button is the child of a trigger rendered AsChild (Popover/Dropdown/
+    // Dialog/...), the trigger cascades a TriggerSlot the Button auto-applies, so the
+    // pair renders as ONE <button> instead of a nested role=button wrapper. Null in
+    // every normal usage — all the Slot?.* below are then no-ops, so behaviour is
+    // byte-identical when no trigger is involved.
+    [CascadingParameter] private TriggerSlot? Slot { get; set; }
+
     private Microsoft.AspNetCore.Components.ElementReference _el;
 
     private string CssClass => Cx.Merge(
+        Slot?.Class,                 // trigger base classes first, so the Button's own classes win conflicts
         VariantClasses,
         SizeClasses,
         BaseClasses,
@@ -123,6 +131,31 @@ else
         Cx.When(IsLoading, "pointer-events-none opacity-70"),
         Cx.When(FullWidth, "w-full"),
         Class);
+
+    // Slot a11y/state attrs first, then the consumer's unmatched attributes so an
+    // author-set aria-*/data-* on the Button overrides the slot. Falls through to the
+    // plain AdditionalAttributes (possibly null) when no slot is cascaded.
+    private IReadOnlyDictionary<string, object>? MergedAttributes
+    {
+        get
+        {
+            if (Slot is null) return AdditionalAttributes;
+            var d = new Dictionary<string, object>(Slot.Attributes);
+            if (AdditionalAttributes is not null)
+                foreach (var kv in AdditionalAttributes) d[kv.Key] = kv.Value;
+            return d;
+        }
+    }
+
+    // Compose the trigger's activation (open/toggle) BEFORE the consumer's own OnClick,
+    // so the overlay always opens even if the consumer handler stops propagation. No-op
+    // slot hop when not AsChild. A native <button> fires this on Enter/Space too, so the
+    // slot's keyboard callback is intentionally NOT wired here (it would double-activate).
+    private async Task HandleClick(Microsoft.AspNetCore.Components.Web.MouseEventArgs e)
+    {
+        if (Slot is not null) await Slot.OnClick.InvokeAsync(e);
+        await OnClick.InvokeAsync(e);
+    }
 
     // Link variant can't use the `disabled:` utilities (no :disabled state on
     // <a>), so fold the inactive styling in directly.

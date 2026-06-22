@@ -30,6 +30,17 @@ public class ButtonTests : IAsyncLifetime
     }
 
     [Fact]
+    public void Button_Without_Ambient_TriggerSlot_Renders_No_Id()
+    {
+        // Byte-identity contract for the asChild (G34) slot plumbing: a normal Button
+        // — no AsChild trigger cascading a TriggerSlot above it — must not pick up an
+        // id="" from id="@Slot?.Id". Guards the null-Slot fast path against regressions.
+        var cut = _ctx.Render<Lumeo.Button>(p => p.AddChildContent("Go"));
+
+        Assert.False(cut.Find("button").HasAttribute("id"));
+    }
+
+    [Fact]
     public void Renders_Destructive_Variant()
     {
         var cut = _ctx.Render<Lumeo.Button>(p => p
