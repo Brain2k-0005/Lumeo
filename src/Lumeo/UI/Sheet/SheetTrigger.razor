@@ -1,16 +1,70 @@
 @namespace Lumeo
 
-<div class="@CssClass" role="button" tabindex="0" aria-expanded="@Context.IsOpen" aria-haspopup="dialog" @onclick="Open" @onkeydown="HandleKeyDown" @attributes="AdditionalAttributes">
-    @ChildContent
-</div>
+@if (AsChild)
+{
+    @* asChild: no wrapper — cascade the slot so a Lumeo <Button> (or a manual
+       <ChildContentSlot> splat) becomes the single trigger element. A Sheet has no
+       trigger-anchored positioning, so the slot carries no Id. *@
+    <CascadingValue Value="Slot" IsFixed="false">
+        @if (ChildContentSlot is not null)
+        {
+            @ChildContentSlot(Slot)
+        }
+        else
+        {
+            @ChildContent
+        }
+    </CascadingValue>
+}
+else
+{
+    <div class="@CssClass" role="button" tabindex="0" aria-expanded="@Context.IsOpen" aria-haspopup="dialog" @onclick="Open" @onkeydown="HandleKeyDown" @attributes="AdditionalAttributes">
+        @ChildContent
+    </div>
+}
 
 @code {
     [CascadingParameter] public Sheet.SheetContext Context { get; set; } = default!;
     [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    /// <summary>Tier-2 escape hatch for <see cref="AsChild"/> with arbitrary markup —
+    /// receives the <see cref="TriggerSlot"/> to splat manually. Lumeo
+    /// <c>&lt;Button&gt;</c> children need only <see cref="AsChild"/>.</summary>
+    [Parameter] public RenderFragment<TriggerSlot>? ChildContentSlot { get; set; }
+
+    /// <summary>
+    /// When <c>true</c>, renders NO wrapper and cascades a <see cref="TriggerSlot"/>
+    /// a cooperating child (a Lumeo <c>&lt;Button&gt;</c>, or a manual
+    /// <see cref="ChildContentSlot"/>) folds onto its own single root element — the
+    /// Radix <c>asChild</c> goal: one DOM node, no nested-interactive markup. Prefer a
+    /// <c>&lt;button&gt;</c> child (a <c>&lt;Button Href&gt;</c> link activates on Enter
+    /// only, not Space). Default <c>false</c> keeps the current <c>role=button</c> wrapper.
+    /// </summary>
+    [Parameter] public bool AsChild { get; set; }
+
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     private string CssClass => Cx.Merge("inline-flex", Class);
+
+    private TriggerSlot Slot => new(
+        Id: null,
+        Class: Cx.Merge("inline-flex", Class),
+        Attributes: BuildAttrs(),
+        OnClick: EventCallback.Factory.Create<MouseEventArgs>(this, _ => Open()),
+        OnKeyDown: EventCallback.Factory.Create<KeyboardEventArgs>(this, HandleKeyDown));
+
+    private IReadOnlyDictionary<string, object> BuildAttrs()
+    {
+        var d = new Dictionary<string, object>
+        {
+            ["aria-haspopup"] = "dialog",
+            ["aria-expanded"] = Context.IsOpen ? "true" : "false",
+        };
+        if (AdditionalAttributes is not null)
+            foreach (var kv in AdditionalAttributes) d[kv.Key] = kv.Value; // author wins on collision
+        return d;
+    }
 
     private async Task Open() => await Context.SetOpen.InvokeAsync(true);
 
