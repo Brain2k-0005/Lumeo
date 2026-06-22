@@ -114,6 +114,50 @@ public class TooltipTests : IAsyncLifetime
         Assert.Contains(elements, e => (e.GetAttribute("class") ?? "").StartsWith("inline-flex"));
     }
 
+    private IRenderedComponent<IComponent> RenderTooltipWithWrapperClass(string wrapperClass)
+    {
+        return _ctx.Render(builder =>
+        {
+            builder.OpenComponent<L.Tooltip>(0);
+            builder.AddAttribute(1, "ShowDelay", 0);
+            builder.AddAttribute(2, "Class", wrapperClass);
+            builder.AddAttribute(3, "ChildContent", (RenderFragment)(b =>
+            {
+                b.OpenComponent<L.TooltipTrigger>(0);
+                b.AddAttribute(1, "ChildContent", (RenderFragment)(inner => inner.AddContent(0, "Hover me")));
+                b.CloseComponent();
+            }));
+            builder.CloseComponent();
+        });
+    }
+
+    [Fact]
+    public void Tooltip_Wrapper_Forwards_Custom_Class()
+    {
+        // The wrapper has no Class param before 3.20 — full-width nav triggers had
+        // to be widened with an app-side CSS attribute-selector hack. Now Class flows
+        // onto the wrapper so consumers control its box width directly.
+        var cut = RenderTooltipWithWrapperClass("w-full custom-x");
+        var cls = cut.Find("div").GetAttribute("class") ?? "";
+        Assert.Contains("relative", cls);
+        Assert.Contains("inline-flex", cls);
+        Assert.Contains("w-full", cls);
+        Assert.Contains("custom-x", cls);
+    }
+
+    [Fact]
+    public void Tooltip_Wrapper_Class_Wins_Conflicts_Via_CxMerge()
+    {
+        // A consumer display utility must OVERRIDE the base inline-flex via
+        // tailwind-merge (Cx.Merge), not merely append — proving the merge is wired,
+        // so consumers never need !important to beat the base class.
+        var cut = RenderTooltipWithWrapperClass("block");
+        var cls = cut.Find("div").GetAttribute("class") ?? "";
+        Assert.Contains("relative", cls);
+        Assert.Contains("block", cls);
+        Assert.DoesNotContain("inline-flex", cls);
+    }
+
     // --- Custom class forwarded ---
 
     [Fact]
