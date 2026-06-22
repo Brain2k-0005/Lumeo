@@ -107,6 +107,8 @@
     /// <summary>Programmatically focus the trigger button.</summary>
     public ValueTask FocusAsync() => Interop.FocusElement(_triggerId);
 
+    private bool _wasOpen;
+
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (firstRender && AutoFocus)
@@ -114,6 +116,42 @@
             try { await Interop.FocusElement(_triggerId); }
             catch (Microsoft.JSInterop.JSDisconnectedException) { }
         }
+
+        // Seed keyboard focus to the currently-selected option the first time the
+        // listbox opens, so it opens highlighting the current value (Radix / shadcn
+        // behaviour) and the first ArrowDown moves from there rather than the top.
+        // Runs after render so data-bound NavItems and self-registered SelectItems
+        // are present in both modes. Re-armed on close (where SetOpen also resets
+        // _focusedIndex), so a fresh open re-seeds.
+        // Defer latching until the option list actually exists: a Select opened
+        // while its Items are still loading (NavItems empty on the open render)
+        // must re-attempt the seed on the later render where options appear,
+        // instead of consuming the one-shot early and never highlighting the value.
+        if (Open && !_wasOpen && NavItems.Count > 0)
+        {
+            _wasOpen = true;
+            if (TrySeedFocusToSelected())
+                StateHasChanged();
+        }
+        else if (!Open && _wasOpen)
+        {
+            _wasOpen = false;
+        }
+    }
+
+    // Sets _focusedIndex to the index of the current value within NavItems, unless
+    // the user has already navigated (_focusedIndex >= 0) or there is no match.
+    private bool TrySeedFocusToSelected()
+    {
+        if (_focusedIndex >= 0) return false;
+        var nav = NavItems;
+        if (nav.Count == 0) return false;
+        var selected = Multiple ? Values?.FirstOrDefault() : Value;
+        if (string.IsNullOrEmpty(selected)) return false;
+        var idx = nav.FindIndex(n => n.Value == selected);
+        if (idx < 0) return false;
+        _focusedIndex = idx;
+        return true;
     }
 
     // --- Data-bound mode (non-generic, purely additive) ---

@@ -222,6 +222,17 @@
                 await Context.SetOpen.InvokeAsync(false);
                 await InvokeAsync(StateHasChanged);
             });
+            // Suppress the browser default for the listbox navigation keys so they
+            // move the focused option instead of scrolling the page (the keys are
+            // handled in HandleKeyDown). SkipEditable keeps the search input's own
+            // caret keys (Home/End) and typing alive when the Select is Searchable.
+            await Interop.RegisterPreventDefaultKeys(Context.ContentId, new[]
+            {
+                new PreventDefaultKeyRule("ArrowDown", SkipEditable: true),
+                new PreventDefaultKeyRule("ArrowUp", SkipEditable: true),
+                new PreventDefaultKeyRule("Home", SkipEditable: true),
+                new PreventDefaultKeyRule("End", SkipEditable: true),
+            });
             _registered = true;
         }
         else if (!Context.IsOpen && _registered)
@@ -270,6 +281,7 @@
     {
         try { await Interop.UnpositionFixed(Context.ContentId); } catch (JSDisconnectedException) { }
         try { await Interop.UnregisterClickOutside(Context.ContentId); } catch (JSDisconnectedException) { }
+        try { await Interop.UnregisterPreventDefaultKeys(Context.ContentId); } catch (JSDisconnectedException) { }
         _registered = false;
     }
 
