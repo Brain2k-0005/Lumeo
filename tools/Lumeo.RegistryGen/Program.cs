@@ -742,6 +742,19 @@ var jsonOpts = new JsonSerializerOptions
 var json = JsonSerializer.Serialize(root, jsonOpts);
 File.WriteAllText(outputPath, json, new UTF8Encoding(false));
 
+// Also write the copy the MCP server bundles + ships. Previously this was only
+// synced by the MCP's npm `prebuild` (sync-registry.mjs), so whenever nobody ran
+// `npm run build` the committed tools/lumeo-mcp/src/registry.json drifted (it sat a
+// month / 149-vs-163 components behind) — a real "MCP is not up to date" bug.
+// Writing it here keeps it in lockstep with every regen, and the CI freshness gate
+// covers this path too.
+var mcpRegistryPath = Path.Combine(repoRoot, "tools", "lumeo-mcp", "src", "registry.json");
+if (Directory.Exists(Path.GetDirectoryName(mcpRegistryPath)!))
+{
+    File.WriteAllText(mcpRegistryPath, json, new UTF8Encoding(false));
+    Console.WriteLine($"Wrote registry copy to {mcpRegistryPath}");
+}
+
 Console.WriteLine($"Wrote {components.Count} components to {outputPath}");
 
 // ─────── Second pass: full Razor parameter schema → components-api.json ───────
