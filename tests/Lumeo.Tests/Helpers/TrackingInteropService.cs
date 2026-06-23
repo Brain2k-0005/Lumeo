@@ -125,6 +125,8 @@ public sealed class TrackingInteropService : IComponentInteropService
         _focusTrapRemovals.Add(elementId);
         return ValueTask.CompletedTask;
     }
+    public ValueTask SaveFocus(string key) => ValueTask.CompletedTask;
+    public ValueTask RestoreFocus(string key) => ValueTask.CompletedTask;
     public ValueTask AttachOverlaySlideEnd(string elementId) => ValueTask.CompletedTask;
     public ValueTask RegisterSvDrag(string elementId, Func<double, double, Task> handler) => ValueTask.CompletedTask;
     public ValueTask UnregisterSvDrag(string elementId) => ValueTask.CompletedTask;

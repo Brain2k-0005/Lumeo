@@ -264,6 +264,26 @@ export function removeFocusTrap(elementId) {
     }
 }
 
+// --- Lightweight focus save / restore (no Tab trap) ---------------------------
+// For NON-modal overlays — menus, listbox popovers — where focus moves into the
+// surface on open but Tab must NOT be trapped (the WAI-ARIA menu pattern closes
+// the menu on Tab). saveFocus stashes whatever had focus (the trigger) keyed by
+// the surface id; restoreFocus hands it back on close (WCAG 2.4.3) without
+// installing any keydown handler. Distinct map from setupFocusTrap so the two
+// never collide.
+const savedFocusByKey = new Map();
+export function saveFocus(key) {
+    const ae = document.activeElement;
+    savedFocusByKey.set(key, (ae && ae !== document.body && typeof ae.focus === 'function') ? ae : null);
+}
+export function restoreFocus(key) {
+    const prev = savedFocusByKey.get(key);
+    savedFocusByKey.delete(key);
+    if (prev && prev.isConnected && typeof prev.focus === 'function') {
+        try { prev.focus(); } catch { /* element no longer focusable — ignore */ }
+    }
+}
+
 // --- Slide-animation transform cleanup (Sheet / Drawer) ---
 //
 // Two bugs to defeat in this fix:
