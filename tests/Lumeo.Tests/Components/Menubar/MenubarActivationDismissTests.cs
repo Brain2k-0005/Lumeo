@@ -153,6 +153,22 @@ public class MenubarActivationDismissTests : IAsyncLifetime
     }
 
     [Fact]
+    public void Escape_Returns_Focus_To_The_Trigger()
+    {
+        // WCAG 2.4.3: closing the menu from the keyboard (Escape) must move focus
+        // back to the trigger that opened it, not drop it to <body>.
+        var cut = RenderMenubar();
+        var trigger = cut.Find("button");
+        var triggerId = trigger.GetAttribute("id");
+        Assert.False(string.IsNullOrEmpty(triggerId));
+
+        trigger.Click(); // open (focus moves into the menu content)
+        cut.Find("[role='menu']").KeyDown(new KeyboardEventArgs { Key = "Escape" });
+
+        Assert.Contains(triggerId, _interop.FocusedElementIds);
+    }
+
+    [Fact]
     public void Content_Registers_ClickOutside_Excluding_Menu_Wrapper()
     {
         var cut = RenderMenubar();
