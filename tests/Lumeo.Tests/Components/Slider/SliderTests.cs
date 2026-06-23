@@ -322,4 +322,23 @@ public class SliderTests : IAsyncLifetime
         Assert.Equal("25", inputs[1].GetAttribute("aria-valuemin")); // end floor = Start + MinGap
         Assert.Equal("100", inputs[1].GetAttribute("aria-valuemax"));
     }
+
+    [Fact]
+    public void Plain_Numeric_Slider_Has_No_AriaValueText()
+    {
+        // aria-valuenow alone is correct for a bare number; aria-valuetext is only
+        // added when a custom formatter gives the value a human-friendly form.
+        var input = _ctx.Render<Lumeo.Slider>(p => p.Add(s => s.Value, 50)).Find("input[type='range']");
+        Assert.False(input.HasAttribute("aria-valuetext"));
+    }
+
+    [Fact]
+    public void Slider_With_FormatTooltip_Announces_The_Formatted_Value_Via_AriaValueText()
+    {
+        var input = _ctx.Render<Lumeo.Slider>(p => p
+                .Add(s => s.Value, 50)
+                .Add(s => s.FormatTooltip, (Func<double, string>)(v => $"${v}")))
+            .Find("input[type='range']");
+        Assert.Equal("$50", input.GetAttribute("aria-valuetext"));
+    }
 }
