@@ -232,6 +232,10 @@
                 new PreventDefaultKeyRule("ArrowUp", SkipEditable: true),
                 new PreventDefaultKeyRule("Home", SkipEditable: true),
                 new PreventDefaultKeyRule("End", SkipEditable: true),
+                // Space selects the focused option (APG listbox); suppress its
+                // page-scroll default. SkipEditable keeps Space typing a literal
+                // space in the search input when the Select is Searchable.
+                new PreventDefaultKeyRule(" ", SkipEditable: true),
             });
             // Move focus INTO the popover so HandleKeyDown + the preventDefault above
             // actually receive keys — focus otherwise stays on the trigger button (a
@@ -271,6 +275,12 @@
                 break;
             case "Enter":
                 if (Context.FocusedItemValue is not null)
+                    await Context.OnSelect.InvokeAsync(Context.FocusedItemValue);
+                break;
+            case " ":
+                // Space selects the focused option (APG listbox) — but only for the
+                // non-searchable listbox; when Searchable, Space types into the filter.
+                if (!Context.Searchable && Context.FocusedItemValue is not null)
                     await Context.OnSelect.InvokeAsync(Context.FocusedItemValue);
                 break;
             default:

@@ -438,4 +438,34 @@ public class SelectKeyboardNavTests : IAsyncLifetime
 
         Assert.Contains(_ctx.JSInterop.Invocations, i => i.Identifier == "restoreFocus");
     }
+
+    // --- Space selects the focused option (APG listbox) ---
+
+    [Fact]
+    public void Space_Selects_The_Focused_Option_When_Not_Searchable()
+    {
+        string? selected = null;
+        var cb = EventCallback.Factory.Create<string?>(_ctx, (string? v) => selected = v);
+        var cut = RenderDataBound(new object[] { "apple", "banana", "cherry" }, valueChanged: cb);
+
+        cut.Find("[role='listbox']").KeyDown("ArrowDown"); // focus apple
+        // Selecting closes the popover, which unmounts the listbox mid-dispatch.
+        try { cut.Find("[role='listbox']").KeyDown(" "); } catch (ArgumentException) { }
+
+        Assert.Equal("apple", selected);
+    }
+
+    [Fact]
+    public void Space_Does_Not_Select_When_Searchable()
+    {
+        // When Searchable, Space belongs to the filter input — it must not select.
+        string? selected = null;
+        var cb = EventCallback.Factory.Create<string?>(_ctx, (string? v) => selected = v);
+        var cut = RenderDataBound(new object[] { "apple", "banana" }, searchable: true, valueChanged: cb);
+
+        cut.Find("[role='listbox']").KeyDown("ArrowDown"); // focus apple
+        cut.Find("[role='listbox']").KeyDown(" ");
+
+        Assert.Null(selected);
+    }
 }
