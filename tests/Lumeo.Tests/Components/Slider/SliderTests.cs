@@ -276,4 +276,31 @@ public class SliderTests : IAsyncLifetime
 
         Assert.Equal(35, start);
     }
+
+    // --- a11y: focus ring (B6) + keyboard-triggered value tooltip (B7) ---
+
+    [Fact]
+    public void Slider_Input_Has_Focus_Visible_Ring()
+    {
+        // appearance-none strips the native focus outline; an explicit focus-visible
+        // ring must replace it (WCAG 2.4.7).
+        var cls = _ctx.Render<Lumeo.Slider>().Find("input[type='range']").GetAttribute("class") ?? "";
+        Assert.Contains("focus-visible:ring-2", cls);
+        Assert.Contains("focus-visible:ring-ring", cls);
+    }
+
+    [Fact]
+    public void Slider_Value_Tooltip_Shows_On_Keyboard_Focus_Not_Only_Hover()
+    {
+        var cut = _ctx.Render<Lumeo.Slider>(p => p
+            .Add(s => s.ShowTooltip, true)
+            .Add(s => s.Value, 42));
+
+        Assert.Empty(cut.FindAll(".text-popover-foreground")); // hidden until interaction
+
+        cut.Find("input[type='range']").Focus();               // keyboard focus, not pointer hover
+
+        var tip = cut.Find(".text-popover-foreground");
+        Assert.Contains("42", tip.TextContent);
+    }
 }
