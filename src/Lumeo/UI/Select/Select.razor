@@ -15,6 +15,7 @@
         EventCallback.Factory.Create<string>(this, OnCreateItem),
         _wrapperId, _contentId, _triggerId, _focusedIndex, focusedItemId, focusedItemValue,
         EventCallback.Factory.Create<int>(this, SetFocusedIndex),
+        EventCallback.Factory.Create<string>(this, HandleTypeahead),
         RegisterItem, UnregisterItem, EffectiveInvalid, Required,
         Items, ItemValue, ItemText, ItemGroup, ItemDisabled, ItemDescription, ItemIcon, ItemTemplate, Virtualize, ItemSize)
     {
@@ -197,12 +198,15 @@
     private readonly string _triggerId = LumeoIds.New("select-trigger");
     private string SearchText { get; set; } = "";
     private int _focusedIndex = -1;
-    private readonly List<(string Id, string Value)> _items = new();
+    private readonly List<(string Id, string Value, string Text)> _items = new();
+    // Type-to-jump buffer (non-searchable listbox). Same idle-reset semantics the
+    // menu family uses; here it drives _focusedIndex instead of DOM focus.
+    private readonly Lumeo.Services.MenuTypeahead _typeahead = new();
 
-    private void RegisterItem(string id, string value)
+    private void RegisterItem(string id, string value, string text)
     {
         if (!_items.Any(i => i.Id == id))
-            _items.Add((id, value));
+            _items.Add((id, value, text));
     }
 
     private void UnregisterItem(string id)
@@ -215,11 +219,11 @@
     // component instance to register), so derive the list from the same filtered + grouped
     // sequence the content renders, skipping disabled items so ArrowDown/Up, Home/End and
     // Enter can never land on them. Ids must mirror SelectContent.RenderBoundItem.
-    private List<(string Id, string Value)> NavItems => Items is null ? _items : BuildBoundNavItems();
+    private List<(string Id, string Value, string Text)> NavItems => Items is null ? _items : BuildBoundNavItems();
 
-    private List<(string Id, string Value)> BuildBoundNavItems()
+    private List<(string Id, string Value, string Text)> BuildBoundNavItems()
     {
-        var result = new List<(string Id, string Value)>();
+        var result = new List<(string Id, string Value, string Text)>();
         if (Items is null) return result;
 
         IEnumerable<object> source = Items;
@@ -248,7 +252,10 @@
             var i = index++;
             if (ItemDisabled?.Invoke(item) == true) continue;
             var value = ItemValue(item);
-            result.Add(($"{_contentId}-bound-{i}", value));
+            // Typeahead/search match against the display text (same source the search
+            // filter uses), falling back to the value when no ItemText is supplied.
+            var text = ItemText?.Invoke(item) ?? value;
+            result.Add(($"{_contentId}-bound-{i}", value, text));
         }
         return result;
     }
@@ -262,6 +269,41 @@
         _focusedIndex = index;
         StateHasChanged();
         await Task.CompletedTask;
+    }
+
+    // Type-to-jump: accumulate printable keystrokes and move _focusedIndex to the
+    // first option whose display text starts with the query (Radix's getNextMatch).
+    // Only wired for the non-searchable listbox — when Searchable, printable keys
+    // belong to the search input. Matches against NavItems' Text so it respects each
+    // mode's nav set (bound mode already excludes disabled rows).
+    private void HandleTypeahead(string key)
+    {
+        var nav = NavItems;
+        if (nav.Count == 0) return;
+        var query = _typeahead.Push(key);
+
+        // A repeated single char ("aaa") cycles through items starting with that
+        // char rather than searching for the literal repeat.
+        var isRepeated = query.Length > 1 && query.All(c => c == query[0]);
+        var search = isRepeated ? query[0].ToString() : query;
+
+        // Single-char query starts the scan just past the current item (so the same
+        // key cycles); a multi-char refinement starts at the current item (so a
+        // continued query keeps the current match when it still fits).
+        var current = _focusedIndex < 0 ? -1 : _focusedIndex;
+        var start = search.Length == 1 ? current + 1 : current;
+        if (start < 0) start = 0;
+
+        for (var n = 0; n < nav.Count; n++)
+        {
+            var idx = (start + n) % nav.Count;
+            if (nav[idx].Text.StartsWith(search, StringComparison.OrdinalIgnoreCase))
+            {
+                _focusedIndex = idx;
+                StateHasChanged();
+                return;
+            }
+        }
     }
 
     private async Task OnValueSelected(string value)
@@ -296,6 +338,7 @@
             SearchText = "";
             _focusedIndex = -1;
             _items.Clear();
+            _typeahead.Reset();
         }
         await OpenChanged.InvokeAsync(value);
     }
@@ -351,7 +394,8 @@
         EventCallback OnClear, EventCallback<string> OnCreateItem,
         string WrapperId, string ContentId, string TriggerId, int FocusedIndex, string? FocusedItemId, string? FocusedItemValue,
         EventCallback<int> SetFocusedIndex,
-        Action<string, string> RegisterItem, Action<string> UnregisterItem,
+        EventCallback<string> OnTypeahead,
+        Action<string, string, string> RegisterItem, Action<string> UnregisterItem,
         bool Invalid, bool Required,
         // Data-bound mode params (null when composition mode)
         IEnumerable<object>? Items,
