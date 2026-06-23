@@ -8,7 +8,7 @@
  * no thin/rich split, no manual catalog drift.
  *
  *   Tools:
- *     - lumeo_list_components  — list/filter all 131 components (name+category+description)
+ *     - lumeo_list_components  — list/filter all components (name+category+description)
  *     - lumeo_get_component    — full schema (params, enums, events, sub-components, files, examples)
  *     - lumeo_search           — fuzzy search across name/category/description
  *     - lumeo_get_example      — working Razor snippet(s) for a component

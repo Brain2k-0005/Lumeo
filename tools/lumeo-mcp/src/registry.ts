@@ -1,6 +1,6 @@
 /**
  * Loads Lumeo's generated registry.json (synced into src/registry.json at
- * prebuild time — see `scripts/sync-registry.mjs`). All 125 components are
+ * prebuild time — see `scripts/sync-registry.mjs`). All components are
  * surfaced to the MCP server through this file so `lumeo_list_components`,
  * `lumeo_get_component`, and `lumeo_search` can cover the full catalog.
  *

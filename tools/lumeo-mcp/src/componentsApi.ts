@@ -3,7 +3,7 @@
  * `tools/Lumeo.RegistryGen` (Roslyn-based scan of every `[Parameter]` /
  * `[CascadingParameter]` property across every Razor component in the repo).
  *
- * This is the source-of-truth schema for ALL 131 Lumeo components. The
+ * This is the source-of-truth schema for ALL Lumeo components. The
  * legacy hand-curated `components.ts` is kept as an OPTIONAL example overlay:
  * when it has an entry for a component we surface its `example` Razor snippet
  * verbatim alongside the auto-generated parameter list.
