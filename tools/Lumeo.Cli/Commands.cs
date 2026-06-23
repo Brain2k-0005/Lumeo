@@ -28,7 +28,8 @@ internal static class Commands
         bool DryRun,
         bool All,
         bool Diff,
-        bool View);
+        bool View,
+        bool Vendor = false);
 
     // Files copied in prebuilt asset mode. Kept here so `init` and `update-assets` stay in sync.
     private static readonly (string Src, string Dest)[] s_prebuiltAssets =
@@ -621,10 +622,20 @@ internal static class Commands
         // If the component lives in a satellite package (nugetPackage != "Lumeo"),
         // ensure the consumer's project already has it — or prompt to install it.
         var satellitePkg = entry.NugetPackage;
-        if (!string.IsNullOrEmpty(satellitePkg)
-            && !string.Equals(satellitePkg, "Lumeo", StringComparison.OrdinalIgnoreCase))
+        var isSatellite = !string.IsNullOrEmpty(satellitePkg)
+            && !string.Equals(satellitePkg, "Lumeo", StringComparison.OrdinalIgnoreCase);
+        if (isSatellite && opts.Vendor)
         {
-            var alreadyReferenced = FindCsprojReferencingPackage(Environment.CurrentDirectory, satellitePkg) is not null;
+            // --vendor: copy the satellite's SOURCE (handled by the loop below, which
+            // resolves files from src/<package>/) + its JS assets, instead of adding
+            // the NuGet package. The underlying JS library still ships via the
+            // component's packageDependencies — surfaced after the files are written.
+            Console.WriteLine(Ansi.Dim(
+                $"  Vendoring {entry.Name} as source from {satellitePkg} (omit --vendor to add the NuGet package instead)."));
+        }
+        else if (isSatellite)
+        {
+            var alreadyReferenced = FindCsprojReferencingPackage(Environment.CurrentDirectory, satellitePkg!) is not null;
             if (!alreadyReferenced)
             {
                 if (opts.DryRun)
@@ -718,9 +729,20 @@ internal static class Commands
         var forceAll = opts.Force || opts.Overwrite;
         var skipAll = opts.SkipExisting;
         int written = 0, skipped = 0;
+        // Satellite wwwroot assets (echarts-interop.js, …) are shared by every
+        // component of a package, so copy them at most once per package.
+        var vendoredSatelliteAssets = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         foreach (var item in toInstall)
         {
+            // Satellites (Charts, DataGrid, …) only get their source copied when
+            // --vendor is set; otherwise they were routed to NuGet above, so skip
+            // copying their files here. The source package also tells GetFileAsync
+            // which src/<package>/ root to read each file from.
+            var itemPackage = string.IsNullOrEmpty(item.NugetPackage) ? "Lumeo" : item.NugetPackage;
+            var itemIsSatellite = !string.Equals(itemPackage, "Lumeo", StringComparison.OrdinalIgnoreCase);
+            if (itemIsSatellite && !opts.Vendor) continue;
+
             var folder = Path.Combine(outRoot, item.Name);
             if (writeAllowed) Directory.CreateDirectory(folder);
             var recordedFiles = new List<string>();
@@ -734,7 +756,7 @@ internal static class Commands
                 // --diff / --view preview modes (no prompts, no writes unless --yes).
                 if (opts.Diff || opts.View)
                 {
-                    var upstream = await RegistryLoader.GetFileAsync(relFile, opts.Local, cfg.Registry);
+                    var upstream = await RegistryLoader.GetFileAsync(relFile, opts.Local, cfg.Registry, itemPackage);
                     upstream = NamespaceRewriter.Rewrite(upstream, relFile, cfg.Namespace);
 
                     if (File.Exists(dest))
@@ -784,7 +806,7 @@ internal static class Commands
                     }
                     if (!forceAll)
                     {
-                        var upstream = await RegistryLoader.GetFileAsync(relFile, opts.Local, cfg.Registry);
+                        var upstream = await RegistryLoader.GetFileAsync(relFile, opts.Local, cfg.Registry, itemPackage);
                         upstream = NamespaceRewriter.Rewrite(upstream, relFile, cfg.Namespace);
 
                         char? choice = null;
@@ -824,12 +846,22 @@ internal static class Commands
                     written++;
                     continue;
                 }
-                var content = await RegistryLoader.GetFileAsync(relFile, opts.Local, cfg.Registry);
+                var content = await RegistryLoader.GetFileAsync(relFile, opts.Local, cfg.Registry, itemPackage);
                 content = NamespaceRewriter.Rewrite(content, relFile, cfg.Namespace);
                 Directory.CreateDirectory(Path.GetDirectoryName(dest)!);
                 await File.WriteAllTextAsync(dest, content, new UTF8Encoding(false));
                 Console.WriteLine(Ansi.Green("  +   ") + displayPath);
                 written++;
+            }
+
+            // Vendored satellites need their wwwroot interop assets too: their
+            // components import `./_content/<package>/js/*.js`, so copy each asset
+            // to wwwroot/_content/<package>/… (served at exactly that URL — no NuGet
+            // package, no source rewrite required).
+            if (itemIsSatellite && opts.Vendor && writeAllowed && !opts.DryRun
+                && vendoredSatelliteAssets.Add(itemPackage))
+            {
+                written += await VendorSatelliteAssetsAsync(registry, itemPackage, opts.Local, cfg.Registry);
             }
 
             if (writeAllowed)
@@ -852,6 +884,84 @@ internal static class Commands
             Console.WriteLine(Ansi.Dim("CSS variables used:"));
             Console.WriteLine("  " + string.Join(", ", entry.CssVars));
         }
+    }
+
+    /// <summary>Resolve a satellite package's wwwroot asset paths (relative to the
+    /// package source root, e.g. "wwwroot/js/echarts-interop.js"). Prefers the
+    /// registry's <c>satelliteAssets</c> map (works offline AND remote); falls back
+    /// to enumerating <c>src/&lt;package&gt;/wwwroot/</c> on disk in --local mode so
+    /// vendoring keeps working before the registry has been regenerated.</summary>
+    private static List<string> GetSatelliteAssetPaths(Registry registry, string package, bool local)
+    {
+        if (registry.SatelliteAssets is not null
+            && registry.SatelliteAssets.TryGetValue(package, out var fromRegistry)
+            && fromRegistry.Count > 0)
+        {
+            return fromRegistry;
+        }
+
+        if (local)
+        {
+            var repoRoot = Paths.FindRepoRoot(Environment.CurrentDirectory);
+            if (repoRoot is not null)
+            {
+                var wwwroot = Path.Combine(Paths.LocalSourceRoot(repoRoot, package), "wwwroot");
+                if (Directory.Exists(wwwroot))
+                {
+                    return Directory.EnumerateFiles(wwwroot, "*", SearchOption.AllDirectories)
+                        .Where(f => !f.EndsWith(".LEGAL.txt", StringComparison.OrdinalIgnoreCase))
+                        .Select(f => "wwwroot/" + Path.GetRelativePath(wwwroot, f).Replace('\\', '/'))
+                        .OrderBy(p => p, StringComparer.Ordinal)
+                        .ToList();
+                }
+            }
+        }
+
+        return new List<string>();
+    }
+
+    /// <summary>Copy a vendored satellite's wwwroot interop assets into the consumer's
+    /// <c>wwwroot/_content/&lt;package&gt;/…</c> so its <c>./_content/&lt;package&gt;/js/*.js</c>
+    /// module imports keep resolving without the NuGet package. Returns the number of
+    /// assets written.</summary>
+    private static async Task<int> VendorSatelliteAssetsAsync(
+        Registry registry, string package, bool local, string registryUrl)
+    {
+        var assets = GetSatelliteAssetPaths(registry, package, local);
+        if (assets.Count == 0)
+        {
+            Console.WriteLine(Ansi.Yellow(
+                $"  ! No wwwroot assets found for {package}; the component's _content/{package}/ imports may 404 until you copy them manually."));
+            return 0;
+        }
+
+        var written = 0;
+        foreach (var assetRel in assets)
+        {
+            // assetRel = "wwwroot/js/echarts-interop.js" → serve at /_content/<package>/js/...
+            var underWwwroot = assetRel.StartsWith("wwwroot/", StringComparison.OrdinalIgnoreCase)
+                ? assetRel.Substring("wwwroot/".Length)
+                : assetRel;
+            var destRel = Path.Combine("wwwroot", "_content", package,
+                underWwwroot.Replace('/', Path.DirectorySeparatorChar));
+            var dest = Path.Combine(Environment.CurrentDirectory, destRel);
+            try
+            {
+                var content = await RegistryLoader.GetFileAsync(assetRel, local, registryUrl, package);
+                Directory.CreateDirectory(Path.GetDirectoryName(dest)!);
+                await File.WriteAllTextAsync(dest, content, new UTF8Encoding(false));
+                Console.WriteLine(Ansi.Green("  +   ") + Path.GetRelativePath(Environment.CurrentDirectory, dest));
+                written++;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine(Ansi.Yellow($"  ! skipped asset {assetRel}: {ex.Message}"));
+            }
+        }
+
+        Console.WriteLine(Ansi.Dim(
+            $"  {package} loads its JS library from a CDN at runtime (override the URL via window.lumeoCdn.*)."));
+        return written;
     }
 
     // -------------------------------------------------------------- update

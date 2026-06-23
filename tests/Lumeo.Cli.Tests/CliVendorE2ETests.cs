@@ -94,6 +94,39 @@ public sealed class CliVendorE2ETests : IDisposable
     }
 
     [Fact]
+    public void Add_Vendor_Copies_Satellite_Source_And_Its_Wwwroot_Asset()
+    {
+        Assert.True(File.Exists(_lumeoDll),
+            "Built CLI (lumeo.dll) not found under tools/Lumeo.Cli/bin — build the solution first.");
+
+        var init = RunCli("init", "--yes", "--namespace", "Acme.Ui", "--path", "Components/Ui", "--no-assets");
+        Assert.True(init.Exit == 0, $"init failed (exit {init.Exit}). stderr: {init.Stderr}\nstdout: {init.Stdout}");
+
+        // `chart` lives in the Lumeo.Charts satellite. Without --vendor it routes to
+        // NuGet; with --vendor it copies the SOURCE from src/Lumeo.Charts/ AND its
+        // wwwroot interop JS (which is NOT in the component's file list).
+        var add = RunCli("add", "chart", "--local", "--yes", "--force", "--vendor");
+        Assert.True(add.Exit == 0, $"add --vendor failed (exit {add.Exit}). stderr: {add.Stderr}\nstdout: {add.Stdout}");
+
+        // 1) The satellite SOURCE is vendored with its namespace rewritten.
+        var razor = Path.Combine(_proj, "Components", "Ui", "Chart", "Chart.razor");
+        Assert.True(File.Exists(razor), $"Chart.razor was not vendored to {razor}.\nadd stdout:\n{add.Stdout}");
+        var razorContent = File.ReadAllText(razor);
+        Assert.Contains("@namespace Acme.Ui", razorContent);
+
+        // 2) The wwwroot interop asset lands under wwwroot/_content/<package>/ so the
+        //    component's `./_content/Lumeo.Charts/js/echarts-interop.js` import — which
+        //    is intentionally NOT namespace-rewritten — resolves to the copied file.
+        var asset = Path.Combine(_proj, "wwwroot", "_content", "Lumeo.Charts", "js", "echarts-interop.js");
+        Assert.True(File.Exists(asset), $"satellite interop asset was not vendored to {asset}.\nadd stdout:\n{add.Stdout}");
+        Assert.Contains("_content/Lumeo.Charts/js/echarts-interop.js", razorContent);
+
+        // 3) The copied asset is byte-for-byte the upstream source (no rewrite).
+        var upstream = Path.Combine(_repoRoot, "src", "Lumeo.Charts", "wwwroot", "js", "echarts-interop.js");
+        Assert.Equal(File.ReadAllText(upstream), File.ReadAllText(asset));
+    }
+
+    [Fact]
     public void List_Local_Loads_The_Registry_And_Prints_Components()
     {
         Assert.True(File.Exists(_lumeoDll), "Built CLI (lumeo.dll) not found — build the solution first.");
