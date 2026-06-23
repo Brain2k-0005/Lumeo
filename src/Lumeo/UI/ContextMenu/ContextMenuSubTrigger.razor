@@ -64,16 +64,18 @@
         {
             case "ArrowRight":
                 SubContext.CancelClose();
-                if (!SubContext.IsOpen)
+                if (SubContext.IsOpen)
                 {
-                    await SubContext.SetOpen.InvokeAsync(true);
-                }
-                _ = InvokeAsync(async () =>
-                {
-                    await Task.Delay(20);
+                    // Already open (e.g. via hover): content exists, focus now.
                     try { await Interop.FocusMenuItemByIndex(SubContext.ContentId, 0); }
                     catch (JSDisconnectedException) { }
-                });
+                }
+                else
+                {
+                    // Open from the keyboard; the content focuses its first item when
+                    // it actually renders (race-free; replaces a fixed Task.Delay).
+                    await SubContext.OpenByKeyboard.InvokeAsync();
+                }
                 break;
         }
     }
