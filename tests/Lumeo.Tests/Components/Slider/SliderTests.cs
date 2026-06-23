@@ -303,4 +303,23 @@ public class SliderTests : IAsyncLifetime
         var tip = cut.Find(".text-popover-foreground");
         Assert.Contains("42", tip.TextContent);
     }
+
+    [Fact]
+    public void Range_Thumbs_Announce_The_Reachable_Range_Not_Full_Min_Max()
+    {
+        // Start=20, End=80, MinStepsBetweenThumbs=5 (Step=1) -> MinGap=5. The start
+        // thumb can only reach End-5=75 and the end thumb only Start+5=25; the
+        // announced aria range must match (WAI-ARIA multi-thumb), not the full 0..100.
+        var cut = _ctx.Render<Lumeo.Slider>(p => p
+            .Add(s => s.IsRange, true)
+            .Add(s => s.Value, 20)
+            .Add(s => s.ValueEnd, 80)
+            .Add(s => s.MinStepsBetweenThumbs, 5));
+
+        var inputs = cut.FindAll("input[type='range']");
+        Assert.Equal("0", inputs[0].GetAttribute("aria-valuemin"));
+        Assert.Equal("75", inputs[0].GetAttribute("aria-valuemax")); // start ceiling = End - MinGap
+        Assert.Equal("25", inputs[1].GetAttribute("aria-valuemin")); // end floor = Start + MinGap
+        Assert.Equal("100", inputs[1].GetAttribute("aria-valuemax"));
+    }
 }
