@@ -631,6 +631,38 @@ else
         await Task.CompletedTask;
     }
 
+    // An icon action button (Cancel/Retry/Remove) wrapped in the Lumeo <Tooltip> with
+    // an explicit aria-label for the accessible name — replaces the native title.
+    private RenderFragment IconActionButton(string cls, string label, Blazicons.SvgIcon icon, Microsoft.AspNetCore.Components.EventCallback onClick) => b =>
+    {
+        b.OpenComponent<Tooltip>(0);
+        b.AddAttribute(1, "ChildContent", (RenderFragment)(tip =>
+        {
+            tip.OpenComponent<TooltipTrigger>(0);
+            tip.AddAttribute(1, "AsChild", true);
+            tip.AddAttribute(2, "ChildContentSlot", (RenderFragment<Lumeo.TriggerSlot>)(slot => sb =>
+            {
+                sb.OpenElement(0, "button");
+                sb.AddAttribute(1, "type", "button");
+                sb.AddAttribute(2, "class", cls);
+                sb.AddAttribute(3, "aria-label", label);
+                sb.AddAttribute(4, "onclick", onClick);
+                sb.AddMultipleAttributes(5, slot.Attributes);
+                sb.OpenComponent<Blazicon>(6);
+                sb.AddAttribute(7, "Svg", icon);
+                sb.AddAttribute(8, "class", "h-3.5 w-3.5");
+                sb.CloseComponent();
+                sb.CloseElement();
+            }));
+            tip.CloseComponent();
+
+            tip.OpenComponent<TooltipContent>(3);
+            tip.AddAttribute(4, "ChildContent", (RenderFragment)(cb => cb.AddContent(0, label)));
+            tip.CloseComponent();
+        }));
+        b.CloseComponent();
+    };
+
     // ── Per-file row renderer ────────────────────────────────────────────────
     private RenderFragment RenderFileItem(FileUploadItem item) => builder =>
     {
@@ -694,45 +726,27 @@ else
         // Action buttons
         if (item.Status == FileUploadStatus.Uploading)
         {
-            // Cancel button
-            builder.OpenElement(27, "button");
-            builder.AddAttribute(28, "type", "button");
-            builder.AddAttribute(29, "class", "inline-flex items-center justify-center h-6 w-6 rounded text-muted-foreground hover:text-destructive transition-colors focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-1");
-            builder.AddAttribute(30, "title", "Cancel");
-            builder.AddAttribute(31, "onclick", Microsoft.AspNetCore.Components.EventCallback.Factory.Create(this, () => CancelItemAsync(item)));
-            builder.OpenComponent<Blazicon>(32);
-            builder.AddAttribute(33, "Svg", Lucide.X);
-            builder.AddAttribute(34, "class", "h-3.5 w-3.5");
-            builder.CloseComponent();
-            builder.CloseElement(); // button
+            // Cancel button (Lumeo <Tooltip>, not native title)
+            builder.AddContent(27, IconActionButton(
+                "inline-flex items-center justify-center h-6 w-6 rounded text-muted-foreground hover:text-destructive transition-colors focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-1",
+                "Cancel", Lucide.X,
+                Microsoft.AspNetCore.Components.EventCallback.Factory.Create(this, () => CancelItemAsync(item))));
         }
         else if (item.Status == FileUploadStatus.Failed && OnUpload is not null && item.ErrorMessage?.Contains("exceeds") == false && item.ErrorMessage?.Contains("unsupported") == false)
         {
             // Retry button (only for upload failures, not validation rejections)
-            builder.OpenElement(35, "button");
-            builder.AddAttribute(36, "type", "button");
-            builder.AddAttribute(37, "class", "inline-flex items-center justify-center h-6 w-6 rounded text-muted-foreground hover:text-primary transition-colors focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-1");
-            builder.AddAttribute(38, "title", "Retry");
-            builder.AddAttribute(39, "onclick", Microsoft.AspNetCore.Components.EventCallback.Factory.Create(this, () => RetryItemAsync(item)));
-            builder.OpenComponent<Blazicon>(40);
-            builder.AddAttribute(41, "Svg", Lucide.RotateCcw);
-            builder.AddAttribute(42, "class", "h-3.5 w-3.5");
-            builder.CloseComponent();
-            builder.CloseElement(); // button
+            builder.AddContent(35, IconActionButton(
+                "inline-flex items-center justify-center h-6 w-6 rounded text-muted-foreground hover:text-primary transition-colors focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-1",
+                "Retry", Lucide.RotateCcw,
+                Microsoft.AspNetCore.Components.EventCallback.Factory.Create(this, () => RetryItemAsync(item))));
         }
         else if (item.Status != FileUploadStatus.Uploading)
         {
-            // Remove button
-            builder.OpenElement(43, "button");
-            builder.AddAttribute(44, "type", "button");
-            builder.AddAttribute(45, "class", "inline-flex items-center justify-center h-6 w-6 rounded text-muted-foreground hover:text-destructive transition-colors focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-1");
-            builder.AddAttribute(46, "title", "Remove");
-            builder.AddAttribute(47, "onclick", Microsoft.AspNetCore.Components.EventCallback.Factory.Create(this, () => RemoveItemAsync(item)));
-            builder.OpenComponent<Blazicon>(48);
-            builder.AddAttribute(49, "Svg", Lucide.X);
-            builder.AddAttribute(50, "class", "h-3.5 w-3.5");
-            builder.CloseComponent();
-            builder.CloseElement(); // button
+            // Remove button (Lumeo <Tooltip>, not native title)
+            builder.AddContent(43, IconActionButton(
+                "inline-flex items-center justify-center h-6 w-6 rounded text-muted-foreground hover:text-destructive transition-colors focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-1",
+                "Remove", Lucide.X,
+                Microsoft.AspNetCore.Components.EventCallback.Factory.Create(this, () => RemoveItemAsync(item))));
         }
 
         builder.CloseElement(); // div top row

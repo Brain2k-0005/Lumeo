@@ -155,7 +155,7 @@ public class DataGridServerModeGroupingTests : IAsyncLifetime
         Assert.Equal(7, cut.FindAll("[data-slot=\"datagrid-group-row\"]").Count);
 
         // Click the first chip's Remove button — drops Department, leaves Status.
-        var removeButtons = cut.FindAll("button[title=\"Remove grouping\"]");
+        var removeButtons = cut.FindAll("button[aria-label=\"Remove grouping\"]");
         Assert.True(removeButtons.Count >= 1);
         removeButtons[0].Click();
 
@@ -180,7 +180,7 @@ public class DataGridServerModeGroupingTests : IAsyncLifetime
 
         // The clear-all button is title="Clear all grouping" — fires
         // ClearGroupFields, which now hits RegroupServerItems in ServerMode.
-        var clearButton = cut.Find("button[title=\"Clear all grouping\"]");
+        var clearButton = cut.Find("button[aria-label=\"Clear all grouping\"]");
         clearButton.Click();
 
         Assert.Empty(cut.FindAll("[data-slot=\"datagrid-group-row\"]"));

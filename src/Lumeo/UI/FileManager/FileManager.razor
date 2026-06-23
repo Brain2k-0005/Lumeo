@@ -6,14 +6,21 @@
     @* ── Toolbar ─────────────────────────────────────────────────────────── *@
     <div class="flex items-center gap-2 px-3 py-2 border-b border-border/40 bg-card shrink-0">
         @* Up button *@
-        <button type="button"
-                class="@UpButtonClass"
-                @onclick="NavigateUp"
-                disabled="@(_pathStack.Count == 0)"
-                title="@L["FileManager.UpOneLevel"]"
-                aria-label="@L["FileManager.NavigateUp"]">
-            <Blazicon Svg="Lucide.ArrowUp" class="h-4 w-4" />
-        </button>
+        <Tooltip>
+            <TooltipTrigger AsChild>
+                <ChildContentSlot Context="slot">
+                    <button type="button"
+                            class="@UpButtonClass"
+                            @onclick="NavigateUp"
+                            disabled="@(_pathStack.Count == 0)"
+                            aria-label="@L["FileManager.NavigateUp"]"
+                            @attributes="slot.Attributes">
+                        <Blazicon Svg="Lucide.ArrowUp" class="h-4 w-4" />
+                    </button>
+                </ChildContentSlot>
+            </TooltipTrigger>
+            <TooltipContent>@L["FileManager.UpOneLevel"]</TooltipContent>
+        </Tooltip>
 
         @* Breadcrumb path *@
         <nav aria-label="@L["FileManager.Path"]" class="flex-1 min-w-0">
@@ -57,42 +64,70 @@
         <div class="flex items-center gap-1 shrink-0">
             @if (OnNewFolder.HasDelegate)
             {
-                <button type="button"
-                        class="@ToolbarButtonClass"
-                        @onclick="HandleNewFolder"
-                        title="@L["FileManager.NewFolder"]"
-                        aria-label="@L["FileManager.NewFolder"]">
-                    <Blazicon Svg="Lucide.FolderPlus" class="h-4 w-4" />
-                </button>
+                <Tooltip>
+                    <TooltipTrigger AsChild>
+                        <ChildContentSlot Context="slot">
+                            <button type="button"
+                                    class="@ToolbarButtonClass"
+                                    @onclick="HandleNewFolder"
+                                    aria-label="@L["FileManager.NewFolder"]"
+                                    @attributes="slot.Attributes">
+                                <Blazicon Svg="Lucide.FolderPlus" class="h-4 w-4" />
+                            </button>
+                        </ChildContentSlot>
+                    </TooltipTrigger>
+                    <TooltipContent>@L["FileManager.NewFolder"]</TooltipContent>
+                </Tooltip>
             }
             @if (OnDelete.HasDelegate && SelectedNode is not null)
             {
-                <button type="button"
-                        class="@ToolbarButtonClass"
-                        @onclick="HandleDeleteSelected"
-                        title="@L["FileManager.DeleteSelected"]"
-                        aria-label="@L["FileManager.DeleteSelected"]">
-                    <Blazicon Svg="Lucide.Trash2" class="h-4 w-4" />
-                </button>
+                <Tooltip>
+                    <TooltipTrigger AsChild>
+                        <ChildContentSlot Context="slot">
+                            <button type="button"
+                                    class="@ToolbarButtonClass"
+                                    @onclick="HandleDeleteSelected"
+                                    aria-label="@L["FileManager.DeleteSelected"]"
+                                    @attributes="slot.Attributes">
+                                <Blazicon Svg="Lucide.Trash2" class="h-4 w-4" />
+                            </button>
+                        </ChildContentSlot>
+                    </TooltipTrigger>
+                    <TooltipContent>@L["FileManager.DeleteSelected"]</TooltipContent>
+                </Tooltip>
             }
             <div class="w-px h-4 bg-border/60 mx-0.5"></div>
             @* View mode toggle *@
-            <button type="button"
-                    class="@(ViewMode == FileManagerViewMode.List ? ToolbarButtonActiveClass : ToolbarButtonClass)"
-                    @onclick="() => SetViewMode(FileManagerViewMode.List)"
-                    title="@L["FileManager.ListView"]"
-                    aria-label="@L["FileManager.SwitchListView"]"
-                    aria-pressed="@(ViewMode == FileManagerViewMode.List)">
-                <Blazicon Svg="Lucide.List" class="h-4 w-4" />
-            </button>
-            <button type="button"
-                    class="@(ViewMode == FileManagerViewMode.Grid ? ToolbarButtonActiveClass : ToolbarButtonClass)"
-                    @onclick="() => SetViewMode(FileManagerViewMode.Grid)"
-                    title="@L["FileManager.GridView"]"
-                    aria-label="@L["FileManager.SwitchGridView"]"
-                    aria-pressed="@(ViewMode == FileManagerViewMode.Grid)">
-                <Blazicon Svg="Lucide.LayoutGrid" class="h-4 w-4" />
-            </button>
+            <Tooltip>
+                <TooltipTrigger AsChild>
+                    <ChildContentSlot Context="slot">
+                        <button type="button"
+                                class="@(ViewMode == FileManagerViewMode.List ? ToolbarButtonActiveClass : ToolbarButtonClass)"
+                                @onclick="() => SetViewMode(FileManagerViewMode.List)"
+                                aria-label="@L["FileManager.SwitchListView"]"
+                                aria-pressed="@(ViewMode == FileManagerViewMode.List)"
+                                @attributes="slot.Attributes">
+                            <Blazicon Svg="Lucide.List" class="h-4 w-4" />
+                        </button>
+                    </ChildContentSlot>
+                </TooltipTrigger>
+                <TooltipContent>@L["FileManager.ListView"]</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+                <TooltipTrigger AsChild>
+                    <ChildContentSlot Context="slot">
+                        <button type="button"
+                                class="@(ViewMode == FileManagerViewMode.Grid ? ToolbarButtonActiveClass : ToolbarButtonClass)"
+                                @onclick="() => SetViewMode(FileManagerViewMode.Grid)"
+                                aria-label="@L["FileManager.SwitchGridView"]"
+                                aria-pressed="@(ViewMode == FileManagerViewMode.Grid)"
+                                @attributes="slot.Attributes">
+                            <Blazicon Svg="Lucide.LayoutGrid" class="h-4 w-4" />
+                        </button>
+                    </ChildContentSlot>
+                </TooltipTrigger>
+                <TooltipContent>@L["FileManager.GridView"]</TooltipContent>
+            </Tooltip>
         </div>
     </div>
 
@@ -685,22 +720,40 @@
             // Context menu cell
             builder.OpenElement(100, "td");
             builder.AddAttribute(101, "class", "p-2");
-            builder.OpenElement(102, "button");
-            builder.AddAttribute(103, "type", "button");
-            builder.AddAttribute(104, "class", "inline-flex items-center justify-center h-6 w-6 rounded opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity hover:bg-accent text-muted-foreground hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-1");
-            builder.AddAttribute(105, "title", L["FileManager.MoreActions"]);
-            builder.AddAttribute(106, "aria-label", L["FileManager.MoreActionsForName", n.Name]);
-            builder.AddAttribute(107, "onclick", Microsoft.AspNetCore.Components.EventCallback.Factory.Create<Microsoft.AspNetCore.Components.Web.MouseEventArgs>(this, e => OpenContextMenu(n, e)));
-            builder.AddAttribute(108, "onclick:stopPropagation", true);
-            // Enter on the focused actions button natively triggers its onclick
-            // (opens the menu); stop the keydown here so it doesn't also bubble up
-            // to the row handler and open/navigate the file or folder.
-            builder.AddAttribute(109, "onkeydown:stopPropagation", true);
-            builder.OpenComponent<Blazicon>(110);
-            builder.AddAttribute(111, "Svg", Lucide.EllipsisVertical);
-            builder.AddAttribute(112, "class", "h-3.5 w-3.5");
+            // Dogfood the Lumeo <Tooltip> instead of the native title (the button keeps
+            // its per-item aria-label as the accessible name; AsChild puts describedby
+            // on the button, lazy content keeps the row cheap).
+            builder.OpenComponent<Tooltip>(102);
+            builder.AddAttribute(103, "ChildContent", (RenderFragment)(tip =>
+            {
+                tip.OpenComponent<TooltipTrigger>(0);
+                tip.AddAttribute(1, "AsChild", true);
+                tip.AddAttribute(2, "ChildContentSlot", (RenderFragment<Lumeo.TriggerSlot>)(slot => sb =>
+                {
+                    sb.OpenElement(0, "button");
+                    sb.AddAttribute(1, "type", "button");
+                    sb.AddAttribute(2, "class", "inline-flex items-center justify-center h-6 w-6 rounded opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity hover:bg-accent text-muted-foreground hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-1");
+                    sb.AddAttribute(3, "aria-label", L["FileManager.MoreActionsForName", n.Name]);
+                    sb.AddAttribute(4, "onclick", Microsoft.AspNetCore.Components.EventCallback.Factory.Create<Microsoft.AspNetCore.Components.Web.MouseEventArgs>(this, e => OpenContextMenu(n, e)));
+                    sb.AddAttribute(5, "onclick:stopPropagation", true);
+                    // Enter on the focused actions button natively triggers its onclick
+                    // (opens the menu); stop the keydown so it doesn't also bubble up to
+                    // the row handler and open/navigate the file or folder.
+                    sb.AddAttribute(6, "onkeydown:stopPropagation", true);
+                    sb.AddMultipleAttributes(7, slot.Attributes);
+                    sb.OpenComponent<Blazicon>(8);
+                    sb.AddAttribute(9, "Svg", Lucide.EllipsisVertical);
+                    sb.AddAttribute(10, "class", "h-3.5 w-3.5");
+                    sb.CloseComponent();
+                    sb.CloseElement();
+                }));
+                tip.CloseComponent();
+
+                tip.OpenComponent<TooltipContent>(3);
+                tip.AddAttribute(4, "ChildContent", (RenderFragment)(cb => cb.AddContent(0, L["FileManager.MoreActions"])));
+                tip.CloseComponent();
+            }));
             builder.CloseComponent();
-            builder.CloseElement(); // button
             builder.CloseElement(); // td
 
             builder.CloseElement(); // tr

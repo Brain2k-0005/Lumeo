@@ -192,7 +192,7 @@ public class DataGridGroupPanelTests : IAsyncLifetime
         // Click the "Remove grouping" button for Department.
         // Each chip has exactly one remove button (title="Remove grouping").
         // The first one belongs to the first chip (Department).
-        var removeButtons = cut.FindAll("button[title=\"Remove grouping\"]");
+        var removeButtons = cut.FindAll("button[aria-label=\"Remove grouping\"]");
         Assert.True(removeButtons.Count >= 1, "Expected at least one Remove grouping button");
         removeButtons[0].Click();
 
@@ -223,7 +223,7 @@ public class DataGridGroupPanelTests : IAsyncLifetime
         Assert.Contains("Status",     cut.Markup);
 
         // Click the "Clear all grouping" button.
-        var clearBtn = cut.Find("button[title=\"Clear all grouping\"]");
+        var clearBtn = cut.Find("button[aria-label=\"Clear all grouping\"]");
         clearBtn.Click();
 
         // Panel should revert to the placeholder state — no chips.
@@ -257,7 +257,7 @@ public class DataGridGroupPanelTests : IAsyncLifetime
         Assert.Contains("Department", cut.Find("[data-slot=\"datagrid-group-panel\"]").TextContent);
 
         // Step 2: Clear all.
-        var clearBtn = cut.Find("button[title=\"Clear all grouping\"]");
+        var clearBtn = cut.Find("button[aria-label=\"Clear all grouping\"]");
         clearBtn.Click();
         Assert.Contains("Drag a Groupable column header here", cut.Markup);
 
