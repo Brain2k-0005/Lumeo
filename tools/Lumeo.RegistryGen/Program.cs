@@ -732,12 +732,36 @@ foreach (var dir in componentDirs)
     components[componentKey] = entry;
 }
 
+// Satellite wwwroot assets (echarts-interop.js, map.js, …) per package. These are
+// NOT in any component's `files` list (they ship as static web assets via the
+// satellite NuGet package), so `lumeo add --vendor` needs them enumerated here to
+// copy them into the consumer's wwwroot/_content/<package>/. Keyed by package name
+// (the satellite src folder, e.g. "Lumeo.Charts"); paths are relative to that root.
+var satelliteAssets = new SortedDictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
+foreach (var pkgDir in Directory.EnumerateDirectories(Path.Combine(repoRoot, "src")))
+{
+    // Satellites only — NOT core "Lumeo" (its assets ship via the prebuilt-asset
+    // flow, not --vendor). Explicit prefix check, because the Windows "Lumeo.*"
+    // glob also matches the extensionless "Lumeo" folder (DOS .* quirk) while Linux
+    // does not — that divergence would break the CI registry-freshness gate.
+    if (!Path.GetFileName(pkgDir).StartsWith("Lumeo.", StringComparison.Ordinal)) continue;
+    var wwwroot = Path.Combine(pkgDir, "wwwroot");
+    if (!Directory.Exists(wwwroot)) continue;
+    var assets = Directory.EnumerateFiles(wwwroot, "*", SearchOption.AllDirectories)
+        .Where(f => !f.EndsWith(".LEGAL.txt", StringComparison.OrdinalIgnoreCase))
+        .Select(f => "wwwroot/" + Path.GetRelativePath(wwwroot, f).Replace('\\', '/'))
+        .OrderBy(p => p, StringComparer.Ordinal)
+        .ToArray();
+    if (assets.Length > 0) satelliteAssets[Path.GetFileName(pkgDir)] = assets;
+}
+
 var root = new Dictionary<string, object>
 {
     ["$schema"] = "https://lumeo.nativ.sh/registry-schema.json",
     ["version"] = lumeoVersion,
     ["generated"] = DateTime.UtcNow.ToString("O"),
     ["components"] = components,
+    ["satelliteAssets"] = satelliteAssets,
 };
 
 var jsonOpts = new JsonSerializerOptions
