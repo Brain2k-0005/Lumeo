@@ -5,28 +5,45 @@
 @inject ThemeService Theme
 @inject Lumeo.Services.Localization.ILumeoLocalizer L
 
-<button type="button"
-        class="@CssClass"
-        @onclick="ToggleTheme"
-        title="@L["Theme.Toggle"]"
-        aria-label="@L["Theme.Toggle"]"
-        aria-pressed="@_isDark.ToString().ToLowerInvariant()"
-        @attributes="AdditionalAttributes">
-    @if (_isDark)
-    {
-        <Blazicon Svg="Lucide.Sun" class="h-4 w-4" aria-hidden="true" />
-    }
-    else
-    {
-        <Blazicon Svg="Lucide.Moon" class="h-4 w-4" aria-hidden="true" />
-    }
-</button>
+<Tooltip>
+    <TooltipTrigger AsChild>
+        <ChildContentSlot Context="slot">
+            <button type="button"
+                    class="@CssClass"
+                    @onclick="ToggleTheme"
+                    aria-label="@L["Theme.Toggle"]"
+                    aria-pressed="@_isDark.ToString().ToLowerInvariant()"
+                    @attributes="MergeAttrs(slot.Attributes)">
+                @if (_isDark)
+                {
+                    <Blazicon Svg="Lucide.Sun" class="h-4 w-4" aria-hidden="true" />
+                }
+                else
+                {
+                    <Blazicon Svg="Lucide.Moon" class="h-4 w-4" aria-hidden="true" />
+                }
+            </button>
+        </ChildContentSlot>
+    </TooltipTrigger>
+    <TooltipContent>@L["Theme.Toggle"]</TooltipContent>
+</Tooltip>
 
 @code {
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     private bool _isDark;
+
+    // Merge the consumer's AdditionalAttributes with the Tooltip AsChild slot's
+    // attributes (aria-describedby while open) onto the single button element.
+    private Dictionary<string, object> MergeAttrs(IReadOnlyDictionary<string, object> slotAttrs)
+    {
+        var d = new Dictionary<string, object>();
+        if (AdditionalAttributes is not null)
+            foreach (var kv in AdditionalAttributes) d[kv.Key] = kv.Value;
+        foreach (var kv in slotAttrs) d[kv.Key] = kv.Value;
+        return d;
+    }
 
     private string CssClass => Cx.Merge(
         "inline-flex items-center justify-center h-9 w-9 cursor-pointer rounded-md border border-input bg-background shadow-sm hover:bg-accent hover:text-accent-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
