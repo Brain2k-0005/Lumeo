@@ -733,7 +733,7 @@ export const registry: RegistryDocument | null = loadRegistry();
 
 /**
  * Build the unified catalog:
- *   - All 125 components from the registry
+ *   - Every component from the registry
  *   - Hand-curated rich entries override the thin registry entries for their name
  */
 function buildCatalog(): CatalogEntry[] {

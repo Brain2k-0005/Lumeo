@@ -11,18 +11,17 @@ actually compiles.
 
 ## What it exposes
 
-The server covers **all 125 components** from Lumeo's generated
-`registry.json`. The top ~35 most-used components ship with rich, hand-curated
-schemas (parameters, slots, ready-to-use Razor examples, CSS variables); the
-remaining ~90 are still discoverable and returned with category / description /
-files / dependencies / CSS variables plus a link back to the docs site for full
-reference. As more components get curated, the rich count grows automatically.
+The server covers **the full Lumeo component catalog** from the generated
+`registry.json` + `components-api.json`. Every component is returned with its
+parameters, enums, sub-components, CSS variables, examples and a link back to the
+docs site — the schema is source-derived (Roslyn) so it has full coverage with no
+thin fallbacks, and stays in lockstep with each release.
 
 ### Tools
 
-- `lumeo_list_components({ category?, query? })` — list all 125 components
-- `lumeo_get_component({ name })` — rich schema if curated; thin + docs link otherwise
-- `lumeo_search({ query })` — fuzzy search across all 125
+- `lumeo_list_components({ category?, query? })` — list all components
+- `lumeo_get_component({ name })` — full schema (params, enums, sub-components, examples)
+- `lumeo_search({ query })` — fuzzy search across all components
 
 ### Resources
 
