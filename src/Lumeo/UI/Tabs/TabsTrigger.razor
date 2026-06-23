@@ -257,7 +257,26 @@
         // button inside the tab button would be invalid HTML).
         if (e.Key == "Delete" && IsClosable)
         {
+            // Capture the focus target BEFORE closing: this tab's button is about to
+            // vanish, so move focus to the next enabled tab (or the previous if this
+            // was the last) rather than dropping it to <body> (WCAG 2.4.3). The
+            // neighbour's id is stable across the removal re-render, so focusing it
+            // after the close is robust regardless of render timing.
+            var tabKeys = Context.TabIds.Keys.ToList();
+            var tabIdx = tabKeys.IndexOf(Value);
+            string? neighbourTabId = null;
+            for (var i = tabIdx + 1; i < tabKeys.Count && neighbourTabId is null; i++)
+                if (!IsTabDisabled(tabKeys[i]) && Context.TabIds.TryGetValue(tabKeys[i], out var n)) neighbourTabId = n.TabId;
+            for (var i = tabIdx - 1; i >= 0 && neighbourTabId is null; i--)
+                if (!IsTabDisabled(tabKeys[i]) && Context.TabIds.TryGetValue(tabKeys[i], out var n)) neighbourTabId = n.TabId;
+
             await HandleClose();
+
+            if (neighbourTabId is not null)
+            {
+                try { await Interop.FocusElement(neighbourTabId); }
+                catch (Microsoft.JSInterop.JSDisconnectedException) { }
+            }
             return;
         }
 
