@@ -693,10 +693,16 @@ foreach (var dir in componentDirs)
 
     var subcategory = SubcategoryInferrer.Infer(name, category);
     // Whether this component has a real docs page in docs/Lumeo.Docs/Pages/Components/.
-    // Catalog uses this to skip rendering cards that would 404 on click.
-    var docsPagePath = Path.Combine(repoRoot, "docs", "Lumeo.Docs", "Pages", "Components", $"{name}Page.razor");
-    var docsPagePathAlt = Path.Combine(repoRoot, "docs", "Lumeo.Docs", "Pages", "Components", "Charts", $"{name}ChartPage.razor");
-    var hasDocsPage = File.Exists(docsPagePath) || File.Exists(docsPagePathAlt);
+    // Catalog uses this to skip rendering cards that would 404 on click. Match the
+    // page filename CASE-INSENSITIVELY: the component name's casing ("QRCode") can
+    // differ from the page file ("QrCodePage.razor"), which under a case-sensitive
+    // filesystem (Linux CI) made File.Exists return false and wrongly hid the card.
+    var componentsPagesDir = Path.Combine(repoRoot, "docs", "Lumeo.Docs", "Pages", "Components");
+    bool PageFileExists(string dir, string fileName) =>
+        Directory.Exists(dir) && Directory.EnumerateFiles(dir, "*.razor")
+            .Any(f => string.Equals(Path.GetFileName(f), fileName, StringComparison.OrdinalIgnoreCase));
+    var hasDocsPage = PageFileExists(componentsPagesDir, $"{name}Page.razor")
+                      || PageFileExists(Path.Combine(componentsPagesDir, "Charts"), $"{name}ChartPage.razor");
     var entry = new Dictionary<string, object?>
     {
         ["name"] = name,
