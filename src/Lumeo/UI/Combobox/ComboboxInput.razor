@@ -1,6 +1,7 @@
 @namespace Lumeo
 @inject Lumeo.Services.Localization.ILumeoLocalizer L
 @inject IComponentInteropService Interop
+@implements IAsyncDisposable
 
 @if (HasChips)
 {
@@ -250,5 +251,37 @@ else
                 }
                 break;
         }
+    }
+
+    private bool _pdRegistered;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        try
+        {
+            // Suppress the input's caret motion for the keys that drive the listbox,
+            // so ArrowUp/Down navigate options (instead of jumping the text caret) and
+            // a plain Enter selects the active option rather than submitting an
+            // enclosing form. Same set as Command. NOT SkipEditable — unlike Select's
+            // listbox, the handler here must fire ON the editable input itself.
+            await Interop.RegisterPreventDefaultKeys(Context.InputId, new[]
+            {
+                new PreventDefaultKeyRule("ArrowDown", SkipComposing: true),
+                new PreventDefaultKeyRule("ArrowUp", SkipComposing: true),
+                new PreventDefaultKeyRule("Enter", RequireNoModifiers: true, SkipComposing: true),
+            });
+            _pdRegistered = true;
+        }
+        catch (Microsoft.JSInterop.JSDisconnectedException) { }
+        catch (InvalidOperationException) { } // JS interop unavailable during prerender
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (!_pdRegistered) return;
+        try { await Interop.UnregisterPreventDefaultKeys(Context.InputId); }
+        catch (Microsoft.JSInterop.JSDisconnectedException) { }
+        catch (InvalidOperationException) { }
     }
 }
