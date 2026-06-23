@@ -47,7 +47,8 @@ public static class ExampleExtractor
         if (pagePath is null) return Array.Empty<Example>();
 
         string src;
-        try { src = File.ReadAllText(pagePath); }
+        // Normalize CRLF -> LF so extracted example code is platform-stable.
+        try { src = File.ReadAllText(pagePath).Replace("\r\n", "\n").Replace("\r", "\n"); }
         catch { return Array.Empty<Example>(); }
 
         // field name -> code
@@ -103,7 +104,7 @@ public static class ExampleExtractor
         foreach (var file in Directory.EnumerateFiles(dir, "*.razor").OrderBy(p => p, StringComparer.OrdinalIgnoreCase))
         {
             string src;
-            try { src = File.ReadAllText(file); }
+            try { src = File.ReadAllText(file).Replace("\r\n", "\n").Replace("\r", "\n"); }
             catch { continue; }
 
             var route = pageRx.Match(src) is { Success: true } pm ? pm.Groups["route"].Value : "";
@@ -137,7 +138,7 @@ public static class ExampleExtractor
         var cssPath = Path.Combine(repoRoot, "src", "Lumeo", "wwwroot", "css", "lumeo.css");
         if (!File.Exists(cssPath)) return Array.Empty<(string, string)>();
         string css;
-        try { css = File.ReadAllText(cssPath); }
+        try { css = File.ReadAllText(cssPath).Replace("\r\n", "\n").Replace("\r", "\n"); }
         catch { return Array.Empty<(string, string)>(); }
 
         // --color-primary: ...;  --color-primary-foreground: ...;  --radius: ...;  --radius-xl: ...;

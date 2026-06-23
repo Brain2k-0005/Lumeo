@@ -1,10 +1,10 @@
 {
   "$schema": "https://lumeo.nativ.sh/components-api-schema.json",
   "version": "3.19.0",
-  "generated": "2026-06-18T14:38:00.7875427Z",
+  "generated": "2026-06-23T07:05:16.1087740Z",
   "stats": {
     "componentCount": 163,
-    "totalParameters": 4102,
+    "totalParameters": 4115,
     "totalEnums": 74,
     "totalRecords": 71,
     "serviceCount": 33,
@@ -613,6 +613,18 @@
           "name": "FocusMenuItemByTypeahead",
           "returnType": "ValueTask<int>",
           "signature": "FocusMenuItemByTypeahead(string containerId, string query, int currentIndex)",
+          "summary": null
+        },
+        {
+          "name": "SaveFocus",
+          "returnType": "ValueTask",
+          "signature": "SaveFocus(string key)",
+          "summary": null
+        },
+        {
+          "name": "RestoreFocus",
+          "returnType": "ValueTask",
+          "signature": "RestoreFocus(string key)",
           "summary": null
         },
         {
@@ -1930,6 +1942,18 @@
           "returnType": "ValueTask",
           "signature": "RemoveFocusTrap(string elementId)",
           "summary": "Releases the trap and returns focus to the element that was focused when SetupFocusTrap ran, if it is still in the document."
+        },
+        {
+          "name": "SaveFocus",
+          "returnType": "ValueTask",
+          "signature": "SaveFocus(string key)",
+          "summary": "Saves the currently-focused element keyed by so RestoreFocus can hand focus back later. Unlike SetupFocusTrap this installs NO Tab trap — use it for non-modal surfaces (menus, listbox popovers) that move focus inward on open but must let Tab close them per the WAI-ARIA pattern."
+        },
+        {
+          "name": "RestoreFocus",
+          "returnType": "ValueTask",
+          "signature": "RestoreFocus(string key)",
+          "summary": "Returns focus to the element saved by SaveFocus under the same key, if it is still in the document (WCAG 2.4.3)."
         },
         {
           "name": "AttachOverlaySlideEnd",
@@ -4260,6 +4284,14 @@
               "type": "string?",
               "default": null,
               "description": null,
+              "isCascading": false,
+              "captureUnmatched": false
+            },
+            {
+              "name": "HeadingLevel",
+              "type": "int",
+              "default": "3",
+              "description": "Heading level (the aria-level on the role=\"heading\" wrapper) so the accordion's headers sit at the right place in the document outline for screen-reader heading navigation. Default 3 (matching the WAI-ARIA accordion example); set 2/4/... to fit the surrounding page.",
               "isCascading": false,
               "captureUnmatched": false
             },
@@ -7019,6 +7051,14 @@
           "captureUnmatched": false
         },
         {
+          "name": "ReserveSpace",
+          "type": "bool",
+          "default": null,
+          "description": "When true (and Fixed is on), also renders an in-flow, aria-hidden spacer equal to the nav's height plus the bottom safe-area inset, so the fixed bar never overlaps the end of the page content — no consumer padding-bottom hack needed. The height is driven by the --lumeo-bottom-nav-height CSS variable (default 3.5rem); override it if your nav is taller (e.g. the Pill variant or two-line labels). Place BottomNav at the end of the scrolling content so the spacer reserves room there. Default false.",
+          "isCascading": false,
+          "captureUnmatched": false
+        },
+        {
           "name": "Variant",
           "type": "BottomNavVariant",
           "default": "BottomNavVariant.Default",
@@ -7751,6 +7791,14 @@
           "description": null,
           "isCascading": false,
           "captureUnmatched": true
+        },
+        {
+          "name": "Slot",
+          "type": "TriggerSlot?",
+          "default": null,
+          "description": null,
+          "isCascading": true,
+          "captureUnmatched": false
         }
       ],
       "events": [
@@ -8243,7 +8291,7 @@
           "name": "Variant",
           "type": "CardVariant",
           "default": "CardVariant.Default",
-          "description": "Surface style. Default is the bordered, shadowed card. Flat drops the border + card background — a content-only surface that (with OnClick) is the natural primitive for clickable list rows, replacing the Ghost button + !p-0 workaround.",
+          "description": "Surface style — four tiers, matching the depth ramp of shadcn (bordered → shadow), Radix Themes (ghost|surface|classic) and MudBlazor (Outlined / Elevation): Default — bordered card with the card background (no shadow). Flat — drops the border + card background; a content-only surface that (with OnClick) is the natural primitive for clickable list rows, replacing the Ghost button + !p-0 workaround. Outline — bordered but with a transparent fill, so the page background shows through; for cards layered on a coloured/!card surface. Elevated — bordered card background plus a shadow-sm for a raised, floating feel (shadcn's default Card depth).",
           "isCascading": false,
           "captureUnmatched": false
         },
@@ -8284,7 +8332,9 @@
           "name": "CardVariant",
           "values": [
             "Default",
-            "Flat"
+            "Flat",
+            "Outline",
+            "Elevated"
           ],
           "description": null
         }
@@ -9080,6 +9130,8 @@
         "UI/Chart/ChartLabelHelper.cs",
         "UI/Chart/ChartPlaceholderFactory.cs",
         "UI/Chart/ChartReferenceZone.razor",
+        "UI/Chart/ChartSkeleton.razor",
+        "UI/Chart/ChartSkeletonKind.cs",
         "UI/Chart/Charts/AreaChart.razor",
         "UI/Chart/Charts/BarChart.razor",
         "UI/Chart/Charts/BoxPlotChart.razor",
@@ -9110,8 +9162,6 @@
         "UI/Chart/Charts/TreemapChart.razor",
         "UI/Chart/Charts/WaterfallChart.razor",
         "UI/Chart/Charts/WordCloudChart.razor",
-        "UI/Chart/ChartSkeleton.razor",
-        "UI/Chart/ChartSkeletonKind.cs",
         "UI/Chart/ChartThreshold.razor",
         "UI/Chart/ChartTooltip.razor",
         "UI/Chart/ChartTooltipContext.cs",
@@ -18767,7 +18817,9 @@
           "fileName": "ComboboxInput.razor",
           "namespace": "Lumeo",
           "inheritsFrom": null,
-          "implements": [],
+          "implements": [
+            "IAsyncDisposable"
+          ],
           "parameters": [
             {
               "name": "Context",
@@ -25396,6 +25448,22 @@
               "captureUnmatched": false
             },
             {
+              "name": "ChildContentSlot",
+              "type": "RenderFragment<TriggerSlot>?",
+              "default": null,
+              "description": "Tier-2 escape hatch for AsChild with arbitrary markup — receives the TriggerSlot to splat manually. Lumeo &lt;Button&gt; children need only AsChild.",
+              "isCascading": false,
+              "captureUnmatched": false
+            },
+            {
+              "name": "AsChild",
+              "type": "bool",
+              "default": null,
+              "description": "When true, renders NO wrapper and cascades a TriggerSlot a cooperating child (a Lumeo &lt;Button&gt;, or a manual ChildContentSlot) folds onto its own single root element — the Radix asChild goal: one DOM node, no nested-interactive markup. Prefer a &lt;button&gt; child (a &lt;Button Href&gt; link activates on Enter only, not Space). Default false keeps the current role=button wrapper.",
+              "isCascading": false,
+              "captureUnmatched": false
+            },
+            {
               "name": "Class",
               "type": "string?",
               "default": null,
@@ -26899,6 +26967,22 @@
               "type": "RenderFragment?",
               "default": null,
               "description": null,
+              "isCascading": false,
+              "captureUnmatched": false
+            },
+            {
+              "name": "ChildContentSlot",
+              "type": "RenderFragment<TriggerSlot>?",
+              "default": null,
+              "description": "Tier-2 escape hatch for AsChild with arbitrary markup — receives the TriggerSlot to splat manually. Lumeo &lt;Button&gt; children need only AsChild.",
+              "isCascading": false,
+              "captureUnmatched": false
+            },
+            {
+              "name": "AsChild",
+              "type": "bool",
+              "default": null,
+              "description": "When true, renders NO wrapper and cascades a TriggerSlot (carrying group + data-state so a descendant chevron still rotates, plus the trigger id and menu ARIA) that a cooperating child folds onto its own single root element — the Radix asChild goal. Prefer a &lt;button&gt; child. Default false keeps the current role=button wrapper.",
               "isCascading": false,
               "captureUnmatched": false
             },
@@ -28618,7 +28702,7 @@
           "records": [
             {
               "name": "FormFieldContext",
-              "signature": "FormFieldContext(string? Name, string? Error, bool IsValidating)",
+              "signature": "FormFieldContext(string? Name, string? Error, bool IsValidating, string ControlId = \"\", string? DescribedBy = null)",
               "description": null
             }
           ],
@@ -37176,6 +37260,22 @@
               "captureUnmatched": false
             },
             {
+              "name": "ChildContentSlot",
+              "type": "RenderFragment<TriggerSlot>?",
+              "default": null,
+              "description": "Tier-2 escape hatch for AsChild with arbitrary (non-Lumeo) markup: receives the TriggerSlot so the consumer can splat @attributes=\"slot.Attributes\" and wire @onclick=\"slot.OnClick.InvokeAsync\" onto their own single element. Lumeo &lt;Button&gt; children need only AsChild — they consume the slot automatically.",
+              "isCascading": false,
+              "captureUnmatched": false
+            },
+            {
+              "name": "AsChild",
+              "type": "bool",
+              "default": null,
+              "description": "When true, the trigger renders NO wrapper element and instead cascades a TriggerSlot that a cooperating child folds onto its own single root element — yielding ONE DOM node with merged class, composed click/keyboard, and forwarded ARIA/state (the Radix asChild goal). The child must resolve to exactly one cooperating element (a Lumeo &lt;Button&gt;, or a manual ChildContentSlot splat); raw HTML/3rd-party markup receives nothing. Default false preserves the current role=button wrapper exactly. Prefer a &lt;button&gt; child for a click-toggle trigger: a &lt;Button Href&gt; renders an &lt;a&gt;, which natively activates on Enter only (not Space), so Space would not open the popover.",
+              "isCascading": false,
+              "captureUnmatched": false
+            },
+            {
               "name": "Class",
               "type": "string?",
               "default": null,
@@ -37992,7 +38092,24 @@
       "cssVars": [
         "--radius"
       ],
-      "examples": [],
+      "examples": [
+        {
+          "title": "Basic QR Code",
+          "code": "<QRCode Value=\"https://lumeo.nativ.sh/\" Size=\"200\" />"
+        },
+        {
+          "title": "Dynamic Value",
+          "code": "<Input @bind-Value=\"_url\" Placeholder=\"Enter URL...\" />\n<QRCode Value=\"@_url\" Size=\"180\" />"
+        },
+        {
+          "title": "Error Correction Levels",
+          "code": "<QRCode Value=\"...\" ErrorCorrectionLevel=\"QRCode.QRErrorLevel.Low\" />\n<QRCode Value=\"...\" ErrorCorrectionLevel=\"QRCode.QRErrorLevel.Medium\" />\n<QRCode Value=\"...\" ErrorCorrectionLevel=\"QRCode.QRErrorLevel.Quartile\" />\n<QRCode Value=\"...\" ErrorCorrectionLevel=\"QRCode.QRErrorLevel.High\" />"
+        },
+        {
+          "title": "Error Correction Level (interactive)",
+          "code": "<Segmented @bind-Value=\"_level\">\n    <SegmentedItem Value=\"@QRCode.QRErrorLevel.Low\">Low</SegmentedItem>\n    <SegmentedItem Value=\"@QRCode.QRErrorLevel.Medium\">Medium</SegmentedItem>\n    <SegmentedItem Value=\"@QRCode.QRErrorLevel.Quartile\">Quartile</SegmentedItem>\n    <SegmentedItem Value=\"@QRCode.QRErrorLevel.High\">High</SegmentedItem>\n</Segmented>\n<QRCode Value=\"https://lumeo.nativ.sh/\" Size=\"160\" ErrorCorrectionLevel=\"@_level\" />\n\n@code { private QRCode.QRErrorLevel _level = QRCode.QRErrorLevel.Medium; }"
+        }
+      ],
       "subComponents": {},
       "parseFailed": false,
       "parseError": null
@@ -41220,7 +41337,7 @@
       "records": [
         {
           "name": "SelectContext",
-          "signature": "SelectContext(\n        string? Value, bool IsOpen, bool Searchable, string SearchText,\n        bool Multiple, List<string>? Values, bool IsLoading, bool Disabled, bool Clearable, bool Creatable, int MaxDisplayTags,\n        EventCallback<string> OnSelect, EventCallback<bool> SetOpen, EventCallback<string> OnSearch,\n        EventCallback OnClear, EventCallback<string> OnCreateItem,\n        string WrapperId, string ContentId, string TriggerId, int FocusedIndex, string? FocusedItemId, string? FocusedItemValue,\n        EventCallback<int> SetFocusedIndex,\n        Action<string, string> RegisterItem, Action<string> UnregisterItem,\n        bool Invalid, bool Required,\n        // Data-bound mode params (null when composition mode)\n        IEnumerable<object>? Items,\n        Func<object, string> ItemValue,\n        Func<object, string>? ItemText,\n        Func<object, string?>? ItemGroup,\n        Func<object, bool>? ItemDisabled,\n        Func<object, string?>? ItemDescription,\n        Func<object, RenderFragment?>? ItemIcon,\n        RenderFragment<object>? ItemTemplate,\n        bool Virtualize,\n        float ItemSize)",
+          "signature": "SelectContext(\n        string? Value, bool IsOpen, bool Searchable, string SearchText,\n        bool Multiple, List<string>? Values, bool IsLoading, bool Disabled, bool Clearable, bool Creatable, int MaxDisplayTags,\n        EventCallback<string> OnSelect, EventCallback<bool> SetOpen, EventCallback<string> OnSearch,\n        EventCallback OnClear, EventCallback<string> OnCreateItem,\n        string WrapperId, string ContentId, string TriggerId, int FocusedIndex, string? FocusedItemId, string? FocusedItemValue,\n        EventCallback<int> SetFocusedIndex,\n        EventCallback<string> OnTypeahead,\n        Action<string, string, string, bool> RegisterItem, Action<string> UnregisterItem,\n        bool Invalid, bool Required,\n        // Data-bound mode params (null when composition mode)\n        IEnumerable<object>? Items,\n        Func<object, string> ItemValue,\n        Func<object, string>? ItemText,\n        Func<object, string?>? ItemGroup,\n        Func<object, bool>? ItemDisabled,\n        Func<object, string?>? ItemDescription,\n        Func<object, RenderFragment?>? ItemIcon,\n        RenderFragment<object>? ItemTemplate,\n        bool Virtualize,\n        float ItemSize)",
           "description": null
         }
       ],
@@ -41630,6 +41747,14 @@
           "type": "bool",
           "default": "true",
           "description": "When true (the default), the separator is purely visual and exposes role=\"none\" with no orientation — assistive tech skips it, matching Radix's decorative default. Set to false for a semantic separator that conveys structure (e.g. between menu groups or list sections): the element then carries role=\"separator\" plus an aria-orientation matching Orientation. The implicit ARIA orientation of a separator is horizontal, so a vertical one must declare it explicitly.",
+          "isCascading": false,
+          "captureUnmatched": false
+        },
+        {
+          "name": "Inset",
+          "type": "bool",
+          "default": null,
+          "description": "When true, the rule is inset from the container edges (a 0.75rem margin on the long axis: mx-3 when horizontal, my-3 when vertical) instead of spanning the full length — the Material / MudBlazor \"inset divider\" look, softer than an edge-to-edge line. Default false.",
           "isCascading": false,
           "captureUnmatched": false
         },
@@ -42186,6 +42311,22 @@
               "type": "RenderFragment?",
               "default": null,
               "description": null,
+              "isCascading": false,
+              "captureUnmatched": false
+            },
+            {
+              "name": "ChildContentSlot",
+              "type": "RenderFragment<TriggerSlot>?",
+              "default": null,
+              "description": "Tier-2 escape hatch for AsChild with arbitrary markup — receives the TriggerSlot to splat manually. Lumeo &lt;Button&gt; children need only AsChild.",
+              "isCascading": false,
+              "captureUnmatched": false
+            },
+            {
+              "name": "AsChild",
+              "type": "bool",
+              "default": null,
+              "description": "When true, renders NO wrapper and cascades a TriggerSlot a cooperating child (a Lumeo &lt;Button&gt;, or a manual ChildContentSlot) folds onto its own single root element — the Radix asChild goal: one DOM node, no nested-interactive markup. Prefer a &lt;button&gt; child (a &lt;Button Href&gt; link activates on Enter only, not Space). Default false keeps the current role=button wrapper.",
               "isCascading": false,
               "captureUnmatched": false
             },
@@ -42947,7 +43088,7 @@
                 "Icon",
                 "MiniRail"
               ],
-              "description": "Layout strategy for the sidebar. Push &mdash; collapses to zero width, pushing main content to the edge. Overlay &mdash; floats above content with a dismissible scrim. Icon &mdash; collapses to a narrow icon rail that stays put until toggled back. MiniRail &mdash; same icon-rail width when collapsed, but expands to full width on hover or keyboard focus and collapses again on leave. Material&rsquo;s standard collapsed-sidebar pattern; uses Toggle() to pin open."
+              "description": "Layout strategy for the sidebar. Push — collapses to zero width, pushing main content to the edge. Overlay — floats above content with a dismissible scrim. Icon — collapses to a narrow icon rail that stays put until toggled back. MiniRail — same icon-rail width when collapsed, but expands to full width on hover or keyboard focus and collapses again on leave. Material’s standard collapsed-sidebar pattern; uses Toggle() to pin open."
             }
           ],
           "records": [
@@ -43688,6 +43829,7 @@
         "--color-popover",
         "--color-popover-foreground",
         "--color-primary",
+        "--color-ring",
         "--radius"
       ],
       "examples": [
@@ -48439,7 +48581,7 @@
               "name": "Use24Hour",
               "type": "bool?",
               "default": null,
-              "description": "When true renders a 24-hour clock; when false renders 12-hour with AM/PM. When null (default), derived from ShortTimePattern.",
+              "description": "When true renders a 24-hour clock; when false renders 12-hour with AM/PM. When null (default), derived from CultureInfo.DateTimeFormat.ShortTimePattern.",
               "isCascading": false,
               "captureUnmatched": false
             },
@@ -49718,6 +49860,14 @@
           "type": "int",
           "default": "0",
           "description": null,
+          "isCascading": false,
+          "captureUnmatched": false
+        },
+        {
+          "name": "Class",
+          "type": "string?",
+          "default": null,
+          "description": "Extra classes for the tooltip's wrapper element (the relative inline-flex box around the trigger). Merged via Merge so a consumer class wins conflicts without !important — e.g. Class=\"w-full\" makes the wrapper fill its parent so a full-width trigger (e.g. a sidebar nav button) is not shrunk to content width.",
           "isCascading": false,
           "captureUnmatched": false
         },

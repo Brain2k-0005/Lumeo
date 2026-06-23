@@ -57,7 +57,8 @@ public static class PerComponentEnricher
             string content = string.Empty;
             try
             {
-                if (File.Exists(abs)) content = File.ReadAllText(abs);
+                // Normalize CRLF -> LF so extracted text is platform-stable.
+                if (File.Exists(abs)) content = File.ReadAllText(abs).Replace("\r\n", "\n").Replace("\r", "\n");
             }
             catch (Exception ex)
             {
@@ -246,7 +247,7 @@ public static class PerComponentEnricher
             foreach (var csFile in Directory.EnumerateFiles(root, "*.cs", SearchOption.AllDirectories))
             {
                 string text;
-                try { text = File.ReadAllText(csFile); }
+                try { text = File.ReadAllText(csFile).Replace("\r\n", "\n").Replace("\r", "\n"); }
                 catch { continue; }
                 if (!nameWordRegex.IsMatch(text)) continue;
                 var rel = Path.GetRelativePath(repoRoot, csFile).Replace('\\', '/');

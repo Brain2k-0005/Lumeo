@@ -81,7 +81,8 @@ public static class RazorParameterScanner
     {
         var componentName = Path.GetFileNameWithoutExtension(razorPath);
         string text;
-        try { text = File.ReadAllText(razorPath); }
+        // Normalize CRLF -> LF so extracted XML-doc text is platform-stable.
+        try { text = File.ReadAllText(razorPath).Replace("\r\n", "\n").Replace("\r", "\n"); }
         catch (Exception ex)
         {
             return new RazorFileSchema(

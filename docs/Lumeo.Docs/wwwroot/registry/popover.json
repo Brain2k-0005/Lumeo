@@ -11,7 +11,9 @@
     "UI/Popover/PopoverContent.razor",
     "UI/Popover/PopoverTrigger.razor"
   ],
-  "dependencies": [],
+  "dependencies": [
+    "button"
+  ],
   "packageDependencies": [],
   "cssVars": [
     "--color-border",
@@ -227,6 +229,22 @@
             "captureUnmatched": false
           },
           {
+            "name": "ChildContentSlot",
+            "type": "RenderFragment<TriggerSlot>?",
+            "default": null,
+            "description": "Tier-2 escape hatch for AsChild with arbitrary (non-Lumeo) markup: receives the TriggerSlot so the consumer can splat @attributes=\"slot.Attributes\" and wire @onclick=\"slot.OnClick.InvokeAsync\" onto their own single element. Lumeo &lt;Button&gt; children need only AsChild — they consume the slot automatically.",
+            "isCascading": false,
+            "captureUnmatched": false
+          },
+          {
+            "name": "AsChild",
+            "type": "bool",
+            "default": null,
+            "description": "When true, the trigger renders NO wrapper element and instead cascades a TriggerSlot that a cooperating child folds onto its own single root element — yielding ONE DOM node with merged class, composed click/keyboard, and forwarded ARIA/state (the Radix asChild goal). The child must resolve to exactly one cooperating element (a Lumeo &lt;Button&gt;, or a manual ChildContentSlot splat); raw HTML/3rd-party markup receives nothing. Default false preserves the current role=button wrapper exactly. Prefer a &lt;button&gt; child for a click-toggle trigger: a &lt;Button Href&gt; renders an &lt;a&gt;, which natively activates on Enter only (not Space), so Space would not open the popover.",
+            "isCascading": false,
+            "captureUnmatched": false
+          },
+          {
             "name": "Class",
             "type": "string?",
             "default": null,
@@ -282,7 +300,7 @@
     },
     {
       "path": "UI/Popover/PopoverTrigger.razor",
-      "content": "@namespace Lumeo\n\n<div class=\"@CssClass\" role=\"button\" tabindex=\"0\" aria-expanded=\"@(Context.IsOpen ? \"true\" : \"false\")\" aria-haspopup=\"dialog\" aria-controls=\"@(Context.IsOpen ? Context.ContentId : null)\" @onclick=\"Toggle\" @onkeydown=\"HandleKeyDown\" @attributes=\"AdditionalAttributes\">\n    @ChildContent\n</div>\n\n@code {\n    [CascadingParameter] public Popover.PopoverContext Context { get; set; } = default!;\n    [Parameter] public RenderFragment? ChildContent { get; set; }\n    [Parameter] public string? Class { get; set; }\n    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }\n\n    private string CssClass => Cx.Merge(\"inline-flex\", Class);\n\n    private async Task Toggle() => await Context.SetOpen.InvokeAsync(!Context.IsOpen);\n\n    private async Task HandleKeyDown(KeyboardEventArgs e)\n    {\n        if (e.Key is \"Enter\" or \" \") await Toggle();\n    }\n}\n"
+      "content": "@namespace Lumeo\n\n@if (AsChild)\n{\n    @* asChild: render NO wrapper. Cascade the slot so a cooperating child (a Lumeo\n       <Button>, or a manual <ChildContentSlot> splat) becomes the single trigger\n       element — no role=button div, no nested-interactive markup, and the child's\n       own Class/width reach the real control. Popover positions against the Popover\n       ROOT wrapper (Context.WrapperId), not this trigger, so dropping the wrapper\n       does not affect positioning — no id transfer needed. *@\n    <CascadingValue Value=\"Slot\" IsFixed=\"false\">\n        @if (ChildContentSlot is not null)\n        {\n            @ChildContentSlot(Slot)\n        }\n        else\n        {\n            @ChildContent\n        }\n    </CascadingValue>\n}\nelse\n{\n    <div class=\"@CssClass\" role=\"button\" tabindex=\"0\" aria-expanded=\"@(Context.IsOpen ? \"true\" : \"false\")\" aria-haspopup=\"dialog\" aria-controls=\"@(Context.IsOpen ? Context.ContentId : null)\" @onclick=\"Toggle\" @onkeydown=\"HandleKeyDown\" @attributes=\"AdditionalAttributes\">\n        @ChildContent\n    </div>\n}\n\n@code {\n    [CascadingParameter] public Popover.PopoverContext Context { get; set; } = default!;\n    [Parameter] public RenderFragment? ChildContent { get; set; }\n\n    /// <summary>\n    /// Tier-2 escape hatch for <see cref=\"AsChild\"/> with arbitrary (non-Lumeo) markup:\n    /// receives the <see cref=\"TriggerSlot\"/> so the consumer can splat\n    /// <c>@attributes=\"slot.Attributes\"</c> and wire <c>@onclick=\"slot.OnClick.InvokeAsync\"</c>\n    /// onto their own single element. Lumeo <c>&lt;Button&gt;</c> children need only\n    /// <see cref=\"AsChild\"/> — they consume the slot automatically.\n    /// </summary>\n    [Parameter] public RenderFragment<TriggerSlot>? ChildContentSlot { get; set; }\n\n    /// <summary>\n    /// When <c>true</c>, the trigger renders NO wrapper element and instead cascades a\n    /// <see cref=\"TriggerSlot\"/> that a cooperating child folds onto its own single root\n    /// element — yielding ONE DOM node with merged class, composed click/keyboard, and\n    /// forwarded ARIA/state (the Radix <c>asChild</c> goal). The child must resolve to\n    /// exactly one cooperating element (a Lumeo <c>&lt;Button&gt;</c>, or a manual\n    /// <see cref=\"ChildContentSlot\"/> splat); raw HTML/3rd-party markup receives nothing.\n    /// Default <c>false</c> preserves the current <c>role=button</c> wrapper exactly.\n    ///\n    /// Prefer a <c>&lt;button&gt;</c> child for a click-toggle trigger: a\n    /// <c>&lt;Button Href&gt;</c> renders an <c>&lt;a&gt;</c>, which natively activates\n    /// on Enter only (not Space), so Space would not open the popover.\n    /// </summary>\n    [Parameter] public bool AsChild { get; set; }\n\n    [Parameter] public string? Class { get; set; }\n    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }\n\n    private string CssClass => Cx.Merge(\"inline-flex\", Class);\n\n    private TriggerSlot Slot => new(\n        Id: null,                                 // Popover anchors positioning on its root wrapper, not the trigger\n        Class: Cx.Merge(\"inline-flex\", Class),\n        Attributes: BuildAttrs(),\n        OnClick: EventCallback.Factory.Create<MouseEventArgs>(this, _ => Toggle()),\n        OnKeyDown: EventCallback.Factory.Create<KeyboardEventArgs>(this, HandleKeyDown));\n\n    private IReadOnlyDictionary<string, object> BuildAttrs()\n    {\n        var d = new Dictionary<string, object>\n        {\n            [\"aria-haspopup\"] = \"dialog\",\n            [\"aria-expanded\"] = Context.IsOpen ? \"true\" : \"false\",\n        };\n        if (Context.IsOpen) d[\"aria-controls\"] = Context.ContentId;\n        if (AdditionalAttributes is not null)\n            foreach (var kv in AdditionalAttributes) d[kv.Key] = kv.Value; // author wins on collision\n        return d;\n    }\n\n    private async Task Toggle() => await Context.SetOpen.InvokeAsync(!Context.IsOpen);\n\n    private async Task HandleKeyDown(KeyboardEventArgs e)\n    {\n        if (e.Key is \"Enter\" or \" \") await Toggle();\n    }\n}\n"
     }
   ],
   "slots": [
@@ -303,6 +321,12 @@
       "owner": "PopoverTrigger",
       "type": "RenderFragment?",
       "description": null
+    },
+    {
+      "name": "ChildContentSlot",
+      "owner": "PopoverTrigger",
+      "type": "RenderFragment<TriggerSlot>?",
+      "description": "Tier-2 escape hatch for AsChild with arbitrary (non-Lumeo) markup: receives the TriggerSlot so the consumer can splat @attributes=\"slot.Attributes\" and wire @onclick=\"slot.OnClick.InvokeAsync\" onto their own single element. Lumeo &lt;Button&gt; children need only AsChild — they consume the slot automatically."
     }
   ],
   "serviceDependencies": [
@@ -326,6 +350,10 @@
     {
       "name": "PopoverTrigger",
       "reason": "sub-component"
+    },
+    {
+      "name": "Button",
+      "reason": "used internally"
     }
   ],
   "keyboardInteractions": [
@@ -338,7 +366,8 @@
     "tests/Lumeo.Tests/Components/ColorPicker/ColorPickerFocusManagementTests.cs",
     "tests/Lumeo.Tests/Components/DatePicker/DatePickerTests.cs",
     "tests/Lumeo.Tests/Components/Popover/PopoverFocusManagementTests.cs",
-    "tests/Lumeo.Tests/Components/Popover/PopoverTests.cs"
+    "tests/Lumeo.Tests/Components/Popover/PopoverTests.cs",
+    "tests/Lumeo.Tests/Components/Popover/PopoverTriggerAsChildTests.cs"
   ],
-  "mdSummary": "# Popover\n\nPositionable floating panel with anchor and arrow.\n\n**Package:** `Lumeo` · **Category:** Overlay\n**Docs:** https://lumeo.nativ.sh/components/popover\n\n## Parameters\n| Owner | Name | Type | Default | Description |\n|---|---|---|---|---|\n| Popover | ChildContent | `RenderFragment?` | `` |  |\n| Popover | Open | `bool` | `` |  |\n| Popover | OpenChanged | `EventCallback<bool>` | `` |  |\n| Popover | IsOpen | `bool` | `` |  |\n| Popover | IsOpenChanged | `EventCallback<bool>` | `` |  |\n| Popover | AdditionalAttributes | `Dictionary<string, object>?` | `` |  |\n| PopoverContent | Context | `Popover.PopoverContext` | `default!` |  |\n| PopoverContent | ChildContent | `RenderFragment?` | `` |  |\n| PopoverContent | Align | `Lumeo.Align` | `Lumeo.Align.Center` |  |\n| PopoverContent | Side | `Lumeo.Side` | `Lumeo.Side.Bottom` |  |\n| PopoverContent | ShowArrow | `bool` | `` |  |\n| PopoverContent | Class | `string?` | `` |  |\n| PopoverContent | AdditionalAttributes | `Dictionary<string, object>?` | `` |  |\n| PopoverTrigger | Context | `Popover.PopoverContext` | `default!` |  |\n| PopoverTrigger | ChildContent | `RenderFragment?` | `` |  |\n| PopoverTrigger | Class | `string?` | `` |  |\n| PopoverTrigger | AdditionalAttributes | `Dictionary<string, object>?` | `` |  |\n\n## Slots\n- `ChildContent` (Popover) — RenderFragment slot\n- `ChildContent` (PopoverContent) — RenderFragment slot\n- `ChildContent` (PopoverTrigger) — RenderFragment slot\n\n## Events\n- `OpenChanged` (`EventCallback<bool>`)\n- `IsOpenChanged` (`EventCallback<bool>`)\n\n## Sub-components\n- `PopoverContent`, `PopoverTrigger`\n\n## Cascading values it expects\n- `Context` (`Popover.PopoverContext`)\n\n## Services it injects\n- `IComponentInteropService` ()\n\n## Keyboard\n- `Escape` — HandleKeyDown handles Escape in PopoverContent.razor\n\n## Example\n```razor\n<Popover />\n```\n\n## CSS variables\n`--color-border`, `--color-popover`, `--color-popover-foreground`, `--radius`\n\n## Files\n- `UI/Popover/Popover.razor`\n- `UI/Popover/PopoverContent.razor`\n- `UI/Popover/PopoverTrigger.razor`\n"
+  "mdSummary": "# Popover\r\n\r\nPositionable floating panel with anchor and arrow.\r\n\r\n**Package:** `Lumeo` · **Category:** Overlay\r\n**Docs:** https://lumeo.nativ.sh/components/popover\r\n\r\n## Parameters\r\n| Owner | Name | Type | Default | Description |\r\n|---|---|---|---|---|\r\n| Popover | ChildContent | `RenderFragment?` | `` |  |\r\n| Popover | Open | `bool` | `` |  |\r\n| Popover | OpenChanged | `EventCallback<bool>` | `` |  |\r\n| Popover | IsOpen | `bool` | `` |  |\r\n| Popover | IsOpenChanged | `EventCallback<bool>` | `` |  |\r\n| Popover | AdditionalAttributes | `Dictionary<string, object>?` | `` |  |\r\n| PopoverContent | Context | `Popover.PopoverContext` | `default!` |  |\r\n| PopoverContent | ChildContent | `RenderFragment?` | `` |  |\r\n| PopoverContent | Align | `Lumeo.Align` | `Lumeo.Align.Center` |  |\r\n| PopoverContent | Side | `Lumeo.Side` | `Lumeo.Side.Bottom` |  |\r\n| PopoverContent | ShowArrow | `bool` | `` |  |\r\n| PopoverContent | Class | `string?` | `` |  |\r\n| PopoverContent | AdditionalAttributes | `Dictionary<string, object>?` | `` |  |\r\n| PopoverTrigger | Context | `Popover.PopoverContext` | `default!` |  |\r\n| PopoverTrigger | ChildContent | `RenderFragment?` | `` |  |\r\n| PopoverTrigger | ChildContentSlot | `RenderFragment<TriggerSlot>?` | `` | Tier-2 escape hatch for AsChild with arbitrary (non-Lumeo) markup: receives the TriggerSlot so the consumer can splat @attributes=\"slot.Attributes\" and wire @onclick=\"slot.OnClick.InvokeAsync\" onto their own single element. Lumeo &lt;Button&gt; children need only AsChild — they consume the slot automatically. |\r\n| PopoverTrigger | AsChild | `bool` | `` | When true, the trigger renders NO wrapper element and instead cascades a TriggerSlot that a cooperating child folds onto its own single root element — yielding ONE DOM node with merged class, composed click/keyboard, and forwarded ARIA/state (the Radix asChild goal). The child must resolve to exactly one cooperating element (a Lumeo &lt;Button&gt;, or a manual ChildContentSlot splat); raw HTML/3rd-party markup receives nothing. Default false preserves the current role=button wrapper exactly. Prefer a &lt;button&gt; child for a click-toggle trigger: a &lt;Button Href&gt; renders an &lt;a&gt;, which natively activates on Enter only (not Space), so Space would not open the popover. |\r\n| PopoverTrigger | Class | `string?` | `` |  |\r\n| PopoverTrigger | AdditionalAttributes | `Dictionary<string, object>?` | `` |  |\r\n\r\n## Slots\r\n- `ChildContent` (Popover) — RenderFragment slot\r\n- `ChildContent` (PopoverContent) — RenderFragment slot\r\n- `ChildContent` (PopoverTrigger) — RenderFragment slot\r\n- `ChildContentSlot` (PopoverTrigger) — Tier-2 escape hatch for AsChild with arbitrary (non-Lumeo) markup: receives the TriggerSlot so the consumer can splat @attributes=\"slot.Attributes\" and wire @onclick=\"slot.OnClick.InvokeAsync\" onto their own single element. Lumeo &lt;Button&gt; children need only AsChild — they consume the slot automatically.\r\n\r\n## Events\r\n- `OpenChanged` (`EventCallback<bool>`)\r\n- `IsOpenChanged` (`EventCallback<bool>`)\r\n\r\n## Sub-components\r\n- `PopoverContent`, `PopoverTrigger`\r\n\r\n## Cascading values it expects\r\n- `Context` (`Popover.PopoverContext`)\r\n\r\n## Services it injects\r\n- `IComponentInteropService` ()\r\n\r\n## Keyboard\r\n- `Escape` — HandleKeyDown handles Escape in PopoverContent.razor\r\n\r\n## Example\r\n```razor\r\n<Popover />\r\n```\r\n\r\n## CSS variables\r\n`--color-border`, `--color-popover`, `--color-popover-foreground`, `--radius`\r\n\r\n## Files\r\n- `UI/Popover/Popover.razor`\r\n- `UI/Popover/PopoverContent.razor`\r\n- `UI/Popover/PopoverTrigger.razor`\r\n"
 }
