@@ -115,7 +115,7 @@ public class PickListTests : IAsyncLifetime
             onChange: EventCallback.Factory.Create<IEnumerable<string>>(this, v => captured = v));
 
         // First button in middle column = "Move all" (ChevronsRight)
-        var moveAllBtn = cut.FindAll("button").First(b => b.GetAttribute("title") == "Move all");
+        var moveAllBtn = cut.FindAll("button").First(b => b.GetAttribute("aria-label") == "Move all");
         await moveAllBtn.ClickAsync(new Microsoft.AspNetCore.Components.Web.MouseEventArgs());
 
         Assert.NotNull(captured);
@@ -136,7 +136,7 @@ public class PickListTests : IAsyncLifetime
         await aBtn.ClickAsync(new Microsoft.AspNetCore.Components.Web.MouseEventArgs());
 
         // Click "Move selected" button
-        var moveSelected = cut.FindAll("button").First(b => b.GetAttribute("title") == "Move selected");
+        var moveSelected = cut.FindAll("button").First(b => b.GetAttribute("aria-label") == "Move selected");
         await moveSelected.ClickAsync(new Microsoft.AspNetCore.Components.Web.MouseEventArgs());
 
         Assert.NotNull(captured);
