@@ -8,7 +8,7 @@ namespace Lumeo;
 /// scaling the type ramp itself.
 /// </summary>
 /// <remarks>
-/// Components opt in per-component by reading <see cref="DensityScope.Current"/>
+/// Components opt in per-component by reading <c>DensityScope.Current</c>
 /// from a cascading <see cref="DensityScope"/> wrapper, or by accepting an
 /// explicit <c>Density</c> parameter that overrides the inherited value. Only
 /// padding / gap / row-height tokens shift between values — text size, icon

@@ -13,7 +13,7 @@ namespace Lumeo.SourceGenerators;
 /// <summary>
 /// Incremental generator that emits a <c>RenderForm</c> method on every class marked
 /// with <c>[LumeoForm]</c>. The generated method returns a Blazor
-/// <see cref="Microsoft.AspNetCore.Components.RenderFragment"/> that renders a
+/// <c>RenderFragment</c> that renders a
 /// <c>&lt;Form&gt;</c> with one <c>&lt;FormField&gt;</c> per public property,
 /// picking the right Lumeo input component based on the property type.
 ///
