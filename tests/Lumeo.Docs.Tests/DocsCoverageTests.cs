@@ -48,6 +48,36 @@ public class DocsCoverageTests
     }
 
     [Fact]
+    public void Every_Component_Has_A_TestCoverage_Block_With_A_Valid_Tier()
+    {
+        // The docs surface per-component test coverage (the <TestCoverage> panel + the
+        // /test-coverage overview) from this block; guard that RegistryGen emits it for
+        // every component with a sane tier so the docs never render a blank panel.
+        var repo = FindRepoRoot();
+        using var registry = JsonDocument.Parse(
+            File.ReadAllText(Path.Combine(repo, "src", "Lumeo", "registry", "registry.json")));
+
+        var bad = new List<string>();
+        foreach (var comp in registry.RootElement.GetProperty("components").EnumerateObject())
+        {
+            var name = comp.Value.GetProperty("name").GetString()!;
+            if (!comp.Value.TryGetProperty("testCoverage", out var cov))
+            {
+                bad.Add($"  {name}: no testCoverage block");
+                continue;
+            }
+            var tier = cov.GetProperty("tier").GetInt32();
+            if (tier is < 0 or > 4) bad.Add($"  {name}: tier {tier} out of range");
+            // Every component must at least render (dedicated/shared tests or contract smoke).
+            if (!cov.GetProperty("render").GetBoolean())
+                bad.Add($"  {name}: render=false — not even smoke-covered");
+        }
+
+        Assert.True(bad.Count == 0,
+            "testCoverage block invalid for some components:\n" + string.Join("\n", bad));
+    }
+
+    [Fact]
     public void Every_Component_Has_A_Per_Component_Registry_Json_That_Parses()
     {
         var repo = FindRepoRoot();
