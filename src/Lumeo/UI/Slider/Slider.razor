@@ -36,7 +36,9 @@
                        class="@VerticalInputClasses"
                        @oninput="OnInput"
                        @onpointerenter="() => _showTooltipThumb = true"
-                       @onpointerleave="() => _showTooltipThumb = false" />
+                       @onpointerleave="() => _showTooltipThumb = false"
+                       @onfocus="() => _showTooltipThumb = true"
+                       @onblur="() => _showTooltipThumb = false" />
             </div>
             @if (ShowTooltip && _showTooltipThumb)
             {
@@ -110,7 +112,9 @@ else
                        class="@InputClasses"
                        @oninput="OnInput"
                        @onpointerenter="() => _showTooltipThumb = true"
-                       @onpointerleave="() => _showTooltipThumb = false" />
+                       @onpointerleave="() => _showTooltipThumb = false"
+                       @onfocus="() => _showTooltipThumb = true"
+                       @onblur="() => _showTooltipThumb = false" />
                 @if (ShowTooltip && _showTooltipThumb)
                 {
                     <div class="absolute -top-8 rounded-md bg-popover px-2 py-1 text-xs text-popover-foreground shadow-md"
@@ -215,11 +219,16 @@ else
     private string CssClass => Cx.Merge("relative flex w-full touch-none select-none items-center", Class);
     private string VerticalCssClass => Cx.Merge("relative flex h-full min-h-[200px] touch-none select-none justify-center", Class);
 
-    private string InputClasses => $"w-full h-2 cursor-pointer appearance-none rounded-[var(--radius)] {(EffectiveInvalid ? "bg-destructive/20 accent-destructive" : "bg-primary/20 accent-primary")} disabled:cursor-not-allowed disabled:opacity-50";
+    // appearance-none strips the native focus outline, so add an explicit
+    // focus-visible ring (WCAG 2.4.7) — without it a keyboard user can't see which
+    // slider, or which range thumb, is focused. The rounded ring follows the track.
+    private const string FocusRing = "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background";
 
-    private string VerticalInputClasses => $"absolute inset-0 h-full w-full cursor-pointer appearance-none bg-transparent {(EffectiveInvalid ? "accent-destructive" : "accent-primary")} disabled:cursor-not-allowed disabled:opacity-50 [writing-mode:vertical-lr] [direction:rtl]";
+    private string InputClasses => $"w-full h-2 cursor-pointer appearance-none rounded-[var(--radius)] {(EffectiveInvalid ? "bg-destructive/20 accent-destructive" : "bg-primary/20 accent-primary")} {FocusRing} disabled:cursor-not-allowed disabled:opacity-50";
 
-    private const string RangeInputClasses = "w-full h-2 cursor-pointer appearance-none bg-transparent accent-primary disabled:cursor-not-allowed disabled:opacity-50 pointer-events-none [&::-webkit-slider-thumb]:pointer-events-auto [&::-moz-range-thumb]:pointer-events-auto";
+    private string VerticalInputClasses => $"absolute inset-0 h-full w-full cursor-pointer appearance-none rounded-[var(--radius)] bg-transparent {(EffectiveInvalid ? "accent-destructive" : "accent-primary")} {FocusRing} disabled:cursor-not-allowed disabled:opacity-50 [writing-mode:vertical-lr] [direction:rtl]";
+
+    private static readonly string RangeInputClasses = $"w-full h-2 cursor-pointer appearance-none rounded-[var(--radius)] bg-transparent accent-primary {FocusRing} disabled:cursor-not-allowed disabled:opacity-50 pointer-events-none [&::-webkit-slider-thumb]:pointer-events-auto [&::-moz-range-thumb]:pointer-events-auto";
 
     private double StartPercent => Max > Min ? ((Math.Min(Value, ValueEnd) - Min) / (Max - Min)) * 100 : 0;
     private double RangePercent => Max > Min ? ((Math.Abs(ValueEnd - Value)) / (Max - Min)) * 100 : 0;
