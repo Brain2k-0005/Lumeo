@@ -44,6 +44,33 @@ public class NamespaceRewriterTests
     }
 
     [Fact]
+    public void Razor_Namespace_With_CRLF_Line_Endings_Is_Rewritten()
+    {
+        // Regression: a bare `$` anchor matches before \n, which on CRLF sits after
+        // the \r, so `Lumeo$` never matched and Windows checkouts / `lumeo add
+        // --local` left the @namespace as Lumeo, breaking every vendored .razor.
+        Assert.Equal(
+            "@namespace MyApp\r\n@inject Foo\r\n",
+            NamespaceRewriter.Rewrite("@namespace Lumeo\r\n@inject Foo\r\n", "Button.razor", "MyApp"));
+    }
+
+    [Fact]
+    public void Razor_Sub_Namespace_With_CRLF_Is_Rewritten()
+    {
+        Assert.Equal(
+            "@namespace MyApp.UI.Button\r\n",
+            NamespaceRewriter.Rewrite("@namespace Lumeo.UI.Button\r\n", "Button.razor", "MyApp"));
+    }
+
+    [Fact]
+    public void CSharp_File_Scoped_Namespace_With_CRLF_Is_Rewritten()
+    {
+        Assert.Equal(
+            "namespace MyApp.Services;\r\n",
+            NamespaceRewriter.Rewrite("namespace Lumeo.Services;\r\n", "ThemeService.cs", "MyApp"));
+    }
+
+    [Fact]
     public void Only_The_Targeted_Directive_Line_Is_Touched()
     {
         const string src = "@namespace Lumeo\n@using Lumeo.Services\n<div>Lumeo</div>";
