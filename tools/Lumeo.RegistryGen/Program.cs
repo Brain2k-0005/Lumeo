@@ -599,6 +599,125 @@ if (orphans.Length > 0)
 
 var components = new SortedDictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
 
+// ── Per-component test-coverage scan ─────────────────────────────────────────
+// Surfaces "what has been tested" into the registry so the docs can show devs a
+// coverage badge per component. Computed from the REAL test sources, so it can
+// never drift: dedicated bUnit tests under tests/Lumeo.Tests/Components/<name>/,
+// the browser E2E suite, and the universal render-contract test. Coverage flags
+// are derived from objective signals in the test text (aria-/role= assertions,
+// KeyDown/Arrow keys, Click/InvokeAsync/Change events, *ScaleTests, E2E refs);
+// the tier (0 smoke .. 4 e2e) is derived deterministically from those flags.
+var testsComponentsDir = Path.Combine(repoRoot, "tests", "Lumeo.Tests", "Components");
+// Test sources are BOTH .cs and bUnit .razor files (Accordion/RadioGroup etc. use
+// `Render(@<Component>…)` in *.razor) — scanning only .cs misses them entirely.
+static bool IsTestSource(string f)
+{
+    var n = f.Replace('\\', '/');
+    if (n.Contains("/obj/") || n.Contains("/bin/")) return false;
+    return n.EndsWith(".cs", StringComparison.OrdinalIgnoreCase)
+        || n.EndsWith(".razor", StringComparison.OrdinalIgnoreCase);
+}
+var e2eDir = Path.Combine(repoRoot, "tests", "Lumeo.Tests.E2E");
+var e2eCorpus = Directory.Exists(e2eDir)
+    ? Directory.EnumerateFiles(e2eDir, "*.*", SearchOption.AllDirectories)
+        .Where(IsTestSource)
+        .Select(f => (file: Path.GetFileName(f), text: File.ReadAllText(f)))
+        .ToArray()
+    : Array.Empty<(string file, string text)>();
+// Components the universal contract test cannot smoke-render (generics) or silently
+// skips (registry-name != class name) — mirrors ComponentContractTests' own lists.
+var contractExcluded = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+    { "Form", "PickList", "Sortable", "TreeView", "DataGrid", "DataTable" };
+var contractSkipped = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+    { "Resizable", "Overlay", "Sidebar", "Filter", "Progress" };
+
+// Full unit-test corpus (every .cs under tests/Lumeo.Tests). Used so a component
+// tested in a SHARED file — e.g. Accordion/RadioGroup are a11y-tested in
+// Components/A11yPolish/ rather than a dedicated folder — still gets credit.
+var unitTestsRoot = Path.Combine(repoRoot, "tests", "Lumeo.Tests");
+var allUnitTests = Directory.Exists(unitTestsRoot)
+    ? Directory.EnumerateFiles(unitTestsRoot, "*.*", SearchOption.AllDirectories)
+        .Where(IsTestSource)
+        .Select(f => (path: f, text: File.ReadAllText(f)))
+        .ToArray()
+    : Array.Empty<(string path, string text)>();
+
+Dictionary<string, object?> ComputeTestCoverage(string componentName)
+{
+    var dir = Path.Combine(testsComponentsDir, componentName);
+    var dirPrefix = dir + Path.DirectorySeparatorChar;
+    var files = Directory.Exists(dir)
+        ? Directory.EnumerateFiles(dir, "*.*", SearchOption.AllDirectories)
+            .Where(IsTestSource)
+            .ToArray()
+        : Array.Empty<string>();
+    var dedicatedText = string.Concat(files.Select(File.ReadAllText));
+    var testCount = System.Text.RegularExpressions.Regex.Matches(dedicatedText, @"^\s*\[(Fact|Theory)", System.Text.RegularExpressions.RegexOptions.Multiline).Count;
+
+    // Shared/sibling test files OUTSIDE the dedicated folder (and not the universal
+    // contract test) that actually RENDER this component — credit their signals too.
+    var renders = new System.Text.RegularExpressions.Regex(
+        $@"Render<{System.Text.RegularExpressions.Regex.Escape(componentName)}[<>(]|<{System.Text.RegularExpressions.Regex.Escape(componentName)}[\s/>]|OpenComponent<[^>]*\b{System.Text.RegularExpressions.Regex.Escape(componentName)}\b");
+    var relatedFiles = allUnitTests
+        .Where(t => !t.path.StartsWith(dirPrefix, StringComparison.OrdinalIgnoreCase)
+                    && !t.path.Contains("ComponentContractTests", StringComparison.OrdinalIgnoreCase)
+                    && renders.IsMatch(t.text))
+        .Select(t => Path.GetFileName(t.path))
+        .Distinct()
+        .OrderBy(x => x, StringComparer.Ordinal)
+        .ToArray();
+    var relatedText = string.Concat(allUnitTests
+        .Where(t => !t.path.StartsWith(dirPrefix, StringComparison.OrdinalIgnoreCase)
+                    && !t.path.Contains("ComponentContractTests", StringComparison.OrdinalIgnoreCase)
+                    && renders.IsMatch(t.text))
+        .Select(t => t.text));
+
+    var text = dedicatedText + relatedText;
+    bool Has(string pattern) => System.Text.RegularExpressions.Regex.IsMatch(text, pattern);
+    var hasA11y = Has(@"aria-|role=|GetAttribute\(""(aria|role)");
+    var hasKeyboard = Has(@"KeyDown|KeyboardEventArgs|Arrow(Up|Down|Left|Right)|""Enter""|""Escape""|""Home""|""End""");
+    var hasBehavior = Has(@"\.Click\(|InvokeAsync|Changed|OnClick|Toggle|SetParametersAndRender|\.Change\(|Input\(");
+    var hasScale = files.Any(f => Path.GetFileName(f).Contains("ScaleTests", StringComparison.OrdinalIgnoreCase))
+                   || Has(@"1_000_000|Millions|100_000");
+    var e2eFiles = e2eCorpus
+        .Where(e => System.Text.RegularExpressions.Regex.IsMatch(e.text, $@"\b{System.Text.RegularExpressions.Regex.Escape(componentName)}\b"))
+        .Select(e => e.file)
+        .Distinct()
+        .OrderBy(x => x, StringComparer.Ordinal)
+        .ToArray();
+    var hasE2E = e2eFiles.Length > 0;
+
+    var contract = contractExcluded.Contains(componentName) ? "excluded"
+        : contractSkipped.Contains(componentName) ? "skipped"
+        : "smoke";
+    var hasAnyTest = files.Length > 0 || relatedFiles.Length > 0;
+    // Render is covered if the component has dedicated/shared tests OR the contract
+    // test smoke-renders it (i.e. it's not excluded/skipped without any test).
+    var hasRender = hasAnyTest || contract == "smoke";
+
+    int tier = (hasE2E && hasBehavior) ? 4
+        : (hasA11y && (hasKeyboard || hasBehavior)) ? 3
+        : hasBehavior ? 2
+        : hasAnyTest ? 1
+        : 0;
+
+    return new Dictionary<string, object?>
+    {
+        ["tier"] = tier,
+        ["files"] = files.Length,
+        ["tests"] = testCount,
+        ["relatedFiles"] = relatedFiles.Length,
+        ["render"] = hasRender,
+        ["behavior"] = hasBehavior,
+        ["a11y"] = hasA11y,
+        ["keyboard"] = hasKeyboard,
+        ["scale"] = hasScale,
+        ["e2e"] = hasE2E,
+        ["e2eFiles"] = e2eFiles,
+        ["contract"] = contract,
+    };
+}
+
 foreach (var dir in componentDirs)
 {
     var name = Path.GetFileName(dir);
@@ -728,6 +847,7 @@ foreach (var dir in componentDirs)
         ["cssVars"] = cssVars.OrderBy(x => x, StringComparer.Ordinal).ToArray(),
         ["gotchas"] = gotchas.ToArray(),
         ["registryUrl"] = $"https://lumeo.nativ.sh/registry/{componentKey}.json",
+        ["testCoverage"] = ComputeTestCoverage(name),
     };
     components[componentKey] = entry;
 }

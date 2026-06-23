@@ -1,0 +1,116 @@
+@page "/test-coverage"
+@using Lumeo.Docs.Services
+@inject RegistryService Registry
+
+<PageTitle>Test Coverage — Lumeo</PageTitle>
+
+<PageHeader Title="Test Coverage"
+            Description="What every Lumeo component has been tested for — generated from the real test suite (bUnit unit/a11y tests + Playwright browser E2E), so it can never drift from reality." />
+
+@if (_rows is null)
+{
+    <p class="mt-6 text-sm text-muted-foreground">Loading…</p>
+}
+else
+{
+    <div class="mt-6 flex flex-wrap gap-3">
+        @foreach (var (tier, count) in _tierCounts)
+        {
+            <div class="rounded-[var(--radius-lg)] border border-border px-4 py-2">
+                <div class="text-2xl font-bold tabular-nums text-foreground">@count</div>
+                <div class="text-xs text-muted-foreground">Tier @tier · @TierLabel(tier)</div>
+            </div>
+        }
+        <div class="rounded-[var(--radius-lg)] border border-border px-4 py-2">
+            <div class="text-2xl font-bold tabular-nums text-foreground">@_totalTests</div>
+            <div class="text-xs text-muted-foreground">tests total</div>
+        </div>
+    </div>
+
+    <p class="mt-4 text-xs text-muted-foreground">
+        Tier 0 = render-smoke only · 1 = render + props · 2 = behavior/state · 3 = + ARIA &amp; keyboard · 4 = + real-browser E2E.
+    </p>
+
+    <div class="mt-4 overflow-x-auto rounded-[var(--radius-lg)] border border-border">
+        <table class="w-full text-sm">
+            <thead class="bg-muted/40 text-left text-xs uppercase tracking-wide text-muted-foreground">
+                <tr>
+                    <th class="px-3 py-2 font-medium">Component</th>
+                    <th class="px-3 py-2 font-medium">Tier</th>
+                    <th class="px-3 py-2 text-center font-medium">Render</th>
+                    <th class="px-3 py-2 text-center font-medium">Behavior</th>
+                    <th class="px-3 py-2 text-center font-medium">A11y</th>
+                    <th class="px-3 py-2 text-center font-medium">Keyboard</th>
+                    <th class="px-3 py-2 text-center font-medium">Scale</th>
+                    <th class="px-3 py-2 text-center font-medium">E2E</th>
+                    <th class="px-3 py-2 text-right font-medium">Tests</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var r in _rows)
+                {
+                    <tr class="border-t border-border/60 hover:bg-muted/20">
+                        <td class="px-3 py-2 font-medium text-foreground">@r.Name</td>
+                        <td class="px-3 py-2">
+                            <span class="rounded-full px-2 py-0.5 text-xs font-medium @TierClass(r.Cov.Tier)">@r.Cov.Tier</span>
+                        </td>
+                        <td class="px-3 py-2 text-center">@Mark(r.Cov.Render)</td>
+                        <td class="px-3 py-2 text-center">@Mark(r.Cov.Behavior)</td>
+                        <td class="px-3 py-2 text-center">@Mark(r.Cov.A11y)</td>
+                        <td class="px-3 py-2 text-center">@Mark(r.Cov.Keyboard)</td>
+                        <td class="px-3 py-2 text-center">@Mark(r.Cov.Scale)</td>
+                        <td class="px-3 py-2 text-center">@Mark(r.Cov.E2e)</td>
+                        <td class="px-3 py-2 text-right tabular-nums text-muted-foreground">@r.Cov.Tests</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+
+@code {
+    private sealed record Row(string Name, string Slug, TestCoverageInfo Cov);
+
+    private List<Row>? _rows;
+    private List<(int Tier, int Count)> _tierCounts = new();
+    private int _totalTests;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var reg = await Registry.GetAsync();
+        _rows = reg.Components.Values
+            .Where(c => c.TestCoverage is not null)
+            .Select(c => new Row(c.Name, c.Slug, c.TestCoverage!))
+            .OrderByDescending(r => r.Cov.Tier)
+            .ThenByDescending(r => r.Cov.Tests)
+            .ThenBy(r => r.Name)
+            .ToList();
+        _tierCounts = _rows
+            .GroupBy(r => r.Cov.Tier)
+            .OrderByDescending(g => g.Key)
+            .Select(g => (g.Key, g.Count()))
+            .ToList();
+        _totalTests = _rows.Sum(r => r.Cov.Tests);
+    }
+
+    private static MarkupString Mark(bool on) => new(on
+        ? "<span class=\"text-emerald-600 dark:text-emerald-400\" aria-label=\"yes\">✓</span>"
+        : "<span class=\"text-muted-foreground/40\" aria-label=\"no\">—</span>");
+
+    private static string TierLabel(int tier) => tier switch
+    {
+        4 => "E2E",
+        3 => "a11y",
+        2 => "behavior",
+        1 => "render",
+        _ => "smoke",
+    };
+
+    private static string TierClass(int tier) => tier switch
+    {
+        4 => "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400",
+        3 => "bg-sky-500/15 text-sky-600 dark:text-sky-400",
+        2 => "bg-amber-500/15 text-amber-600 dark:text-amber-400",
+        _ => "bg-muted text-muted-foreground",
+    };
+}
