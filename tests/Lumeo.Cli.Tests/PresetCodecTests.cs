@@ -36,6 +36,16 @@ public class PresetCodecTests
         Assert.Equal("l_100000", LumeoPresetCodec.Encode(Zero));
     }
 
+    [Fact]
+    public void Encode_Of_The_Sample_Preset_Is_The_Pinned_Wire_Format()
+    {
+        // Same preset + golden as the library suite's
+        // LumeoPresetCodecPrefixTests.Encode_sample_preset_is_the_pinned_wire_format
+        // — the two codec copies must agree byte-for-byte (KEEP IN SYNC).
+        var sample = new LumeoPreset(1, 0, 2, 2, 1, 0, 0, 0, 0);
+        Assert.Equal("l_Js5000", LumeoPresetCodec.Encode(sample));
+    }
+
     // Args are the nine preset fields (built inside, since LumeoPreset is internal
     // and can't appear in a public test signature). Covers the zero floor, every
     // field's ceiling, and two interior mixes.
