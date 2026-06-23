@@ -30,7 +30,7 @@
                 <div class="absolute bottom-0 w-full rounded-[var(--radius)] @(EffectiveInvalid ? "bg-destructive" : "bg-primary")" style="height: @(GetPercent(Value))%"></div>
                 <input type="range" min="@Min" max="@Max" step="@Step" value="@Value" disabled="@Disabled"
                        name="@Name"
-                       aria-label="@AriaLabel" aria-valuemin="@Min" aria-valuemax="@Max" aria-valuenow="@Value"
+                       aria-label="@AriaLabel" aria-valuemin="@Min" aria-valuemax="@Max" aria-valuenow="@Value" aria-valuetext="@ValueText(Value)"
                        aria-required="@Required.ToString().ToLower()"
                        aria-invalid="@EffectiveInvalid.ToString().ToLower()"
                        class="@VerticalInputClasses"
@@ -67,13 +67,13 @@ else if (IsRange)
                    entire width and the start thumb could never be grabbed. *@
                 <input type="range" min="@Min" max="@Max" step="@Step" value="@Value" disabled="@Disabled"
                        name="@Name"
-                       aria-label="@AriaLabel" aria-valuemin="@Min" aria-valuemax="@StartThumbMax" aria-valuenow="@Value"
+                       aria-label="@AriaLabel" aria-valuemin="@Min" aria-valuemax="@StartThumbMax" aria-valuenow="@Value" aria-valuetext="@ValueText(Value)"
                        aria-required="@Required.ToString().ToLower()"
                        aria-invalid="@EffectiveInvalid.ToString().ToLower()"
                        class="@RangeInputClasses"
                        @oninput="OnStartInput" />
                 <input type="range" min="@Min" max="@Max" step="@Step" value="@ValueEnd" disabled="@Disabled"
-                       aria-label="@EndAriaLabel" aria-valuemin="@EndThumbMin" aria-valuemax="@Max" aria-valuenow="@ValueEnd"
+                       aria-label="@EndAriaLabel" aria-valuemin="@EndThumbMin" aria-valuemax="@Max" aria-valuenow="@ValueEnd" aria-valuetext="@ValueText(ValueEnd)"
                        aria-required="@Required.ToString().ToLower()"
                        aria-invalid="@EffectiveInvalid.ToString().ToLower()"
                        class="@RangeInputClasses"
@@ -106,7 +106,7 @@ else
             <div class="relative">
                 <input type="range" min="@Min" max="@Max" step="@Step" value="@Value" disabled="@Disabled"
                        name="@Name"
-                       aria-label="@AriaLabel" aria-valuemin="@Min" aria-valuemax="@Max" aria-valuenow="@Value"
+                       aria-label="@AriaLabel" aria-valuemin="@Min" aria-valuemax="@Max" aria-valuenow="@Value" aria-valuetext="@ValueText(Value)"
                        aria-required="@Required.ToString().ToLower()"
                        aria-invalid="@EffectiveInvalid.ToString().ToLower()"
                        class="@InputClasses"
@@ -236,6 +236,12 @@ else
     private double GetPercent(double value) => Max > Min ? ((value - Min) / (Max - Min)) * 100 : 0;
 
     private string FormatValue(double value) => FormatTooltip is not null ? FormatTooltip(value) : value.ToString("G", EffectiveCulture);
+
+    // aria-valuetext: only when a custom formatter is supplied does the numeric
+    // aria-valuenow need a human-friendly text alternative (e.g. "$50", a date, a
+    // category label). For a plain numeric slider aria-valuenow alone is correct, so
+    // this returns null and the attribute is omitted (WAI-ARIA slider guidance).
+    private string? ValueText(double value) => FormatTooltip is not null ? FormatValue(value) : null;
 
     private List<double> GetTickValues()
     {
