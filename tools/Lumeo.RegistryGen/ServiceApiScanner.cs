@@ -72,7 +72,8 @@ public static class ServiceApiScanner
     public static IReadOnlyList<ServiceType> Scan(string csharpPath, TextWriter? logger = null)
     {
         string text;
-        try { text = File.ReadAllText(csharpPath); }
+        // Normalize CRLF -> LF so extracted XML-doc text is platform-stable.
+        try { text = File.ReadAllText(csharpPath).Replace("\r\n", "\n").Replace("\r", "\n"); }
         catch (Exception ex)
         {
             logger?.WriteLine($"[service-api] WARN: read failed for {csharpPath}: {ex.Message}");

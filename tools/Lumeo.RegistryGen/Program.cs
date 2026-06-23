@@ -634,7 +634,10 @@ foreach (var dir in componentDirs)
         // file path is relative to packageSrcRoot (e.g. src/Lumeo.Charts).
         var abs = Path.Combine(packageSrcRoot, file.Replace('/', Path.DirectorySeparatorChar));
         string content;
-        try { content = File.ReadAllText(abs); }
+        // Normalize CRLF -> LF so extracted text (gotchas, etc.) is identical
+        // whether the repo is checked out with LF (Linux/CI) or CRLF (Windows
+        // autocrlf) — otherwise the registry's string contents drift per platform.
+        try { content = File.ReadAllText(abs).Replace("\r\n", "\n").Replace("\r", "\n"); }
         catch { continue; }
 
         foreach (var cls in themedClassPatterns)
