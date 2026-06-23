@@ -25,20 +25,23 @@ public class WordImporterSizeLimitTests
     {
         // Build a 4 MB base64 string up front, then decode against a 1 KB cap.
         // If Convert.FromBase64String were called, this would allocate ~3 MB on the heap;
-        // the size guard MUST trip before the Convert call. We assert by timing — a guarded
-        // path completes in a few ms, an unguarded path takes meaningfully longer due to the
-        // multi-megabyte allocation + decode. We use a generous 250 ms ceiling so the test
-        // is not flaky on slow CI but still catches an unguarded regression decisively.
-        var oversized = new string('A', 4 * 1024 * 1024); // 4 MB of valid base64 chars.
+        // the size guard MUST trip before the Convert call. Assert this DIRECTLY by measuring
+        // the allocation across the call (not by timing — a timing proxy is both weak, since
+        // decoding 4 MB is only a few ms, and flaky under coverage instrumentation). The
+        // guarded path allocates only the exception + small bookkeeping; an unguarded path
+        // allocates the multi-megabyte decode buffer.
+        var oversized = new string('A', 4 * 1024 * 1024); // 4 MB of valid base64 chars (allocated before measuring).
 
-        var sw = System.Diagnostics.Stopwatch.StartNew();
+        var before = GC.GetAllocatedBytesForCurrentThread();
         Assert.Throws<WordImportSizeException>(
             () => WordImporter.DecodeBase64WithLimit(oversized, 1024L));
-        sw.Stop();
+        var allocated = GC.GetAllocatedBytesForCurrentThread() - before;
 
+        // Generous headroom for the exception object + instrumentation bookkeeping, but far
+        // below the ~3 MB an unguarded Convert.FromBase64String would allocate.
         Assert.True(
-            sw.ElapsedMilliseconds < 250,
-            $"Size guard should reject before allocating; took {sw.ElapsedMilliseconds} ms.");
+            allocated < 512 * 1024,
+            $"Size guard should reject before allocating the decode buffer; allocated {allocated} bytes.");
     }
 
     [Fact]
