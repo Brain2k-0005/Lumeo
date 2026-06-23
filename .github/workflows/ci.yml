@@ -31,6 +31,25 @@ jobs:
         # ready to run them headless against a deployed preview.
         run: dotnet test Lumeo.slnx -c Release --no-build --verbosity normal --filter "FullyQualifiedName!~Lumeo.Tests.E2E"
 
+      - name: Registry is up to date
+        # The MCP/docs registry (registry.json, components-api.json and the
+        # per-component docs) is derived from source by Lumeo.RegistryGen. A
+        # component or parameter change that forgets to regenerate would ship a
+        # stale registry — the very drift that bit releases before. Regenerate and
+        # fail if anything but the run-specific `generated` timestamp changes. The
+        # generator is line-ending-deterministic, so on an unchanged tree this is a
+        # no-op diff.
+        run: |
+          set -o pipefail
+          dotnet run --project tools/Lumeo.RegistryGen -c Release --no-build
+          PATHS="src/Lumeo/registry tools/lumeo-mcp/src/components-api.json docs/Lumeo.Docs/wwwroot/registry"
+          DRIFT=$(git diff -U0 -- $PATHS | grep -E '^[+-]' | grep -vE '^[+-]{3}' | grep -v '"generated"' || true)
+          if [ -n "$DRIFT" ]; then
+            echo "::error::Registry is stale. Run 'dotnet run --project tools/Lumeo.RegistryGen' and commit the result."
+            git --no-pager diff -- $PATHS
+            exit 1
+          fi
+
       - name: Check vulnerable packages (shipped + tests, excluding E2E)
         # E2E test project pulls SixLabors.ImageSharp 3.x for perceptual visual
         # diffs (CVE-2024-2cmq-823j-5qj8 / CVE-2024-rxmq-m78w-7wmc). Both apply
