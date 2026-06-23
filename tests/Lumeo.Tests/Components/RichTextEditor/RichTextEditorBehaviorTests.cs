@@ -92,8 +92,8 @@ public class RichTextEditorBehaviorTests : IAsyncLifetime
         // The toolbar forwards ("bold", null) → RichTextCommandAsync → rte.command with
         // payload [instanceId, name]. Verify the name reached the module.
         var command = Assert.Single(
-            _module.Invocations.Where(i => i.Identifier == "rte.command"
-                                           && i.Arguments.Contains("bold")));
+            _module.Invocations,
+            i => i.Identifier == "rte.command" && i.Arguments.Contains("bold"));
         Assert.Equal("rte-instance-1", command.Arguments[0]);
         Assert.Equal("bold", command.Arguments[1]);
     }

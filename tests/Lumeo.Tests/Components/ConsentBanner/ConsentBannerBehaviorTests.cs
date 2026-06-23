@@ -68,12 +68,12 @@ public class ConsentBannerBehaviorTests : IAsyncLifetime
     }
 
     [Fact]
-    public void Hides_Banner_When_Consent_Already_Decided_Before_Render()
+    public async Task Hides_Banner_When_Consent_Already_Decided_Before_Render()
     {
         // Pre-decide on the SAME service instance the banner will inject, so the
         // banner mounts with HasDecided == true and never shows its region.
         var svc = _ctx.Services.GetRequiredService<ConsentService>();
-        svc.AcceptAllAsync(new[] { "analytics" }).GetAwaiter().GetResult();
+        await svc.AcceptAllAsync(new[] { "analytics" });
         Assert.True(svc.HasDecided);
 
         var cut = _ctx.Render<L.ConsentBanner>();
