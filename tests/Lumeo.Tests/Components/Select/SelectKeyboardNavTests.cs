@@ -392,4 +392,50 @@ public class SelectKeyboardNavTests : IAsyncLifetime
         Assert.NotNull(banana);
         Assert.Contains("bg-accent", banana!.ClassList);
     }
+
+    // --- Focus management on open/close (B3/B4) ---
+
+    [Fact]
+    public void Open_NonSearchable_Moves_Focus_Into_The_Listbox_And_Saves_Trigger_Focus()
+    {
+        // Without this, focus stays on the trigger (a sibling), so the listbox
+        // @onkeydown + the page-scroll preventDefault never receive keys.
+        var cut = RenderDataBound(new object[] { "apple", "banana" });
+        var contentId = cut.Find("[role='listbox']").GetAttribute("id");
+
+        Assert.Contains(_ctx.JSInterop.Invocations, i => i.Identifier == "saveFocus");
+        Assert.Contains(_ctx.JSInterop.Invocations,
+            i => i.Identifier == "focusElementById" && (i.Arguments[0] as string) == contentId);
+    }
+
+    [Fact]
+    public void Open_Searchable_Moves_Focus_To_The_Search_Input()
+    {
+        var cut = RenderDataBound(new object[] { "apple", "banana" }, searchable: true);
+        var contentId = cut.Find("[role='listbox']").GetAttribute("id");
+
+        Assert.Contains(_ctx.JSInterop.Invocations,
+            i => i.Identifier == "focusElementById" && (i.Arguments[0] as string) == $"{contentId}-search");
+    }
+
+    [Fact]
+    public void Close_Restores_Focus_To_The_Trigger()
+    {
+        RenderFragment child = b =>
+        {
+            b.OpenComponent<L.SelectTrigger>(0);
+            b.AddAttribute(1, "ChildContent", (RenderFragment)(t => t.AddContent(0, "Choose")));
+            b.CloseComponent();
+            b.OpenComponent<L.SelectContent>(2);
+            b.CloseComponent();
+        };
+        var items = new object[] { "apple", "banana" };
+        var cut = _ctx.Render<L.Select>(p => p
+            .Add(s => s.Open, true).Add(s => s.Items, items).Add(s => s.ChildContent, child));
+
+        cut.Render(p => p
+            .Add(s => s.Open, false).Add(s => s.Items, items).Add(s => s.ChildContent, child));
+
+        Assert.Contains(_ctx.JSInterop.Invocations, i => i.Identifier == "restoreFocus");
+    }
 }
