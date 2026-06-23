@@ -9,7 +9,9 @@
         _contentId,
         EventCallback.Factory.Create(this, CloseTree),
         ScheduleClose,
-        CancelClose);
+        CancelClose,
+        EventCallback.Factory.Create(this, OpenFromKeyboard),
+        ConsumeKeyboardOpen);
 }
 
 <CascadingValue Value="subContext" IsFixed="false">
@@ -31,11 +33,34 @@
 
     private CancellationTokenSource? _closeCts;
 
+    // Set when the submenu is opened via the keyboard (ArrowRight). The content
+    // consumes it on its first open render to move focus to the first item —
+    // race-free, replacing a fixed Task.Delay that guessed when the content existed.
+    private bool _openByKeyboard;
+
     private async Task SetOpen(bool value)
     {
         if (_open == value) return;
         _open = value;
         await InvokeAsync(StateHasChanged);
+    }
+
+    // Open from the keyboard: flag it first (before the render SetOpen triggers) so
+    // the content's OnAfterRender sees it and focuses the first item.
+    private async Task OpenFromKeyboard()
+    {
+        _openByKeyboard = true;
+        await SetOpen(true);
+    }
+
+    // Consume-once: the content calls this when it first renders open and focuses
+    // the first item only if the open was keyboard-initiated (hover-open must not
+    // steal focus).
+    private bool ConsumeKeyboardOpen()
+    {
+        if (!_openByKeyboard) return false;
+        _openByKeyboard = false;
+        return true;
     }
 
     private async Task CloseTree()
@@ -83,5 +108,7 @@
         string ContentId,
         EventCallback CloseTree,
         Action ScheduleClose,
-        Action CancelClose);
+        Action CancelClose,
+        EventCallback OpenByKeyboard,
+        Func<bool> ConsumeKeyboardOpen);
 }
