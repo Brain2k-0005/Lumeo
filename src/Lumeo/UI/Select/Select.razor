@@ -198,15 +198,15 @@
     private readonly string _triggerId = LumeoIds.New("select-trigger");
     private string SearchText { get; set; } = "";
     private int _focusedIndex = -1;
-    private readonly List<(string Id, string Value, string Text)> _items = new();
+    private readonly List<(string Id, string Value, string Text, bool Disabled)> _items = new();
     // Type-to-jump buffer (non-searchable listbox). Same idle-reset semantics the
     // menu family uses; here it drives _focusedIndex instead of DOM focus.
     private readonly Lumeo.Services.MenuTypeahead _typeahead = new();
 
-    private void RegisterItem(string id, string value, string text)
+    private void RegisterItem(string id, string value, string text, bool disabled)
     {
         if (!_items.Any(i => i.Id == id))
-            _items.Add((id, value, text));
+            _items.Add((id, value, text, disabled));
     }
 
     private void UnregisterItem(string id)
@@ -219,7 +219,14 @@
     // component instance to register), so derive the list from the same filtered + grouped
     // sequence the content renders, skipping disabled items so ArrowDown/Up, Home/End and
     // Enter can never land on them. Ids must mirror SelectContent.RenderBoundItem.
-    private List<(string Id, string Value, string Text)> NavItems => Items is null ? _items : BuildBoundNavItems();
+    // Composition mode excludes disabled items from the nav set (parity with bound
+    // mode + Radix): they still render, but ArrowDown/Up/Home/End, type-to-jump and
+    // Enter-select skip them. Without this, keyboard nav could land on — and Enter
+    // could select — a disabled option (the click path already guards, the keyboard
+    // path did not).
+    private List<(string Id, string Value, string Text)> NavItems => Items is null
+        ? _items.Where(i => !i.Disabled).Select(i => (i.Id, i.Value, i.Text)).ToList()
+        : BuildBoundNavItems();
 
     private List<(string Id, string Value, string Text)> BuildBoundNavItems()
     {
@@ -395,7 +402,7 @@
         string WrapperId, string ContentId, string TriggerId, int FocusedIndex, string? FocusedItemId, string? FocusedItemValue,
         EventCallback<int> SetFocusedIndex,
         EventCallback<string> OnTypeahead,
-        Action<string, string, string> RegisterItem, Action<string> UnregisterItem,
+        Action<string, string, string, bool> RegisterItem, Action<string> UnregisterItem,
         bool Invalid, bool Required,
         // Data-bound mode params (null when composition mode)
         IEnumerable<object>? Items,
