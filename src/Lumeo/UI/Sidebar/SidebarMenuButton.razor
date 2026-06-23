@@ -1,19 +1,28 @@
 @namespace Lumeo
 
-<a href="@Href" class="@CssClass" title="@Tooltip" @attributes="AdditionalAttributes">
-    @if (IconContent is not null)
-    {
-        <span class="shrink-0 inline-flex items-center justify-center">@IconContent</span>
-        @if (LabelContent is not null)
+@* When a Tooltip is provided we dogfood the Lumeo <Tooltip> instead of the native
+   HTML title attribute. AsChild folds aria-describedby onto the focusable <a> itself
+   (a wrapper div can't describe the link), and the content is only mounted while the
+   rail is collapsed — an expanded rail already shows the label, so a tooltip there
+   would be redundant (mirrors shadcn's sidebar tooltip semantics). *@
+@if (!string.IsNullOrEmpty(Tooltip))
+{
+    <Tooltip Class="w-full">
+        <TooltipTrigger AsChild>
+            <ChildContentSlot Context="slot">
+                @Anchor(slot.Attributes)
+            </ChildContentSlot>
+        </TooltipTrigger>
+        @if (EffectiveCollapsed)
         {
-            <span class="@LabelCssClass">@LabelContent</span>
+            <TooltipContent Side="Lumeo.Side.Right">@Tooltip</TooltipContent>
         }
-    }
-    else
-    {
-        @ChildContent
-    }
-</a>
+    </Tooltip>
+}
+else
+{
+    @Anchor(null)
+}
 
 @code {
     [CascadingParameter] public SidebarProvider.SidebarState? State { get; set; }
@@ -26,6 +35,10 @@
     [Parameter] public RenderFragment? LabelContent { get; set; }
 
     [Parameter] public string? Href { get; set; }
+
+    /// <summary>Hint shown via the Lumeo <c>&lt;Tooltip&gt;</c> when the rail is collapsed
+    /// (icon-only). Renders as a styled, accessible tooltip — not the native browser
+    /// title — and stays hidden while the rail is expanded (the label is visible then).</summary>
     [Parameter] public string? Tooltip { get; set; }
     [Parameter] public bool IsActive { get; set; }
     [Parameter] public string? Class { get; set; }
@@ -36,6 +49,35 @@
     // by the cursor — not just on the pinned-toggle path. Other variants ignore the
     // hover bit so this stays identical to IsCollapsed for them.
     private bool EffectiveCollapsed => State?.EffectiveCollapsed ?? State?.IsCollapsed ?? false;
+
+    // Shared anchor markup, rendered either bare or as the tooltip's AsChild trigger.
+    // slotAttrs carries aria-describedby (only while the tooltip is open) so the link
+    // itself is described to screen readers on focus.
+    private RenderFragment Anchor(IReadOnlyDictionary<string, object>? slotAttrs) =>
+        @<a href="@Href" class="@CssClass" @attributes="MergeAttrs(slotAttrs)">
+            @if (IconContent is not null)
+            {
+                <span class="shrink-0 inline-flex items-center justify-center">@IconContent</span>
+                @if (LabelContent is not null)
+                {
+                    <span class="@LabelCssClass">@LabelContent</span>
+                }
+            }
+            else
+            {
+                @ChildContent
+            }
+        </a>;
+
+    private Dictionary<string, object> MergeAttrs(IReadOnlyDictionary<string, object>? slotAttrs)
+    {
+        var d = new Dictionary<string, object>();
+        if (AdditionalAttributes is not null)
+            foreach (var kv in AdditionalAttributes) d[kv.Key] = kv.Value;
+        if (slotAttrs is not null)
+            foreach (var kv in slotAttrs) d[kv.Key] = kv.Value; // aria-describedby (author keys already in d win only if absent here)
+        return d;
+    }
 
     private string CssClass => Cx.Merge(
         "flex items-center gap-3 rounded-lg py-2 min-h-11 sm:min-h-0 text-muted-foreground hover:text-foreground hover:bg-sidebar-accent focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-2 w-full overflow-hidden",
