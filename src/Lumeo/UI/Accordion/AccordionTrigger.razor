@@ -2,24 +2,39 @@
 @implements IAsyncDisposable
 @inject Lumeo.Services.IComponentInteropService Interop
 
-<button type="button"
-        id="@ItemContext.TriggerId"
-        class="@CssClass"
-        aria-expanded="@IsOpen"
-        aria-controls="@ItemContext.ContentId"
-        disabled="@IsDisabled"
-        @onclick="Toggle"
-        @onkeydown="HandleKeyDown"
-        @attributes="AdditionalAttributes">
-    @ChildContent
-    <Blazicon Svg="Lucide.ChevronDown" class="@IconClasses" />
-</button>
+@* WAI-ARIA accordion: each trigger button is wrapped in an element with
+   role="heading" + aria-level so screen-reader users can navigate the panels by
+   heading. role+aria-level (rather than a fixed <h3>) keeps the level configurable
+   via HeadingLevel without a dynamic element tag; the wrapper is layout-neutral. *@
+<div role="heading" aria-level="@HeadingLevel" class="flex">
+    <button type="button"
+            id="@ItemContext.TriggerId"
+            class="@CssClass"
+            aria-expanded="@IsOpen"
+            aria-controls="@ItemContext.ContentId"
+            disabled="@IsDisabled"
+            @onclick="Toggle"
+            @onkeydown="HandleKeyDown"
+            @attributes="AdditionalAttributes">
+        @ChildContent
+        <Blazicon Svg="Lucide.ChevronDown" class="@IconClasses" />
+    </button>
+</div>
 
 @code {
     [CascadingParameter] public Accordion.AccordionContext Context { get; set; } = default!;
     [CascadingParameter] public AccordionItem.AccordionItemContext ItemContext { get; set; } = default!;
     [Parameter] public RenderFragment? ChildContent { get; set; }
     [Parameter] public string? Class { get; set; }
+
+    /// <summary>
+    /// Heading level (the <c>aria-level</c> on the role="heading" wrapper) so the
+    /// accordion's headers sit at the right place in the document outline for
+    /// screen-reader heading navigation. Default <c>3</c> (matching the WAI-ARIA
+    /// accordion example); set <c>2</c>/<c>4</c>/... to fit the surrounding page.
+    /// </summary>
+    [Parameter] public int HeadingLevel { get; set; } = 3;
+
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     private bool IsOpen => Context.IsOpen(ItemContext.Value);
