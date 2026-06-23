@@ -375,7 +375,13 @@ public sealed class LumeoFormGenerator : IIncrementalGenerator
     private static InputKind MapKind(ITypeSymbol type, IPropertySymbol prop)
     {
         var underlying = UnwrapNullable(type);
-        var name = underlying.ToDisplayString();
+        // ToDisplayString() includes the nullable-reference annotation (e.g. a
+        // nullable string renders as "string?"), which the type switch below would
+        // miss — dropping every nullable reference property (string?, ...) to
+        // Unsupported in any project with <Nullable>enable</Nullable>. UnwrapNullable
+        // only strips Nullable<T> value types, so trim the trailing '?' here so a
+        // nullable reference type maps the same as its non-nullable form.
+        var name = underlying.ToDisplayString().TrimEnd('?');
 
         // [DataType(DataType.EmailAddress)] / .Password
         foreach (var ad in prop.GetAttributes())
