@@ -48,7 +48,7 @@ public class ThemeSwitcherBehaviorTests : IAsyncLifetime
     }
 
     private static AngleSharp.Dom.IElement ModeButton(IRenderedComponent<L.ThemeSwitcher> cut, string title)
-        => cut.Find($"button[title='{title}']");
+        => cut.Find($"button[aria-label='{title}']");
 
     [Fact]
     public void Choosing_A_Scheme_Invokes_SetScheme_Interop_With_That_SchemeId()
@@ -57,7 +57,7 @@ public class ThemeSwitcherBehaviorTests : IAsyncLifetime
 
         // Pick a scheme that differs from the initialised one ("orange").
         var target = ThemeService.AvailableSchemes.First(s => s.Id == "violet");
-        var swatch = cut.Find($"button[title='{target.DisplayName}']");
+        var swatch = cut.Find($"button[aria-label='{target.DisplayName}']");
         swatch.Click();
 
         // The set-scheme interop fired with the chosen id as its sole argument.
@@ -71,11 +71,11 @@ public class ThemeSwitcherBehaviorTests : IAsyncLifetime
         var cut = _ctx.Render<L.ThemeSwitcher>();
 
         var target = ThemeService.AvailableSchemes.First(s => s.Id == "green");
-        var swatch = cut.Find($"button[title='{target.DisplayName}']");
+        var swatch = cut.Find($"button[aria-label='{target.DisplayName}']");
         swatch.Click();
 
         // Re-query after the click-driven re-render.
-        var selected = cut.Find($"button[title='{target.DisplayName}']");
+        var selected = cut.Find($"button[aria-label='{target.DisplayName}']");
         var cls = selected.GetAttribute("class") ?? string.Empty;
         Assert.Contains("scale-110", cls);
         Assert.Contains("border-foreground", cls);
@@ -85,7 +85,7 @@ public class ThemeSwitcherBehaviorTests : IAsyncLifetime
             .Where(b => (b.GetAttribute("class") ?? string.Empty).Contains("scale-110"))
             .ToList();
         Assert.Single(selectedSwatches);
-        Assert.Equal(target.DisplayName, selectedSwatches[0].GetAttribute("title"));
+        Assert.Equal(target.DisplayName, selectedSwatches[0].GetAttribute("aria-label"));
         Assert.NotEmpty(selectedSwatches[0].QuerySelectorAll("svg"));
     }
 
@@ -95,13 +95,13 @@ public class ThemeSwitcherBehaviorTests : IAsyncLifetime
         var cut = _ctx.Render<L.ThemeSwitcher>();
 
         var first = ThemeService.AvailableSchemes.First(s => s.Id == "blue");
-        cut.Find($"button[title='{first.DisplayName}']").Click();
+        cut.Find($"button[aria-label='{first.DisplayName}']").Click();
 
         var second = ThemeService.AvailableSchemes.First(s => s.Id == "rose");
-        cut.Find($"button[title='{second.DisplayName}']").Click();
+        cut.Find($"button[aria-label='{second.DisplayName}']").Click();
 
-        var firstClass = cut.Find($"button[title='{first.DisplayName}']").GetAttribute("class") ?? string.Empty;
-        var secondClass = cut.Find($"button[title='{second.DisplayName}']").GetAttribute("class") ?? string.Empty;
+        var firstClass = cut.Find($"button[aria-label='{first.DisplayName}']").GetAttribute("class") ?? string.Empty;
+        var secondClass = cut.Find($"button[aria-label='{second.DisplayName}']").GetAttribute("class") ?? string.Empty;
 
         Assert.DoesNotContain("scale-110", firstClass);
         Assert.Contains("scale-110", secondClass);
@@ -142,10 +142,10 @@ public class ThemeSwitcherBehaviorTests : IAsyncLifetime
 
         // Choose a scheme, then a mode — each selection must hold simultaneously.
         var scheme = ThemeService.AvailableSchemes.First(s => s.Id == "teal");
-        cut.Find($"button[title='{scheme.DisplayName}']").Click();
+        cut.Find($"button[aria-label='{scheme.DisplayName}']").Click();
         ModeButton(cut, "Dark").Click();
 
-        var schemeClass = cut.Find($"button[title='{scheme.DisplayName}']").GetAttribute("class") ?? string.Empty;
+        var schemeClass = cut.Find($"button[aria-label='{scheme.DisplayName}']").GetAttribute("class") ?? string.Empty;
         var darkClass = ModeButton(cut, "Dark").GetAttribute("class") ?? string.Empty;
 
         Assert.Contains("scale-110", schemeClass);   // scheme still selected
