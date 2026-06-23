@@ -679,8 +679,13 @@ Dictionary<string, object?> ComputeTestCoverage(string componentName)
     var hasBehavior = Has(@"\.Click\(|InvokeAsync|Changed|OnClick|Toggle|SetParametersAndRender|\.Change\(|Input\(");
     var hasScale = files.Any(f => Path.GetFileName(f).Contains("ScaleTests", StringComparison.OrdinalIgnoreCase))
                    || Has(@"1_000_000|Millions|100_000");
+    // Credit an E2E test only when it actually NAVIGATES to the component's docs
+    // route (/components/<kebab>) — a precise signal that the test exercises this
+    // component, not merely mentions its name in a comment.
+    var routeKebab = ToKebabCase(componentName);
     var e2eFiles = e2eCorpus
-        .Where(e => System.Text.RegularExpressions.Regex.IsMatch(e.text, $@"\b{System.Text.RegularExpressions.Regex.Escape(componentName)}\b"))
+        .Where(e => System.Text.RegularExpressions.Regex.IsMatch(
+            e.text, $@"/components/{System.Text.RegularExpressions.Regex.Escape(routeKebab)}(?![a-z0-9-])"))
         .Select(e => e.file)
         .Distinct()
         .OrderBy(x => x, StringComparer.Ordinal)
@@ -695,7 +700,9 @@ Dictionary<string, object?> ComputeTestCoverage(string componentName)
     // test smoke-renders it (i.e. it's not excluded/skipped without any test).
     var hasRender = hasAnyTest || contract == "smoke";
 
-    int tier = (hasE2E && hasBehavior) ? 4
+    // A real-browser E2E is the top tier by definition (it exercises behaviour an
+    // assertion regex can't always name — e.g. pointer drag via Mouse.Down/Move/Up).
+    int tier = hasE2E ? 4
         : (hasA11y && (hasKeyboard || hasBehavior)) ? 3
         : hasBehavior ? 2
         : hasAnyTest ? 1
