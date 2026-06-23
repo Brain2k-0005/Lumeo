@@ -11,7 +11,9 @@
     "UI/Tooltip/TooltipContent.razor",
     "UI/Tooltip/TooltipTrigger.razor"
   ],
-  "dependencies": [],
+  "dependencies": [
+    "button"
+  ],
   "packageDependencies": [],
   "cssVars": [
     "--color-primary",
@@ -192,10 +194,34 @@
         "implements": [],
         "parameters": [
           {
+            "name": "Context",
+            "type": "Tooltip.TooltipContext",
+            "default": "default!",
+            "description": null,
+            "isCascading": true,
+            "captureUnmatched": false
+          },
+          {
             "name": "ChildContent",
             "type": "RenderFragment?",
             "default": null,
             "description": null,
+            "isCascading": false,
+            "captureUnmatched": false
+          },
+          {
+            "name": "ChildContentSlot",
+            "type": "RenderFragment<TriggerSlot>?",
+            "default": null,
+            "description": "Tier-2 escape hatch for AsChild with arbitrary (non-Lumeo) markup: receives the TriggerSlot so the consumer can splat @attributes=\"slot.Attributes\" onto their own single element (which adds the aria-describedby when the tooltip is open). Lumeo &lt;Button&gt; children need only AsChild — they consume the slot automatically.",
+            "isCascading": false,
+            "captureUnmatched": false
+          },
+          {
+            "name": "AsChild",
+            "type": "bool",
+            "default": null,
+            "description": "When true, the trigger renders NO wrapper element and instead cascades a TriggerSlot that a cooperating child folds onto its own single root element. The key effect is correct a11y: aria-describedby lands on the real focusable control (so a screen reader announces the tooltip on focus) rather than on a non-focusable wrapper &lt;div&gt;. Hover/focus open-close still works via the events bubbling to the Tooltip root. Default false preserves the current inline-flex wrapper exactly.",
             "isCascading": false,
             "captureUnmatched": false
           },
@@ -255,7 +281,7 @@
     },
     {
       "path": "UI/Tooltip/TooltipTrigger.razor",
-      "content": "@namespace Lumeo\n\n<div class=\"@CssClass\" @attributes=\"AdditionalAttributes\">\n    @ChildContent\n</div>\n\n@code {\n    [Parameter] public RenderFragment? ChildContent { get; set; }\n    [Parameter] public string? Class { get; set; }\n    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }\n\n    private string CssClass => Cx.Merge(\"inline-flex\", Class);\n}\n"
+      "content": "@namespace Lumeo\n\n@if (AsChild)\n{\n    @* asChild: render NO wrapper. Cascade the slot so a cooperating child (a Lumeo\n       <Button>, or a manual <ChildContentSlot> splat) becomes the single trigger\n       element. Tooltip's open/close behaviour lives on the Tooltip ROOT wrapper and\n       is driven by bubbled mouseenter/focusin, so the slot carries NO handlers — its\n       sole job is to put aria-describedby on the actual focusable element. An ancestor\n       <div> can't describe the inner button, so without asChild a screen reader never\n       announces the tooltip on focus; folding it onto the child fixes that. *@\n    <CascadingValue Value=\"Slot\" IsFixed=\"false\">\n        @if (ChildContentSlot is not null)\n        {\n            @ChildContentSlot(Slot)\n        }\n        else\n        {\n            @ChildContent\n        }\n    </CascadingValue>\n}\nelse\n{\n    <div class=\"@CssClass\" @attributes=\"AdditionalAttributes\">\n        @ChildContent\n    </div>\n}\n\n@code {\n    [CascadingParameter] public Tooltip.TooltipContext Context { get; set; } = default!;\n    [Parameter] public RenderFragment? ChildContent { get; set; }\n\n    /// <summary>\n    /// Tier-2 escape hatch for <see cref=\"AsChild\"/> with arbitrary (non-Lumeo) markup:\n    /// receives the <see cref=\"TriggerSlot\"/> so the consumer can splat\n    /// <c>@attributes=\"slot.Attributes\"</c> onto their own single element (which adds\n    /// the <c>aria-describedby</c> when the tooltip is open). Lumeo <c>&lt;Button&gt;</c>\n    /// children need only <see cref=\"AsChild\"/> — they consume the slot automatically.\n    /// </summary>\n    [Parameter] public RenderFragment<TriggerSlot>? ChildContentSlot { get; set; }\n\n    /// <summary>\n    /// When <c>true</c>, the trigger renders NO wrapper element and instead cascades a\n    /// <see cref=\"TriggerSlot\"/> that a cooperating child folds onto its own single root\n    /// element. The key effect is correct a11y: <c>aria-describedby</c> lands on the\n    /// real focusable control (so a screen reader announces the tooltip on focus) rather\n    /// than on a non-focusable wrapper <c>&lt;div&gt;</c>. Hover/focus open-close still\n    /// works via the events bubbling to the Tooltip root. Default <c>false</c> preserves\n    /// the current <c>inline-flex</c> wrapper exactly.\n    /// </summary>\n    [Parameter] public bool AsChild { get; set; }\n\n    [Parameter] public string? Class { get; set; }\n    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }\n\n    private string CssClass => Cx.Merge(\"inline-flex\", Class);\n\n    private TriggerSlot Slot => new(\n        Id: null,                                 // Tooltip anchors positioning on its root wrapper, not the trigger\n        Class: Cx.Merge(\"inline-flex\", Class),\n        Attributes: BuildAttrs(),\n        OnClick: default);                        // behaviour bubbles to the Tooltip root; no handler on the child\n\n    private IReadOnlyDictionary<string, object> BuildAttrs()\n    {\n        var d = new Dictionary<string, object>();\n        // aria-describedby must reference the role=tooltip content from the FOCUSABLE\n        // element so the screen reader announces it on focus (only while open — the\n        // content isn't in the DOM when closed).\n        if (Context.IsOpen) d[\"aria-describedby\"] = Context.ContentId;\n        if (AdditionalAttributes is not null)\n            foreach (var kv in AdditionalAttributes) d[kv.Key] = kv.Value; // author wins on collision\n        return d;\n    }\n}\n"
     }
   ],
   "slots": [
@@ -276,6 +302,12 @@
       "owner": "TooltipTrigger",
       "type": "RenderFragment?",
       "description": null
+    },
+    {
+      "name": "ChildContentSlot",
+      "owner": "TooltipTrigger",
+      "type": "RenderFragment<TriggerSlot>?",
+      "description": "Tier-2 escape hatch for AsChild with arbitrary (non-Lumeo) markup: receives the TriggerSlot so the consumer can splat @attributes=\"slot.Attributes\" onto their own single element (which adds the aria-describedby when the tooltip is open). Lumeo &lt;Button&gt; children need only AsChild — they consume the slot automatically."
     }
   ],
   "serviceDependencies": [
@@ -299,6 +331,10 @@
     {
       "name": "TooltipTrigger",
       "reason": "sub-component"
+    },
+    {
+      "name": "Button",
+      "reason": "used internally"
     }
   ],
   "keyboardInteractions": [
@@ -311,5 +347,5 @@
     "tests/Lumeo.Tests.E2E/Smokes/TooltipHoverTests.cs",
     "tests/Lumeo.Tests/Components/Tooltip/TooltipTests.cs"
   ],
-  "mdSummary": "# Tooltip\r\n\r\nHover/focus tooltip with arrow and configurable placement.\r\n\r\n**Package:** `Lumeo` · **Category:** Overlay\r\n**Docs:** https://lumeo.nativ.sh/components/tooltip\r\n\r\n## Parameters\r\n| Owner | Name | Type | Default | Description |\r\n|---|---|---|---|---|\r\n| Tooltip | ChildContent | `RenderFragment?` | `` |  |\r\n| Tooltip | ShowDelay | `int` | `200` |  |\r\n| Tooltip | HideDelay | `int` | `0` |  |\r\n| Tooltip | Class | `string?` | `` | Extra classes for the tooltip's wrapper element (the relative inline-flex box around the trigger). Merged via Merge so a consumer class wins conflicts without !important — e.g. Class=\"w-full\" makes the wrapper fill its parent so a full-width trigger (e.g. a sidebar nav button) is not shrunk to content width. |\r\n| Tooltip | AdditionalAttributes | `Dictionary<string, object>?` | `` |  |\r\n| TooltipContent | Context | `Tooltip.TooltipContext?` | `` |  |\r\n| TooltipContent | ChildContent | `RenderFragment?` | `` |  |\r\n| TooltipContent | Side | `Lumeo.Side` | `Lumeo.Side.Top` |  |\r\n| TooltipContent | ShowArrow | `bool` | `true` |  |\r\n| TooltipContent | Offset | `int` | `8` |  |\r\n| TooltipContent | Class | `string?` | `` |  |\r\n| TooltipContent | AdditionalAttributes | `Dictionary<string, object>?` | `` |  |\r\n| TooltipTrigger | ChildContent | `RenderFragment?` | `` |  |\r\n| TooltipTrigger | Class | `string?` | `` |  |\r\n| TooltipTrigger | AdditionalAttributes | `Dictionary<string, object>?` | `` |  |\r\n\r\n## Slots\r\n- `ChildContent` (Tooltip) — RenderFragment slot\r\n- `ChildContent` (TooltipContent) — RenderFragment slot\r\n- `ChildContent` (TooltipTrigger) — RenderFragment slot\r\n\r\n## Events\r\n- (none)\r\n\r\n## Sub-components\r\n- `TooltipContent`, `TooltipTrigger`\r\n\r\n## Cascading values it expects\r\n- `Context` (`Tooltip.TooltipContext?`)\r\n\r\n## Services it injects\r\n- `IComponentInteropService` (Lumeo.Services)\r\n\r\n## Keyboard\r\n- `Escape` — HandleKeyDown handles Escape in Tooltip.razor\r\n\r\n## Example\r\n```razor\r\n<Tooltip />\r\n```\r\n\r\n## CSS variables\r\n`--color-primary`, `--color-primary-foreground`, `--radius`\r\n\r\n## Files\r\n- `UI/Tooltip/Tooltip.razor`\r\n- `UI/Tooltip/TooltipContent.razor`\r\n- `UI/Tooltip/TooltipTrigger.razor`\r\n"
+  "mdSummary": "# Tooltip\r\n\r\nHover/focus tooltip with arrow and configurable placement.\r\n\r\n**Package:** `Lumeo` · **Category:** Overlay\r\n**Docs:** https://lumeo.nativ.sh/components/tooltip\r\n\r\n## Parameters\r\n| Owner | Name | Type | Default | Description |\r\n|---|---|---|---|---|\r\n| Tooltip | ChildContent | `RenderFragment?` | `` |  |\r\n| Tooltip | ShowDelay | `int` | `200` |  |\r\n| Tooltip | HideDelay | `int` | `0` |  |\r\n| Tooltip | Class | `string?` | `` | Extra classes for the tooltip's wrapper element (the relative inline-flex box around the trigger). Merged via Merge so a consumer class wins conflicts without !important — e.g. Class=\"w-full\" makes the wrapper fill its parent so a full-width trigger (e.g. a sidebar nav button) is not shrunk to content width. |\r\n| Tooltip | AdditionalAttributes | `Dictionary<string, object>?` | `` |  |\r\n| TooltipContent | Context | `Tooltip.TooltipContext?` | `` |  |\r\n| TooltipContent | ChildContent | `RenderFragment?` | `` |  |\r\n| TooltipContent | Side | `Lumeo.Side` | `Lumeo.Side.Top` |  |\r\n| TooltipContent | ShowArrow | `bool` | `true` |  |\r\n| TooltipContent | Offset | `int` | `8` |  |\r\n| TooltipContent | Class | `string?` | `` |  |\r\n| TooltipContent | AdditionalAttributes | `Dictionary<string, object>?` | `` |  |\r\n| TooltipTrigger | Context | `Tooltip.TooltipContext` | `default!` |  |\r\n| TooltipTrigger | ChildContent | `RenderFragment?` | `` |  |\r\n| TooltipTrigger | ChildContentSlot | `RenderFragment<TriggerSlot>?` | `` | Tier-2 escape hatch for AsChild with arbitrary (non-Lumeo) markup: receives the TriggerSlot so the consumer can splat @attributes=\"slot.Attributes\" onto their own single element (which adds the aria-describedby when the tooltip is open). Lumeo &lt;Button&gt; children need only AsChild — they consume the slot automatically. |\r\n| TooltipTrigger | AsChild | `bool` | `` | When true, the trigger renders NO wrapper element and instead cascades a TriggerSlot that a cooperating child folds onto its own single root element. The key effect is correct a11y: aria-describedby lands on the real focusable control (so a screen reader announces the tooltip on focus) rather than on a non-focusable wrapper &lt;div&gt;. Hover/focus open-close still works via the events bubbling to the Tooltip root. Default false preserves the current inline-flex wrapper exactly. |\r\n| TooltipTrigger | Class | `string?` | `` |  |\r\n| TooltipTrigger | AdditionalAttributes | `Dictionary<string, object>?` | `` |  |\r\n\r\n## Slots\r\n- `ChildContent` (Tooltip) — RenderFragment slot\r\n- `ChildContent` (TooltipContent) — RenderFragment slot\r\n- `ChildContent` (TooltipTrigger) — RenderFragment slot\r\n- `ChildContentSlot` (TooltipTrigger) — Tier-2 escape hatch for AsChild with arbitrary (non-Lumeo) markup: receives the TriggerSlot so the consumer can splat @attributes=\"slot.Attributes\" onto their own single element (which adds the aria-describedby when the tooltip is open). Lumeo &lt;Button&gt; children need only AsChild — they consume the slot automatically.\r\n\r\n## Events\r\n- (none)\r\n\r\n## Sub-components\r\n- `TooltipContent`, `TooltipTrigger`\r\n\r\n## Cascading values it expects\r\n- `Context` (`Tooltip.TooltipContext?`)\r\n\r\n## Services it injects\r\n- `IComponentInteropService` (Lumeo.Services)\r\n\r\n## Keyboard\r\n- `Escape` — HandleKeyDown handles Escape in Tooltip.razor\r\n\r\n## Example\r\n```razor\r\n<Tooltip />\r\n```\r\n\r\n## CSS variables\r\n`--color-primary`, `--color-primary-foreground`, `--radius`\r\n\r\n## Files\r\n- `UI/Tooltip/Tooltip.razor`\r\n- `UI/Tooltip/TooltipContent.razor`\r\n- `UI/Tooltip/TooltipTrigger.razor`\r\n"
 }

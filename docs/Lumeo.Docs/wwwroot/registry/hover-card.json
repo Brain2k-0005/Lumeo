@@ -11,7 +11,9 @@
     "UI/HoverCard/HoverCardContent.razor",
     "UI/HoverCard/HoverCardTrigger.razor"
   ],
-  "dependencies": [],
+  "dependencies": [
+    "button"
+  ],
   "packageDependencies": [],
   "cssVars": [
     "--color-border",
@@ -245,6 +247,22 @@
             "captureUnmatched": false
           },
           {
+            "name": "ChildContentSlot",
+            "type": "RenderFragment<TriggerSlot>?",
+            "default": null,
+            "description": "Tier-2 escape hatch for AsChild with arbitrary (non-Lumeo) markup: receives the TriggerSlot so the consumer can splat @attributes=\"slot.Attributes\" and wire @onmouseenter=\"slot.OnMouseEnter.InvokeAsync\" (etc.) onto their own single element. Lumeo &lt;Button&gt; children need only AsChild — they consume the slot automatically.",
+            "isCascading": false,
+            "captureUnmatched": false
+          },
+          {
+            "name": "AsChild",
+            "type": "bool",
+            "default": null,
+            "description": "When true, the trigger renders NO wrapper element and instead cascades a TriggerSlot that a cooperating child folds onto its own single root element — yielding ONE DOM node with the hover/focus open-close handlers, the pin toggle and aria-expanded forwarded (the Radix asChild goal). The child must resolve to exactly one cooperating element (a Lumeo &lt;Button&gt;, or a manual ChildContentSlot splat). Default false preserves the current inline-flex wrapper exactly.",
+            "isCascading": false,
+            "captureUnmatched": false
+          },
+          {
             "name": "Class",
             "type": "string?",
             "default": null,
@@ -300,7 +318,7 @@
     },
     {
       "path": "UI/HoverCard/HoverCardTrigger.razor",
-      "content": "@namespace Lumeo\n\n@* focusin/focusout give keyboard users parity with hover (Radix opens the card\n   on focus and closes on blur). They sit on the wrapper, so focusing the\n   trigger's inner link/button bubbles up and opens the card; tabbing away fires\n   focusout and closes it. The pin/click path (touch) is unaffected. *@\n<div class=\"@CssClass\"\n     aria-expanded=\"@Context.IsOpen\"\n     @onmouseenter=\"() => Context.RequestOpen.InvokeAsync()\"\n     @onmouseleave=\"() => Context.RequestClose.InvokeAsync()\"\n     @onfocusin=\"() => Context.RequestOpen.InvokeAsync()\"\n     @onfocusout=\"() => Context.RequestClose.InvokeAsync()\"\n     @onclick=\"() => Context.RequestTogglePin.InvokeAsync()\"\n     @attributes=\"AdditionalAttributes\">\n    @ChildContent\n</div>\n\n@code {\n    [CascadingParameter] public HoverCard.HoverCardContext Context { get; set; } = default!;\n    [Parameter] public RenderFragment? ChildContent { get; set; }\n    [Parameter] public string? Class { get; set; }\n    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }\n\n    private string CssClass => Cx.Merge(\"inline-flex\", Class);\n}\n"
+      "content": "@namespace Lumeo\n\n@if (AsChild)\n{\n    @* asChild: render NO wrapper. Cascade the slot so a cooperating child (a Lumeo\n       <Button>, or a manual <ChildContentSlot> splat) becomes the single trigger\n       element — the hover/focus/pin handlers and aria-expanded fold onto the child's\n       real control. HoverCard positions against its root wrapper (Context.WrapperId),\n       not this trigger, so dropping the wrapper does not affect positioning. *@\n    <CascadingValue Value=\"Slot\" IsFixed=\"false\">\n        @if (ChildContentSlot is not null)\n        {\n            @ChildContentSlot(Slot)\n        }\n        else\n        {\n            @ChildContent\n        }\n    </CascadingValue>\n}\nelse\n{\n    @* focusin/focusout give keyboard users parity with hover (Radix opens the card\n       on focus and closes on blur). They sit on the wrapper, so focusing the\n       trigger's inner link/button bubbles up and opens the card; tabbing away fires\n       focusout and closes it. The pin/click path (touch) is unaffected. *@\n    <div class=\"@CssClass\"\n         aria-expanded=\"@Context.IsOpen\"\n         @onmouseenter=\"() => Context.RequestOpen.InvokeAsync()\"\n         @onmouseleave=\"() => Context.RequestClose.InvokeAsync()\"\n         @onfocusin=\"() => Context.RequestOpen.InvokeAsync()\"\n         @onfocusout=\"() => Context.RequestClose.InvokeAsync()\"\n         @onclick=\"() => Context.RequestTogglePin.InvokeAsync()\"\n         @attributes=\"AdditionalAttributes\">\n        @ChildContent\n    </div>\n}\n\n@code {\n    [CascadingParameter] public HoverCard.HoverCardContext Context { get; set; } = default!;\n    [Parameter] public RenderFragment? ChildContent { get; set; }\n\n    /// <summary>\n    /// Tier-2 escape hatch for <see cref=\"AsChild\"/> with arbitrary (non-Lumeo) markup:\n    /// receives the <see cref=\"TriggerSlot\"/> so the consumer can splat\n    /// <c>@attributes=\"slot.Attributes\"</c> and wire <c>@onmouseenter=\"slot.OnMouseEnter.InvokeAsync\"</c>\n    /// (etc.) onto their own single element. Lumeo <c>&lt;Button&gt;</c> children need\n    /// only <see cref=\"AsChild\"/> — they consume the slot automatically.\n    /// </summary>\n    [Parameter] public RenderFragment<TriggerSlot>? ChildContentSlot { get; set; }\n\n    /// <summary>\n    /// When <c>true</c>, the trigger renders NO wrapper element and instead cascades a\n    /// <see cref=\"TriggerSlot\"/> that a cooperating child folds onto its own single root\n    /// element — yielding ONE DOM node with the hover/focus open-close handlers, the pin\n    /// toggle and <c>aria-expanded</c> forwarded (the Radix <c>asChild</c> goal). The\n    /// child must resolve to exactly one cooperating element (a Lumeo <c>&lt;Button&gt;</c>,\n    /// or a manual <see cref=\"ChildContentSlot\"/> splat). Default <c>false</c> preserves\n    /// the current <c>inline-flex</c> wrapper exactly.\n    /// </summary>\n    [Parameter] public bool AsChild { get; set; }\n\n    [Parameter] public string? Class { get; set; }\n    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }\n\n    private string CssClass => Cx.Merge(\"inline-flex\", Class);\n\n    private TriggerSlot Slot => new(\n        Id: null,                                 // HoverCard anchors positioning on its root wrapper, not the trigger\n        Class: Cx.Merge(\"inline-flex\", Class),\n        Attributes: BuildAttrs(),\n        OnClick: EventCallback.Factory.Create<MouseEventArgs>(this, _ => Context.RequestTogglePin.InvokeAsync()),\n        OnFocusIn: EventCallback.Factory.Create<FocusEventArgs>(this, _ => Context.RequestOpen.InvokeAsync()),\n        OnFocusOut: EventCallback.Factory.Create<FocusEventArgs>(this, _ => Context.RequestClose.InvokeAsync()),\n        OnMouseEnter: EventCallback.Factory.Create<MouseEventArgs>(this, _ => Context.RequestOpen.InvokeAsync()),\n        OnMouseLeave: EventCallback.Factory.Create<MouseEventArgs>(this, _ => Context.RequestClose.InvokeAsync()));\n\n    private IReadOnlyDictionary<string, object> BuildAttrs()\n    {\n        var d = new Dictionary<string, object>\n        {\n            [\"aria-expanded\"] = Context.IsOpen ? \"true\" : \"false\",\n        };\n        if (AdditionalAttributes is not null)\n            foreach (var kv in AdditionalAttributes) d[kv.Key] = kv.Value; // author wins on collision\n        return d;\n    }\n}\n"
     }
   ],
   "slots": [
@@ -321,6 +339,12 @@
       "owner": "HoverCardTrigger",
       "type": "RenderFragment?",
       "description": null
+    },
+    {
+      "name": "ChildContentSlot",
+      "owner": "HoverCardTrigger",
+      "type": "RenderFragment<TriggerSlot>?",
+      "description": "Tier-2 escape hatch for AsChild with arbitrary (non-Lumeo) markup: receives the TriggerSlot so the consumer can splat @attributes=\"slot.Attributes\" and wire @onmouseenter=\"slot.OnMouseEnter.InvokeAsync\" (etc.) onto their own single element. Lumeo &lt;Button&gt; children need only AsChild — they consume the slot automatically."
     }
   ],
   "serviceDependencies": [
@@ -348,12 +372,17 @@
     {
       "name": "HoverCardTrigger",
       "reason": "sub-component"
+    },
+    {
+      "name": "Button",
+      "reason": "used internally"
     }
   ],
   "keyboardInteractions": [],
   "tests": [
+    "tests/Lumeo.Tests/Components/HoverCard/HoverCardAsChildTests.cs",
     "tests/Lumeo.Tests/Components/HoverCard/HoverCardFocusTests.cs",
     "tests/Lumeo.Tests/Components/HoverCard/HoverCardTests.cs"
   ],
-  "mdSummary": "# HoverCard\r\n\r\nPopover that opens on hover for rich previews.\r\n\r\n**Package:** `Lumeo` · **Category:** Overlay\r\n**Docs:** https://lumeo.nativ.sh/components/hover-card\r\n\r\n## Parameters\r\n| Owner | Name | Type | Default | Description |\r\n|---|---|---|---|---|\r\n| HoverCard | ChildContent | `RenderFragment?` | `` |  |\r\n| HoverCard | Open | `bool` | `` |  |\r\n| HoverCard | OpenChanged | `EventCallback<bool>` | `` |  |\r\n| HoverCard | IsOpen | `bool` | `` |  |\r\n| HoverCard | IsOpenChanged | `EventCallback<bool>` | `` |  |\r\n| HoverCard | OpenDelay | `int` | `200` |  |\r\n| HoverCard | CloseDelay | `int` | `300` |  |\r\n| HoverCard | AdditionalAttributes | `Dictionary<string, object>?` | `` |  |\r\n| HoverCardContent | Context | `HoverCard.HoverCardContext` | `default!` |  |\r\n| HoverCardContent | ChildContent | `RenderFragment?` | `` |  |\r\n| HoverCardContent | Align | `Lumeo.Align` | `Lumeo.Align.Center` |  |\r\n| HoverCardContent | Side | `Lumeo.Side` | `Lumeo.Side.Bottom` |  |\r\n| HoverCardContent | ShowArrow | `bool` | `` |  |\r\n| HoverCardContent | Class | `string?` | `` |  |\r\n| HoverCardContent | AdditionalAttributes | `Dictionary<string, object>?` | `` |  |\r\n| HoverCardTrigger | Context | `HoverCard.HoverCardContext` | `default!` |  |\r\n| HoverCardTrigger | ChildContent | `RenderFragment?` | `` |  |\r\n| HoverCardTrigger | Class | `string?` | `` |  |\r\n| HoverCardTrigger | AdditionalAttributes | `Dictionary<string, object>?` | `` |  |\r\n\r\n## Slots\r\n- `ChildContent` (HoverCard) — RenderFragment slot\r\n- `ChildContent` (HoverCardContent) — RenderFragment slot\r\n- `ChildContent` (HoverCardTrigger) — RenderFragment slot\r\n\r\n## Events\r\n- `OpenChanged` (`EventCallback<bool>`)\r\n- `IsOpenChanged` (`EventCallback<bool>`)\r\n\r\n## Sub-components\r\n- `HoverCardContent`, `HoverCardTrigger`\r\n\r\n## Cascading values it expects\r\n- `Context` (`HoverCard.HoverCardContext`)\r\n\r\n## Services it injects\r\n- `IComponentInteropService` (Lumeo.Services)\r\n- `IComponentInteropService` ()\r\n\r\n## Keyboard\r\n—\r\n\r\n## Example\r\n```razor\r\n<HoverCard />\r\n```\r\n\r\n## CSS variables\r\n`--color-border`, `--color-popover`, `--color-popover-foreground`, `--radius`\r\n\r\n## Files\r\n- `UI/HoverCard/HoverCard.razor`\r\n- `UI/HoverCard/HoverCardContent.razor`\r\n- `UI/HoverCard/HoverCardTrigger.razor`\r\n"
+  "mdSummary": "# HoverCard\r\n\r\nPopover that opens on hover for rich previews.\r\n\r\n**Package:** `Lumeo` · **Category:** Overlay\r\n**Docs:** https://lumeo.nativ.sh/components/hover-card\r\n\r\n## Parameters\r\n| Owner | Name | Type | Default | Description |\r\n|---|---|---|---|---|\r\n| HoverCard | ChildContent | `RenderFragment?` | `` |  |\r\n| HoverCard | Open | `bool` | `` |  |\r\n| HoverCard | OpenChanged | `EventCallback<bool>` | `` |  |\r\n| HoverCard | IsOpen | `bool` | `` |  |\r\n| HoverCard | IsOpenChanged | `EventCallback<bool>` | `` |  |\r\n| HoverCard | OpenDelay | `int` | `200` |  |\r\n| HoverCard | CloseDelay | `int` | `300` |  |\r\n| HoverCard | AdditionalAttributes | `Dictionary<string, object>?` | `` |  |\r\n| HoverCardContent | Context | `HoverCard.HoverCardContext` | `default!` |  |\r\n| HoverCardContent | ChildContent | `RenderFragment?` | `` |  |\r\n| HoverCardContent | Align | `Lumeo.Align` | `Lumeo.Align.Center` |  |\r\n| HoverCardContent | Side | `Lumeo.Side` | `Lumeo.Side.Bottom` |  |\r\n| HoverCardContent | ShowArrow | `bool` | `` |  |\r\n| HoverCardContent | Class | `string?` | `` |  |\r\n| HoverCardContent | AdditionalAttributes | `Dictionary<string, object>?` | `` |  |\r\n| HoverCardTrigger | Context | `HoverCard.HoverCardContext` | `default!` |  |\r\n| HoverCardTrigger | ChildContent | `RenderFragment?` | `` |  |\r\n| HoverCardTrigger | ChildContentSlot | `RenderFragment<TriggerSlot>?` | `` | Tier-2 escape hatch for AsChild with arbitrary (non-Lumeo) markup: receives the TriggerSlot so the consumer can splat @attributes=\"slot.Attributes\" and wire @onmouseenter=\"slot.OnMouseEnter.InvokeAsync\" (etc.) onto their own single element. Lumeo &lt;Button&gt; children need only AsChild — they consume the slot automatically. |\r\n| HoverCardTrigger | AsChild | `bool` | `` | When true, the trigger renders NO wrapper element and instead cascades a TriggerSlot that a cooperating child folds onto its own single root element — yielding ONE DOM node with the hover/focus open-close handlers, the pin toggle and aria-expanded forwarded (the Radix asChild goal). The child must resolve to exactly one cooperating element (a Lumeo &lt;Button&gt;, or a manual ChildContentSlot splat). Default false preserves the current inline-flex wrapper exactly. |\r\n| HoverCardTrigger | Class | `string?` | `` |  |\r\n| HoverCardTrigger | AdditionalAttributes | `Dictionary<string, object>?` | `` |  |\r\n\r\n## Slots\r\n- `ChildContent` (HoverCard) — RenderFragment slot\r\n- `ChildContent` (HoverCardContent) — RenderFragment slot\r\n- `ChildContent` (HoverCardTrigger) — RenderFragment slot\r\n- `ChildContentSlot` (HoverCardTrigger) — Tier-2 escape hatch for AsChild with arbitrary (non-Lumeo) markup: receives the TriggerSlot so the consumer can splat @attributes=\"slot.Attributes\" and wire @onmouseenter=\"slot.OnMouseEnter.InvokeAsync\" (etc.) onto their own single element. Lumeo &lt;Button&gt; children need only AsChild — they consume the slot automatically.\r\n\r\n## Events\r\n- `OpenChanged` (`EventCallback<bool>`)\r\n- `IsOpenChanged` (`EventCallback<bool>`)\r\n\r\n## Sub-components\r\n- `HoverCardContent`, `HoverCardTrigger`\r\n\r\n## Cascading values it expects\r\n- `Context` (`HoverCard.HoverCardContext`)\r\n\r\n## Services it injects\r\n- `IComponentInteropService` (Lumeo.Services)\r\n- `IComponentInteropService` ()\r\n\r\n## Keyboard\r\n—\r\n\r\n## Example\r\n```razor\r\n<HoverCard />\r\n```\r\n\r\n## CSS variables\r\n`--color-border`, `--color-popover`, `--color-popover-foreground`, `--radius`\r\n\r\n## Files\r\n- `UI/HoverCard/HoverCard.razor`\r\n- `UI/HoverCard/HoverCardContent.razor`\r\n- `UI/HoverCard/HoverCardTrigger.razor`\r\n"
 }
