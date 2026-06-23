@@ -85,3 +85,19 @@ jobs:
           dotnet list src/Lumeo.Gantt/Lumeo.Gantt.csproj package --vulnerable --include-transitive 2>&1 | tee -a vulnerable.txt
           dotnet list src/Lumeo.Motion/Lumeo.Motion.csproj package --vulnerable --include-transitive 2>&1 | tee -a vulnerable.txt
           ! grep -q "has the following vulnerable packages" vulnerable.txt
+
+  mcp-server:
+    # The MCP server (tools/lumeo-mcp) is TypeScript and was previously only
+    # typechecked at release time (publish.yml), so a tsc break or a broken tool
+    # first surfaced against live npm. Build + run its tests on every PR/push.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Build + test MCP server
+        working-directory: tools/lumeo-mcp
+        run: |
+          npm ci
+          npm test
