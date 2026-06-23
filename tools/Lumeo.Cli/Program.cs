@@ -3,7 +3,6 @@ using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using System.Text.RegularExpressions;
 using Lumeo.Cli;
 
 // Clean Ctrl+C handling — exit 130 per POSIX.
@@ -490,26 +489,6 @@ namespace Lumeo.Cli
             // Assets live under src/Lumeo/wwwroot/; DeriveFileBaseUrl returns src/Lumeo/ so add wwwroot/.
             var url = $"{baseUrl}wwwroot/{rel}";
             return await s_http.GetByteArrayAsync(url);
-        }
-    }
-
-    internal static class NamespaceRewriter
-    {
-        public static string Rewrite(string content, string filePath, string targetNamespace)
-        {
-            if (filePath.EndsWith(".razor", StringComparison.OrdinalIgnoreCase))
-            {
-                content = Regex.Replace(content, @"^@namespace\s+Lumeo(\.[A-Za-z0-9_.]*)?$",
-                    m => $"@namespace {targetNamespace}{m.Groups[1].Value}",
-                    RegexOptions.Multiline);
-            }
-            else if (filePath.EndsWith(".cs", StringComparison.OrdinalIgnoreCase))
-            {
-                content = Regex.Replace(content, @"^namespace\s+Lumeo(\.[A-Za-z0-9_.]*)?(\s*[;{])",
-                    m => $"namespace {targetNamespace}{m.Groups[1].Value}{m.Groups[2].Value}",
-                    RegexOptions.Multiline);
-            }
-            return content;
         }
     }
 
