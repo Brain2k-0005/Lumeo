@@ -273,6 +273,17 @@
                 if (Context.FocusedItemValue is not null)
                     await Context.OnSelect.InvokeAsync(Context.FocusedItemValue);
                 break;
+            default:
+                // Type-to-jump on a printable key. Non-searchable listbox only — when
+                // Searchable the keystroke belongs to the search input. Modifier combos
+                // (Ctrl/Alt/Meta shortcuts) are never typeahead.
+                if (!Context.Searchable
+                    && !e.CtrlKey && !e.AltKey && !e.MetaKey
+                    && Lumeo.Services.MenuTypeahead.IsTypeaheadKey(e.Key))
+                {
+                    await Context.OnTypeahead.InvokeAsync(e.Key);
+                }
+                break;
         }
     }
 
