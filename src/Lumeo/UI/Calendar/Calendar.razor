@@ -321,6 +321,25 @@
         return string.Join(" ", parts);
     }
 
+    // The day-cell button, rendered either bare or as the AsChild trigger of a Lumeo
+    // <Tooltip> (when DateTooltip yields a hint). slotAttrs carries aria-describedby
+    // (only while the tooltip is open) so the button itself is described on focus.
+    private RenderFragment RenderDay(DateOnly d, DateOnly monthDate, RenderFragment? badge, IReadOnlyDictionary<string, object>? slotAttrs) =>
+        @<button type="button" id="@DayId(monthDate, d)" tabindex="@DayTabIndex(d, monthDate)"
+                 aria-label="@DayAriaLabel(d)"
+                 aria-pressed="@(IsMultiple ? ((Values?.Contains(d) ?? false) ? "true" : "false") : null)"
+                 class="@DayClasses(d, monthDate)" disabled="@IsDisabled(d)"
+                 @attributes="slotAttrs"
+                 @onclick="() => SelectDay(d)" @onmouseenter="() => OnDayHover(d)"
+                 @onfocus="() => OnDayFocus(d)"
+                 @onkeydown="e => HandleDayKeyDownAsync(e, monthDate, d)">
+            @d.Day
+            @if (badge is not null)
+            {
+                <span class="absolute -bottom-0.5 -right-0.5 pointer-events-none flex">@badge</span>
+            }
+        </button>;
+
     private string DayClasses(DateOnly day, DateOnly monthDate)
     {
         var isCurrentMonth = day.Month == monthDate.Month;
@@ -806,19 +825,24 @@
                             var badge = DateBadge?.Invoke(dt);
                             var isSelectedDay = IsDaySelected(d);
                             <div role="gridcell" aria-selected="@isSelectedDay.ToString().ToLowerInvariant()" class="@RangeBarClasses(d, monthDate, col)">
-                                <button type="button" id="@DayId(monthDate, d)" tabindex="@DayTabIndex(d, monthDate)"
-                                        aria-label="@DayAriaLabel(d)"
-                                        aria-pressed="@(IsMultiple ? ((Values?.Contains(d) ?? false) ? "true" : "false") : null)"
-                                        class="@DayClasses(d, monthDate)" disabled="@IsDisabled(d)" title="@tooltip"
-                                        @onclick="() => SelectDay(d)" @onmouseenter="() => OnDayHover(d)"
-                                        @onfocus="() => OnDayFocus(d)"
-                                        @onkeydown="e => HandleDayKeyDownAsync(e, monthDate, d)">
-                                    @d.Day
-                                    @if (badge is not null)
-                                    {
-                                        <span class="absolute -bottom-0.5 -right-0.5 pointer-events-none flex">@badge</span>
-                                    }
-                                </button>
+                                @if (tooltip is not null)
+                                {
+                                    @* DateTooltip dogfoods the Lumeo <Tooltip> (styled, accessible) instead of
+                                       the native title. AsChild keeps aria-describedby on the day button; the
+                                       wrapper is forced to `block w-full` so the full-width grid cell is preserved
+                                       (the Tooltip root is inline-flex by default, which would shrink the day).
+                                       Content is lazy (only mounts on hover) so 42 cells stay cheap. *@
+                                    <Tooltip Class="block w-full">
+                                        <TooltipTrigger AsChild>
+                                            <ChildContentSlot Context="slot">@RenderDay(d, monthDate, badge, slot.Attributes)</ChildContentSlot>
+                                        </TooltipTrigger>
+                                        <TooltipContent>@tooltip</TooltipContent>
+                                    </Tooltip>
+                                }
+                                else
+                                {
+                                    @RenderDay(d, monthDate, badge, null)
+                                }
                             </div>
                         }
                     </div>
