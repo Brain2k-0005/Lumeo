@@ -141,6 +141,15 @@ else
         {
             if (Slot is null) return AdditionalAttributes;
             var d = new Dictionary<string, object>(Slot.Attributes);
+            // Forward the slot's hover/focus handlers (HoverCard / Tooltip triggers)
+            // so a Button rendered AsChild folds them onto the real <button>. Only
+            // present when the slot supplies them — click-toggle triggers leave these
+            // default, so a plain Button is byte-identical. Click is composed in
+            // HandleClick; keydown stays native (Enter/Space already fire click).
+            if (Slot.OnMouseEnter.HasDelegate) d["onmouseenter"] = Slot.OnMouseEnter;
+            if (Slot.OnMouseLeave.HasDelegate) d["onmouseleave"] = Slot.OnMouseLeave;
+            if (Slot.OnFocusIn.HasDelegate) d["onfocusin"] = Slot.OnFocusIn;
+            if (Slot.OnFocusOut.HasDelegate) d["onfocusout"] = Slot.OnFocusOut;
             if (AdditionalAttributes is not null)
                 foreach (var kv in AdditionalAttributes) d[kv.Key] = kv.Value;
             return d;
