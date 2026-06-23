@@ -80,13 +80,22 @@ public class NavMenuTests : IDisposable
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage req, CancellationToken ct)
         {
             // Read the actual nav-config.json from the docs project so the test exercises real config.
-            var path = Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..",
-                "docs", "Lumeo.Docs", "wwwroot", "Layout", "nav-config.json");
-            var json = File.ReadAllText(Path.GetFullPath(path));
+            // Walk up to the repo root (Lumeo.slnx) rather than a fixed `..` depth — the output
+            // path gains an extra RID segment under `dotnet test --arch x64` (…/net10.0/win-x64/),
+            // which a hard-coded relative path silently misses.
+            var path = Path.Combine(FindRepoRoot(), "docs", "Lumeo.Docs", "wwwroot", "Layout", "nav-config.json");
+            var json = File.ReadAllText(path);
             return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
             {
                 Content = new StringContent(json, Encoding.UTF8, "application/json")
             });
+        }
+
+        private static string FindRepoRoot()
+        {
+            for (var d = new DirectoryInfo(AppContext.BaseDirectory); d is not null; d = d.Parent)
+                if (File.Exists(Path.Combine(d.FullName, "Lumeo.slnx"))) return d.FullName;
+            throw new InvalidOperationException("Lumeo.slnx not found above " + AppContext.BaseDirectory);
         }
     }
 }
