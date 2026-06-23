@@ -113,6 +113,18 @@ public sealed class ComponentInteropService : IComponentInteropService
         return await _focus.FocusMenuItemByTypeahead(module, containerId, query, currentIndex);
     }
 
+    public async ValueTask SaveFocus(string key)
+    {
+        var module = await GetModuleAsync();
+        await module.InvokeVoidAsync("saveFocus", key);
+    }
+
+    public async ValueTask RestoreFocus(string key)
+    {
+        var module = await GetModuleAsync();
+        await module.InvokeVoidAsync("restoreFocus", key);
+    }
+
     public async ValueTask LockScroll()
     {
         var module = await GetModuleAsync();

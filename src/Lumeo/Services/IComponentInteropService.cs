@@ -47,6 +47,16 @@ public interface IComponentInteropService : IAsyncDisposable, IDisposable
     /// document.</summary>
     ValueTask RemoveFocusTrap(string elementId);
 
+    /// <summary>Saves the currently-focused element keyed by <paramref name="key"/>
+    /// so <see cref="RestoreFocus"/> can hand focus back later. Unlike
+    /// <see cref="SetupFocusTrap"/> this installs NO Tab trap — use it for non-modal
+    /// surfaces (menus, listbox popovers) that move focus inward on open but must let
+    /// Tab close them per the WAI-ARIA pattern.</summary>
+    ValueTask SaveFocus(string key);
+    /// <summary>Returns focus to the element saved by <see cref="SaveFocus"/> under
+    /// the same key, if it is still in the document (WCAG 2.4.3).</summary>
+    ValueTask RestoreFocus(string key);
+
     /// <summary>Registers a native animationend listener that filters strictly on
     /// the slide-in animation name and, on completion, sets the element's inline
     /// <c>transform: none</c>. Bypasses Blazor's event roundtrip so the cleanup
