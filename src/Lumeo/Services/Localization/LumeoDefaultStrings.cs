@@ -3,7 +3,7 @@ namespace Lumeo.Services.Localization;
 /// <summary>
 /// Built-in translations for Lumeo component UI text. Ships with EN, DE, ES, FR,
 /// IT, PT, NL, PL, JA, ZH-Hans (Simplified Chinese), KO, AR, RU, TR out of the box.
-/// Applied by <see cref="LumeoServiceExtensions.AddLumeo"/> before any consumer
+/// Applied by <see cref="LumeoServiceExtensions.AddLumeo(Microsoft.Extensions.DependencyInjection.IServiceCollection)"/> before any consumer
 /// override callback runs — so consumers can replace individual keys or add whole
 /// cultures without having to redefine everything.
 /// Keys are namespaced by component: "DataGrid.NoData", "Pagination.Previous", etc.
