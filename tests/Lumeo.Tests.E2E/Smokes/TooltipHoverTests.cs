@@ -33,20 +33,25 @@ public class TooltipHoverTests : PlaywrightTestBase
         await Goto("/components/tooltip");
         await Page.WaitForLoadStateAsync(LoadState.NetworkIdle);
 
-        // Find the first tooltip trigger button
+        // Find the first tooltip trigger button. Wait for it to actually render —
+        // NetworkIdle only means assets downloaded, not that the Blazor WASM runtime
+        // booted and painted the trigger, so hovering immediately can miss.
         var trigger = Page.Locator("[data-tooltip-trigger], button[aria-describedby], button:has-text('Hover')").First;
+        await trigger.WaitForAsync(new() { State = WaitForSelectorState.Visible, Timeout = 15000 });
 
         // Hover over the trigger
         await trigger.HoverAsync();
 
-        // Tooltip should appear
+        // Tooltip should appear. Allow generous headroom: the visible delay is the
+        // Tooltip open-delay plus a WASM render, which exceeded a tight 3 s budget on
+        // a loaded CI runner.
         var tooltipContent = Page.Locator("[role='tooltip']").First;
         try
         {
             await tooltipContent.WaitForAsync(new()
             {
                 State = WaitForSelectorState.Visible,
-                Timeout = 3000,
+                Timeout = 8000,
             });
             Assert.True(await tooltipContent.IsVisibleAsync());
         }

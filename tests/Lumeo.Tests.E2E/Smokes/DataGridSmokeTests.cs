@@ -18,8 +18,13 @@ public class DataGridSmokeTests : PlaywrightTestBase
         await Goto("/components/data-grid");
         await Page.WaitForLoadStateAsync(LoadState.NetworkIdle);
 
+        // DataGrid is the heaviest component and renders only after the Blazor WASM
+        // runtime boots — NetworkIdle just means the .wasm/.dll assets finished
+        // downloading, not that the grid rendered. On a loaded CI runner the cold
+        // first render can take well over 5 s, which flaked this smoke. Give the
+        // boot-plus-virtualization path generous headroom.
         var table = Page.Locator("table").First;
-        await table.WaitForAsync(new() { State = WaitForSelectorState.Visible, Timeout = 5000 });
+        await table.WaitForAsync(new() { State = WaitForSelectorState.Visible, Timeout = 20000 });
         Assert.True(await table.IsVisibleAsync());
 
         // A header row plus at least one data row.
