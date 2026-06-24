@@ -70,7 +70,13 @@ jobs:
             --results-directory covreport
           COB=$(find covreport -name coverage.cobertura.xml | head -1)
           if [ -z "$COB" ]; then echo "::error::No coverage report produced"; exit 1; fi
-          RATE=$(grep -o 'line-rate="[0-9.]*"' "$COB" | head -1 | sed 's/[^0-9.]//g')
+          # Use grep -m1 (stop after the first, root-level line-rate) instead of
+          # `grep ... | head -1`: under `set -o pipefail`, head closing the pipe made
+          # grep abort with "write error: Broken pipe" (exit 2) once the cobertura
+          # report grew large enough that grep was still writing — failing the step
+          # before coverage was ever evaluated. -m1 exits cleanly with no SIGPIPE.
+          RATE=$(grep -o -m1 'line-rate="[0-9.]*"' "$COB" | sed 's/[^0-9.]//g')
+          if [ -z "$RATE" ]; then echo "::error::Could not parse line-rate from $COB"; exit 1; fi
           PCT=$(awk "BEGIN{printf \"%.1f\", $RATE*100}")
           echo "Core Lumeo line coverage: ${PCT}%"
           awk "BEGIN{exit !($RATE >= 0.70)}" || { echo "::error::Core line coverage ${PCT}% is below the 70% floor"; exit 1; }
