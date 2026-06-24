@@ -25,7 +25,7 @@ else
 <Popover @bind-Open="_isOpen">
     <PopoverTrigger>
         <button type="button"
-                id="@FormFieldControlId"
+                id="@EffectiveTriggerId"
                 name="@Name"
                 aria-required="@Required.ToString().ToLower()"
                 aria-invalid="@EffectiveInvalid.ToString().ToLower()"
@@ -173,8 +173,19 @@ else
     private bool EffectiveInvalid => Invalid || FormField?.HasError == true;
     private bool InsideFormField => FormField is not null;
 
+    // Inside a FormField, adopt its generated ControlId so the field's <Label For>
+    // resolves to the rendered trigger (click-to-focus + association). Null outside
+    // a FormField — EffectiveTriggerId then falls back to the generated _triggerId.
+    // The empty guard avoids id="" when no id was generated.
     private string? FormFieldControlId => string.IsNullOrEmpty(FormField?.ControlId) ? null : FormField!.ControlId;
     private string? FormFieldDescribedBy => FormField?.DescribedBy;
+
+    // The id actually rendered on the focusable trigger (the List-variant popover
+    // button). Any interop that focuses or anchors the trigger MUST use this same
+    // value so focus/anchoring target the rendered element. _triggerId stays as the
+    // fallback when not inside a FormField.
+    private readonly string _triggerId = LumeoIds.New("time-picker-trigger");
+    private string EffectiveTriggerId => FormFieldControlId ?? _triggerId;
 
     [Parameter] public TimeSpan? Value { get; set; }
     [Parameter] public EventCallback<TimeSpan?> ValueChanged { get; set; }

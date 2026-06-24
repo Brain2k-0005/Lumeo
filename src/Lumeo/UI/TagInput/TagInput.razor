@@ -46,7 +46,7 @@
     }
 
     <div class="relative flex-1 min-w-[80px]">
-        <input id="@_inputId"
+        <input id="@EffectiveId"
                type="text"
                role="combobox"
                class="w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed"
@@ -122,8 +122,16 @@
     [CascadingParameter] private FormField.FormFieldContext? FormField { get; set; }
 
     // aria-describedby on the input announces the FormField help/error to a screen
-    // reader; the input keeps its own _inputId (load-bearing for focus/popover interop).
+    // reader.
     private string? FormFieldDescribedBy => FormField?.DescribedBy;
+
+    // Adopt the FormField's generated id so the field's <label for> resolves to the
+    // inner text <input> the user types into (Base UI Field a11y), mirroring
+    // Input/Switch/Textarea/DatePicker. Null outside a FormField; empty guard avoids
+    // id="" if no id was generated. EffectiveId is the DOM id actually rendered, so
+    // all focus/popover/prevent-default interop must target it (not the raw _inputId).
+    private string? FormFieldControlId => string.IsNullOrEmpty(FormField?.ControlId) ? null : FormField!.ControlId;
+    private string EffectiveId => FormFieldControlId ?? _inputId;
 
     [Parameter] public List<TItem>? Tags { get; set; }
     [Parameter] public EventCallback<List<TItem>> TagsChanged { get; set; }
@@ -175,7 +183,7 @@
             : null;
 
     /// <summary>Programmatically move focus to the inner text input.</summary>
-    public ValueTask FocusAsync() => Interop.FocusElement(_inputId);
+    public ValueTask FocusAsync() => Interop.FocusElement(EffectiveId);
     private readonly string _suggestionsId = LumeoIds.New("taginput-suggestions");
     private bool _suggestionsRegistered;
 
@@ -397,12 +405,12 @@
         _inputValue = "";
         _showSuggestions = false;
         _activeSuggestion = -1;
-        await Interop.FocusElement(_inputId);
+        await Interop.FocusElement(EffectiveId);
     }
 
     private async Task FocusInput()
     {
-        if (!Disabled) await Interop.FocusElement(_inputId);
+        if (!Disabled) await Interop.FocusElement(EffectiveId);
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -417,7 +425,7 @@
             // IME composition commits (isComposing / keyCode 229) working.
             try
             {
-                await Interop.RegisterPreventDefaultKeys(_inputId, new[]
+                await Interop.RegisterPreventDefaultKeys(EffectiveId, new[]
                 {
                     new Lumeo.Services.PreventDefaultKeyRule("Enter", SkipComposing: true),
                     new Lumeo.Services.PreventDefaultKeyRule("ArrowDown"),
@@ -431,15 +439,15 @@
         }
         if (firstRender && AutoFocus)
         {
-            try { await Interop.FocusElement(_inputId); }
+            try { await Interop.FocusElement(EffectiveId); }
             catch (JSDisconnectedException) { }
         }
         if (_showSuggestions && !_suggestionsRegistered)
         {
             try
             {
-                await Interop.PositionFixed(_suggestionsId, _inputId, "start", false, "bottom");
-                await Interop.RegisterClickOutside(_suggestionsId, _inputId, async () =>
+                await Interop.PositionFixed(_suggestionsId, EffectiveId, "start", false, "bottom");
+                await Interop.RegisterClickOutside(_suggestionsId, EffectiveId, async () =>
                 {
                     _showSuggestions = false;
                     await InvokeAsync(StateHasChanged);
@@ -469,7 +477,7 @@
     {
         if (_suggestionsRegistered) await CleanupSuggestions();
         if (!_pdRegistered) return;
-        try { await Interop.UnregisterPreventDefaultKeys(_inputId); }
+        try { await Interop.UnregisterPreventDefaultKeys(EffectiveId); }
         catch (JSDisconnectedException) { }
         catch (ObjectDisposedException) { }
         catch (InvalidOperationException) { }
