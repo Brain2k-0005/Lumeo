@@ -455,19 +455,25 @@ export const motion = {
         const originX = (options && options.origin && options.origin.x) !== undefined ? options.origin.x : 0.5;
         const originY = (options && options.origin && options.origin.y) !== undefined ? options.origin.y : 0.5;
 
-        // Scope the canvas to the host element instead of hijacking the whole
-        // viewport. The host already has position:relative + overflow:hidden
-        // (see .lumeo-confetti), so an absolutely-positioned full-bleed canvas
-        // confines the burst to the component's own box — no global z-index
-        // 9999 overlay swallowing pointer events across the entire page.
+        // Burst BEYOND the trigger's own box so the confetti reads as a real
+        // celebration rather than being clipped to a small button — but still
+        // scoped (centred on the trigger, extended by a fixed margin) instead of
+        // hijacking the whole viewport with a z-index 9999 overlay that swallows
+        // page clicks. The host is position:relative with visible overflow, so the
+        // oversized, pointer-events:none canvas paints outward without affecting
+        // layout.
         const elRect = triggerEl.getBoundingClientRect();
-        const w = Math.max(1, Math.round(elRect.width));
-        const h = Math.max(1, Math.round(elRect.height));
+        const margin = 140; // px the burst may travel past each edge of the trigger
+        const tw = Math.max(1, Math.round(elRect.width));
+        const th = Math.max(1, Math.round(elRect.height));
+        const w = tw + margin * 2;
+        const h = th + margin * 2;
         canvas.style.position = 'absolute';
-        canvas.style.top = '0';
-        canvas.style.left = '0';
-        canvas.style.width = '100%';
-        canvas.style.height = '100%';
+        canvas.style.left = '50%';
+        canvas.style.top = '50%';
+        canvas.style.transform = 'translate(-50%, -50%)';
+        canvas.style.width = w + 'px';
+        canvas.style.height = h + 'px';
         canvas.style.pointerEvents = 'none';
         canvas.style.zIndex = '1';
         canvas.width = w;
@@ -476,10 +482,11 @@ export const motion = {
         const ctx = canvas.getContext('2d');
         const particles = [];
 
-        // Origin is element-relative (0-1) → canvas pixel coords (canvas now
-        // shares the element's coordinate space).
-        const ox = w * originX;
-        const oy = h * originY;
+        // Origin stays trigger-relative (0-1 over the trigger's own box), shifted
+        // into the larger canvas by the burst margin so OriginX/OriginY keep their
+        // meaning.
+        const ox = margin + tw * originX;
+        const oy = margin + th * originY;
         const spreadRad = (spread * Math.PI) / 180;
 
         for (let i = 0; i < particleCount; i++) {
