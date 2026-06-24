@@ -42,6 +42,13 @@
     /// (<c>"#ff0000"</c>, <c>"hsl(...)"</c>). Null = theme primary.</summary>
     [Parameter] public string? Color { get; set; }
 
+    /// <summary>Marks this marker as "highlighted" (e.g. a recommendation). The pin
+    /// itself is unchanged, but with <see cref="Map.Cluster"/> on, any cluster bubble
+    /// that contains at least one highlighted marker is tinted with the cluster-highlight
+    /// color (the <c>--lumeo-map-cluster-highlight</c> CSS variable, default amber) — so
+    /// a recommendation stays discoverable even while its marker is clustered away.</summary>
+    [Parameter] public bool Highlighted { get; set; }
+
     /// <summary>Permanent label rendered above the marker. Use for waypoints
     /// or numbered tours. Different from <see cref="Title"/> (hover tooltip).</summary>
     [Parameter] public string? Label { get; set; }
@@ -75,7 +82,7 @@
     [CascadingParameter] internal Map.MapContext? MapCtx { get; set; }
 
     private Map? _registeredOwner;
-    private (double Lat, double Lon, string? Title, string? IconUrl, string Variant, string? Color, string? Label, bool LabelHoverOnly, bool HasIcon, bool Draggable)? _lastState;
+    private (double Lat, double Lon, string? Title, string? IconUrl, string Variant, string? Color, string? Label, bool LabelHoverOnly, bool HasIcon, bool Draggable, bool Highlighted)? _lastState;
     private readonly string _popupHostId = $"lumeo-map-popup-{Guid.NewGuid():N}";
     private readonly string _iconHostId = $"lumeo-map-icon-{Guid.NewGuid():N}";
 
@@ -91,11 +98,11 @@
         }
         else
         {
-            var snapshot = (Lat, Lon, Title, IconUrl, Variant, Color, Label, LabelHoverOnly, Icon is not null, Draggable);
+            var snapshot = (Lat, Lon, Title, IconUrl, Variant, Color, Label, LabelHoverOnly, Icon is not null, Draggable, Highlighted);
             if (_lastState is { } prev && prev != snapshot)
                 owner.NotifyMarkerChanged(this);
         }
-        _lastState = (Lat, Lon, Title, IconUrl, Variant, Color, Label, LabelHoverOnly, Icon is not null, Draggable);
+        _lastState = (Lat, Lon, Title, IconUrl, Variant, Color, Label, LabelHoverOnly, Icon is not null, Draggable, Highlighted);
     }
 
     internal string? GetPopupHtml() => Title;

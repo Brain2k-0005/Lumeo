@@ -80,4 +80,30 @@ public class MapInteropTests : IAsyncLifetime
 
         Assert.Contains(_module.Invocations, i => i.Identifier == "setCenter");
     }
+
+    [Fact]
+    public void Highlighted_marker_flows_highlighted_true_into_the_setMarkers_payload()
+    {
+        // The amber-cluster feature hinges on MapMarker.Highlighted reaching the JS
+        // marker spec; map.js then aggregates it into a clusterProperty and tints the
+        // bubble. Assert the .NET->JS half of that contract.
+        _ctx.Render<L.Map>(p => p
+            .Add(m => m.Cluster, true)
+            .Add(m => m.ChildContent, (Microsoft.AspNetCore.Components.RenderFragment)(b =>
+            {
+                b.OpenComponent<L.MapMarker>(0);
+                b.AddAttribute(1, "Lat", 48.85);
+                b.AddAttribute(2, "Lon", 2.35);
+                b.AddAttribute(3, "Title", "Paris");
+                b.AddAttribute(4, "Highlighted", true);
+                b.CloseComponent();
+            })));
+
+        Assert.Contains(_module.Invocations, i => i.Identifier == "setMarkers");
+        var setMarkers = _module.Invocations.Last(i => i.Identifier == "setMarkers");
+        var payload = setMarkers.Arguments[1]; // (mapId, payload[])
+        var markers = ((System.Collections.IEnumerable)payload!).Cast<object>().ToList();
+        Assert.Contains(markers, m =>
+            m.GetType().GetProperty("highlighted")?.GetValue(m) is bool h && h);
+    }
 }
