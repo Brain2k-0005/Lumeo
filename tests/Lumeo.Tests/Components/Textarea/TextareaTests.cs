@@ -170,7 +170,7 @@ public class TextareaTests : IAsyncLifetime
             .Add(t => t.MaxLength, 5)
             .Add(t => t.Value, "toolong"));
 
-        var counter = cut.Find("div.text-right");
+        var counter = cut.Find("div.text-end");
         Assert.Contains("text-destructive", counter.GetAttribute("class"));
         Assert.Contains("7/5", counter.TextContent);
     }
@@ -183,7 +183,7 @@ public class TextareaTests : IAsyncLifetime
             .Add(t => t.MaxLength, 5)
             .Add(t => t.Value, "ok"));
 
-        var counter = cut.Find("div.text-right");
+        var counter = cut.Find("div.text-end");
         Assert.Contains("text-muted-foreground", counter.GetAttribute("class"));
         Assert.DoesNotContain("text-destructive", counter.GetAttribute("class"));
     }

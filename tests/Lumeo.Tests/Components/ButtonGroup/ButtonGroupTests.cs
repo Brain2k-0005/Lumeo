@@ -67,7 +67,7 @@ public class ButtonGroupTests : IAsyncLifetime
 
         var div = cut.Find("div");
         var cls = div.GetAttribute("class") ?? "";
-        Assert.Contains("-ml-px", cls);
+        Assert.Contains("-ms-px", cls);
     }
 
     [Fact]
