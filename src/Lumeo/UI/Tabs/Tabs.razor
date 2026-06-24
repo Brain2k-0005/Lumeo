@@ -1,7 +1,10 @@
 @namespace Lumeo
 
 @{
-    var context = new TabsContext(ActiveValue, EventCallback.Factory.Create<string>(this, SetValue), Orientation, Variant, _tabIds, AnimatedIndicator, RenderMode, _activatedValues, SwipeEnabled, SwipeWrap, RegisterContent, UnregisterContent, NavigateBySwipe, _reorderState, Activation);
+    var context = new TabsContext(ActiveValue, EventCallback.Factory.Create<string>(this, SetValue), Orientation, Variant, _tabIds, AnimatedIndicator, RenderMode, _activatedValues, SwipeEnabled, SwipeWrap, RegisterContent, UnregisterContent, NavigateBySwipe, _reorderState, Activation)
+    {
+        IconReveal = IconReveal,
+    };
 }
 
 <div class="@CssClass" @attributes="AdditionalAttributes">
@@ -69,6 +72,16 @@
     /// </list>
     /// </summary>
     [Parameter] public TabsActivation Activation { get; set; } = TabsActivation.Automatic;
+
+    /// <summary>
+    /// Icon-tab reveal mode: inactive triggers collapse to icon-only, and the active
+    /// trigger smoothly animates its text label into view next to the icon (the label
+    /// width grows from 0 → auto via a CSS grid transition, plus a fade). Lets a compact
+    /// icon bar stay readable — only the current tab spells itself out. Give each
+    /// <see cref="TabsTrigger"/> an <c>IconContent</c> (the always-visible icon) and
+    /// <c>ChildContent</c> (the revealed label). Default <c>false</c> (labels always shown).
+    /// </summary>
+    [Parameter] public bool IconReveal { get; set; }
 
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
@@ -166,6 +179,10 @@
     {
         public TabsContext(string ActiveValue, EventCallback<string> SetValue, Lumeo.Orientation Orientation = Lumeo.Orientation.Horizontal, TabsVariant Variant = TabsVariant.Default)
             : this(ActiveValue, SetValue, Orientation, Variant, new Dictionary<string, (string, string, bool)>(), false, TabsRenderMode.Active, new HashSet<string>(), false, false, _ => { }, _ => { }, _ => Task.CompletedTask, new TabsReorderState()) { }
+
+        /// <summary>Icon-tab reveal mode (see <see cref="Tabs.IconReveal"/>). Init-only so
+        /// the positional constructor above stays source-compatible.</summary>
+        public bool IconReveal { get; init; }
     }
 
     /// <summary>Arrow-key activation mode for tabs. See <see cref="Tabs.Activation"/>.</summary>
