@@ -1,5 +1,6 @@
 using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 
 namespace Lumeo.RegistryGen;
 
@@ -122,6 +123,7 @@ public static class ComponentsApiEmitter
                 ["cssVars"] = meta.CssVars,
                 ["examples"] = examples,
                 ["subComponents"] = subEntries,
+                ["a11y"] = ExtractA11y(razorFiles),
                 ["parseFailed"] = root?.ParseFailed ?? false,
                 ["parseError"] = root?.ParseError,
             };
@@ -304,6 +306,58 @@ public static class ComponentsApiEmitter
             ["parseFailed"] = s.ParseFailed,
             ["parseError"] = s.ParseError,
         };
+
+    // Known Blazor KeyboardEventArgs.Key values we report when a component handles
+    // keydown — a precise whitelist so we don't pick up unrelated string literals.
+    private static readonly string[] KnownKeys =
+    {
+        "Enter", "Escape", "Tab", " ", "Spacebar", "ArrowUp", "ArrowDown", "ArrowLeft",
+        "ArrowRight", "Home", "End", "PageUp", "PageDown", "Delete", "Backspace", "ContextMenu", "F10",
+    };
+
+    /// <summary>
+    /// Static a11y signal extraction from a component's .razor source: the ARIA roles and
+    /// aria-* attributes it renders, the keyboard keys it handles, and whether it manages
+    /// focus. Powers the MCP's a11y view so an agent can see a component's accessibility
+    /// contract without reading the source. Regex over markup — best-effort, not a parser.
+    /// </summary>
+    private static object ExtractA11y(IEnumerable<string> razorFiles)
+    {
+        var roles = new SortedSet<string>(StringComparer.Ordinal);
+        var ariaAttrs = new SortedSet<string>(StringComparer.Ordinal);
+        var keys = new SortedSet<string>(StringComparer.Ordinal);
+        var keyboardInteractive = false;
+        var focusManaged = false;
+
+        foreach (var file in razorFiles)
+        {
+            string text;
+            try { text = File.ReadAllText(file); } catch { continue; }
+
+            // Literal role="..." values (skip dynamic role="@(...)").
+            foreach (Match m in Regex.Matches(text, "role=\"([a-zA-Z]+)\"")) roles.Add(m.Groups[1].Value);
+            // aria-* attribute NAMES (e.g. aria-expanded, aria-label).
+            foreach (Match m in Regex.Matches(text, "(aria-[a-z]+)\\s*=")) ariaAttrs.Add(m.Groups[1].Value);
+
+            if (text.Contains("@onkeydown") || text.Contains("KeyboardEventArgs"))
+            {
+                keyboardInteractive = true;
+                foreach (var k in KnownKeys)
+                    if (text.Contains("\"" + k + "\"")) keys.Add(k == " " ? "Space" : k);
+            }
+            if (text.Contains("FocusAsync") || text.Contains("FocusElement") || text.Contains("tabindex"))
+                focusManaged = true;
+        }
+
+        return new Dictionary<string, object?>
+        {
+            ["roles"] = roles.ToArray(),
+            ["ariaAttributes"] = ariaAttrs.ToArray(),
+            ["keys"] = keys.ToArray(),
+            ["keyboardInteractive"] = keyboardInteractive,
+            ["focusManaged"] = focusManaged,
+        };
+    }
 
     private static object SerializeParam(RazorParameterScanner.ParameterInfo p)
         => new

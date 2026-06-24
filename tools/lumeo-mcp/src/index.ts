@@ -394,6 +394,25 @@ function toGetPayload(c: ApiComponent) {
   };
 }
 
+// ───────────────── lumeo_get_a11y ─────────────────
+
+function toA11yPayload(c: ApiComponent) {
+  const a11y = c.a11y ?? { roles: [], ariaAttributes: [], keys: [], keyboardInteractive: false, focusManaged: false };
+  const cov = coverageByName.get(c.name.toLowerCase());
+  return {
+    name: c.name,
+    roles: a11y.roles,
+    ariaAttributes: a11y.ariaAttributes,
+    keyboardKeys: a11y.keys,
+    keyboardInteractive: a11y.keyboardInteractive,
+    focusManaged: a11y.focusManaged,
+    // Whether the a11y / keyboard behaviour is actually covered by tests.
+    tested: cov ? { a11y: cov.a11y, keyboard: cov.keyboard } : null,
+    gotchas: c.gotchas ?? [],
+    docs: docsUrl(c),
+  };
+}
+
 // ───────────────── lumeo_get_install ─────────────────
 
 function buildInstallInfo(c: ApiComponent) {
@@ -495,6 +514,25 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
           name: {
             type: "string",
             description: "Component name (e.g. \"Button\", \"DataGrid\", \"Sheet\"). Case-insensitive.",
+          },
+        },
+      },
+    },
+    {
+      name: "lumeo_get_a11y",
+      description:
+        "Get the ACCESSIBILITY contract for a Lumeo component: the ARIA roles and aria-* " +
+        "attributes it renders, the keyboard keys it handles, whether it manages focus, and " +
+        "whether that a11y/keyboard behaviour is covered by tests. Use it to verify a " +
+        "component's accessibility before relying on it, or to know which keys to exercise. " +
+        "Extracted from the actual Razor source by RegistryGen.",
+      inputSchema: {
+        type: "object",
+        required: ["name"],
+        properties: {
+          name: {
+            type: "string",
+            description: "Component name (e.g. \"Dialog\", \"Tabs\", \"Select\"). Case-insensitive.",
           },
         },
       },
@@ -647,6 +685,20 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
         };
       }
       return { content: [{ type: "text", text: JSON.stringify(toGetPayload(c), null, 2) }] };
+    }
+    case "lumeo_get_a11y": {
+      const wanted = typeof a.name === "string" ? a.name : "";
+      const c = findComponent(wanted);
+      if (!c) {
+        return {
+          isError: true,
+          content: [{
+            type: "text",
+            text: `Component "${wanted}" not found. Use lumeo_list_components or lumeo_search to discover available components.`,
+          }],
+        };
+      }
+      return { content: [{ type: "text", text: JSON.stringify(toA11yPayload(c), null, 2) }] };
     }
     case "lumeo_list_services": {
       const results = services.map(toServiceListPayload);
