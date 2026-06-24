@@ -344,14 +344,16 @@ export const components: ComponentDoc[] = [
       { name: "ChildContent", description: "DialogHeader / DialogContent / DialogFooter." },
     ],
     example: `<Dialog @bind-Open="_dialogOpen">
-    <DialogHeader>
-        <DialogTitle>Are you sure?</DialogTitle>
-        <DialogDescription>This cannot be undone.</DialogDescription>
-    </DialogHeader>
-    <DialogFooter>
-        <Button Variant="Button.ButtonVariant.Outline" OnClick='() => _dialogOpen = false'>Cancel</Button>
-        <Button Variant="Button.ButtonVariant.Destructive" OnClick="Confirm">Delete</Button>
-    </DialogFooter>
+    <DialogContent>
+        <DialogHeader>
+            <DialogTitle>Are you sure?</DialogTitle>
+            <DialogDescription>This cannot be undone.</DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+            <Button Variant="Button.ButtonVariant.Outline" OnClick='() => _dialogOpen = false'>Cancel</Button>
+            <Button Variant="Button.ButtonVariant.Destructive" OnClick="Confirm">Delete</Button>
+        </DialogFooter>
+    </DialogContent>
 </Dialog>`,
     cssVars: ["--color-background", "--color-foreground", "--color-border"],
   },
