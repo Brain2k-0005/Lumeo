@@ -456,26 +456,26 @@ export const motion = {
         const originY = (options && options.origin && options.origin.y) !== undefined ? options.origin.y : 0.5;
 
         // Burst BEYOND the trigger's own box so the confetti reads as a real
-        // celebration rather than being clipped to a small button — but still
-        // scoped (centred on the trigger, extended by a fixed margin) instead of
-        // hijacking the whole viewport with a z-index 9999 overlay that swallows
-        // page clicks. The host is position:relative with visible overflow, so the
-        // oversized, pointer-events:none canvas paints outward without affecting
-        // layout.
+        // celebration rather than being clipped to a small button. Use position:FIXED
+        // (viewport-relative), not absolute: a fixed element never expands the
+        // document's scrollable area, so the oversized burst canvas can paint past the
+        // trigger without adding a page scrollbar. pointer-events:none keeps it from
+        // swallowing clicks, and it only covers the trigger + a margin (not the whole
+        // viewport), so it never acts as a global click-eating overlay.
         const elRect = triggerEl.getBoundingClientRect();
         const margin = 140; // px the burst may travel past each edge of the trigger
         const tw = Math.max(1, Math.round(elRect.width));
         const th = Math.max(1, Math.round(elRect.height));
         const w = tw + margin * 2;
         const h = th + margin * 2;
-        canvas.style.position = 'absolute';
-        canvas.style.left = '50%';
-        canvas.style.top = '50%';
-        canvas.style.transform = 'translate(-50%, -50%)';
+        canvas.style.position = 'fixed';
+        canvas.style.left = (elRect.left - margin) + 'px';
+        canvas.style.top = (elRect.top - margin) + 'px';
+        canvas.style.transform = 'none';
         canvas.style.width = w + 'px';
         canvas.style.height = h + 'px';
         canvas.style.pointerEvents = 'none';
-        canvas.style.zIndex = '1';
+        canvas.style.zIndex = '9999';
         canvas.width = w;
         canvas.height = h;
 
