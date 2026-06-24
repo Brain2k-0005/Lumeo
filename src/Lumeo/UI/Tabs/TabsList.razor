@@ -76,6 +76,13 @@ else
 @code {
     [CascadingParameter] public Tabs.TabsContext? Context { get; set; }
 
+    // A scoped <DirectionProvider> cascades its direction here; when present it
+    // wins over the global ThemeService so a subtree can be RTL even if the app
+    // is LTR (and vice versa). Null when no provider wraps this list — then the
+    // ambient theme direction applies.
+    [CascadingParameter(Name = "LumeoDirection")] private LayoutDirection? ScopedDirection { get; set; }
+    private LayoutDirection EffectiveDirection => ScopedDirection ?? Theme.CurrentDirection;
+
     [Parameter] public RenderFragment? ChildContent { get; set; }
     [Parameter] public RenderFragment? TrailingContent { get; set; }
     [Parameter] public bool Scrollable { get; set; }
@@ -187,10 +194,10 @@ else
     // always points toward the visual beginning.
     private Blazicons.SvgIcon StartArrowIcon => IsVertical
         ? Blazicons.Lucide.ChevronUp
-        : (Theme.CurrentDirection == LayoutDirection.Rtl ? Blazicons.Lucide.ChevronRight : Blazicons.Lucide.ChevronLeft);
+        : (EffectiveDirection == LayoutDirection.Rtl ? Blazicons.Lucide.ChevronRight : Blazicons.Lucide.ChevronLeft);
     private Blazicons.SvgIcon EndArrowIcon => IsVertical
         ? Blazicons.Lucide.ChevronDown
-        : (Theme.CurrentDirection == LayoutDirection.Rtl ? Blazicons.Lucide.ChevronLeft : Blazicons.Lucide.ChevronRight);
+        : (EffectiveDirection == LayoutDirection.Rtl ? Blazicons.Lucide.ChevronLeft : Blazicons.Lucide.ChevronRight);
 
     private string ArrowClass =>
         "z-10 flex shrink-0 items-center justify-center rounded-md text-muted-foreground hover:text-foreground cursor-pointer transition-colors h-8 w-6";

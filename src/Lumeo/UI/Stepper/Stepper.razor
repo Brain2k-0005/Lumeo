@@ -181,6 +181,13 @@
 @inject Lumeo.Services.Localization.ILumeoLocalizer L
 
 @code {
+    // A scoped <DirectionProvider> cascades its direction here; when present it
+    // wins over the global ThemeService so a subtree can be RTL even if the app
+    // is LTR (and vice versa). Null when no provider wraps this stepper — then
+    // the ambient theme direction applies.
+    [CascadingParameter(Name = "LumeoDirection")] private LayoutDirection? ScopedDirection { get; set; }
+    private LayoutDirection EffectiveDirection => ScopedDirection ?? Theme.CurrentDirection;
+
     [Parameter] public RenderFragment? ChildContent { get; set; }
     [Parameter] public int ActiveStep { get; set; }
     [Parameter] public EventCallback<int> ActiveStepChanged { get; set; }
@@ -311,7 +318,7 @@
     // Focus only — does not change ActiveStep (use Enter/Space for activation).
     private async Task HandleStepKeyDown(KeyboardEventArgs e, int idx)
     {
-        var isRtl = Theme.CurrentDirection == LayoutDirection.Rtl;
+        var isRtl = EffectiveDirection == LayoutDirection.Rtl;
         var (hBack, hForward) = isRtl ? ("ArrowRight", "ArrowLeft") : ("ArrowLeft", "ArrowRight");
 
         int target = e.Key switch
