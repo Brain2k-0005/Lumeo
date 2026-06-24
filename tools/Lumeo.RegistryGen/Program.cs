@@ -896,7 +896,14 @@ var jsonOpts = new JsonSerializerOptions
     WriteIndented = true,
     Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
 };
-var json = JsonSerializer.Serialize(root, jsonOpts);
+// Normalise CRLF→LF inside serialized string values so the registry is
+// byte-identical regardless of the host OS. JsonSerializer escapes a CR/LF that
+// lives in a value (mdSummary, descriptions, scraped examples) as \r\n; on Windows
+// those come from Environment.NewLine, so a Windows-generated registry never
+// matched a Linux regen and tripped the registry-freshness CI gate. Replacing the
+// 4-char escape "\r\n" with "\n" only touches genuine CRLF escapes — it cannot
+// match an escaped backslash sequence like "\\r\\n", so example code is untouched.
+var json = JsonSerializer.Serialize(root, jsonOpts).Replace("\\r\\n", "\\n");
 File.WriteAllText(outputPath, json, new UTF8Encoding(false));
 
 // Also write the copy the MCP server bundles + ships. Previously this was only
@@ -1010,7 +1017,7 @@ try
             }
         }
 
-        var perJson = JsonSerializer.Serialize(payload, jsonOpts);
+        var perJson = JsonSerializer.Serialize(payload, jsonOpts).Replace("\\r\\n", "\\n"); // normalise CRLF→LF (see root serialize above)
         foreach (var dir in perComponentDirs)
         {
             File.WriteAllText(Path.Combine(dir, key + ".json"), perJson, new UTF8Encoding(false));
@@ -1049,7 +1056,7 @@ try
         }).ToArray(),
     };
 
-    var cdnDepsJson = JsonSerializer.Serialize(cdnDepsPayload, jsonOpts);
+    var cdnDepsJson = JsonSerializer.Serialize(cdnDepsPayload, jsonOpts).Replace("\\r\\n", "\\n"); // normalise CRLF→LF (see root serialize above)
 
     var cdnDepsOutputDirs = new[]
     {
