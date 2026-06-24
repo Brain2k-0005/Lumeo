@@ -409,8 +409,13 @@ function buildInstallInfo(c: ApiComponent) {
 
 // ───────────────── lumeo_validate_markup ─────────────────
 // The validator lives in ./validate.ts so it can be unit-tested in isolation;
-// build it from the loaded catalog here.
-const validateMarkup = createValidator(components);
+// build it from the loaded catalog here. Shared/global enums (Lumeo.Size,
+// Orientation, …) live in the service layer rather than on any one component, so
+// feed them in separately for type-bound enum validation.
+const sharedEnums = services
+  .filter((s) => s.kind === "enum")
+  .map((s) => ({ name: s.name, values: s.enumValues.map((v) => v.name) }));
+const validateMarkup = createValidator(components, sharedEnums);
 
 // ───────────────── Server setup ─────────────────
 

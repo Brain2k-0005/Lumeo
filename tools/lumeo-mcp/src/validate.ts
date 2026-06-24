@@ -9,43 +9,106 @@ export interface ValidationIssue {
   message: string;
 }
 
+/** The minimal shape the validator needs from each parameter. The real ApiParameter
+ *  (componentsApi.ts) structurally satisfies this — `type` binds the param to its enum,
+ *  and `isCascading` marks a [CascadingParameter] (used to gate the parent-child rule). */
+export interface ValidatorParam {
+  name: string;
+  type?: string;
+  isCascading?: boolean;
+}
+
 /** The minimal shape the validator needs from each catalog component. The real
  *  ApiComponent (componentsApi.ts) structurally satisfies this. */
 export interface ValidatorComponent {
   name: string;
-  parameters: { name: string }[];
+  parameters: ValidatorParam[];
   enums: { name: string; values: string[] }[];
   subComponents: Record<
     string,
-    { componentName: string; parameters: { name: string }[]; enums: { name: string; values: string[] }[] }
+    { componentName: string; parameters: ValidatorParam[]; enums: { name: string; values: string[] }[] }
   >;
 }
 
-type ElementInfo = { params: Set<string>; enums: Map<string, Set<string>>; parent?: string };
+/** A shared/global enum (e.g. Lumeo.Size) defined outside any single component — passed
+ *  in separately because such enums live in the service layer, not a component's `enums`. */
+export interface SharedEnum {
+  name: string;
+  values: string[];
+}
 
-function buildElementIndex(components: ValidatorComponent[]): Map<string, ElementInfo> {
-  const m = new Map<string, ElementInfo>();
-  const enumValueSet = (vals: string[]) => new Set(vals.map((v) => v.toLowerCase()));
+type ElementInfo = {
+  params: Set<string>;
+  /** param name → the bare enum name it is typed as (only when that enum is known). */
+  paramEnum: Map<string, string>;
+  parent?: string;
+  /** True when this sub-component actually reads a CascadingValue from its parent
+   *  (has a [CascadingParameter]). Plain presentational sub-components — e.g. a
+   *  DialogHeader that is just a styled div — are false and don't require the parent. */
+  parentCascades?: boolean;
+};
+
+/** Strips namespace / global:: / trailing nullable `?` to the bare type name:
+ *  "Lumeo.Size?" → "Size", "global::Lumeo.Orientation" → "Orientation". */
+function bareTypeName(type: string | undefined): string {
+  if (!type) return "";
+  return type.replace(/\?+$/, "").replace(/^global::/, "").split(".").pop() ?? "";
+}
+
+/** Global enum table: bare enum name (lowercased) → its display values. Built once from
+ *  every component's `enums` plus the shared enums (Size, Orientation, …). The validator
+ *  binds a param's declared `type` to one of these by name, so it checks a value against
+ *  the param's ACTUAL enum rather than guessing from substring matches. */
+function buildEnumTable(components: ValidatorComponent[], sharedEnums: SharedEnum[]): Map<string, string[]> {
+  const table = new Map<string, string[]>();
+  const add = (name: string, values: string[]) => {
+    if (name && values.length && !table.has(name.toLowerCase())) table.set(name.toLowerCase(), values);
+  };
+  for (const e of sharedEnums) add(e.name, e.values);
   for (const c of components) {
-    const enums = new Map<string, Set<string>>();
-    for (const e of c.enums) enums.set(e.name, enumValueSet(e.values));
-    m.set(c.name.toLowerCase(), { params: new Set(c.parameters.map((p) => p.name)), enums });
+    for (const e of c.enums) add(e.name, e.values);
+    for (const s of Object.values(c.subComponents)) for (const e of s.enums) add(e.name, e.values);
+  }
+  return table;
+}
+
+function buildElementIndex(
+  components: ValidatorComponent[],
+  enumTable: Map<string, string[]>,
+): Map<string, ElementInfo> {
+  const m = new Map<string, ElementInfo>();
+  // For each param, bind it to its enum by type (only when that enum is in the table).
+  const bindEnums = (params: ValidatorParam[]) => {
+    const paramEnum = new Map<string, string>();
+    for (const p of params) {
+      const bare = bareTypeName(p.type);
+      if (bare && enumTable.has(bare.toLowerCase())) paramEnum.set(p.name, bare);
+    }
+    return paramEnum;
+  };
+  for (const c of components) {
+    m.set(c.name.toLowerCase(), {
+      params: new Set(c.parameters.map((p) => p.name)),
+      paramEnum: bindEnums(c.parameters),
+    });
     for (const s of Object.values(c.subComponents)) {
-      const subEnums = new Map<string, Set<string>>();
-      for (const e of s.enums) subEnums.set(e.name, enumValueSet(e.values));
       m.set(s.componentName.toLowerCase(), {
         params: new Set(s.parameters.map((p) => p.name)),
-        enums: subEnums,
+        paramEnum: bindEnums(s.parameters),
         parent: c.name,
+        parentCascades: s.parameters.some((p) => p.isCascading === true),
       });
     }
   }
   return m;
 }
 
-/** Builds a validateMarkup function bound to the given component catalog. */
-export function createValidator(components: ValidatorComponent[]) {
-  const elementIndex = buildElementIndex(components);
+/** Builds a validateMarkup function bound to the given component catalog. `sharedEnums`
+ *  supplies enums that live outside any component (e.g. Lumeo.Size) so type-bound enum
+ *  validation works for shared types too. */
+export function createValidator(components: ValidatorComponent[], sharedEnums: SharedEnum[] = []) {
+  const enumTable = buildEnumTable(components, sharedEnums);
+  const elementIndex = buildElementIndex(components, enumTable);
 
   return function validateMarkup(markup: string): { ok: boolean; issues: ValidationIssue[] } {
     const issues: ValidationIssue[] = [];
@@ -84,25 +147,31 @@ export function createValidator(components: ValidatorComponent[]) {
           }
           continue;
         }
-        // Enum value check: Foo="Bar.Baz.Qux" or Foo="Qux"
+        // Enum value check: Foo="Bar.Baz.Qux" or Foo="Qux". Bind the param to its
+        // declared enum TYPE (not a substring guess), then check the value against that
+        // enum's allowed values. This catches Size="Large" (Large ∉ Size) and never
+        // mis-attributes a value to an unrelated enum that merely shares a substring.
         const rawVal = (am[2] ?? "").replace(/^["']|["']$/g, "").trim();
         if (!rawVal || rawVal.startsWith("@")) continue; // dynamic expression — can't statically check
-        // Which enum does this param use? Match by param name heuristically against enum names.
-        for (const [enumName, vals] of known.enums) {
-          // crude: the param likely uses this enum if rawVal looks like EnumName.Value or matches a value
-          const lastSeg = rawVal.split(".").pop()!.toLowerCase();
-          const looksLikeThisEnum = rawVal.toLowerCase().includes(enumName.toLowerCase()) || vals.has(lastSeg);
-          if (looksLikeThisEnum && !vals.has(lastSeg)) {
-            issues.push({ severity: "error", component: tag, message: `\`${name}="${rawVal}"\` — \`${lastSeg}\` is not a valid ${enumName} value. Allowed: ${[...vals].join(", ")}.` });
+        const boundEnum = known.paramEnum.get(name);
+        if (boundEnum) {
+          const display = enumTable.get(boundEnum.toLowerCase())!;
+          const lastSegRaw = rawVal.split(".").pop()!;
+          const lastSeg = lastSegRaw.toLowerCase();
+          if (!display.some((v) => v.toLowerCase() === lastSeg)) {
+            issues.push({ severity: "error", component: tag, message: `\`${name}="${rawVal}"\` — \`${lastSegRaw}\` is not a valid ${boundEnum} value. Allowed: ${display.join(", ")}.` });
           }
         }
       }
     }
 
-    // Parent-child: every sub-component present should have its required parent present somewhere.
+    // Parent-child: a sub-component that actually reads a CascadingValue from its parent
+    // (parentCascades) must have that parent present. Purely presentational sub-components
+    // — e.g. a DialogHeader that is just a styled div with no [CascadingParameter] — are
+    // NOT flagged, so they can be used standalone without a false "must be used inside" error.
     for (const tag of present) {
       const known = elementIndex.get(tag.toLowerCase())!;
-      if (known.parent && !present.has(known.parent)) {
+      if (known.parent && known.parentCascades && !present.has(known.parent)) {
         issues.push({ severity: "error", component: tag, message: `<${tag}> must be used inside <${known.parent}> (it reads a CascadingValue from it). No <${known.parent}> found in this markup.` });
       }
     }
