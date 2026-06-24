@@ -14,7 +14,7 @@
     </label>
 }
 
-<div id="@_id" class="@CssClass" role="radiogroup" aria-label="@L["Rating.Rate"]" aria-orientation="horizontal" aria-describedby="@FormFieldDescribedBy" @onkeydown="HandleKeyDown" @onpointerup="HandlePointerUp" @onpointerleave="HandlePointerLeaveContainer" @onpointercancel="HandlePointerUp" @attributes="AdditionalAttributes">
+<div id="@EffectiveId" class="@CssClass" role="radiogroup" aria-label="@L["Rating.Rate"]" aria-orientation="horizontal" aria-describedby="@FormFieldDescribedBy" @onkeydown="HandleKeyDown" @onpointerup="HandlePointerUp" @onpointerleave="HandlePointerLeaveContainer" @onpointercancel="HandlePointerUp" @attributes="AdditionalAttributes">
     @for (int i = 1; i <= Max; i++)
     {
         var starIndex = i;
@@ -93,8 +93,16 @@
     [CascadingParameter] private FormField.FormFieldContext? FormField { get; set; }
 
     // aria-describedby on the radiogroup announces the FormField help/error to a screen
-    // reader; the group keeps its own _id (load-bearing for preventDefault-keys interop).
+    // reader.
     private string? FormFieldDescribedBy => FormField?.DescribedBy;
+
+    // Inside a FormField, adopt its ControlId as the radiogroup's id so the field's
+    // <Label For> actually associates with the group (Base UI Field parity, mirroring
+    // Select/RadioGroup). Standalone, keep our own generated id. Every internal id use
+    // — the rendered id attribute AND the preventDefault-keys interop register/unregister
+    // — flows through this so the rendered id and the JS-targeted element stay consistent.
+    private string EffectiveId =>
+        !string.IsNullOrEmpty(FormField?.ControlId) ? FormField!.ControlId : _id;
 
     [Parameter] public double Value { get; set; }
     [Parameter] public EventCallback<double> ValueChanged { get; set; }
@@ -303,7 +311,7 @@
             // suppression so arrow keys scroll normally again.
             if (_pdRegistered)
             {
-                try { await Interop.UnregisterPreventDefaultKeys(_id); }
+                try { await Interop.UnregisterPreventDefaultKeys(EffectiveId); }
                 catch (JSDisconnectedException) { }
                 catch (ObjectDisposedException) { }
                 catch (InvalidOperationException) { }
@@ -316,7 +324,7 @@
         try
         {
             await Interop.RegisterPreventDefaultKeys(
-                _id,
+                EffectiveId,
                 new[] { "ArrowDown", "ArrowRight", "ArrowUp", "ArrowLeft", "Home", "End" }
                     .Select(k => new Lumeo.Services.PreventDefaultKeyRule(k)).ToArray());
             _pdRegistered = true;
@@ -329,7 +337,7 @@
     public async ValueTask DisposeAsync()
     {
         if (!_pdRegistered) return;
-        try { await Interop.UnregisterPreventDefaultKeys(_id); }
+        try { await Interop.UnregisterPreventDefaultKeys(EffectiveId); }
         catch (JSDisconnectedException) { }
         catch (ObjectDisposedException) { }
         catch (InvalidOperationException) { }

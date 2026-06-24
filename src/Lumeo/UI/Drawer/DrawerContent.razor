@@ -38,6 +38,7 @@ else if (Context.IsOpen)
 
 @inject IComponentInteropService Interop
 @inject Microsoft.Extensions.Options.IOptions<Lumeo.Services.LumeoGestureOptions> GestureOpts
+@inject Lumeo.Services.ThemeService Theme
 
 @code {
     [CascadingParameter] public Drawer.DrawerContext Context { get; set; } = default!;
@@ -137,7 +138,26 @@ else if (Context.IsOpen)
     private string CssClass =>
         Cx.Merge("fixed mt-24 flex h-auto flex-col bg-background shadow-lg", PositionClasses, AnimationClass, Class);
 
-    private string SwipeDirection => Side switch
+    // A scoped <DirectionProvider> wins over the global ThemeService, so a subtree
+    // can be RTL even if the app is LTR. Null when no provider wraps this drawer.
+    [CascadingParameter(Name = "LumeoDirection")] private LayoutDirection? ScopedDirection { get; set; }
+    private LayoutDirection EffectiveDirection => ScopedDirection ?? Theme.CurrentDirection;
+
+    // PositionClasses use logical start/end-0 and the slide keyframes mirror under
+    // [dir=rtl], so under RTL a Side.Right drawer rests on (and animates from) the
+    // visual LEFT edge. The swipe direction must follow that visual edge — otherwise
+    // a right-side RTL drawer only dismisses by dragging toward the page instead of
+    // off its anchored edge. Top/Bottom are unaffected by direction.
+    private Lumeo.Side EffectiveSide => EffectiveDirection == LayoutDirection.Rtl
+        ? Side switch
+        {
+            Lumeo.Side.Left => Lumeo.Side.Right,
+            Lumeo.Side.Right => Lumeo.Side.Left,
+            var s => s,
+        }
+        : Side;
+
+    private string SwipeDirection => EffectiveSide switch
     {
         Lumeo.Side.Top => "up",
         Lumeo.Side.Right => "right",

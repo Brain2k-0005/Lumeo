@@ -13,7 +13,7 @@
         EventCallback.Factory.Create<bool>(this, SetOpen),
         EventCallback.Factory.Create<string>(this, OnSearchChanged),
         EventCallback.Factory.Create<string>(this, OnCreateItem),
-        _wrapperId, _contentId, _inputId, _focusedIndex, focusedItemId, focusedItemValue,
+        _wrapperId, _contentId, EffectiveInputId, _focusedIndex, focusedItemId, focusedItemValue,
         EventCallback.Factory.Create<int>(this, SetFocusedIndex),
         RegisterItem, UnregisterItem, _items.Count, EffectiveInvalid, Required,
         Items, ItemValue, ItemText, ItemGroup, ItemDisabled, ItemDescription, ItemIcon, ItemTemplate, Virtualize, ItemSize)
@@ -60,9 +60,16 @@
     [CascadingParameter] private FormField.FormFieldContext? FormField { get; set; }
 
     // Threaded into ComboboxContext.DescribedBy → ComboboxInput's aria-describedby.
-    // The input keeps its own _inputId (load-bearing for popover anchoring), so the
-    // FormField <Label For> can't click-focus it, but the help/error association lands.
     private string? FormFieldDescribedBy => FormField?.DescribedBy;
+
+    // Inside a FormField, adopt its ControlId as the input's id so the field's
+    // <Label For> actually click-focuses the combobox (Base UI Field parity,
+    // matching Select/Textarea/DatePicker/TimePicker). Standalone, keep our own
+    // generated id. Every internal id use (context, FocusAsync, AutoFocus, popover
+    // anchoring) flows through this so the rendered id and the focus/anchor targets
+    // stay consistent.
+    private string EffectiveInputId =>
+        !string.IsNullOrEmpty(FormField?.ControlId) ? FormField!.ControlId : _inputId;
 
     [Parameter] public RenderFragment? ChildContent { get; set; }
     [Parameter] public string? Value { get; set; }
@@ -129,13 +136,13 @@
     [Parameter] public bool AutoFocus { get; set; }
 
     /// <summary>Programmatically focus the combobox text input.</summary>
-    public ValueTask FocusAsync() => Interop.FocusElement(_inputId);
+    public ValueTask FocusAsync() => Interop.FocusElement(EffectiveInputId);
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (firstRender && AutoFocus)
         {
-            try { await Interop.FocusElement(_inputId); }
+            try { await Interop.FocusElement(EffectiveInputId); }
             catch (Microsoft.JSInterop.JSDisconnectedException) { }
         }
     }

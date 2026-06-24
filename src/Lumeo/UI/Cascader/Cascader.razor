@@ -14,7 +14,7 @@
 
 <div id="@_wrapperId" class="@ContainerClass" @attributes="AdditionalAttributes">
     @* Trigger *@
-    <button type="button" class="@TriggerClass" @onclick="ToggleOpen" id="@_triggerId" disabled="@Disabled"
+    <button type="button" class="@TriggerClass" @onclick="ToggleOpen" id="@EffectiveTriggerId" disabled="@Disabled"
             aria-describedby="@FormFieldDescribedBy"
             aria-required="@(Required ? "true" : "false")"
             aria-invalid="@(EffectiveInvalid ? "true" : "false")">
@@ -48,7 +48,13 @@
                     <input type="text" placeholder="@L["Combobox.SearchPlaceholder"]"
                            class="flex h-7 w-full rounded-md border border-input bg-transparent px-2 py-1 text-xs placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring"
                            value="@_searchText"
-                           @oninput="OnSearchInput" />
+                           @oninput="OnSearchInput"
+                           @* Mirror TreeSelect: forward menu-owned keys (Up/Down/Enter/Escape)
+                              to HandleKeyDown while keeping caret keys (Left/Right/Home/End/Space)
+                              in the text box, and stopPropagation so they never reach an outer
+                              overlay. A blunt stop alone would also swallow Escape-to-close. *@
+                           @onkeydown="OnSearchKeyDown"
+                           @onkeydown:stopPropagation="true" />
                 </div>
             }
 
@@ -109,9 +115,15 @@
 @code {
     [CascadingParameter] private FormField.FormFieldContext? FormField { get; set; }
 
-    // aria-describedby on the trigger announces the FormField help/error to a screen
-    // reader; the trigger keeps its own _triggerId (load-bearing for popover anchoring).
+    // aria-describedby on the trigger announces the FormField help/error to a screen reader.
     private string? FormFieldDescribedBy => FormField?.DescribedBy;
+
+    // Inside a FormField, adopt its ControlId as the trigger button's id so the field's
+    // <Label For> click-focuses the cascader (Base UI Field parity, matching Select).
+    // Standalone, keep our own generated id. Popover anchoring, focus-restore and the
+    // click-outside guard all target this same id, so they stay consistent.
+    private string EffectiveTriggerId =>
+        !string.IsNullOrEmpty(FormField?.ControlId) ? FormField!.ControlId : _triggerId;
 
     [Parameter] public List<string>? Value { get; set; }
     [Parameter] public EventCallback<List<string>?> ValueChanged { get; set; }
@@ -327,7 +339,7 @@
         // On close: return focus to the trigger button immediately (it is in the DOM).
         if (wasOpen && !value)
         {
-            try { await Interop.FocusElement(_triggerId); } catch (JSDisconnectedException) { }
+            try { await Interop.FocusElement(EffectiveTriggerId); } catch (JSDisconnectedException) { }
         }
         // On open: focus happens in OnAfterRenderAsync once the panel DOM is ready.
     }
@@ -420,6 +432,25 @@
         }
     }
 
+    // Mirror TreeSelect.OnSearchKeyDown: caret/space keys stay in the text box; the
+    // menu-owned keys (ArrowUp/Down, Enter, Escape) forward to HandleKeyDown. The input
+    // also has @onkeydown:stopPropagation so nothing leaks to an outer overlay.
+    private async Task OnSearchKeyDown(KeyboardEventArgs e)
+    {
+        switch (e.Key)
+        {
+            case "ArrowLeft":
+            case "ArrowRight":
+            case "Home":
+            case "End":
+            case " ":
+                return; // belongs to the text box (caret move / space)
+            default:
+                await HandleKeyDown(e);
+                return;
+        }
+    }
+
     private void OnSearchInput(ChangeEventArgs e)
     {
         _searchText = e.Value?.ToString() ?? "";
@@ -432,8 +463,8 @@
     {
         if (_isOpen && !_registered)
         {
-            await Interop.PositionFixed(_contentId, _triggerId, "start", false, "bottom");
-            await Interop.RegisterClickOutside(_contentId, _triggerId, async () =>
+            await Interop.PositionFixed(_contentId, EffectiveTriggerId, "start", false, "bottom");
+            await Interop.RegisterClickOutside(_contentId, EffectiveTriggerId, async () =>
             {
                 await SetOpen(false);
                 await InvokeAsync(StateHasChanged);

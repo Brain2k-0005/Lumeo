@@ -13,7 +13,7 @@
         EventCallback.Factory.Create<string>(this, OnSearchChanged),
         EventCallback.Factory.Create(this, OnClear),
         EventCallback.Factory.Create<string>(this, OnCreateItem),
-        _wrapperId, _contentId, _triggerId, _focusedIndex, focusedItemId, focusedItemValue,
+        _wrapperId, _contentId, EffectiveTriggerId, _focusedIndex, focusedItemId, focusedItemValue,
         EventCallback.Factory.Create<int>(this, SetFocusedIndex),
         EventCallback.Factory.Create<string>(this, HandleTypeahead),
         RegisterItem, UnregisterItem, EffectiveInvalid, Required,
@@ -57,9 +57,15 @@
     [CascadingParameter] private FormField.FormFieldContext? FormField { get; set; }
 
     // Threaded into SelectContext.DescribedBy → SelectTrigger's aria-describedby.
-    // The trigger keeps its own _triggerId (load-bearing for popover anchoring), so the
-    // FormField <Label For> can't click-focus it, but the help/error association lands.
     private string? FormFieldDescribedBy => FormField?.DescribedBy;
+
+    // Inside a FormField, adopt its ControlId as the trigger button's id so the
+    // field's <Label For> actually click-focuses the combobox (Base UI Field parity,
+    // matching Textarea/DatePicker/TimePicker). Standalone, keep our own generated id.
+    // Every internal id use (context, FocusAsync, AutoFocus, popover anchoring) flows
+    // through this so the rendered id and the focus/anchor targets stay consistent.
+    private string EffectiveTriggerId =>
+        !string.IsNullOrEmpty(FormField?.ControlId) ? FormField!.ControlId : _triggerId;
 
     [Parameter] public RenderFragment? ChildContent { get; set; }
     [Parameter] public string? Value { get; set; }
@@ -112,7 +118,7 @@
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     /// <summary>Programmatically focus the trigger button.</summary>
-    public ValueTask FocusAsync() => Interop.FocusElement(_triggerId);
+    public ValueTask FocusAsync() => Interop.FocusElement(EffectiveTriggerId);
 
     private bool _wasOpen;
 
@@ -120,7 +126,7 @@
     {
         if (firstRender && AutoFocus)
         {
-            try { await Interop.FocusElement(_triggerId); }
+            try { await Interop.FocusElement(EffectiveTriggerId); }
             catch (Microsoft.JSInterop.JSDisconnectedException) { }
         }
 
@@ -211,8 +217,15 @@
 
     private void RegisterItem(string id, string value, string text, bool disabled)
     {
-        if (!_items.Any(i => i.Id == id))
+        // Upsert: a re-registration with the same id (e.g. an item's Disabled or
+        // search text changed while the menu is open) must UPDATE the cached entry,
+        // not be ignored — otherwise NavItems keeps the stale state and keyboard
+        // nav / Enter could land on an item that is now disabled.
+        var idx = _items.FindIndex(i => i.Id == id);
+        if (idx < 0)
             _items.Add((id, value, text, disabled));
+        else
+            _items[idx] = (id, value, text, disabled);
     }
 
     private void UnregisterItem(string id)

@@ -18,7 +18,7 @@
 
 <div id="@_wrapperId" class="relative inline-block @Class" @attributes="AdditionalAttributes">
     <button type="button"
-            id="@_triggerId"
+            id="@EffectiveTriggerId"
             class="@TriggerClass"
             @onclick="ToggleOpen"
             disabled="@Disabled"
@@ -102,8 +102,16 @@
     [CascadingParameter] private FormField.FormFieldContext? FormField { get; set; }
 
     // aria-describedby on the trigger announces the FormField help/error to a screen
-    // reader; the trigger keeps its own _triggerId (load-bearing for popover anchoring).
+    // reader.
     private string? FormFieldDescribedBy => FormField?.DescribedBy;
+
+    // Inside a FormField, adopt its ControlId as the trigger button's id so the
+    // field's <Label For> actually click-focuses the tree select (Base UI Field parity,
+    // matching Select/Textarea/DatePicker/TimePicker). Standalone, keep our own generated id.
+    // Every internal id use (the rendered id attribute, restore-focus on close) flows
+    // through this so the rendered id and the focus target stay consistent.
+    private string EffectiveTriggerId =>
+        !string.IsNullOrEmpty(FormField?.ControlId) ? FormField!.ControlId : _triggerId;
 
     [Parameter] public string? Value { get; set; }
     [Parameter] public EventCallback<string> ValueChanged { get; set; }
@@ -324,7 +332,7 @@
         // aren't stranded (the panel that held focus is now gone).
         if (restoreFocus && !_disposed)
         {
-            try { await Interop.FocusElement(_triggerId); } catch (JSDisconnectedException) { }
+            try { await Interop.FocusElement(EffectiveTriggerId); } catch (JSDisconnectedException) { }
         }
     }
 

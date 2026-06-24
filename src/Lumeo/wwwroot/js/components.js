@@ -1431,7 +1431,9 @@ export function registerHorizontalSwipe(elementId, dotnetRef, options) {
         const deltaY = e.changedTouches[0].clientY - startY;
         if (Math.abs(deltaY) >= verticalDeadZone) return; // too much vertical — ignore
         if (Math.abs(deltaX) < swipeThreshold) return;    // below horizontal threshold — ignore
-        dotnetRef.invokeMethodAsync('OnCalendarSwipe', elementId, deltaX < 0 ? 'next' : 'prev');
+        const rtl = getComputedStyle(el).direction === 'rtl';
+        const forward = rtl ? deltaX > 0 : deltaX < 0; // RTL mirrors physical deltaX
+        dotnetRef.invokeMethodAsync('OnCalendarSwipe', elementId, forward ? 'next' : 'prev');
     };
 
     el.addEventListener('touchstart', onTouchStart, { passive: true });
@@ -1488,7 +1490,9 @@ export function registerGallerySwipe(elementId, dotnetRef, options) {
         const deltaY = e.changedTouches[0].clientY - startY;
         if (Math.abs(deltaY) >= verticalDeadZone) return; // too much vertical — ignore
         if (Math.abs(deltaX) < swipeThreshold) return;    // below horizontal threshold — ignore
-        dotnetRef.invokeMethodAsync('OnGallerySwipe', elementId, deltaX < 0 ? 'next' : 'prev');
+        const rtl = getComputedStyle(el).direction === 'rtl';
+        const forward = rtl ? deltaX > 0 : deltaX < 0; // RTL mirrors physical deltaX
+        dotnetRef.invokeMethodAsync('OnGallerySwipe', elementId, forward ? 'next' : 'prev');
     };
 
     el.addEventListener('touchstart', onTouchStart, { passive: true });
@@ -1553,7 +1557,9 @@ export function registerTabSwipe(elementId, wrap, dotnetRef, options) {
         if (Math.abs(deltaY) >= verticalDeadZone) return; // too much vertical drift — ignore
         if (Math.abs(deltaX) < swipeThreshold) return;    // below horizontal threshold — ignore
 
-        const direction = deltaX < 0 ? 'next' : 'prev';
+        const rtl = getComputedStyle(el).direction === 'rtl';
+        const forward = rtl ? deltaX > 0 : deltaX < 0; // RTL mirrors physical deltaX
+        const direction = forward ? 'next' : 'prev';
         dotnetRef.invokeMethodAsync('OnTabSwipe', elementId, direction);
     };
 

@@ -1,4 +1,5 @@
 @namespace Lumeo
+@implements IAsyncDisposable
 
 @if (Label is not null && !InsideFormField)
 {
@@ -578,14 +579,33 @@
         else if (!_isOpen && _navKeysRegistered)
         {
             _navKeysRegistered = false;
-            try
-            {
-                await Interop.UnregisterPreventDefaultKeys(_hoursColId);
-                await Interop.UnregisterPreventDefaultKeys(_minutesColId);
-                if (ShowSeconds) await Interop.UnregisterPreventDefaultKeys(_secondsColId);
-            }
-            catch (JSDisconnectedException) { }
+            await UnregisterNavKeys();
         }
+    }
+
+    // Tear down the JS prevent-default key handlers registered for the time
+    // columns. Mirrors TimePicker so a picker disposed while its popover is open
+    // (route change, conditional form section) doesn't leak stale handler-map
+    // entries for the generated column ids.
+    private async Task UnregisterNavKeys()
+    {
+        try
+        {
+            await Interop.UnregisterPreventDefaultKeys(_hoursColId);
+            await Interop.UnregisterPreventDefaultKeys(_minutesColId);
+            if (ShowSeconds) await Interop.UnregisterPreventDefaultKeys(_secondsColId);
+        }
+        // DisposeAsync routes through here, and a mid-navigation dispose can surface
+        // ObjectDisposed/InvalidOperation from the JS layer — swallow all three, matching
+        // the codebase dispose convention (Carousel/Rating/Segmented/ToggleGroup).
+        catch (JSDisconnectedException) { }
+        catch (ObjectDisposedException) { }
+        catch (InvalidOperationException) { }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_navKeysRegistered) await UnregisterNavKeys();
     }
 
     private async Task UpdateValue()
