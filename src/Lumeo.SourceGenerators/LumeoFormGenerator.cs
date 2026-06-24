@@ -692,21 +692,33 @@ public sealed class LumeoFormGenerator : IIncrementalGenerator
         sb.Append("                    __field.AddAttribute(").Append(next())
           .AppendLine(", \"ChildContent\", (global::Microsoft.AspNetCore.Components.RenderFragment)((__sel) =>");
         sb.AppendLine("                    {");
+        // A bare <Select> renders its ChildContent in a div with no trigger or
+        // listbox, so options must be composed as SelectTrigger (the closed-state
+        // value/placeholder) + SelectContent (the role=listbox popover) — otherwise
+        // the field is a flat, always-open, inaccessible list.
+        sb.Append("                        __sel.OpenComponent<global::Lumeo.SelectTrigger>(").Append(next()).AppendLine(");");
+        sb.AppendLine("                        __sel.CloseComponent();");
+        sb.Append("                        __sel.OpenComponent<global::Lumeo.SelectContent>(").Append(next()).AppendLine(");");
+        sb.Append("                        __sel.AddAttribute(").Append(next())
+          .AppendLine(", \"ChildContent\", (global::Microsoft.AspNetCore.Components.RenderFragment)((__content) =>");
+        sb.AppendLine("                        {");
 
         if (f.EnumMembers is not null)
         {
             foreach (var em in f.EnumMembers)
             {
                 var memberName = em.Name; // Name w/o qualifier for Value string (ToString() of enum gives member name)
-                sb.Append("                        __sel.OpenComponent<global::Lumeo.SelectItem>(").Append(next()).AppendLine(");");
-                sb.Append("                        __sel.AddAttribute(").Append(next()).Append(", \"Value\", ").Append(Str(memberName)).AppendLine(");");
-                sb.Append("                        __sel.AddAttribute(").Append(next())
+                sb.Append("                            __content.OpenComponent<global::Lumeo.SelectItem>(").Append(next()).AppendLine(");");
+                sb.Append("                            __content.AddAttribute(").Append(next()).Append(", \"Value\", ").Append(Str(memberName)).AppendLine(");");
+                sb.Append("                            __content.AddAttribute(").Append(next())
                   .Append(", \"ChildContent\", (global::Microsoft.AspNetCore.Components.RenderFragment)((__b) => __b.AddContent(")
                   .Append(next()).Append(", ").Append(Str(SplitPascal(em.Name))).AppendLine(")));");
-                sb.AppendLine("                        __sel.CloseComponent();");
+                sb.AppendLine("                            __content.CloseComponent();");
             }
         }
 
+        sb.AppendLine("                        }));");
+        sb.AppendLine("                        __sel.CloseComponent();");
         sb.AppendLine("                    }));");
         sb.AppendLine("                    __field.CloseComponent();");
     }

@@ -189,6 +189,26 @@ public class LumeoFormGeneratorTests
     }
 
     [Fact]
+    public void Enum_Select_Is_Composed_With_SelectTrigger_And_SelectContent()
+    {
+        // A bare <Select> with flat SelectItem children renders an always-open,
+        // inaccessible list — the options MUST be wrapped in SelectTrigger (closed
+        // state) + SelectContent (the role=listbox popover).
+        var src = Gen("""
+            namespace App {
+                public enum Color { Red, Green }
+                [Lumeo.LumeoForm] public partial class M { public Color Color { get; set; } }
+            }
+            """);
+
+        Assert.Contains("global::Lumeo.SelectTrigger", src);
+        Assert.Contains("global::Lumeo.SelectContent", src);
+        // The items live inside SelectContent's fragment (rendered onto __content),
+        // not directly on the Select.
+        Assert.Contains("__content.OpenComponent<global::Lumeo.SelectItem>", src);
+    }
+
+    [Fact]
     public void Nullable_Enum_Is_Null_Safe_And_Clears_To_Null()
     {
         var src = Gen("""
