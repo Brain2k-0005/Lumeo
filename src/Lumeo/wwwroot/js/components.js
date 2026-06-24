@@ -170,9 +170,21 @@ let scrollLockCount = 0;
 // some Firefox configurations — the page still scrolls because the scroll
 // chain reaches <html>. We lock both elements together (and restore both on
 // unlock) so the modal/sheet/overlay actually traps scroll across browsers.
+let lockedPaddingRight = '';
+
 export function lockScroll() {
     scrollLockCount++;
     if (scrollLockCount === 1) {
+        // Compensate for the scrollbar that overflow:hidden removes. Without this the
+        // page content (and any position:fixed chrome) jumps right by the scrollbar
+        // width the instant an overlay opens — the classic modal layout-shift jank.
+        // Measure the gutter BEFORE hiding overflow, then pad the body by it.
+        const scrollbarWidth = window.innerWidth - document.documentElement.clientWidth;
+        lockedPaddingRight = document.body.style.paddingRight;
+        if (scrollbarWidth > 0) {
+            const current = parseFloat(getComputedStyle(document.body).paddingRight) || 0;
+            document.body.style.paddingRight = `${current + scrollbarWidth}px`;
+        }
         document.body.style.overflow = 'hidden';
         document.documentElement.style.overflow = 'hidden';
     }
@@ -183,6 +195,10 @@ export function unlockScroll() {
     if (scrollLockCount === 0) {
         document.body.style.overflow = '';
         document.documentElement.style.overflow = '';
+        // Restore the exact inline padding-right we saved (empty string → falls back
+        // to the stylesheet value), undoing the scrollbar-width compensation.
+        document.body.style.paddingRight = lockedPaddingRight;
+        lockedPaddingRight = '';
     }
 }
 
