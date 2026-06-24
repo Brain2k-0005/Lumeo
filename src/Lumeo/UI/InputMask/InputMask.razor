@@ -12,7 +12,7 @@
     </label>
 }
 
-<input id="@_id"
+<input id="@EffectiveId"
        class="@CssClass"
        value="@_displayValue"
        placeholder="@EffectivePlaceholder"
@@ -58,10 +58,17 @@
     private bool InsideFormField => FormField is not null;
 
     // Point aria-describedby at the FormField's rendered help/error text so a screen
-    // reader announces it on this input (null outside a FormField). The input keeps its
-    // own id (load-bearing for caret JS interop), so the FormField <Label For> can't
-    // click-focus it — but the error/help association via aria-describedby is the win.
+    // reader announces it on this input (null outside a FormField).
     private string? FormFieldDescribedBy => FormField?.DescribedBy;
+
+    // Inside a FormField, adopt its ControlId as the input's id so the field's
+    // <Label For> actually click-focuses it (Base UI Field parity, matching
+    // Select/Textarea/DatePicker/TimePicker). Standalone, keep our own generated id.
+    // Every internal id use (the rendered id attribute and the caret JS interop in
+    // HandleInput/OnAfterRenderAsync) flows through this so the rendered id and the
+    // focus/caret targets stay consistent.
+    private string EffectiveId =>
+        !string.IsNullOrEmpty(FormField?.ControlId) ? FormField!.ControlId : _id;
 
     private readonly string _id = LumeoIds.New("inputmask");
 
@@ -175,7 +182,7 @@
         // Read the caret BEFORE we rewrite the value — the DOM still holds the
         // post-edit string the browser produced, so selectionStart is meaningful.
         int browserCaret;
-        try { browserCaret = await Interop.GetInputCaret(_id); }
+        try { browserCaret = await Interop.GetInputCaret(EffectiveId); }
         catch (JSDisconnectedException) { browserCaret = inputVal.Length; }
 
         _rawValue = ExtractRaw(inputVal);
@@ -239,7 +246,7 @@
         if (_pendingCaret < 0) return;
         var pos = _pendingCaret;
         _pendingCaret = -1;
-        try { await Interop.SetInputCaret(_id, pos); }
+        try { await Interop.SetInputCaret(EffectiveId, pos); }
         catch (JSDisconnectedException) { }
         catch (ObjectDisposedException) { }
         catch (InvalidOperationException) { } // JS interop unavailable during prerender

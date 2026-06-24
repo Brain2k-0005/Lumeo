@@ -38,6 +38,7 @@ else if (Context.IsOpen || _exiting)
 @inject IComponentInteropService Interop
 @inject Lumeo.Services.Localization.ILumeoLocalizer L
 @inject Microsoft.Extensions.Options.IOptions<Lumeo.Services.LumeoGestureOptions> GestureOpts
+@inject Lumeo.Services.ThemeService Theme
 
 @code {
     [CascadingParameter] public Sheet.SheetContext Context { get; set; } = default!;
@@ -187,10 +188,27 @@ else if (Context.IsOpen || _exiting)
     // Kept for backward-compat with tests / consumers that read SideClasses.
     private string SideClasses => $"{PositionClasses} {EnterAnimationClass}".Trim();
 
+    // A scoped <DirectionProvider> wins over the global ThemeService.
+    [CascadingParameter(Name = "LumeoDirection")] private LayoutDirection? ScopedDirection { get; set; }
+    private LayoutDirection EffectiveDirection => ScopedDirection ?? Theme.CurrentDirection;
+
+    // PositionClasses use logical start/end-0 and the slide keyframes mirror under
+    // [dir=rtl], so under RTL a Side.Right sheet rests on (and animates from) the
+    // visual LEFT edge — the dismiss-swipe must follow that visual edge too, or an
+    // RTL right-side sheet only closes by dragging toward the page. (DrawerContent
+    // has the identical fix.)
+    private Lumeo.Side EffectiveSide => EffectiveDirection == LayoutDirection.Rtl
+        ? Side switch
+        {
+            Lumeo.Side.Left => Lumeo.Side.Right,
+            Lumeo.Side.Right => Lumeo.Side.Left,
+            var s => s,
+        }
+        : Side;
+
     // Swipe direction is the direction of the gesture that should dismiss the sheet:
     // a Right-anchored sheet flies out to the right when the user swipes right, etc.
-    // Drawer uses the same convention — see DrawerContent.SwipeDirection.
-    private string SwipeDirection => Side switch
+    private string SwipeDirection => EffectiveSide switch
     {
         Lumeo.Side.Top => "up",
         Lumeo.Side.Right => "right",

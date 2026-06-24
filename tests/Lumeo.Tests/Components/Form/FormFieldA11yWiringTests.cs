@@ -139,10 +139,12 @@ public class FormFieldA11yWiringTests : IAsyncLifetime
     }
 
     [Fact]
-    public void Select_Trigger_Gets_Describedby_Threaded_Through_The_Context()
+    public void Select_Trigger_Adopts_The_FormField_Id_And_Describedby()
     {
-        // Select's trigger lives in a child (SelectTrigger) off the cascaded context, so
-        // DescribedBy is threaded through SelectContext rather than adopted as the id.
+        // Inside a FormField the SelectTrigger button adopts the cascaded ControlId as its
+        // id (via Select.EffectiveTriggerId), so the field's <Label For> click-focuses the
+        // combobox; DescribedBy is threaded through the context to the trigger's
+        // aria-describedby. (Regression guard for the FormField <Label For> link.)
         var cut = RenderField(b =>
         {
             b.OpenComponent<L.Select>(0);
@@ -152,9 +154,10 @@ public class FormFieldA11yWiringTests : IAsyncLifetime
                 sb.CloseComponent();
             }));
             b.CloseComponent();
-        }, helpText: "Pick one");
+        }, label: "Pick", helpText: "Pick one");
         var trigger = cut.Find("button[role='combobox']");
         var helpId = cut.Find("p.text-muted-foreground").GetAttribute("id");
+        Assert.Equal(cut.Find("label").GetAttribute("for"), trigger.GetAttribute("id"));
         Assert.Equal(helpId, trigger.GetAttribute("aria-describedby"));
     }
 }

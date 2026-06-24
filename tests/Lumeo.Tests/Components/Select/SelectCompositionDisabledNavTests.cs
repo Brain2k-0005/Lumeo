@@ -123,4 +123,52 @@ public class SelectCompositionDisabledNavTests : IAsyncLifetime
         // typeahead finds no match and doesn't highlight it.
         Assert.DoesNotContain("bg-accent", FindOption(cut, "Banana")!.ClassList);
     }
+
+    [Fact]
+    public void Disabling_An_Item_While_The_Menu_Is_Open_Removes_It_From_Keyboard_Nav()
+    {
+        // Regression for the RegisterItem-upsert fix: all three start enabled; disabling
+        // the middle one AFTER the menu is open must refresh the keyboard-nav registry.
+        // The old add-if-absent RegisterItem froze the first-seen disabled=false state, so
+        // ArrowDown could still land on (and Enter select) an item that is now disabled.
+        var cut = _ctx.Render(builder =>
+        {
+            builder.OpenComponent<L.Select>(0);
+            builder.AddAttribute(1, "Open", true);
+            builder.AddAttribute(2, "ChildContent", (RenderFragment)(b =>
+            {
+                b.OpenComponent<L.SelectTrigger>(0);
+                b.AddAttribute(1, "ChildContent", (RenderFragment)(t => t.AddContent(0, "Choose...")));
+                b.CloseComponent();
+                b.OpenComponent<L.SelectContent>(2);
+                b.AddAttribute(3, "ChildContent", (RenderFragment)(c =>
+                {
+                    void Item(int seq, string val, string label)
+                    {
+                        c.OpenComponent<L.SelectItem>(seq);
+                        c.AddAttribute(seq + 1, "Value", val);
+                        c.AddAttribute(seq + 2, "ChildContent", (RenderFragment)(i => i.AddContent(0, label)));
+                        c.CloseComponent();
+                    }
+                    Item(0, "apple", "Apple");
+                    Item(4, "banana", "Banana");
+                    Item(8, "cherry", "Cherry");
+                }));
+                b.CloseComponent();
+            }));
+            builder.CloseComponent();
+        });
+
+        // Disable Banana while the menu is open (the upsert/re-register path).
+        var banana = cut.FindComponents<L.SelectItem>().First(c => c.Instance.Value == "banana");
+        banana.Render(p => p.Add(x => x.Disabled, true));
+
+        var listbox = cut.Find("[role='listbox']");
+        listbox.KeyDown("ArrowDown"); // -> Apple
+        Assert.Contains("bg-accent", FindOption(cut, "Apple")!.ClassList);
+
+        listbox.KeyDown("ArrowDown"); // skips the now-disabled Banana -> Cherry
+        Assert.Contains("bg-accent", FindOption(cut, "Cherry")!.ClassList);
+        Assert.DoesNotContain("bg-accent", FindOption(cut, "Banana")!.ClassList);
+    }
 }

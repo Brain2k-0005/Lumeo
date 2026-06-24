@@ -410,7 +410,11 @@ else
             // unregister it then (mirrors the registration guard).
             if (ShowSeconds) await Interop.UnregisterPreventDefaultKeys(_secondsColId);
         }
+        // DisposeAsync routes through here; a mid-navigation dispose can surface
+        // ObjectDisposed/InvalidOperation from the JS layer — swallow all three.
         catch (JSDisconnectedException) { }
+        catch (ObjectDisposedException) { }
+        catch (InvalidOperationException) { }
     }
 
     public async ValueTask DisposeAsync()

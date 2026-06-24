@@ -13,7 +13,7 @@
 }
 
 <div class="relative" @attributes="AdditionalAttributes">
-    <textarea id="@_textareaId"
+    <textarea id="@EffectiveTextareaId"
               class="@TextareaCssClass"
               value="@Value"
               rows="@Rows"
@@ -85,8 +85,17 @@
     [CascadingParameter] private FormField.FormFieldContext? FormField { get; set; }
 
     // aria-describedby on the textarea announces the FormField help/error to a screen
-    // reader; the textarea keeps its own _textareaId (load-bearing for caret JS interop).
+    // reader.
     private string? FormFieldDescribedBy => FormField?.DescribedBy;
+
+    // Inside a FormField, adopt its ControlId as the textarea's id so the field's
+    // <Label For> actually click-focuses the textarea (Base UI Field parity, matching
+    // Select/Textarea/DatePicker/TimePicker). Standalone, keep our own generated id.
+    // Every internal id use (rendered id, caret JS interop, prevent-default key
+    // registration) flows through this so the rendered id and the JS targets stay
+    // consistent.
+    private string EffectiveTextareaId =>
+        !string.IsNullOrEmpty(FormField?.ControlId) ? FormField!.ControlId : _textareaId;
 
     [Parameter] public string? Value { get; set; }
     [Parameter] public EventCallback<string> ValueChanged { get; set; }
@@ -145,7 +154,7 @@
         await ValueChanged.InvokeAsync(newValue);
 
         // Get caret position from JS
-        var caretInfo = await Interop.GetTextareaCaretPosition(_textareaId);
+        var caretInfo = await Interop.GetTextareaCaretPosition(EffectiveTextareaId);
         if (caretInfo is null) return;
         var selectionStart = caretInfo.SelectionStart;
 
@@ -223,7 +232,7 @@
     {
         if (Value is not null && _triggerStartIndex >= 0)
         {
-            var caretInfo = await Interop.GetTextareaCaretPosition(_textareaId);
+            var caretInfo = await Interop.GetTextareaCaretPosition(EffectiveTextareaId);
             if (caretInfo is null) return;
             var selectionStart = caretInfo.SelectionStart;
             var before = Value[.._triggerStartIndex];
@@ -280,7 +289,7 @@
             {
                 _pdRegistered = true;
                 await Interop.RegisterPreventDefaultKeys(
-                    _textareaId,
+                    EffectiveTextareaId,
                     new[]
                     {
                         new Lumeo.Services.PreventDefaultKeyRule("Enter", SkipComposing: true),
@@ -292,7 +301,7 @@
             else if (!_showDropdown && _pdRegistered)
             {
                 _pdRegistered = false;
-                await Interop.UnregisterPreventDefaultKeys(_textareaId);
+                await Interop.UnregisterPreventDefaultKeys(EffectiveTextareaId);
             }
         }
         catch (JSDisconnectedException) { _pdRegistered = false; }
@@ -308,7 +317,7 @@
         try
         {
             if (_pdRegistered)
-                await Interop.UnregisterPreventDefaultKeys(_textareaId);
+                await Interop.UnregisterPreventDefaultKeys(EffectiveTextareaId);
         }
         catch (JSDisconnectedException) { }
         catch (ObjectDisposedException) { }
