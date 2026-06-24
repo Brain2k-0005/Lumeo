@@ -9,7 +9,10 @@
     </CascadingValue>
     @if (Status != AvatarStatus.None)
     {
-        <span class="absolute bottom-0 right-0 block h-2.5 w-2.5 rounded-full ring-2 ring-background @StatusColor"></span>
+        @* The status is conveyed by colour; role=img + aria-label give it a text
+           alternative so it isn't colour-only (WCAG 1.4.1). *@
+        <span class="absolute bottom-0 right-0 block h-2.5 w-2.5 rounded-full ring-2 ring-background @StatusColor"
+              role="img" aria-label="@EffectiveStatusLabel"></span>
     }
 </div>
 
@@ -23,6 +26,10 @@
     [Parameter] public Lumeo.Size Size { get; set; } = Lumeo.Size.Md;
     [Parameter] public AvatarShape Shape { get; set; } = AvatarShape.Circle;
     [Parameter] public AvatarStatus Status { get; set; } = AvatarStatus.None;
+    /// <summary>Accessible label for the status dot (e.g. "Online"). Defaults to the
+    /// <see cref="AvatarStatus"/> name; override to localize. Exposed as the dot's
+    /// <c>aria-label</c> so the status isn't conveyed by colour alone (WCAG 1.4.1).</summary>
+    [Parameter] public string? StatusLabel { get; set; }
     /// <summary>Accessible name announced for the avatar. When set, the
     /// component renders <c>role="img"</c> + <c>aria-label</c> so a
     /// screen-reader has something to read. Useful for image-only avatars
@@ -93,6 +100,9 @@
         AvatarStatus.Busy => "bg-destructive",
         _ => ""
     };
+
+    // Text alternative for the status dot — the consumer override, else the enum name.
+    private string EffectiveStatusLabel => StatusLabel ?? Status.ToString();
 
     public enum AvatarShape { Circle, Square }
     public enum AvatarStatus { None, Online, Offline, Away, Busy }
