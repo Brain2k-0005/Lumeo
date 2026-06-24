@@ -18,6 +18,7 @@
               name="@Name"
               aria-required="@Required.ToString().ToLowerInvariant()"
               aria-invalid="@((EffectiveInvalid || IsOverLimit).ToString().ToLowerInvariant())"
+              aria-describedby="@FormFieldDescribedBy"
               class="@CssClass" value="@Value" @oninput="HandleInput" disabled="@Disabled"
               maxlength="@EffectiveMaxLength" @attributes="AdditionalAttributes"></textarea>
     @if (ShowCount)
@@ -86,6 +87,12 @@
 
     private bool EffectiveInvalid => Invalid || FormField?.HasError == true;
     private bool InsideFormField => FormField is not null;
+
+    // Point aria-describedby at the FormField's rendered help/error text so a screen
+    // reader announces it on this textarea (null outside a FormField). The textarea keeps
+    // its own id (load-bearing for auto-resize JS interop), so the FormField <Label For>
+    // can't click-focus it — but the error/help association via aria-describedby is the win.
+    private string? FormFieldDescribedBy => FormField?.DescribedBy;
 
     private string ResizeClass => Resize switch
     {

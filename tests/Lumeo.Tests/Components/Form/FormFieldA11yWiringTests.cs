@@ -81,4 +81,80 @@ public class FormFieldA11yWiringTests : IAsyncLifetime
         Assert.False(input.HasAttribute("id"));
         Assert.False(input.HasAttribute("aria-describedby"));
     }
+
+    // --- Wave E: the same wiring extended beyond Input to the rest of the controls ---
+
+    private IRenderedComponent<IComponent> RenderField(RenderFragment child, string? label = null, string? helpText = null)
+        => _ctx.Render(builder =>
+        {
+            builder.OpenComponent<L.FormField>(0);
+            if (label != null) builder.AddAttribute(1, "Label", label);
+            if (helpText != null) builder.AddAttribute(2, "HelpText", helpText);
+            builder.AddAttribute(3, "ChildContent", child);
+            builder.CloseComponent();
+        });
+
+    [Fact]
+    public void Checkbox_Adopts_The_FormField_Id_And_Describedby()
+    {
+        var cut = RenderField(b => { b.OpenComponent<L.Checkbox>(0); b.CloseComponent(); },
+            label: "Accept", helpText: "Terms apply");
+        var box = cut.Find("button[role='checkbox']");
+        var helpId = cut.Find("p.text-muted-foreground").GetAttribute("id");
+        Assert.Equal(cut.Find("label").GetAttribute("for"), box.GetAttribute("id"));
+        Assert.Equal(helpId, box.GetAttribute("aria-describedby"));
+    }
+
+    [Fact]
+    public void Switch_Adopts_The_FormField_Id_And_Describedby()
+    {
+        var cut = RenderField(b => { b.OpenComponent<L.Switch>(0); b.CloseComponent(); },
+            label: "Notify", helpText: "Email me");
+        var sw = cut.Find("button[role='switch']");
+        var helpId = cut.Find("p.text-muted-foreground").GetAttribute("id");
+        Assert.Equal(cut.Find("label").GetAttribute("for"), sw.GetAttribute("id"));
+        Assert.Equal(helpId, sw.GetAttribute("aria-describedby"));
+    }
+
+    [Fact]
+    public void RadioGroup_Adopts_The_FormField_Id_And_Describedby()
+    {
+        var cut = RenderField(b => { b.OpenComponent<L.RadioGroup>(0); b.CloseComponent(); },
+            label: "Choose", helpText: "one option");
+        var group = cut.Find("[role='radiogroup']");
+        var helpId = cut.Find("p.text-muted-foreground").GetAttribute("id");
+        Assert.Equal(cut.Find("label").GetAttribute("for"), group.GetAttribute("id"));
+        Assert.Equal(helpId, group.GetAttribute("aria-describedby"));
+    }
+
+    [Fact]
+    public void Slider_Range_Input_Adopts_The_FormField_Id_And_Describedby()
+    {
+        var cut = RenderField(b => { b.OpenComponent<L.Slider>(0); b.CloseComponent(); },
+            label: "Volume", helpText: "0 to 100");
+        var input = cut.Find("input[type='range']");
+        var helpId = cut.Find("p.text-muted-foreground").GetAttribute("id");
+        Assert.Equal(cut.Find("label").GetAttribute("for"), input.GetAttribute("id"));
+        Assert.Equal(helpId, input.GetAttribute("aria-describedby"));
+    }
+
+    [Fact]
+    public void Select_Trigger_Gets_Describedby_Threaded_Through_The_Context()
+    {
+        // Select's trigger lives in a child (SelectTrigger) off the cascaded context, so
+        // DescribedBy is threaded through SelectContext rather than adopted as the id.
+        var cut = RenderField(b =>
+        {
+            b.OpenComponent<L.Select>(0);
+            b.AddAttribute(1, "ChildContent", (RenderFragment)(sb =>
+            {
+                sb.OpenComponent<L.SelectTrigger>(0);
+                sb.CloseComponent();
+            }));
+            b.CloseComponent();
+        }, helpText: "Pick one");
+        var trigger = cut.Find("button[role='combobox']");
+        var helpId = cut.Find("p.text-muted-foreground").GetAttribute("id");
+        Assert.Equal(helpId, trigger.GetAttribute("aria-describedby"));
+    }
 }

@@ -22,7 +22,7 @@
         <label class="@ButtonLabelCssClass">
             <Blazicon Svg="Lucide.Upload" class="h-4 w-4" />
             <span>@(Label ?? L["FileUpload.ChooseFile"])</span>
-            <InputFile class="sr-only" OnChange="HandleFileSelected" multiple="@Multiple" accept="@Accept" />
+            <InputFile id="@FormFieldControlId" aria-describedby="@FormFieldDescribedBy" class="sr-only" OnChange="HandleFileSelected" multiple="@Multiple" accept="@Accept" />
         </label>
         @if (!AutoUpload && _uploadItems.Any(i => i.Status == FileUploadStatus.Pending))
         {
@@ -82,7 +82,7 @@ else if (Variant == FileUploadVariant.Avatar)
             {
                 <Blazicon Svg="Lucide.User" class="h-8 w-8 text-muted-foreground" />
             }
-            <InputFile class="sr-only" OnChange="HandleFileSelected" multiple="false" accept="@(Accept ?? "image/*")" />
+            <InputFile id="@FormFieldControlId" aria-describedby="@FormFieldDescribedBy" class="sr-only" OnChange="HandleFileSelected" multiple="false" accept="@(Accept ?? "image/*")" />
         </label>
         @if (_globalErrorMessage is not null)
         {
@@ -133,7 +133,7 @@ else
             @* Stretched invisibly over the whole dropzone: native drag&drop onto a
                file input adds the dropped files and fires OnChange (no JS needed),
                and clicking anywhere in the zone opens the browse dialog. *@
-            <InputFile class="absolute inset-0 h-full w-full cursor-pointer opacity-0" OnChange="HandleFileSelected" multiple="@Multiple" accept="@Accept" />
+            <InputFile id="@FormFieldControlId" aria-describedby="@FormFieldDescribedBy" class="absolute inset-0 h-full w-full cursor-pointer opacity-0" OnChange="HandleFileSelected" multiple="@Multiple" accept="@Accept" />
         </label>
         @if (_globalErrorMessage is not null)
         {
@@ -190,6 +190,9 @@ else
 @code {
     // ── Form-field integration ───────────────────────────────────────────────
     [CascadingParameter] private FormField.FormFieldContext? FormField { get; set; }
+
+    private string? FormFieldControlId => string.IsNullOrEmpty(FormField?.ControlId) ? null : FormField!.ControlId;
+    private string? FormFieldDescribedBy => FormField?.DescribedBy;
 
     [Parameter] public bool Required { get; set; }
     [Parameter] public bool Invalid { get; set; }

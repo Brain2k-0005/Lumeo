@@ -19,6 +19,7 @@
         Items, ItemValue, ItemText, ItemGroup, ItemDisabled, ItemDescription, ItemIcon, ItemTemplate, Virtualize, ItemSize)
     {
         Placeholder = Placeholder,
+        DescribedBy = FormFieldDescribedBy,
         Clearable = Clearable,
         MaxDisplayTags = MaxDisplayTags,
         OnClear = EventCallback.Factory.Create(this, OnClearSelection),
@@ -57,6 +58,11 @@
 
 @code {
     [CascadingParameter] private FormField.FormFieldContext? FormField { get; set; }
+
+    // Threaded into ComboboxContext.DescribedBy → ComboboxInput's aria-describedby.
+    // The input keeps its own _inputId (load-bearing for popover anchoring), so the
+    // FormField <Label For> can't click-focus it, but the help/error association lands.
+    private string? FormFieldDescribedBy => FormField?.DescribedBy;
 
     [Parameter] public RenderFragment? ChildContent { get; set; }
     [Parameter] public string? Value { get; set; }
@@ -407,5 +413,10 @@
         /// tracked by the parent — the HashSet itself is unordered). Used by ComboboxInput's
         /// Backspace chip removal so it deterministically removes the newest chip.</summary>
         public string? MostRecentValue { get; init; }
+
+        /// <summary>Id of the parent FormField's rendered help/error text, applied as
+        /// <c>aria-describedby</c> on the combobox input so a screen reader announces it on
+        /// focus. Null outside a FormField. Init-only to keep the positional ctor compatible.</summary>
+        public string? DescribedBy { get; init; }
     }
 }

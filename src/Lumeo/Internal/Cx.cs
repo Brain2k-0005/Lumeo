@@ -1,11 +1,17 @@
-namespace Lumeo.Internal;
+using Lumeo.Internal;
+
+namespace Lumeo;
 
 /// <summary>
-/// Conditional CSS class composition helper. Filters out null / whitespace
-/// entries and joins with single spaces. Use in new components instead of
-/// hand-rolled <c>string.Join(" ", new[] {...}.Where(...))</c> blocks.
+/// Public conditional CSS class composition helper — Lumeo's equivalent of the
+/// shadcn/ui <c>cn()</c> utility. Filters out null / whitespace entries, joins with
+/// single spaces, and (via <see cref="Merge"/>) resolves Tailwind utility conflicts so
+/// the last-wins. Use it in your own components built on top of Lumeo to merge a
+/// component's base classes with a caller-supplied <c>Class</c> exactly the way Lumeo's
+/// own components do. Lives in the root <c>Lumeo</c> namespace so it is in scope wherever
+/// Lumeo components are.
 /// </summary>
-internal static class Cx
+public static class Cx
 {
     public static string Join(params string?[] parts)
     {

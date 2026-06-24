@@ -299,9 +299,9 @@ public class MenubarActivationDismissTests : IAsyncLifetime
         var cut = RenderMenubar(withSub: true);
         cut.Find("button").Click(); // open the File menu
 
-        var subTrigger = cut.Find("button[aria-haspopup='menu']");
+        var subTrigger = cut.Find("button[aria-haspopup='menu'][aria-controls]");
         subTrigger.KeyDown(new KeyboardEventArgs { Key = key });
-        cut.Find("button[aria-haspopup='menu']").Click();
+        cut.Find("button[aria-haspopup='menu'][aria-controls]").Click();
 
         cut.WaitForAssertion(() => Assert.Contains("Sub Action", cut.Markup));
     }
@@ -312,7 +312,7 @@ public class MenubarActivationDismissTests : IAsyncLifetime
         var cut = RenderMenubar(twoMenus: true, withSub: true);
         cut.FindAll("button")[0].Click(); // open the File menu
 
-        cut.Find("button[aria-haspopup='menu']").KeyDown(new KeyboardEventArgs { Key = "ArrowRight" });
+        cut.Find("button[aria-haspopup='menu'][aria-controls]").KeyDown(new KeyboardEventArgs { Key = "ArrowRight" });
 
         cut.WaitForAssertion(() =>
         {
@@ -327,7 +327,7 @@ public class MenubarActivationDismissTests : IAsyncLifetime
     {
         var cut = RenderMenubar(twoMenus: true, withSub: true);
         cut.FindAll("button")[0].Click(); // open the File menu
-        cut.Find("button[aria-haspopup='menu']").Click(); // open the submenu
+        cut.Find("button[aria-haspopup='menu'][aria-controls]").Click(); // open the submenu
         cut.WaitForAssertion(() => Assert.Contains("Sub Action", cut.Markup));
 
         var subContent = cut.FindAll("[role='menu']").First(d => (d.Id ?? "").StartsWith("menubar-sub-content"));
