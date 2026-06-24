@@ -5,6 +5,30 @@ All notable changes to Lumeo will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+A Radix/Base-UI/shadcn parity audit pass — accessibility, RTL, theming, the FormGenerator, and the MCP/CLI. Additive and opt-in; existing usage is unchanged (the OKLCH and logical-utility changes are visually/behaviourally identical in LTR).
+
+### Added
+- **DirectionProvider**: new component — `<DirectionProvider Direction="LayoutDirection.Rtl">` sets the native `dir` (and cascades it) so descendant layout mirrors for RTL.
+- **Tabs**: `IconReveal` — inactive triggers collapse to icon-only and the active trigger smoothly animates its text label open next to the icon (CSS grid `0fr → 1fr`).
+- **Card**: `CardTitle` (`<h3>`) + `CardDescription` (`<p>`) sub-components (shadcn composition parity).
+- **Avatar**: `StatusLabel` — accessible name for the status dot so the status isn't conveyed by colour alone (WCAG 1.4.1).
+- **Chart**: `AriaLabel` — exposes the canvas as `role="img"` with a text alternative (WCAG 1.1.1).
+- **AlertDialogTrigger / DrawerTrigger**: `AsChild` — fold the trigger onto a single child element (no `div[role=button]` wrapping a real `<button>`, WCAG 4.1.2).
+- **`Lumeo.Cx`**: the class-merge helper (shadcn `cn()` equivalent) is now public for use in consumer components.
+
+### Improved
+- **RTL**: migrated the component library's directional Tailwind utilities to logical ones (`ml-→ms-`, `left-→start-`, `text-left→text-start`, `rounded-l→rounded-s`, `border-l→border-s`, …) — identical in LTR, mirrored in RTL.
+- **FormField a11y**: `aria-describedby` (help/error) now reaches every form control (Checkbox, Switch, RadioGroup, Slider, Select, Combobox, …) — not just Input; single-focus controls also adopt the field's `ControlId` so `<label for>` resolves.
+- **Accessibility**: `aria-current` on the active Sidebar nav item + Scrollspy link; overlay entry animations now honour `prefers-reduced-motion`; Cascader gained arrow-key roving; Menubar trigger/item roles.
+- **Overlays**: scroll-lock compensates for the scrollbar width so opening a Dialog/Sheet/Drawer no longer shifts page content.
+- **LumeoFormGenerator**: TimeOnly/TimeSpan→TimePicker, `List<string>`→TagInput, MultilineText→Textarea, Phone/Url→typed Input; `[Range]`→Min/Max, `[StringLength]/[MaxLength]`→MaxLength+counter; `bool` no longer implicitly required; nullable numerics clear to null; `[Display(Order)]` field ordering.
+- **MCP**: type-bound enum validation (`Size="Large"` is now caught), cascading-gated parent-child rule, per-component test-coverage and `[EditorRequired]` surfaced, and a new `lumeo_get_a11y` tool (roles, keyboard keys, focus).
+
+### Changed
+- **Theme**: the entire colour palette (base + all 8 themes, 878 tokens) migrated from HSL to **OKLCH** — exact 1:1 conversion (brand identity unchanged), matching Tailwind v4 / current shadcn.
+
 ## [3.19.0] - 2026-06-18
 
 Two P1 audit features from the backlog. Additive and opt-in.
