@@ -56,6 +56,13 @@
 @inject Microsoft.Extensions.Options.IOptions<Lumeo.Services.LumeoGestureOptions> GestureOpts
 
 @code {
+    // A scoped <DirectionProvider> cascades its direction here; when present it
+    // wins over the global ThemeService so a subtree can be RTL even if the app
+    // is LTR (and vice versa). Null when no provider wraps this carousel — then
+    // the ambient theme direction applies.
+    [CascadingParameter(Name = "LumeoDirection")] private LayoutDirection? ScopedDirection { get; set; }
+    private LayoutDirection EffectiveDirection => ScopedDirection ?? Theme.CurrentDirection;
+
     [Parameter] public Lumeo.Orientation Orientation { get; set; } = Lumeo.Orientation.Horizontal;
     [Parameter] public bool Loop { get; set; }
     [Parameter] public bool Disabled { get; set; }
@@ -327,7 +334,7 @@
         if (Disabled) return;
         if (Orientation == Lumeo.Orientation.Horizontal)
         {
-            var isRtl = Theme.CurrentDirection == LayoutDirection.Rtl;
+            var isRtl = EffectiveDirection == LayoutDirection.Rtl;
             var (back, forward) = isRtl ? ("ArrowRight", "ArrowLeft") : ("ArrowLeft", "ArrowRight");
             if (e.Key == back) await ScrollPrev();
             else if (e.Key == forward) await ScrollNext();

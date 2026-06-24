@@ -14,7 +14,7 @@
 
 <div>
     <textarea @ref="_textareaRef"
-              id="@_elementId"
+              id="@EffectiveId"
               name="@Name"
               aria-required="@Required.ToString().ToLowerInvariant()"
               aria-invalid="@((EffectiveInvalid || IsOverLimit).ToString().ToLowerInvariant())"
@@ -89,10 +89,20 @@
     private bool InsideFormField => FormField is not null;
 
     // Point aria-describedby at the FormField's rendered help/error text so a screen
-    // reader announces it on this textarea (null outside a FormField). The textarea keeps
-    // its own id (load-bearing for auto-resize JS interop), so the FormField <Label For>
-    // can't click-focus it — but the error/help association via aria-describedby is the win.
+    // reader announces it on this textarea (null outside a FormField).
     private string? FormFieldDescribedBy => FormField?.DescribedBy;
+
+    // Inside a FormField, adopt its generated ControlId so the field's <Label For>
+    // resolves to this textarea (click-to-focus + association). Null outside a
+    // FormField — EffectiveId then falls back to the generated _elementId. The
+    // empty guard avoids id="" when no id was generated.
+    private string? FormFieldControlId => string.IsNullOrEmpty(FormField?.ControlId) ? null : FormField!.ControlId;
+
+    // The id actually rendered on the <textarea>. The auto-resize JS interop
+    // (SetupAutoResize / UnregisterAutoResize) MUST key off this same value so the
+    // registered element id matches the rendered id — otherwise auto-resize can't
+    // find the element. _elementId stays as the fallback.
+    private string EffectiveId => FormFieldControlId ?? _elementId;
 
     private string ResizeClass => Resize switch
     {
@@ -133,7 +143,7 @@
     {
         if (firstRender && AutoResize && !_autoResizeSetup)
         {
-            await Interop.SetupAutoResize(_elementId, MaxRows);
+            await Interop.SetupAutoResize(EffectiveId, MaxRows);
             _autoResizeSetup = true;
         }
         if (firstRender && AutoFocus)
@@ -146,7 +156,7 @@
     public async ValueTask DisposeAsync()
     {
         if (!_autoResizeSetup) return;
-        try { await Interop.UnregisterAutoResize(_elementId); }
+        try { await Interop.UnregisterAutoResize(EffectiveId); }
         catch (Microsoft.JSInterop.JSDisconnectedException) { }
     }
 

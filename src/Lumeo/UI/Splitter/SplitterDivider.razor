@@ -23,6 +23,14 @@
 
 @code {
     [CascadingParameter] public Splitter.SplitterContext Context { get; set; } = default!;
+
+    // A scoped <DirectionProvider> cascades its direction here; when present it
+    // wins over the global ThemeService so a subtree can be RTL even if the app
+    // is LTR (and vice versa). Null when no provider wraps this divider — then
+    // the ambient theme direction applies.
+    [CascadingParameter(Name = "LumeoDirection")] private LayoutDirection? ScopedDirection { get; set; }
+    private LayoutDirection EffectiveDirection => ScopedDirection ?? Theme.CurrentDirection;
+
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
@@ -166,7 +174,7 @@
         if (Context is null) return;
         const double step = 10.0;
 
-        var isRtl = IsHorizontal && Theme.CurrentDirection == LayoutDirection.Rtl;
+        var isRtl = IsHorizontal && EffectiveDirection == LayoutDirection.Rtl;
         var delta = (IsHorizontal, e.Key) switch
         {
             (true,  "ArrowLeft")  => isRtl ?  step : -step,

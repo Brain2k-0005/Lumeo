@@ -35,7 +35,7 @@
         <Popover @bind-Open="_isOpen">
             <PopoverTrigger>
                 <button type="button"
-                        id="@_triggerId"
+                        id="@EffectiveTriggerId"
                         name="@Name"
                         aria-required="@Required.ToString().ToLower()"
                         aria-invalid="@EffectiveInvalid.ToString().ToLower()"
@@ -159,7 +159,7 @@ else
                    Rendering both produced a double calendar-icon affordance,
                    most visible on narrow mobile widths where the input shrinks. *@
                 <div class="@CssClass" @onclick:stopPropagation="true" @attributes="AdditionalAttributes">
-                    <input id="@_triggerId"
+                    <input id="@EffectiveTriggerId"
                            type="text"
                            name="@Name"
                            value="@_inputBuffer"
@@ -193,7 +193,7 @@ else
             else
             {
             <button type="button"
-                    id="@_triggerId"
+                    id="@EffectiveTriggerId"
                     name="@Name"
                     aria-required="@Required.ToString().ToLower()"
                     aria-invalid="@EffectiveInvalid.ToString().ToLower()"
@@ -390,9 +390,20 @@ else
     private bool EffectiveInvalid => Invalid || FormField?.HasError == true;
     private bool InsideFormField => FormField is not null;
 
-    // aria-describedby on the trigger announces the FormField help/error to a screen
-    // reader; the trigger keeps its own _triggerId (load-bearing for popover anchoring).
+    // aria-describedby on the trigger announces the FormField help/error to a screen reader.
     private string? FormFieldDescribedBy => FormField?.DescribedBy;
+
+    // Inside a FormField, adopt its generated ControlId so the field's <Label For>
+    // resolves to the rendered trigger (click-to-focus + association). Null outside
+    // a FormField — EffectiveTriggerId then falls back to the generated _triggerId.
+    // The empty guard avoids id="" when no id was generated.
+    private string? FormFieldControlId => string.IsNullOrEmpty(FormField?.ControlId) ? null : FormField!.ControlId;
+
+    // The id actually rendered on whichever trigger variant is active (button /
+    // range button / masked input). Any interop that focuses or anchors the
+    // trigger MUST use this same value so focus/anchoring target the rendered
+    // element. _triggerId stays as the fallback.
+    private string EffectiveTriggerId => FormFieldControlId ?? _triggerId;
 
     [Parameter] public DateOnly? Value { get; set; }
     [Parameter] public EventCallback<DateOnly?> ValueChanged { get; set; }
@@ -522,13 +533,13 @@ else
     private readonly string _triggerId = LumeoIds.New("date-picker-trigger");
 
     /// <summary>Programmatically focus the trigger.</summary>
-    public ValueTask FocusAsync() => Interop.FocusElement(_triggerId);
+    public ValueTask FocusAsync() => Interop.FocusElement(EffectiveTriggerId);
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (firstRender && AutoFocus)
         {
-            try { await Interop.FocusElement(_triggerId); }
+            try { await Interop.FocusElement(EffectiveTriggerId); }
             catch (Microsoft.JSInterop.JSDisconnectedException) { }
         }
     }
