@@ -1005,6 +1005,9 @@ internal static class Commands
         {
             if (!registry.Components.TryGetValue(key, out var entry)) continue;
             Console.WriteLine(Ansi.Bold(entry.Name));
+            // Satellite components live under src/<package>/, not src/Lumeo/ — resolve the
+            // owning package so GetFileAsync fetches from the right root (else 404/crash).
+            var entryPackage = string.IsNullOrEmpty(entry.NugetPackage) ? "Lumeo" : entry.NugetPackage;
             foreach (var relFile in entry.Files)
             {
                 var dest = Paths.ToDestPath(outRoot, relFile);
@@ -1017,7 +1020,7 @@ internal static class Commands
                 }
 
                 var localContent = await File.ReadAllTextAsync(dest);
-                var upstream = await RegistryLoader.GetFileAsync(relFile, local, cfg.Registry);
+                var upstream = await RegistryLoader.GetFileAsync(relFile, local, cfg.Registry, entryPackage);
                 upstream = NamespaceRewriter.Rewrite(upstream, relFile, cfg.Namespace);
 
                 if (Diffing.Normalize(localContent) == Diffing.Normalize(upstream))
@@ -1278,7 +1281,8 @@ internal static class Commands
                 continue;
             }
             var local0 = await File.ReadAllTextAsync(dest);
-            var upstream = await RegistryLoader.GetFileAsync(relFile, local, cfg.Registry);
+            var upstream = await RegistryLoader.GetFileAsync(relFile, local, cfg.Registry,
+                string.IsNullOrEmpty(entry.NugetPackage) ? "Lumeo" : entry.NugetPackage);
             upstream = NamespaceRewriter.Rewrite(upstream, relFile, cfg.Namespace);
 
             if (Diffing.Normalize(local0) == Diffing.Normalize(upstream)) same++;
@@ -1331,7 +1335,8 @@ internal static class Commands
             string content;
             try
             {
-                content = await RegistryLoader.GetFileAsync(relFile, local, registryUrl);
+                content = await RegistryLoader.GetFileAsync(relFile, local, registryUrl,
+                    string.IsNullOrEmpty(entry.NugetPackage) ? "Lumeo" : entry.NugetPackage);
             }
             catch (Exception ex)
             {

@@ -127,6 +127,33 @@ public sealed class CliVendorE2ETests : IDisposable
     }
 
     [Fact]
+    public void Update_And_Diff_Of_A_Vendored_Satellite_Resolve_The_Right_Package_Root()
+    {
+        Assert.True(File.Exists(_lumeoDll),
+            "Built CLI (lumeo.dll) not found under tools/Lumeo.Cli/bin — build the solution first.");
+
+        var init = RunCli("init", "--yes", "--namespace", "Acme.Ui", "--path", "Components/Ui", "--no-assets");
+        Assert.True(init.Exit == 0, $"init failed (exit {init.Exit}). stderr: {init.Stderr}");
+
+        var add = RunCli("add", "chart", "--local", "--yes", "--force", "--vendor");
+        Assert.True(add.Exit == 0, $"add --vendor failed (exit {add.Exit}). stderr: {add.Stderr}");
+
+        // update/diff must fetch the satellite source from src/Lumeo.Charts/, NOT
+        // src/Lumeo/ — the latter 404s/crashes on every vendored satellite. With the
+        // package threaded, --check sees no drift (vendored == namespace-rewritten
+        // upstream) and exits 0; the bug manifested as a FileNotFound/crash.
+        var update = RunCli("update", "chart", "--local", "--check");
+        Assert.True(update.Exit == 0,
+            $"update --check on a vendored satellite failed (exit {update.Exit}) — wrong package root?\nstderr: {update.Stderr}\nstdout: {update.Stdout}");
+        Assert.DoesNotContain("not found", update.Stderr, StringComparison.OrdinalIgnoreCase);
+
+        var diff = RunCli("diff", "chart", "--local");
+        Assert.True(diff.Exit == 0,
+            $"diff on a vendored satellite failed (exit {diff.Exit}) — wrong package root?\nstderr: {diff.Stderr}\nstdout: {diff.Stdout}");
+        Assert.DoesNotContain("not found", diff.Stderr, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void List_Local_Loads_The_Registry_And_Prints_Components()
     {
         Assert.True(File.Exists(_lumeoDll), "Built CLI (lumeo.dll) not found — build the solution first.");
