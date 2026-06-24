@@ -233,7 +233,7 @@ public class CalendarTests : IAsyncLifetime
         // The badge slot is wrapped in a span with absolute positioning so it
         // sits in the bottom-right of the day cell. Confirm content + wrapper.
         Assert.Contains("badge-marker", cut.Markup);
-        Assert.Contains("absolute -bottom-0.5 -right-0.5 pointer-events-none", cut.Markup);
+        Assert.Contains("absolute -bottom-0.5 -end-0.5 pointer-events-none", cut.Markup);
     }
 
     // --- AdditionalAttributes ---

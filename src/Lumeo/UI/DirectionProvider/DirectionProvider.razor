@@ -1,0 +1,26 @@
+@namespace Lumeo
+
+@* Sets the layout direction for everything inside it (Radix DirectionProvider parity).
+   The native `dir` attribute makes the browser resolve all LOGICAL CSS — the ms-/me-/
+   ps-/pe-/start-/end-/text-start/text-end/rounded-s/rounded-e/border-s/border-e utilities
+   Lumeo components use — against this direction, so an Rtl provider mirrors their layout
+   automatically. The direction is also cascaded (named "LumeoDirection") for any component
+   that needs to branch on it in C#. Scope it to a subtree, or wrap the whole app. *@
+<div dir="@DirectionString" class="@Class" @attributes="AdditionalAttributes">
+    <CascadingValue Value="Direction" Name="LumeoDirection" IsFixed="false">
+        @ChildContent
+    </CascadingValue>
+</div>
+
+@code {
+    /// <summary>Layout direction applied to descendants. <see cref="LayoutDirection.Rtl"/>
+    /// flips logical CSS utilities, native text alignment, form controls and bidi text.
+    /// Default <see cref="LayoutDirection.Ltr"/>.</summary>
+    [Parameter] public LayoutDirection Direction { get; set; } = LayoutDirection.Ltr;
+
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private string DirectionString => Direction == LayoutDirection.Rtl ? "rtl" : "ltr";
+}

@@ -127,7 +127,7 @@ public class SheetTests : IAsyncLifetime
         var cut = RenderSheet(isOpen: true, side: L.Side.Right);
         var dialog = cut.Find("[role='dialog']");
         var cls = dialog.GetAttribute("class") ?? "";
-        Assert.Contains("right-0", cls);
+        Assert.Contains("end-0", cls);
     }
 
     [Fact]
@@ -136,7 +136,7 @@ public class SheetTests : IAsyncLifetime
         var cut = RenderSheet(isOpen: true, side: L.Side.Left);
         var dialog = cut.Find("[role='dialog']");
         var cls = dialog.GetAttribute("class") ?? "";
-        Assert.Contains("left-0", cls);
+        Assert.Contains("start-0", cls);
     }
 
     [Fact]
