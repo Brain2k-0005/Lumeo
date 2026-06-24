@@ -698,6 +698,9 @@ public sealed class LumeoFormGenerator : IIncrementalGenerator
     private static void EmitNumberInput(StringBuilder sb, FieldModel f, Func<int> next)
     {
         sb.Append("                    __field.OpenComponent<global::Lumeo.NumberInput>(").Append(next()).AppendLine(");");
+        // Full-width so the stepper lines up with the sibling full-width Input/Select
+        // fields instead of rendering as a small content-sized control in the FormField.
+        sb.Append("                    __field.AddAttribute(").Append(next()).AppendLine(", \"Block\", true);");
         // [Range] → Min/Max so the spinner clamps and the field self-documents its bounds.
         if (f.Min is double mn)
             sb.Append("                    __field.AddAttribute(").Append(next()).Append(", \"Min\", (double?)").Append(FormatDouble(mn)).AppendLine(");");
