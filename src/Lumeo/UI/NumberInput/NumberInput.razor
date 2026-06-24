@@ -19,7 +19,7 @@
             aria-label="@L["NumberInput.Decrease"]">
         <Blazicon Svg="Lucide.Minus" class="h-4 w-4" />
     </button>
-    <div class="@($"relative inline-flex items-center {HeightClass} border {(EffectiveInvalid ? "border-destructive" : "border-border/60")} bg-background")">
+    <div class="@($"relative {(Block ? "flex flex-1" : "inline-flex")} items-center {HeightClass} border {(EffectiveInvalid ? "border-destructive" : "border-border/60")} bg-background")">
         @if (!string.IsNullOrEmpty(Prefix))
         {
             <span class="ps-2 text-sm text-muted-foreground select-none">@Prefix</span>
@@ -32,7 +32,7 @@
                aria-invalid="@EffectiveInvalid.ToString().ToLowerInvariant()"
                aria-label="@EffectiveAriaLabel"
                aria-describedby="@FormFieldDescribedBy"
-               class="@($"{HeightClass} w-20 bg-transparent {(string.IsNullOrEmpty(Prefix) && string.IsNullOrEmpty(Suffix) ? "px-3" : "px-1")} text-center text-sm text-foreground outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none")"
+               class="@($"{HeightClass} {(Block ? "w-full min-w-0" : "w-20")} bg-transparent {(string.IsNullOrEmpty(Prefix) && string.IsNullOrEmpty(Suffix) ? "px-3" : "px-1")} {(Block ? "text-start" : "text-center")} text-sm text-foreground outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none")"
                value="@DisplayValue"
                disabled="@Disabled"
                min="@Min"
@@ -165,7 +165,12 @@
     private string? FormFieldControlId => string.IsNullOrEmpty(FormField?.ControlId) ? null : FormField!.ControlId;
     private string? FormFieldDescribedBy => FormField?.DescribedBy;
 
-    private string CssClass => Cx.Merge("inline-flex items-center", Class);
+    /// <summary>Stretch the control to fill its container — a full-width input between the
+    /// −/+ buttons — instead of sizing to its content. Use it in form layouts so the field
+    /// lines up with sibling full-width inputs/selects (the LumeoForm generator sets it).</summary>
+    [Parameter] public bool Block { get; set; }
+
+    private string CssClass => Cx.Merge(Block ? "flex w-full items-center" : "inline-flex items-center", Class);
 
     private bool IsAtMin => Min.HasValue && Value.HasValue && Value.Value <= Min.Value;
     private bool IsAtMax => Max.HasValue && Value.HasValue && Value.Value >= Max.Value;
