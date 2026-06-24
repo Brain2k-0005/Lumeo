@@ -10,6 +10,7 @@
         <button type="button" id="@_id" role="checkbox" aria-checked="@AriaChecked"
                 aria-required="@Required.ToString().ToLowerInvariant()"
                 aria-invalid="@EffectiveInvalid.ToString().ToLowerInvariant()"
+                aria-describedby="@FormFieldDescribedBy"
                 class="@CssClass" @onclick="Toggle" disabled="@Disabled" @attributes="AdditionalAttributes">
             @RenderIcon()
         </button>
@@ -33,6 +34,7 @@ else
     <button type="button" id="@_id" role="checkbox" aria-checked="@AriaChecked" aria-label="@AriaLabel"
             aria-required="@Required.ToString().ToLowerInvariant()"
             aria-invalid="@EffectiveInvalid.ToString().ToLowerInvariant()"
+            aria-describedby="@FormFieldDescribedBy"
             class="@CssClass" @onclick="Toggle" disabled="@Disabled" @attributes="AdditionalAttributes">
         @RenderIcon()
     </button>
@@ -113,11 +115,18 @@ else
     private bool EffectiveInvalid => Invalid || FormField?.HasError == true;
     private bool InsideFormField => FormField is not null;
 
+    // Point aria-describedby at the FormField's help/error text (null outside a field).
+    private string? FormFieldDescribedBy => FormField?.DescribedBy;
+
     private string _id = default!;
 
     protected override void OnInitialized()
     {
-        _id = Id ?? LumeoIds.New("checkbox");
+        // Inside a FormField, adopt its generated ControlId so the field's
+        // <Label For> resolves to this checkbox button (an explicit Id still wins).
+        _id = Id
+            ?? (string.IsNullOrEmpty(FormField?.ControlId) ? null : FormField!.ControlId)
+            ?? LumeoIds.New("checkbox");
     }
 
     private string AriaChecked => IsIndeterminate ? "mixed" : Checked.ToString().ToLower();

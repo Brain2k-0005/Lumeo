@@ -25,6 +25,7 @@
                            id="@($"{_baseId}-{index}")"
                            aria-required="@Required.ToString().ToLowerInvariant()"
                            aria-invalid="@EffectiveInvalid.ToString().ToLowerInvariant()"
+                           aria-describedby="@(index == 0 ? FormFieldDescribedBy : null)"
                            aria-label="@(string.Format(L["OtpInput.DigitLabel"], index + 1, Length))"
                            type="@(Masked ? "password" : "text")"
                            inputmode="@InputModeAttr"
@@ -94,6 +95,12 @@
 
     private bool EffectiveInvalid => Invalid || FormField?.HasError == true;
     private bool InsideFormField => FormField is not null;
+
+    // Point aria-describedby at the FormField's rendered help/error text so a screen
+    // reader announces it on the first OTP box (null outside a FormField). The boxes keep
+    // their own generated ids (load-bearing for focus/paste JS interop), so the FormField
+    // <Label For> can't click-focus them — but the aria-describedby association is the win.
+    private string? FormFieldDescribedBy => FormField?.DescribedBy;
 
     private readonly string _baseId = LumeoIds.New("otp");
 

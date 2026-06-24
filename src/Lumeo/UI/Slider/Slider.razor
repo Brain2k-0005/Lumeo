@@ -33,6 +33,7 @@
                        aria-label="@AriaLabel" aria-valuemin="@Min" aria-valuemax="@Max" aria-valuenow="@Value" aria-valuetext="@ValueText(Value)"
                        aria-required="@Required.ToString().ToLower()"
                        aria-invalid="@EffectiveInvalid.ToString().ToLower()"
+                       id="@FormFieldControlId" aria-describedby="@FormFieldDescribedBy"
                        class="@VerticalInputClasses"
                        @oninput="OnInput"
                        @onpointerenter="() => _showTooltipThumb = true"
@@ -70,12 +71,14 @@ else if (IsRange)
                        aria-label="@AriaLabel" aria-valuemin="@Min" aria-valuemax="@StartThumbMax" aria-valuenow="@Value" aria-valuetext="@ValueText(Value)"
                        aria-required="@Required.ToString().ToLower()"
                        aria-invalid="@EffectiveInvalid.ToString().ToLower()"
+                       id="@FormFieldControlId" aria-describedby="@FormFieldDescribedBy"
                        class="@RangeInputClasses"
                        @oninput="OnStartInput" />
                 <input type="range" min="@Min" max="@Max" step="@Step" value="@ValueEnd" disabled="@Disabled"
                        aria-label="@EndAriaLabel" aria-valuemin="@EndThumbMin" aria-valuemax="@Max" aria-valuenow="@ValueEnd" aria-valuetext="@ValueText(ValueEnd)"
                        aria-required="@Required.ToString().ToLower()"
                        aria-invalid="@EffectiveInvalid.ToString().ToLower()"
+                       aria-describedby="@FormFieldDescribedBy"
                        class="@RangeInputClasses"
                        style="position: absolute; left: 0; width: 100%;"
                        @oninput="OnEndInput" />
@@ -109,6 +112,7 @@ else
                        aria-label="@AriaLabel" aria-valuemin="@Min" aria-valuemax="@Max" aria-valuenow="@Value" aria-valuetext="@ValueText(Value)"
                        aria-required="@Required.ToString().ToLower()"
                        aria-invalid="@EffectiveInvalid.ToString().ToLower()"
+                       id="@FormFieldControlId" aria-describedby="@FormFieldDescribedBy"
                        class="@InputClasses"
                        @oninput="OnInput"
                        @onpointerenter="() => _showTooltipThumb = true"
@@ -167,6 +171,12 @@ else
 
     private bool EffectiveInvalid => Invalid || FormField?.HasError == true;
     private bool InsideFormField => FormField is not null;
+
+    // Adopt the FormField's generated id + describedby on the range <input> (the
+    // focusable slider thumb) so the field's <Label For> click-focuses the slider and
+    // aria-describedby points at the help/error text. Null outside a FormField.
+    private string? FormFieldControlId => string.IsNullOrEmpty(FormField?.ControlId) ? null : FormField!.ControlId;
+    private string? FormFieldDescribedBy => FormField?.DescribedBy;
 
     // Localized "(end)" suffix for the range slider's second thumb so screen
     // readers in non-English locales announce a meaningful label.

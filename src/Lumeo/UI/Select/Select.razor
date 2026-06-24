@@ -20,6 +20,7 @@
         Items, ItemValue, ItemText, ItemGroup, ItemDisabled, ItemDescription, ItemIcon, ItemTemplate, Virtualize, ItemSize)
     {
         Placeholder = Placeholder,
+        DescribedBy = FormFieldDescribedBy,
     };
 }
 
@@ -54,6 +55,11 @@
 
 @code {
     [CascadingParameter] private FormField.FormFieldContext? FormField { get; set; }
+
+    // Threaded into SelectContext.DescribedBy → SelectTrigger's aria-describedby.
+    // The trigger keeps its own _triggerId (load-bearing for popover anchoring), so the
+    // FormField <Label For> can't click-focus it, but the help/error association lands.
+    private string? FormFieldDescribedBy => FormField?.DescribedBy;
 
     [Parameter] public RenderFragment? ChildContent { get; set; }
     [Parameter] public string? Value { get; set; }
@@ -420,5 +426,10 @@
         /// as a fallback when its own Placeholder is unset. Init-only so the positional
         /// constructor above stays source-compatible.</summary>
         public string? Placeholder { get; init; }
+
+        /// <summary>Id of the parent FormField's rendered help/error text, applied as
+        /// <c>aria-describedby</c> on the trigger so a screen reader announces it on focus.
+        /// Null outside a FormField. Init-only to keep the positional ctor source-compatible.</summary>
+        public string? DescribedBy { get; init; }
     }
 }

@@ -17,6 +17,7 @@
             aria-label="@AriaLabelValue"
             aria-required="@Required.ToString().ToLower()"
             aria-invalid="@EffectiveInvalid.ToString().ToLower()"
+            aria-describedby="@FormFieldDescribedBy"
             name="@Name"
             class="@CssClass"
             @onclick="Toggle"
@@ -60,13 +61,18 @@
     private bool EffectiveInvalid => Invalid || FormField?.HasError == true;
     private bool InsideFormField => FormField is not null;
 
+    // Inside a FormField, adopt its generated ControlId so the field's <Label For>
+    // resolves to this switch button; aria-describedby announces help/error text.
+    private string? FormFieldControlId => string.IsNullOrEmpty(FormField?.ControlId) ? null : FormField!.ControlId;
+    private string? FormFieldDescribedBy => FormField?.DescribedBy;
+
     // Links the visible <label for> to the switch button (Checkbox pattern) so
     // clicking the label toggles the switch and AT announces the association.
     private readonly string _id = LumeoIds.New("switch");
-    // A consumer `id` in the splat overrides the generated one on the button;
-    // the label's `for` must point at the SAME rendered id or the association
-    // (click-to-toggle, AT) breaks for custom-id switches (Codex P3).
-    private string EffectiveId => LumeoIds.Effective(AdditionalAttributes, _id);
+    // A consumer `id` in the splat overrides the generated one on the button; failing
+    // that the FormField's ControlId wins, then the generated id. The label's `for`
+    // must point at the SAME rendered id or the association breaks (Codex P3).
+    private string EffectiveId => LumeoIds.Effective(AdditionalAttributes, FormFieldControlId ?? _id);
 
     [Parameter] public bool Checked { get; set; }
     [Parameter] public EventCallback<bool> CheckedChanged { get; set; }

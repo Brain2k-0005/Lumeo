@@ -20,6 +20,7 @@
        name="@(Name ?? FormField?.Name)"
        aria-required="@(Required ? "true" : "false")"
        aria-invalid="@(EffectiveInvalid ? "true" : "false")"
+       aria-describedby="@FormFieldDescribedBy"
        @oninput="HandleInput"
        @attributes="AdditionalAttributes" />
 
@@ -55,6 +56,12 @@
 
     private bool EffectiveInvalid => Invalid || FormField?.HasError == true;
     private bool InsideFormField => FormField is not null;
+
+    // Point aria-describedby at the FormField's rendered help/error text so a screen
+    // reader announces it on this input (null outside a FormField). The input keeps its
+    // own id (load-bearing for caret JS interop), so the FormField <Label For> can't
+    // click-focus it — but the error/help association via aria-describedby is the win.
+    private string? FormFieldDescribedBy => FormField?.DescribedBy;
 
     private readonly string _id = LumeoIds.New("inputmask");
 

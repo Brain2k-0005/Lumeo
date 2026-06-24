@@ -15,6 +15,7 @@
 <div id="@_wrapperId" class="@ContainerClass" @attributes="AdditionalAttributes">
     @* Trigger *@
     <button type="button" class="@TriggerClass" @onclick="ToggleOpen" id="@_triggerId" disabled="@Disabled"
+            aria-describedby="@FormFieldDescribedBy"
             aria-required="@(Required ? "true" : "false")"
             aria-invalid="@(EffectiveInvalid ? "true" : "false")">
         @if (SelectedLabels.Count > 0)
@@ -58,15 +59,22 @@
                     if (options.Count == 0) break;
 
                     var level = levelIdx;
-                    <div class="@PanelClass">
-                        @foreach (var option in options)
+                    <div class="@PanelClass" role="menu">
+                        @for (var optIdx = 0; optIdx < options.Count; optIdx++)
                         {
+                            var option = options[optIdx];
+                            var idx = optIdx;
                             var isSelected = level < _selectedPath.Count && _selectedPath[level] == option.Value;
+                            var hasChildren = option.Children is { Count: > 0 };
                             <button type="button"
+                                    id="@OptionId(level, idx)"
+                                    role="menuitem"
+                                    aria-haspopup="@(hasChildren ? "menu" : null)"
+                                    tabindex="@(level == _focusCol && idx == _focusIdx ? 0 : -1)"
                                     class="@GetOptionClass(isSelected)"
                                     @onclick="() => SelectOption(option, level)">
                                 <span class="truncate">@option.Label</span>
-                                @if (option.Children is { Count: > 0 })
+                                @if (hasChildren)
                                 {
                                     <Blazicon Svg="Lucide.ChevronRight" class="h-4 w-4 text-muted-foreground ml-auto shrink-0" />
                                 }
@@ -100,6 +108,10 @@
 
 @code {
     [CascadingParameter] private FormField.FormFieldContext? FormField { get; set; }
+
+    // aria-describedby on the trigger announces the FormField help/error to a screen
+    // reader; the trigger keeps its own _triggerId (load-bearing for popover anchoring).
+    private string? FormFieldDescribedBy => FormField?.DescribedBy;
 
     [Parameter] public List<string>? Value { get; set; }
     [Parameter] public EventCallback<List<string>?> ValueChanged { get; set; }
@@ -141,6 +153,27 @@
     private readonly string _wrapperId = LumeoIds.New("cascader");
     private readonly string _triggerId = LumeoIds.New("cascader-trigger");
     private readonly string _contentId = LumeoIds.New("cascader-content");
+
+    // Keyboard roving state: which column (panel) and which option index currently
+    // holds focus. The matching option button carries tabindex=0 (all others -1), and
+    // arrow keys move this position. _pendingFocusId is the DOM id to focus after the
+    // next render (set during a keydown; applied in OnAfterRenderAsync once the target
+    // — possibly a freshly-expanded child panel — is in the DOM).
+    private int _focusCol;
+    private int _focusIdx;
+    private string? _pendingFocusId;
+
+    private string OptionId(int col, int idx) => $"{_contentId}-opt-{col}-{idx}";
+    private void QueueFocus() => _pendingFocusId = OptionId(_focusCol, _focusIdx);
+
+    // Index of the parent option in column <paramref name="col"/> whose children are
+    // currently expanded into col+1 (used so ArrowLeft lands back on that parent).
+    private int ParentIndexAt(int col)
+    {
+        if (col < 0 || col >= _activePanels.Count) return 0;
+        var i = GetOptionsForLevel(col).FindIndex(o => o.Value == _activePanels[col].Value);
+        return i < 0 ? 0 : i;
+    }
 
     private string ContainerClass => Cx.Merge("relative inline-block", Class);
     private string TriggerClass => $"flex items-center w-full h-9 px-3 rounded-md border {(EffectiveInvalid ? "border-destructive focus:ring-destructive/20" : "border-input")} bg-background text-sm hover:bg-accent/50 transition-colors disabled:cursor-not-allowed disabled:opacity-50 focus:outline-none focus:ring-[1.5px] {(EffectiveInvalid ? "focus:ring-destructive/20" : "focus:ring-ring")}";
@@ -256,6 +289,12 @@
 
     private async Task SelectOption(CascaderOption option, int level)
     {
+        // Keep keyboard roving in sync with the activated option so arrow keys resume
+        // from here (e.g. after a mouse click or an Enter/Space activation).
+        _focusCol = level;
+        var clickedIdx = GetOptionsForLevel(level).FindIndex(o => o.Value == option.Value);
+        _focusIdx = clickedIdx < 0 ? 0 : clickedIdx;
+
         // Trim path and panels to current level
         while (_selectedPath.Count > level) _selectedPath.RemoveAt(_selectedPath.Count - 1);
         while (_activePanels.Count > level) _activePanels.RemoveAt(_activePanels.Count - 1);
@@ -282,6 +321,8 @@
         var wasOpen = _isOpen;
         _isOpen = value;
         if (!value) _searchText = "";
+        // On open, seed roving focus on the first option of the first column.
+        if (value) { _focusCol = 0; _focusIdx = 0; }
 
         // On close: return focus to the trigger button immediately (it is in the DOM).
         if (wasOpen && !value)
@@ -299,9 +340,84 @@
         await ValueChanged.InvokeAsync(null);
     }
 
+    // Arrow-key roving across the cascader's columns (WAI-ARIA menu pattern):
+    // Up/Down move within the focused column, Right drills into a parent's children
+    // (focusing the first child), Left returns to the parent column, Home/End jump to
+    // the column edges, and Enter/Space activate (select a leaf or expand a parent).
     private async Task HandleKeyDown(KeyboardEventArgs e)
     {
-        if (e.Key == "Escape") await SetOpen(false);
+        switch (e.Key)
+        {
+            case "Escape":
+                await SetOpen(false);
+                return;
+
+            case "ArrowDown":
+            {
+                var count = GetOptionsForLevel(_focusCol).Count;
+                if (count > 0) _focusIdx = Math.Min(_focusIdx + 1, count - 1);
+                QueueFocus();
+                break;
+            }
+
+            case "ArrowUp":
+                _focusIdx = Math.Max(_focusIdx - 1, 0);
+                QueueFocus();
+                break;
+
+            case "ArrowRight":
+            {
+                var opts = GetOptionsForLevel(_focusCol);
+                if (_focusIdx >= 0 && _focusIdx < opts.Count && opts[_focusIdx].Children is { Count: > 0 })
+                {
+                    await SelectOption(opts[_focusIdx], _focusCol); // expands into the next column
+                    _focusCol += 1;
+                    _focusIdx = 0;
+                    QueueFocus();
+                }
+                break;
+            }
+
+            case "ArrowLeft":
+                if (_focusCol > 0)
+                {
+                    _focusCol -= 1;
+                    _focusIdx = ParentIndexAt(_focusCol);
+                    QueueFocus();
+                }
+                break;
+
+            case "Home":
+                _focusIdx = 0;
+                QueueFocus();
+                break;
+
+            case "End":
+            {
+                var count = GetOptionsForLevel(_focusCol).Count;
+                _focusIdx = count > 0 ? count - 1 : 0;
+                QueueFocus();
+                break;
+            }
+
+            case "Enter":
+            case " ":
+            {
+                var opts = GetOptionsForLevel(_focusCol);
+                if (_focusIdx >= 0 && _focusIdx < opts.Count)
+                {
+                    var opt = opts[_focusIdx];
+                    await SelectOption(opt, _focusCol);
+                    if (opt.Children is { Count: > 0 })
+                    {
+                        _focusCol += 1;
+                        _focusIdx = 0;
+                        QueueFocus();
+                    }
+                }
+                break;
+            }
+        }
     }
 
     private void OnSearchInput(ChangeEventArgs e)
@@ -326,11 +442,20 @@
 
             // Focus the first option in the first panel so keyboard users can
             // immediately navigate without an extra Tab press.
-            try { await Interop.FocusMenuItemByIndex(_contentId, 0); } catch (JSDisconnectedException) { }
+            _pendingFocusId = OptionId(0, 0);
         }
         else if (!_isOpen && _registered)
         {
             await Cleanup();
+        }
+
+        // Apply any queued roving focus once the target option (possibly in a
+        // freshly-expanded child panel) has rendered into the DOM.
+        if (_pendingFocusId is not null)
+        {
+            var id = _pendingFocusId;
+            _pendingFocusId = null;
+            try { await Interop.FocusElement(id); } catch (JSDisconnectedException) { }
         }
     }
 

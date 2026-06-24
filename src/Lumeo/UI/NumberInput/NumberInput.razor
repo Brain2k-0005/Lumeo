@@ -27,9 +27,11 @@
         <input @ref="_inputRef"
                type="number"
                name="@Name"
+               id="@FormFieldControlId"
                aria-required="@Required.ToString().ToLowerInvariant()"
                aria-invalid="@EffectiveInvalid.ToString().ToLowerInvariant()"
                aria-label="@EffectiveAriaLabel"
+               aria-describedby="@FormFieldDescribedBy"
                class="@($"{HeightClass} w-20 bg-transparent {(string.IsNullOrEmpty(Prefix) && string.IsNullOrEmpty(Suffix) ? "px-3" : "px-1")} text-center text-sm text-foreground outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none")"
                value="@DisplayValue"
                disabled="@Disabled"
@@ -154,6 +156,14 @@
     // visible label is rendered as a sibling element rather than a <label for="..."> wrapper.
     // Priority: explicit AriaLabel > Label parameter > FormField label context.
     private string? EffectiveAriaLabel => !string.IsNullOrEmpty(AriaLabel) ? AriaLabel : Label;
+
+    // Adopt the FormField's generated id + describedby so the field's <label for>
+    // resolves to this input and aria-describedby points at the help/error text
+    // (Base UI Field a11y). Null outside a FormField — the id/aria attributes are
+    // then omitted, and a consumer-set id via AdditionalAttributes still wins
+    // (it splats after these). Empty guard avoids id="" if no id was generated.
+    private string? FormFieldControlId => string.IsNullOrEmpty(FormField?.ControlId) ? null : FormField!.ControlId;
+    private string? FormFieldDescribedBy => FormField?.DescribedBy;
 
     private string CssClass => Cx.Merge("inline-flex items-center", Class);
 
