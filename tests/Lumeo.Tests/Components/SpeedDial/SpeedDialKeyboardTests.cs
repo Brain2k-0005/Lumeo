@@ -94,6 +94,14 @@ public class SpeedDialKeyboardTests : IAsyncLifetime
         var cut = _ctx.Render<L.SpeedDial>(p => p.Add(c => c.Items, TwoItems()));
         cut.Find("button").Click();
 
+        // Opening focuses index 0 asynchronously, and ArrowDown computes the next
+        // index from that state. If ArrowDown fires before the open-focus lands, the
+        // handler increments from a stale index and re-lands on 0 instead of 1. Wait
+        // for the open-focus first (this race flaked under parallel CI load, same as
+        // the Escape test above).
+        cut.WaitForAssertion(() =>
+            Assert.Contains(_interop.FocusMenuItemCalls, c => c.Index == 0));
+
         cut.Find("[role='menu']").KeyDown(new KeyboardEventArgs { Key = "ArrowDown" });
 
         // Index 0 on open, then ArrowDown -> index 1.
