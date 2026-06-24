@@ -1,19 +1,20 @@
 @page "/docs/tweakcn"
 @namespace Lumeo.Docs.Pages.Docs
 
-<PageTitle>Theming with tweakcn — Lumeo</PageTitle>
+<PageTitle>Theming with tweakcn / shadcn — Lumeo</PageTitle>
 
 <Container MaxWidth="3xl" Padding="0" Center="false">
 <Stack Gap="10">
 
     <Stack Gap="4">
-        <Heading Level="1" Size="3xl">Theming with tweakcn</Heading>
+        <Heading Level="1" Size="3xl">Theming with tweakcn / shadcn</Heading>
         <Lumeo.Text Size="base" Color="muted" Leading="relaxed">
             <a class="text-primary hover:underline" href="https://tweakcn.com" target="_blank" rel="noopener">tweakcn</a>
-            is a visual theme editor for the shadcn/ui ecosystem. Lumeo shares shadcn's token model — the same
-            semantic colors, the same <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">:root</code> /
-            <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">.dark</code> structure, and OKLCH values —
-            so a tweakcn palette drops straight into Lumeo through one small opt-in adapter stylesheet.
+            is a visual theme editor for the shadcn/ui ecosystem. Lumeo's color tokens are
+            <strong class="text-foreground">natively compatible</strong> with it: paste a shadcn / tweakcn
+            <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">:root</code> /
+            <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">.dark</code> export and the whole library
+            re-skins — <strong class="text-foreground">no adapter, no import, no renaming</strong>.
         </Lumeo.Text>
     </Stack>
 
@@ -22,54 +23,48 @@
     <Stack Gap="4">
         <Heading Level="2">TL;DR</Heading>
         <ul class="space-y-2 text-sm text-muted-foreground">
-            <li>tweakcn exports <strong class="text-foreground">unprefixed</strong> variables (<code class="text-xs font-mono">--primary</code>); Lumeo reads <strong class="text-foreground">prefixed</strong> ones (<code class="text-xs font-mono">--color-primary</code>).</li>
-            <li>Load <code class="text-xs font-mono">lumeo-tweakcn.css</code> (opt-in) <em>after</em> <code class="text-xs font-mono">lumeo.css</code>, then paste your tweakcn <code class="text-xs font-mono">:root</code> / <code class="text-xs font-mono">.dark</code> export. Colors flow.</li>
-            <li>Every <strong class="text-foreground">color</strong> and the master <strong class="text-foreground"><code class="text-xs font-mono">--radius</code></strong> carry over. Fonts, shadows, spacing, and Lumeo's status colors do not (see below).</li>
+            <li>Build a theme at tweakcn, export the Tailwind&nbsp;v4 / CSS-variables form (OKLCH).</li>
+            <li>Paste its <code class="text-xs font-mono">:root</code> / <code class="text-xs font-mono">.dark</code> blocks into your app, loaded <em>after</em> <code class="text-xs font-mono">lumeo.css</code>.</li>
+            <li>Done. Every <strong class="text-foreground">color</strong> and the <strong class="text-foreground"><code class="text-xs font-mono">--radius</code></strong> drive Lumeo 1:1. Fonts, shadows and spacing don't (see below).</li>
         </ul>
     </Stack>
 
     <Separator Class="my-4" />
 
     <Stack Gap="4">
-        <Heading Level="2">Why a bridge is needed</Heading>
+        <Heading Level="2">How it works</Heading>
         <Lumeo.Text Size="base" Color="muted" Leading="relaxed">
-            Lumeo namespaces every theme token under <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">--color-*</code>
-            and wires it through a Tailwind&nbsp;v4 <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">@@theme</code>
-            identity alias, so a utility like <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">bg-primary</code>
-            compiles to <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">var(--color-primary)</code>.
-            tweakcn and shadcn use the bare name <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">--primary</code>,
-            which nothing in Lumeo reads — so pasting a tweakcn export on its own has no effect. The adapter remaps each
-            tweakcn name onto the Lumeo token it drives, falling back to Lumeo's own value when the tweakcn variable is
-            absent, so loading it changes nothing until you actually override something.
+            shadcn / tweakcn write <strong class="text-foreground">unprefixed</strong> variables
+            (<code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">--primary</code>); Lumeo's components read the
+            Tailwind&nbsp;v4 <strong class="text-foreground"><code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">--color-*</code></strong>
+            namespace. Lumeo bridges the two at the source — every token is defined as the shadcn variable with Lumeo's own
+            value as the fallback:
         </Lumeo.Text>
-        <pre class="code-block rounded-lg border border-border/40 bg-muted px-4 py-3 font-mono text-xs text-foreground whitespace-pre overflow-x-auto">@_adapterCode</pre>
+        <pre class="code-block rounded-lg border border-border/40 bg-muted px-4 py-3 font-mono text-xs text-foreground whitespace-pre overflow-x-auto">@_howCode</pre>
+        <Lumeo.Text Size="base" Color="muted" Leading="relaxed">
+            So if you set <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">--primary</code>, it flows straight
+            into <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">--color-primary</code> and every
+            <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">bg-primary</code> / button / ring picks it up. If
+            you don't, the fallback keeps Lumeo pixel-identical to its defaults — including dark mode and the eight built-in
+            palettes. <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">--radius</code> needs no bridge at all:
+            both projects already call it <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">--radius</code>.
+        </Lumeo.Text>
     </Stack>
 
     <Separator Class="my-4" />
 
     <Stack Gap="4">
         <Heading Level="2">Setup</Heading>
-        <Lumeo.Text Size="base" Color="muted" Leading="relaxed">
-            The adapter ships in the Lumeo package at
-            <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">_content/Lumeo/css/lumeo-tweakcn.css</code>.
-            <strong class="text-foreground">Load order matters</strong> — it must come after
-            <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">lumeo.css</code>.
-        </Lumeo.Text>
         <Lumeo.Text Size="sm" Color="muted" Leading="relaxed" Class="font-semibold">Tailwind v4</Lumeo.Text>
         <pre class="code-block rounded-lg border border-border/40 bg-muted px-4 py-3 font-mono text-xs text-foreground whitespace-pre overflow-x-auto">@_setupTailwindCode</pre>
         <Lumeo.Text Size="sm" Color="muted" Leading="relaxed" Class="font-semibold">Without Tailwind</Lumeo.Text>
         <pre class="code-block rounded-lg border border-border/40 bg-muted px-4 py-3 font-mono text-xs text-foreground whitespace-pre overflow-x-auto">@_setupPlainCode</pre>
-    </Stack>
-
-    <Separator Class="my-4" />
-
-    <Stack Gap="4">
-        <Heading Level="2">Exporting from tweakcn</Heading>
-        <ol class="list-decimal space-y-2 pl-5 text-sm text-muted-foreground">
-            <li>Build your theme at <a class="text-primary hover:underline" href="https://tweakcn.com/editor/theme" target="_blank" rel="noopener">tweakcn.com/editor/theme</a>.</li>
-            <li>Export as <strong class="text-foreground">Tailwind v4 / CSS variables</strong> with <strong class="text-foreground">OKLCH</strong> values (Lumeo's own palette is OKLCH).</li>
-            <li>Copy only the <code class="text-xs font-mono">:root { … }</code> and <code class="text-xs font-mono">.dark { … }</code> value blocks. You can ignore the <code class="text-xs font-mono">@@import "tailwindcss"</code>, <code class="text-xs font-mono">@@theme inline</code>, and <code class="text-xs font-mono">@@layer base</code> lines — Lumeo already provides those.</li>
-        </ol>
+        <Lumeo.Text Size="sm" Color="muted" Leading="relaxed">
+            <strong class="text-foreground">Load order matters:</strong> your shadcn variables must come <em>after</em>
+            <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">lumeo.css</code> so they win the cascade. You can
+            ignore the <code class="text-xs font-mono">@@import "tailwindcss"</code>, <code class="text-xs font-mono">@@theme inline</code>
+            and <code class="text-xs font-mono">@@layer base</code> lines in the tweakcn export — Lumeo already provides those.
+        </Lumeo.Text>
     </Stack>
 
     <Separator Class="my-4" />
@@ -87,34 +82,24 @@
                 </TableHeader>
                 <TableBody>
                     <TableRow>
-                        <TableCell Class="font-medium">Core &amp; semantic colors</TableCell>
+                        <TableCell Class="font-medium">All colors</TableCell>
                         <TableCell><Badge Variant="Badge.BadgeVariant.Default">Yes</Badge></TableCell>
-                        <TableCell>background, foreground, card, popover, primary, secondary, muted, accent, destructive (+ foreground).</TableCell>
-                    </TableRow>
-                    <TableRow>
-                        <TableCell Class="font-medium">border / input / ring</TableCell>
-                        <TableCell><Badge Variant="Badge.BadgeVariant.Default">Yes</Badge></TableCell>
-                        <TableCell>Form borders and the focus-visible ring.</TableCell>
-                    </TableRow>
-                    <TableRow>
-                        <TableCell Class="font-medium">chart-1…5, sidebar*</TableCell>
-                        <TableCell><Badge Variant="Badge.BadgeVariant.Default">Yes</Badge></TableCell>
-                        <TableCell>The full chart and sidebar families map one-to-one.</TableCell>
+                        <TableCell>background, foreground, card, popover, primary, secondary, muted, accent, destructive (+ foreground), border, input, ring, chart-1…5, and the full sidebar family — all map 1:1.</TableCell>
                     </TableRow>
                     <TableRow>
                         <TableCell Class="font-medium"><code class="text-xs font-mono">--radius</code></TableCell>
                         <TableCell><Badge Variant="Badge.BadgeVariant.Default">Yes</Badge></TableCell>
-                        <TableCell>Bridge only the master token. Don't paste tweakcn's <code class="text-xs font-mono">--radius-sm/md/lg/xl</code> — Lumeo derives its own scale (multiplicative; <code class="text-xs font-mono">md</code>&nbsp;==&nbsp;base) which differs from tweakcn's (additive; <code class="text-xs font-mono">lg</code>&nbsp;==&nbsp;base).</TableCell>
+                        <TableCell>Same name in both. Lumeo derives its own <code class="text-xs font-mono">--radius-sm/md/lg/xl</code> from it, so set only the master <code class="text-xs font-mono">--radius</code> (don't paste tweakcn's derived scale).</TableCell>
                     </TableRow>
                     <TableRow>
                         <TableCell Class="font-medium">Fonts, shadows, spacing, tracking</TableCell>
                         <TableCell><Badge Variant="Badge.BadgeVariant.Secondary">No</Badge></TableCell>
-                        <TableCell>Lumeo sets typography, elevation, and spacing through utility classes (<code class="text-xs font-mono">text-sm</code>, <code class="text-xs font-mono">shadow-md</code>, <code class="text-xs font-mono">p-4</code>), not theme variables, so tweakcn's <code class="text-xs font-mono">--font-*</code> / <code class="text-xs font-mono">--shadow-*</code> / <code class="text-xs font-mono">--spacing</code> / <code class="text-xs font-mono">--tracking-*</code> have nothing to bind to.</TableCell>
+                        <TableCell>Lumeo sets typography, elevation and spacing through utility classes (<code class="text-xs font-mono">text-sm</code>, <code class="text-xs font-mono">shadow-md</code>, <code class="text-xs font-mono">p-4</code>), not theme variables, so tweakcn's <code class="text-xs font-mono">--font-*</code> / <code class="text-xs font-mono">--shadow-*</code> / <code class="text-xs font-mono">--spacing</code> have nothing to bind to.</TableCell>
                     </TableRow>
                     <TableRow>
                         <TableCell Class="font-medium">Lumeo status colors</TableCell>
                         <TableCell><Badge Variant="Badge.BadgeVariant.Secondary">No</Badge></TableCell>
-                        <TableCell>tweakcn never emits <code class="text-xs font-mono">info</code> / <code class="text-xs font-mono">success</code> / <code class="text-xs font-mono">warning</code> / <code class="text-xs font-mono">positive</code> (or rating / progress-stripe / overlay-backdrop), so they keep Lumeo's defaults. Tune them by hand if a heavily recolored palette clashes.</TableCell>
+                        <TableCell>tweakcn never emits <code class="text-xs font-mono">info</code> / <code class="text-xs font-mono">success</code> / <code class="text-xs font-mono">warning</code> / <code class="text-xs font-mono">positive</code>, so they keep Lumeo's defaults. Override the <code class="text-xs font-mono">--color-*</code> directly if a recolored palette clashes.</TableCell>
                     </TableRow>
                 </TableBody>
             </Table>
@@ -124,33 +109,17 @@
     <Separator Class="my-4" />
 
     <Stack Gap="4">
-        <Heading Level="2">Interaction with Lumeo's built-in themes</Heading>
+        <Heading Level="2">Demo: a shadcn palette driving Lumeo</Heading>
         <Lumeo.Text Size="base" Color="muted" Leading="relaxed">
-            The adapter targets <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">:root</code> and
-            <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">.dark</code>. Lumeo's own palette themes
-            (<code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">data-theme="blue|green|…"</code>) set
-            <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">--color-*</code> directly and will win inside
-            their scope, so use a tweakcn theme <em>instead of</em>
-            <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">data-theme</code>, not alongside it — a
-            tweakcn palette is your palette.
+            This block sets the bare shadcn names (<code class="text-xs font-mono">--primary</code> / <code class="text-xs font-mono">--ring</code>)
+            on one subtree — exactly what a pasted tweakcn export does globally — and Lumeo picks up the teal accent with no
+            extra wiring.
         </Lumeo.Text>
-    </Stack>
-
-    <Separator Class="my-4" />
-
-    <Stack Gap="4">
-        <Heading Level="2">Demo: a pasted tweakcn palette</Heading>
-        <Lumeo.Text Size="base" Color="muted" Leading="relaxed">
-            The block below scopes a tweakcn-style export (unprefixed <code class="text-xs font-mono">--primary</code> /
-            <code class="text-xs font-mono">--ring</code>) plus the adapter's mapping to one subtree. The card and
-            buttons pick up the teal accent through the bridge — exactly what loading
-            <code class="text-xs font-mono">lumeo-tweakcn.css</code> globally does for the whole app.
-        </Lumeo.Text>
-        <div style="--primary: oklch(0.68 0.14 183); --primary-foreground: oklch(0.98 0 0); --ring: oklch(0.68 0.14 183); --color-primary: var(--primary); --color-primary-foreground: var(--primary-foreground); --color-ring: var(--ring);">
+        <div style="--primary: oklch(0.68 0.14 183); --primary-foreground: oklch(0.98 0 0); --ring: oklch(0.68 0.14 183);">
             <Card>
                 <Stack Gap="3" Class="p-4">
-                    <Heading Level="3">tweakcn accent</Heading>
-                    <Lumeo.Text Size="sm" Color="muted">Driven by an unprefixed <code class="text-xs font-mono">--primary</code> through the adapter.</Lumeo.Text>
+                    <Heading Level="3">shadcn accent</Heading>
+                    <Lumeo.Text Size="sm" Color="muted">Driven by a bare <code class="text-xs font-mono">--primary</code>, natively.</Lumeo.Text>
                     <Flex Gap="2">
                         <Button>Primary</Button>
                         <Button Variant="Button.ButtonVariant.Outline">Outline</Button>
@@ -163,24 +132,10 @@
     <Separator Class="my-4" />
 
     <Stack Gap="4">
-        <Heading Level="2">Verifying</Heading>
-        <Lumeo.Text Size="base" Color="muted" Leading="relaxed">
-            Override a single token (e.g. <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">--primary: oklch(0.6 0.2 25)</code>)
-            and confirm a <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">bg-primary</code> element updates
-            in both light and <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">.dark</code>. If nothing
-            changes, check that (a) the override uses the <strong class="text-foreground">unprefixed</strong> name and
-            (b) <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">lumeo-tweakcn.css</code> loads
-            <strong class="text-foreground">after</strong> <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">lumeo.css</code>.
-        </Lumeo.Text>
-    </Stack>
-
-    <Separator Class="my-4" />
-
-    <Stack Gap="4">
         <Heading Level="2">See also</Heading>
         <ul class="space-y-2 text-sm">
             <li><a class="text-primary hover:underline" href="docs/theme-overrides">Theme Overrides</a> — the underlying CSS-variable system</li>
-            <li><a class="text-primary hover:underline" href="components/theme-switcher">Theme Switcher</a> — switching between built-in themes</li>
+            <li><a class="text-primary hover:underline" href="components/theme-switcher">Theme Switcher</a> — switching between built-in palettes</li>
             <li><a class="text-primary hover:underline" href="https://tweakcn.com/editor/theme" target="_blank" rel="noopener">tweakcn editor</a> — build and export a palette</li>
         </ul>
     </Stack>
@@ -189,27 +144,25 @@
 </Container>
 
 @code {
-    private const string _adapterCode = @"/* lumeo-tweakcn.css — already shipped in the Lumeo package */
-:root, .dark {
-    --color-primary:   var(--primary,   var(--color-primary));
-    --color-background:var(--background,var(--color-background));
-    --color-border:    var(--border,    var(--color-border));
-    --color-ring:      var(--ring,      var(--color-ring));
-    /* …every color token… */
-    --radius:          var(--radius,    0.75rem);
+    private const string _howCode = @"/* lumeo.css — every color token bridges to the shadcn name */
+:root {
+    --color-primary:    var(--primary,    oklch(0.21 0.006 286));
+    --color-background: var(--background, oklch(1 0 0));
+    --color-border:     var(--border,     oklch(0.92 0.004 286));
+    --color-ring:       var(--ring,       oklch(0.21 0.006 286));
+    /* …every color token, base + dark + all palettes… */
+    --radius: 0.75rem;   /* same name as shadcn — no bridge needed */
 }";
 
-    private const string _setupTailwindCode = @"@import ""./_content/Lumeo/css/lumeo.css""          layer(base);
-@import ""./_content/Lumeo/css/lumeo-tweakcn.css""  layer(base);  /* AFTER lumeo.css */
+    private const string _setupTailwindCode = @"@import ""./_content/Lumeo/css/lumeo.css"" layer(base);
 
-/* paste your tweakcn export below */
-:root { --primary: oklch(0.205 0 0); /* … */ }
+/* paste your tweakcn / shadcn export below — that's it */
+:root { --primary: oklch(0.205 0 0); --radius: 0.625rem; /* … */ }
 .dark  { --primary: oklch(0.985 0 0); /* … */ }";
 
-    private const string _setupPlainCode = @"<link href=""_content/Lumeo/css/lumeo.css""         rel=""stylesheet"" />
-<link href=""_content/Lumeo/css/lumeo-tweakcn.css"" rel=""stylesheet"" />
+    private const string _setupPlainCode = @"<link href=""_content/Lumeo/css/lumeo.css"" rel=""stylesheet"" />
 <style>
-    :root { /* tweakcn --primary, --background, … */ }
-    .dark { /* tweakcn dark overrides */ }
+    :root { --primary: oklch(0.205 0 0); /* tweakcn light vars */ }
+    .dark { --primary: oklch(0.985 0 0); /* tweakcn dark vars  */ }
 </style>";
 }
