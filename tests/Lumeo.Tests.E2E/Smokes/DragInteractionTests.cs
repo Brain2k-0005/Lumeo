@@ -43,16 +43,32 @@ public class DragInteractionTests : PlaywrightTestBase
         await Page.WaitForLoadStateAsync(LoadState.NetworkIdle);
 
         var items = Page.Locator("[draggable=true]");
+        await items.First.WaitForAsync(new() { State = WaitForSelectorState.Visible, Timeout = 15000 });
         await items.First.ScrollIntoViewIfNeededAsync();
         var firstBefore = (await items.Nth(0).InnerTextAsync()).Trim();
 
-        // Drag the first item down onto the third — its text should leave slot 0.
-        await items.Nth(0).DragToAsync(items.Nth(2));
+        // Native HTML5 drag-and-drop is unreliable to drive with synthetic pointer
+        // input in headless Chromium (DragToAsync flakes). The Sortable listens to the
+        // standard *bubbling* drag events (@ondragstart/@ondragover/@ondrop), so
+        // dispatch them directly with a shared DataTransfer — deterministic, and they
+        // bubble to Blazor's delegated handler. Drag item 0 onto item 2.
+        await Page.EvaluateAsync(@"() => {
+            const els = document.querySelectorAll('[draggable=true]');
+            if (els.length < 3) return;
+            const src = els[0], dst = els[2];
+            const dt = new DataTransfer();
+            const fire = (el, type) => el.dispatchEvent(new DragEvent(type, { bubbles: true, cancelable: true, dataTransfer: dt }));
+            fire(src, 'dragstart');
+            fire(dst, 'dragenter');
+            fire(dst, 'dragover');
+            fire(dst, 'drop');
+            fire(src, 'dragend');
+        }");
 
         // Give the reorder a tick to settle.
         await Page.WaitForFunctionAsync(
             "(before) => { const el = document.querySelectorAll('[draggable=true]')[0]; return el && el.innerText.trim() !== before; }",
-            firstBefore, new() { Timeout = 5000 });
+            firstBefore, new() { Timeout = 15000 });
 
         var firstAfter = (await items.Nth(0).InnerTextAsync()).Trim();
         Assert.NotEqual(firstBefore, firstAfter);
