@@ -299,6 +299,42 @@
         </Stack>
     </ComponentDemo>
 
+    <ComponentDemo Title="Closable Tabs" Code="@_closableCode">
+        <Container MaxWidth="md" Center="false">
+            <Tabs @bind-ActiveValue="_closableActive">
+                <TabsList>
+                    @foreach (var t in _closableTabs)
+                    {
+                        var tab = t;
+                        <TabsTrigger Value="@tab" IsClosable="true" OnClose="@(() => CloseTab(tab))">@tab</TabsTrigger>
+                    }
+                </TabsList>
+                @foreach (var t in _closableTabs)
+                {
+                    <TabsContent Value="@t"><Lumeo.Text Size="sm" Color="muted" Class="p-4 block">Content for @t. Click the × to close this tab.</Lumeo.Text></TabsContent>
+                }
+            </Tabs>
+        </Container>
+    </ComponentDemo>
+
+    <ComponentDemo Title="Trailing Content (badge / disabled)" Code="@_trailingCode">
+        <Container MaxWidth="md" Center="false">
+            <Tabs ActiveValue="inbox">
+                <TabsList>
+                    <TabsTrigger Value="inbox">
+                        <ChildContent>Inbox</ChildContent>
+                        <TrailingContent><Badge Variant="Badge.BadgeVariant.Secondary">12</Badge></TrailingContent>
+                    </TabsTrigger>
+                    <TabsTrigger Value="sent">Sent</TabsTrigger>
+                    <TabsTrigger Value="spam" Disabled="true">Spam</TabsTrigger>
+                </TabsList>
+                <TabsContent Value="inbox"><Lumeo.Text Size="sm" Color="muted" Class="p-4 block">12 unread messages.</Lumeo.Text></TabsContent>
+                <TabsContent Value="sent"><Lumeo.Text Size="sm" Color="muted" Class="p-4 block">Your sent messages.</Lumeo.Text></TabsContent>
+                <TabsContent Value="spam"><Lumeo.Text Size="sm" Color="muted" Class="p-4 block">This tab is disabled.</Lumeo.Text></TabsContent>
+            </Tabs>
+        </Container>
+    </ComponentDemo>
+
     <ComponentDemo Title="Swipe (Mobile)" Code="@_swipeCode">
         <Container MaxWidth="md" Center="false">
             <Lumeo.Text Size="sm" Color="muted" Class="mb-3 block">On a touch device, swipe left/right on the panel area to switch tabs. <code>SwipeWrap="false"</code> (default) stops at the first and last tab.</Lumeo.Text>
@@ -547,6 +583,17 @@
     private string _animatedTab = "home";
     private string _rmTab = "form";
     private string _swipeTab = "alpha";
+
+    private string _closableActive = "Tab 1";
+    private List<string> _closableTabs = new() { "Tab 1", "Tab 2", "Tab 3" };
+
+    private void CloseTab(string tab)
+    {
+        var idx = _closableTabs.IndexOf(tab);
+        _closableTabs.Remove(tab);
+        if (_closableActive == tab && _closableTabs.Count > 0)
+            _closableActive = _closableTabs[Math.Min(idx, _closableTabs.Count - 1)];
+    }
 
     private record ReorderTabModel(string Id, string Label, string Body);
     private string _reorderActive = "overview";
@@ -876,6 +923,39 @@
     <TabsContent Value=""reports"">
         <Lumeo.Text Size=""sm"" Color=""muted"" Class=""p-4"">Reports content goes here.</Lumeo.Text>
     </TabsContent>
+</Tabs>";
+
+    private string _closableCode = @"<Tabs @bind-ActiveValue=""_active"">
+    <TabsList>
+        @foreach (var tab in _tabs)
+        {
+            <TabsTrigger Value=""@tab"" IsClosable=""true"" OnClose=""@(() => CloseTab(tab))"">@tab</TabsTrigger>
+        }
+    </TabsList>
+    @foreach (var tab in _tabs)
+    {
+        <TabsContent Value=""@tab"">Content for @tab.</TabsContent>
+    }
+</Tabs>
+
+@code {
+    string _active = ""Tab 1"";
+    List<string> _tabs = new() { ""Tab 1"", ""Tab 2"", ""Tab 3"" };
+    void CloseTab(string tab) => _tabs.Remove(tab);
+}";
+
+    private string _trailingCode = @"<Tabs ActiveValue=""inbox"">
+    <TabsList>
+        <TabsTrigger Value=""inbox"">
+            <ChildContent>Inbox</ChildContent>
+            <TrailingContent><Badge Variant=""Badge.BadgeVariant.Secondary"">12</Badge></TrailingContent>
+        </TabsTrigger>
+        <TabsTrigger Value=""sent"">Sent</TabsTrigger>
+        <TabsTrigger Value=""spam"" Disabled=""true"">Spam</TabsTrigger>
+    </TabsList>
+    <TabsContent Value=""inbox"">12 unread messages.</TabsContent>
+    <TabsContent Value=""sent"">Your sent messages.</TabsContent>
+    <TabsContent Value=""spam"">This tab is disabled.</TabsContent>
 </Tabs>";
 
     private string _swipeCode = @"@* SwipeEnabled=""true"" — horizontal drag (>50 px) on a panel switches tabs.

@@ -165,6 +165,24 @@
         </Container>
     </ComponentDemo>
 
+    <ComponentDemo Title="Creatable">
+        <Stack Gap="2" Class="w-full max-w-xs">
+            <Combobox @bind-Value="_selectedTag" @bind-Open="_isOpenCreate"
+                      Creatable="true" OnCreate="@HandleCreateTag">
+                <ComboboxInput Placeholder="Pick or create a tag..." />
+                <ComboboxContent>
+                    @foreach (var tag in _tags.Where(t => string.IsNullOrEmpty(_searchText1) || t.Contains(_searchText1, StringComparison.OrdinalIgnoreCase)))
+                    {
+                        <ComboboxItem Value="@tag">@tag</ComboboxItem>
+                    }
+                    <ComboboxCreate OnCreate="@HandleCreateTag" />
+                    <ComboboxEmpty>Type to create a tag.</ComboboxEmpty>
+                </ComboboxContent>
+            </Combobox>
+            <Lumeo.Text Size="sm" Color="muted">Selected: @(_selectedTag ?? "none")</Lumeo.Text>
+        </Stack>
+    </ComponentDemo>
+
     <ComponentDemo Title="Async Search" Code="@_asyncCode">
         <Container MaxWidth="sm" Center="false" Padding="">
             <Combobox @bind-Open="_isOpenAsync" OnSearchAsync="@HandleSearchAsync" IsSearchLoading="@_isSearching">
@@ -208,6 +226,15 @@
 
     private string? _selectedAction;
     private bool _isOpenRich;
+
+    private string? _selectedTag;
+    private bool _isOpenCreate;
+    private List<string> _tags = new() { "bug", "feature", "docs" };
+    private void HandleCreateTag(string value)
+    {
+        if (!_tags.Contains(value)) _tags.Add(value);
+        _selectedTag = value;
+    }
 
     // Uses the docs-site DynamicIcon helper so the icon library swap in the docs
     // shell applies to live demos too. ItemIcon returns null per item to skip its

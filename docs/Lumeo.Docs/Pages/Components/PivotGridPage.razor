@@ -44,6 +44,39 @@
                    Compact="true" />
     </ComponentDemo>
 
+    <ComponentDemo Title="Average aggregation">
+        <Lumeo.Text Size="sm" Color="muted" Class="mb-3 block">Switch the measure aggregate to Average / Min / Max instead of Sum.</Lumeo.Text>
+        <PivotGrid TItem="Sale"
+                   Items="_sales"
+                   RowFields="_regionField"
+                   ColumnFields="_yearField"
+                   Measures="_avgMeasure" />
+    </ComponentDemo>
+
+    <ComponentDemo Title="Without subtotals or grand totals">
+        <PivotGrid TItem="Sale"
+                   Items="_sales"
+                   RowFields="_regionCountryFields"
+                   ColumnFields="_yearField"
+                   Measures="_amountMeasure"
+                   ShowSubtotals="false"
+                   ShowRowGrandTotal="false"
+                   ShowColumnGrandTotal="false"
+                   Compact="true" />
+    </ComponentDemo>
+
+    <ComponentDemo Title="Empty state">
+        <PivotGrid TItem="Sale"
+                   Items="_noSales"
+                   RowFields="_regionField"
+                   ColumnFields="_yearField"
+                   Measures="_amountMeasure">
+            <EmptyContent>
+                <EmptyState Title="No sales data" Description="There are no records to pivot for the current filters." />
+            </EmptyContent>
+        </PivotGrid>
+    </ComponentDemo>
+
     <ComponentDemo Title="Multi-level column hierarchy (Year &gt; Quarter)" Code="@_multiColumnCode">
         <Lumeo.Text Size="sm" Color="muted" Class="mb-3 block">Two column-field levels nest into a tree of headers, with the measure-name row at the bottom.</Lumeo.Text>
         <PivotGrid TItem="Sale"
@@ -198,6 +231,13 @@
         new("Revenue", s => s.Amount, PivotAggregate.Sum, Money),
         new("Deals", s => s.Units, PivotAggregate.Count),
     };
+
+    private readonly IReadOnlyList<PivotMeasure<Sale>> _avgMeasure = new List<PivotMeasure<Sale>>
+    {
+        new("Avg Deal", s => s.Amount, PivotAggregate.Average, Money),
+    };
+
+    private readonly List<Sale> _noSales = new();
 
     private string _basicCode = @"<PivotGrid TItem=""Sale""
            Items=""_sales""
