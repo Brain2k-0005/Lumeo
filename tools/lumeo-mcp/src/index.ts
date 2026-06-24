@@ -188,6 +188,7 @@ function paramRow(p: ApiParameter): string {
   const def = p.default ?? "—";
   const desc = p.description ?? "";
   const flags: string[] = [];
+  if (p.isEditorRequired) flags.push("required");
   if (p.isCascading) flags.push("cascading");
   if (p.captureUnmatched) flags.push("captures unmatched");
   const flagStr = flags.length ? ` _(${flags.join(", ")})_` : "";
@@ -400,8 +401,9 @@ function buildInstallInfo(c: ApiComponent) {
   const subNames = Object.values(c.subComponents).map((s) => s.componentName);
   const isPortal = PORTAL_COMPONENTS.has(c.name);
   const needsOverlayProvider = NEEDS_OVERLAY_PROVIDER.has(c.name);
+  // [EditorRequired] params, from the real scanner flag (was a fragile description-text grep).
   const requiredParams = c.parameters
-    .filter((p) => /\bEditorRequired\b/i.test(p.description ?? "") || /required/i.test(p.description ?? ""))
+    .filter((p) => p.isEditorRequired)
     .map((p) => p.name);
   return {
     component: c.name,

@@ -314,6 +314,7 @@ public static class ComponentsApiEmitter
             description = p.Description,
             isCascading = p.IsCascading,
             captureUnmatched = p.CaptureUnmatched,
+            isEditorRequired = p.IsEditorRequired,
         };
 
     private static object SerializeEvent(RazorParameterScanner.EventInfo e)
