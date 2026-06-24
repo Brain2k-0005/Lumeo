@@ -61,6 +61,17 @@ export interface ApiExample {
   code: string;
 }
 
+/** Static a11y signals extracted from a component's markup by RegistryGen: the ARIA
+ *  roles + aria-* attributes it renders, the keyboard keys it handles, and whether it
+ *  manages focus. Surfaced via lumeo_get_a11y. */
+export interface ApiA11y {
+  roles: string[];
+  ariaAttributes: string[];
+  keys: string[];
+  keyboardInteractive: boolean;
+  focusManaged: boolean;
+}
+
 export interface ApiComponent {
   name: string;
   category: string;
@@ -79,6 +90,7 @@ export interface ApiComponent {
   gotchas?: string[];
   examples?: ApiExample[];
   subComponents: Record<string, ApiSubComponent>;
+  a11y?: ApiA11y;
   parseFailed: boolean;
   parseError: string | null;
 }
