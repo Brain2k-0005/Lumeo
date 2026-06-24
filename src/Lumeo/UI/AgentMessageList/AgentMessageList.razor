@@ -75,7 +75,13 @@
     }
 
     private string RootClass =>
-        Cx.Merge("flex w-full flex-col overflow-y-auto", Class);
+        // min-h-0 is essential: as a scroll container this is almost always a flex
+        // child (the standard chat layout is a flex column of header + this list +
+        // input). A flex child defaults to min-height:auto, which refuses to shrink
+        // below its content — so without min-h-0 the list GROWS when a message expands
+        // (e.g. a ReasoningDisplay opening) instead of scrolling, pushing the fixed
+        // container taller. min-h-0 lets it shrink so overflow-y-auto actually scrolls.
+        Cx.Merge("flex w-full min-h-0 flex-col overflow-y-auto", Class);
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
