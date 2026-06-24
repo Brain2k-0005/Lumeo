@@ -741,8 +741,13 @@ foreach (var dir in componentDirs)
         .EnumerateFiles(dir, "*.*", SearchOption.AllDirectories)
         .Where(p => p.EndsWith(".razor", StringComparison.OrdinalIgnoreCase)
                     || p.EndsWith(".cs", StringComparison.OrdinalIgnoreCase))
-        .OrderBy(p => p, StringComparer.OrdinalIgnoreCase)
         .Select(p => NormalizePath(Path.GetRelativePath(packageSrcRoot, p)))
+        // Sort the NORMALIZED forward-slash relative path, not the raw absolute OS
+        // path. Sorting absolute paths ordered differently on Windows (\ separators,
+        // C:\ root) than on Linux (/), so any multi-directory component (e.g. Chart,
+        // whose files span UI/Chart and subfolders) emitted its file list in a
+        // platform-dependent order and tripped the registry-freshness CI gate.
+        .OrderBy(p => p, StringComparer.Ordinal)
         .ToList();
 
     // Scan for cssVars, dependencies, and package dependencies
