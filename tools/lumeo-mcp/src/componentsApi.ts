@@ -19,6 +19,8 @@ export interface ApiParameter {
   description: string | null;
   isCascading: boolean;
   captureUnmatched: boolean;
+  /** True when the param carries [EditorRequired] — the consumer MUST supply it. */
+  isEditorRequired?: boolean;
 }
 
 export interface ApiEvent {
