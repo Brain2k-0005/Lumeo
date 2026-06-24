@@ -322,6 +322,10 @@ namespace Lumeo.Cli
         [JsonPropertyName("nugetPackage")] public string? NugetPackage { get; set; }
         [JsonPropertyName("files")] public List<string> Files { get; set; } = new();
         [JsonPropertyName("dependencies")] public List<string> Dependencies { get; set; } = new();
+        /// <summary>External NuGet packages the vendored source references (e.g.
+        /// <c>Blazicons.Lucide</c> for icons). Without these the vendored .razor will
+        /// not compile, so <c>add</c> installs them alongside the component.</summary>
+        [JsonPropertyName("packageDependencies")] public List<string> PackageDependencies { get; set; } = new();
         [JsonPropertyName("cssVars")] public List<string> CssVars { get; set; } = new();
         [JsonPropertyName("registryUrl")] public string? RegistryUrl { get; set; }
     }

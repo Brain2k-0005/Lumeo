@@ -267,6 +267,68 @@ internal static class Commands
         return null;
     }
 
+    /// <summary>Ensure a NuGet package is referenced by the consumer project, running
+    /// <c>dotnet add package</c> (with a prompt unless --yes/--force) if it isn't.
+    /// Used both for satellite packages and for a component's packageDependencies
+    /// (e.g. Blazicons.Lucide) — without the latter, vendored .razor won't compile.</summary>
+    private static async Task EnsureNuGetPackageAsync(string pkg, string reason, AddOptions opts)
+    {
+        if (string.IsNullOrWhiteSpace(pkg)) return;
+        if (FindCsprojReferencingPackage(Environment.CurrentDirectory, pkg) is not null) return;
+
+        if (opts.DryRun)
+        {
+            Console.WriteLine(Ansi.Yellow($"  dry-run  would install NuGet package {pkg}"));
+            return;
+        }
+
+        bool doInstall;
+        if (opts.Yes || opts.Force)
+        {
+            doInstall = true;
+        }
+        else
+        {
+            Console.WriteLine();
+            Console.WriteLine(Ansi.Yellow(reason));
+            doInstall = Prompts.Confirm($"Install {pkg}?", defaultYes: true);
+        }
+
+        if (!doInstall)
+        {
+            Console.WriteLine(Ansi.Yellow($"Skipped {pkg}. The component may not compile/render without it."));
+            return;
+        }
+
+        var csprojPath = FindConsumerCsproj(Environment.CurrentDirectory);
+        var projectArg = csprojPath is not null ? $"\"{csprojPath}\"" : "";
+        var dotnetArgs = string.IsNullOrEmpty(projectArg)
+            ? $"add package {pkg}"
+            : $"add {projectArg} package {pkg}";
+
+        Console.WriteLine(Ansi.Dim($"  $ dotnet {dotnetArgs}"));
+        var psi = new System.Diagnostics.ProcessStartInfo("dotnet", dotnetArgs)
+        {
+            RedirectStandardOutput = false,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+        };
+        var proc = System.Diagnostics.Process.Start(psi);
+        if (proc is null) return;
+        var stderr = await proc.StandardError.ReadToEndAsync();
+        await proc.WaitForExitAsync();
+        if (proc.ExitCode != 0)
+        {
+            Console.Error.WriteLine(Ansi.Red($"dotnet add package {pkg} failed (exit {proc.ExitCode})."));
+            if (!string.IsNullOrWhiteSpace(stderr))
+                Console.Error.WriteLine(Ansi.Red(stderr.Trim()));
+        }
+        else
+        {
+            Console.WriteLine(Ansi.Green($"  +   {pkg} added to project."));
+        }
+    }
+
     private static char PromptAssetSetup()
     {
         Console.WriteLine();
@@ -635,66 +697,8 @@ internal static class Commands
         }
         else if (isSatellite)
         {
-            var alreadyReferenced = FindCsprojReferencingPackage(Environment.CurrentDirectory, satellitePkg!) is not null;
-            if (!alreadyReferenced)
-            {
-                if (opts.DryRun)
-                {
-                    Console.WriteLine(Ansi.Yellow($"  dry-run  would install NuGet package {satellitePkg}"));
-                }
-                else
-                {
-                    bool doInstall;
-                    if (opts.Yes || opts.Force)
-                    {
-                        doInstall = true;
-                    }
-                    else
-                    {
-                        Console.WriteLine();
-                        Console.WriteLine(Ansi.Yellow($"Component '{entry.Name}' requires the {satellitePkg} NuGet package."));
-                        doInstall = Prompts.Confirm($"Install {satellitePkg}?", defaultYes: true);
-                    }
-
-                    if (doInstall)
-                    {
-                        // Find the consumer .csproj to pass to `dotnet add package`.
-                        var csprojPath = FindConsumerCsproj(Environment.CurrentDirectory);
-                        var projectArg = csprojPath is not null ? $"\"{csprojPath}\"" : "";
-                        var dotnetArgs = string.IsNullOrEmpty(projectArg)
-                            ? $"add package {satellitePkg}"
-                            : $"add {projectArg} package {satellitePkg}";
-
-                        Console.WriteLine(Ansi.Dim($"  $ dotnet {dotnetArgs}"));
-                        var psi = new System.Diagnostics.ProcessStartInfo("dotnet", dotnetArgs)
-                        {
-                            RedirectStandardOutput = false,
-                            RedirectStandardError = true,
-                            UseShellExecute = false,
-                        };
-                        var proc = System.Diagnostics.Process.Start(psi);
-                        if (proc is not null)
-                        {
-                            var stderr = await proc.StandardError.ReadToEndAsync();
-                            await proc.WaitForExitAsync();
-                            if (proc.ExitCode != 0)
-                            {
-                                Console.Error.WriteLine(Ansi.Red($"dotnet add package {satellitePkg} failed (exit {proc.ExitCode})."));
-                                if (!string.IsNullOrWhiteSpace(stderr))
-                                    Console.Error.WriteLine(Ansi.Red(stderr.Trim()));
-                            }
-                            else
-                            {
-                                Console.WriteLine(Ansi.Green($"  +   {satellitePkg} added to project."));
-                            }
-                        }
-                    }
-                    else
-                    {
-                        Console.WriteLine(Ansi.Yellow($"Skipped. Note: {entry.Name} will not render correctly without {satellitePkg}."));
-                    }
-                }
-            }
+            await EnsureNuGetPackageAsync(satellitePkg!,
+                $"Component '{entry.Name}' requires the {satellitePkg} NuGet package.", opts);
         }
 
         // Resolve dependency chain (BFS).
@@ -869,6 +873,21 @@ internal static class Commands
                 var installKey = ToKebab(item.Name);
                 ConfigIO.RecordInstall(cfg, installKey, registry.Version, recordedFiles);
             }
+        }
+
+        // Install the external NuGet packages the VENDORED source references (e.g.
+        // Blazicons.Lucide for icons). NuGet-routed satellites (no --vendor) get theirs
+        // transitively, so only consider items whose source was actually copied.
+        var vendoredItems = toInstall.Where(i =>
+        {
+            var p = string.IsNullOrEmpty(i.NugetPackage) ? "Lumeo" : i.NugetPackage;
+            var sat = !string.Equals(p, "Lumeo", StringComparison.OrdinalIgnoreCase);
+            return !(sat && !opts.Vendor);
+        });
+        foreach (var dep in vendoredItems.SelectMany(i => i.PackageDependencies)
+                     .Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            await EnsureNuGetPackageAsync(dep, $"Vendored components reference the {dep} NuGet package.", opts);
         }
 
         Console.WriteLine();

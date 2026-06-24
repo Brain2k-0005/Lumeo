@@ -124,6 +124,10 @@ public sealed class CliVendorE2ETests : IDisposable
         // 3) The copied asset is byte-for-byte the upstream source (no rewrite).
         var upstream = Path.Combine(_repoRoot, "src", "Lumeo.Charts", "wwwroot", "js", "echarts-interop.js");
         Assert.Equal(File.ReadAllText(upstream), File.ReadAllText(asset));
+
+        // 4) The component's NuGet packageDependencies (Blazicons.Lucide for icons) are
+        //    surfaced — vendored .razor references Lucide and won't compile without it.
+        Assert.Contains("Blazicons", add.Stdout + add.Stderr, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
