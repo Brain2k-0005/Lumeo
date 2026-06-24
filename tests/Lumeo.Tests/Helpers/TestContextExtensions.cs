@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using Bunit;
 using Lumeo.Services;
 using Lumeo.Services.Localization;
@@ -8,6 +9,20 @@ namespace Lumeo.Tests.Helpers;
 
 public static class TestContextExtensions
 {
+    /// <summary>
+    /// Raise the WaitForAssertion ceiling from bUnit's 1 s default, once for the
+    /// whole test assembly (the property is a static global). Many overlay
+    /// components play an exit animation and only unmount on the follow-up render,
+    /// and focus moves through async JS interop. Those renders/callbacks are fast
+    /// locally but can land just past 1 s on a heavily parallel CI runner, which
+    /// flaked a *different* timing test almost every run. WaitForAssertion returns
+    /// the moment the assertion passes, so a higher ceiling only buys headroom under
+    /// load — it does not slow tests that pass promptly.
+    /// </summary>
+    [ModuleInitializer]
+    internal static void RaiseDefaultWaitTimeout()
+        => BunitContext.DefaultWaitTimeout = TimeSpan.FromSeconds(10);
+
     /// <summary>
     /// Registers all Lumeo services with bUnit's mock JSInterop in loose mode.
     /// Call this before rendering any Lumeo component that depends on services.
