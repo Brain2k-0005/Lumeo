@@ -4,9 +4,9 @@
 
 | Version | Supported |
 |---------|-----------|
-| 2.0.x   | ✅ Active — security fixes land here |
-| 1.6.x   | ⚠️ Critical fixes only until 2026-12-31 |
-| < 1.6   | ❌ Unsupported — please upgrade |
+| 3.x     | ✅ Active — security fixes land here |
+| 2.x     | ⚠️ Critical fixes only |
+| < 2.0   | ❌ Unsupported — please upgrade |
 
 All Lumeo packages (`Lumeo`, `Lumeo.Charts`, `Lumeo.DataGrid`, `Lumeo.Editor`,
 `Lumeo.Scheduler`, `Lumeo.Gantt`, `Lumeo.Motion`, `Lumeo.Cli`,

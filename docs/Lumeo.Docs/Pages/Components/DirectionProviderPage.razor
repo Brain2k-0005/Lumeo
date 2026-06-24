@@ -1,0 +1,72 @@
+@page "/components/direction-provider"
+@using Lumeo.Services
+
+<PageTitle>Direction Provider — Lumeo</PageTitle>
+
+<PageHeader Title="Direction Provider" Description="Sets the layout direction (LTR / RTL) for everything inside it." />
+
+<InstallUsage Component="DirectionProvider" />
+
+<div class="mt-10 space-y-3">
+    <Heading Id="when-to-use" Level="2" Class="scroll-mt-20">When to Use</Heading>
+    <ul class="list-disc list-inside space-y-1 text-muted-foreground text-sm">
+        <li>Render a right-to-left (Arabic, Hebrew, Persian, …) section or a whole app.</li>
+        <li>Scope a direction to one subtree — e.g. an RTL preview inside an LTR admin.</li>
+        <li>Lumeo components use logical CSS utilities (<code>ms-/me-/ps-/pe-/start-/end-/text-start/…</code>), so wrapping them in an RTL provider mirrors their layout automatically.</li>
+    </ul>
+</div>
+
+<Stack Gap="8" Class="mt-8">
+    <ComponentDemo Title="LTR vs RTL" Code="@_demoCode">
+        <Stack Gap="6">
+            <Stack Gap="2">
+                <Lumeo.Text Size="xs" Color="muted">Direction = Ltr (default)</Lumeo.Text>
+                <DirectionProvider Direction="LayoutDirection.Ltr" Class="rounded-lg border border-border p-4">
+                    <Flex Align="center" Gap="3">
+                        <Blazicon Svg="Lucide.Info" class="h-5 w-5 text-primary shrink-0" />
+                        <Lumeo.Text Size="sm">The icon sits on the left and text aligns to the start.</Lumeo.Text>
+                        <Button Class="ms-auto">Action</Button>
+                    </Flex>
+                </DirectionProvider>
+            </Stack>
+            <Stack Gap="2">
+                <Lumeo.Text Size="xs" Color="muted">Direction = Rtl</Lumeo.Text>
+                <DirectionProvider Direction="LayoutDirection.Rtl" Class="rounded-lg border border-border p-4">
+                    <Flex Align="center" Gap="3">
+                        <Blazicon Svg="Lucide.Info" class="h-5 w-5 text-primary shrink-0" />
+                        <Lumeo.Text Size="sm">Same markup — now the icon is on the right and text aligns to the right.</Lumeo.Text>
+                        <Button Class="ms-auto">Action</Button>
+                    </Flex>
+                </DirectionProvider>
+            </Stack>
+        </Stack>
+    </ComponentDemo>
+
+    <ComponentDemo Title="Wrapping the whole app" Code="@_appCode">
+        <Lumeo.Text Size="sm" Color="muted">
+            Wrap your app's root (or any subtree) in a single <code>DirectionProvider</code>; everything inside
+            inherits the direction. The native <code>dir</code> attribute it sets also flips native text
+            alignment, form controls and bidi text — not just Lumeo's logical utilities.
+        </Lumeo.Text>
+    </ComponentDemo>
+</Stack>
+
+@code {
+    private string _demoCode = @"@* Same markup, two directions. *@
+<DirectionProvider Direction=""LayoutDirection.Rtl"">
+    <Flex Align=""center"" Gap=""3"">
+        <Blazicon Svg=""Lucide.Info"" class=""h-5 w-5 text-primary shrink-0"" />
+        <Lumeo.Text Size=""sm"">Mirrors under RTL.</Lumeo.Text>
+        <Button Size=""Lumeo.Size.Sm"" Class=""ms-auto"">Action</Button>
+    </Flex>
+</DirectionProvider>
+
+@code {
+    // LayoutDirection lives in Lumeo.Services.
+}";
+
+    private string _appCode = @"@* App.razor / MainLayout — wrap once. *@
+<DirectionProvider Direction=""@(_isRtl ? LayoutDirection.Rtl : LayoutDirection.Ltr)"">
+    @Body
+</DirectionProvider>";
+}
