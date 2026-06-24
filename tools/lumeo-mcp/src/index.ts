@@ -45,6 +45,7 @@ import {
   type ApiThemeToken,
 } from "./componentsApi.js";
 import { components as curatedExamples } from "./components.js";
+import { loadRegistry, type TestCoverage } from "./registry.js";
 import { setupFor, PORTAL_COMPONENTS, NEEDS_OVERLAY_PROVIDER } from "./installInfo.js";
 import { createValidator } from "./validate.js";
 import { readFileSync } from "node:fs";
@@ -117,6 +118,28 @@ const curatedExampleByName = new Map<string, string>(
   curatedExamples.map((c) => [c.name.toLowerCase(), c.example]),
 );
 
+// Per-component test-coverage (tier + which test dimensions exist), from registry.json.
+// Surfaced in get_component so an agent can see, at a glance, what's battle-tested.
+const coverageByName = new Map<string, TestCoverage>(
+  (loadRegistry()?.components ?? [])
+    .filter((c) => c.testCoverage)
+    .map((c) => [c.name.toLowerCase(), c.testCoverage as TestCoverage]),
+);
+
+/** One-line human summary of a component's test coverage, e.g.
+ *  "tier 3/4 · 32 tests · render, behavior, a11y, keyboard". */
+function coverageSummary(tc: TestCoverage): string {
+  const dims = [
+    tc.render && "render",
+    tc.behavior && "behavior",
+    tc.a11y && "a11y",
+    tc.keyboard && "keyboard",
+    tc.scale && "scale",
+    tc.e2e && "e2e",
+  ].filter(Boolean) as string[];
+  return `tier ${tc.tier}/4 · ${tc.tests} test${tc.tests === 1 ? "" : "s"}${dims.length ? ` · ${dims.join(", ")}` : ""}`;
+}
+
 // ───────────────── Helpers ─────────────────
 
 function findComponent(name: string): ApiComponent | undefined {
@@ -187,12 +210,15 @@ function toComponentMarkdown(c: ApiComponent): string {
     : "";
   const example = curatedExampleByName.get(c.name.toLowerCase());
 
+  const coverage = coverageByName.get(c.name.toLowerCase());
+
   const sections = [
     `# ${c.name}`,
     "",
     `**Category:** ${c.category}${c.subcategory ? ` › ${c.subcategory}` : ""}`,
     `**NuGet:** \`${c.nugetPackage}\``,
     `**Namespace:** \`${c.namespace ?? "Lumeo"}\``,
+    ...(coverage ? [`**Test coverage:** ${coverageSummary(coverage)}`] : []),
     "",
     c.description,
     "",
@@ -362,6 +388,7 @@ function toGetPayload(c: ApiComponent) {
     subComponents,
     examples: c.examples ?? [],
     curatedExample: curatedExampleByName.get(c.name.toLowerCase()) ?? null,
+    testCoverage: coverageByName.get(c.name.toLowerCase()) ?? null,
     docs: docsUrl(c),
   };
 }

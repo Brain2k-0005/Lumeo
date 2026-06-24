@@ -30,6 +30,22 @@ import { readFileSync, existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 
+/** Per-component test-coverage summary emitted into registry.json by RegistryGen.
+ *  Surfaced through the MCP so an AI agent can see, at a glance, what's battle-tested. */
+export interface TestCoverage {
+  /** 0–4 coverage tier (4 = render + behavior + a11y + keyboard + scale + e2e). */
+  tier: number;
+  tests: number;
+  render: boolean;
+  behavior: boolean;
+  a11y: boolean;
+  keyboard: boolean;
+  scale: boolean;
+  e2e: boolean;
+  /** "smoke" | "behavioral" | "comprehensive" — qualitative contract level. */
+  contract?: string;
+}
+
 export interface RegistryComponent {
   /** Kebab-case slug key from the registry.json map (e.g. "data-grid"). */
   slug: string;
@@ -41,6 +57,7 @@ export interface RegistryComponent {
   dependencies: string[];
   cssVars: string[];
   registryUrl?: string;
+  testCoverage?: TestCoverage;
 }
 
 export interface RegistryDocument {
@@ -57,6 +74,7 @@ interface RawEntry {
   dependencies?: string[];
   cssVars?: string[];
   registryUrl?: string;
+  testCoverage?: TestCoverage;
 }
 
 interface RawDocument {
@@ -105,6 +123,7 @@ export function loadRegistry(): RegistryDocument | null {
         dependencies: entry.dependencies ?? [],
         cssVars: entry.cssVars ?? [],
         registryUrl: entry.registryUrl,
+        testCoverage: entry.testCoverage,
       });
     }
 
