@@ -322,6 +322,7 @@ internal static class Commands
             Console.Error.WriteLine(Ansi.Red($"dotnet add package {pkg} failed (exit {proc.ExitCode})."));
             if (!string.IsNullOrWhiteSpace(stderr))
                 Console.Error.WriteLine(Ansi.Red(stderr.Trim()));
+            Environment.ExitCode = 1;
         }
         else
         {
@@ -695,7 +696,7 @@ internal static class Commands
             Console.WriteLine(Ansi.Dim(
                 $"  Vendoring {entry.Name} as source from {satellitePkg} (omit --vendor to add the NuGet package instead)."));
         }
-        else if (isSatellite)
+        else if (isSatellite && !((opts.Diff || opts.View) && !opts.Yes))
         {
             await EnsureNuGetPackageAsync(satellitePkg!,
                 $"Component '{entry.Name}' requires the {satellitePkg} NuGet package.", opts);
@@ -712,6 +713,8 @@ internal static class Commands
             var curKey = ToKebab(cur.Name);
             if (!seen.Add(curKey)) continue;
             toInstall.Add(cur);
+            var curPackage = string.IsNullOrEmpty(cur.NugetPackage) ? "Lumeo" : cur.NugetPackage;
+            if (!string.Equals(curPackage, "Lumeo", StringComparison.OrdinalIgnoreCase) && !opts.Vendor) continue;
             foreach (var dep in cur.Dependencies)
                 if (registry.Components.TryGetValue(dep, out var depEntry)) queue.Enqueue(depEntry);
         }
@@ -884,10 +887,13 @@ internal static class Commands
             var sat = !string.Equals(p, "Lumeo", StringComparison.OrdinalIgnoreCase);
             return !(sat && !opts.Vendor);
         });
-        foreach (var dep in vendoredItems.SelectMany(i => i.PackageDependencies)
-                     .Distinct(StringComparer.OrdinalIgnoreCase))
+        if (writeAllowed)
         {
-            await EnsureNuGetPackageAsync(dep, $"Vendored components reference the {dep} NuGet package.", opts);
+            foreach (var dep in vendoredItems.SelectMany(i => i.PackageDependencies)
+                         .Distinct(StringComparer.OrdinalIgnoreCase))
+            {
+                await EnsureNuGetPackageAsync(dep, $"Vendored components reference the {dep} NuGet package.", opts);
+            }
         }
 
         Console.WriteLine();
