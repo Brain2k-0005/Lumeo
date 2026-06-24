@@ -32,9 +32,12 @@ public class LumeoFormGeneratorTests
         namespace System.ComponentModel.DataAnnotations
         {
             public sealed class RequiredAttribute : System.Attribute { }
-            public sealed class DisplayAttribute : System.Attribute { public string? Name { get; set; } public string? Description { get; set; } }
-            public enum DataType { Custom = 0, EmailAddress = 10, Password = 11 }
+            public sealed class DisplayAttribute : System.Attribute { public string? Name { get; set; } public string? Description { get; set; } public int Order { get; set; } }
+            public enum DataType { Custom = 0, PhoneNumber = 5, MultilineText = 9, EmailAddress = 10, Password = 11, Url = 12 }
             public sealed class DataTypeAttribute : System.Attribute { public DataTypeAttribute(DataType t) { } }
+            public sealed class RangeAttribute : System.Attribute { public RangeAttribute(int min, int max) { } public RangeAttribute(double min, double max) { } }
+            public sealed class StringLengthAttribute : System.Attribute { public StringLengthAttribute(int maximumLength) { } }
+            public sealed class MaxLengthAttribute : System.Attribute { public MaxLengthAttribute() { } public MaxLengthAttribute(int length) { } }
         }
         namespace System.ComponentModel.DataAnnotations.Schema
         {
@@ -285,13 +288,30 @@ public class LumeoFormGeneratorTests
     [Fact]
     public void Enumerable_Of_String_Gets_The_TagInput_Hint()
     {
+        // A non-List string enumerable (IEnumerable<string>, string[], …) still has no
+        // direct mapping — only the concrete List<string> folds onto TagInput — so it
+        // continues to surface the TagInput hint.
         var (_, diags) = Run("""
             namespace App { [Lumeo.LumeoForm] public partial class M {
-                public System.Collections.Generic.List<string> Tags { get; set; } = new(); } }
+                public System.Collections.Generic.IEnumerable<string> Tags { get; set; } = new System.Collections.Generic.List<string>(); } }
             """);
 
         var lmf002 = Assert.Single(diags, d => d.Id == "LMF002");
         Assert.Contains("TagInput", lmf002.GetMessage());
+    }
+
+    [Fact]
+    public void List_Of_String_Renders_A_TagInput()
+    {
+        var (src, diags) = Run("""
+            namespace App { [Lumeo.LumeoForm] public partial class M {
+                public System.Collections.Generic.List<string> Tags { get; set; } = new(); } }
+            """);
+
+        Assert.DoesNotContain(diags, d => d.Id == "LMF002");      // supported now, not a gap
+        Assert.Contains("global::Lumeo.TagInput<string>", src);
+        Assert.Contains("\"Tags\", model.Tags", src);
+        Assert.Contains("\"TagsChanged\"", src);
     }
 
     [Fact]
@@ -342,5 +362,132 @@ public class LumeoFormGeneratorTests
 
         Assert.Contains("global::Lumeo.Button", src);
         Assert.Contains("Create account", src);
+    }
+
+    // ----------------------------------------------------- expanded input types
+
+    [Fact]
+    public void DataType_MultilineText_Renders_A_Textarea()
+    {
+        var src = Gen("""
+            namespace App { [Lumeo.LumeoForm] public partial class M {
+                [System.ComponentModel.DataAnnotations.DataType(System.ComponentModel.DataAnnotations.DataType.MultilineText)]
+                public string Bio { get; set; } = ""; } }
+            """);
+
+        Assert.Contains("global::Lumeo.Textarea", src);
+    }
+
+    [Fact]
+    public void DataType_PhoneNumber_And_Url_Set_The_Input_Type()
+    {
+        var src = Gen("""
+            namespace App { [Lumeo.LumeoForm] public partial class M {
+                [System.ComponentModel.DataAnnotations.DataType(System.ComponentModel.DataAnnotations.DataType.PhoneNumber)]
+                public string Phone { get; set; } = "";
+                [System.ComponentModel.DataAnnotations.DataType(System.ComponentModel.DataAnnotations.DataType.Url)]
+                public string Site { get; set; } = ""; } }
+            """);
+
+        Assert.Contains("\"type\", \"tel\"", src);
+        Assert.Contains("\"type\", \"url\"", src);
+    }
+
+    [Fact]
+    public void TimeOnly_And_TimeSpan_Render_A_TimePicker()
+    {
+        var src = Gen("""
+            namespace App { [Lumeo.LumeoForm] public partial class M {
+                public System.TimeOnly Start { get; set; }
+                public System.TimeSpan Duration { get; set; } } }
+            """);
+
+        Assert.Contains("global::Lumeo.TimePicker", src);
+        Assert.Contains("ToTimeSpan()", src);                          // TimeOnly → TimeSpan bridge
+        Assert.Contains("global::System.TimeOnly.FromTimeSpan", src);  // writeback bridge
+    }
+
+    // -------------------------------------------------- validation → attributes
+
+    [Fact]
+    public void Range_Maps_To_NumberInput_Min_And_Max()
+    {
+        var src = Gen("""
+            namespace App { [Lumeo.LumeoForm] public partial class M {
+                [System.ComponentModel.DataAnnotations.Range(1, 10)] public int Qty { get; set; } } }
+            """);
+
+        Assert.Contains("global::Lumeo.NumberInput", src);
+        Assert.Contains("\"Min\", (double?)1d", src);
+        Assert.Contains("\"Max\", (double?)10d", src);
+    }
+
+    [Fact]
+    public void StringLength_Maps_To_MaxLength_And_ShowCount()
+    {
+        var src = Gen("""
+            namespace App { [Lumeo.LumeoForm] public partial class M {
+                [System.ComponentModel.DataAnnotations.StringLength(50)] public string Name { get; set; } = ""; } }
+            """);
+
+        Assert.Contains("\"MaxLength\", 50", src);
+        Assert.Contains("\"ShowCount\", true", src);
+    }
+
+    // ----------------------------------------------------- required / writeback
+
+    [Fact]
+    public void Bool_Is_Not_Implicitly_Required()
+    {
+        // A non-nullable bool is a value type but false is valid, so it must NOT be
+        // forced Required by the value-type rule (which would block unchecked boxes).
+        var src = Gen("""
+            namespace App { [Lumeo.LumeoForm] public partial class M { public bool Active { get; set; } } }
+            """);
+
+        Assert.Contains("\"Required\", false", src);
+        Assert.DoesNotContain("non-nullable value type implies", src);
+    }
+
+    [Fact]
+    public void Nullable_Numeric_Clears_To_Null_Not_Zero()
+    {
+        var src = Gen("""
+            namespace App { [Lumeo.LumeoForm] public partial class M { public int? Age { get; set; } } }
+            """);
+
+        // Cleared (no value) writes null — not 0 like the old `(T)(__v ?? 0)`.
+        Assert.Contains("__v.HasValue", src);
+        Assert.Contains("__v.Value", src);
+        Assert.DoesNotContain("__v ?? 0", src);
+    }
+
+    [Fact]
+    public void NonNullable_Numeric_Still_Falls_Back_To_Zero()
+    {
+        var src = Gen("""
+            namespace App { [Lumeo.LumeoForm] public partial class M { public int Age { get; set; } } }
+            """);
+
+        // A non-nullable numeric can't hold null, so a cleared input coalesces to 0.
+        Assert.Contains("__v ?? 0", src);
+        Assert.DoesNotContain("__v.HasValue", src);
+    }
+
+    // ------------------------------------------------------------- field order
+
+    [Fact]
+    public void Display_Order_Sorts_Fields_Stably()
+    {
+        var src = Gen("""
+            namespace App { [Lumeo.LumeoForm] public partial class M {
+                [System.ComponentModel.DataAnnotations.Display(Order = 2)] public string Second { get; set; } = "";
+                [System.ComponentModel.DataAnnotations.Display(Order = 1)] public string First { get; set; } = ""; } }
+            """);
+
+        var idxFirst = src.IndexOf("\"Label\", \"First\"", StringComparison.Ordinal);
+        var idxSecond = src.IndexOf("\"Label\", \"Second\"", StringComparison.Ordinal);
+        Assert.True(idxFirst >= 0 && idxSecond >= 0);
+        Assert.True(idxFirst < idxSecond, "First (Order=1) must be emitted before Second (Order=2)");
     }
 }
