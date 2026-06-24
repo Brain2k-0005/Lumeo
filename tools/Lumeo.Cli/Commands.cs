@@ -301,10 +301,16 @@ internal static class Commands
         }
 
         var csprojPath = FindConsumerCsproj(Environment.CurrentDirectory);
-        var projectArg = csprojPath is not null ? $"\"{csprojPath}\"" : "";
-        var dotnetArgs = string.IsNullOrEmpty(projectArg)
-            ? $"add package {pkg}"
-            : $"add {projectArg} package {pkg}";
+        if (csprojPath is null)
+        {
+            // No consumer project to add the reference to — e.g. `lumeo add --vendor`
+            // run in a bare directory. `dotnet add package` would only fail with
+            // "Could not find any project", which is not an install failure to abort
+            // on; point the user at the manual step instead of flipping the exit code.
+            Console.WriteLine(Ansi.Yellow($"  !   No project found here — add the {pkg} NuGet package to your project manually."));
+            return;
+        }
+        var dotnetArgs = $"add \"{csprojPath}\" package {pkg}";
 
         Console.WriteLine(Ansi.Dim($"  $ dotnet {dotnetArgs}"));
         var psi = new System.Diagnostics.ProcessStartInfo("dotnet", dotnetArgs)
