@@ -466,6 +466,10 @@ public static class PerComponentEnricher
         var files = ExtractFiles(entry);
         foreach (var f in files) sb.AppendLine($"- `{f}`");
 
+        // Newline normalisation is applied centrally at the JSON serialization
+        // boundary (every JsonSerializer.Serialize result is run through
+        // .Replace("\r\n", "\n")) so every multi-line field — mdSummary here, plus
+        // descriptions/examples elsewhere — is byte-identical across OSes.
         return sb.ToString();
     }
 

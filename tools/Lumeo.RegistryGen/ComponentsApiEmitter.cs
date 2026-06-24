@@ -188,7 +188,10 @@ public static class ComponentsApiEmitter
             WriteIndented = true,
             Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
         };
-        var json = JsonSerializer.Serialize(rootJson, jsonOpts);
+        // Normalise CRLF→LF inside serialized values so components-api.json is
+        // byte-identical across OSes (descriptions carry the host newline). Only
+        // genuine CRLF escapes are touched — escaped backslash sequences are safe.
+        var json = JsonSerializer.Serialize(rootJson, jsonOpts).Replace("\\r\\n", "\\n");
         Directory.CreateDirectory(Path.GetDirectoryName(outputPath)!);
         File.WriteAllText(outputPath, json, new UTF8Encoding(false));
 
