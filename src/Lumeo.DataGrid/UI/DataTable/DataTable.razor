@@ -3,13 +3,16 @@
 
 <div class="relative w-full overflow-auto" @attributes="AdditionalAttributes">
     @* role="grid" + aria-row/colcount give AT the table's shape. aria-rowcount
-       includes the header row (+1). aria-multiselectable is only set when the
-       selection checkboxes are present. Consumer-supplied <th>/<td> in the
-       Header/Row templates keep their native table semantics; we add row/cell
-       roles on the markup we own (rows + the selection column). *@
+       counts the actually-rendered role=row elements (data/skeleton rows + the
+       header row), so it stays truthful while loading (skeleton rows, not the
+       provisional Items count) and in the empty state (the "No results"
+       placeholder is NOT a grid row, so it isn't counted). aria-multiselectable
+       is only set when the selection checkboxes are present. Consumer-supplied
+       <th>/<td> in the Header/Row templates keep their native table semantics;
+       we add row/cell roles on the markup we own (rows + the selection column). *@
     <table class="@CssClass"
            role="grid"
-           aria-rowcount="@(_itemsList.Count + 1)"
+           aria-rowcount="@AriaRowCount"
            aria-colcount="@(AriaColCount > 0 ? AriaColCount : null)"
            aria-multiselectable="@(Selectable ? "true" : null)">
         <thead class="[&_tr]:border-b [&_tr]:border-border/40" role="rowgroup">
@@ -35,8 +38,12 @@
             }
             else if (Items is null || !Items.Any())
             {
-                <tr role="row">
-                    <td colspan="100" class="p-8" role="gridcell">
+                @* The "No results" placeholder is presentational, not a data row.
+                   Marking it role=row/gridcell would announce a phantom grid cell
+                   that aria-rowcount (which counts only real rows) does not include,
+                   misannouncing the grid shape — so it carries no grid roles. *@
+                <tr>
+                    <td colspan="100" class="p-8">
                         @if (EmptyTemplate is not null)
                         {
                             @EmptyTemplate
@@ -139,6 +146,16 @@
     [Parameter] public float ItemSize { get; set; } = 48;
 
     private string CssClass => $"w-full caption-bottom text-sm {Class}".Trim();
+
+    // aria-rowcount must match the role=row elements actually rendered in <tbody>
+    // plus the single header row (+1), or AT announces a grid shape that doesn't
+    // exist. While loading we render SkeletonRows (the provisional Items count is
+    // not yet shown); in the empty state the "No results" placeholder carries no
+    // grid roles, so only the header row counts.
+    private int AriaRowCount =>
+        IsLoading ? Math.Max(SkeletonRows, 0) + 1
+        : (Items is null || !Items.Any()) ? 1
+        : _itemsList.Count + 1;
 
     // Cached per-render — recomputed in OnParametersSet to avoid repeated LINQ on every render pass.
     private List<TItem> _itemsList = [];

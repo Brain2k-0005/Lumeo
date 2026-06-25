@@ -4,10 +4,10 @@
 @inject Lumeo.Services.IComponentInteropService Interop
 @inject Lumeo.Services.Localization.ILumeoLocalizer L
 
-<div id="@_containerId" class="@CssClass" data-sortable-group="@Group" @attributes="AdditionalAttributes">
+<div id="@_containerId" role="list" class="@CssClass" data-sortable-group="@Group" @attributes="AdditionalAttributes">
     @foreach (var (item, index) in _items.Select((x, i) => (x, i)))
     {
-        <div @key="@KeyFor(item, index)" class="@GetItemClass(index)"
+        <div @key="@KeyFor(item, index)" role="listitem" class="@GetItemClass(index)"
              data-sortable-item
              data-sortable-index="@index"
              draggable="@(!Disabled ? "true" : "false")"
@@ -21,7 +21,8 @@
             {
                 <div id="@HandleId(index)"
                      class="flex-shrink-0 cursor-grab active:cursor-grabbing text-muted-foreground hover:text-foreground me-2 flex items-center justify-center h-11 w-11 -my-2 sm:h-6 sm:w-6 sm:my-0 rounded focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-1"
-                     role="button" aria-label="@L["Common.DragHandle"]" tabindex="0"
+                     role="button" aria-label="@L["Sortable.DragHandleItem", index + 1, _items.Count]"
+                     aria-keyshortcuts="ArrowUp ArrowDown Home End" tabindex="0"
                      @onkeydown="e => OnHandleKeyDown(e, index)">
                     <Blazicon Svg="Lucide.GripVertical" class="h-4 w-4" />
                 </div>
@@ -35,6 +36,11 @@
         </div>
     }
 </div>
+
+@* #40 (a11y): visually-hidden live region announces keyboard / touch reorders to
+   assistive tech. Drag/touch/keyboard moves would otherwise be silent. Polite so
+   it does not interrupt other speech; aria-atomic re-reads the whole message. *@
+<span aria-live="polite" aria-atomic="true" class="sr-only">@_reorderAnnouncement</span>
 
 @code {
     [Parameter] public List<TItem> Items { get; set; } = [];
@@ -86,6 +92,8 @@
     private bool _touchRegistered;
     private bool _pdRegistered;
     private int _focusHandleIndex = -1;
+    // #40 (a11y): last reorder message surfaced through the aria-live region.
+    private string _reorderAnnouncement = string.Empty;
 
     protected override void OnParametersSet()
     {
@@ -363,6 +371,11 @@
 
     private async Task NotifyReordered(TItem item, int oldIndex, int newIndex)
     {
+        // #40 (a11y): announce the move through the polite live region so screen
+        // readers hear keyboard/touch reorders. {0} is the moved item, {1} its new
+        // 1-based position, {2} the list length.
+        _reorderAnnouncement = L["Sortable.Moved", item?.ToString() ?? string.Empty, newIndex + 1, _items.Count];
+
         // #144: emit a snapshot of the freshly-reordered order. Deliberately do NOT
         // update _lastItems here — it must keep tracking the *parent's* last Items
         // instance. Leaving it untouched means a subsequent parent re-render that

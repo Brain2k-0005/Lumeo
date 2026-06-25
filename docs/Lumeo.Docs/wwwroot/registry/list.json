@@ -130,7 +130,9 @@
         "fileName": "ListItem.razor",
         "namespace": "Lumeo",
         "inheritsFrom": null,
-        "implements": [],
+        "implements": [
+          "IAsyncDisposable"
+        ],
         "parameters": [
           {
             "name": "Context",
@@ -257,9 +259,12 @@
     },
     "a11y": {
       "roles": [
+        "button",
         "list"
       ],
-      "ariaAttributes": [],
+      "ariaAttributes": [
+        "aria-disabled"
+      ],
       "keys": [
         "Enter",
         "Space"
@@ -271,14 +276,14 @@
     "parseError": null
   },
   "testCoverage": {
-    "tier": 2,
-    "files": 1,
-    "tests": 4,
+    "tier": 3,
+    "files": 2,
+    "tests": 11,
     "relatedFiles": 0,
     "render": true,
     "behavior": true,
-    "a11y": false,
-    "keyboard": false,
+    "a11y": true,
+    "keyboard": true,
     "scale": false,
     "e2e": false,
     "e2eFiles": [],
@@ -304,7 +309,7 @@
     },
     {
       "path": "UI/List/ListItem.razor",
-      "content": "@namespace Lumeo\n\n@{\n    // Row padding keyed on List Size x ambient DensityScope; Comfortable\n    // reproduces the historical per-Size padding verbatim.\n    var paddingClass = (Context?.Size ?? Lumeo.Size.Md, Density ?? Lumeo.Density.Comfortable) switch\n    {\n        (Lumeo.Size.Sm, Lumeo.Density.Compact)  => \"px-2.5 py-1.5\",\n        (Lumeo.Size.Sm, Lumeo.Density.Spacious) => \"px-4 py-3\",\n        (Lumeo.Size.Sm, _)                      => \"px-3 py-2\",\n        (Lumeo.Size.Lg, Lumeo.Density.Compact)  => \"px-4 py-3\",\n        (Lumeo.Size.Lg, Lumeo.Density.Spacious) => \"px-6 py-5\",\n        (Lumeo.Size.Lg, _)                      => \"px-5 py-4\",\n        (_, Lumeo.Density.Compact)              => \"px-3 py-2\",\n        (_, Lumeo.Density.Spacious)             => \"px-5 py-4\",\n        _                                       => \"px-4 py-3\"\n    };\n    var hoverClass = Context?.Hoverable == true ? \"hover:bg-accent/50 transition-colors\" : \"\";\n    var clickableClass = (OnClick.HasDelegate || !string.IsNullOrEmpty(Href)) ? \"cursor-pointer\" : \"\";\n    var disabledClass = Disabled ? \"opacity-50 pointer-events-none\" : \"\";\n    var liClass = Cx.Merge(\"flex items-center gap-3\", paddingClass, hoverClass, clickableClass, disabledClass, Class);\n}\n\n@if (!string.IsNullOrEmpty(Href))\n{\n    <li class=\"@liClass\" @attributes=\"AdditionalAttributes\">\n        @* OnClick fires alongside navigation — no preventDefault, both work. *@\n        <a href=\"@Href\" class=\"flex flex-1 items-center gap-3 min-w-0\" @onclick=\"HandleClick\">\n            @if (Leading != null)\n            {\n                <div class=\"shrink-0\">@Leading</div>\n            }\n            <div class=\"flex-1 min-w-0\">\n                @if (Title != null)\n                {\n                    <p class=\"text-sm font-medium truncate\">@Title</p>\n                }\n                @if (Description != null)\n                {\n                    <p class=\"text-xs text-muted-foreground truncate\">@Description</p>\n                }\n                @ChildContent\n            </div>\n        </a>\n        @if (Trailing != null)\n        {\n            <div class=\"shrink-0\">@Trailing</div>\n        }\n    </li>\n}\nelse\n{\n    <li class=\"@liClass\"\n        role=\"@(OnClick.HasDelegate ? \"button\" : null)\"\n        tabindex=\"@(OnClick.HasDelegate && !Disabled ? \"0\" : null)\"\n        @onclick=\"HandleClick\"\n        @onkeydown=\"HandleKeyDown\"\n        @attributes=\"AdditionalAttributes\">\n        @if (Leading != null)\n        {\n            <div class=\"shrink-0\">@Leading</div>\n        }\n        <div class=\"flex-1 min-w-0\">\n            @if (Title != null)\n            {\n                <p class=\"text-sm font-medium truncate\">@Title</p>\n            }\n            @if (Description != null)\n            {\n                <p class=\"text-xs text-muted-foreground truncate\">@Description</p>\n            }\n            @ChildContent\n        </div>\n        @if (Trailing != null)\n        {\n            <div class=\"shrink-0\">@Trailing</div>\n        }\n    </li>\n}\n\n@code {\n    [CascadingParameter] public List.ListContext? Context { get; set; }\n    [CascadingParameter] private Lumeo.Density? Density { get; set; }\n\n    [Parameter] public RenderFragment? ChildContent { get; set; }\n    [Parameter] public RenderFragment? Leading { get; set; }\n    [Parameter] public RenderFragment? Trailing { get; set; }\n    [Parameter] public string? Title { get; set; }\n    [Parameter] public string? Description { get; set; }\n    [Parameter] public string? Href { get; set; }\n    [Parameter] public EventCallback OnClick { get; set; }\n    [Parameter] public bool Disabled { get; set; }\n    [Parameter] public string? Class { get; set; }\n    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }\n\n    private async Task HandleClick()\n    {\n        if (!Disabled && OnClick.HasDelegate)\n            await OnClick.InvokeAsync();\n    }\n\n    private async Task HandleKeyDown(KeyboardEventArgs e)\n    {\n        if (Disabled || !OnClick.HasDelegate) return;\n        if (e.Key is \"Enter\" or \" \") await OnClick.InvokeAsync();\n    }\n}\n"
+      "content": "@namespace Lumeo\n@implements IAsyncDisposable\n@inject Lumeo.Services.IComponentInteropService Interop\n\n@{\n    // Row padding keyed on List Size x ambient DensityScope; Comfortable\n    // reproduces the historical per-Size padding verbatim.\n    var paddingClass = (Context?.Size ?? Lumeo.Size.Md, Density ?? Lumeo.Density.Comfortable) switch\n    {\n        (Lumeo.Size.Sm, Lumeo.Density.Compact)  => \"px-2.5 py-1.5\",\n        (Lumeo.Size.Sm, Lumeo.Density.Spacious) => \"px-4 py-3\",\n        (Lumeo.Size.Sm, _)                      => \"px-3 py-2\",\n        (Lumeo.Size.Lg, Lumeo.Density.Compact)  => \"px-4 py-3\",\n        (Lumeo.Size.Lg, Lumeo.Density.Spacious) => \"px-6 py-5\",\n        (Lumeo.Size.Lg, _)                      => \"px-5 py-4\",\n        (_, Lumeo.Density.Compact)              => \"px-3 py-2\",\n        (_, Lumeo.Density.Spacious)             => \"px-5 py-4\",\n        _                                       => \"px-4 py-3\"\n    };\n    var hoverClass = Context?.Hoverable == true ? \"hover:bg-accent/50 transition-colors\" : \"\";\n    var clickableClass = (OnClick.HasDelegate || !string.IsNullOrEmpty(Href)) ? \"cursor-pointer\" : \"\";\n    var disabledClass = Disabled ? \"opacity-50 pointer-events-none\" : \"\";\n    var liClass = Cx.Merge(\"flex items-center gap-3\", paddingClass, hoverClass, clickableClass, disabledClass, Class);\n}\n\n@if (!string.IsNullOrEmpty(Href))\n{\n    <li class=\"@liClass\" @attributes=\"AdditionalAttributes\">\n        @* OnClick fires alongside navigation — no preventDefault, both work.\n           When Disabled, drop the navigable href and pull the anchor out of the\n           tab order with aria-disabled so keyboard + AT honour Disabled, not just\n           the pointer-events-none class (which only blocks mouse). *@\n        <a href=\"@(Disabled ? null : Href)\"\n           tabindex=\"@(Disabled ? \"-1\" : null)\"\n           aria-disabled=\"@(Disabled ? \"true\" : null)\"\n           class=\"flex flex-1 items-center gap-3 min-w-0\" @onclick=\"HandleClick\">\n            @if (Leading != null)\n            {\n                <div class=\"shrink-0\">@Leading</div>\n            }\n            <div class=\"flex-1 min-w-0\">\n                @if (Title != null)\n                {\n                    <p class=\"text-sm font-medium truncate\">@Title</p>\n                }\n                @if (Description != null)\n                {\n                    <p class=\"text-xs text-muted-foreground truncate\">@Description</p>\n                }\n                @ChildContent\n            </div>\n        </a>\n        @if (Trailing != null)\n        {\n            <div class=\"shrink-0\">@Trailing</div>\n        }\n    </li>\n}\nelse\n{\n    <li class=\"@liClass\"\n        id=\"@(OnClick.HasDelegate ? _buttonId : null)\"\n        role=\"@(OnClick.HasDelegate ? \"button\" : null)\"\n        tabindex=\"@(OnClick.HasDelegate && !Disabled ? \"0\" : null)\"\n        aria-disabled=\"@(Disabled && OnClick.HasDelegate ? \"true\" : null)\"\n        @onclick=\"HandleClick\"\n        @onkeydown=\"HandleKeyDown\"\n        @attributes=\"AdditionalAttributes\">\n        @if (Leading != null)\n        {\n            <div class=\"shrink-0\">@Leading</div>\n        }\n        <div class=\"flex-1 min-w-0\">\n            @if (Title != null)\n            {\n                <p class=\"text-sm font-medium truncate\">@Title</p>\n            }\n            @if (Description != null)\n            {\n                <p class=\"text-xs text-muted-foreground truncate\">@Description</p>\n            }\n            @ChildContent\n        </div>\n        @if (Trailing != null)\n        {\n            <div class=\"shrink-0\">@Trailing</div>\n        }\n    </li>\n}\n\n@code {\n    [CascadingParameter] public List.ListContext? Context { get; set; }\n    [CascadingParameter] private Lumeo.Density? Density { get; set; }\n\n    [Parameter] public RenderFragment? ChildContent { get; set; }\n    [Parameter] public RenderFragment? Leading { get; set; }\n    [Parameter] public RenderFragment? Trailing { get; set; }\n    [Parameter] public string? Title { get; set; }\n    [Parameter] public string? Description { get; set; }\n    [Parameter] public string? Href { get; set; }\n    [Parameter] public EventCallback OnClick { get; set; }\n    [Parameter] public bool Disabled { get; set; }\n    [Parameter] public string? Class { get; set; }\n    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }\n\n    // Stable id on the role=button <li> so the JS key-suppression handler\n    // (RegisterPreventDefaultKeys) has a target to bind to. n=15: a clickable\n    // (non-href) ListItem renders as <li role=\"button\">, which has no native key\n    // synthesis — pressing Space both activated the item (HandleKeyDown) AND fired\n    // the browser's default Space action, scroll-jumping the page. The fix\n    // suppresses Space's default action via the library's RegisterPreventDefaultKeys\n    // interop (same idiom as InplaceEditor / DialogTrigger), which needs an id.\n    private readonly string _buttonId = LumeoIds.New(\"list-item\");\n    // Tracks whether the Space-suppression keydown listener is currently bound. The\n    // listener only makes sense while this is an activatable button (OnClick set),\n    // so we (re-)register/unregister as that condition flips.\n    private bool _pdRegistered;\n\n    protected override async Task OnAfterRenderAsync(bool firstRender)\n    {\n        // n=15: bind Space's preventDefault to the live role=button node so Space\n        // activates the item without scroll-jumping the page. Only the clickable\n        // (non-href) branch is a role=button; the href branch is a native <a> that\n        // has no Space default action. Enter has no default action on an <li>, so\n        // only Space needs suppression — matching InplaceEditor / DialogTrigger.\n        var isButton = OnClick.HasDelegate;\n        if (isButton && !_pdRegistered)\n        {\n            try\n            {\n                await Interop.RegisterPreventDefaultKeys(\n                    _buttonId,\n                    new[] { new Lumeo.Services.PreventDefaultKeyRule(\" \") });\n                _pdRegistered = true;\n            }\n            catch (Microsoft.JSInterop.JSDisconnectedException) { }\n            catch (ObjectDisposedException) { }\n            catch (InvalidOperationException) { } // JS interop unavailable during prerender\n        }\n        else if (!isButton && _pdRegistered)\n        {\n            _pdRegistered = false;\n            try { await Interop.UnregisterPreventDefaultKeys(_buttonId); }\n            catch (Microsoft.JSInterop.JSDisconnectedException) { }\n            catch (ObjectDisposedException) { }\n            catch (InvalidOperationException) { }\n        }\n    }\n\n    public async ValueTask DisposeAsync()\n    {\n        if (!_pdRegistered) return;\n        try\n        {\n            await Interop.UnregisterPreventDefaultKeys(_buttonId);\n        }\n        catch (Microsoft.JSInterop.JSDisconnectedException) { }\n        catch (ObjectDisposedException) { }\n        catch (InvalidOperationException) { }\n    }\n\n    private async Task HandleClick()\n    {\n        if (!Disabled && OnClick.HasDelegate)\n            await OnClick.InvokeAsync();\n    }\n\n    private async Task HandleKeyDown(KeyboardEventArgs e)\n    {\n        if (Disabled || !OnClick.HasDelegate) return;\n        if (e.Key is \"Enter\" or \" \") await OnClick.InvokeAsync();\n    }\n}\n"
     }
   ],
   "slots": [
@@ -333,7 +338,12 @@
       "description": null
     }
   ],
-  "serviceDependencies": [],
+  "serviceDependencies": [
+    {
+      "service": "IComponentInteropService",
+      "namespace": "Lumeo.Services"
+    }
+  ],
   "cascadingDependencies": [
     {
       "name": "Context",
@@ -362,6 +372,7 @@
     "tests/Lumeo.Tests/Components/AlertDialog/AlertDialogModalDismissTests.cs",
     "tests/Lumeo.Tests/Components/Calendar/CalendarMultipleSelectionTests.cs",
     "tests/Lumeo.Tests/Components/Cascader/CascaderBehaviorTests.cs",
+    "tests/Lumeo.Tests/Components/Cascader/CascaderClearFocusTests.cs",
     "tests/Lumeo.Tests/Components/Cascader/CascaderKeyboardTests.cs",
     "tests/Lumeo.Tests/Components/Cascader/CascaderOptionsResyncTests.cs",
     "tests/Lumeo.Tests/Components/Cascader/CascaderResetTests.cs",
@@ -383,6 +394,7 @@
     "tests/Lumeo.Tests/Components/DataGrid/DataGridGroupCollapsePersistenceTests.cs",
     "tests/Lumeo.Tests/Components/DataGrid/DataGridGroupPanelTests.cs",
     "tests/Lumeo.Tests/Components/DataGrid/DataGridKeyboardNavTests.cs",
+    "tests/Lumeo.Tests/Components/DataGrid/DataGridKeyboardPreventDefaultTests.cs",
     "tests/Lumeo.Tests/Components/DataGrid/DataGridLayoutJsonTests.cs",
     "tests/Lumeo.Tests/Components/DataGrid/DataGridRenderTreeTests.cs",
     "tests/Lumeo.Tests/Components/DataGrid/DataGridReorderFlipTests.cs",
@@ -392,6 +404,7 @@
     "tests/Lumeo.Tests/Components/DataGrid/DataGridToolbarTogglesTests.cs",
     "tests/Lumeo.Tests/Components/DataGrid/DataGridTreeBatchGroupTests.cs",
     "tests/Lumeo.Tests/Components/DataGrid/DataGridVirtualizedServerModeTests.cs",
+    "tests/Lumeo.Tests/Components/DataTable/DataTableAriaRowCountTests.cs",
     "tests/Lumeo.Tests/Components/DataTable/DataTableAriaSelectionTests.cs",
     "tests/Lumeo.Tests/Components/DataTable/DataTableSelectionKeyTests.cs",
     "tests/Lumeo.Tests/Components/DataTable/DataTableTests.cs",
@@ -415,8 +428,10 @@
     "tests/Lumeo.Tests/Components/Gauge/GaugeTests.cs",
     "tests/Lumeo.Tests/Components/InplaceEditor/InplaceEditorSelectCancelTests.cs",
     "tests/Lumeo.Tests/Components/InplaceEditor/InplaceEditorStateOnDataChangeTests.cs",
+    "tests/Lumeo.Tests/Components/List/ListItemKeyboardA11yTests.cs",
     "tests/Lumeo.Tests/Components/List/ListItemTests.cs",
     "tests/Lumeo.Tests/Components/Mention/MentionComboboxTests.cs",
+    "tests/Lumeo.Tests/Components/Mention/MentionHomeEndKeyTests.cs",
     "tests/Lumeo.Tests/Components/Mention/MentionServerFilterTests.cs",
     "tests/Lumeo.Tests/Components/Mention/MentionStaleTriggerIndexTests.cs",
     "tests/Lumeo.Tests/Components/Overlay/OverlayLifecycleTests.cs",
@@ -460,12 +475,14 @@
     "tests/Lumeo.Tests/Components/Tour/TourScrollIntoViewTests.cs",
     "tests/Lumeo.Tests/Components/Tour/TourStateResetOnDismissTests.cs",
     "tests/Lumeo.Tests/Components/Tour/TourTests.cs",
+    "tests/Lumeo.Tests/Components/Transfer/TransferMoveButtonAriaTests.cs",
     "tests/Lumeo.Tests/Components/Transfer/TransferSelectAllDisabledTests.cs",
     "tests/Lumeo.Tests/Components/Transfer/TransferStateOnDataChangeTests.cs",
     "tests/Lumeo.Tests/Components/Transfer/TransferTests.cs",
     "tests/Lumeo.Tests/Components/TreeSelect/TreeSelectActiveStateOnDataChangeTests.cs",
     "tests/Lumeo.Tests/Components/TreeSelect/TreeSelectClearAndExpandTests.cs",
     "tests/Lumeo.Tests/Components/TreeSelect/TreeSelectKeyboardNavTests.cs",
+    "tests/Lumeo.Tests/Components/TreeSelect/TreeSelectOpenSeedFocusTests.cs",
     "tests/Lumeo.Tests/Components/TreeSelect/TreeSelectTests.cs",
     "tests/Lumeo.Tests/Components/TreeView/TreeViewCheckAndExpandTests.cs",
     "tests/Lumeo.Tests/Components/TreeView/TreeViewKeyboardNavTests.cs",
@@ -481,5 +498,5 @@
     "tests/Lumeo.Tests/Services/ResponsiveServiceTests.cs",
     "tests/Lumeo.Tests/Services/ThemeServiceTests.cs"
   ],
-  "mdSummary": "# List\n\nOrdered/unordered list with Lumeo typographic styling.\n\n**Package:** `Lumeo` · **Category:** Data Display/Lists & Trees\n**Docs:** https://lumeo.nativ.sh/components/list\n\n## Parameters\n| Owner | Name | Type | Default | Description |\n|---|---|---|---|---|\n| List | ChildContent | `RenderFragment?` | `` |  |\n| List | Bordered | `bool` | `` |  |\n| List | Hoverable | `bool` | `` |  |\n| List | Size | `Lumeo.Size` | `Lumeo.Size.Md` |  |\n| List | Class | `string?` | `` |  |\n| List | AdditionalAttributes | `Dictionary<string, object>?` | `` |  |\n| ListItem | Context | `List.ListContext?` | `` |  |\n| ListItem | Density | `Lumeo.Density?` | `` |  |\n| ListItem | ChildContent | `RenderFragment?` | `` |  |\n| ListItem | Leading | `RenderFragment?` | `` |  |\n| ListItem | Trailing | `RenderFragment?` | `` |  |\n| ListItem | Title | `string?` | `` |  |\n| ListItem | Description | `string?` | `` |  |\n| ListItem | Href | `string?` | `` |  |\n| ListItem | OnClick | `EventCallback` | `` |  |\n| ListItem | Disabled | `bool` | `` |  |\n| ListItem | Class | `string?` | `` |  |\n| ListItem | AdditionalAttributes | `Dictionary<string, object>?` | `` |  |\n\n## Slots\n- `ChildContent` (List) — RenderFragment slot\n- `ChildContent` (ListItem) — RenderFragment slot\n- `Leading` (ListItem) — RenderFragment slot\n- `Trailing` (ListItem) — RenderFragment slot\n\n## Events\n- (none)\n\n## Sub-components\n- `ListItem`\n\n## Cascading values it expects\n- `Context` (`List.ListContext?`)\n- `Density` (`Lumeo.Density?`)\n\n## Services it injects\n- (none)\n\n## Keyboard\n—\n\n## Example\n```razor\n<List />\n```\n\n## CSS variables\n`--color-accent`, `--color-border`, `--color-muted`, `--color-muted-foreground`, `--radius`\n\n## Files\n- `UI/List/List.razor`\n- `UI/List/ListItem.razor`\n"
+  "mdSummary": "# List\n\nOrdered/unordered list with Lumeo typographic styling.\n\n**Package:** `Lumeo` · **Category:** Data Display/Lists & Trees\n**Docs:** https://lumeo.nativ.sh/components/list\n\n## Parameters\n| Owner | Name | Type | Default | Description |\n|---|---|---|---|---|\n| List | ChildContent | `RenderFragment?` | `` |  |\n| List | Bordered | `bool` | `` |  |\n| List | Hoverable | `bool` | `` |  |\n| List | Size | `Lumeo.Size` | `Lumeo.Size.Md` |  |\n| List | Class | `string?` | `` |  |\n| List | AdditionalAttributes | `Dictionary<string, object>?` | `` |  |\n| ListItem | Context | `List.ListContext?` | `` |  |\n| ListItem | Density | `Lumeo.Density?` | `` |  |\n| ListItem | ChildContent | `RenderFragment?` | `` |  |\n| ListItem | Leading | `RenderFragment?` | `` |  |\n| ListItem | Trailing | `RenderFragment?` | `` |  |\n| ListItem | Title | `string?` | `` |  |\n| ListItem | Description | `string?` | `` |  |\n| ListItem | Href | `string?` | `` |  |\n| ListItem | OnClick | `EventCallback` | `` |  |\n| ListItem | Disabled | `bool` | `` |  |\n| ListItem | Class | `string?` | `` |  |\n| ListItem | AdditionalAttributes | `Dictionary<string, object>?` | `` |  |\n\n## Slots\n- `ChildContent` (List) — RenderFragment slot\n- `ChildContent` (ListItem) — RenderFragment slot\n- `Leading` (ListItem) — RenderFragment slot\n- `Trailing` (ListItem) — RenderFragment slot\n\n## Events\n- (none)\n\n## Sub-components\n- `ListItem`\n\n## Cascading values it expects\n- `Context` (`List.ListContext?`)\n- `Density` (`Lumeo.Density?`)\n\n## Services it injects\n- `IComponentInteropService` (Lumeo.Services)\n\n## Keyboard\n—\n\n## Example\n```razor\n<List />\n```\n\n## CSS variables\n`--color-accent`, `--color-border`, `--color-muted`, `--color-muted-foreground`, `--radius`\n\n## Files\n- `UI/List/List.razor`\n- `UI/List/ListItem.razor`\n"
 }

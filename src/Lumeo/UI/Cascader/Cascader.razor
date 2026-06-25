@@ -364,6 +364,15 @@
         Value = null;
         _selectedPath.Clear();
         _activePanels.Clear();
+        // Collapsing the drill-down removes every column except the root. If the
+        // roving stop was parked on a deeper column (_focusCol > 0) it would now
+        // point at a panel that no longer renders, so no option carries
+        // tabindex=0 and keyboard focus is silently dropped. Re-anchor the
+        // roving stop onto the first root option and (while open) queue focus so
+        // a valid tab stop / focus target survives the clear (battle-test #29).
+        _focusCol = 0;
+        _focusIdx = 0;
+        if (_isOpen) QueueFocus();
         await ValueChanged.InvokeAsync(null);
     }
 

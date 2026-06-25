@@ -9,35 +9,52 @@
     var status = GetStatus();
     var isHorizontal = Context?.Orientation != Lumeo.Orientation.Vertical;
     var isError = Status == StepsItemStatus.Error && status == StepStatus.Current;
+
+    // The indicator's inner glyph (icon / check / error X / step number) is the
+    // same regardless of whether the indicator is an interactive <button> or a
+    // non-interactive <div>, so author it once and reuse it below.
+    RenderFragment indicatorBody = @<text>
+        @if (IconContent is not null)
+        {
+            @IconContent
+        }
+        else if (isError)
+        {
+            <Blazicon Svg="Lucide.X" class="h-4 w-4" />
+        }
+        else if (status == StepStatus.Completed)
+        {
+            <Blazicon Svg="Lucide.Check" class="h-4 w-4" />
+        }
+        else
+        {
+            <span>@(_index + 1)</span>
+        }
+    </text>;
 }
 
 @if (isHorizontal)
 {
     <div class="@HorizontalCssClass" role="listitem" @attributes="AdditionalAttributes">
         <div class="flex flex-col items-center">
-            <button type="button"
-                    class="@GetIndicatorClasses(status, isError)"
-                    disabled="@(!IsClickable)"
-                    aria-current="@(status == StepStatus.Current ? "step" : null)"
-                    aria-label="@StepAriaLabel(status, isError)"
-                    @onclick="HandleClick">
-                @if (IconContent is not null)
-                {
-                    @IconContent
-                }
-                else if (isError)
-                {
-                    <Blazicon Svg="Lucide.X" class="h-4 w-4" />
-                }
-                else if (status == StepStatus.Completed)
-                {
-                    <Blazicon Svg="Lucide.Check" class="h-4 w-4" />
-                }
-                else
-                {
-                    <span>@(_index + 1)</span>
-                }
-            </button>
+            @if (IsClickable)
+            {
+                <button type="button"
+                        class="@GetIndicatorClasses(status, isError)"
+                        aria-current="@(status == StepStatus.Current ? "step" : null)"
+                        aria-label="@StepAriaLabel(status, isError)"
+                        @onclick="HandleClick">
+                    @indicatorBody
+                </button>
+            }
+            else
+            {
+                <div class="@GetIndicatorClasses(status, isError)"
+                     aria-current="@(status == StepStatus.Current ? "step" : null)"
+                     aria-label="@StepAriaLabel(status, isError)">
+                    @indicatorBody
+                </div>
+            }
             <div class="mt-2 text-center">
                 @if (!string.IsNullOrEmpty(Title))
                 {
@@ -56,29 +73,24 @@ else
 {
     <div class="@VerticalCssClass" role="listitem" @attributes="AdditionalAttributes">
         <div class="flex flex-col items-center">
-            <button type="button"
-                    class="@GetIndicatorClasses(status, isError)"
-                    disabled="@(!IsClickable)"
-                    aria-current="@(status == StepStatus.Current ? "step" : null)"
-                    aria-label="@StepAriaLabel(status, isError)"
-                    @onclick="HandleClick">
-                @if (IconContent is not null)
-                {
-                    @IconContent
-                }
-                else if (isError)
-                {
-                    <Blazicon Svg="Lucide.X" class="h-4 w-4" />
-                }
-                else if (status == StepStatus.Completed)
-                {
-                    <Blazicon Svg="Lucide.Check" class="h-4 w-4" />
-                }
-                else
-                {
-                    <span>@(_index + 1)</span>
-                }
-            </button>
+            @if (IsClickable)
+            {
+                <button type="button"
+                        class="@GetIndicatorClasses(status, isError)"
+                        aria-current="@(status == StepStatus.Current ? "step" : null)"
+                        aria-label="@StepAriaLabel(status, isError)"
+                        @onclick="HandleClick">
+                    @indicatorBody
+                </button>
+            }
+            else
+            {
+                <div class="@GetIndicatorClasses(status, isError)"
+                     aria-current="@(status == StepStatus.Current ? "step" : null)"
+                     aria-label="@StepAriaLabel(status, isError)">
+                    @indicatorBody
+                </div>
+            }
             <div class="my-1 w-px flex-1 @GetLineClasses(status)" @key="@($"line-v-{_index}-{status}")"></div>
         </div>
         <div class="ms-3 pb-6">
@@ -94,6 +106,14 @@ else
     </div>
 }
 
+@*
+    The step indicator is a real <button> ONLY when the Steps is Clickable.
+    When it is NOT clickable a disabled <button> would be dropped from the tab
+    order AND ignored by assistive technology, taking the aria-current="step"
+    marker and the descriptive aria-label with it. So render a non-interactive
+    <div> (still carrying aria-current/aria-label) in that case so the
+    current-step status stays reachable/announceable. (#45)
+*@
 @code {
     [CascadingParameter] public Steps.StepsContext? Context { get; set; }
     [Parameter] public string? Title { get; set; }

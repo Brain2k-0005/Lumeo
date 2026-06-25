@@ -12,7 +12,7 @@
 
 @if (Context?.Orientation == Lumeo.Orientation.Horizontal)
 {
-    <div class="@HorizontalCssClass" style="@AnimationStyle" @attributes="AdditionalAttributes">
+    <div class="@HorizontalCssClass" style="@AnimationStyle" role="listitem" aria-current="@ItemAriaCurrent" aria-label="@ItemAriaLabel" @attributes="AdditionalAttributes">
         <div class="flex flex-col items-center">
             <div class="@DotClasses">
                 @if (IconContent is not null)
@@ -35,7 +35,7 @@ else if (isAlternate)
 {
     @* Vertical alternate (zig-zag): a centered rail with the content on the
        left for even indices and the right for odd ones. *@
-    <div class="@AlternateCssClass" style="@AnimationStyle" @attributes="AdditionalAttributes">
+    <div class="@AlternateCssClass" style="@AnimationStyle" role="listitem" aria-current="@ItemAriaCurrent" aria-label="@ItemAriaLabel" @attributes="AdditionalAttributes">
         <div class="flex-1 @(sideRight ? "" : "text-end pe-4")">
             @if (!sideRight)
             {
@@ -65,7 +65,7 @@ else if (isAlternate)
 }
 else
 {
-    <div class="@VerticalCssClass" style="@AnimationStyle" @attributes="AdditionalAttributes">
+    <div class="@VerticalCssClass" style="@AnimationStyle" role="listitem" aria-current="@ItemAriaCurrent" aria-label="@ItemAriaLabel" @attributes="AdditionalAttributes">
         <div class="flex flex-col items-center">
             <div class="@DotClasses">
                 @if (IconContent is not null)
@@ -148,6 +148,26 @@ else
 
     private bool IsAnimated => Context?.Animated == true;
     private bool IsHorizontal => Context?.Orientation == Lumeo.Orientation.Horizontal;
+
+    // a11y: mark the active item with aria-current="step" (mirrors StepsItem)
+    // so the "you are here" state isn't conveyed by colour alone, and emit an
+    // aria-label encoding completed/current/pending for screen readers.
+    private string? ItemAriaCurrent => State == ProgressState.Active ? "step" : null;
+
+    private string ItemAriaLabel
+    {
+        get
+        {
+            var label = !string.IsNullOrEmpty(Title) ? Title! : $"Item {_index + 1}";
+            var state = State switch
+            {
+                ProgressState.Completed => " (completed)",
+                ProgressState.Active => " (current)",
+                _ => " (pending)"
+            };
+            return label + state;
+        }
+    }
 
     // Derived state, preferring the parent's ActiveIndex if set — otherwise
     // falling back to the legacy per-item IsActive flag.

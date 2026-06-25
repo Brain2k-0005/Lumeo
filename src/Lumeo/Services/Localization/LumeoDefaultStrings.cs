@@ -109,6 +109,7 @@ internal static partial class LumeoDefaultStrings
         ["Filter.Clear"] = "Clear",
         ["Filter.Value"] = "Value",
         ["Filter.SelectAll"] = "All",
+        ["Filter.Operator"] = "Filter operator",
         ["Filter.ValuePlaceholder"] = "Value…",
         ["Filter.ToValuePlaceholder"] = "To value…",
 
@@ -236,6 +237,10 @@ internal static partial class LumeoDefaultStrings
         ["Common.DragHandle"] = "Drag handle",
         ["Common.Actions"] = "Actions",
         ["Common.BackToTop"] = "Back to top",
+
+        // ── SortableList ────────────────────────────────────────────
+        ["Sortable.DragHandleItem"] = "Reorder item {0} of {1}, use arrow keys",
+        ["Sortable.Moved"] = "Moved {0} to position {1} of {2}",
 
         // ── Transfer / TreeSelect / TagInput ────────────────────────
         ["Transfer.SourceHeader"] = "Available",
@@ -606,6 +611,7 @@ internal static partial class LumeoDefaultStrings
         ["Filter.Clear"] = "Zurücksetzen",
         ["Filter.Value"] = "Wert",
         ["Filter.SelectAll"] = "Alle",
+        ["Filter.Operator"] = "Filteroperator",
         ["Filter.ValuePlaceholder"] = "Wert…",
         ["Filter.ToValuePlaceholder"] = "Bis Wert…",
 
@@ -731,6 +737,10 @@ internal static partial class LumeoDefaultStrings
         ["Common.DragHandle"] = "Ziehgriff",
         ["Common.Actions"] = "Aktionen",
         ["Common.BackToTop"] = "Nach oben",
+
+        // ── SortableList ────────────────────────────────────────────
+        ["Sortable.DragHandleItem"] = "Element {0} von {1} neu anordnen, Pfeiltasten verwenden",
+        ["Sortable.Moved"] = "{0} an Position {1} von {2} verschoben",
 
         // ── Transfer / TreeSelect / TagInput ────────────────────────
         ["Transfer.SourceHeader"] = "Verfügbar",

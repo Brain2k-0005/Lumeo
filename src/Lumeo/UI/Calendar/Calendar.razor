@@ -129,6 +129,14 @@
         {
             _lastSeenAnchor = anchor;
             DisplayDate = new DateOnly(anchor.Value.Year, anchor.Value.Month, 1);
+            // Realign the roving-tabindex target to the new anchor. Without this,
+            // an external Value change *within the displayed month* (June15 →
+            // June20) leaves DisplayDate untouched, so EnsureFocusedDate — which
+            // only re-seeds when _focusedDate falls OUT of the window — keeps the
+            // tabbable day on the stale date. Gated on a real anchor change so it
+            // never clobbers an in-progress keyboard navigation on an unrelated
+            // re-render (those don't change the anchor and so don't reach here).
+            _focusedDate = anchor;
         }
     }
 
