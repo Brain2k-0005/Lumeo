@@ -223,7 +223,19 @@
     // The Root reference seen on the previous parameter set, used to detect a
     // tree swap so cached stack nodes from the old tree get discarded.
     private IReadOnlyList<FileSystemNode>? _lastRoot;
-    private bool _loadingFolder;
+    // Per-node lazy-load tracking. A single shared bool would let two concurrent
+    // loads (e.g. a tree-pane ToggleTreeFolder and a right-pane NavigateToFolder)
+    // interfere: the faster request's finally would clear the flag while the
+    // slower one is still running, so the right-pane spinner flickers off early or
+    // sticks against the wrong folder (#130). Tracking the in-flight node ids lets
+    // each request own only its own entry, and the right-pane spinner is gated on
+    // whether the CURRENT folder specifically is loading.
+    private readonly HashSet<string> _loadingNodeIds = [];
+
+    // The right-pane spinner shows only while the folder whose contents are
+    // displayed (the deepest stack node) is itself loading — not while some other
+    // folder loads concurrently in the tree pane.
+    private bool _loadingFolder => _pathStack.Count > 0 && _loadingNodeIds.Contains(_pathStack[^1].Id);
 
     // ── Uncontrolled view-mode / selection backing state ──────────────────────
     // ViewMode and SelectedNode can be used uncontrolled (no *Changed delegate).
@@ -371,17 +383,32 @@
         {
             var current = _pathStack[^1];
             if (current.IsFolder && current.Children is null && LoadChildren is not null)
-            {
-                _loadingFolder = true;
-                try
-                {
-                    current.Children = await LoadChildren(current);
-                }
-                finally
-                {
-                    _loadingFolder = false;
-                }
-            }
+                // Re-render after the await so the freshly-loaded children render
+                // (OnParametersSetAsync already triggers one render before the
+                // await, but that render shows the spinner; the loaded list needs
+                // its own StateHasChanged once the await resolves — #130).
+                await LoadFolderChildrenAsync(current, render: true);
+        }
+    }
+
+    // Centralised lazy-load: mark the node loading, await LoadChildren, and clear
+    // ONLY this node's loading entry in a finally so concurrent loads of other
+    // folders are never disturbed (#130). A second concurrent call for the same
+    // node is skipped (its entry is already present), so a folder is never loaded
+    // twice. <paramref name="render"/> requests a StateHasChanged after the await
+    // for call sites (OnParametersSetAsync) that don't otherwise re-render.
+    private async Task LoadFolderChildrenAsync(FileSystemNode folder, bool render)
+    {
+        if (LoadChildren is null || folder.Children is not null) return;
+        if (!_loadingNodeIds.Add(folder.Id)) return; // already loading this node
+        try
+        {
+            folder.Children = await LoadChildren(folder);
+        }
+        finally
+        {
+            _loadingNodeIds.Remove(folder.Id);
+            if (render) StateHasChanged();
         }
     }
 
@@ -441,19 +468,13 @@
 
         _pathStack = newStack;
 
-        // Lazy-load children if needed
+        // Lazy-load children if needed. Marking the node loading (in the shared
+        // set) before the StateHasChanged shows the spinner only for THIS folder;
+        // the finally inside the helper clears just this node's entry.
         if (folder.Children is null && LoadChildren is not null)
         {
-            _loadingFolder = true;
             StateHasChanged();
-            try
-            {
-                folder.Children = await LoadChildren(folder);
-            }
-            finally
-            {
-                _loadingFolder = false;
-            }
+            await LoadFolderChildrenAsync(folder, render: false);
         }
 
         // Expand in tree pane
@@ -830,16 +851,12 @@
 
             if (folder.Children is null && LoadChildren is not null)
             {
-                _loadingFolder = true;
+                // Expanding a tree-pane folder loads ITS children. This must not
+                // disturb a concurrent right-pane load of a different folder — the
+                // per-node set keeps the two independent (#130). The right-pane
+                // spinner only reacts if this folder is also the current one.
                 StateHasChanged();
-                try
-                {
-                    folder.Children = await LoadChildren(folder);
-                }
-                finally
-                {
-                    _loadingFolder = false;
-                }
+                await LoadFolderChildrenAsync(folder, render: false);
             }
         }
     }

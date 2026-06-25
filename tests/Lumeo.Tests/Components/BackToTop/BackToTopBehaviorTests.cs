@@ -108,9 +108,14 @@ public class BackToTopBehaviorTests : IAsyncLifetime
     [Fact]
     public async Task Stays_Hidden_When_Disabled_Even_After_Visibility_Callback()
     {
-        var cut = _ctx.Render<Lumeo.BackToTop>(p => p
-            .Add(b => b.Disabled, true));
+        // Disabled "disables scroll tracking entirely" (#188): the component never
+        // registers an observer, so it cannot be flipped visible. Render enabled
+        // first to capture the generated id, then disable: even if a stray
+        // visibility callback arrives for that id, the render gate keeps it hidden.
+        var cut = _ctx.Render<Lumeo.BackToTop>();
         var id = RegisteredId();
+
+        cut.Render(p => p.Add(b => b.Disabled, true));
 
         await SetVisible(cut, Interop, id, true);
 

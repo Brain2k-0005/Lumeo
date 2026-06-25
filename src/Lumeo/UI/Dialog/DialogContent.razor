@@ -100,9 +100,18 @@ else if (Context.IsOpen)
 
         if (Context.IsOpen && !_wasOpen)
         {
-            await Interop.LockScroll();
-            await Interop.SetupFocusTrap(_contentId);
-            _wasOpen = true;
+            // Guard the open-branch interop against a circuit teardown that
+            // races with this render (e.g. the user navigates away while the
+            // dialog is opening). Mirrors Cleanup()'s JSDisconnectedException
+            // handling so a disconnect during setup degrades gracefully
+            // instead of surfacing an unhandled exception.
+            try
+            {
+                await Interop.LockScroll();
+                await Interop.SetupFocusTrap(_contentId);
+                _wasOpen = true;
+            }
+            catch (JSDisconnectedException) { }
         }
         else if (!Context.IsOpen && _wasOpen)
         {

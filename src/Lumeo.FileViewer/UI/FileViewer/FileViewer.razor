@@ -394,6 +394,12 @@
 
     private CancellationTokenSource? _cts;
 
+    // Set in DisposeAsync. The cancellation token is cancelled on dispose, but a
+    // load pass already past its awaits would otherwise keep going and call
+    // StateHasChanged()/OnLoaded against a torn-down component (ObjectDisposedException).
+    // Every post-await step checks this alongside the token before touching state.
+    private bool _disposed;
+
     private string RootClass
         => $"flex flex-col rounded-xl border border-border/40 bg-card overflow-hidden min-h-[400px] {Class}".Trim();
 
@@ -571,6 +577,11 @@
         try
         {
             _resolvedKind = await ResolveKindAsync(token);
+            // ResolveKindAsync may return synchronously (e.g. an explicit Kind),
+            // so a cancellation/dispose during it never surfaces as
+            // OperationCanceledException — check explicitly before doing work.
+            if (token.IsCancellationRequested || _disposed) return;
+
             _codeLanguage = _resolvedKind == FileKind.Json
                 ? "json"
                 : _resolvedKind == FileKind.Code
@@ -579,6 +590,7 @@
 
             if (OnKindDetected.HasDelegate)
                 await OnKindDetected.InvokeAsync(_resolvedKind);
+            if (token.IsCancellationRequested || _disposed) return;
 
             if (RequiresTextFetch(_resolvedKind))
             {
@@ -586,6 +598,7 @@
                 StateHasChanged();
 
                 var text = await FetchTextAsync(Src!, token);
+                if (token.IsCancellationRequested || _disposed) return;
                 _fetchedText = text;
 
                 if (_resolvedKind == FileKind.Markdown)
@@ -603,6 +616,7 @@
             }
 
             _state = ViewState.Loaded;
+            if (token.IsCancellationRequested || _disposed) return;
             if (OnLoaded.HasDelegate) await OnLoaded.InvokeAsync();
         }
         catch (OperationCanceledException)
@@ -612,10 +626,15 @@
         }
         catch (Exception ex)
         {
+            if (token.IsCancellationRequested || _disposed) return;
             _errorMessage = ex.Message;
             _state = ViewState.Error;
             if (OnError.HasDelegate) await OnError.InvokeAsync(ex.Message);
         }
+        // Don't re-render a torn-down component (ObjectDisposedException) — the
+        // cancellation token is cancelled on dispose, but the post-await checks
+        // above could be raced by disposal happening during the final stretch.
+        if (token.IsCancellationRequested || _disposed) return;
         StateHasChanged();
     }
 
@@ -912,6 +931,7 @@
 
     public ValueTask DisposeAsync()
     {
+        _disposed = true;
         try { _cts?.Cancel(); } catch { /* swallow */ }
         _cts?.Dispose();
         _cts = null;

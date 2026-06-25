@@ -1,4 +1,5 @@
 @namespace Lumeo
+@implements IDisposable
 
 @{
     var subContext = new ContextMenuSubContext(
@@ -32,6 +33,7 @@
     internal readonly string _contentId = LumeoIds.New("context-sub-content");
 
     private CancellationTokenSource? _closeCts;
+    private bool _disposed;
 
     // Set when the submenu is opened via the keyboard (ArrowRight); the content
     // consumes it on its first open render to focus the first item — race-free,
@@ -80,6 +82,7 @@
 
     private void ScheduleClose()
     {
+        if (_disposed) return;
         CancelClose();
         _closeCts = new CancellationTokenSource();
         var token = _closeCts.Token;
@@ -87,9 +90,19 @@
         {
             try { await Task.Delay(200, token); }
             catch (TaskCanceledException) { return; }
-            if (token.IsCancellationRequested) return;
+            if (token.IsCancellationRequested || _disposed) return;
             await InvokeAsync(async () => await SetOpen(false));
         });
+    }
+
+    public void Dispose()
+    {
+        if (_disposed) return;
+        _disposed = true;
+        // Cancel + dispose the pending close timer so its continuation cannot
+        // run StateHasChanged against a torn-down component, and the CTS is
+        // reclaimed. CancelClose already cancels, disposes and nulls _closeCts.
+        CancelClose();
     }
 
     public record ContextMenuSubContext(

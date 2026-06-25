@@ -4,12 +4,17 @@
 @inject Lumeo.Services.Localization.ILumeoLocalizer L
 @implements IAsyncDisposable
 
+@* Init-failure banner renders ABOVE the editor, never INSTEAD of it: keeping the
+   content host (@ref="_contentRef") mounted means a retry has a valid ElementReference
+   to re-init against. Replacing the whole tree with an error div would orphan the ref
+   and make recovery impossible. *@
 @if (_initError is not null)
 {
-    <div class="rounded-lg border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive">Editor failed to initialize: @_initError</div>
+    <div role="alert" class="rounded-lg border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive mb-2 flex items-center justify-between gap-3">
+        <span>Editor failed to initialize: @_initError</span>
+        <Button Variant="Button.ButtonVariant.Outline" Size="Button.ButtonSize.Sm" OnClick="RetryInitAsync">@L["Editor.Retry"]</Button>
+    </div>
 }
-else
-{
 
 @if (Label is not null && !InsideFormField)
 {
@@ -83,8 +88,6 @@ else
         </DialogFooter>
     </DialogContent>
 </Dialog>
-
-} @* end @if (_initError is not null) else *@
 
 @code {
     [CascadingParameter] private FormField.FormFieldContext? FormField { get; set; }
@@ -217,6 +220,9 @@ else
     private Services.Interop.RichTextActiveState? _active;
     private bool _initialized;
     private string? _initError;
+    // Set by the Retry button; consumed in the next OnAfterRenderAsync once the content
+    // host has been re-rendered, so init runs against a live ElementReference.
+    private bool _retryRequested;
 
     // Link dialog state (replaces the native browser prompt for the toolbar
     // and bubble menu's Link button).
@@ -288,6 +294,17 @@ else
             _lastReadOnly = ReadOnly;
 
             await InitEditorAsync();
+            return;
+        }
+
+        // Retry path: the user clicked "Retry" on the init-failure banner. The content
+        // host stayed mounted (the error renders ABOVE it, not instead of it), so the
+        // ElementReference is still valid and a fresh init can succeed. The flag is
+        // consumed here — after a render that re-mounts the host — so _contentRef is live.
+        if (_retryRequested)
+        {
+            _retryRequested = false;
+            await InitEditorAsync();
         }
     }
 
@@ -352,8 +369,19 @@ else
         {
             _instanceId = await Interop.RichTextInitAsync(_contentRef, _selfRef, options);
         }
-        catch (JSException ex)
+        catch (JSDisconnectedException)
         {
+            // The circuit went away mid-init (navigation/teardown). Nothing to surface —
+            // there is no live UI to retry against — and this must not be reported as an
+            // init failure the consumer can recover from.
+            return;
+        }
+        catch (Exception ex)
+        {
+            // Catch the broader set (not just JSException): a malformed option payload,
+            // a serialization error, or an exception thrown inside the JS module all
+            // leave the editor unmounted. Surface a recoverable banner + Retry rather
+            // than letting the component render blank or rethrow into the parent.
             _initError = ex.Message;
             Console.Error.WriteLine($"[Lumeo RichTextEditor] Init failed: {ex.Message}");
             if (OnInitError.HasDelegate)
@@ -364,8 +392,26 @@ else
         _initialized = !string.IsNullOrEmpty(_instanceId);
         if (_initialized)
         {
+            // Recovered: a successful (re-)init clears any prior error banner so the
+            // component returns to its normal rendered state.
+            _initError = null;
             await RefreshActiveAsync();
         }
+    }
+
+    /// <summary>
+    /// Retry handler for the init-failure banner. Clears the error and flags a re-init,
+    /// which runs in the NEXT OnAfterRenderAsync — by then the content host has been
+    /// re-rendered (the banner sits above it, so the host is always mounted) and its
+    /// ElementReference is valid to init against. Idempotent: a re-init already in flight
+    /// is not double-scheduled.
+    /// </summary>
+    private void RetryInitAsync()
+    {
+        if (_initialized) return;
+        _initError = null;
+        _retryRequested = true;
+        StateHasChanged();
     }
 
     // Normalize a trigger list to its (ordered, distinct) char set so Triggers changes

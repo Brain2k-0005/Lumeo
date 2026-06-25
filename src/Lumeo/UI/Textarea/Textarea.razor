@@ -146,12 +146,24 @@
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (firstRender && AutoResize && !_autoResizeSetup)
+        if (AutoResize && !_autoResizeSetup)
         {
+            // Reconcile every render, not only firstRender (#166): toggling
+            // AutoResize false->true AFTER the first render must still wire up the
+            // measure. Latching on firstRender meant a runtime opt-in never
+            // registered.
             await Interop.SetupAutoResize(EffectiveId, MaxRows);
             _autoResizeSetup = true;
             _autoResizeValue = Value;
             _autoResizeMaxRows = MaxRows;
+        }
+        else if (!AutoResize && _autoResizeSetup)
+        {
+            // Toggling AutoResize true->false must tear the measure down (#166),
+            // otherwise the JS input listener leaks and keeps resizing a field the
+            // consumer has opted out of.
+            await Interop.UnregisterAutoResize(EffectiveId);
+            _autoResizeSetup = false;
         }
         else if (_autoResizeSetup && AutoResize && (Value != _autoResizeValue || MaxRows != _autoResizeMaxRows))
         {

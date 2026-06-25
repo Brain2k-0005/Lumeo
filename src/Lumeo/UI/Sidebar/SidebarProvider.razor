@@ -135,14 +135,24 @@
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         // React to viewport changes so the mobile-sheet treatment flips on the
-        // md boundary without a manual refresh.
-        if (firstRender && MobileSheet && !_viewportSubscribed)
+        // md boundary without a manual refresh. NOT firstRender-gated: MobileSheet
+        // can be toggled false→true after the first render, and the subscription
+        // (and md-boundary flip) must still come alive then. _viewportSubscribed
+        // keeps it idempotent across re-renders. Symmetrically unsubscribe when
+        // MobileSheet flips back to false so we don't keep reacting to viewport
+        // changes that no longer affect this provider. (#102)
+        if (MobileSheet && !_viewportSubscribed)
         {
             _viewportSubscribed = true;
             Responsive.ViewportChanged += OnViewportChanged;
             try { await Responsive.EnsureInitialisedAsync(); }
             catch (Microsoft.JSInterop.JSDisconnectedException) { }
             StateHasChanged();
+        }
+        else if (!MobileSheet && _viewportSubscribed)
+        {
+            _viewportSubscribed = false;
+            Responsive.ViewportChanged -= OnViewportChanged;
         }
 
         // Run every render (not just firstRender) so a changed ToggleShortcut

@@ -30,6 +30,12 @@
     // value (Gantt-class state-on-data-change bug).
     private string? _lastParamActiveId;
     private bool _pendingProgrammaticScroll;
+    // Last (Offset, Smooth) the JS observer was registered with. The JS closure
+    // captures `offset` (and `smooth`) by value, so an Offset/Smooth change after
+    // first render must tear the observer down and re-register, otherwise active-
+    // section detection keeps using the stale initial Offset forever (lifecycle
+    // bug #100). null = not yet registered.
+    private (int Offset, bool Smooth)? _registeredOptions;
 
     private string CssClass => Cx.Merge("relative", Class);
 
@@ -60,11 +66,21 @@
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (firstRender)
+        // Register on first render, and RE-register whenever Offset/Smooth change
+        // afterwards: the JS observer captures those by value, so a runtime change
+        // would otherwise be ignored (lifecycle bug #100). Tear down the previous
+        // observer first so we don't leak a listener or double-fire.
+        var options = (Offset, Smooth);
+        if (_registeredOptions != options)
         {
             try
             {
+                if (_registeredOptions is not null)
+                {
+                    await Interop.UnregisterScrollspy(_containerId);
+                }
                 await Interop.RegisterScrollspy(_containerId, Offset, Smooth, OnScrollspyUpdate);
+                _registeredOptions = options;
             }
             catch (JSDisconnectedException) { }
             catch (ObjectDisposedException) { }

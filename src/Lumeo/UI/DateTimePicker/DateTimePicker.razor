@@ -632,6 +632,12 @@
     }
 
     private bool _navKeysRegistered;
+    // Captures whether the seconds column was registered AT registration time.
+    // Unregistration must key off this snapshot, not the live ShowSeconds: toggling
+    // ShowSeconds false while the popover is open would otherwise leave the seconds
+    // column's prevent-default-keys handler-map entry registered forever (the
+    // unregister branch reads ShowSeconds==false and skips it).
+    private bool _secondsNavRegistered;
     private static readonly PreventDefaultKeyRule[] ColumnNavKeys =
     [
         new("ArrowUp"), new("ArrowDown"), new("Home"), new("End"),
@@ -646,7 +652,11 @@
             {
                 await Interop.RegisterPreventDefaultKeys(_hoursColId, ColumnNavKeys);
                 await Interop.RegisterPreventDefaultKeys(_minutesColId, ColumnNavKeys);
-                if (ShowSeconds) await Interop.RegisterPreventDefaultKeys(_secondsColId, ColumnNavKeys);
+                if (ShowSeconds)
+                {
+                    await Interop.RegisterPreventDefaultKeys(_secondsColId, ColumnNavKeys);
+                    _secondsNavRegistered = true;
+                }
             }
             catch (JSDisconnectedException) { _navKeysRegistered = false; }
             catch (InvalidOperationException) { _navKeysRegistered = false; } // prerender
@@ -664,11 +674,17 @@
     // entries for the generated column ids.
     private async Task UnregisterNavKeys()
     {
+        // Unregister the seconds column off the captured registration flag, NOT the
+        // live ShowSeconds: toggling ShowSeconds false while the popover is open would
+        // otherwise skip this branch and leak the handler-map entry for the column id
+        // we DID register on open. Reset the flag so a later reopen re-snapshots.
+        var unregisterSeconds = _secondsNavRegistered;
+        _secondsNavRegistered = false;
         try
         {
             await Interop.UnregisterPreventDefaultKeys(_hoursColId);
             await Interop.UnregisterPreventDefaultKeys(_minutesColId);
-            if (ShowSeconds) await Interop.UnregisterPreventDefaultKeys(_secondsColId);
+            if (unregisterSeconds) await Interop.UnregisterPreventDefaultKeys(_secondsColId);
         }
         // DisposeAsync routes through here, and a mid-navigation dispose can surface
         // ObjectDisposed/InvalidOperation from the JS layer — swallow all three, matching

@@ -142,6 +142,11 @@
     private bool _hasPreviousValue;
     // Synthetic key used when no Name is set so the validating-fields set still aggregates.
     private string FieldKey => string.IsNullOrEmpty(Name) ? $"__field_{GetHashCode()}" : Name!;
+    // The key this field was last registered under as "validating". Captured when
+    // validation starts so the matching un-register targets the SAME key even if the
+    // Name parameter changes mid-flight — otherwise the old key leaks in
+    // FormContext.ValidatingFields and IsAnyFieldValidating stays stuck true.
+    private string? _validatingKey;
 
     protected override async Task OnParametersSetAsync()
     {
@@ -301,7 +306,19 @@
         IsValidating = validating;
         if (ParentFormContext is not null)
         {
-            ParentFormContext.MarkValidating(FieldKey, validating);
+            // Register under the CURRENT key, but un-register under the key we
+            // registered with. If Name changed while validation was in flight,
+            // FieldKey now differs and a naive un-register would leak the old key.
+            if (validating)
+            {
+                _validatingKey = FieldKey;
+                ParentFormContext.MarkValidating(_validatingKey, true);
+            }
+            else
+            {
+                ParentFormContext.MarkValidating(_validatingKey ?? FieldKey, false);
+                _validatingKey = null;
+            }
         }
         if (OnValidatingChanged.HasDelegate)
         {
@@ -317,7 +334,11 @@
         _cts?.Dispose();
         if (ParentFormContext is not null)
         {
-            ParentFormContext.MarkValidating(FieldKey, false);
+            // Clear under the key we actually registered with (which may differ from
+            // the current FieldKey if Name changed mid-flight), so no stale entry is
+            // left behind in FormContext.ValidatingFields.
+            ParentFormContext.MarkValidating(_validatingKey ?? FieldKey, false);
+            _validatingKey = null;
         }
     }
 
