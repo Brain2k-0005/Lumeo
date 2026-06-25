@@ -4,7 +4,7 @@
 
 @{
     var context = new HoverCardContext(
-        Open || _pinned,
+        EffectiveOpen || _pinned,
         EventCallback.Factory.Create(this, RequestOpen),
         EventCallback.Factory.Create(this, RequestClose),
         EventCallback.Factory.Create(this, TogglePin),
@@ -40,13 +40,50 @@
     private bool _pinned;
     private bool _clickOutsideRegistered;
 
+    // battle-wave2 #81 (state-on-data-change) — live hover/open state lives in
+    // this private backing field, NEVER in the [Parameter] Open. Writing hover
+    // state into the parameter meant (a) a consumer-supplied Open=true was
+    // overwritten the moment the pointer left, and (b) an unrelated parent
+    // re-render re-pushed the old Open literal and reverted the user's hover.
+    // The backing field is reseeded from Open only when the parent genuinely
+    // changes it (see SetParametersAsync), mirroring the Dialog precedent.
+    private bool _open;
+    private bool _lastOpenParam;
+    private bool _hasOpenParam;
+
+    private bool EffectiveOpen => _open;
+
+    public override Task SetParametersAsync(ParameterView parameters)
+    {
+        // The legacy IsOpen alias is obsolete but still a valid bound parameter,
+        // so honour it when reseeding (suppress CS0618 for the nameof probe).
+#pragma warning disable CS0618
+        var hasOpen = parameters.TryGetValue<bool>(nameof(Open), out var incomingOpen)
+            || parameters.TryGetValue<bool>(nameof(IsOpen), out incomingOpen);
+#pragma warning restore CS0618
+
+        // Reseed the working state from the parent ONLY on a real change of the
+        // supplied Open value (first observation, or a different literal than last
+        // time). A same-value re-render must NOT clobber a live hover/open state.
+        if (hasOpen && (!_hasOpenParam || incomingOpen != _lastOpenParam))
+        {
+            _open = incomingOpen;
+            _lastOpenParam = incomingOpen;
+            _hasOpenParam = true;
+        }
+
+        return base.SetParametersAsync(parameters);
+    }
+
     private void RequestOpen()
     {
         _dispatch.Cancel();
-        if (Open) return;
+        if (EffectiveOpen) return;
         _dispatch.Schedule(OpenDelay, () => InvokeAsync(async () =>
         {
-            Open = true;
+            // Write the live open-state to the backing field, never to the
+            // [Parameter] Open. OpenChanged still notifies two-way consumers.
+            _open = true;
             await OpenChanged.InvokeAsync(true);
             StateHasChanged();
         }));
@@ -57,10 +94,10 @@
         // If the card is pinned (touch), hover-leave must NOT close it.
         if (_pinned) return;
         _dispatch.Cancel();
-        if (!Open) return;
+        if (!EffectiveOpen) return;
         _dispatch.Schedule(CloseDelay, () => InvokeAsync(async () =>
         {
-            Open = false;
+            _open = false;
             await OpenChanged.InvokeAsync(false);
             StateHasChanged();
         }));
@@ -82,9 +119,9 @@
         else
         {
             // Optional auto-collapse on unpin if the user wasn't hovering.
-            if (Open)
+            if (EffectiveOpen)
             {
-                Open = false;
+                _open = false;
                 await OpenChanged.InvokeAsync(false);
             }
         }
@@ -100,9 +137,9 @@
         if (_pinned)
         {
             _pinned = false;
-            if (Open)
+            if (EffectiveOpen)
             {
-                Open = false;
+                _open = false;
                 await OpenChanged.InvokeAsync(false);
             }
             StateHasChanged();

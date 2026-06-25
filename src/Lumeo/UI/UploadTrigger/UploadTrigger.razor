@@ -34,7 +34,8 @@
     {
         <span>@(Text ?? L["UploadTrigger.PickFile"])</span>
     }
-    <InputFile class="sr-only"
+    <InputFile @ref="_inputFile"
+               class="sr-only"
                OnChange="HandleChange"
                multiple="@Multiple"
                accept="@Accept"
@@ -43,8 +44,16 @@
 </label>
 
 @inject Lumeo.Services.Localization.ILumeoLocalizer L
+@inject Lumeo.Services.IComponentInteropService Interop
 
 @code {
+    // Captured so HandleChange can reset the native input's value after each
+    // pick — without it the browser never re-fires `change` for an identical
+    // subsequent selection (#70). Unlike FileUpload (which accumulates an item
+    // list that incidentally masks the stale-value bug), UploadTrigger is a pure
+    // pick-trigger with no list, so the reset is load-bearing here.
+    private InputFile? _inputFile;
+
     /// <summary>Files chosen in the picker. Fires once per picker confirmation;
     /// the consumer is responsible for any subsequent state / upload logic.</summary>
     [Parameter] public EventCallback<InputFileChangeEventArgs> OnFilesSelected { get; set; }
@@ -109,5 +118,14 @@
     private async Task HandleChange(InputFileChangeEventArgs e)
     {
         await OnFilesSelected.InvokeAsync(e);
+
+        // Reset the underlying <input type=file> so that re-selecting the SAME
+        // file fires `change` again. The browser only raises `change` when the
+        // chosen path differs from the input's current value, so without this an
+        // identical second pick would silently never re-raise OnFilesSelected.
+        if (_inputFile?.Element is { } element)
+        {
+            await Interop.ResetFileInput(element);
+        }
     }
 }

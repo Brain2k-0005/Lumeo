@@ -108,11 +108,21 @@ else
         // the contract-test path renders every component with no params.
         if (Model is null)
         {
-            _editContext = null;
-            _lastModel = null;
+            // A transient null (e.g. a parent that briefly clears Model
+            // while reloading and then restores the SAME instance) must NOT
+            // wipe the EditContext — that would discard validation messages
+            // and field-modified state. Defer rendering of the form for this
+            // pass, but KEEP _editContext and _lastModel so that when the same
+            // instance returns the ReferenceEquals check below stays true and
+            // the existing context is reused rather than rebuilt.
+            //
+            // When _editContext is null here, no Model was ever supplied, so
+            // the diagnostic shell renders for the genuine misconfiguration.
             return;
         }
-        if (!ReferenceEquals(_lastModel, Model))
+        // Rebuild only on a genuine model-instance change. A same-instance
+        // round-trip (after a transient null) keeps the original context.
+        if (_editContext is null || !ReferenceEquals(_lastModel, Model))
         {
             _editContext = new EditContext(Model);
             _lastModel = Model;

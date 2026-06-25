@@ -250,16 +250,24 @@
     private TimeSpan? _timeValue;
     private DateTime? _prevValue;
     private DateTimeOffset? _prevOffsetValue;
+    private TimeZoneInfo? _prevTimeZone;
 
     private string CssClass => Cx.Merge("group flex h-9 w-full items-center rounded-md border", (EffectiveInvalid ? "border-destructive ring-1 ring-destructive/20" : "border-input"), "bg-transparent px-3 py-2 text-sm shadow-sm hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50", Class);
 
     protected override void OnParametersSet()
     {
-        // When the parent binds OffsetValue and it changed, derive Value from it
-        // by projecting into the configured TimeZone (or local if null).
-        if (OffsetValue != _prevOffsetValue)
+        // When the parent binds OffsetValue and it changed — OR the TimeZone the
+        // value is projected through changed — derive Value from OffsetValue by
+        // projecting into the configured TimeZone (or local if null). Re-projecting
+        // on a TimeZone change keeps the wall-clock display in step with the zone
+        // label (FormatZoneLabel reads TimeZone live); otherwise a zone swap left
+        // the displayed instant from the old zone while the label showed the new.
+        var offsetChanged = OffsetValue != _prevOffsetValue;
+        var zoneChanged = !Equals(TimeZone, _prevTimeZone);
+        if (offsetChanged || zoneChanged)
         {
             _prevOffsetValue = OffsetValue;
+            _prevTimeZone = TimeZone;
             if (OffsetValue.HasValue)
             {
                 var local = TimeZone is null
@@ -267,8 +275,11 @@
                     : TimeZoneInfo.ConvertTime(OffsetValue.Value, TimeZone).DateTime;
                 Value = DateTime.SpecifyKind(local, DateTimeKind.Unspecified);
             }
-            else
+            else if (offsetChanged)
             {
+                // Only the OffsetValue going null should clear Value; a bare
+                // TimeZone change with no OffsetValue bound must not wipe a
+                // plain Value-bound selection.
                 Value = null;
             }
         }

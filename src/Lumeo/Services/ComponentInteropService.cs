@@ -858,6 +858,16 @@ public sealed class ComponentInteropService : IComponentInteropService
         catch (JSDisconnectedException) { }
     }
 
+    public async ValueTask SetInputValue(string elementId, string value)
+    {
+        try
+        {
+            var module = await GetModuleAsync();
+            await module.InvokeVoidAsync("setInputValue", elementId, value);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
     // --- BackToTop ---
 
     public async ValueTask RegisterBackToTop(string id, int threshold, Func<bool, Task> handler)
@@ -915,6 +925,18 @@ public sealed class ComponentInteropService : IComponentInteropService
         {
             var module = await GetModuleAsync();
             await module.InvokeVoidAsync("ripple.detach", element);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
+    // --- File input reset (#70) ---
+
+    public async ValueTask ResetFileInput(Microsoft.AspNetCore.Components.ElementReference element)
+    {
+        try
+        {
+            var module = await GetModuleAsync();
+            await module.InvokeVoidAsync("resetFileInput", element);
         }
         catch (JSDisconnectedException) { }
     }

@@ -1,7 +1,7 @@
 @namespace Lumeo
 
 @{
-    var context = new PopoverContext(Open, EventCallback.Factory.Create<bool>(this, SetOpen), _wrapperId, _contentId);
+    var context = new PopoverContext(EffectiveOpen, EventCallback.Factory.Create<bool>(this, SetOpen), _wrapperId, _contentId);
 }
 
 <CascadingValue Value="context" IsFixed="false">
@@ -31,10 +31,50 @@
     // relationship and the content can focus itself on open.
     internal readonly string _contentId = LumeoIds.New("popover-content");
 
+    // battle-wave2 #183 (state-on-data-change) — uncontrolled open state lives in
+    // a private backing field, NOT in the [Parameter] Open. Blazor re-applies
+    // [Parameter] values from the parent on every render, so self-managing state
+    // by writing back into Open got silently reset whenever an unrelated parent
+    // re-render pushed the original Open value down (precedent #3 / Collapsible #246).
+    private bool _openState;
+    private bool _initialized;
+    private bool _lastOpenParam;
+
+    /// <summary>
+    /// State the component actually renders from. Controlled (OpenChanged bound):
+    /// the parent owns it, so mirror Open verbatim. Uncontrolled: use our own
+    /// backing field so parent re-renders can't clobber it.
+    /// </summary>
+    private bool EffectiveOpen => OpenChanged.HasDelegate ? Open : _openState;
+
+    protected override void OnParametersSet()
+    {
+        // Seed the uncontrolled backing field from Open on first set (honours an
+        // initial Open="true") and whenever the bound Open value actually changes
+        // (lets callers still drive it imperatively), but never on the no-op
+        // re-applications that caused the reset.
+        if (!_initialized || Open != _lastOpenParam)
+        {
+            _openState = Open;
+            _lastOpenParam = Open;
+            _initialized = true;
+        }
+    }
+
     private async Task SetOpen(bool value)
     {
-        Open = value;
-        await OpenChanged.InvokeAsync(value);
+        // Controlled (Open is bound via OpenChanged): let the parent own state —
+        // fire the callback and render from the parent's next value instead of
+        // mutating our own [Parameter], which desyncs if the parent rejects or
+        // ignores the change. Uncontrolled: self-manage via the backing field.
+        if (OpenChanged.HasDelegate)
+        {
+            await OpenChanged.InvokeAsync(value);
+        }
+        else
+        {
+            _openState = value;
+        }
     }
 
     public record PopoverContext(bool IsOpen, EventCallback<bool> SetOpen, string WrapperId, string ContentId);

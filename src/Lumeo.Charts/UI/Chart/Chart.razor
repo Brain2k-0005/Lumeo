@@ -148,6 +148,13 @@ else
     private string _tooltipPortalId => $"{_chartId}-tooltip";
     private ChartTooltipContext _tooltipContext = ChartTooltipContext.Empty;
     private bool _tooltipBridgeRegistered;
+    // Names of ECharts events already attached on the CURRENT live JS instance. The JS
+    // registerChartEvent does NOT de-dupe — it pushes onto chart._lumeoEvents and
+    // re-attaches each call — so we must track what's bound and only attach newly-added
+    // ones. Cleared when the JS instance is disposed+reinit'd (theme change) since the
+    // fresh chart has no listeners. Lets us safely re-run RegisterChartEventsAsync when a
+    // delegate (OnClick/OnDataZoom/…) or the ChartTooltip slot appears AFTER first render.
+    private readonly HashSet<string> _registeredEvents = new(StringComparer.Ordinal);
 
     public Chart()
     {
@@ -312,6 +319,15 @@ else
             }
             _lastWasPhantom = isPhantom;
 
+            // Event callbacks / <ChartTooltip> wired AFTER first render (a delegate or the
+            // tooltip slot newly appears because the parent re-rendered) are otherwise never
+            // registered — registration ran only on firstRender / theme-change. Re-run it
+            // whenever something is still unregistered; RegisterChartEventsAsync is idempotent
+            // (each name guarded by _registeredEvents, tooltip by _tooltipBridgeRegistered) so
+            // already-bound handlers are not double-attached.
+            if (HasUnregisteredEvents)
+                await RegisterChartEventsAsync();
+
             if (ShowLoading != _lastShowLoading)
             {
                 _lastShowLoading = ShowLoading;
@@ -325,6 +341,9 @@ else
             {
                 _lastTheme = Theme;
                 await _module!.InvokeVoidAsync("disposeChart", _chartId);
+                // The fresh JS instance has no event listeners — reset the tracking set so
+                // RegisterChartEventsAsync re-attaches them onto the new chart.
+                _registeredEvents.Clear();
                 var currentJson = _lastJson ?? GetEffectiveJson();
                 await _module!.InvokeVoidAsync("initChart", _chartId, currentJson, Theme, EChartsSource);
                 await RegisterChartEventsAsync();
@@ -408,6 +427,18 @@ else
         catch (OperationCanceledException) { /* expected on Dispose */ }
     }
 
+    // True when a wired-up event delegate or the <ChartTooltip> slot has NOT yet been
+    // registered onto the live JS instance. Drives the post-first-render re-registration so
+    // callbacks/tooltips added later (parent re-render) actually get bound. Already-bound
+    // delegates contribute nothing (their name is in _registeredEvents).
+    private bool HasUnregisteredEvents =>
+        (OnClick.HasDelegate && !_registeredEvents.Contains("click"))
+        || (OnMouseOver.HasDelegate && !_registeredEvents.Contains("mouseover"))
+        || (OnDoubleClick.HasDelegate && !_registeredEvents.Contains("dblclick"))
+        || (OnBrushSelected.HasDelegate && !_registeredEvents.Contains("brushSelected"))
+        || (OnDataZoom.HasDelegate && !_registeredEvents.Contains("dataZoom"))
+        || (_tooltipRegistration.Current is not null && !_tooltipBridgeRegistered);
+
     private async Task RegisterChartEventsAsync()
     {
         if (_module is null || !_initialized) return;
@@ -415,15 +446,18 @@ else
         if (OnClick.HasDelegate || OnMouseOver.HasDelegate || OnDoubleClick.HasDelegate || OnBrushSelected.HasDelegate || OnDataZoom.HasDelegate)
         {
             _selfRef ??= DotNetObjectReference.Create(this);
-            if (OnClick.HasDelegate)
+            // _registeredEvents guards each name so a re-run (delegate wired after first
+            // render) only attaches the newly-added events, never double-binding ones the
+            // live JS instance already has.
+            if (OnClick.HasDelegate && _registeredEvents.Add("click"))
                 await _module.InvokeVoidAsync("registerChartEvent", _chartId, "click", _selfRef);
-            if (OnMouseOver.HasDelegate)
+            if (OnMouseOver.HasDelegate && _registeredEvents.Add("mouseover"))
                 await _module.InvokeVoidAsync("registerChartEvent", _chartId, "mouseover", _selfRef);
-            if (OnDoubleClick.HasDelegate)
+            if (OnDoubleClick.HasDelegate && _registeredEvents.Add("dblclick"))
                 await _module.InvokeVoidAsync("registerChartEvent", _chartId, "dblclick", _selfRef);
-            if (OnBrushSelected.HasDelegate)
+            if (OnBrushSelected.HasDelegate && _registeredEvents.Add("brushSelected"))
                 await _module.InvokeVoidAsync("registerChartEvent", _chartId, "brushSelected", _selfRef);
-            if (OnDataZoom.HasDelegate)
+            if (OnDataZoom.HasDelegate && _registeredEvents.Add("dataZoom"))
                 await _module.InvokeVoidAsync("registerChartEvent", _chartId, "dataZoom", _selfRef);
         }
 

@@ -13,7 +13,7 @@
 
 <div class="inline-flex items-center">
     <button type="button" id="@EffectiveId" role="switch"
-            aria-checked="@Checked.ToString().ToLower()"
+            aria-checked="@_checked.ToString().ToLower()"
             aria-label="@AriaLabelValue"
             aria-required="@Required.ToString().ToLower()"
             aria-invalid="@EffectiveInvalid.ToString().ToLower()"
@@ -76,6 +76,33 @@
 
     [Parameter] public bool Checked { get; set; }
     [Parameter] public EventCallback<bool> CheckedChanged { get; set; }
+
+    // Uncontrolled state guard (state-on-data-change). The live checked state
+    // lives in _checked, NEVER in the [Parameter] Checked. We reseed _checked
+    // from the parent ONLY when it genuinely changes the Checked value it
+    // supplies (first observation, or a different literal than last time), so a
+    // plain parent re-render that re-pushes the same Checked literal no longer
+    // clobbers the user's toggle. A genuinely new Checked value still wins. This
+    // mirrors the Radix/Base UI controlled-vs-uncontrolled disambiguation a bool
+    // param cannot be "undefined", so we inspect which parameters were provided.
+    private bool _checked;
+    private bool _lastCheckedParam;
+    private bool _hasCheckedParam;
+
+    public override Task SetParametersAsync(ParameterView parameters)
+    {
+        var hasChecked = parameters.TryGetValue<bool>(nameof(Checked), out var incoming);
+        // Seed before base.SetParametersAsync so the render it queues already
+        // sees the correct _checked on the very first parameter set.
+        if (hasChecked && (!_hasCheckedParam || incoming != _lastCheckedParam))
+        {
+            _checked = incoming;
+            _lastCheckedParam = incoming;
+            _hasCheckedParam = true;
+        }
+
+        return base.SetParametersAsync(parameters);
+    }
     [Parameter] public bool Disabled { get; set; }
     [Parameter] public bool Loading { get; set; }
     [Parameter] public string? OnLabel { get; set; }
@@ -110,7 +137,7 @@
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     private bool HasOnOffLabel => OnLabel != null || OffLabel != null;
-    private string? CurrentOnOffLabel => Checked ? OnLabel : OffLabel;
+    private string? CurrentOnOffLabel => _checked ? OnLabel : OffLabel;
 
     // Prefer an explicit AriaLabel, then fall back to the currently visible On/Off text, then to Label
     // so even consumers who don't set AriaLabel get a reasonable screen-reader announcement.
@@ -132,9 +159,9 @@
 
     private string ThumbTranslateClass => Size switch
     {
-        Lumeo.Size.Sm => Checked ? "translate-x-3" : "translate-x-0",
-        Lumeo.Size.Lg => Checked ? "translate-x-5" : "translate-x-0",
-        _ => Checked ? "translate-x-4" : "translate-x-0"
+        Lumeo.Size.Sm => _checked ? "translate-x-3" : "translate-x-0",
+        Lumeo.Size.Lg => _checked ? "translate-x-5" : "translate-x-0",
+        _ => _checked ? "translate-x-4" : "translate-x-0"
     };
 
     private string ThumbSpinnerClass => Size switch
@@ -148,7 +175,7 @@
         "peer inline-flex",
         TrackSizeClasses,
         "shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50",
-        Checked ? "bg-primary" : "bg-input",
+        _checked ? "bg-primary" : "bg-input",
         Cx.When(EffectiveInvalid, "ring-2 ring-destructive/20 focus-visible:ring-destructive"),
         Cx.When(Loading, "pointer-events-none opacity-70"),
         Class);
@@ -171,8 +198,15 @@
     {
         if (!Disabled && !Loading)
         {
-            Checked = !Checked;
-            await CheckedChanged.InvokeAsync(Checked);
+            // Mutate the working backing field only — NEVER the [Parameter] Checked.
+            // CheckedChanged notifies two-way @bind-Checked / controlled consumers;
+            // the local _checked carries the live state so a one-way consumer that
+            // does not handle CheckedChanged still observes the toggle until it
+            // chooses to re-assert Checked. We deliberately do NOT touch
+            // _lastCheckedParam here, so a plain parent re-render that re-pushes the
+            // same Checked literal is treated as "no change" and does not revert us.
+            _checked = !_checked;
+            await CheckedChanged.InvokeAsync(_checked);
             if (HapticFeedback) await Haptics.Light();
         }
     }

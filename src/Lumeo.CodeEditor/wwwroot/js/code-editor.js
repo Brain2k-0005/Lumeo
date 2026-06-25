@@ -352,9 +352,46 @@ export async function setValue(elementId, value) {
     const inst = _instances.get(elementId);
     if (!inst) return;
     const current = inst.view.state.doc.toString();
-    if (current === value) return;
+    const next = value || '';
+    if (current === next) return;
+
+    // A naive full-document replace (from:0 to:doc.length) collapses the
+    // selection to position 0, so a controlled/normalizing parent that echoes
+    // a slightly-different Value back on every keystroke would snap the caret
+    // to the top of the document. Instead:
+    //   1. Diff to the minimal changed region (shared prefix/suffix) so
+    //      CodeMirror's own position-mapping keeps the caret put.
+    //   2. Pass an explicit selection re-anchored to the previous caret
+    //      offset, clamped to the new length, as a belt-and-braces guard.
+    let prefix = 0;
+    const minLen = Math.min(current.length, next.length);
+    while (prefix < minLen && current[prefix] === next[prefix]) prefix++;
+
+    let suffix = 0;
+    while (
+        suffix < minLen - prefix &&
+        current[current.length - 1 - suffix] === next[next.length - 1 - suffix]
+    ) suffix++;
+
+    const from = prefix;
+    const to = current.length - suffix;
+    const insert = next.slice(prefix, next.length - suffix);
+
+    // Re-anchor the caret: map the old offsets across the edited region and
+    // clamp to the new document length so we never point past the end.
+    const prevSel = inst.view.state.selection.main;
+    const mapOffset = (pos) => {
+        if (pos <= from) return pos;
+        if (pos >= to) return pos + (insert.length - (to - from));
+        return from + Math.min(pos - from, insert.length);
+    };
+    const newLen = next.length;
+    const anchor = Math.min(mapOffset(prevSel.anchor), newLen);
+    const head = Math.min(mapOffset(prevSel.head), newLen);
+
     inst.view.dispatch({
-        changes: { from: 0, to: inst.view.state.doc.length, insert: value || '' },
+        changes: { from, to, insert },
+        selection: { anchor, head },
     });
 }
 

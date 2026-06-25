@@ -122,6 +122,12 @@
     private string? _lastStrokeColor;
     private double _lastStrokeWidth;
     private bool _lastDisabled;
+    // The canvas surface dimensions last applied to the DOM. Changing the
+    // <canvas> width/height attribute resets (blanks) its drawing buffer, so a
+    // runtime Width/Height change wipes the rendered signature. We track the
+    // applied values and repaint the existing signature after the surface reset.
+    private int _lastWidth;
+    private int _lastHeight;
 
     private string MimeType => Format?.Equals("svg", StringComparison.OrdinalIgnoreCase) == true
         ? "image/svg+xml"
@@ -180,6 +186,8 @@
             _lastStrokeColor = StrokeColor;
             _lastStrokeWidth = StrokeWidth;
             _lastDisabled = Disabled;
+            _lastWidth = Width;
+            _lastHeight = Height;
 
             var options = new
             {
@@ -213,6 +221,24 @@
         {
             await Interop.SignaturePadSetDisabled(_canvasId, Disabled);
             _lastDisabled = Disabled;
+        }
+
+        // A runtime Width/Height change re-emits the <canvas> width/height
+        // attributes, which resets (blanks) the drawing buffer. Repaint the
+        // existing signature after the surface reset so the drawing survives a
+        // resize. Skipped when a param reload is already pending — that block
+        // repaints from the same value below, so we'd otherwise load twice.
+        if ((_lastWidth != Width || _lastHeight != Height) && !_pendingParamReload)
+        {
+            _lastWidth = Width;
+            _lastHeight = Height;
+            await Interop.SignaturePadLoadDataUrl(_canvasId, _currentValue);
+        }
+        else if (_lastWidth != Width || _lastHeight != Height)
+        {
+            // Param reload will repaint; just sync the tracked dimensions.
+            _lastWidth = Width;
+            _lastHeight = Height;
         }
 
         // Programmatic Value updates: repaint the canvas ONLY when the parent

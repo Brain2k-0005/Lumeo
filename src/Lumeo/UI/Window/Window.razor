@@ -3,7 +3,7 @@
 @inject IComponentInteropService Interop
 @inject Lumeo.Services.Localization.ILumeoLocalizer L
 
-@if (Open && !_minimized && !_maximized)
+@if (EffectiveOpen && !_minimized && !_maximized)
 {
     <div id="@_windowId"
          class="@CssClass"
@@ -101,7 +101,7 @@
         }
     </div>
 }
-else if (Open && _minimized)
+else if (EffectiveOpen && _minimized)
 {
     @* Minimized title bar only *@
     <div id="@_windowId"
@@ -127,7 +127,7 @@ else if (Open && _minimized)
         }
     </div>
 }
-else if (Open && _maximized)
+else if (EffectiveOpen && _maximized)
 {
     @* Maximized — fills most of viewport *@
     <div id="@_windowId"
@@ -215,6 +215,25 @@ else if (Open && _maximized)
     private bool _minimized;
     private bool _maximized;
 
+    // Live visibility state. The window's open-ness is mirrored into _open and
+    // rendered from EffectiveOpen so an internal close (Escape / close button)
+    // is NOT clobbered by a same-value parent re-render of the Open [Parameter].
+    // This is the state-on-data-change guard: live state lives in _open, never
+    // in the [Parameter] Open. _lastOpenParam / _hasOpenParam let us reseed _open
+    // only when the parent genuinely changes Open. Mirrors the canonical Dialog
+    // pattern.
+    private bool _open;
+    private bool _lastOpenParam;
+    private bool _hasOpenParam;
+
+    // Set when the window transitions hidden->visible so OnAfterRenderAsync
+    // re-clamps the position/size to the CURRENT viewport on every reopen, not
+    // only on first render (a window dragged near an edge then closed must not
+    // reopen off-screen after a viewport shrink).
+    private bool _needsClamp;
+
+    private bool EffectiveOpen => _open;
+
     // Drag state (pointer-events-based; viewport dimensions fetched via JS once per drag start)
     private bool _isDragging;
     private bool _isResizing;
@@ -235,9 +254,36 @@ else if (Open && _maximized)
     private double _viewportWidth;
     private double _viewportHeight;
 
+    public override Task SetParametersAsync(ParameterView parameters)
+    {
+        var hasOpen = parameters.TryGetValue<bool>(nameof(Open), out var incomingOpen);
+
+        // Reseed the live _open from the parent ONLY on a real change (first
+        // observation, or a value different from the last one the parent
+        // supplied). A same-value re-render must NOT overwrite an internal close
+        // — that is what let an uncontrolled window silently reopen after Escape.
+        if (hasOpen && (!_hasOpenParam || incomingOpen != _lastOpenParam))
+        {
+            // Reopen (false->true): clear any stale minimized/maximized view so a
+            // window that was minimized/maximized when closed comes back as a
+            // normal window, and re-clamp to the live viewport on the next render.
+            if (incomingOpen && _hasOpenParam && !_lastOpenParam)
+            {
+                _minimized = false;
+                _maximized = false;
+                _needsClamp = true;
+            }
+            _open = incomingOpen;
+            _lastOpenParam = incomingOpen;
+            _hasOpenParam = true;
+        }
+
+        return base.SetParametersAsync(parameters);
+    }
+
     protected override void OnParametersSet()
     {
-        if (!_initialized && Open)
+        if (!_initialized && EffectiveOpen)
         {
             _posX = InitialX is not null ? ParsePx(InitialX) : 80;
             _posY = InitialY is not null ? ParsePx(InitialY) : 80;
@@ -249,11 +295,13 @@ else if (Open && _maximized)
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (firstRender && Open)
+        // Clamp on first render (consumer-provided InitialX/InitialY that exceeds
+        // the viewport must be corrected before the user touches the window) AND
+        // on every subsequent reopen (_needsClamp), so a window dragged near an
+        // edge then closed cannot reopen off-screen after a viewport shrink.
+        if ((firstRender || _needsClamp) && EffectiveOpen)
         {
-            // Fetch viewport once on first render so a consumer-provided
-            // InitialX/InitialY that exceeds the viewport (e.g. 9999px) is
-            // clamped before the user ever touches the window.
+            _needsClamp = false;
             await FetchAndClampToViewportAsync();
             StateHasChanged();
         }
@@ -466,8 +514,19 @@ else if (Open && _maximized)
 
     private async Task Close()
     {
-        Open = false;
+        // Update the live backing field only — NEVER the [Parameter] Open.
+        // OpenChanged notifies two-way @bind-Open / controlled consumers; _open
+        // carries the live close so an uncontrolled window (no OpenChanged) and a
+        // one-way controlled parent both observe the close until the parent
+        // chooses to re-assert Open. Reset the transient view mode so the window
+        // does not reopen stuck in its minimized/maximized state.
+        _minimized = false;
+        _maximized = false;
+        _open = false;
         await OpenChanged.InvokeAsync(false);
+        // Re-render so an uncontrolled window (no OpenChanged delegate) actually
+        // hides — without this it would never re-render and so never close.
+        StateHasChanged();
     }
 
     public ValueTask DisposeAsync() => ValueTask.CompletedTask;

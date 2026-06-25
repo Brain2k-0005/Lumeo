@@ -290,7 +290,14 @@ else
             if (newValue > ceiling) newValue = ceiling;
             if (newValue < Min) newValue = Min;
 
-            if (newValue == Value) return;
+            // The clamped value equals the model: the user dragged into the
+            // forbidden zone but the result snaps back to where we already are.
+            // The native <input>'s own value HAS moved to the raw dragged spot,
+            // so a bare return would leave the thumb desynced in the forbidden
+            // zone. Force a re-render so Blazor re-writes value="@Value" onto the
+            // DOM input and the thumb snaps back. (Single-thumb OnInput never
+            // early-returns, so it isn't affected.)
+            if (newValue == Value) { StateHasChanged(); return; }
             Value = newValue;
             await ValueChanged.InvokeAsync(Value);
         }

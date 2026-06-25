@@ -84,6 +84,14 @@
     private bool _initialized;
     private bool _lastCollapsedParam;
 
+    // Last value actually written to localStorage. Drives a single persistence path
+    // (PersistIfChangedAsync, run every render) so EVERY effective-collapsed change is
+    // saved — not just the Toggle() one. Parameter-/@bind-driven collapse changes used
+    // to slip past persistence (only Toggle wrote), leaving localStorage stale. (#101)
+    // Nullable so the first run can adopt the rendered state as the baseline without an
+    // immediate redundant write.
+    private bool? _lastPersisted;
+
     // State the cascade actually renders from. Controlled (IsCollapsedChanged bound):
     // the parent owns it, so mirror IsCollapsed verbatim. Uncontrolled: use our own
     // backing field so parent re-renders — and same-literal parameter pushes after a
@@ -152,6 +160,10 @@
                 if (stored is "true" or "false")
                 {
                     var restored = stored == "true";
+                    // The stored value IS the persisted baseline — record it so the
+                    // central PersistIfChangedAsync below doesn't immediately re-write the
+                    // same value we just read back.
+                    _lastPersisted = restored;
                     if (restored != EffectiveIsCollapsed)
                     {
                         // Write the restored value into our backing field (the
@@ -174,6 +186,35 @@
                 // Fall through silently — the cascade keeps the parameter default.
             }
         }
+
+        // Persist whenever the effective collapsed state has drifted from what's in
+        // localStorage — covers parameter-/@bind-driven changes (which never went through
+        // Toggle) as well as the Toggle path, so localStorage can't go stale. Runs after
+        // the restore block so the just-read baseline isn't immediately re-written. (#101)
+        await PersistIfChangedAsync(firstRender);
+    }
+
+    // Writes the current EffectiveIsCollapsed to localStorage iff it differs from the last
+    // persisted value. Single source of persistence for every collapse change. No-op when
+    // PersistCollapsed is off. On the first render we only ADOPT the rendered state as the
+    // baseline (no write) unless the restore block already seeded one — mounting shouldn't
+    // newly stamp localStorage; only genuine changes after mount do. (#101)
+    private async Task PersistIfChangedAsync(bool firstRender)
+    {
+        if (!PersistCollapsed) return;
+        var current = EffectiveIsCollapsed;
+        if (firstRender && _lastPersisted is null)
+        {
+            // Empty storage on mount: take the current state as the baseline silently so
+            // we don't write the initial (unchanged) value — preserves the original
+            // restore-only-on-mount contract.
+            _lastPersisted = current;
+            return;
+        }
+        if (_lastPersisted == current) return;
+        _lastPersisted = current;
+        try { await Interop.SaveToLocalStorage(PersistenceKey, current ? "true" : "false"); }
+        catch (Microsoft.JSInterop.JSDisconnectedException) { }
     }
 
     // (Re)registers the toggle shortcut when ToggleShortcut changes. Releases a
@@ -218,11 +259,9 @@
             _isCollapsed = next;
         await IsCollapsedChanged.InvokeAsync(next);
         await InvokeAsync(StateHasChanged);
-        if (PersistCollapsed)
-        {
-            try { await Interop.SaveToLocalStorage(PersistenceKey, next ? "true" : "false"); }
-            catch (Microsoft.JSInterop.JSDisconnectedException) { }
-        }
+        // Persistence is centralised in PersistIfChangedAsync (run from OnAfterRenderAsync
+        // after the StateHasChanged above re-renders), so a parameter-driven change is
+        // persisted just like this toggle — no per-callsite write needed here. (#101)
     }
 
     // Called by SidebarComponent's @onmouseenter / @onmouseleave / focus handlers.

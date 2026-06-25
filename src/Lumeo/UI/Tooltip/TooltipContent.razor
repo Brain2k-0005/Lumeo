@@ -37,6 +37,12 @@
     private string _contentId => Context?.ContentId ?? string.Empty;
     private bool _registered;
 
+    // Last placement values actually handed to PositionFixed. A live Side/Offset
+    // change while the tooltip is open must re-run PositionFixed so the box moves;
+    // storing the applied values stops a same-value re-render from thrashing JS.
+    private string? _appliedSide;
+    private int? _appliedOffset;
+
     private bool IsOpen => Context?.IsOpen ?? false;
 
     private string CssClass => Cx.Merge(
@@ -69,10 +75,17 @@
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (IsOpen && !_registered && Context is not null)
+        // Re-position when first opening OR when Side/Offset changed while already
+        // open. The old `!_registered` one-shot latch ignored live placement changes,
+        // leaving the box at its original spot. positionFixed cleans up the prior
+        // placement (keyed by contentId) at entry, so re-calling it is safe.
+        if (IsOpen && Context is not null
+            && (!_registered || _appliedSide != SideStr || _appliedOffset != Offset))
         {
             await Interop.PositionFixed(_contentId, Context.WrapperId, "center", false, SideStr, Offset);
             _registered = true;
+            _appliedSide = SideStr;
+            _appliedOffset = Offset;
         }
         else if (!IsOpen && _registered)
         {
@@ -85,6 +98,8 @@
         try { await Interop.UnpositionFixed(_contentId); }
         catch (Microsoft.JSInterop.JSDisconnectedException) { }
         _registered = false;
+        _appliedSide = null;
+        _appliedOffset = null;
     }
 
     public async ValueTask DisposeAsync()

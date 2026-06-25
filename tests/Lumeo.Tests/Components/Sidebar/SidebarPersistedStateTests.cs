@@ -25,6 +25,12 @@ namespace Lumeo.Tests.Components.Sidebar;
 ///
 /// Observable: SidebarComponent renders the Push variant at <c>w-0</c> when collapsed and
 /// <c>w-64</c> when expanded, driven by the cascaded SidebarState.IsCollapsed.
+///
+/// Battle-test #101 (medium) — PersistCollapsed must write back on EVERY effective-collapsed
+/// change, not just Toggle(). Persistence used to live solely in Toggle(), so a parameter-/
+/// @bind-driven collapse change bypassed it and left localStorage stale. The fix centralises
+/// persistence in PersistIfChangedAsync (run from OnAfterRenderAsync), and the regression test
+/// drives a parameter-only collapse change and asserts the saveToLocalStorage write fires.
 /// </summary>
 public class SidebarPersistedStateTests : IAsyncLifetime
 {
@@ -150,5 +156,32 @@ public class SidebarPersistedStateTests : IAsyncLifetime
         var cut = RenderProvider(isCollapsed: true);
 
         Assert.True(IsCollapsed(cut));
+    }
+
+    [Fact]
+    public void PersistCollapsed_Writes_Back_On_Parameter_Driven_Collapse_Change()
+    {
+        // Battle-test #101 (medium): persistence used to live ONLY in Toggle(), so a
+        // parameter-/@bind-driven collapse change (the parent flipping IsCollapsed while
+        // PersistCollapsed is on) never reached localStorage — leaving it silently stale.
+        // Storage starts empty (Loose mode returns null for loadFromLocalStorage), so the
+        // first-render restore stores nothing.
+        var cut = RenderProvider(isCollapsed: false, persist: true);
+        cut.WaitForAssertion(() => Assert.False(IsCollapsed(cut))); // expanded, nothing persisted yet
+
+        // The parent drives collapsed=true WITHOUT going through Toggle(). Pre-fix this
+        // changed only the rendered state; localStorage was never written.
+        cut.Render(p => p.Add(s => s.IsCollapsed, true));
+        cut.WaitForAssertion(() => Assert.True(IsCollapsed(cut)));
+
+        // The fix routes every effective-collapsed change through PersistIfChangedAsync,
+        // so the new state must have been written to the persistence key as "true".
+        cut.WaitForAssertion(() =>
+            Assert.Contains(
+                _module.Invocations,
+                i => i.Identifier == "saveToLocalStorage"
+                     && i.Arguments.Count == 2
+                     && (string?)i.Arguments[0] == "lumeo.sidebar.collapsed"
+                     && (string?)i.Arguments[1] == "true"));
     }
 }

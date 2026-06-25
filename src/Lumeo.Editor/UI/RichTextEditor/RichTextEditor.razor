@@ -154,7 +154,19 @@ else
     private Microsoft.AspNetCore.Components.ElementReference _contentRef;
     private DotNetObjectReference<RichTextEditor>? _selfRef;
     private string? _instanceId;
+    // The live document the editor currently holds (seeded from Value, then driven
+    // by OnContentUpdate). This is the source of truth for editor content — we never
+    // store live edit state back into the [Parameter] Value, so an unrelated parent
+    // re-render that re-supplies a stale Value cannot clobber in-progress typing.
     private string? _lastSetValue;
+    // The last value the PARENT actually supplied via the Value parameter. We push
+    // setContent only when THIS changes (the consumer drove Value), never when our
+    // own OnContentUpdate round-trips through _lastSetValue.
+    private string? _lastParamValue;
+    // Snapshot of the trigger char-set last handed to JS, so a Triggers change after
+    // init can be detected and the editor re-initialized (suggestion extensions are
+    // registered at construction time inside the JS module).
+    private string _lastTriggerChars = string.Empty;
     private bool _lastDisabled;
     private bool _lastReadOnly;
     private Services.Interop.RichTextActiveState? _active;
@@ -226,66 +238,115 @@ else
         {
             _selfRef = DotNetObjectReference.Create(this);
             _lastSetValue = Value;
+            _lastParamValue = Value;
             _lastDisabled = Disabled;
             _lastReadOnly = ReadOnly;
 
-            // Build the "trigger" descriptor list passed into JS — only the
-            // metadata the JS needs (char + label). Item resolution happens via
-            // the OnTriggerQuery JSInvokable below, which fans queries out to
-            // the matching EditorTrigger registered server-side.
-            var triggerMeta = (Triggers ?? Array.Empty<EditorTrigger>())
-                .Select(t => new { @char = t.Char.ToString(), label = $"{t.Char} suggestions" })
-                .ToArray();
-
-            var options = new
-            {
-                content = Value ?? string.Empty,
-                initialHtml = Value ?? string.Empty,
-                placeholder = EffectivePlaceholder,
-                disabled = Disabled,
-                readOnly = ReadOnly,
-                editable = !Disabled && !ReadOnly,
-                mentionTriggers = triggerMeta,
-                enableSlashCommand = EnableSlashCommand,
-                enableTables = EnableTables,
-                enableCodeBlock = EnableCodeBlock,
-                enableImages = EnableImages,
-                enableTaskList = EnableTaskList,
-                enableMarkdownShortcuts = EnableMarkdownShortcuts,
-                enableAiActions = EnableAiActions,
-                enableBubbleMenu = EnableBubbleMenu,
-                enableDragHandle = EnableDragHandle,
-                maxLength = MaxLength,
-                maxWordImportBytes = MaxWordImportBytes,
-            };
-
-            try
-            {
-                _instanceId = await Interop.RichTextInitAsync(_contentRef, _selfRef, options);
-            }
-            catch (JSException ex)
-            {
-                _initError = ex.Message;
-                Console.Error.WriteLine($"[Lumeo RichTextEditor] Init failed: {ex.Message}");
-                if (OnInitError.HasDelegate)
-                    await OnInitError.InvokeAsync(ex.Message);
-                StateHasChanged();
-                return;
-            }
-            _initialized = !string.IsNullOrEmpty(_instanceId);
-            if (_initialized)
-            {
-                await RefreshActiveAsync();
-            }
+            await InitEditorAsync();
         }
     }
+
+    /// <summary>
+    /// (Re-)creates the underlying JS editor instance against the current content host.
+    /// Called once on first render, and again whenever a Triggers change requires the
+    /// suggestion extensions to be rebuilt (they are registered at construction time in
+    /// the JS module, so a live change cannot be applied in place without re-init).
+    /// </summary>
+    private async Task InitEditorAsync()
+    {
+        if (_selfRef is null) return;
+
+        // Build the "trigger" descriptor list passed into JS — only the
+        // metadata the JS needs (char + label). Item resolution happens via
+        // the OnTriggerQuery JSInvokable below, which fans queries out to
+        // the matching EditorTrigger registered server-side.
+        var triggers = Triggers ?? Array.Empty<EditorTrigger>();
+        var triggerMeta = triggers
+            .Select(t => new { @char = t.Char.ToString(), label = $"{t.Char} suggestions" })
+            .ToArray();
+        _lastTriggerChars = TriggerCharSet(triggers);
+
+        // Seed the new instance with the live document (what's currently in the
+        // editor) rather than the [Parameter] Value, so a re-init triggered by an
+        // unrelated parameter change (e.g. Triggers) preserves in-progress edits.
+        var seed = _lastSetValue ?? Value ?? string.Empty;
+
+        var options = new
+        {
+            content = seed,
+            initialHtml = seed,
+            placeholder = EffectivePlaceholder,
+            disabled = Disabled,
+            readOnly = ReadOnly,
+            editable = !Disabled && !ReadOnly,
+            mentionTriggers = triggerMeta,
+            enableSlashCommand = EnableSlashCommand,
+            enableTables = EnableTables,
+            enableCodeBlock = EnableCodeBlock,
+            enableImages = EnableImages,
+            enableTaskList = EnableTaskList,
+            enableMarkdownShortcuts = EnableMarkdownShortcuts,
+            enableAiActions = EnableAiActions,
+            enableBubbleMenu = EnableBubbleMenu,
+            enableDragHandle = EnableDragHandle,
+            maxLength = MaxLength,
+            maxWordImportBytes = MaxWordImportBytes,
+        };
+
+        try
+        {
+            _instanceId = await Interop.RichTextInitAsync(_contentRef, _selfRef, options);
+        }
+        catch (JSException ex)
+        {
+            _initError = ex.Message;
+            Console.Error.WriteLine($"[Lumeo RichTextEditor] Init failed: {ex.Message}");
+            if (OnInitError.HasDelegate)
+                await OnInitError.InvokeAsync(ex.Message);
+            StateHasChanged();
+            return;
+        }
+        _initialized = !string.IsNullOrEmpty(_instanceId);
+        if (_initialized)
+        {
+            await RefreshActiveAsync();
+        }
+    }
+
+    // Normalize a trigger list to its (ordered, distinct) char set so Triggers changes
+    // are detected by what JS actually keys off — the activation characters.
+    private static string TriggerCharSet(IReadOnlyList<EditorTrigger> triggers)
+        => triggers.Count == 0
+            ? string.Empty
+            : string.Concat(triggers.Select(t => t.Char).Distinct().OrderBy(c => c));
 
     protected override async Task OnParametersSetAsync()
     {
         if (!_initialized || _instanceId is null) return;
 
-        if (!string.Equals(Value, _lastSetValue, StringComparison.Ordinal))
+        // Re-init when the activation char-set changes: suggestion extensions are wired
+        // at construction in the JS module, so an added char would never fire and a
+        // removed char would keep firing without a rebuild. Re-init seeds from the live
+        // document (_lastSetValue), so this preserves in-progress edits.
+        var triggerChars = TriggerCharSet(Triggers ?? Array.Empty<EditorTrigger>());
+        if (!string.Equals(triggerChars, _lastTriggerChars, StringComparison.Ordinal))
         {
+            var oldId = _instanceId;
+            _instanceId = null;
+            _initialized = false;
+            try { await Interop.RichTextDestroyAsync(oldId); }
+            catch (JSDisconnectedException) { /* circuit gone */ }
+            await InitEditorAsync();
+            return;
+        }
+
+        // Push setContent only when the PARENT actually changed Value — compared against
+        // the last value the parent supplied, NOT against the live document we emitted.
+        // This stops an unrelated re-render that re-supplies a stale Value (one-way
+        // binding) from clobbering in-progress typing.
+        if (!string.Equals(Value, _lastParamValue, StringComparison.Ordinal))
+        {
+            _lastParamValue = Value;
             _lastSetValue = Value;
             await Interop.RichTextSetContentAsync(_instanceId, Value);
         }
@@ -303,8 +364,11 @@ else
     [JSInvokable]
     public async Task OnContentUpdate(string html)
     {
+        // Track the live document only; do NOT write back into the [Parameter] Value.
+        // Value is a controlled input — storing our own edit state there would let an
+        // unrelated parent re-render (which re-supplies the parent's stale Value) wipe
+        // in-progress typing.
         _lastSetValue = html;
-        Value = html;
         await ValueChanged.InvokeAsync(html);
         await RefreshActiveAsync();
     }
@@ -471,8 +535,10 @@ else
     public async ValueTask SetHtmlAsync(string? html)
     {
         if (_instanceId is null) return;
+        // Imperative content replace (consumer API / Word import). Keep the live
+        // document in sync and notify via ValueChanged, but do NOT write back into
+        // the [Parameter] Value — it stays a controlled input owned by the parent.
         _lastSetValue = html;
-        Value = html;
         await Interop.RichTextSetContentAsync(_instanceId, html);
         await ValueChanged.InvokeAsync(html);
     }

@@ -47,7 +47,23 @@
     private bool _controlled;
     private bool _open;
 
-    private bool EffectiveOpen => _controlled ? Open : _open;
+    // The last Open value the PARENT actually supplied. We seed the working
+    // _open backing field from this only when the parent genuinely changes it,
+    // so an internal close (Escape / backdrop / DialogClose) is not clobbered by
+    // a subsequent parent re-render that re-pushes the same Open literal. This
+    // is the state-on-data-change guard: live close-state lives in _open, never
+    // in the [Parameter] Open. _hasOpenParam tracks whether we've observed a
+    // first value yet (so the very first render seeds, even for Open == false).
+    private bool _lastOpenParam;
+    private bool _hasOpenParam;
+
+    // In both controlled and uncontrolled mode the rendered state is the working
+    // _open backing field. In controlled mode _open is reseeded from Open in
+    // SetParametersAsync whenever the parent actually changes it (see above), so
+    // the parent stays authoritative on real changes while an internal close
+    // survives a same-value re-render — the fix for one-way controlled dialogs
+    // (Open supplied, OpenChanged unbound) that previously could not stay closed.
+    private bool EffectiveOpen => _open;
 
     public override Task SetParametersAsync(ParameterView parameters)
     {
@@ -55,25 +71,49 @@
         // so we must honour it when deciding controlled-ness (suppress CS0618 for
         // the nameof — we're intentionally probing the alias).
 #pragma warning disable CS0618
-        _controlled = parameters.TryGetValue<bool>(nameof(Open), out _)
-            || parameters.TryGetValue<bool>(nameof(IsOpen), out _)
-            || OpenChanged.HasDelegate;
+        var hasOpen = parameters.TryGetValue<bool>(nameof(Open), out var incomingOpen)
+            || parameters.TryGetValue<bool>(nameof(IsOpen), out incomingOpen);
+        _controlled = hasOpen || OpenChanged.HasDelegate;
 #pragma warning restore CS0618
+
+        // Reseed the working state from the parent ONLY on a real change of the
+        // supplied Open value (first observation, or a different literal than last
+        // time). A same-value re-render must NOT overwrite an internal close — that
+        // is exactly what let a one-way controlled dialog (Open supplied,
+        // OpenChanged unbound) silently reopen after the user dismissed it.
+        // Done before base.SetParametersAsync so the render it queues already sees
+        // the correct _open on the very first parameter set.
+        if (hasOpen && (!_hasOpenParam || incomingOpen != _lastOpenParam))
+        {
+            _open = incomingOpen;
+            _lastOpenParam = incomingOpen;
+            _hasOpenParam = true;
+        }
+
         return base.SetParametersAsync(parameters);
     }
 
     protected override void OnInitialized()
     {
+        // Uncontrolled dialogs seed their open state from DefaultOpen. Controlled
+        // dialogs were already seeded from Open in SetParametersAsync.
         if (!_controlled) _open = DefaultOpen;
     }
 
     private async Task SetOpen(bool value)
     {
-        // Mirror the new state onto Open so two-way @bind-Open consumers and the
-        // uncontrolled internal state stay in sync; OpenChanged drives controlled
-        // consumers.
+        // Update the working backing field only — NEVER the [Parameter] Open.
+        // OpenChanged notifies two-way @bind-Open / controlled consumers; the
+        // local _open carries the live state so a one-way controlled parent that
+        // does not handle OpenChanged still observes the close until it chooses to
+        // re-assert Open. If the parent later pushes a genuinely different Open,
+        // SetParametersAsync reseeds _open and the parent regains authority.
         _open = value;
-        Open = value;
+        // Deliberately do NOT touch _lastOpenParam here: it still holds the value
+        // the parent last supplied. A plain parent re-render re-pushes that same
+        // value, which SetParametersAsync then treats as "no change" and so does
+        // not revert our internal toggle. Only a genuinely different parent value
+        // reseeds _open and lets the parent regain authority.
         await OpenChanged.InvokeAsync(value);
         // Re-render so the cascaded context picks up EffectiveOpen. The close
         // paths (Escape / backdrop / DialogClose) call this via TryDismiss as a

@@ -1,0 +1,56 @@
+@inherits Bunit.BunitContext
+@using Lumeo.Services
+@using Lumeo.Tests.Helpers
+@using Microsoft.Extensions.DependencyInjection
+
+@code {
+    // Regression for triage #99 (state-on-data-change, Gantt-class):
+    // an internal (click/scroll-driven) active-section change must NOT clobber the
+    // parameter mirror (_lastParamActiveId). If it does, a later UNRELATED re-render
+    // — where the consumer never changed ActiveId — is misread as an external set
+    // and force-scrolls back to the param value, wiping the user's position.
+    //
+    // Drives the OnNavigate (click) path, which shares the exact mechanism the
+    // triage cites (line 106) with OnScrollspyUpdate (line 89): both must leave
+    // _lastParamActiveId untouched. ActiveId is bound one-way (no round-trip), and
+    // an unrelated parameter (Marker) forces the second re-render.
+
+    private readonly TrackingInteropService _interop = new();
+
+    public ScrollspyScrollDriveNoRescrollTests()
+    {
+        this.AddLumeoServices();
+        Services.AddSingleton<IComponentInteropService>(_interop);
+    }
+
+    [Fact]
+    public void Internal_Active_Change_Does_Not_Rescroll_On_Unrelated_Rerender()
+    {
+        // ActiveId supplied one-way as "intro"; the consumer never round-trips it.
+        var cut = Render<ScrollspyOneWayHost>(p => p
+            .Add(h => h.ActiveId, "intro")
+            .Add(h => h.Marker, 0));
+
+        // User clicks "Features" — OnNavigate scrolls to "features" (one call) and
+        // advances the internal current section, but the ActiveId PARAMETER is
+        // still "intro" because the consumer doesn't round-trip the callback.
+        cut.FindAll("[data-slot='scrollspy-link']")[1].Click();
+
+        var afterClick = _interop.ScrollspyScrollToCalls.Count;
+        Assert.Equal(1, afterClick);
+        Assert.Equal("features", _interop.ScrollspyScrollToCalls[^1].SectionId);
+
+        // Unrelated re-render: ActiveId is unchanged ("intro"), only Marker bumps.
+        // Pre-fix, OnParametersSet sees ActiveId("intro") != _lastParamActiveId
+        // ("features", wrongly clobbered by the click) and force-scrolls back to
+        // "intro". Post-fix, _lastParamActiveId still mirrors only the param
+        // ("intro"), so no external set is detected and no extra scroll fires.
+        cut.Render(p => p
+            .Add(h => h.ActiveId, "intro")
+            .Add(h => h.Marker, 1));
+
+        // No additional scroll, and crucially nothing scrolled back to "intro".
+        Assert.Equal(afterClick, _interop.ScrollspyScrollToCalls.Count);
+        Assert.DoesNotContain(_interop.ScrollspyScrollToCalls, c => c.SectionId == "intro");
+    }
+}
