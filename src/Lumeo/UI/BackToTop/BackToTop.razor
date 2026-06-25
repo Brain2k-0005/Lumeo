@@ -24,6 +24,14 @@
 @code {
     [Parameter] public int VisibilityThreshold { get; set; } = 300;
     [Parameter] public bool Disabled { get; set; }
+
+    /// <summary>
+    /// Optional CSS selector for a scrollable container to track (and scroll back
+    /// to the top of) instead of the window. When <c>null</c> (the default) the
+    /// component observes window/document scrolling. (#98)
+    /// </summary>
+    [Parameter] public string? Target { get; set; }
+
     [Parameter] public RenderFragment? ChildContent { get; set; }
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
@@ -31,6 +39,7 @@
     private bool _visible;
     private bool _registered;
     private int _registeredThreshold = -1;
+    private string? _registeredTarget;
     private readonly string _id = LumeoIds.New("backtotop");
 
     private string CssClass => Cx.Merge("fixed bottom-6 end-6 z-50 flex h-10 w-10 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg transition-all hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-2", Class);
@@ -43,12 +52,12 @@
 
     protected override async Task OnParametersSetAsync()
     {
-        // VisibilityThreshold can change at runtime; re-register so the JS
-        // observer uses the new threshold. Only after the first render has
-        // wired up the initial registration (so the JS module/id exist) — and
-        // only when the threshold actually changed. registerBackToTop tears
+        // VisibilityThreshold/Target can change at runtime; re-register so the JS
+        // observer uses the new threshold and scroll source. Only after the first
+        // render has wired up the initial registration (so the JS module/id exist)
+        // — and only when one of them actually changed. registerBackToTop tears
         // down the previous listener for the same id, so no Unregister needed.
-        if (_registered && VisibilityThreshold != _registeredThreshold)
+        if (_registered && (VisibilityThreshold != _registeredThreshold || Target != _registeredTarget))
         {
             await RegisterAsync();
         }
@@ -65,9 +74,10 @@
                     _visible = visible;
                     await InvokeAsync(StateHasChanged);
                 }
-            });
+            }, Target);
             _registered = true;
             _registeredThreshold = VisibilityThreshold;
+            _registeredTarget = Target;
         }
         catch (JSDisconnectedException) { }
         catch (ObjectDisposedException) { }
@@ -75,7 +85,7 @@
 
     private async Task ScrollToTop()
     {
-        await Interop.ScrollToTop();
+        await Interop.ScrollToTop(Target);
     }
 
     public async ValueTask DisposeAsync()

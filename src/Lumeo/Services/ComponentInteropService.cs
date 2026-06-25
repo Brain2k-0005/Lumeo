@@ -870,10 +870,13 @@ public sealed class ComponentInteropService : IComponentInteropService
 
     // --- BackToTop ---
 
-    public async ValueTask RegisterBackToTop(string id, int threshold, Func<bool, Task> handler)
+    public ValueTask RegisterBackToTop(string id, int threshold, Func<bool, Task> handler)
+        => RegisterBackToTop(id, threshold, handler, null);
+
+    public async ValueTask RegisterBackToTop(string id, int threshold, Func<bool, Task> handler, string? target)
     {
         var module = await GetModuleAsync();
-        await _scroll.RegisterBackToTop(module, GetSelfRef(), id, threshold, handler);
+        await _scroll.RegisterBackToTop(module, GetSelfRef(), id, threshold, handler, target);
     }
 
     public async ValueTask UnregisterBackToTop(string id)
@@ -882,10 +885,12 @@ public sealed class ComponentInteropService : IComponentInteropService
         await _scroll.UnregisterBackToTop(module, id);
     }
 
-    public async ValueTask ScrollToTop()
+    public ValueTask ScrollToTop() => ScrollToTop(null);
+
+    public async ValueTask ScrollToTop(string? target)
     {
         var module = await GetModuleAsync();
-        await _scroll.ScrollToTop(module);
+        await _scroll.ScrollToTop(module, target);
     }
 
     [JSInvokable]

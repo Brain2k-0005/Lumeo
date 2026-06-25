@@ -4,7 +4,7 @@
 <Tooltip>
     <TooltipTrigger AsChild>
         <ChildContentSlot Context="slot">
-            <button type="button" class="@CssClass" @onclick="State.Toggle" aria-label="@L["Sidebar.Toggle"]" aria-expanded="@((State?.IsCollapsed != true).ToString().ToLowerInvariant())" @attributes="MergeAttrs(slot.Attributes)">
+            <button type="button" class="@CssClass" @onclick="ToggleAsync" aria-label="@L["Sidebar.Toggle"]" aria-expanded="@((State?.IsCollapsed != true).ToString().ToLowerInvariant())" @attributes="MergeAttrs(slot.Attributes)">
                 @if (State?.IsCollapsed == true)
                 {
                     <Blazicon Svg="Lucide.PanelLeftOpen" class="h-4 w-4" />
@@ -20,9 +20,14 @@
 </Tooltip>
 
 @code {
-    [CascadingParameter] public SidebarProvider.SidebarState State { get; set; } = default!;
+    [CascadingParameter] public SidebarProvider.SidebarState? State { get; set; }
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    // Null-safe toggle: outside a SidebarProvider the cascaded State is null. A bare
+    // `() => State?.Toggle.InvokeAsync()` lambda would return a null Task that Blazor
+    // then awaits → NRE. Always hand back a real Task so the click is an inert no-op.
+    private Task ToggleAsync() => State?.Toggle.InvokeAsync() ?? Task.CompletedTask;
 
     // Merge consumer AdditionalAttributes with the Tooltip AsChild slot attributes
     // (aria-describedby while open) onto the single button.

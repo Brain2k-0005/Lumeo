@@ -7,7 +7,7 @@
 <div id="@_containerId" class="@CssClass" data-sortable-group="@Group" @attributes="AdditionalAttributes">
     @foreach (var (item, index) in _items.Select((x, i) => (x, i)))
     {
-        <div @key="@(Key is not null ? Key(item) : (object?)item)" class="@GetItemClass(index)"
+        <div @key="@KeyFor(item, index)" class="@GetItemClass(index)"
              data-sortable-item
              data-sortable-index="@index"
              draggable="@(!Disabled ? "true" : "false")"
@@ -229,6 +229,31 @@
     private string CssClass => Cx.Merge("flex flex-col gap-1", Class);
 
     private string HandleId(int index) => $"{_containerId}-handle-{index}";
+
+    // #214 (edge-data): the @key on each row must be unique among siblings or Blazor's
+    // diff throws ("more than one sibling with the same key"). When a Key selector is
+    // provided we honour it. When it is not, the old fallback keyed by the raw item
+    // reference, which collides whenever Items holds duplicate values (e.g. two equal
+    // strings, interned to the same reference, or any duplicated value type) — throwing
+    // on render. Disambiguate duplicates by pairing the value-derived key with the
+    // count of equal items that precede it in the current list, so every sibling key is
+    // distinct while still tracking item identity for non-duplicate lists.
+    private object KeyFor(TItem item, int index)
+    {
+        var baseKey = Key is not null ? Key(item) : (object?)item;
+
+        var occurrence = 0;
+        for (var i = 0; i < index && i < _items.Count; i++)
+        {
+            var priorKey = Key is not null ? Key(_items[i]) : (object?)_items[i];
+            if (Equals(priorKey, baseKey))
+                occurrence++;
+        }
+
+        // No earlier duplicate: keep the plain key so the common (unique) path is
+        // unchanged. Otherwise return a composite that never collides.
+        return occurrence == 0 ? (baseKey ?? index) : (baseKey, occurrence);
+    }
 
     private string GetItemClass(int index)
     {

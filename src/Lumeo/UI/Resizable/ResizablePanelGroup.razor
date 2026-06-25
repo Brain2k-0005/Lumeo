@@ -69,6 +69,10 @@
     private readonly HashSet<int> _collapsed = new();
     private readonly Dictionary<int, double> _preCollapseSize = new();
     private bool _savedLayoutApplied;
+    // True once a SavedLayout snapshot has been discarded for not matching the
+    // live panel count — stops OnParametersSet from re-applying the same stale
+    // snapshot on the next render and re-introducing the broken mixed layout.
+    private bool _savedLayoutRejected;
     // True once _sizes has been populated for the initial panel set. A later
     // panel add/remove must RECONCILE the existing layout, not full-reseed it
     // back to the default split (which would wipe the user's drag/collapse).
@@ -86,7 +90,7 @@
         // SavedLayout wins over DefaultSizes: a persisted layout is the user's
         // last explicit choice. Applied once (per the guard) so a re-render
         // doesn't stomp a live drag.
-        if (!_savedLayoutApplied && SavedLayout is { Sizes.Count: > 0 })
+        if (!_savedLayoutApplied && !_savedLayoutRejected && SavedLayout is { Sizes.Count: > 0 })
         {
             _sizes = new List<double>(SavedLayout.Sizes);
             _panelCount = _sizes.Count;
@@ -108,8 +112,22 @@
 
     protected override void OnAfterRender(bool firstRender)
     {
-        // A SavedLayout already seeded _sizes in OnParametersSet — don't override.
-        if (_savedLayoutApplied && _sizes.Count > 0) return;
+        // A SavedLayout already seeded _sizes in OnParametersSet — keep it, but
+        // ONLY when the snapshot's length matches the live registered panel set.
+        // A stale/changed snapshot with a mismatched panel count (e.g. saved for
+        // 2 panels, now rendering 3) would otherwise leave a broken mixed layout
+        // (the surplus panels fall through to GetPanelSize's equal-share fallback,
+        // so the totals don't sum to 100). When the counts disagree, discard the
+        // stale snapshot and fall through to the normal default seeding below.
+        if (_savedLayoutApplied && _sizes.Count > 0)
+        {
+            if (_panelDefaultSizes.Count == 0 || _panelDefaultSizes.Count == _sizes.Count) return;
+
+            _savedLayoutApplied = false;
+            _savedLayoutRejected = true;
+            _seeded = false;
+            _sizes = new List<double>();
+        }
 
         // Panels register from their OnInitialized, which runs during this
         // component's first render — AFTER OnParametersSet has already executed.

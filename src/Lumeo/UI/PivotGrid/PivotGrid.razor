@@ -315,6 +315,25 @@
 
     // ---- Column-tree construction --------------------------------------
 
+    // Separator + length-prefix scheme for column path-keys, mirroring RowNode.Key.
+    // The Unit Separator control char (U+001F) cannot occur in displayed values, so
+    // segment boundaries are unambiguous; length-prefixing each value (with a -1
+    // marker for null) stops colliding column values from cross-contaminating cells
+    // (e.g. ["1","0"] vs ["10",""], or a literal "_" aliasing a null key).
+    private const char ColumnPathSep = (char)0x1F;
+
+    // Append one column segment to <paramref name="sb"/> in the hardened format.
+    // <paramref name="prependSep"/> controls whether the U+001F separator precedes it
+    // (false for the first segment so leaf keys and per-item keys agree byte-for-byte).
+    private static void AppendColumnSegment(System.Text.StringBuilder sb, int level, object? rawKey, bool prependSep)
+    {
+        if (prependSep) sb.Append(ColumnPathSep);
+        sb.Append('L').Append(level).Append('=');
+        var s = rawKey?.ToString();
+        if (s is null) sb.Append("-1:");
+        else sb.Append(s.Length).Append(':').Append(s);
+    }
+
     private PivotColumnNode BuildColumnRoot()
     {
         var root = new PivotColumnNode(label: "", key: "", pathKey: "", level: -1, isGrandTotal: false)
@@ -361,7 +380,9 @@
         {
             var label = field.FormatValue(g.Key);
             var keyStr = g.Key?.ToString() ?? "_";
-            var pathKey = parent.PathKey.Length == 0 ? $"L{level}={keyStr}" : $"{parent.PathKey}|L{level}={keyStr}";
+            var sb = new System.Text.StringBuilder(parent.PathKey);
+            AppendColumnSegment(sb, level, g.Key, prependSep: parent.PathKey.Length != 0);
+            var pathKey = sb.ToString();
             var node = new PivotColumnNode(label, keyStr, pathKey, level, isGrandTotal: false)
             {
                 RawKey = g.Key,
@@ -387,30 +408,32 @@
     }
 
     private static void CollectColumnLeaves(PivotColumnNode node, List<ColumnLeaf> leaves)
+        => CollectColumnLeaves(node, leaves, new List<object?>());
+
+    private static void CollectColumnLeaves(PivotColumnNode node, List<ColumnLeaf> leaves, List<object?> ancestorRawKeys)
     {
+        // Accumulate the actual RawKey chain (typed) from root-down so the leaf can
+        // carry it verbatim — this preserves the real column-field value types for
+        // drill-down instead of re-parsing the (string-only) PathKey.
+        var pushed = node.Level >= 0;
+        if (pushed) ancestorRawKeys.Add(node.RawKey);
+
         if (node.Level >= 0 && node.Children.Count == 0)
         {
-            // Build path-key array from root-down: this leaf already has a PathKey.
             leaves.Add(new ColumnLeaf(
                 Label: node.Label,
                 PathKey: node.PathKey,
-                Path: BuildPathFromNode(node),
+                Path: node.IsGrandTotal ? Array.Empty<object?>() : ancestorRawKeys.ToArray(),
                 Items: node.Items,
                 IsGrandTotal: node.IsGrandTotal));
-            return;
         }
-        foreach (var c in node.Children)
-            CollectColumnLeaves(c, leaves);
-    }
+        else
+        {
+            foreach (var c in node.Children)
+                CollectColumnLeaves(c, leaves, ancestorRawKeys);
+        }
 
-    private static object?[] BuildPathFromNode(PivotColumnNode leaf)
-    {
-        // The leaf's PathKey encodes ancestor segments — but we need RawKeys.
-        // Easier: walk the tree, since we built linearly, recreate via segments.
-        // Since we don't keep a parent ref, derive from the PathKey segments isn't ideal.
-        // For click-args we'll fall back to splitting PathKey, but raw click info uses Path stored on leaf.
-        // We populate Path on leaves below in another pass.
-        return leaf.PathOverride ?? Array.Empty<object?>();
+        if (pushed) ancestorRawKeys.RemoveAt(ancestorRawKeys.Count - 1);
     }
 
     private List<List<HeaderEntry>> BuildColumnHeaderRows(PivotColumnNode root)
@@ -579,14 +602,12 @@
     private string ComputeItemColumnPathKey(TItem item)
     {
         // Walk the column-field chain for this item and produce its leaf path-key,
-        // formatted identically to BuildColumnChildren.
+        // formatted identically to BuildColumnChildren via the shared helper.
         var sb = new System.Text.StringBuilder();
         for (var level = 0; level < _columnFields.Count; level++)
         {
-            if (level > 0) sb.Append('|');
             var key = _columnFields[level].Selector(item);
-            var keyStr = key?.ToString() ?? "_";
-            sb.Append('L').Append(level).Append('=').Append(keyStr);
+            AppendColumnSegment(sb, level, key, prependSep: level > 0);
         }
         return sb.ToString();
     }
@@ -614,31 +635,17 @@
         var matched = col is not null
             ? LookupCellItems(row.Node.Key, col.PathKey)
             : row.Node.Items;
-        // Decode raw column-keys from the leaf path (skip if grand-total or no columns).
+        // Use the typed RawKey chain captured on the leaf (skip if grand-total or no
+        // columns) so drill-down preserves the real column-field value types.
         var columnKeys = (col is null || col.IsGrandTotal)
             ? Array.Empty<object?>()
-            : DecodeColumnKeys(col);
+            : col.Path;
         var args = new PivotCellClickArgs(
             row.Node.Path.ToArray(),
             columnKeys,
             (measureIndex >= 0 && measureIndex < _measures.Count) ? _measures[measureIndex].Header : "",
             matched.Cast<object?>().ToArray());
         await OnCellClick.InvokeAsync(args);
-    }
-
-    private object?[] DecodeColumnKeys(ColumnLeaf leaf)
-    {
-        // PathKey format: "L0=val0|L1=val1|..." — return raw string segments per level.
-        if (string.IsNullOrEmpty(leaf.PathKey)) return Array.Empty<object?>();
-        var segments = leaf.PathKey.Split('|');
-        var result = new object?[segments.Length];
-        for (var i = 0; i < segments.Length; i++)
-        {
-            var seg = segments[i];
-            var eq = seg.IndexOf('=');
-            result[i] = eq >= 0 ? seg.Substring(eq + 1) : seg;
-        }
-        return result;
     }
 
     private static int CompareValues(object? a, object? b)
@@ -708,7 +715,6 @@
         public int Level { get; }
         public bool IsGrandTotal { get; }
         public object? RawKey { get; set; }
-        public object?[]? PathOverride { get; set; }
         public IReadOnlyList<TItem> Items { get; set; } = Array.Empty<TItem>();
         public List<PivotColumnNode> Children { get; } = new();
         public int LeafCount { get; set; }

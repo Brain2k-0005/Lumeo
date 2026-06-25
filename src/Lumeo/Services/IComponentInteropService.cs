@@ -313,6 +313,14 @@ public interface IComponentInteropService : IAsyncDisposable, IDisposable
     ValueTask UnregisterBackToTop(string id);
     ValueTask ScrollToTop();
 
+    // BackToTop with an optional container Target selector (#98). Default-implemented
+    // so existing IComponentInteropService implementations keep compiling: they fall
+    // back to the window-scoped overloads, ignoring the container target. The concrete
+    // ComponentInteropService overrides these to thread the selector to JS.
+    ValueTask RegisterBackToTop(string id, int threshold, Func<bool, Task> handler, string? target)
+        => RegisterBackToTop(id, threshold, handler);
+    ValueTask ScrollToTop(string? target) => ScrollToTop();
+
     // File Download
     ValueTask DownloadFile(string fileName, string contentBase64, string mimeType = "application/octet-stream");
 

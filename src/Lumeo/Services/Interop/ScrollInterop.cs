@@ -85,10 +85,11 @@ internal sealed class ScrollInterop
         DotNetObjectReference<ComponentInteropService> selfRef,
         string id,
         int threshold,
-        Func<bool, Task> handler)
+        Func<bool, Task> handler,
+        string? target = null)
     {
         _backToTopHandlers[id] = handler;
-        await module.InvokeVoidAsync("registerBackToTop", id, selfRef, threshold);
+        await module.InvokeVoidAsync("registerBackToTop", id, selfRef, threshold, target);
     }
 
     public async ValueTask UnregisterBackToTop(IJSObjectReference module, string id)
@@ -97,9 +98,9 @@ internal sealed class ScrollInterop
         await module.InvokeVoidAsync("unregisterBackToTop", id);
     }
 
-    public async ValueTask ScrollToTop(IJSObjectReference module)
+    public async ValueTask ScrollToTop(IJSObjectReference module, string? target = null)
     {
-        await module.InvokeVoidAsync("scrollToTop");
+        await module.InvokeVoidAsync("scrollToTop", target);
     }
 
     public async Task OnScrollVisibilityChanged(string id, bool visible)

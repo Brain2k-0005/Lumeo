@@ -36,7 +36,7 @@
        emitting an empty shell. The root still carries AdditionalAttributes so
        the library-wide contract tests, which render every component with
        default parameters, keep passing. *@
-    <div class="@CssClass" @attributes="AdditionalAttributes">
+    <div class="@CssClass" @attributes="AttributesWithoutClass">
         <div role="alert" class="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
             <strong class="font-semibold">OverlayForm:</strong>
             no <code class="font-mono">Model</code> was supplied. Set the required
@@ -46,7 +46,7 @@
 }
 else
 {
-    <EditForm EditContext="@_editContext" OnValidSubmit="OnValidSubmit" OnInvalidSubmit="OnInvalidSubmit" class="@CssClass" @attributes="AdditionalAttributes">
+    <EditForm EditContext="@_editContext" OnValidSubmit="OnValidSubmit" OnInvalidSubmit="OnInvalidSubmit" class="@CssClass" @attributes="AttributesWithoutClass">
         @if (Validator is not null)
         {
             @Validator
@@ -129,5 +129,30 @@ else
         }
     }
 
-    private string CssClass => Cx.Merge("flex flex-col h-full min-h-0", Class);
+    // Route a caller-supplied `class` (whether via the typed Class parameter or
+    // splatted through AdditionalAttributes) through Cx.Merge so it COMPOSES with
+    // the baked-in structural classes (last-wins for conflicting utilities) rather
+    // than clobbering them. Without this, the @attributes splat — rendered after the
+    // explicit class= — would overwrite the structural classes entirely, defeating
+    // the component's purpose (flex-col + min-h-0 scroll shape).
+    private string CssClass => Cx.Merge("flex flex-col h-full min-h-0", Class, SplatClass);
+
+    private string? SplatClass =>
+        AdditionalAttributes is not null && AdditionalAttributes.TryGetValue("class", out var c)
+            ? c as string
+            : null;
+
+    // The splatted `class` is merged into CssClass above; strip it from the splat so
+    // it can't override the explicit class= attribute on the rendered element.
+    private IReadOnlyDictionary<string, object>? AttributesWithoutClass
+    {
+        get
+        {
+            if (AdditionalAttributes is null || !AdditionalAttributes.ContainsKey("class"))
+                return AdditionalAttributes;
+            return AdditionalAttributes
+                .Where(kv => kv.Key != "class")
+                .ToDictionary(kv => kv.Key, kv => kv.Value);
+        }
+    }
 }
