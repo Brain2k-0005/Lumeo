@@ -68,6 +68,13 @@
             {
                 @if (node is QueryRule rule)
                 {
+                    var field = string.IsNullOrEmpty(rule.Field) ? null : Ctx.FindField(rule.Field);
+                    // A non-empty field that resolves to nothing is "unknown" ONLY once the
+                    // field list is actually populated — an empty Ctx.Fields means "not yet
+                    // loaded", which must not be mistaken for "field removed".
+                    var isUnknownField = field is null
+                        && !string.IsNullOrEmpty(rule.Field)
+                        && Ctx.Fields.Count > 0;
                     <div class="flex flex-wrap items-center gap-2 rounded-md border border-border/40 bg-card p-2">
                         @* Field picker *@
                         <select class="@SelectClass" value="@rule.Field" @onchange="@(e => OnFieldChanged(rule, e.Value?.ToString()))" aria-label="@L["QueryBuilder.Field"]">
@@ -75,14 +82,24 @@
                             {
                                 <option value="" disabled selected>Select field…</option>
                             }
+                            @if (isUnknownField)
+                            {
+                                @* Surface the stored-but-unknown field so the dropdown shows the
+                                   real value instead of silently snapping to the first option. *@
+                                <option value="@rule.Field" disabled selected>@rule.Field</option>
+                            }
                             @foreach (var f in Ctx.Fields)
                             {
                                 <option value="@f.Name" selected="@(f.Name == rule.Field)">@f.DisplayLabel</option>
                             }
                         </select>
 
-                        @{
-                            var field = string.IsNullOrEmpty(rule.Field) ? null : Ctx.FindField(rule.Field);
+                        @if (isUnknownField)
+                        {
+                            <span class="inline-flex items-center gap-1 text-xs text-destructive" role="alert" aria-label="@L["QueryBuilder.UnknownField"]">
+                                <Blazicon Svg="Lucide.TriangleAlert" class="h-3.5 w-3.5" />
+                                <span>@L["QueryBuilder.UnknownField"]</span>
+                            </span>
                         }
                         @if (field is not null)
                         {

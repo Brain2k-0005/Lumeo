@@ -188,14 +188,36 @@
 
     private async Task Increment()
     {
-        var newValue = (Value ?? 0) + Step;
+        var newValue = RoundStepped((Value ?? 0) + Step);
         await SetValue(newValue);
     }
 
     private async Task Decrement()
     {
-        var newValue = (Value ?? 0) - Step;
+        var newValue = RoundStepped((Value ?? 0) - Step);
         await SetValue(newValue);
+    }
+
+    // Stepping a binary double by a fractional Step (e.g. 0.1) accumulates FP error
+    // (0.1 + 0.2 -> 0.30000000000000004), which DisplayValue then prints verbatim
+    // because rounding only happens when Precision is set (#156). When Precision is
+    // null, snap the stepped result to Step's own decimal scale so successive +/-
+    // stay clean; when Precision is set, SetValue already rounds so this is a no-op.
+    private double RoundStepped(double value)
+    {
+        if (Precision.HasValue) return value;
+        var digits = StepDecimalDigits();
+        return digits == 0 ? value : Math.Round(value, digits, MidpointRounding.AwayFromZero);
+    }
+
+    // Number of fractional digits in Step (clamped to the double-safe 0..15 range
+    // Math.Round accepts), derived from its invariant round-trip representation.
+    private int StepDecimalDigits()
+    {
+        var s = Step.ToString("R", System.Globalization.CultureInfo.InvariantCulture);
+        var dot = s.IndexOf('.');
+        if (dot < 0 || s.IndexOf('E') >= 0 || s.IndexOf('e') >= 0) return 0;
+        return Math.Min(s.Length - dot - 1, 15);
     }
 
     private async Task HandleKeyDown(KeyboardEventArgs e)

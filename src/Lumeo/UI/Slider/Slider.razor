@@ -226,6 +226,21 @@ else
 
     private bool _showTooltipThumb;
 
+    // A zero / negative / NaN / Infinite Step is meaningless for a slider: the
+    // native control renders inert (step="0" snaps to no value), and it poisons
+    // the tick + range-gap math (MinGap = MinStepsBetweenThumbs * Step, the native
+    // step="@Step" attribute, and the percentage math). Mirror native/Radix
+    // semantics by falling back to 1 for any non-positive or non-finite Step.
+    // (Step > 0 is already false for NaN; the explicit IsFinite also rejects
+    // +Infinity, which would otherwise pass the > 0 test.)
+    protected override void OnParametersSet()
+    {
+        if (!(Step > 0) || double.IsInfinity(Step))
+        {
+            Step = 1;
+        }
+    }
+
     private string CssClass => Cx.Merge("relative flex w-full touch-none select-none items-center", Class);
     private string VerticalCssClass => Cx.Merge("relative flex h-full min-h-[200px] touch-none select-none justify-center", Class);
 

@@ -21,7 +21,7 @@
                         <input type="number"
                                min="1"
                                max="@_totalPages"
-                               value="@Page"
+                               value="@_pageInput"
                                class="h-7 w-12 rounded-md border border-border/60 bg-background px-1 text-center text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
                                @onchange="HandlePageInput"
                                @* Keep caret keys (ArrowLeft/Right) in the input — without
@@ -238,6 +238,13 @@
     // render never re-triggered a refit even when the container had resized.
     private PdfFitMode _lastFitMode = PdfFitMode.Custom;
     private int _totalPages;
+    // The page-number input is bound to this text field rather than directly to
+    // Page. Blazor will not repaint an input whose bound value is unchanged across
+    // renders, so when a user types an out-of-range / no-op value the box would
+    // strand the rejected text (value="@Page" never differs from the prior render).
+    // Driving the input off a dedicated string we reset on every commit guarantees
+    // the box always snaps back to the actual page after each change.
+    private string _pageInput = "1";
     private bool _loading = true;
     private string? _loadError;
     private string? _loadErrorShort;
@@ -286,6 +293,9 @@
 
     protected override void OnParametersSet()
     {
+        // Keep the page-number box in step with the (possibly externally bound)
+        // Page parameter so a parent-driven page change shows in the input.
+        _pageInput = Page.ToString(System.Globalization.CultureInfo.InvariantCulture);
         // Mark anything that needs JS work; OnAfterRenderAsync picks it up.
         if (!string.Equals(_lastSrc, Src, StringComparison.Ordinal)) _dirty = true;
         var cp = Math.Clamp(Page, 1, Math.Max(1, _totalPages == 0 ? int.MaxValue : _totalPages));
@@ -424,13 +434,38 @@
 
     private async Task SetPageAsync(int next)
     {
-        if (_totalPages == 0) return;
+        // Always re-sync the input text to the page we actually land on. This is
+        // what reverts a rejected entry: typing an out-of-range page (e.g. 0 or a
+        // number past the last page) clamps to a page that may equal the current
+        // one, and binding the box to _pageInput lets Blazor repaint it even when
+        // Page itself doesn't change.
+        if (_totalPages == 0)
+        {
+            SyncPageInput();
+            return;
+        }
         var clamped = Math.Clamp(next, 1, _totalPages);
-        if (clamped == Page) return;
+        if (clamped == Page)
+        {
+            // No-op / out-of-range entry resolved to the page we're already on:
+            // nothing to render, just snap the box back to the real number.
+            SyncPageInput();
+            return;
+        }
         Page = clamped;
+        SyncPageInput();
         _dirty = true;
         if (PageChanged.HasDelegate) await PageChanged.InvokeAsync(Page);
         if (OnPageChanged.HasDelegate) await OnPageChanged.InvokeAsync(Page);
+    }
+
+    // Reset the page-number box to the committed Page and force a render so the
+    // bound value repaints (Blazor won't patch an input whose model value is
+    // unchanged, so the dedicated text field is what makes the revert visible).
+    private void SyncPageInput()
+    {
+        _pageInput = Page.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        StateHasChanged();
     }
 
     private async Task SetZoomAsync(double next)
@@ -453,6 +488,10 @@
         {
             return SetPageAsync(parsed);
         }
+        // Non-numeric / unparseable entry (e.g. "abc" or an empty box). There is
+        // nothing to commit, so just revert the box to the current page rather than
+        // stranding the rejected text.
+        SyncPageInput();
         return Task.CompletedTask;
     }
 

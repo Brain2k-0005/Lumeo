@@ -35,7 +35,7 @@
                 disabled="@Disabled"
                 aria-label="@L["ColorPicker.PickColor"]">
             <span class="lumeo-cp-chip h-5 w-5 rounded-sm border border-border/40 shrink-0" style="@ChipStyle"></span>
-            <span class="text-sm text-foreground font-mono">@DisplayHex</span>
+            <span class="text-sm text-foreground font-mono">@DisplayHexField</span>
             <Blazicon Svg="Lucide.ChevronDown" class="@($"h-4 w-4 text-muted-foreground ms-auto transition-transform duration-200 {(Open ? "rotate-180" : "")}")" />
         </button>
 
@@ -90,7 +90,7 @@
                 @* Preview + Hex *@
                 <div class="mt-3 flex items-center gap-2">
                     <div class="lumeo-cp-chip h-9 w-9 rounded-md border border-border/40 shrink-0" style="@ChipStyle"></div>
-                    <input type="text" value="@DisplayHex"
+                    <input type="text" value="@DisplayHexField"
                            class="flex h-9 w-full min-w-0 rounded-md border border-border/60 bg-transparent px-2 text-xs font-mono uppercase focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring"
                            @onchange="OnHexInput" maxlength="9"
                            aria-label="@L["ColorPicker.HexValue"]" />
@@ -222,7 +222,19 @@
         ? $"rgba({_r}, {_g}, {_b}, {(_alpha / 100.0).ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)})"
         : SolidColorHex;
     private string SolidColorHex => $"#{_r:X2}{_g:X2}{_b:X2}";
-    private string DisplayHex => Value ?? SolidColorHex;
+
+    // Battle-wave2 #27 (medium, edge-data) — the hex <input> and trigger
+    // caption previously rendered the raw bound Value, which is an rgba(...)
+    // string whenever ShowAlpha is on and alpha is below 100. Dumping that
+    // rgba string into the *hex* <input> rendered nonsense AND got silently
+    // chopped by the input's maxlength="9" (e.g. "rgba(255, 0, 0, 0.5)" →
+    // "rgba(255,"). DisplayHexField always projects a real hex: #RRGGBBAA when
+    // alpha is partial (exactly 9 chars, so it fits maxlength="9" and
+    // round-trips through OnHexInput/SyncStateFromHex, which already accept
+    // length-9 hex), otherwise the compact #RRGGBB.
+    private string DisplayHexField => ShowAlpha && _alpha < 100
+        ? $"#{_r:X2}{_g:X2}{_b:X2}{(int)Math.Round(_alpha / 100.0 * 255):X2}"
+        : SolidColorHex;
 
     private string SvBackgroundStyle => $"background-color: hsl({_h}, 100%, 50%)";
     private string SvIndicatorStyle => $"left: {_s.ToString(System.Globalization.CultureInfo.InvariantCulture)}%; top: {(100 - _v).ToString(System.Globalization.CultureInfo.InvariantCulture)}%";

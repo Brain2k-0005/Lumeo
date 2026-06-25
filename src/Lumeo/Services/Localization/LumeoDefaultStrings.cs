@@ -348,6 +348,7 @@ internal static partial class LumeoDefaultStrings
         ["QueryBuilder.RemoveRule"] = "Remove rule",
         ["QueryBuilder.Field"] = "Field",
         ["QueryBuilder.Operator"] = "Operator",
+        ["QueryBuilder.UnknownField"] = "Unknown field",
 
         // ── PickList ────────────────────────────────────────────────
         ["PickList.MoveAll"] = "Move all",
@@ -840,6 +841,7 @@ internal static partial class LumeoDefaultStrings
         ["QueryBuilder.RemoveRule"] = "Regel entfernen",
         ["QueryBuilder.Field"] = "Feld",
         ["QueryBuilder.Operator"] = "Operator",
+        ["QueryBuilder.UnknownField"] = "Unbekanntes Feld",
 
         // ── PickList ────────────────────────────────────────────────
         ["PickList.MoveAll"] = "Alle verschieben",

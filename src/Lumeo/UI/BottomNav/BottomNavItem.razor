@@ -105,6 +105,10 @@ else
         // turn it into "" and make every path StartsWith match it. The Href may
         // also carry its own query/fragment; strip those before comparing.
         var hrefPath = StripQueryAndFragment(Href);
+        // A fragment-only ("#section") or whitespace ("  ") Href has no route path
+        // once the fragment/query is stripped. Treat it as a non-route target so it
+        // neither builds a bogus "/  " target nor falsely matches the root "/" (#190).
+        if (string.IsNullOrWhiteSpace(hrefPath)) { _active = false; return; }
         var raw = hrefPath.StartsWith('/') ? hrefPath : "/" + hrefPath;
         var target = raw == "/" ? "/" : raw.TrimEnd('/');
         if (target == "/")

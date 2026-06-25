@@ -9,7 +9,9 @@
   "files": [
     "UI/ButtonGroup/ButtonGroup.razor"
   ],
-  "dependencies": [],
+  "dependencies": [
+    "button"
+  ],
   "packageDependencies": [],
   "cssVars": [
     "--radius"
@@ -115,12 +117,12 @@
     "parseError": null
   },
   "testCoverage": {
-    "tier": 1,
+    "tier": 3,
     "files": 1,
-    "tests": 7,
+    "tests": 9,
     "relatedFiles": 0,
     "render": true,
-    "behavior": false,
+    "behavior": true,
     "a11y": true,
     "keyboard": false,
     "scale": false,
@@ -140,7 +142,7 @@
   "source": [
     {
       "path": "UI/ButtonGroup/ButtonGroup.razor",
-      "content": "@namespace Lumeo\n\n<div class=\"@CssClass\" role=\"group\" aria-label=\"@AriaLabel\" @attributes=\"AdditionalAttributes\">\n    @ChildContent\n</div>\n\n@code {\n    [Parameter] public RenderFragment? ChildContent { get; set; }\n    [Parameter] public string? Class { get; set; }\n    [Parameter] public Lumeo.Orientation Orientation { get; set; } = Lumeo.Orientation.Horizontal;\n    /// <summary>\n    /// Accessible name for the button group (exposes it to AT as a named\n    /// <c>role=\"group\"</c>). Roving tabindex is intentionally NOT forced here —\n    /// a ButtonGroup commonly wraps independent actions that each need their own\n    /// tab stop; use <c>Toolbar</c> for single-tab-stop/arrow-key navigation. (#270)\n    /// </summary>\n    [Parameter] public string? AriaLabel { get; set; }\n    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }\n\n    private string CssClass => Cx.Merge(\n        Orientation == Lumeo.Orientation.Horizontal ? HorizontalClasses : VerticalClasses,\n        Class);\n\n    // Horizontal: first button gets left-rounded, last gets right-rounded, middle ones square.\n    // -ms-px collapses the shared border between adjacent buttons.\n    private const string HorizontalClasses =\n        \"inline-flex flex-row \" +\n        \"[&>button:not(:first-child)]:rounded-s-none \" +\n        \"[&>button:not(:last-child)]:rounded-e-none \" +\n        \"[&>button:not(:first-child)]:-ms-px \" +\n        \"[&>button:not(:first-child)]:border-s-border/40\";\n\n    // Vertical: first button gets top-rounded, last gets bottom-rounded, middle ones square.\n    // -mt-px collapses the shared border between adjacent buttons.\n    private const string VerticalClasses =\n        \"inline-flex flex-col \" +\n        \"[&>button:not(:first-child)]:rounded-t-none \" +\n        \"[&>button:not(:last-child)]:rounded-b-none \" +\n        \"[&>button:not(:first-child)]:-mt-px \" +\n        \"[&>button:not(:first-child)]:border-t-border/40\";\n\n}\n"
+      "content": "@namespace Lumeo\n\n<div class=\"@CssClass\" role=\"group\" aria-label=\"@AriaLabel\" @attributes=\"AdditionalAttributes\">\n    @ChildContent\n</div>\n\n@code {\n    [Parameter] public RenderFragment? ChildContent { get; set; }\n    [Parameter] public string? Class { get; set; }\n    [Parameter] public Lumeo.Orientation Orientation { get; set; } = Lumeo.Orientation.Horizontal;\n    /// <summary>\n    /// Accessible name for the button group (exposes it to AT as a named\n    /// <c>role=\"group\"</c>). Roving tabindex is intentionally NOT forced here —\n    /// a ButtonGroup commonly wraps independent actions that each need their own\n    /// tab stop; use <c>Toolbar</c> for single-tab-stop/arrow-key navigation. (#270)\n    /// </summary>\n    [Parameter] public string? AriaLabel { get; set; }\n    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }\n\n    private string CssClass => Cx.Merge(\n        Orientation == Lumeo.Orientation.Horizontal ? HorizontalClasses : VerticalClasses,\n        Class);\n\n    // Horizontal: first child gets left-rounded, last gets right-rounded, middle ones square.\n    // -ms-px collapses the shared border between adjacent children.\n    // Selectors target every direct child (`&>*`) — not just `button` — so link-buttons\n    // (<Button Href=...> -> <a>), AsChild/Slot, and Toggle children all collapse/round\n    // correctly, and the :first-child/:last-child index is computed over the SAME set that\n    // is styled (a non-button first/last child no longer shifts the rounding). (#111, #200)\n    private const string HorizontalClasses =\n        \"inline-flex flex-row \" +\n        \"[&>*:not(:first-child)]:rounded-s-none \" +\n        \"[&>*:not(:last-child)]:rounded-e-none \" +\n        \"[&>*:not(:first-child)]:-ms-px \" +\n        \"[&>*:not(:first-child)]:border-s-border/40\";\n\n    // Vertical: first child gets top-rounded, last gets bottom-rounded, middle ones square.\n    // -mt-px collapses the shared border between adjacent children. See HorizontalClasses\n    // for why these target every direct child (`&>*`) rather than `button`. (#111, #200)\n    private const string VerticalClasses =\n        \"inline-flex flex-col \" +\n        \"[&>*:not(:first-child)]:rounded-t-none \" +\n        \"[&>*:not(:last-child)]:rounded-b-none \" +\n        \"[&>*:not(:first-child)]:-mt-px \" +\n        \"[&>*:not(:first-child)]:border-t-border/40\";\n\n}\n"
     }
   ],
   "slots": [
@@ -153,7 +155,12 @@
   ],
   "serviceDependencies": [],
   "cascadingDependencies": [],
-  "relatedComponents": [],
+  "relatedComponents": [
+    {
+      "name": "Button",
+      "reason": "used internally"
+    }
+  ],
   "keyboardInteractions": [],
   "tests": [
     "tests/Lumeo.Tests/Components/A11yPolish/PolishWave2Tests.cs",

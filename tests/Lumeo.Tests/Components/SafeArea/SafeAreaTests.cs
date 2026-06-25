@@ -45,4 +45,35 @@ public class SafeAreaTests : IAsyncLifetime
         Assert.DoesNotContain("padding-top", style);
         Assert.DoesNotContain("padding-bottom", style);
     }
+
+    // Regression (triage n=118, edge-data): a caller-supplied style in
+    // AdditionalAttributes must NOT wipe the computed safe-area insets; it is
+    // merged additively after them.
+    [Fact]
+    public void Caller_Style_Does_Not_Clobber_Safe_Area_Insets()
+    {
+        var div = _ctx.Render<L.SafeArea>(p => p
+            .AddUnmatched("style", "margin: 4px")
+            .AddChildContent("x")).Find("div");
+
+        var style = div.GetAttribute("style") ?? "";
+        Assert.Contains("padding-top: env(safe-area-inset-top", style);
+        Assert.Contains("padding-bottom: env(safe-area-inset-bottom", style);
+        Assert.Contains("margin: 4px", style);
+    }
+
+    // Regression (triage n=204, edge-data): a caller-supplied class in
+    // AdditionalAttributes must NOT overwrite the base lumeo-safe-area class;
+    // it is merged through Cx.Merge.
+    [Fact]
+    public void Caller_Class_Does_Not_Drop_Base_Class()
+    {
+        var div = _ctx.Render<L.SafeArea>(p => p
+            .AddUnmatched("class", "my-custom")
+            .AddChildContent("x")).Find("div");
+
+        var cls = div.GetAttribute("class") ?? "";
+        Assert.Contains("lumeo-safe-area", cls);
+        Assert.Contains("my-custom", cls);
+    }
 }

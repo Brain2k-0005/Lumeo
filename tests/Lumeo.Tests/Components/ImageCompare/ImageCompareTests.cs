@@ -178,4 +178,69 @@ public class ImageCompareTests : IAsyncLifetime
         Assert.Equal("Edited", cut.FindAll("img")[0].GetAttribute("alt"));
         Assert.Equal("Original", cut.FindAll("img")[1].GetAttribute("alt"));
     }
+
+    // --- Regression: battle-wave2 #211 (edge-data) ---
+    // BeforeSrc/AfterSrc default to "" (empty string). Rendering <img src="">
+    // is broken: browsers treat src="" as a request to the current page URL and
+    // show a broken-image glyph. The component must NOT emit an <img> with an
+    // empty src; before the fix both images were emitted unconditionally so the
+    // out-of-the-box default (no srcs supplied) produced two broken images.
+
+    [Fact]
+    public void Default_Empty_Srcs_Emit_No_Img_Elements()
+    {
+        // No BeforeSrc/AfterSrc supplied — they default to "".
+        var cut = _ctx.Render<L.ImageCompare>();
+
+        // Neither image should render (no broken src="").
+        Assert.Empty(cut.FindAll("img"));
+        // The component itself still renders (slider present).
+        Assert.NotEmpty(cut.FindAll("input[type='range']"));
+        // And it never emits an empty src attribute.
+        Assert.DoesNotContain("src=\"\"", cut.Markup);
+    }
+
+    [Fact]
+    public void Empty_Before_Src_Skips_Only_The_Before_Image()
+    {
+        var cut = _ctx.Render<L.ImageCompare>(p => p
+            .Add(c => c.BeforeSrc, "")
+            .Add(c => c.AfterSrc, "/a.jpg"));
+
+        var imgs = cut.FindAll("img");
+        // Only the after image is rendered.
+        Assert.Single(imgs);
+        Assert.Equal("/a.jpg", imgs[0].GetAttribute("src"));
+        Assert.DoesNotContain("src=\"\"", cut.Markup);
+    }
+
+    [Fact]
+    public void Empty_After_Src_Skips_Only_The_After_Image()
+    {
+        var cut = _ctx.Render<L.ImageCompare>(p => p
+            .Add(c => c.BeforeSrc, "/b.jpg")
+            .Add(c => c.AfterSrc, ""));
+
+        var imgs = cut.FindAll("img");
+        // Only the before image is rendered.
+        Assert.Single(imgs);
+        Assert.Equal("/b.jpg", imgs[0].GetAttribute("src"));
+        Assert.DoesNotContain("src=\"\"", cut.Markup);
+    }
+
+    [Fact]
+    public void Null_Srcs_Emit_No_Img_Elements()
+    {
+        // A consumer may bind null directly; must not throw or emit src="".
+        var ex = Record.Exception(() =>
+        {
+            var cut = _ctx.Render<L.ImageCompare>(p => p
+                .Add(c => c.BeforeSrc, null!)
+                .Add(c => c.AfterSrc, null!));
+
+            Assert.Empty(cut.FindAll("img"));
+            Assert.DoesNotContain("src=\"\"", cut.Markup);
+        });
+        Assert.Null(ex);
+    }
 }

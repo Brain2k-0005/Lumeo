@@ -42,9 +42,9 @@
                id="@FormFieldControlId"
                type="@(Variant == InputVariant.Search ? "search" : null)"
                aria-required="@Required.ToString().ToLowerInvariant()"
-               aria-invalid="@EffectiveInvalid.ToString().ToLowerInvariant()"
+               aria-invalid="@((EffectiveInvalid || IsOverLimit).ToString().ToLowerInvariant())"
                aria-describedby="@FormFieldDescribedBy"
-               maxlength="@MaxLength" class="@WrappedInputClass" value="@_current" @oninput="HandleInput" disabled="@Disabled" @attributes="AdditionalAttributes" />
+               maxlength="@EffectiveMaxLength" class="@WrappedInputClass" value="@_current" @oninput="HandleInput" disabled="@Disabled" @attributes="AdditionalAttributes" />
         @if (Clearable && !string.IsNullOrEmpty(_current))
         {
             <button type="button" class="@($"flex items-center {AccessoryClearPad} text-muted-foreground hover:text-foreground transition-colors")" @onclick="HandleClear" tabindex="-1" aria-label="@L["Common.Clear"]">
@@ -63,9 +63,9 @@ else
            name="@Name"
            id="@FormFieldControlId"
            aria-required="@Required.ToString().ToLowerInvariant()"
-           aria-invalid="@EffectiveInvalid.ToString().ToLowerInvariant()"
+           aria-invalid="@((EffectiveInvalid || IsOverLimit).ToString().ToLowerInvariant())"
            aria-describedby="@FormFieldDescribedBy"
-           maxlength="@MaxLength" class="@CssClass" value="@_current" @oninput="HandleInput" disabled="@Disabled" @attributes="AdditionalAttributes" />
+           maxlength="@EffectiveMaxLength" class="@CssClass" value="@_current" @oninput="HandleInput" disabled="@Disabled" @attributes="AdditionalAttributes" />
 }
 
 @if (ShowCount)
@@ -179,6 +179,16 @@ else
     // live displayed value (_current), not the raw Value parameter, so the count
     // and over-limit state track what the user actually sees after typing.
     private bool IsOverLimit => MaxLength.HasValue && (_current?.Length ?? 0) > MaxLength.Value;
+
+    // When a character counter is shown we deliberately DROP the native maxlength
+    // hard-cap so the field behaves as a soft limit (matching Textarea / AntD /
+    // shadcn): the user can type past the limit and the counter turns red
+    // (CountClass -> text-destructive) to warn them. With a hard maxlength the
+    // browser silently blocks the extra characters, so the over-limit warning
+    // state (and CountClass) could never be reached by real typing. Without a
+    // counter we keep the hard cap as a plain input constraint.
+    private int? EffectiveMaxLength => ShowCount ? null : MaxLength;
+
     private string CountClass => IsOverLimit ? "text-destructive" : "text-muted-foreground";
     private string CountText => CountFormat is { } fmt
         ? fmt(_current?.Length ?? 0)

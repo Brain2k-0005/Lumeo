@@ -11,7 +11,7 @@
     space is tight. Side is still consumer-controlled as a preference. *@
 @if (IsOpen)
 {
-    <div id="@_contentId" role="tooltip" class="@CssClass" @attributes="AdditionalAttributes">
+    <div id="@_contentId" role="tooltip" data-side="@SideStr" class="@CssClass" @attributes="AdditionalAttributes">
         @ChildContent
         @if (ShowArrow)
         {
@@ -64,12 +64,17 @@
     };
 
     // Rotated square — same visual as Popover/HoverCard but no border (tooltip is a solid primary surface).
-    private string ArrowClasses => Side switch
+    // Derived from SideStr (the SAME value rendered as data-side) — not from the raw Side enum — so the
+    // arrow edge and the data-side attribute can never disagree. positionFixed collision-flips the box and
+    // rewrites content.dataset.side to the resolved side; a CSS rule keyed on [data-side] can re-point the
+    // arrow without a Blazor re-render. For the no-flip (and live-Side-change) path the C# value is the
+    // single source of truth, so the rendered arrow always matches the box's side.
+    private string ArrowClasses => SideStr switch
     {
-        Lumeo.Side.Top => "absolute start-1/2 top-full -translate-x-1/2 -translate-y-1/2 rotate-45 h-2 w-2 bg-primary",
-        Lumeo.Side.Bottom => "absolute start-1/2 bottom-full -translate-x-1/2 translate-y-1/2 rotate-45 h-2 w-2 bg-primary",
-        Lumeo.Side.Left => "absolute top-1/2 left-full -translate-y-1/2 -translate-x-1/2 rotate-45 h-2 w-2 bg-primary",
-        Lumeo.Side.Right => "absolute top-1/2 right-full -translate-y-1/2 translate-x-1/2 rotate-45 h-2 w-2 bg-primary",
+        "top" => "absolute start-1/2 top-full -translate-x-1/2 -translate-y-1/2 rotate-45 h-2 w-2 bg-primary",
+        "bottom" => "absolute start-1/2 bottom-full -translate-x-1/2 translate-y-1/2 rotate-45 h-2 w-2 bg-primary",
+        "left" => "absolute top-1/2 left-full -translate-y-1/2 -translate-x-1/2 rotate-45 h-2 w-2 bg-primary",
+        "right" => "absolute top-1/2 right-full -translate-y-1/2 translate-x-1/2 rotate-45 h-2 w-2 bg-primary",
         _ => "absolute start-1/2 top-full -translate-x-1/2 -translate-y-1/2 rotate-45 h-2 w-2 bg-primary"
     };
 

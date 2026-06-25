@@ -390,6 +390,26 @@ else
     {
         _globalErrorMessage = null;
 
+        // Avatar variant is a single-slot picker that only ever shows _thumbnailUrl —
+        // the file list is never rendered. Appending instead of replacing left stale
+        // hidden items that still counted against MaxFiles, so after enough re-picks
+        // the next selection spuriously tripped the "Maximum N files" rejection even
+        // though only one avatar is ever visible. Clear the prior slot (items,
+        // thumbnails, in-flight cancellations) so a re-pick truly replaces it.
+        if (Variant == FileUploadVariant.Avatar && _uploadItems.Count > 0)
+        {
+            foreach (var prior in _uploadItems)
+            {
+                if (_cancellations.TryGetValue(prior.Id, out var priorCts))
+                {
+                    try { priorCts.Cancel(); } catch (ObjectDisposedException) { }
+                    _cancellations.Remove(prior.Id);
+                }
+                _thumbnailUrls.Remove(prior.Id);
+            }
+            _uploadItems.Clear();
+        }
+
         // Pass the actual selection count: GetMultipleFiles THROWS when the user
         // picks more files than the argument allows — capping at MaxFiles + 1
         // crashed instead of surfacing the MaxFiles error below.
@@ -457,17 +477,23 @@ else
             catch { _thumbnailUrl = null; }
         }
 
-        // Thumbnails for dropzone variant
+        // Thumbnails for dropzone variant. Keyed by the per-item Id (not file.Name)
+        // so two selected files with the SAME name don't collide — name-keying made
+        // the second write clobber the first's thumbnail and removing either row
+        // wiped both. Match each just-added pending item to its source file by
+        // reference so the dictionary key is the stable item.Id.
         if (ShowThumbnails && Variant == FileUploadVariant.Dropzone)
         {
             foreach (var file in validFiles.Where(IsImageFile))
             {
+                var item = _uploadItems.FirstOrDefault(i => ReferenceEquals(i.File, file) && i.Status == FileUploadStatus.Pending);
+                if (item is null) continue;
                 try
                 {
                     var stream = file.OpenReadStream(MaxFileSize);
                     using var ms = new MemoryStream();
                     await stream.CopyToAsync(ms);
-                    _thumbnailUrls[file.Name] = $"data:{file.ContentType};base64,{Convert.ToBase64String(ms.ToArray())}";
+                    _thumbnailUrls[item.Id] = $"data:{file.ContentType};base64,{Convert.ToBase64String(ms.ToArray())}";
                 }
                 catch { /* skip failed thumbnails */ }
             }
@@ -543,7 +569,7 @@ else
             }
         }
         _uploadItems.Remove(item);
-        _thumbnailUrls.Remove(item.Name);
+        _thumbnailUrls.Remove(item.Id);
         await OnFileRemoved.InvokeAsync(item);
     }
 
@@ -735,7 +761,7 @@ else
         builder.AddAttribute(3, "class", "flex items-center gap-2");
 
         // File icon or thumbnail
-        if (ShowThumbnails && IsImageFile(item.File) && _thumbnailUrls.TryGetValue(item.Name, out var thumb))
+        if (ShowThumbnails && IsImageFile(item.File) && _thumbnailUrls.TryGetValue(item.Id, out var thumb))
         {
             builder.OpenElement(4, "div");
             builder.AddAttribute(5, "class", "h-8 w-8 shrink-0 overflow-hidden rounded bg-muted");
@@ -844,8 +870,8 @@ else
     private bool IsImageFile(IBrowserFile file) =>
         file.ContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase);
 
-    private string? GetThumbnailUrl(IBrowserFile file) =>
-        _thumbnailUrls.TryGetValue(file.Name, out var url) ? url : null;
+    private string? GetThumbnailUrl(FileUploadItem item) =>
+        _thumbnailUrls.TryGetValue(item.Id, out var url) ? url : null;
 
     private static bool IsAccepted(IBrowserFile file, string accept)
     {

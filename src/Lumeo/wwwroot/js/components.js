@@ -2594,12 +2594,20 @@ export function unregisterAffix(elementId) {
 
 const backToTopHandlers = new Map();
 
-export function registerBackToTop(id, dotnetRef, threshold) {
-    // Clean up previous registration for this id
+export function registerBackToTop(id, dotnetRef, threshold, target) {
+    // Clean up previous registration for this id (detach from whatever scroll
+    // source the previous registration was bound to, not necessarily window).
     if (backToTopHandlers.has(id)) {
         const prev = backToTopHandlers.get(id);
-        window.removeEventListener('scroll', prev.handler);
+        prev.scrollSource.removeEventListener('scroll', prev.handler);
     }
+
+    // When a Target selector is supplied, observe that container's scrollTop and
+    // listen for scroll on it; otherwise fall back to the window/document. A
+    // selector that doesn't resolve also falls back to window so registration
+    // never throws on a stale/typo'd Target. (#98)
+    const container = target ? document.querySelector(target) : null;
+    const scrollSource = container || window;
 
     const effectiveThreshold = threshold || 300;
     // Throttle to one check per animation frame — a raw scroll handler fires
@@ -2609,7 +2617,9 @@ export function registerBackToTop(id, dotnetRef, threshold) {
     let lastVisible = null;
     const compute = () => {
         rafPending = false;
-        const scrollY = window.scrollY || document.documentElement.scrollTop;
+        const scrollY = container
+            ? container.scrollTop
+            : (window.scrollY || document.documentElement.scrollTop);
         const visible = scrollY > effectiveThreshold;
         if (visible === lastVisible) return;
         lastVisible = visible;
@@ -2621,21 +2631,25 @@ export function registerBackToTop(id, dotnetRef, threshold) {
         requestAnimationFrame(compute);
     };
 
-    window.addEventListener('scroll', handler, { passive: true });
-    backToTopHandlers.set(id, { handler, dotnetRef });
+    scrollSource.addEventListener('scroll', handler, { passive: true });
+    backToTopHandlers.set(id, { handler, dotnetRef, scrollSource, target: target || null });
     compute(); // initial check (synchronous)
 }
 
 export function unregisterBackToTop(id) {
     const entry = backToTopHandlers.get(id);
     if (entry) {
-        window.removeEventListener('scroll', entry.handler);
+        entry.scrollSource.removeEventListener('scroll', entry.handler);
         backToTopHandlers.delete(id);
     }
 }
 
-export function scrollToTop() {
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+export function scrollToTop(target) {
+    // Scroll the targeted container back to the top when a selector is given,
+    // otherwise scroll the window. A stale/unresolved selector falls back to
+    // the window so the button never silently no-ops. (#98)
+    const container = target ? document.querySelector(target) : null;
+    (container || window).scrollTo({ top: 0, behavior: 'smooth' });
 }
 
 // --- InputMask: read / restore a text input's caret (selectionStart) ---

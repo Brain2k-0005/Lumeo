@@ -249,9 +249,15 @@
         Value = BuildValue(cells);
         await ValueChanged.InvokeAsync(Value);
 
-        if (index < Length - 1)
+        // BuildValue left-collapses interior gaps, so typing into a non-leading
+        // EMPTY box relocates the char to position Value.Length-1. Focus the next
+        // genuinely empty box (Value.Length) rather than the typed index+1, which
+        // would otherwise skip the real next-empty box. For sequential typing
+        // (index == Value.Length-1 after insert) this is identical to index+1.
+        var nextEmpty = Value.Length;
+        if (nextEmpty < Length)
         {
-            await Interop.FocusElement($"{_baseId}-{index + 1}");
+            await Interop.FocusElement($"{_baseId}-{nextEmpty}");
         }
 
         if (Value.Length == Length)
