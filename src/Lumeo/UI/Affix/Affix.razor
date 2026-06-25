@@ -20,15 +20,48 @@
     private bool _registered;
     private bool _isFixed;
 
+    // The JS registerAffix closure captures offsetTop/offsetBottom/targetSelector
+    // by value, so the only way to honour a runtime change to any of them is to
+    // tear the registration down and re-create it. Remember the tuple we last
+    // registered with so OnAfterRenderAsync can detect a change and re-register
+    // instead of latching on the first render forever.
+    private (int OffsetTop, int? OffsetBottom, string? Target) _appliedConfig;
+
     private string CssClass => Class ?? "";
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (!firstRender) return;
-        if (_registered) return;
+        var config = (OffsetTop, OffsetBottom, Target);
+
+        if (!_registered)
+        {
+            await RegisterAsync(config);
+            return;
+        }
+
+        // Already registered: re-register only when the consumer changed an offset
+        // or the scroll target after the first render (the JS closure can't see the
+        // new values otherwise).
+        if (!_appliedConfig.Equals(config))
+        {
+            try { await Interop.UnregisterAffix(_elementId); }
+            catch (JSDisconnectedException) { }
+            catch (ObjectDisposedException) { }
+
+            // Drop the stale edge-trigger state: the new registration starts from a
+            // clean "not fixed" baseline so the first OnChange reflects the real
+            // stick/unstick boundary under the new config rather than a latched flag.
+            _isFixed = false;
+            _registered = false;
+            await RegisterAsync(config);
+        }
+    }
+
+    private async Task RegisterAsync((int OffsetTop, int? OffsetBottom, string? Target) config)
+    {
         try
         {
-            await Interop.RegisterAffix(_elementId, OffsetTop, OffsetBottom, Target, async (isFixed) =>
+            await Interop.RegisterAffix(_elementId, config.OffsetTop, config.OffsetBottom, config.Target, async (isFixed) =>
             {
                 if (_isFixed != isFixed)
                 {
@@ -38,6 +71,7 @@
                 }
             });
             _registered = true;
+            _appliedConfig = config;
         }
         catch (JSDisconnectedException) { }
         catch (ObjectDisposedException) { }

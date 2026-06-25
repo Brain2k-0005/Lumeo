@@ -234,14 +234,25 @@
     {
         if (SaveOnBlur && _editing && !ShowButtons)
         {
-            await Save();
+            // Implicit blur-save (e.g. Tab-out): commit the value but do NOT
+            // pull focus back to the trigger, otherwise Tab navigation to the
+            // next control is broken. Only explicit commits (Enter / Save
+            // button) restore focus to the display trigger.
+            await Save(restoreFocus: false);
         }
     }
 
-    private async Task Save()
+    // @onclick / @onkeydown bind to this parameterless overload (an explicit
+    // commit), which restores focus to the trigger.
+    private Task Save() => Save(restoreFocus: true);
+
+    private async Task Save(bool restoreFocus)
     {
         _editing = false;
-        _focusDisplayOnRender = true;
+        if (restoreFocus)
+        {
+            _focusDisplayOnRender = true;
+        }
         var saved = _editValue ?? "";
         await ValueChanged.InvokeAsync(saved);
         await OnSave.InvokeAsync(saved);

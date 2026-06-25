@@ -297,6 +297,14 @@ else
         public FileUploadStatus Status { get; set; } = FileUploadStatus.Pending;
         public int ProgressPercent { get; set; }
         public string? ErrorMessage { get; set; }
+        /// <summary>
+        /// True when this item is a pre-upload validation rejection (size/type/count)
+        /// rather than a failure of the <see cref="FileUpload.OnUpload"/> handler.
+        /// Validation rejections are not retryable — re-running the upload would just
+        /// hit the same constraint — so the Retry affordance is gated on this flag
+        /// instead of brittle, localization-dependent error-message text matching.
+        /// </summary>
+        public bool IsValidationRejection { get; init; }
         /// <summary>Server-returned URL or id after a successful upload.</summary>
         public string? Url { get; set; }
         /// <summary>Chunk-size hint (bytes) from <see cref="FileUpload.ChunkSize"/>. Zero if not configured.</summary>
@@ -315,6 +323,10 @@ else
     private readonly Dictionary<string, CancellationTokenSource> _cancellations = new();
     private SemaphoreSlim? _concurrencySemaphore;
     private int _currentBatchId;
+    // Guards OnAllUploaded against double-firing for the same terminal set while
+    // still allowing it to fire once per fresh round of pending items. Reset to
+    // false whenever a new pending item is queued (see TerminalState handling).
+    private bool _allUploadedFired;
 
     // Kept for back-compat so existing code that reads _selectedFiles-equivalent still compiles.
     // Exposed as a convenience projection.
@@ -387,7 +399,7 @@ else
             // Still add them as rejected items
             foreach (var f in candidates)
             {
-                var rejected = new FileUploadItem { File = f, Name = f.Name, Size = f.Size, Status = FileUploadStatus.Failed, ErrorMessage = reason, ChunkSize = ChunkSize ?? 0 };
+                var rejected = new FileUploadItem { File = f, Name = f.Name, Size = f.Size, Status = FileUploadStatus.Failed, ErrorMessage = reason, ChunkSize = ChunkSize ?? 0, IsValidationRejection = true };
                 _uploadItems.Add(rejected);
                 await OnFileRejected.InvokeAsync((f, reason));
             }
@@ -403,7 +415,7 @@ else
             if (file.Size > MaxFileSize)
             {
                 var reason = MaxFileSizeError ?? L["FileUpload.ExceedsMaxSize", file.Name, FormatSize(MaxFileSize)];
-                var rejected = new FileUploadItem { File = file, Name = file.Name, Size = file.Size, Status = FileUploadStatus.Failed, ErrorMessage = reason, ChunkSize = ChunkSize ?? 0 };
+                var rejected = new FileUploadItem { File = file, Name = file.Name, Size = file.Size, Status = FileUploadStatus.Failed, ErrorMessage = reason, ChunkSize = ChunkSize ?? 0, IsValidationRejection = true };
                 _uploadItems.Add(rejected);
                 await OnFileRejected.InvokeAsync((file, reason));
                 continue;
@@ -413,7 +425,7 @@ else
             if (!string.IsNullOrWhiteSpace(Accept) && !IsAccepted(file, Accept))
             {
                 var reason = FileTypeError ?? $"File \"{file.Name}\" has an unsupported file type.";
-                var rejected = new FileUploadItem { File = file, Name = file.Name, Size = file.Size, Status = FileUploadStatus.Failed, ErrorMessage = reason, ChunkSize = ChunkSize ?? 0 };
+                var rejected = new FileUploadItem { File = file, Name = file.Name, Size = file.Size, Status = FileUploadStatus.Failed, ErrorMessage = reason, ChunkSize = ChunkSize ?? 0, IsValidationRejection = true };
                 _uploadItems.Add(rejected);
                 await OnFileRejected.InvokeAsync((file, reason));
                 continue;
@@ -422,6 +434,9 @@ else
             validFiles.Add(file);
             var item = new FileUploadItem { File = file, Name = file.Name, Size = file.Size, Status = FileUploadStatus.Pending, ChunkSize = ChunkSize ?? 0 };
             _uploadItems.Add(item);
+            // A fresh pending item means OnAllUploaded must be allowed to fire
+            // again once this new work reaches a terminal state.
+            _allUploadedFired = false;
         }
 
         // Thumbnails for avatar variant
@@ -497,9 +512,16 @@ else
     private async Task RetryItemAsync(FileUploadItem item)
     {
         if (OnUpload is null) return;
+        // Validation rejections (size/type/count) are not retryable — re-running
+        // the upload would just re-violate the same constraint. The Retry button is
+        // already hidden for these, but guard here too in case retry is reached via
+        // a custom FileTemplate.
+        if (item.IsValidationRejection) return;
         item.Status = FileUploadStatus.Pending;
         item.ErrorMessage = null;
         item.ProgressPercent = 0;
+        // Re-queuing work re-arms the all-done callback for this new round.
+        _allUploadedFired = false;
         await InvokeAsync(StateHasChanged);
         await RunUploadsAsync(new[] { item });
     }
@@ -536,24 +558,38 @@ else
     {
         _concurrencySemaphore ??= new SemaphoreSlim(MaxConcurrentUploads, MaxConcurrentUploads);
 
-        // Capture this batch's id so a superseding batch can prevent stale callbacks.
-        var batchId = ++_currentBatchId;
+        // Bump the batch counter so per-item rendering can still tell which batch
+        // is current if it needs to (kept for back-compat / diagnostics).
+        ++_currentBatchId;
 
         var tasks = items.Select(item => UploadOneAsync(item)).ToList();
         await Task.WhenAll(tasks);
 
-        // If a newer batch has started, don't fire the callback with stale results.
-        if (batchId != _currentBatchId) return;
+        // Terminal check is decoupled from the batch id: when two selection
+        // batches overlap, the FIRST batch to finish must not pre-empt the
+        // others, and the LAST batch to finish must still be able to fire even
+        // though _currentBatchId has since advanced. We therefore re-evaluate the
+        // global terminal state after EVERY batch completes and fire exactly once
+        // per round of pending work (_allUploadedFired is reset whenever a new
+        // pending item is queued).
+        await MaybeFireAllUploadedAsync();
+    }
 
-        // Check if all items are now in a terminal state
-        if (_uploadItems.All(i => i.Status is FileUploadStatus.Succeeded or FileUploadStatus.Failed or FileUploadStatus.Cancelled))
+    // Fires OnAllUploaded iff every item is in a terminal state and we haven't
+    // already fired for the current completed set. Safe to call from any batch.
+    private async Task MaybeFireAllUploadedAsync()
+    {
+        if (_allUploadedFired) return;
+        if (_uploadItems.Count == 0) return;
+        if (!_uploadItems.All(i => i.Status is FileUploadStatus.Succeeded or FileUploadStatus.Failed or FileUploadStatus.Cancelled))
+            return;
+
+        _allUploadedFired = true;
+        await InvokeAsync(async () =>
         {
-            await InvokeAsync(async () =>
-            {
-                await OnAllUploaded.InvokeAsync(_uploadItems.AsReadOnly());
-                StateHasChanged();
-            });
-        }
+            await OnAllUploaded.InvokeAsync(_uploadItems.AsReadOnly());
+            StateHasChanged();
+        });
     }
 
     private async Task UploadOneAsync(FileUploadItem item)
@@ -735,9 +771,12 @@ else
                 "Cancel", Lucide.X,
                 Microsoft.AspNetCore.Components.EventCallback.Factory.Create(this, () => CancelItemAsync(item))));
         }
-        else if (item.Status == FileUploadStatus.Failed && OnUpload is not null && item.ErrorMessage?.Contains("exceeds") == false && item.ErrorMessage?.Contains("unsupported") == false)
+        else if (item.Status == FileUploadStatus.Failed && OnUpload is not null && !item.IsValidationRejection)
         {
-            // Retry button (only for upload failures, not validation rejections)
+            // Retry button (only for upload failures, not validation rejections).
+            // Gated on the IsValidationRejection discriminator rather than matching
+            // English substrings in ErrorMessage, which broke for localized text and
+            // custom MaxFileSizeError/FileTypeError/MaxFilesError overrides.
             builder.AddContent(35, IconActionButton(
                 "inline-flex items-center justify-center h-6 w-6 rounded text-muted-foreground hover:text-primary transition-colors focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-1",
                 "Retry", Lucide.RotateCcw,

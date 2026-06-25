@@ -82,6 +82,16 @@
     protected override void OnParametersSet()
     {
         _items = Items.ToList();
+
+        // #21 (edge-data): an in-progress drag captures _dragFromIndex/_dragOverIndex
+        // against the OLD item count. If the parent shrinks Items mid-drag, those
+        // indices can now point past the rebuilt _items and OnDrop's _items[fromIndex]
+        // would throw ArgumentOutOfRangeException. Reset any stale indices here so the
+        // next drop is a clean no-op rather than a crash.
+        if (_dragFromIndex >= _items.Count)
+            _dragFromIndex = -1;
+        if (_dragOverIndex >= _items.Count)
+            _dragOverIndex = -1;
     }
 
     // rc.44: HTML5 Drag-and-Drop doesn't fire on touch devices, so we register
@@ -225,7 +235,11 @@
 
     private async Task OnDrop(int toIndex)
     {
-        if (_dragFromIndex < 0 || _dragFromIndex == toIndex)
+        // #21: bound-check both endpoints against the CURRENT list (it may have
+        // shrunk mid-drag) before indexing, mirroring HandleTouchDrop's guard.
+        if (_dragFromIndex < 0 || _dragFromIndex >= _items.Count
+            || toIndex < 0 || toIndex >= _items.Count
+            || _dragFromIndex == toIndex)
         {
             _dragFromIndex = -1;
             _dragOverIndex = -1;

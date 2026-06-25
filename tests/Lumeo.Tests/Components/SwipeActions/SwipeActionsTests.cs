@@ -82,15 +82,15 @@ public class SwipeActionsTests : IAsyncLifetime
     }
 
     [Fact]
-    public void Click_After_Drag_Open_Does_Not_Immediately_Close()
+    public void Click_After_Mouse_Drag_Open_Does_Not_Immediately_Close()
     {
         var cut = RenderWithTrailing();
         var fg = cut.Find("[tabindex='0']");
 
-        // Drag left far enough to lock the trailing panel open.
-        fg.PointerDown(new PointerEventArgs { PointerId = 3, ClientX = 300, ClientY = 100 });
-        fg.PointerMove(new PointerEventArgs { PointerId = 3, ClientX = 180, ClientY = 100 }); // dx = -120
-        fg.PointerUp(new PointerEventArgs { PointerId = 3, ClientX = 180, ClientY = 100 });
+        // Drag left (with a MOUSE) far enough to lock the trailing panel open.
+        fg.PointerDown(new PointerEventArgs { PointerId = 3, ClientX = 300, ClientY = 100, PointerType = "mouse" });
+        fg.PointerMove(new PointerEventArgs { PointerId = 3, ClientX = 180, ClientY = 100, PointerType = "mouse" }); // dx = -120
+        fg.PointerUp(new PointerEventArgs { PointerId = 3, ClientX = 180, ClientY = 100, PointerType = "mouse" });
 
         // Panel is now open (foreground translated aside).
         Assert.Contains("translateX(-160px)", cut.Find("[tabindex='0']").GetAttribute("style"));
@@ -102,6 +102,62 @@ public class SwipeActionsTests : IAsyncLifetime
         Assert.Contains("translateX(-160px)", cut.Find("[tabindex='0']").GetAttribute("style"));
 
         // A subsequent genuine click then closes it.
+        cut.Find("[tabindex='0']").Click();
+        Assert.Contains("translateX(0px)", cut.Find("[tabindex='0']").GetAttribute("style"));
+    }
+
+    /// <summary>
+    /// Battle bug #16 (high): a TOUCH swipe-open must not poison the next tap.
+    /// Touch never emits the synthetic trailing click that mouse drags do, so
+    /// the suppression flag (only meaningful for mouse) must NOT be set for
+    /// touch — otherwise the very first close-tap is swallowed and the panel is
+    /// stuck open. Without the fix the first tap below leaves it open.
+    /// </summary>
+    [Fact]
+    public void Touch_Swipe_Open_Then_First_Tap_Closes_The_Panel()
+    {
+        var cut = RenderWithTrailing();
+        var fg = cut.Find("[tabindex='0']");
+
+        // Swipe left with a TOUCH pointer, far enough to lock trailing open.
+        fg.PointerDown(new PointerEventArgs { PointerId = 5, ClientX = 300, ClientY = 100, PointerType = "touch" });
+        fg.PointerMove(new PointerEventArgs { PointerId = 5, ClientX = 180, ClientY = 100, PointerType = "touch" }); // dx = -120
+        fg.PointerUp(new PointerEventArgs { PointerId = 5, ClientX = 180, ClientY = 100, PointerType = "touch" });
+
+        // Panel locked open.
+        Assert.Contains("translateX(-160px)", cut.Find("[tabindex='0']").GetAttribute("style"));
+
+        // The FIRST genuine tap (no synthetic click precedes it on touch) must
+        // close the panel. Pre-fix the latched _suppressNextClick swallowed it.
+        cut.Find("[tabindex='0']").Click();
+
+        Assert.Contains("translateX(0px)", cut.Find("[tabindex='0']").GetAttribute("style"));
+    }
+
+    /// <summary>
+    /// Even after a MOUSE drag legitimately arms the suppression flag, if no
+    /// click follows (e.g. the gesture is interrupted) a brand-new pointerdown
+    /// must clear the stale flag so an unrelated later tap is not swallowed.
+    /// </summary>
+    [Fact]
+    public void Stale_Suppression_From_Prior_Mouse_Drag_Is_Cleared_On_Next_PointerDown()
+    {
+        var cut = RenderWithTrailing();
+        var fg = cut.Find("[tabindex='0']");
+
+        // Mouse drag opens the panel and arms _suppressNextClick — but suppose
+        // the synthetic click never arrives (flag is left latched).
+        fg.PointerDown(new PointerEventArgs { PointerId = 9, ClientX = 300, ClientY = 100, PointerType = "mouse" });
+        fg.PointerMove(new PointerEventArgs { PointerId = 9, ClientX = 180, ClientY = 100, PointerType = "mouse" });
+        fg.PointerUp(new PointerEventArgs { PointerId = 9, ClientX = 180, ClientY = 100, PointerType = "mouse" });
+        Assert.Contains("translateX(-160px)", cut.Find("[tabindex='0']").GetAttribute("style"));
+
+        // A fresh, non-drag pointer interaction (just a down/up tap) should
+        // clear the stale flag on pointerdown, so the click that follows closes.
+        fg = cut.Find("[tabindex='0']");
+        fg.PointerDown(new PointerEventArgs { PointerId = 10, ClientX = 200, ClientY = 100, PointerType = "mouse" });
+        fg.PointerUp(new PointerEventArgs { PointerId = 10, ClientX = 200, ClientY = 100, PointerType = "mouse" });
+
         cut.Find("[tabindex='0']").Click();
         Assert.Contains("translateX(0px)", cut.Find("[tabindex='0']").GetAttribute("style"));
     }
