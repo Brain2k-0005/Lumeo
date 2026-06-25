@@ -174,6 +174,11 @@
     private int _focusCol;
     private int _focusIdx;
     private string? _pendingFocusId;
+    // Column count the fixed popover was last anchored against. When the rendered
+    // column count changes while open (drilling deeper, or re-opening onto a
+    // committed multi-column path), the anchor is recomputed so the widening
+    // panel stays attached to the trigger (battle-test #69).
+    private int _lastPositionedColumns = -1;
 
     private string OptionId(int col, int idx) => $"{_contentId}-opt-{col}-{idx}";
     private void QueueFocus() => _pendingFocusId = OptionId(_focusCol, _focusIdx);
@@ -348,8 +353,14 @@
         var wasOpen = _isOpen;
         _isOpen = value;
         if (!value) _searchText = "";
-        // On open, seed roving focus on the first option of the first column.
-        if (value) { _focusCol = 0; _focusIdx = 0; }
+        // On open, seed roving focus. When a value is already committed the
+        // drill-down trail (_selectedPath / _activePanels) is rebuilt from it, so
+        // the visible columns reach down to the committed leaf. Seed the roving
+        // stop onto that committed option in the deepest rendered column instead
+        // of resetting to (0,0) — otherwise re-opening a populated cascader parks
+        // focus on the root and a keyboard user has to re-drill (battle-test #69).
+        // Fall back to (0,0) when there is no committed path.
+        if (value) SeedFocusToSelection();
 
         // On close: return focus to the trigger button immediately (it is in the DOM).
         if (wasOpen && !value)
@@ -357,6 +368,32 @@
             try { await Interop.FocusElement(EffectiveTriggerId); } catch (JSDisconnectedException) { }
         }
         // On open: focus happens in OnAfterRenderAsync once the panel DOM is ready.
+    }
+
+    // Seed the roving stop onto the committed selection's option in the deepest
+    // rendered column. The deepest column index is _activePanels.Count (each
+    // expanded parent adds a child column; a committed leaf does not, so its
+    // own column is the last one). Within that column, find the option whose
+    // value matches the committed path entry for that level. Falls back to the
+    // first option of the first column when there is no committed path or the
+    // selection can't be resolved against the current options.
+    private void SeedFocusToSelection()
+    {
+        _focusCol = 0;
+        _focusIdx = 0;
+
+        var deepest = _activePanels.Count;
+        if (deepest >= _selectedPath.Count) return; // nothing committed at this column
+
+        var options = GetOptionsForLevel(deepest);
+        if (options.Count == 0) return;
+
+        var selectedValue = _selectedPath[deepest];
+        var idx = options.FindIndex(o => o.Value == selectedValue);
+        if (idx < 0) return;
+
+        _focusCol = deepest;
+        _focusIdx = idx;
     }
 
     private async Task Clear()
@@ -512,9 +549,23 @@
             });
             _registered = true;
 
-            // Focus the first option in the first panel so keyboard users can
-            // immediately navigate without an extra Tab press.
-            _pendingFocusId = OptionId(0, 0);
+            // Focus the seeded roving option so keyboard users can immediately
+            // navigate without an extra Tab press. SetOpen seeds (_focusCol/
+            // _focusIdx) to the committed selection's deepest column when a value
+            // is already chosen, falling back to (0,0) otherwise (battle-test #69).
+            _pendingFocusId = OptionId(_focusCol, _focusIdx);
+            _lastPositionedColumns = _activePanels.Count;
+        }
+        else if (_isOpen && _registered && _lastPositionedColumns != _activePanels.Count)
+        {
+            // The fixed popover was anchored at its initial column count. When the
+            // drill-down widens (or narrows) the panel — re-opening onto a
+            // committed multi-column path, or drilling deeper interactively — the
+            // anchor must be recomputed so the wider layout stays attached to the
+            // trigger rather than overflowing off-screen (battle-test #69).
+            _lastPositionedColumns = _activePanels.Count;
+            try { await Interop.PositionFixed(_contentId, EffectiveTriggerId, "start", false, "bottom"); }
+            catch (JSDisconnectedException) { }
         }
         else if (!_isOpen && _registered)
         {
@@ -536,6 +587,7 @@
         try { await Interop.UnpositionFixed(_contentId); } catch (JSDisconnectedException) { }
         try { await Interop.UnregisterClickOutside(_contentId); } catch (JSDisconnectedException) { }
         _registered = false;
+        _lastPositionedColumns = -1;
     }
 
     public async ValueTask DisposeAsync()

@@ -133,29 +133,36 @@
         var idx = _contentOrder.IndexOf(ActiveValue);
         if (idx < 0) return;
 
-        int next;
-        if (direction == "next")
+        var step = direction == "next" ? 1 : -1;
+        // Walk past Disabled tabs in the chosen direction, mirroring arrow-key
+        // navigation (TabsTrigger.FindNextEnabledTab). Without this, a swipe
+        // could land on and ACTIVATE a disabled tab. Respect SwipeWrap at the
+        // boundary, and bail when no enabled neighbour exists.
+        var next = idx;
+        for (var i = 0; i < _contentOrder.Count; i++)
         {
-            next = idx + 1;
+            next += step;
             if (next >= _contentOrder.Count)
             {
                 if (!SwipeWrap) return;
                 next = 0;
             }
-        }
-        else // "prev"
-        {
-            next = idx - 1;
-            if (next < 0)
+            else if (next < 0)
             {
                 if (!SwipeWrap) return;
                 next = _contentOrder.Count - 1;
             }
+            if (next == idx) return; // wrapped all the way round — no enabled target
+            if (!IsTabDisabled(_contentOrder[next])) break;
         }
+        if (next == idx || IsTabDisabled(_contentOrder[next])) return;
 
         await SetValue(_contentOrder[next]);
         StateHasChanged();
     }
+
+    private bool IsTabDisabled(string value) =>
+        _tabIds.TryGetValue(value, out var ids) && ids.Disabled;
 
     private async Task SetValue(string value)
     {

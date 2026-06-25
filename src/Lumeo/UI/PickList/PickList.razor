@@ -61,7 +61,7 @@
         <Tooltip>
             <TooltipTrigger AsChild>
                 <ChildContentSlot Context="slot">
-                    <button type="button" class="@ButtonClass" @onclick="MoveAllToTarget" disabled="@(_sourceItems.Count == 0)" aria-label="@L["PickList.MoveAll"]" @attributes="slot.Attributes">
+                    <button type="button" class="@ButtonClass" @onclick="MoveAllToTarget" disabled="@(FilteredSourceItems.Count == 0)" aria-label="@L["PickList.MoveAll"]" @attributes="slot.Attributes">
                         <Blazicon Svg="Lucide.ChevronsRight" class="h-4 w-4" />
                     </button>
                 </ChildContentSlot>
@@ -91,7 +91,7 @@
         <Tooltip>
             <TooltipTrigger AsChild>
                 <ChildContentSlot Context="slot">
-                    <button type="button" class="@ButtonClass" @onclick="MoveAllToSource" disabled="@(_targetItems.Count == 0)" aria-label="@L["PickList.MoveBackAll"]" @attributes="slot.Attributes">
+                    <button type="button" class="@ButtonClass" @onclick="MoveAllToSource" disabled="@(FilteredTargetItems.Count == 0)" aria-label="@L["PickList.MoveBackAll"]" @attributes="slot.Attributes">
                         <Blazicon Svg="Lucide.ChevronsLeft" class="h-4 w-4" />
                     </button>
                 </ChildContentSlot>
@@ -454,9 +454,12 @@
     }
 
     private Task MoveSelectedToTarget() => MoveToTarget(_sourceSelected.ToList());
-    private Task MoveAllToTarget() => MoveToTarget(_sourceItems.ToList());
+    // #39 — "Move all" operates on the *visible* (filtered) items so an active
+    // search never silently moves rows the user can't see. With no search the
+    // filtered list is the full list, so the unfiltered behaviour is preserved.
+    private Task MoveAllToTarget() => MoveToTarget(FilteredSourceItems.ToList());
     private Task MoveSelectedToSource() => MoveToSource(_targetSelected.ToList());
-    private Task MoveAllToSource() => MoveToSource(_targetItems.ToList());
+    private Task MoveAllToSource() => MoveToSource(FilteredTargetItems.ToList());
 
     private async Task MoveToTarget(List<TItem> toMove)
     {

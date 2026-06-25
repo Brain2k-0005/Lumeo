@@ -144,8 +144,14 @@
         // Empty/null incoming list is treated as a transient (loading) state —
         // keep the selection so an async refresh flicker can't clear it.
         if (items is not { Count: > 0 }) return;
-        var valid = new HashSet<string>(items.Select(i => i.Value));
-        selected.RemoveWhere(v => !valid.Contains(v));
+        // Drop values that are no longer present in the list AND values whose
+        // item the parent has since flipped to Disabled. A now-disabled row must
+        // not stay stuck-selected: its checkbox would render checked+disabled
+        // (un-uncheckable), inflate the header count, skew select-all, and Move
+        // would silently leave it behind (Move excludes disabled rows).
+        var disabled = new HashSet<string>(items.Where(i => i.Disabled).Select(i => i.Value));
+        var valid = new HashSet<string>(items.Where(i => !i.Disabled).Select(i => i.Value));
+        selected.RemoveWhere(v => disabled.Contains(v) || !valid.Contains(v));
     }
 
     private const string ButtonClass = "inline-flex items-center justify-center h-8 w-8 rounded-md border border-input bg-background hover:bg-accent hover:text-accent-foreground transition-colors focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed";

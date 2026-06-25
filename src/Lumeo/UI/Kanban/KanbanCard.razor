@@ -64,9 +64,11 @@
     /// <summary>Stable id for this card, written into the board's drop/move payloads.</summary>
     [Parameter] public string? CardId { get; set; }
 
-    /// <summary>This card's position within its column. Lets the board compute a
-    /// precise insert index when another card is dropped onto this one.</summary>
-    [Parameter] public int Index { get; set; }
+    /// <summary>This card's position within its column. Optional: when left unset
+    /// the column derives the insert index from the card's sibling order at drop
+    /// time, so the documented usage (which omits Index) still produces a precise
+    /// insert index instead of always targeting position 0.</summary>
+    [Parameter] public int Index { get; set; } = -1;
 
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
@@ -86,6 +88,21 @@
     // against the id the DOM actually carries (a consumer id in the splat wins
     // over the generated one); re-registered when that id or movability changes.
     private string? _pdRegisteredId;
+
+    // Register with the column on first render so the column can derive this
+    // card's insert index from its sibling order (the consumer-supplied Index is
+    // optional and the documented usage omits it).
+    private KanbanColumn.ColumnContext? _registeredColumn;
+
+    protected override void OnParametersSet()
+    {
+        if (!ReferenceEquals(_registeredColumn, Column))
+        {
+            _registeredColumn?.UnregisterCard(this);
+            Column?.RegisterCard(this);
+            _registeredColumn = Column;
+        }
+    }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -145,8 +162,11 @@
 
     private void HandleDragOver()
     {
-        // Advertise this card's slot as the insert target while hovered.
-        Column?.SetPendingIndex(Index);
+        // Advertise this card's slot as the insert target while hovered. Prefer the
+        // card's actual sibling position (derived by the column from its child order)
+        // over a consumer-supplied Index, which the documented usage omits — relying
+        // on the default would advertise 0 for every card and break the insert index.
+        Column?.SetPendingIndexFor(this, Index);
     }
 
     private async Task HandleKeyDown(KeyboardEventArgs e)
@@ -184,6 +204,8 @@
 
     public async ValueTask DisposeAsync()
     {
+        _registeredColumn?.UnregisterCard(this);
+        _registeredColumn = null;
         if (_pdRegisteredId is null) return;
         try { await Interop.UnregisterPreventDefaultKeys(_pdRegisteredId); }
         catch (JSDisconnectedException) { }

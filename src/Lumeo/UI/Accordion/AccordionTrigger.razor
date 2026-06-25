@@ -83,8 +83,11 @@
 
     public async ValueTask DisposeAsync()
     {
+        // Unregister by the UNIQUE TriggerId, not the (possibly duplicated)
+        // Value: keying by Value would let one disposed item delete a SIBLING's
+        // registry slot when two items share a Value.
         if (_registeredValue is not null)
-            Context.UnregisterTrigger(_registeredValue);
+            Context.UnregisterTrigger(ItemContext.TriggerId);
         if (!_pdRegistered) return;
         try { await Interop.UnregisterPreventDefaultKeys(ItemContext.TriggerId); }
         catch (JSDisconnectedException) { }
@@ -115,16 +118,16 @@
         switch (e.Key)
         {
             case "ArrowDown":
-                await Context.MoveFocus.InvokeAsync((ItemContext.Value, 1, false, false));
+                await Context.MoveFocus.InvokeAsync((ItemContext.TriggerId, 1, false, false));
                 break;
             case "ArrowUp":
-                await Context.MoveFocus.InvokeAsync((ItemContext.Value, -1, false, false));
+                await Context.MoveFocus.InvokeAsync((ItemContext.TriggerId, -1, false, false));
                 break;
             case "Home":
-                await Context.MoveFocus.InvokeAsync((ItemContext.Value, 0, true, false));
+                await Context.MoveFocus.InvokeAsync((ItemContext.TriggerId, 0, true, false));
                 break;
             case "End":
-                await Context.MoveFocus.InvokeAsync((ItemContext.Value, 0, true, true));
+                await Context.MoveFocus.InvokeAsync((ItemContext.TriggerId, 0, true, true));
                 break;
         }
     }

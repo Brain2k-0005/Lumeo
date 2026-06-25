@@ -90,6 +90,12 @@ else
     private DotNetObjectReference<Gantt>? _selfRef;
     private string? _instanceId;
     private bool _initialized;
+    // Guards against a second GanttInitAsync being launched while the first is
+    // still in flight. Because init is no longer latched to firstRender (it can be
+    // re-attempted after a recoverable failure), an extra render that lands during
+    // the async init handshake would otherwise re-enter and fire a duplicate
+    // gantt.init. Set true before the await, cleared in finally.
+    private bool _initializing;
     private int _lastTasksHash;
     // Hash of the task payload the PARENT last supplied through the `Tasks`
     // parameter (folding in the BarColor / GroupBy delegate output, which are
@@ -149,12 +155,34 @@ else
         // Comparing against _lastSeenViewMode (not _currentViewMode) means an
         // unchanged ViewMode on a parent re-render leaves a toolbar selection
         // intact, so the user's zoom no longer silently reverts.
-        if (ViewMode != _lastSeenViewMode)
+        var viewModeChanged = ViewMode != _lastSeenViewMode;
+        if (viewModeChanged)
         {
             _lastSeenViewMode = ViewMode;
             _currentViewMode = ViewMode;
             if (_initialized && _instanceId is not null)
                 await Interop.GanttChangeViewModeAsync(_instanceId, ViewMode.ToString());
+        }
+
+        // If a previous GanttInitAsync threw, the component latched into the
+        // error state (_initError set, _initialized false, _instanceId null) and
+        // OnAfterRenderAsync stopped retrying. A later parameter change is the
+        // signal that the world may have moved on (the host element re-appeared,
+        // the JS module was reloaded, the caller supplied new Tasks/ViewMode), so
+        // clear the error to let OnAfterRenderAsync re-attempt init on the next
+        // render instead of staying permanently dead (battle-test wave 1, #19).
+        if (_initError is not null && !_initialized
+            && (viewModeChanged || Tasks is not null))
+        {
+            // Re-seed the snapshot from the latest Tasks so the retried init
+            // mounts the current data, not the stale list captured at first init.
+            _tasks = SortedTasks(Tasks?.ToList() ?? new List<GanttTask>());
+            _lastTasksHash = ComputeTasksHash(_tasks);
+            _lastParentHash = _lastTasksHash;
+            // Clearing the error makes the razor render the host element again on
+            // the render that follows OnParametersSetAsync; OnAfterRenderAsync then
+            // sees no instance + no error and re-attempts init against that host.
+            _initError = null;
         }
 
         if (!_initialized || _instanceId is null) return;
@@ -182,9 +210,17 @@ else
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (!firstRender || _initialized) return;
+        // Init is no longer latched to firstRender. We attempt it whenever the
+        // component has no live instance yet AND is not currently parked in the
+        // error state. A failed init sets _initError, which blocks further auto-
+        // retries here until OnParametersSetAsync clears it on the next relevant
+        // parameter change — so a transient init failure is recoverable rather
+        // than permanently dead (battle-test wave 1, #19).
+        if (_initialized || _instanceId is not null || _initError is not null || _initializing) return;
 
-        _selfRef = DotNetObjectReference.Create(this);
+        // Reuse the DotNetObjectReference across retries so a second attempt does
+        // not leak the first one.
+        _selfRef ??= DotNetObjectReference.Create(this);
 
         var options = new
         {
@@ -196,6 +232,7 @@ else
             columnWidth = ColumnWidth,
         };
 
+        _initializing = true;
         try
         {
             _instanceId = await Interop.GanttInitAsync(_hostRef, _selfRef, options);
@@ -214,6 +251,10 @@ else
             if (OnInitError.HasDelegate)
                 await OnInitError.InvokeAsync(ex.Message);
             StateHasChanged();
+        }
+        finally
+        {
+            _initializing = false;
         }
     }
 

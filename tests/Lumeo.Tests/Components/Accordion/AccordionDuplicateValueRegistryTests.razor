@@ -1,0 +1,98 @@
+@inherits Bunit.BunitContext
+@using Lumeo.Services
+@using Lumeo.Tests.Helpers
+@using Microsoft.AspNetCore.Components.Web
+@using Microsoft.Extensions.DependencyInjection
+
+@code {
+    // Battle-test #73 (edge-data): AccordionItem.Value is [EditorRequired] but
+    // NOT enforced unique. The roving-focus trigger registry (_triggers) used to
+    // be keyed by Value (FindIndex(t => t.Value == value)) with a single slot per
+    // Value, so two items sharing a Value collapsed into one slot — the second
+    // register overwrote the first's TriggerId, and a single UnregisterTrigger
+    // deleted the OTHER item's focus slot.
+    //
+    // Repro: DOM order [dup(A), dup(B), z]. Removing the first "dup" item (A)
+    // disposes it and unregisters "dup". With the old by-Value keying that
+    // RemoveAt deleted the SURVIVING duplicate B's slot, so roving focus could no
+    // longer reach B. The fix keys the registry by the unique TriggerId, so B's
+    // slot survives A's removal.
+    //
+    // Assertion: after removing A, pressing Home from z focuses the surviving
+    // duplicate trigger B (the first remaining DOM trigger). Without the fix the
+    // registry only holds z, so Home focuses z itself.
+
+    private readonly TrackingInteropService _interop = new();
+    private bool _showFirstDup = true;
+
+    public AccordionDuplicateValueRegistryTests()
+    {
+        this.AddLumeoServices();
+        Services.AddSingleton<IComponentInteropService>(_interop);
+    }
+
+    private RenderFragment DuplicateValueItems => @<Accordion Type="Accordion.AccordionType.Multiple">
+        @if (_showFirstDup)
+        {
+            <AccordionItem Value="dup">
+                <AccordionTrigger>A</AccordionTrigger>
+                <AccordionContent>CA</AccordionContent>
+            </AccordionItem>
+        }
+        <AccordionItem Value="dup">
+            <AccordionTrigger>B</AccordionTrigger>
+            <AccordionContent>CB</AccordionContent>
+        </AccordionItem>
+        <AccordionItem Value="z">
+            <AccordionTrigger>Z</AccordionTrigger>
+            <AccordionContent>CZ</AccordionContent>
+        </AccordionItem>
+    </Accordion>;
+
+    [Fact]
+    public void Removing_First_Duplicate_Keeps_Sibling_Roving_Focus_Slot()
+    {
+        var cut = Render(DuplicateValueItems);
+
+        // Drop the first "dup" item — it disposes and unregisters its trigger.
+        // The surviving duplicate (B) and z must remain navigable.
+        _showFirstDup = false;
+        cut.Render();
+
+        var triggers = cut.FindAll("button");
+        // After removal, DOM order is [B (dup), Z]. B is the first remaining
+        // trigger; z is the last.
+        var survivingDupId = triggers[0].GetAttribute("id"); // B
+        var zId = triggers[1].GetAttribute("id");            // Z
+
+        // Home from z must roving-focus the FIRST trigger (the surviving dup B).
+        triggers[1].KeyDown(new KeyboardEventArgs { Key = "Home" });
+
+        // Without the fix B's slot was deleted by A's by-Value unregister, so
+        // the registry only contained z and Home would focus z itself.
+        var lastFocused = _interop.FocusElementCalls.Last();
+        Assert.Equal(survivingDupId, lastFocused);
+        Assert.NotEqual(zId, lastFocused);
+    }
+
+    [Fact]
+    public void ArrowDown_From_First_Duplicate_Focuses_Its_Own_Neighbour()
+    {
+        var cut = Render(DuplicateValueItems);
+
+        var triggers = cut.FindAll("button");
+        // [A (dup), B (dup), Z] — three distinct trigger ids.
+        var middleDupId = triggers[1].GetAttribute("id"); // B (immediate neighbour of A)
+        var lastId = triggers[2].GetAttribute("id");      // Z
+
+        // ArrowDown from the FIRST duplicate (A) must focus its immediate DOM
+        // neighbour B. With the old by-Value keying A and B collapsed into one
+        // slot, so resolving "current" by Value found B's slot (index 0) and
+        // ArrowDown stepped to z instead — skipping the real neighbour B.
+        triggers[0].KeyDown(new KeyboardEventArgs { Key = "ArrowDown" });
+
+        var lastFocused = _interop.FocusElementCalls.Last();
+        Assert.Equal(middleDupId, lastFocused);
+        Assert.NotEqual(lastId, lastFocused);
+    }
+}

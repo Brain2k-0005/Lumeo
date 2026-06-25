@@ -180,12 +180,25 @@
             _ => FilterOperator.Contains,
         };
 
+        // Clamp the type-default into the operators the column actually permits.
+        // The operator <Select> dropdown is populated from GetAvailableOperators()
+        // (which intersects with Column.Operators), so a type-default the column
+        // disallows would otherwise sit selected-but-not-in-the-list and apply
+        // silently on a bare Apply (battle-test #11).
+        var available = GetAvailableOperators();
+        if (available.Count > 0 && !available.Contains(_selectedOperator))
+            _selectedOperator = available[0];
+
         // Hydrate from the column's currently-applied filter, if any. CurrentFilter
         // always carries the real applied operator (including Contains, which is the
         // enum's default value), so assign it unconditionally.
         if (CurrentFilter is not null)
         {
             _selectedOperator = CurrentFilter.Operator;
+
+            // Same clamp for a hydrated operator the column no longer permits.
+            if (available.Count > 0 && !available.Contains(_selectedOperator))
+                _selectedOperator = available[0];
 
             switch (Column?.FilterType)
             {
@@ -262,6 +275,16 @@
         }
         else if (Column.FilterType == DataGridFilterType.Select)
         {
+            // A Select filter with zero options checked is meaningless: the
+            // join would be "" and the Evaluate() "no options => match all"
+            // rule would surface it as an ACTIVE filter that matches every row
+            // (battle-test #10). Treat applying an empty selection as a CLEAR
+            // so the column doesn't show a phantom-active filter chip.
+            if (_selectedOptions.Count == 0)
+            {
+                await OnApply.InvokeAsync(null);
+                return;
+            }
             filterValue = string.Join(",", _selectedOptions);
             // Don't clobber a hydrated operator the Select filter legitimately
             // supports (Contains/Equals) — reopening an Equals filter and pressing
