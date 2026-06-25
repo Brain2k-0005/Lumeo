@@ -1,0 +1,68 @@
+@inherits Bunit.BunitContext
+
+@code {
+    // #49 (battle-wave1) — aria-expanded must ALWAYS be present as the literal
+    // string "true"/"false". With aria-expanded="@IsOpen" (a CLR bool) Blazor
+    // OMITS the attribute entirely when false, so AT never sees the collapsed
+    // state. The fix renders aria-expanded="@(IsOpen ? "true" : "false")".
+
+    public AccordionAriaExpandedTests() { this.AddLumeoServices(); }
+
+    [Fact]
+    public void Collapsed_Trigger_Renders_AriaExpanded_False_Literally()
+    {
+        // Uncontrolled accordion starts fully collapsed.
+        var cut = Render(@<Accordion>
+            <AccordionItem Value="item1">
+                <AccordionTrigger>One</AccordionTrigger>
+                <AccordionContent>Content 1</AccordionContent>
+            </AccordionItem>
+        </Accordion>);
+
+        var button = cut.Find("button");
+
+        // Without the fix this attribute is OMITTED (GetAttribute returns null).
+        Assert.Equal("false", button.GetAttribute("aria-expanded"));
+    }
+
+    [Fact]
+    public void Open_Trigger_Renders_AriaExpanded_True()
+    {
+        var cut = Render(@<Accordion Type="Accordion.AccordionType.Single" Value="item1">
+            <AccordionItem Value="item1">
+                <AccordionTrigger>One</AccordionTrigger>
+                <AccordionContent>Content 1</AccordionContent>
+            </AccordionItem>
+            <AccordionItem Value="item2">
+                <AccordionTrigger>Two</AccordionTrigger>
+                <AccordionContent>Content 2</AccordionContent>
+            </AccordionItem>
+        </Accordion>);
+
+        var triggers = cut.FindAll("button");
+
+        // Open item: aria-expanded present and "true".
+        Assert.Equal("true", triggers[0].GetAttribute("aria-expanded"));
+        // Closed sibling: aria-expanded present and "false" (not omitted).
+        Assert.Equal("false", triggers[1].GetAttribute("aria-expanded"));
+    }
+
+    [Fact]
+    public void Toggling_Trigger_Flips_AriaExpanded_String()
+    {
+        var cut = Render(@<Accordion>
+            <AccordionItem Value="item1">
+                <AccordionTrigger>One</AccordionTrigger>
+                <AccordionContent>Content 1</AccordionContent>
+            </AccordionItem>
+        </Accordion>);
+
+        var button = cut.Find("button");
+        Assert.Equal("false", button.GetAttribute("aria-expanded"));
+
+        button.Click();
+
+        // Re-query after the toggle re-render.
+        Assert.Equal("true", cut.Find("button").GetAttribute("aria-expanded"));
+    }
+}

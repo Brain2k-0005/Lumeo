@@ -29,7 +29,11 @@
         else
         {
             <Select Value="@_selectedOperator.ToString()" ValueChanged="@OnOperatorSelected">
-                <SelectTrigger Class="h-8 w-full">
+                @* The operator combobox is an icon-free, value-only trigger; without
+                   an explicit name a screen reader announces it as an unlabeled
+                   "combobox" (battle-test #65). aria-label gives it a stable name
+                   tied to the filter's operator role. *@
+                <SelectTrigger Class="h-8 w-full" aria-label="@L["Filter.Operator"]">
                     <span class="truncate text-sm">@GetOperatorLabel(_selectedOperator)</span>
                 </SelectTrigger>
                 <SelectContent>
@@ -42,32 +46,43 @@
 
             @if (Column?.FilterType == DataGridFilterType.Number)
             {
+                @* @onkeydown:stopPropagation keeps Arrow/Space/Enter inside the
+                   number input from bubbling to the host <th>'s keydown handler,
+                   which would otherwise move the grid's roving focus while the
+                   user is typing/stepping a filter value (battle-test #12). *@
                 <input type="number"
                        class="h-8 w-full rounded-md border border-input bg-transparent px-3 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring"
                        placeholder="@L["Filter.ValuePlaceholder"]"
                        value="@_filterValue"
-                       @oninput="OnValueInput" />
+                       @oninput="OnValueInput"
+                       @onkeydown:stopPropagation="true" />
                 @if (_selectedOperator == FilterOperator.Between)
                 {
                     <input type="number"
                            class="h-8 w-full rounded-md border border-input bg-transparent px-3 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring"
                            placeholder="@L["Filter.ToValuePlaceholder"]"
                            value="@_filterValueTo"
-                           @oninput="OnValueToInput" />
+                           @oninput="OnValueToInput"
+                           @onkeydown:stopPropagation="true" />
                 }
             }
             else if (Column?.FilterType == DataGridFilterType.Date)
             {
+                @* Same leak as the Number input: a Date input's Arrow keys (which
+                   step day/month/year) and Space/Enter must not reach the host
+                   <th> keyboard handler (battle-test #12). *@
                 <input type="date"
                        class="h-8 w-full rounded-md border border-input bg-transparent px-3 text-sm focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring"
                        value="@_filterValue"
-                       @oninput="OnValueInput" />
+                       @oninput="OnValueInput"
+                       @onkeydown:stopPropagation="true" />
                 @if (_selectedOperator == FilterOperator.Between)
                 {
                     <input type="date"
                            class="h-8 w-full rounded-md border border-input bg-transparent px-3 text-sm focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring"
                            value="@_filterValueTo"
-                           @oninput="OnValueToInput" />
+                           @oninput="OnValueToInput"
+                           @onkeydown:stopPropagation="true" />
                 }
             }
             else if (Column?.FilterType == DataGridFilterType.Select)

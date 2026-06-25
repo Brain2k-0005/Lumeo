@@ -279,8 +279,11 @@
         _searchText = "";
         // Seed the roving focus on the first selected node if one is visible,
         // otherwise the first node; the panel itself takes focus so arrow keys
-        // are handled even before a treeitem is focused.
+        // are handled even before a treeitem is focused. Seed BEFORE the first open
+        // render so the selected node is the tab stop immediately (no flash of the
+        // first node, and no dependency on the post-interop re-render below).
         _flatVisible = null;
+        SeedActiveFromSelection();
         StateHasChanged();
         await Task.Yield();
         if (_disposed) return;
@@ -314,7 +317,17 @@
         }
         catch (JSDisconnectedException) { }
         if (_disposed) return;
+        // Place roving focus on the first VISIBLE selected node so a keyboard user
+        // lands on what they previously chose. SeedActiveFromSelection sets
+        // _activeValue and invalidates _flatVisible; EnsureFlatVisible then rebuilds
+        // and re-resolves _activeItem against it, falling back to the first node
+        // only when the selection is absent/not visible. The StateHasChanged pushes
+        // the new roving tabindex (0 on the selected node) into the markup — the
+        // first open render already ran EnsureFlatVisible with no selection, so
+        // without this re-render the tabindex would stay on node 0.
+        SeedActiveFromSelection();
         EnsureFlatVisible();
+        StateHasChanged();
         if (_activeItem is not null)
         {
             try { await Interop.FocusElement(GetNodeId(_activeItem)); } catch (JSDisconnectedException) { }
@@ -328,6 +341,11 @@
     private async Task CloseDropdown(bool restoreFocus = false)
     {
         _isOpen = false;
+        // Reset the roving-focus anchor so the NEXT open re-seeds deterministically
+        // from the current selection (OpenDropdown -> SeedActiveFromSelection) instead
+        // of reusing the node that happened to be active when this session closed.
+        _activeItem = null;
+        _activeValue = null;
         if (_registered)
         {
             try { await Interop.UnpositionFixed(_contentId); } catch (JSDisconnectedException) { }
@@ -517,6 +535,25 @@
     {
         EnsureFlatVisible();
         return item.Value == _activeValue ? 0 : -1;
+    }
+
+    /// <summary>On open, anchor the roving focus to the first VISIBLE selected node
+    /// (single: Value; multiple: any value in Values) by setting _activeValue, so
+    /// EnsureFlatVisible resolves it to that node. Leaves _activeValue untouched when
+    /// nothing is selected/visible so the existing flat[0] fallback applies.</summary>
+    private void SeedActiveFromSelection()
+    {
+        var flat = new List<TreeSelectItem>();
+        AppendVisible(Items, flat);
+        var selected = flat.FirstOrDefault(i => IsSelected(i.Value));
+        if (selected is not null && _activeValue != selected.Value)
+        {
+            _activeValue = selected.Value;
+            // Force EnsureFlatVisible to rebuild and re-resolve _activeItem against
+            // the new anchor; the open render may already have populated _flatVisible
+            // (seeded to the first node) and would otherwise short-circuit.
+            _flatVisible = null;
+        }
     }
 
     private void EnsureFlatVisible()

@@ -29,6 +29,15 @@
     // because items render top-to-bottom.
     private readonly List<string> _triggerIds = new();
 
+    // When a trigger opens its submenu via the keyboard (ArrowDown), focus must
+    // move INTO the content. The trigger can't focus the content synchronously in
+    // its keydown handler: SetActiveItemId only schedules the re-render that
+    // mounts the content <div>, so the element doesn't exist in the DOM yet and
+    // the focus call is silently dropped in a real browser. Instead the trigger
+    // records a one-shot request here, and NavigationMenuContent consumes it from
+    // its own OnAfterRenderAsync — i.e. AFTER the content has actually rendered.
+    private string? _focusContentOnOpenItemId;
+
     private string CssClass => Cx.Merge("relative z-10 flex max-w-max flex-1 items-center justify-center", Class);
 
     private Task SetActiveItemId(string? value)
@@ -36,6 +45,20 @@
         _activeItemId = value;
         StateHasChanged();
         return Task.CompletedTask;
+    }
+
+    // Called by a trigger when it opens its submenu via the keyboard. The focus
+    // request is deferred until the matching content has rendered (consumed in
+    // NavigationMenuContent.OnAfterRenderAsync) so focus lands on a live element.
+    internal void RequestContentFocusOnOpen(string itemId) => _focusContentOnOpenItemId = itemId;
+
+    // Returns true (and clears the one-shot request) when the just-rendered
+    // content belongs to the item whose submenu was opened from the keyboard.
+    internal bool TryConsumeContentFocusRequest(string itemId)
+    {
+        if (_focusContentOnOpenItemId != itemId) return false;
+        _focusContentOnOpenItemId = null;
+        return true;
     }
 
     internal void RegisterTrigger(string id)

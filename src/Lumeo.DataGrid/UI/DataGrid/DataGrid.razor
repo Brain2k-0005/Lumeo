@@ -690,6 +690,32 @@
 
     private string CellElementId(int row, int col) => $"{_gridId}-cell-{(row < 0 ? "h" : row.ToString())}-{col}";
 
+    // --- Selective keydown preventDefault (battle-test n=8) ---
+    // The roving-tabindex grid handles Arrow/Home/End/PageUp/PageDown to move the
+    // focused cell, and Space to toggle selection. Without suppressing the browser
+    // default these keys ALSO scroll the page/scroll-container, fighting the cell
+    // navigation. We can't use @onkeydown:preventDefault on the <td>/<th> because
+    // that directive's value is fixed at render time and would also swallow Tab
+    // (which must stay live to leave the grid). Instead we register a key-selective
+    // native preventDefault on the table once it's in the DOM — same idiom as
+    // Select/DateTimePicker/Calendar. SkipEditable keeps the inline-edit <input>'s
+    // caret/typing keys (and its own Tab/Enter/Escape handling) untouched, since
+    // those keydowns originate inside the editor input.
+    private bool _navKeysPrevented;
+    private static readonly Lumeo.Services.PreventDefaultKeyRule[] NavKeyRules =
+    [
+        new("ArrowDown",  SkipEditable: true),
+        new("ArrowUp",    SkipEditable: true),
+        new("ArrowLeft",  SkipEditable: true),
+        new("ArrowRight", SkipEditable: true),
+        new("Home",       SkipEditable: true),
+        new("End",        SkipEditable: true),
+        new("PageDown",   SkipEditable: true),
+        new("PageUp",     SkipEditable: true),
+        new(" ",          SkipEditable: true),
+        new("Spacebar",   SkipEditable: true),
+    ];
+
     /// <summary>Clamp the roving-focus coordinates to the current data extents.
     /// Called after any data/sort/filter/page change so the stored cell never
     /// dangles past the visible range.</summary>
@@ -1346,6 +1372,21 @@
             {
                 var key = LayoutStorageKey ?? _layoutId;
                 await _layoutService.LoadPersistedLayoutAsync(key, ApplyLayoutAsync);
+            }
+
+            // Suppress the browser default-scroll on the grid's keyboard-nav keys
+            // so Arrow/Space/Home/End/PageUp/PageDown move the roving cell instead
+            // of (or as well as) scrolling the page. Registered on the table (its
+            // id is _gridId) once it's in the DOM; cell/header keydowns bubble to
+            // it. SkipEditable leaves the inline-edit input's keys alone.
+            if (!_navKeysPrevented)
+            {
+                try
+                {
+                    await Interop.RegisterPreventDefaultKeys(_gridId, NavKeyRules);
+                    _navKeysPrevented = true;
+                }
+                catch (JSDisconnectedException) { /* circuit gone — nothing to suppress */ }
             }
         }
 
@@ -3380,6 +3421,16 @@
     {
         _layoutService?.Dispose();
         _serverService?.Dispose();
+
+        // Tear down the native keydown-preventDefault listener registered on the
+        // table in OnAfterRenderAsync so it doesn't outlive the element.
+        if (_navKeysPrevented)
+        {
+            try { await Interop.UnregisterPreventDefaultKeys(_gridId); }
+            catch (Microsoft.JSInterop.JSDisconnectedException) { /* circuit gone */ }
+            catch { /* best-effort */ }
+            _navKeysPrevented = false;
+        }
 
         // Defensive: if disposed while still in fullscreen, unlock scroll AND drop
         // the html-level fullscreen class. ToggleExpanded adds
