@@ -9,7 +9,7 @@
         RegisterTrigger,
         ReplaceTrigger,
         UnregisterTrigger,
-        EventCallback.Factory.Create<(string Value, int Delta, bool ToEdge, bool Last)>(this, MoveFocus));
+        EventCallback.Factory.Create<(string TriggerId, int Delta, bool ToEdge, bool Last)>(this, MoveFocus));
 }
 
 <div class="@CssClass" @attributes="AdditionalAttributes">
@@ -136,35 +136,45 @@
         StateHasChanged();
     }
 
+    // The registry slot is keyed by the UNIQUE TriggerId, never by Value:
+    // AccordionItem.Value is [EditorRequired] but not enforced unique, so two
+    // items may share a Value. Keying by Value would collapse them into one
+    // slot (the second register overwrites the first's TriggerId) and a single
+    // unregister would delete the other's focus slot. Open-state still keys by
+    // Value (OpenItems/IsOpen) — duplicate Values toggle together, which is the
+    // expected disclosure semantics — but roving focus stays per-trigger.
     private void RegisterTrigger(string value, string triggerId, bool disabled)
     {
-        var idx = _triggers.FindIndex(t => t.Value == value);
+        var idx = _triggers.FindIndex(t => t.TriggerId == triggerId);
         if (idx >= 0) _triggers[idx] = (value, triggerId, disabled);
         else _triggers.Add((value, triggerId, disabled));
     }
 
     // Re-key an existing trigger IN PLACE when an item's Value changes at
-    // runtime. A naive Unregister(old)+Register(new) would RemoveAt(old index)
-    // then Add() the new value to the TAIL, scrambling the registry away from
-    // DOM order and corrupting roving ArrowUp/Down/Home/End navigation. Keeping
-    // the original slot preserves DOM/declaration order across a Value change.
+    // runtime. The TriggerId is stable across a Value change, so resolve the
+    // slot by TriggerId and only rewrite its Value — keeping the original slot
+    // preserves DOM/declaration order (a naive unregister+append would scramble
+    // it) AND is safe when several items share the old/new Value.
     private void ReplaceTrigger(string oldValue, string newValue, string triggerId, bool disabled)
     {
-        var idx = _triggers.FindIndex(t => t.Value == oldValue);
+        var idx = _triggers.FindIndex(t => t.TriggerId == triggerId);
         if (idx >= 0) _triggers[idx] = (newValue, triggerId, disabled);
         else RegisterTrigger(newValue, triggerId, disabled);
     }
 
-    private void UnregisterTrigger(string value)
+    private void UnregisterTrigger(string triggerId)
     {
-        var idx = _triggers.FindIndex(t => t.Value == value);
+        var idx = _triggers.FindIndex(t => t.TriggerId == triggerId);
         if (idx >= 0) _triggers.RemoveAt(idx);
     }
 
     // Roving focus across triggers. Delta ±1 steps to the next/previous enabled
     // trigger (no wrap, matching Radix); ToEdge focuses the first/last enabled
     // trigger (Home/End). Focus is moved via the interop FocusElement helper.
-    private async Task MoveFocus((string Value, int Delta, bool ToEdge, bool Last) args)
+    // The first field is the originating trigger's UNIQUE TriggerId (not its
+    // Value): resolving "current" by Value would land on the wrong slot when two
+    // items share a Value, moving focus from the wrong neighbour.
+    private async Task MoveFocus((string TriggerId, int Delta, bool ToEdge, bool Last) args)
     {
         if (_triggers.Count == 0) return;
         string? targetId = null;
@@ -177,7 +187,7 @@
         }
         else
         {
-            var current = _triggers.FindIndex(t => t.Value == args.Value);
+            var current = _triggers.FindIndex(t => t.TriggerId == args.TriggerId);
             if (current < 0) return;
             var idx = current;
             for (var i = 0; i < _triggers.Count; i++)
@@ -206,7 +216,7 @@
         Action<string, string, bool> RegisterTrigger,
         Action<string, string, string, bool> ReplaceTrigger,
         Action<string> UnregisterTrigger,
-        EventCallback<(string Value, int Delta, bool ToEdge, bool Last)> MoveFocus)
+        EventCallback<(string TriggerId, int Delta, bool ToEdge, bool Last)> MoveFocus)
     {
         public bool IsOpen(string value) => OpenItems.Contains(value);
     }

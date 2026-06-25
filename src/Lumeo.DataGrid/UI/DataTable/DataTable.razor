@@ -197,7 +197,12 @@
     // the ref-stable contract two-way binding and EventCallback consumers expect.
     private async Task ToggleSelectAll(bool select)
     {
-        if (Items is null) return;
+        // An empty (or fully-filtered-out) table has nothing to select: treat
+        // empty Items the same as null so a select-all toggle is a true no-op —
+        // it must NOT emit a spurious SelectedItemsChanged(empty) event. The
+        // header checkbox already renders unchecked here (_isAllSelected requires
+        // _itemsList.Count > 0), so this keeps the control and its callback aligned.
+        if (Items is null || !Items.Any()) return;
         var next = select ? new HashSet<TItem>(Items) : new HashSet<TItem>();
         SelectedItems = next;
         _selectedKeys = ItemKey is not null ? new HashSet<object>(next.Select(ItemKey)) : null;

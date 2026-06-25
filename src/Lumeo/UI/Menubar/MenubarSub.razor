@@ -1,4 +1,5 @@
 @namespace Lumeo
+@implements IDisposable
 
 @{
     var subContext = new MenubarSubContext(
@@ -68,8 +69,23 @@
             try { await Task.Delay(200, token); }
             catch (TaskCanceledException) { return; }
             if (token.IsCancellationRequested) return;
-            await InvokeAsync(async () => await SetOpen(false));
+            // The component may have been disposed (and the dispatcher torn down)
+            // between the delay elapsing and this continuation running. Swallow the
+            // resulting ObjectDisposedException so the leaked timer cannot fault the
+            // background task or call StateHasChanged on a dead component.
+            try
+            {
+                await InvokeAsync(async () => await SetOpen(false));
+            }
+            catch (ObjectDisposedException) { }
         });
+    }
+
+    public void Dispose()
+    {
+        // Cancel + dispose any pending close timer so it cannot fire SetOpen
+        // (StateHasChanged) after this component has been unmounted mid-delay.
+        CancelClose();
     }
 
     public record MenubarSubContext(

@@ -269,13 +269,27 @@ else
         // recurrence model: the start/end fields become time-of-day values only.
         if (ev.DaysOfWeek is { Count: > 0 })
         {
+            // Cross-midnight / next-day recurring events: when the end time-of-day is at or
+            // before the start time-of-day, emitting endTime literally (e.g. start 22:00,
+            // end 02:00) hands FullCalendar an end EARLIER than the start, which it silently
+            // mis-renders (zero/negative-length chip). Express the span as an explicit
+            // duration instead — FullCalendar adds it to startTime per occurrence, correctly
+            // carrying the event past midnight. The real elapsed span (End - Start) is the
+            // source of truth, so even a >24h recurring window is represented faithfully.
+            var span = ev.End - ev.Start;
+            var crossesMidnight = ev.End.TimeOfDay <= ev.Start.TimeOfDay;
             return new
             {
                 id = ev.Id,
                 title = ev.Title,
                 // Time-of-day string for recurring events (HH:mm:ss).
                 startTime = ev.Start.ToString("HH:mm:ss"),
-                endTime = ev.End.ToString("HH:mm:ss"),
+                // Same-day window: keep the literal endTime (unchanged normal path).
+                // Cross-midnight window: omit endTime and supply a duration instead.
+                endTime = crossesMidnight ? (string?)null : ev.End.ToString("HH:mm:ss"),
+                duration = crossesMidnight && span > TimeSpan.Zero
+                    ? $"{(int)span.TotalHours:D2}:{span.Minutes:D2}:{span.Seconds:D2}"
+                    : (string?)null,
                 daysOfWeek = ev.DaysOfWeek.Select(d => (int)d).ToArray(),
                 startRecur = ev.Start.ToString("yyyy-MM-dd"),
                 endRecur = ev.RecurrenceEnd.HasValue
@@ -308,7 +322,19 @@ else
     private void RebuildResourceLookup()
     {
         _resolvedResources = Resources?.ToList() ?? new List<SchedulerResource>();
-        _resourceById = _resolvedResources.ToDictionary(r => r.Id, StringComparer.Ordinal);
+
+        // Duplicate (or null) resource Ids must not throw. ToDictionary blows up on a
+        // duplicate key, taking down the whole render; consumers may legitimately pass a
+        // list with repeated/blank Ids (e.g. a merged or partially-populated source).
+        // Build defensively instead — last entry wins, and null Ids are skipped (they can
+        // never be matched by SchedulerEvent.ResourceId lookups anyway).
+        var lookup = new Dictionary<string, SchedulerResource>(StringComparer.Ordinal);
+        foreach (var r in _resolvedResources)
+        {
+            if (r.Id is null) continue;
+            lookup[r.Id] = r;
+        }
+        _resourceById = lookup;
     }
 
     private static int ComputeEventsHash(IEnumerable<SchedulerEvent> events)
@@ -435,8 +461,27 @@ else
         // field it omits — DaysOfWeek/RecurrenceEnd/ExceptionDates/ResourceId/
         // ClassNames — turning a recurring event into a one-off. Merge the new
         // window onto the existing record so the rest of the rule survives.
-        var idx = _events.FindIndex(e => e.Id == ev.Id);
-        if (idx >= 0)
+        //
+        // Reconcile by Id, but only when the Id resolves UNAMBIGUOUSLY. A blank Id can't
+        // identify a unique record (a plain FindIndex would match the first blank-Id event,
+        // or none), and a duplicate Id is genuinely ambiguous — silently mutating the first
+        // match would corrupt the wrong record. In both cases skip the in-place merge and
+        // surface only the JS payload, leaving the stored collection untouched.
+        var matches = 0;
+        var idx = -1;
+        if (!string.IsNullOrEmpty(ev.Id))
+        {
+            for (var i = 0; i < _events.Count; i++)
+            {
+                if (_events[i].Id == ev.Id)
+                {
+                    matches++;
+                    if (idx < 0) idx = i;
+                }
+            }
+        }
+
+        if (idx >= 0 && matches == 1)
         {
             var existing = _events[idx];
             ev = existing with { Start = ev.Start, End = ev.End, AllDay = ev.AllDay };

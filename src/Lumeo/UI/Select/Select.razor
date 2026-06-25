@@ -168,6 +168,11 @@
             var count = NavItems.Count;
             if (_focusedIndex >= count) _focusedIndex = count - 1;
         }
+
+        // After re-anchoring the existing highlight against the new list, re-run the
+        // seed if the SELECTED value changed while the popover stayed open and the
+        // highlight is still on the previously-seeded value (battle-wave1 #68).
+        ReseedSelectedIfUntouched();
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -213,7 +218,46 @@
         if (idx < 0) return false;
         _focusedIndex = idx;
         _focusedValue = nav[idx].Value;
+        // Remember WHAT we auto-seeded to. If the selected Value later changes while
+        // the popover stays open and the highlight is still parked on this seeded
+        // value (the user hasn't ArrowDown'd away), OnParametersSet re-seeds to the
+        // new value — see ReseedSelectedIfUntouched.
+        _seededValue = nav[idx].Value;
         return true;
+    }
+
+    // The value the seed-to-selected last auto-highlighted (Radix "open on the
+    // current value"). Distinct from _focusedValue, which also tracks user-driven
+    // ArrowDown/typeahead moves: _seededValue is ONLY written by the auto-seed, so a
+    // mismatch between the two means the user has navigated and we must not re-seed.
+    private string? _seededValue;
+
+    // Re-runs the seed-to-selected when the selected Value (single) or first Values
+    // entry (multiple) changes WHILE the popover stays open. The one-shot _wasOpen
+    // latch makes OnAfterRenderAsync seed only on the first open render; without this,
+    // selecting a different value programmatically mid-open (or a parent that swaps
+    // Value while the listbox is showing) would leave the highlight stuck on the
+    // originally-seeded row. We only move the highlight when it is still parked on the
+    // previously-seeded value (untouched), so an explicit user ArrowDown/typeahead —
+    // which sets _focusedValue to something other than _seededValue — is never fought.
+    private void ReseedSelectedIfUntouched()
+    {
+        if (!Open) return;
+        var selected = Multiple ? Values?.FirstOrDefault() : Value;
+        if (string.IsNullOrEmpty(selected)) return;
+        // Already highlighting the current selection — nothing to do.
+        if (_focusedValue == selected) return;
+        // Only re-seed an UNTOUCHED highlight: either nothing is highlighted yet, or
+        // the highlight is still the value we previously auto-seeded (user hasn't
+        // navigated). A user-driven highlight (_focusedValue != _seededValue) is left
+        // alone so we don't yank the keyboard cursor out from under them.
+        if (_focusedIndex >= 0 && _focusedValue != _seededValue) return;
+        var nav = NavItems;
+        var idx = nav.FindIndex(n => n.Value == selected);
+        if (idx < 0) return;
+        _focusedIndex = idx;
+        _focusedValue = nav[idx].Value;
+        _seededValue = nav[idx].Value;
     }
 
     // --- Data-bound mode (non-generic, purely additive) ---
@@ -416,6 +460,7 @@
             SearchText = "";
             _focusedIndex = -1;
             _focusedValue = null;
+            _seededValue = null;
             _items.Clear();
             _typeahead.Reset();
         }
