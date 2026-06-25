@@ -2126,8 +2126,13 @@
 
         var hasFilter = !string.IsNullOrWhiteSpace(_globalSearch) || _filters.Count > 0;
 
-        // Seed expand state once (or when the default flips).
-        if (!_treeExpandSeeded)
+        // Seed expand state once we ACTUALLY have data. Latching this on an empty
+        // render — the normal pre-load state of an async refresh (bind new List<>(),
+        // then fill it) — would consume the one-shot seed against an empty list, so
+        // when the real data arrives the tree renders fully collapsed despite
+        // TreeGridDefaultExpanded=true. Same empty-data flicker the grouping branch
+        // guards against (see DataGridGroupCollapsePersistenceTests).
+        if (!_treeExpandSeeded && _processedItems.Count > 0)
         {
             _treeExpandSeeded = true;
             if (TreeGridDefaultExpanded)
