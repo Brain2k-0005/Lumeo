@@ -120,6 +120,11 @@
         // Closable/conditionally-removed panels must leave the swipe order,
         // otherwise swipe navigation targets removed tabs (blank panel).
         _contentOrder.Remove(value);
+        // Tie the activated-set lifetime to the panel's presence: a tab Value
+        // that is removed and later reused (a common pattern with string keys)
+        // must start fresh in Lazy mode, otherwise its panel mounts immediately
+        // — without ever being activated — because _activatedValues was add-only.
+        _activatedValues.Remove(value);
     }
 
     internal async Task NavigateBySwipe(string direction)

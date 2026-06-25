@@ -1,0 +1,69 @@
+@inherits Bunit.BunitContext
+@using System.Reflection
+@using Lumeo.Services
+
+@code {
+    // Battle-test finding #46 (state-on-data-change, medium):
+    // The animated-indicator measurement cache was keyed by the ACTIVE VALUE only
+    // (`if (_lastMeasuredValue == active && _indicatorReady) return;`). Once an
+    // active tab had been measured, ANY later render that left the active value
+    // unchanged short-circuited the re-measure — so when the active tab's geometry
+    // changed (a sibling tab is added/removed/relabelled, the list resizes, a font
+    // loads) the sliding indicator parked at stale pixel coordinates.
+    //
+    // The fix drops the value-equality short-circuit and always re-measures on a
+    // settled render, while the existing `changed` (>0.5px) epsilon check still
+    // suppresses redundant StateHasChanged calls. This test drives the real
+    // ComponentInteropService and makes tabs.measure return a DIFFERENT geometry
+    // for the same active value on the second render, then asserts the indicator
+    // CSS variable follows the new width.
+
+    // Flipped between renders to switch which planned tabs.measure result applies,
+    // mirroring the closure-gated InvocationMatcher trick in the RTE lifecycle tests.
+    private bool _wideGeometry;
+
+    public TabsIndicatorGeometryTests()
+    {
+        this.AddLumeoServices();
+
+        // ComponentInteropService imports components.js with a version cache-buster
+        // (./_content/Lumeo/js/components.js?v={version}), so tabs.measure resolves
+        // against the VERSIONED module — the bare-url module AddLumeoServices wires
+        // up is a separate loose module our setup would never hit. Compute the same
+        // identifier the service computes (mirrors ResizableInteractionTests).
+        var version = typeof(ComponentInteropService).Assembly
+                .GetCustomAttribute<AssemblyInformationalVersionAttribute>()
+                ?.InformationalVersion
+            ?? typeof(ComponentInteropService).Assembly.GetName().Version?.ToString()
+            ?? "0";
+        var module = JSInterop.SetupModule($"./_content/Lumeo/js/components.js?v={version}");
+        module.Mode = Bunit.JSRuntimeMode.Loose;
+        // Narrow geometry on the first render(s), wide geometry once _wideGeometry flips.
+        module.Setup<ComponentInteropService.TabMeasurement?>("tabs.measure", _ => !_wideGeometry)
+              .SetResult(new ComponentInteropService.TabMeasurement(0, 50));
+        module.Setup<ComponentInteropService.TabMeasurement?>("tabs.measure", _ => _wideGeometry)
+              .SetResult(new ComponentInteropService.TabMeasurement(0, 120));
+    }
+
+    [Fact]
+    public void Indicator_Remeasures_When_Active_Tab_Geometry_Changes_But_Value_Does_Not()
+    {
+        // Active value is "a" throughout. A bool host param re-renders the tree
+        // without ever changing the active tab — the #46 repro.
+        var cut = Render<IndicatorHost>(p => p.Add(h => h.Wide, false));
+
+        // First render measured the active tab at width 50.
+        cut.WaitForAssertion(() =>
+            Assert.Contains("--lumeo-tabs-indicator-w: 50px", cut.Find("[role='tablist']").GetAttribute("style")));
+
+        // The active tab's geometry changes (same value). Flip the interop result
+        // and re-render the host (an UNRELATED parameter change, value stays "a").
+        _wideGeometry = true;
+        cut.Render(p => p.Add(h => h.Wide, true));
+
+        // With the fix the indicator re-measures and follows the new width (120).
+        // Before the fix it short-circuited on the unchanged value and stayed at 50.
+        cut.WaitForAssertion(() =>
+            Assert.Contains("--lumeo-tabs-indicator-w: 120px", cut.Find("[role='tablist']").GetAttribute("style")));
+    }
+}

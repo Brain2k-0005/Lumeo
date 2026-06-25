@@ -142,7 +142,21 @@
         }
         else
         {
+            // Whenever the step dialog is NOT rendered (Steps emptied during an
+            // async load flicker, or the parent set Open=false externally without
+            // going through Close()), drop the per-step UI state so a later
+            // refill / reopen re-establishes it from scratch:
+            //   • _focusedStep   — else focus is never moved back into the dialog
+            //     when it remounts at the SAME step (keyboard user stranded).
+            //   • _currentTargetSelector / _targetRect — else UpdateTargetRect
+            //     early-returns (selector unchanged) on reopen and the spotlight
+            //     points at a stale rect.
+            // This mirrors the reset that Close() already performs, so a
+            // parent-driven dismiss behaves symmetrically with the internal close.
             _currentStepConfig = null;
+            _focusedStep = -1;
+            _currentTargetSelector = null;
+            _targetRect = null;
         }
     }
 

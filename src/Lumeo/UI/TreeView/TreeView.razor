@@ -60,6 +60,9 @@
 
     private string _searchText = "";
     private List<TreeViewItem<T>>? _previousItems;
+    // #14: last SelectedValues reference we seeded from, so we only re-seed when
+    // the parameter actually changes (not on every unrelated re-render).
+    private List<T>? _previousSelectedValues;
     private bool _previousExpandAll;
     private List<TreeViewItem<T>> _displayItems = [];
     private HashSet<T> _selectedValues = [];
@@ -94,8 +97,16 @@
 
     protected override void OnParametersSet()
     {
-        if (SelectedValues is not null)
-            _selectedValues = [..SelectedValues];
+        // #14: only re-seed from SelectedValues when the parameter ITSELF changed
+        // (new reference). Re-seeding on every OnParametersSet wiped an
+        // internally-clicked selection on any unrelated re-render, breaking the
+        // two-way-binding contract used elsewhere.
+        if (!ReferenceEquals(SelectedValues, _previousSelectedValues))
+        {
+            if (SelectedValues is not null)
+                _selectedValues = [..SelectedValues];
+            _previousSelectedValues = SelectedValues;
+        }
 
         bool itemsChanged = !ReferenceEquals(Items, _previousItems);
         bool expandAllChanged = ExpandAll != _previousExpandAll;
@@ -421,7 +432,16 @@
         _flatVisible = [];
         AppendVisible(_displayItems, _flatVisible);
         if (_activeItem is null || !_flatVisible.Any(i => ReferenceEquals(i, _activeItem)))
-            _activeItem = _flatVisible.Count > 0 ? _flatVisible[0] : null;
+        {
+            // #13: an Items refresh with new (reference-distinct) instances drops
+            // the old _activeItem out of _flatVisible. Re-anchor the roving
+            // tabindex by STABLE identity (Value) so keyboard focus survives a
+            // same-content refresh instead of snapping back to the first node.
+            var byValue = _activeItem is not null
+                ? _flatVisible.FirstOrDefault(i => EqualityComparer<T>.Default.Equals(i.Value, _activeItem.Value))
+                : null;
+            _activeItem = byValue ?? (_flatVisible.Count > 0 ? _flatVisible[0] : null);
+        }
     }
 
     private void AppendVisible(IReadOnlyList<TreeViewItem<T>> items, List<TreeViewItem<T>> result)

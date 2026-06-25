@@ -152,7 +152,14 @@
     // nodes, rebuilt lazily (invalidated on every render of the panel body).
     private readonly Dictionary<string, string> _nodeIds = new();
     private List<TreeSelectItem>? _flatVisible;
+    // Roving focus is anchored by stable identity (the active node's Value), not
+    // by object reference. _activeItem is the resolved node for the CURRENT
+    // Items render; it is re-resolved from _activeValue in EnsureFlatVisible so
+    // an equal-content Items replacement (new instances, same Values — e.g. an
+    // async refresh) keeps focus on the same logical node instead of snapping
+    // back to the first one. This mirrors how _expandedNodes is keyed by Value.
     private TreeSelectItem? _activeItem;
+    private string? _activeValue;
 
     private string TriggerClass =>
         $"flex h-9 w-full items-center justify-between rounded-md border {(EffectiveInvalid ? "border-destructive" : "border-input")} bg-background px-3 py-2 text-sm shadow-sm transition-colors disabled:cursor-not-allowed disabled:opacity-50 hover:bg-accent/50 focus:outline-none focus:ring-1 {(EffectiveInvalid ? "focus:ring-destructive/20" : "focus:ring-ring")}".Trim();
@@ -455,6 +462,7 @@
     private async Task HandleItemClick(TreeSelectItem item, bool hasChildren)
     {
         _activeItem = item;
+        _activeValue = item.Value;
         if (hasChildren && !Multiple)
             ToggleNode(item.Value);
         else
@@ -508,7 +516,7 @@
     private int GetTabIndex(TreeSelectItem item)
     {
         EnsureFlatVisible();
-        return ReferenceEquals(item, _activeItem) ? 0 : -1;
+        return item.Value == _activeValue ? 0 : -1;
     }
 
     private void EnsureFlatVisible()
@@ -516,8 +524,13 @@
         if (_flatVisible is not null) return;
         _flatVisible = new List<TreeSelectItem>();
         AppendVisible(Items, _flatVisible);
-        if (_activeItem is null || !_flatVisible.Any(i => ReferenceEquals(i, _activeItem)))
-            _activeItem = _flatVisible.Count > 0 ? _flatVisible[0] : null;
+        // Re-anchor the active node by Value, not object reference: after an
+        // equal-content Items refresh the previous _activeItem is a stale
+        // instance, so prefer the new node carrying the same Value and only fall
+        // back to the first visible node when that Value is genuinely gone.
+        _activeItem = _flatVisible.FirstOrDefault(i => i.Value == _activeValue)
+                      ?? (_flatVisible.Count > 0 ? _flatVisible[0] : null);
+        _activeValue = _activeItem?.Value;
     }
 
     private void AppendVisible(List<TreeSelectItem> items, List<TreeSelectItem> result)
@@ -617,14 +630,14 @@
 
             case "ArrowDown":
             {
-                var idx = flat.FindIndex(i => ReferenceEquals(i, current));
+                var idx = flat.FindIndex(i => i.Value == current.Value);
                 await MoveActiveTo(idx >= 0 && idx < flat.Count - 1 ? flat[idx + 1] : null);
                 return;
             }
 
             case "ArrowUp":
             {
-                var idx = flat.FindIndex(i => ReferenceEquals(i, current));
+                var idx = flat.FindIndex(i => i.Value == current.Value);
                 await MoveActiveTo(idx > 0 ? flat[idx - 1] : null);
                 return;
             }
@@ -641,8 +654,9 @@
 
     private async Task MoveActiveTo(TreeSelectItem? target)
     {
-        if (target is null || ReferenceEquals(target, _activeItem)) return;
+        if (target is null || target.Value == _activeValue) return;
         _activeItem = target;
+        _activeValue = target.Value;
         StateHasChanged();
         try { await Interop.FocusElement(GetNodeId(target)); } catch (JSDisconnectedException) { }
     }

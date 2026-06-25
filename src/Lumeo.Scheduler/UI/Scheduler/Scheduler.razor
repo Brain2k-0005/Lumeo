@@ -191,6 +191,13 @@ else
 
         _selfRef = DotNetObjectReference.Create(this);
 
+        // Snapshot exactly what init is about to render. OnParametersSetAsync drops any
+        // Events refresh that arrives while _initialized is still false (the init is an
+        // async JS handshake), so the parent's latest events can land AFTER these options
+        // were captured but BEFORE init completes. We re-read Events post-init and push
+        // the delta so that mid-init refresh is never silently lost.
+        var initEventsHash = _lastEventsHash;
+
         var options = new
         {
             view = InitialView.ToString(),
@@ -211,6 +218,21 @@ else
         {
             _instanceId = await Interop.SchedulerInitAsync(_hostRef, _selfRef, options);
             _initialized = true;
+
+            // Reconcile against the latest Events: if the parent swapped them while init
+            // was in flight, init rendered the stale snapshot — push the current set now.
+            if (Events is not null)
+            {
+                var current = Events.ToList();
+                var currentHash = ComputeEventsHash(current);
+                if (currentHash != initEventsHash)
+                {
+                    _events = current;
+                    _lastEventsHash = currentHash;
+                    await Interop.SchedulerSetEventsAsync(_instanceId, current.Select(ToJsEvent).Cast<object>());
+                }
+            }
+
             // Read the real title from FullCalendar now that the view is rendered.
             _title = await Interop.SchedulerGetTitleAsync(_instanceId);
             StateHasChanged();

@@ -230,11 +230,31 @@
         var sel = (SelectedItems ?? []).ToList();
         var selSet = new HashSet<TItem>(sel);
 
-        _targetItems = sel;
-        _sourceItems = all.Where(i => !selSet.Contains(i)).ToList();
+        // #38 — Within-target reorder is owned by the component until the
+        // *set* of selected items actually changes. If the incoming
+        // SelectedItems is the same set we already hold (the parent simply
+        // didn't echo the emitted order, or re-rendered for an unrelated
+        // reason), keep the user's current ordering instead of snapping back
+        // to the parameter's order.
+        if (sel.Count == _targetItems.Count && selSet.SetEquals(_targetItems))
+        {
+            // Same set, possibly reordered: preserve _targetItems as-is.
+        }
+        else
+        {
+            _targetItems = sel;
+        }
+        _sourceItems = all.Where(i => !_targetItems.Contains(i)).ToList();
 
-        // Clean out selections that are no longer in their side
-        _sourceSelected.RemoveWhere(i => !_sourceItems.Contains(i));
+        // Clean out selections that are no longer in their side. Guard against
+        // a transient-empty incoming Items during async refresh (#37): a wholly
+        // empty incoming Items snapshot (a loading flicker) must not wipe the
+        // user's in-progress source checkbox selection — only prune once there is
+        // a settled (non-empty) data set to reconcile against.
+        if (all.Count > 0)
+        {
+            _sourceSelected.RemoveWhere(i => !_sourceItems.Contains(i));
+        }
         _targetSelected.RemoveWhere(i => !_targetItems.Contains(i));
     }
 

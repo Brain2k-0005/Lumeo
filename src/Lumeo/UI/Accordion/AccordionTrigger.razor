@@ -46,12 +46,18 @@
     {
         // Register every parameter set (idempotent) so the parent's roving-focus
         // registry tracks the current value, trigger id and Disabled flag. If
-        // the item's Value changed, drop the stale registry entry first.
+        // the item's Value changed, re-key the EXISTING registry slot in place
+        // rather than unregister+register: the latter would RemoveAt the old
+        // index then Add the new value to the tail, scrambling the registry out
+        // of DOM order and corrupting roving ArrowUp/Down/Home/End nav.
         if (_registeredValue is not null && _registeredValue != ItemContext.Value)
         {
-            Context.UnregisterTrigger(_registeredValue);
+            Context.ReplaceTrigger(_registeredValue, ItemContext.Value, ItemContext.TriggerId, ItemContext.Disabled);
         }
-        Context.RegisterTrigger(ItemContext.Value, ItemContext.TriggerId, ItemContext.Disabled);
+        else
+        {
+            Context.RegisterTrigger(ItemContext.Value, ItemContext.TriggerId, ItemContext.Disabled);
+        }
         _registeredValue = ItemContext.Value;
     }
 

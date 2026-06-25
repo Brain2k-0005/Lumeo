@@ -91,6 +91,14 @@ else
     private string? _instanceId;
     private bool _initialized;
     private int _lastTasksHash;
+    // Hash of the task payload the PARENT last supplied through the `Tasks`
+    // parameter (folding in the BarColor / GroupBy delegate output, which are
+    // also parent-owned). Unlike _lastTasksHash, this is advanced ONLY by a
+    // genuine parameter change — never by a local JS drag/progress edit via
+    // ReplaceTask. OnParametersSetAsync re-pushes to JS only when THIS moves, so
+    // a stale parent re-render after an uncontrolled drag no longer snaps the
+    // bars back to their pre-drag positions (battle-test wave 1, finding #18).
+    private int _lastParentHash;
     private GanttViewMode _currentViewMode;
     // Last value seen on the ViewMode parameter. We only treat ViewMode as
     // authoritative when this changes — otherwise a parent re-render with an
@@ -119,6 +127,7 @@ else
         _lastSeenViewMode = ViewMode;
         _tasks = SortedTasks(Tasks?.ToList() ?? new List<GanttTask>());
         _lastTasksHash = ComputeTasksHash(_tasks);
+        _lastParentHash = _lastTasksHash;
     }
 
     // When GroupBy is set, sort tasks so that each group clusters together.
@@ -154,8 +163,16 @@ else
         {
             var incoming = SortedTasks(Tasks.ToList());
             var hash = ComputeTasksHash(incoming);
-            if (hash != _lastTasksHash)
+            // Gate the re-push on the PARENT hash, not _lastTasksHash. A local JS
+            // drag/progress edit advances _lastTasksHash (via ReplaceTask) but NOT
+            // _lastParentHash, so an uncontrolled parent re-render that still
+            // carries the original (pre-drag) Tasks is seen as "parent unchanged"
+            // and the bars are left where the user dropped them. Only a genuinely
+            // new parent payload (different records, or a swapped BarColor/GroupBy
+            // delegate output) moves _lastParentHash and re-pushes to JS.
+            if (hash != _lastParentHash)
             {
+                _lastParentHash = hash;
                 _lastTasksHash = hash;
                 _tasks = incoming;
                 await Interop.GanttSetTasksAsync(_instanceId, incoming.Select(ToJsTask).Cast<object>());

@@ -62,25 +62,30 @@
         public string? DraggingCardId { get; private set; }
         public string? DraggingFromColumnId { get; private set; }
 
-        // The DOM id of a card that just moved via the keyboard and must be
-        // re-focused after the consumer re-renders the board. A keyboard move
-        // re-creates the moved card's element (it lands in a new column / slot),
-        // which drops focus to <body> and breaks chained arrow moves. The owning
-        // card claims this id on its next render and restores focus exactly once.
-        public string? PendingFocusCardElementId { get; private set; }
+        // The STABLE consumer CardId of a card that just moved via the keyboard
+        // and must be re-focused after the consumer re-renders the board. A
+        // keyboard move re-creates the moved card's element (it lands in a new
+        // column / slot), which drops focus to <body> and breaks chained arrow
+        // moves. Keying by CardId (which travels with the data) — rather than the
+        // per-instance generated element id — means the correct card re-focuses
+        // even when consumers render cards WITHOUT @key, where Blazor reuses
+        // component instances positionally and the old element id would otherwise
+        // belong to whichever card shifted into the moved card's old slot. The
+        // owning card claims this id on its next render and restores focus once.
+        public string? PendingFocusCardId { get; private set; }
 
         public bool HasCardDropHandler => _board.OnCardDrop.HasDelegate;
         public bool HasCardMoveHandler => _board.OnCardMove.HasDelegate;
 
-        /// <summary>Records the element id to re-focus after a keyboard move.</summary>
-        public void RequestFocusAfterMove(string cardElementId) => PendingFocusCardElementId = cardElementId;
+        /// <summary>Records the stable consumer CardId to re-focus after a keyboard move.</summary>
+        public void RequestFocusAfterMove(string cardId) => PendingFocusCardId = cardId;
 
-        /// <summary>Returns and clears the pending re-focus id when it matches this
-        /// card's element id, so exactly one card re-focuses exactly once.</summary>
-        public bool TryConsumeFocusRequest(string cardElementId)
+        /// <summary>Returns and clears the pending re-focus request when it matches this
+        /// card's stable CardId, so exactly one card re-focuses exactly once.</summary>
+        public bool TryConsumeFocusRequest(string cardId)
         {
-            if (PendingFocusCardElementId != cardElementId) return false;
-            PendingFocusCardElementId = null;
+            if (PendingFocusCardId != cardId) return false;
+            PendingFocusCardId = null;
             return true;
         }
 
