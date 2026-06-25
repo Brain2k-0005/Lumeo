@@ -90,6 +90,18 @@
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         var targetId = KeyboardMovable ? LumeoIds.Effective(AdditionalAttributes, _cardId) : null;
+
+        // Re-focus this card after a keyboard move re-rendered the board, so arrow
+        // moves chain instead of dropping focus to <body>. Claimed (and cleared)
+        // exactly once by the card whose element id matches the board's request.
+        if (targetId is not null && Board is { } board && board.TryConsumeFocusRequest(targetId))
+        {
+            try { await Interop.FocusElement(targetId); }
+            catch (JSDisconnectedException) { }
+            catch (ObjectDisposedException) { }
+            catch (InvalidOperationException) { } // JS interop unavailable during prerender
+        }
+
         if (_pdRegisteredId == targetId) return;
         try
         {
@@ -145,6 +157,10 @@
             };
             if (dir is { } d && Board is { } board)
             {
+                // Ask the board to restore focus to this card after the consumer
+                // re-renders the move — the moved element is re-created and would
+                // otherwise drop focus to <body>, breaking chained arrow moves.
+                board.RequestFocusAfterMove(LumeoIds.Effective(AdditionalAttributes, _cardId));
                 await board.NotifyMove(new Kanban.MoveEventArgs(CardId!, fromColumn, d));
                 return;
             }

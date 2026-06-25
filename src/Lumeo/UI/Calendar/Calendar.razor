@@ -138,22 +138,24 @@
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (NumberOfMonths != 1) return;
-
-        // The day grid element only exists in the Days view. Both the swipe
+        // The id-bearing day grid element exists only for a single-month Days
+        // view (the gridId in RenderMonth is null for multi-month panels, which
+        // share one component, and for the Months/Years pickers). Both the swipe
         // handler and the page-scroll suppression for the keyboard-nav keys
-        // attach to it, so they register on each Days → hidden → Days transition
-        // (Months/Years recreate the grid div) and unregister when it goes away.
-        var inDaysView = _currentView == CalendarView.Days;
+        // attach to that element, so they must (un)register as the grid appears
+        // and disappears — including a NumberOfMonths 1→2→1 round-trip. An early
+        // `if (NumberOfMonths != 1) return;` here would skip teardown on the way
+        // out and re-registration on the way back, permanently orphaning both.
+        var hasSingleGrid = NumberOfMonths == 1 && _currentView == CalendarView.Days;
 
-        if (inDaysView && SwipeEnabled && !_swipeAttached)
+        if (hasSingleGrid && SwipeEnabled && !_swipeAttached)
         {
             _swipeAttached = true;
             try { await Interop.RegisterHorizontalSwipe(_elementId, OnSwipeAsync, GestureOpts.Value.SwipeThresholdPx, GestureOpts.Value.VerticalDeadZonePx); }
             catch (JSDisconnectedException) { _swipeAttached = false; }
             catch (InvalidOperationException) { _swipeAttached = false; } // JS unavailable during prerender
         }
-        else if ((!inDaysView || !SwipeEnabled) && _swipeAttached)
+        else if ((!hasSingleGrid || !SwipeEnabled) && _swipeAttached)
         {
             _swipeAttached = false;
             try { await Interop.UnregisterHorizontalSwipe(_elementId); }
@@ -163,7 +165,7 @@
         // Suppress page scroll for the arrow / Home / End / PageUp / PageDown
         // keys while the day grid is visible — without this the first keypress
         // scrolls the page as focus also moves (same pattern as TreeViewNode).
-        if (inDaysView && _pdRegisteredId != _elementId)
+        if (hasSingleGrid && _pdRegisteredId != _elementId)
         {
             try
             {
@@ -173,7 +175,7 @@
             catch (JSDisconnectedException) { }
             catch (InvalidOperationException) { } // JS unavailable during prerender
         }
-        else if (!inDaysView && _pdRegisteredId is not null)
+        else if (!hasSingleGrid && _pdRegisteredId is not null)
         {
             try { await Interop.UnregisterPreventDefaultKeys(_pdRegisteredId); }
             catch (JSDisconnectedException) { }

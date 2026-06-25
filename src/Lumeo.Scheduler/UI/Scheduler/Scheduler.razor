@@ -302,9 +302,38 @@ else
             hash.Add(ev.End);
             hash.Add(ev.AllDay);
             hash.Add(ev.Color);
+            hash.Add(ev.Url);
             hash.Add(ev.ResourceId);
-            hash.Add(ev.DaysOfWeek?.Count ?? 0);
+            hash.Add(ev.ClassNames);
             hash.Add(ev.RecurrenceEnd);
+
+            // Hash the recurrence rule by value — not just its length. Folding only
+            // DaysOfWeek.Count missed edits that swap days without changing the count
+            // (e.g. {Mon} → {Tue}), so the calendar never re-rendered.
+            if (ev.DaysOfWeek is { Count: > 0 })
+            {
+                foreach (var d in ev.DaysOfWeek)
+                    hash.Add((int)d);
+            }
+
+            // ExceptionDates carry real recurrence edits (skip/un-skip a day);
+            // omitting them suppressed the JS round-trip entirely.
+            if (ev.ExceptionDates is { Count: > 0 })
+            {
+                foreach (var ex in ev.ExceptionDates)
+                    hash.Add(ex);
+            }
+
+            // ExtendedProps is arbitrary app metadata round-tripped to JS; fold a
+            // stable per-entry signature so changing a value is detected.
+            if (ev.ExtendedProps is { Count: > 0 })
+            {
+                foreach (var kvp in ev.ExtendedProps)
+                {
+                    hash.Add(kvp.Key);
+                    hash.Add(kvp.Value);
+                }
+            }
         }
         return hash.ToHashCode();
     }

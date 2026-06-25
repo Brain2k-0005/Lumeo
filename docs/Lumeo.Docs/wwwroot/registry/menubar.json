@@ -91,7 +91,7 @@
     "records": [
       {
         "name": "MenubarContext",
-        "signature": "MenubarContext(\n        string? OpenMenuId,\n        EventCallback<string?> SetOpenMenuId,\n        bool AnyOpen,\n        List<string> MenuIds,\n        Action<string> RegisterMenuId,\n        Action<int> NavigateMenus)",
+        "signature": "MenubarContext(\n        string? OpenMenuId,\n        EventCallback<string?> SetOpenMenuId,\n        bool AnyOpen,\n        List<string> MenuIds,\n        Action<string> RegisterMenuId,\n        Action<string> UnregisterMenuId,\n        Action<int> NavigateMenus)",
         "description": null
       }
     ],
@@ -310,7 +310,9 @@
         "fileName": "MenubarMenu.razor",
         "namespace": "Lumeo",
         "inheritsFrom": null,
-        "implements": [],
+        "implements": [
+          "IDisposable"
+        ],
         "parameters": [
           {
             "name": "Context",
@@ -707,8 +709,8 @@
   },
   "testCoverage": {
     "tier": 4,
-    "files": 4,
-    "tests": 34,
+    "files": 5,
+    "tests": 36,
     "relatedFiles": 0,
     "render": true,
     "behavior": true,
@@ -773,7 +775,7 @@
   "source": [
     {
       "path": "UI/Menubar/Menubar.razor",
-      "content": "@namespace Lumeo\n\n@{\n    var context = new MenubarContext(_openMenuId, EventCallback.Factory.Create<string?>(this, SetOpenMenuId), _openMenuId is not null, _menuIds, RegisterMenuId, NavigateMenus);\n}\n\n<CascadingValue Value=\"context\" IsFixed=\"false\">\n    <div role=\"menubar\" class=\"@CssClass\" @attributes=\"AdditionalAttributes\">\n        @ChildContent\n    </div>\n</CascadingValue>\n\n@code {\n    [Parameter] public RenderFragment? ChildContent { get; set; }\n    [Parameter] public string? Class { get; set; }\n    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }\n\n    private string? _openMenuId;\n    private readonly List<string> _menuIds = [];\n\n    private string CssClass => Cx.Merge(\"flex h-9 items-center space-x-1 rounded-md border border-border/40 bg-background p-1 shadow-sm\", Class);\n\n    private void SetOpenMenuId(string? menuId)\n    {\n        _openMenuId = menuId;\n        StateHasChanged();\n    }\n\n    private void RegisterMenuId(string menuId)\n    {\n        if (!_menuIds.Contains(menuId))\n        {\n            _menuIds.Add(menuId);\n            StateHasChanged();\n        }\n    }\n\n    private void NavigateMenus(int direction)\n    {\n        if (_menuIds.Count == 0) return;\n        if (_openMenuId is null)\n        {\n            _openMenuId = direction > 0 ? _menuIds[0] : _menuIds[^1];\n        }\n        else\n        {\n            var currentIndex = _menuIds.IndexOf(_openMenuId);\n            if (currentIndex < 0) return;\n            var nextIndex = (currentIndex + direction + _menuIds.Count) % _menuIds.Count;\n            _openMenuId = _menuIds[nextIndex];\n        }\n        StateHasChanged();\n    }\n\n    public record MenubarContext(\n        string? OpenMenuId,\n        EventCallback<string?> SetOpenMenuId,\n        bool AnyOpen,\n        List<string> MenuIds,\n        Action<string> RegisterMenuId,\n        Action<int> NavigateMenus);\n}\n"
+      "content": "@namespace Lumeo\n\n@{\n    var context = new MenubarContext(_openMenuId, EventCallback.Factory.Create<string?>(this, SetOpenMenuId), _openMenuId is not null, _menuIds, RegisterMenuId, UnregisterMenuId, NavigateMenus);\n}\n\n<CascadingValue Value=\"context\" IsFixed=\"false\">\n    <div role=\"menubar\" class=\"@CssClass\" @attributes=\"AdditionalAttributes\">\n        @ChildContent\n    </div>\n</CascadingValue>\n\n@code {\n    [Parameter] public RenderFragment? ChildContent { get; set; }\n    [Parameter] public string? Class { get; set; }\n    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }\n\n    private string? _openMenuId;\n    private readonly List<string> _menuIds = [];\n\n    private string CssClass => Cx.Merge(\"flex h-9 items-center space-x-1 rounded-md border border-border/40 bg-background p-1 shadow-sm\", Class);\n\n    private void SetOpenMenuId(string? menuId)\n    {\n        _openMenuId = menuId;\n        StateHasChanged();\n    }\n\n    private void RegisterMenuId(string menuId)\n    {\n        if (!_menuIds.Contains(menuId))\n        {\n            _menuIds.Add(menuId);\n            StateHasChanged();\n        }\n    }\n\n    private void UnregisterMenuId(string menuId)\n    {\n        if (_menuIds.Remove(menuId))\n        {\n            if (_openMenuId == menuId)\n            {\n                _openMenuId = null;\n            }\n            StateHasChanged();\n        }\n    }\n\n    private void NavigateMenus(int direction)\n    {\n        if (_menuIds.Count == 0) return;\n        if (_openMenuId is null)\n        {\n            _openMenuId = direction > 0 ? _menuIds[0] : _menuIds[^1];\n        }\n        else\n        {\n            var currentIndex = _menuIds.IndexOf(_openMenuId);\n            if (currentIndex < 0) return;\n            var nextIndex = (currentIndex + direction + _menuIds.Count) % _menuIds.Count;\n            _openMenuId = _menuIds[nextIndex];\n        }\n        StateHasChanged();\n    }\n\n    public record MenubarContext(\n        string? OpenMenuId,\n        EventCallback<string?> SetOpenMenuId,\n        bool AnyOpen,\n        List<string> MenuIds,\n        Action<string> RegisterMenuId,\n        Action<string> UnregisterMenuId,\n        Action<int> NavigateMenus);\n}\n"
     },
     {
       "path": "UI/Menubar/MenubarContent.razor",
@@ -789,7 +791,7 @@
     },
     {
       "path": "UI/Menubar/MenubarMenu.razor",
-      "content": "@namespace Lumeo\n\n@{\n    var menuContext = new MenubarMenuContext(_menuId, _wrapperId);\n}\n\n<CascadingValue Value=\"menuContext\" IsFixed=\"true\">\n    <div id=\"@_wrapperId\" class=\"@CssClass\" @attributes=\"AdditionalAttributes\">\n        @ChildContent\n    </div>\n</CascadingValue>\n\n@code {\n    [CascadingParameter] public Menubar.MenubarContext Context { get; set; } = default!;\n    [Parameter] public RenderFragment? ChildContent { get; set; }\n    [Parameter] public string? Class { get; set; }\n    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }\n\n    private readonly string _menuId = Guid.NewGuid().ToString(\"N\");\n    private readonly string _wrapperId = LumeoIds.New(\"menubar-menu\");\n\n    private string CssClass => Cx.Merge(\"relative\", Class);\n\n    protected override void OnInitialized()\n    {\n        Context.RegisterMenuId(_menuId);\n    }\n\n    public record MenubarMenuContext(string MenuId, string WrapperId);\n}\n"
+      "content": "@namespace Lumeo\n@implements IDisposable\n\n@{\n    var menuContext = new MenubarMenuContext(_menuId, _wrapperId);\n}\n\n<CascadingValue Value=\"menuContext\" IsFixed=\"true\">\n    <div id=\"@_wrapperId\" class=\"@CssClass\" @attributes=\"AdditionalAttributes\">\n        @ChildContent\n    </div>\n</CascadingValue>\n\n@code {\n    [CascadingParameter] public Menubar.MenubarContext Context { get; set; } = default!;\n    [Parameter] public RenderFragment? ChildContent { get; set; }\n    [Parameter] public string? Class { get; set; }\n    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }\n\n    private readonly string _menuId = Guid.NewGuid().ToString(\"N\");\n    private readonly string _wrapperId = LumeoIds.New(\"menubar-menu\");\n\n    private string CssClass => Cx.Merge(\"relative\", Class);\n\n    protected override void OnInitialized()\n    {\n        Context.RegisterMenuId(_menuId);\n    }\n\n    public void Dispose()\n    {\n        Context.UnregisterMenuId(_menuId);\n    }\n\n    public record MenubarMenuContext(string MenuId, string WrapperId);\n}\n"
     },
     {
       "path": "UI/Menubar/MenubarSeparator.razor",
@@ -963,6 +965,7 @@
     "tests/Lumeo.Tests.E2E/Smokes/MenubarKeyboardTests.cs",
     "tests/Lumeo.Tests/Components/Menubar/MenubarActivationDismissTests.cs",
     "tests/Lumeo.Tests/Components/Menubar/MenubarRolesTests.cs",
+    "tests/Lumeo.Tests/Components/Menubar/MenubarStaleMenuIdTests.cs",
     "tests/Lumeo.Tests/Components/Menubar/MenubarTests.cs",
     "tests/Lumeo.Tests/Components/Menubar/MenubarTypeaheadTests.cs",
     "tests/Lumeo.Tests/Helpers/TrackingInteropService.cs",
