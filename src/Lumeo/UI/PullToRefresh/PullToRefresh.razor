@@ -18,7 +18,7 @@
     first scrollable ancestor.
 *@
 
-<div id="@_elementId"
+<div id="@EffectiveId"
      class="@CssClass"
      style="@ContainerStyle"
      @ref="_ref"
@@ -51,6 +51,13 @@
     private readonly string _elementId = LumeoIds.New("ptr");
     private ElementReference _ref;
     private bool _gestureGuardRegistered;
+
+    // When a consumer splats an `id="..."` via AdditionalAttributes it wins in
+    // the rendered DOM (the splat is emitted after the explicit id). All JS
+    // interop must target that same id, otherwise every getElementById lookup
+    // (gesture guard, scrollTop gate, pointer capture) silently no-ops.
+    // Mirror Carousel.razor's EffectiveRootId pattern.
+    private string EffectiveId => LumeoIds.Effective(AdditionalAttributes, _elementId);
 
     private long? _activePointerId;
     private double _startY;
@@ -117,7 +124,7 @@
         if (!firstRender || _gestureGuardRegistered) return;
         try
         {
-            await Interop.RegisterPullToRefresh(_elementId);
+            await Interop.RegisterPullToRefresh(EffectiveId);
             _gestureGuardRegistered = true;
         }
         catch (JSDisconnectedException) { }
@@ -135,7 +142,7 @@
         // Gate on scrollTop == 0; if the container is scrolled, let the native
         // scroll handle the pointer instead of engaging the pull.
         double scrollTop = 0;
-        try { scrollTop = await Interop.GetScrollTop(_elementId); }
+        try { scrollTop = await Interop.GetScrollTop(EffectiveId); }
         catch (JSDisconnectedException) { return; }
         if (scrollTop > 0) return;
 
@@ -147,7 +154,7 @@
         // Capture the pointer so pointermove continues to fire even when the
         // pointer leaves the element boundary. This is the key fix for Chrome
         // DevTools mobile emulation where without capture the move events stop.
-        try { await Interop.SetPointerCaptureOnElement(_elementId, e.PointerId); }
+        try { await Interop.SetPointerCaptureOnElement(EffectiveId, e.PointerId); }
         catch (JSDisconnectedException) { return; }
     }
 
@@ -187,7 +194,7 @@
         _currentDelta = 0;
 
         // Release the pointer capture acquired in HandlePointerDown.
-        try { await Interop.ReleasePointerCaptureOnElement(_elementId, e.PointerId); }
+        try { await Interop.ReleasePointerCaptureOnElement(EffectiveId, e.PointerId); }
         catch (JSDisconnectedException) { /* already gone */ }
         catch { /* ignore if capture was already released by the browser */ }
 
@@ -219,7 +226,7 @@
         // Tear down the non-passive touchmove guard registered on first render.
         if (_gestureGuardRegistered)
         {
-            try { await Interop.UnregisterPullToRefresh(_elementId); }
+            try { await Interop.UnregisterPullToRefresh(EffectiveId); }
             catch (JSDisconnectedException) { }
             catch (InvalidOperationException) { } // also covers ObjectDisposedException (a subtype) at shutdown
         }

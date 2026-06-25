@@ -6,7 +6,7 @@
 
 @{
     var context = new SidebarState(
-        IsCollapsed,
+        EffectiveIsCollapsed,
         EventCallback.Factory.Create(this, Toggle),
         Variant)
     {
@@ -73,11 +73,42 @@
     private string? _registeredShortcut;
     private bool _viewportSubscribed;
 
+    // Uncontrolled collapse state lives in a private backing field, NOT in the
+    // [Parameter] IsCollapsed. Blazor re-applies [Parameter] values from the parent
+    // on every render, so self-managing state (Toggle, the PersistCollapsed restore)
+    // by writing back into IsCollapsed got silently clobbered whenever an unrelated
+    // parent re-render pushed the original literal IsCollapsed value down again —
+    // most damagingly wiping a value just restored from localStorage. Mirrors the
+    // Collapsible fix (#246). (#11)
+    private bool _isCollapsed;
+    private bool _initialized;
+    private bool _lastCollapsedParam;
+
+    // State the cascade actually renders from. Controlled (IsCollapsedChanged bound):
+    // the parent owns it, so mirror IsCollapsed verbatim. Uncontrolled: use our own
+    // backing field so parent re-renders — and same-literal parameter pushes after a
+    // localStorage restore — can't clobber it.
+    private bool EffectiveIsCollapsed => IsCollapsedChanged.HasDelegate ? IsCollapsed : _isCollapsed;
+
     // True when the sidebar should render + behave as collapsed for descendants. For
     // MiniRail this is IsCollapsed unless the user is hovering / keyboard-focused on
     // the rail. Other variants ignore the hover state.
     private bool EffectiveCollapsed
-        => IsCollapsed && !(Variant == SidebarVariant.MiniRail && _hoverExpanded);
+        => EffectiveIsCollapsed && !(Variant == SidebarVariant.MiniRail && _hoverExpanded);
+
+    protected override void OnParametersSet()
+    {
+        // Seed the uncontrolled backing field from IsCollapsed on first set (honours
+        // an initial IsCollapsed="true") and whenever the bound IsCollapsed value
+        // actually changes (lets callers still drive it imperatively), but never on
+        // the no-op re-applications that caused the reset / localStorage clobber.
+        if (!_initialized || IsCollapsed != _lastCollapsedParam)
+        {
+            _isCollapsed = IsCollapsed;
+            _lastCollapsedParam = IsCollapsed;
+            _initialized = true;
+        }
+    }
 
     // Off-canvas sheet behaviour only kicks in on mobile, and only when opted in.
     private bool IsMobileSheet => MobileSheet && Responsive.IsMobile;
@@ -116,14 +147,23 @@
             {
                 var stored = await Interop.LoadFromLocalStorage(PersistenceKey);
                 // Only restore if storage actually held a value AND it differs from the
-                // current parameter — avoids a redundant cascade refresh on every mount.
+                // currently effective state — avoids a redundant cascade refresh on
+                // every mount.
                 if (stored is "true" or "false")
                 {
                     var restored = stored == "true";
-                    if (restored != IsCollapsed)
+                    if (restored != EffectiveIsCollapsed)
                     {
-                        IsCollapsed = restored;
-                        await IsCollapsedChanged.InvokeAsync(IsCollapsed);
+                        // Write the restored value into our backing field (the
+                        // uncontrolled source of truth) so a later same-literal
+                        // IsCollapsed parameter push can't clobber it — the whole point
+                        // of the fix. Deliberately do NOT touch _lastCollapsedParam: it
+                        // mirrors the *parameter*, which the consumer hasn't changed, so
+                        // OnParametersSet must treat the re-applied literal as a no-op
+                        // and leave the restored state intact. Also notify the parent so
+                        // a controlled consumer can adopt the persisted value.
+                        _isCollapsed = restored;
+                        await IsCollapsedChanged.InvokeAsync(restored);
                         StateHasChanged();
                     }
                 }
@@ -165,12 +205,22 @@
 
     private async Task Toggle()
     {
-        IsCollapsed = !IsCollapsed;
-        await IsCollapsedChanged.InvokeAsync(IsCollapsed);
+        var next = !EffectiveIsCollapsed;
+        // Uncontrolled (IsCollapsedChanged not bound): self-manage via the backing
+        // field so an unrelated parent re-render — which re-applies the original
+        // literal IsCollapsed — can't revert the toggle. Deliberately do NOT touch
+        // _lastCollapsedParam: the *parameter* hasn't changed, so OnParametersSet must
+        // keep treating the re-applied literal as a no-op. Controlled: don't mutate our
+        // own state — fire the callback and render from the value the parent pushes
+        // back down (OnParametersSet re-seeds when it differs), so we never desync if
+        // the parent rejects or transforms the change. Mirrors Collapsible (#246). (#11)
+        if (!IsCollapsedChanged.HasDelegate)
+            _isCollapsed = next;
+        await IsCollapsedChanged.InvokeAsync(next);
         await InvokeAsync(StateHasChanged);
         if (PersistCollapsed)
         {
-            try { await Interop.SaveToLocalStorage(PersistenceKey, IsCollapsed ? "true" : "false"); }
+            try { await Interop.SaveToLocalStorage(PersistenceKey, next ? "true" : "false"); }
             catch (Microsoft.JSInterop.JSDisconnectedException) { }
         }
     }

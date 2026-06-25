@@ -43,8 +43,16 @@
 
                 @* Saturation-Value 2D picker *@
                 <div id="@_svId"
-                     class="lumeo-cp-sv relative w-full rounded-md overflow-hidden cursor-crosshair touch-none select-none"
-                     style="@SvBackgroundStyle">
+                     class="lumeo-cp-sv relative w-full rounded-md overflow-hidden cursor-crosshair touch-none select-none focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring"
+                     style="@SvBackgroundStyle"
+                     tabindex="0"
+                     role="slider"
+                     aria-label="@($"{L["ColorPicker.Saturation"]} / {L["ColorPicker.Value"]}")"
+                     aria-valuemin="0"
+                     aria-valuemax="100"
+                     aria-valuenow="@_v"
+                     aria-valuetext="@($"{L["ColorPicker.Saturation"]} {_s}%, {L["ColorPicker.Value"]} {_v}%")"
+                     @onkeydown="HandleSvKeyDown">
                     @* Bug A — NOT a theme bug: rgba(255,255,255) white→transparent and rgba(0,0,0) black→transparent
                        are HSV color-space primitives (saturation and value axes). They are mathematically defined
                        constants for the SV canvas and must not use CSS theme variables. *@
@@ -322,6 +330,39 @@
         if (e.Key == "Escape") await SetOpen(false);
     }
 
+    // The Saturation/Value canvas is a pointer-drag surface (RegisterSvDrag),
+    // which is mouse-only — keyboard users could never reach the inner 2D
+    // axis (WCAG 2.1.1). The div is now a focusable role="slider": Arrow
+    // Left/Right walk saturation (X), Arrow Up/Down walk value (Y), Shift
+    // multiplies the step by 10, and Home/End clamp the focused axis. This
+    // mirrors the keyboard travel the native hue/alpha range inputs already
+    // provide. The page-scroll default for these keys is suppressed via the
+    // RegisterPreventDefaultKeys interop (see OnAfterRenderAsync) so Tab still
+    // moves focus out of the canvas normally.
+    private async Task HandleSvKeyDown(KeyboardEventArgs e)
+    {
+        var step = e.ShiftKey ? 10 : 1;
+        int newS = _s, newV = _v;
+
+        switch (e.Key)
+        {
+            case "ArrowLeft":  newS = Math.Clamp(_s - step, 0, 100); break;
+            case "ArrowRight": newS = Math.Clamp(_s + step, 0, 100); break;
+            case "ArrowDown":  newV = Math.Clamp(_v - step, 0, 100); break;
+            case "ArrowUp":    newV = Math.Clamp(_v + step, 0, 100); break;
+            case "Home":       newS = 0;   break;
+            case "End":        newS = 100; break;
+            case "PageDown":   newV = 0;   break;
+            case "PageUp":     newV = 100; break;
+            default: return;
+        }
+
+        if (newS == _s && newV == _v) return;
+        _s = newS;
+        _v = newV;
+        await ApplyHsv();
+    }
+
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (Open && !_registered)
@@ -339,6 +380,19 @@
                 await ApplyHsv();
                 await InvokeAsync(StateHasChanged);
             });
+            // The arrow / Home / End / PageUp / PageDown keys drive the SV
+            // canvas (HandleSvKeyDown); suppress their native page-scroll so
+            // the focused picker doesn't scroll the page out from under the
+            // user. Tab is deliberately NOT in the list so focus can still
+            // leave the canvas. Mirrors the Rating component's a11y pattern.
+            try
+            {
+                await Interop.RegisterPreventDefaultKeys(
+                    _svId,
+                    new[] { "ArrowDown", "ArrowRight", "ArrowUp", "ArrowLeft", "Home", "End", "PageUp", "PageDown" }
+                        .Select(k => new Lumeo.Services.PreventDefaultKeyRule(k)).ToArray());
+            }
+            catch (JSDisconnectedException) { }
             // Focus management (#191) — mirror the Popover Wave-1 fix. The trap
             // moves focus into the popover on open (so the content's @onkeydown
             // Escape handler is reachable WITHOUT a preliminary click), cycles
@@ -358,6 +412,7 @@
         try { await Interop.UnpositionFixed(_contentId); } catch (JSDisconnectedException) { }
         try { await Interop.UnregisterClickOutside(_contentId); } catch (JSDisconnectedException) { }
         try { await Interop.UnregisterSvDrag(_svId); } catch (JSDisconnectedException) { }
+        try { await Interop.UnregisterPreventDefaultKeys(_svId); } catch (JSDisconnectedException) { }
         try { await Interop.RemoveFocusTrap(_contentId); } catch (JSDisconnectedException) { }
         _registered = false;
     }
