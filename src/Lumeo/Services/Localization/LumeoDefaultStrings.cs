@@ -129,6 +129,8 @@ internal static partial class LumeoDefaultStrings
         // ── PasswordInput ───────────────────────────────────────────
         ["Password.Placeholder"] = "Enter password",
         ["Password.Toggle"] = "Toggle password visibility",
+        ["Password.Show"] = "Show password",
+        ["Password.Hide"] = "Hide password",
         ["Password.Weak"] = "Weak",
         ["Password.Fair"] = "Fair",
         ["Password.Good"] = "Good",
@@ -466,6 +468,7 @@ internal static partial class LumeoDefaultStrings
         // ── ImageCompare ────────────────────────────────────────────
         ["ImageCompare.Slider"] = "Image compare slider",
         ["ImageCompare.Before"] = "Before",
+        ["ImageCompare.After"] = "After",
         ["ImageCompare.ValueText"] = "{0} {1}%",
 
         // ── PromptInput ─────────────────────────────────────────────
@@ -621,6 +624,8 @@ internal static partial class LumeoDefaultStrings
         // ── PasswordInput ───────────────────────────────────────────
         ["Password.Placeholder"] = "Passwort eingeben",
         ["Password.Toggle"] = "Passwort anzeigen/verbergen",
+        ["Password.Show"] = "Passwort anzeigen",
+        ["Password.Hide"] = "Passwort verbergen",
         ["Password.Weak"] = "Schwach",
         ["Password.Fair"] = "Ausreichend",
         ["Password.Good"] = "Gut",
@@ -955,6 +960,7 @@ internal static partial class LumeoDefaultStrings
         // ── ImageCompare ────────────────────────────────────────────
         ["ImageCompare.Slider"] = "Bildvergleichs-Schieberegler",
         ["ImageCompare.Before"] = "Vorher",
+        ["ImageCompare.After"] = "Nachher",
         ["ImageCompare.ValueText"] = "{0} {1} %",
 
         // ── PromptInput ─────────────────────────────────────────────

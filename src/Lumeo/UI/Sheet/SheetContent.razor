@@ -22,7 +22,11 @@ else if (Context.IsOpen || _exiting)
         @* @onkeydown:stopPropagation — keys handled inside this modal must not
            bubble into ancestor overlays (an Escape would cascade-close them).
            See DialogContent for the full rationale. *@
-        <div id="@_contentId" class="@CssClass" style="z-index:@ContentZ" role="dialog" aria-modal="true" aria-labelledby="@Context.TitleId" aria-describedby="@Context.DescriptionId" @onkeydown="HandleKeyDown" @onkeydown:stopPropagation tabindex="-1" @attributes="AdditionalAttributes">
+        @* While the panel is exiting (Context.IsOpen == false but kept mounted for the
+           slide-out), its focus trap + scroll lock were already torn down by Cleanup(),
+           so it is no longer a modal — advertise aria-modal="false" so the ARIA state
+           matches the live behaviour instead of trapping AT on a non-trapping panel. #185 *@
+        <div id="@_contentId" class="@CssClass" style="z-index:@ContentZ" role="dialog" aria-modal="@(Context.IsOpen ? "true" : "false")" aria-labelledby="@Context.TitleId" aria-describedby="@DescribedBy" @onkeydown="HandleKeyDown" @onkeydown:stopPropagation tabindex="-1" @attributes="AdditionalAttributes">
             @ChildContent
             @if (!PreventClose)
             {
@@ -94,6 +98,12 @@ else if (Context.IsOpen || _exiting)
 
     private int BackdropZ => ZIndex;
     private int ContentZ => ZIndex + 1;
+
+    // Only reference the description id when a <SheetDescription> was actually
+    // rendered; otherwise aria-describedby would dangle to a missing element
+    // (returning null makes Blazor omit the attribute entirely). This is what
+    // every service-opened Sheet (no description child) hits.
+    private string? DescribedBy => Context.DescriptionRegistry.HasDescription ? Context.DescriptionId : null;
 
     // Slide-out matches the slide-in 0.3s window with a little buffer; fade-out
     // is the 0.2s opacity tween. None unmounts immediately (no exit phase).
@@ -356,15 +366,19 @@ else if (Context.IsOpen || _exiting)
     }
 
 
-    private Task HandleBackdropClick() => PreventClose ? Task.CompletedTask : Dismiss("outside");
+    // The backdrop / Escape / close paths are inert during the exit phase
+    // (Context.IsOpen == false, panel only kept mounted for the slide-out): its
+    // modal affordances were already torn down by Cleanup(), so a stray click /
+    // Escape must not re-enter the dismiss flow on an already-closing panel. #185
+    private Task HandleBackdropClick() => !Context.IsOpen || PreventClose ? Task.CompletedTask : Dismiss("outside");
 
-    private Task HandleCloseButton() => Dismiss("close");
+    private Task HandleCloseButton() => Context.IsOpen ? Dismiss("close") : Task.CompletedTask;
 
     private Task HandleSwipe() => Dismiss("swipe");
 
     private async Task HandleKeyDown(KeyboardEventArgs e)
     {
-        if (e.Key == "Escape" && !PreventClose) await Dismiss("escape");
+        if (e.Key == "Escape" && Context.IsOpen && !PreventClose) await Dismiss("escape");
     }
 
     private Task Dismiss(string reason) => Context.TryDismiss(reason);

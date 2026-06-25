@@ -81,6 +81,17 @@
             });
             _registered = true;
 
+            // Stash the element that had focus when we opened (the trigger), keyed
+            // by the content id, BEFORE moving focus inward. On close RestoreFocus
+            // hands focus back to it — the WCAG 2.4.3 contract — but only when that
+            // element is still in the document. battle-wave2 #87 (keyboard-a11y):
+            // the old close path unconditionally focused the wrapper, so a
+            // programmatic/external close stole focus back to the trigger even when
+            // the user had already moved focus elsewhere. SaveFocus/RestoreFocus is
+            // the same non-modal idiom Select/DropdownMenu/ContextMenu use; it
+            // no-ops when the saved element is gone instead of yanking focus.
+            try { await Interop.SaveFocus(_contentId); } catch (JSDisconnectedException) { }
+
             // Move focus into the dialog content on open. Without this, focus
             // stays on the trigger and the content's @onkeydown handler never
             // receives Escape (Radix-equivalent dialog popovers manage focus).
@@ -109,9 +120,13 @@
     {
         try { await Interop.UnpositionFixed(_contentId); } catch (JSDisconnectedException) { }
         try { await Interop.UnregisterClickOutside(_contentId); } catch (JSDisconnectedException) { }
-        // Return focus to the trigger region on close so keyboard users aren't
-        // dropped back to the document body.
-        try { await Interop.FocusElement(Context.WrapperId); } catch (JSDisconnectedException) { }
+        // Return focus to whatever had it when we opened (the trigger), so keyboard
+        // users aren't dropped back to the document body. battle-wave2 #87
+        // (keyboard-a11y): use RestoreFocus instead of an unconditional
+        // FocusElement(WrapperId) — RestoreFocus only re-focuses the saved element
+        // when it is still connected, so a programmatic/external close while the
+        // user's focus is elsewhere no longer steals it back to the trigger.
+        try { await Interop.RestoreFocus(_contentId); } catch (JSDisconnectedException) { }
         _registered = false;
         // Clear the applied anchor so the next open re-positions from scratch.
         _appliedAnchor = null;

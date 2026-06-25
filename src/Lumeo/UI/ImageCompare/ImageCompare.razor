@@ -8,11 +8,11 @@
      @attributes="AdditionalAttributes">
 
     @* After image (full size, behind) *@
-    <img src="@AfterSrc" alt="@AfterLabel" draggable="false"
+    <img src="@AfterSrc" alt="@AfterAlt" draggable="false"
          style="position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; pointer-events: none;" />
 
     @* Before image (clipped via clip-path — no scaling tricks, exact pixel-for-pixel reveal) *@
-    <img src="@BeforeSrc" alt="@BeforeLabel" draggable="false"
+    <img src="@BeforeSrc" alt="@BeforeAlt" draggable="false"
          style="position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; pointer-events: none; clip-path: @ClipPath;" />
 
     @* Divider line *@
@@ -95,6 +95,13 @@
     private string CssClass => Cx.Merge("rounded-lg overflow-hidden", Class);
 
     private string PositionPct => $"{_position.ToString("F2", System.Globalization.CultureInfo.InvariantCulture)}%";
+
+    // The badge label and the image's accessible name are separate concerns. A
+    // consumer who hides a badge (BeforeLabel/AfterLabel = "") must NOT also blank
+    // the <img> alt — that would leave the image with no accessible name. Fall back
+    // to the localized "Before"/"After" so the image is always named.
+    private string BeforeAlt => string.IsNullOrEmpty(BeforeLabel) ? L["ImageCompare.Before"] : BeforeLabel;
+    private string AfterAlt => string.IsNullOrEmpty(AfterLabel) ? L["ImageCompare.After"] : AfterLabel;
 
     // Spoken position for assistive tech, e.g. "Before 60%". Uses the rounded
     // integer so screen readers don't read a long decimal on every drag tick.

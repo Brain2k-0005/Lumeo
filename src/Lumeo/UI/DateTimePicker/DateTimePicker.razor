@@ -60,7 +60,10 @@
                 <div class="flex divide-x divide-border/40">
                     @* Hours column *@
                     <div id="@_hoursColId" role="listbox" aria-label="@L["TimePicker.HoursLabel"]" class="flex flex-col h-[240px] overflow-y-auto py-1 scrollbar-thin">
-                        @{ var hours = GetHours(); }
+                        @{
+                            var hours = GetHours();
+                            var hoursRovingRoot = RovingRoot(_hoursColId, hours, _timeValue.HasValue ? GetDisplayHour(_timeValue.Value) : (int?)null);
+                        }
                         @foreach (var hour in hours)
                         {
                             var h = hour;
@@ -68,7 +71,7 @@
                             var disabled = IsHourDisabled(h);
                             <button type="button" id="@ColItemId(_hoursColId, h)" role="option"
                                     aria-selected="@(isSelected ? "true" : "false")"
-                                    tabindex="@(isSelected ? "0" : "-1")"
+                                    tabindex="@(h == hoursRovingRoot ? "0" : "-1")"
                                     disabled="@disabled"
                                     class="@TimeItemClass(isSelected)"
                                     @onclick="() => SelectHour(h)"
@@ -80,7 +83,10 @@
 
                     @* Minutes column *@
                     <div id="@_minutesColId" role="listbox" aria-label="@L["TimePicker.MinutesLabel"]" class="flex flex-col h-[240px] overflow-y-auto py-1 scrollbar-thin">
-                        @{ var minutes = GetMinutes(); }
+                        @{
+                            var minutes = GetMinutes();
+                            var minutesRovingRoot = RovingRoot(_minutesColId, minutes, _timeValue.HasValue ? _timeValue.Value.Minutes : (int?)null);
+                        }
                         @foreach (var minute in minutes)
                         {
                             var m = minute;
@@ -88,7 +94,7 @@
                             var disabled = IsMinuteDisabled(m);
                             <button type="button" id="@ColItemId(_minutesColId, m)" role="option"
                                     aria-selected="@(isSelected ? "true" : "false")"
-                                    tabindex="@(isSelected ? "0" : "-1")"
+                                    tabindex="@(m == minutesRovingRoot ? "0" : "-1")"
                                     disabled="@disabled"
                                     class="@TimeItemClass(isSelected)"
                                     @onclick="() => SelectMinute(m)"
@@ -102,7 +108,10 @@
                     @if (ShowSeconds)
                     {
                         <div id="@_secondsColId" role="listbox" aria-label="@L["TimePicker.SecondsLabel"]" class="flex flex-col h-[240px] overflow-y-auto py-1 scrollbar-thin">
-                            @{ var seconds = GetSeconds(); }
+                            @{
+                                var seconds = GetSeconds();
+                                var secondsRovingRoot = RovingRoot(_secondsColId, seconds, _timeValue.HasValue ? _timeValue.Value.Seconds : (int?)null);
+                            }
                             @foreach (var second in seconds)
                             {
                                 var s = second;
@@ -110,7 +119,7 @@
                                 var disabled = IsSecondDisabled(s);
                                 <button type="button" id="@ColItemId(_secondsColId, s)" role="option"
                                         aria-selected="@(isSelected ? "true" : "false")"
-                                        tabindex="@(isSelected ? "0" : "-1")"
+                                        tabindex="@(s == secondsRovingRoot ? "0" : "-1")"
                                         disabled="@disabled"
                                         class="@TimeItemClass(isSelected)"
                                         @onclick="() => SelectSecond(s)"
@@ -131,11 +140,13 @@
                                 var pmLabel = string.IsNullOrEmpty(EffectiveCulture.DateTimeFormat.PMDesignator) ? "PM" : EffectiveCulture.DateTimeFormat.PMDesignator;
                             }
                             <button type="button"
+                                    aria-pressed="@(isAm ? "true" : "false")"
                                     class="@TimeItemClass(isAm)"
                                     @onclick="() => SelectAmPm(true)">
                                 @amLabel
                             </button>
                             <button type="button"
+                                    aria-pressed="@((!isAm) ? "true" : "false")"
                                     class="@TimeItemClass(!isAm)"
                                     @onclick="() => SelectAmPm(false)">
                                 @pmLabel
@@ -508,6 +519,29 @@
     private readonly string _secondsColId = LumeoIds.New("dtp-seconds");
 
     private static string ColItemId(string colId, int value) => $"{colId}-{value}";
+
+    // Roving tab stop seed: each listbox must always expose exactly ONE tabbable
+    // option so the column is keyboard-reachable. When a value is selected that
+    // option is the tab stop; otherwise (e.g. _timeValue is null — no time picked
+    // yet) seed the FIRST ENABLED option, falling back to the first option if every
+    // option is disabled. Mirrors Calendar's EnsureFocusedDate idea. Returns null
+    // only for an empty column. Note GetDisplayHour/Minutes/Seconds always emit a
+    // value present in `values`, so a real selection wins here.
+    private int? RovingRoot(string colId, List<int> values, int? selected)
+    {
+        if (values.Count == 0) return null;
+        // A selected, still-enabled option is the tab stop.
+        if (selected.HasValue && values.Contains(selected.Value) && !IsColItemDisabled(colId, selected.Value))
+            return selected.Value;
+        // Otherwise (nothing selected, or the selection is now disabled) seed the
+        // first ENABLED option so the column stays both keyboard-reachable and
+        // actionable; fall back to the first option only if every option is disabled.
+        foreach (var v in values)
+        {
+            if (!IsColItemDisabled(colId, v)) return v;
+        }
+        return values[0];
+    }
 
     private async Task HandleColumnKeyDown(KeyboardEventArgs e, string colId, List<int> values, int current)
     {

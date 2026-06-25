@@ -1,4 +1,6 @@
 @namespace Lumeo
+@implements IAsyncDisposable
+@inject Lumeo.Services.IComponentInteropService Interop
 
 @if (AsChild)
 {
@@ -18,7 +20,7 @@
 }
 else
 {
-    <div class="@CssClass" role="button" tabindex="0" aria-expanded="@Context.IsOpen" aria-haspopup="dialog" @onclick="Open" @onkeydown="HandleKeyDown" @attributes="AdditionalAttributes">
+    <div id="@_id" class="@CssClass" role="button" tabindex="0" aria-expanded="@Context.IsOpen" aria-haspopup="dialog" @onclick="Open" @onkeydown="HandleKeyDown" @attributes="AdditionalAttributes">
         @ChildContent
     </div>
 }
@@ -45,6 +47,11 @@ else
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
+    private readonly string _fallbackId = LumeoIds.New("sheet-trigger");
+    // A consumer-supplied id (splatted) wins, so JS key-suppression must target THAT id.
+    private string _id => LumeoIds.Effective(AdditionalAttributes, _fallbackId);
+    private bool _pdRegistered;
+
     private string CssClass => Cx.Merge("inline-flex", Class);
 
     private TriggerSlot Slot => new(
@@ -66,10 +73,44 @@ else
         return d;
     }
 
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        // AsChild renders no wrapper — the cooperating child (e.g. a <Button>) is a
+        // real <button> that synthesizes Space/Enter natively, so nothing to suppress.
+        if (!firstRender || AsChild || _pdRegistered) return;
+        try
+        {
+            // div[role=button] has no native key synthesis: Space both activated AND
+            // scroll-jumped the page. Suppress only Space's default synchronously in
+            // JS (Enter has no default on a div, and a blanket
+            // @onkeydown:preventDefault would also swallow Tab). Mirrors
+            // DialogTrigger / CollapsibleTrigger / AccordionTrigger. #90
+            await Interop.RegisterPreventDefaultKeys(
+                _id,
+                new[] { new Lumeo.Services.PreventDefaultKeyRule(" ") });
+            _pdRegistered = true;
+        }
+        catch (JSDisconnectedException) { }
+        catch (ObjectDisposedException) { }
+        catch (InvalidOperationException) { } // JS interop unavailable during prerender
+    }
+
     private async Task Open() => await Context.SetOpen.InvokeAsync(true);
 
     private async Task HandleKeyDown(KeyboardEventArgs e)
     {
         if (e.Key is "Enter" or " ") await Open();
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (!_pdRegistered) return;
+        try
+        {
+            await Interop.UnregisterPreventDefaultKeys(_id);
+        }
+        catch (JSDisconnectedException) { }
+        catch (ObjectDisposedException) { }
+        catch (InvalidOperationException) { }
     }
 }

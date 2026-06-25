@@ -131,13 +131,20 @@ else
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (!firstRender) return;
-
         // Make the toolbar a single tab stop with a roving tabindex over its
-        // items (Radix Toolbar keyboard model). Runs in every mode.
+        // items (Radix Toolbar keyboard model). Runs in every mode, on EVERY
+        // render — not just firstRender. Items added/removed/enabled after load
+        // (e.g. a conditionally-rendered button, or one flipping disabled) would
+        // otherwise never be re-managed, breaking the single-tab-stop invariant
+        // (some items left with no tabindex are tab stops; the prior stop may be
+        // gone). The JS init is idempotent and preserves the currently-focused
+        // item as the stop, so re-running it after every render is safe and
+        // re-establishes "exactly one tabindex=0" over the current item set.
         try { await Interop.InitToolbarRoving(_toolbarId); }
         catch (JSDisconnectedException) { }
         catch (ObjectDisposedException) { }
+
+        if (!firstRender) return; // overflow observer is wired once, on first render
 
         if (!Overflow || VisibleCount != -1) return; // manual mode — nothing else to wire up
 

@@ -1,4 +1,7 @@
 @namespace Lumeo
+@using Lumeo.Internal
+@implements IAsyncDisposable
+@inject Lumeo.Services.IComponentInteropService Interop
 
 @if (Label is not null && !InsideFormField)
 {
@@ -86,7 +89,7 @@
     }
     else
     {
-        <div @ref="_displayRef" class="@DisplayClass" role="button" tabindex="@(Disabled ? "-1" : "0")" @onclick="StartEditing" @onkeydown="HandleDisplayKeyDown" aria-required="@(Required ? "true" : "false")" aria-invalid="@(EffectiveInvalid ? "true" : "false")" aria-disabled="@(Disabled ? "true" : null)">
+        <div @ref="_displayRef" id="@_displayId" class="@DisplayClass" role="button" tabindex="@(Disabled ? "-1" : "0")" @onclick="StartEditing" @onkeydown="HandleDisplayKeyDown" aria-required="@(Required ? "true" : "false")" aria-invalid="@(EffectiveInvalid ? "true" : "false")" aria-disabled="@(Disabled ? "true" : null)">
             <div class="flex-1 min-w-0">
                 @if (ChildContent is not null)
                 {
@@ -166,6 +169,19 @@
 
     private ElementReference _editFieldRef;
     private ElementReference _displayRef;
+    // Stable id on the display trigger so the JS key-suppression handler
+    // (RegisterPreventDefaultKeys) has a target to bind to. n=36: the display
+    // element is a div[role=button], which has no native key synthesis — Space
+    // both activated edit mode AND scroll-jumped the page. The fix suppresses
+    // Space's default action via the library's RegisterPreventDefaultKeys interop
+    // (same idiom as CollapsibleTrigger / DialogTrigger), which needs an id.
+    private readonly string _displayId = LumeoIds.New("inplace-editor");
+    // Tracks whether the Space-suppression keydown listener is currently bound to
+    // the live display node. The node is torn down on entering edit mode and
+    // re-created on returning to display mode, so the listener must be re-bound to
+    // the fresh node — we clear this when leaving display mode and re-register
+    // from OnAfterRenderAsync whenever display mode is showing but unregistered.
+    private bool _pdRegistered;
     // Set when the user enters edit mode so the next render moves focus to
     // the input/textarea/select — without this, the user clicks to edit and
     // still has to click again to actually type. Cleared after focus is
@@ -209,6 +225,38 @@
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
+        // n=36: bind Space's preventDefault to the live display node. The display
+        // trigger (div[role=button]) is the only thing rendered in display mode and
+        // is destroyed/re-created across edit round-trips, so (re-)register whenever
+        // it is showing but not yet wired to the current node. registerPreventDefaultKeys
+        // is idempotent (it unregisters first), so a repeat call is cheap and rebinds
+        // to the fresh node. Enter has no default action on a div, so only Space needs
+        // suppression — matching CollapsibleTrigger / DialogTrigger.
+        var inDisplayMode = !(_editing && !Disabled);
+        if (inDisplayMode && !_pdRegistered)
+        {
+            try
+            {
+                await Interop.RegisterPreventDefaultKeys(
+                    _displayId,
+                    new[] { new Lumeo.Services.PreventDefaultKeyRule(" ") });
+                _pdRegistered = true;
+            }
+            catch (Microsoft.JSInterop.JSDisconnectedException) { }
+            catch (ObjectDisposedException) { }
+            catch (InvalidOperationException) { } // JS interop unavailable during prerender
+        }
+        else if (!inDisplayMode && _pdRegistered)
+        {
+            // The display node is gone in edit mode; drop the stale binding so the
+            // next return to display mode re-registers against the new node.
+            _pdRegistered = false;
+            try { await Interop.UnregisterPreventDefaultKeys(_displayId); }
+            catch (Microsoft.JSInterop.JSDisconnectedException) { }
+            catch (ObjectDisposedException) { }
+            catch (InvalidOperationException) { }
+        }
+
         if (_focusEditOnRender)
         {
             _focusEditOnRender = false;
@@ -221,6 +269,18 @@
             try { await _displayRef.FocusAsync(); }
             catch (Microsoft.JSInterop.JSDisconnectedException) { }
         }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (!_pdRegistered) return;
+        try
+        {
+            await Interop.UnregisterPreventDefaultKeys(_displayId);
+        }
+        catch (Microsoft.JSInterop.JSDisconnectedException) { }
+        catch (ObjectDisposedException) { }
+        catch (InvalidOperationException) { }
     }
 
     private string CssClass => Cx.Merge("group w-full", Class);

@@ -30,15 +30,21 @@
     <div class="pointer-events-none absolute inset-x-0 top-0 flex justify-center"
          style="@SpinnerStyle">
         <div class="flex h-10 w-10 items-center justify-center rounded-full bg-background text-foreground shadow-md ring-1 ring-border">
-            <Blazicon Svg="Lucide.RefreshCw" class="@SpinnerIconClass" />
+            <Blazicon Svg="Lucide.RefreshCw" class="@SpinnerIconClass" aria-hidden="true" />
         </div>
     </div>
+    @* Polite live region: announces refresh start/finish to assistive tech.
+       The visible spinner above is purely decorative (aria-hidden), so without
+       this status region a screen-reader user gets no feedback that a refresh
+       is in progress. Empty while idle so nothing is announced until it runs. *@
+    <div role="status" aria-live="polite" class="sr-only">@RefreshAnnouncement</div>
     <div style="@ContentStyle">
         @ChildContent
     </div>
 </div>
 
 @inject IComponentInteropService Interop
+@inject Lumeo.Services.Localization.ILumeoLocalizer L
 
 @code {
     [Parameter] public RenderFragment? ChildContent { get; set; }
@@ -111,6 +117,15 @@
     }
 
     private string SpinnerIconClass => (_refreshing ? "h-5 w-5 animate-spin" : "h-5 w-5").Trim();
+
+    // Text announced via the polite live region while a refresh is running, and
+    // cleared (empty) when idle so assistive tech only speaks during a refresh.
+    // Localizable via the "PullToRefresh.Refreshing" key, with an English
+    // fallback so the component stays self-contained.
+    private string RefreshAnnouncement =>
+        _refreshing
+            ? (L.TryGet("PullToRefresh.Refreshing", out var msg) ? msg : "Refreshing…")
+            : string.Empty;
 
     // pan-y still lets the container scroll natively everywhere EXCEPT a
     // downward drag pinned at the top — that case is claimed by the non-passive

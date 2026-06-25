@@ -1,8 +1,19 @@
 @namespace Lumeo
 
 <DropdownMenu @bind-Open="_open">
-    <DropdownMenuTrigger Disabled="Disabled" @attributes="AdditionalAttributes">
-        <Button Variant="Variant" Size="Size" Disabled="Disabled" Class="@CssClass">
+    @* The menu ARIA (role=button + aria-haspopup/expanded/controls) lives on the
+       DropdownMenuTrigger wrapper. Make THAT wrapper the focusable host (tabindex=0)
+       and drop the inner native <button> out of the tab order (tabindex=-1), so the
+       single tab stop is the element that actually carries the menu semantics —
+       otherwise a screen reader landed on a bare, ARIA-less <button> (triage #113).
+       The wrapper also gets the keyboard entry point the menu-button pattern needs:
+       Enter/Space toggle and ArrowDown/ArrowUp open the menu (triage #114). A div
+       with role=button does NOT fire click on Enter/Space natively, and Arrow keys
+       never did, so without this handler the closed trigger was keyboard-dead once
+       the inner button left the tab order. tabindex + the keydown EventCallback are
+       splatted onto the wrapper via the trigger's AdditionalAttributes. *@
+    <DropdownMenuTrigger Disabled="Disabled" @attributes="TriggerAttributes">
+        <Button Variant="Variant" Size="Size" Disabled="Disabled" Class="@CssClass" tabindex="-1">
             @if (ChildContent != null)
             {
                 @ChildContent
@@ -37,6 +48,29 @@
 
     private string CssClass => Cx.Merge("gap-1.5", Class);
 
+    // Wrapper attributes: make the ARIA-bearing trigger the single tab stop and
+    // wire its keyboard entry point, then fold in any consumer-supplied splat last
+    // so the author can still override (e.g. a custom tabindex). The keydown value
+    // is an EventCallback stored under the `onkeydown` key — Blazor splats that as a
+    // real DOM event handler on the wrapper (same mechanism Button uses to forward
+    // the Slot's onmouseenter/onfocusin handlers).
+    private IReadOnlyDictionary<string, object> TriggerAttributes
+    {
+        get
+        {
+            var d = new Dictionary<string, object>
+            {
+                // Disabled triggers leave the tab order entirely; enabled ones become
+                // the focusable host now that the inner <button> is tabindex=-1.
+                ["tabindex"] = Disabled ? "-1" : "0",
+                ["onkeydown"] = EventCallback.Factory.Create<KeyboardEventArgs>(this, HandleTriggerKeyDown),
+            };
+            if (AdditionalAttributes is not null)
+                foreach (var kv in AdditionalAttributes) d[kv.Key] = kv.Value; // author wins on collision
+            return d;
+        }
+    }
+
     // When the button is disabled while its menu is open, the trigger becomes
     // pointer-events-none and DropdownMenuTrigger.Toggle early-returns on
     // Disabled, so the user can no longer click to dismiss — the menu would be
@@ -49,5 +83,33 @@
         }
 
         _wasDisabled = Disabled;
+    }
+
+    // Keyboard entry point for the WAI-ARIA menu-button pattern (triage #114).
+    // The trigger wrapper is now the focusable host (its inner <button> is
+    // tabindex=-1), but a role=button div has no native key activation, so the
+    // open logic lives here:
+    //   • Enter / Space  -> toggle the menu (open when closed).
+    //   • ArrowDown / ArrowUp -> open the menu; DropdownMenuContent then moves
+    //     roving focus into the list on the next Arrow press.
+    // Disabled triggers stay inert. preventDefault is intentionally NOT applied
+    // via the @onkeydown:preventDefault directive — that would also swallow Tab
+    // and trap focus inside the trigger; the menu-open is the observable effect.
+    private void HandleTriggerKeyDown(Microsoft.AspNetCore.Components.Web.KeyboardEventArgs e)
+    {
+        if (Disabled) return;
+
+        switch (e.Key)
+        {
+            case "Enter":
+            case " ":
+            case "Spacebar": // legacy IE/Edge key name for the spacebar
+                _open = !_open;
+                break;
+            case "ArrowDown":
+            case "ArrowUp":
+                _open = true;
+                break;
+        }
     }
 }

@@ -1,4 +1,5 @@
 @namespace Lumeo
+@implements IAsyncDisposable
 @inject Lumeo.Services.Localization.ILumeoLocalizer L
 @inject IComponentInteropService Interop
 
@@ -143,9 +144,15 @@
         </div>
 
         @* ── Right: file list ───────────────────────────────────────────── *@
-        <div class="flex-1 overflow-auto bg-background p-2">
+        <div id="@_fileListId" class="flex-1 overflow-auto bg-background p-2">
             @{
                 var items = GetCurrentFolderContents();
+                _fileItemCount = items.Count;
+                // Keep the roving active index inside the rendered range so exactly
+                // one row/tile stays in the tab sequence even after the folder's
+                // contents shrink (otherwise no item would carry tabindex=0 and the
+                // list would silently drop out of the tab order).
+                if (_activeItemIndex >= _fileItemCount) _activeItemIndex = Math.Max(0, _fileItemCount - 1);
             }
 
             @if (_loadingFolder)
@@ -238,8 +245,7 @@
     private string _renameValue = "";
     private readonly string _renameInputId = LumeoIds.New("fm-rename");
     // Set when a rename begins so OnAfterRender moves focus into the inline input
-    // — otherwise keyboard users start a rename with no focused field. Mirrors
-    // _shouldFocusContextMenu below.
+    // — otherwise keyboard users start a rename with no focused field.
     private bool _shouldFocusRenameInput;
     // Context menu state
     private FileSystemNode? _contextMenuNode;
@@ -247,9 +253,28 @@
     private double _contextMenuX;
     private double _contextMenuY;
     private readonly string _contextMenuId = LumeoIds.New("fm-ctx");
-    // Set when the context menu opens so OnAfterRender moves focus into it
-    // (so keyboard users land on the menu and Escape closes it).
-    private bool _shouldFocusContextMenu;
+    // Tracks whether the role=menu's focus trap is currently engaged so the
+    // OnAfterRender hop only sets it up once per open and tears it down on close.
+    // The trap (SetupFocusTrap) also SAVES the trigger element and RESTORES focus
+    // to it on RemoveFocusTrap (#126: focus restore + Tab trapping), and lands
+    // focus on the first menuitem so Arrow/Home/End nav works (#127).
+    private bool _contextMenuTrapped;
+    // Roving index across the open menu's menuitems, mirroring MenubarContent.
+    private int _contextMenuFocusIndex = -1;
+
+    // ── File list / grid roving-tabindex (a11y #128/#129) ─────────────────────
+    // The file rows (list) and tiles (grid) form a single composite widget. Only
+    // the active item carries tabindex=0 (the rest tabindex=-1) so the whole list
+    // is a single tab stop; Arrow/Home/End move the active item and DOM focus.
+    // A stable container id lets us register a native key-selective preventDefault
+    // (Space/Enter/Arrows/Home/End would otherwise scroll the page — #129) and
+    // focus the active item by id after an arrow move.
+    private readonly string _fileListId = LumeoIds.New("fm-list");
+    private int _activeItemIndex;
+    private int _fileItemCount;
+    // Whether the file-list scroll-suppression keys are registered with JS.
+    private bool _fileListPdRegistered;
+    private string FileItemId(int index) => $"{_fileListId}-item-{index}";
 
     // ──────────────────────────────────────────────────────────────────────────
     // CSS helpers
@@ -481,6 +506,15 @@
     // Selection
     // ──────────────────────────────────────────────────────────────────────────
 
+    // Click handler for a row/tile: sync the roving active index to the clicked
+    // item (so a subsequent Arrow keypress continues from where the user clicked)
+    // then run the normal selection.
+    private async Task SelectRow(FileSystemNode node, int index)
+    {
+        _activeItemIndex = index;
+        await SelectNode(node);
+    }
+
     private async Task SelectNode(FileSystemNode node)
     {
         // Drive the private backing field — NOT the [Parameter] — so an
@@ -508,21 +542,53 @@
     }
 
     // Keyboard handler for file rows / grid tiles (a11y): Enter opens (folder
-    // navigate / file open), Space selects. Mirrors the click/double-click
-    // mouse affordances so the role=grid / role=listbox containers are actually
-    // keyboard-operable.
-    private async Task HandleRowKeyDown(FileSystemNode node, KeyboardEventArgs e)
+    // navigate / file open), Space selects, Arrow/Home/End roves the active item.
+    // Mirrors the click/double-click mouse affordances AND adds roving-tabindex
+    // arrow navigation so the role=grid / role=listbox containers behave as a
+    // single composite widget per the WAI-ARIA pattern (#128). The actual
+    // page-scroll suppression for Space/Arrows is wired natively via
+    // RegisterPreventDefaultKeys in OnAfterRenderAsync (#129) — not
+    // @onkeydown:preventDefault, which would also swallow Tab.
+    private async Task HandleRowKeyDown(FileSystemNode node, int index, KeyboardEventArgs e)
     {
         switch (e.Key)
         {
             case "Enter":
                 await HandleNodeDoubleClick(node);
-                break;
+                return;
             case " ":
             case "Spacebar": // legacy key name
                 await SelectNode(node);
-                break;
+                return;
+            case "ArrowDown":
+            case "ArrowRight":
+                await MoveActiveItem(index + 1);
+                return;
+            case "ArrowUp":
+            case "ArrowLeft":
+                await MoveActiveItem(index - 1);
+                return;
+            case "Home":
+                await MoveActiveItem(0);
+                return;
+            case "End":
+                await MoveActiveItem(_fileItemCount - 1);
+                return;
         }
+    }
+
+    // Roving tabindex: clamp to the rendered range, flip the active item (which
+    // re-renders the new item with tabindex=0 and the old one with -1), then move
+    // DOM focus to it by id. Out-of-range targets are ignored so the active item
+    // never leaves the list.
+    private async Task MoveActiveItem(int target)
+    {
+        if (_fileItemCount == 0) return;
+        var next = Math.Clamp(target, 0, _fileItemCount - 1);
+        if (next == _activeItemIndex) return;
+        _activeItemIndex = next;
+        StateHasChanged();
+        try { await Interop.FocusElement(FileItemId(next)); } catch (JSDisconnectedException) { }
     }
 
     // ──────────────────────────────────────────────────────────────────────────
@@ -535,26 +601,101 @@
         _contextMenuX = e.ClientX;
         _contextMenuY = e.ClientY;
         _contextMenuOpen = true;
-        _shouldFocusContextMenu = true;
+        _contextMenuFocusIndex = -1;
     }
 
-    private void CloseContextMenu()
+    private async Task CloseContextMenu()
     {
+        if (!_contextMenuOpen) return;
         _contextMenuOpen = false;
         _contextMenuNode = null;
+        // Release the Tab-cycling trap; RemoveFocusTrap also returns focus to the
+        // element that was focused when the menu opened — the row or actions
+        // button — so keyboard focus is never stranded after close (#126: WCAG
+        // 2.4.3). Also drop the arrow-scroll suppression.
+        if (_contextMenuTrapped)
+        {
+            _contextMenuTrapped = false;
+            _contextMenuFocusIndex = -1;
+            try { await Interop.RemoveFocusTrap(_contextMenuId); } catch (JSDisconnectedException) { }
+            try { await Interop.UnregisterPreventDefaultKeys(_contextMenuId); } catch (JSDisconnectedException) { }
+        }
     }
 
-    private void HandleContextMenuKeyDown(KeyboardEventArgs e)
+    private async Task HandleContextMenuKeyDown(KeyboardEventArgs e)
     {
-        if (e.Key == "Escape") CloseContextMenu();
+        switch (e.Key)
+        {
+            case "Escape":
+                await CloseContextMenu();
+                return;
+            case "ArrowDown":
+            {
+                var count = await Interop.GetMenuItemCount(_contextMenuId);
+                if (count > 0)
+                {
+                    _contextMenuFocusIndex = (_contextMenuFocusIndex + 1) % count;
+                    await Interop.FocusMenuItemByIndex(_contextMenuId, _contextMenuFocusIndex);
+                }
+                return;
+            }
+            case "ArrowUp":
+            {
+                var count = await Interop.GetMenuItemCount(_contextMenuId);
+                if (count > 0)
+                {
+                    _contextMenuFocusIndex = _contextMenuFocusIndex <= 0 ? count - 1 : _contextMenuFocusIndex - 1;
+                    await Interop.FocusMenuItemByIndex(_contextMenuId, _contextMenuFocusIndex);
+                }
+                return;
+            }
+            case "Home":
+            {
+                var count = await Interop.GetMenuItemCount(_contextMenuId);
+                if (count > 0)
+                {
+                    _contextMenuFocusIndex = 0;
+                    await Interop.FocusMenuItemByIndex(_contextMenuId, _contextMenuFocusIndex);
+                }
+                return;
+            }
+            case "End":
+            {
+                var count = await Interop.GetMenuItemCount(_contextMenuId);
+                if (count > 0)
+                {
+                    _contextMenuFocusIndex = count - 1;
+                    await Interop.FocusMenuItemByIndex(_contextMenuId, _contextMenuFocusIndex);
+                }
+                return;
+            }
+        }
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (_shouldFocusContextMenu && _contextMenuOpen)
+        // Engage a Tab-cycling focus trap on the open menu. SetupFocusTrap saves
+        // the element that had focus (the row / actions button) so RemoveFocusTrap
+        // can restore it on close, traps Tab/Shift+Tab inside the menu (#126), and
+        // lands focus on the first menuitem so Arrow/Home/End nav is reachable
+        // (#127). The Arrow/Home/End keys also scroll the page by default — suppress
+        // them in JS (Escape has no scroll default) so keyboard menu navigation
+        // doesn't scroll behind the open menu.
+        if (_contextMenuOpen && !_contextMenuTrapped)
         {
-            _shouldFocusContextMenu = false;
-            try { await Interop.FocusElement(_contextMenuId); } catch (JSDisconnectedException) { }
+            _contextMenuTrapped = true;
+            try
+            {
+                await Interop.RegisterPreventDefaultKeys(_contextMenuId, new[]
+                {
+                    new Lumeo.Services.PreventDefaultKeyRule("ArrowDown"),
+                    new Lumeo.Services.PreventDefaultKeyRule("ArrowUp"),
+                    new Lumeo.Services.PreventDefaultKeyRule("Home"),
+                    new Lumeo.Services.PreventDefaultKeyRule("End"),
+                });
+            }
+            catch (JSDisconnectedException) { }
+            try { await Interop.SetupFocusTrap(_contextMenuId); } catch (JSDisconnectedException) { }
         }
 
         // Auto-focus the inline rename field the render after a rename begins so
@@ -564,11 +705,49 @@
             _shouldFocusRenameInput = false;
             try { await Interop.FocusElement(_renameInputId); } catch (JSDisconnectedException) { }
         }
+
+        // Register the native scroll-suppression for the file list once it exists
+        // (#129: Space / Arrows would otherwise scroll the page). SkipEditable
+        // keeps typing in the inline rename input alive. Registered here rather
+        // than via @onkeydown:preventDefault so Tab is never swallowed.
+        if (!_fileListPdRegistered)
+        {
+            _fileListPdRegistered = true;
+            try
+            {
+                await Interop.RegisterPreventDefaultKeys(_fileListId, new[]
+                {
+                    new Lumeo.Services.PreventDefaultKeyRule(" ", SkipEditable: true),
+                    new Lumeo.Services.PreventDefaultKeyRule("Spacebar", SkipEditable: true),
+                    new Lumeo.Services.PreventDefaultKeyRule("ArrowDown", SkipEditable: true),
+                    new Lumeo.Services.PreventDefaultKeyRule("ArrowUp", SkipEditable: true),
+                    new Lumeo.Services.PreventDefaultKeyRule("ArrowLeft", SkipEditable: true),
+                    new Lumeo.Services.PreventDefaultKeyRule("ArrowRight", SkipEditable: true),
+                    new Lumeo.Services.PreventDefaultKeyRule("Home", SkipEditable: true),
+                    new Lumeo.Services.PreventDefaultKeyRule("End", SkipEditable: true),
+                });
+            }
+            catch (JSDisconnectedException) { }
+            catch (InvalidOperationException) { } // JS interop unavailable during prerender
+        }
     }
 
-    private void BeginRename(FileSystemNode node)
+    public async ValueTask DisposeAsync()
     {
-        CloseContextMenu();
+        if (_contextMenuTrapped)
+        {
+            try { await Interop.RemoveFocusTrap(_contextMenuId); } catch (JSDisconnectedException) { }
+            try { await Interop.UnregisterPreventDefaultKeys(_contextMenuId); } catch (JSDisconnectedException) { }
+        }
+        if (_fileListPdRegistered)
+        {
+            try { await Interop.UnregisterPreventDefaultKeys(_fileListId); } catch (JSDisconnectedException) { }
+        }
+    }
+
+    private async Task BeginRename(FileSystemNode node)
+    {
+        await CloseContextMenu();
         _renamingNode = node;
         _renameValue = node.Name;
         // Move focus into the inline input on the next render so keyboard users
@@ -596,7 +775,7 @@
 
     private async Task HandleDeleteNode(FileSystemNode node)
     {
-        CloseContextMenu();
+        await CloseContextMenu();
         await ClearSelectionIfDeleted(node);
         await OnDelete.InvokeAsync([node]);
     }
@@ -628,7 +807,7 @@
 
     private async Task HandleOpenNode(FileSystemNode node)
     {
-        CloseContextMenu();
+        await CloseContextMenu();
         if (node.IsFolder)
             await NavigateToFolder(node);
         else
@@ -762,22 +941,27 @@
 
         // tbody
         builder.OpenElement(20, "tbody");
+        var rowIndex = 0;
         foreach (var node in items)
         {
             var n = node;
+            var idx = rowIndex++;
             bool isSelected = _selectedNode?.Id == n.Id;
             var rowClass = $"group border-b border-border/20 cursor-pointer transition-colors {(isSelected ? "bg-accent" : "hover:bg-muted/40")}";
 
             builder.OpenElement(30, "tr");
+            builder.SetKey(n.Id);
             builder.AddAttribute(31, "class", rowClass);
             builder.AddAttribute(32, "role", "row");
             builder.AddAttribute(33, "aria-selected", isSelected.ToString().ToLowerInvariant());
-            builder.AddAttribute(34, "tabindex", 0);
-            builder.AddAttribute(35, "onclick", Microsoft.AspNetCore.Components.EventCallback.Factory.Create<Microsoft.AspNetCore.Components.Web.MouseEventArgs>(this, _ => SelectNode(n)));
-            builder.AddAttribute(36, "ondblclick", Microsoft.AspNetCore.Components.EventCallback.Factory.Create<Microsoft.AspNetCore.Components.Web.MouseEventArgs>(this, _ => HandleNodeDoubleClick(n)));
-            builder.AddAttribute(37, "oncontextmenu", Microsoft.AspNetCore.Components.EventCallback.Factory.Create<Microsoft.AspNetCore.Components.Web.MouseEventArgs>(this, e => OpenContextMenu(n, e)));
-            builder.AddAttribute(38, "oncontextmenu:preventDefault", true);
-            builder.AddAttribute(39, "onkeydown", Microsoft.AspNetCore.Components.EventCallback.Factory.Create<Microsoft.AspNetCore.Components.Web.KeyboardEventArgs>(this, e => HandleRowKeyDown(n, e)));
+            // Roving tabindex (#128): only the active row is in the tab sequence.
+            builder.AddAttribute(34, "tabindex", idx == _activeItemIndex ? 0 : -1);
+            builder.AddAttribute(35, "id", FileItemId(idx));
+            builder.AddAttribute(36, "onclick", Microsoft.AspNetCore.Components.EventCallback.Factory.Create<Microsoft.AspNetCore.Components.Web.MouseEventArgs>(this, _ => SelectRow(n, idx)));
+            builder.AddAttribute(37, "ondblclick", Microsoft.AspNetCore.Components.EventCallback.Factory.Create<Microsoft.AspNetCore.Components.Web.MouseEventArgs>(this, _ => HandleNodeDoubleClick(n)));
+            builder.AddAttribute(38, "oncontextmenu", Microsoft.AspNetCore.Components.EventCallback.Factory.Create<Microsoft.AspNetCore.Components.Web.MouseEventArgs>(this, e => OpenContextMenu(n, e)));
+            builder.AddAttribute(39, "oncontextmenu:preventDefault", true);
+            builder.AddAttribute(391, "onkeydown", Microsoft.AspNetCore.Components.EventCallback.Factory.Create<Microsoft.AspNetCore.Components.Web.KeyboardEventArgs>(this, e => HandleRowKeyDown(n, idx, e)));
 
             // Name cell
             builder.OpenElement(40, "td");
@@ -889,23 +1073,28 @@
         builder.AddAttribute(2, "role", "listbox");
         builder.AddAttribute(3, "aria-label", "File grid");
 
+        var tileIndex = 0;
         foreach (var node in items)
         {
             var n = node;
+            var idx = tileIndex++;
             bool isSelected = _selectedNode?.Id == n.Id;
             var tileClass = $"flex flex-col items-center gap-2 p-3 rounded-lg cursor-pointer transition-colors border focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring {(isSelected ? "bg-accent border-ring" : "border-transparent hover:bg-muted/40 hover:border-border/40")}";
 
             builder.OpenElement(10, "div");
+            builder.SetKey(n.Id);
             builder.AddAttribute(11, "class", tileClass);
             builder.AddAttribute(12, "role", "option");
             builder.AddAttribute(13, "aria-selected", isSelected.ToString().ToLowerInvariant());
             builder.AddAttribute(14, "aria-label", n.Name);
-            builder.AddAttribute(15, "tabindex", 0);
-            builder.AddAttribute(16, "onclick", Microsoft.AspNetCore.Components.EventCallback.Factory.Create<Microsoft.AspNetCore.Components.Web.MouseEventArgs>(this, _ => SelectNode(n)));
-            builder.AddAttribute(17, "ondblclick", Microsoft.AspNetCore.Components.EventCallback.Factory.Create<Microsoft.AspNetCore.Components.Web.MouseEventArgs>(this, _ => HandleNodeDoubleClick(n)));
-            builder.AddAttribute(18, "oncontextmenu", Microsoft.AspNetCore.Components.EventCallback.Factory.Create<Microsoft.AspNetCore.Components.Web.MouseEventArgs>(this, e => OpenContextMenu(n, e)));
-            builder.AddAttribute(19, "oncontextmenu:preventDefault", true);
-            builder.AddAttribute(20, "onkeydown", Microsoft.AspNetCore.Components.EventCallback.Factory.Create<Microsoft.AspNetCore.Components.Web.KeyboardEventArgs>(this, e => HandleRowKeyDown(n, e)));
+            // Roving tabindex (#128): only the active tile is in the tab sequence.
+            builder.AddAttribute(15, "tabindex", idx == _activeItemIndex ? 0 : -1);
+            builder.AddAttribute(16, "id", FileItemId(idx));
+            builder.AddAttribute(17, "onclick", Microsoft.AspNetCore.Components.EventCallback.Factory.Create<Microsoft.AspNetCore.Components.Web.MouseEventArgs>(this, _ => SelectRow(n, idx)));
+            builder.AddAttribute(18, "ondblclick", Microsoft.AspNetCore.Components.EventCallback.Factory.Create<Microsoft.AspNetCore.Components.Web.MouseEventArgs>(this, _ => HandleNodeDoubleClick(n)));
+            builder.AddAttribute(19, "oncontextmenu", Microsoft.AspNetCore.Components.EventCallback.Factory.Create<Microsoft.AspNetCore.Components.Web.MouseEventArgs>(this, e => OpenContextMenu(n, e)));
+            builder.AddAttribute(20, "oncontextmenu:preventDefault", true);
+            builder.AddAttribute(21, "onkeydown", Microsoft.AspNetCore.Components.EventCallback.Factory.Create<Microsoft.AspNetCore.Components.Web.KeyboardEventArgs>(this, e => HandleRowKeyDown(n, idx, e)));
 
             // Icon
             builder.OpenComponent<Blazicon>(25);
