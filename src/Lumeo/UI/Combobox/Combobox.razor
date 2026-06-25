@@ -195,8 +195,22 @@
     private readonly List<(string Id, string Value)> _items = new();
     // Insertion-ordered mirror of the (unordered) Values HashSet — see SyncValueOrder.
     private readonly List<string> _valueOrder = new();
+    // Last-seen Items reference. _focusedIndex is a POSITION into the bound nav list
+    // (ids are "{ContentId}-bound-{position}"), so an external Items refresh that
+    // reorders/replaces/empties the list would leave the highlight + Enter pointing at a
+    // different item. Reset focus when the reference changes, mirroring how
+    // ComboboxContent memoizes its filtered list on !ReferenceEquals(items, _lastItems).
+    private IEnumerable<object>? _lastItems;
 
-    protected override void OnParametersSet() => SyncValueOrder();
+    protected override void OnParametersSet()
+    {
+        if (!ReferenceEquals(Items, _lastItems))
+        {
+            _lastItems = Items;
+            _focusedIndex = -1;
+        }
+        SyncValueOrder();
+    }
 
     // Mirrors the consumer-owned Values set into an insertion-ordered list so chip-editing
     // keys (Backspace in ComboboxInput) can deterministically target the most recently

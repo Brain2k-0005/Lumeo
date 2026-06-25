@@ -410,7 +410,9 @@ else
 
     /// <summary>
     /// Optional DateTime? binding. When set, takes precedence over <see cref="Value"/>.
-    /// Changes fire both <see cref="ValueChanged"/> (DateOnly?) and <see cref="DateTimeValueChanged"/> (DateTime? at midnight).
+    /// Changes fire both <see cref="ValueChanged"/> (DateOnly?) and <see cref="DateTimeValueChanged"/>
+    /// (DateTime?). When <see cref="ShowTimePicker"/> is enabled the current <see cref="Time"/>
+    /// selection is folded into the emitted DateTime; otherwise the time component is midnight.
     /// </summary>
     [Parameter] public DateTime? DateTimeValue { get; set; }
     [Parameter] public EventCallback<DateTime?> DateTimeValueChanged { get; set; }
@@ -806,6 +808,10 @@ else
     {
         Time = time;
         await TimeChanged.InvokeAsync(time);
+        // A time-only change must also flow into the DateTime binding — otherwise
+        // ShowTimePicker time selection never reaches DateTimeValue. Re-compose
+        // from the current Value (RaiseDateTimeValueChanged now folds in Time).
+        await RaiseDateTimeValueChanged(Value);
     }
 
     private async Task HandlePresetSelected(DatePickerPreset preset)
@@ -866,7 +872,12 @@ else
     {
         if (DateTimeValueChanged.HasDelegate)
         {
-            var dt = date.HasValue ? (DateTime?)date.Value.ToDateTime(TimeOnly.MinValue) : null;
+            // Fold the current Time selection into the committed DateTime so a date
+            // pick no longer silently resets the bound DateTime to midnight when a
+            // time was already chosen (and so the time picker actually reaches the
+            // DateTime binding). Falls back to midnight when no Time is set.
+            var time = Time.HasValue ? TimeOnly.FromTimeSpan(Time.Value) : TimeOnly.MinValue;
+            var dt = date.HasValue ? (DateTime?)date.Value.ToDateTime(time) : null;
             _prevDateTimeValue = dt;
             await DateTimeValueChanged.InvokeAsync(dt);
         }

@@ -104,6 +104,16 @@
         if (!ReferenceEquals(Items, _lastItems) && !_items.SequenceEqual(Items))
         {
             _items = Items.ToList();
+
+            // #4 (state-on-data-change): a genuine Items replacement that changes the
+            // content rebuilds _items, so any drag indices captured against the OLD
+            // list now address a DIFFERENT item — even when the new list is the SAME
+            // length (so the out-of-range guard below never fires). The dragged item
+            // and drag-over highlight (GetItemClass) and a subsequent OnDrop would
+            // then target the wrong row. A refresh mid-drag must abort the drag:
+            // unconditionally clear both indices when the content actually changes.
+            _dragFromIndex = -1;
+            _dragOverIndex = -1;
         }
         _lastItems = Items;
 
@@ -111,7 +121,8 @@
         // against the OLD item count. If the parent shrinks Items mid-drag, those
         // indices can now point past the rebuilt _items and OnDrop's _items[fromIndex]
         // would throw ArgumentOutOfRangeException. Reset any stale indices here so the
-        // next drop is a clean no-op rather than a crash.
+        // next drop is a clean no-op rather than a crash. (Belt-and-braces for any path
+        // that mutates _items without entering the rebuild branch above.)
         if (_dragFromIndex >= _items.Count)
             _dragFromIndex = -1;
         if (_dragOverIndex >= _items.Count)

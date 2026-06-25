@@ -220,10 +220,19 @@ else
         };
     }
 
-    private static int ComputeTasksHash(IEnumerable<GanttTask> tasks)
+    // Instance (not static) because the change-detection has to fold in the
+    // per-task OUTPUT of the BarColor and GroupBy delegates. Those delegates are
+    // the only task properties whose rendered result lives outside the GanttTask
+    // record itself: a parent can swap the BarColor lambda (recolour every bar)
+    // or the GroupBy lambda (re-cluster the lanes) while leaving the task list
+    // value-identical. Both feed the per-task JS payload (bar_color / group_label
+    // + the SortedTasks order), so re-pushing tasks via GanttSetTasksAsync applies
+    // them — but only if the hash actually moves when the delegate output does.
+    private int ComputeTasksHash(IEnumerable<GanttTask> tasks)
     {
         // Cheap identity hash — good enough to detect "did the caller swap the
-        // tasks list?" without a JS round-trip on every render.
+        // tasks list (or recolour/regroup it)?" without a JS round-trip on every
+        // render.
         var hash = new HashCode();
         foreach (var t in tasks)
         {
@@ -237,6 +246,10 @@ else
             hash.Add(t.GroupLabel);
             if (t.Dependencies is not null)
                 foreach (var d in t.Dependencies) hash.Add(d);
+            // Fold the delegate output so a BarColor / GroupBy swap that leaves the
+            // GanttTask records untouched is still detected and re-pushed.
+            hash.Add(BarColor?.Invoke(t));
+            hash.Add(GroupBy?.Invoke(t));
         }
         return hash.ToHashCode();
     }
