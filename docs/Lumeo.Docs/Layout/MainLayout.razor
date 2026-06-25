@@ -26,7 +26,10 @@
             <!-- Nav links (desktop) -->
             <nav class="hidden md:flex items-center space-x-1 text-sm font-medium ml-2" aria-label="Primary navigation">
                 <a href="docs/introduction" class="@NavLinkClass("docs")">Docs</a>
-                <a href="components" class="@NavLinkClass("catalog")">Components</a>
+                @* "Components" is a mega-menu of categories (the library overview) rather than a
+                   plain link — the per-page sidebar stays scoped to one category, this keeps the
+                   whole set reachable. *@
+                <ComponentsMegaMenu />
                 <a href="patterns" class="@NavLinkClass("patterns")">Patterns</a>
                 <a href="blocks" class="@NavLinkClass("blocks")">Blocks</a>
             </nav>
@@ -350,7 +353,19 @@
     /// <summary>Called from footer "Cookie preferences" link to re-open the dialog.</summary>
     public void OpenConsentPreferences() => _consentBanner?.ShowPreferences();
 
-    private string CurrentPath => Nav.ToBaseRelativePath(Nav.Uri).TrimEnd('/').ToLowerInvariant();
+    private string CurrentPath
+    {
+        get
+        {
+            // Strip query (?category=…) and hash so route → sidebar-section matching is by path
+            // only. Without this, "components?category=Forms" fails the exact "components" check
+            // and falls through to the default docs sidebar instead of the full-width catalog.
+            var p = Nav.ToBaseRelativePath(Nav.Uri);
+            var cut = p.IndexOfAny(new[] { '?', '#' });
+            if (cut >= 0) p = p[..cut];
+            return p.TrimEnd('/').ToLowerInvariant();
+        }
+    }
 
     /// <summary>
     /// Returns the sidebar section to display based on the current route:
