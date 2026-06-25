@@ -39,6 +39,29 @@ public class DrawerTests : IAsyncLifetime
         });
     }
 
+    // Renders a drawer that DOES contain a <DrawerDescription> so aria-describedby
+    // resolves to a real element (the n=181 fix only wires it when present).
+    private IRenderedComponent<IComponent> RenderDrawerWithDescription()
+    {
+        return _ctx.Render(builder =>
+        {
+            builder.OpenComponent<L.Drawer>(0);
+            builder.AddAttribute(1, "IsOpen", true);
+            builder.AddAttribute(2, "ChildContent", (RenderFragment)(b =>
+            {
+                b.OpenComponent<L.DrawerContent>(0);
+                b.AddAttribute(1, "ChildContent", (RenderFragment)(inner =>
+                {
+                    inner.OpenComponent<L.DrawerDescription>(0);
+                    inner.AddAttribute(1, "ChildContent", (RenderFragment)(d => d.AddContent(0, "Drawer description text.")));
+                    inner.CloseComponent();
+                }));
+                b.CloseComponent();
+            }));
+            builder.CloseComponent();
+        });
+    }
+
     // --- Open / Close ---
 
     [Fact]
@@ -91,13 +114,29 @@ public class DrawerTests : IAsyncLifetime
     }
 
     [Fact]
-    public void DrawerContent_Has_Aria_Describedby()
+    public void DrawerContent_Omits_Aria_Describedby_When_No_Description()
     {
+        // Battle-test regression (n=181, keyboard-a11y): DrawerContent used to
+        // emit aria-describedby="@Context.DescriptionId" unconditionally, so a
+        // drawer with no <DrawerDescription> (e.g. every service-opened overlay)
+        // pointed aria-describedby at an id that is never rendered — a dangling
+        // IDREF. The fix wires it only when a description registers.
         var cut = RenderDrawer(isOpen: true);
         var dialog = cut.Find("[role='dialog']");
+        Assert.False(dialog.HasAttribute("aria-describedby"));
+    }
+
+    [Fact]
+    public void DrawerContent_Has_Aria_Describedby_Matching_The_Description_Id()
+    {
+        var cut = RenderDrawerWithDescription();
+        var dialog = cut.Find("[role='dialog']");
         var describedBy = dialog.GetAttribute("aria-describedby");
-        Assert.NotNull(describedBy);
-        Assert.NotEmpty(describedBy);
+
+        Assert.False(string.IsNullOrEmpty(describedBy));
+        // The IDREF must resolve to the rendered description <p> (not dangle).
+        var description = cut.Find("p");
+        Assert.Equal(description.GetAttribute("id"), describedBy);
     }
 
     // --- Escape key ---

@@ -25,7 +25,7 @@
         {
             <button type="button"
                     role="radio"
-                    aria-checked="@((isFull || isHalf).ToString().ToLowerInvariant())"
+                    aria-checked="@(IsStarChecked(starIndex).ToString().ToLowerInvariant())"
                     class="@GetStarClasses(isFull || isHalf) @SizeClasses @StarInteractClasses"
                     tabindex="@GetStarTabIndex(starIndex)"
                     disabled="@ReadOnly"
@@ -42,7 +42,7 @@
         {
             <button type="button"
                     role="radio"
-                    aria-checked="@((isFull || isHalf).ToString().ToLowerInvariant())"
+                    aria-checked="@(IsStarChecked(starIndex).ToString().ToLowerInvariant())"
                     class="@SizeClasses @StarInteractClasses relative"
                     tabindex="@GetStarTabIndex(starIndex)"
                     disabled="@ReadOnly"
@@ -151,6 +151,16 @@
         var activeIndex = Value > 0 ? Math.Min((int)Math.Ceiling(Value), Max) : 1;
         return starIndex == activeIndex ? "0" : "-1";
     }
+
+    // ARIA single-selection contract: a role="radiogroup" must report aria-checked="true"
+    // on AT MOST ONE role="radio". The visual fill ("all stars up to Value are coloured")
+    // is driven independently by classes / isFull, so checked must mark only the single
+    // star that represents the current Value — not every filled star. We round Value up
+    // (a half-star at N-0.5 selects star N) and clamp to Max so the checked star is the
+    // same one the roving tabindex makes tabbable. Value==0 (no selection) reports no
+    // checked radio, which is valid for an as-yet-unselected radio group.
+    private bool IsStarChecked(int starIndex) =>
+        Value > 0 && starIndex == Math.Min((int)Math.Ceiling(Value), Max);
 
     private string CssClass => Cx.Merge("inline-flex items-center gap-0.5", Class);
 

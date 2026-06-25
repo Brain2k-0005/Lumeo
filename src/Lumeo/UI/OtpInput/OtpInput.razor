@@ -278,13 +278,26 @@
             case "End":
                 await Interop.FocusElement($"{_baseId}-{Length - 1}");
                 return;
-            case "Backspace":
             case "Delete":
+                // Forward-delete: clear ONLY the current cell and keep focus
+                // here (do not collapse to the previous box like Backspace).
+                // On an already-empty cell, do nothing.
+                if (GetChar(index) != "")
+                {
+                    var deleteCells = CellsFromValue();
+                    deleteCells[index] = Empty;
+                    Value = BuildValue(deleteCells);
+                    await ValueChanged.InvokeAsync(Value);
+                }
+                return;
+            case "Backspace":
                 break;
             default:
                 return;
         }
 
+        // Backspace: clear the current cell (or, when empty, the previous one)
+        // and move focus backward.
         var cells = CellsFromValue();
         if (GetChar(index) != "")
         {

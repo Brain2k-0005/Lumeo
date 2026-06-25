@@ -66,7 +66,7 @@ else if (IsRange)
                    the THUMBS (pseudo-elements), not the inputs: with the whole
                    end input set to pointer-events:auto it sat on top across the
                    entire width and the start thumb could never be grabbed. *@
-                <input type="range" min="@Min" max="@Max" step="@Step" value="@Value" disabled="@Disabled"
+                <input type="range" min="@Min" max="@StartThumbMax" step="@Step" value="@Value" disabled="@Disabled"
                        name="@Name"
                        aria-label="@AriaLabel" aria-valuemin="@Min" aria-valuemax="@StartThumbMax" aria-valuenow="@Value" aria-valuetext="@ValueText(Value)"
                        aria-required="@Required.ToString().ToLower()"
@@ -74,7 +74,7 @@ else if (IsRange)
                        id="@FormFieldControlId" aria-describedby="@FormFieldDescribedBy"
                        class="@RangeInputClasses"
                        @oninput="OnStartInput" />
-                <input type="range" min="@Min" max="@Max" step="@Step" value="@ValueEnd" disabled="@Disabled"
+                <input type="range" min="@EndThumbMin" max="@Max" step="@Step" value="@ValueEnd" disabled="@Disabled"
                        aria-label="@EndAriaLabel" aria-valuemin="@EndThumbMin" aria-valuemax="@Max" aria-valuenow="@ValueEnd" aria-valuetext="@ValueText(ValueEnd)"
                        aria-required="@Required.ToString().ToLower()"
                        aria-invalid="@EffectiveInvalid.ToString().ToLower()"
@@ -273,9 +273,11 @@ else
     private double MinGap => Math.Max(0, MinStepsBetweenThumbs) * Step;
 
     // The REACHABLE bounds for each range thumb (the C# clamp stops the start thumb
-    // at ValueEnd-MinGap and the end thumb at Value+MinGap). aria-valuemin/max must
-    // announce these, not the full Min..Max, or a screen reader reports a range the
-    // user can't actually reach (WAI-ARIA multi-thumb slider).
+    // at ValueEnd-MinGap and the end thumb at Value+MinGap). These drive BOTH the
+    // aria-valuemin/max (so a screen reader announces only the reachable range) AND
+    // the native input min/max (so the native control itself stops at the reachable
+    // bound instead of letting the thumb drag into the forbidden zone and snap back —
+    // keeping native min/max in agreement with ARIA). WAI-ARIA multi-thumb slider.
     private double StartThumbMax => Math.Max(Min, ValueEnd - MinGap);
     private double EndThumbMin => Math.Min(Max, Value + MinGap);
 

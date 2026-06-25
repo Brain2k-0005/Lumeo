@@ -4,12 +4,18 @@
     @* role=button + tabindex + keydown make the trigger keyboard-operable.
        It wraps arbitrary content (often a Button), so we don't render a native
        <button> (that would nest a button-in-button); we mirror PopoverTrigger's
-       interactive-div contract instead. *@
-    <span role="button" tabindex="0" @onclick="Toggle" @onkeydown="HandleTriggerKeyDown" class="inline-flex cursor-pointer">
+       interactive-div contract instead — including the popover ARIA relationship
+       (battle-wave2 #84) so assistive tech announces the trigger's expanded state
+       and the alertdialog it controls. *@
+    <span id="@_triggerId" role="button" tabindex="0"
+          aria-haspopup="dialog"
+          aria-expanded="@(_isOpen ? "true" : "false")"
+          aria-controls="@(_isOpen ? _dialogId : null)"
+          @onclick="Toggle" @onkeydown="HandleTriggerKeyDown" class="inline-flex cursor-pointer">
         @ChildContent
     </span>
     <PopoverContent Side="@PlacementSide" Class="@(Cx.Merge("w-72 p-4", Class))">
-        <div class="flex flex-col gap-3" role="alertdialog" aria-labelledby="@_titleId" aria-describedby="@(string.IsNullOrEmpty(Description) ? null : _descId)">
+        <div id="@_dialogId" class="flex flex-col gap-3" role="alertdialog" aria-labelledby="@_titleId" aria-describedby="@(string.IsNullOrEmpty(Description) ? null : _descId)">
             <div class="flex items-start gap-2">
                 @if (Icon != null)
                 {
@@ -39,7 +45,9 @@
     </PopoverContent>
 </Popover>
 
+@implements IAsyncDisposable
 @inject Lumeo.Services.Localization.ILumeoLocalizer L
+@inject IComponentInteropService Interop
 
 @code {
     [Parameter] public string? Title { get; set; }
@@ -73,6 +81,11 @@
     private bool _isOpen;
     private readonly string _titleId = LumeoIds.New("popconfirm-title");
     private readonly string _descId = LumeoIds.New("popconfirm-desc");
+    // Stable ids so the trigger can advertise aria-controls and we can return
+    // focus to the trigger on close (battle-wave2 #84 / #182).
+    private readonly string _triggerId = LumeoIds.New("popconfirm-trigger");
+    private readonly string _dialogId = LumeoIds.New("popconfirm-dialog");
+    private bool _pdRegistered;
 
     private void Toggle() => _isOpen = !_isOpen;
 
@@ -83,15 +96,55 @@
         if (e.Key is "Enter" or " ") Toggle();
     }
 
+    // battle-wave2 #83 — a span[role=button] has no native key synthesis, so
+    // Space activated the trigger AND scrolled the page. Suppress only Space's
+    // default synchronously in JS (Enter has no default on a span). Mirrors
+    // CollapsibleTrigger; we deliberately avoid @onkeydown:preventDefault, which
+    // would also swallow Tab and trap keyboard navigation.
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        try
+        {
+            await Interop.RegisterPreventDefaultKeys(
+                _triggerId,
+                new[] { new Lumeo.Services.PreventDefaultKeyRule(" ") });
+            _pdRegistered = true;
+        }
+        catch (JSDisconnectedException) { }
+        catch (ObjectDisposedException) { }
+        catch (InvalidOperationException) { } // JS interop unavailable during prerender
+    }
+
     private async Task HandleConfirm()
     {
         _isOpen = false;
+        await RestoreTriggerFocus();
         await OnConfirm.InvokeAsync();
     }
 
     private async Task HandleCancel()
     {
         _isOpen = false;
+        await RestoreTriggerFocus();
         await OnCancel.InvokeAsync();
+    }
+
+    // battle-wave2 #182 — on close, the shared PopoverContent returns focus to
+    // the Popover wrapper, not the actual trigger (and on nested-button usage
+    // the real trigger is the inner button). PopConfirm owns its trigger span,
+    // so restore focus straight to it: keyboard users land back where they were.
+    private async Task RestoreTriggerFocus()
+    {
+        try { await Interop.FocusElement(_triggerId); } catch (JSDisconnectedException) { }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (!_pdRegistered) return;
+        try { await Interop.UnregisterPreventDefaultKeys(_triggerId); }
+        catch (JSDisconnectedException) { }
+        catch (ObjectDisposedException) { }
+        catch (InvalidOperationException) { }
     }
 }

@@ -1,4 +1,5 @@
 @namespace Lumeo
+@using Lumeo.Internal
 @inject Services.ComponentInteropService Interop
 @inject Lumeo.Services.Localization.ILumeoLocalizer L
 @implements IAsyncDisposable
@@ -12,7 +13,7 @@ else
 
 @if (Label is not null && !InsideFormField)
 {
-    <label class="block text-sm font-medium text-foreground mb-1.5">
+    <label id="@_labelId" class="block text-sm font-medium text-foreground mb-1.5">
         @Label
         @if (Required)
         {
@@ -21,7 +22,7 @@ else
     </label>
 }
 
-<div class="@RootClass" @attributes="AdditionalAttributes" aria-required="@(Required ? "true" : "false")" aria-invalid="@(EffectiveInvalid ? "true" : "false")">
+<div class="@RootClass" @attributes="AdditionalAttributes">
     @if (EffectiveToolbar != EditorToolbarPreset.None)
     {
         <EditorToolbar Preset="EffectiveToolbar"
@@ -32,7 +33,19 @@ else
                        OnCommand="HandleToolbarCommand" />
     }
 
-    <div @ref="_contentRef" style="@ContentStyle" class="lumeo-rte-content bg-card"></div>
+    @* role/aria live on the editable surface itself (not the presentational
+       wrapper) so assistive tech announces it as a multi-line textbox tied to
+       its label, helper and error text. TipTap mounts the contenteditable into
+       this host and also receives a mirrored set via editorProps.attributes. *@
+    <div @ref="_contentRef"
+         style="@ContentStyle"
+         class="lumeo-rte-content bg-card"
+         role="textbox"
+         aria-multiline="true"
+         aria-required="@(Required ? "true" : "false")"
+         aria-invalid="@(EffectiveInvalid ? "true" : "false")"
+         aria-labelledby="@EditorLabelledBy"
+         aria-describedby="@EditorDescribedBy"></div>
 </div>
 
 @if (!InsideFormField)
@@ -43,11 +56,11 @@ else
     }
     else if (EffectiveInvalid && ErrorText is not null)
     {
-        <p class="text-xs text-destructive mt-1.5">@ErrorText</p>
+        <p id="@_errorId" class="text-xs text-destructive mt-1.5">@ErrorText</p>
     }
     else if (HelperText is not null)
     {
-        <p class="text-xs text-muted-foreground mt-1.5">@HelperText</p>
+        <p id="@_helperId" class="text-xs text-muted-foreground mt-1.5">@HelperText</p>
     }
 }
 
@@ -142,6 +155,38 @@ else
 
     private bool EffectiveInvalid => Invalid || FormField?.HasError == true;
     private bool InsideFormField => FormField is not null;
+
+    // Stable ids so the editable surface can be associated with its Label,
+    // helper, and error text via aria-labelledby / aria-describedby (Base UI
+    // Field a11y parity). Generated once per instance; only emitted onto the
+    // markup when the corresponding text is actually rendered.
+    private readonly string _labelId = $"rte-label-{Guid.NewGuid():N}";
+    private readonly string _helperId = $"rte-helper-{Guid.NewGuid():N}";
+    private readonly string _errorId = $"rte-error-{Guid.NewGuid():N}";
+
+    // The element id of the standalone label, when one is rendered (i.e. a Label
+    // was supplied AND we're not inside a FormField, which owns its own label).
+    private string? StandaloneLabelId =>
+        Label is not null && !InsideFormField ? _labelId : null;
+
+    // aria-labelledby for the editable surface: our own standalone label. Inside a
+    // FormField the label association is owned by the FormField's <label for> ->
+    // control id link, so we do NOT emit a (potentially wrong) aria-labelledby here.
+    private string? EditorLabelledBy => StandaloneLabelId;
+
+    // aria-describedby for the editable surface: the FormField's active message id
+    // when nested, else whichever of our own helper/error <p> is currently shown.
+    private string? EditorDescribedBy
+    {
+        get
+        {
+            if (InsideFormField) return FormField!.DescribedBy;
+            if (_wordImportError is not null) return null; // role=alert <p> announces itself
+            if (EffectiveInvalid && ErrorText is not null) return _errorId;
+            if (HelperText is not null) return _helperId;
+            return null;
+        }
+    }
 
     private EditorToolbarPreset EffectiveToolbar => ToolbarMode switch
     {
@@ -291,6 +336,16 @@ else
             enableDragHandle = EnableDragHandle,
             maxLength = MaxLength,
             maxWordImportBytes = MaxWordImportBytes,
+            // A11y: TipTap mounts the contenteditable as a child of the content
+            // host, so role/aria-multiline/required/invalid and the label/desc
+            // associations must be pushed onto it via editorProps.attributes too
+            // (the host wrapper carries the same set for non-TipTap consumers).
+            role = "textbox",
+            ariaMultiline = true,
+            ariaRequired = Required,
+            ariaInvalid = EffectiveInvalid,
+            ariaLabelledBy = EditorLabelledBy,
+            ariaDescribedBy = EditorDescribedBy,
         };
 
         try

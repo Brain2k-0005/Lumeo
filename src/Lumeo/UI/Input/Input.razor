@@ -312,6 +312,14 @@ else
         await OnInput.InvokeAsync(new ChangeEventArgs { Value = "" });
         await ValueChanged.InvokeAsync("");
         await OnClear.InvokeAsync();
+
+        // Restore focus to the input. Clicking the clear button moved focus to it,
+        // and clearing the value removes the button from the DOM (it is rendered
+        // only while the value is non-empty), so focus would otherwise fall to
+        // <body> — stranding keyboard users (WCAG 2.4.3). Done after the awaits so
+        // the input is guaranteed present (only the button is value-conditional).
+        try { await _inputRef.FocusAsync(); }
+        catch (Microsoft.JSInterop.JSDisconnectedException) { }
     }
 
 }

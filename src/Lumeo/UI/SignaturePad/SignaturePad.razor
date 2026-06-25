@@ -5,7 +5,8 @@
 @* The wrapper is the labelled region; Escape/Delete clears when focus is
    inside it so keyboard / switch-access users aren't forced to mouse the clear
    button. tabindex makes the region focusable for that handler. *@
-<div class="@WrapperClass"
+<div id="@_wrapperId"
+     class="@WrapperClass"
      role="group"
      aria-label="@L["SignaturePad.Label"]"
      tabindex="0"
@@ -94,6 +95,11 @@
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     private readonly string _canvasId = LumeoIds.New("signature-pad");
+    // The labelled wrapper region. Clearing via the Clear button disables that
+    // button (it's empty now), so the browser drops keyboard focus to <body>.
+    // We give the wrapper a stable id so ClearAsync can restore focus to the
+    // region after clearing, keeping the pad keyboard-operable.
+    private readonly string _wrapperId = LumeoIds.New("signature-pad-region");
     private DotNetObjectReference<SignaturePad>? _selfRef;
     private bool _initialised;
 
@@ -286,6 +292,14 @@
         await ValueChanged.InvokeAsync(null);
         await OnClear.InvokeAsync();
         StateHasChanged();
+
+        // Clearing disables the Clear button (the pad is empty), so a keyboard /
+        // switch-access user who activated it loses focus to <body>. Move focus
+        // back to the labelled wrapper region so the pad stays operable. This is
+        // idempotent for the Escape/Delete path (focus is already inside the
+        // region) and the needed restore for the Clear-button path.
+        try { await Interop.FocusElement(_wrapperId); }
+        catch (JSDisconnectedException) { }
     }
 
     // Escape / Delete / Backspace clear the pad when it (or a child) has focus,

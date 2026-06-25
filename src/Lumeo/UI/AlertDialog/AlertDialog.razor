@@ -1,7 +1,7 @@
 @namespace Lumeo
 
 @{
-    var context = new AlertDialogContext(EffectiveOpen, EventCallback.Factory.Create<bool>(this, SetOpen), _titleId, _descriptionId, TryDismiss);
+    var context = new AlertDialogContext(EffectiveOpen, EventCallback.Factory.Create<bool>(this, SetOpen), _titleId, _descriptionId, TryDismiss, _descriptionRegistry, RegisterDescription);
 }
 
 <CascadingValue Value="context" IsFixed="false">
@@ -39,6 +39,11 @@
     private readonly string _titleId = LumeoIds.New("alertdialog-title");
     private readonly string _descriptionId = LumeoIds.New("alertdialog-desc");
 
+    // Tracks whether an <AlertDialogDescription> is actually present in the tree.
+    // A mutable holder (not a record field) because the cascaded context is
+    // rebuilt every render, but the registration must persist across renders.
+    private readonly AlertDialogDescriptionRegistry _descriptionRegistry = new();
+
     // Controlled-vs-uncontrolled disambiguation: a bool param can't be
     // "undefined", so we inspect which parameters the consumer actually supplied.
     private bool _controlled;
@@ -75,6 +80,19 @@
         StateHasChanged();
     }
 
+    // Called by AlertDialogDescription on init so AlertDialogContent only wires
+    // aria-describedby when a description actually exists (no dangling IDREF).
+    // Re-renders so the content's aria-describedby picks up the registration on
+    // the next pass (child OnInitialized runs after the parent's first render).
+    private void RegisterDescription()
+    {
+        if (!_descriptionRegistry.HasDescription)
+        {
+            _descriptionRegistry.HasDescription = true;
+            StateHasChanged();
+        }
+    }
+
     private async Task<bool> TryDismiss(string reason)
     {
         if (OnBeforeClose.HasDelegate)
@@ -87,5 +105,16 @@
         return true;
     }
 
-    public record AlertDialogContext(bool IsOpen, EventCallback<bool> SetOpen, string TitleId, string DescriptionId, Func<string, Task<bool>> TryDismiss);
+    public record AlertDialogContext(bool IsOpen, EventCallback<bool> SetOpen, string TitleId, string DescriptionId, Func<string, Task<bool>> TryDismiss, AlertDialogDescriptionRegistry DescriptionRegistry, Action RegisterDescription);
+
+    /// <summary>
+    /// Persistent, mutable holder that survives the per-render rebuild of
+    /// <see cref="AlertDialogContext"/>. Lets <see cref="AlertDialogContent"/>
+    /// know whether an <see cref="AlertDialogDescription"/> was rendered so it
+    /// can avoid emitting a dangling <c>aria-describedby</c> IDREF.
+    /// </summary>
+    public sealed class AlertDialogDescriptionRegistry
+    {
+        public bool HasDescription { get; set; }
+    }
 }

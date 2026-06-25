@@ -1,5 +1,7 @@
 @namespace Lumeo
+@implements IAsyncDisposable
 @inject Lumeo.Services.Localization.ILumeoLocalizer L
+@inject IComponentInteropService Interop
 
 @{
     var isRoot = Depth == 0;
@@ -10,17 +12,23 @@
     <div class="flex flex-wrap items-center gap-2">
         <div class="inline-flex items-center rounded-md bg-muted p-0.5" role="radiogroup" aria-label="@L["QueryBuilder.Combinator"]">
             <button type="button"
+                    id="@_andId"
                     role="radio"
                     aria-checked="@((Group.Combinator == QueryCombinator.And).ToString().ToLowerInvariant())"
+                    tabindex="@(Group.Combinator == QueryCombinator.And ? 0 : -1)"
                     class="@CombinatorPillClass(Group.Combinator == QueryCombinator.And)"
-                    @onclick="@(() => SetCombinator(QueryCombinator.And))">
+                    @onclick="@(() => SetCombinator(QueryCombinator.And))"
+                    @onkeydown="HandleCombinatorKeyDown">
                 AND
             </button>
             <button type="button"
+                    id="@_orId"
                     role="radio"
                     aria-checked="@((Group.Combinator == QueryCombinator.Or).ToString().ToLowerInvariant())"
+                    tabindex="@(Group.Combinator == QueryCombinator.Or ? 0 : -1)"
                     class="@CombinatorPillClass(Group.Combinator == QueryCombinator.Or)"
-                    @onclick="@(() => SetCombinator(QueryCombinator.Or))">
+                    @onclick="@(() => SetCombinator(QueryCombinator.Or))"
+                    @onkeydown="HandleCombinatorKeyDown">
                 OR
             </button>
         </div>
@@ -139,6 +147,11 @@
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
+    // Stable per-instance ids for the two combinator radios so arrow-key navigation
+    // can move DOM focus to the newly-selected radio via Interop.FocusElement.
+    private readonly string _andId = LumeoIds.New("qb-comb-and");
+    private readonly string _orId = LumeoIds.New("qb-comb-or");
+
     private bool AllowEmpty => Ctx.AllowEmptyGroups;
 
     // Removing a child is allowed when empties are permitted, or when more than one child remains.
@@ -169,6 +182,75 @@
         if (Group.Combinator == c) return;
         Group.Combinator = c;
         await Ctx.NotifyChanged();
+    }
+
+    private string CombinatorId(QueryCombinator c) => c == QueryCombinator.And ? _andId : _orId;
+
+    // WAI-ARIA radio group keyboard support for the And/Or combinator pills.
+    // Arrows (and Home/End) move selection AND roving focus to the target radio;
+    // Space/Enter are left to the native <button> click (which already runs
+    // SetCombinator), mirroring RadioGroupItem so we never double-fire.
+    private async Task HandleCombinatorKeyDown(KeyboardEventArgs e)
+    {
+        var target = e.Key switch
+        {
+            // Two-option group: arrows toggle to the other; Home selects And, End selects Or.
+            "ArrowDown" or "ArrowRight" or "ArrowUp" or "ArrowLeft" =>
+                Group.Combinator == QueryCombinator.And ? QueryCombinator.Or : QueryCombinator.And,
+            "Home" => QueryCombinator.And,
+            "End" => QueryCombinator.Or,
+            _ => (QueryCombinator?)null
+        };
+        if (target is null) return;
+
+        await SetCombinator(target.Value);
+        // Roving focus follows the selection (Interop.FocusElement is a no-op under
+        // bUnit but recorded by the tracking interop so the move stays assertable).
+        try
+        {
+            await Interop.FocusElement(CombinatorId(target.Value));
+        }
+        catch (JSDisconnectedException) { }
+        catch (ObjectDisposedException) { }
+        catch (InvalidOperationException) { }
+    }
+
+    private bool _pdRegistered;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        // Suppress the browser's page-scroll on the arrow keys while a combinator
+        // radio is focused — registered out-of-band (not @onkeydown:preventDefault,
+        // which would also swallow Tab and trap keyboard users in the group).
+        try
+        {
+            await Interop.RegisterPreventDefaultKeys(
+                _andId,
+                new[] { "ArrowDown", "ArrowRight", "ArrowUp", "ArrowLeft", "Home", "End" }
+                    .Select(k => new PreventDefaultKeyRule(k)).ToArray());
+            await Interop.RegisterPreventDefaultKeys(
+                _orId,
+                new[] { "ArrowDown", "ArrowRight", "ArrowUp", "ArrowLeft", "Home", "End" }
+                    .Select(k => new PreventDefaultKeyRule(k)).ToArray());
+            _pdRegistered = true;
+        }
+        catch (JSDisconnectedException) { }
+        catch (ObjectDisposedException) { }
+        catch (InvalidOperationException) { } // JS interop unavailable during prerender
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (!_pdRegistered) return;
+        try
+        {
+            await Interop.UnregisterPreventDefaultKeys(_andId);
+            await Interop.UnregisterPreventDefaultKeys(_orId);
+        }
+        catch (JSDisconnectedException) { }
+        catch (ObjectDisposedException) { }
+        catch (InvalidOperationException) { }
     }
 
     private async Task AddRule()

@@ -165,9 +165,57 @@ public class RatingTests : IAsyncLifetime
 
         var radios = cut.FindAll("[role='radio']");
         Assert.Equal(5, radios.Count);
-        Assert.Equal("true", radios[0].GetAttribute("aria-checked"));
+        // ARIA single-selection: exactly the star at Value is checked, not every
+        // filled star below it (the visual fill is driven by classes, not aria-checked).
+        Assert.Equal("false", radios[0].GetAttribute("aria-checked"));
         Assert.Equal("true", radios[1].GetAttribute("aria-checked"));
         Assert.Equal("false", radios[2].GetAttribute("aria-checked"));
+    }
+
+    // --- #58: a role="radiogroup" must not report aria-checked="true" on more than
+    // one role="radio" (single-selection contract). The visual "all stars up to Value
+    // are filled" look is driven by CSS classes, but aria-checked previously mirrored
+    // that fill, so Value=3 reported THREE checked radios. The fix marks only the
+    // single star equal to the current value as checked. ---
+
+    [Fact]
+    public void RadioGroup_HasExactlyOneCheckedRadio()
+    {
+        var cut = _ctx.Render<Lumeo.Rating>(p => p.Add(r => r.Value, 3));
+
+        var radios = cut.FindAll("[role='radio']");
+        // Without the fix, stars 1, 2 AND 3 would all report aria-checked="true",
+        // violating the radiogroup single-selection contract.
+        var checkedCount = radios.Count(r => r.GetAttribute("aria-checked") == "true");
+        Assert.Equal(1, checkedCount);
+
+        // And the single checked radio must be the star at the current value (star 3).
+        Assert.Equal("true", radios[2].GetAttribute("aria-checked"));
+    }
+
+    [Fact]
+    public void RadioGroup_HalfValue_ChecksSingleStar()
+    {
+        var cut = _ctx.Render<Lumeo.Rating>(p => p
+            .Add(r => r.AllowHalf, true)
+            .Add(r => r.Value, 2.5));
+
+        var radios = cut.FindAll("[role='radio']");
+        // A 2.5 rating selects star 3 (Ceiling) — and ONLY star 3.
+        var checkedCount = radios.Count(r => r.GetAttribute("aria-checked") == "true");
+        Assert.Equal(1, checkedCount);
+        Assert.Equal("true", radios[2].GetAttribute("aria-checked"));
+    }
+
+    [Fact]
+    public void RadioGroup_ZeroValue_HasNoCheckedRadio()
+    {
+        var cut = _ctx.Render<Lumeo.Rating>(p => p.Add(r => r.Value, 0));
+
+        var radios = cut.FindAll("[role='radio']");
+        // No selection yet: a radiogroup may legitimately report zero checked radios,
+        // and crucially must never report more than one.
+        Assert.DoesNotContain(radios, r => r.GetAttribute("aria-checked") == "true");
     }
 
     // --- #57: shrinking Max below current Value must not drop the widget out of

@@ -1,4 +1,6 @@
 @namespace Lumeo
+@implements IAsyncDisposable
+@inject Lumeo.Services.IComponentInteropService Interop
 
 @if (AsChild)
 {
@@ -21,7 +23,7 @@
 }
 else
 {
-    <div class="@CssClass" role="button" tabindex="0" aria-expanded="@(Context.IsOpen ? "true" : "false")" aria-haspopup="dialog" aria-controls="@(Context.IsOpen ? Context.ContentId : null)" @onclick="Toggle" @onkeydown="HandleKeyDown" @attributes="AdditionalAttributes">
+    <div id="@_triggerId" class="@CssClass" role="button" tabindex="0" aria-expanded="@(Context.IsOpen ? "true" : "false")" aria-haspopup="dialog" aria-controls="@(Context.IsOpen ? Context.ContentId : null)" @onclick="Toggle" @onkeydown="HandleKeyDown" @attributes="AdditionalAttributes">
         @ChildContent
     </div>
 }
@@ -57,6 +59,12 @@ else
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
+    // Stable id for the fallback role=button trigger so the Space-default
+    // suppression (battle-wave2 #88) can target it. AsChild renders no wrapper, so
+    // this id is only emitted/registered on the non-AsChild branch below.
+    private readonly string _triggerId = LumeoIds.New("popover-trigger");
+    private bool _pdRegistered;
+
     private string CssClass => Cx.Merge("inline-flex", Class);
 
     private TriggerSlot Slot => new(
@@ -84,5 +92,39 @@ else
     private async Task HandleKeyDown(KeyboardEventArgs e)
     {
         if (e.Key is "Enter" or " ") await Toggle();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender || AsChild) return;
+        try
+        {
+            // battle-wave2 #88 (keyboard-a11y): the fallback div[role=button] has no
+            // native key synthesis, so Space both opened the popover AND scrolled the
+            // page. Suppress only Space's default synchronously in JS (Enter has no
+            // default on a div). Calling e.PreventDefault from the async @onkeydown
+            // handler is too late — the default has already fired — and
+            // @onkeydown:preventDefault would also trap Tab; the JS-side key-selective
+            // rule is the library idiom (Collapsible/Accordion/Tabs triggers).
+            await Interop.RegisterPreventDefaultKeys(
+                _triggerId,
+                new[] { new Lumeo.Services.PreventDefaultKeyRule(" ") });
+            _pdRegistered = true;
+        }
+        catch (JSDisconnectedException) { }
+        catch (ObjectDisposedException) { }
+        catch (InvalidOperationException) { } // JS interop unavailable during prerender
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (!_pdRegistered) return;
+        try
+        {
+            await Interop.UnregisterPreventDefaultKeys(_triggerId);
+        }
+        catch (JSDisconnectedException) { }
+        catch (ObjectDisposedException) { }
+        catch (InvalidOperationException) { }
     }
 }

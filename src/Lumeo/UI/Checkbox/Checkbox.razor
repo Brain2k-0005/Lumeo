@@ -10,7 +10,7 @@
         <button type="button" id="@EffectiveId" role="checkbox" aria-checked="@AriaChecked"
                 aria-required="@Required.ToString().ToLowerInvariant()"
                 aria-invalid="@EffectiveInvalid.ToString().ToLowerInvariant()"
-                aria-describedby="@FormFieldDescribedBy"
+                aria-describedby="@DescribedBy"
                 class="@CssClass" @onclick="Toggle" disabled="@Disabled" @attributes="AdditionalAttributes">
             @RenderIcon()
         </button>
@@ -24,7 +24,7 @@
             </label>
             @if (!string.IsNullOrEmpty(Description))
             {
-                <p class="text-xs text-muted-foreground">@Description</p>
+                <p id="@_descriptionId" class="text-xs text-muted-foreground">@Description</p>
             }
         </div>
     </div>
@@ -34,7 +34,7 @@ else
     <button type="button" id="@EffectiveId" role="checkbox" aria-checked="@AriaChecked" aria-label="@AriaLabel"
             aria-required="@Required.ToString().ToLowerInvariant()"
             aria-invalid="@EffectiveInvalid.ToString().ToLowerInvariant()"
-            aria-describedby="@FormFieldDescribedBy"
+            aria-describedby="@DescribedBy"
             class="@CssClass" @onclick="Toggle" disabled="@Disabled" @attributes="AdditionalAttributes">
         @RenderIcon()
     </button>
@@ -126,9 +126,33 @@ else
 
     // Inside a FormField, adopt its generated ControlId so the field's
     // <Label For> resolves to this checkbox button (an explicit Id still wins).
-    private string EffectiveId => Id
-        ?? (string.IsNullOrEmpty(FormField?.ControlId) ? null : FormField!.ControlId)
-        ?? _generatedId;
+    // A consumer-splatted id="..." wins over all of the above, because @attributes
+    // renders AFTER the explicit id=, so it is what actually lands on the <button>.
+    // Routing through LumeoIds.Effective keeps the <label for> bound to the SAME id
+    // the button ends up with (otherwise clicking the label no longer toggles it).
+    private string EffectiveId => LumeoIds.Effective(
+        AdditionalAttributes,
+        Id
+            ?? (string.IsNullOrEmpty(FormField?.ControlId) ? null : FormField!.ControlId)
+            ?? _generatedId);
+
+    // Stable id for the standalone Description <p> so it can be referenced by
+    // aria-describedby (only meaningful/rendered when Description is non-empty).
+    private readonly string _descriptionId = LumeoIds.New("checkbox-desc");
+
+    // aria-describedby points at the FormField's help/error text (inside a field) AND,
+    // when a standalone Description is shown, that description's <p>. Null/empty parts
+    // are dropped; an empty result renders as no attribute at all (not aria-describedby="").
+    private string? DescribedBy
+    {
+        get
+        {
+            var joined = Cx.Join(
+                FormFieldDescribedBy,
+                string.IsNullOrEmpty(Description) ? null : _descriptionId);
+            return string.IsNullOrEmpty(joined) ? null : joined;
+        }
+    }
 
     private string AriaChecked => IsIndeterminate ? "mixed" : Checked.ToString().ToLower();
 

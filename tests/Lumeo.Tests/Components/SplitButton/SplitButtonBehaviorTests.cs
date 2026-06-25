@@ -11,14 +11,16 @@ namespace Lumeo.Tests.Components.SplitButton;
 /// Behaviour/a11y tests for the two-half <see cref="Lumeo.SplitButton"/>: a primary
 /// action button plus a chevron half that opens a <c>DropdownMenu</c>.
 ///
-/// The chevron half wraps a Lumeo <c>Button</c> inside a NON-asChild
-/// <c>DropdownMenuTrigger</c>, which renders a <c>&lt;div role="button"&gt;</c>
-/// carrying the live <c>@onclick</c> toggle plus the menu ARIA (aria-haspopup,
-/// aria-expanded, aria-controls). The inner chevron <c>&lt;button&gt;</c> has no
-/// toggle handler of its own — in a real browser the click bubbles to the trigger
-/// div; bUnit does NOT bubble, so these tests click the <c>role="button"</c>
-/// trigger element (the one that owns the handler + aria-expanded). The menu
-/// content (<c>role="menu"</c>) is conditionally rendered only while open.
+/// The chevron half wraps a Lumeo <c>Button</c> inside an <b>AsChild</b>
+/// <c>DropdownMenuTrigger</c> (triage #121). AsChild folds the menu ARIA
+/// (<c>aria-haspopup</c>, <c>aria-expanded</c>, <c>aria-controls</c>,
+/// <c>data-state</c>) plus the live toggle <c>@onclick</c> onto the SINGLE
+/// focusable chevron <c>&lt;button&gt;</c> — there is no separate
+/// <c>&lt;div role="button"&gt;</c> wrapper, so a screen reader landing on the
+/// focused button now hears the open/closed state. These tests therefore click /
+/// assert against the chevron button itself (the one carrying
+/// <c>aria-haspopup='menu'</c>). The menu content (<c>role="menu"</c>) is
+/// conditionally rendered only while open.
 ///
 /// JSInterop runs LOOSE (the positioning / click-outside / focus calls fired in
 /// DropdownMenuContent.OnAfterRenderAsync are recorded, not asserted here), so the
@@ -56,11 +58,13 @@ public class SplitButtonBehaviorTests : IAsyncLifetime
             p.Add(b => b.MenuContent, MenuWithItem(menuItemLabel));
         });
 
-    // The chevron half's clickable trigger: the role="button" wrapper that owns
-    // the @onclick toggle AND aria-expanded (distinct from the inner chevron
-    // <button>, which has no toggle handler of its own and does not bubble in bUnit).
+    // The chevron half's clickable trigger: with AsChild (triage #121) the menu's
+    // toggle @onclick and aria-expanded/aria-haspopup/aria-controls fold onto the
+    // single chevron <button> itself — there is no role="button" wrapper. The
+    // primary action button has no aria-haspopup, so this selector unambiguously
+    // picks the chevron half.
     private static AngleSharp.Dom.IElement Trigger(IRenderedComponent<Lumeo.SplitButton> cut)
-        => cut.Find("[role='button']");
+        => cut.Find("button[aria-haspopup='menu']");
 
     [Fact]
     public void Menu_Is_Closed_Initially_With_Collapsed_Aria()
