@@ -122,6 +122,12 @@
             {
                 <main class="flex-1 min-w-0 pb-20 lg:pb-0">
                     <div class="container mx-auto px-4 sm:px-6 py-8 @(SidebarSection is "blocks" or "none" ? "" : "max-w-5xl")">
+                        @* Quick-facts as a horizontal strip at the top of the content (not in the
+                           right rail) so "On this page" gets the full right column. *@
+                        @if (ComponentSlug is { } cslug)
+                        {
+                            <ComponentFactsBar Slug="@cslug" />
+                        }
                         <div @key="@Nav.Uri" class="page-transition lg:contents">@Body</div>
                     </div>
                 </main>
@@ -393,6 +399,21 @@
     }
 
     private bool IsPlaygroundRoute => CurrentPath.EndsWith("/playground", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>The flat /components/{slug} the user is on (null elsewhere, and for chart
+    /// sub-paths like components/charts/bar which have no 1:1 registry entry). Drives the
+    /// top-of-content Quick-facts bar. CurrentPath is already query/hash-stripped + lowercased.</summary>
+    private string? ComponentSlug
+    {
+        get
+        {
+            const string prefix = "components/";
+            var p = CurrentPath;
+            if (!p.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) return null;
+            var slug = p[prefix.Length..];
+            return string.IsNullOrEmpty(slug) || slug.Contains('/') ? null : slug;
+        }
+    }
 
     private bool ShowDocsLayout
     {
