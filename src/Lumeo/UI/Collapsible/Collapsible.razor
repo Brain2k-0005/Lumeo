@@ -49,8 +49,15 @@
     {
         // Seed the uncontrolled backing field from Open on first set (honours an
         // initial Open="true") and whenever the bound Open value actually changes
-        // (lets callers still drive it imperatively), but never on the no-op
-        // re-applications that caused the reset.
+        // (lets callers still drive it imperatively via the parameter), but never
+        // on the no-op re-applications that caused the reset (#246).
+        //
+        // Note: parameter-edge detection cannot tell a deliberate re-assert of the
+        // SAME Open value from a no-op re-render, so a parent that wants to reopen
+        // a panel the user has since closed — while Open already equals its last
+        // value — must drive it through the OpenChanged binding (controlled mode)
+        // or the imperative SetOpen(bool) method below, rather than re-setting the
+        // unchanged Open parameter. (#74)
         if (!_initialized || Open != _lastOpenParam)
         {
             _openState = Open;
@@ -75,6 +82,29 @@
         else
         {
             _openState = next;
+        }
+    }
+
+    /// <summary>
+    /// Imperatively set the open state. In controlled mode (OpenChanged bound)
+    /// this fires the callback so the parent stays the source of truth. In
+    /// uncontrolled mode it drives the internal backing field directly, giving
+    /// callers a reliable way to (re)assert open/closed without depending on the
+    /// Open parameter being treated as a one-time default. Triggers a re-render.
+    /// </summary>
+    public async Task SetOpen(bool open)
+    {
+        if (OpenChanged.HasDelegate)
+        {
+            if (open != Open)
+            {
+                await OpenChanged.InvokeAsync(open);
+            }
+        }
+        else if (open != _openState)
+        {
+            _openState = open;
+            StateHasChanged();
         }
     }
 

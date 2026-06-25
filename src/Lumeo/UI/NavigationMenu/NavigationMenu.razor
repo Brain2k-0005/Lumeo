@@ -45,6 +45,21 @@
 
     internal void UnregisterTrigger(string id) => _triggerIds.Remove(id);
 
+    // Reconcile open submenu state when an item is torn down. If the removed
+    // item is the one whose submenu is currently open, clear _activeItemId so the
+    // Viewport/Indicator (which gate purely on ActiveItemId is not null) don't
+    // stay stuck open referencing a no-longer-rendered item. Compared against the
+    // live field — not the cascaded snapshot — and scoped to the specific removed
+    // id so a momentary list churn elsewhere can't disturb an unrelated open item.
+    internal void NotifyItemRemoved(string itemId)
+    {
+        if (_activeItemId == itemId)
+        {
+            _activeItemId = null;
+            StateHasChanged();
+        }
+    }
+
     // Move focus to the trigger `delta` positions from `currentId` (wrapping).
     // Used by NavigationMenuTrigger's ArrowLeft/ArrowRight handlers.
     internal async Task FocusTriggerRelative(string currentId, int delta)

@@ -468,7 +468,24 @@
 
     private void OnSearchInput(ChangeEventArgs e)
     {
-        _searchText = e.Value?.ToString() ?? "";
+        var next = e.Value?.ToString() ?? "";
+        if (string.Equals(next, _searchText, StringComparison.Ordinal)) return;
+        _searchText = next;
+
+        // GetOptionsForLevel only filters the ROOT column (level 0); deeper
+        // columns render verbatim from _activePanels. If a stale drill-down
+        // trail survives a search edit, level 0 shows the filtered root while
+        // level 1+ still renders children of a parent that may no longer be in
+        // the filtered root list — the columns visibly desync (battle-test
+        // #27). Collapse the drill trail back to the (filtered) root on every
+        // search-text change and re-anchor the roving stop onto the first
+        // visible option so the keyboard tabindex=0 stop stays meaningful
+        // (#28, paired here so column indices don't go stale).
+        _selectedPath.Clear();
+        _activePanels.Clear();
+        _focusCol = 0;
+        _focusIdx = 0;
+        if (_isOpen) QueueFocus();
     }
 
     private static string GetOptionClass(bool isSelected) =>

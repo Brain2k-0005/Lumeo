@@ -141,8 +141,13 @@
     private static string OptionCssClass(bool isActive) =>
         $"flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-start outline-none transition-colors {(isActive ? "bg-accent text-accent-foreground" : "hover:bg-accent hover:text-accent-foreground")}";
 
+    // In server-driven mode (OnSearch.HasDelegate) the parent already returns the
+    // filtered Options for _searchTerm, so re-applying the client substring filter
+    // would silently drop any option whose Label/Value does not literally contain
+    // _searchTerm (e.g. fuzzy/remote matches). Only the local/uncontrolled mode,
+    // which is handed the full Options list up front, applies the client filter.
     private List<MentionOption> FilteredOptions =>
-        string.IsNullOrEmpty(_searchTerm)
+        OnSearch.HasDelegate || string.IsNullOrEmpty(_searchTerm)
             ? Options
             : Options.Where(o => o.Label.Contains(_searchTerm, StringComparison.OrdinalIgnoreCase) ||
                                  o.Value.Contains(_searchTerm, StringComparison.OrdinalIgnoreCase)).ToList();

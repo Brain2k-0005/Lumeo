@@ -139,6 +139,15 @@
     private int _lastRenderedItemCount = -1;
     private void OnItemsChanged()
     {
+        // Membership changed (deck grew/shrank, or refilled from empty). The
+        // scroll affordances are otherwise only learned from the JS
+        // OnScrollPosition callback, so without recomputing here, a Next that
+        // went disabled at the old end stays wrongly disabled after more slides
+        // are added (and vice-versa). Derive conservatively from the known item
+        // range against the current index; a subsequent OnScrollPosition refines
+        // them with real pixel measurements.
+        _canScrollNext = _items.Count > _currentIndex + 1;
+        _canScrollPrev = _currentIndex > 0;
         if (_items.Count != _lastRenderedItemCount)
             InvokeAsync(StateHasChanged);
     }

@@ -45,6 +45,20 @@
             _positioned = true;
             _focusedIndex = -1;
         }
+        else if (SubContext.IsOpen && _positioned)
+        {
+            // The submenu stays open while its item set may change under it
+            // (async refill / sort / add / remove). _focusedIndex is positional,
+            // so a stale index would silently retarget a different item on the
+            // next Arrow/Home/End move — re-validate against the current count
+            // and drop the highlight when it no longer maps to a real item.
+            try
+            {
+                var count = await Interop.GetMenuItemCount(SubContext.ContentId);
+                if (_focusedIndex >= count) _focusedIndex = -1;
+            }
+            catch (JSDisconnectedException) { }
+        }
         else if (!SubContext.IsOpen && _positioned)
         {
             await Cleanup();

@@ -1509,6 +1509,45 @@
             }
         }
 
+        // Re-anchor detail-expand and in-progress row-edit state onto the FRESH
+        // item instances. _expandedRows/_editingRows/_rowEditValues are keyed by
+        // TItem reference, so a same-content Items refresh that produces new
+        // instances (server-mode page fetch, parent re-fetch) would otherwise
+        // silently collapse expanded rows and discard open editors even though
+        // the logical row is still present. When SelectionKeySelector is set we
+        // remap by stable key (mirroring the _selectedItems cleanup above):
+        // entries whose key still exists are rebound to the new instance, the
+        // rest are dropped. Without a selector we leave the sets untouched —
+        // reference identity is all we have and clobbering would lose state on
+        // every benign re-render.
+        if (SelectionKeySelector is not null &&
+            (_expandedRows.Count > 0 || _editingRows.Count > 0))
+        {
+            var keyToCurrent = new Dictionary<object, TItem>();
+            foreach (var it in Items)
+            {
+                var k = SelectionKeySelector(it);
+                if (k is not null) keyToCurrent[k] = it;
+            }
+
+            RemapRowStateByKey(_expandedRows, keyToCurrent);
+            RemapRowStateByKey(_editingRows, keyToCurrent);
+
+            if (_rowEditValues.Count > 0)
+            {
+                var remappedEdits = new Dictionary<TItem, Dictionary<string, object?>>();
+                foreach (var (oldItem, dict) in _rowEditValues)
+                {
+                    var k = SelectionKeySelector(oldItem);
+                    if (k is null) remappedEdits[oldItem] = dict;
+                    else if (keyToCurrent.TryGetValue(k, out var current))
+                        remappedEdits[current] = dict;
+                    // key gone -> drop the buffered edit (row no longer exists)
+                }
+                _rowEditValues = remappedEdits;
+            }
+        }
+
         var query = Items.AsEnumerable();
 
         // Global search
@@ -2363,6 +2402,27 @@
     private bool IsRowExpanded(TItem item) => _expandedRows.Contains(item);
 
     private bool IsRowEditing(TItem item) => _editingRows.Contains(item);
+
+    // Rebuilds a reference-keyed row-state set against fresh item instances.
+    // Each stored item is re-resolved by its SelectionKeySelector key to the
+    // current instance carrying that key; keyless entries are preserved as-is
+    // (matching the null-key reference fallback used for selection), and
+    // entries whose key has vanished from the data source are dropped. Called
+    // only when SelectionKeySelector is non-null.
+    private void RemapRowStateByKey(HashSet<TItem> set, Dictionary<object, TItem> keyToCurrent)
+    {
+        if (set.Count == 0) return;
+        var rebuilt = new HashSet<TItem>();
+        foreach (var oldItem in set)
+        {
+            var k = SelectionKeySelector!(oldItem);
+            if (k is null) rebuilt.Add(oldItem);
+            else if (keyToCurrent.TryGetValue(k, out var current)) rebuilt.Add(current);
+            // key gone -> drop (logical row removed from the data source)
+        }
+        set.Clear();
+        foreach (var it in rebuilt) set.Add(it);
+    }
 
     private void ToggleSelection(TItem item)
     {

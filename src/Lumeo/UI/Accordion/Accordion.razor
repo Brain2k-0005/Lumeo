@@ -7,6 +7,7 @@
         OpenItems,
         EventCallback.Factory.Create<string>(this, ToggleItem),
         RegisterTrigger,
+        ReplaceTrigger,
         UnregisterTrigger,
         EventCallback.Factory.Create<(string Value, int Delta, bool ToEdge, bool Last)>(this, MoveFocus));
 }
@@ -142,6 +143,18 @@
         else _triggers.Add((value, triggerId, disabled));
     }
 
+    // Re-key an existing trigger IN PLACE when an item's Value changes at
+    // runtime. A naive Unregister(old)+Register(new) would RemoveAt(old index)
+    // then Add() the new value to the TAIL, scrambling the registry away from
+    // DOM order and corrupting roving ArrowUp/Down/Home/End navigation. Keeping
+    // the original slot preserves DOM/declaration order across a Value change.
+    private void ReplaceTrigger(string oldValue, string newValue, string triggerId, bool disabled)
+    {
+        var idx = _triggers.FindIndex(t => t.Value == oldValue);
+        if (idx >= 0) _triggers[idx] = (newValue, triggerId, disabled);
+        else RegisterTrigger(newValue, triggerId, disabled);
+    }
+
     private void UnregisterTrigger(string value)
     {
         var idx = _triggers.FindIndex(t => t.Value == value);
@@ -191,6 +204,7 @@
         HashSet<string> OpenItems,
         EventCallback<string> Toggle,
         Action<string, string, bool> RegisterTrigger,
+        Action<string, string, string, bool> ReplaceTrigger,
         Action<string> UnregisterTrigger,
         EventCallback<(string Value, int Delta, bool ToEdge, bool Last)> MoveFocus)
     {

@@ -122,6 +122,54 @@
 
     private bool _wasOpen;
 
+    // _focusedIndex is a POSITION into NavItems; the rendered highlight and what
+    // Enter/Space selects (FocusedItemValue) are read from navItems[_focusedIndex].
+    // An external Items/Value data-change while the popover is open (reorder, filter,
+    // add/remove, or a same-content refresh that creates a fresh list instance) would
+    // leave that index pointing at a DIFFERENT row — silently retargeting the highlight
+    // and the Enter/Space selection. Anchor focus by VALUE rather than position so it
+    // survives a same-content refresh and follows the item across reorders, mirroring
+    // how TrySeedFocusToSelected remaps by value. _focusedValue is the value the index
+    // currently points at; null means "no highlight" (_focusedIndex == -1).
+    private string? _focusedValue;
+
+    protected override void OnParametersSet()
+    {
+        // Re-validate the keyboard highlight against the (possibly new) option list.
+        // Only meaningful while the popover is open; a closed Select has nothing to
+        // re-anchor. We key off _focusedValue (the stable identity) rather than the
+        // raw index so the re-anchor still runs after a transient-empty render dropped
+        // the index to -1 (the refill restores the highlight onto the same row).
+        if (Open && _focusedValue is not null)
+        {
+            var nav = NavItems;
+            // Don't clobber an in-progress highlight on a transient-empty list
+            // (e.g. an async Items refresh that flickers empty→refilled): hide the
+            // highlight for this render (index out of range) but KEEP _focusedValue
+            // so the refill re-anchors onto the same row.
+            if (nav.Count == 0)
+            {
+                _focusedIndex = -1;
+            }
+            else
+            {
+                // Follow the previously-focused VALUE to its new position. If it is
+                // gone from the refreshed list, drop the highlight (-1) rather than
+                // letting the stale index point at an unrelated row.
+                var idx = nav.FindIndex(n => n.Value == _focusedValue);
+                _focusedIndex = idx;
+                if (idx < 0) _focusedValue = null;
+            }
+        }
+        else if (Open && _focusedIndex >= 0)
+        {
+            // No tracked value (shouldn't normally happen) but a live highlight —
+            // clamp the bare index into range so it never points past the list.
+            var count = NavItems.Count;
+            if (_focusedIndex >= count) _focusedIndex = count - 1;
+        }
+    }
+
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (firstRender && AutoFocus)
@@ -164,6 +212,7 @@
         var idx = nav.FindIndex(n => n.Value == selected);
         if (idx < 0) return false;
         _focusedIndex = idx;
+        _focusedValue = nav[idx].Value;
         return true;
     }
 
@@ -288,11 +337,13 @@
 
     private async Task SetFocusedIndex(int index)
     {
-        var count = NavItems.Count;
+        var nav = NavItems;
+        var count = nav.Count;
         if (count == 0) return;
         if (index < 0) index = 0;
         if (index >= count) index = count - 1;
         _focusedIndex = index;
+        _focusedValue = nav[index].Value;
         StateHasChanged();
         await Task.CompletedTask;
     }
@@ -326,6 +377,7 @@
             if (nav[idx].Text.StartsWith(search, StringComparison.OrdinalIgnoreCase))
             {
                 _focusedIndex = idx;
+                _focusedValue = nav[idx].Value;
                 StateHasChanged();
                 return;
             }
@@ -363,6 +415,7 @@
         {
             SearchText = "";
             _focusedIndex = -1;
+            _focusedValue = null;
             _items.Clear();
             _typeahead.Reset();
         }
@@ -373,6 +426,7 @@
     {
         SearchText = text;
         _focusedIndex = -1;
+        _focusedValue = null;
         // Do NOT clear _items here: still-visible SelectItems keep their _registered flag
         // and would never re-register, leaving keyboard nav dead after the first keystroke.
         // Items hidden by the new filter unregister themselves (OnParametersSet/Dispose),
