@@ -1897,6 +1897,20 @@
             })
             .ToList();
 
+        // When the bound data is momentarily empty (an async refresh / loading
+        // cycle that lots-of-data apps do frequently), there are no sections and
+        // therefore no valid keys. Running the IntersectWith below against an
+        // empty set would WIPE _expandedGroups / _knownGroupKeys — so when the
+        // data returns every key looks "new" and gets re-expanded by default,
+        // silently discarding the user's collapse choices. Bail out before
+        // touching the expand-state sets, mirroring ProcessMultiLevelGrouping's
+        // empty-tree guard (which is why multi-level grouping never had this bug).
+        if (_groupedSections.Count == 0)
+        {
+            _displayedItems = new List<TItem>();
+            return true;
+        }
+
         var defaultChanged = _lastGroupsExpandedByDefault is not null && _lastGroupsExpandedByDefault != GroupsExpandedByDefault;
         _lastGroupsExpandedByDefault = GroupsExpandedByDefault;
 
