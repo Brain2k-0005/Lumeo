@@ -225,6 +225,21 @@
         var valueChanged = !ValueEquals(_lastSyncedValue, Value);
         var optionsChanged = !ReferenceEquals(_lastSyncedOptions, Options);
         if (!valueChanged && !optionsChanged) return;
+
+        // While the picker is open with no committed Value, the live drill-down
+        // trail (_selectedPath / _activePanels) is owned by the user, not by
+        // Value. A parent that re-creates the Options list each render (a fresh
+        // instance with identical content) would otherwise trip optionsChanged
+        // and wipe that in-progress, uncommitted drill back to the empty
+        // Value-mandated state. Adopt the new Options reference but DON'T clear
+        // the trail unless Value itself actually changed. Committed-Value resync
+        // (valueChanged == true) still rebuilds as before.
+        if (!valueChanged && _isOpen && Value is not { Count: > 0 })
+        {
+            _lastSyncedOptions = Options;
+            return;
+        }
+
         _lastSyncedValue = Value is null ? null : new List<string>(Value);
         _lastSyncedOptions = Options;
 

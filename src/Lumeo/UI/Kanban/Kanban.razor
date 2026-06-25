@@ -62,8 +62,27 @@
         public string? DraggingCardId { get; private set; }
         public string? DraggingFromColumnId { get; private set; }
 
+        // The DOM id of a card that just moved via the keyboard and must be
+        // re-focused after the consumer re-renders the board. A keyboard move
+        // re-creates the moved card's element (it lands in a new column / slot),
+        // which drops focus to <body> and breaks chained arrow moves. The owning
+        // card claims this id on its next render and restores focus exactly once.
+        public string? PendingFocusCardElementId { get; private set; }
+
         public bool HasCardDropHandler => _board.OnCardDrop.HasDelegate;
         public bool HasCardMoveHandler => _board.OnCardMove.HasDelegate;
+
+        /// <summary>Records the element id to re-focus after a keyboard move.</summary>
+        public void RequestFocusAfterMove(string cardElementId) => PendingFocusCardElementId = cardElementId;
+
+        /// <summary>Returns and clears the pending re-focus id when it matches this
+        /// card's element id, so exactly one card re-focuses exactly once.</summary>
+        public bool TryConsumeFocusRequest(string cardElementId)
+        {
+            if (PendingFocusCardElementId != cardElementId) return false;
+            PendingFocusCardElementId = null;
+            return true;
+        }
 
         public void BeginDrag(string cardId, string? fromColumnId)
         {

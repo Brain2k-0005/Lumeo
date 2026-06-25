@@ -51,6 +51,13 @@ else
     [Parameter] public IEnumerable<GanttTask>? Tasks { get; set; }
     [Parameter] public EventCallback<IEnumerable<GanttTask>> TasksChanged { get; set; }
     [Parameter] public GanttViewMode ViewMode { get; set; } = GanttViewMode.Day;
+    /// <summary>
+    /// Raised when the user picks a new zoom level from the toolbar. Bind it
+    /// (<c>@bind-ViewMode</c>) to keep the parent's <see cref="ViewMode"/> in
+    /// lock-step with the toolbar; without a binding the component still tracks
+    /// the toolbar selection on its own (uncontrolled usage).
+    /// </summary>
+    [Parameter] public EventCallback<GanttViewMode> ViewModeChanged { get; set; }
     [Parameter] public EventCallback<GanttTask> OnTaskClick { get; set; }
     [Parameter] public EventCallback<GanttTask> OnDateChange { get; set; }
     [Parameter] public EventCallback<GanttTask> OnProgressChange { get; set; }
@@ -85,6 +92,10 @@ else
     private bool _initialized;
     private int _lastTasksHash;
     private GanttViewMode _currentViewMode;
+    // Last value seen on the ViewMode parameter. We only treat ViewMode as
+    // authoritative when this changes — otherwise a parent re-render with an
+    // unchanged ViewMode would clobber a toolbar selection the user just made.
+    private GanttViewMode _lastSeenViewMode;
 
     // Snapshot of the current tasks used when the JS layer reports a drag
     // or progress change — avoids reaching back into `Tasks` (which may have
@@ -105,6 +116,7 @@ else
     protected override void OnInitialized()
     {
         _currentViewMode = ViewMode;
+        _lastSeenViewMode = ViewMode;
         _tasks = SortedTasks(Tasks?.ToList() ?? new List<GanttTask>());
         _lastTasksHash = ComputeTasksHash(_tasks);
     }
@@ -124,6 +136,18 @@ else
 
     protected override async Task OnParametersSetAsync()
     {
+        // Only a genuine change to the ViewMode parameter is authoritative.
+        // Comparing against _lastSeenViewMode (not _currentViewMode) means an
+        // unchanged ViewMode on a parent re-render leaves a toolbar selection
+        // intact, so the user's zoom no longer silently reverts.
+        if (ViewMode != _lastSeenViewMode)
+        {
+            _lastSeenViewMode = ViewMode;
+            _currentViewMode = ViewMode;
+            if (_initialized && _instanceId is not null)
+                await Interop.GanttChangeViewModeAsync(_instanceId, ViewMode.ToString());
+        }
+
         if (!_initialized || _instanceId is null) return;
 
         if (Tasks is not null)
@@ -136,12 +160,6 @@ else
                 _tasks = incoming;
                 await Interop.GanttSetTasksAsync(_instanceId, incoming.Select(ToJsTask).Cast<object>());
             }
-        }
-
-        if (ViewMode != _currentViewMode)
-        {
-            _currentViewMode = ViewMode;
-            await Interop.GanttChangeViewModeAsync(_instanceId, ViewMode.ToString());
         }
     }
 
@@ -225,10 +243,27 @@ else
 
     private async Task OnViewModeChangedAsync(string? v)
     {
-        if (_instanceId is null || string.IsNullOrEmpty(v)) return;
+        if (string.IsNullOrEmpty(v)) return;
         if (!Enum.TryParse<GanttViewMode>(v, out var parsed)) return;
+        if (parsed == _currentViewMode) return;
+
         _currentViewMode = parsed;
-        await Interop.GanttChangeViewModeAsync(_instanceId, parsed.ToString());
+        // Deliberately do NOT touch _lastSeenViewMode here: it tracks the value
+        // the *parent* last passed via ViewMode. Leaving it untouched means a
+        // subsequent parent re-render that still carries the original (constant)
+        // ViewMode is seen as "unchanged" and no longer clobbers this toolbar
+        // selection — which is exactly the revert bug. Uncontrolled usage works
+        // because of this; controlled (@bind-ViewMode) usage re-syncs through
+        // OnParametersSetAsync when the parent echoes the new value back.
+
+        // Keep a bound parent's ViewMode in lock-step with the toolbar. Without
+        // a binding this is a no-op and the component stays uncontrolled.
+        if (ViewModeChanged.HasDelegate)
+            await ViewModeChanged.InvokeAsync(parsed);
+
+        // The renderer is only present once JS init has handed back an id.
+        if (_instanceId is not null)
+            await Interop.GanttChangeViewModeAsync(_instanceId, parsed.ToString());
     }
 
     [JSInvokable]
