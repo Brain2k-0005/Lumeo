@@ -35,6 +35,36 @@ public sealed class NavConfigService(HttpClient http)
                 .ToList()
         };
     }
+
+    /// <summary>All component-section groups — the "categories" shown in the header
+    /// Components mega-menu (the library overview that lets the per-page sidebar stay
+    /// scoped to a single category without losing the big picture).</summary>
+    public async Task<List<NavGroup>> GetComponentCategoriesAsync()
+    {
+        var full = await GetAsync();
+        return full.Groups
+            .Where(g => string.Equals(g.Section, "components", StringComparison.OrdinalIgnoreCase))
+            .ToList();
+    }
+
+    /// <summary>The component category (nav group) that owns <paramref name="relPath"/> —
+    /// e.g. "components/button" → the "Form" group, "components/charts/bar" → "Data Display".
+    /// Null if no component group contains it. Drives the per-category component sidebar.</summary>
+    public async Task<NavGroup?> GetComponentCategoryAsync(string relPath)
+    {
+        var full = await GetAsync();
+        var p = relPath.Trim('/').ToLowerInvariant();
+        return full.Groups.FirstOrDefault(g =>
+            string.Equals(g.Section, "components", StringComparison.OrdinalIgnoreCase) && GroupOwns(g, p));
+    }
+
+    private static bool GroupOwns(NavGroup g, string relPath)
+    {
+        bool Match(NavItem i) => i.Href.Trim('/').Equals(relPath, StringComparison.OrdinalIgnoreCase);
+        if (g.Items is { } items && items.Any(Match)) return true;
+        if (g.Subgroups is { } subs && subs.Any(s => s.Items.Any(Match))) return true;
+        return false;
+    }
 }
 
 public sealed class NavConfig
