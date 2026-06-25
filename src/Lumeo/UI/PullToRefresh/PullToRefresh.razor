@@ -154,23 +154,44 @@
         if (_refreshing) return;
         if (_activePointerId.HasValue) return;
 
-        // Gate on scrollTop == 0; if the container is scrolled, let the native
-        // scroll handle the pointer instead of engaging the pull.
-        double scrollTop = 0;
-        try { scrollTop = await Interop.GetScrollTop(EffectiveId); }
-        catch (JSDisconnectedException) { return; }
-        if (scrollTop > 0) return;
-
+        // Claim the pointer SYNCHRONOUSLY, before the GetScrollTop await. A fast
+        // tap can fire pointerup while this await is still in flight; because
+        // HandlePointerUp gates on _activePointerId, if we only set it AFTER the
+        // await the racing up sees a null id, no-ops, and is lost — then this
+        // await resumes and latches _activePointerId forever, wedging the
+        // component (every later pointerdown bails at the guard above). Claiming
+        // up front lets the racing up observe and clear the gesture instead.
         _activePointerId = e.PointerId;
         _startY = e.ClientY;
         _currentDelta = 0;
         _engaged = false;
 
+        // Gate on scrollTop == 0; if the container is scrolled, let the native
+        // scroll handle the pointer instead of engaging the pull.
+        double scrollTop = 0;
+        try { scrollTop = await Interop.GetScrollTop(EffectiveId); }
+        catch (JSDisconnectedException) { _activePointerId = null; return; }
+
+        // If a pointerup raced in during the await it already cleared (or
+        // replaced) our id — the gesture is over, so don't re-claim it.
+        if (_activePointerId != e.PointerId) return;
+
+        // Container scrolled — release our claim and let native scroll own it.
+        if (scrollTop > 0)
+        {
+            _activePointerId = null;
+            return;
+        }
+
         // Capture the pointer so pointermove continues to fire even when the
         // pointer leaves the element boundary. This is the key fix for Chrome
         // DevTools mobile emulation where without capture the move events stop.
         try { await Interop.SetPointerCaptureOnElement(EffectiveId, e.PointerId); }
-        catch (JSDisconnectedException) { return; }
+        catch (JSDisconnectedException) { _activePointerId = null; return; }
+
+        // A pointerup could also have raced in during the capture await; if so,
+        // it already cleared our id, so abandon the now-defunct gesture.
+        if (_activePointerId != e.PointerId) return;
     }
 
     private void HandlePointerMove(PointerEventArgs e)

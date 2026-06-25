@@ -1,4 +1,5 @@
 @namespace Lumeo
+@implements IDisposable
 
 @{
     var subContext = new DropdownMenuSubContext(
@@ -32,6 +33,7 @@
     internal readonly string _contentId = LumeoIds.New("dropdown-sub-content");
 
     private CancellationTokenSource? _closeCts;
+    private bool _disposed;
 
     // Set when the submenu is opened via the keyboard (ArrowRight). The content
     // consumes it on its first open render to move focus to the first item —
@@ -85,6 +87,7 @@
 
     private void ScheduleClose()
     {
+        if (_disposed) return;
         CancelClose();
         _closeCts = new CancellationTokenSource();
         var token = _closeCts.Token;
@@ -93,11 +96,22 @@
             try
             {
                 await Task.Delay(200, token);
+                if (token.IsCancellationRequested || _disposed) return;
+                await InvokeAsync(async () => await SetOpen(false));
             }
-            catch (TaskCanceledException) { return; }
-            if (token.IsCancellationRequested) return;
-            await InvokeAsync(async () => await SetOpen(false));
+            // A teardown that races the delay (Dispose cancels the token) must never
+            // surface an unobserved exception or fire SetOpen on a torn-down component.
+            catch (TaskCanceledException) { }
+            catch (ObjectDisposedException) { }
         });
+    }
+
+    public void Dispose()
+    {
+        _disposed = true;
+        // Cancels + disposes _closeCts and nulls it, so a scheduled close cannot
+        // fire SetOpen on this torn-down component (ObjectDisposedException).
+        CancelClose();
     }
 
     public record DropdownMenuSubContext(

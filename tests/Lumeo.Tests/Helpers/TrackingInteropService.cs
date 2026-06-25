@@ -369,8 +369,33 @@ public sealed class TrackingInteropService : IComponentInteropService
     }
     public ValueTask SetupAutoResize(string elementId, int maxRows) => ValueTask.CompletedTask;
     public ValueTask UnregisterAutoResize(string elementId) => ValueTask.CompletedTask;
-    public ValueTask RegisterOtpPaste(string baseId, int length, Func<string, Task> handler) => ValueTask.CompletedTask;
-    public ValueTask UnregisterOtpPaste(string baseId, int length) => ValueTask.CompletedTask;
+    // OTP paste registration tracking (#42 lifecycle) — records each
+    // (baseId, length) register/unregister so tests can assert the paste listener
+    // is (re-)wired against the CURRENT Length: a runtime Length change must
+    // unregister the old span and register the new one, and dispose must
+    // unregister against the last-registered length. Set
+    // ThrowObjectDisposedOnUnregisterOtpPaste to exercise the teardown
+    // ObjectDisposedException-swallow path (#157).
+    private readonly List<(string BaseId, int Length)> _otpPasteRegistrations = new();
+    private readonly List<(string BaseId, int Length)> _otpPasteUnregistrations = new();
+    public IReadOnlyList<(string BaseId, int Length)> OtpPasteRegistrations => _otpPasteRegistrations;
+    public IReadOnlyList<(string BaseId, int Length)> OtpPasteUnregistrations => _otpPasteUnregistrations;
+    /// <summary>When true, <see cref="UnregisterOtpPaste"/> throws
+    /// <see cref="ObjectDisposedException"/> (simulating a circuit/prerender
+    /// teardown race) so dispose tests can assert the component swallows it.</summary>
+    public bool ThrowObjectDisposedOnUnregisterOtpPaste { get; set; }
+    public ValueTask RegisterOtpPaste(string baseId, int length, Func<string, Task> handler)
+    {
+        _otpPasteRegistrations.Add((baseId, length));
+        return ValueTask.CompletedTask;
+    }
+    public ValueTask UnregisterOtpPaste(string baseId, int length)
+    {
+        _otpPasteUnregistrations.Add((baseId, length));
+        if (ThrowObjectDisposedOnUnregisterOtpPaste)
+            throw new ObjectDisposedException(nameof(TrackingInteropService));
+        return ValueTask.CompletedTask;
+    }
     public ValueTask RegisterPreventDefaultKeys(string elementId, IReadOnlyList<PreventDefaultKeyRule> rules) => ValueTask.CompletedTask;
     public ValueTask UnregisterPreventDefaultKeys(string elementId) => ValueTask.CompletedTask;
     public ValueTask ScrollSelectorIntoView(string selector) => ValueTask.CompletedTask;

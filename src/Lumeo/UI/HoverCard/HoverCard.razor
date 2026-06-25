@@ -118,6 +118,12 @@
         }
         else
         {
+            // battle-wave2 #179 (lifecycle) — unpin must release the global
+            // click-outside listener, not just flip _pinned. The old code only
+            // unregistered in DisposeAsync, so after one pin/unpin cycle the
+            // listener stayed wired for the component's whole life. The next pin
+            // re-registers lazily via the `if (!_clickOutsideRegistered)` guard.
+            await UnregisterClickOutsideIfNeeded();
             // Optional auto-collapse on unpin if the user wasn't hovering.
             if (EffectiveOpen)
             {
@@ -137,6 +143,9 @@
         if (_pinned)
         {
             _pinned = false;
+            // battle-wave2 #179 (lifecycle) — auto-unpin must also unregister the
+            // click-outside listener so it doesn't linger after the card closes.
+            await UnregisterClickOutsideIfNeeded();
             if (EffectiveOpen)
             {
                 _open = false;
@@ -146,15 +155,21 @@
         }
     }
 
+    // battle-wave2 #179 (lifecycle) — shared teardown for the global click-outside
+    // listener, idempotent so unpin, click-outside and dispose can all call it.
+    // Resetting _clickOutsideRegistered lets the next pin re-register lazily.
+    private async Task UnregisterClickOutsideIfNeeded()
+    {
+        if (!_clickOutsideRegistered) return;
+        try { await Interop.UnregisterClickOutside(_wrapperId); }
+        catch (Microsoft.JSInterop.JSDisconnectedException) { }
+        _clickOutsideRegistered = false;
+    }
+
     public async ValueTask DisposeAsync()
     {
         _dispatch.Dispose();
-        if (_clickOutsideRegistered)
-        {
-            try { await Interop.UnregisterClickOutside(_wrapperId); }
-            catch (Microsoft.JSInterop.JSDisconnectedException) { }
-            _clickOutsideRegistered = false;
-        }
+        await UnregisterClickOutsideIfNeeded();
     }
 
     public record HoverCardContext(bool IsOpen, EventCallback RequestOpen, EventCallback RequestClose, EventCallback RequestTogglePin, string WrapperId);

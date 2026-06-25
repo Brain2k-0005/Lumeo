@@ -308,9 +308,37 @@
         // --- aggregation lookup: rowKey -> colKey -> items ---
         _cellItems = BuildCellLookup(_root);
 
+        // Prune stale collapse state: keep only keys that correspond to a group
+        // node in the freshly-built tree. Without this, a collapsed group whose
+        // path later disappears (data change) leaks its key forever, and a future
+        // same-path group would be silently re-collapsed. Only done on a real
+        // rebuild — the empty-data early return above deliberately leaves
+        // _collapsed untouched so a transient empty blip can't wipe it.
+        if (_collapsed.Count > 0)
+        {
+            var liveGroupKeys = new HashSet<string>();
+            CollectGroupKeys(_root, liveGroupKeys);
+            _collapsed.IntersectWith(liveGroupKeys);
+        }
+
         // --- flatten into display rows respecting collapse ---
         _displayRows = new();
         FlattenRows(_root);
+    }
+
+    // Collect the Key of every group (non-leaf) row node in the tree — these are
+    // exactly the keys that can ever be added to _collapsed (ToggleCollapse only
+    // accepts nodes with children).
+    private static void CollectGroupKeys(RowNode node, HashSet<string> keys)
+    {
+        foreach (var child in node.Children)
+        {
+            if (child.Children.Count > 0)
+            {
+                keys.Add(child.Key);
+                CollectGroupKeys(child, keys);
+            }
+        }
     }
 
     // ---- Column-tree construction --------------------------------------

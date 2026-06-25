@@ -85,6 +85,10 @@
     private (double Lat, double Lon, string? Title, string? IconUrl, string Variant, string? Color, string? Label, bool LabelHoverOnly, bool HasIcon, bool Draggable, bool Highlighted)? _lastState;
     private readonly string _popupHostId = $"lumeo-map-popup-{Guid.NewGuid():N}";
     private readonly string _iconHostId = $"lumeo-map-icon-{Guid.NewGuid():N}";
+    // Stable per-instance id sent to JS and used to route click/drag callbacks
+    // back to THIS marker. Positional indices reused on async marker removal,
+    // so an in-flight click/drag could land on a different marker.
+    private readonly string _markerId = $"lumeo-map-marker-{Guid.NewGuid():N}";
 
     protected override void OnParametersSet()
     {
@@ -106,6 +110,7 @@
     }
 
     internal string? GetPopupHtml() => Title;
+    internal string MarkerId => _markerId;
     internal string PopupHostId => _popupHostId;
     internal string IconHostId => _iconHostId;
     internal bool HasRichPopup => Popup is not null;

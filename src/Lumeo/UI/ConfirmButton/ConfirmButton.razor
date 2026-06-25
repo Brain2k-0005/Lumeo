@@ -1,4 +1,5 @@
 @namespace Lumeo
+@implements IDisposable
 @inject Lumeo.Services.IOverlayService Overlay
 @inject Lumeo.Services.Localization.ILumeoLocalizer L
 
@@ -75,10 +76,26 @@
     // OnConfirm handler can't wedge the button permanently shut.
     private bool _inFlight;
 
+    // Lifecycle guard (#29): the confirm dialog is awaited across a yield, during
+    // which the parent can remove this ConfirmButton from the tree. Without a
+    // teardown guard the destructive OnConfirm/OnCancel would still fire against a
+    // disposed component once the user resolves an orphaned dialog. We record the
+    // active overlay's id so Dispose can tear the dialog down, and short-circuit
+    // the post-await callbacks once disposed.
+    private bool _disposed;
+    private string? _activeOverlayId;
+
     private async Task HandleClick()
     {
-        if (_inFlight) return;
+        if (_inFlight || _disposed) return;
         _inFlight = true;
+
+        // Capture the id of the overlay this click is about to open so Dispose
+        // can cancel exactly our dialog (and nobody else's). OnShow fires
+        // synchronously from ShowAlertDialogAsync, so a one-shot subscription
+        // around the call grabs the right instance without racing.
+        void Capture(Lumeo.Services.OverlayInstance instance) => _activeOverlayId = instance.Id;
+
         try
         {
             var opts = new Lumeo.Services.AlertDialogOptions
@@ -90,7 +107,23 @@
                 IsDestructive = IsDestructive,
             };
 
-            var result = await Overlay.ShowAlertDialogAsync(opts);
+            Overlay.OnShow += Capture;
+            Task<Lumeo.Services.OverlayResult> pending;
+            try
+            {
+                pending = Overlay.ShowAlertDialogAsync(opts);
+            }
+            finally
+            {
+                Overlay.OnShow -= Capture;
+            }
+
+            var result = await pending;
+
+            // The component may have been disposed while the dialog was open. Do
+            // NOT fire the destructive callback against a torn-down component.
+            if (_disposed) return;
+
             if (result.Cancelled)
             {
                 if (OnCancel.HasDelegate) await OnCancel.InvokeAsync();
@@ -102,7 +135,25 @@
         }
         finally
         {
+            _activeOverlayId = null;
             _inFlight = false;
+        }
+    }
+
+    public void Dispose()
+    {
+        if (_disposed) return;
+        _disposed = true;
+
+        // Tear down an in-flight confirm dialog so an orphaned popup can't linger
+        // after its owning button is gone. The OverlayProvider closes the dialog
+        // and resolves its pending Task in response; even if the dialog still
+        // resolves "confirmed", the _disposed guard above stops HandleClick from
+        // firing OnConfirm against this torn-down component.
+        if (_activeOverlayId is { } id)
+        {
+            _activeOverlayId = null;
+            Overlay.Cancel(id);
         }
     }
 }

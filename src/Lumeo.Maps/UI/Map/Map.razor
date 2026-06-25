@@ -95,6 +95,10 @@
     private DotNetObjectReference<Map>? _selfRef;
     private MapContext _context = null!;
     private readonly List<MapMarker> _markers = new();
+    // Stable-id -> marker lookup, rebuilt on every SyncMarkersAsync so an
+    // in-flight click/drag from JS routes to the marker JS actually drew,
+    // even after an async remove shifts the positional order of _markers.
+    private readonly Dictionary<string, MapMarker> _markersById = new();
     private readonly Dictionary<object, MapShape> _shapes = new();
     private readonly List<MapPopup> _standalonePopups = new();
     private bool _initialized;
@@ -251,9 +255,14 @@
     private async Task SyncMarkersAsync()
     {
         if (_module is null || !_initialized) return;
-        var payload = _markers.Select((m, i) => new
+        // Rebuild the id->marker routing table to exactly match the set we are
+        // about to hand JS, so OnMarkerClick/OnMarkerDragEnd resolve by stable
+        // id rather than a positional index that shifts when a marker is removed.
+        _markersById.Clear();
+        foreach (var m in _markers) _markersById[m.MarkerId] = m;
+        var payload = _markers.Select(m => new
         {
-            id = i,
+            id = m.MarkerId,
             lat = m.Lat,
             lon = m.Lon,
             title = m.Title,
@@ -394,18 +403,19 @@
     }
 
     [JSInvokable]
-    public async Task OnMarkerClick(int markerId)
+    public async Task OnMarkerClick(string markerId)
     {
-        if (markerId < 0 || markerId >= _markers.Count) return;
-        var marker = _markers[markerId];
+        // Route by stable id: an in-flight click that arrives after the marker
+        // was removed simply finds no entry and is ignored, instead of indexing
+        // _markers positionally and firing the WRONG (reused-index) marker.
+        if (!_markersById.TryGetValue(markerId, out var marker)) return;
         if (marker.OnClick.HasDelegate) await marker.OnClick.InvokeAsync();
     }
 
     [JSInvokable]
-    public async Task OnMarkerDragEnd(int markerId, double lat, double lon)
+    public async Task OnMarkerDragEnd(string markerId, double lat, double lon)
     {
-        if (markerId < 0 || markerId >= _markers.Count) return;
-        var marker = _markers[markerId];
+        if (!_markersById.TryGetValue(markerId, out var marker)) return;
         if (marker.OnDragEnd.HasDelegate) await marker.OnDragEnd.InvokeAsync((lat, lon));
     }
 

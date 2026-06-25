@@ -332,6 +332,27 @@ else
     // still allowing it to fire once per fresh round of pending items. Reset to
     // false whenever a new pending item is queued (see TerminalState handling).
     private bool _allUploadedFired;
+    // Set at the start of DisposeAsync. A consumer's OnUpload Task (and the
+    // IProgress<int> it holds) can keep running and reporting progress AFTER the
+    // component is torn down — every fire-and-forget InvokeAsync(StateHasChanged)
+    // would then dispatch against a disposed renderer and throw
+    // ObjectDisposedException. This flag short-circuits those late dispatches.
+    private bool _disposed;
+
+    // Dispatches a render only while the component is still alive. Used by the
+    // post-await callbacks in the upload pipeline (progress reports, success/fail
+    // handlers, terminal check) which can fire after DisposeAsync has run because
+    // the consumer's OnUpload Task outlives the component. Swallows the
+    // ObjectDisposedException race where disposal happens mid-dispatch.
+    private async Task SafeInvokeStateHasChangedAsync()
+    {
+        if (_disposed) return;
+        try
+        {
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (ObjectDisposedException) { }
+    }
 
     // Kept for back-compat so existing code that reads _selectedFiles-equivalent still compiles.
     // Exposed as a convenience projection.
@@ -630,6 +651,15 @@ else
             return;
 
         _allUploadedFired = true;
+        // This runs after Task.WhenAll on the upload batch, which can complete
+        // after the component was disposed. When torn down, raise OnAllUploaded
+        // directly (consumers still observe completion) but skip the render
+        // dispatch that would throw on a disposed renderer.
+        if (_disposed)
+        {
+            await OnAllUploaded.InvokeAsync(_uploadItems.AsReadOnly());
+            return;
+        }
         await InvokeAsync(async () =>
         {
             await OnAllUploaded.InvokeAsync(_uploadItems.AsReadOnly());
@@ -652,7 +682,11 @@ else
             var progress = new Progress<int>(pct =>
             {
                 item.ProgressPercent = Math.Clamp(pct, 0, 100);
-                InvokeAsync(StateHasChanged);
+                // Fire-and-forget render. Guarded against a disposed renderer:
+                // the consumer's OnUpload Task can keep reporting progress after
+                // the component is gone, which would otherwise throw
+                // ObjectDisposedException on the dispatch.
+                _ = SafeInvokeStateHasChangedAsync();
             });
 
             try
@@ -667,11 +701,22 @@ else
                     item.Status = FileUploadStatus.Succeeded;
                     item.ProgressPercent = 100;
                     item.Url = url;
-                    await InvokeAsync(async () =>
+                    // The await above (OnUpload) can complete after the component
+                    // was disposed; don't dispatch a render onto a torn-down
+                    // renderer. The OnFileUploaded callback is still raised
+                    // directly so consumers observe the result regardless.
+                    if (!_disposed)
+                    {
+                        await InvokeAsync(async () =>
+                        {
+                            await OnFileUploaded.InvokeAsync(item);
+                            StateHasChanged();
+                        });
+                    }
+                    else
                     {
                         await OnFileUploaded.InvokeAsync(item);
-                        StateHasChanged();
-                    });
+                    }
                 }
             }
             catch (OperationCanceledException)
@@ -682,11 +727,21 @@ else
             {
                 item.Status = FileUploadStatus.Failed;
                 item.ErrorMessage = ex.Message;
-                await InvokeAsync(async () =>
+                // OnUpload threw, possibly after the component was disposed (e.g.
+                // the upload was cancelled by DisposeAsync). Skip the render
+                // dispatch when torn down but still raise OnFileFailed.
+                if (!_disposed)
+                {
+                    await InvokeAsync(async () =>
+                    {
+                        await OnFileFailed.InvokeAsync(item);
+                        StateHasChanged();
+                    });
+                }
+                else
                 {
                     await OnFileFailed.InvokeAsync(item);
-                    StateHasChanged();
-                });
+                }
             }
             finally
             {
@@ -696,14 +751,24 @@ else
         }
         finally
         {
-            _concurrencySemaphore!.Release();
-            await InvokeAsync(StateHasChanged);
+            // Release must always run to unblock other waiters; the render
+            // dispatch is guarded so a post-dispose completion can't throw
+            // ObjectDisposedException. DisposeAsync() nulls the semaphore, so
+            // null-guard the release against that teardown race too.
+            _concurrencySemaphore?.Release();
+            await SafeInvokeStateHasChangedAsync();
         }
     }
 
     // ── Dispose ──────────────────────────────────────────────────────────────
     public async ValueTask DisposeAsync()
     {
+        // Mark disposed FIRST so any in-flight upload pipeline callbacks
+        // (progress reports, success/fail handlers, the terminal all-uploaded
+        // check) that fire after teardown short-circuit their render dispatch
+        // instead of calling InvokeAsync(StateHasChanged) on a disposed renderer.
+        _disposed = true;
+
         // Cancel + dispose all in-flight upload tokens. Without this, every upload
         // that was running when the component unmounted leaks its CancellationTokenSource.
         foreach (var cts in _cancellations.Values.ToList())

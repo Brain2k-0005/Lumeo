@@ -11,7 +11,8 @@
         RegisterPanel,
         GetPanelConstraints,
         IsPanelCollapsed,
-        EventCallback.Factory.Create<int>(this, ToggleCollapse)
+        EventCallback.Factory.Create<int>(this, ToggleCollapse),
+        UnregisterPanel
     );
 }
 
@@ -250,6 +251,23 @@
         _collapseConfig[order] = (collapsible, collapsedSize);
     }
 
+    // Called from ResizablePanel.Dispose when a panel is removed at runtime.
+    // Drops the panel's per-Order entries from every group map so no stale
+    // constraint / collapse config / collapsed flag / remembered pre-collapse
+    // size survives for an index no live panel occupies. Removing from
+    // _panelDefaultSizes also lets OnAfterRender's count-mismatch shrink-reconcile
+    // fire (it compares _sizes.Count against _panelDefaultSizes.Count). _sizes
+    // itself is renormalized by ReconcilePanelCount on the following render, so
+    // we don't touch it here (the panel set isn't fully torn down yet).
+    private void UnregisterPanel(int order)
+    {
+        _panelDefaultSizes.Remove(order);
+        _panelConstraints.Remove(order);
+        _collapseConfig.Remove(order);
+        _collapsed.Remove(order);
+        _preCollapseSize.Remove(order);
+    }
+
     private (double MinSize, double MaxSize) GetPanelConstraints(int index) =>
         _panelConstraints.TryGetValue(index, out var c) ? c : (0.0, 100.0);
 
@@ -377,6 +395,7 @@
         Action<int, double, double, double, bool, double> RegisterPanel,
         Func<int, (double MinSize, double MaxSize)> GetPanelConstraints,
         Func<int, bool> IsPanelCollapsed,
-        EventCallback<int> ToggleCollapse
+        EventCallback<int> ToggleCollapse,
+        Action<int> UnregisterPanel
     );
 }

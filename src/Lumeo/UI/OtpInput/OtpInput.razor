@@ -104,6 +104,12 @@
 
     private readonly string _baseId = LumeoIds.New("otp");
 
+    // The Length the paste interop was last registered against. The JS paste
+    // listener is attached to exactly the `${baseId}-0..length-1` cells that
+    // exist at registration time, so a runtime Length change must re-register
+    // (unregister the old span, register the new one). -1 = not yet registered.
+    private int _registeredLength = -1;
+
     // Per-cell render nonce. Bumping a cell's nonce changes that input's @key so
     // Blazor recreates the element with its model value — used to discard a
     // rejected keystroke that the browser already painted (#178), without
@@ -164,11 +170,22 @@
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (!firstRender) return;
         try
         {
-            await Interop.RegisterOtpPaste(_baseId, Length, HandlePaste);
-            if (AutoFocus)
+            // (Re-)register the paste listener whenever Length changes — including
+            // the first render where _registeredLength is still -1. The JS listener
+            // is bound to the cells that exist at registration time, so a runtime
+            // Length change leaks the old listener and never wires the new cells
+            // unless we unregister the old span and register the new one.
+            if (_registeredLength != Length)
+            {
+                if (_registeredLength >= 0)
+                    await Interop.UnregisterOtpPaste(_baseId, _registeredLength);
+                await Interop.RegisterOtpPaste(_baseId, Length, HandlePaste);
+                _registeredLength = Length;
+            }
+
+            if (firstRender && AutoFocus)
             {
                 await Interop.FocusElement($"{_baseId}-0");
             }
@@ -324,10 +341,17 @@
 
     public async ValueTask DisposeAsync()
     {
+        // Unregister against the length we ACTUALLY registered with, not the live
+        // Length (which may have changed since). Skip entirely if we never
+        // registered. Mirror OnAfterRenderAsync's catch set so teardown during a
+        // circuit/prerender disposal never throws.
+        if (_registeredLength < 0) return;
         try
         {
-            await Interop.UnregisterOtpPaste(_baseId, Length);
+            await Interop.UnregisterOtpPaste(_baseId, _registeredLength);
+            _registeredLength = -1;
         }
         catch (JSDisconnectedException) { }
+        catch (ObjectDisposedException) { }
     }
 }

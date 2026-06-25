@@ -248,17 +248,49 @@ else
         return GetOptionsJson();
     }
 
+    // Fingerprint of the inputs that feed initChart (option JSON + theme + source).
+    // Captured every time we attempt init so OnParametersSet can tell whether a change
+    // AFTER a failure is meaningful enough to warrant a retry. Null until the first
+    // init attempt runs.
+    private string? _lastInitInputs;
+    // Set by OnParametersSet when an init-relevant parameter changes while _initError is
+    // latched. The error branch removed the host div, so we must re-render the host FIRST
+    // (clear _initError) and re-attempt init on the following OnAfterRenderAsync pass.
+    private bool _retryInit;
+
+    private string InitInputsFingerprint() => $"{GetEffectiveJson()}{Theme}{EChartsSource}";
+
+    protected override void OnParametersSet()
+    {
+        // Recovery after an init failure: the error branch tore down the #_chartId host
+        // and left _initialized=false, so neither OnAfterRenderAsync branch ever runs
+        // again. When the consumer changes an init-relevant input (Option/OptionJson,
+        // Theme, EChartsSource — e.g. swapping in a valid EChartsSource), clear the error
+        // so the host re-renders, and arm a retry that re-runs init on the next pass.
+        if (_initError is not null && !_initialized && _lastInitInputs is not null
+            && InitInputsFingerprint() != _lastInitInputs)
+        {
+            _initError = null;
+            _retryInit = true;
+        }
+    }
+
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (firstRender)
+        if (firstRender || _retryInit)
         {
-            _module = await Interop.ImportModuleAsync("./_content/Lumeo.Charts/js/echarts-interop.js");
+            // _retryInit re-enters this path after a recoverable init failure: the host
+            // div was just re-rendered (OnParametersSet cleared _initError) so the element
+            // exists again and we can re-attempt initChart against it.
+            _retryInit = false;
+            _module ??= await Interop.ImportModuleAsync("./_content/Lumeo.Charts/js/echarts-interop.js");
 
             var json = GetEffectiveJson();
             _lastJson = json;
             _lastShape = ChartShape.From(json);
             _lastTheme = Theme;
             _lastGroup = Group;
+            _lastInitInputs = InitInputsFingerprint();
 
             try
             {
@@ -342,8 +374,12 @@ else
                 _lastTheme = Theme;
                 await _module!.InvokeVoidAsync("disposeChart", _chartId);
                 // The fresh JS instance has no event listeners — reset the tracking set so
-                // RegisterChartEventsAsync re-attaches them onto the new chart.
+                // RegisterChartEventsAsync re-attaches them onto the new chart. The tooltip
+                // bridge lives on the disposed instance too, so clear its flag as well or
+                // RegisterChartEventsAsync's `!_tooltipBridgeRegistered` gate would skip
+                // re-registering registerTooltipSlot — killing the <ChartTooltip> portal.
                 _registeredEvents.Clear();
+                _tooltipBridgeRegistered = false;
                 var currentJson = _lastJson ?? GetEffectiveJson();
                 await _module!.InvokeVoidAsync("initChart", _chartId, currentJson, Theme, EChartsSource);
                 await RegisterChartEventsAsync();
@@ -353,7 +389,15 @@ else
             {
                 _lastGroup = Group;
                 if (!string.IsNullOrEmpty(Group))
-                    await _module!.InvokeVoidAsync("connectCharts", Group, new[] { _chartId });
+                    // Switch (or first set): re-home this chart onto the new group. Because
+                    // setChartGroup REASSIGNS chart.group, any previous group membership is
+                    // overwritten — no lingering connection to the old group remains.
+                    await _module!.InvokeVoidAsync("setChartGroup", _chartId, Group);
+                else
+                    // Clear: detach from the old group so the chart stops syncing cursor/zoom
+                    // with its former siblings. connectCharts only ever assigns a group, so
+                    // without this the chart stayed wired to its old group forever.
+                    await _module!.InvokeVoidAsync("setChartGroup", _chartId, null);
             }
         }
     }

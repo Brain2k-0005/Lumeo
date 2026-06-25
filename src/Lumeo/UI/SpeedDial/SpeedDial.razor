@@ -82,6 +82,11 @@
     private bool _isOpen;
     private bool _registered;
     private int _focusedIndex = -1;
+    // True from the moment Open() flips the menu visible until it has finished
+    // seeding focus on the first action. Arrow keys that arrive inside this
+    // window (before the open-focus has landed) are ignored so they cannot move
+    // the cursor off the about-to-be-focused first item and desync it.
+    private bool _opening;
 
     // The action menu is laid out vertically for Up/Down directions and
     // horizontally for Left/Right.
@@ -150,23 +155,35 @@
     private async Task Open()
     {
         _isOpen = true;
-        _focusedIndex = -1;
+        // Seed the cursor on the first action SYNCHRONOUSLY (before any await) so
+        // it matches the DOM focus we are about to apply below. Otherwise a fast
+        // ArrowDown/ArrowUp arriving during the awaits would compute its next
+        // index from a stale -1 and skip/desync the first item.
+        _focusedIndex = 0;
+        _opening = true;
         StateHasChanged();
-        await Task.Yield();
-        await Interop.RegisterClickOutside(_wrapperId, null, async () =>
+        try
         {
-            await Close();
-            await InvokeAsync(StateHasChanged);
-        });
-        _registered = true;
+            await Task.Yield();
+            await Interop.RegisterClickOutside(_wrapperId, null, async () =>
+            {
+                await Close();
+                await InvokeAsync(StateHasChanged);
+            });
+            _registered = true;
 
-        // Move focus to the first action so arrow keys work immediately and
-        // keyboard users land inside the menu (MUI SpeedDial behaviour).
-        var count = await Interop.GetMenuItemCount(_contentId);
-        if (count > 0)
+            // Move focus to the first action so arrow keys work immediately and
+            // keyboard users land inside the menu (MUI SpeedDial behaviour).
+            var count = await Interop.GetMenuItemCount(_contentId);
+            if (count > 0)
+            {
+                _focusedIndex = 0;
+                try { await Interop.FocusMenuItemByIndex(_contentId, 0); } catch (JSDisconnectedException) { }
+            }
+        }
+        finally
         {
-            _focusedIndex = 0;
-            try { await Interop.FocusMenuItemByIndex(_contentId, 0); } catch (JSDisconnectedException) { }
+            _opening = false;
         }
     }
 
@@ -230,6 +247,10 @@
 
     private async Task MoveFocus(int delta)
     {
+        // Ignore arrow keys that arrive before the open-focus has landed: the
+        // menu's items may not exist yet and the cursor would move off the
+        // first item that Open() is about to focus, desyncing the two.
+        if (_opening) return;
         var count = await Interop.GetMenuItemCount(_contentId);
         if (count <= 0) return;
         _focusedIndex = ((_focusedIndex < 0 ? 0 : _focusedIndex) + delta % count + count) % count;
@@ -238,6 +259,7 @@
 
     private async Task FocusIndex(int index)
     {
+        if (_opening) return;
         _focusedIndex = index;
         try { await Interop.FocusMenuItemByIndex(_contentId, index); } catch (JSDisconnectedException) { }
     }
