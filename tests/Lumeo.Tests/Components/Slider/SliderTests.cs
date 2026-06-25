@@ -323,6 +323,61 @@ public class SliderTests : IAsyncLifetime
         Assert.Equal("100", inputs[1].GetAttribute("aria-valuemax"));
     }
 
+    // --- #64: range thumb DOM desyncs from model on a clamped no-op drag ---
+    //
+    // When a range drag clamps back to the value the model is already at (e.g. the
+    // thumb is at the gap boundary and the user pushes it further into the forbidden
+    // zone), the parsed clamp result equals the current model value. The native
+    // <input>'s own value HAS moved to the raw dragged spot, so a bare early-return
+    // would leave the thumb visually stuck in the forbidden zone, desynced from the
+    // model. The fix forces StateHasChanged() on that clamped-equals path so Blazor
+    // re-writes value="@Value" / value="@ValueEnd" back onto the DOM input.
+    //
+    // We assert the MECHANISM (a re-render is forced) rather than real DOM focus/value
+    // motion, which bUnit's renderer does not re-drive from native input edits.
+
+    [Fact]
+    public void Start_Thumb_Clamped_NoOp_Drag_Still_Forces_Rerender()
+    {
+        double? start = null;
+        var cut = _ctx.Render<Lumeo.Slider>(p => p
+            .Add(s => s.IsRange, true)
+            .Add(s => s.Value, 50)
+            .Add(s => s.ValueEnd, 50) // thumbs touching: start ceiling = 50 = Value
+            .Add(s => s.ValueChanged, v => start = v));
+
+        var before = cut.RenderCount;
+
+        // Drag the start thumb past the end thumb. It clamps to ceiling (50), which
+        // equals the current Value, so ValueChanged must NOT fire — but without the
+        // fix nothing re-renders and the DOM thumb stays in the forbidden zone.
+        cut.FindAll("input[type='range']")[0].Input("70");
+
+        Assert.Null(start);                         // clamped no-op: callback suppressed
+        Assert.True(cut.RenderCount > before);      // ...but a re-render is forced to resync
+    }
+
+    [Fact]
+    public void End_Thumb_Clamped_NoOp_Drag_Still_Forces_Rerender()
+    {
+        double? end = null;
+        var cut = _ctx.Render<Lumeo.Slider>(p => p
+            .Add(s => s.IsRange, true)
+            .Add(s => s.Value, 50)
+            .Add(s => s.ValueEnd, 50) // thumbs touching: end floor = 50 = ValueEnd
+            .Add(s => s.ValueEndChanged, v => end = v));
+
+        var before = cut.RenderCount;
+
+        // Drag the end thumb below the start thumb. It clamps to floor (50), which
+        // equals the current ValueEnd, so ValueEndChanged must NOT fire — but the
+        // thumb still needs a forced re-render to snap back onto the model value.
+        cut.FindAll("input[type='range']")[1].Input("10");
+
+        Assert.Null(end);                           // clamped no-op: callback suppressed
+        Assert.True(cut.RenderCount > before);      // ...but a re-render is forced to resync
+    }
+
     [Fact]
     public void Plain_Numeric_Slider_Has_No_AriaValueText()
     {

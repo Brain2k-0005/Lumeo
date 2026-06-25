@@ -181,4 +181,99 @@ public class FileManagerStateRetentionTests : IAsyncLifetime
         // OnAfterRenderAsync focus hop its async beat.)
         cut.WaitForAssertion(() => Assert.Contains(renameId!, interop.FocusElementCalls));
     }
+
+    // ──────────────────────────────────────────────────────────────────────────
+    // #208 (low, state-on-data-change): an in-place same-instance Root refresh
+    // (same Root LIST reference, node replaced by Id with fresh Children) must
+    // show the new children. The Id-equality early-return latched the stale
+    // cached node; the fix re-resolves the node from the live tree and rebuilds
+    // when the resolved node differs by reference.
+    // ──────────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void FileManager_InPlace_SameRootRef_NodeReplaced_ShowsNewChildren()
+    {
+        // A SINGLE Root list instance we mutate in place (reference never changes).
+        var root = new List<FileSystemNode>
+        {
+            new FileSystemNode
+            {
+                Id = "docs",
+                Name = "Documents",
+                IsFolder = true,
+                Children =
+                [
+                    new FileSystemNode { Id = "report", Name = "report.pdf", IsFolder = false, Size = 100 }
+                ]
+            }
+        };
+
+        var cut = _ctx.Render<Lumeo.FileManager>(p => p
+            .Add(x => x.Root, root)
+            .Add(x => x.CurrentPath, "docs"));
+
+        Assert.Contains("report.pdf", cut.Markup);
+
+        // Refresh the "docs" folder IN PLACE: replace the node object at index 0
+        // with a fresh instance (same Id, different Children) but keep the SAME
+        // outer list reference. rootChanged (ReferenceEquals on the list) is false
+        // here, so pre-fix the Id-equality early-return kept the stale node and
+        // its old Children; post-fix the node is re-resolved and the stack rebuilt.
+        root[0] = new FileSystemNode
+        {
+            Id = "docs",
+            Name = "Documents",
+            IsFolder = true,
+            Children =
+            [
+                new FileSystemNode { Id = "fresh", Name = "fresh.txt", IsFolder = false, Size = 10 }
+            ]
+        };
+
+        // Re-render with the SAME list reference (Blazor re-pushes the same Root).
+        cut.Render(p => p
+            .Add(x => x.Root, root)
+            .Add(x => x.CurrentPath, "docs"));
+
+        Assert.Contains("fresh.txt", cut.Markup);
+        Assert.DoesNotContain("report.pdf", cut.Markup); // stale child must be gone
+    }
+
+    // ──────────────────────────────────────────────────────────────────────────
+    // #209 (low, state-on-data-change): selecting a node then deleting it must
+    // clear the selection so the "Delete selected" toolbar button (gated on the
+    // backing _selectedNode) no longer renders. Pre-fix HandleDeleteNode fired
+    // OnDelete but never cleared the selection, leaving the button active against
+    // an already-removed node.
+    // ──────────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void FileManager_DeletingSelectedNode_ClearsSelection_And_HidesDeleteButton()
+    {
+        var deleted = new List<IReadOnlyList<FileSystemNode>>();
+
+        var cut = _ctx.Render<Lumeo.FileManager>(p => p
+            .Add(x => x.Root, BuildSampleTree())
+            .Add(x => x.CurrentPath, "docs")
+            .Add(x => x.OnDelete, EventCallback.Factory.Create<IReadOnlyList<FileSystemNode>>(this, deleted.Add)));
+
+        // Select report.pdf → the "Delete selected" toolbar button now renders.
+        var reportRow = cut.FindAll("[role='row']").First(r => r.TextContent.Contains("report.pdf"));
+        reportRow.Click();
+        Assert.NotEmpty(cut.FindAll("button[aria-label='Delete selected']"));
+
+        // Delete that same node via its context menu.
+        reportRow = cut.FindAll("[role='row']").First(r => r.TextContent.Contains("report.pdf"));
+        reportRow.TriggerEvent("oncontextmenu", new MouseEventArgs { ClientX = 50, ClientY = 50 });
+        var deleteBtn = cut.FindAll("[role='menu'] button").First(b => b.TextContent.Contains("Delete"));
+        deleteBtn.Click();
+
+        // OnDelete fired for report...
+        Assert.Single(deleted);
+        Assert.Equal("report", deleted[0].Single().Id);
+
+        // ...and the selection is cleared, so the "Delete selected" toolbar button
+        // is gone (pre-fix it stayed because _selectedNode was never reset).
+        Assert.Empty(cut.FindAll("button[aria-label='Delete selected']"));
+    }
 }

@@ -169,4 +169,37 @@ public class RatingTests : IAsyncLifetime
         Assert.Equal("true", radios[1].GetAttribute("aria-checked"));
         Assert.Equal("false", radios[2].GetAttribute("aria-checked"));
     }
+
+    // --- #57: shrinking Max below current Value must not drop the widget out of
+    // the tab order. The roving tabindex names the active star by Ceiling(Value);
+    // if Max shrinks below it, that star is no longer rendered, so without the
+    // clamp NO rendered star carries tabindex="0" and the widget becomes
+    // keyboard-unreachable. The fix clamps the active index to Max so exactly one
+    // tabstop survives (the last rendered star). ---
+
+    [Fact]
+    public void ShrinkingMax_BelowValue_KeepsOneTabstop()
+    {
+        var cut = _ctx.Render<Lumeo.Rating>(p => p
+            .Add(r => r.Value, 5)
+            .Add(r => r.Max, 5));
+
+        // Sanity: star 5 (index of Value) is the tabstop before the shrink.
+        var before = cut.FindAll("button");
+        Assert.Equal(5, before.Count);
+        Assert.Single(before, b => b.GetAttribute("tabindex") == "0");
+
+        // Shrink Max below the current Value. The previously-active star (5) no
+        // longer exists.
+        cut.Render(p => p.Add(r => r.Max, 3));
+
+        var after = cut.FindAll("button");
+        Assert.Equal(3, after.Count);
+
+        // Exactly one rendered star must remain in the tab order, and it must be
+        // the last rendered star (clamped to Max) — otherwise the widget is a
+        // keyboard trap-out.
+        Assert.Single(after, b => b.GetAttribute("tabindex") == "0");
+        Assert.Equal("0", after[2].GetAttribute("tabindex"));
+    }
 }

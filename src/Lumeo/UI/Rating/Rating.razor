@@ -140,9 +140,15 @@
     // Roving tabindex: only the selected star (or star 1 when nothing selected) is
     // in the tab sequence. Arrow-key navigation on the radiogroup shifts both focus
     // and value, so there is never more than one tabstop inside the widget.
+    //
+    // Clamp the active index to the rendered range [1, Max]: if Max shrinks below the
+    // current Value (e.g. Value=5 then Max=3), the unclamped active index (5) names a
+    // star that is no longer rendered, so NO star would carry tabindex="0" and the
+    // widget would silently drop out of the tab order. Clamping keeps exactly one
+    // tabstop — the last rendered star — so the widget stays keyboard-reachable.
     private string GetStarTabIndex(int starIndex)
     {
-        var activeIndex = Value > 0 ? (int)Math.Ceiling(Value) : 1;
+        var activeIndex = Value > 0 ? Math.Min((int)Math.Ceiling(Value), Max) : 1;
         return starIndex == activeIndex ? "0" : "-1";
     }
 

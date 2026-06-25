@@ -236,11 +236,50 @@
     protected override void OnParametersSet()
     {
         var current = Value ?? "#000000";
-        if (!string.Equals(current, _lastSyncedValue, StringComparison.OrdinalIgnoreCase))
+        // Battle-wave2 #147 (low, state-on-data-change) — compare colours by
+        // PARSED equivalence, not by raw string. The parent often feeds the
+        // value back in a different string form than the component emitted
+        // (e.g. we emit "rgba(255, 0, 0, 0.5)" with spaces but a normalising
+        // consumer pushes back "rgba(255,0,0,0.5)" or "#FF000080", or hands us
+        // "rgb(255,255,255)" for our "#FFFFFF"). An OrdinalIgnoreCase string
+        // compare treats those as a real change and re-runs SyncStateFromHex,
+        // whose RgbToHsv re-derivation can JUMP the in-progress hue / SV
+        // position (hue is ambiguous for achromatic colours, so a hue picked
+        // on white snaps back to 0). Skip the re-sync whenever the incoming
+        // colour resolves to the RGB(+alpha) we already hold so _h/_s/_v are
+        // preserved; only re-sync on a genuinely different colour.
+        if (string.Equals(current, _lastSyncedValue, StringComparison.OrdinalIgnoreCase))
         {
-            SyncStateFromHex(current);
-            _lastSyncedValue = current;
+            return;
         }
+
+        if (TryParseColor(current, out var cr, out var cg, out var cb, out var ca)
+            && cr == _r && cg == _g && cb == _b && (!ShowAlpha || ca == _alpha))
+        {
+            // Same colour, different string form — adopt the new canonical
+            // string but keep the existing _h/_s/_v so the picker doesn't jump.
+            _lastSyncedValue = current;
+            return;
+        }
+
+        SyncStateFromHex(current);
+        _lastSyncedValue = current;
+    }
+
+    // Parses either hex (#RGB / #RRGGBB / #RRGGBBAA) or rgb()/rgba() into
+    // r/g/b plus an alpha percentage. Plain hex / rgb() report alpha as 100.
+    private static bool TryParseColor(string value, out int r, out int g, out int b, out int alphaPct)
+    {
+        if (TryParseHex(value, out r, out g, out b))
+        {
+            alphaPct = 100;
+            if (value.Length == 9 && int.TryParse(value.AsSpan(7, 2), System.Globalization.NumberStyles.HexNumber, null, out var ah))
+            {
+                alphaPct = (int)Math.Round(ah / 255.0 * 100.0);
+            }
+            return true;
+        }
+        return TryParseRgba(value, out r, out g, out b, out alphaPct);
     }
 
     private async Task ToggleOpen() { if (!Disabled) await SetOpen(!Open); }

@@ -322,6 +322,11 @@ else
     private Dictionary<string, string> _thumbnailUrls = new();
     private readonly Dictionary<string, CancellationTokenSource> _cancellations = new();
     private SemaphoreSlim? _concurrencySemaphore;
+    // The MaxConcurrentUploads value the live _concurrencySemaphore was built with.
+    // Tracked so a runtime change to MaxConcurrentUploads can rebuild the semaphore
+    // (a SemaphoreSlim's count is fixed at construction) instead of being latched
+    // forever by the first `??=`.
+    private int _concurrencySemaphoreCount;
     private int _currentBatchId;
     // Guards OnAllUploaded against double-firing for the same terminal set while
     // still allowing it to fire once per fresh round of pending items. Reset to
@@ -556,7 +561,21 @@ else
     // ── Upload orchestrator ───────────────────────────────────────────────────
     private async Task RunUploadsAsync(IEnumerable<FileUploadItem> items)
     {
-        _concurrencySemaphore ??= new SemaphoreSlim(MaxConcurrentUploads, MaxConcurrentUploads);
+        // Build the concurrency gate on first use, and rebuild it when
+        // MaxConcurrentUploads changed at runtime. SemaphoreSlim's capacity is fixed
+        // at construction, so a latched `??=` would silently ignore the new value.
+        // It is only safe to swap the instance while nothing is holding/waiting on
+        // it, i.e. when no item is currently Uploading (the items in this batch have
+        // not started yet at this point).
+        var desiredConcurrency = Math.Max(1, MaxConcurrentUploads);
+        var noUploadsInFlight = _uploadItems.All(i => i.Status != FileUploadStatus.Uploading);
+        if (_concurrencySemaphore is null ||
+            (noUploadsInFlight && _concurrencySemaphoreCount != desiredConcurrency))
+        {
+            _concurrencySemaphore?.Dispose();
+            _concurrencySemaphore = new SemaphoreSlim(desiredConcurrency, desiredConcurrency);
+            _concurrencySemaphoreCount = desiredConcurrency;
+        }
 
         // Bump the batch counter so per-item rendering can still tell which batch
         // is current if it needs to (kept for back-compat / diagnostics).
@@ -667,6 +686,8 @@ else
             cts.Dispose();
         }
         _cancellations.Clear();
+        _concurrencySemaphore?.Dispose();
+        _concurrencySemaphore = null;
         await Task.CompletedTask;
     }
 

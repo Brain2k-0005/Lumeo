@@ -2656,6 +2656,14 @@ export function setInputCaret(elementId, position) {
     try { el.setSelectionRange(pos, pos); } catch { /* element not focusable yet */ }
 }
 
+// Force the live DOM value of a masked <input> when Blazor's diff won't patch it
+// (the re-masked display equals the previous render after a rejected char, #41).
+export function setInputValue(elementId, value) {
+    const el = document.getElementById(elementId);
+    if (!el) return;
+    if (el.value !== value) el.value = value;
+}
+
 // --- Mention: get textarea caret coordinates ---
 
 export function getTextareaCaretPosition(elementId) {
@@ -3093,6 +3101,18 @@ function detachRipple(el) {
 }
 
 export const ripple = { attach: attachRipple, detach: detachRipple };
+
+/* =============================================================
+ * File input reset (#70) — clear a native <input type="file">'s
+ * value so re-picking the SAME file re-fires `change`. Browsers
+ * suppress `change` when the selected path equals the input's
+ * current value; UploadTrigger has no accumulating list to mask
+ * this, so it resets the element after every pick.
+ * ============================================================= */
+export function resetFileInput(el) {
+    if (!el) return;
+    try { el.value = ''; } catch { /* not a value-bearing input */ }
+}
 
 /* =============================================================
  * Reduced-motion gate (core) — mirror of the Lumeo.Motion helper

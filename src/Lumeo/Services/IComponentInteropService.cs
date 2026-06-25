@@ -298,6 +298,13 @@ public interface IComponentInteropService : IAsyncDisposable, IDisposable
     ValueTask<int> GetInputCaret(string elementId) => ValueTask.FromResult(0);
     ValueTask SetInputCaret(string elementId, int position) => ValueTask.CompletedTask;
 
+    // InputMask value (the live el.value of a text <input>) — force-writes the
+    // masked display straight to the DOM. Needed when a re-masked value equals
+    // the PREVIOUS render's value (e.g. an invalid char was rejected): Blazor's
+    // diff then emits no patch, so the browser keeps showing the rejected char
+    // unless we push the value ourselves (#41).
+    ValueTask SetInputValue(string elementId, string value) => ValueTask.CompletedTask;
+
     // Tabs (active indicator measurement for animated underline)
     ValueTask<ComponentInteropService.TabMeasurement?> TabsMeasure(string elementId);
 
@@ -315,6 +322,16 @@ public interface IComponentInteropService : IAsyncDisposable, IDisposable
     // Press feedback (ripple click effect on Button, Card, Chip, BottomNavItem, ToggleGroupItem)
     ValueTask RippleAttachAsync(Microsoft.AspNetCore.Components.ElementReference element);
     ValueTask RippleDetachAsync(Microsoft.AspNetCore.Components.ElementReference element);
+
+    /// <summary>
+    /// Clears the <c>value</c> of a native <c>&lt;input type="file"&gt;</c> so that
+    /// re-picking the SAME file fires the <c>change</c> event again. The browser
+    /// suppresses <c>change</c> when the chosen path is identical to the input's
+    /// current value, so UploadTrigger (a pure pick-trigger with no accumulating
+    /// list to mask it) must reset the element after each pick. Default impl is a
+    /// no-op so existing implementers / test doubles keep compiling unchanged (#70).
+    /// </summary>
+    ValueTask ResetFileInput(Microsoft.AspNetCore.Components.ElementReference element) => ValueTask.CompletedTask;
 
     /// <summary>
     /// Core-side <c>prefers-reduced-motion: reduce</c> query (mirrors the

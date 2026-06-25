@@ -7,7 +7,7 @@
 @if (Label is not null)
 {
     <div class="flex items-start gap-2.5">
-        <button type="button" id="@_id" role="checkbox" aria-checked="@AriaChecked"
+        <button type="button" id="@EffectiveId" role="checkbox" aria-checked="@AriaChecked"
                 aria-required="@Required.ToString().ToLowerInvariant()"
                 aria-invalid="@EffectiveInvalid.ToString().ToLowerInvariant()"
                 aria-describedby="@FormFieldDescribedBy"
@@ -15,7 +15,7 @@
             @RenderIcon()
         </button>
         <div class="grid gap-1 leading-none pt-[1px]">
-            <label for="@_id" class="text-sm font-medium leading-none cursor-pointer peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+            <label for="@EffectiveId" class="text-sm font-medium leading-none cursor-pointer peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
                 @Label
                 @if (Required)
                 {
@@ -31,7 +31,7 @@
 }
 else
 {
-    <button type="button" id="@_id" role="checkbox" aria-checked="@AriaChecked" aria-label="@AriaLabel"
+    <button type="button" id="@EffectiveId" role="checkbox" aria-checked="@AriaChecked" aria-label="@AriaLabel"
             aria-required="@Required.ToString().ToLowerInvariant()"
             aria-invalid="@EffectiveInvalid.ToString().ToLowerInvariant()"
             aria-describedby="@FormFieldDescribedBy"
@@ -118,16 +118,17 @@ else
     // Point aria-describedby at the FormField's help/error text (null outside a field).
     private string? FormFieldDescribedBy => FormField?.DescribedBy;
 
-    private string _id = default!;
+    // Only the random fallback is cached (it must stay stable across renders).
+    // The effective id is derived per render so that a runtime change to the Id
+    // parameter (or the cascaded FormField.ControlId) flows through to BOTH the
+    // <button id> and the <label for> instead of latching to the first-render value.
+    private readonly string _generatedId = LumeoIds.New("checkbox");
 
-    protected override void OnInitialized()
-    {
-        // Inside a FormField, adopt its generated ControlId so the field's
-        // <Label For> resolves to this checkbox button (an explicit Id still wins).
-        _id = Id
-            ?? (string.IsNullOrEmpty(FormField?.ControlId) ? null : FormField!.ControlId)
-            ?? LumeoIds.New("checkbox");
-    }
+    // Inside a FormField, adopt its generated ControlId so the field's
+    // <Label For> resolves to this checkbox button (an explicit Id still wins).
+    private string EffectiveId => Id
+        ?? (string.IsNullOrEmpty(FormField?.ControlId) ? null : FormField!.ControlId)
+        ?? _generatedId;
 
     private string AriaChecked => IsIndeterminate ? "mixed" : Checked.ToString().ToLower();
 

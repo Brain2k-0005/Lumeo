@@ -27,6 +27,12 @@
     // aria-controls points at this element and focus management can target it.
     private string _contentId => Context.ContentId;
     private bool _registered;
+    // battle-wave2 #86 (state-on-data-change) — remember the anchor (Side/Align)
+    // we last positioned against. The `_registered` latch guards the one-shot
+    // click-outside registration + focus-on-open, but it also blocked any
+    // re-position, so a Side/Align change while the popover stayed OPEN was
+    // silently ignored and the surface stuck to its first-open placement.
+    private (string Side, string Align)? _appliedAnchor;
 
     private string CssClass => Cx.Merge(
         "fixed z-50 w-72 rounded-md border border-border/60 bg-popover p-4 text-popover-foreground shadow-lg outline-none",
@@ -67,6 +73,7 @@
         if (Context.IsOpen && !_registered)
         {
             await Interop.PositionFixed(_contentId, Context.WrapperId, AlignStr, false, SideStr);
+            _appliedAnchor = (SideStr, AlignStr);
             await Interop.RegisterClickOutside(_contentId, Context.WrapperId, async () =>
             {
                 await Context.SetOpen.InvokeAsync(false);
@@ -78,6 +85,14 @@
             // stays on the trigger and the content's @onkeydown handler never
             // receives Escape (Radix-equivalent dialog popovers manage focus).
             try { await Interop.FocusElement(_contentId); } catch (JSDisconnectedException) { }
+        }
+        else if (Context.IsOpen && _registered && _appliedAnchor != (SideStr, AlignStr))
+        {
+            // #86 — Side/Align changed while the popover stayed open: re-run
+            // PositionFixed against the new anchor. The tuple compare keeps a
+            // same-anchor re-render from churning the floating-ui placement.
+            await Interop.PositionFixed(_contentId, Context.WrapperId, AlignStr, false, SideStr);
+            _appliedAnchor = (SideStr, AlignStr);
         }
         else if (!Context.IsOpen && _registered)
         {
@@ -98,6 +113,8 @@
         // dropped back to the document body.
         try { await Interop.FocusElement(Context.WrapperId); } catch (JSDisconnectedException) { }
         _registered = false;
+        // Clear the applied anchor so the next open re-positions from scratch.
+        _appliedAnchor = null;
     }
 
     public async ValueTask DisposeAsync()

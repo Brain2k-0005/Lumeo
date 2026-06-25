@@ -80,6 +80,18 @@ else if (Context.IsOpen || _exiting)
     private bool _exiting;
     private readonly DelayedDispatch _exitDispatch = new();
 
+    // Whether the swipe-to-dismiss gesture is currently wired in JS, plus the
+    // direction it was registered with. Tracked so a PreventClose / SwipeToClose
+    // / SwipeDirection change WHILE THE SHEET STAYS OPEN re-runs the
+    // register/unregister pair (mirrors DrawerContent's _gestureRegistered),
+    // instead of latching whatever was eligible at open time until a full
+    // close+reopen. #89
+    private bool _swipeRegistered;
+    private string? _registeredSwipeDirection;
+
+    // Whether swipe-to-dismiss should currently be wired given the live params.
+    private bool SwipeEligible => !PreventClose && SwipeToClose;
+
     private int BackdropZ => ZIndex;
     private int ContentZ => ZIndex + 1;
 
@@ -217,7 +229,7 @@ else if (Context.IsOpen || _exiting)
         _ => "right"
     };
 
-    protected override void OnParametersSet()
+    protected override async Task OnParametersSetAsync()
     {
         if (Shell is not null) return;
         // The mount gate (Context.IsOpen || _exiting) is evaluated during render,
@@ -229,6 +241,56 @@ else if (Context.IsOpen || _exiting)
         // teardown and scheduling the final unmount.
         if (!Context.IsOpen && _wasOpen && ExitDurationMs > 0)
             _exiting = true;
+
+        // Re-opened mid-exit: clear the exit latch BEFORE this render commits so
+        // AnimationClass picks EnterAnimationClass on the first re-open render —
+        // otherwise the panel paints one frame of the slide-OUT class while it is
+        // actually re-entering. OnAfterRenderAsync's cancel stays as a backstop. #184
+        if (Context.IsOpen && _exiting)
+        {
+            _exitDispatch.Cancel();
+            _exiting = false;
+        }
+
+        // While the sheet stays open, re-evaluate swipe eligibility against the
+        // LIVE params (PreventClose / SwipeToClose / SwipeDirection). Without this
+        // a toggle of those parameters is ignored until a full close+reopen — the
+        // gesture stays registered (or absent) with stale settings. Mirrors
+        // DrawerContent.OnParametersSetAsync. #89
+        if (_wasOpen && Context.IsOpen)
+            await ReconcileSwipeAsync();
+    }
+
+    // (Re)wires the swipe-to-dismiss gesture to match the current eligibility and
+    // direction, unregistering a stale handler first. No-op when nothing changed.
+    private async Task ReconcileSwipeAsync()
+    {
+        var desired = SwipeEligible;
+        var direction = SwipeDirection;
+
+        // Already in the right state with the right direction → nothing to do.
+        if (desired == _swipeRegistered && (!desired || direction == _registeredSwipeDirection))
+            return;
+
+        if (_swipeRegistered)
+            await UnregisterSwipeAsync();
+
+        if (desired)
+            await RegisterSwipeAsync(direction);
+    }
+
+    private async Task RegisterSwipeAsync(string direction)
+    {
+        await Interop.RegisterDrawerSwipe(_contentId, direction, HandleSwipe, GestureOpts.Value.SwipeDismissThresholdPx, GestureOpts.Value.SwipeDismissFirePx);
+        _swipeRegistered = true;
+        _registeredSwipeDirection = direction;
+    }
+
+    private async Task UnregisterSwipeAsync()
+    {
+        await Interop.UnregisterDrawerSwipe(_contentId);
+        _swipeRegistered = false;
+        _registeredSwipeDirection = null;
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -262,9 +324,11 @@ else if (Context.IsOpen || _exiting)
             // Gated on SwipeToClose (default false) because Sheets commonly
             // contain scrollable content, and a downward scroll on a Bottom
             // sheet would otherwise be misread as a dismiss gesture.
-            if (!PreventClose && SwipeToClose)
+            // Routed through RegisterSwipeAsync so _swipeRegistered tracks the
+            // wiring and OnParametersSetAsync can reconcile a later toggle. #89
+            if (SwipeEligible)
             {
-                await Interop.RegisterDrawerSwipe(_contentId, SwipeDirection, HandleSwipe, GestureOpts.Value.SwipeDismissThresholdPx, GestureOpts.Value.SwipeDismissFirePx);
+                await RegisterSwipeAsync(SwipeDirection);
             }
             _wasOpen = true;
         }
@@ -310,6 +374,8 @@ else if (Context.IsOpen || _exiting)
         try
         {
             await Interop.UnregisterDrawerSwipe(_contentId);
+            _swipeRegistered = false;
+            _registeredSwipeDirection = null;
             await Interop.RemoveFocusTrap(_contentId);
             await Interop.UnlockScroll();
         }

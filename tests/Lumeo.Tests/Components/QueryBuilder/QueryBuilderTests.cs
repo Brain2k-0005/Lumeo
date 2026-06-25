@@ -281,6 +281,49 @@ public class QueryBuilderTests : IAsyncLifetime
         Assert.True(fn(new Person { Status = "closed" }));    // not in the set
     }
 
+    // --- state-on-data-change (regression: triage #50) ---
+    // Uncontrolled query tree must NOT be stored in the [Parameter] Query and must
+    // survive an unrelated parent re-render that re-pushes a null Query.
+
+    [Fact]
+    public void Uncontrolled_Query_Survives_Unrelated_Parent_ReRender()
+    {
+        // Uncontrolled use: Query is left null, no two-way binding captures the seed.
+        var cut = _ctx.Render<Lumeo.QueryBuilder>(p => p.Add(q => q.Fields, Fields()));
+
+        // The user builds a rule into the auto-seeded root group.
+        cut.FindAll("button").First(b => b.TextContent.Contains("Rule")).Click();
+        Assert.Contains(cut.FindAll("select"), s => s.GetAttribute("aria-label") == "Field");
+
+        // An unrelated parent re-render: Query stays null (never supplied), only an
+        // unrelated parameter changes. Pre-fix this re-seeds a fresh empty group via
+        // `Query ??= QueryGroup.CreateEmpty()` in OnParametersSet, wiping the rule.
+        cut.Render(p => p
+            .Add(q => q.Fields, Fields())
+            .Add(q => q.ShowJsonPreview, true));
+
+        // The rule must still be there — its field <select> survives the re-render.
+        Assert.Contains(cut.FindAll("select"), s => s.GetAttribute("aria-label") == "Field");
+        Assert.DoesNotContain("No conditions yet", cut.Markup);
+    }
+
+    [Fact]
+    public void Uncontrolled_Query_AutoSeed_Is_Published_Via_QueryChanged()
+    {
+        // On first render of an uncontrolled builder, the auto-seeded tree is published
+        // so a two-way @bind-Query captures the instance instead of being reset to null.
+        QueryGroup? captured = null;
+        var cut = _ctx.Render<Lumeo.QueryBuilder>(p => p
+            .Add(q => q.Fields, Fields())
+            .Add(q => q.QueryChanged, EventCallback.Factory.Create<QueryGroup>(this, g => captured = g)));
+
+        Assert.NotNull(captured);
+
+        // A subsequently-added rule lands on that SAME published instance.
+        cut.FindAll("button").First(b => b.TextContent.Contains("Rule")).Click();
+        Assert.Single(captured!.Rules);
+    }
+
     private sealed class Person
     {
         public string Name { get; set; } = "";

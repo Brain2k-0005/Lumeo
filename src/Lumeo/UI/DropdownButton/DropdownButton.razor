@@ -30,6 +30,24 @@
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     private bool _open;
+    // Tracks the previously-applied Disabled value so an unrelated re-render
+    // (same Disabled) never touches open state — only a real false->true edge
+    // force-closes the menu.
+    private bool _wasDisabled;
 
     private string CssClass => Cx.Merge("gap-1.5", Class);
+
+    // When the button is disabled while its menu is open, the trigger becomes
+    // pointer-events-none and DropdownMenuTrigger.Toggle early-returns on
+    // Disabled, so the user can no longer click to dismiss — the menu would be
+    // stranded open over a disabled control. Force-close on the disable edge.
+    protected override void OnParametersSet()
+    {
+        if (Disabled && !_wasDisabled && _open)
+        {
+            _open = false;
+        }
+
+        _wasDisabled = Disabled;
+    }
 }

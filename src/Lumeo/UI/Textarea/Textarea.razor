@@ -77,6 +77,11 @@
 
     private readonly string _elementId = LumeoIds.New("textarea");
     private bool _autoResizeSetup;
+    // Last Value / MaxRows that auto-resize was (re-)measured against. Tracked so a
+    // programmatic Value change (which fires no DOM 'input' event) or a runtime
+    // MaxRows change triggers a fresh measure instead of leaving a stale height.
+    private string? _autoResizeValue;
+    private int _autoResizeMaxRows;
     private ElementReference _textareaRef;
 
     /// <summary>The underlying &lt;textarea&gt; element.</summary>
@@ -145,6 +150,19 @@
         {
             await Interop.SetupAutoResize(EffectiveId, MaxRows);
             _autoResizeSetup = true;
+            _autoResizeValue = Value;
+            _autoResizeMaxRows = MaxRows;
+        }
+        else if (_autoResizeSetup && AutoResize && (Value != _autoResizeValue || MaxRows != _autoResizeMaxRows))
+        {
+            // The textarea only auto-resizes on its own 'input' event, so a Value
+            // set programmatically (#67) leaves the height stale, and a runtime
+            // MaxRows change (#167) leaves the cap stale. Re-running setupAutoResize
+            // re-measures immediately and updates the captured maxHeight; the JS
+            // de-dupes the prior input listener, so re-calling never stacks handlers.
+            await Interop.SetupAutoResize(EffectiveId, MaxRows);
+            _autoResizeValue = Value;
+            _autoResizeMaxRows = MaxRows;
         }
         if (firstRender && AutoFocus)
         {
@@ -163,6 +181,11 @@
     private async Task HandleInput(ChangeEventArgs e)
     {
         Value = e.Value?.ToString();
+        // A user keystroke already triggered the JS 'input' listener's resize(),
+        // so the height is current — record it so the OnAfterRender remeasure does
+        // not redundantly re-run setupAutoResize on every keystroke. The remeasure
+        // is reserved for Value changes that arrive WITHOUT a DOM input event (#67).
+        _autoResizeValue = Value;
         await OnInput.InvokeAsync(e);
         await ValueChanged.InvokeAsync(Value);
     }

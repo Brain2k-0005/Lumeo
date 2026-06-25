@@ -293,7 +293,24 @@
         var rootChanged = !ReferenceEquals(Root, _lastRoot);
         _lastRoot = Root;
         if (rootChanged)
+        {
             _pathStack = [];
+
+            // The selected node may have been deleted (or filtered) out of the
+            // refreshed tree. Drop a now-orphaned selection so the Delete toolbar
+            // button doesn't stay active against a node that no longer exists.
+            // Only reconcile against a genuinely-present tree (Root non-null) and
+            // skip when the consumer just re-supplied this exact selection this
+            // render (it is authoritative then).
+            if (_selectedNode is not null
+                && !ReferenceEquals(_selectedNode, _lastSelectedParam)
+                && Root is not null
+                && !ContainsNodeId(Root, _selectedNode.Id))
+            {
+                _selectedNode = null;
+                await SelectedNodeChanged.InvokeAsync(null);
+            }
+        }
 
         // Sync _pathStack when CurrentPath is changed externally
         if (CurrentPath is null)
@@ -302,11 +319,22 @@
             return;
         }
 
-        // If path stack already ends at this id, nothing to do. (After a Root
-        // swap the stack was cleared above, so this won't short-circuit on a
-        // stale node.)
+        // If path stack already ends at this id, nothing to do — UNLESS the live
+        // tree has replaced that node in place. A consumer can refresh a folder
+        // by swapping in a fresh FileSystemNode (new Children) at the same Id
+        // while keeping the SAME Root list reference; then rootChanged above is
+        // false and an Id-equality early-return would latch the stale cached node
+        // (GetCurrentFolderContents returns its old Children). Re-resolve the
+        // current node from the live Root by Id and only short-circuit when it is
+        // the very same instance we already hold; otherwise fall through to
+        // rebuild the stack from the fresh tree.
         if (_pathStack.Count > 0 && _pathStack[^1].Id == CurrentPath)
-            return;
+        {
+            var liveStack = new List<FileSystemNode>();
+            if (FindPath(Root ?? [], CurrentPath, liveStack)
+                && ReferenceEquals(liveStack[^1], _pathStack[^1]))
+                return;
+        }
 
         // Rebuild stack by finding the path in the tree
         var newStack = new List<FileSystemNode>();
@@ -343,6 +371,20 @@
 
         var current = _pathStack[^1];
         return current.Children ?? [];
+    }
+
+    // Depth-first check for a node with the given Id anywhere in the tree. Used
+    // to reconcile an orphaned selection after a Root refresh (deleted/filtered).
+    private static bool ContainsNodeId(IEnumerable<FileSystemNode> nodes, string targetId)
+    {
+        foreach (var node in nodes)
+        {
+            if (node.Id == targetId)
+                return true;
+            if (node.Children is { Count: > 0 } && ContainsNodeId(node.Children, targetId))
+                return true;
+        }
+        return false;
     }
 
     private static bool FindPath(IEnumerable<FileSystemNode> nodes, string targetId, List<FileSystemNode> stack)
@@ -555,13 +597,27 @@
     private async Task HandleDeleteNode(FileSystemNode node)
     {
         CloseContextMenu();
+        await ClearSelectionIfDeleted(node);
         await OnDelete.InvokeAsync([node]);
     }
 
     private async Task HandleDeleteSelected()
     {
         if (_selectedNode is null) return;
-        await OnDelete.InvokeAsync([_selectedNode]);
+        var node = _selectedNode;
+        await ClearSelectionIfDeleted(node);
+        await OnDelete.InvokeAsync([node]);
+    }
+
+    // Drop the live selection when the node being deleted is the selected one, so
+    // the Delete toolbar button (gated on _selectedNode is not null) doesn't stay
+    // active against an already-removed node. Fired before OnDelete so the
+    // selection clears regardless of how the consumer mutates the tree.
+    private async Task ClearSelectionIfDeleted(FileSystemNode deleted)
+    {
+        if (_selectedNode is null || _selectedNode.Id != deleted.Id) return;
+        _selectedNode = null;
+        await SelectedNodeChanged.InvokeAsync(null);
     }
 
     private async Task HandleNewFolder()

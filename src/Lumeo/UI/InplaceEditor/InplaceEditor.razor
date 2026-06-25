@@ -155,6 +155,14 @@
 
     private bool _editing;
     private string? _editValue;
+    // The value captured when the user entered edit mode. Used to tell an
+    // untouched edit field (still equal to this) from a dirtied one, so that a
+    // blur-save of an untouched field can't clobber a concurrent external Value
+    // update (lost-update), and so OnParametersSet can re-seed _editValue from a
+    // fresh Value while the user hasn't typed anything yet.
+    private string? _editStartValue;
+
+    private bool IsDirty => !string.Equals(_editValue ?? "", _editStartValue ?? "", StringComparison.Ordinal);
 
     private ElementReference _editFieldRef;
     private ElementReference _displayRef;
@@ -168,6 +176,36 @@
     // to the trigger so a keyboard-only user doesn't end up with focus on
     // <body> after committing.
     private bool _focusDisplayOnRender;
+
+    protected override void OnParametersSet()
+    {
+        if (!_editing) return;
+
+        // n=38: Disabling the editor mid-edit hides the field (render gate
+        // @if (_editing && !Disabled)) but used to leave _editing latched, which
+        // resurrected the stale in-progress edit the moment Disabled flipped back
+        // to false. Tear the edit down cleanly so a re-enable starts in display
+        // mode with the current Value.
+        if (Disabled)
+        {
+            _editing = false;
+            _editValue = Value;
+            _editStartValue = Value;
+            _focusEditOnRender = false;
+            _focusDisplayOnRender = false;
+            return;
+        }
+
+        // n=37: While editing, if the parent pushes a new Value and the user
+        // hasn't touched the field yet, adopt the fresh value as the edit baseline.
+        // This stops an untouched blur-save (see OnBlur) from committing the stale
+        // pre-edit value back over the external update.
+        if (!IsDirty && !string.Equals(_editValue ?? "", Value ?? "", StringComparison.Ordinal))
+        {
+            _editValue = Value;
+            _editStartValue = Value;
+        }
+    }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -198,6 +236,7 @@
     {
         if (Disabled) return;
         _editValue = Value;
+        _editStartValue = Value;
         _editing = true;
         _focusEditOnRender = true;
     }
@@ -234,6 +273,16 @@
     {
         if (SaveOnBlur && _editing && !ShowButtons)
         {
+            // n=37: An untouched field still holds the value captured at
+            // StartEditing. Committing it on blur would overwrite any external
+            // Value update that landed while the field was focused (lost update),
+            // so just leave edit mode without firing ValueChanged/OnSave.
+            if (!IsDirty)
+            {
+                _editing = false;
+                return;
+            }
+
             // Implicit blur-save (e.g. Tab-out): commit the value but do NOT
             // pull focus back to the trigger, otherwise Tab navigation to the
             // next control is broken. Only explicit commits (Enter / Save
@@ -263,6 +312,7 @@
         _editing = false;
         _focusDisplayOnRender = true;
         _editValue = Value;
+        _editStartValue = Value;
         await OnCancel.InvokeAsync();
     }
 }

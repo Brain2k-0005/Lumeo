@@ -240,15 +240,23 @@
 
     private void OpenPreferences()
     {
-        // Seed the draft from current consent so the toggles reflect reality.
-        // Build defensively rather than ToDictionary: two ConsentCategory entries
-        // sharing a Key (case-insensitively, since the dictionary is
-        // OrdinalIgnoreCase) would make ToDictionary throw and tear down the
-        // circuit. Last-wins keeps the dialog openable for misconfigured inputs.
-        var draft = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
-        foreach (var c in Categories)
-            draft[c.Key] = c.Required || Consent.HasConsent(c.Key);
-        _draft = draft;
+        // Only seed the draft on a genuine closed->open transition. A redundant
+        // reopen request (ConsentService.RequestOpenPreferences fired again, or
+        // ShowPreferences() called) while the dialog is already open must NOT
+        // re-seed, otherwise the user's in-progress (unsaved) toggle edits are
+        // silently discarded.
+        if (!_preferencesOpen)
+        {
+            // Seed the draft from current consent so the toggles reflect reality.
+            // Build defensively rather than ToDictionary: two ConsentCategory entries
+            // sharing a Key (case-insensitively, since the dictionary is
+            // OrdinalIgnoreCase) would make ToDictionary throw and tear down the
+            // circuit. Last-wins keeps the dialog openable for misconfigured inputs.
+            var draft = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
+            foreach (var c in Categories)
+                draft[c.Key] = c.Required || Consent.HasConsent(c.Key);
+            _draft = draft;
+        }
         _preferencesOpen = true;
     }
 

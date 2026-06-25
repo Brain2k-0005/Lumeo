@@ -158,9 +158,19 @@
 
         // Detect value changes for OnChange trigger. Skip the first parameter-set
         // pass so we don't auto-validate before the user has interacted.
+        //
+        // Use a CONTENT-aware comparison rather than the static object.Equals:
+        // when the parent re-renders and pushes a NEW reference that is value-equal
+        // to the previous one (e.g. a freshly-allocated but same-content collection
+        // produced by an immutable update, or a record), that must NOT count as a
+        // change. The static object.Equals path falls back to reference equality for
+        // any reference type that doesn't override Equals (sequences in particular),
+        // so an identical-content re-render spuriously re-fired async validation on
+        // every unrelated parent render — kicking off a network call the user never
+        // asked for and flickering IsValidating.
         if (AsyncValidator is not null && AsyncValidateOn == AsyncValidationTrigger.OnChange)
         {
-            if (_hasPreviousValue && !Equals(_previousValue, Value))
+            if (_hasPreviousValue && !ValueContentEquals(_previousValue, Value))
             {
                 ScheduleValidation(Value);
             }
@@ -169,6 +179,51 @@
         _hasPreviousValue = true;
 
         await Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// Content-aware equality for the OnChange trigger. Treats two distinct
+    /// references as equal when they carry the same content, so an immutable
+    /// "rebuild a new equal collection each render" parent (or a value-equal
+    /// record) does not look like a user edit. Falls back to <see cref="object.Equals(object?, object?)"/>
+    /// for everything that already has value semantics.
+    /// </summary>
+    private static bool ValueContentEquals(object? a, object? b)
+    {
+        if (ReferenceEquals(a, b)) return true;
+        if (a is null || b is null) return false;
+        // Same-content sequence (List/array/etc.) rebuilt across renders: a brand-new
+        // reference that object.Equals would wrongly report as different. Only when both
+        // sides are non-string enumerables (strings are themselves IEnumerable<char> but
+        // already have value equality, so let them fall through to Equals).
+        if (a is System.Collections.IEnumerable ea and not string &&
+            b is System.Collections.IEnumerable eb and not string)
+        {
+            return SequenceContentEquals(ea, eb);
+        }
+        return Equals(a, b);
+    }
+
+    private static bool SequenceContentEquals(System.Collections.IEnumerable a, System.Collections.IEnumerable b)
+    {
+        var ia = a.GetEnumerator();
+        var ib = b.GetEnumerator();
+        try
+        {
+            while (true)
+            {
+                var ha = ia.MoveNext();
+                var hb = ib.MoveNext();
+                if (ha != hb) return false;      // different lengths
+                if (!ha) return true;            // both exhausted, all equal
+                if (!Equals(ia.Current, ib.Current)) return false;
+            }
+        }
+        finally
+        {
+            (ia as IDisposable)?.Dispose();
+            (ib as IDisposable)?.Dispose();
+        }
     }
 
     /// <summary>

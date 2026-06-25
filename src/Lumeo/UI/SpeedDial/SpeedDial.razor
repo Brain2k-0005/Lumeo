@@ -125,6 +125,18 @@
             ? Cx.Join("flex h-14 w-14 cursor-not-allowed items-center justify-center rounded-full shadow-lg opacity-50 pointer-events-none", TriggerVariantClass)
             : Cx.Join("flex h-14 w-14 cursor-pointer items-center justify-center rounded-full shadow-lg transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2", TriggerVariantClass);
 
+    // Disabling the FAB while its menu is open would otherwise trap it open:
+    // the trigger goes pointer-events-none, ToggleOpen/HandleKeyDown early-return
+    // on Disabled (so neither click nor Escape can dismiss it) and the
+    // click-outside JS handler stays registered. Close it the moment Disabled
+    // flips true so keyboard/AT users aren't stranded. Close() already
+    // unregisters click-outside and resets _isOpen/_focusedIndex.
+    protected override async Task OnParametersSetAsync()
+    {
+        if (Disabled && _isOpen)
+            await Close();
+    }
+
     private async Task ToggleOpen()
     {
         if (Disabled) return;

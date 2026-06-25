@@ -1,5 +1,5 @@
 @namespace Lumeo
-@implements IDisposable
+@implements IAsyncDisposable
 @inject NavigationManager Nav
 @inject Lumeo.Services.IComponentInteropService Interop
 
@@ -62,6 +62,7 @@ else
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     private bool _active;
+    private bool _rippleAttached;
     private Microsoft.AspNetCore.Components.ElementReference _el;
 
     protected override void OnInitialized()
@@ -72,7 +73,19 @@ else
 
     protected override void OnParametersSet() => RecomputeActive();
 
-    public void Dispose() => Nav.LocationChanged -= HandleLocationChanged;
+    public async ValueTask DisposeAsync()
+    {
+        Nav.LocationChanged -= HandleLocationChanged;
+        if (_rippleAttached)
+        {
+            _rippleAttached = false;
+            try
+            {
+                await Interop.RippleDetachAsync(_el);
+            }
+            catch (Microsoft.JSInterop.JSDisconnectedException) { }
+        }
+    }
 
     private void HandleLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e)
     {
@@ -140,11 +153,26 @@ else
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (firstRender && PressEffect == Button.ButtonPressEffect.Ripple)
+        // Reconcile the ripple handler against the CURRENT PressEffect on every
+        // render — not just firstRender. An item that switches TO Ripple after the
+        // first render must get the handler wired, and one that switches AWAY must
+        // have its stale handler torn down (it would otherwise leak / keep firing).
+        var wantsRipple = PressEffect == Button.ButtonPressEffect.Ripple;
+        if (wantsRipple && !_rippleAttached)
         {
             try
             {
                 await Interop.RippleAttachAsync(_el);
+                _rippleAttached = true;
+            }
+            catch (Microsoft.JSInterop.JSDisconnectedException) { }
+        }
+        else if (!wantsRipple && _rippleAttached)
+        {
+            _rippleAttached = false;
+            try
+            {
+                await Interop.RippleDetachAsync(_el);
             }
             catch (Microsoft.JSInterop.JSDisconnectedException) { }
         }

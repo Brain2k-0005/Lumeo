@@ -1,4 +1,5 @@
 @namespace Lumeo
+@implements IAsyncDisposable
 @inject Lumeo.Services.IComponentInteropService Interop
 
 @{
@@ -221,15 +222,47 @@ else
         }
     }
 
+    // Whether the JS pointerdown ripple listener is currently bound to _el.
+    // Tracked so the attach/detach is reconciled against the live PressEffect on
+    // EVERY render — not latched on firstRender — and torn down on dispose.
+    private bool _rippleAttached;
+
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (firstRender && PressEffect == ButtonPressEffect.Ripple)
+        // Reconcile the ripple listener with the current PressEffect, not just the
+        // first-render value: a runtime None->Ripple flip must now attach, and a
+        // Ripple->None flip must detach the leaked listener (triage #145, subsumes
+        // the missing-dispose leak of #22).
+        if (PressEffect == ButtonPressEffect.Ripple && !_rippleAttached)
         {
             try
             {
                 await Interop.RippleAttachAsync(_el);
+                _rippleAttached = true;
             }
             catch (Microsoft.JSInterop.JSDisconnectedException) { }
+        }
+        else if (PressEffect != ButtonPressEffect.Ripple && _rippleAttached)
+        {
+            try
+            {
+                await Interop.RippleDetachAsync(_el);
+            }
+            catch (Microsoft.JSInterop.JSDisconnectedException) { }
+            _rippleAttached = false;
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_rippleAttached)
+        {
+            try
+            {
+                await Interop.RippleDetachAsync(_el);
+            }
+            catch (Microsoft.JSInterop.JSDisconnectedException) { }
+            _rippleAttached = false;
         }
     }
 

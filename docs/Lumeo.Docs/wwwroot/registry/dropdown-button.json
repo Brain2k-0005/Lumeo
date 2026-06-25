@@ -144,8 +144,8 @@
   },
   "testCoverage": {
     "tier": 3,
-    "files": 2,
-    "tests": 16,
+    "files": 3,
+    "tests": 19,
     "relatedFiles": 0,
     "render": true,
     "behavior": true,
@@ -168,7 +168,7 @@
   "source": [
     {
       "path": "UI/DropdownButton/DropdownButton.razor",
-      "content": "@namespace Lumeo\n\n<DropdownMenu @bind-Open=\"_open\">\n    <DropdownMenuTrigger Disabled=\"Disabled\" @attributes=\"AdditionalAttributes\">\n        <Button Variant=\"Variant\" Size=\"Size\" Disabled=\"Disabled\" Class=\"@CssClass\">\n            @if (ChildContent != null)\n            {\n                @ChildContent\n            }\n            else\n            {\n                @Text\n            }\n            <Blazicon Svg=\"Lucide.ChevronDown\" Class=\"h-4 w-4 shrink-0 opacity-70 transition-transform duration-200 group-data-[state=open]:rotate-180\" />\n        </Button>\n    </DropdownMenuTrigger>\n    <DropdownMenuContent>\n        @MenuContent\n    </DropdownMenuContent>\n</DropdownMenu>\n\n@code {\n    [Parameter] public string? Text { get; set; }\n    [Parameter] public RenderFragment? ChildContent { get; set; }\n    [Parameter] public RenderFragment? MenuContent { get; set; }\n    [Parameter] public Button.ButtonVariant Variant { get; set; } = Button.ButtonVariant.Default;\n    [Parameter] public Button.ButtonSize Size { get; set; } = Button.ButtonSize.Default;\n    [Parameter] public bool Disabled { get; set; }\n    [Parameter] public string? Class { get; set; }\n    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }\n\n    private bool _open;\n\n    private string CssClass => Cx.Merge(\"gap-1.5\", Class);\n}\n"
+      "content": "@namespace Lumeo\n\n<DropdownMenu @bind-Open=\"_open\">\n    <DropdownMenuTrigger Disabled=\"Disabled\" @attributes=\"AdditionalAttributes\">\n        <Button Variant=\"Variant\" Size=\"Size\" Disabled=\"Disabled\" Class=\"@CssClass\">\n            @if (ChildContent != null)\n            {\n                @ChildContent\n            }\n            else\n            {\n                @Text\n            }\n            <Blazicon Svg=\"Lucide.ChevronDown\" Class=\"h-4 w-4 shrink-0 opacity-70 transition-transform duration-200 group-data-[state=open]:rotate-180\" />\n        </Button>\n    </DropdownMenuTrigger>\n    <DropdownMenuContent>\n        @MenuContent\n    </DropdownMenuContent>\n</DropdownMenu>\n\n@code {\n    [Parameter] public string? Text { get; set; }\n    [Parameter] public RenderFragment? ChildContent { get; set; }\n    [Parameter] public RenderFragment? MenuContent { get; set; }\n    [Parameter] public Button.ButtonVariant Variant { get; set; } = Button.ButtonVariant.Default;\n    [Parameter] public Button.ButtonSize Size { get; set; } = Button.ButtonSize.Default;\n    [Parameter] public bool Disabled { get; set; }\n    [Parameter] public string? Class { get; set; }\n    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }\n\n    private bool _open;\n    // Tracks the previously-applied Disabled value so an unrelated re-render\n    // (same Disabled) never touches open state — only a real false->true edge\n    // force-closes the menu.\n    private bool _wasDisabled;\n\n    private string CssClass => Cx.Merge(\"gap-1.5\", Class);\n\n    // When the button is disabled while its menu is open, the trigger becomes\n    // pointer-events-none and DropdownMenuTrigger.Toggle early-returns on\n    // Disabled, so the user can no longer click to dismiss — the menu would be\n    // stranded open over a disabled control. Force-close on the disable edge.\n    protected override void OnParametersSet()\n    {\n        if (Disabled && !_wasDisabled && _open)\n        {\n            _open = false;\n        }\n\n        _wasDisabled = Disabled;\n    }\n}\n"
     }
   ],
   "slots": [
@@ -200,6 +200,7 @@
   "keyboardInteractions": [],
   "tests": [
     "tests/Lumeo.Tests/Components/DropdownButton/DropdownButtonBehaviorTests.cs",
+    "tests/Lumeo.Tests/Components/DropdownButton/DropdownButtonDisabledClosesMenuTests.cs",
     "tests/Lumeo.Tests/Components/DropdownButton/DropdownButtonTests.cs"
   ],
   "mdSummary": "# DropdownButton\n\nDropdown Button component.\n\n**Package:** `Lumeo` · **Category:** Utility\n**Docs:** https://lumeo.nativ.sh/components/dropdown-button\n\n## Parameters\n| Owner | Name | Type | Default | Description |\n|---|---|---|---|---|\n| DropdownButton | Text | `string?` | `` |  |\n| DropdownButton | ChildContent | `RenderFragment?` | `` |  |\n| DropdownButton | MenuContent | `RenderFragment?` | `` |  |\n| DropdownButton | Variant | `Button.ButtonVariant` | `Button.ButtonVariant.Default` |  |\n| DropdownButton | Size | `Button.ButtonSize` | `Button.ButtonSize.Default` |  |\n| DropdownButton | Disabled | `bool` | `` |  |\n| DropdownButton | Class | `string?` | `` |  |\n| DropdownButton | AdditionalAttributes | `Dictionary<string, object>?` | `` |  |\n\n## Slots\n- `ChildContent` (DropdownButton) — RenderFragment slot\n- `MenuContent` (DropdownButton) — RenderFragment slot\n\n## Events\n- (none)\n\n## Sub-components\n- (none)\n\n## Cascading values it expects\n- (none)\n\n## Services it injects\n- (none)\n\n## Keyboard\n—\n\n## Example\n```razor\n<DropdownButton />\n```\n\n## CSS variables\n`--color-foreground`\n\n## Files\n- `UI/DropdownButton/DropdownButton.razor`\n"

@@ -44,8 +44,8 @@
                aria-required="@Required.ToString().ToLowerInvariant()"
                aria-invalid="@EffectiveInvalid.ToString().ToLowerInvariant()"
                aria-describedby="@FormFieldDescribedBy"
-               maxlength="@MaxLength" class="@WrappedInputClass" value="@Value" @oninput="HandleInput" disabled="@Disabled" @attributes="AdditionalAttributes" />
-        @if (Clearable && !string.IsNullOrEmpty(Value))
+               maxlength="@MaxLength" class="@WrappedInputClass" value="@_current" @oninput="HandleInput" disabled="@Disabled" @attributes="AdditionalAttributes" />
+        @if (Clearable && !string.IsNullOrEmpty(_current))
         {
             <button type="button" class="@($"flex items-center {AccessoryClearPad} text-muted-foreground hover:text-foreground transition-colors")" @onclick="HandleClear" tabindex="-1" aria-label="@L["Common.Clear"]">
                 <Blazicon Svg="Lucide.X" class="h-3.5 w-3.5" />
@@ -65,7 +65,7 @@ else
            aria-required="@Required.ToString().ToLowerInvariant()"
            aria-invalid="@EffectiveInvalid.ToString().ToLowerInvariant()"
            aria-describedby="@FormFieldDescribedBy"
-           maxlength="@MaxLength" class="@CssClass" value="@Value" @oninput="HandleInput" disabled="@Disabled" @attributes="AdditionalAttributes" />
+           maxlength="@MaxLength" class="@CssClass" value="@_current" @oninput="HandleInput" disabled="@Disabled" @attributes="AdditionalAttributes" />
 }
 
 @if (ShowCount)
@@ -143,6 +143,19 @@ else
 
     private ElementReference _inputRef;
 
+    // The live editing value. The <input> renders from this, NOT from the Value
+    // [Parameter] directly, so an unrelated parent re-render that re-supplies the
+    // same (or stale) Value cannot revert the user's typed text. HandleInput
+    // mutates _current and echoes via ValueChanged; the parameter is adopted back
+    // into _current only when the PARENT actually changes Value (see OnParametersSet).
+    private string? _current;
+
+    // The last Value parameter we observed. Comparing the incoming Value against
+    // THIS (not against _current, which our own typing mutates) is what lets us
+    // tell a genuine consumer-driven change from a no-op re-render echo.
+    private string? _lastValueParam;
+    private bool _paramSeeded;
+
     /// <summary>The underlying &lt;input&gt; element. Exposed for advanced
     /// scenarios that need direct access; prefer <see cref="FocusAsync"/>.</summary>
     public ElementReference Element => _inputRef;
@@ -162,14 +175,16 @@ else
     private string? FormFieldControlId => string.IsNullOrEmpty(FormField?.ControlId) ? null : FormField!.ControlId;
     private string? FormFieldDescribedBy => FormField?.DescribedBy;
 
-    // Character-counter helpers, mirroring Textarea's pattern.
-    private bool IsOverLimit => MaxLength.HasValue && (Value?.Length ?? 0) > MaxLength.Value;
+    // Character-counter helpers, mirroring Textarea's pattern. These read the
+    // live displayed value (_current), not the raw Value parameter, so the count
+    // and over-limit state track what the user actually sees after typing.
+    private bool IsOverLimit => MaxLength.HasValue && (_current?.Length ?? 0) > MaxLength.Value;
     private string CountClass => IsOverLimit ? "text-destructive" : "text-muted-foreground";
     private string CountText => CountFormat is { } fmt
-        ? fmt(Value?.Length ?? 0)
+        ? fmt(_current?.Length ?? 0)
         : MaxLength.HasValue
-            ? $"{Value?.Length ?? 0}/{MaxLength}"
-            : (Value?.Length ?? 0).ToString();
+            ? $"{_current?.Length ?? 0}/{MaxLength}"
+            : (_current?.Length ?? 0).ToString();
 
     private Lumeo.Density EffectiveDensity => Density ?? InheritedDensity ?? Lumeo.Density.Comfortable;
 
@@ -246,6 +261,32 @@ else
 
     private string WrappedInputClass => $"flex-1 bg-transparent {WrappedInputSizeClasses} py-1 placeholder:text-muted-foreground focus-visible:outline-none disabled:cursor-not-allowed".Trim();
 
+    protected override void OnParametersSet()
+    {
+        // Seed the working value from the parameter on first set; thereafter adopt
+        // the parameter ONLY when the PARENT actually changed it. HandleInput /
+        // HandleClear mutate _current (not Value), so an unrelated parent re-render
+        // that re-supplies the same (or a stale uncontrolled) Value does NOT clobber
+        // the user's typed text. Compare against _lastValueParam — the last value the
+        // parent gave us — not against _current, which our own typing has moved on.
+        // (Mirrors the SignaturePad precedent: compare the last param value, not live
+        // state.) A controlled parent that echoes back exactly what we emitted lands
+        // here with Value == _current already, so re-seeding is a harmless no-op.
+        if (!_paramSeeded)
+        {
+            _current = Value;
+            _lastValueParam = Value;
+            _paramSeeded = true;
+            return;
+        }
+
+        if (!string.Equals(Value, _lastValueParam, StringComparison.Ordinal))
+        {
+            _current = Value;
+            _lastValueParam = Value;
+        }
+    }
+
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (firstRender && AutoFocus)
@@ -257,14 +298,17 @@ else
 
     private async Task HandleInput(ChangeEventArgs e)
     {
-        Value = e.Value?.ToString();
+        // Update the live editing value (not the [Parameter]) and echo it out.
+        // _lastValueParam stays put so a controlled parent echoing the same string
+        // back via OnParametersSet is recognised as "unchanged" and never reverts us.
+        _current = e.Value?.ToString();
         await OnInput.InvokeAsync(e);
-        await ValueChanged.InvokeAsync(Value);
+        await ValueChanged.InvokeAsync(_current);
     }
 
     private async Task HandleClear()
     {
-        Value = "";
+        _current = "";
         await OnInput.InvokeAsync(new ChangeEventArgs { Value = "" });
         await ValueChanged.InvokeAsync("");
         await OnClear.InvokeAsync();
