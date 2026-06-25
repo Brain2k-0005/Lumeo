@@ -223,7 +223,12 @@
             _currentStepConfig = Steps[CurrentStep];
             _currentTargetSelector = null; // Force re-fetch for new step
             await CurrentStepChanged.InvokeAsync(CurrentStep);
-            await UpdateTargetRect();
+            // Do NOT pre-fetch the rect here. Resetting _currentTargetSelector to
+            // null lets OnAfterRenderAsync own the full move sequence
+            // (scroll-into-view → LockScroll → UpdateTargetRect). Calling
+            // UpdateTargetRect() here would set _currentTargetSelector to the new
+            // step's selector before the render, making movingToNewTarget false,
+            // so an off-screen target was never scrolled into view on Next/Previous.
         }
     }
 
@@ -235,7 +240,8 @@
             _currentStepConfig = Steps[CurrentStep];
             _currentTargetSelector = null; // Force re-fetch for new step
             await CurrentStepChanged.InvokeAsync(CurrentStep);
-            await UpdateTargetRect();
+            // See HandleNext: OnAfterRenderAsync is the single owner of the
+            // scroll-into-view + lock + UpdateTargetRect sequence.
         }
     }
 
