@@ -1,0 +1,47 @@
+@namespace Lumeo.Docs.Layout
+@using Lumeo.Docs.Services
+@inject RegistryService Registry
+
+@* The header "Components" entry is a mega-menu of the component CATEGORIES — built from the
+   SAME registry taxonomy the catalog groups by, so each tile lands on the matching category
+   overview (the catalog pre-filtered to that category). It's the always-available library
+   overview, which lets the per-page component sidebar stay scoped to a single category
+   without the user losing sight of the whole set. Dogfoods Lumeo's own MegaMenu. *@
+@if (_categories is { Count: > 0 })
+{
+    <MegaMenu aria-label="Components menu" Class="hidden md:block">
+        <MegaMenuItem Label="Components">
+            <MegaMenuPanel FullWidth="false" Columns="3" Class="min-w-[680px]">
+                @foreach (var (cat, items) in _categories)
+                {
+                    <MegaMenuLink Href="@($"components?category={Uri.EscapeDataString(cat)}")"
+                                  Title="@cat" Description="@Peek(items)" />
+                }
+                <a href="components"
+                   class="col-span-full mt-1 flex items-center justify-center gap-1.5 rounded-md border border-border/40 py-2 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-accent transition-colors no-underline">
+                    Browse all components
+                    <Blazicon Svg="Lucide.ArrowRight" class="h-3 w-3" />
+                </a>
+            </MegaMenuPanel>
+        </MegaMenuItem>
+    </MegaMenu>
+}
+
+@code {
+    // Same grouping the catalog uses (registry category) so the mega-menu and the catalog
+    // overview are one taxonomy. Largest categories first, matching the catalog's emphasis.
+    private List<KeyValuePair<string, List<RegistryComponent>>>? _categories;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var groups = await Registry.GroupsByCategoryAsync();
+        _categories = groups.OrderByDescending(g => g.Value.Count).ToList();
+    }
+
+    // A short peek of the category's contents + total count, e.g. "Input · Select · Button · +31 more".
+    private static string Peek(List<RegistryComponent> items)
+    {
+        var peek = string.Join(" · ", items.Take(3).Select(i => i.Name));
+        return items.Count > 3 ? $"{peek} · +{items.Count - 3} more" : peek;
+    }
+}

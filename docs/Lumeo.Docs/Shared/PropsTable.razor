@@ -1,0 +1,71 @@
+@namespace Lumeo.Docs.Shared
+@using Lumeo.Docs.Services
+@inject RegistryService Registry
+
+@* Registry-driven props/API table. Renders api.parameters (+ events) straight from
+   registry/{slug}.json — the single source of truth — so the API never drifts from
+   the actual component source and is identical in shape across every page. *@
+@if (_detail?.Api is { } api && api.Parameters.Count > 0)
+{
+    <div class="overflow-x-auto rounded-lg border border-border/60">
+        <table class="w-full text-sm">
+            <thead class="bg-muted/40 text-left text-xs uppercase tracking-wide text-muted-foreground">
+                <tr>
+                    <th class="px-3 py-2 font-medium">Prop</th>
+                    <th class="px-3 py-2 font-medium">Type</th>
+                    <th class="px-3 py-2 font-medium">Default</th>
+                    <th class="px-3 py-2 font-medium">Description</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var p in api.Parameters)
+                {
+                    <tr class="border-t border-border/40 align-top hover:bg-muted/20">
+                        <td class="px-3 py-2 font-mono text-xs font-medium text-foreground whitespace-nowrap">
+                            @p.Name@if (p.IsEditorRequired) {<span class="ms-1 text-destructive" title="Required">*</span>}
+                        </td>
+                        <td class="px-3 py-2 font-mono text-xs text-primary/90">@p.Type</td>
+                        <td class="px-3 py-2 font-mono text-xs text-muted-foreground whitespace-nowrap">@(string.IsNullOrEmpty(p.Default) ? "—" : p.Default)</td>
+                        <td class="px-3 py-2 text-muted-foreground leading-snug">@p.Description</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+
+    @if (api.Events.Count > 0)
+    {
+        <p class="mt-5 mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Events</p>
+        <div class="overflow-x-auto rounded-lg border border-border/60">
+            <table class="w-full text-sm">
+                <tbody>
+                    @foreach (var e in api.Events)
+                    {
+                        <tr class="border-t border-border/40 first:border-t-0 align-top hover:bg-muted/20">
+                            <td class="px-3 py-2 font-mono text-xs font-medium text-foreground whitespace-nowrap">@e.Name</td>
+                            <td class="px-3 py-2 font-mono text-xs text-primary/90">@e.Type</td>
+                            <td class="px-3 py-2 text-muted-foreground leading-snug">@e.Description</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+}
+else if (_loaded)
+{
+    <p class="text-sm text-muted-foreground">This component takes no public parameters.</p>
+}
+
+@code {
+    [Parameter, EditorRequired] public string Slug { get; set; } = "";
+
+    private RegistryComponentDetail? _detail;
+    private bool _loaded;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _detail = await Registry.GetComponentAsync(Slug);
+        _loaded = true;
+    }
+}

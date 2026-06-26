@@ -35,10 +35,11 @@
         <Popover @bind-Open="_isOpen">
             <PopoverTrigger>
                 <button type="button"
-                        id="@_triggerId"
+                        id="@EffectiveTriggerId"
                         name="@Name"
                         aria-required="@Required.ToString().ToLower()"
                         aria-invalid="@EffectiveInvalid.ToString().ToLower()"
+                        aria-describedby="@FormFieldDescribedBy"
                         class="@CssClass"
                         disabled="@Disabled"
                         @attributes="AdditionalAttributes">
@@ -98,7 +99,7 @@ else if (Inline)
                         @foreach (var preset in Presets)
                         {
                             var p = preset;
-                            <button type="button" class="text-sm px-3 py-1.5 rounded-md text-left hover:bg-accent hover:text-accent-foreground transition-colors focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-1" @onclick="() => HandlePresetSelected(p)">
+                            <button type="button" class="text-sm px-3 py-1.5 rounded-md text-start hover:bg-accent hover:text-accent-foreground transition-colors focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-1" @onclick="() => HandlePresetSelected(p)">
                                 @p.Label
                             </button>
                         }
@@ -125,7 +126,7 @@ else if (Inline)
                             @foreach (var preset in Presets)
                             {
                                 var p = preset;
-                                <button type="button" class="text-sm px-3 py-1.5 rounded-md text-left hover:bg-accent hover:text-accent-foreground transition-colors focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-1" @onclick="() => HandlePresetSelected(p)">
+                                <button type="button" class="text-sm px-3 py-1.5 rounded-md text-start hover:bg-accent hover:text-accent-foreground transition-colors focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-1" @onclick="() => HandlePresetSelected(p)">
                                     @p.Label
                                 </button>
                             }
@@ -158,13 +159,14 @@ else
                    Rendering both produced a double calendar-icon affordance,
                    most visible on narrow mobile widths where the input shrinks. *@
                 <div class="@CssClass" @onclick:stopPropagation="true" @attributes="AdditionalAttributes">
-                    <input id="@_triggerId"
+                    <input id="@EffectiveTriggerId"
                            type="text"
                            name="@Name"
                            value="@_inputBuffer"
                            placeholder="@EffectivePlaceholder"
                            aria-required="@Required.ToString().ToLower()"
                            aria-invalid="@EffectiveInvalid.ToString().ToLower()"
+                           aria-describedby="@FormFieldDescribedBy"
                            disabled="@Disabled"
                            readonly="@(!AllowKeyboardInput)"
                            class="flex-1 bg-transparent outline-none border-0 p-0 text-sm placeholder:text-muted-foreground disabled:cursor-not-allowed"
@@ -191,10 +193,11 @@ else
             else
             {
             <button type="button"
-                    id="@_triggerId"
+                    id="@EffectiveTriggerId"
                     name="@Name"
                     aria-required="@Required.ToString().ToLower()"
                     aria-invalid="@EffectiveInvalid.ToString().ToLower()"
+                    aria-describedby="@FormFieldDescribedBy"
                     class="@CssClass"
                     disabled="@Disabled"
                     @attributes="AdditionalAttributes">
@@ -294,7 +297,7 @@ else
                             @foreach (var preset in Presets)
                             {
                                 var p = preset;
-                                <button type="button" class="text-sm px-3 py-1.5 rounded-md text-left hover:bg-accent hover:text-accent-foreground transition-colors focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-1" @onclick="() => HandlePresetSelected(p)">
+                                <button type="button" class="text-sm px-3 py-1.5 rounded-md text-start hover:bg-accent hover:text-accent-foreground transition-colors focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-1" @onclick="() => HandlePresetSelected(p)">
                                     @p.Label
                                 </button>
                             }
@@ -321,7 +324,7 @@ else
                                 @foreach (var preset in Presets)
                                 {
                                     var p = preset;
-                                    <button type="button" class="text-sm px-3 py-1.5 rounded-md text-left hover:bg-accent hover:text-accent-foreground transition-colors focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-1" @onclick="() => HandlePresetSelected(p)">
+                                    <button type="button" class="text-sm px-3 py-1.5 rounded-md text-start hover:bg-accent hover:text-accent-foreground transition-colors focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-1" @onclick="() => HandlePresetSelected(p)">
                                         @p.Label
                                     </button>
                                 }
@@ -387,12 +390,29 @@ else
     private bool EffectiveInvalid => Invalid || FormField?.HasError == true;
     private bool InsideFormField => FormField is not null;
 
+    // aria-describedby on the trigger announces the FormField help/error to a screen reader.
+    private string? FormFieldDescribedBy => FormField?.DescribedBy;
+
+    // Inside a FormField, adopt its generated ControlId so the field's <Label For>
+    // resolves to the rendered trigger (click-to-focus + association). Null outside
+    // a FormField — EffectiveTriggerId then falls back to the generated _triggerId.
+    // The empty guard avoids id="" when no id was generated.
+    private string? FormFieldControlId => string.IsNullOrEmpty(FormField?.ControlId) ? null : FormField!.ControlId;
+
+    // The id actually rendered on whichever trigger variant is active (button /
+    // range button / masked input). Any interop that focuses or anchors the
+    // trigger MUST use this same value so focus/anchoring target the rendered
+    // element. _triggerId stays as the fallback.
+    private string EffectiveTriggerId => FormFieldControlId ?? _triggerId;
+
     [Parameter] public DateOnly? Value { get; set; }
     [Parameter] public EventCallback<DateOnly?> ValueChanged { get; set; }
 
     /// <summary>
     /// Optional DateTime? binding. When set, takes precedence over <see cref="Value"/>.
-    /// Changes fire both <see cref="ValueChanged"/> (DateOnly?) and <see cref="DateTimeValueChanged"/> (DateTime? at midnight).
+    /// Changes fire both <see cref="ValueChanged"/> (DateOnly?) and <see cref="DateTimeValueChanged"/>
+    /// (DateTime?). When <see cref="ShowTimePicker"/> is enabled the current <see cref="Time"/>
+    /// selection is folded into the emitted DateTime; otherwise the time component is midnight.
     /// </summary>
     [Parameter] public DateTime? DateTimeValue { get; set; }
     [Parameter] public EventCallback<DateTime?> DateTimeValueChanged { get; set; }
@@ -515,13 +535,13 @@ else
     private readonly string _triggerId = LumeoIds.New("date-picker-trigger");
 
     /// <summary>Programmatically focus the trigger.</summary>
-    public ValueTask FocusAsync() => Interop.FocusElement(_triggerId);
+    public ValueTask FocusAsync() => Interop.FocusElement(EffectiveTriggerId);
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (firstRender && AutoFocus)
         {
-            try { await Interop.FocusElement(_triggerId); }
+            try { await Interop.FocusElement(EffectiveTriggerId); }
             catch (Microsoft.JSInterop.JSDisconnectedException) { }
         }
     }
@@ -559,6 +579,16 @@ else
 
     protected override void OnParametersSet()
     {
+        // Keep the uncontrolled fallback (_internalOpen) mirrored to the
+        // controlled Open while the parent owns the state. Without this, a
+        // controlled close (Open toggled false by the parent) never updates the
+        // stale _internalOpen, so a later revert to uncontrolled (Open => null)
+        // would resurrect an old open state and reopen the popover unexpectedly.
+        if (Open is { } controlledOpen)
+        {
+            _internalOpen = controlledOpen;
+        }
+
         // DateTimeValue wins when it changes — sync Value from it.
         if (DateTimeValue != _prevDateTimeValue)
         {
@@ -788,6 +818,10 @@ else
     {
         Time = time;
         await TimeChanged.InvokeAsync(time);
+        // A time-only change must also flow into the DateTime binding — otherwise
+        // ShowTimePicker time selection never reaches DateTimeValue. Re-compose
+        // from the current Value (RaiseDateTimeValueChanged now folds in Time).
+        await RaiseDateTimeValueChanged(Value);
     }
 
     private async Task HandlePresetSelected(DatePickerPreset preset)
@@ -848,7 +882,12 @@ else
     {
         if (DateTimeValueChanged.HasDelegate)
         {
-            var dt = date.HasValue ? (DateTime?)date.Value.ToDateTime(TimeOnly.MinValue) : null;
+            // Fold the current Time selection into the committed DateTime so a date
+            // pick no longer silently resets the bound DateTime to midnight when a
+            // time was already chosen (and so the time picker actually reaches the
+            // DateTime binding). Falls back to midnight when no Time is set.
+            var time = Time.HasValue ? TimeOnly.FromTimeSpan(Time.Value) : TimeOnly.MinValue;
+            var dt = date.HasValue ? (DateTime?)date.Value.ToDateTime(time) : null;
             _prevDateTimeValue = dt;
             await DateTimeValueChanged.InvokeAsync(dt);
         }

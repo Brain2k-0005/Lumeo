@@ -117,14 +117,26 @@
         // programmatically on an inline calendar — navigate the visible month to
         // it. Only react to actual changes: re-renders that leave the anchor
         // untouched must not reset manual browsing.
+        //
+        // Only treat a *non-null* anchor as a change worth tracking/navigating to.
+        // An async load flicker (June15 → null → June15) must be a no-op: nulling
+        // _lastSeenAnchor on the transient clear would make the refill look like a
+        // brand-new external value and yank the user's browsed month back to the
+        // anchor. By never overwriting _lastSeenAnchor with null, the eventual
+        // refill equals the retained value and no navigation fires.
         var anchor = CurrentAnchor;
-        if (anchor != _lastSeenAnchor)
+        if (anchor.HasValue && anchor != _lastSeenAnchor)
         {
             _lastSeenAnchor = anchor;
-            if (anchor.HasValue)
-            {
-                DisplayDate = new DateOnly(anchor.Value.Year, anchor.Value.Month, 1);
-            }
+            DisplayDate = new DateOnly(anchor.Value.Year, anchor.Value.Month, 1);
+            // Realign the roving-tabindex target to the new anchor. Without this,
+            // an external Value change *within the displayed month* (June15 →
+            // June20) leaves DisplayDate untouched, so EnsureFocusedDate — which
+            // only re-seeds when _focusedDate falls OUT of the window — keeps the
+            // tabbable day on the stale date. Gated on a real anchor change so it
+            // never clobbers an in-progress keyboard navigation on an unrelated
+            // re-render (those don't change the anchor and so don't reach here).
+            _focusedDate = anchor;
         }
     }
 
@@ -138,22 +150,24 @@
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (NumberOfMonths != 1) return;
-
-        // The day grid element only exists in the Days view. Both the swipe
+        // The id-bearing day grid element exists only for a single-month Days
+        // view (the gridId in RenderMonth is null for multi-month panels, which
+        // share one component, and for the Months/Years pickers). Both the swipe
         // handler and the page-scroll suppression for the keyboard-nav keys
-        // attach to it, so they register on each Days → hidden → Days transition
-        // (Months/Years recreate the grid div) and unregister when it goes away.
-        var inDaysView = _currentView == CalendarView.Days;
+        // attach to that element, so they must (un)register as the grid appears
+        // and disappears — including a NumberOfMonths 1→2→1 round-trip. An early
+        // `if (NumberOfMonths != 1) return;` here would skip teardown on the way
+        // out and re-registration on the way back, permanently orphaning both.
+        var hasSingleGrid = NumberOfMonths == 1 && _currentView == CalendarView.Days;
 
-        if (inDaysView && SwipeEnabled && !_swipeAttached)
+        if (hasSingleGrid && SwipeEnabled && !_swipeAttached)
         {
             _swipeAttached = true;
             try { await Interop.RegisterHorizontalSwipe(_elementId, OnSwipeAsync, GestureOpts.Value.SwipeThresholdPx, GestureOpts.Value.VerticalDeadZonePx); }
             catch (JSDisconnectedException) { _swipeAttached = false; }
             catch (InvalidOperationException) { _swipeAttached = false; } // JS unavailable during prerender
         }
-        else if ((!inDaysView || !SwipeEnabled) && _swipeAttached)
+        else if ((!hasSingleGrid || !SwipeEnabled) && _swipeAttached)
         {
             _swipeAttached = false;
             try { await Interop.UnregisterHorizontalSwipe(_elementId); }
@@ -163,7 +177,7 @@
         // Suppress page scroll for the arrow / Home / End / PageUp / PageDown
         // keys while the day grid is visible — without this the first keypress
         // scrolls the page as focus also moves (same pattern as TreeViewNode).
-        if (inDaysView && _pdRegisteredId != _elementId)
+        if (hasSingleGrid && _pdRegisteredId != _elementId)
         {
             try
             {
@@ -173,7 +187,7 @@
             catch (JSDisconnectedException) { }
             catch (InvalidOperationException) { } // JS unavailable during prerender
         }
-        else if (!inDaysView && _pdRegisteredId is not null)
+        else if (!hasSingleGrid && _pdRegisteredId is not null)
         {
             try { await Interop.UnregisterPreventDefaultKeys(_pdRegisteredId); }
             catch (JSDisconnectedException) { }
@@ -289,10 +303,10 @@
     // the wrapper has no styling and the button keeps its original look.
     //
     // Edge cases:
-    // - First column on a row (col == 0) gets rounded-l-md so the bar starts
+    // - First column on a row (col == 0) gets rounded-s-md so the bar starts
     //   with a rounded cap when the range wraps to a new row.
-    // - Last column on a row (col == 6) gets rounded-r-md likewise.
-    // - The range-start and range-end days get rounded-l-md / rounded-r-md
+    // - Last column on a row (col == 6) gets rounded-e-md likewise.
+    // - The range-start and range-end days get rounded-s-md / rounded-e-md
     //   so the bar terminates with a soft cap behind the primary circle.
     // - Hover during in-flight selection (RangeStart set, RangeEnd null,
     //   _hoverDate carries the preview) extends the bar dynamically.
@@ -316,10 +330,29 @@
         // flex layout keeps the button (h-8 w-8) centered horizontally so the
         // surrounding bar extends to the cell edges on either side.
         var parts = new List<string> { "flex items-center justify-center bg-accent" };
-        if (isStart || col == 0) parts.Add("rounded-l-md");
-        if (isEnd || col == 6) parts.Add("rounded-r-md");
+        if (isStart || col == 0) parts.Add("rounded-s-md");
+        if (isEnd || col == 6) parts.Add("rounded-e-md");
         return string.Join(" ", parts);
     }
+
+    // The day-cell button, rendered either bare or as the AsChild trigger of a Lumeo
+    // <Tooltip> (when DateTooltip yields a hint). slotAttrs carries aria-describedby
+    // (only while the tooltip is open) so the button itself is described on focus.
+    private RenderFragment RenderDay(DateOnly d, DateOnly monthDate, RenderFragment? badge, IReadOnlyDictionary<string, object>? slotAttrs) =>
+        @<button type="button" id="@DayId(monthDate, d)" tabindex="@DayTabIndex(d, monthDate)"
+                 aria-label="@DayAriaLabel(d)"
+                 aria-pressed="@(IsMultiple ? ((Values?.Contains(d) ?? false) ? "true" : "false") : null)"
+                 class="@DayClasses(d, monthDate)" disabled="@IsDisabled(d)"
+                 @attributes="slotAttrs"
+                 @onclick="() => SelectDay(d)" @onmouseenter="() => OnDayHover(d)"
+                 @onfocus="() => OnDayFocus(d)"
+                 @onkeydown="e => HandleDayKeyDownAsync(e, monthDate, d)">
+            @d.Day
+            @if (badge is not null)
+            {
+                <span class="absolute -bottom-0.5 -end-0.5 pointer-events-none flex">@badge</span>
+            }
+        </button>;
 
     private string DayClasses(DateOnly day, DateOnly monthDate)
     {
@@ -389,17 +422,31 @@
             next.Sort();
             Values = next;
             DisplayDate = new DateOnly(day.Year, day.Month, 1);
+            // Keep the external-change tracker aligned with this internal mutation,
+            // exactly like the single-Value branch below. CurrentAnchor in multiple
+            // mode is the earliest selected day (Values.Min()); without this, toggling
+            // OFF the earliest day shifts the Min(), and the parent's echo of the same
+            // list reads as a new external anchor in OnParametersSet and teleports the
+            // displayed month away from where the user just clicked.
+            _lastSeenAnchor = next.Count > 0 ? next.Min() : null;
             await ValuesChanged.InvokeAsync(next);
             return;
         }
 
         if (IsRange)
         {
+            // In range mode CurrentAnchor => RangeStart. Track the resulting start
+            // so the parent's echo of the same RangeStart is recognized as unchanged
+            // in OnParametersSet (otherwise a range edit that moves the start could
+            // teleport the displayed month on the round-trip), mirroring the
+            // single-Value branch below.
+            DateOnly newRangeStart;
             if (!RangeStart.HasValue || (RangeStart.HasValue && RangeEnd.HasValue))
             {
                 await RangeStartChanged.InvokeAsync(day);
                 await RangeEndChanged.InvokeAsync(null);
                 _hoverDate = null;
+                newRangeStart = day;
             }
             else
             {
@@ -408,14 +455,17 @@
                 {
                     await RangeStartChanged.InvokeAsync(day);
                     await RangeEndChanged.InvokeAsync(start);
+                    newRangeStart = day;
                 }
                 else
                 {
                     await RangeEndChanged.InvokeAsync(day);
+                    newRangeStart = start;
                 }
                 _hoverDate = null;
             }
             DisplayDate = new DateOnly(day.Year, day.Month, 1);
+            _lastSeenAnchor = newRangeStart;
         }
         else
         {
@@ -806,19 +856,24 @@
                             var badge = DateBadge?.Invoke(dt);
                             var isSelectedDay = IsDaySelected(d);
                             <div role="gridcell" aria-selected="@isSelectedDay.ToString().ToLowerInvariant()" class="@RangeBarClasses(d, monthDate, col)">
-                                <button type="button" id="@DayId(monthDate, d)" tabindex="@DayTabIndex(d, monthDate)"
-                                        aria-label="@DayAriaLabel(d)"
-                                        aria-pressed="@(IsMultiple ? ((Values?.Contains(d) ?? false) ? "true" : "false") : null)"
-                                        class="@DayClasses(d, monthDate)" disabled="@IsDisabled(d)" title="@tooltip"
-                                        @onclick="() => SelectDay(d)" @onmouseenter="() => OnDayHover(d)"
-                                        @onfocus="() => OnDayFocus(d)"
-                                        @onkeydown="e => HandleDayKeyDownAsync(e, monthDate, d)">
-                                    @d.Day
-                                    @if (badge is not null)
-                                    {
-                                        <span class="absolute -bottom-0.5 -right-0.5 pointer-events-none flex">@badge</span>
-                                    }
-                                </button>
+                                @if (tooltip is not null)
+                                {
+                                    @* DateTooltip dogfoods the Lumeo <Tooltip> (styled, accessible) instead of
+                                       the native title. AsChild keeps aria-describedby on the day button; the
+                                       wrapper is forced to `block w-full` so the full-width grid cell is preserved
+                                       (the Tooltip root is inline-flex by default, which would shrink the day).
+                                       Content is lazy (only mounts on hover) so 42 cells stay cheap. *@
+                                    <Tooltip Class="block w-full">
+                                        <TooltipTrigger AsChild>
+                                            <ChildContentSlot Context="slot">@RenderDay(d, monthDate, badge, slot.Attributes)</ChildContentSlot>
+                                        </TooltipTrigger>
+                                        <TooltipContent>@tooltip</TooltipContent>
+                                    </Tooltip>
+                                }
+                                else
+                                {
+                                    @RenderDay(d, monthDate, badge, null)
+                                }
                             </div>
                         }
                     </div>

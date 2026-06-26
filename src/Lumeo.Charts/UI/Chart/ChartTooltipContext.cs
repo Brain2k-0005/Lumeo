@@ -1,11 +1,11 @@
 namespace Lumeo;
 
 /// <summary>
-/// One series&rsquo; snapshot at the hovered category. Axis-trigger tooltips fire once per
+/// One series’ snapshot at the hovered category. Axis-trigger tooltips fire once per
 /// hover with N entries (one per series at that x-position); the chart projects them into
 /// <see cref="ChartTooltipContext.Points"/> so the slot can iterate. The 8 positional
 /// fields on <see cref="ChartTooltipContext"/> still surface the <em>first</em> point as
-/// the &ldquo;headline&rdquo; for back-compat.
+/// the “headline” for back-compat.
 /// </summary>
 public sealed record ChartTooltipPoint(
     string SeriesName,
@@ -38,12 +38,12 @@ public sealed record ChartTooltipContext(
     double? Value,
     /// <summary>Hex / RGB color ECharts assigned to the point (matches the legend swatch).</summary>
     string? Color,
-    /// <summary>Raw ECharts params object as a dictionary &mdash; escape hatch for fields the
+    /// <summary>Raw ECharts params object as a dictionary — escape hatch for fields the
     /// strongly-typed properties above don't cover (e.g. multi-dim scatter, percent, marker).</summary>
     IReadOnlyDictionary<string, object?> Raw)
 {
     /// <summary>
-    /// All series&rsquo; points at the hovered category. For an axis-trigger tooltip on a
+    /// All series’ points at the hovered category. For an axis-trigger tooltip on a
     /// multi-series chart this carries one entry per visible series; item-trigger tooltips
     /// surface a single entry that matches the typed fields above. Added as an init-only
     /// property so existing callers using the 8-positional constructor continue to compile.

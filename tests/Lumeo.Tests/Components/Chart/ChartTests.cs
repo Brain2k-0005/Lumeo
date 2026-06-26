@@ -264,4 +264,26 @@ public class ChartTests : IAsyncLifetime
         // No error fired in unit tests because echarts-interop is mocked in Loose mode
         Assert.Null(capturedError);
     }
+
+    // --- Accessibility (WCAG 1.1.1: the canvas chart needs a text alternative) ---
+
+    [Fact]
+    public void AriaLabel_Exposes_The_Host_As_An_Image_With_A_Name()
+    {
+        var cut = _ctx.Render<L.Chart>(p => p
+            .Add(x => x.AriaLabel, "Monthly revenue trend"));
+
+        var host = cut.Find("div.lumeo-chart-host");
+        Assert.Equal("img", host.GetAttribute("role"));
+        Assert.Equal("Monthly revenue trend", host.GetAttribute("aria-label"));
+    }
+
+    [Fact]
+    public void Without_AriaLabel_The_Host_Is_Not_Forced_To_Role_Img()
+    {
+        var cut = _ctx.Render<L.Chart>();
+
+        var host = cut.Find("div.lumeo-chart-host");
+        Assert.Null(host.GetAttribute("role"));
+    }
 }

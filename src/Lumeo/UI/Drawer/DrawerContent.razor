@@ -26,7 +26,7 @@ else if (Context.IsOpen)
         @* @onkeydown:stopPropagation — keys handled inside this modal must not
            bubble into ancestor overlays (an Escape would cascade-close them).
            See DialogContent for the full rationale. *@
-        <div id="@_contentId" class="@CssClass" style="z-index:@ContentZ" role="dialog" aria-modal="true" aria-labelledby="@Context.TitleId" aria-describedby="@Context.DescriptionId" @onkeydown="HandleKeyDown" @onkeydown:stopPropagation tabindex="-1" @attributes="AdditionalAttributes">
+        <div id="@_contentId" class="@CssClass" style="z-index:@ContentZ" role="dialog" aria-modal="true" aria-labelledby="@Context.TitleId" aria-describedby="@DescribedBy" @onkeydown="HandleKeyDown" @onkeydown:stopPropagation tabindex="-1" @attributes="AdditionalAttributes">
             @if (ShowDragHandle)
             {
                 <div class="mx-auto mt-4 h-2 w-[100px] rounded-full bg-muted"></div>
@@ -38,6 +38,7 @@ else if (Context.IsOpen)
 
 @inject IComponentInteropService Interop
 @inject Microsoft.Extensions.Options.IOptions<Lumeo.Services.LumeoGestureOptions> GestureOpts
+@inject Lumeo.Services.ThemeService Theme
 
 @code {
     [CascadingParameter] public Drawer.DrawerContext Context { get; set; } = default!;
@@ -83,6 +84,12 @@ else if (Context.IsOpen)
     private int BackdropZ => ZIndex;
     private int ContentZ => ZIndex + 1;
 
+    // Only reference the description id when a <DrawerDescription> was actually
+    // rendered; otherwise aria-describedby would dangle to a missing element
+    // (returning null makes Blazor omit the attribute entirely). This is what
+    // every service-opened Drawer (no description child) hits.
+    private string? DescribedBy => Context.DescriptionRegistry.HasDescription ? Context.DescriptionId : null;
+
     private bool ShowDragHandle => Side is Lumeo.Side.Top or Lumeo.Side.Bottom;
 
     // Snap points only apply to vertical drawers (vaul is vertical-only).
@@ -108,12 +115,20 @@ else if (Context.IsOpen)
     private bool _gestureRegistered;
     private bool _registeredWithSnap;
 
+    // The swipe direction + snap-point geometry baked into the live JS gesture.
+    // A runtime Side/RTL flip (#76) or a same-count SnapPoints fraction change
+    // (#77) doesn't trip the mode-flip gate below, so the gesture would keep the
+    // OLD edge / resting offsets. We record what was actually registered and
+    // re-register when it diverges. Seeded inside RegisterGestureAsync.
+    private string? _registeredDirection;
+    private double[]? _registeredSnapPoints;
+
     private string PositionClasses => Side switch
     {
         Lumeo.Side.Top => "inset-x-0 top-0 rounded-b-[10px] max-h-[96vh]",
-        Lumeo.Side.Right => "inset-y-0 right-0 w-3/4 max-w-sm rounded-l-[10px] h-full max-h-screen",
+        Lumeo.Side.Right => "inset-y-0 end-0 w-3/4 max-w-sm rounded-s-[10px] h-full max-h-screen",
         Lumeo.Side.Bottom => "inset-x-0 bottom-0 rounded-t-[10px] max-h-[96vh]",
-        Lumeo.Side.Left => "inset-y-0 left-0 w-3/4 max-w-sm rounded-r-[10px] h-full max-h-screen",
+        Lumeo.Side.Left => "inset-y-0 start-0 w-3/4 max-w-sm rounded-e-[10px] h-full max-h-screen",
         _ => "inset-x-0 bottom-0 rounded-t-[10px] max-h-[96vh]"
     };
 
@@ -137,7 +152,26 @@ else if (Context.IsOpen)
     private string CssClass =>
         Cx.Merge("fixed mt-24 flex h-auto flex-col bg-background shadow-lg", PositionClasses, AnimationClass, Class);
 
-    private string SwipeDirection => Side switch
+    // A scoped <DirectionProvider> wins over the global ThemeService, so a subtree
+    // can be RTL even if the app is LTR. Null when no provider wraps this drawer.
+    [CascadingParameter(Name = "LumeoDirection")] private LayoutDirection? ScopedDirection { get; set; }
+    private LayoutDirection EffectiveDirection => ScopedDirection ?? Theme.CurrentDirection;
+
+    // PositionClasses use logical start/end-0 and the slide keyframes mirror under
+    // [dir=rtl], so under RTL a Side.Right drawer rests on (and animates from) the
+    // visual LEFT edge. The swipe direction must follow that visual edge — otherwise
+    // a right-side RTL drawer only dismisses by dragging toward the page instead of
+    // off its anchored edge. Top/Bottom are unaffected by direction.
+    private Lumeo.Side EffectiveSide => EffectiveDirection == LayoutDirection.Rtl
+        ? Side switch
+        {
+            Lumeo.Side.Left => Lumeo.Side.Right,
+            Lumeo.Side.Right => Lumeo.Side.Left,
+            var s => s,
+        }
+        : Side;
+
+    private string SwipeDirection => EffectiveSide switch
     {
         Lumeo.Side.Top => "up",
         Lumeo.Side.Right => "right",
@@ -201,6 +235,8 @@ else if (Context.IsOpen)
                 SnapPoints!, _appliedSnap, !PreventClose,
                 GestureOpts.Value.SwipeDismissThresholdPx, GestureOpts.Value.SwipeDismissFirePx, GestureOpts.Value.SwipeDismissVelocity);
             _registeredWithSnap = true;
+            _registeredDirection = SwipeDirection;
+            _registeredSnapPoints = SnapPoints!.ToArray();
             _gestureRegistered = true;
             if (_appliedSnap != ActiveSnapPoint) await ActiveSnapPointChanged.InvokeAsync(_appliedSnap);
         }
@@ -209,6 +245,8 @@ else if (Context.IsOpen)
             await Interop.RegisterDrawerSwipe(_contentId, SwipeDirection, HandleSwipe,
                 GestureOpts.Value.SwipeDismissThresholdPx, GestureOpts.Value.SwipeDismissFirePx, GestureOpts.Value.SwipeDismissVelocity);
             _registeredWithSnap = false;
+            _registeredDirection = SwipeDirection;
+            _registeredSnapPoints = null;
             _gestureRegistered = true;
         }
     }
@@ -221,13 +259,36 @@ else if (Context.IsOpen)
         _gestureRegistered = false;
     }
 
+    // True when the SnapPoints fractions baked into the live JS gesture still
+    // match the current parameter (sequence-equal). In non-snap mode both sides
+    // are null → match, so only a genuine snap-geometry edit (#77) returns false.
+    private bool SnapPointsMatchRegistered()
+    {
+        var current = UsesSnapPoints ? SnapPoints : null;
+        if (_registeredSnapPoints is null) return current is null;
+        if (current is null) return false;
+        return _registeredSnapPoints.SequenceEqual(current);
+    }
+
     protected override async Task OnParametersSetAsync()
     {
         if (!_wasOpen) return;
 
         // SnapPoints/Side changed while open → the gesture mode flipped (e.g.
         // empty→populated SnapPoints); re-register so the right JS is attached.
-        if (_registeredWithSnap != UsesSnapPoints)
+        //
+        // A same-mode change can also strand the gesture: (#76) a Side flip — or
+        // an app/scoped RTL flip — leaves a non-snap gesture wired to the OLD
+        // edge (UsesSnapPoints is unchanged for Left↔Right, so the mode gate above
+        // never fires); (#77) editing the SnapPoints fraction values (same count,
+        // still non-empty) keeps _registeredWithSnap == UsesSnapPoints, so the JS
+        // would keep the stale resting geometry. Re-register whenever the live
+        // gesture's recorded direction or snap-point array diverges from what the
+        // current parameters describe.
+        if (_registeredWithSnap != UsesSnapPoints
+            || (_gestureRegistered
+                && (_registeredDirection != SwipeDirection
+                    || !SnapPointsMatchRegistered())))
         {
             await UnregisterGestureAsync();
             await RegisterGestureAsync();

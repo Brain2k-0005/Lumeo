@@ -37,6 +37,7 @@ else
 {
     <div class="@RootCssClass" style="@RootStyleStr" @attributes="AdditionalAttributes">
         <div id="@_chartId" class="lumeo-chart-host w-full h-full"
+             role="@(string.IsNullOrEmpty(AriaLabel) ? null : "img")" aria-label="@AriaLabel"
              style="@HostStyle"></div>
         @if (ShouldShowSkeleton && SkeletonStyle == ChartSkeletonStyle.Silhouette)
         {
@@ -79,6 +80,10 @@ else
     [Parameter] public RenderFragment? ChildContent { get; set; }
     [Parameter] public string? Theme { get; set; }
     [Parameter] public string? EChartsSource { get; set; }
+    /// <summary>Accessible text alternative for the chart (WCAG 1.1.1). When set, the
+    /// canvas host is exposed as <c>role="img"</c> with this <c>aria-label</c> so screen
+    /// readers announce a summary instead of an empty graphic. Strongly recommended.</summary>
+    [Parameter] public string? AriaLabel { get; set; }
     [Parameter] public string Width { get; set; } = "100%";
     [Parameter] public string Height { get; set; } = "350px";
     [Parameter] public EventCallback<ChartEventArgs> OnClick { get; set; }
@@ -143,6 +148,13 @@ else
     private string _tooltipPortalId => $"{_chartId}-tooltip";
     private ChartTooltipContext _tooltipContext = ChartTooltipContext.Empty;
     private bool _tooltipBridgeRegistered;
+    // Names of ECharts events already attached on the CURRENT live JS instance. The JS
+    // registerChartEvent does NOT de-dupe — it pushes onto chart._lumeoEvents and
+    // re-attaches each call — so we must track what's bound and only attach newly-added
+    // ones. Cleared when the JS instance is disposed+reinit'd (theme change) since the
+    // fresh chart has no listeners. Lets us safely re-run RegisterChartEventsAsync when a
+    // delegate (OnClick/OnDataZoom/…) or the ChartTooltip slot appears AFTER first render.
+    private readonly HashSet<string> _registeredEvents = new(StringComparer.Ordinal);
 
     public Chart()
     {
@@ -157,6 +169,19 @@ else
     private string? _lastTheme;
     private string? _lastGroup;
     private string? _initError;
+    // Structural fingerprint of the option that ECharts is currently showing — the
+    // series count plus each series' data length and its markLine/markArea entry
+    // counts. setOption(notMerge:false) merges component arrays by index, so when the
+    // consumer REMOVES a series / data point / annotation the dropped tail-end items
+    // would survive as ghosts. We compare the incoming fingerprint against this one and,
+    // on any shrink, pass replaceMerge for the shrunk components so the removals stick.
+    private ChartShape _lastShape = ChartShape.Empty;
+
+    // Component types we ask ECharts to fully replace (rather than index-merge) when the
+    // corresponding part of the option structurally shrinks. axis entries are listed so a
+    // removed category axis doesn't linger; markLine/markArea cover removed annotations.
+    private const string SeriesShrinkReplaceMergeJson =
+        "[\"series\",\"xAxis\",\"yAxis\",\"radar\",\"angleAxis\",\"radiusAxis\"]";
 
     private string CssClass => $"{Class}".Trim();
     private string StyleStr => AspectRatio is not null
@@ -223,16 +248,49 @@ else
         return GetOptionsJson();
     }
 
+    // Fingerprint of the inputs that feed initChart (option JSON + theme + source).
+    // Captured every time we attempt init so OnParametersSet can tell whether a change
+    // AFTER a failure is meaningful enough to warrant a retry. Null until the first
+    // init attempt runs.
+    private string? _lastInitInputs;
+    // Set by OnParametersSet when an init-relevant parameter changes while _initError is
+    // latched. The error branch removed the host div, so we must re-render the host FIRST
+    // (clear _initError) and re-attempt init on the following OnAfterRenderAsync pass.
+    private bool _retryInit;
+
+    private string InitInputsFingerprint() => $"{GetEffectiveJson()}{Theme}{EChartsSource}";
+
+    protected override void OnParametersSet()
+    {
+        // Recovery after an init failure: the error branch tore down the #_chartId host
+        // and left _initialized=false, so neither OnAfterRenderAsync branch ever runs
+        // again. When the consumer changes an init-relevant input (Option/OptionJson,
+        // Theme, EChartsSource — e.g. swapping in a valid EChartsSource), clear the error
+        // so the host re-renders, and arm a retry that re-runs init on the next pass.
+        if (_initError is not null && !_initialized && _lastInitInputs is not null
+            && InitInputsFingerprint() != _lastInitInputs)
+        {
+            _initError = null;
+            _retryInit = true;
+        }
+    }
+
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (firstRender)
+        if (firstRender || _retryInit)
         {
-            _module = await Interop.ImportModuleAsync("./_content/Lumeo.Charts/js/echarts-interop.js");
+            // _retryInit re-enters this path after a recoverable init failure: the host
+            // div was just re-rendered (OnParametersSet cleared _initError) so the element
+            // exists again and we can re-attempt initChart against it.
+            _retryInit = false;
+            _module ??= await Interop.ImportModuleAsync("./_content/Lumeo.Charts/js/echarts-interop.js");
 
             var json = GetEffectiveJson();
             _lastJson = json;
+            _lastShape = ChartShape.From(json);
             _lastTheme = Theme;
             _lastGroup = Group;
+            _lastInitInputs = InitInputsFingerprint();
 
             try
             {
@@ -273,16 +331,34 @@ else
             if (json != _lastJson)
             {
                 _lastJson = json;
+                var shape = ChartShape.From(json);
                 // Phantom↔real transition: keep notMerge=false so SERIES values tween
                 // (bars move from phantom heights to real heights — feels like data
                 // loading, not a snap). Use replaceMerge to fully replace layout
                 // components (axes, legend, radar, polar, parallel, visualMap) so the
                 // muted skeleton-box styling doesn't bleed into the real chart.
                 var phantomFlipped = _lastWasPhantom != isPhantom;
-                string? replaceMergeJson = phantomFlipped ? PhantomTransitionReplaceMergeJson : null;
+                // A structural shrink (fewer series, shorter data, or removed
+                // markLine/markArea annotations) needs replaceMerge:["series",...] so the
+                // dropped tail-end items don't survive ECharts' index-merge as ghosts.
+                var shrank = shape.ShrankFrom(_lastShape);
+                string? replaceMergeJson =
+                    phantomFlipped ? PhantomTransitionReplaceMergeJson
+                    : shrank ? SeriesShrinkReplaceMergeJson
+                    : null;
+                _lastShape = shape;
                 await _module!.InvokeVoidAsync("updateChart", _chartId, json, false, replaceMergeJson);
             }
             _lastWasPhantom = isPhantom;
+
+            // Event callbacks / <ChartTooltip> wired AFTER first render (a delegate or the
+            // tooltip slot newly appears because the parent re-rendered) are otherwise never
+            // registered — registration ran only on firstRender / theme-change. Re-run it
+            // whenever something is still unregistered; RegisterChartEventsAsync is idempotent
+            // (each name guarded by _registeredEvents, tooltip by _tooltipBridgeRegistered) so
+            // already-bound handlers are not double-attached.
+            if (HasUnregisteredEvents)
+                await RegisterChartEventsAsync();
 
             if (ShowLoading != _lastShowLoading)
             {
@@ -297,6 +373,13 @@ else
             {
                 _lastTheme = Theme;
                 await _module!.InvokeVoidAsync("disposeChart", _chartId);
+                // The fresh JS instance has no event listeners — reset the tracking set so
+                // RegisterChartEventsAsync re-attaches them onto the new chart. The tooltip
+                // bridge lives on the disposed instance too, so clear its flag as well or
+                // RegisterChartEventsAsync's `!_tooltipBridgeRegistered` gate would skip
+                // re-registering registerTooltipSlot — killing the <ChartTooltip> portal.
+                _registeredEvents.Clear();
+                _tooltipBridgeRegistered = false;
                 var currentJson = _lastJson ?? GetEffectiveJson();
                 await _module!.InvokeVoidAsync("initChart", _chartId, currentJson, Theme, EChartsSource);
                 await RegisterChartEventsAsync();
@@ -306,7 +389,15 @@ else
             {
                 _lastGroup = Group;
                 if (!string.IsNullOrEmpty(Group))
-                    await _module!.InvokeVoidAsync("connectCharts", Group, new[] { _chartId });
+                    // Switch (or first set): re-home this chart onto the new group. Because
+                    // setChartGroup REASSIGNS chart.group, any previous group membership is
+                    // overwritten — no lingering connection to the old group remains.
+                    await _module!.InvokeVoidAsync("setChartGroup", _chartId, Group);
+                else
+                    // Clear: detach from the old group so the chart stops syncing cursor/zoom
+                    // with its former siblings. connectCharts only ever assigns a group, so
+                    // without this the chart stayed wired to its old group forever.
+                    await _module!.InvokeVoidAsync("setChartGroup", _chartId, null);
             }
         }
     }
@@ -380,6 +471,18 @@ else
         catch (OperationCanceledException) { /* expected on Dispose */ }
     }
 
+    // True when a wired-up event delegate or the <ChartTooltip> slot has NOT yet been
+    // registered onto the live JS instance. Drives the post-first-render re-registration so
+    // callbacks/tooltips added later (parent re-render) actually get bound. Already-bound
+    // delegates contribute nothing (their name is in _registeredEvents).
+    private bool HasUnregisteredEvents =>
+        (OnClick.HasDelegate && !_registeredEvents.Contains("click"))
+        || (OnMouseOver.HasDelegate && !_registeredEvents.Contains("mouseover"))
+        || (OnDoubleClick.HasDelegate && !_registeredEvents.Contains("dblclick"))
+        || (OnBrushSelected.HasDelegate && !_registeredEvents.Contains("brushSelected"))
+        || (OnDataZoom.HasDelegate && !_registeredEvents.Contains("dataZoom"))
+        || (_tooltipRegistration.Current is not null && !_tooltipBridgeRegistered);
+
     private async Task RegisterChartEventsAsync()
     {
         if (_module is null || !_initialized) return;
@@ -387,15 +490,18 @@ else
         if (OnClick.HasDelegate || OnMouseOver.HasDelegate || OnDoubleClick.HasDelegate || OnBrushSelected.HasDelegate || OnDataZoom.HasDelegate)
         {
             _selfRef ??= DotNetObjectReference.Create(this);
-            if (OnClick.HasDelegate)
+            // _registeredEvents guards each name so a re-run (delegate wired after first
+            // render) only attaches the newly-added events, never double-binding ones the
+            // live JS instance already has.
+            if (OnClick.HasDelegate && _registeredEvents.Add("click"))
                 await _module.InvokeVoidAsync("registerChartEvent", _chartId, "click", _selfRef);
-            if (OnMouseOver.HasDelegate)
+            if (OnMouseOver.HasDelegate && _registeredEvents.Add("mouseover"))
                 await _module.InvokeVoidAsync("registerChartEvent", _chartId, "mouseover", _selfRef);
-            if (OnDoubleClick.HasDelegate)
+            if (OnDoubleClick.HasDelegate && _registeredEvents.Add("dblclick"))
                 await _module.InvokeVoidAsync("registerChartEvent", _chartId, "dblclick", _selfRef);
-            if (OnBrushSelected.HasDelegate)
+            if (OnBrushSelected.HasDelegate && _registeredEvents.Add("brushSelected"))
                 await _module.InvokeVoidAsync("registerChartEvent", _chartId, "brushSelected", _selfRef);
-            if (OnDataZoom.HasDelegate)
+            if (OnDataZoom.HasDelegate && _registeredEvents.Add("dataZoom"))
                 await _module.InvokeVoidAsync("registerChartEvent", _chartId, "dataZoom", _selfRef);
         }
 
@@ -627,5 +733,83 @@ else
         public int DataIndex { get; set; } = -1;
         public string Value { get; set; } = "";
         public string ComponentType { get; set; } = "";
+    }
+
+    // Structural fingerprint of an option JSON used to detect a "shrink" between two
+    // consecutive updates. ECharts' setOption(notMerge:false) merges component arrays by
+    // index, so a GROWN or same-shape option merges cleanly, but a SHRUNK one (fewer
+    // series, shorter series data, or fewer markLine/markArea annotation entries) would
+    // leave the removed tail-end items behind as ghosts unless we replaceMerge them.
+    private readonly struct ChartShape
+    {
+        public static readonly ChartShape Empty = new(Array.Empty<int>(), Array.Empty<int>(), Array.Empty<int>());
+
+        // Per-series data-point counts, markLine entry counts, and markArea entry counts.
+        // Length of each array == series count, so a series removal shows as a shorter array.
+        private readonly int[] _dataLen;
+        private readonly int[] _markLineLen;
+        private readonly int[] _markAreaLen;
+
+        private ChartShape(int[] dataLen, int[] markLineLen, int[] markAreaLen)
+        {
+            _dataLen = dataLen;
+            _markLineLen = markLineLen;
+            _markAreaLen = markAreaLen;
+        }
+
+        public int SeriesCount => _dataLen.Length;
+
+        /// <summary>Parses the option JSON into a shape. Malformed / series-less JSON
+        /// yields <see cref="Empty"/>, which never reports a shrink (so a transient empty
+        /// option doesn't force a destructive replaceMerge).</summary>
+        public static ChartShape From(string? json)
+        {
+            if (string.IsNullOrEmpty(json)) return Empty;
+            try
+            {
+                if (System.Text.Json.Nodes.JsonNode.Parse(json) is not System.Text.Json.Nodes.JsonObject obj)
+                    return Empty;
+                if (obj["series"] is not System.Text.Json.Nodes.JsonArray series || series.Count == 0)
+                    return Empty;
+
+                var dataLen = new int[series.Count];
+                var markLineLen = new int[series.Count];
+                var markAreaLen = new int[series.Count];
+                for (var i = 0; i < series.Count; i++)
+                {
+                    if (series[i] is not System.Text.Json.Nodes.JsonObject s) continue;
+                    dataLen[i] = (s["data"] as System.Text.Json.Nodes.JsonArray)?.Count ?? 0;
+                    markLineLen[i] = ((s["markLine"] as System.Text.Json.Nodes.JsonObject)?["data"]
+                        as System.Text.Json.Nodes.JsonArray)?.Count ?? 0;
+                    markAreaLen[i] = ((s["markArea"] as System.Text.Json.Nodes.JsonObject)?["data"]
+                        as System.Text.Json.Nodes.JsonArray)?.Count ?? 0;
+                }
+                return new ChartShape(dataLen, markLineLen, markAreaLen);
+            }
+            catch
+            {
+                return Empty;
+            }
+        }
+
+        /// <summary>True when THIS shape has fewer structural elements than
+        /// <paramref name="prev"/> — fewer series, or a series whose data /
+        /// markLine / markArea entry count dropped. A grown or unchanged shape returns
+        /// false (the default index-merge handles those without ghosts).</summary>
+        public bool ShrankFrom(ChartShape prev)
+        {
+            if (prev.SeriesCount == 0) return false; // nothing to shrink from
+            if (SeriesCount < prev.SeriesCount) return true;
+            // Compare overlapping series; a per-series data/annotation removal also leaves
+            // ghosts under index-merge.
+            var common = Math.Min(SeriesCount, prev.SeriesCount);
+            for (var i = 0; i < common; i++)
+            {
+                if (_dataLen[i] < prev._dataLen[i]) return true;
+                if (_markLineLen[i] < prev._markLineLen[i]) return true;
+                if (_markAreaLen[i] < prev._markAreaLen[i]) return true;
+            }
+            return false;
+        }
     }
 }

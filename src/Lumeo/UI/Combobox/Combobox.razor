@@ -13,12 +13,13 @@
         EventCallback.Factory.Create<bool>(this, SetOpen),
         EventCallback.Factory.Create<string>(this, OnSearchChanged),
         EventCallback.Factory.Create<string>(this, OnCreateItem),
-        _wrapperId, _contentId, _inputId, _focusedIndex, focusedItemId, focusedItemValue,
+        _wrapperId, _contentId, EffectiveInputId, _focusedIndex, focusedItemId, focusedItemValue,
         EventCallback.Factory.Create<int>(this, SetFocusedIndex),
         RegisterItem, UnregisterItem, _items.Count, EffectiveInvalid, Required,
         Items, ItemValue, ItemText, ItemGroup, ItemDisabled, ItemDescription, ItemIcon, ItemTemplate, Virtualize, ItemSize)
     {
         Placeholder = Placeholder,
+        DescribedBy = FormFieldDescribedBy,
         Clearable = Clearable,
         MaxDisplayTags = MaxDisplayTags,
         OnClear = EventCallback.Factory.Create(this, OnClearSelection),
@@ -32,7 +33,7 @@
         @Label
         @if (Required)
         {
-            <span class="text-destructive ml-0.5">*</span>
+            <span class="text-destructive ms-0.5">*</span>
         }
     </label>
 }
@@ -57,6 +58,18 @@
 
 @code {
     [CascadingParameter] private FormField.FormFieldContext? FormField { get; set; }
+
+    // Threaded into ComboboxContext.DescribedBy → ComboboxInput's aria-describedby.
+    private string? FormFieldDescribedBy => FormField?.DescribedBy;
+
+    // Inside a FormField, adopt its ControlId as the input's id so the field's
+    // <Label For> actually click-focuses the combobox (Base UI Field parity,
+    // matching Select/Textarea/DatePicker/TimePicker). Standalone, keep our own
+    // generated id. Every internal id use (context, FocusAsync, AutoFocus, popover
+    // anchoring) flows through this so the rendered id and the focus/anchor targets
+    // stay consistent.
+    private string EffectiveInputId =>
+        !string.IsNullOrEmpty(FormField?.ControlId) ? FormField!.ControlId : _inputId;
 
     [Parameter] public RenderFragment? ChildContent { get; set; }
     [Parameter] public string? Value { get; set; }
@@ -123,13 +136,13 @@
     [Parameter] public bool AutoFocus { get; set; }
 
     /// <summary>Programmatically focus the combobox text input.</summary>
-    public ValueTask FocusAsync() => Interop.FocusElement(_inputId);
+    public ValueTask FocusAsync() => Interop.FocusElement(EffectiveInputId);
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (firstRender && AutoFocus)
         {
-            try { await Interop.FocusElement(_inputId); }
+            try { await Interop.FocusElement(EffectiveInputId); }
             catch (Microsoft.JSInterop.JSDisconnectedException) { }
         }
     }
@@ -179,11 +192,26 @@
     private string SearchText { get; set; } = "";
     private readonly DelayedDispatch _dispatch = new();
     private int _focusedIndex = -1;
+    private bool _disposed;
     private readonly List<(string Id, string Value)> _items = new();
     // Insertion-ordered mirror of the (unordered) Values HashSet — see SyncValueOrder.
     private readonly List<string> _valueOrder = new();
+    // Last-seen Items reference. _focusedIndex is a POSITION into the bound nav list
+    // (ids are "{ContentId}-bound-{position}"), so an external Items refresh that
+    // reorders/replaces/empties the list would leave the highlight + Enter pointing at a
+    // different item. Reset focus when the reference changes, mirroring how
+    // ComboboxContent memoizes its filtered list on !ReferenceEquals(items, _lastItems).
+    private IEnumerable<object>? _lastItems;
 
-    protected override void OnParametersSet() => SyncValueOrder();
+    protected override void OnParametersSet()
+    {
+        if (!ReferenceEquals(Items, _lastItems))
+        {
+            _lastItems = Items;
+            _focusedIndex = -1;
+        }
+        SyncValueOrder();
+    }
 
     // Mirrors the consumer-owned Values set into an insertion-ordered list so chip-editing
     // keys (Backspace in ComboboxInput) can deterministically target the most recently
@@ -210,12 +238,39 @@
     private void RegisterItem(string id, string value)
     {
         if (!_items.Any(i => i.Id == id))
+        {
             _items.Add((id, value));
+            // Composition mode: _focusedIndex is a POSITION into _items. A row registering
+            // (reorder/replace/filter-driven re-show while open) shifts every later slot, so
+            // an existing highlight would silently retarget a different row. Drop the focus —
+            // the next Arrow re-seeds it cleanly. Mirrors OnSearchChanged / the data-bound
+            // OnParametersSet reset (battle finding #26).
+            ResetFocusOnRegistryChurn();
+        }
     }
 
     private void UnregisterItem(string id)
     {
-        _items.RemoveAll(i => i.Id == id);
+        var removed = _items.RemoveAll(i => i.Id == id);
+        // Same rationale as RegisterItem: a removal compacts _items and shifts later slots,
+        // desyncing the position-based _focusedIndex from the rendered rows.
+        if (removed > 0)
+            ResetFocusOnRegistryChurn();
+    }
+
+    // Register/Unregister run DURING a child render pass, after this component already built
+    // the cascaded context (which carries FocusedItemId for the highlight). Resetting the
+    // field alone wouldn't reach that already-built context, so queue a follow-up render so
+    // the next pass rebuilds the context with FocusedItemId = null. Guarded on a live focus
+    // so the (no-focus) initial mount registration doesn't request needless re-renders.
+    private void ResetFocusOnRegistryChurn()
+    {
+        if (_focusedIndex < 0) return;
+        _focusedIndex = -1;
+        // Children unregister during teardown too (Dispose -> UnregisterItem); never poke
+        // StateHasChanged after this component itself has been disposed.
+        if (!_disposed)
+            StateHasChanged();
     }
 
     // Keyboard-nav source of truth. Composition mode: ComboboxItem instances self-register
@@ -298,7 +353,11 @@
     private async Task SetOpen(bool value)
     {
         Open = value;
-        if (!value && !Multiple)
+        // Clear transient view state on close in BOTH single AND multiple mode. The old
+        // `&& !Multiple` guard left a multi-select reopen showing the previous session's
+        // SearchText filter and a stale _focusedIndex highlight (battle finding #25). The
+        // committed selection lives in Values, not here, so chips survive the reset.
+        if (!value)
         {
             SearchText = "";
             _focusedIndex = -1;
@@ -374,7 +433,11 @@
         SearchText = "";
     }
 
-    public void Dispose() => _dispatch.Dispose();
+    public void Dispose()
+    {
+        _disposed = true;
+        _dispatch.Dispose();
+    }
 
     public record ComboboxContext(
         string? Value, HashSet<string>? Values, string SearchText, bool IsOpen, bool Multiple, bool IsSearchLoading, bool Creatable,
@@ -407,5 +470,10 @@
         /// tracked by the parent — the HashSet itself is unordered). Used by ComboboxInput's
         /// Backspace chip removal so it deterministically removes the newest chip.</summary>
         public string? MostRecentValue { get; init; }
+
+        /// <summary>Id of the parent FormField's rendered help/error text, applied as
+        /// <c>aria-describedby</c> on the combobox input so a screen reader announces it on
+        /// focus. Null outside a FormField. Init-only to keep the positional ctor compatible.</summary>
+        public string? DescribedBy { get; init; }
     }
 }

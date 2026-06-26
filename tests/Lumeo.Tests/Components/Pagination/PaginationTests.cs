@@ -309,6 +309,54 @@ public class PaginationTests : IAsyncLifetime
         Assert.Contains("ellipsis-custom", cls);
     }
 
+    // --- Data-driven reconciliation (#42) ---
+    // Shrinking TotalItems/TotalPages below the controlled Page must push the
+    // clamped page back to the parent via PageChanged, so Page and the pager UI
+    // stay in sync. Without the OnParametersSetAsync reconciliation the rendered
+    // page clamps but PageChanged never fires and the two diverge permanently.
+
+    [Fact]
+    public void Pagination_DataDriven_Shrinking_Total_Fires_PageChanged_With_Clamped_Page()
+    {
+        int? changedTo = null;
+        var changedCount = 0;
+
+        var cut = _ctx.Render<L.Pagination>(p => p
+            .Add(c => c.Page, 5)
+            .Add(c => c.TotalItems, 50) // PageSize 10 => 5 pages, Page 5 is valid
+            .Add(c => c.PageChanged, EventCallback.Factory.Create<int>(_ctx, v =>
+            {
+                changedTo = v;
+                changedCount++;
+            })));
+
+        // No reconciliation needed yet (Page 5 within 5 pages).
+        Assert.Null(changedTo);
+
+        // Parent shrinks the data set to 2 pages while Page is still 5.
+        cut.Render(p => p.Add(c => c.TotalItems, 20)); // PageSize 10 => 2 pages
+
+        // PageChanged must have fired exactly once with the clamped page (2).
+        Assert.Equal(2, changedTo);
+        Assert.Equal(1, changedCount);
+    }
+
+    [Fact]
+    public void Pagination_DataDriven_Within_Range_Does_Not_Fire_PageChanged()
+    {
+        var changedCount = 0;
+
+        var cut = _ctx.Render<L.Pagination>(p => p
+            .Add(c => c.Page, 2)
+            .Add(c => c.TotalItems, 50) // 5 pages
+            .Add(c => c.PageChanged, EventCallback.Factory.Create<int>(_ctx, _ => changedCount++)));
+
+        // Shrink, but Page 2 is still in range (3 pages).
+        cut.Render(p => p.Add(c => c.TotalItems, 30));
+
+        Assert.Equal(0, changedCount);
+    }
+
     // --- Full Pagination Structure ---
 
     [Fact]

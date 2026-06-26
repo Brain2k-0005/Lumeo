@@ -6,27 +6,33 @@
 {
     <aside class="hidden lg:block w-52 shrink-0">
         <div class="sticky py-4 pr-2 text-sm flex flex-col"
-             style="top: 72px; max-height: calc(100vh - 72px - 16px); overflow: hidden;">
-            <div class="font-semibold text-foreground mb-3 text-xs uppercase tracking-wide shrink-0">On this page</div>
-            <nav class="border-l border-border/40 overflow-y-auto lumeo-otp-scroll"
-                 style="scrollbar-width: thin;">
-                @foreach (var h in _headings)
-                {
-                    @* href must embed the current path. With <base href="/">, a bare
-                       "#id" resolves against the base URL — i.e. right-click → "Copy
-                       Link Address" shows "/#id" instead of "/components/datagrid#id".
-                       Click-time scroll still goes through @onclick (preventDefault),
-                       so the visible href is only used by the browser's copy-link
-                       affordance and crawlers. *@
-                    <a href="@($"{LocalPath}#{h.Id}")"
-                       @onclick:preventDefault
-                       @onclick="() => ScrollTo(h.Id)"
-                       class="@LinkClass(h)"
-                       style="@($"padding-left: {(h.Level == 3 ? 24 : 12)}px")">
-                        @h.Text
-                    </a>
-                }
-            </nav>
+             style="top: 72px; max-height: calc(100vh - 72px - 16px); overflow-y: auto;">
+            @* "On this page" (the page outline) gets the FULL right rail now — the Quick-facts
+               moved to a horizontal strip at the top of the main content (ComponentFactsBar),
+               so the outline isn't competing for vertical space. *@
+            @if (_headings.Count > 0)
+            {
+                <div class="font-semibold text-foreground mb-3 text-xs uppercase tracking-wide shrink-0">On this page</div>
+                <nav class="border-l border-border/40 overflow-y-auto lumeo-otp-scroll"
+                     style="scrollbar-width: thin;">
+                    @foreach (var h in _headings)
+                    {
+                        @* href must embed the current path. With <base href="/">, a bare
+                           "#id" resolves against the base URL — i.e. right-click → "Copy
+                           Link Address" shows "/#id" instead of "/components/datagrid#id".
+                           Click-time scroll still goes through @onclick (preventDefault),
+                           so the visible href is only used by the browser's copy-link
+                           affordance and crawlers. *@
+                        <a href="@($"{LocalPath}#{h.Id}")"
+                           @onclick:preventDefault
+                           @onclick="() => ScrollTo(h.Id)"
+                           class="@LinkClass(h)"
+                           style="@($"padding-left: {(h.Level == 3 ? 24 : 12)}px")">
+                            @h.Text
+                        </a>
+                    }
+                </nav>
+            }
         </div>
     </aside>
 }
@@ -62,6 +68,23 @@
             {
                 return "/";
             }
+        }
+    }
+
+    // The /components/{slug} the user is on, or null elsewhere — drives the
+    // registry-fed Quick-facts rail. Only the flat components/{slug} form (not
+    // deeper paths like components/charts/bar) maps 1:1 to a registry entry.
+    private string? ComponentSlug
+    {
+        get
+        {
+            var p = LocalPath.Trim('/');
+            var q = p.IndexOf('?');
+            if (q >= 0) p = p[..q];
+            const string prefix = "components/";
+            if (!p.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) return null;
+            var slug = p[prefix.Length..];
+            return string.IsNullOrEmpty(slug) || slug.Contains('/') ? null : slug;
         }
     }
 

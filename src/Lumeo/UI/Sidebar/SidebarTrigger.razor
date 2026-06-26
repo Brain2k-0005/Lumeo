@@ -1,21 +1,44 @@
 @namespace Lumeo
 @inject Lumeo.Services.Localization.ILumeoLocalizer L
 
-<button type="button" class="@CssClass" @onclick="State.Toggle" title="@L["Sidebar.Toggle"]" aria-label="@L["Sidebar.Toggle"]" aria-expanded="@((State?.IsCollapsed != true).ToString().ToLowerInvariant())" @attributes="AdditionalAttributes">
-    @if (State?.IsCollapsed == true)
-    {
-        <Blazicon Svg="Lucide.PanelLeftOpen" class="h-4 w-4" />
-    }
-    else
-    {
-        <Blazicon Svg="Lucide.PanelLeftClose" class="h-4 w-4" />
-    }
-</button>
+<Tooltip>
+    <TooltipTrigger AsChild>
+        <ChildContentSlot Context="slot">
+            <button type="button" class="@CssClass" @onclick="ToggleAsync" aria-label="@L["Sidebar.Toggle"]" aria-expanded="@((State?.IsCollapsed != true).ToString().ToLowerInvariant())" @attributes="MergeAttrs(slot.Attributes)">
+                @if (State?.IsCollapsed == true)
+                {
+                    <Blazicon Svg="Lucide.PanelLeftOpen" class="h-4 w-4" />
+                }
+                else
+                {
+                    <Blazicon Svg="Lucide.PanelLeftClose" class="h-4 w-4" />
+                }
+            </button>
+        </ChildContentSlot>
+    </TooltipTrigger>
+    <TooltipContent>@L["Sidebar.Toggle"]</TooltipContent>
+</Tooltip>
 
 @code {
-    [CascadingParameter] public SidebarProvider.SidebarState State { get; set; } = default!;
+    [CascadingParameter] public SidebarProvider.SidebarState? State { get; set; }
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    // Null-safe toggle: outside a SidebarProvider the cascaded State is null. A bare
+    // `() => State?.Toggle.InvokeAsync()` lambda would return a null Task that Blazor
+    // then awaits → NRE. Always hand back a real Task so the click is an inert no-op.
+    private Task ToggleAsync() => State?.Toggle.InvokeAsync() ?? Task.CompletedTask;
+
+    // Merge consumer AdditionalAttributes with the Tooltip AsChild slot attributes
+    // (aria-describedby while open) onto the single button.
+    private Dictionary<string, object> MergeAttrs(IReadOnlyDictionary<string, object> slotAttrs)
+    {
+        var d = new Dictionary<string, object>();
+        if (AdditionalAttributes is not null)
+            foreach (var kv in AdditionalAttributes) d[kv.Key] = kv.Value;
+        foreach (var kv in slotAttrs) d[kv.Key] = kv.Value;
+        return d;
+    }
 
     private string CssClass => Cx.Merge("inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-2 h-9 w-9", Class);
 }

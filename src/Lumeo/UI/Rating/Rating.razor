@@ -9,12 +9,12 @@
         @Label
         @if (Required)
         {
-            <span class="text-destructive ml-0.5">*</span>
+            <span class="text-destructive ms-0.5">*</span>
         }
     </label>
 }
 
-<div id="@_id" class="@CssClass" role="radiogroup" aria-label="@L["Rating.Rate"]" aria-orientation="horizontal" @onkeydown="HandleKeyDown" @onpointerup="HandlePointerUp" @onpointerleave="HandlePointerLeaveContainer" @onpointercancel="HandlePointerUp" @attributes="AdditionalAttributes">
+<div id="@EffectiveId" class="@CssClass" role="radiogroup" aria-label="@L["Rating.Rate"]" aria-orientation="horizontal" aria-describedby="@FormFieldDescribedBy" @onkeydown="HandleKeyDown" @onpointerup="HandlePointerUp" @onpointerleave="HandlePointerLeaveContainer" @onpointercancel="HandlePointerUp" @attributes="AdditionalAttributes">
     @for (int i = 1; i <= Max; i++)
     {
         var starIndex = i;
@@ -25,7 +25,7 @@
         {
             <button type="button"
                     role="radio"
-                    aria-checked="@((isFull || isHalf).ToString().ToLowerInvariant())"
+                    aria-checked="@(IsStarChecked(starIndex).ToString().ToLowerInvariant())"
                     class="@GetStarClasses(isFull || isHalf) @SizeClasses @StarInteractClasses"
                     tabindex="@GetStarTabIndex(starIndex)"
                     disabled="@ReadOnly"
@@ -42,7 +42,7 @@
         {
             <button type="button"
                     role="radio"
-                    aria-checked="@((isFull || isHalf).ToString().ToLowerInvariant())"
+                    aria-checked="@(IsStarChecked(starIndex).ToString().ToLowerInvariant())"
                     class="@SizeClasses @StarInteractClasses relative"
                     tabindex="@GetStarTabIndex(starIndex)"
                     disabled="@ReadOnly"
@@ -92,6 +92,18 @@
 @code {
     [CascadingParameter] private FormField.FormFieldContext? FormField { get; set; }
 
+    // aria-describedby on the radiogroup announces the FormField help/error to a screen
+    // reader.
+    private string? FormFieldDescribedBy => FormField?.DescribedBy;
+
+    // Inside a FormField, adopt its ControlId as the radiogroup's id so the field's
+    // <Label For> actually associates with the group (Base UI Field parity, mirroring
+    // Select/RadioGroup). Standalone, keep our own generated id. Every internal id use
+    // — the rendered id attribute AND the preventDefault-keys interop register/unregister
+    // — flows through this so the rendered id and the JS-targeted element stay consistent.
+    private string EffectiveId =>
+        !string.IsNullOrEmpty(FormField?.ControlId) ? FormField!.ControlId : _id;
+
     [Parameter] public double Value { get; set; }
     [Parameter] public EventCallback<double> ValueChanged { get; set; }
     [Parameter] public int Max { get; set; } = 5;
@@ -128,11 +140,27 @@
     // Roving tabindex: only the selected star (or star 1 when nothing selected) is
     // in the tab sequence. Arrow-key navigation on the radiogroup shifts both focus
     // and value, so there is never more than one tabstop inside the widget.
+    //
+    // Clamp the active index to the rendered range [1, Max]: if Max shrinks below the
+    // current Value (e.g. Value=5 then Max=3), the unclamped active index (5) names a
+    // star that is no longer rendered, so NO star would carry tabindex="0" and the
+    // widget would silently drop out of the tab order. Clamping keeps exactly one
+    // tabstop — the last rendered star — so the widget stays keyboard-reachable.
     private string GetStarTabIndex(int starIndex)
     {
-        var activeIndex = Value > 0 ? (int)Math.Ceiling(Value) : 1;
+        var activeIndex = Value > 0 ? Math.Min((int)Math.Ceiling(Value), Max) : 1;
         return starIndex == activeIndex ? "0" : "-1";
     }
+
+    // ARIA single-selection contract: a role="radiogroup" must report aria-checked="true"
+    // on AT MOST ONE role="radio". The visual fill ("all stars up to Value are coloured")
+    // is driven independently by classes / isFull, so checked must mark only the single
+    // star that represents the current Value — not every filled star. We round Value up
+    // (a half-star at N-0.5 selects star N) and clamp to Max so the checked star is the
+    // same one the roving tabindex makes tabbable. Value==0 (no selection) reports no
+    // checked radio, which is valid for an as-yet-unselected radio group.
+    private bool IsStarChecked(int starIndex) =>
+        Value > 0 && starIndex == Math.Min((int)Math.Ceiling(Value), Max);
 
     private string CssClass => Cx.Merge("inline-flex items-center gap-0.5", Class);
 
@@ -299,7 +327,7 @@
             // suppression so arrow keys scroll normally again.
             if (_pdRegistered)
             {
-                try { await Interop.UnregisterPreventDefaultKeys(_id); }
+                try { await Interop.UnregisterPreventDefaultKeys(EffectiveId); }
                 catch (JSDisconnectedException) { }
                 catch (ObjectDisposedException) { }
                 catch (InvalidOperationException) { }
@@ -312,7 +340,7 @@
         try
         {
             await Interop.RegisterPreventDefaultKeys(
-                _id,
+                EffectiveId,
                 new[] { "ArrowDown", "ArrowRight", "ArrowUp", "ArrowLeft", "Home", "End" }
                     .Select(k => new Lumeo.Services.PreventDefaultKeyRule(k)).ToArray());
             _pdRegistered = true;
@@ -325,7 +353,7 @@
     public async ValueTask DisposeAsync()
     {
         if (!_pdRegistered) return;
-        try { await Interop.UnregisterPreventDefaultKeys(_id); }
+        try { await Interop.UnregisterPreventDefaultKeys(EffectiveId); }
         catch (JSDisconnectedException) { }
         catch (ObjectDisposedException) { }
         catch (InvalidOperationException) { }

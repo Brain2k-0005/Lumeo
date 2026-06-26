@@ -130,6 +130,8 @@ public class ResponsiveServiceTests
         public ValueTask SetHtmlClass(string className, bool active) => ValueTask.CompletedTask;
         public ValueTask SetupFocusTrap(string elementId, string? initialFocusSelector = null) => ValueTask.CompletedTask;
         public ValueTask RemoveFocusTrap(string elementId) => ValueTask.CompletedTask;
+        public ValueTask SaveFocus(string key) => ValueTask.CompletedTask;
+        public ValueTask RestoreFocus(string key) => ValueTask.CompletedTask;
         public ValueTask AttachOverlaySlideEnd(string elementId) => ValueTask.CompletedTask;
         public ValueTask RegisterSvDrag(string elementId, Func<double, double, Task> handler) => ValueTask.CompletedTask;
         public ValueTask UnregisterSvDrag(string elementId) => ValueTask.CompletedTask;

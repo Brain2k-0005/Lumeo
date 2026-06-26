@@ -34,17 +34,25 @@
     {
         <span>@(Text ?? L["UploadTrigger.PickFile"])</span>
     }
-    <InputFile class="sr-only"
+    <InputFile @ref="_inputFile"
+               class="sr-only"
                OnChange="HandleChange"
                multiple="@Multiple"
                accept="@Accept"
-               disabled="@Disabled"
-               @attributes="AdditionalAttributes" />
+               @attributes="InputAttributes" />
 </label>
 
 @inject Lumeo.Services.Localization.ILumeoLocalizer L
+@inject Lumeo.Services.IComponentInteropService Interop
 
 @code {
+    // Captured so HandleChange can reset the native input's value after each
+    // pick — without it the browser never re-fires `change` for an identical
+    // subsequent selection (#70). Unlike FileUpload (which accumulates an item
+    // list that incidentally masks the stale-value bug), UploadTrigger is a pure
+    // pick-trigger with no list, so the reset is load-bearing here.
+    private InputFile? _inputFile;
+
     /// <summary>Files chosen in the picker. Fires once per picker confirmation;
     /// the consumer is responsible for any subsequent state / upload logic.</summary>
     [Parameter] public EventCallback<InputFileChangeEventArgs> OnFilesSelected { get; set; }
@@ -79,6 +87,28 @@
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
+    // A splatted `disabled` (via AdditionalAttributes) must never override the typed
+    // Disabled parameter. Mixing an explicit `disabled="@Disabled"` with the splat on
+    // the inner <InputFile> component is order-ambiguous AND Blazor omits a false
+    // boolean attribute entirely, so neither reordering nor a separate explicit
+    // attribute deterministically wins. We instead build ONE attribute dictionary:
+    // the consumer's splat with any `disabled` key stripped, plus `disabled=true`
+    // added only when the typed Disabled is set — making Disabled the single source
+    // of truth (false truly enables, true truly disables, regardless of the splat).
+    private IReadOnlyDictionary<string, object> InputAttributes
+    {
+        get
+        {
+            var d = new Dictionary<string, object>();
+            if (AdditionalAttributes is not null)
+                foreach (var kv in AdditionalAttributes)
+                    if (!string.Equals(kv.Key, "disabled", StringComparison.OrdinalIgnoreCase))
+                        d[kv.Key] = kv.Value;
+            if (Disabled) d["disabled"] = true;
+            return d;
+        }
+    }
+
     // Mirrors Button's variant + size class composition so the trigger
     // matches surrounding Lumeo buttons pixel-for-pixel. Keep these
     // switches in sync if Button's mapping ever changes.
@@ -109,5 +139,14 @@
     private async Task HandleChange(InputFileChangeEventArgs e)
     {
         await OnFilesSelected.InvokeAsync(e);
+
+        // Reset the underlying <input type=file> so that re-selecting the SAME
+        // file fires `change` again. The browser only raises `change` when the
+        // chosen path differs from the input's current value, so without this an
+        // identical second pick would silently never re-raise OnFilesSelected.
+        if (_inputFile?.Element is { } element)
+        {
+            await Interop.ResetFileInput(element);
+        }
     }
 }

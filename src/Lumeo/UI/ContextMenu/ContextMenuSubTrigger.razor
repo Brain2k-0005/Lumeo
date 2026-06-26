@@ -10,13 +10,14 @@
         aria-expanded="@SubContext.IsOpen.ToString().ToLower()"
         aria-controls="@SubContext.ContentId"
         disabled="@Disabled"
+        aria-disabled="@(Disabled ? "true" : null)"
         @onclick="HandleClick"
         @onmouseenter="HandleMouseEnter"
         @onmouseleave="HandleMouseLeave"
         @onkeydown="HandleKeyDown"
         @attributes="AdditionalAttributes">
     @ChildContent
-    <Blazicon Svg="Lucide.ChevronRight" class="ml-auto h-4 w-4" />
+    <Blazicon Svg="Lucide.ChevronRight" class="ms-auto h-4 w-4" />
 </button>
 
 @inject IComponentInteropService Interop
@@ -64,16 +65,18 @@
         {
             case "ArrowRight":
                 SubContext.CancelClose();
-                if (!SubContext.IsOpen)
+                if (SubContext.IsOpen)
                 {
-                    await SubContext.SetOpen.InvokeAsync(true);
-                }
-                _ = InvokeAsync(async () =>
-                {
-                    await Task.Delay(20);
+                    // Already open (e.g. via hover): content exists, focus now.
                     try { await Interop.FocusMenuItemByIndex(SubContext.ContentId, 0); }
                     catch (JSDisconnectedException) { }
-                });
+                }
+                else
+                {
+                    // Open from the keyboard; the content focuses its first item when
+                    // it actually renders (race-free; replaces a fixed Task.Delay).
+                    await SubContext.OpenByKeyboard.InvokeAsync();
+                }
                 break;
         }
     }

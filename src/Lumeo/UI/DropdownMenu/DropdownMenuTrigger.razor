@@ -2,22 +2,56 @@
 
 @* The `group` class + `data-state` attribute let consumers rotate a chevron on open with
    `group-data-[state=open]:rotate-180` on any descendant icon — no EventCallbacks or bindings needed. *@
-<div id="@_triggerId"
-     class="@CssClass"
-     role="button"
-     data-state="@(Context.IsOpen ? "open" : "closed")"
-     aria-haspopup="menu"
-     aria-expanded="@Context.IsOpen.ToString().ToLower()"
-     aria-disabled="@(Disabled ? "true" : null)"
-     aria-controls="@Context.ContentId"
-     @onclick="Toggle"
-     @attributes="AdditionalAttributes">
-    @ChildContent
-</div>
+@if (AsChild)
+{
+    @* asChild: no wrapper — the slot carries `group` + data-state + the trigger id, so a
+       Lumeo <Button> child becomes the single trigger and a chevron inside it still rotates
+       via group-data-[state=open]. The top-level menu positions against the DropdownMenu
+       root wrapper (not the trigger), so forwarding the id is just for focus/sub-menu use. *@
+    <CascadingValue Value="Slot" IsFixed="false">
+        @if (ChildContentSlot is not null)
+        {
+            @ChildContentSlot(Slot)
+        }
+        else
+        {
+            @ChildContent
+        }
+    </CascadingValue>
+}
+else
+{
+    <div id="@_triggerId"
+         class="@CssClass"
+         role="button"
+         data-state="@(Context.IsOpen ? "open" : "closed")"
+         aria-haspopup="menu"
+         aria-expanded="@Context.IsOpen.ToString().ToLower()"
+         aria-disabled="@(Disabled ? "true" : null)"
+         aria-controls="@Context.ContentId"
+         @onclick="Toggle"
+         @attributes="AdditionalAttributes">
+        @ChildContent
+    </div>
+}
 
 @code {
     [CascadingParameter] public DropdownMenu.DropdownMenuContext Context { get; set; } = default!;
     [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    /// <summary>Tier-2 escape hatch for <see cref="AsChild"/> with arbitrary markup —
+    /// receives the <see cref="TriggerSlot"/> to splat manually. Lumeo
+    /// <c>&lt;Button&gt;</c> children need only <see cref="AsChild"/>.</summary>
+    [Parameter] public RenderFragment<TriggerSlot>? ChildContentSlot { get; set; }
+
+    /// <summary>
+    /// When <c>true</c>, renders NO wrapper and cascades a <see cref="TriggerSlot"/>
+    /// (carrying <c>group</c> + <c>data-state</c> so a descendant chevron still rotates,
+    /// plus the trigger id and menu ARIA) that a cooperating child folds onto its own
+    /// single root element — the Radix <c>asChild</c> goal. Prefer a <c>&lt;button&gt;</c>
+    /// child. Default <c>false</c> keeps the current <c>role=button</c> wrapper.
+    /// </summary>
+    [Parameter] public bool AsChild { get; set; }
 
     /// <summary>
     /// When true the trigger ignores clicks and is marked <c>aria-disabled</c>.
@@ -34,6 +68,27 @@
     private readonly string _triggerId = LumeoIds.New("dropdown-trigger");
 
     private string CssClass => Cx.Merge("group inline-flex", Cx.When(Disabled, "pointer-events-none opacity-50"), Class);
+
+    private TriggerSlot Slot => new(
+        Id: _triggerId,
+        Class: CssClass,
+        Attributes: BuildAttrs(),
+        OnClick: EventCallback.Factory.Create<MouseEventArgs>(this, _ => Toggle()));
+
+    private IReadOnlyDictionary<string, object> BuildAttrs()
+    {
+        var d = new Dictionary<string, object>
+        {
+            ["data-state"] = Context.IsOpen ? "open" : "closed",
+            ["aria-haspopup"] = "menu",
+            ["aria-expanded"] = Context.IsOpen ? "true" : "false",
+            ["aria-controls"] = Context.ContentId,
+        };
+        if (Disabled) d["aria-disabled"] = "true";
+        if (AdditionalAttributes is not null)
+            foreach (var kv in AdditionalAttributes) d[kv.Key] = kv.Value; // author wins on collision
+        return d;
+    }
 
     private async Task Toggle()
     {

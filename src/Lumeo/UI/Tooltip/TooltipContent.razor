@@ -3,7 +3,7 @@
 
 @*  rc.45 — fixed-position rendering + collision flip.
     Previously the tooltip was an absolutely positioned child of the trigger
-    wrapper, anchored with Tailwind classes (`bottom-full left-1/2 ...`).
+    wrapper, anchored with Tailwind classes (`bottom-full start-1/2 ...`).
     That meant a tooltip near the viewport edge clipped against it.
     We now mirror the Popover pattern: render with `position: fixed`, hand
     placement off to `ComponentInteropService.PositionFixed` (floating-ui
@@ -11,7 +11,7 @@
     space is tight. Side is still consumer-controlled as a preference. *@
 @if (IsOpen)
 {
-    <div id="@_contentId" role="tooltip" class="@CssClass" @attributes="AdditionalAttributes">
+    <div id="@_contentId" role="tooltip" data-side="@SideStr" class="@CssClass" @attributes="AdditionalAttributes">
         @ChildContent
         @if (ShowArrow)
         {
@@ -37,6 +37,12 @@
     private string _contentId => Context?.ContentId ?? string.Empty;
     private bool _registered;
 
+    // Last placement values actually handed to PositionFixed. A live Side/Offset
+    // change while the tooltip is open must re-run PositionFixed so the box moves;
+    // storing the applied values stops a same-value re-render from thrashing JS.
+    private string? _appliedSide;
+    private int? _appliedOffset;
+
     private bool IsOpen => Context?.IsOpen ?? false;
 
     private string CssClass => Cx.Merge(
@@ -58,21 +64,33 @@
     };
 
     // Rotated square — same visual as Popover/HoverCard but no border (tooltip is a solid primary surface).
-    private string ArrowClasses => Side switch
+    // Derived from SideStr (the SAME value rendered as data-side) — not from the raw Side enum — so the
+    // arrow edge and the data-side attribute can never disagree. positionFixed collision-flips the box and
+    // rewrites content.dataset.side to the resolved side; a CSS rule keyed on [data-side] can re-point the
+    // arrow without a Blazor re-render. For the no-flip (and live-Side-change) path the C# value is the
+    // single source of truth, so the rendered arrow always matches the box's side.
+    private string ArrowClasses => SideStr switch
     {
-        Lumeo.Side.Top => "absolute left-1/2 top-full -translate-x-1/2 -translate-y-1/2 rotate-45 h-2 w-2 bg-primary",
-        Lumeo.Side.Bottom => "absolute left-1/2 bottom-full -translate-x-1/2 translate-y-1/2 rotate-45 h-2 w-2 bg-primary",
-        Lumeo.Side.Left => "absolute top-1/2 left-full -translate-y-1/2 -translate-x-1/2 rotate-45 h-2 w-2 bg-primary",
-        Lumeo.Side.Right => "absolute top-1/2 right-full -translate-y-1/2 translate-x-1/2 rotate-45 h-2 w-2 bg-primary",
-        _ => "absolute left-1/2 top-full -translate-x-1/2 -translate-y-1/2 rotate-45 h-2 w-2 bg-primary"
+        "top" => "absolute start-1/2 top-full -translate-x-1/2 -translate-y-1/2 rotate-45 h-2 w-2 bg-primary",
+        "bottom" => "absolute start-1/2 bottom-full -translate-x-1/2 translate-y-1/2 rotate-45 h-2 w-2 bg-primary",
+        "left" => "absolute top-1/2 left-full -translate-y-1/2 -translate-x-1/2 rotate-45 h-2 w-2 bg-primary",
+        "right" => "absolute top-1/2 right-full -translate-y-1/2 translate-x-1/2 rotate-45 h-2 w-2 bg-primary",
+        _ => "absolute start-1/2 top-full -translate-x-1/2 -translate-y-1/2 rotate-45 h-2 w-2 bg-primary"
     };
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (IsOpen && !_registered && Context is not null)
+        // Re-position when first opening OR when Side/Offset changed while already
+        // open. The old `!_registered` one-shot latch ignored live placement changes,
+        // leaving the box at its original spot. positionFixed cleans up the prior
+        // placement (keyed by contentId) at entry, so re-calling it is safe.
+        if (IsOpen && Context is not null
+            && (!_registered || _appliedSide != SideStr || _appliedOffset != Offset))
         {
             await Interop.PositionFixed(_contentId, Context.WrapperId, "center", false, SideStr, Offset);
             _registered = true;
+            _appliedSide = SideStr;
+            _appliedOffset = Offset;
         }
         else if (!IsOpen && _registered)
         {
@@ -85,6 +103,8 @@
         try { await Interop.UnpositionFixed(_contentId); }
         catch (Microsoft.JSInterop.JSDisconnectedException) { }
         _registered = false;
+        _appliedSide = null;
+        _appliedOffset = null;
     }
 
     public async ValueTask DisposeAsync()

@@ -599,6 +599,132 @@ if (orphans.Length > 0)
 
 var components = new SortedDictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
 
+// ── Per-component test-coverage scan ─────────────────────────────────────────
+// Surfaces "what has been tested" into the registry so the docs can show devs a
+// coverage badge per component. Computed from the REAL test sources, so it can
+// never drift: dedicated bUnit tests under tests/Lumeo.Tests/Components/<name>/,
+// the browser E2E suite, and the universal render-contract test. Coverage flags
+// are derived from objective signals in the test text (aria-/role= assertions,
+// KeyDown/Arrow keys, Click/InvokeAsync/Change events, *ScaleTests, E2E refs);
+// the tier (0 smoke .. 4 e2e) is derived deterministically from those flags.
+var testsComponentsDir = Path.Combine(repoRoot, "tests", "Lumeo.Tests", "Components");
+// Test sources are BOTH .cs and bUnit .razor files (Accordion/RadioGroup etc. use
+// `Render(@<Component>…)` in *.razor) — scanning only .cs misses them entirely.
+static bool IsTestSource(string f)
+{
+    var n = f.Replace('\\', '/');
+    if (n.Contains("/obj/") || n.Contains("/bin/")) return false;
+    return n.EndsWith(".cs", StringComparison.OrdinalIgnoreCase)
+        || n.EndsWith(".razor", StringComparison.OrdinalIgnoreCase);
+}
+var e2eDir = Path.Combine(repoRoot, "tests", "Lumeo.Tests.E2E");
+var e2eCorpus = Directory.Exists(e2eDir)
+    ? Directory.EnumerateFiles(e2eDir, "*.*", SearchOption.AllDirectories)
+        .Where(IsTestSource)
+        .Select(f => (file: Path.GetFileName(f), text: File.ReadAllText(f)))
+        .ToArray()
+    : Array.Empty<(string file, string text)>();
+// Components the universal contract test cannot smoke-render (generics) or silently
+// skips (registry-name != class name) — mirrors ComponentContractTests' own lists.
+var contractExcluded = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+    { "Form", "PickList", "Sortable", "TreeView", "DataGrid", "DataTable" };
+var contractSkipped = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+    { "Resizable", "Overlay", "Sidebar", "Filter", "Progress" };
+
+// Full unit-test corpus (every .cs under tests/Lumeo.Tests). Used so a component
+// tested in a SHARED file — e.g. Accordion/RadioGroup are a11y-tested in
+// Components/A11yPolish/ rather than a dedicated folder — still gets credit.
+var unitTestsRoot = Path.Combine(repoRoot, "tests", "Lumeo.Tests");
+var allUnitTests = Directory.Exists(unitTestsRoot)
+    ? Directory.EnumerateFiles(unitTestsRoot, "*.*", SearchOption.AllDirectories)
+        .Where(IsTestSource)
+        .Select(f => (path: f, text: File.ReadAllText(f)))
+        .ToArray()
+    : Array.Empty<(string path, string text)>();
+
+Dictionary<string, object?> ComputeTestCoverage(string componentName)
+{
+    var dir = Path.Combine(testsComponentsDir, componentName);
+    var dirPrefix = dir + Path.DirectorySeparatorChar;
+    var files = Directory.Exists(dir)
+        ? Directory.EnumerateFiles(dir, "*.*", SearchOption.AllDirectories)
+            .Where(IsTestSource)
+            .ToArray()
+        : Array.Empty<string>();
+    var dedicatedText = string.Concat(files.Select(File.ReadAllText));
+    var testCount = System.Text.RegularExpressions.Regex.Matches(dedicatedText, @"^\s*\[(Fact|Theory)", System.Text.RegularExpressions.RegexOptions.Multiline).Count;
+
+    // Shared/sibling test files OUTSIDE the dedicated folder (and not the universal
+    // contract test) that actually RENDER this component — credit their signals too.
+    var renders = new System.Text.RegularExpressions.Regex(
+        $@"Render<{System.Text.RegularExpressions.Regex.Escape(componentName)}[<>(]|<{System.Text.RegularExpressions.Regex.Escape(componentName)}[\s/>]|OpenComponent<[^>]*\b{System.Text.RegularExpressions.Regex.Escape(componentName)}\b");
+    var relatedFiles = allUnitTests
+        .Where(t => !t.path.StartsWith(dirPrefix, StringComparison.OrdinalIgnoreCase)
+                    && !t.path.Contains("ComponentContractTests", StringComparison.OrdinalIgnoreCase)
+                    && renders.IsMatch(t.text))
+        .Select(t => Path.GetFileName(t.path))
+        .Distinct()
+        .OrderBy(x => x, StringComparer.Ordinal)
+        .ToArray();
+    var relatedText = string.Concat(allUnitTests
+        .Where(t => !t.path.StartsWith(dirPrefix, StringComparison.OrdinalIgnoreCase)
+                    && !t.path.Contains("ComponentContractTests", StringComparison.OrdinalIgnoreCase)
+                    && renders.IsMatch(t.text))
+        .Select(t => t.text));
+
+    var text = dedicatedText + relatedText;
+    bool Has(string pattern) => System.Text.RegularExpressions.Regex.IsMatch(text, pattern);
+    var hasA11y = Has(@"aria-|role=|GetAttribute\(""(aria|role)");
+    var hasKeyboard = Has(@"KeyDown|KeyboardEventArgs|Arrow(Up|Down|Left|Right)|""Enter""|""Escape""|""Home""|""End""");
+    var hasBehavior = Has(@"\.Click\(|InvokeAsync|Changed|OnClick|Toggle|SetParametersAndRender|\.Change\(|Input\(");
+    var hasScale = files.Any(f => Path.GetFileName(f).Contains("ScaleTests", StringComparison.OrdinalIgnoreCase))
+                   || Has(@"1_000_000|Millions|100_000");
+    // Credit an E2E test only when it actually NAVIGATES to the component's docs
+    // route (/components/<kebab>) — a precise signal that the test exercises this
+    // component, not merely mentions its name in a comment.
+    var routeKebab = ToKebabCase(componentName);
+    var e2eFiles = e2eCorpus
+        .Where(e => System.Text.RegularExpressions.Regex.IsMatch(
+            e.text, $@"/components/{System.Text.RegularExpressions.Regex.Escape(routeKebab)}(?![a-z0-9-])"))
+        .Select(e => e.file)
+        .Distinct()
+        .OrderBy(x => x, StringComparer.Ordinal)
+        .ToArray();
+    var hasE2E = e2eFiles.Length > 0;
+
+    var contract = contractExcluded.Contains(componentName) ? "excluded"
+        : contractSkipped.Contains(componentName) ? "skipped"
+        : "smoke";
+    var hasAnyTest = files.Length > 0 || relatedFiles.Length > 0;
+    // Render is covered if the component has dedicated/shared tests OR the contract
+    // test smoke-renders it (i.e. it's not excluded/skipped without any test).
+    var hasRender = hasAnyTest || contract == "smoke";
+
+    // A real-browser E2E is the top tier by definition (it exercises behaviour an
+    // assertion regex can't always name — e.g. pointer drag via Mouse.Down/Move/Up).
+    int tier = hasE2E ? 4
+        : (hasA11y && (hasKeyboard || hasBehavior)) ? 3
+        : hasBehavior ? 2
+        : hasAnyTest ? 1
+        : 0;
+
+    return new Dictionary<string, object?>
+    {
+        ["tier"] = tier,
+        ["files"] = files.Length,
+        ["tests"] = testCount,
+        ["relatedFiles"] = relatedFiles.Length,
+        ["render"] = hasRender,
+        ["behavior"] = hasBehavior,
+        ["a11y"] = hasA11y,
+        ["keyboard"] = hasKeyboard,
+        ["scale"] = hasScale,
+        ["e2e"] = hasE2E,
+        ["e2eFiles"] = e2eFiles,
+        ["contract"] = contract,
+    };
+}
+
 foreach (var dir in componentDirs)
 {
     var name = Path.GetFileName(dir);
@@ -615,8 +741,13 @@ foreach (var dir in componentDirs)
         .EnumerateFiles(dir, "*.*", SearchOption.AllDirectories)
         .Where(p => p.EndsWith(".razor", StringComparison.OrdinalIgnoreCase)
                     || p.EndsWith(".cs", StringComparison.OrdinalIgnoreCase))
-        .OrderBy(p => p, StringComparer.OrdinalIgnoreCase)
         .Select(p => NormalizePath(Path.GetRelativePath(packageSrcRoot, p)))
+        // Sort the NORMALIZED forward-slash relative path, not the raw absolute OS
+        // path. Sorting absolute paths ordered differently on Windows (\ separators,
+        // C:\ root) than on Linux (/), so any multi-directory component (e.g. Chart,
+        // whose files span UI/Chart and subfolders) emitted its file list in a
+        // platform-dependent order and tripped the registry-freshness CI gate.
+        .OrderBy(p => p, StringComparer.Ordinal)
         .ToList();
 
     // Scan for cssVars, dependencies, and package dependencies
@@ -634,7 +765,10 @@ foreach (var dir in componentDirs)
         // file path is relative to packageSrcRoot (e.g. src/Lumeo.Charts).
         var abs = Path.Combine(packageSrcRoot, file.Replace('/', Path.DirectorySeparatorChar));
         string content;
-        try { content = File.ReadAllText(abs); }
+        // Normalize CRLF -> LF so extracted text (gotchas, etc.) is identical
+        // whether the repo is checked out with LF (Linux/CI) or CRLF (Windows
+        // autocrlf) — otherwise the registry's string contents drift per platform.
+        try { content = File.ReadAllText(abs).Replace("\r\n", "\n").Replace("\r", "\n"); }
         catch { continue; }
 
         foreach (var cls in themedClassPatterns)
@@ -690,10 +824,16 @@ foreach (var dir in componentDirs)
 
     var subcategory = SubcategoryInferrer.Infer(name, category);
     // Whether this component has a real docs page in docs/Lumeo.Docs/Pages/Components/.
-    // Catalog uses this to skip rendering cards that would 404 on click.
-    var docsPagePath = Path.Combine(repoRoot, "docs", "Lumeo.Docs", "Pages", "Components", $"{name}Page.razor");
-    var docsPagePathAlt = Path.Combine(repoRoot, "docs", "Lumeo.Docs", "Pages", "Components", "Charts", $"{name}ChartPage.razor");
-    var hasDocsPage = File.Exists(docsPagePath) || File.Exists(docsPagePathAlt);
+    // Catalog uses this to skip rendering cards that would 404 on click. Match the
+    // page filename CASE-INSENSITIVELY: the component name's casing ("QRCode") can
+    // differ from the page file ("QrCodePage.razor"), which under a case-sensitive
+    // filesystem (Linux CI) made File.Exists return false and wrongly hid the card.
+    var componentsPagesDir = Path.Combine(repoRoot, "docs", "Lumeo.Docs", "Pages", "Components");
+    bool PageFileExists(string dir, string fileName) =>
+        Directory.Exists(dir) && Directory.EnumerateFiles(dir, "*.razor")
+            .Any(f => string.Equals(Path.GetFileName(f), fileName, StringComparison.OrdinalIgnoreCase));
+    var hasDocsPage = PageFileExists(componentsPagesDir, $"{name}Page.razor")
+                      || PageFileExists(Path.Combine(componentsPagesDir, "Charts"), $"{name}ChartPage.razor");
     var entry = new Dictionary<string, object?>
     {
         ["name"] = name,
@@ -719,8 +859,32 @@ foreach (var dir in componentDirs)
         ["cssVars"] = cssVars.OrderBy(x => x, StringComparer.Ordinal).ToArray(),
         ["gotchas"] = gotchas.ToArray(),
         ["registryUrl"] = $"https://lumeo.nativ.sh/registry/{componentKey}.json",
+        ["testCoverage"] = ComputeTestCoverage(name),
     };
     components[componentKey] = entry;
+}
+
+// Satellite wwwroot assets (echarts-interop.js, map.js, …) per package. These are
+// NOT in any component's `files` list (they ship as static web assets via the
+// satellite NuGet package), so `lumeo add --vendor` needs them enumerated here to
+// copy them into the consumer's wwwroot/_content/<package>/. Keyed by package name
+// (the satellite src folder, e.g. "Lumeo.Charts"); paths are relative to that root.
+var satelliteAssets = new SortedDictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
+foreach (var pkgDir in Directory.EnumerateDirectories(Path.Combine(repoRoot, "src")))
+{
+    // Satellites only — NOT core "Lumeo" (its assets ship via the prebuilt-asset
+    // flow, not --vendor). Explicit prefix check, because the Windows "Lumeo.*"
+    // glob also matches the extensionless "Lumeo" folder (DOS .* quirk) while Linux
+    // does not — that divergence would break the CI registry-freshness gate.
+    if (!Path.GetFileName(pkgDir).StartsWith("Lumeo.", StringComparison.Ordinal)) continue;
+    var wwwroot = Path.Combine(pkgDir, "wwwroot");
+    if (!Directory.Exists(wwwroot)) continue;
+    var assets = Directory.EnumerateFiles(wwwroot, "*", SearchOption.AllDirectories)
+        .Where(f => !f.EndsWith(".LEGAL.txt", StringComparison.OrdinalIgnoreCase))
+        .Select(f => "wwwroot/" + Path.GetRelativePath(wwwroot, f).Replace('\\', '/'))
+        .OrderBy(p => p, StringComparer.Ordinal)
+        .ToArray();
+    if (assets.Length > 0) satelliteAssets[Path.GetFileName(pkgDir)] = assets;
 }
 
 var root = new Dictionary<string, object>
@@ -729,6 +893,7 @@ var root = new Dictionary<string, object>
     ["version"] = lumeoVersion,
     ["generated"] = DateTime.UtcNow.ToString("O"),
     ["components"] = components,
+    ["satelliteAssets"] = satelliteAssets,
 };
 
 var jsonOpts = new JsonSerializerOptions
@@ -736,8 +901,28 @@ var jsonOpts = new JsonSerializerOptions
     WriteIndented = true,
     Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
 };
-var json = JsonSerializer.Serialize(root, jsonOpts);
+// Normalise CRLF→LF inside serialized string values so the registry is
+// byte-identical regardless of the host OS. JsonSerializer escapes a CR/LF that
+// lives in a value (mdSummary, descriptions, scraped examples) as \r\n; on Windows
+// those come from Environment.NewLine, so a Windows-generated registry never
+// matched a Linux regen and tripped the registry-freshness CI gate. Replacing the
+// 4-char escape "\r\n" with "\n" only touches genuine CRLF escapes — it cannot
+// match an escaped backslash sequence like "\\r\\n", so example code is untouched.
+var json = JsonSerializer.Serialize(root, jsonOpts).Replace("\\r\\n", "\\n");
 File.WriteAllText(outputPath, json, new UTF8Encoding(false));
+
+// Also write the copy the MCP server bundles + ships. Previously this was only
+// synced by the MCP's npm `prebuild` (sync-registry.mjs), so whenever nobody ran
+// `npm run build` the committed tools/lumeo-mcp/src/registry.json drifted (it sat a
+// month / 149-vs-163 components behind) — a real "MCP is not up to date" bug.
+// Writing it here keeps it in lockstep with every regen, and the CI freshness gate
+// covers this path too.
+var mcpRegistryPath = Path.Combine(repoRoot, "tools", "lumeo-mcp", "src", "registry.json");
+if (Directory.Exists(Path.GetDirectoryName(mcpRegistryPath)!))
+{
+    File.WriteAllText(mcpRegistryPath, json, new UTF8Encoding(false));
+    Console.WriteLine($"Wrote registry copy to {mcpRegistryPath}");
+}
 
 Console.WriteLine($"Wrote {components.Count} components to {outputPath}");
 
@@ -837,7 +1022,7 @@ try
             }
         }
 
-        var perJson = JsonSerializer.Serialize(payload, jsonOpts);
+        var perJson = JsonSerializer.Serialize(payload, jsonOpts).Replace("\\r\\n", "\\n"); // normalise CRLF→LF (see root serialize above)
         foreach (var dir in perComponentDirs)
         {
             File.WriteAllText(Path.Combine(dir, key + ".json"), perJson, new UTF8Encoding(false));
@@ -876,7 +1061,7 @@ try
         }).ToArray(),
     };
 
-    var cdnDepsJson = JsonSerializer.Serialize(cdnDepsPayload, jsonOpts);
+    var cdnDepsJson = JsonSerializer.Serialize(cdnDepsPayload, jsonOpts).Replace("\\r\\n", "\\n"); // normalise CRLF→LF (see root serialize above)
 
     var cdnDepsOutputDirs = new[]
     {

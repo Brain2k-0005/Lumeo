@@ -8,6 +8,14 @@
    withdrawn on dispose so conditionally-removed steps don't leave ghosts. *@
 
 @code {
+    // Stable identity generated ONCE per StepperStep instance. Threaded into the
+    // registration so the KeepMounted panel wrapper can @key on the step's true
+    // owner (#105) instead of its loop index — index keys make a reused panel
+    // fragment track the WRONG owner across remove/insert, dragging stale input
+    // state to a different step. A Guid is immutable for the instance lifetime,
+    // so the keyed panel survives reorders without re-creating its DOM.
+    private readonly Guid _id = Guid.NewGuid();
+
     [CascadingParameter] public Stepper.StepperContext? Context { get; set; }
     [Parameter] public string Title { get; set; } = "";
     [Parameter] public string? Description { get; set; }
@@ -23,6 +31,7 @@
     protected override void OnParametersSet()
     {
         Context?.Parent.RegisterStep(this, new StepRegistration(
+            _id,
             Title,
             Description,
             Optional,
@@ -41,6 +50,7 @@
     public bool IsStepValid() => IsValid?.Invoke() ?? true;
 
     public record StepRegistration(
+        Guid Id,
         string Title,
         string? Description,
         bool Optional,

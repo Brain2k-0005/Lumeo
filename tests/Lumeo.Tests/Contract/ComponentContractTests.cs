@@ -237,11 +237,19 @@ public class ComponentContractTests : IAsyncLifetime
 
     private static string GetRegistryPath()
     {
-        // Tests execute from: tests/Lumeo.Tests/bin/{Config}/net10.0/
-        // Walk five levels up to the repo root.
-        var here = AppContext.BaseDirectory;
-        var repo = Path.GetFullPath(Path.Combine(here, "..", "..", "..", "..", ".."));
-        return Path.Combine(repo, "src", "Lumeo", "registry", "registry.json");
+        // Walk up from the test assembly's directory until the repo root is found,
+        // rather than assuming a fixed depth. The base directory gains an extra
+        // segment under some runners (e.g. an arch subfolder like .../net10.0/win-x64/
+        // with `--arch`, or a coverage data-collector), which broke the old hard-coded
+        // "five levels up" and pointed at tests/src/Lumeo/registry instead.
+        var dir = new DirectoryInfo(AppContext.BaseDirectory);
+        for (; dir is not null; dir = dir.Parent)
+        {
+            var candidate = Path.Combine(dir.FullName, "src", "Lumeo", "registry", "registry.json");
+            if (File.Exists(candidate)) return candidate;
+        }
+        throw new InvalidOperationException(
+            $"Could not locate src/Lumeo/registry/registry.json above '{AppContext.BaseDirectory}'.");
     }
 
     // -------------------------------------------------------------------------

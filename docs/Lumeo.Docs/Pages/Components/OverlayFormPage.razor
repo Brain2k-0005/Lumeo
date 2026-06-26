@@ -54,6 +54,30 @@
             <Lumeo.Text Class="text-sm text-muted-foreground mt-3">@_result</Lumeo.Text>
         }
     </ComponentDemo>
+
+    <ComponentDemo Title="Validation (OnInvalidSubmit)" OverflowVisible="true">
+        <div class="h-[280px] rounded-lg border border-border/40 p-4">
+            <OverlayForm Model="@_validatedModel" OnValidSubmit="HandleValidSubmit" OnInvalidSubmit="HandleInvalidSubmit">
+                <Header>
+                    <Heading Level="3" Class="text-base font-semibold">Required field</Heading>
+                </Header>
+                <Body>
+                    <Stack Gap="1.5">
+                        <Label>Name (required)</Label>
+                        <Input @bind-Value="_validatedModel.Name" Placeholder="Leave empty and submit" />
+                        <ValidationMessage For="@(() => _validatedModel.Name)" />
+                    </Stack>
+                </Body>
+                <Footer>
+                    <Button Type="Button.ButtonType.Submit">Submit</Button>
+                </Footer>
+            </OverlayForm>
+        </div>
+        @if (!string.IsNullOrEmpty(_validationResult))
+        {
+            <Lumeo.Text Class="text-sm text-muted-foreground mt-3">@_validationResult</Lumeo.Text>
+        }
+    </ComponentDemo>
 </Stack>
 
 <div class="mt-12 space-y-3">
@@ -162,6 +186,17 @@
     {
         _result = $"Saved {_model.Name}.";
     }
+
+    private sealed class ValidatedModel
+    {
+        [Required(ErrorMessage = "Name is required.")] public string? Name { get; set; }
+    }
+
+    private readonly ValidatedModel _validatedModel = new();
+    private string _validationResult = "";
+
+    private void HandleValidSubmit(EditContext ctx) => _validationResult = "Valid — submitted!";
+    private void HandleInvalidSubmit(EditContext ctx) => _validationResult = "Invalid — OnInvalidSubmit fired.";
 
     private string _basicCode = @"<OverlayForm Model=""@_model"" OnValidSubmit=""HandleSave"">
     <Header>

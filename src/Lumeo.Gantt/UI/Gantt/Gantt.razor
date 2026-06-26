@@ -51,6 +51,13 @@ else
     [Parameter] public IEnumerable<GanttTask>? Tasks { get; set; }
     [Parameter] public EventCallback<IEnumerable<GanttTask>> TasksChanged { get; set; }
     [Parameter] public GanttViewMode ViewMode { get; set; } = GanttViewMode.Day;
+    /// <summary>
+    /// Raised when the user picks a new zoom level from the toolbar. Bind it
+    /// (<c>@bind-ViewMode</c>) to keep the parent's <see cref="ViewMode"/> in
+    /// lock-step with the toolbar; without a binding the component still tracks
+    /// the toolbar selection on its own (uncontrolled usage).
+    /// </summary>
+    [Parameter] public EventCallback<GanttViewMode> ViewModeChanged { get; set; }
     [Parameter] public EventCallback<GanttTask> OnTaskClick { get; set; }
     [Parameter] public EventCallback<GanttTask> OnDateChange { get; set; }
     [Parameter] public EventCallback<GanttTask> OnProgressChange { get; set; }
@@ -83,8 +90,26 @@ else
     private DotNetObjectReference<Gantt>? _selfRef;
     private string? _instanceId;
     private bool _initialized;
+    // Guards against a second GanttInitAsync being launched while the first is
+    // still in flight. Because init is no longer latched to firstRender (it can be
+    // re-attempted after a recoverable failure), an extra render that lands during
+    // the async init handshake would otherwise re-enter and fire a duplicate
+    // gantt.init. Set true before the await, cleared in finally.
+    private bool _initializing;
     private int _lastTasksHash;
+    // Hash of the task payload the PARENT last supplied through the `Tasks`
+    // parameter (folding in the BarColor / GroupBy delegate output, which are
+    // also parent-owned). Unlike _lastTasksHash, this is advanced ONLY by a
+    // genuine parameter change — never by a local JS drag/progress edit via
+    // ReplaceTask. OnParametersSetAsync re-pushes to JS only when THIS moves, so
+    // a stale parent re-render after an uncontrolled drag no longer snaps the
+    // bars back to their pre-drag positions (battle-test wave 1, finding #18).
+    private int _lastParentHash;
     private GanttViewMode _currentViewMode;
+    // Last value seen on the ViewMode parameter. We only treat ViewMode as
+    // authoritative when this changes — otherwise a parent re-render with an
+    // unchanged ViewMode would clobber a toolbar selection the user just made.
+    private GanttViewMode _lastSeenViewMode;
 
     // Snapshot of the current tasks used when the JS layer reports a drag
     // or progress change — avoids reaching back into `Tasks` (which may have
@@ -105,8 +130,10 @@ else
     protected override void OnInitialized()
     {
         _currentViewMode = ViewMode;
+        _lastSeenViewMode = ViewMode;
         _tasks = SortedTasks(Tasks?.ToList() ?? new List<GanttTask>());
         _lastTasksHash = ComputeTasksHash(_tasks);
+        _lastParentHash = _lastTasksHash;
     }
 
     // When GroupBy is set, sort tasks so that each group clusters together.
@@ -124,32 +151,76 @@ else
 
     protected override async Task OnParametersSetAsync()
     {
+        // Only a genuine change to the ViewMode parameter is authoritative.
+        // Comparing against _lastSeenViewMode (not _currentViewMode) means an
+        // unchanged ViewMode on a parent re-render leaves a toolbar selection
+        // intact, so the user's zoom no longer silently reverts.
+        var viewModeChanged = ViewMode != _lastSeenViewMode;
+        if (viewModeChanged)
+        {
+            _lastSeenViewMode = ViewMode;
+            _currentViewMode = ViewMode;
+            if (_initialized && _instanceId is not null)
+                await Interop.GanttChangeViewModeAsync(_instanceId, ViewMode.ToString());
+        }
+
+        // If a previous GanttInitAsync threw, the component latched into the
+        // error state (_initError set, _initialized false, _instanceId null) and
+        // OnAfterRenderAsync stopped retrying. A later parameter change is the
+        // signal that the world may have moved on (the host element re-appeared,
+        // the JS module was reloaded, the caller supplied new Tasks/ViewMode), so
+        // clear the error to let OnAfterRenderAsync re-attempt init on the next
+        // render instead of staying permanently dead (battle-test wave 1, #19).
+        if (_initError is not null && !_initialized
+            && (viewModeChanged || Tasks is not null))
+        {
+            // Re-seed the snapshot from the latest Tasks so the retried init
+            // mounts the current data, not the stale list captured at first init.
+            _tasks = SortedTasks(Tasks?.ToList() ?? new List<GanttTask>());
+            _lastTasksHash = ComputeTasksHash(_tasks);
+            _lastParentHash = _lastTasksHash;
+            // Clearing the error makes the razor render the host element again on
+            // the render that follows OnParametersSetAsync; OnAfterRenderAsync then
+            // sees no instance + no error and re-attempts init against that host.
+            _initError = null;
+        }
+
         if (!_initialized || _instanceId is null) return;
 
         if (Tasks is not null)
         {
             var incoming = SortedTasks(Tasks.ToList());
             var hash = ComputeTasksHash(incoming);
-            if (hash != _lastTasksHash)
+            // Gate the re-push on the PARENT hash, not _lastTasksHash. A local JS
+            // drag/progress edit advances _lastTasksHash (via ReplaceTask) but NOT
+            // _lastParentHash, so an uncontrolled parent re-render that still
+            // carries the original (pre-drag) Tasks is seen as "parent unchanged"
+            // and the bars are left where the user dropped them. Only a genuinely
+            // new parent payload (different records, or a swapped BarColor/GroupBy
+            // delegate output) moves _lastParentHash and re-pushes to JS.
+            if (hash != _lastParentHash)
             {
+                _lastParentHash = hash;
                 _lastTasksHash = hash;
                 _tasks = incoming;
                 await Interop.GanttSetTasksAsync(_instanceId, incoming.Select(ToJsTask).Cast<object>());
             }
         }
-
-        if (ViewMode != _currentViewMode)
-        {
-            _currentViewMode = ViewMode;
-            await Interop.GanttChangeViewModeAsync(_instanceId, ViewMode.ToString());
-        }
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (!firstRender || _initialized) return;
+        // Init is no longer latched to firstRender. We attempt it whenever the
+        // component has no live instance yet AND is not currently parked in the
+        // error state. A failed init sets _initError, which blocks further auto-
+        // retries here until OnParametersSetAsync clears it on the next relevant
+        // parameter change — so a transient init failure is recoverable rather
+        // than permanently dead (battle-test wave 1, #19).
+        if (_initialized || _instanceId is not null || _initError is not null || _initializing) return;
 
-        _selfRef = DotNetObjectReference.Create(this);
+        // Reuse the DotNetObjectReference across retries so a second attempt does
+        // not leak the first one.
+        _selfRef ??= DotNetObjectReference.Create(this);
 
         var options = new
         {
@@ -161,6 +232,7 @@ else
             columnWidth = ColumnWidth,
         };
 
+        _initializing = true;
         try
         {
             _instanceId = await Interop.GanttInitAsync(_hostRef, _selfRef, options);
@@ -179,6 +251,10 @@ else
             if (OnInitError.HasDelegate)
                 await OnInitError.InvokeAsync(ex.Message);
             StateHasChanged();
+        }
+        finally
+        {
+            _initializing = false;
         }
     }
 
@@ -202,10 +278,19 @@ else
         };
     }
 
-    private static int ComputeTasksHash(IEnumerable<GanttTask> tasks)
+    // Instance (not static) because the change-detection has to fold in the
+    // per-task OUTPUT of the BarColor and GroupBy delegates. Those delegates are
+    // the only task properties whose rendered result lives outside the GanttTask
+    // record itself: a parent can swap the BarColor lambda (recolour every bar)
+    // or the GroupBy lambda (re-cluster the lanes) while leaving the task list
+    // value-identical. Both feed the per-task JS payload (bar_color / group_label
+    // + the SortedTasks order), so re-pushing tasks via GanttSetTasksAsync applies
+    // them — but only if the hash actually moves when the delegate output does.
+    private int ComputeTasksHash(IEnumerable<GanttTask> tasks)
     {
         // Cheap identity hash — good enough to detect "did the caller swap the
-        // tasks list?" without a JS round-trip on every render.
+        // tasks list (or recolour/regroup it)?" without a JS round-trip on every
+        // render.
         var hash = new HashCode();
         foreach (var t in tasks)
         {
@@ -219,16 +304,37 @@ else
             hash.Add(t.GroupLabel);
             if (t.Dependencies is not null)
                 foreach (var d in t.Dependencies) hash.Add(d);
+            // Fold the delegate output so a BarColor / GroupBy swap that leaves the
+            // GanttTask records untouched is still detected and re-pushed.
+            hash.Add(BarColor?.Invoke(t));
+            hash.Add(GroupBy?.Invoke(t));
         }
         return hash.ToHashCode();
     }
 
     private async Task OnViewModeChangedAsync(string? v)
     {
-        if (_instanceId is null || string.IsNullOrEmpty(v)) return;
+        if (string.IsNullOrEmpty(v)) return;
         if (!Enum.TryParse<GanttViewMode>(v, out var parsed)) return;
+        if (parsed == _currentViewMode) return;
+
         _currentViewMode = parsed;
-        await Interop.GanttChangeViewModeAsync(_instanceId, parsed.ToString());
+        // Deliberately do NOT touch _lastSeenViewMode here: it tracks the value
+        // the *parent* last passed via ViewMode. Leaving it untouched means a
+        // subsequent parent re-render that still carries the original (constant)
+        // ViewMode is seen as "unchanged" and no longer clobbers this toolbar
+        // selection — which is exactly the revert bug. Uncontrolled usage works
+        // because of this; controlled (@bind-ViewMode) usage re-syncs through
+        // OnParametersSetAsync when the parent echoes the new value back.
+
+        // Keep a bound parent's ViewMode in lock-step with the toolbar. Without
+        // a binding this is a no-op and the component stays uncontrolled.
+        if (ViewModeChanged.HasDelegate)
+            await ViewModeChanged.InvokeAsync(parsed);
+
+        // The renderer is only present once JS init has handed back an id.
+        if (_instanceId is not null)
+            await Interop.GanttChangeViewModeAsync(_instanceId, parsed.ToString());
     }
 
     [JSInvokable]

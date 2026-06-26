@@ -107,7 +107,7 @@
                  @onpointerup="OnScrubPointerUp"
                  @onpointercancel="OnScrubPointerUp">
                 <div class="relative h-1.5 w-full overflow-hidden rounded-full bg-primary/20">
-                    <div class="absolute inset-y-0 left-0 rounded-full bg-primary"
+                    <div class="absolute inset-y-0 start-0 rounded-full bg-primary"
                          style="width: @ProgressPercentCss%;"></div>
                 </div>
             </div>
@@ -228,6 +228,17 @@
     private double _volume = 1.0;
     private double _playbackRate = 1.0;
 
+    // Track the last Src we reconciled against. A playlist that swaps the
+    // source (next-track) reuses the SAME component instance, so the element's
+    // transient state — duration/currentTime/playing — must be reset and the
+    // user's persisted volume/mute/rate re-applied to the freshly-loaded media.
+    // Seeded lazily on first OnParametersSet; never stored in the [Parameter].
+    private string? _lastSrc;
+    private bool _srcInitialized;
+    // When a real Src change happens we can't push volume/rate to the new
+    // element until its metadata has loaded; defer the re-apply to OnLoadedMetadata.
+    private bool _reapplyMediaSettings;
+
     // Scrub state — when the user is dragging the progress bar we suppress
     // timeupdate-driven UI refresh and show their finger position instead.
     // Commit happens on pointerup so we issue exactly one seek per drag.
@@ -266,6 +277,45 @@
 
     private static string FormatAria(double seconds) =>
         Math.Round(seconds).ToString(System.Globalization.CultureInfo.InvariantCulture);
+
+    // A playlist swapping the source reuses the SAME component instance, so the
+    // element's transient state — duration / currentTime / playing — would
+    // otherwise stay pinned to the previous track while the new media loads.
+    // Detect a real Src change against a cached backing field (NOT the
+    // [Parameter] itself), reset the transient progress/play state, and flag a
+    // re-apply so the user's persisted volume/mute/rate are pushed back to the
+    // freshly-loaded element once its metadata arrives. Same-content re-renders
+    // (an unrelated parent StateHasChanged) compare equal and are a no-op, so
+    // they never clobber in-progress playback.
+    protected override void OnParametersSet()
+    {
+        if (!_srcInitialized)
+        {
+            // First parameter set: adopt the initial Src as the baseline without
+            // resetting (there is no prior playback to preserve or discard).
+            _lastSrc = Src;
+            _srcInitialized = true;
+            return;
+        }
+
+        if (!string.Equals(Src, _lastSrc, StringComparison.Ordinal))
+        {
+            _lastSrc = Src;
+            // The old track's progress/play state no longer describes the new
+            // media. Reset so the UI reads "0:00 / 0:00", paused, until the new
+            // element fires its own events.
+            _playing = false;
+            _currentTime = 0;
+            _duration = 0;
+            // Defensive: a Src swap mid-drag would otherwise leave a dangling
+            // scrub/capture state pinned to the old media.
+            _scrubbing = false;
+            _capturedPointerId = null;
+            // Volume / mute / rate are user choices that must survive a track
+            // swap — re-apply them to the new element once it has loaded.
+            _reapplyMediaSettings = true;
+        }
+    }
 
     // M:SS, e.g. 0:42, 3:14, 12:05. Negative / NaN -> "0:00" defensively.
     private static string Format(double seconds)
@@ -333,6 +383,16 @@
         var state = await Interop.GetMediaState(_audioRef);
         _duration = state.Duration;
         _currentTime = state.CurrentTime;
+
+        // After a Src swap the freshly-loaded element starts at the browser's
+        // defaults (volume 1, unmuted, rate 1). Re-apply the user's persisted
+        // choices so a track change doesn't silently reset them.
+        if (_reapplyMediaSettings)
+        {
+            _reapplyMediaSettings = false;
+            await Interop.SetMediaVolume(_audioRef, _volume, _muted);
+            await Interop.SetPlaybackRate(_audioRef, _playbackRate);
+        }
     }
 
     private async Task OnTimeUpdateInternal(EventArgs e)

@@ -1,6 +1,15 @@
 @namespace Lumeo
 @inject Lumeo.Services.Localization.ILumeoLocalizer L
 
+@* In-flow spacer that reserves the fixed bar's footprint so it never overlaps
+   the end of the page content. Only meaningful while the nav is Fixed (an inline
+   nav already occupies its own space). aria-hidden: purely presentational.
+   Height is inline (variant-aware) so it tracks the actual bar; consumers tune it
+   via the --lumeo-bottom-nav-height CSS variable rather than overriding the style. *@
+@if (Fixed && ReserveSpace)
+{
+    <div aria-hidden="true" class="lumeo-bottom-nav-spacer" style="@SpacerStyle"></div>
+}
 <nav class="@CssClass"
      role="navigation"
      aria-label="@EffectiveAriaLabel"
@@ -22,6 +31,18 @@
 
     /// <summary>When true (default), pins to the bottom of the viewport with <c>position: fixed</c>. Set false to render inline.</summary>
     [Parameter] public bool Fixed { get; set; } = true;
+
+    /// <summary>
+    /// When <c>true</c> (and <see cref="Fixed"/> is on), also renders an in-flow,
+    /// <c>aria-hidden</c> spacer equal to the nav's height plus the bottom safe-area
+    /// inset, so the fixed bar never overlaps the end of the page content — no
+    /// consumer <c>padding-bottom</c> hack needed. The height is driven by the
+    /// <c>--lumeo-bottom-nav-height</c> CSS variable (default <c>3.5rem</c>); override
+    /// it if your nav is taller (e.g. the <see cref="BottomNavVariant.Pill"/> variant
+    /// or two-line labels). Place <see cref="BottomNav"/> at the end of the scrolling
+    /// content so the spacer reserves room there. Default <c>false</c>.
+    /// </summary>
+    [Parameter] public bool ReserveSpace { get; set; }
 
     /// <summary>Visual variant. <c>Default</c> is a solid bar with a top border; <c>Pill</c> is a floating centered pill.</summary>
     [Parameter] public BottomNavVariant Variant { get; set; } = BottomNavVariant.Default;
@@ -47,11 +68,20 @@
     }
 
     private string CssClass => Cx.Merge(
-        Fixed ? "fixed bottom-0 left-0 right-0 z-40" : "w-full",
+        Fixed ? "fixed bottom-0 start-0 end-0 z-40" : "w-full",
         Variant == BottomNavVariant.Pill
             ? "px-4 pb-3"
             : "bg-background border-t border-border/40",
         Class);
+
+    // Reserve the full occupied height of the fixed bar: the content height
+    // (--lumeo-bottom-nav-height, default 4rem) plus the bottom safe-area inset
+    // added exactly ONCE (the nav carries the same inset as interior padding —
+    // BottomNav.razor's nav style — so the two never stack). The Pill variant
+    // floats with an extra pb-3 (0.75rem) gap below its bar, so reserve that too.
+    private string SpacerStyle => Variant == BottomNavVariant.Pill
+        ? "height: calc(var(--lumeo-bottom-nav-height, 4rem) + 0.75rem + env(safe-area-inset-bottom, 0px)); flex-shrink: 0;"
+        : "height: calc(var(--lumeo-bottom-nav-height, 4rem) + env(safe-area-inset-bottom, 0px)); flex-shrink: 0;";
 
     private string InnerCssClass => Variant == BottomNavVariant.Pill
         ? "mx-auto flex max-w-md items-center justify-around gap-1 rounded-full border border-border/40 bg-card/95 shadow-lg backdrop-blur px-2 py-1.5"

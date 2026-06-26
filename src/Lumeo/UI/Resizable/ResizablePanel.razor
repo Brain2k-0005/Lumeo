@@ -1,4 +1,5 @@
 @namespace Lumeo
+@implements IDisposable
 
 <div class="@CssClass"
      style="flex: @(Size.ToString("F2", System.Globalization.CultureInfo.InvariantCulture)) 1 0; min-width: 0; min-height: 0; overflow: auto;"
@@ -42,5 +43,17 @@
         // (see ResizablePanelGroup.OnAfterRender). Collapse config travels with
         // the registration so the group can snap/restore this panel.
         Context?.RegisterPanel?.Invoke(Order, DefaultSize, MinSize, MaxSize, Collapsible, CollapsedSize);
+    }
+
+    // A panel removed at runtime (reorder / conditional render) must drop its
+    // per-Order registration from the group; otherwise the group keeps stale
+    // default-size / constraint / collapse-config / collapsed / pre-collapse
+    // entries for an index no panel occupies anymore, and the group's
+    // shrink-reconcile never fires (it keys off _panelDefaultSizes.Count, which
+    // would never decrease). Without this the next panel that reuses the index
+    // inherits the dead panel's constraints/collapse state. (#109)
+    public void Dispose()
+    {
+        Context?.UnregisterPanel?.Invoke(Order);
     }
 }

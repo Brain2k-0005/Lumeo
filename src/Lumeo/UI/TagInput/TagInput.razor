@@ -8,7 +8,7 @@
         @Label
         @if (Required)
         {
-            <span class="text-destructive ml-0.5">*</span>
+            <span class="text-destructive ms-0.5">*</span>
         }
     </label>
 }
@@ -16,15 +16,20 @@
 <div class="@ContainerClass" @onclick="FocusInput" @attributes="AdditionalAttributes">
     @if (Tags is { Count: > 0 })
     {
-        @foreach (var tag in Tags)
+        @foreach (var (tag, index) in Tags.Select((t, i) => (t, i)))
         {
+            // @key combines the value with its position so that duplicate tags
+            // (AllowDuplicates=true) get distinct keys — keying by `tag` alone
+            // throws on render when two equal values share a key. Removal goes
+            // through RemoveTagAt(index) so clicking one chip's X removes only
+            // that occurrence, not every value-equal tag.
             if (TagTemplate is not null)
             {
-                <div class="inline-flex items-center" @key="tag">
+                <div class="inline-flex items-center" @key="(tag, index)">
                     @TagTemplate(tag)
                     @if (!Disabled)
                     {
-                        <button type="button" class="ml-1 rounded-full hover:bg-foreground/20 focus:outline-none" aria-label="@($"Remove {GetTagTextSafe(tag)}")" @onclick="() => RemoveTag(tag)" @onclick:stopPropagation="true">
+                        <button type="button" class="ms-1 rounded-full hover:bg-foreground/20 focus:outline-none" aria-label="@($"Remove {GetTagTextSafe(tag)}")" @onclick="() => RemoveTagAt(index)" @onclick:stopPropagation="true">
                             <Blazicon Svg="Lucide.X" class="h-3 w-3" />
                         </button>
                     }
@@ -32,11 +37,11 @@
             }
             else
             {
-                <span class="inline-flex items-center gap-1 rounded-md border border-border/40 bg-secondary px-2 py-0.5 text-xs font-medium text-secondary-foreground" @key="tag">
+                <span class="inline-flex items-center gap-1 rounded-md border border-border/40 bg-secondary px-2 py-0.5 text-xs font-medium text-secondary-foreground" @key="(tag, index)">
                     @GetTagTextSafe(tag)
                     @if (!Disabled)
                     {
-                        <button type="button" class="rounded-full hover:bg-foreground/20 focus:outline-none" aria-label="@($"Remove {GetTagTextSafe(tag)}")" @onclick="() => RemoveTag(tag)" @onclick:stopPropagation="true">
+                        <button type="button" class="rounded-full hover:bg-foreground/20 focus:outline-none" aria-label="@($"Remove {GetTagTextSafe(tag)}")" @onclick="() => RemoveTagAt(index)" @onclick:stopPropagation="true">
                             <Blazicon Svg="Lucide.X" class="h-3 w-3" />
                         </button>
                     }
@@ -46,7 +51,7 @@
     }
 
     <div class="relative flex-1 min-w-[80px]">
-        <input id="@_inputId"
+        <input id="@EffectiveId"
                type="text"
                role="combobox"
                class="w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed"
@@ -60,6 +65,7 @@
                aria-expanded="@(_showSuggestions && FilteredSuggestions.Count > 0 ? "true" : "false")"
                aria-controls="@_suggestionsId"
                aria-activedescendant="@ActiveDescendantId"
+               aria-describedby="@FormFieldDescribedBy"
                @oninput="OnInput"
                @onkeydown="OnKeyDown"
                @onfocus="() => _showSuggestions = FilteredSuggestions.Count > 0"
@@ -120,6 +126,18 @@
 @code {
     [CascadingParameter] private FormField.FormFieldContext? FormField { get; set; }
 
+    // aria-describedby on the input announces the FormField help/error to a screen
+    // reader.
+    private string? FormFieldDescribedBy => FormField?.DescribedBy;
+
+    // Adopt the FormField's generated id so the field's <label for> resolves to the
+    // inner text <input> the user types into (Base UI Field a11y), mirroring
+    // Input/Switch/Textarea/DatePicker. Null outside a FormField; empty guard avoids
+    // id="" if no id was generated. EffectiveId is the DOM id actually rendered, so
+    // all focus/popover/prevent-default interop must target it (not the raw _inputId).
+    private string? FormFieldControlId => string.IsNullOrEmpty(FormField?.ControlId) ? null : FormField!.ControlId;
+    private string EffectiveId => FormFieldControlId ?? _inputId;
+
     [Parameter] public List<TItem>? Tags { get; set; }
     [Parameter] public EventCallback<List<TItem>> TagsChanged { get; set; }
     [Parameter] public int MaxTags { get; set; }
@@ -170,7 +188,7 @@
             : null;
 
     /// <summary>Programmatically move focus to the inner text input.</summary>
-    public ValueTask FocusAsync() => Interop.FocusElement(_inputId);
+    public ValueTask FocusAsync() => Interop.FocusElement(EffectiveId);
     private readonly string _suggestionsId = LumeoIds.New("taginput-suggestions");
     private bool _suggestionsRegistered;
 
@@ -297,7 +315,7 @@
             case "Backspace":
                 if (string.IsNullOrEmpty(_inputValue) && Tags is { Count: > 0 })
                 {
-                    await RemoveTag(Tags[^1]);
+                    await RemoveTagAt(Tags.Count - 1);
                 }
                 break;
             case "Escape":
@@ -379,10 +397,15 @@
         await TagsChanged.InvokeAsync(Tags);
     }
 
-    private async Task RemoveTag(TItem tag)
+    // Remove a single tag by position. Keying removal on the index (rather than
+    // value-equality) means duplicate tags are removed one occurrence at a time —
+    // a value-equality Where(...) would strip EVERY equal tag when AllowDuplicates
+    // is true. The index comes from the render loop, so it is always in range for
+    // the list that produced the chip; the bounds guard is defensive only.
+    private async Task RemoveTagAt(int index)
     {
-        if (Tags is null) return;
-        Tags = Tags.Where(t => !EqualityComparer<TItem>.Default.Equals(t, tag)).ToList();
+        if (Tags is null || index < 0 || index >= Tags.Count) return;
+        Tags = Tags.Where((_, i) => i != index).ToList();
         await TagsChanged.InvokeAsync(Tags);
     }
 
@@ -392,12 +415,12 @@
         _inputValue = "";
         _showSuggestions = false;
         _activeSuggestion = -1;
-        await Interop.FocusElement(_inputId);
+        await Interop.FocusElement(EffectiveId);
     }
 
     private async Task FocusInput()
     {
-        if (!Disabled) await Interop.FocusElement(_inputId);
+        if (!Disabled) await Interop.FocusElement(EffectiveId);
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -412,7 +435,7 @@
             // IME composition commits (isComposing / keyCode 229) working.
             try
             {
-                await Interop.RegisterPreventDefaultKeys(_inputId, new[]
+                await Interop.RegisterPreventDefaultKeys(EffectiveId, new[]
                 {
                     new Lumeo.Services.PreventDefaultKeyRule("Enter", SkipComposing: true),
                     new Lumeo.Services.PreventDefaultKeyRule("ArrowDown"),
@@ -426,15 +449,15 @@
         }
         if (firstRender && AutoFocus)
         {
-            try { await Interop.FocusElement(_inputId); }
+            try { await Interop.FocusElement(EffectiveId); }
             catch (JSDisconnectedException) { }
         }
         if (_showSuggestions && !_suggestionsRegistered)
         {
             try
             {
-                await Interop.PositionFixed(_suggestionsId, _inputId, "start", false, "bottom");
-                await Interop.RegisterClickOutside(_suggestionsId, _inputId, async () =>
+                await Interop.PositionFixed(_suggestionsId, EffectiveId, "start", false, "bottom");
+                await Interop.RegisterClickOutside(_suggestionsId, EffectiveId, async () =>
                 {
                     _showSuggestions = false;
                     await InvokeAsync(StateHasChanged);
@@ -464,7 +487,7 @@
     {
         if (_suggestionsRegistered) await CleanupSuggestions();
         if (!_pdRegistered) return;
-        try { await Interop.UnregisterPreventDefaultKeys(_inputId); }
+        try { await Interop.UnregisterPreventDefaultKeys(EffectiveId); }
         catch (JSDisconnectedException) { }
         catch (ObjectDisposedException) { }
         catch (InvalidOperationException) { }

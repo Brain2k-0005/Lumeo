@@ -142,7 +142,21 @@
         }
         else
         {
+            // Whenever the step dialog is NOT rendered (Steps emptied during an
+            // async load flicker, or the parent set Open=false externally without
+            // going through Close()), drop the per-step UI state so a later
+            // refill / reopen re-establishes it from scratch:
+            //   • _focusedStep   — else focus is never moved back into the dialog
+            //     when it remounts at the SAME step (keyboard user stranded).
+            //   • _currentTargetSelector / _targetRect — else UpdateTargetRect
+            //     early-returns (selector unchanged) on reopen and the spotlight
+            //     points at a stale rect.
+            // This mirrors the reset that Close() already performs, so a
+            // parent-driven dismiss behaves symmetrically with the internal close.
             _currentStepConfig = null;
+            _focusedStep = -1;
+            _currentTargetSelector = null;
+            _targetRect = null;
         }
     }
 
@@ -223,7 +237,12 @@
             _currentStepConfig = Steps[CurrentStep];
             _currentTargetSelector = null; // Force re-fetch for new step
             await CurrentStepChanged.InvokeAsync(CurrentStep);
-            await UpdateTargetRect();
+            // Do NOT pre-fetch the rect here. Resetting _currentTargetSelector to
+            // null lets OnAfterRenderAsync own the full move sequence
+            // (scroll-into-view → LockScroll → UpdateTargetRect). Calling
+            // UpdateTargetRect() here would set _currentTargetSelector to the new
+            // step's selector before the render, making movingToNewTarget false,
+            // so an off-screen target was never scrolled into view on Next/Previous.
         }
     }
 
@@ -235,7 +254,8 @@
             _currentStepConfig = Steps[CurrentStep];
             _currentTargetSelector = null; // Force re-fetch for new step
             await CurrentStepChanged.InvokeAsync(CurrentStep);
-            await UpdateTargetRect();
+            // See HandleNext: OnAfterRenderAsync is the single owner of the
+            // scroll-into-view + lock + UpdateTargetRect sequence.
         }
     }
 

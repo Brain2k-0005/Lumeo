@@ -47,10 +47,12 @@
 
     @* Transfer buttons *@
     <div class="flex flex-col items-center justify-center gap-1.5">
-        <button type="button" class="@ButtonClass" @onclick="MoveToTarget" disabled="@(_selectedSource.Count == 0)">
+        <button type="button" class="@ButtonClass" @onclick="MoveToTarget" disabled="@(_selectedSource.Count == 0)"
+                aria-label="@L["Transfer.MoveRight"]" title="@L["Transfer.MoveRight"]">
             <Blazicon Svg="Lucide.ChevronRight" class="h-4 w-4" />
         </button>
-        <button type="button" class="@ButtonClass" @onclick="MoveToSource" disabled="@(_selectedTarget.Count == 0)">
+        <button type="button" class="@ButtonClass" @onclick="MoveToSource" disabled="@(_selectedTarget.Count == 0)"
+                aria-label="@L["Transfer.MoveLeft"]" title="@L["Transfer.MoveLeft"]">
             <Blazicon Svg="Lucide.ChevronLeft" class="h-4 w-4" />
         </button>
     </div>
@@ -122,6 +124,35 @@
     private string _targetSearch = "";
 
     private string CssClass => Cx.Merge("flex items-start gap-3", Class);
+
+    /// <summary>Reconcile the internal selection sets against the live Items on
+    /// every parameter change. A parent that refreshes SourceItems/TargetItems
+    /// (sort/filter/add/remove, or a same-content replace) must not leave behind
+    /// "ghost" selections that inflate the header count or skew select-all.
+    /// Guarded against the empty→refill flicker: an empty (or null) incoming
+    /// list does NOT prune, so an in-progress selection survives a transient
+    /// empty load rather than being silently wiped.</summary>
+    protected override void OnParametersSet()
+    {
+        PruneSelection(_selectedSource, SourceItems);
+        PruneSelection(_selectedTarget, TargetItems);
+    }
+
+    private static void PruneSelection(HashSet<string> selected, List<TransferItem>? items)
+    {
+        if (selected.Count == 0) return;
+        // Empty/null incoming list is treated as a transient (loading) state —
+        // keep the selection so an async refresh flicker can't clear it.
+        if (items is not { Count: > 0 }) return;
+        // Drop values that are no longer present in the list AND values whose
+        // item the parent has since flipped to Disabled. A now-disabled row must
+        // not stay stuck-selected: its checkbox would render checked+disabled
+        // (un-uncheckable), inflate the header count, skew select-all, and Move
+        // would silently leave it behind (Move excludes disabled rows).
+        var disabled = new HashSet<string>(items.Where(i => i.Disabled).Select(i => i.Value));
+        var valid = new HashSet<string>(items.Where(i => !i.Disabled).Select(i => i.Value));
+        selected.RemoveWhere(v => disabled.Contains(v) || !valid.Contains(v));
+    }
 
     private const string ButtonClass = "inline-flex items-center justify-center h-8 w-8 rounded-md border border-input bg-background hover:bg-accent hover:text-accent-foreground transition-colors focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed";
 
@@ -260,15 +291,22 @@
     {
         var source = SourceItems ?? [];
         var target = TargetItems ?? [];
-        // A selected row the parent flipped to Disabled must not move — it stays
-        // in the source list (matches the contract that disabled rows can't move).
-        var moved = source.Where(i => _selectedSource.Contains(i.Value) && !i.Disabled).ToList();
-        var remaining = source.Where(i => !_selectedSource.Contains(i.Value) || i.Disabled).ToList();
+        // Only move rows that are BOTH selected AND currently visible (passing
+        // the active search filter). A selected-but-filtered-out row stays put —
+        // moving rows the user can no longer see is surprising. A selected row
+        // the parent flipped to Disabled must not move either (it stays in the
+        // source list, matching the contract that disabled rows can't move).
+        var visible = new HashSet<string>(FilteredSourceItems.Select(i => i.Value));
+        var moved = source.Where(i => _selectedSource.Contains(i.Value) && visible.Contains(i.Value) && !i.Disabled).ToList();
+        var movedValues = new HashSet<string>(moved.Select(i => i.Value));
+        var remaining = source.Where(i => !movedValues.Contains(i.Value)).ToList();
         target = [..target, ..moved];
 
         SourceItems = remaining;
         TargetItems = target;
-        _selectedSource.Clear();
+        // Drop only the moved values from the selection; selected-but-filtered-out
+        // rows keep their selection so they're still checked after the search clears.
+        _selectedSource.RemoveWhere(movedValues.Contains);
 
         await SourceItemsChanged.InvokeAsync(SourceItems);
         await TargetItemsChanged.InvokeAsync(TargetItems);
@@ -279,13 +317,17 @@
     {
         var source = SourceItems ?? [];
         var target = TargetItems ?? [];
-        var moved = target.Where(i => _selectedTarget.Contains(i.Value) && !i.Disabled).ToList();
-        var remaining = target.Where(i => !_selectedTarget.Contains(i.Value) || i.Disabled).ToList();
+        // Only move rows that are BOTH selected AND currently visible (passing
+        // the active search filter) — see MoveToTarget for rationale.
+        var visible = new HashSet<string>(FilteredTargetItems.Select(i => i.Value));
+        var moved = target.Where(i => _selectedTarget.Contains(i.Value) && visible.Contains(i.Value) && !i.Disabled).ToList();
+        var movedValues = new HashSet<string>(moved.Select(i => i.Value));
+        var remaining = target.Where(i => !movedValues.Contains(i.Value)).ToList();
         source = [..source, ..moved];
 
         SourceItems = source;
         TargetItems = remaining;
-        _selectedTarget.Clear();
+        _selectedTarget.RemoveWhere(movedValues.Contains);
 
         await SourceItemsChanged.InvokeAsync(SourceItems);
         await TargetItemsChanged.InvokeAsync(TargetItems);

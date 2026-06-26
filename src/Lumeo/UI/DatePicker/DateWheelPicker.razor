@@ -5,7 +5,7 @@
 
 <div class="@RootCssClass" @attributes="AdditionalAttributes" style="@RootStyle">
     @* Center selection indicator (overlays all columns) *@
-    <div class="absolute left-0 right-0 top-1/2 -translate-y-1/2 h-10 border-y border-primary/30 pointer-events-none"></div>
+    <div class="absolute start-0 end-0 top-1/2 -translate-y-1/2 h-10 border-y border-primary/30 pointer-events-none"></div>
 
     @* Day column *@
     <div class="flex-1 overflow-y-scroll snap-y snap-mandatory scrollbar-none h-full"
@@ -96,6 +96,13 @@
     // echoed back by the parent don't count) and re-scroll when it changes.
     private DateOnly? _lastSyncedValue;
     private bool _resyncPending;
+    // The year column's row set is rebuilt from Min/Max on every cascade. When
+    // the bounds shift (even though Value is unchanged) the year list grows or
+    // slides, so the previously-seeded scroll offset no longer centres the
+    // selected year — track the last seen bounds and force a resync when they
+    // move so OnAfterRenderAsync re-runs ScrollColumnsToSelectionAsync.
+    private int? _lastMinYear;
+    private int? _lastMaxYear;
 
     private CultureInfo EffectiveCulture => Culture ?? CultureInfo.CurrentCulture;
 
@@ -118,6 +125,15 @@
         var minYear = Min?.Year ?? DateTime.Today.Year - 50;
         var maxYear = Max?.Year ?? DateTime.Today.Year + 50;
         if (maxYear < minYear) maxYear = minYear;
+
+        // A year-range change reshapes the year column geometry; the previously
+        // seeded scroll offset becomes stale, so re-position on the next render.
+        if (minYear != _lastMinYear || maxYear != _lastMaxYear)
+        {
+            _lastMinYear = minYear;
+            _lastMaxYear = maxYear;
+            _resyncPending = true;
+        }
 
         _years = Enumerable.Range(minYear, maxYear - minYear + 1).ToList();
         _daysInMonth = DateTime.DaysInMonth(_year, _month);
@@ -204,9 +220,18 @@
     {
         try
         {
-            var d = new DateOnly(_year, _month, _day);
+            var raw = new DateOnly(_year, _month, _day);
+            var d = raw;
             if (Min.HasValue && d < Min.Value) d = Min.Value;
             if (Max.HasValue && d > Max.Value) d = Max.Value;
+            // The user scrolled to an out-of-range value that we just clamped:
+            // the columns are parked on `raw`, but the committed value is the
+            // clamp. Force a re-scroll so the wheel snaps back to the clamped
+            // selection instead of staying stranded on an out-of-range row.
+            if (d != raw)
+            {
+                _resyncPending = true;
+            }
             _year = d.Year; _month = d.Month; _day = d.Day;
             // Our own commit — when the parent echoes it back through the
             // Value parameter it is not an external change, so pre-mark it
@@ -220,6 +245,20 @@
             // re-clamp days on month/year change, so this branch is unreachable
             // under normal flow.
         }
+    }
+
+    // Test seam (state-on-data-change #55): drives a deterministic self-commit to
+    // a specific day/month/year, mirroring what the debounced scroll handlers do
+    // when the user settles each column. The real scroll path depends on JS
+    // scroll offsets + a timer debounce that bUnit cannot reproduce; this runs
+    // the same RaiseChange so the clamp-resync regression can be asserted.
+    internal Task CommitSelectionForTest(int year, int month, int day)
+    {
+        _year = year;
+        _month = month;
+        _daysInMonth = DateTime.DaysInMonth(_year, _month);
+        _day = Math.Clamp(day, 1, _daysInMonth);
+        return RaiseChange();
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)

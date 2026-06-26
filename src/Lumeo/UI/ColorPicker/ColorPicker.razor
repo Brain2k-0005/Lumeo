@@ -14,7 +14,7 @@
         @Label
         @if (Required)
         {
-            <span class="text-destructive ml-0.5">*</span>
+            <span class="text-destructive ms-0.5">*</span>
         }
     </label>
 }
@@ -22,16 +22,21 @@
 <CascadingValue Value="context" IsFixed="false">
     <div id="@_wrapperId" class="@ContainerClass" @attributes="AdditionalAttributes">
         <button type="button"
+                id="@FormFieldControlId"
                 name="@Name"
                 aria-required="@Required.ToString().ToLower()"
                 aria-invalid="@EffectiveInvalid.ToString().ToLower()"
+                aria-describedby="@FormFieldDescribedBy"
+                aria-haspopup="dialog"
+                aria-expanded="@Open.ToString().ToLower()"
+                aria-controls="@(Open ? _contentId : null)"
                 class="@TriggerClass"
                 @onclick="ToggleOpen"
                 disabled="@Disabled"
                 aria-label="@L["ColorPicker.PickColor"]">
             <span class="lumeo-cp-chip h-5 w-5 rounded-sm border border-border/40 shrink-0" style="@ChipStyle"></span>
-            <span class="text-sm text-foreground font-mono">@DisplayHex</span>
-            <Blazicon Svg="Lucide.ChevronDown" class="@($"h-4 w-4 text-muted-foreground ml-auto transition-transform duration-200 {(Open ? "rotate-180" : "")}")" />
+            <span class="text-sm text-foreground font-mono">@DisplayHexField</span>
+            <Blazicon Svg="Lucide.ChevronDown" class="@($"h-4 w-4 text-muted-foreground ms-auto transition-transform duration-200 {(Open ? "rotate-180" : "")}")" />
         </button>
 
         @if (Open)
@@ -41,8 +46,16 @@
 
                 @* Saturation-Value 2D picker *@
                 <div id="@_svId"
-                     class="lumeo-cp-sv relative w-full rounded-md overflow-hidden cursor-crosshair touch-none select-none"
-                     style="@SvBackgroundStyle">
+                     class="lumeo-cp-sv relative w-full rounded-md overflow-hidden cursor-crosshair touch-none select-none focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring"
+                     style="@SvBackgroundStyle"
+                     tabindex="0"
+                     role="slider"
+                     aria-label="@($"{L["ColorPicker.Saturation"]} / {L["ColorPicker.Value"]}")"
+                     aria-valuemin="0"
+                     aria-valuemax="100"
+                     aria-valuenow="@_v"
+                     aria-valuetext="@($"{L["ColorPicker.Saturation"]} {_s}%, {L["ColorPicker.Value"]} {_v}%")"
+                     @onkeydown="HandleSvKeyDown">
                     @* Bug A — NOT a theme bug: rgba(255,255,255) white→transparent and rgba(0,0,0) black→transparent
                        are HSV color-space primitives (saturation and value axes). They are mathematically defined
                        constants for the SV canvas and must not use CSS theme variables. *@
@@ -77,7 +90,7 @@
                 @* Preview + Hex *@
                 <div class="mt-3 flex items-center gap-2">
                     <div class="lumeo-cp-chip h-9 w-9 rounded-md border border-border/40 shrink-0" style="@ChipStyle"></div>
-                    <input type="text" value="@DisplayHex"
+                    <input type="text" value="@DisplayHexField"
                            class="flex h-9 w-full min-w-0 rounded-md border border-border/60 bg-transparent px-2 text-xs font-mono uppercase focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring"
                            @onchange="OnHexInput" maxlength="9"
                            aria-label="@L["ColorPicker.HexValue"]" />
@@ -111,17 +124,24 @@
                         <div class="flex flex-wrap gap-1.5">
                             @foreach (var preset in Presets)
                             {
-                                <button type="button"
-                                        class="@GetSwatchClass()"
-                                        style="background-color: @preset"
-                                        @onclick="() => SelectColor(preset)"
-                                        title="@preset"
-                                        aria-label="@preset">
-                                    @if (string.Equals(Value, preset, StringComparison.OrdinalIgnoreCase))
-                                    {
-                                        <Blazicon Svg="Lucide.Check" class="@CheckIconClass(preset)" />
-                                    }
-                                </button>
+                                <Tooltip>
+                                    <TooltipTrigger AsChild>
+                                        <ChildContentSlot Context="slot">
+                                            <button type="button"
+                                                    class="@GetSwatchClass()"
+                                                    style="background-color: @preset"
+                                                    @onclick="() => SelectColor(preset)"
+                                                    aria-label="@preset"
+                                                    @attributes="slot.Attributes">
+                                                @if (string.Equals(Value, preset, StringComparison.OrdinalIgnoreCase))
+                                                {
+                                                    <Blazicon Svg="Lucide.Check" class="@CheckIconClass(preset)" />
+                                                }
+                                            </button>
+                                        </ChildContentSlot>
+                                    </TooltipTrigger>
+                                    <TooltipContent>@preset</TooltipContent>
+                                </Tooltip>
                             }
                         </div>
                     </div>
@@ -158,6 +178,9 @@
 
     private bool EffectiveInvalid => Invalid || FormField?.HasError == true;
     private bool InsideFormField => FormField is not null;
+
+    private string? FormFieldControlId => string.IsNullOrEmpty(FormField?.ControlId) ? null : FormField!.ControlId;
+    private string? FormFieldDescribedBy => FormField?.DescribedBy;
 
     [Parameter] public string? Value { get; set; }
     [Parameter] public EventCallback<string> ValueChanged { get; set; }
@@ -199,7 +222,19 @@
         ? $"rgba({_r}, {_g}, {_b}, {(_alpha / 100.0).ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)})"
         : SolidColorHex;
     private string SolidColorHex => $"#{_r:X2}{_g:X2}{_b:X2}";
-    private string DisplayHex => Value ?? SolidColorHex;
+
+    // Battle-wave2 #27 (medium, edge-data) — the hex <input> and trigger
+    // caption previously rendered the raw bound Value, which is an rgba(...)
+    // string whenever ShowAlpha is on and alpha is below 100. Dumping that
+    // rgba string into the *hex* <input> rendered nonsense AND got silently
+    // chopped by the input's maxlength="9" (e.g. "rgba(255, 0, 0, 0.5)" →
+    // "rgba(255,"). DisplayHexField always projects a real hex: #RRGGBBAA when
+    // alpha is partial (exactly 9 chars, so it fits maxlength="9" and
+    // round-trips through OnHexInput/SyncStateFromHex, which already accept
+    // length-9 hex), otherwise the compact #RRGGBB.
+    private string DisplayHexField => ShowAlpha && _alpha < 100
+        ? $"#{_r:X2}{_g:X2}{_b:X2}{(int)Math.Round(_alpha / 100.0 * 255):X2}"
+        : SolidColorHex;
 
     private string SvBackgroundStyle => $"background-color: hsl({_h}, 100%, 50%)";
     private string SvIndicatorStyle => $"left: {_s.ToString(System.Globalization.CultureInfo.InvariantCulture)}%; top: {(100 - _v).ToString(System.Globalization.CultureInfo.InvariantCulture)}%";
@@ -216,11 +251,50 @@
     protected override void OnParametersSet()
     {
         var current = Value ?? "#000000";
-        if (!string.Equals(current, _lastSyncedValue, StringComparison.OrdinalIgnoreCase))
+        // Battle-wave2 #147 (low, state-on-data-change) — compare colours by
+        // PARSED equivalence, not by raw string. The parent often feeds the
+        // value back in a different string form than the component emitted
+        // (e.g. we emit "rgba(255, 0, 0, 0.5)" with spaces but a normalising
+        // consumer pushes back "rgba(255,0,0,0.5)" or "#FF000080", or hands us
+        // "rgb(255,255,255)" for our "#FFFFFF"). An OrdinalIgnoreCase string
+        // compare treats those as a real change and re-runs SyncStateFromHex,
+        // whose RgbToHsv re-derivation can JUMP the in-progress hue / SV
+        // position (hue is ambiguous for achromatic colours, so a hue picked
+        // on white snaps back to 0). Skip the re-sync whenever the incoming
+        // colour resolves to the RGB(+alpha) we already hold so _h/_s/_v are
+        // preserved; only re-sync on a genuinely different colour.
+        if (string.Equals(current, _lastSyncedValue, StringComparison.OrdinalIgnoreCase))
         {
-            SyncStateFromHex(current);
-            _lastSyncedValue = current;
+            return;
         }
+
+        if (TryParseColor(current, out var cr, out var cg, out var cb, out var ca)
+            && cr == _r && cg == _g && cb == _b && (!ShowAlpha || ca == _alpha))
+        {
+            // Same colour, different string form — adopt the new canonical
+            // string but keep the existing _h/_s/_v so the picker doesn't jump.
+            _lastSyncedValue = current;
+            return;
+        }
+
+        SyncStateFromHex(current);
+        _lastSyncedValue = current;
+    }
+
+    // Parses either hex (#RGB / #RRGGBB / #RRGGBBAA) or rgb()/rgba() into
+    // r/g/b plus an alpha percentage. Plain hex / rgb() report alpha as 100.
+    private static bool TryParseColor(string value, out int r, out int g, out int b, out int alphaPct)
+    {
+        if (TryParseHex(value, out r, out g, out b))
+        {
+            alphaPct = 100;
+            if (value.Length == 9 && int.TryParse(value.AsSpan(7, 2), System.Globalization.NumberStyles.HexNumber, null, out var ah))
+            {
+                alphaPct = (int)Math.Round(ah / 255.0 * 100.0);
+            }
+            return true;
+        }
+        return TryParseRgba(value, out r, out g, out b, out alphaPct);
     }
 
     private async Task ToggleOpen() { if (!Disabled) await SetOpen(!Open); }
@@ -310,6 +384,39 @@
         if (e.Key == "Escape") await SetOpen(false);
     }
 
+    // The Saturation/Value canvas is a pointer-drag surface (RegisterSvDrag),
+    // which is mouse-only — keyboard users could never reach the inner 2D
+    // axis (WCAG 2.1.1). The div is now a focusable role="slider": Arrow
+    // Left/Right walk saturation (X), Arrow Up/Down walk value (Y), Shift
+    // multiplies the step by 10, and Home/End clamp the focused axis. This
+    // mirrors the keyboard travel the native hue/alpha range inputs already
+    // provide. The page-scroll default for these keys is suppressed via the
+    // RegisterPreventDefaultKeys interop (see OnAfterRenderAsync) so Tab still
+    // moves focus out of the canvas normally.
+    private async Task HandleSvKeyDown(KeyboardEventArgs e)
+    {
+        var step = e.ShiftKey ? 10 : 1;
+        int newS = _s, newV = _v;
+
+        switch (e.Key)
+        {
+            case "ArrowLeft":  newS = Math.Clamp(_s - step, 0, 100); break;
+            case "ArrowRight": newS = Math.Clamp(_s + step, 0, 100); break;
+            case "ArrowDown":  newV = Math.Clamp(_v - step, 0, 100); break;
+            case "ArrowUp":    newV = Math.Clamp(_v + step, 0, 100); break;
+            case "Home":       newS = 0;   break;
+            case "End":        newS = 100; break;
+            case "PageDown":   newV = 0;   break;
+            case "PageUp":     newV = 100; break;
+            default: return;
+        }
+
+        if (newS == _s && newV == _v) return;
+        _s = newS;
+        _v = newV;
+        await ApplyHsv();
+    }
+
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (Open && !_registered)
@@ -327,6 +434,19 @@
                 await ApplyHsv();
                 await InvokeAsync(StateHasChanged);
             });
+            // The arrow / Home / End / PageUp / PageDown keys drive the SV
+            // canvas (HandleSvKeyDown); suppress their native page-scroll so
+            // the focused picker doesn't scroll the page out from under the
+            // user. Tab is deliberately NOT in the list so focus can still
+            // leave the canvas. Mirrors the Rating component's a11y pattern.
+            try
+            {
+                await Interop.RegisterPreventDefaultKeys(
+                    _svId,
+                    new[] { "ArrowDown", "ArrowRight", "ArrowUp", "ArrowLeft", "Home", "End", "PageUp", "PageDown" }
+                        .Select(k => new Lumeo.Services.PreventDefaultKeyRule(k)).ToArray());
+            }
+            catch (JSDisconnectedException) { }
             // Focus management (#191) — mirror the Popover Wave-1 fix. The trap
             // moves focus into the popover on open (so the content's @onkeydown
             // Escape handler is reachable WITHOUT a preliminary click), cycles
@@ -346,6 +466,7 @@
         try { await Interop.UnpositionFixed(_contentId); } catch (JSDisconnectedException) { }
         try { await Interop.UnregisterClickOutside(_contentId); } catch (JSDisconnectedException) { }
         try { await Interop.UnregisterSvDrag(_svId); } catch (JSDisconnectedException) { }
+        try { await Interop.UnregisterPreventDefaultKeys(_svId); } catch (JSDisconnectedException) { }
         try { await Interop.RemoveFocusTrap(_contentId); } catch (JSDisconnectedException) { }
         _registered = false;
     }

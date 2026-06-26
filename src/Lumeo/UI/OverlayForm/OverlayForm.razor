@@ -36,7 +36,7 @@
        emitting an empty shell. The root still carries AdditionalAttributes so
        the library-wide contract tests, which render every component with
        default parameters, keep passing. *@
-    <div class="@CssClass" @attributes="AdditionalAttributes">
+    <div class="@CssClass" @attributes="AttributesWithoutClass">
         <div role="alert" class="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
             <strong class="font-semibold">OverlayForm:</strong>
             no <code class="font-mono">Model</code> was supplied. Set the required
@@ -46,7 +46,7 @@
 }
 else
 {
-    <EditForm EditContext="@_editContext" OnValidSubmit="OnValidSubmit" OnInvalidSubmit="OnInvalidSubmit" class="@CssClass" @attributes="AdditionalAttributes">
+    <EditForm EditContext="@_editContext" OnValidSubmit="OnValidSubmit" OnInvalidSubmit="OnInvalidSubmit" class="@CssClass" @attributes="AttributesWithoutClass">
         @if (Validator is not null)
         {
             @Validator
@@ -108,16 +108,51 @@ else
         // the contract-test path renders every component with no params.
         if (Model is null)
         {
-            _editContext = null;
-            _lastModel = null;
+            // A transient null (e.g. a parent that briefly clears Model
+            // while reloading and then restores the SAME instance) must NOT
+            // wipe the EditContext — that would discard validation messages
+            // and field-modified state. Defer rendering of the form for this
+            // pass, but KEEP _editContext and _lastModel so that when the same
+            // instance returns the ReferenceEquals check below stays true and
+            // the existing context is reused rather than rebuilt.
+            //
+            // When _editContext is null here, no Model was ever supplied, so
+            // the diagnostic shell renders for the genuine misconfiguration.
             return;
         }
-        if (!ReferenceEquals(_lastModel, Model))
+        // Rebuild only on a genuine model-instance change. A same-instance
+        // round-trip (after a transient null) keeps the original context.
+        if (_editContext is null || !ReferenceEquals(_lastModel, Model))
         {
             _editContext = new EditContext(Model);
             _lastModel = Model;
         }
     }
 
-    private string CssClass => Cx.Merge("flex flex-col h-full min-h-0", Class);
+    // Route a caller-supplied `class` (whether via the typed Class parameter or
+    // splatted through AdditionalAttributes) through Cx.Merge so it COMPOSES with
+    // the baked-in structural classes (last-wins for conflicting utilities) rather
+    // than clobbering them. Without this, the @attributes splat — rendered after the
+    // explicit class= — would overwrite the structural classes entirely, defeating
+    // the component's purpose (flex-col + min-h-0 scroll shape).
+    private string CssClass => Cx.Merge("flex flex-col h-full min-h-0", Class, SplatClass);
+
+    private string? SplatClass =>
+        AdditionalAttributes is not null && AdditionalAttributes.TryGetValue("class", out var c)
+            ? c as string
+            : null;
+
+    // The splatted `class` is merged into CssClass above; strip it from the splat so
+    // it can't override the explicit class= attribute on the rendered element.
+    private IReadOnlyDictionary<string, object>? AttributesWithoutClass
+    {
+        get
+        {
+            if (AdditionalAttributes is null || !AdditionalAttributes.ContainsKey("class"))
+                return AdditionalAttributes;
+            return AdditionalAttributes
+                .Where(kv => kv.Key != "class")
+                .ToDictionary(kv => kv.Key, kv => kv.Value);
+        }
+    }
 }

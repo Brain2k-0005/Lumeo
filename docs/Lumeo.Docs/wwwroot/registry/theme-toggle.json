@@ -9,7 +9,9 @@
   "files": [
     "UI/ThemeToggle/ThemeToggle.razor"
   ],
-  "dependencies": [],
+  "dependencies": [
+    "tooltip"
+  ],
   "packageDependencies": [
     "Blazicons.Lucide"
   ],
@@ -43,7 +45,8 @@
         "default": null,
         "description": null,
         "isCascading": false,
-        "captureUnmatched": false
+        "captureUnmatched": false,
+        "isEditorRequired": false
       },
       {
         "name": "AdditionalAttributes",
@@ -51,7 +54,8 @@
         "default": null,
         "description": null,
         "isCascading": false,
-        "captureUnmatched": true
+        "captureUnmatched": true,
+        "isEditorRequired": false
       }
     ],
     "events": [],
@@ -81,8 +85,33 @@
       }
     ],
     "subComponents": {},
+    "a11y": {
+      "roles": [],
+      "ariaAttributes": [
+        "aria-hidden",
+        "aria-label",
+        "aria-pressed"
+      ],
+      "keys": [],
+      "keyboardInteractive": false,
+      "focusManaged": false
+    },
     "parseFailed": false,
     "parseError": null
+  },
+  "testCoverage": {
+    "tier": 3,
+    "files": 2,
+    "tests": 14,
+    "relatedFiles": 0,
+    "render": true,
+    "behavior": true,
+    "a11y": true,
+    "keyboard": false,
+    "scale": false,
+    "e2e": false,
+    "e2eFiles": [],
+    "contract": "smoke"
   },
   "$schema": "https://lumeo.nativ.sh/registry-component-schema.json",
   "key": "theme-toggle",
@@ -96,7 +125,7 @@
   "source": [
     {
       "path": "UI/ThemeToggle/ThemeToggle.razor",
-      "content": "@namespace Lumeo\n@using Lumeo.Services\n@using Blazicons\n@implements IDisposable\n@inject ThemeService Theme\n@inject Lumeo.Services.Localization.ILumeoLocalizer L\n\n<button type=\"button\"\n        class=\"@CssClass\"\n        @onclick=\"ToggleTheme\"\n        title=\"@L[\"Theme.Toggle\"]\"\n        aria-label=\"@L[\"Theme.Toggle\"]\"\n        aria-pressed=\"@_isDark.ToString().ToLowerInvariant()\"\n        @attributes=\"AdditionalAttributes\">\n    @if (_isDark)\n    {\n        <Blazicon Svg=\"Lucide.Sun\" class=\"h-4 w-4\" aria-hidden=\"true\" />\n    }\n    else\n    {\n        <Blazicon Svg=\"Lucide.Moon\" class=\"h-4 w-4\" aria-hidden=\"true\" />\n    }\n</button>\n\n@code {\n    [Parameter] public string? Class { get; set; }\n    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }\n\n    private bool _isDark;\n\n    private string CssClass => Cx.Merge(\n        \"inline-flex items-center justify-center h-9 w-9 cursor-pointer rounded-md border border-input bg-background shadow-sm hover:bg-accent hover:text-accent-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2\",\n        Class);\n\n    protected override async Task OnAfterRenderAsync(bool firstRender)\n    {\n        if (firstRender)\n        {\n            try\n            {\n                await Theme.InitializeAsync();\n            }\n            catch (JSDisconnectedException) { return; }\n            catch (ObjectDisposedException) { return; }\n            _isDark = Theme.IsDark;\n            Theme.OnThemeChanged += OnThemeChanged;\n            StateHasChanged();\n        }\n    }\n\n    private async Task ToggleTheme()\n    {\n        _isDark = !_isDark;\n        await Theme.ToggleModeAsync();\n    }\n\n    private void OnThemeChanged()\n    {\n        _isDark = Theme.IsDark;\n        InvokeAsync(StateHasChanged);\n    }\n\n    public void Dispose()\n    {\n        Theme.OnThemeChanged -= OnThemeChanged;\n    }\n}\n"
+      "content": "@namespace Lumeo\n@using Lumeo.Services\n@using Blazicons\n@implements IDisposable\n@inject ThemeService Theme\n@inject Lumeo.Services.Localization.ILumeoLocalizer L\n\n<Tooltip>\n    <TooltipTrigger AsChild>\n        <ChildContentSlot Context=\"slot\">\n            <button type=\"button\"\n                    class=\"@CssClass\"\n                    @onclick=\"ToggleTheme\"\n                    aria-label=\"@L[\"Theme.Toggle\"]\"\n                    aria-pressed=\"@_isDark.ToString().ToLowerInvariant()\"\n                    @attributes=\"MergeAttrs(slot.Attributes)\">\n                @if (_isDark)\n                {\n                    <Blazicon Svg=\"Lucide.Sun\" class=\"h-4 w-4\" aria-hidden=\"true\" />\n                }\n                else\n                {\n                    <Blazicon Svg=\"Lucide.Moon\" class=\"h-4 w-4\" aria-hidden=\"true\" />\n                }\n            </button>\n        </ChildContentSlot>\n    </TooltipTrigger>\n    <TooltipContent>@L[\"Theme.Toggle\"]</TooltipContent>\n</Tooltip>\n\n@code {\n    [Parameter] public string? Class { get; set; }\n    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }\n\n    private bool _isDark;\n\n    // Merge the consumer's AdditionalAttributes with the Tooltip AsChild slot's\n    // attributes (aria-describedby while open) onto the single button element.\n    private Dictionary<string, object> MergeAttrs(IReadOnlyDictionary<string, object> slotAttrs)\n    {\n        var d = new Dictionary<string, object>();\n        if (AdditionalAttributes is not null)\n            foreach (var kv in AdditionalAttributes) d[kv.Key] = kv.Value;\n        foreach (var kv in slotAttrs) d[kv.Key] = kv.Value;\n        return d;\n    }\n\n    private string CssClass => Cx.Merge(\n        \"inline-flex items-center justify-center h-9 w-9 cursor-pointer rounded-md border border-input bg-background shadow-sm hover:bg-accent hover:text-accent-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2\",\n        Class);\n\n    protected override async Task OnAfterRenderAsync(bool firstRender)\n    {\n        if (firstRender)\n        {\n            try\n            {\n                await Theme.InitializeAsync();\n            }\n            catch (JSDisconnectedException) { return; }\n            catch (ObjectDisposedException) { return; }\n            _isDark = Theme.IsDark;\n            Theme.OnThemeChanged += OnThemeChanged;\n            StateHasChanged();\n        }\n    }\n\n    private async Task ToggleTheme()\n    {\n        _isDark = !_isDark;\n        await Theme.ToggleModeAsync();\n    }\n\n    private void OnThemeChanged()\n    {\n        _isDark = Theme.IsDark;\n        InvokeAsync(StateHasChanged);\n    }\n\n    public void Dispose()\n    {\n        Theme.OnThemeChanged -= OnThemeChanged;\n    }\n}\n"
     }
   ],
   "slots": [],
@@ -111,9 +140,15 @@
     }
   ],
   "cascadingDependencies": [],
-  "relatedComponents": [],
+  "relatedComponents": [
+    {
+      "name": "Tooltip",
+      "reason": "used internally"
+    }
+  ],
   "keyboardInteractions": [],
   "tests": [
+    "tests/Lumeo.Tests/Components/ThemeToggle/ThemeToggleBehaviorTests.cs",
     "tests/Lumeo.Tests/Components/ThemeToggle/ThemeToggleTests.cs"
   ],
   "mdSummary": "# ThemeToggle\n\nDark/light mode toggle button.\n\n**Package:** `Lumeo` · **Category:** Utility\n**Docs:** https://lumeo.nativ.sh/components/theme-toggle\n\n## Parameters\n| Owner | Name | Type | Default | Description |\n|---|---|---|---|---|\n| ThemeToggle | Class | `string?` | `` |  |\n| ThemeToggle | AdditionalAttributes | `Dictionary<string, object>?` | `` |  |\n\n## Slots\n- (none)\n\n## Events\n- (none)\n\n## Sub-components\n- (none)\n\n## Cascading values it expects\n- (none)\n\n## Services it injects\n- `ThemeService` ()\n- `ILumeoLocalizer` (Lumeo.Services.Localization)\n\n## Keyboard\n—\n\n## Example\n```razor\n<ThemeToggle />\n```\n\n## CSS variables\n`--color-accent`, `--color-accent-foreground`, `--color-background`, `--color-input`, `--color-ring`, `--radius`\n\n## Files\n- `UI/ThemeToggle/ThemeToggle.razor`\n"

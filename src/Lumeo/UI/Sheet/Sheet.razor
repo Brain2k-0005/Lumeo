@@ -1,7 +1,7 @@
 @namespace Lumeo
 
 @{
-    var context = new SheetContext(Open, EventCallback.Factory.Create<bool>(this, SetOpen), _titleId, _descriptionId, TryDismiss);
+    var context = new SheetContext(Open, EventCallback.Factory.Create<bool>(this, SetOpen), _titleId, _descriptionId, TryDismiss, _descriptionRegistry, RegisterDescription);
 }
 
 <CascadingValue Value="context" IsFixed="false">
@@ -31,6 +31,14 @@
     private readonly string _titleId = LumeoIds.New("sheet-title");
     private readonly string _descriptionId = LumeoIds.New("sheet-desc");
 
+    // Tracks whether a <SheetDescription> is actually present in the tree. A
+    // mutable holder (not a record field) because the cascaded context is
+    // rebuilt every render, but the registration must persist across renders.
+    // Mirrors AlertDialog's DescriptionRegistry — without this SheetContent
+    // would emit a dangling aria-describedby IDREF whenever no description is
+    // rendered (e.g. every service-opened overlay).
+    private readonly SheetDescriptionRegistry _descriptionRegistry = new();
+
     private async Task SetOpen(bool value)
     {
         Open = value;
@@ -49,5 +57,29 @@
         return true;
     }
 
-    public record SheetContext(bool IsOpen, EventCallback<bool> SetOpen, string TitleId, string DescriptionId, Func<string, Task<bool>> TryDismiss);
+    // Called by SheetDescription on init so SheetContent only wires
+    // aria-describedby when a description actually exists (no dangling IDREF).
+    // Re-renders so the content's aria-describedby picks up the registration on
+    // the next pass (child OnInitialized runs after the parent's first render).
+    private void RegisterDescription()
+    {
+        if (!_descriptionRegistry.HasDescription)
+        {
+            _descriptionRegistry.HasDescription = true;
+            StateHasChanged();
+        }
+    }
+
+    public record SheetContext(bool IsOpen, EventCallback<bool> SetOpen, string TitleId, string DescriptionId, Func<string, Task<bool>> TryDismiss, SheetDescriptionRegistry DescriptionRegistry, Action RegisterDescription);
+
+    /// <summary>
+    /// Persistent, mutable holder that survives the per-render rebuild of
+    /// <see cref="SheetContext"/>. Lets <see cref="SheetContent"/> know whether a
+    /// <see cref="SheetDescription"/> was rendered so it can avoid emitting a
+    /// dangling <c>aria-describedby</c> IDREF (mirrors the AlertDialog pattern).
+    /// </summary>
+    public sealed class SheetDescriptionRegistry
+    {
+        public bool HasDescription { get; set; }
+    }
 }

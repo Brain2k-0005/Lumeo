@@ -24,18 +24,76 @@
 @code {
     [Parameter] public int VisibilityThreshold { get; set; } = 300;
     [Parameter] public bool Disabled { get; set; }
+
+    /// <summary>
+    /// Optional CSS selector for a scrollable container to track (and scroll back
+    /// to the top of) instead of the window. When <c>null</c> (the default) the
+    /// component observes window/document scrolling. (#98)
+    /// </summary>
+    [Parameter] public string? Target { get; set; }
+
     [Parameter] public RenderFragment? ChildContent { get; set; }
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     private bool _visible;
+    private bool _registered;
+    private bool _hasRendered;
+    private int _registeredThreshold = -1;
+    private string? _registeredTarget;
     private readonly string _id = LumeoIds.New("backtotop");
 
-    private string CssClass => Cx.Merge("fixed bottom-6 right-6 z-50 flex h-10 w-10 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg transition-all hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-2", Class);
+    private string CssClass => Cx.Merge("fixed bottom-6 end-6 z-50 flex h-10 w-10 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg transition-all hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-2", Class);
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (!firstRender) return;
+        _hasRendered = true;
+        // Disabled "disables scroll tracking entirely": don't even register the JS
+        // observer (no window scroll listener, no JS↔.NET interop boundary). A later
+        // runtime toggle is handled in OnParametersSetAsync. (#188)
+        if (Disabled) return;
+        await RegisterAsync();
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        // Honour a runtime Disabled toggle. When it flips to true, tear down the
+        // observer so scroll tracking truly stops; when it flips back to false,
+        // (re)register. This only acts after the first render has wired up the JS
+        // module/id, mirroring the threshold/target re-registration path. (#188)
+        if (Disabled)
+        {
+            if (_registered)
+            {
+                await UnregisterAsync();
+            }
+            return;
+        }
+
+        // Not disabled. Register if we skipped the initial registration because we
+        // were disabled at first render, or re-register when VisibilityThreshold/
+        // Target changed at runtime. registerBackToTop tears down the previous
+        // listener for the same id, so no Unregister needed before re-registering.
+        if (!_registered)
+        {
+            // Defer to OnAfterRenderAsync for the very first registration so the JS
+            // module/id exist; only register here once a prior render has run.
+            if (_hasRendered)
+            {
+                await RegisterAsync();
+            }
+            return;
+        }
+
+        if (VisibilityThreshold != _registeredThreshold || Target != _registeredTarget)
+        {
+            await RegisterAsync();
+        }
+    }
+
+    private async Task RegisterAsync()
+    {
         try
         {
             await Interop.RegisterBackToTop(_id, VisibilityThreshold, async (visible) =>
@@ -45,15 +103,37 @@
                     _visible = visible;
                     await InvokeAsync(StateHasChanged);
                 }
-            });
+            }, Target);
+            _registered = true;
+            _registeredThreshold = VisibilityThreshold;
+            _registeredTarget = Target;
         }
         catch (JSDisconnectedException) { }
         catch (ObjectDisposedException) { }
     }
 
+    private async Task UnregisterAsync()
+    {
+        try
+        {
+            await Interop.UnregisterBackToTop(_id);
+        }
+        catch (JSDisconnectedException) { }
+        catch (ObjectDisposedException) { }
+        finally
+        {
+            _registered = false;
+            _registeredThreshold = -1;
+            _registeredTarget = null;
+            // The observer is gone, so no callback can flip us visible again; reset
+            // so a later re-enable starts cleanly hidden.
+            _visible = false;
+        }
+    }
+
     private async Task ScrollToTop()
     {
-        await Interop.ScrollToTop();
+        await Interop.ScrollToTop(Target);
     }
 
     public async ValueTask DisposeAsync()

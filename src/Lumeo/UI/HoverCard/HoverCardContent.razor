@@ -24,7 +24,11 @@
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     private readonly string _contentId = LumeoIds.New("hovercard-content");
-    private bool _positioned;
+    // battle-wave2 #80 (state-on-data-change) — track the last anchor we actually
+    // positioned against instead of a one-shot bool. A Side/Align change while the
+    // card is OPEN must re-run PositionFixed; the old `_positioned` latch pinned the
+    // card to its first-open placement forever. null == not currently positioned.
+    private (string Side, string Align)? _appliedAnchor;
 
     private string CssClass => Cx.Merge(
         "fixed z-50 w-64 rounded-md border border-border/60 bg-popover p-4 text-popover-foreground shadow-lg outline-none",
@@ -34,11 +38,11 @@
 
     private string ArrowClasses => Side switch
     {
-        Lumeo.Side.Top => "absolute left-1/2 top-full -translate-x-1/2 -translate-y-1/2 rotate-45 h-2.5 w-2.5 bg-popover border-b border-r border-border/60",
-        Lumeo.Side.Bottom => "absolute left-1/2 bottom-full -translate-x-1/2 translate-y-1/2 rotate-45 h-2.5 w-2.5 bg-popover border-t border-l border-border/60",
+        Lumeo.Side.Top => "absolute start-1/2 top-full -translate-x-1/2 -translate-y-1/2 rotate-45 h-2.5 w-2.5 bg-popover border-b border-r border-border/60",
+        Lumeo.Side.Bottom => "absolute start-1/2 bottom-full -translate-x-1/2 translate-y-1/2 rotate-45 h-2.5 w-2.5 bg-popover border-t border-l border-border/60",
         Lumeo.Side.Left => "absolute top-1/2 left-full -translate-y-1/2 -translate-x-1/2 rotate-45 h-2.5 w-2.5 bg-popover border-t border-r border-border/60",
         Lumeo.Side.Right => "absolute top-1/2 right-full -translate-y-1/2 translate-x-1/2 rotate-45 h-2.5 w-2.5 bg-popover border-b border-l border-border/60",
-        _ => "absolute left-1/2 bottom-full -translate-x-1/2 translate-y-1/2 rotate-45 h-2.5 w-2.5 bg-popover border-t border-l border-border/60"
+        _ => "absolute start-1/2 bottom-full -translate-x-1/2 translate-y-1/2 rotate-45 h-2.5 w-2.5 bg-popover border-t border-l border-border/60"
     };
 
     private string AlignStr => Align switch
@@ -60,24 +64,32 @@
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (Context.IsOpen && !_positioned)
+        if (Context.IsOpen)
         {
-            await Interop.PositionFixed(_contentId, Context.WrapperId, AlignStr, false, SideStr);
-            _positioned = true;
+            // Re-position whenever the anchor (Side/Align) differs from what we last
+            // applied — covers both the first open AND a Side/Align change while the
+            // card stays open. Equality on the tuple keeps a same-anchor re-render
+            // from churning the floating-ui placement.
+            var anchor = (SideStr, AlignStr);
+            if (_appliedAnchor != anchor)
+            {
+                await Interop.PositionFixed(_contentId, Context.WrapperId, AlignStr, false, SideStr);
+                _appliedAnchor = anchor;
+            }
         }
-        else if (!Context.IsOpen && _positioned)
+        else if (_appliedAnchor is not null)
         {
             try { await Interop.UnpositionFixed(_contentId); } catch (JSDisconnectedException) { }
-            _positioned = false;
+            _appliedAnchor = null;
         }
     }
 
     public async ValueTask DisposeAsync()
     {
-        if (_positioned)
+        if (_appliedAnchor is not null)
         {
             try { await Interop.UnpositionFixed(_contentId); } catch (JSDisconnectedException) { }
-            _positioned = false;
+            _appliedAnchor = null;
         }
     }
 

@@ -163,7 +163,9 @@ function applyThemeToInstance(inst, dark, newAutoStyle) {
         const clusterColor    = resolveCssVar('--primary',            '#3b82f6');
         const clusterBgColor  = resolveCssVar('--background',         '#ffffff');
         const clusterTextColor = resolveCssVar('--primary-foreground', '#ffffff');
-        try { map.setPaintProperty('lumeo-clusters',          'circle-color',        clusterColor);    } catch (_) {}
+        const clusterHighlightColor = resolveCssVar('--lumeo-map-cluster-highlight', '#f59e0b');
+        const clusterColorExpr = ['case', ['>', ['coalesce', ['get', 'highlighted'], 0], 0], clusterHighlightColor, clusterColor];
+        try { map.setPaintProperty('lumeo-clusters',          'circle-color',        clusterColorExpr); } catch (_) {}
         try { map.setPaintProperty('lumeo-clusters',          'circle-stroke-color', clusterBgColor);  } catch (_) {}
         try { map.setPaintProperty('lumeo-unclustered-point', 'circle-stroke-color', clusterBgColor);  } catch (_) {}
         try { map.setPaintProperty('lumeo-cluster-count',     'text-color',          clusterTextColor);} catch (_) {}
@@ -763,7 +765,9 @@ function applyClusterMarkers(inst) {
     // the original spec id so click handlers can fire OnMarkerClick.
     const features = markerSpecs.map(m => ({
         type: 'Feature',
-        properties: { id: m.id, hasClick: !!m.hasClick, color: resolveColor(m.color) },
+        // highlighted is stored as 0/1 so it can be aggregated up to the cluster via a
+        // numeric 'max' clusterProperty (1 when any child marker is highlighted).
+        properties: { id: m.id, hasClick: !!m.hasClick, color: resolveColor(m.color), highlighted: m.highlighted ? 1 : 0 },
         geometry: { type: 'Point', coordinates: toLngLat(m.lat, m.lon) },
     }));
 
@@ -777,6 +781,9 @@ function applyClusterMarkers(inst) {
     const clusterColor = resolveCssVar('--primary', '#3b82f6');
     const clusterBgColor = resolveCssVar('--background', '#ffffff');
     const clusterTextColor = resolveCssVar('--primary-foreground', '#ffffff');
+    // A cluster containing >=1 highlighted marker is tinted with this color so
+    // recommendations stay visible even while clustered (themeable, default amber).
+    const clusterHighlightColor = resolveCssVar('--lumeo-map-cluster-highlight', '#f59e0b');
 
     map.addSource(sourceId, {
         type: 'geojson',
@@ -784,6 +791,9 @@ function applyClusterMarkers(inst) {
         cluster: true,
         clusterMaxZoom: 14,
         clusterRadius: 50,
+        // Aggregate the per-marker highlighted flag (0/1) up to the cluster: max == 1
+        // when at least one child marker is highlighted. Drives the cluster tint below.
+        clusterProperties: { highlighted: ['max', ['get', 'highlighted']] },
     });
 
     map.addLayer({
@@ -792,7 +802,9 @@ function applyClusterMarkers(inst) {
         source: sourceId,
         filter: ['has', 'point_count'],
         paint: {
-            'circle-color': clusterColor,
+            // Data-driven: tint the bubble with the highlight color when its aggregated
+            // 'highlighted' clusterProperty is >0 (any child marker highlighted).
+            'circle-color': ['case', ['>', ['coalesce', ['get', 'highlighted'], 0], 0], clusterHighlightColor, clusterColor],
             'circle-stroke-color': clusterBgColor,
             'circle-stroke-width': 2,
             'circle-radius': ['step', ['get', 'point_count'], 18, 25, 24, 100, 30],

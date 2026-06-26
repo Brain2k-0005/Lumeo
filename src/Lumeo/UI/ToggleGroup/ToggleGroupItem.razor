@@ -2,7 +2,7 @@
 @implements IDisposable
 @inject Lumeo.Services.IComponentInteropService Interop
 
-<button @ref="_el" id="@_itemId" type="button" aria-pressed="@IsPressed.ToString().ToLower()" tabindex="@Context.GetTabIndex(Value, Disabled)" class="@CssClass" @onclick="Toggle" disabled="@Disabled" @attributes="AdditionalAttributes">
+<button @ref="_el" id="@_itemId" type="button" aria-pressed="@IsPressed.ToString().ToLower()" tabindex="@Context.GetTabIndex(Value, Disabled)" class="@CssClass" @onclick="Toggle" @onfocus="OnFocus" disabled="@Disabled" @attributes="AdditionalAttributes">
     @ChildContent
 </button>
 
@@ -32,21 +32,23 @@
     {
         if (Context is null) return;
 
-        // Register into the parent's shared registry (ownership-guarded re-key so
-        // we never delete a sibling's live entry) so roving tabindex + arrow-key
-        // focus movement see this item in DOM order with its current Disabled state.
-        if (_registeredValue is not null && _registeredValue != Value
-            && Context.ItemIds.TryGetValue(_registeredValue, out var oldId) && oldId == _itemId)
-        {
-            Context.ItemValues.Remove(_registeredValue);
-            Context.ItemIds.Remove(_registeredValue);
-            Context.ItemDisabled.Remove(_registeredValue);
-        }
-        if (!Context.ItemValues.Contains(Value))
-            Context.ItemValues.Add(Value);
-        Context.ItemIds[Value] = _itemId;
-        Context.ItemDisabled[Value] = Disabled;
+        // #69: register by our STABLE id + the parent's live render generation.
+        // The parent owns ordering — it rebuilds its ItemValues list from the
+        // sequence these registrations arrive in (= DOM/declaration order for the
+        // current render), so insert-at-front and Value renames land in the right
+        // slot instead of being appended to the tail. The ownership-guarded re-key
+        // lives in the parent (RegisterItem) keyed by _itemId, so two items that
+        // share a Value never clobber each other's slot.
+        Context.RegisterItem(_itemId, Value, Disabled, Context.Generation);
         _registeredValue = Value;
+    }
+
+    // #169 focus-anchor sync: tell the group which item the user actually focused
+    // (mouse click lands here, and Tab into the roving tab stop) so the group's
+    // arrow-key navigation starts from the real focus, not a stale arrow anchor.
+    private void OnFocus()
+    {
+        Context?.SetFocusValue(Value);
     }
 
     private string CssClass => Cx.Merge(VariantClasses, SizeClasses, BaseClasses, "cursor-pointer disabled:cursor-not-allowed", PressEffectClass, Class);
@@ -84,6 +86,9 @@
     {
         if (!Disabled)
         {
+            // #169: a click both toggles AND focuses this item — keep the group's
+            // focus anchor in sync so a following ArrowRight moves from HERE.
+            Context.SetFocusValue(Value);
             await Context.Toggle.InvokeAsync(Value);
         }
     }
@@ -102,13 +107,9 @@
 
     public void Dispose()
     {
-        // Conditionally-removed items must leave the registry (ownership-guarded).
-        if (Context is not null && _registeredValue is not null
-            && Context.ItemIds.TryGetValue(_registeredValue, out var id) && id == _itemId)
-        {
-            Context.ItemValues.Remove(_registeredValue);
-            Context.ItemIds.Remove(_registeredValue);
-            Context.ItemDisabled.Remove(_registeredValue);
-        }
+        // Conditionally-removed items must leave the registry (ownership-guarded
+        // by stable id inside UnregisterItem so we never delete a sibling's slot).
+        if (Context is not null && _registeredValue is not null)
+            Context.UnregisterItem(_itemId, _registeredValue);
     }
 }

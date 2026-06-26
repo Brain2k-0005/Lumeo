@@ -229,6 +229,24 @@
             </Select>
         </Container>
     </ComponentDemo>
+
+    <ComponentDemo Title="Creatable" Description="With Searchable + Creatable, typing a value that doesn't exist shows a 'Create' option. OnCreate adds it to the list.">
+        <Container MaxWidth="sm" Center="false" Padding="">
+            <Select Searchable="true" Creatable="true" @bind-Value="_selectedTag" OnCreate="HandleCreateTag">
+                <SelectTrigger>
+                    <Text As="span" Class="@(_selectedTag == null ? "text-muted-foreground" : "")">
+                        @(_selectedTag ?? "Pick or create a tag...")
+                    </Text>
+                </SelectTrigger>
+                <SelectContent>
+                    @foreach (var tag in _tags)
+                    {
+                        <SelectItem Value="@tag">@tag</SelectItem>
+                    }
+                </SelectContent>
+            </Select>
+        </Container>
+    </ComponentDemo>
 </Stack>
 
 <div class="mt-12">
@@ -451,6 +469,16 @@
     private List<string>? _selectedTools;
     private string? _selectedClearable;
     private string? _selectedRegion;
+    private string? _selectedTag;
+    private readonly List<string> _tags = new() { "design", "frontend", "backend", "urgent" };
+
+    private void HandleCreateTag(string value)
+    {
+        var trimmed = value.Trim();
+        if (string.IsNullOrEmpty(trimmed)) return;
+        if (!_tags.Contains(trimmed)) _tags.Add(trimmed);
+        _selectedTag = trimmed;
+    }
 
     private record RegionItem(string Id, string Label, string Hint, string IconName);
 

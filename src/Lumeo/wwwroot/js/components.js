@@ -170,9 +170,21 @@ let scrollLockCount = 0;
 // some Firefox configurations — the page still scrolls because the scroll
 // chain reaches <html>. We lock both elements together (and restore both on
 // unlock) so the modal/sheet/overlay actually traps scroll across browsers.
+let lockedPaddingRight = '';
+
 export function lockScroll() {
     scrollLockCount++;
     if (scrollLockCount === 1) {
+        // Compensate for the scrollbar that overflow:hidden removes. Without this the
+        // page content (and any position:fixed chrome) jumps right by the scrollbar
+        // width the instant an overlay opens — the classic modal layout-shift jank.
+        // Measure the gutter BEFORE hiding overflow, then pad the body by it.
+        const scrollbarWidth = window.innerWidth - document.documentElement.clientWidth;
+        lockedPaddingRight = document.body.style.paddingRight;
+        if (scrollbarWidth > 0) {
+            const current = parseFloat(getComputedStyle(document.body).paddingRight) || 0;
+            document.body.style.paddingRight = `${current + scrollbarWidth}px`;
+        }
         document.body.style.overflow = 'hidden';
         document.documentElement.style.overflow = 'hidden';
     }
@@ -183,6 +195,10 @@ export function unlockScroll() {
     if (scrollLockCount === 0) {
         document.body.style.overflow = '';
         document.documentElement.style.overflow = '';
+        // Restore the exact inline padding-right we saved (empty string → falls back
+        // to the stylesheet value), undoing the scrollbar-width compensation.
+        document.body.style.paddingRight = lockedPaddingRight;
+        lockedPaddingRight = '';
     }
 }
 
@@ -259,6 +275,26 @@ export function removeFocusTrap(elementId) {
     // everything: the trigger itself may have been removed in the meantime,
     // and focus() can throw on detached/inert elements in some engines.
     const prev = entry.previousFocus;
+    if (prev && prev.isConnected && typeof prev.focus === 'function') {
+        try { prev.focus(); } catch { /* element no longer focusable — ignore */ }
+    }
+}
+
+// --- Lightweight focus save / restore (no Tab trap) ---------------------------
+// For NON-modal overlays — menus, listbox popovers — where focus moves into the
+// surface on open but Tab must NOT be trapped (the WAI-ARIA menu pattern closes
+// the menu on Tab). saveFocus stashes whatever had focus (the trigger) keyed by
+// the surface id; restoreFocus hands it back on close (WCAG 2.4.3) without
+// installing any keydown handler. Distinct map from setupFocusTrap so the two
+// never collide.
+const savedFocusByKey = new Map();
+export function saveFocus(key) {
+    const ae = document.activeElement;
+    savedFocusByKey.set(key, (ae && ae !== document.body && typeof ae.focus === 'function') ? ae : null);
+}
+export function restoreFocus(key) {
+    const prev = savedFocusByKey.get(key);
+    savedFocusByKey.delete(key);
     if (prev && prev.isConnected && typeof prev.focus === 'function') {
         try { prev.focus(); } catch { /* element no longer focusable — ignore */ }
     }
@@ -524,6 +560,33 @@ export function positionFixed(contentId, referenceId, align, matchWidth, side, o
                 content.style.maxHeight = `${maxAllowedHeight}px`;
                 content.style.overflow = 'auto';
             }
+        }
+
+        // --- Containing-block compensation (transformed ancestor) -------------
+        // position:fixed resolves against the nearest transformed / filtered /
+        // backdrop-filtered ancestor (which becomes its containing block), NOT
+        // the viewport. When such an ancestor exists — e.g. this content is a
+        // SelectContent / DropdownMenuSubContent rendered inside a centered
+        // Dialog (which uses transform) — every top/left we wrote above lands
+        // offset by the ancestor's origin, so the popover renders off its
+        // trigger. All the math above is in viewport space, so content.style.
+        // top/left already hold the INTENDED viewport coordinates; measuring the
+        // residual between intended and actual yields exactly the ancestor's
+        // origin offset, which we fold back. This re-runs on every scroll/resize
+        // (update is the rAF handler), so it stays correct as the page moves —
+        // and is a no-op (offset ~ 0) when no transformed ancestor exists, so it
+        // never affects the common page-level case. Compensating here instead of
+        // reparenting the node to <body> keeps Blazor's DOM ownership intact.
+        const intendedTop = parseFloat(content.style.top);
+        const intendedLeft = parseFloat(content.style.left);
+        const settled = content.getBoundingClientRect();
+        if (Number.isFinite(intendedTop)) {
+            const offY = settled.top - intendedTop;
+            if (Math.abs(offY) > 0.5) content.style.top = `${intendedTop - offY}px`;
+        }
+        if (Number.isFinite(intendedLeft)) {
+            const offX = settled.left - intendedLeft;
+            if (Math.abs(offX) > 0.5) content.style.left = `${intendedLeft - offX}px`;
         }
     }
 
@@ -1368,7 +1431,9 @@ export function registerHorizontalSwipe(elementId, dotnetRef, options) {
         const deltaY = e.changedTouches[0].clientY - startY;
         if (Math.abs(deltaY) >= verticalDeadZone) return; // too much vertical — ignore
         if (Math.abs(deltaX) < swipeThreshold) return;    // below horizontal threshold — ignore
-        dotnetRef.invokeMethodAsync('OnCalendarSwipe', elementId, deltaX < 0 ? 'next' : 'prev');
+        const rtl = getComputedStyle(el).direction === 'rtl';
+        const forward = rtl ? deltaX > 0 : deltaX < 0; // RTL mirrors physical deltaX
+        dotnetRef.invokeMethodAsync('OnCalendarSwipe', elementId, forward ? 'next' : 'prev');
     };
 
     el.addEventListener('touchstart', onTouchStart, { passive: true });
@@ -1425,7 +1490,9 @@ export function registerGallerySwipe(elementId, dotnetRef, options) {
         const deltaY = e.changedTouches[0].clientY - startY;
         if (Math.abs(deltaY) >= verticalDeadZone) return; // too much vertical — ignore
         if (Math.abs(deltaX) < swipeThreshold) return;    // below horizontal threshold — ignore
-        dotnetRef.invokeMethodAsync('OnGallerySwipe', elementId, deltaX < 0 ? 'next' : 'prev');
+        const rtl = getComputedStyle(el).direction === 'rtl';
+        const forward = rtl ? deltaX > 0 : deltaX < 0; // RTL mirrors physical deltaX
+        dotnetRef.invokeMethodAsync('OnGallerySwipe', elementId, forward ? 'next' : 'prev');
     };
 
     el.addEventListener('touchstart', onTouchStart, { passive: true });
@@ -1490,7 +1557,9 @@ export function registerTabSwipe(elementId, wrap, dotnetRef, options) {
         if (Math.abs(deltaY) >= verticalDeadZone) return; // too much vertical drift — ignore
         if (Math.abs(deltaX) < swipeThreshold) return;    // below horizontal threshold — ignore
 
-        const direction = deltaX < 0 ? 'next' : 'prev';
+        const rtl = getComputedStyle(el).direction === 'rtl';
+        const forward = rtl ? deltaX > 0 : deltaX < 0; // RTL mirrors physical deltaX
+        const direction = forward ? 'next' : 'prev';
         dotnetRef.invokeMethodAsync('OnTabSwipe', elementId, direction);
     };
 
@@ -2525,12 +2594,20 @@ export function unregisterAffix(elementId) {
 
 const backToTopHandlers = new Map();
 
-export function registerBackToTop(id, dotnetRef, threshold) {
-    // Clean up previous registration for this id
+export function registerBackToTop(id, dotnetRef, threshold, target) {
+    // Clean up previous registration for this id (detach from whatever scroll
+    // source the previous registration was bound to, not necessarily window).
     if (backToTopHandlers.has(id)) {
         const prev = backToTopHandlers.get(id);
-        window.removeEventListener('scroll', prev.handler);
+        prev.scrollSource.removeEventListener('scroll', prev.handler);
     }
+
+    // When a Target selector is supplied, observe that container's scrollTop and
+    // listen for scroll on it; otherwise fall back to the window/document. A
+    // selector that doesn't resolve also falls back to window so registration
+    // never throws on a stale/typo'd Target. (#98)
+    const container = target ? document.querySelector(target) : null;
+    const scrollSource = container || window;
 
     const effectiveThreshold = threshold || 300;
     // Throttle to one check per animation frame — a raw scroll handler fires
@@ -2540,7 +2617,9 @@ export function registerBackToTop(id, dotnetRef, threshold) {
     let lastVisible = null;
     const compute = () => {
         rafPending = false;
-        const scrollY = window.scrollY || document.documentElement.scrollTop;
+        const scrollY = container
+            ? container.scrollTop
+            : (window.scrollY || document.documentElement.scrollTop);
         const visible = scrollY > effectiveThreshold;
         if (visible === lastVisible) return;
         lastVisible = visible;
@@ -2552,21 +2631,25 @@ export function registerBackToTop(id, dotnetRef, threshold) {
         requestAnimationFrame(compute);
     };
 
-    window.addEventListener('scroll', handler, { passive: true });
-    backToTopHandlers.set(id, { handler, dotnetRef });
+    scrollSource.addEventListener('scroll', handler, { passive: true });
+    backToTopHandlers.set(id, { handler, dotnetRef, scrollSource, target: target || null });
     compute(); // initial check (synchronous)
 }
 
 export function unregisterBackToTop(id) {
     const entry = backToTopHandlers.get(id);
     if (entry) {
-        window.removeEventListener('scroll', entry.handler);
+        entry.scrollSource.removeEventListener('scroll', entry.handler);
         backToTopHandlers.delete(id);
     }
 }
 
-export function scrollToTop() {
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+export function scrollToTop(target) {
+    // Scroll the targeted container back to the top when a selector is given,
+    // otherwise scroll the window. A stale/unresolved selector falls back to
+    // the window so the button never silently no-ops. (#98)
+    const container = target ? document.querySelector(target) : null;
+    (container || window).scrollTo({ top: 0, behavior: 'smooth' });
 }
 
 // --- InputMask: read / restore a text input's caret (selectionStart) ---
@@ -2585,6 +2668,14 @@ export function setInputCaret(elementId, position) {
     const len = (el.value || '').length;
     const pos = Math.max(0, Math.min(position, len));
     try { el.setSelectionRange(pos, pos); } catch { /* element not focusable yet */ }
+}
+
+// Force the live DOM value of a masked <input> when Blazor's diff won't patch it
+// (the re-masked display equals the previous render after a rejected char, #41).
+export function setInputValue(elementId, value) {
+    const el = document.getElementById(elementId);
+    if (!el) return;
+    if (el.value !== value) el.value = value;
 }
 
 // --- Mention: get textarea caret coordinates ---
@@ -3024,6 +3115,18 @@ function detachRipple(el) {
 }
 
 export const ripple = { attach: attachRipple, detach: detachRipple };
+
+/* =============================================================
+ * File input reset (#70) — clear a native <input type="file">'s
+ * value so re-picking the SAME file re-fires `change`. Browsers
+ * suppress `change` when the selected path equals the input's
+ * current value; UploadTrigger has no accumulating list to mask
+ * this, so it resets the element after every pick.
+ * ============================================================= */
+export function resetFileInput(el) {
+    if (!el) return;
+    try { el.value = ''; } catch { /* not a value-bearing input */ }
+}
 
 /* =============================================================
  * Reduced-motion gate (core) — mirror of the Lumeo.Motion helper

@@ -1,7 +1,10 @@
 @namespace Lumeo
 
 @{
-    var context = new TabsContext(ActiveValue, EventCallback.Factory.Create<string>(this, SetValue), Orientation, Variant, _tabIds, AnimatedIndicator, RenderMode, _activatedValues, SwipeEnabled, SwipeWrap, RegisterContent, UnregisterContent, NavigateBySwipe, _reorderState, Activation);
+    var context = new TabsContext(ActiveValue, EventCallback.Factory.Create<string>(this, SetValue), Orientation, Variant, _tabIds, AnimatedIndicator, RenderMode, _activatedValues, SwipeEnabled, SwipeWrap, RegisterContent, UnregisterContent, NavigateBySwipe, _reorderState, Activation)
+    {
+        IconReveal = IconReveal,
+    };
 }
 
 <div class="@CssClass" @attributes="AdditionalAttributes">
@@ -70,6 +73,16 @@
     /// </summary>
     [Parameter] public TabsActivation Activation { get; set; } = TabsActivation.Automatic;
 
+    /// <summary>
+    /// Icon-tab reveal mode: inactive triggers collapse to icon-only, and the active
+    /// trigger smoothly animates its text label into view next to the icon (the label
+    /// width grows from 0 → auto via a CSS grid transition, plus a fade). Lets a compact
+    /// icon bar stay readable — only the current tab spells itself out. Give each
+    /// <see cref="TabsTrigger"/> an <c>IconContent</c> (the always-visible icon) and
+    /// <c>ChildContent</c> (the revealed label). Default <c>false</c> (labels always shown).
+    /// </summary>
+    [Parameter] public bool IconReveal { get; set; }
+
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
@@ -107,6 +120,11 @@
         // Closable/conditionally-removed panels must leave the swipe order,
         // otherwise swipe navigation targets removed tabs (blank panel).
         _contentOrder.Remove(value);
+        // Tie the activated-set lifetime to the panel's presence: a tab Value
+        // that is removed and later reused (a common pattern with string keys)
+        // must start fresh in Lazy mode, otherwise its panel mounts immediately
+        // — without ever being activated — because _activatedValues was add-only.
+        _activatedValues.Remove(value);
     }
 
     internal async Task NavigateBySwipe(string direction)
@@ -115,29 +133,36 @@
         var idx = _contentOrder.IndexOf(ActiveValue);
         if (idx < 0) return;
 
-        int next;
-        if (direction == "next")
+        var step = direction == "next" ? 1 : -1;
+        // Walk past Disabled tabs in the chosen direction, mirroring arrow-key
+        // navigation (TabsTrigger.FindNextEnabledTab). Without this, a swipe
+        // could land on and ACTIVATE a disabled tab. Respect SwipeWrap at the
+        // boundary, and bail when no enabled neighbour exists.
+        var next = idx;
+        for (var i = 0; i < _contentOrder.Count; i++)
         {
-            next = idx + 1;
+            next += step;
             if (next >= _contentOrder.Count)
             {
                 if (!SwipeWrap) return;
                 next = 0;
             }
-        }
-        else // "prev"
-        {
-            next = idx - 1;
-            if (next < 0)
+            else if (next < 0)
             {
                 if (!SwipeWrap) return;
                 next = _contentOrder.Count - 1;
             }
+            if (next == idx) return; // wrapped all the way round — no enabled target
+            if (!IsTabDisabled(_contentOrder[next])) break;
         }
+        if (next == idx || IsTabDisabled(_contentOrder[next])) return;
 
         await SetValue(_contentOrder[next]);
         StateHasChanged();
     }
+
+    private bool IsTabDisabled(string value) =>
+        _tabIds.TryGetValue(value, out var ids) && ids.Disabled;
 
     private async Task SetValue(string value)
     {
@@ -166,6 +191,10 @@
     {
         public TabsContext(string ActiveValue, EventCallback<string> SetValue, Lumeo.Orientation Orientation = Lumeo.Orientation.Horizontal, TabsVariant Variant = TabsVariant.Default)
             : this(ActiveValue, SetValue, Orientation, Variant, new Dictionary<string, (string, string, bool)>(), false, TabsRenderMode.Active, new HashSet<string>(), false, false, _ => { }, _ => { }, _ => Task.CompletedTask, new TabsReorderState()) { }
+
+        /// <summary>Icon-tab reveal mode (see <see cref="Tabs.IconReveal"/>). Init-only so
+        /// the positional constructor above stays source-compatible.</summary>
+        public bool IconReveal { get; init; }
     }
 
     /// <summary>Arrow-key activation mode for tabs. See <see cref="Tabs.Activation"/>.</summary>

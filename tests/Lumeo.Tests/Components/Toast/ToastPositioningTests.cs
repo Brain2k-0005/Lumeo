@@ -32,7 +32,7 @@ public class ToastPositioningTests : IAsyncLifetime
         var cls = div.GetAttribute("class") ?? "";
         // Position anchor classes
         Assert.Contains("top-4", cls);
-        Assert.Contains("left-4", cls);
+        Assert.Contains("start-4", cls);
         // Viewport uses flex-col for top positions (not flex-col-reverse)
         Assert.Contains("flex-col", cls);
         Assert.DoesNotContain("flex-col-reverse", cls);

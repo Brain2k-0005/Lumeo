@@ -113,6 +113,18 @@ public sealed class ComponentInteropService : IComponentInteropService
         return await _focus.FocusMenuItemByTypeahead(module, containerId, query, currentIndex);
     }
 
+    public async ValueTask SaveFocus(string key)
+    {
+        var module = await GetModuleAsync();
+        await module.InvokeVoidAsync("saveFocus", key);
+    }
+
+    public async ValueTask RestoreFocus(string key)
+    {
+        var module = await GetModuleAsync();
+        await module.InvokeVoidAsync("restoreFocus", key);
+    }
+
     public async ValueTask LockScroll()
     {
         var module = await GetModuleAsync();
@@ -846,12 +858,25 @@ public sealed class ComponentInteropService : IComponentInteropService
         catch (JSDisconnectedException) { }
     }
 
+    public async ValueTask SetInputValue(string elementId, string value)
+    {
+        try
+        {
+            var module = await GetModuleAsync();
+            await module.InvokeVoidAsync("setInputValue", elementId, value);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
     // --- BackToTop ---
 
-    public async ValueTask RegisterBackToTop(string id, int threshold, Func<bool, Task> handler)
+    public ValueTask RegisterBackToTop(string id, int threshold, Func<bool, Task> handler)
+        => RegisterBackToTop(id, threshold, handler, null);
+
+    public async ValueTask RegisterBackToTop(string id, int threshold, Func<bool, Task> handler, string? target)
     {
         var module = await GetModuleAsync();
-        await _scroll.RegisterBackToTop(module, GetSelfRef(), id, threshold, handler);
+        await _scroll.RegisterBackToTop(module, GetSelfRef(), id, threshold, handler, target);
     }
 
     public async ValueTask UnregisterBackToTop(string id)
@@ -860,10 +885,12 @@ public sealed class ComponentInteropService : IComponentInteropService
         await _scroll.UnregisterBackToTop(module, id);
     }
 
-    public async ValueTask ScrollToTop()
+    public ValueTask ScrollToTop() => ScrollToTop(null);
+
+    public async ValueTask ScrollToTop(string? target)
     {
         var module = await GetModuleAsync();
-        await _scroll.ScrollToTop(module);
+        await _scroll.ScrollToTop(module, target);
     }
 
     [JSInvokable]
@@ -903,6 +930,18 @@ public sealed class ComponentInteropService : IComponentInteropService
         {
             var module = await GetModuleAsync();
             await module.InvokeVoidAsync("ripple.detach", element);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
+    // --- File input reset (#70) ---
+
+    public async ValueTask ResetFileInput(Microsoft.AspNetCore.Components.ElementReference element)
+    {
+        try
+        {
+            var module = await GetModuleAsync();
+            await module.InvokeVoidAsync("resetFileInput", element);
         }
         catch (JSDisconnectedException) { }
     }

@@ -9,7 +9,7 @@
         @if (Context.Searchable)
         {
             <div class="px-1 pb-1">
-                <input type="text" class="w-full rounded-sm border border-border/40 bg-background px-2 py-1 text-sm outline-none focus:ring-1 focus:ring-ring placeholder:text-muted-foreground"
+                <input type="text" id="@($"{Context.ContentId}-search")" class="w-full rounded-sm border border-border/40 bg-background px-2 py-1 text-sm outline-none focus:ring-1 focus:ring-ring placeholder:text-muted-foreground"
                     placeholder="@L["Combobox.SearchPlaceholder"]"
                     value="@Context.SearchText"
                     @oninput="OnInput"
@@ -67,7 +67,7 @@
 
             @if (Context.Creatable && !string.IsNullOrWhiteSpace(Context.SearchText))
             {
-                <button type="button" class="relative flex w-full cursor-default select-none items-center gap-2 rounded-sm py-1.5 pl-2 pr-8 text-sm outline-none hover:bg-accent hover:text-accent-foreground"
+                <button type="button" class="relative flex w-full cursor-default select-none items-center gap-2 rounded-sm py-1.5 ps-2 pe-8 text-sm outline-none hover:bg-accent hover:text-accent-foreground"
                         @onclick="HandleCreate">
                     <Blazicon Svg="Lucide.Plus" class="h-3.5 w-3.5" />
                     <span>@string.Format(L["Combobox.Create"], Context.SearchText)</span>
@@ -80,7 +80,7 @@
 
             @if (Context.Creatable && !string.IsNullOrWhiteSpace(Context.SearchText))
             {
-                <button type="button" class="relative flex w-full cursor-default select-none items-center gap-2 rounded-sm py-1.5 pl-2 pr-8 text-sm outline-none hover:bg-accent hover:text-accent-foreground"
+                <button type="button" class="relative flex w-full cursor-default select-none items-center gap-2 rounded-sm py-1.5 ps-2 pe-8 text-sm outline-none hover:bg-accent hover:text-accent-foreground"
                         @onclick="HandleCreate">
                     <Blazicon Svg="Lucide.Plus" class="h-3.5 w-3.5" />
                     <span>@string.Format(L["Combobox.Create"], Context.SearchText)</span>
@@ -146,7 +146,7 @@
         builder.AddAttribute(4, "aria-selected", isSelected.ToString().ToLower());
         builder.AddAttribute(5, "aria-disabled", isDisabled.ToString().ToLower());
         var cssClass = Cx.Join(
-            "relative flex w-full select-none items-center gap-2 rounded-sm py-1.5 pl-2 pr-8 text-sm outline-none",
+            "relative flex w-full select-none items-center gap-2 rounded-sm py-1.5 ps-2 pe-8 text-sm outline-none",
             isDisabled ? "opacity-50 cursor-not-allowed pointer-events-none" : "cursor-pointer hover:bg-accent hover:text-accent-foreground",
             Cx.When(isFocused && !isDisabled, "bg-accent text-accent-foreground"));
         builder.AddAttribute(6, "class", cssClass);
@@ -222,6 +222,30 @@
                 await Context.SetOpen.InvokeAsync(false);
                 await InvokeAsync(StateHasChanged);
             });
+            // Suppress the browser default for the listbox navigation keys so they
+            // move the focused option instead of scrolling the page (the keys are
+            // handled in HandleKeyDown). SkipEditable keeps the search input's own
+            // caret keys (Home/End) and typing alive when the Select is Searchable.
+            await Interop.RegisterPreventDefaultKeys(Context.ContentId, new[]
+            {
+                new PreventDefaultKeyRule("ArrowDown", SkipEditable: true),
+                new PreventDefaultKeyRule("ArrowUp", SkipEditable: true),
+                new PreventDefaultKeyRule("Home", SkipEditable: true),
+                new PreventDefaultKeyRule("End", SkipEditable: true),
+                // Space selects the focused option (APG listbox); suppress its
+                // page-scroll default. SkipEditable keeps Space typing a literal
+                // space in the search input when the Select is Searchable.
+                new PreventDefaultKeyRule(" ", SkipEditable: true),
+            });
+            // Move focus INTO the popover so HandleKeyDown + the preventDefault above
+            // actually receive keys — focus otherwise stays on the trigger button (a
+            // DOM sibling), so arrows scrolled the page and listbox nav silently broke
+            // in a real browser. Searchable -> the search input (so the user can type);
+            // otherwise the listbox container. saveFocus first so close returns focus to
+            // the trigger (WCAG 2.4.3); no Tab trap, so Tab still leaves the open Select.
+            try { await Interop.SaveFocus(Context.ContentId); } catch (JSDisconnectedException) { }
+            var focusId = Context.Searchable ? $"{Context.ContentId}-search" : Context.ContentId;
+            try { await Interop.FocusElement(focusId); } catch (JSDisconnectedException) { }
             _registered = true;
         }
         else if (!Context.IsOpen && _registered)
@@ -244,14 +268,39 @@
                 await Context.SetFocusedIndex.InvokeAsync(Context.FocusedIndex > 0 ? Context.FocusedIndex - 1 : 0);
                 break;
             case "Home":
-                await Context.SetFocusedIndex.InvokeAsync(0);
+                // Jump to the first option (APG listbox) — but only for the
+                // non-searchable listbox; when Searchable, Home moves the caret
+                // to the start of the search input text instead.
+                if (!Context.Searchable)
+                    await Context.SetFocusedIndex.InvokeAsync(0);
                 break;
             case "End":
-                await Context.SetFocusedIndex.InvokeAsync(int.MaxValue);
+                // Jump to the last option (APG listbox) — but only for the
+                // non-searchable listbox; when Searchable, End moves the caret
+                // to the end of the search input text instead.
+                if (!Context.Searchable)
+                    await Context.SetFocusedIndex.InvokeAsync(int.MaxValue);
                 break;
             case "Enter":
                 if (Context.FocusedItemValue is not null)
                     await Context.OnSelect.InvokeAsync(Context.FocusedItemValue);
+                break;
+            case " ":
+                // Space selects the focused option (APG listbox) — but only for the
+                // non-searchable listbox; when Searchable, Space types into the filter.
+                if (!Context.Searchable && Context.FocusedItemValue is not null)
+                    await Context.OnSelect.InvokeAsync(Context.FocusedItemValue);
+                break;
+            default:
+                // Type-to-jump on a printable key. Non-searchable listbox only — when
+                // Searchable the keystroke belongs to the search input. Modifier combos
+                // (Ctrl/Alt/Meta shortcuts) are never typeahead.
+                if (!Context.Searchable
+                    && !e.CtrlKey && !e.AltKey && !e.MetaKey
+                    && Lumeo.Services.MenuTypeahead.IsTypeaheadKey(e.Key))
+                {
+                    await Context.OnTypeahead.InvokeAsync(e.Key);
+                }
                 break;
         }
     }
@@ -270,6 +319,10 @@
     {
         try { await Interop.UnpositionFixed(Context.ContentId); } catch (JSDisconnectedException) { }
         try { await Interop.UnregisterClickOutside(Context.ContentId); } catch (JSDisconnectedException) { }
+        try { await Interop.UnregisterPreventDefaultKeys(Context.ContentId); } catch (JSDisconnectedException) { }
+        // Return focus to the trigger that opened the Select (WCAG 2.4.3) — e.g. after
+        // Escape in Searchable mode focus was in the search input, which is now gone.
+        try { await Interop.RestoreFocus(Context.ContentId); } catch (JSDisconnectedException) { }
         _registered = false;
     }
 

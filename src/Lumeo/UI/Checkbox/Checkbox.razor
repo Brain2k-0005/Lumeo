@@ -7,32 +7,34 @@
 @if (Label is not null)
 {
     <div class="flex items-start gap-2.5">
-        <button type="button" id="@_id" role="checkbox" aria-checked="@AriaChecked"
+        <button type="button" id="@EffectiveId" role="checkbox" aria-checked="@AriaChecked"
                 aria-required="@Required.ToString().ToLowerInvariant()"
                 aria-invalid="@EffectiveInvalid.ToString().ToLowerInvariant()"
+                aria-describedby="@DescribedBy"
                 class="@CssClass" @onclick="Toggle" disabled="@Disabled" @attributes="AdditionalAttributes">
             @RenderIcon()
         </button>
         <div class="grid gap-1 leading-none pt-[1px]">
-            <label for="@_id" class="text-sm font-medium leading-none cursor-pointer peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+            <label for="@EffectiveId" class="text-sm font-medium leading-none cursor-pointer peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
                 @Label
                 @if (Required)
                 {
-                    <span class="text-destructive ml-0.5">*</span>
+                    <span class="text-destructive ms-0.5">*</span>
                 }
             </label>
             @if (!string.IsNullOrEmpty(Description))
             {
-                <p class="text-xs text-muted-foreground">@Description</p>
+                <p id="@_descriptionId" class="text-xs text-muted-foreground">@Description</p>
             }
         </div>
     </div>
 }
 else
 {
-    <button type="button" id="@_id" role="checkbox" aria-checked="@AriaChecked" aria-label="@AriaLabel"
+    <button type="button" id="@EffectiveId" role="checkbox" aria-checked="@AriaChecked" aria-label="@AriaLabel"
             aria-required="@Required.ToString().ToLowerInvariant()"
             aria-invalid="@EffectiveInvalid.ToString().ToLowerInvariant()"
+            aria-describedby="@DescribedBy"
             class="@CssClass" @onclick="Toggle" disabled="@Disabled" @attributes="AdditionalAttributes">
         @RenderIcon()
     </button>
@@ -113,11 +115,43 @@ else
     private bool EffectiveInvalid => Invalid || FormField?.HasError == true;
     private bool InsideFormField => FormField is not null;
 
-    private string _id = default!;
+    // Point aria-describedby at the FormField's help/error text (null outside a field).
+    private string? FormFieldDescribedBy => FormField?.DescribedBy;
 
-    protected override void OnInitialized()
+    // Only the random fallback is cached (it must stay stable across renders).
+    // The effective id is derived per render so that a runtime change to the Id
+    // parameter (or the cascaded FormField.ControlId) flows through to BOTH the
+    // <button id> and the <label for> instead of latching to the first-render value.
+    private readonly string _generatedId = LumeoIds.New("checkbox");
+
+    // Inside a FormField, adopt its generated ControlId so the field's
+    // <Label For> resolves to this checkbox button (an explicit Id still wins).
+    // A consumer-splatted id="..." wins over all of the above, because @attributes
+    // renders AFTER the explicit id=, so it is what actually lands on the <button>.
+    // Routing through LumeoIds.Effective keeps the <label for> bound to the SAME id
+    // the button ends up with (otherwise clicking the label no longer toggles it).
+    private string EffectiveId => LumeoIds.Effective(
+        AdditionalAttributes,
+        Id
+            ?? (string.IsNullOrEmpty(FormField?.ControlId) ? null : FormField!.ControlId)
+            ?? _generatedId);
+
+    // Stable id for the standalone Description <p> so it can be referenced by
+    // aria-describedby (only meaningful/rendered when Description is non-empty).
+    private readonly string _descriptionId = LumeoIds.New("checkbox-desc");
+
+    // aria-describedby points at the FormField's help/error text (inside a field) AND,
+    // when a standalone Description is shown, that description's <p>. Null/empty parts
+    // are dropped; an empty result renders as no attribute at all (not aria-describedby="").
+    private string? DescribedBy
     {
-        _id = Id ?? LumeoIds.New("checkbox");
+        get
+        {
+            var joined = Cx.Join(
+                FormFieldDescribedBy,
+                string.IsNullOrEmpty(Description) ? null : _descriptionId);
+            return string.IsNullOrEmpty(joined) ? null : joined;
+        }
     }
 
     private string AriaChecked => IsIndeterminate ? "mixed" : Checked.ToString().ToLower();

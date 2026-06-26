@@ -15,7 +15,7 @@
             @attributes="AdditionalAttributes">
         @if (IconContent is not null)
         {
-            <span class="mr-1.5">@IconContent</span>
+            <span class="me-1.5">@IconContent</span>
         }
         @ChildContent
     </button>
@@ -44,20 +44,38 @@
     {
         if (Context is null) return;
 
-        // Register into the parent's shared registry (ownership-guarded re-key so
-        // we never delete a sibling's live entry) so roving tabindex + arrow
-        // navigation see this segment in DOM order with its current Disabled state.
-        if (_registeredValue is not null && _registeredValue != Value
-            && Context.ItemIds.TryGetValue(_registeredValue, out var oldId) && oldId == _itemId)
+        // DEFERRED (#63, pure @key physical-reorder-with-reuse leg): when two
+        // segments swap DOM position via @key, Blazor REUSES each component
+        // instance with IDENTICAL parameters — Value/Disabled are unchanged, so
+        // OnParametersSet here sees no diff and never re-keys the registry. The
+        // registry then keeps declaration order, which no longer matches the
+        // visual order. Detecting that needs a DOM-order JS interop to resolve the
+        // true on-screen order; it is intentionally NOT added in this batch (no new
+        // shared interop). The three OnParametersSet-observable legs — own-Value
+        // change, middle-insert and middle-remove — ARE handled below.
+
+        // Register / re-key into the parent's shared ordered registry keyed by our
+        // STABLE _itemId (never by Value), so roving tabindex + arrow navigation see
+        // this segment in its declared DOM slot with its current Disabled state.
+        if (_registeredValue is null)
         {
-            Context.ItemValues.Remove(_registeredValue);
-            Context.ItemIds.Remove(_registeredValue);
-            Context.ItemDisabled.Remove(_registeredValue);
+            // First parameter set: take a slot at the tail (children register
+            // top-to-bottom, so append preserves declaration order).
+            Context.RegisterItem(Value, _itemId, Disabled);
         }
-        if (!Context.ItemValues.Contains(Value))
-            Context.ItemValues.Add(Value);
-        Context.ItemIds[Value] = _itemId;
-        Context.ItemDisabled[Value] = Disabled;
+        else if (_registeredValue != Value)
+        {
+            // Our OWN Value changed at runtime: rewrite the existing slot IN PLACE
+            // (resolved by _itemId) instead of remove-then-append, so the segment
+            // keeps its position — exactly Accordion.ReplaceTrigger. A duplicate-
+            // Value sibling's slot is untouched because we key by _itemId.
+            Context.ReplaceItem(_registeredValue, Value, _itemId, Disabled);
+        }
+        else
+        {
+            // Same Value, possibly new Disabled state: refresh in place.
+            Context.RegisterItem(Value, _itemId, Disabled);
+        }
         _registeredValue = Value;
     }
 
@@ -69,13 +87,8 @@
 
     public void Dispose()
     {
-        // Conditionally-removed segments must leave the registry (ownership-guarded).
-        if (Context is not null && _registeredValue is not null
-            && Context.ItemIds.TryGetValue(_registeredValue, out var id) && id == _itemId)
-        {
-            Context.ItemValues.Remove(_registeredValue);
-            Context.ItemIds.Remove(_registeredValue);
-            Context.ItemDisabled.Remove(_registeredValue);
-        }
+        // Conditionally-removed segments must leave the registry. Unregister by our
+        // stable _itemId so a duplicate-Value sibling's slot is never deleted.
+        Context?.UnregisterItem(_itemId);
     }
 }

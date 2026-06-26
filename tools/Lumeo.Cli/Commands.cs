@@ -28,7 +28,8 @@ internal static class Commands
         bool DryRun,
         bool All,
         bool Diff,
-        bool View);
+        bool View,
+        bool Vendor = false);
 
     // Files copied in prebuilt asset mode. Kept here so `init` and `update-assets` stay in sync.
     private static readonly (string Src, string Dest)[] s_prebuiltAssets =
@@ -264,6 +265,75 @@ internal static class Commands
         }
         catch { /* best-effort */ }
         return null;
+    }
+
+    /// <summary>Ensure a NuGet package is referenced by the consumer project, running
+    /// <c>dotnet add package</c> (with a prompt unless --yes/--force) if it isn't.
+    /// Used both for satellite packages and for a component's packageDependencies
+    /// (e.g. Blazicons.Lucide) — without the latter, vendored .razor won't compile.</summary>
+    private static async Task EnsureNuGetPackageAsync(string pkg, string reason, AddOptions opts)
+    {
+        if (string.IsNullOrWhiteSpace(pkg)) return;
+        if (FindCsprojReferencingPackage(Environment.CurrentDirectory, pkg) is not null) return;
+
+        if (opts.DryRun)
+        {
+            Console.WriteLine(Ansi.Yellow($"  dry-run  would install NuGet package {pkg}"));
+            return;
+        }
+
+        bool doInstall;
+        if (opts.Yes || opts.Force)
+        {
+            doInstall = true;
+        }
+        else
+        {
+            Console.WriteLine();
+            Console.WriteLine(Ansi.Yellow(reason));
+            doInstall = Prompts.Confirm($"Install {pkg}?", defaultYes: true);
+        }
+
+        if (!doInstall)
+        {
+            Console.WriteLine(Ansi.Yellow($"Skipped {pkg}. The component may not compile/render without it."));
+            return;
+        }
+
+        var csprojPath = FindConsumerCsproj(Environment.CurrentDirectory);
+        if (csprojPath is null)
+        {
+            // No consumer project to add the reference to — e.g. `lumeo add --vendor`
+            // run in a bare directory. `dotnet add package` would only fail with
+            // "Could not find any project", which is not an install failure to abort
+            // on; point the user at the manual step instead of flipping the exit code.
+            Console.WriteLine(Ansi.Yellow($"  !   No project found here — add the {pkg} NuGet package to your project manually."));
+            return;
+        }
+        var dotnetArgs = $"add \"{csprojPath}\" package {pkg}";
+
+        Console.WriteLine(Ansi.Dim($"  $ dotnet {dotnetArgs}"));
+        var psi = new System.Diagnostics.ProcessStartInfo("dotnet", dotnetArgs)
+        {
+            RedirectStandardOutput = false,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+        };
+        var proc = System.Diagnostics.Process.Start(psi);
+        if (proc is null) return;
+        var stderr = await proc.StandardError.ReadToEndAsync();
+        await proc.WaitForExitAsync();
+        if (proc.ExitCode != 0)
+        {
+            Console.Error.WriteLine(Ansi.Red($"dotnet add package {pkg} failed (exit {proc.ExitCode})."));
+            if (!string.IsNullOrWhiteSpace(stderr))
+                Console.Error.WriteLine(Ansi.Red(stderr.Trim()));
+            Environment.ExitCode = 1;
+        }
+        else
+        {
+            Console.WriteLine(Ansi.Green($"  +   {pkg} added to project."));
+        }
     }
 
     private static char PromptAssetSetup()
@@ -621,69 +691,21 @@ internal static class Commands
         // If the component lives in a satellite package (nugetPackage != "Lumeo"),
         // ensure the consumer's project already has it — or prompt to install it.
         var satellitePkg = entry.NugetPackage;
-        if (!string.IsNullOrEmpty(satellitePkg)
-            && !string.Equals(satellitePkg, "Lumeo", StringComparison.OrdinalIgnoreCase))
+        var isSatellite = !string.IsNullOrEmpty(satellitePkg)
+            && !string.Equals(satellitePkg, "Lumeo", StringComparison.OrdinalIgnoreCase);
+        if (isSatellite && opts.Vendor)
         {
-            var alreadyReferenced = FindCsprojReferencingPackage(Environment.CurrentDirectory, satellitePkg) is not null;
-            if (!alreadyReferenced)
-            {
-                if (opts.DryRun)
-                {
-                    Console.WriteLine(Ansi.Yellow($"  dry-run  would install NuGet package {satellitePkg}"));
-                }
-                else
-                {
-                    bool doInstall;
-                    if (opts.Yes || opts.Force)
-                    {
-                        doInstall = true;
-                    }
-                    else
-                    {
-                        Console.WriteLine();
-                        Console.WriteLine(Ansi.Yellow($"Component '{entry.Name}' requires the {satellitePkg} NuGet package."));
-                        doInstall = Prompts.Confirm($"Install {satellitePkg}?", defaultYes: true);
-                    }
-
-                    if (doInstall)
-                    {
-                        // Find the consumer .csproj to pass to `dotnet add package`.
-                        var csprojPath = FindConsumerCsproj(Environment.CurrentDirectory);
-                        var projectArg = csprojPath is not null ? $"\"{csprojPath}\"" : "";
-                        var dotnetArgs = string.IsNullOrEmpty(projectArg)
-                            ? $"add package {satellitePkg}"
-                            : $"add {projectArg} package {satellitePkg}";
-
-                        Console.WriteLine(Ansi.Dim($"  $ dotnet {dotnetArgs}"));
-                        var psi = new System.Diagnostics.ProcessStartInfo("dotnet", dotnetArgs)
-                        {
-                            RedirectStandardOutput = false,
-                            RedirectStandardError = true,
-                            UseShellExecute = false,
-                        };
-                        var proc = System.Diagnostics.Process.Start(psi);
-                        if (proc is not null)
-                        {
-                            var stderr = await proc.StandardError.ReadToEndAsync();
-                            await proc.WaitForExitAsync();
-                            if (proc.ExitCode != 0)
-                            {
-                                Console.Error.WriteLine(Ansi.Red($"dotnet add package {satellitePkg} failed (exit {proc.ExitCode})."));
-                                if (!string.IsNullOrWhiteSpace(stderr))
-                                    Console.Error.WriteLine(Ansi.Red(stderr.Trim()));
-                            }
-                            else
-                            {
-                                Console.WriteLine(Ansi.Green($"  +   {satellitePkg} added to project."));
-                            }
-                        }
-                    }
-                    else
-                    {
-                        Console.WriteLine(Ansi.Yellow($"Skipped. Note: {entry.Name} will not render correctly without {satellitePkg}."));
-                    }
-                }
-            }
+            // --vendor: copy the satellite's SOURCE (handled by the loop below, which
+            // resolves files from src/<package>/) + its JS assets, instead of adding
+            // the NuGet package. The underlying JS library still ships via the
+            // component's packageDependencies — surfaced after the files are written.
+            Console.WriteLine(Ansi.Dim(
+                $"  Vendoring {entry.Name} as source from {satellitePkg} (omit --vendor to add the NuGet package instead)."));
+        }
+        else if (isSatellite && !((opts.Diff || opts.View) && !opts.Yes))
+        {
+            await EnsureNuGetPackageAsync(satellitePkg!,
+                $"Component '{entry.Name}' requires the {satellitePkg} NuGet package.", opts);
         }
 
         // Resolve dependency chain (BFS).
@@ -697,6 +719,8 @@ internal static class Commands
             var curKey = ToKebab(cur.Name);
             if (!seen.Add(curKey)) continue;
             toInstall.Add(cur);
+            var curPackage = string.IsNullOrEmpty(cur.NugetPackage) ? "Lumeo" : cur.NugetPackage;
+            if (!string.Equals(curPackage, "Lumeo", StringComparison.OrdinalIgnoreCase) && !opts.Vendor) continue;
             foreach (var dep in cur.Dependencies)
                 if (registry.Components.TryGetValue(dep, out var depEntry)) queue.Enqueue(depEntry);
         }
@@ -718,9 +742,20 @@ internal static class Commands
         var forceAll = opts.Force || opts.Overwrite;
         var skipAll = opts.SkipExisting;
         int written = 0, skipped = 0;
+        // Satellite wwwroot assets (echarts-interop.js, …) are shared by every
+        // component of a package, so copy them at most once per package.
+        var vendoredSatelliteAssets = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         foreach (var item in toInstall)
         {
+            // Satellites (Charts, DataGrid, …) only get their source copied when
+            // --vendor is set; otherwise they were routed to NuGet above, so skip
+            // copying their files here. The source package also tells GetFileAsync
+            // which src/<package>/ root to read each file from.
+            var itemPackage = string.IsNullOrEmpty(item.NugetPackage) ? "Lumeo" : item.NugetPackage;
+            var itemIsSatellite = !string.Equals(itemPackage, "Lumeo", StringComparison.OrdinalIgnoreCase);
+            if (itemIsSatellite && !opts.Vendor) continue;
+
             var folder = Path.Combine(outRoot, item.Name);
             if (writeAllowed) Directory.CreateDirectory(folder);
             var recordedFiles = new List<string>();
@@ -734,7 +769,7 @@ internal static class Commands
                 // --diff / --view preview modes (no prompts, no writes unless --yes).
                 if (opts.Diff || opts.View)
                 {
-                    var upstream = await RegistryLoader.GetFileAsync(relFile, opts.Local, cfg.Registry);
+                    var upstream = await RegistryLoader.GetFileAsync(relFile, opts.Local, cfg.Registry, itemPackage);
                     upstream = NamespaceRewriter.Rewrite(upstream, relFile, cfg.Namespace);
 
                     if (File.Exists(dest))
@@ -784,7 +819,7 @@ internal static class Commands
                     }
                     if (!forceAll)
                     {
-                        var upstream = await RegistryLoader.GetFileAsync(relFile, opts.Local, cfg.Registry);
+                        var upstream = await RegistryLoader.GetFileAsync(relFile, opts.Local, cfg.Registry, itemPackage);
                         upstream = NamespaceRewriter.Rewrite(upstream, relFile, cfg.Namespace);
 
                         char? choice = null;
@@ -824,7 +859,7 @@ internal static class Commands
                     written++;
                     continue;
                 }
-                var content = await RegistryLoader.GetFileAsync(relFile, opts.Local, cfg.Registry);
+                var content = await RegistryLoader.GetFileAsync(relFile, opts.Local, cfg.Registry, itemPackage);
                 content = NamespaceRewriter.Rewrite(content, relFile, cfg.Namespace);
                 Directory.CreateDirectory(Path.GetDirectoryName(dest)!);
                 await File.WriteAllTextAsync(dest, content, new UTF8Encoding(false));
@@ -832,10 +867,38 @@ internal static class Commands
                 written++;
             }
 
+            // Vendored satellites need their wwwroot interop assets too: their
+            // components import `./_content/<package>/js/*.js`, so copy each asset
+            // to wwwroot/_content/<package>/… (served at exactly that URL — no NuGet
+            // package, no source rewrite required).
+            if (itemIsSatellite && opts.Vendor && writeAllowed && !opts.DryRun
+                && vendoredSatelliteAssets.Add(itemPackage))
+            {
+                written += await VendorSatelliteAssetsAsync(registry, itemPackage, opts.Local, cfg.Registry);
+            }
+
             if (writeAllowed)
             {
                 var installKey = ToKebab(item.Name);
                 ConfigIO.RecordInstall(cfg, installKey, registry.Version, recordedFiles);
+            }
+        }
+
+        // Install the external NuGet packages the VENDORED source references (e.g.
+        // Blazicons.Lucide for icons). NuGet-routed satellites (no --vendor) get theirs
+        // transitively, so only consider items whose source was actually copied.
+        var vendoredItems = toInstall.Where(i =>
+        {
+            var p = string.IsNullOrEmpty(i.NugetPackage) ? "Lumeo" : i.NugetPackage;
+            var sat = !string.Equals(p, "Lumeo", StringComparison.OrdinalIgnoreCase);
+            return !(sat && !opts.Vendor);
+        });
+        if (writeAllowed)
+        {
+            foreach (var dep in vendoredItems.SelectMany(i => i.PackageDependencies)
+                         .Distinct(StringComparer.OrdinalIgnoreCase))
+            {
+                await EnsureNuGetPackageAsync(dep, $"Vendored components reference the {dep} NuGet package.", opts);
             }
         }
 
@@ -852,6 +915,84 @@ internal static class Commands
             Console.WriteLine(Ansi.Dim("CSS variables used:"));
             Console.WriteLine("  " + string.Join(", ", entry.CssVars));
         }
+    }
+
+    /// <summary>Resolve a satellite package's wwwroot asset paths (relative to the
+    /// package source root, e.g. "wwwroot/js/echarts-interop.js"). Prefers the
+    /// registry's <c>satelliteAssets</c> map (works offline AND remote); falls back
+    /// to enumerating <c>src/&lt;package&gt;/wwwroot/</c> on disk in --local mode so
+    /// vendoring keeps working before the registry has been regenerated.</summary>
+    private static List<string> GetSatelliteAssetPaths(Registry registry, string package, bool local)
+    {
+        if (registry.SatelliteAssets is not null
+            && registry.SatelliteAssets.TryGetValue(package, out var fromRegistry)
+            && fromRegistry.Count > 0)
+        {
+            return fromRegistry;
+        }
+
+        if (local)
+        {
+            var repoRoot = Paths.FindRepoRoot(Environment.CurrentDirectory);
+            if (repoRoot is not null)
+            {
+                var wwwroot = Path.Combine(Paths.LocalSourceRoot(repoRoot, package), "wwwroot");
+                if (Directory.Exists(wwwroot))
+                {
+                    return Directory.EnumerateFiles(wwwroot, "*", SearchOption.AllDirectories)
+                        .Where(f => !f.EndsWith(".LEGAL.txt", StringComparison.OrdinalIgnoreCase))
+                        .Select(f => "wwwroot/" + Path.GetRelativePath(wwwroot, f).Replace('\\', '/'))
+                        .OrderBy(p => p, StringComparer.Ordinal)
+                        .ToList();
+                }
+            }
+        }
+
+        return new List<string>();
+    }
+
+    /// <summary>Copy a vendored satellite's wwwroot interop assets into the consumer's
+    /// <c>wwwroot/_content/&lt;package&gt;/…</c> so its <c>./_content/&lt;package&gt;/js/*.js</c>
+    /// module imports keep resolving without the NuGet package. Returns the number of
+    /// assets written.</summary>
+    private static async Task<int> VendorSatelliteAssetsAsync(
+        Registry registry, string package, bool local, string registryUrl)
+    {
+        var assets = GetSatelliteAssetPaths(registry, package, local);
+        if (assets.Count == 0)
+        {
+            Console.WriteLine(Ansi.Yellow(
+                $"  ! No wwwroot assets found for {package}; the component's _content/{package}/ imports may 404 until you copy them manually."));
+            return 0;
+        }
+
+        var written = 0;
+        foreach (var assetRel in assets)
+        {
+            // assetRel = "wwwroot/js/echarts-interop.js" → serve at /_content/<package>/js/...
+            var underWwwroot = assetRel.StartsWith("wwwroot/", StringComparison.OrdinalIgnoreCase)
+                ? assetRel.Substring("wwwroot/".Length)
+                : assetRel;
+            var destRel = Path.Combine("wwwroot", "_content", package,
+                underWwwroot.Replace('/', Path.DirectorySeparatorChar));
+            var dest = Path.Combine(Environment.CurrentDirectory, destRel);
+            try
+            {
+                var content = await RegistryLoader.GetFileAsync(assetRel, local, registryUrl, package);
+                Directory.CreateDirectory(Path.GetDirectoryName(dest)!);
+                await File.WriteAllTextAsync(dest, content, new UTF8Encoding(false));
+                Console.WriteLine(Ansi.Green("  +   ") + Path.GetRelativePath(Environment.CurrentDirectory, dest));
+                written++;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine(Ansi.Yellow($"  ! skipped asset {assetRel}: {ex.Message}"));
+            }
+        }
+
+        Console.WriteLine(Ansi.Dim(
+            $"  {package} loads its JS library from a CDN at runtime (override the URL via window.lumeoCdn.*)."));
+        return written;
     }
 
     // -------------------------------------------------------------- update
@@ -895,6 +1036,9 @@ internal static class Commands
         {
             if (!registry.Components.TryGetValue(key, out var entry)) continue;
             Console.WriteLine(Ansi.Bold(entry.Name));
+            // Satellite components live under src/<package>/, not src/Lumeo/ — resolve the
+            // owning package so GetFileAsync fetches from the right root (else 404/crash).
+            var entryPackage = string.IsNullOrEmpty(entry.NugetPackage) ? "Lumeo" : entry.NugetPackage;
             foreach (var relFile in entry.Files)
             {
                 var dest = Paths.ToDestPath(outRoot, relFile);
@@ -907,7 +1051,7 @@ internal static class Commands
                 }
 
                 var localContent = await File.ReadAllTextAsync(dest);
-                var upstream = await RegistryLoader.GetFileAsync(relFile, local, cfg.Registry);
+                var upstream = await RegistryLoader.GetFileAsync(relFile, local, cfg.Registry, entryPackage);
                 upstream = NamespaceRewriter.Rewrite(upstream, relFile, cfg.Namespace);
 
                 if (Diffing.Normalize(localContent) == Diffing.Normalize(upstream))
@@ -1168,7 +1312,8 @@ internal static class Commands
                 continue;
             }
             var local0 = await File.ReadAllTextAsync(dest);
-            var upstream = await RegistryLoader.GetFileAsync(relFile, local, cfg.Registry);
+            var upstream = await RegistryLoader.GetFileAsync(relFile, local, cfg.Registry,
+                string.IsNullOrEmpty(entry.NugetPackage) ? "Lumeo" : entry.NugetPackage);
             upstream = NamespaceRewriter.Rewrite(upstream, relFile, cfg.Namespace);
 
             if (Diffing.Normalize(local0) == Diffing.Normalize(upstream)) same++;
@@ -1221,7 +1366,8 @@ internal static class Commands
             string content;
             try
             {
-                content = await RegistryLoader.GetFileAsync(relFile, local, registryUrl);
+                content = await RegistryLoader.GetFileAsync(relFile, local, registryUrl,
+                    string.IsNullOrEmpty(entry.NugetPackage) ? "Lumeo" : entry.NugetPackage);
             }
             catch (Exception ex)
             {

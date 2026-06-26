@@ -1,0 +1,27 @@
+@namespace Lumeo.Tests.Components.Tabs
+
+@* Test host for finding #47: a Lazy-mode panel whose Value is removed and later
+   reused must start fresh — it must NOT mount until re-activated. The host owns
+   its active-tab state internally (clicks switch tabs via @bind), and exposes only
+   ShowBPanel so a test can toggle whether the "b" TabsContent panel exists in the
+   render tree. Removing it fires UnregisterContent("b"); re-adding it remounts a
+   fresh panel. The "b" trigger stays present throughout so activation still works. *@
+<Tabs @bind-ActiveValue="_active" RenderMode="Tabs.TabsRenderMode.Lazy">
+    <TabsList>
+        <TabsTrigger Value="a">Tab A</TabsTrigger>
+        <TabsTrigger Value="b">Tab B</TabsTrigger>
+    </TabsList>
+    <TabsContent Value="a">Panel A</TabsContent>
+    @if (ShowBPanel)
+    {
+        <TabsContent Value="b">Panel B</TabsContent>
+    }
+</Tabs>
+
+@code {
+    private string _active = "a";
+
+    /// <summary>Whether the "b" panel exists in the render tree. Removing it
+    /// unmounts the panel (UnregisterContent), re-adding it remounts a fresh one.</summary>
+    [Parameter] public bool ShowBPanel { get; set; } = true;
+}

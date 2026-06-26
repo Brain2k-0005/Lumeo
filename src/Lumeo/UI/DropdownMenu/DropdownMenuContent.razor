@@ -40,11 +40,11 @@
 
     private string ArrowClasses => Side switch
     {
-        Lumeo.Side.Top => "absolute left-1/2 top-full -translate-x-1/2 -translate-y-1/2 rotate-45 h-2.5 w-2.5 bg-popover border-b border-r border-border/60",
-        Lumeo.Side.Bottom => "absolute left-1/2 bottom-full -translate-x-1/2 translate-y-1/2 rotate-45 h-2.5 w-2.5 bg-popover border-t border-l border-border/60",
+        Lumeo.Side.Top => "absolute start-1/2 top-full -translate-x-1/2 -translate-y-1/2 rotate-45 h-2.5 w-2.5 bg-popover border-b border-r border-border/60",
+        Lumeo.Side.Bottom => "absolute start-1/2 bottom-full -translate-x-1/2 translate-y-1/2 rotate-45 h-2.5 w-2.5 bg-popover border-t border-l border-border/60",
         Lumeo.Side.Left => "absolute top-1/2 left-full -translate-y-1/2 -translate-x-1/2 rotate-45 h-2.5 w-2.5 bg-popover border-t border-r border-border/60",
         Lumeo.Side.Right => "absolute top-1/2 right-full -translate-y-1/2 translate-x-1/2 rotate-45 h-2.5 w-2.5 bg-popover border-b border-l border-border/60",
-        _ => "absolute left-1/2 bottom-full -translate-x-1/2 translate-y-1/2 rotate-45 h-2.5 w-2.5 bg-popover border-t border-l border-border/60"
+        _ => "absolute start-1/2 bottom-full -translate-x-1/2 translate-y-1/2 rotate-45 h-2.5 w-2.5 bg-popover border-t border-l border-border/60"
     };
 
     private string AlignStr => Align switch
@@ -80,9 +80,11 @@
             _registered = true;
             _focusedIndex = -1;
 
-            // Move focus to the menu container so Escape/ArrowUp/ArrowDown reach
-            // the @onkeydown handler. Without this, focus stays on the trigger
-            // button and keyboard nav silently breaks (per WAI-ARIA menu pattern).
+            // Save the trigger's focus so it can be restored on close (WCAG 2.4.3),
+            // then move focus to the menu container so Escape/ArrowUp/ArrowDown reach
+            // the @onkeydown handler. saveFocus (NOT a focus trap) leaves Tab free to
+            // close the menu per the WAI-ARIA menu pattern.
+            try { await Interop.SaveFocus(Context.ContentId); } catch (JSDisconnectedException) { }
             try { await Interop.FocusElement(Context.ContentId); } catch (JSDisconnectedException) { }
         }
         else if (!Context.IsOpen && _registered)
@@ -157,6 +159,9 @@
     {
         try { await Interop.UnpositionFixed(Context.ContentId); } catch (JSDisconnectedException) { }
         try { await Interop.UnregisterClickOutside(Context.ContentId); } catch (JSDisconnectedException) { }
+        // Return focus to the trigger that opened the menu (WCAG 2.4.3) — without
+        // this, dismissing via Escape / click-outside / selection drops focus to <body>.
+        try { await Interop.RestoreFocus(Context.ContentId); } catch (JSDisconnectedException) { }
         _typeahead.Reset();
         _registered = false;
     }

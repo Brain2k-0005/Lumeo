@@ -112,6 +112,27 @@
         _registeredItem = true;
     }
 
+    // Re-report the current Disabled state on every parameter change so a
+    // late toggle (Disabled flipped after first render) updates the parent
+    // registry instead of leaving the stale value captured in OnInitialized.
+    // RegisterItem upserts — it refreshes _disabledItemIds and re-renders only
+    // when the flag actually changed — so re-reporting each time is cheap.
+    protected override async Task OnParametersSetAsync()
+    {
+        if (!_registeredItem) return;
+
+        Context?.RegisterItem(_triggerId, Disabled);
+
+        // If this item is flipped Disabled while its panel is open, the trigger
+        // would render disabled AND still show ChildContent (panel stranded over a
+        // non-interactive trigger). Reconcile by closing the panel so a disabled
+        // item never stays active. Mirrors the overlay-dismiss contract.
+        if (Disabled && Context is not null && Context.ActiveItemId == _itemId)
+        {
+            await Context.SetActiveItemId.InvokeAsync(null);
+        }
+    }
+
     // Overlay rules: dismiss the open panel when the user clicks/taps outside
     // the item. The <li> (_itemId) contains both the trigger and the panel, so
     // inside-clicks never fire the handler; the trigger id is excluded as well

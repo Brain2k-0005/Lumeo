@@ -1,4 +1,7 @@
 @namespace Lumeo
+@using Lumeo.Internal
+@implements IAsyncDisposable
+@inject Lumeo.Services.IComponentInteropService Interop
 
 @if (Label is not null && !InsideFormField)
 {
@@ -6,7 +9,7 @@
         @Label
         @if (Required)
         {
-            <span class="text-destructive ml-0.5">*</span>
+            <span class="text-destructive ms-0.5">*</span>
         }
     </label>
 }
@@ -19,12 +22,14 @@
                 @if (EditMode == InplaceEditMode.Textarea)
                 {
                     <textarea @ref="_editFieldRef"
+                              id="@FormFieldControlId"
                               class="@EditInputClass"
                               rows="3"
                               value="@_editValue"
                               name="@(Name ?? FormField?.Name)"
                               aria-required="@(Required ? "true" : "false")"
                               aria-invalid="@(EffectiveInvalid ? "true" : "false")"
+                              aria-describedby="@FormFieldDescribedBy"
                               @oninput="OnInput"
                               @onkeydown="OnKeyDown"
                               @onblur="OnBlur" />
@@ -32,11 +37,13 @@
                 else if (EditMode == InplaceEditMode.Select && SelectOptions is not null)
                 {
                     <select @ref="_editFieldRef"
+                            id="@FormFieldControlId"
                             class="w-full rounded border border-border/40 bg-background px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
                             value="@_editValue"
                             name="@(Name ?? FormField?.Name)"
                             aria-required="@(Required ? "true" : "false")"
                             aria-invalid="@(EffectiveInvalid ? "true" : "false")"
+                            aria-describedby="@FormFieldDescribedBy"
                             @onchange="OnSelectChange"
                             @onkeydown="OnKeyDown"
                             @onblur="OnBlur">
@@ -49,12 +56,14 @@
                 else
                 {
                     <input @ref="_editFieldRef"
+                           id="@FormFieldControlId"
                            type="text"
                            class="@EditInputClass"
                            value="@_editValue"
                            name="@(Name ?? FormField?.Name)"
                            aria-required="@(Required ? "true" : "false")"
                            aria-invalid="@(EffectiveInvalid ? "true" : "false")"
+                           aria-describedby="@FormFieldDescribedBy"
                            @oninput="OnInput"
                            @onkeydown="OnKeyDown"
                            @onblur="OnBlur" />
@@ -80,7 +89,7 @@
     }
     else
     {
-        <div @ref="_displayRef" class="@DisplayClass" role="button" tabindex="@(Disabled ? "-1" : "0")" @onclick="StartEditing" @onkeydown="HandleDisplayKeyDown" aria-required="@(Required ? "true" : "false")" aria-invalid="@(EffectiveInvalid ? "true" : "false")" aria-disabled="@(Disabled ? "true" : null)">
+        <div @ref="_displayRef" id="@_displayId" class="@DisplayClass" role="button" tabindex="@(Disabled ? "-1" : "0")" @onclick="StartEditing" @onkeydown="HandleDisplayKeyDown" aria-required="@(Required ? "true" : "false")" aria-invalid="@(EffectiveInvalid ? "true" : "false")" aria-disabled="@(Disabled ? "true" : null)">
             <div class="flex-1 min-w-0">
                 @if (ChildContent is not null)
                 {
@@ -97,7 +106,7 @@
             </div>
             @if (!Disabled)
             {
-                <span class="ml-2 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground">
+                <span class="ms-2 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground">
                     <Blazicon Svg="Lucide.Pencil" class="h-3.5 w-3.5" />
                 </span>
             }
@@ -119,6 +128,9 @@
 
 @code {
     [CascadingParameter] private FormField.FormFieldContext? FormField { get; set; }
+
+    private string? FormFieldControlId => string.IsNullOrEmpty(FormField?.ControlId) ? null : FormField!.ControlId;
+    private string? FormFieldDescribedBy => FormField?.DescribedBy;
 
     [Parameter] public string? Value { get; set; }
     [Parameter] public EventCallback<string?> ValueChanged { get; set; }
@@ -146,9 +158,30 @@
 
     private bool _editing;
     private string? _editValue;
+    // The value captured when the user entered edit mode. Used to tell an
+    // untouched edit field (still equal to this) from a dirtied one, so that a
+    // blur-save of an untouched field can't clobber a concurrent external Value
+    // update (lost-update), and so OnParametersSet can re-seed _editValue from a
+    // fresh Value while the user hasn't typed anything yet.
+    private string? _editStartValue;
+
+    private bool IsDirty => !string.Equals(_editValue ?? "", _editStartValue ?? "", StringComparison.Ordinal);
 
     private ElementReference _editFieldRef;
     private ElementReference _displayRef;
+    // Stable id on the display trigger so the JS key-suppression handler
+    // (RegisterPreventDefaultKeys) has a target to bind to. n=36: the display
+    // element is a div[role=button], which has no native key synthesis — Space
+    // both activated edit mode AND scroll-jumped the page. The fix suppresses
+    // Space's default action via the library's RegisterPreventDefaultKeys interop
+    // (same idiom as CollapsibleTrigger / DialogTrigger), which needs an id.
+    private readonly string _displayId = LumeoIds.New("inplace-editor");
+    // Tracks whether the Space-suppression keydown listener is currently bound to
+    // the live display node. The node is torn down on entering edit mode and
+    // re-created on returning to display mode, so the listener must be re-bound to
+    // the fresh node — we clear this when leaving display mode and re-register
+    // from OnAfterRenderAsync whenever display mode is showing but unregistered.
+    private bool _pdRegistered;
     // Set when the user enters edit mode so the next render moves focus to
     // the input/textarea/select — without this, the user clicks to edit and
     // still has to click again to actually type. Cleared after focus is
@@ -160,8 +193,70 @@
     // <body> after committing.
     private bool _focusDisplayOnRender;
 
+    protected override void OnParametersSet()
+    {
+        if (!_editing) return;
+
+        // n=38: Disabling the editor mid-edit hides the field (render gate
+        // @if (_editing && !Disabled)) but used to leave _editing latched, which
+        // resurrected the stale in-progress edit the moment Disabled flipped back
+        // to false. Tear the edit down cleanly so a re-enable starts in display
+        // mode with the current Value.
+        if (Disabled)
+        {
+            _editing = false;
+            _editValue = Value;
+            _editStartValue = Value;
+            _focusEditOnRender = false;
+            _focusDisplayOnRender = false;
+            return;
+        }
+
+        // n=37: While editing, if the parent pushes a new Value and the user
+        // hasn't touched the field yet, adopt the fresh value as the edit baseline.
+        // This stops an untouched blur-save (see OnBlur) from committing the stale
+        // pre-edit value back over the external update.
+        if (!IsDirty && !string.Equals(_editValue ?? "", Value ?? "", StringComparison.Ordinal))
+        {
+            _editValue = Value;
+            _editStartValue = Value;
+        }
+    }
+
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
+        // n=36: bind Space's preventDefault to the live display node. The display
+        // trigger (div[role=button]) is the only thing rendered in display mode and
+        // is destroyed/re-created across edit round-trips, so (re-)register whenever
+        // it is showing but not yet wired to the current node. registerPreventDefaultKeys
+        // is idempotent (it unregisters first), so a repeat call is cheap and rebinds
+        // to the fresh node. Enter has no default action on a div, so only Space needs
+        // suppression — matching CollapsibleTrigger / DialogTrigger.
+        var inDisplayMode = !(_editing && !Disabled);
+        if (inDisplayMode && !_pdRegistered)
+        {
+            try
+            {
+                await Interop.RegisterPreventDefaultKeys(
+                    _displayId,
+                    new[] { new Lumeo.Services.PreventDefaultKeyRule(" ") });
+                _pdRegistered = true;
+            }
+            catch (Microsoft.JSInterop.JSDisconnectedException) { }
+            catch (ObjectDisposedException) { }
+            catch (InvalidOperationException) { } // JS interop unavailable during prerender
+        }
+        else if (!inDisplayMode && _pdRegistered)
+        {
+            // The display node is gone in edit mode; drop the stale binding so the
+            // next return to display mode re-registers against the new node.
+            _pdRegistered = false;
+            try { await Interop.UnregisterPreventDefaultKeys(_displayId); }
+            catch (Microsoft.JSInterop.JSDisconnectedException) { }
+            catch (ObjectDisposedException) { }
+            catch (InvalidOperationException) { }
+        }
+
         if (_focusEditOnRender)
         {
             _focusEditOnRender = false;
@@ -174,6 +269,18 @@
             try { await _displayRef.FocusAsync(); }
             catch (Microsoft.JSInterop.JSDisconnectedException) { }
         }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (!_pdRegistered) return;
+        try
+        {
+            await Interop.UnregisterPreventDefaultKeys(_displayId);
+        }
+        catch (Microsoft.JSInterop.JSDisconnectedException) { }
+        catch (ObjectDisposedException) { }
+        catch (InvalidOperationException) { }
     }
 
     private string CssClass => Cx.Merge("group w-full", Class);
@@ -189,6 +296,7 @@
     {
         if (Disabled) return;
         _editValue = Value;
+        _editStartValue = Value;
         _editing = true;
         _focusEditOnRender = true;
     }
@@ -225,14 +333,35 @@
     {
         if (SaveOnBlur && _editing && !ShowButtons)
         {
-            await Save();
+            // n=37: An untouched field still holds the value captured at
+            // StartEditing. Committing it on blur would overwrite any external
+            // Value update that landed while the field was focused (lost update),
+            // so just leave edit mode without firing ValueChanged/OnSave.
+            if (!IsDirty)
+            {
+                _editing = false;
+                return;
+            }
+
+            // Implicit blur-save (e.g. Tab-out): commit the value but do NOT
+            // pull focus back to the trigger, otherwise Tab navigation to the
+            // next control is broken. Only explicit commits (Enter / Save
+            // button) restore focus to the display trigger.
+            await Save(restoreFocus: false);
         }
     }
 
-    private async Task Save()
+    // @onclick / @onkeydown bind to this parameterless overload (an explicit
+    // commit), which restores focus to the trigger.
+    private Task Save() => Save(restoreFocus: true);
+
+    private async Task Save(bool restoreFocus)
     {
         _editing = false;
-        _focusDisplayOnRender = true;
+        if (restoreFocus)
+        {
+            _focusDisplayOnRender = true;
+        }
         var saved = _editValue ?? "";
         await ValueChanged.InvokeAsync(saved);
         await OnSave.InvokeAsync(saved);
@@ -243,6 +372,7 @@
         _editing = false;
         _focusDisplayOnRender = true;
         _editValue = Value;
+        _editStartValue = Value;
         await OnCancel.InvokeAsync();
     }
 }

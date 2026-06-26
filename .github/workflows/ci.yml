@@ -6,6 +6,13 @@ on:
   pull_request:
     branches: [master]
 
+# Cancel a superseded run when new commits land on the same branch/PR — the suite
+# is re-run several times (build, test, registry, coverage, vuln) so a stale run is
+# pure wasted critical path.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build-and-test:
     runs-on: ubuntu-latest
@@ -31,6 +38,49 @@ jobs:
         # ready to run them headless against a deployed preview.
         run: dotnet test Lumeo.slnx -c Release --no-build --verbosity normal --filter "FullyQualifiedName!~Lumeo.Tests.E2E"
 
+      - name: Registry is up to date
+        # The MCP/docs registry (registry.json, components-api.json and the
+        # per-component docs) is derived from source by Lumeo.RegistryGen. A
+        # component or parameter change that forgets to regenerate would ship a
+        # stale registry — the very drift that bit releases before. Regenerate and
+        # fail if anything but the run-specific `generated` timestamp changes. The
+        # generator is line-ending-deterministic, so on an unchanged tree this is a
+        # no-op diff.
+        run: |
+          set -o pipefail
+          dotnet run --project tools/Lumeo.RegistryGen -c Release --no-build
+          PATHS="src/Lumeo/registry tools/lumeo-mcp/src/components-api.json tools/lumeo-mcp/src/registry.json docs/Lumeo.Docs/wwwroot/registry"
+          DRIFT=$(git diff -U0 -- $PATHS | grep -E '^[+-]' | grep -vE '^[+-]{3}' | grep -v '"generated"' || true)
+          if [ -n "$DRIFT" ]; then
+            echo "::error::Registry is stale. Run 'dotnet run --project tools/Lumeo.RegistryGen' and commit the result."
+            git --no-pager diff -- $PATHS
+            exit 1
+          fi
+
+      - name: Code coverage gate (core Lumeo)
+        # Re-run the suite under coverage instrumentation, scoped to the core Lumeo
+        # assembly (coverage.runsettings), and fail if line coverage drops below the
+        # floor. The floor sits well under the current ~80% (Release) so it catches a
+        # real regression without being brittle to small platform differences. The
+        # uninstrumented Test step above stays the primary correctness gate.
+        run: |
+          set -o pipefail
+          dotnet test tests/Lumeo.Tests/Lumeo.Tests.csproj -c Release --no-build \
+            --collect:"XPlat Code Coverage" --settings coverage.runsettings \
+            --results-directory covreport
+          COB=$(find covreport -name coverage.cobertura.xml | head -1)
+          if [ -z "$COB" ]; then echo "::error::No coverage report produced"; exit 1; fi
+          # Use grep -m1 (stop after the first, root-level line-rate) instead of
+          # `grep ... | head -1`: under `set -o pipefail`, head closing the pipe made
+          # grep abort with "write error: Broken pipe" (exit 2) once the cobertura
+          # report grew large enough that grep was still writing — failing the step
+          # before coverage was ever evaluated. -m1 exits cleanly with no SIGPIPE.
+          RATE=$(grep -o -m1 'line-rate="[0-9.]*"' "$COB" | sed 's/[^0-9.]//g')
+          if [ -z "$RATE" ]; then echo "::error::Could not parse line-rate from $COB"; exit 1; fi
+          PCT=$(awk "BEGIN{printf \"%.1f\", $RATE*100}")
+          echo "Core Lumeo line coverage: ${PCT}%"
+          awk "BEGIN{exit !($RATE >= 0.70)}" || { echo "::error::Core line coverage ${PCT}% is below the 70% floor"; exit 1; }
+
       - name: Check vulnerable packages (shipped + tests, excluding E2E)
         # E2E test project pulls SixLabors.ImageSharp 3.x for perceptual visual
         # diffs (CVE-2024-2cmq-823j-5qj8 / CVE-2024-rxmq-m78w-7wmc). Both apply
@@ -48,3 +98,19 @@ jobs:
           dotnet list src/Lumeo.Gantt/Lumeo.Gantt.csproj package --vulnerable --include-transitive 2>&1 | tee -a vulnerable.txt
           dotnet list src/Lumeo.Motion/Lumeo.Motion.csproj package --vulnerable --include-transitive 2>&1 | tee -a vulnerable.txt
           ! grep -q "has the following vulnerable packages" vulnerable.txt
+
+  mcp-server:
+    # The MCP server (tools/lumeo-mcp) is TypeScript and was previously only
+    # typechecked at release time (publish.yml), so a tsc break or a broken tool
+    # first surfaced against live npm. Build + run its tests on every PR/push.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Build + test MCP server
+        working-directory: tools/lumeo-mcp
+        run: |
+          npm ci
+          npm test

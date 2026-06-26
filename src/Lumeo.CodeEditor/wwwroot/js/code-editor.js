@@ -174,6 +174,43 @@ function resolveDark(theme) {
     return isPageDark();
 }
 
+// Builds the debounced doc-change notifier + the matching CodeMirror update
+// listener as a single unit, so BOTH init and rebuild attach the SAME 60ms
+// debounce behaviour. Returns `{ listener, cancel }`:
+//   - `listener` is the `EditorView.updateListener` extension to include in the
+//     state's extension list,
+//   - `cancel()` clears any pending debounced round-trip (called from destroy).
+// Before this was factored out, rebuild() (language/theme/readOnly/minimap
+// toggle, or an auto-theme flip) re-attached a BARE, non-debounced listener,
+// silently disabling the debounce and firing a dotNet round-trip on every
+// keystroke until the next page load.
+function makeChangeListener(core, dotNetRef) {
+    let debounceTimer = null;
+    const debouncedNotify = (doc) => {
+        if (debounceTimer) clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(() => {
+            debounceTimer = null;
+            try {
+                dotNetRef.invokeMethodAsync('OnEditorChange', doc);
+            } catch (e) {
+                // Component disposed — observer may still fire briefly.
+            }
+        }, 60);
+    };
+    const listener = core.view.EditorView.updateListener.of((update) => {
+        if (update.docChanged) {
+            debouncedNotify(update.state.doc.toString());
+        }
+    });
+    const cancel = () => {
+        if (debounceTimer) {
+            clearTimeout(debounceTimer);
+            debounceTimer = null;
+        }
+    };
+    return { listener, cancel };
+}
+
 async function buildExtensions(opts, core, base = _esmBase) {
     const { state, view, language, commands, search, autocomplete } = core;
     const exts = [];
@@ -273,24 +310,10 @@ export async function init(elementId, options, dotNetRef) {
     // Change listener — fire dotNetRef.OnEditorChange with the latest doc on every edit.
     // CodeMirror's `EditorView.updateListener` fires synchronously per transaction;
     // we debounce to 60ms to match how RichTextEditor (TipTap) handles input — keeps
-    // C#-side state updates off the keystroke critical path.
-    let debounceTimer = null;
-    const debouncedNotify = (doc) => {
-        if (debounceTimer) clearTimeout(debounceTimer);
-        debounceTimer = setTimeout(() => {
-            try {
-                dotNetRef.invokeMethodAsync('OnEditorChange', doc);
-            } catch (e) {
-                // Component disposed — observer may still fire briefly.
-            }
-        }, 60);
-    };
-
-    const listener = view.EditorView.updateListener.of((update) => {
-        if (update.docChanged) {
-            debouncedNotify(update.state.doc.toString());
-        }
-    });
+    // C#-side state updates off the keystroke critical path. The same factory is
+    // reused by rebuild() so a language/theme/readOnly/minimap toggle re-attaches
+    // the debounced behaviour rather than a bare direct invoke.
+    const { listener, cancel } = makeChangeListener(core, dotNetRef);
 
     const startState = state.EditorState.create({
         doc: options.value || '',
@@ -324,7 +347,10 @@ export async function init(elementId, options, dotNetRef) {
         options: { ...options },
         base,
         themeObserver,
-        debounceTimer: () => debounceTimer,
+        // Cancels the active listener's pending debounced round-trip. Replaced
+        // by rebuild() so destroy() always cancels the CURRENT listener's timer,
+        // not a stale init-time closure.
+        cancelNotify: cancel,
     });
 }
 
@@ -333,14 +359,13 @@ async function rebuild(elementId) {
     if (!inst) return;
     const core = await loadCore(inst.base);
     const exts = await buildExtensions(inst.options, core, inst.base);
-    // Track the change listener: must re-attach so doc changes still propagate.
-    const listener = core.view.EditorView.updateListener.of((update) => {
-        if (update.docChanged) {
-            try {
-                inst.dotNetRef.invokeMethodAsync('OnEditorChange', update.state.doc.toString());
-            } catch {}
-        }
-    });
+    // Re-attach the change listener through the SAME factory init uses, so the
+    // 60ms input debounce survives the rebuild. Cancel the outgoing listener's
+    // pending timer first and swap inst.cancelNotify to the new closure so a
+    // later destroy() cancels the current (not a stale) timer.
+    try { inst.cancelNotify?.(); } catch {}
+    const { listener, cancel } = makeChangeListener(core, inst.dotNetRef);
+    inst.cancelNotify = cancel;
     inst.view.setState(core.state.EditorState.create({
         doc: inst.view.state.doc,
         selection: inst.view.state.selection,
@@ -352,9 +377,46 @@ export async function setValue(elementId, value) {
     const inst = _instances.get(elementId);
     if (!inst) return;
     const current = inst.view.state.doc.toString();
-    if (current === value) return;
+    const next = value || '';
+    if (current === next) return;
+
+    // A naive full-document replace (from:0 to:doc.length) collapses the
+    // selection to position 0, so a controlled/normalizing parent that echoes
+    // a slightly-different Value back on every keystroke would snap the caret
+    // to the top of the document. Instead:
+    //   1. Diff to the minimal changed region (shared prefix/suffix) so
+    //      CodeMirror's own position-mapping keeps the caret put.
+    //   2. Pass an explicit selection re-anchored to the previous caret
+    //      offset, clamped to the new length, as a belt-and-braces guard.
+    let prefix = 0;
+    const minLen = Math.min(current.length, next.length);
+    while (prefix < minLen && current[prefix] === next[prefix]) prefix++;
+
+    let suffix = 0;
+    while (
+        suffix < minLen - prefix &&
+        current[current.length - 1 - suffix] === next[next.length - 1 - suffix]
+    ) suffix++;
+
+    const from = prefix;
+    const to = current.length - suffix;
+    const insert = next.slice(prefix, next.length - suffix);
+
+    // Re-anchor the caret: map the old offsets across the edited region and
+    // clamp to the new document length so we never point past the end.
+    const prevSel = inst.view.state.selection.main;
+    const mapOffset = (pos) => {
+        if (pos <= from) return pos;
+        if (pos >= to) return pos + (insert.length - (to - from));
+        return from + Math.min(pos - from, insert.length);
+    };
+    const newLen = next.length;
+    const anchor = Math.min(mapOffset(prevSel.anchor), newLen);
+    const head = Math.min(mapOffset(prevSel.head), newLen);
+
     inst.view.dispatch({
-        changes: { from: 0, to: inst.view.state.doc.length, insert: value || '' },
+        changes: { from, to, insert },
+        selection: { anchor, head },
     });
 }
 
@@ -417,11 +479,10 @@ export async function destroy(elementId) {
     // down the editor. Without this, a setTimeout scheduled within the
     // last 60 ms before destroy still fires, invokes the (about-to-be-)
     // disposed dotNetRef and lands in the catch — harmless but wastes a
-    // round-trip and leaves a timer hanging until it resolves.
-    try {
-        const pending = inst.debounceTimer?.();
-        if (pending) clearTimeout(pending);
-    } catch {}
+    // round-trip and leaves a timer hanging until it resolves. cancelNotify
+    // always targets the CURRENT listener (rebuild swaps it), so this also
+    // cancels timers armed after a language/theme/readOnly/minimap rebuild.
+    try { inst.cancelNotify?.(); } catch {}
     try { inst.themeObserver?.disconnect(); } catch {}
     try { inst.view.destroy(); } catch {}
     _instances.delete(elementId);

@@ -105,8 +105,8 @@ public class PickListKeyboardReorderTests : IAsyncLifetime
     public void Reorder_Buttons_Render_When_Reorderable()
     {
         var cut = Render(selected: new[] { "Alpha", "Bravo" });
-        Assert.NotEmpty(cut.FindAll("button[title='Move up']"));
-        Assert.NotEmpty(cut.FindAll("button[title='Move down']"));
+        Assert.NotEmpty(cut.FindAll("button[aria-label='Move up']"));
+        Assert.NotEmpty(cut.FindAll("button[aria-label='Move down']"));
     }
 
     [Fact]
@@ -121,7 +121,7 @@ public class PickListKeyboardReorderTests : IAsyncLifetime
 
         // Select "Alpha" in the target, then move it down one slot → B,A,C.
         Option(TargetList(cut), "Alpha").Click();
-        cut.Find("button[title='Move down']").Click();
+        cut.Find("button[aria-label='Move down']").Click();
 
         Assert.NotNull(captured);
         Assert.Equal(new[] { "Bravo", "Alpha", "Charlie" }, captured!);
@@ -139,7 +139,7 @@ public class PickListKeyboardReorderTests : IAsyncLifetime
 
         // Select "Charlie" and move it up → A,C,B.
         Option(TargetList(cut), "Charlie").Click();
-        cut.Find("button[title='Move up']").Click();
+        cut.Find("button[aria-label='Move up']").Click();
 
         Assert.NotNull(captured);
         Assert.Equal(new[] { "Alpha", "Charlie", "Bravo" }, captured!);
@@ -166,7 +166,7 @@ public class PickListKeyboardReorderTests : IAsyncLifetime
     public void Reorderable_False_Hides_The_Reorder_Buttons()
     {
         var cut = Render(selected: new[] { "Alpha" }, extra: p => p.Add(l => l.Reorderable, false));
-        Assert.Empty(cut.FindAll("button[title='Move up']"));
-        Assert.Empty(cut.FindAll("button[title='Move down']"));
+        Assert.Empty(cut.FindAll("button[aria-label='Move up']"));
+        Assert.Empty(cut.FindAll("button[aria-label='Move down']"));
     }
 }

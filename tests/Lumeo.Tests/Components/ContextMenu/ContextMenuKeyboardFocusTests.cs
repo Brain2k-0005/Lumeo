@@ -136,4 +136,19 @@ public class ContextMenuKeyboardFocusTests : IAsyncLifetime
 
         cut.WaitForAssertion(() => Assert.Contains("Sub Item A", cut.Markup));
     }
+
+    [Fact]
+    public void SubTrigger_ArrowRight_Focuses_First_Item_When_The_Submenu_Renders()
+    {
+        // Race-free: focus moves to the first submenu item once the content renders
+        // (the content consumes the keyboard-open flag in OnAfterRender), not after
+        // a fixed Task.Delay. The namespaced id distinguishes it from the root.
+        var cut = RenderContextMenu(withSub: true);
+
+        cut.Find("button[aria-haspopup='menu']").KeyDown(new KeyboardEventArgs { Key = "ArrowRight" });
+
+        cut.WaitForAssertion(() =>
+            Assert.Contains(_interop.FocusMenuItemCalls,
+                c => c.Index == 0 && c.ContainerId.StartsWith("context-sub-content")));
+    }
 }

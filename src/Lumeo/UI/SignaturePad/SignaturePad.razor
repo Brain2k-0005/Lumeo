@@ -5,7 +5,8 @@
 @* The wrapper is the labelled region; Escape/Delete clears when focus is
    inside it so keyboard / switch-access users aren't forced to mouse the clear
    button. tabindex makes the region focusable for that handler. *@
-<div class="@WrapperClass"
+<div id="@_wrapperId"
+     class="@WrapperClass"
      role="group"
      aria-label="@L["SignaturePad.Label"]"
      tabindex="0"
@@ -18,7 +19,7 @@
             aria-hidden="true"
             style="background: @BackgroundColor;"></canvas>
 
-    @if (string.IsNullOrEmpty(Value))
+    @if (string.IsNullOrEmpty(_currentValue))
     {
         <span class="absolute inset-0 flex items-center justify-center text-muted-foreground/60 text-sm pointer-events-none italic select-none">
             @Placeholder
@@ -27,7 +28,7 @@
 
     @if (!Disabled && (ShowClearButton || ShowDownloadButton))
     {
-        <Flex Gap="2" Class="absolute right-2 top-2">
+        <Flex Gap="2" Class="absolute end-2 top-2">
             @if (ShowDownloadButton)
             {
                 <Button Variant="Button.ButtonVariant.Ghost"
@@ -42,7 +43,7 @@
                 <Button Variant="Button.ButtonVariant.Ghost"
                         Size="Button.ButtonSize.Icon"
                         OnClick="ClearAsync"
-                        Disabled="@string.IsNullOrEmpty(Value)"
+                        Disabled="@string.IsNullOrEmpty(_currentValue)"
                         aria-label="@L["SignaturePad.Clear"]">
                     <Blazicon Svg="Lucide.Eraser" class="h-4 w-4" />
                 </Button>
@@ -94,12 +95,45 @@
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     private readonly string _canvasId = LumeoIds.New("signature-pad");
+    // The labelled wrapper region. Clearing via the Clear button disables that
+    // button (it's empty now), so the browser drops keyboard focus to <body>.
+    // We give the wrapper a stable id so ClearAsync can restore focus to the
+    // region after clearing, keeping the pad keyboard-operable.
+    private readonly string _wrapperId = LumeoIds.New("signature-pad-region");
     private DotNetObjectReference<SignaturePad>? _selfRef;
     private bool _initialised;
-    private string? _lastSyncedValue;
+
+    // The live, displayed value. Seeded from the Value parameter, then mutated
+    // by our own JS-emitted strokes (OnStrokeEnded) and ClearAsync. The markup
+    // (placeholder, Clear-button disabled state, download fallback) reads THIS,
+    // not the raw [Parameter], so a one-way / normalised parent re-render can't
+    // wipe the just-drawn signature — Value stays a true controlled parameter.
+    private string? _currentValue;
+    // The last value the PARENT actually supplied via the Value parameter,
+    // captured on every OnParametersSet. A one-way binding re-supplies the SAME
+    // value every render (commonly null), so comparing the incoming Value
+    // against this detects a real consumer-driven change vs. an unchanged echo.
+    private string? _lastParamValue;
+    // The value our own OnStrokeEnded / ClearAsync last emitted. A *controlled*
+    // parent echoes this exact value straight back into the Value parameter; we
+    // recognise that echo and skip the (destructive, raster) reload, so a
+    // normalised round-trip never wipes the just-drawn vector signature.
+    private string? _emittedValue;
+    private bool _hasEmitted;
+    private bool _paramSeeded;
+    // Set true in OnParametersSet when the parent genuinely changed Value,
+    // consumed in OnAfterRenderAsync to repaint the canvas from the new value.
+    private bool _pendingParamReload;
+
     private string? _lastStrokeColor;
     private double _lastStrokeWidth;
     private bool _lastDisabled;
+    // The canvas surface dimensions last applied to the DOM. Changing the
+    // <canvas> width/height attribute resets (blanks) its drawing buffer, so a
+    // runtime Width/Height change wipes the rendered signature. We track the
+    // applied values and repaint the existing signature after the surface reset.
+    private int _lastWidth;
+    private int _lastHeight;
 
     private string MimeType => Format?.Equals("svg", StringComparison.OrdinalIgnoreCase) == true
         ? "image/svg+xml"
@@ -111,6 +145,45 @@
     private string CanvasClass =>
         $"touch-none rounded-lg block {(Disabled ? "pointer-events-none opacity-60" : "cursor-crosshair")}".Trim();
 
+    protected override void OnParametersSet()
+    {
+        // Seed the working value from the parameter on first set; thereafter
+        // adopt the parameter ONLY when the parent actually changed it. Our own
+        // OnStrokeEnded/ClearAsync mutate _currentValue (not Value), so a parent
+        // re-render that echoes back the same value (or a one-way binding that
+        // leaves Value unchanged at null) does NOT trigger a destructive reload.
+        if (!_paramSeeded)
+        {
+            _currentValue = Value;
+            _lastParamValue = Value;
+            _paramSeeded = true;
+            return;
+        }
+
+        // Unchanged parameter (the typical one-way / uncontrolled re-render):
+        // nothing to do. This is the case the old code got wrong — it compared
+        // the unchanged Value against the value WE emitted and reloaded.
+        if (string.Equals(_lastParamValue, Value, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        _lastParamValue = Value;
+
+        // A controlled parent echoes back exactly the value we just emitted.
+        // Adopt it as the param baseline but do NOT reload — the canvas already
+        // shows it, and a raster reload would discard the vector stroke data.
+        if (_hasEmitted && string.Equals(_emittedValue, Value, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        // A genuine consumer-driven change — adopt it and repaint the canvas.
+        _currentValue = Value;
+        _statusMessage = null;
+        _pendingParamReload = true;
+    }
+
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (firstRender)
@@ -119,7 +192,8 @@
             _lastStrokeColor = StrokeColor;
             _lastStrokeWidth = StrokeWidth;
             _lastDisabled = Disabled;
-            _lastSyncedValue = Value;
+            _lastWidth = Width;
+            _lastHeight = Height;
 
             var options = new
             {
@@ -128,7 +202,7 @@
                 mimeType = MimeType,
                 debounceMs = 200,
                 disabled = Disabled,
-                initialDataUrl = Value,
+                initialDataUrl = _currentValue,
             };
 
             await Interop.SignaturePadInit(_canvasId, options, _selfRef);
@@ -155,23 +229,49 @@
             _lastDisabled = Disabled;
         }
 
-        // Programmatic Value updates (parent set Value externally) — only
-        // re-render the canvas when the new value didn't originate from our
-        // own OnStrokeEnded callback. _lastSyncedValue tracks the latest
-        // value we either initialised with or emitted, so any other change
-        // came from the parent.
-        if (!string.Equals(_lastSyncedValue, Value, StringComparison.Ordinal))
+        // A runtime Width/Height change re-emits the <canvas> width/height
+        // attributes, which resets (blanks) the drawing buffer. Repaint the
+        // existing signature after the surface reset so the drawing survives a
+        // resize. Skipped when a param reload is already pending — that block
+        // repaints from the same value below, so we'd otherwise load twice.
+        if ((_lastWidth != Width || _lastHeight != Height) && !_pendingParamReload)
         {
-            await Interop.SignaturePadLoadDataUrl(_canvasId, Value);
-            _lastSyncedValue = Value;
+            _lastWidth = Width;
+            _lastHeight = Height;
+            await Interop.SignaturePadLoadDataUrl(_canvasId, _currentValue);
+        }
+        else if (_lastWidth != Width || _lastHeight != Height)
+        {
+            // Param reload will repaint; just sync the tracked dimensions.
+            _lastWidth = Width;
+            _lastHeight = Height;
+        }
+
+        // Programmatic Value updates: repaint the canvas ONLY when the parent
+        // actually changed the Value parameter (flagged in OnParametersSet).
+        // A value emitted by our own OnStrokeEnded never sets this flag, so a
+        // one-way binding or a normalised round-trip can't trigger the
+        // destructive loadDataUrl that wiped the just-drawn signature.
+        if (_pendingParamReload)
+        {
+            _pendingParamReload = false;
+            await Interop.SignaturePadLoadDataUrl(_canvasId, _currentValue);
         }
     }
 
     [JSInvokable]
     public async Task OnStrokeEnded(string? dataUrl)
     {
-        Value = dataUrl;
-        _lastSyncedValue = dataUrl;
+        // Store the drawn value in our backing field — NOT in the Value
+        // [Parameter]. Writing Value here would let a subsequent parent
+        // re-render (one-way binding, or a controlled parent that hasn't yet
+        // echoed the change) reset Value and trip the reload path, wiping the
+        // signature. Record it as the value we emitted so a controlled parent
+        // echoing the identical string back is recognised as our own
+        // round-trip and skips the destructive reload.
+        _currentValue = dataUrl;
+        _emittedValue = dataUrl;
+        _hasEmitted = true;
         _statusMessage = null; // drop any stale "cleared" announcement
         await ValueChanged.InvokeAsync(dataUrl);
         await OnSign.InvokeAsync();
@@ -181,12 +281,25 @@
     public async Task ClearAsync()
     {
         await Interop.SignaturePadClear(_canvasId);
-        Value = null;
-        _lastSyncedValue = null;
+        // Clear the live value via the backing field; the canvas is already
+        // blank from SignaturePadClear, so no reload is needed. As with
+        // OnStrokeEnded, record the emitted value so a controlled parent setting
+        // Value=null in response doesn't re-trigger a reload.
+        _currentValue = null;
+        _emittedValue = null;
+        _hasEmitted = true;
         _statusMessage = L["SignaturePad.Cleared"];
         await ValueChanged.InvokeAsync(null);
         await OnClear.InvokeAsync();
         StateHasChanged();
+
+        // Clearing disables the Clear button (the pad is empty), so a keyboard /
+        // switch-access user who activated it loses focus to <body>. Move focus
+        // back to the labelled wrapper region so the pad stays operable. This is
+        // idempotent for the Escape/Delete path (focus is already inside the
+        // region) and the needed restore for the Clear-button path.
+        try { await Interop.FocusElement(_wrapperId); }
+        catch (JSDisconnectedException) { }
     }
 
     // Escape / Delete / Backspace clear the pad when it (or a child) has focus,
@@ -194,7 +307,7 @@
     // or already empty.
     private async Task HandleKeyDownAsync(KeyboardEventArgs e)
     {
-        if (Disabled || string.IsNullOrEmpty(Value)) return;
+        if (Disabled || string.IsNullOrEmpty(_currentValue)) return;
         if (e.Key is "Escape" or "Delete" or "Backspace")
         {
             await ClearAsync();
@@ -207,7 +320,7 @@
         // debounced ValueChanged hasn't fired yet — otherwise a fast user who
         // hits Download right after their last stroke would download the
         // previous version (or null).
-        var dataUrl = await Interop.SignaturePadDataUrl(_canvasId, MimeType) ?? Value;
+        var dataUrl = await Interop.SignaturePadDataUrl(_canvasId, MimeType) ?? _currentValue;
         if (string.IsNullOrEmpty(dataUrl)) return;
 
         var commaIndex = dataUrl.IndexOf(',', StringComparison.Ordinal);

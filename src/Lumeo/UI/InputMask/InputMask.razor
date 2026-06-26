@@ -7,12 +7,12 @@
         @Label
         @if (Required)
         {
-            <span class="text-destructive ml-0.5">*</span>
+            <span class="text-destructive ms-0.5">*</span>
         }
     </label>
 }
 
-<input id="@_id"
+<input id="@EffectiveId"
        class="@CssClass"
        value="@_displayValue"
        placeholder="@EffectivePlaceholder"
@@ -20,6 +20,7 @@
        name="@(Name ?? FormField?.Name)"
        aria-required="@(Required ? "true" : "false")"
        aria-invalid="@(EffectiveInvalid ? "true" : "false")"
+       aria-describedby="@FormFieldDescribedBy"
        @oninput="HandleInput"
        @attributes="AdditionalAttributes" />
 
@@ -56,6 +57,19 @@
     private bool EffectiveInvalid => Invalid || FormField?.HasError == true;
     private bool InsideFormField => FormField is not null;
 
+    // Point aria-describedby at the FormField's rendered help/error text so a screen
+    // reader announces it on this input (null outside a FormField).
+    private string? FormFieldDescribedBy => FormField?.DescribedBy;
+
+    // Inside a FormField, adopt its ControlId as the input's id so the field's
+    // <Label For> actually click-focuses it (Base UI Field parity, matching
+    // Select/Textarea/DatePicker/TimePicker). Standalone, keep our own generated id.
+    // Every internal id use (the rendered id attribute and the caret JS interop in
+    // HandleInput/OnAfterRenderAsync) flows through this so the rendered id and the
+    // focus/caret targets stay consistent.
+    private string EffectiveId =>
+        !string.IsNullOrEmpty(FormField?.ControlId) ? FormField!.ControlId : _id;
+
     private readonly string _id = LumeoIds.New("inputmask");
 
     private string _displayValue = "";
@@ -63,6 +77,16 @@
     // Set in HandleInput to ask OnAfterRender to restore the caret to this display
     // index. -1 means "no pending restore".
     private int _pendingCaret = -1;
+    // Set in HandleInput when the re-masked display differs from the raw browser
+    // string (a char was rejected or a literal auto-inserted). OnAfterRender then
+    // force-writes _displayValue to the DOM because Blazor's diff may not patch an
+    // input whose value attribute equals the PREVIOUS render's value (#41).
+    private bool _pendingValueSync;
+    // Last Mask / PromptChar the display was derived against, so OnParametersSet
+    // re-derives the masked display when the mask definition changes even though
+    // the bound Value stayed the same (#155).
+    private string _lastMask = "";
+    private char _lastPromptChar = '_';
 
     private string CssClass => Cx.Merge("flex h-9 w-full rounded-md border", (EffectiveInvalid ? "border-destructive focus-visible:ring-destructive/20" : "border-input focus-visible:ring-ring"), "bg-transparent px-3 py-1 text-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-[1.5px] disabled:cursor-not-allowed disabled:opacity-50", Class);
 
@@ -70,10 +94,15 @@
 
     protected override void OnParametersSet()
     {
-        if (Value != _rawValue)
+        // Re-derive the masked display when the bound Value changes OR when the
+        // mask definition itself changes (Mask / PromptChar) while Value stays the
+        // same — otherwise a runtime mask swap left a stale display (#155).
+        if (Value != _rawValue || Mask != _lastMask || PromptChar != _lastPromptChar)
         {
             _rawValue = Value ?? "";
             _displayValue = ApplyMask(_rawValue);
+            _lastMask = Mask;
+            _lastPromptChar = PromptChar;
         }
     }
 
@@ -168,12 +197,19 @@
         // Read the caret BEFORE we rewrite the value — the DOM still holds the
         // post-edit string the browser produced, so selectionStart is meaningful.
         int browserCaret;
-        try { browserCaret = await Interop.GetInputCaret(_id); }
+        try { browserCaret = await Interop.GetInputCaret(EffectiveId); }
         catch (JSDisconnectedException) { browserCaret = inputVal.Length; }
 
         _rawValue = ExtractRaw(inputVal);
         _displayValue = ApplyMask(_rawValue);
         await ValueChanged.InvokeAsync(_rawValue);
+
+        // When the masked display differs from what the browser produced (a char
+        // was rejected, or a literal/separator was auto-inserted), the new
+        // _displayValue may equal the PREVIOUS render's value — so Blazor's diff
+        // emits no patch and the browser keeps showing the unmasked string. Ask
+        // OnAfterRender to force-write the value to the DOM (#41).
+        _pendingValueSync = _displayValue != inputVal;
 
         // Map the browser caret (in the typed string) onto the re-masked display:
         // count the significant chars before the caret, then land just after that
@@ -229,10 +265,24 @@
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
+        // Force the masked display into the DOM first (so the caret restore below
+        // operates on the corrected string). This runs only when HandleInput saw
+        // the display diverge from the raw browser string, i.e. a char was
+        // rejected or a literal auto-inserted and Blazor's diff may not patch it
+        // because the value equals the previous render (#41).
+        if (_pendingValueSync)
+        {
+            _pendingValueSync = false;
+            try { await Interop.SetInputValue(EffectiveId, _displayValue); }
+            catch (JSDisconnectedException) { }
+            catch (ObjectDisposedException) { }
+            catch (InvalidOperationException) { } // JS interop unavailable during prerender
+        }
+
         if (_pendingCaret < 0) return;
         var pos = _pendingCaret;
         _pendingCaret = -1;
-        try { await Interop.SetInputCaret(_id, pos); }
+        try { await Interop.SetInputCaret(EffectiveId, pos); }
         catch (JSDisconnectedException) { }
         catch (ObjectDisposedException) { }
         catch (InvalidOperationException) { } // JS interop unavailable during prerender

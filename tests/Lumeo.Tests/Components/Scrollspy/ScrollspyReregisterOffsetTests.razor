@@ -1,0 +1,69 @@
+@inherits Bunit.BunitContext
+@using Lumeo.Services
+@using Lumeo.Tests.Helpers
+@using Microsoft.Extensions.DependencyInjection
+
+@code {
+    // Lifecycle bug #100 — Offset (and Smooth) changes after first render were
+    // never re-registered, so the JS observer (which captures offset/smooth by
+    // value in its scroll closure) kept using the INITIAL Offset for active-
+    // section detection forever. The fix re-registers the observer when
+    // Offset/Smooth change. These tests assert the re-registration happens (and
+    // does not happen spuriously) via the recorded interop registrations.
+
+    private readonly TrackingInteropService _interop = new();
+
+    public ScrollspyReregisterOffsetTests()
+    {
+        this.AddLumeoServices();
+        Services.AddSingleton<IComponentInteropService>(_interop);
+    }
+
+    [Fact]
+    public void Offset_Change_After_First_Render_ReRegisters_Observer()
+    {
+        var cut = Render<ScrollspyOffsetHost>(p => p.Add(h => h.Offset, 80));
+
+        // First render registered once with the initial offset.
+        var first = Assert.Single(_interop.ScrollspyRegistrations);
+        Assert.Equal(80, first.Offset);
+
+        // Change the Offset parameter at runtime.
+        cut.Render(p => p.Add(h => h.Offset, 200));
+
+        // Without the fix the observer is never re-registered, so the only
+        // recorded registration still carries the stale offset of 80. With the
+        // fix a second registration is recorded with the new offset.
+        Assert.Equal(2, _interop.ScrollspyRegistrations.Count);
+        Assert.Equal(200, _interop.ScrollspyRegistrations[^1].Offset);
+    }
+
+    [Fact]
+    public void Smooth_Change_After_First_Render_ReRegisters_Observer()
+    {
+        var cut = Render<ScrollspyOffsetHost>(p => p
+            .Add(h => h.Offset, 0)
+            .Add(h => h.Smooth, true));
+
+        var first = Assert.Single(_interop.ScrollspyRegistrations);
+        Assert.True(first.Smooth);
+
+        cut.Render(p => p.Add(h => h.Smooth, false));
+
+        Assert.Equal(2, _interop.ScrollspyRegistrations.Count);
+        Assert.False(_interop.ScrollspyRegistrations[^1].Smooth);
+    }
+
+    [Fact]
+    public void Unrelated_ReRender_Does_Not_ReRegister_Observer()
+    {
+        var cut = Render<ScrollspyOffsetHost>(p => p.Add(h => h.Offset, 64));
+
+        Assert.Single(_interop.ScrollspyRegistrations);
+
+        // Re-render with the SAME Offset/Smooth — must NOT re-register.
+        cut.Render(p => p.Add(h => h.Offset, 64));
+
+        Assert.Single(_interop.ScrollspyRegistrations);
+    }
+}

@@ -1,0 +1,84 @@
+@inherits Bunit.BunitContext
+@using AngleSharp.Dom
+@using Lumeo.Tests.Helpers
+@using Microsoft.Extensions.DependencyInjection
+
+@code {
+    // #258 follow-up — adding a pane to an already-full (manually-sized) track must
+    // NOT force-equalize every pane and wipe the user's deliberate split.
+    //
+    // DistributeInitialSizes runs from OnAfterRender on every render. When a third
+    // pane is added after an asymmetric 70/30 layout the track is already full
+    // (remaining ≈ 0), so the OLD code re-balanced ALL non-collapsed panes to an
+    // equal 33.3/33.3/33.3 share — destroying the 70:30 proportion the user set.
+    // The fix gives the newcomer a default 100/N share and proportionally shrinks
+    // the existing panes so their RELATIVE proportions survive.
+    //
+    // The flex-grow ratio rendered into each pane's inline style is the runtime
+    // Handle.Size, so we assert on it directly from the DOM (same idiom as the
+    // sibling SplitterCollapseClampTests).
+
+    public SplitterDistributionTests()
+    {
+        this.AddLumeoServices();
+    }
+
+    private static double PaneFlexGrow(IElement pane)
+    {
+        // style="flex: <grow> 1 0; ..." — the SplitterPane wrapper carries it.
+        var style = pane.GetAttribute("style") ?? "";
+        var m = System.Text.RegularExpressions.Regex.Match(style, @"flex:\s*([0-9.]+)");
+        return m.Success ? double.Parse(m.Groups[1].Value, System.Globalization.CultureInfo.InvariantCulture) : 0;
+    }
+
+    private static double PaneGrow(IRenderedComponent<SplitterAsymmetricLatePaneHost> cut, int index)
+        => PaneFlexGrow(cut.Find($"[data-testid='pane-{index}']").ParentElement!);
+
+    [Fact]
+    public void Adding_Pane_To_Full_Track_Preserves_Existing_Proportions()
+    {
+        var cut = Render<SplitterAsymmetricLatePaneHost>(p => p.Add(h => h.ShowThird, false));
+
+        // Sanity: the deliberate 70/30 split is in effect.
+        Assert.Equal(2, cut.FindAll("[data-testid^='pane-']").Count);
+        Assert.Equal(70.0, PaneGrow(cut, 0), precision: 1);
+        Assert.Equal(30.0, PaneGrow(cut, 1), precision: 1);
+
+        // Add a third pane (registers with Size 0) onto the already-full track.
+        cut.Render(p => p.Add(h => h.ShowThird, true));
+
+        Assert.Equal(3, cut.FindAll("[data-testid^='pane-']").Count);
+
+        var a = PaneGrow(cut, 0);
+        var b = PaneGrow(cut, 1);
+        var c = PaneGrow(cut, 2);
+
+        // The newcomer must become visible (positive size), not freeze at 0.
+        Assert.True(c > 0.01, $"late pane was left frozen at {c}");
+
+        // REGRESSION: the original two panes must keep their 70:30 ratio (≈2.333),
+        // NOT be flattened to an equal 33.3/33.3 (ratio 1.0). Before the fix all
+        // three panes were 33.3 and this ratio collapsed to 1.0.
+        Assert.Equal(70.0 / 30.0, a / b, precision: 2);
+
+        // Direct guard against the equalize-everything regression: pane 0 stays
+        // clearly larger than pane 1 (under the bug they'd be equal).
+        Assert.True(a > b + 5.0, $"original split was flattened: pane0={a:F2}, pane1={b:F2}");
+    }
+
+    [Fact]
+    public void Adding_Pane_To_Full_Track_Gives_Newcomer_Default_Share_And_Sums_To_100()
+    {
+        var cut = Render<SplitterAsymmetricLatePaneHost>(p => p.Add(h => h.ShowThird, false));
+        cut.Render(p => p.Add(h => h.ShowThird, true));
+
+        var a = PaneGrow(cut, 0);
+        var b = PaneGrow(cut, 1);
+        var c = PaneGrow(cut, 2);
+
+        // Newcomer gets the default 100/3 share; the existing panes are scaled to
+        // fill the rest, so the whole track still sums to ~100%.
+        Assert.Equal(100.0 / 3.0, c, precision: 1);
+        Assert.Equal(100.0, a + b + c, precision: 1);
+    }
+}

@@ -125,6 +125,8 @@ public sealed class TrackingInteropService : IComponentInteropService
         _focusTrapRemovals.Add(elementId);
         return ValueTask.CompletedTask;
     }
+    public ValueTask SaveFocus(string key) => ValueTask.CompletedTask;
+    public ValueTask RestoreFocus(string key) => ValueTask.CompletedTask;
     public ValueTask AttachOverlaySlideEnd(string elementId) => ValueTask.CompletedTask;
     public ValueTask RegisterSvDrag(string elementId, Func<double, double, Task> handler) => ValueTask.CompletedTask;
     public ValueTask UnregisterSvDrag(string elementId) => ValueTask.CompletedTask;
@@ -229,9 +231,29 @@ public sealed class TrackingInteropService : IComponentInteropService
         _pointerReleases.Add((elementId, pointerId));
         return ValueTask.CompletedTask;
     }
-    public ValueTask RegisterDrawerSwipe(string elementId, string direction, Func<Task> handler) => ValueTask.CompletedTask;
-    public ValueTask RegisterDrawerSwipe(string elementId, Func<Task> handler) => ValueTask.CompletedTask;
-    public ValueTask UnregisterDrawerSwipe(string elementId) => ValueTask.CompletedTask;
+    // Drawer/Sheet swipe-to-dismiss tracking — records each (elementId, direction)
+    // registration and each unregistration so tests can assert that a swipe
+    // eligibility/direction toggle WHILE the overlay stays open re-wires the
+    // gesture (Sheet #89), not just on close+reopen.
+    private readonly List<(string ElementId, string? Direction)> _drawerSwipeRegistrations = new();
+    private readonly List<string> _drawerSwipeUnregistrations = new();
+    public IReadOnlyList<(string ElementId, string? Direction)> DrawerSwipeRegistrations => _drawerSwipeRegistrations;
+    public IReadOnlyList<string> DrawerSwipeUnregistrations => _drawerSwipeUnregistrations;
+    public ValueTask RegisterDrawerSwipe(string elementId, string direction, Func<Task> handler)
+    {
+        _drawerSwipeRegistrations.Add((elementId, direction));
+        return ValueTask.CompletedTask;
+    }
+    public ValueTask RegisterDrawerSwipe(string elementId, Func<Task> handler)
+    {
+        _drawerSwipeRegistrations.Add((elementId, null));
+        return ValueTask.CompletedTask;
+    }
+    public ValueTask UnregisterDrawerSwipe(string elementId)
+    {
+        _drawerSwipeUnregistrations.Add(elementId);
+        return ValueTask.CompletedTask;
+    }
     public ValueTask RegisterTabSwipe(string elementId, bool wrap, Func<string, Task> handler)
     {
         _tabSwipeRegistrations.Add(elementId);
@@ -347,8 +369,33 @@ public sealed class TrackingInteropService : IComponentInteropService
     }
     public ValueTask SetupAutoResize(string elementId, int maxRows) => ValueTask.CompletedTask;
     public ValueTask UnregisterAutoResize(string elementId) => ValueTask.CompletedTask;
-    public ValueTask RegisterOtpPaste(string baseId, int length, Func<string, Task> handler) => ValueTask.CompletedTask;
-    public ValueTask UnregisterOtpPaste(string baseId, int length) => ValueTask.CompletedTask;
+    // OTP paste registration tracking (#42 lifecycle) — records each
+    // (baseId, length) register/unregister so tests can assert the paste listener
+    // is (re-)wired against the CURRENT Length: a runtime Length change must
+    // unregister the old span and register the new one, and dispose must
+    // unregister against the last-registered length. Set
+    // ThrowObjectDisposedOnUnregisterOtpPaste to exercise the teardown
+    // ObjectDisposedException-swallow path (#157).
+    private readonly List<(string BaseId, int Length)> _otpPasteRegistrations = new();
+    private readonly List<(string BaseId, int Length)> _otpPasteUnregistrations = new();
+    public IReadOnlyList<(string BaseId, int Length)> OtpPasteRegistrations => _otpPasteRegistrations;
+    public IReadOnlyList<(string BaseId, int Length)> OtpPasteUnregistrations => _otpPasteUnregistrations;
+    /// <summary>When true, <see cref="UnregisterOtpPaste"/> throws
+    /// <see cref="ObjectDisposedException"/> (simulating a circuit/prerender
+    /// teardown race) so dispose tests can assert the component swallows it.</summary>
+    public bool ThrowObjectDisposedOnUnregisterOtpPaste { get; set; }
+    public ValueTask RegisterOtpPaste(string baseId, int length, Func<string, Task> handler)
+    {
+        _otpPasteRegistrations.Add((baseId, length));
+        return ValueTask.CompletedTask;
+    }
+    public ValueTask UnregisterOtpPaste(string baseId, int length)
+    {
+        _otpPasteUnregistrations.Add((baseId, length));
+        if (ThrowObjectDisposedOnUnregisterOtpPaste)
+            throw new ObjectDisposedException(nameof(TrackingInteropService));
+        return ValueTask.CompletedTask;
+    }
     public ValueTask RegisterPreventDefaultKeys(string elementId, IReadOnlyList<PreventDefaultKeyRule> rules) => ValueTask.CompletedTask;
     public ValueTask UnregisterPreventDefaultKeys(string elementId) => ValueTask.CompletedTask;
     public ValueTask ScrollSelectorIntoView(string selector) => ValueTask.CompletedTask;
@@ -434,13 +481,51 @@ public sealed class TrackingInteropService : IComponentInteropService
         return ValueTask.CompletedTask;
     }
 
+    // InputMask forced value write (#41) — records each (elementId, value) so the
+    // rejected-char test can assert the masked display was pushed to the DOM even
+    // when it matched the previous render (no Blazor patch).
+    private readonly List<(string ElementId, string Value)> _setInputValueCalls = new();
+    public IReadOnlyList<(string ElementId, string Value)> SetInputValueCalls => _setInputValueCalls;
+    public ValueTask SetInputValue(string elementId, string value)
+    {
+        _setInputValueCalls.Add((elementId, value));
+        return ValueTask.CompletedTask;
+    }
+
     public ValueTask RegisterBackToTop(string id, int threshold, Func<bool, Task> handler) => ValueTask.CompletedTask;
     public ValueTask UnregisterBackToTop(string id) => ValueTask.CompletedTask;
     public ValueTask ScrollToTop() => ValueTask.CompletedTask;
     public ValueTask DownloadFile(string fileName, string contentBase64, string mimeType = "application/octet-stream") => ValueTask.CompletedTask;
     public ValueTask CopyToClipboard(string text) => ValueTask.CompletedTask;
-    public ValueTask RippleAttachAsync(ElementReference element) => ValueTask.CompletedTask;
-    public ValueTask RippleDetachAsync(ElementReference element) => ValueTask.CompletedTask;
+    // Ripple press-effect tracking (Button/Card/Chip/...). The JS pointerdown
+    // listener attach/detach is the testable seam for the PressEffect
+    // state-on-data-change reconciliation: a runtime None->Ripple flip must
+    // attach, Ripple->None must detach, and dispose must detach if attached.
+    private int _rippleAttachCount;
+    private int _rippleDetachCount;
+    public int RippleAttachCallCount => _rippleAttachCount;
+    public int RippleDetachCallCount => _rippleDetachCount;
+    public ValueTask RippleAttachAsync(ElementReference element)
+    {
+        _rippleAttachCount++;
+        return ValueTask.CompletedTask;
+    }
+    public ValueTask RippleDetachAsync(ElementReference element)
+    {
+        _rippleDetachCount++;
+        return ValueTask.CompletedTask;
+    }
+
+    // File input reset tracking (#70) — UploadTrigger resets its native
+    // <input type=file> after every pick so re-selecting the SAME file fires
+    // `change` again. Tests assert the reset fires once per picker confirmation.
+    private int _resetFileInputCount;
+    public int ResetFileInputCallCount => _resetFileInputCount;
+    public ValueTask ResetFileInput(ElementReference element)
+    {
+        _resetFileInputCount++;
+        return ValueTask.CompletedTask;
+    }
 
     // Core reduced-motion gate (shares the PrefersReducedMotion flag with the
     // Motion override below) + TouchRipple coordinate resolution. TouchRipple
@@ -528,6 +613,17 @@ public sealed class TrackingInteropService : IComponentInteropService
     public ValueTask<string?> SignaturePadDataUrl(string elementId, string mimeType) => ValueTask.FromResult<string?>(null);
     public ValueTask SignaturePadSetStrokeStyle(string elementId, string color, double width) => ValueTask.CompletedTask;
     public ValueTask SignaturePadSetDisabled(string elementId, bool disabled) => ValueTask.CompletedTask;
-    public ValueTask SignaturePadLoadDataUrl(string elementId, string? dataUrl) => ValueTask.CompletedTask;
+
+    // SignaturePad surface repaint tracking (#120) — a runtime Width/Height
+    // change blanks the canvas buffer, so the component must re-issue
+    // SignaturePadLoadDataUrl to repaint the existing signature. Tests assert
+    // that repaint fires (with the live value) after a resize.
+    private readonly List<(string ElementId, string? DataUrl)> _signaturePadLoadCalls = new();
+    public IReadOnlyList<(string ElementId, string? DataUrl)> SignaturePadLoadCalls => _signaturePadLoadCalls;
+    public ValueTask SignaturePadLoadDataUrl(string elementId, string? dataUrl)
+    {
+        _signaturePadLoadCalls.Add((elementId, dataUrl));
+        return ValueTask.CompletedTask;
+    }
     public ValueTask SignaturePadDestroy(string elementId) => ValueTask.CompletedTask;
 }

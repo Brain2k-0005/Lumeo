@@ -385,4 +385,34 @@
         Assert.NotNull(contentWrapper);
         Assert.Equal("false", contentWrapper!.GetAttribute("aria-hidden"));
     }
+
+    // --- WAI-ARIA heading wrapper ---
+
+    [Fact]
+    public void Trigger_Button_Is_Wrapped_In_A_Heading()
+    {
+        var cut = Render(@<Accordion>
+            <AccordionItem Value="item1">
+                <AccordionTrigger>One</AccordionTrigger>
+                <AccordionContent>Content 1</AccordionContent>
+            </AccordionItem>
+        </Accordion>);
+
+        var heading = cut.Find("[role='heading']");
+        Assert.Equal("3", heading.GetAttribute("aria-level"));   // default level
+        Assert.NotNull(heading.QuerySelector("button"));         // the trigger button sits inside it
+    }
+
+    [Fact]
+    public void Heading_Level_Is_Configurable()
+    {
+        var cut = Render(@<Accordion>
+            <AccordionItem Value="item1">
+                <AccordionTrigger HeadingLevel="2">One</AccordionTrigger>
+                <AccordionContent>Content 1</AccordionContent>
+            </AccordionItem>
+        </Accordion>);
+
+        Assert.Equal("2", cut.Find("[role='heading']").GetAttribute("aria-level"));
+    }
 }

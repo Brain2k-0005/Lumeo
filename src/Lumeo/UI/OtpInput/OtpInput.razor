@@ -6,7 +6,7 @@
         @Label
         @if (Required)
         {
-            <span class="text-destructive ml-0.5">*</span>
+            <span class="text-destructive ms-0.5">*</span>
         }
     </label>
 }
@@ -25,6 +25,7 @@
                            id="@($"{_baseId}-{index}")"
                            aria-required="@Required.ToString().ToLowerInvariant()"
                            aria-invalid="@EffectiveInvalid.ToString().ToLowerInvariant()"
+                           aria-describedby="@(index == 0 ? FormFieldDescribedBy : null)"
                            aria-label="@(string.Format(L["OtpInput.DigitLabel"], index + 1, Length))"
                            type="@(Masked ? "password" : "text")"
                            inputmode="@InputModeAttr"
@@ -95,7 +96,19 @@
     private bool EffectiveInvalid => Invalid || FormField?.HasError == true;
     private bool InsideFormField => FormField is not null;
 
+    // Point aria-describedby at the FormField's rendered help/error text so a screen
+    // reader announces it on the first OTP box (null outside a FormField). The boxes keep
+    // their own generated ids (load-bearing for focus/paste JS interop), so the FormField
+    // <Label For> can't click-focus them — but the aria-describedby association is the win.
+    private string? FormFieldDescribedBy => FormField?.DescribedBy;
+
     private readonly string _baseId = LumeoIds.New("otp");
+
+    // The Length the paste interop was last registered against. The JS paste
+    // listener is attached to exactly the `${baseId}-0..length-1` cells that
+    // exist at registration time, so a runtime Length change must re-register
+    // (unregister the old span, register the new one). -1 = not yet registered.
+    private int _registeredLength = -1;
 
     // Per-cell render nonce. Bumping a cell's nonce changes that input's @key so
     // Blazor recreates the element with its model value — used to discard a
@@ -157,11 +170,22 @@
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (!firstRender) return;
         try
         {
-            await Interop.RegisterOtpPaste(_baseId, Length, HandlePaste);
-            if (AutoFocus)
+            // (Re-)register the paste listener whenever Length changes — including
+            // the first render where _registeredLength is still -1. The JS listener
+            // is bound to the cells that exist at registration time, so a runtime
+            // Length change leaks the old listener and never wires the new cells
+            // unless we unregister the old span and register the new one.
+            if (_registeredLength != Length)
+            {
+                if (_registeredLength >= 0)
+                    await Interop.UnregisterOtpPaste(_baseId, _registeredLength);
+                await Interop.RegisterOtpPaste(_baseId, Length, HandlePaste);
+                _registeredLength = Length;
+            }
+
+            if (firstRender && AutoFocus)
             {
                 await Interop.FocusElement($"{_baseId}-0");
             }
@@ -242,9 +266,15 @@
         Value = BuildValue(cells);
         await ValueChanged.InvokeAsync(Value);
 
-        if (index < Length - 1)
+        // BuildValue left-collapses interior gaps, so typing into a non-leading
+        // EMPTY box relocates the char to position Value.Length-1. Focus the next
+        // genuinely empty box (Value.Length) rather than the typed index+1, which
+        // would otherwise skip the real next-empty box. For sequential typing
+        // (index == Value.Length-1 after insert) this is identical to index+1.
+        var nextEmpty = Value.Length;
+        if (nextEmpty < Length)
         {
-            await Interop.FocusElement($"{_baseId}-{index + 1}");
+            await Interop.FocusElement($"{_baseId}-{nextEmpty}");
         }
 
         if (Value.Length == Length)
@@ -271,13 +301,26 @@
             case "End":
                 await Interop.FocusElement($"{_baseId}-{Length - 1}");
                 return;
-            case "Backspace":
             case "Delete":
+                // Forward-delete: clear ONLY the current cell and keep focus
+                // here (do not collapse to the previous box like Backspace).
+                // On an already-empty cell, do nothing.
+                if (GetChar(index) != "")
+                {
+                    var deleteCells = CellsFromValue();
+                    deleteCells[index] = Empty;
+                    Value = BuildValue(deleteCells);
+                    await ValueChanged.InvokeAsync(Value);
+                }
+                return;
+            case "Backspace":
                 break;
             default:
                 return;
         }
 
+        // Backspace: clear the current cell (or, when empty, the previous one)
+        // and move focus backward.
         var cells = CellsFromValue();
         if (GetChar(index) != "")
         {
@@ -298,10 +341,17 @@
 
     public async ValueTask DisposeAsync()
     {
+        // Unregister against the length we ACTUALLY registered with, not the live
+        // Length (which may have changed since). Skip entirely if we never
+        // registered. Mirror OnAfterRenderAsync's catch set so teardown during a
+        // circuit/prerender disposal never throws.
+        if (_registeredLength < 0) return;
         try
         {
-            await Interop.UnregisterOtpPaste(_baseId, Length);
+            await Interop.UnregisterOtpPaste(_baseId, _registeredLength);
+            _registeredLength = -1;
         }
         catch (JSDisconnectedException) { }
+        catch (ObjectDisposedException) { }
     }
 }

@@ -5,7 +5,7 @@
 
 <div class="@RootCssClass" @attributes="AdditionalAttributes" style="@RootStyle">
     @* Center selection indicator *@
-    <div class="absolute left-0 right-0 top-1/2 -translate-y-1/2 h-10 border-y border-primary/30 pointer-events-none"></div>
+    <div class="absolute start-0 end-0 top-1/2 -translate-y-1/2 h-10 border-y border-primary/30 pointer-events-none"></div>
 
     @* Hours column *@
     <div class="flex-1 overflow-y-scroll snap-y snap-mandatory scrollbar-none h-full"
@@ -65,7 +65,7 @@
     [Parameter] public EventCallback<TimeSpan?> ValueChanged { get; set; }
     /// <summary>
     /// When <c>true</c> renders a 24-hour clock; when <c>false</c> renders 12-hour with AM/PM.
-    /// When <c>null</c> (default), derived from <see cref="CultureInfo.DateTimeFormat.ShortTimePattern"/>.
+    /// When <c>null</c> (default), derived from <c>CultureInfo.DateTimeFormat.ShortTimePattern</c>.
     /// </summary>
     [Parameter] public bool? Use24Hour { get; set; }
     [Parameter] public int MinuteStep { get; set; } = 1;
@@ -101,6 +101,16 @@
     // outside must re-scroll them or the next user scroll commits from stale
     // offsets. RaiseChange pre-marks its own commits as synced.
     private TimeSpan? _lastSyncedValue;
+    // Battle-wave2 #68 (state-on-data-change): the last value RaiseChange emitted,
+    // tracked separately from _lastSyncedValue. When the picker is used UNCONTROLLED
+    // (ValueChanged not bound back), the parent re-renders with Value still null
+    // after a self-commit. Without this, OnParametersSet saw `null != _lastSyncedValue`
+    // (which RaiseChange had set to the committed time), treated it as an external
+    // clear, and reseeded the columns back to 00:00 — wiping the user's selection.
+    // We remember our own last emission so a "Value came back unchanged-as-null"
+    // re-render is NOT mistaken for an external resync, and so the seed falls back
+    // to the committed selection rather than TimeSpan.Zero.
+    private TimeSpan? _ownLastEmitted;
     private bool _resyncPending;
 
     private CultureInfo EffectiveCulture => Culture ?? CultureInfo.CurrentCulture;
@@ -124,13 +134,21 @@
         _minutes = new List<int>();
         for (var i = 0; i < 60; i += step) _minutes.Add(i);
 
-        if (Value != _lastSyncedValue)
+        // Only resync (re-scroll the columns) when Value is a genuine EXTERNAL
+        // change — i.e. it differs from BOTH the last value we synced AND the last
+        // value we ourselves emitted. In uncontrolled use the parent echoes Value
+        // back as null after our commit; that is not an external change, so we must
+        // not reseed the columns to zero. (#68)
+        if (Value != _lastSyncedValue && Value != _ownLastEmitted)
         {
             _lastSyncedValue = Value;
             _resyncPending = true;
         }
 
-        var seed = Value ?? TimeSpan.Zero;
+        // Seed from the parent's Value when supplied; otherwise fall back to our own
+        // committed selection (uncontrolled use) before the TimeSpan.Zero default, so
+        // a parent re-render that leaves Value null preserves the user's pick. (#68)
+        var seed = Value ?? _ownLastEmitted ?? TimeSpan.Zero;
         if (EffectiveUse24Hour)
         {
             _hour = seed.Hours;
@@ -227,9 +245,37 @@
             hour24 = _periodIndex == 1 ? h + 12 : h;
         }
         var t = new TimeSpan(hour24, _minute, 0);
-        // Our own commit — the parent echoing it back is not an external change.
-        _lastSyncedValue = t;
+        // Our own commit — the parent echoing it back (controlled use) or never
+        // adopting it (uncontrolled, Value stays null, see #68) is NOT an external
+        // change. Record it as _ownLastEmitted; OnParametersSet's resync gate skips
+        // any incoming Value equal to it, and the seed falls back to it when Value is
+        // null, so neither echo nor non-adoption reseeds the columns to zero. We do
+        // NOT pre-set _lastSyncedValue here: leaving it lagging the parent's last
+        // supplied value is what lets the uncontrolled `null != _lastSyncedValue`
+        // check read false on the follow-up re-render.
+        _ownLastEmitted = t;
         await ValueChanged.InvokeAsync(t);
+    }
+
+    // Test seam (state-on-data-change #68): drives a deterministic self-commit to a
+    // specific time, mirroring what the debounced scroll handlers do when the user
+    // settles each column. The real scroll path depends on JS scroll offsets +
+    // timer debounce, which are not reproducible in bUnit; this exercises the same
+    // RaiseChange commit so the uncontrolled-reseed regression can be asserted.
+    internal Task CommitSelectionForTest(TimeSpan time)
+    {
+        if (EffectiveUse24Hour)
+        {
+            _hour = time.Hours;
+        }
+        else
+        {
+            var h12 = time.Hours % 12;
+            _hour = h12 == 0 ? 12 : h12;
+            _periodIndex = time.Hours >= 12 ? 1 : 0;
+        }
+        _minute = SnapMinute(time.Minutes);
+        return RaiseChange();
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)

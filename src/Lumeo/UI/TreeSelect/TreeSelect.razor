@@ -11,23 +11,24 @@
         @Label
         @if (Required)
         {
-            <span class="text-destructive ml-0.5">*</span>
+            <span class="text-destructive ms-0.5">*</span>
         }
     </label>
 }
 
 <div id="@_wrapperId" class="relative inline-block @Class" @attributes="AdditionalAttributes">
     <button type="button"
-            id="@_triggerId"
+            id="@EffectiveTriggerId"
             class="@TriggerClass"
             @onclick="ToggleOpen"
             disabled="@Disabled"
             aria-haspopup="tree"
             aria-expanded="@_isOpen"
+            aria-describedby="@FormFieldDescribedBy"
             aria-required="@(Required ? "true" : "false")"
             aria-invalid="@(EffectiveInvalid ? "true" : "false")">
-        <span class="@(Cx.Join("flex-1 truncate text-left", Cx.When(displayText == (Placeholder ?? L["TreeSelect.Placeholder"]), "text-muted-foreground")))">@displayText</span>
-        <span class="ml-1 flex shrink-0 items-center gap-1">
+        <span class="@(Cx.Join("flex-1 truncate text-start", Cx.When(displayText == (Placeholder ?? L["TreeSelect.Placeholder"]), "text-muted-foreground")))">@displayText</span>
+        <span class="ms-1 flex shrink-0 items-center gap-1">
             @if (Clearable && !Disabled && HasSelection())
             {
                 <span role="button"
@@ -100,6 +101,18 @@
 @code {
     [CascadingParameter] private FormField.FormFieldContext? FormField { get; set; }
 
+    // aria-describedby on the trigger announces the FormField help/error to a screen
+    // reader.
+    private string? FormFieldDescribedBy => FormField?.DescribedBy;
+
+    // Inside a FormField, adopt its ControlId as the trigger button's id so the
+    // field's <Label For> actually click-focuses the tree select (Base UI Field parity,
+    // matching Select/Textarea/DatePicker/TimePicker). Standalone, keep our own generated id.
+    // Every internal id use (the rendered id attribute, restore-focus on close) flows
+    // through this so the rendered id and the focus target stay consistent.
+    private string EffectiveTriggerId =>
+        !string.IsNullOrEmpty(FormField?.ControlId) ? FormField!.ControlId : _triggerId;
+
     [Parameter] public string? Value { get; set; }
     [Parameter] public EventCallback<string> ValueChanged { get; set; }
     [Parameter] public List<TreeSelectItem> Items { get; set; } = new();
@@ -139,7 +152,14 @@
     // nodes, rebuilt lazily (invalidated on every render of the panel body).
     private readonly Dictionary<string, string> _nodeIds = new();
     private List<TreeSelectItem>? _flatVisible;
+    // Roving focus is anchored by stable identity (the active node's Value), not
+    // by object reference. _activeItem is the resolved node for the CURRENT
+    // Items render; it is re-resolved from _activeValue in EnsureFlatVisible so
+    // an equal-content Items replacement (new instances, same Values — e.g. an
+    // async refresh) keeps focus on the same logical node instead of snapping
+    // back to the first one. This mirrors how _expandedNodes is keyed by Value.
     private TreeSelectItem? _activeItem;
+    private string? _activeValue;
 
     private string TriggerClass =>
         $"flex h-9 w-full items-center justify-between rounded-md border {(EffectiveInvalid ? "border-destructive" : "border-input")} bg-background px-3 py-2 text-sm shadow-sm transition-colors disabled:cursor-not-allowed disabled:opacity-50 hover:bg-accent/50 focus:outline-none focus:ring-1 {(EffectiveInvalid ? "focus:ring-destructive/20" : "focus:ring-ring")}".Trim();
@@ -259,8 +279,11 @@
         _searchText = "";
         // Seed the roving focus on the first selected node if one is visible,
         // otherwise the first node; the panel itself takes focus so arrow keys
-        // are handled even before a treeitem is focused.
+        // are handled even before a treeitem is focused. Seed BEFORE the first open
+        // render so the selected node is the tab stop immediately (no flash of the
+        // first node, and no dependency on the post-interop re-render below).
         _flatVisible = null;
+        SeedActiveFromSelection();
         StateHasChanged();
         await Task.Yield();
         if (_disposed) return;
@@ -294,7 +317,17 @@
         }
         catch (JSDisconnectedException) { }
         if (_disposed) return;
+        // Place roving focus on the first VISIBLE selected node so a keyboard user
+        // lands on what they previously chose. SeedActiveFromSelection sets
+        // _activeValue and invalidates _flatVisible; EnsureFlatVisible then rebuilds
+        // and re-resolves _activeItem against it, falling back to the first node
+        // only when the selection is absent/not visible. The StateHasChanged pushes
+        // the new roving tabindex (0 on the selected node) into the markup — the
+        // first open render already ran EnsureFlatVisible with no selection, so
+        // without this re-render the tabindex would stay on node 0.
+        SeedActiveFromSelection();
         EnsureFlatVisible();
+        StateHasChanged();
         if (_activeItem is not null)
         {
             try { await Interop.FocusElement(GetNodeId(_activeItem)); } catch (JSDisconnectedException) { }
@@ -308,6 +341,11 @@
     private async Task CloseDropdown(bool restoreFocus = false)
     {
         _isOpen = false;
+        // Reset the roving-focus anchor so the NEXT open re-seeds deterministically
+        // from the current selection (OpenDropdown -> SeedActiveFromSelection) instead
+        // of reusing the node that happened to be active when this session closed.
+        _activeItem = null;
+        _activeValue = null;
         if (_registered)
         {
             try { await Interop.UnpositionFixed(_contentId); } catch (JSDisconnectedException) { }
@@ -319,7 +357,7 @@
         // aren't stranded (the panel that held focus is now gone).
         if (restoreFocus && !_disposed)
         {
-            try { await Interop.FocusElement(_triggerId); } catch (JSDisconnectedException) { }
+            try { await Interop.FocusElement(EffectiveTriggerId); } catch (JSDisconnectedException) { }
         }
     }
 
@@ -396,7 +434,7 @@
                 @if (hasChildren)
                 {
                     <button type="button"
-                            class="mr-1 rounded hover:bg-accent p-0.5 focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-1"
+                            class="me-1 rounded hover:bg-accent p-0.5 focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-1"
                             tabindex="-1"
                             aria-label="@L[isExpanded ? "Common.Collapse" : "Common.Expand"]"
                             @onclick="() => ToggleNode(item.Value)"
@@ -407,12 +445,12 @@
                 }
                 else
                 {
-                    <span class="mr-1 w-5 shrink-0"></span>
+                    <span class="me-1 w-5 shrink-0"></span>
                 }
 
                 @if (!string.IsNullOrEmpty(item.Icon))
                 {
-                    <span class="mr-1.5 text-muted-foreground text-xs">@item.Icon</span>
+                    <span class="me-1.5 text-muted-foreground text-xs">@item.Icon</span>
                 }
 
                 <span class="flex-1 truncate text-sm">@item.Label</span>
@@ -442,6 +480,7 @@
     private async Task HandleItemClick(TreeSelectItem item, bool hasChildren)
     {
         _activeItem = item;
+        _activeValue = item.Value;
         if (hasChildren && !Multiple)
             ToggleNode(item.Value);
         else
@@ -495,7 +534,26 @@
     private int GetTabIndex(TreeSelectItem item)
     {
         EnsureFlatVisible();
-        return ReferenceEquals(item, _activeItem) ? 0 : -1;
+        return item.Value == _activeValue ? 0 : -1;
+    }
+
+    /// <summary>On open, anchor the roving focus to the first VISIBLE selected node
+    /// (single: Value; multiple: any value in Values) by setting _activeValue, so
+    /// EnsureFlatVisible resolves it to that node. Leaves _activeValue untouched when
+    /// nothing is selected/visible so the existing flat[0] fallback applies.</summary>
+    private void SeedActiveFromSelection()
+    {
+        var flat = new List<TreeSelectItem>();
+        AppendVisible(Items, flat);
+        var selected = flat.FirstOrDefault(i => IsSelected(i.Value));
+        if (selected is not null && _activeValue != selected.Value)
+        {
+            _activeValue = selected.Value;
+            // Force EnsureFlatVisible to rebuild and re-resolve _activeItem against
+            // the new anchor; the open render may already have populated _flatVisible
+            // (seeded to the first node) and would otherwise short-circuit.
+            _flatVisible = null;
+        }
     }
 
     private void EnsureFlatVisible()
@@ -503,8 +561,13 @@
         if (_flatVisible is not null) return;
         _flatVisible = new List<TreeSelectItem>();
         AppendVisible(Items, _flatVisible);
-        if (_activeItem is null || !_flatVisible.Any(i => ReferenceEquals(i, _activeItem)))
-            _activeItem = _flatVisible.Count > 0 ? _flatVisible[0] : null;
+        // Re-anchor the active node by Value, not object reference: after an
+        // equal-content Items refresh the previous _activeItem is a stale
+        // instance, so prefer the new node carrying the same Value and only fall
+        // back to the first visible node when that Value is genuinely gone.
+        _activeItem = _flatVisible.FirstOrDefault(i => i.Value == _activeValue)
+                      ?? (_flatVisible.Count > 0 ? _flatVisible[0] : null);
+        _activeValue = _activeItem?.Value;
     }
 
     private void AppendVisible(List<TreeSelectItem> items, List<TreeSelectItem> result)
@@ -604,14 +667,14 @@
 
             case "ArrowDown":
             {
-                var idx = flat.FindIndex(i => ReferenceEquals(i, current));
+                var idx = flat.FindIndex(i => i.Value == current.Value);
                 await MoveActiveTo(idx >= 0 && idx < flat.Count - 1 ? flat[idx + 1] : null);
                 return;
             }
 
             case "ArrowUp":
             {
-                var idx = flat.FindIndex(i => ReferenceEquals(i, current));
+                var idx = flat.FindIndex(i => i.Value == current.Value);
                 await MoveActiveTo(idx > 0 ? flat[idx - 1] : null);
                 return;
             }
@@ -628,14 +691,15 @@
 
     private async Task MoveActiveTo(TreeSelectItem? target)
     {
-        if (target is null || ReferenceEquals(target, _activeItem)) return;
+        if (target is null || target.Value == _activeValue) return;
         _activeItem = target;
+        _activeValue = target.Value;
         StateHasChanged();
         try { await Interop.FocusElement(GetNodeId(target)); } catch (JSDisconnectedException) { }
     }
 
     private string GetItemClass(bool showSelected, bool disabled) => Cx.Join(
-        "flex items-center gap-1 rounded-md py-1.5 pr-2 cursor-pointer transition-colors",
+        "flex items-center gap-1 rounded-md py-1.5 pe-2 cursor-pointer transition-colors",
         disabled ? "opacity-50 cursor-not-allowed" : showSelected ? "bg-accent text-accent-foreground" : "hover:bg-accent/60");
 
     public async ValueTask DisposeAsync()

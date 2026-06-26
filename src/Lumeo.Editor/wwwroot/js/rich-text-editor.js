@@ -926,6 +926,24 @@ function applySlashCommand(editor, item) {
     }
 }
 
+// Builds the ProseMirror contenteditable attribute map: the base class +
+// spellcheck plus the a11y attributes forwarded from C# (role, aria-multiline,
+// aria-required/-invalid, and the label/description associations). Only emits
+// the aria-* keys that have a value so we don't stamp empty attributes.
+function buildEditorAttributes(opts) {
+    const attrs = {
+        class: 'lumeo-rte-prose prose prose-sm max-w-none p-4 focus:outline-none',
+        spellcheck: 'true',
+        role: opts.role || 'textbox',
+        'aria-multiline': opts.ariaMultiline === false ? 'false' : 'true',
+    };
+    if (opts.ariaRequired === true) attrs['aria-required'] = 'true';
+    if (opts.ariaInvalid === true) attrs['aria-invalid'] = 'true';
+    if (opts.ariaLabelledBy) attrs['aria-labelledby'] = String(opts.ariaLabelledBy);
+    if (opts.ariaDescribedBy) attrs['aria-describedby'] = String(opts.ariaDescribedBy);
+    return attrs;
+}
+
 // ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
@@ -1066,10 +1084,12 @@ export const rte = {
                 editable: opts.editable !== false && !(opts.disabled || opts.readOnly),
                 editorProps: {
                     handlePaste: pasteRule.handlePaste,
-                    attributes: {
-                        class: 'lumeo-rte-prose prose prose-sm max-w-none p-4 focus:outline-none',
-                        spellcheck: 'true',
-                    },
+                    // Base attributes for the contenteditable, plus a11y wiring
+                    // pushed from C#: role=textbox + aria-multiline make the
+                    // ProseMirror surface a proper multi-line textbox, and the
+                    // aria-labelledby/-describedby tie it to the component's
+                    // Label / helper / error text (Base UI Field a11y parity).
+                    attributes: buildEditorAttributes(opts),
                 },
                 onUpdate: ({ editor: ed }) => {
                     const html = ed.getHTML();
