@@ -23,7 +23,10 @@
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     private readonly string _itemId = LumeoIds.New("radio-card");
+    private bool _registered;
     private string? _registeredValue;
+    // Selection stays Value-based (duplicate Values both show aria-checked under
+    // single-select); only roving focus is per-item-id (see RadioGroup registry).
     private bool IsSelected => Context.Value == Value;
 
     private int Tabindex
@@ -31,14 +34,16 @@
         get
         {
             if (Context.Value == Value) return 0;
-            if (string.IsNullOrEmpty(Context.Value)
-                && Context.ItemValues.FirstOrDefault(v => !IsItemDisabled(v)) == Value) return 0;
+            // The "no live selection" fallback must ALSO fire when Context.Value
+            // matches NO registered item (triage #54) — else the group has no tab
+            // stop and is keyboard-unreachable.
+            var hasLiveSelection = !string.IsNullOrEmpty(Context.Value)
+                && Context.Items.Any(i => i.Value == Context.Value);
+            if (!hasLiveSelection
+                && Context.Items.FirstOrDefault(i => !i.Disabled).Id == _itemId) return 0;
             return -1;
         }
     }
-
-    private bool IsItemDisabled(string value) =>
-        Context.ItemDisabled.TryGetValue(value, out var d) && d;
 
     private string CssClass => Cx.Merge(
         "flex cursor-pointer rounded-lg border-2 p-4 text-start transition-colors hover:bg-accent/60 focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-2",
@@ -47,18 +52,15 @@
 
     protected override void OnParametersSet()
     {
-        // Ownership-guarded re-key (see RadioGroupItem) + idempotent register.
-        if (_registeredValue is not null && _registeredValue != Value
-            && Context.ItemIds.TryGetValue(_registeredValue, out var oldId) && oldId == _itemId)
-        {
-            Context.ItemValues.Remove(_registeredValue);
-            Context.ItemIds.Remove(_registeredValue);
-            Context.ItemDisabled.Remove(_registeredValue);
-        }
-        if (!Context.ItemValues.Contains(Value))
-            Context.ItemValues.Add(Value);
-        Context.ItemIds[Value] = _itemId;
-        Context.ItemDisabled[Value] = false;
+        // Id-keyed register/replace (see RadioGroupItem): a Value change re-keys
+        // the existing slot IN PLACE (#158 — not a remove+tail-add) and duplicate
+        // Values never collapse (#56). RadioGroupCard has no Disabled parameter,
+        // so its slot is always enabled.
+        if (_registered && _registeredValue != Value)
+            Context.Replace(_itemId, Value, false);
+        else
+            Context.Register(_itemId, Value, false);
+        _registered = true;
         _registeredValue = Value;
     }
 
@@ -85,8 +87,9 @@
     private async Task HandleKeyDown(KeyboardEventArgs e)
     {
         // No Space branch: the native <button> click already runs Select.
-        var items = Context.ItemValues;
-        var idx = items.IndexOf(Value);
+        var items = Context.Items;
+        // Resolve "current" by this card's UNIQUE id, not by Value (#56).
+        var idx = items.FindIndex(i => i.Id == _itemId);
 
         var direction = e.Key switch
         {
@@ -94,20 +97,18 @@
             "ArrowUp" or "ArrowLeft" => -1,
             _ => 0
         };
-        if (direction == 0) return;
+        if (direction == 0 || idx < 0) return;
 
-        var nextValue = FindNextEnabled(items, idx, direction);
-        if (nextValue is not null)
+        var next = FindNextEnabled(items, idx, direction);
+        if (next is not null)
         {
-            await Context.OnSelect.InvokeAsync(nextValue);
-            if (Context.ItemIds.TryGetValue(nextValue, out var nextId))
-            {
-                await Interop.FocusElement(nextId);
-            }
+            await Context.OnSelect.InvokeAsync(next.Value.Value);
+            await Interop.FocusElement(next.Value.Id);
         }
     }
 
-    private string? FindNextEnabled(List<string> items, int currentIdx, int direction)
+    private static (string Id, string Value, bool Disabled)? FindNextEnabled(
+        List<(string Id, string Value, bool Disabled)> items, int currentIdx, int direction)
     {
         if (items.Count == 0) return null;
         var idx = currentIdx;
@@ -117,20 +118,17 @@
             if (idx < 0) idx = items.Count - 1;
             else if (idx >= items.Count) idx = 0;
             if (idx == currentIdx) return null;
-            if (!IsItemDisabled(items[idx])) return items[idx];
+            if (!items[idx].Disabled) return items[idx];
         }
         return null;
     }
 
     public async ValueTask DisposeAsync()
     {
-        if (_registeredValue is not null
-            && Context.ItemIds.TryGetValue(_registeredValue, out var id) && id == _itemId)
-        {
-            Context.ItemValues.Remove(_registeredValue);
-            Context.ItemIds.Remove(_registeredValue);
-            Context.ItemDisabled.Remove(_registeredValue);
-        }
+        // Unregister by the unique id so a disposed duplicate never deletes a
+        // sibling's slot (#56).
+        if (_registered)
+            Context.Unregister(_itemId);
         if (!_pdRegistered) return;
         try
         {
