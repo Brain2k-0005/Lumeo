@@ -1,12 +1,12 @@
 {
   "$schema": "https://lumeo.nativ.sh/components-api-schema.json",
   "version": "3.19.0",
-  "generated": "2026-06-25T19:59:00.8665281Z",
+  "generated": "2026-06-26T05:29:03.6194104Z",
   "stats": {
     "componentCount": 164,
     "totalParameters": 4151,
     "totalEnums": 74,
-    "totalRecords": 71,
+    "totalRecords": 72,
     "serviceCount": 33,
     "thinFallbacks": []
   },
@@ -43442,7 +43442,7 @@
       "records": [
         {
           "name": "RadioGroupContext",
-          "signature": "RadioGroupContext(\n        string? Value,\n        EventCallback<string> OnSelect,\n        List<string> ItemValues,\n        Dictionary<string, string> ItemIds,\n        Dictionary<string, bool> ItemDisabled)",
+          "signature": "RadioGroupContext(\n        string? Value,\n        EventCallback<string> OnSelect,\n        // Ordered, id-keyed registry (declaration order). Each entry is a DISTINCT\n        // roving slot so duplicate Values stay independently keyboard-reachable.\n        List<(string Id, string Value, bool Disabled)> Items,\n        // Register/Replace/Unregister are keyed by the stable per-item id (see the\n        // RadioGroup.razor registry helpers — mirrors Accordion's trigger registry).\n        Action<string, string, bool> Register,\n        Action<string, string, bool> Replace,\n        Action<string> Unregister)",
           "description": null
         }
       ],
@@ -46228,9 +46228,14 @@
       "enums": [],
       "records": [
         {
+          "name": "SegmentedItemEntry",
+          "signature": "SegmentedItemEntry(string Value, string ItemId, bool Disabled)",
+          "description": "One entry in the ordered segment registry: the segment's current , its STABLE (the key for every registry mutation — survives a Value change) and its current state."
+        },
+        {
           "name": "SegmentedContext",
-          "signature": "SegmentedContext(\n        string? Value,\n        EventCallback<string> Select,\n        Func<bool, string> GetItemClasses,\n        Func<string, bool, string> GetTabIndex,\n        List<string> ItemValues,\n        Dictionary<string, string> ItemIds,\n        Dictionary<string, bool> ItemDisabled)",
-          "description": "Cascading context for compound-mode SegmentedItem children — they read the active value + the parent's item-class function (so style stays consistent with Options-mode), register themselves into the shared item registry (for roving tabindex + arrow navigation) and invoke Select on click."
+          "signature": "SegmentedContext(\n        string? Value,\n        EventCallback<string> Select,\n        Func<bool, string> GetItemClasses,\n        Func<string, bool, string> GetTabIndex,\n        IReadOnlyList<SegmentedItemEntry> Items,\n        Action<string, string, bool> RegisterItem,\n        Action<string, string, string, bool> ReplaceItem,\n        Action<string> UnregisterItem)",
+          "description": "Cascading context for compound-mode SegmentedItem children — they read the active value + the parent's item-class function (so style stays consistent with Options-mode), register / re-key / unregister themselves in the shared ordered registry (for roving tabindex + arrow navigation) keyed by their stable ItemId, and invoke Select on click."
         }
       ],
       "gotchas": [],
@@ -51026,7 +51031,11 @@
           "ArrowDown",
           "ArrowLeft",
           "ArrowRight",
-          "ArrowUp"
+          "ArrowUp",
+          "End",
+          "Home",
+          "PageDown",
+          "PageUp"
         ],
         "keyboardInteractive": true,
         "focusManaged": true
@@ -51653,7 +51662,7 @@
           "records": [
             {
               "name": "StepRegistration",
-              "signature": "StepRegistration(\n        string Title,\n        string? Description,\n        bool Optional,\n        bool Completed,\n        Func<bool>? IsValid,\n        RenderFragment? IconContent,\n        RenderFragment? ChildContent,\n        bool KeepMounted)",
+              "signature": "StepRegistration(\n        Guid Id,\n        string Title,\n        string? Description,\n        bool Optional,\n        bool Completed,\n        Func<bool>? IsValid,\n        RenderFragment? IconContent,\n        RenderFragment? ChildContent,\n        bool KeepMounted)",
               "description": null
             }
           ],
@@ -51681,7 +51690,9 @@
           "ArrowDown",
           "ArrowLeft",
           "ArrowRight",
-          "ArrowUp"
+          "ArrowUp",
+          "End",
+          "Home"
         ],
         "keyboardInteractive": true,
         "focusManaged": true
@@ -55993,7 +56004,7 @@
       "records": [
         {
           "name": "ToggleGroupContext",
-          "signature": "ToggleGroupContext(\n        ToggleGroupType Type,\n        HashSet<string> SelectedItems,\n        ToggleGroupVariant Variant,\n        Lumeo.Size Size,\n        EventCallback<string> Toggle,\n        Func<string, bool, string> GetTabIndex,\n        List<string> ItemValues,\n        Dictionary<string, string> ItemIds,\n        Dictionary<string, bool> ItemDisabled)",
+          "signature": "ToggleGroupContext(\n        ToggleGroupType Type,\n        HashSet<string> SelectedItems,\n        ToggleGroupVariant Variant,\n        Lumeo.Size Size,\n        EventCallback<string> Toggle,\n        Func<string, bool, string> GetTabIndex,\n        List<string> ItemValues,\n        Dictionary<string, string> ItemIds,\n        Dictionary<string, bool> ItemDisabled,\n        // #69: stable-id registration (item id, value, disabled, render generation)\n        // so the parent rebuilds ItemValues in DOM order each pass.\n        Action<string, string, bool, int> RegisterItem,\n        Action<string, string> UnregisterItem,\n        // #169: focus-anchor sync — item reports the value it was focused on.\n        Action<string> SetFocusValue,\n        int Generation)",
           "description": null
         }
       ],

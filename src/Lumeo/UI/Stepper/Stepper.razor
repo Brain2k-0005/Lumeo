@@ -43,7 +43,7 @@
                     aria-current="@(isActive ? "step" : null)"
                     aria-disabled="@(CanClickStep(idx) ? null : "true")"
                     aria-controls="@_panelId"
-                    tabindex="@(isActive ? 0 : -1)"
+                    tabindex="@(idx == _focusedTabIndex ? 0 : -1)"
                     class="@GetStepIndicatorClass(idx, isActive, isCompleted, isError)"
                     @ref="_stepButtonRefs[idx]"
                     @onclick="() => HandleStepClick(idx)"
@@ -138,7 +138,19 @@
             var isActivePanel = stepIdx == ActiveStep;
             @if (bodyStep.KeepMounted)
             {
-                <div @key="stepIdx" style="@(isActivePanel ? null : "display:none")" aria-hidden="@(isActivePanel ? null : "true")">@bodyStep.ChildContent</div>
+                @* #105: key on the step's STABLE identity, not the loop index. An
+                   index key makes Blazor reuse a kept-mounted panel's DOM for a
+                   DIFFERENT step after a remove/insert, dragging stale input
+                   state to the wrong owner. The Guid is generated once per
+                   StepperStep instance, so the panel fragment tracks its true
+                   owner across reorders.
+                   DEFERRED: the pure *physical* @key reorder-with-reuse leg —
+                   asserting the kept-mounted DOM nodes are re-ordered (not just
+                   re-keyed) to match a new markup order — needs a DOM-order JS
+                   interop probe to observe sibling order, which is out of scope
+                   for this batch (no new shared interop). Identity-keying here is
+                   the correctness fix; physical sibling reordering is unchanged. *@
+                <div @key="bodyStep.Id" style="@(isActivePanel ? null : "display:none")" aria-hidden="@(isActivePanel ? null : "true")">@bodyStep.ChildContent</div>
             }
             else if (isActivePanel)
             {
@@ -227,6 +239,17 @@
     // so @ref bindings in the render loop always find a valid slot.
     private ElementReference[] _stepButtonRefs = Array.Empty<ElementReference>();
 
+    // Roving-tabindex focus pointer (#197). The WAI-ARIA tablist keeps EXACTLY one
+    // tab in the page tab order (tabindex=0); arrow/Home/End move that single stop
+    // WITHOUT changing selection. This tracks which tab currently owns the stop.
+    // Initialized to ActiveStep and re-synced to ActiveStep whenever the active
+    // step changes (see _prevActiveStep below). Focus != activation: aria-selected
+    // and aria-current stay bound to ActiveStep, not to this.
+    private int _focusedTabIndex;
+    // Previous ActiveStep, so OnParametersSet can detect an external change and
+    // pull the roving focus pointer back onto the (new) active tab.
+    private int _prevActiveStep = -1;
+
     // Stable IDs for the tabpanel and per-step tab buttons so the panel
     // can reference the active step via aria-labelledby. Without these,
     // AT announces the tabpanel without context (just "tab panel" instead
@@ -251,6 +274,13 @@
         {
             _stepOwners.Remove(owner);
             RebuildSteps();
+            // #104: removing a step shrinks the list. A removed step's Dispose
+            // runs during the parent's child-diff, AFTER the parent's own
+            // OnParametersSet for this render — so the clamp there would observe
+            // the OLD count. Re-clamp here against the freshly-shrunk list so an
+            // out-of-range ActiveStep is corrected (and pushed back) on this very
+            // teardown, not deferred to a later parameter set that may never come.
+            ClampActiveStep();
             // Deferred + guarded: disposal may happen while the whole Stepper
             // is being torn down, where a re-render request is invalid.
             try { _ = InvokeAsync(StateHasChanged); }
@@ -289,6 +319,43 @@
         // Ensure the refs array is always large enough for the current step count.
         if (_stepButtonRefs.Length != _steps.Count)
             _stepButtonRefs = new ElementReference[_steps.Count];
+
+        ClampActiveStep();
+
+        // #197: keep the roving focus pointer on the active tab whenever the
+        // active step changes (external @bind update, click, or a clamp above).
+        // Arrow/Home/End move _focusedTabIndex on their own between renders; we
+        // only re-anchor it here on a genuine ActiveStep change so a focus rove
+        // isn't yanked back on every unrelated re-render.
+        if (ActiveStep != _prevActiveStep)
+        {
+            _focusedTabIndex = ActiveStep;
+            _prevActiveStep = ActiveStep;
+        }
+    }
+
+    // #104: when the step count shrinks (e.g. a conditionally-rendered step is
+    // removed), an ActiveStep that pointed past the new last index would leave
+    // the panel blank and the Next/Finish footer wedged. Clamp into the valid
+    // range and push the corrected value back so @bind-ActiveStep parents stay
+    // in sync. The push is guarded exactly like UnregisterStep because shrink
+    // can be driven by a child disposing during teardown, where invoking the
+    // callback / re-rendering is invalid.
+    private void ClampActiveStep()
+    {
+        if (_steps.Count == 0) return;
+        var clamped = Math.Clamp(ActiveStep, 0, _steps.Count - 1);
+        if (clamped == ActiveStep) return;
+
+        ActiveStep = clamped;
+        // Keep the roving focus pointer valid too — it could otherwise dangle
+        // past the shrunk button array. _prevActiveStep is synced so a later
+        // OnParametersSet doesn't treat this as a fresh change and re-fire.
+        _focusedTabIndex = clamped;
+        _prevActiveStep = clamped;
+        try { _ = ActiveStepChanged.InvokeAsync(clamped); }
+        catch (ObjectDisposedException) { }
+        catch (InvalidOperationException) { }
     }
 
     private bool CanAdvance()
@@ -315,7 +382,8 @@
     // Arrow-key navigation between step indicator buttons (WAI-ARIA tab-list pattern).
     // ArrowUp: move focus to previous button. ArrowDown: next button.
     // ArrowLeft/Right: previous/next in LTR; swapped in RTL so keys follow visual flow.
-    // Focus only — does not change ActiveStep (use Enter/Space for activation).
+    // Home/End: jump focus to the first/last tab (#196). All are focus-only — they
+    // never change ActiveStep (use Enter/Space for activation).
     private async Task HandleStepKeyDown(KeyboardEventArgs e, int idx)
     {
         var isRtl = EffectiveDirection == LayoutDirection.Rtl;
@@ -325,11 +393,20 @@
         {
             _ when e.Key == hBack   || e.Key == "ArrowUp"   => idx - 1,
             _ when e.Key == hForward || e.Key == "ArrowDown" => idx + 1,
+            "Home" => 0,                              // #196
+            "End"  => _stepButtonRefs.Length - 1,     // #196
             _ => -1
         };
 
+        // The existing bounds guard also covers Home/End (an empty tablist yields
+        // End == -1, which is rejected here).
         if (target < 0 || target >= _stepButtonRefs.Length) return;
 
+        // #197: move the single roving tab stop to the focus target so a
+        // subsequent Shift+Tab leaves from the right place; selection is
+        // untouched. Set BEFORE FocusAsync so the re-render that StateHasChanged
+        // schedules emits the corrected tabindex.
+        _focusedTabIndex = target;
         await _stepButtonRefs[target].FocusAsync();
     }
 

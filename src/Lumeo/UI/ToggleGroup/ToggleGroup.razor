@@ -3,7 +3,14 @@
 @inject IComponentInteropService Interop
 
 @{
-    var context = new ToggleGroupContext(Type, _selectedItems, Variant, Size, EventCallback.Factory.Create<string>(this, ToggleItem), GetTabIndex, _itemValues, _itemIds, _itemDisabled);
+    // Bump a monotonic render generation each time the group's body runs. Items
+    // re-register during this render pass (OnParametersSet fires in declaration
+    // order for every child a parent re-render produces — insert/remove/Value-
+    // change all do this); the parent rebuilds _itemValues from THAT registration
+    // sequence (see RegisterItem), so the registry tracks DOM/declaration order
+    // instead of a bare !Contains-append-to-tail. #69.
+    _generation++;
+    var context = new ToggleGroupContext(Type, _selectedItems, Variant, Size, EventCallback.Factory.Create<string>(this, ToggleItem), GetTabIndex, _itemValues, _itemIds, _itemDisabled, RegisterItem, UnregisterItem, SetFocusValue, _generation);
 }
 
 <div id="@_id" role="group" class="@CssClass" @onkeydown="HandleKeyDown" @attributes="AdditionalAttributes">
@@ -28,10 +35,95 @@
     private readonly string _id = LumeoIds.New("togglegroup");
 
     // Ordered item registry — populated by ToggleGroupItem children. Drives the
-    // roving tabindex (one tab stop) and arrow-key focus movement.
+    // roving tabindex (one tab stop) and arrow-key focus movement. These three
+    // are still exposed read-only via the context (existing call sites read them)
+    // but are now REBUILT from the children's registration sequence each render
+    // generation rather than appended to with a bare !Contains check. #69.
     private readonly List<string> _itemValues = new();
     private readonly Dictionary<string, string> _itemIds = new();
     private readonly Dictionary<string, bool> _itemDisabled = new();
+
+    // #69: per-render-generation ordered registration log. RegisterItem appends
+    // each item (in the OnParametersSet order the current parent render fires
+    // them, i.e. DOM/declaration order) under the live generation; the first
+    // registration of a new generation snapshots+clears the working buffers so a
+    // stale ordering from the previous pass never lingers. Keyed by the item's
+    // STABLE id (LumeoIds.New) so a Value rename re-keys in place at the same slot
+    // and insert-at-front lands at index 0 instead of being appended to the tail.
+    private int _generation;
+    private int _builtGeneration = -1;
+    private readonly List<(string ItemId, string Value)> _registrationLog = new();
+
+    // PURE @key physical reorder-with-reuse (consumer swaps two SIBLING items'
+    // positions WITHOUT changing their Value and WITHOUT an insert/remove, so no
+    // child's OnParametersSet fires) is DEFERRED — consistent with the Accordion
+    // precedent, which also leaves pure reorder unsolved. Detecting it needs a
+    // JS DOM-order read; we deliberately do NOT add that interop here. The
+    // tractable insert/remove/Value-change legs below all DO fire OnParametersSet
+    // and so are handled by the registration-sequence rebuild.
+    private void RegisterItem(string itemId, string value, bool disabled, int generation)
+    {
+        if (generation != _builtGeneration)
+        {
+            // First registration of a fresh parent render: start a new ordering.
+            _builtGeneration = generation;
+            _registrationLog.Clear();
+            _itemValues.Clear();
+            _itemIds.Clear();
+            _itemDisabled.Clear();
+        }
+
+        // Re-key in place if this stable item already logged a (now-renamed)
+        // value this generation; otherwise append at the current DOM position.
+        var existing = _registrationLog.FindIndex(e => e.ItemId == itemId);
+        if (existing >= 0)
+        {
+            var oldValue = _registrationLog[existing].Value;
+            if (oldValue != value)
+            {
+                _itemValues[existing] = value;
+                _itemIds.Remove(oldValue);
+                _itemDisabled.Remove(oldValue);
+            }
+            _registrationLog[existing] = (itemId, value);
+        }
+        else
+        {
+            _registrationLog.Add((itemId, value));
+            _itemValues.Add(value);
+        }
+        _itemIds[value] = itemId;
+        _itemDisabled[value] = disabled;
+    }
+
+    // A conditionally-removed item that does NOT trigger a full-fragment re-render
+    // still disposes; drop its slot (ownership-guarded by stable id) so the
+    // registry never points focus at a vanished button.
+    private void UnregisterItem(string itemId, string value)
+    {
+        var idx = _registrationLog.FindIndex(e => e.ItemId == itemId);
+        if (idx < 0) return;
+        var loggedValue = _registrationLog[idx].Value;
+        _registrationLog.RemoveAt(idx);
+        if (idx < _itemValues.Count && _itemValues[idx] == loggedValue)
+            _itemValues.RemoveAt(idx);
+        else
+            _itemValues.Remove(loggedValue);
+        if (_itemIds.TryGetValue(loggedValue, out var owner) && owner == itemId)
+        {
+            _itemIds.Remove(loggedValue);
+            _itemDisabled.Remove(loggedValue);
+        }
+    }
+
+    // #169 focus-anchor sync: the item button wires this to @onfocus and its
+    // Toggle handler so _focusValue always reflects the item the user actually
+    // reached via mouse/Tab. HandleKeyDown then derives the navigation start index
+    // from the TRULY-focused item instead of a stale arrow-chain anchor.
+    private void SetFocusValue(string value)
+    {
+        if (_itemValues.Contains(value)) _focusValue = value;
+    }
 
     // Last-seen bound parameters — lets us distinguish "consumer cleared the
     // binding to null" (sync: clear the selection) from "consumer never binds
@@ -59,16 +151,23 @@
     {
         if (_itemValues.Count == 0) return;
 
-        // The reference point for navigation is the focused item. We can't read
-        // document.activeElement from C#, so we navigate relative to the current
-        // tab stop (first selected, else first enabled) — matching where focus
-        // sits when the user tabs in, and arrow presses chain from there.
-        var anchor = _itemValues.FirstOrDefault(v => _selectedItems.Contains(v) && !IsItemDisabled(v))
-            ?? _itemValues.FirstOrDefault(v => !IsItemDisabled(v));
-        if (anchor is null) return;
-        var idx = _focusValue is not null && _itemValues.Contains(_focusValue)
+        // The reference point for navigation is the item the user is actually on.
+        // #169: _focusValue is now kept in sync with real focus (mouse/Tab) via
+        // the item's @onfocus + Toggle (SetFocusValue), so prefer it. Only when no
+        // real focus has been recorded do we fall back to the current tab stop
+        // (first selected, else first enabled) — matching where focus sits when
+        // the user tabs in. This stops ArrowRight from a mouse-focused item from
+        // navigating off a stale arrow-chain anchor.
+        var idx = _focusValue is not null && _itemValues.Contains(_focusValue) && !IsItemDisabled(_focusValue)
             ? _itemValues.IndexOf(_focusValue)
-            : _itemValues.IndexOf(anchor);
+            : -1;
+        if (idx < 0)
+        {
+            var anchor = _itemValues.FirstOrDefault(v => _selectedItems.Contains(v) && !IsItemDisabled(v))
+                ?? _itemValues.FirstOrDefault(v => !IsItemDisabled(v));
+            if (anchor is null) return;
+            idx = _itemValues.IndexOf(anchor);
+        }
 
         string? target = e.Key switch
         {
@@ -201,7 +300,14 @@
         Func<string, bool, string> GetTabIndex,
         List<string> ItemValues,
         Dictionary<string, string> ItemIds,
-        Dictionary<string, bool> ItemDisabled)
+        Dictionary<string, bool> ItemDisabled,
+        // #69: stable-id registration (item id, value, disabled, render generation)
+        // so the parent rebuilds ItemValues in DOM order each pass.
+        Action<string, string, bool, int> RegisterItem,
+        Action<string, string> UnregisterItem,
+        // #169: focus-anchor sync — item reports the value it was focused on.
+        Action<string> SetFocusValue,
+        int Generation)
     {
         public bool IsSelected(string value) => SelectedItems.Contains(value);
     }

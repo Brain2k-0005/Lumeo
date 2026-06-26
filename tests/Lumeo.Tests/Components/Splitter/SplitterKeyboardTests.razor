@@ -1,0 +1,166 @@
+@inherits Bunit.BunitContext
+@using AngleSharp.Dom
+@using Lumeo.Services
+@using Lumeo.Tests.Helpers
+@using Microsoft.AspNetCore.Components
+@using Microsoft.AspNetCore.Components.Web
+@using Microsoft.Extensions.DependencyInjection
+
+@code {
+    // #194 — WAI-ARIA window-splitter keyboard completeness on the divider.
+    // The separator already handled the Arrow keys (a fixed 10px step); these
+    // tests cover the keys the spec also mandates and that the fix adds:
+    //   Home      → collapse leading pane to its (neighbour-aware) MIN bound
+    //   End       → expand leading pane to its MAX bound
+    //   PageUp/Dn → a COARSER step than the arrows (10× = 100px), still clamped
+    // All of them reuse the existing Context.ResizeNeighbors path, so we assert
+    // on the rendered flex-grow ratio (= runtime Handle.Size) and aria-valuenow,
+    // exactly like the sibling SplitterCollapseClampTests — never real DOM focus.
+    //
+    // The pure-reorder Splitter bug (#195: physical @key reorder-with-reuse of
+    // panes) is DEFERRED this batch — it needs a DOM-order JS interop seam that
+    // is out of scope here and not bUnit-reproducible without it.
+
+    private readonly TrackingInteropService _interop = new();
+
+    public SplitterKeyboardTests()
+    {
+        this.AddLumeoServices();
+        // A non-zero group dimension makes ResizeNeighbors' px->% math run
+        // (1000px track → 1px == 0.1%).
+        _interop.ElementDimension = 1000;
+        Services.AddSingleton<IComponentInteropService>(_interop);
+    }
+
+    private static double PaneFlexGrow(IElement pane)
+    {
+        // style="flex: <grow> 1 0; ..." — the SplitterPane wrapper carries it.
+        var style = pane.GetAttribute("style") ?? "";
+        var m = System.Text.RegularExpressions.Regex.Match(style, @"flex:\s*([0-9.]+)");
+        return m.Success ? double.Parse(m.Groups[1].Value, System.Globalization.CultureInfo.InvariantCulture) : 0;
+    }
+
+    // Two-pane horizontal splitter, 50/50, MinSize 20 / MaxSize 80 each.
+    // Render(RenderFragment) returns IRenderedComponent<IComponent> (same idiom
+    // the sibling SplitterCollapseClampTests uses with `var`).
+    private IRenderedComponent<IComponent> RenderTwoPane()
+        => Render(@<Lumeo.Splitter Orientation="Lumeo.Orientation.Horizontal">
+            <Lumeo.SplitterPane MinSize="20" MaxSize="80"><span data-testid="pane-0">L</span></Lumeo.SplitterPane>
+            <Lumeo.SplitterDivider />
+            <Lumeo.SplitterPane MinSize="20" MaxSize="80"><span data-testid="pane-1">R</span></Lumeo.SplitterPane>
+        </Lumeo.Splitter>);
+
+    [Fact]
+    public void Home_Collapses_Leading_Pane_To_Min_Bound()
+    {
+        var cut = RenderTwoPane();
+
+        cut.Find("[role='separator']").KeyDown(new KeyboardEventArgs { Key = "Home" });
+
+        var leading = cut.Find("[data-testid='pane-0']").ParentElement!;
+        var trailing = cut.Find("[data-testid='pane-1']").ParentElement!;
+        // Leading lands exactly on its 20% MIN; trailing takes the remaining 80%.
+        Assert.Equal(20.0, PaneFlexGrow(leading), precision: 0);
+        Assert.Equal(80.0, PaneFlexGrow(trailing), precision: 0);
+
+        // aria-valuenow on the divider tracks the leading pane's size.
+        Assert.Equal("20", cut.Find("[role='separator']").GetAttribute("aria-valuenow"));
+    }
+
+    [Fact]
+    public void End_Expands_Leading_Pane_To_Max_Bound()
+    {
+        var cut = RenderTwoPane();
+
+        cut.Find("[role='separator']").KeyDown(new KeyboardEventArgs { Key = "End" });
+
+        var leading = cut.Find("[data-testid='pane-0']").ParentElement!;
+        var trailing = cut.Find("[data-testid='pane-1']").ParentElement!;
+        // Leading lands on its 80% MAX (also capped by trailing's 20% min).
+        Assert.Equal(80.0, PaneFlexGrow(leading), precision: 0);
+        Assert.Equal(20.0, PaneFlexGrow(trailing), precision: 0);
+        Assert.Equal("80", cut.Find("[role='separator']").GetAttribute("aria-valuenow"));
+    }
+
+    [Fact]
+    public void PageUp_Applies_A_Larger_Delta_Than_ArrowUp()
+    {
+        // ArrowLeft shrinks the leading pane by 10px (= 1% on a 1000px track):
+        // 50 → 49.
+        var arrowCut = RenderTwoPane();
+        arrowCut.Find("[role='separator']").KeyDown(new KeyboardEventArgs { Key = "ArrowLeft" });
+        var arrowLeading = PaneFlexGrow(arrowCut.Find("[data-testid='pane-0']").ParentElement!);
+
+        // PageUp shrinks by the coarser 100px step (= 10%): 50 → 40.
+        var pageCut = RenderTwoPane();
+        pageCut.Find("[role='separator']").KeyDown(new KeyboardEventArgs { Key = "PageUp" });
+        var pageLeading = PaneFlexGrow(pageCut.Find("[data-testid='pane-0']").ParentElement!);
+
+        // Both shrink the leading pane below the 50 start, and PageUp moves it
+        // strictly FARTHER (a larger delta) than ArrowLeft.
+        Assert.True(arrowLeading < 50.0, $"ArrowLeft should shrink leading (was {arrowLeading})");
+        Assert.True(pageLeading < arrowLeading,
+            $"PageUp delta ({50 - pageLeading}) must exceed ArrowLeft delta ({50 - arrowLeading})");
+        // Concretely: ArrowLeft → ~49, PageUp → ~40.
+        Assert.Equal(49.0, arrowLeading, precision: 0);
+        Assert.Equal(40.0, pageLeading, precision: 0);
+    }
+
+    [Fact]
+    public void PageDown_Applies_A_Larger_Delta_Than_ArrowRight()
+    {
+        // ArrowRight grows the leading pane by 10px (1%): 50 → 51.
+        var arrowCut = RenderTwoPane();
+        arrowCut.Find("[role='separator']").KeyDown(new KeyboardEventArgs { Key = "ArrowRight" });
+        var arrowLeading = PaneFlexGrow(arrowCut.Find("[data-testid='pane-0']").ParentElement!);
+
+        // PageDown grows by 100px (10%): 50 → 60.
+        var pageCut = RenderTwoPane();
+        pageCut.Find("[role='separator']").KeyDown(new KeyboardEventArgs { Key = "PageDown" });
+        var pageLeading = PaneFlexGrow(pageCut.Find("[data-testid='pane-0']").ParentElement!);
+
+        Assert.True(arrowLeading > 50.0, $"ArrowRight should grow leading (was {arrowLeading})");
+        Assert.True(pageLeading > arrowLeading,
+            $"PageDown delta ({pageLeading - 50}) must exceed ArrowRight delta ({arrowLeading - 50})");
+        Assert.Equal(51.0, arrowLeading, precision: 0);
+        Assert.Equal(60.0, pageLeading, precision: 0);
+    }
+
+    [Fact]
+    public void Vertical_Home_And_End_Hit_Min_And_Max_Bounds()
+    {
+        // Vertical splitter (no RTL flip): Home → min, End → max on the leading
+        // (top) pane, proving the orientation switch path also wires the new keys.
+        var cut = Render(@<Lumeo.Splitter Orientation="Lumeo.Orientation.Vertical">
+            <Lumeo.SplitterPane MinSize="15" MaxSize="85"><span data-testid="pane-0">T</span></Lumeo.SplitterPane>
+            <Lumeo.SplitterDivider />
+            <Lumeo.SplitterPane MinSize="15" MaxSize="85"><span data-testid="pane-1">B</span></Lumeo.SplitterPane>
+        </Lumeo.Splitter>);
+
+        var divider = cut.Find("[role='separator']");
+
+        divider.KeyDown(new KeyboardEventArgs { Key = "Home" });
+        Assert.Equal(15.0, PaneFlexGrow(cut.Find("[data-testid='pane-0']").ParentElement!), precision: 0);
+
+        divider.KeyDown(new KeyboardEventArgs { Key = "End" });
+        Assert.Equal(85.0, PaneFlexGrow(cut.Find("[data-testid='pane-0']").ParentElement!), precision: 0);
+    }
+
+    [Fact]
+    public void PageUp_Stops_At_Min_Bound_Not_Beyond()
+    {
+        // From the 50/50 start a single PageUp is 10% (→40), still above the 20%
+        // min. A second PageUp would request another 10% (→30), still legal. A
+        // third would overshoot to 20 (the min) and must CLAMP there, never below
+        // — same clamp the drag tests rely on, now reachable from the keyboard.
+        var cut = RenderTwoPane();
+        var divider = cut.Find("[role='separator']");
+
+        divider.KeyDown(new KeyboardEventArgs { Key = "PageUp" }); // 50 -> 40
+        divider.KeyDown(new KeyboardEventArgs { Key = "PageUp" }); // 40 -> 30
+        divider.KeyDown(new KeyboardEventArgs { Key = "PageUp" }); // 30 -> 20 (clamp)
+        divider.KeyDown(new KeyboardEventArgs { Key = "PageUp" }); // stays 20
+
+        Assert.Equal(20.0, PaneFlexGrow(cut.Find("[data-testid='pane-0']").ParentElement!), precision: 0);
+    }
+}
