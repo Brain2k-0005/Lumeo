@@ -48,7 +48,7 @@
                aria-required="@Required.ToString().ToLowerInvariant()"
                aria-invalid="@((EffectiveInvalid || IsOverLimit).ToString().ToLowerInvariant())"
                aria-describedby="@FormFieldDescribedBy"
-               maxlength="@EffectiveMaxLength" class="@WrappedInputClass" value="@_current" @oninput="HandleInput" disabled="@Disabled" @attributes="AdditionalAttributes" />
+               maxlength="@EffectiveMaxLength" class="@WrappedInputClass" value="@SafeValue" @oninput="HandleInput" disabled="@Disabled" @attributes="AdditionalAttributes" />
         @if (Clearable && !string.IsNullOrEmpty(_current))
         {
             <button type="button" class="@($"flex items-center {AccessoryClearPad} text-muted-foreground hover:text-foreground transition-colors")" @onclick="HandleClear" tabindex="-1" aria-label="@L["Common.Clear"]">
@@ -69,7 +69,7 @@ else
            aria-required="@Required.ToString().ToLowerInvariant()"
            aria-invalid="@((EffectiveInvalid || IsOverLimit).ToString().ToLowerInvariant())"
            aria-describedby="@FormFieldDescribedBy"
-           maxlength="@EffectiveMaxLength" class="@CssClass" value="@_current" @oninput="HandleInput" disabled="@Disabled" @attributes="AdditionalAttributes" />
+           maxlength="@EffectiveMaxLength" class="@CssClass" value="@SafeValue" @oninput="HandleInput" disabled="@Disabled" @attributes="AdditionalAttributes" />
 }
 
 @if (ShowCount)
@@ -143,6 +143,20 @@ else
     [Parameter] public InputVariant Variant { get; set; } = InputVariant.Default;
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    // A file input cannot have its `value` set to anything but the empty string — Blazor
+    // throws InvalidStateError ("may only be programmatically set to the empty string") the
+    // moment a file is picked and the two-way binding tries to push the value back. Input
+    // has no typed Type param, so detect type="file" arriving through the attribute splat
+    // and omit the value binding for it. (For a styled uploader with progress, use
+    // FileUpload / UploadTrigger instead.)
+    private bool IsFileInput =>
+        AdditionalAttributes is not null
+        && AdditionalAttributes.TryGetValue("type", out var t)
+        && string.Equals(t?.ToString(), "file", StringComparison.OrdinalIgnoreCase);
+
+    // null => Blazor omits the `value` attribute entirely, the only legal state for a file input.
+    private string? SafeValue => IsFileInput ? null : _current;
 
     public enum InputVariant { Default, Search }
 
