@@ -135,6 +135,39 @@
         Assert.Equal("x", _lastValue);
     }
 
+    // ---- #55: arrow nav follows LIVE DOM order after a keyed reorder ----
+
+    [Fact]
+    public void Arrow_Nav_Follows_Live_DOM_Order_After_A_Keyed_Reorder()
+    {
+        // The PURE physical @key reorder — where Blazor MOVES reused RadioGroupItem
+        // instances to new DOM positions WITHOUT firing OnParametersSet — cannot be
+        // reproduced in bUnit. We model its EFFECT instead: the C# registry still
+        // lists a, b, c (mount order) but the live DOM is now a, c, b. The nav must
+        // consult the DOM-order probe (Interop.GetOrderedDescendantIds), so ArrowDown
+        // from 'a' selects the DOM neighbour 'c' — NOT the registry neighbour 'b'.
+        var onChange = EventCallback.Factory.Create<string>(this, v => _lastValue = v);
+        var cut = Render<RadioGroup>(p => p
+            .Add(g => g.Value, "a")
+            .Add(g => g.ValueChanged, onChange)
+            .Add(g => g.ChildContent, RadioItems("b"))); // registry: a, b, c
+
+        var radios = cut.FindAll("[role='radio']");
+        var idA = radios[0].GetAttribute("id");
+        var idB = radios[1].GetAttribute("id");
+        var idC = radios[2].GetAttribute("id");
+        var containerId = cut.Find("[role='radiogroup']").GetAttribute("id");
+
+        // Seed the live-DOM order as a, c, b (the reorder bUnit can't physically do).
+        _interop.OrderedDescendantIds[containerId!] = new[] { idA!, idC!, idB! };
+
+        radios[0].KeyDown(new KeyboardEventArgs { Key = "ArrowDown" });
+
+        // DOM-order neighbour after 'a' is 'c'. Without the DOM-order probe the
+        // registry order (a, b, c) would have selected 'b'.
+        Assert.Equal("c", _lastValue);
+    }
+
     // ---- #54: a Value absent from items still yields ONE tab stop ----
 
     [Fact]

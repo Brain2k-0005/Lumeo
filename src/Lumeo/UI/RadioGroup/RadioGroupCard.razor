@@ -87,17 +87,20 @@
     private async Task HandleKeyDown(KeyboardEventArgs e)
     {
         // No Space branch: the native <button> click already runs Select.
-        var items = Context.Items;
-        // Resolve "current" by this card's UNIQUE id, not by Value (#56).
-        var idx = items.FindIndex(i => i.Id == _itemId);
-
         var direction = e.Key switch
         {
             "ArrowDown" or "ArrowRight" => 1,
             "ArrowUp" or "ArrowLeft" => -1,
             _ => 0
         };
-        if (direction == 0 || idx < 0) return;
+        if (direction == 0) return;
+
+        // Nav order from the LIVE DOM (#55) so a keyed reorder of reused cards is
+        // honoured; falls back to the registry order when the probe is unavailable.
+        var items = await OrderedItems();
+        // Resolve "current" by this card's UNIQUE id, not by Value (#56).
+        var idx = items.FindIndex(i => i.Id == _itemId);
+        if (idx < 0) return;
 
         var next = FindNextEnabled(items, idx, direction);
         if (next is not null)
@@ -105,6 +108,30 @@
             await Context.OnSelect.InvokeAsync(next.Value.Value);
             await Interop.FocusElement(next.Value.Id);
         }
+    }
+
+    // The registry reordered to live DOM order; an empty/null probe → registry order.
+    // A Loose-mode JSInterop returns NULL for an unconfigured string[] call — null-guard.
+    private async Task<List<(string Id, string Value, bool Disabled)>> OrderedItems()
+    {
+        var registry = Context.Items;
+        string[]? domOrder;
+        try
+        {
+            domOrder = await Interop.GetOrderedDescendantIds(Context.ContainerId, "[role='radio']");
+        }
+        catch (JSDisconnectedException) { domOrder = null; }
+        catch (ObjectDisposedException) { domOrder = null; }
+        catch (InvalidOperationException) { domOrder = null; }
+
+        if (domOrder is not { Length: > 0 }) return registry;
+
+        var byId = registry.ToDictionary(i => i.Id);
+        var ordered = new List<(string Id, string Value, bool Disabled)>(registry.Count);
+        foreach (var id in domOrder)
+            if (byId.Remove(id, out var item)) ordered.Add(item);
+        ordered.AddRange(byId.Values);
+        return ordered;
     }
 
     private static (string Id, string Value, bool Disabled)? FindNextEnabled(

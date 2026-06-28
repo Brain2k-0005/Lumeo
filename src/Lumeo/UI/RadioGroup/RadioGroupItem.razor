@@ -142,19 +142,25 @@ else
         // Space is NOT handled here: on a native <button> the browser
         // synthesizes a click which already runs Select — the old explicit
         // branch double-fired OnSelect.
-        var items = Context.Items;
-        // Resolve "current" by this item's UNIQUE id, NOT by Value: when two
-        // items share a Value, an IndexOf-by-Value would land on the wrong slot
-        // and step from the wrong neighbour (triage #56).
-        var idx = items.FindIndex(i => i.Id == _itemId);
-
         var direction = e.Key switch
         {
             "ArrowDown" or "ArrowRight" => 1,
             "ArrowUp" or "ArrowLeft" => -1,
             _ => 0
         };
-        if (direction == 0 || Disabled || idx < 0) return;
+        if (direction == 0 || Disabled) return;
+
+        // Resolve the nav order from the LIVE DOM (triage #55): a keyed reorder
+        // MOVES reused RadioGroupItem instances to new positions WITHOUT firing
+        // OnParametersSet, so the C# mount-order registry goes stale. Falls back
+        // to the registry order when the DOM-order probe is unavailable (prerender
+        // / JS off / tests that don't drive a reorder), preserving declaration order.
+        var items = await OrderedItems();
+        // Resolve "current" by this item's UNIQUE id, NOT by Value: when two
+        // items share a Value, an IndexOf-by-Value would land on the wrong slot
+        // and step from the wrong neighbour (triage #56).
+        var idx = items.FindIndex(i => i.Id == _itemId);
+        if (idx < 0) return;
 
         // WAI-ARIA radio group: arrows skip disabled radios (selecting one
         // was possible before because only the CURRENT item was checked).
@@ -166,6 +172,34 @@ else
             await Context.OnSelect.InvokeAsync(next.Value.Value);
             await Interop.FocusElement(next.Value.Id);
         }
+    }
+
+    // The registry (Context.Items) reordered to match live DOM order. The DOM-order
+    // probe returns the role=radio ids in document order; we reproject the registry
+    // tuples onto it (skipping ids the DOM didn't surface, then appending any registry
+    // leftovers). An empty probe result → use the registry order verbatim.
+    private async Task<List<(string Id, string Value, bool Disabled)>> OrderedItems()
+    {
+        var registry = Context.Items;
+        // NOTE: a Loose-mode JSInterop (the default test double) returns NULL for an
+        // unconfigured string[] invocation — null-guard it, don't assume []
+        string[]? domOrder;
+        try
+        {
+            domOrder = await Interop.GetOrderedDescendantIds(Context.ContainerId, "[role='radio']");
+        }
+        catch (JSDisconnectedException) { domOrder = null; }
+        catch (ObjectDisposedException) { domOrder = null; }
+        catch (InvalidOperationException) { domOrder = null; } // JS unavailable (prerender)
+
+        if (domOrder is not { Length: > 0 }) return registry;
+
+        var byId = registry.ToDictionary(i => i.Id);
+        var ordered = new List<(string Id, string Value, bool Disabled)>(registry.Count);
+        foreach (var id in domOrder)
+            if (byId.Remove(id, out var item)) ordered.Add(item);
+        ordered.AddRange(byId.Values);
+        return ordered;
     }
 
     private static (string Id, string Value, bool Disabled)? FindNextEnabled(

@@ -1,0 +1,90 @@
+@inherits Bunit.BunitContext
+@using AngleSharp.Dom
+@using Lumeo.Services
+@using Lumeo.Tests.Helpers
+@using Microsoft.AspNetCore.Components.Web
+@using Microsoft.Extensions.DependencyInjection
+
+@code {
+    // #195 — a divider's resize must target the panes that are its neighbours in
+    // the LIVE DOM, not in C# mount order. A keyed @key reorder MOVES reused
+    // SplitterPane instances to new DOM positions WITHOUT firing OnParametersSet,
+    // so the group's mount-order _children list goes stale and a divider would
+    // resize the wrong pair. ResizeNeighbors now consults the DOM-order probe
+    // (Interop.GetOrderedDescendantIds) and reprojects _children onto it before
+    // walking to the nearest pane on each side.
+    //
+    // The pure physical @key reorder-with-reuse cannot be reproduced in bUnit
+    // (Blazor never moves instances under the test renderer). We model its EFFECT
+    // instead: the C# registry still lists P0,D0,P1,D1,P2 (mount order) but the
+    // live DOM is now P0,D0,P2,D1,P1. With the probe, the FIRST divider's trailing
+    // neighbour is P2 (DOM order) — NOT P1 (registry order) — so dragging it
+    // resizes P0/P2 and leaves P1 untouched. Asserted on the rendered flex-grow
+    // ratio (= runtime Handle.Size), exactly like the sibling Splitter tests —
+    // never real DOM focus.
+
+    private readonly TrackingInteropService _interop = new();
+
+    public SplitterReorderNeighborTests()
+    {
+        this.AddLumeoServices();
+        // Non-zero group dimension so ResizeNeighbors' px->% math runs
+        // (1000px track → 100px == 10%).
+        _interop.ElementDimension = 1000;
+        Services.AddSingleton<IComponentInteropService>(_interop);
+    }
+
+    private static double PaneFlexGrow(IElement pane)
+    {
+        // style="flex: <grow> 1 0; ..." — the SplitterPane wrapper carries it.
+        var style = pane.GetAttribute("style") ?? "";
+        var m = System.Text.RegularExpressions.Regex.Match(style, @"flex:\s*([0-9.]+)");
+        return m.Success ? double.Parse(m.Groups[1].Value, System.Globalization.CultureInfo.InvariantCulture) : 0;
+    }
+
+    [Fact]
+    public void Divider_Resize_Targets_Live_DOM_Neighbours_After_A_Keyed_Reorder()
+    {
+        // Three panes 20/30/50 with two dividers. Mount/registry order is
+        // P0, D0, P1, D1, P2.
+        var cut = Render(@<Lumeo.Splitter Orientation="Lumeo.Orientation.Horizontal">
+            <Lumeo.SplitterPane Size="20"><span data-testid="pane-0">0</span></Lumeo.SplitterPane>
+            <Lumeo.SplitterDivider />
+            <Lumeo.SplitterPane Size="30"><span data-testid="pane-1">1</span></Lumeo.SplitterPane>
+            <Lumeo.SplitterDivider />
+            <Lumeo.SplitterPane Size="50"><span data-testid="pane-2">2</span></Lumeo.SplitterPane>
+        </Lumeo.Splitter>);
+
+        var panes = cut.FindAll("[data-splitter-pane]");
+        var dividers = cut.FindAll("[role='separator']");
+        var groupId = cut.Find("[data-splitter-orientation]").GetAttribute("id");
+
+        var p0 = panes[0].GetAttribute("id");
+        var p1 = panes[1].GetAttribute("id");
+        var p2 = panes[2].GetAttribute("id");
+        var d0 = dividers[0].GetAttribute("id");
+        var d1 = dividers[1].GetAttribute("id");
+
+        // Seed the live-DOM order as P0, D0, P2, D1, P1 — the reorder bUnit cannot
+        // physically perform (P1 and P2 swapped). The first divider D0 now sits
+        // between P0 and P2.
+        _interop.OrderedDescendantIds[groupId!] = new[] { p0!, d0!, p2!, d1!, p1! };
+
+        // Drag the FIRST divider (D0) right by 100px on the 1000px track = +10%.
+        dividers[0].PointerDown(new PointerEventArgs { PointerId = 1, ClientX = 0, ClientY = 0 });
+        dividers[0].PointerMove(new PointerEventArgs { PointerId = 1, ClientX = 100, ClientY = 0 });
+
+        // The group consulted the DOM-order probe against its own id.
+        Assert.Contains(_interop.OrderedDescendantCalls, c => c.ContainerId == groupId);
+
+        var after = cut.FindAll("[data-splitter-pane]");
+
+        // DOM-order neighbours of D0 are P0 (leading) and P2 (trailing): the pair
+        // total 20+50=70 redistributes to 30/40. P1 — the REGISTRY neighbour — is
+        // left untouched at 30. Under the mount-order bug D0 would have resized
+        // P0/P1 to 30/20 and frozen P2 at 50.
+        Assert.Equal(30.0, PaneFlexGrow(after[0]), precision: 0); // P0 grew 20 -> 30
+        Assert.Equal(30.0, PaneFlexGrow(after[1]), precision: 0); // P1 untouched (not the neighbour)
+        Assert.Equal(40.0, PaneFlexGrow(after[2]), precision: 0); // P2 is the DOM neighbour, 50 -> 40
+    }
+}

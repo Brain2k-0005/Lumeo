@@ -71,6 +71,15 @@ public sealed class TrackingInteropService : IComponentInteropService
     /// <summary>Index returned by FocusMenuItemByTypeahead; defaults to -1 (no match).</summary>
     public int TypeaheadMatchIndex { get; set; } = -1;
 
+    /// <summary>Per-container DOM order returned by <see cref="GetOrderedDescendantIds"/>.
+    /// Empty by default so the component falls back to its own registry order (existing
+    /// tests are unaffected); a reorder-class test seeds an entry keyed by the container
+    /// id with the ids in a DESIRED (e.g. reordered) order to drive the nav-follows-DOM
+    /// assertion WITHOUT bUnit having to physically reorder reused child instances.</summary>
+    public Dictionary<string, string[]> OrderedDescendantIds { get; } = new();
+    private readonly List<(string ContainerId, string Selector)> _orderedDescendantCalls = new();
+    public IReadOnlyList<(string ContainerId, string Selector)> OrderedDescendantCalls => _orderedDescendantCalls;
+
     // ---- All remaining members are silent no-ops ----
 
     public ValueTask RegisterClickOutside(string elementId, string? triggerElementId, Func<Task> handler)
@@ -97,6 +106,11 @@ public sealed class TrackingInteropService : IComponentInteropService
         return ValueTask.CompletedTask;
     }
     public ValueTask<int> GetMenuItemCount(string containerId) => ValueTask.FromResult(MenuItemCount);
+    public ValueTask<string[]> GetOrderedDescendantIds(string containerId, string selector)
+    {
+        _orderedDescendantCalls.Add((containerId, selector));
+        return ValueTask.FromResult(OrderedDescendantIds.TryGetValue(containerId, out var ids) ? ids : System.Array.Empty<string>());
+    }
     public ValueTask<int> FocusMenuItemByTypeahead(string containerId, string query, int currentIndex)
     {
         _typeaheadCalls.Add((containerId, query, currentIndex));

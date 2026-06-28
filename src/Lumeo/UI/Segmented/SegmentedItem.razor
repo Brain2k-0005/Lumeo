@@ -44,15 +44,19 @@
     {
         if (Context is null) return;
 
-        // DEFERRED (#63, pure @key physical-reorder-with-reuse leg): when two
-        // segments swap DOM position via @key, Blazor REUSES each component
+        // #63 (pure @key physical-reorder-with-reuse leg) + the middle-INSERT leg:
+        // when two segments swap DOM position via @key, Blazor REUSES each component
         // instance with IDENTICAL parameters — Value/Disabled are unchanged, so
-        // OnParametersSet here sees no diff and never re-keys the registry. The
-        // registry then keeps declaration order, which no longer matches the
-        // visual order. Detecting that needs a DOM-order JS interop to resolve the
-        // true on-screen order; it is intentionally NOT added in this batch (no new
-        // shared interop). The three OnParametersSet-observable legs — own-Value
-        // change, middle-insert and middle-remove — ARE handled below.
+        // OnParametersSet here sees no diff and never re-keys the registry; and a
+        // brand-new child inserted in the MIDDLE registers at the registry TAIL
+        // (RegisterItem appends), not its DOM slot. Either way the declaration-order
+        // registry no longer matches the visual order. Those legs are NOW resolved at
+        // NAVIGATION time by the parent (Segmented.HandleKeyDown) consulting the
+        // shared DOM-order probe (Interop.GetOrderedDescendantIds) to re-derive the
+        // true on-screen order before computing the arrow-key neighbour, so this
+        // registration logic only needs to keep the entry present + current. The
+        // three OnParametersSet-observable legs — own-Value change, middle-insert and
+        // middle-remove — keep the entry correct below.
 
         // Register / re-key into the parent's shared ordered registry keyed by our
         // STABLE _itemId (never by Value), so roving tabindex + arrow navigation see
