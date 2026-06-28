@@ -7,7 +7,8 @@
         _items,
         RegisterItem,
         ReplaceItem,
-        UnregisterItem);
+        UnregisterItem,
+        EffectiveContainerId);
 }
 
 @if (Label is not null && !InsideFormField)
@@ -22,7 +23,7 @@
 }
 
 <div role="radiogroup"
-     id="@FormFieldControlId"
+     id="@EffectiveContainerId"
      aria-label="@AriaLabel"
      aria-labelledby="@AriaLabelledBy"
      aria-required="@Required.ToString().ToLower()"
@@ -71,6 +72,13 @@
     // <Label For> associates with the group, and aria-describedby announces help/error.
     private string? FormFieldControlId => string.IsNullOrEmpty(FormField?.ControlId) ? null : FormField!.ControlId;
     private string? FormFieldDescribedBy => FormField?.DescribedBy;
+
+    // A stable container id is ALWAYS present on the role=radiogroup element so the
+    // DOM-order roving-nav probe (Interop.GetOrderedDescendantIds) has an anchor to
+    // query from. Inside a FormField the field's generated ControlId doubles as the
+    // container id (keeping the <Label For> association); standalone, a generated id.
+    private readonly string _groupId = LumeoIds.New("radio-group");
+    private string EffectiveContainerId => !string.IsNullOrEmpty(FormFieldControlId) ? FormFieldControlId! : _groupId;
 
     [Parameter] public RenderFragment? ChildContent { get; set; }
     [Parameter] public string? Value { get; set; }
@@ -164,5 +172,8 @@
         // RadioGroup.razor registry helpers — mirrors Accordion's trigger registry).
         Action<string, string, bool> Register,
         Action<string, string, bool> Replace,
-        Action<string> Unregister);
+        Action<string> Unregister,
+        // The role=radiogroup element id — the anchor for the DOM-order roving-nav
+        // probe so arrow-key order tracks the live DOM after a keyed reorder.
+        string ContainerId);
 }

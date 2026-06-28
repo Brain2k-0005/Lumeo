@@ -19,6 +19,21 @@ public interface IComponentInteropService : IAsyncDisposable, IDisposable
     ValueTask<int> GetMenuItemCount(string containerId);
 
     /// <summary>
+    /// Returns the <c>id</c> attributes of the descendants of <paramref name="containerId"/>
+    /// matching <paramref name="selector"/>, in live DOM order (document order). Compound
+    /// widgets whose children self-register (RadioGroup / ToggleGroup / Segmented / Stepper /
+    /// Splitter, …) consult this at NAVIGATION time so roving / arrow-key / neighbour order
+    /// tracks the real DOM even after a keyed reorder MOVES reused child instances without
+    /// re-rendering them (so the C# mount-order registry has gone stale). Callers MUST treat
+    /// an empty result as "DOM order unavailable" and fall back to their own registry order,
+    /// so prerender / JS-unavailable / non-configured-test-double paths keep working. Default
+    /// implementation returns an empty array so existing implementers / test doubles keep
+    /// compiling and behave exactly as before (registry-order fallback).
+    /// </summary>
+    ValueTask<string[]> GetOrderedDescendantIds(string containerId, string selector)
+        => ValueTask.FromResult(System.Array.Empty<string>());
+
+    /// <summary>
     /// Type-to-focus (Radix menu typeahead). Focuses the first enabled menu item
     /// in <paramref name="containerId"/> whose text content starts with
     /// <paramref name="query"/> (case-insensitive), searching after

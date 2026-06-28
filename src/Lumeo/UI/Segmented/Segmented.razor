@@ -132,7 +132,8 @@
             _items,
             RegisterItem,
             ReplaceItem,
-            UnregisterItem);
+            UnregisterItem,
+            _id);
     }
 
     // --- Compound-mode registry mutations, all keyed by the STABLE ItemId ---
@@ -220,80 +221,128 @@
         // stop — fall back to the first enabled segment so the radiogroup always
         // has exactly one entry point.
         var selectedIsEnabled = !string.IsNullOrEmpty(Value)
-            && _items.Any(i => i.Value == Value) && !IsItemDisabled(Value);
+            && _items.Any(i => i.Value == Value) && !IsItemDisabledIn(_items, Value);
         if (selectedIsEnabled && Value == value) return "0";
         if (!selectedIsEnabled
-            && FirstEnabledValue() == value) return "0";
+            && FirstEnabledValue(_items) == value) return "0";
         return "-1";
     }
 
-    private string? FirstEnabledValue()
+    // First enabled Value walking the supplied (registry- or DOM-ordered) list.
+    private static string? FirstEnabledValue(IReadOnlyList<SegmentedItemEntry> items)
     {
-        foreach (var item in _items)
+        foreach (var item in items)
             if (!item.Disabled) return item.Value;
         return null;
     }
 
-    // Resolve disabled state by walking the ordered list. When two segments share
+    // Resolve disabled state by walking the supplied list. When two segments share
     // a Value (legal in compound mode) the FIRST entry decides — which is the slot
     // that also holds the lone tab stop, so the two stay consistent.
-    private bool IsItemDisabled(string value)
+    private static bool IsItemDisabledIn(IReadOnlyList<SegmentedItemEntry> items, string value)
     {
-        var idx = _items.FindIndex(i => i.Value == value);
-        return idx >= 0 && _items[idx].Disabled;
+        foreach (var item in items)
+            if (item.Value == value) return item.Disabled;
+        return false;
     }
 
     private async Task HandleKeyDown(KeyboardEventArgs e)
     {
         if (_items.Count == 0) return;
 
+        // Compute the navigation intent FIRST and bail before any JS interop when the
+        // key isn't one we handle (mirrors RadioGroupItem: direction first, early-out,
+        // THEN probe the DOM). `direction` encodes the arrows; Home/End below.
+        var direction = e.Key switch
+        {
+            "ArrowDown" or "ArrowRight" => 1,
+            "ArrowUp" or "ArrowLeft" => -1,
+            _ => 0
+        };
+        var isHome = e.Key == "Home";
+        var isEnd = e.Key == "End";
+        if (direction == 0 && !isHome && !isEnd) return;
+
+        // Resolve the nav order from the LIVE DOM (#63): a keyed reorder MOVES reused
+        // SegmentedItem instances to new positions WITHOUT firing OnParametersSet, and
+        // a middle-INSERT lands the new child at the registry TAIL (RegisterItem
+        // appends) — both leave the C# declaration-order registry stale. The DOM-order
+        // probe re-derives the true on-screen order. Falls back to the registry order
+        // when the probe is unavailable (prerender / JS off / tests that don't drive a
+        // reorder), so EVERY existing behaviour is unchanged.
+        var items = await OrderedItems();
+
         // The "current" segment for navigation is the selected one, falling back
         // to the first enabled segment (which holds the lone tab stop). Resolve its
         // position by INDEX into the ordered list so navigation follows live DOM
-        // order even after an in-place Value re-key.
-        var currentIdx = !string.IsNullOrEmpty(Value) && _items.Any(i => i.Value == Value) && !IsItemDisabled(Value)
-            ? _items.FindIndex(i => i.Value == Value)
-            : _items.FindIndex(i => !i.Disabled);
+        // order even after an in-place Value re-key or a keyed reorder.
+        var currentIdx = !string.IsNullOrEmpty(Value) && items.Any(i => i.Value == Value) && !IsItemDisabledIn(items, Value)
+            ? items.FindIndex(i => i.Value == Value)
+            : items.FindIndex(i => !i.Disabled);
         if (currentIdx < 0) return;
 
-        string? target = e.Key switch
-        {
-            "ArrowDown" or "ArrowRight" => FindNextEnabled(currentIdx, 1),
-            "ArrowUp" or "ArrowLeft" => FindNextEnabled(currentIdx, -1),
-            "Home" => FirstEnabledValue(),
-            "End" => LastEnabledValue(),
-            _ => null
-        };
+        string? target =
+            direction != 0 ? FindNextEnabled(items, currentIdx, direction)
+            : isHome ? FirstEnabledValue(items)
+            : LastEnabledValue(items);
         if (target is null) return;
 
         // Radiogroup model: arrows move selection AND focus together.
         await SelectOption(target);
-        var targetIdx = _items.FindIndex(i => i.Value == target);
+        var targetIdx = items.FindIndex(i => i.Value == target);
         if (targetIdx >= 0)
         {
-            try { await Interop.FocusElement(_items[targetIdx].ItemId); }
+            try { await Interop.FocusElement(items[targetIdx].ItemId); }
             catch (JSDisconnectedException) { }
         }
     }
 
-    private string? LastEnabledValue()
+    // The registry (_items) reordered to match live DOM order. The DOM-order probe
+    // returns the role=radio ids in document order; we reproject the registry entries
+    // onto it (skipping ids the DOM didn't surface, then appending any registry
+    // leftovers). An empty/NULL probe result → use the registry order verbatim.
+    private async Task<List<SegmentedItemEntry>> OrderedItems()
     {
-        for (var i = _items.Count - 1; i >= 0; i--)
-            if (!_items[i].Disabled) return _items[i].Value;
+        var registry = _items;
+        // NOTE: a Loose-mode JSInterop (the default test double) returns NULL for an
+        // unconfigured string[] invocation — null-guard it, don't assume [].
+        string[]? domOrder;
+        try
+        {
+            domOrder = await Interop.GetOrderedDescendantIds(_id, "[role='radio']");
+        }
+        catch (JSDisconnectedException) { domOrder = null; }
+        catch (ObjectDisposedException) { domOrder = null; }
+        catch (InvalidOperationException) { domOrder = null; } // JS unavailable (prerender)
+
+        if (domOrder is not { Length: > 0 }) return registry;
+
+        var byId = registry.ToDictionary(i => i.ItemId);
+        var ordered = new List<SegmentedItemEntry>(registry.Count);
+        foreach (var id in domOrder)
+            if (byId.Remove(id, out var item)) ordered.Add(item);
+        ordered.AddRange(byId.Values);
+        return ordered;
+    }
+
+    private static string? LastEnabledValue(IReadOnlyList<SegmentedItemEntry> items)
+    {
+        for (var i = items.Count - 1; i >= 0; i--)
+            if (!items[i].Disabled) return items[i].Value;
         return null;
     }
 
-    private string? FindNextEnabled(int currentIdx, int direction)
+    private static string? FindNextEnabled(IReadOnlyList<SegmentedItemEntry> items, int currentIdx, int direction)
     {
-        if (_items.Count == 0) return null;
+        if (items.Count == 0) return null;
         var idx = currentIdx;
-        for (var i = 0; i < _items.Count; i++)
+        for (var i = 0; i < items.Count; i++)
         {
             idx += direction;
-            if (idx < 0) idx = _items.Count - 1;
-            else if (idx >= _items.Count) idx = 0;
+            if (idx < 0) idx = items.Count - 1;
+            else if (idx >= items.Count) idx = 0;
             if (idx == currentIdx) return null;
-            if (!_items[idx].Disabled) return _items[idx].Value;
+            if (!items[idx].Disabled) return items[idx].Value;
         }
         return null;
     }
@@ -340,5 +389,9 @@
         IReadOnlyList<SegmentedItemEntry> Items,
         Action<string, string, bool> RegisterItem,
         Action<string, string, string, bool> ReplaceItem,
-        Action<string> UnregisterItem);
+        Action<string> UnregisterItem,
+        // The role=radiogroup element id — the anchor for the DOM-order roving-nav
+        // probe (Interop.GetOrderedDescendantIds) so arrow-key order tracks the live
+        // DOM after a keyed reorder / middle-insert of SegmentedItem children.
+        string ContainerId);
 }

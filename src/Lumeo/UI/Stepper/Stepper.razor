@@ -11,7 +11,8 @@
         Orientation,
         Linear,
         _stepCount,
-        this);
+        this,
+        _tablistId);
 }
 
 <div class="@CssClass" @attributes="AdditionalAttributes">
@@ -27,6 +28,7 @@
             _stepButtonRefs = new ElementReference[_steps.Count];
     }
     <div role="tablist"
+         id="@_tablistId"
          aria-orientation="@(Orientation == Lumeo.Orientation.Vertical ? "vertical" : "horizontal")"
          class="@HeaderCssClass">
         @for (int i = 0; i < _steps.Count; i++)
@@ -191,6 +193,7 @@
 
 @inject ThemeService Theme
 @inject Lumeo.Services.Localization.ILumeoLocalizer L
+@inject IComponentInteropService Interop
 
 @code {
     // A scoped <DirectionProvider> cascades its direction here; when present it
@@ -257,6 +260,12 @@
     private readonly string _panelId = LumeoIds.New("stepper-panel");
     private readonly string _tabIdPrefix = LumeoIds.New("stepper-tab");
     private string StepTabId(int idx) => $"{_tabIdPrefix}-{idx}";
+
+    // Stable id ALWAYS present on the role=tablist container, so the DOM-order
+    // roving-nav probe (Interop.GetOrderedDescendantIds) has an anchor to query the
+    // role=tab buttons from. Also surfaced on StepperContext.ContainerId so the
+    // tablist is addressable from the cascading context (mirrors RadioGroup).
+    private readonly string _tablistId = LumeoIds.New("stepper-tablist");
 
     internal void RegisterStep(StepperStep owner, StepperStep.StepRegistration step)
     {
@@ -389,12 +398,61 @@
         var isRtl = EffectiveDirection == LayoutDirection.Rtl;
         var (hBack, hForward) = isRtl ? ("ArrowRight", "ArrowLeft") : ("ArrowLeft", "ArrowRight");
 
-        int target = e.Key switch
+        // Classify the key into a roving INTENT first and bail on an irrelevant key
+        // BEFORE the async DOM-order probe (mirrors the RadioGroupItem template:
+        // direction first, early-return, then await). intent: -1 prev, +1 next,
+        // int.MinValue Home (first), int.MaxValue End (last).
+        int intent = e.Key switch
         {
-            _ when e.Key == hBack   || e.Key == "ArrowUp"   => idx - 1,
-            _ when e.Key == hForward || e.Key == "ArrowDown" => idx + 1,
-            "Home" => 0,                              // #196
-            "End"  => _stepButtonRefs.Length - 1,     // #196
+            _ when e.Key == hBack    || e.Key == "ArrowUp"   => -1,
+            _ when e.Key == hForward || e.Key == "ArrowDown" => 1,
+            "Home" => int.MinValue,                   // #196
+            "End"  => int.MaxValue,                   // #196
+            _ => 0
+        };
+        if (intent == 0) return;
+
+        // Triage reorder leg: a keyed reorder MOVES reused step tab buttons to new
+        // DOM positions WITHOUT rebuilding the C# _steps registry, so the integer
+        // mount-order index goes stale. Resolve the neighbour from the LIVE DOM —
+        // the probe returns the role=tab ids in document order; locate the focused
+        // step's id in it, step there, then map the resolved id BACK to a _steps
+        // index to rove/focus. Falls back to the registry-index logic on an
+        // empty/NULL probe (prerender / JS off / unconfigured test double), so
+        // existing behaviour is byte-for-byte unchanged.
+        var domOrder = await OrderedTabIds();
+        if (domOrder is { Length: > 0 })
+        {
+            var domIdx = System.Array.IndexOf(domOrder, StepTabId(idx));
+            if (domIdx >= 0)
+            {
+                var targetDomIdx = intent switch
+                {
+                    int.MinValue => 0,
+                    int.MaxValue => domOrder.Length - 1,
+                    _ => domIdx + intent
+                };
+                if (targetDomIdx < 0 || targetDomIdx >= domOrder.Length) return;
+
+                var targetStep = IndexOfStepId(domOrder[targetDomIdx]);
+                if (targetStep < 0 || targetStep >= _stepButtonRefs.Length) return;
+
+                // #197: move the single roving tab stop to the resolved step;
+                // selection is untouched (focus != activation).
+                _focusedTabIndex = targetStep;
+                await _stepButtonRefs[targetStep].FocusAsync();
+                return;
+            }
+            // The focused step's id is absent from the probe (stale) → fall through
+            // to the registry-index logic below.
+        }
+
+        int target = intent switch
+        {
+            -1 => idx - 1,
+            1 => idx + 1,
+            int.MinValue => 0,                        // #196
+            int.MaxValue => _stepButtonRefs.Length - 1, // #196
             _ => -1
         };
 
@@ -408,6 +466,30 @@
         // schedules emits the corrected tabindex.
         _focusedTabIndex = target;
         await _stepButtonRefs[target].FocusAsync();
+    }
+
+    // The role=tab ids in LIVE DOM order (document order). NOTE: a Loose-mode
+    // JSInterop (the default test double) returns NULL for an unconfigured string[]
+    // call — keep it nullable and null-guard at the call site, do NOT assume [].
+    private async ValueTask<string[]?> OrderedTabIds()
+    {
+        try
+        {
+            return await Interop.GetOrderedDescendantIds(_tablistId, "[role='tab']");
+        }
+        catch (JSDisconnectedException) { return null; }
+        catch (ObjectDisposedException) { return null; }
+        catch (InvalidOperationException) { return null; } // JS unavailable (prerender)
+    }
+
+    // Map a tab id back to its index in the _steps registry. The tab ids are
+    // generated as StepTabId(i), so compare directly rather than parsing the id
+    // suffix (robust to the LumeoIds prefix format).
+    private int IndexOfStepId(string id)
+    {
+        for (var i = 0; i < _steps.Count; i++)
+            if (StepTabId(i) == id) return i;
+        return -1;
     }
 
     private async Task GoNext()
@@ -490,5 +572,8 @@
         Lumeo.Orientation Orientation,
         bool Linear,
         int StepCount,
-        Stepper Parent);
+        Stepper Parent,
+        // The role=tablist element id — the anchor for the DOM-order roving-nav probe
+        // so arrow/Home/End tab order tracks the live DOM after a keyed reorder.
+        string ContainerId);
 }

@@ -2009,6 +2009,20 @@ export function getMenuItemCount(containerId) {
     return getMenuItems(containerId).length;
 }
 
+// Returns the `id` attributes of the descendants of `containerId` matching
+// `selector`, in live DOM order. Compound widgets (RadioGroup / ToggleGroup /
+// Segmented / Stepper / Splitter, …) call this at navigation time so roving /
+// arrow-key / neighbour order tracks the real DOM even after a keyed reorder
+// moved reused child instances without re-rendering them. Ids without a value
+// are dropped (only registered, addressable items participate in roving nav).
+export function getOrderedDescendantIds(containerId, selector) {
+    const container = document.getElementById(containerId);
+    if (!container) return [];
+    return Array.from(container.querySelectorAll(selector))
+        .map(el => el.id)
+        .filter(id => id);
+}
+
 // --- Toolbar roving focus (Radix Toolbar keyboard model) ---
 //
 // A toolbar is a single tab stop; Arrow keys move focus between its focusable

@@ -1,7 +1,7 @@
 {
   "$schema": "https://lumeo.nativ.sh/components-api-schema.json",
   "version": "3.19.0",
-  "generated": "2026-06-26T05:29:03.6194104Z",
+  "generated": "2026-06-28T09:04:42.0241703Z",
   "stats": {
     "componentCount": 164,
     "totalParameters": 4151,
@@ -607,6 +607,12 @@
           "name": "GetMenuItemCount",
           "returnType": "ValueTask<int>",
           "signature": "GetMenuItemCount(string containerId)",
+          "summary": null
+        },
+        {
+          "name": "GetOrderedDescendantIds",
+          "returnType": "ValueTask<string[]>",
+          "signature": "GetOrderedDescendantIds(string containerId, string selector)",
           "summary": null
         },
         {
@@ -1930,6 +1936,12 @@
           "returnType": "ValueTask<int>",
           "signature": "GetMenuItemCount(string containerId)",
           "summary": null
+        },
+        {
+          "name": "GetOrderedDescendantIds",
+          "returnType": "ValueTask<string[]>",
+          "signature": "GetOrderedDescendantIds(string containerId, string selector)",
+          "summary": "Returns the id attributes of the descendants of matching , in live DOM order (document order). Compound widgets whose children self-register (RadioGroup / ToggleGroup / Segmented / Stepper / Splitter, …) consult this at NAVIGATION time so roving / arrow-key / neighbour order tracks the real DOM even after a keyed reorder MOVES reused child instances without re-rendering them (so the C# mount-order registry has gone stale). Callers MUST treat an empty result as \"DOM order unavailable\" and fall back to their own registry order, so prerender / JS-unavailable / non-configured-test-double paths keep working. Default implementation returns an empty array so existing implementers / test doubles keep compiling and behave exactly as before (registry-order fallback)."
         },
         {
           "name": "FocusMenuItemByTypeahead",
@@ -43442,7 +43454,7 @@
       "records": [
         {
           "name": "RadioGroupContext",
-          "signature": "RadioGroupContext(\n        string? Value,\n        EventCallback<string> OnSelect,\n        // Ordered, id-keyed registry (declaration order). Each entry is a DISTINCT\n        // roving slot so duplicate Values stay independently keyboard-reachable.\n        List<(string Id, string Value, bool Disabled)> Items,\n        // Register/Replace/Unregister are keyed by the stable per-item id (see the\n        // RadioGroup.razor registry helpers — mirrors Accordion's trigger registry).\n        Action<string, string, bool> Register,\n        Action<string, string, bool> Replace,\n        Action<string> Unregister)",
+          "signature": "RadioGroupContext(\n        string? Value,\n        EventCallback<string> OnSelect,\n        // Ordered, id-keyed registry (declaration order). Each entry is a DISTINCT\n        // roving slot so duplicate Values stay independently keyboard-reachable.\n        List<(string Id, string Value, bool Disabled)> Items,\n        // Register/Replace/Unregister are keyed by the stable per-item id (see the\n        // RadioGroup.razor registry helpers — mirrors Accordion's trigger registry).\n        Action<string, string, bool> Register,\n        Action<string, string, bool> Replace,\n        Action<string> Unregister,\n        // The role=radiogroup element id — the anchor for the DOM-order roving-nav\n        // probe so arrow-key order tracks the live DOM after a keyed reorder.\n        string ContainerId)",
           "description": null
         }
       ],
@@ -46234,7 +46246,7 @@
         },
         {
           "name": "SegmentedContext",
-          "signature": "SegmentedContext(\n        string? Value,\n        EventCallback<string> Select,\n        Func<bool, string> GetItemClasses,\n        Func<string, bool, string> GetTabIndex,\n        IReadOnlyList<SegmentedItemEntry> Items,\n        Action<string, string, bool> RegisterItem,\n        Action<string, string, string, bool> ReplaceItem,\n        Action<string> UnregisterItem)",
+          "signature": "SegmentedContext(\n        string? Value,\n        EventCallback<string> Select,\n        Func<bool, string> GetItemClasses,\n        Func<string, bool, string> GetTabIndex,\n        IReadOnlyList<SegmentedItemEntry> Items,\n        Action<string, string, bool> RegisterItem,\n        Action<string, string, string, bool> ReplaceItem,\n        Action<string> UnregisterItem,\n        // The role=radiogroup element id — the anchor for the DOM-order roving-nav\n        // probe (Interop.GetOrderedDescendantIds) so arrow-key order tracks the live\n        // DOM after a keyed reorder / middle-insert of SegmentedItem children.\n        string ContainerId)",
           "description": "Cascading context for compound-mode SegmentedItem children — they read the active value + the parent's item-class function (so style stays consistent with Options-mode), register / re-key / unregister themselves in the shared ordered registry (for roving tabindex + arrow navigation) keyed by their stable ItemId, and invoke Select on click."
         }
       ],
@@ -51512,7 +51524,7 @@
       "records": [
         {
           "name": "StepperContext",
-          "signature": "StepperContext(\n        int ActiveStep,\n        EventCallback<int> SetActiveStep,\n        Lumeo.Orientation Orientation,\n        bool Linear,\n        int StepCount,\n        Stepper Parent)",
+          "signature": "StepperContext(\n        int ActiveStep,\n        EventCallback<int> SetActiveStep,\n        Lumeo.Orientation Orientation,\n        bool Linear,\n        int StepCount,\n        Stepper Parent,\n        // The role=tablist element id — the anchor for the DOM-order roving-nav probe\n        // so arrow/Home/End tab order tracks the live DOM after a keyed reorder.\n        string ContainerId)",
           "description": null
         }
       ],
@@ -56004,7 +56016,7 @@
       "records": [
         {
           "name": "ToggleGroupContext",
-          "signature": "ToggleGroupContext(\n        ToggleGroupType Type,\n        HashSet<string> SelectedItems,\n        ToggleGroupVariant Variant,\n        Lumeo.Size Size,\n        EventCallback<string> Toggle,\n        Func<string, bool, string> GetTabIndex,\n        List<string> ItemValues,\n        Dictionary<string, string> ItemIds,\n        Dictionary<string, bool> ItemDisabled,\n        // #69: stable-id registration (item id, value, disabled, render generation)\n        // so the parent rebuilds ItemValues in DOM order each pass.\n        Action<string, string, bool, int> RegisterItem,\n        Action<string, string> UnregisterItem,\n        // #169: focus-anchor sync — item reports the value it was focused on.\n        Action<string> SetFocusValue,\n        int Generation)",
+          "signature": "ToggleGroupContext(\n        ToggleGroupType Type,\n        HashSet<string> SelectedItems,\n        ToggleGroupVariant Variant,\n        Lumeo.Size Size,\n        EventCallback<string> Toggle,\n        Func<string, bool, string> GetTabIndex,\n        List<string> ItemValues,\n        Dictionary<string, string> ItemIds,\n        Dictionary<string, bool> ItemDisabled,\n        // #69: stable-id registration (item id, value, disabled, render generation)\n        // so the parent rebuilds ItemValues in DOM order each pass.\n        Action<string, string, bool, int> RegisterItem,\n        Action<string, string> UnregisterItem,\n        // #169: focus-anchor sync — item reports the value it was focused on.\n        Action<string> SetFocusValue,\n        int Generation,\n        // The role=group element id — the anchor for the DOM-order roving-nav probe\n        // (Interop.GetOrderedDescendantIds) so arrow-key order tracks the live DOM\n        // after a keyed reorder. Always present (LumeoIds.New on the root div).\n        string ContainerId)",
           "description": null
         }
       ],

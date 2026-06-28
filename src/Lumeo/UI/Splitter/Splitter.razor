@@ -127,19 +127,30 @@
 
     internal async Task ResizeNeighbors(object dividerToken, double deltaPixels)
     {
-        var idx = _children.IndexOf(dividerToken);
+        // Resolve the two adjacent panes from the LIVE DOM order (triage #195): a
+        // keyed @key reorder MOVES reused pane/divider instances to new DOM
+        // positions WITHOUT firing OnParametersSet, so the C# mount-order _children
+        // list goes stale and a divider would resize the WRONG neighbours. We probe
+        // the document-order ids, reproject _children onto them, then walk out from
+        // the divider to the nearest pane on each side — so reordering panes moves
+        // the right neighbours and divider Arrow/Home/End nav (which routes through
+        // here) follows the DOM too. Falls back to the registration order when the
+        // probe is unavailable (prerender / JS off / unconfigured test double), so
+        // existing un-reordered behaviour is byte-for-byte unchanged.
+        var children = await OrderedChildren();
+        var idx = children.IndexOf(dividerToken);
         if (idx < 0) return;
 
         SplitterPaneHandle? before = null;
         for (var i = idx - 1; i >= 0; i--)
         {
-            if (_children[i] is SplitterPaneHandle p) { before = p; break; }
+            if (children[i] is SplitterPaneHandle p) { before = p; break; }
         }
 
         SplitterPaneHandle? after = null;
-        for (var i = idx + 1; i < _children.Count; i++)
+        for (var i = idx + 1; i < children.Count; i++)
         {
-            if (_children[i] is SplitterPaneHandle p) { after = p; break; }
+            if (children[i] is SplitterPaneHandle p) { after = p; break; }
         }
 
         if (before is null || after is null) return;
@@ -218,8 +229,55 @@
         StateHasChanged();
     }
 
+    // _children reprojected onto live DOM order. The probe returns the pane +
+    // divider element ids in document order; we map each registry entry by its
+    // stable element id and reorder to match, appending any registry entries the
+    // probe didn't surface (e.g. not-yet-rendered). An empty / NULL probe result →
+    // the registration order verbatim, so existing behaviour is unaffected.
+    private async Task<List<object>> OrderedChildren()
+    {
+        var registry = _children;
+        // NOTE: a Loose-mode JSInterop (the bUnit default, and the real service in
+        // tests) returns NULL for an unconfigured string[] invocation — null-guard
+        // it, don't assume []. The selector matches BOTH panes and dividers so the
+        // divider can locate ITSELF in the DOM order and pick its true neighbours.
+        string[]? domOrder;
+        try
+        {
+            domOrder = await Interop.GetOrderedDescendantIds(
+                _groupId, "[data-splitter-pane],[data-splitter-divider]");
+        }
+        catch (JSDisconnectedException) { domOrder = null; }
+        catch (ObjectDisposedException) { domOrder = null; }
+        catch (InvalidOperationException) { domOrder = null; } // JS unavailable (prerender)
+
+        if (domOrder is not { Length: > 0 }) return registry;
+
+        var byId = new Dictionary<string, object>(registry.Count);
+        foreach (var child in registry)
+        {
+            var id = ChildId(child);
+            if (!string.IsNullOrEmpty(id)) byId[id!] = child;
+        }
+        var ordered = new List<object>(registry.Count);
+        foreach (var id in domOrder)
+            if (byId.Remove(id, out var child)) ordered.Add(child);
+        ordered.AddRange(byId.Values);
+        return ordered;
+    }
+
+    private static string? ChildId(object child) => child switch
+    {
+        SplitterPaneHandle p => p.Id,
+        SplitterDividerToken d => d.Id,
+        _ => null
+    };
+
     public class SplitterPaneHandle
     {
+        /// <summary>The pane element's id — the addressable anchor the DOM-order
+        /// neighbour probe (<see cref="OrderedChildren"/>) maps this handle back to.</summary>
+        public string Id { get; set; } = "";
         public double Size { get; set; }
         public double MinSize { get; set; } = 10;
         public double MaxSize { get; set; } = 90;
@@ -235,7 +293,13 @@
         public bool Collapsed { get; set; }
     }
 
-    public class SplitterDividerToken { }
+    public class SplitterDividerToken
+    {
+        /// <summary>The divider element's id — lets the DOM-order probe locate the
+        /// divider among its panes so <see cref="ResizeNeighbors"/> picks the live
+        /// neighbours after a keyed reorder.</summary>
+        public string Id { get; set; } = "";
+    }
 
     public record SplitterContext(
         string GroupId,
