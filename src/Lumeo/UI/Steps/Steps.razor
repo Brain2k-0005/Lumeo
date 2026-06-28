@@ -1,10 +1,11 @@
 @namespace Lumeo
+@inject Lumeo.Services.IComponentInteropService Interop
 
 @{
     var context = new StepsContext(CurrentStep, Clickable, EventCallback.Factory.Create<int>(this, OnStepClick), Orientation, Animated, _direction, _replayKey, this);
 }
 
-<div class="@CssClass" role="list" @attributes="AdditionalAttributes">
+<div class="@CssClass" id="@_stepsId" role="list" @attributes="AdditionalAttributes">
     <CascadingValue Value="context" IsFixed="false">
         @ChildContent
     </CascadingValue>
@@ -36,6 +37,20 @@
     // subsequent item's number.
     private readonly List<StepsItem> _items = new();
 
+    // A stable container id so the after-render DOM-order probe has an anchor.
+    private readonly string _stepsId = LumeoIds.New("steps");
+
+    // step-indicator id -> live DOM index, refreshed after each render. The mount-
+    // order registry (_items) is stable across independent child re-renders (#244)
+    // but a keyed REORDER of the StepsItem children MOVES them in the DOM without
+    // re-registering, so the registry index goes stale and the number / completed-
+    // current status / click target / aria-label all drift (#43/#44). After each
+    // render we read the real DOM order and, if it differs, re-render so every
+    // _index resolves to the item's true DOM position. Empty until the first probe
+    // (and whenever JS is unavailable) -> GetItemIndex falls back to registry order,
+    // so the non-reordered common case is unchanged and prerender/JS-off still work.
+    private Dictionary<string, int> _domOrder = new();
+
     // Direction tracking for opt-in Animated mode. `_direction` drives which
     // keyframe the connector plays (forward draw-in vs. backward unwind).
     // `_replayKey` is bumped every time CurrentStep actually changes so that
@@ -55,8 +70,35 @@
 
     internal int GetItemIndex(StepsItem item)
     {
+        // Live DOM order wins (survives a keyed reorder); fall back to mount order.
+        if (_domOrder.TryGetValue(item.StepId, out var domIdx)) return domIdx;
         var idx = _items.IndexOf(item);
         return idx < 0 ? 0 : idx;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        // NOTE: a Loose-mode JSInterop returns NULL for an unconfigured string[] call.
+        string[]? ids;
+        try
+        {
+            ids = await Interop.GetOrderedDescendantIds(_stepsId, "[data-step-indicator]");
+        }
+        catch (JSDisconnectedException) { return; }
+        catch (ObjectDisposedException) { return; }
+        catch (InvalidOperationException) { return; } // JS unavailable (prerender)
+
+        if (ids is not { Length: > 0 }) return;
+
+        var map = new Dictionary<string, int>(ids.Length);
+        for (var i = 0; i < ids.Length; i++) map[ids[i]] = i;
+
+        // Re-render ONLY when the live DOM order actually changed, so a non-reordered
+        // Steps never loops (renumbering changes text, not element order, so the next
+        // probe returns the same order and converges).
+        if (map.Count == _domOrder.Count && !map.Except(_domOrder).Any()) return;
+        _domOrder = map;
+        StateHasChanged();
     }
 
     protected override void OnParametersSet()

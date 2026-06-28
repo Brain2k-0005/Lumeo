@@ -457,6 +457,17 @@ public interface IComponentInteropService : IAsyncDisposable, IDisposable
     Task GanttChangeViewModeAsync(string id, string mode);
     Task GanttDestroyAsync(string id);
 
+    /// <summary>
+    /// Pushes a partial options bag (any of readonly / todayHighlight / barHeight /
+    /// columnWidth — and optionally tasks / viewMode) to a LIVE Gantt instance and
+    /// re-renders it (gantt.refresh). The init-only options were previously captured
+    /// once at GanttInitAsync, so flipping Readonly / TodayHighlight / BarHeight /
+    /// ColumnWidth after init was silently ignored (battle-test wave 1 #2). Default
+    /// implementation is a no-op so existing implementers / test doubles keep
+    /// compiling and the non-Gantt paths are unaffected.
+    /// </summary>
+    Task GanttRefreshAsync(string id, object options) => Task.CompletedTask;
+
     // Toolbar overflow observer — registers a ResizeObserver on the toolbar
     // element and invokes the handler with (fittingCount, totalCount) whenever
     // the number of items that fit before the "..." overflow trigger changes.
