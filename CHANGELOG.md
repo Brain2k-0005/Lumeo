@@ -7,7 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-A Radix/Base-UI/shadcn parity audit pass — accessibility, RTL, theming, the FormGenerator, and the MCP/CLI. Additive and opt-in; existing usage is unchanged (the OKLCH and logical-utility changes are visually/behaviourally identical in LTR).
+## [4.0.0] - 2026-06-26
+
+Two things in one release: a Radix/Base-UI/shadcn **parity audit** (accessibility, RTL, theming, the FormGenerator, and the MCP/CLI — additive and opt-in; the OKLCH and logical-utility changes are visually/behaviourally identical in LTR) **and** a library-wide **correctness hardening** pass — an adversarial "battle-test" of all 164 components that fixed ~355 confirmed bugs, each with a bUnit regression test (suite 4825 green). There are **no API-signature breaks**; the major bump signals the scope and the handful of observable **behaviour** changes listed under **Changed** below (and in `MIGRATION.md`).
 
 ### Added
 - **DirectionProvider**: new component — `<DirectionProvider Direction="LayoutDirection.Rtl">` sets the native `dir` (and cascades it) so descendant layout mirrors for RTL.
@@ -17,6 +19,10 @@ A Radix/Base-UI/shadcn parity audit pass — accessibility, RTL, theming, the Fo
 - **Chart**: `AriaLabel` — exposes the canvas as `role="img"` with a text alternative (WCAG 1.1.1).
 - **AlertDialogTrigger / DrawerTrigger**: `AsChild` — fold the trigger onto a single child element (no `div[role=button]` wrapping a real `<button>`, WCAG 4.1.2).
 - **`Lumeo.Cx`**: the class-merge helper (shadcn `cn()` equivalent) is now public for use in consumer components.
+- **DataTable**: `ItemKey` — decide row selection by a stable key, so selection survives an `Items` refresh that re-supplies value-equal but reference-distinct rows (the mainstream async reload).
+- **RadioGroup**: the `Name` parameter now emits a hidden input carrying the selected value, so the group participates in native form submission.
+- **Gantt**: the init-only options `Readonly` / `TodayHighlight` / `BarHeight` / `ColumnWidth` now apply to a live chart when changed after init (new `gantt.refresh` interop path).
+- **Interop (internal/advanced)**: `IComponentInteropService.GetOrderedDescendantIds` (DOM-order roving navigation) and `GanttRefreshAsync` — both default-implemented, additive.
 
 ### Improved
 - **RTL**: migrated the component library's directional Tailwind utilities to logical ones (`ml-→ms-`, `left-→start-`, `text-left→text-start`, `rounded-l→rounded-s`, `border-l→border-s`, …) — identical in LTR, mirrored in RTL.
@@ -28,6 +34,17 @@ A Radix/Base-UI/shadcn parity audit pass — accessibility, RTL, theming, the Fo
 
 ### Changed
 - **Theme**: the entire colour palette (base + all 8 themes, 878 tokens) migrated from HSL to **OKLCH** — exact 1:1 conversion (brand identity unchanged), matching Tailwind v4 / current shadcn.
+- **Badge (behaviour)**: a removable badge no longer optimistically hides itself on remove-click — visibility is now fully controlled (data-driven), matching the controlled-component model. Remove the item from your own model in `OnRemove` (and `@key` your list). See `MIGRATION.md`.
+- **Progress / Gauge / RingProgress (behaviour)**: out-of-range values are clamped (`Value=150, Max=100` → `100`; negative → `0`); the indeterminate state reports `aria-busy="true"` and omits `aria-valuenow` instead of rendering a stale determinate value.
+- **Internal state survival (behaviour, library-wide)**: selection / checked / expand-collapse / active index / page / search / scroll / in-progress edit state now **survives** a same-content data refresh, an empty→refill async load and unrelated parent re-renders. If any code relied on that state *resetting* on an unrelated re-render, it no longer does.
+- **Roving keyboard order (behaviour)**: RadioGroup / ToggleGroup / Segmented / Stepper / Splitter / Steps / Accordion track the **live DOM order** for arrow-key navigation, numbering and neighbour resolution after a keyed reorder (previously mount-order).
+
+### Fixed (battle-test campaign — ~355 bugs across all 164 components, each with a bUnit regression test)
+- **State-on-data-change**: internal UI state survives same-content `Items`/`Value` refreshes, empty→refill async loads, sort/filter/reorder/add/remove, and unrelated `[Parameter]` changes — across DataGrid, DataTable, Select, Combobox, Cascader, TreeView, TreeSelect, Transfer, PickList, Calendar, Carousel, Pagination, Scheduler, Tabs, Tour, NavigationMenu, MegaMenu, Menubar, Form, FileManager, Sortable, and ~40 more.
+- **Keyboard & ARIA**: correct roving tabindex, focus restore/trap, and ARIA (`aria-expanded`/`selected`/`current`/`busy`/`pressed`, roles, accessible names, `aria-hidden` on decorative icons, `inert` on aria-hidden clones) across forms, overlays, menus, data widgets and presentational components.
+- **Edge data**: empty/null/whitespace/single/duplicate-key/out-of-range/huge inputs no longer crash or misrender — guards, clamps, bounds checks and culture-invariant number/decimal formatting in inline styles and SVG, library-wide.
+- **Lifecycle**: timers, `IntersectionObserver`/`ResizeObserver`, `requestAnimationFrame` animations, `DotNetObjectReference`s and event subscriptions are torn down on dispose; no `StateHasChanged` after dispose; first-render registrations no longer latch on a not-yet-ready render (late-arriving ids/data now register).
+- **Reorder class**: the keyed-reorder-with-reuse, middle-insert, Steps renumbering and Splitter neighbour legs are closed via a DOM-order interop probe consulted at navigation/render time (`GetOrderedDescendantIds`).
 
 ## [3.19.0] - 2026-06-18
 
