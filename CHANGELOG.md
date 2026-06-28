@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [4.0.0] - 2026-06-26
 
-Two things in one release: a Radix/Base-UI/shadcn **parity audit** (accessibility, RTL, theming, the FormGenerator, and the MCP/CLI — additive and opt-in; the OKLCH and logical-utility changes are visually/behaviourally identical in LTR) **and** a library-wide **correctness hardening** pass — an adversarial "battle-test" of all 164 components that fixed ~355 confirmed bugs, each with a bUnit regression test (suite 4825 green). There are **no API-signature breaks**; the major bump signals the scope and the handful of observable **behaviour** changes listed under **Changed** below (and in `MIGRATION.md`).
+Two things in one release: a Radix/Base-UI/shadcn **parity audit** (accessibility, RTL, theming, the FormGenerator, and the MCP/CLI — additive and opt-in; the OKLCH and logical-utility changes are visually/behaviourally identical in LTR) **and** a library-wide **correctness hardening** pass — an adversarial "battle-test" of all 164 components that fixed ~355 confirmed bugs, each with a bUnit regression test (suite 4,831 green). There are **no API-signature breaks**; the major bump signals the scope and the handful of observable **behaviour** changes listed under **Changed** below (and in `MIGRATION.md`).
 
 ### Added
 - **DirectionProvider**: new component — `<DirectionProvider Direction="LayoutDirection.Rtl">` sets the native `dir` (and cascades it) so descendant layout mirrors for RTL.
@@ -45,6 +45,16 @@ Two things in one release: a Radix/Base-UI/shadcn **parity audit** (accessibilit
 - **Edge data**: empty/null/whitespace/single/duplicate-key/out-of-range/huge inputs no longer crash or misrender — guards, clamps, bounds checks and culture-invariant number/decimal formatting in inline styles and SVG, library-wide.
 - **Lifecycle**: timers, `IntersectionObserver`/`ResizeObserver`, `requestAnimationFrame` animations, `DotNetObjectReference`s and event subscriptions are torn down on dispose; no `StateHasChanged` after dispose; first-render registrations no longer latch on a not-yet-ready render (late-arriving ids/data now register).
 - **Reorder class**: the keyed-reorder-with-reuse, middle-insert, Steps renumbering and Splitter neighbour legs are closed via a DOM-order interop probe consulted at navigation/render time (`GetOrderedDescendantIds`).
+
+### Fixed (real-browser docs-QA pass — verified with agent-browser)
+- **Render crash — Razor comment inside an element tag** (Cascader, PdfViewer): a multi-line `@* … *@` comment placed BETWEEN an `<input>`'s attributes was emitted as a literal attribute name, throwing `setAttribute` InvalidCharacterError in a real browser and taking the whole page down. Moved the comments outside the tags; added a lint test (`RazorCommentInTagGuardTests`) — this class is invisible to bUnit and to a `pageerror`-only sweep.
+- **Input `Type="file"` crash**: `value` was bound on the `<input>` unconditionally, and a file input rejects any non-empty `value`, so picking a file threw InvalidStateError. The value binding is now dropped for file inputs.
+- **Form-field layout (parity)**: every standalone form field (Input, Mention, Cascader, Select, Combobox, the date/time pickers, Slider, Switch, Checkbox, … 23 components) rendered its label, control and helper/error as loose root-level siblings, so inside a flex / centered container they splayed into a row (label beside the control). Each now renders as one self-contained vertical block; inline-label fields keep their inline label.
+- **FormField + FormMessage** no longer render the validation error twice — `<FormMessage>` defers to FormField's own error by default; the new `FormField.AutoRenderMessage="false"` hands error rendering to a child FormMessage for pure composition.
+- **Gauge (Arc)**: the value sits centred in the semicircle instead of pushed up toward the apex (size-independent).
+- **ImageGallery**: the grid no longer collapses to zero — cells gained an aspect ratio and the grid keeps a definite width as a content-sized flex child.
+- **TagInput**: the "max tags reached" helper showed the raw key `TagInput.MaxTagsReached`; added the missing EN + DE localization defaults.
+- **Form demo**: removed a redundant `<FormMessage/>` that duplicated the validation error.
 
 ## [3.19.0] - 2026-06-18
 
