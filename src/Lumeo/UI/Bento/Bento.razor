@@ -42,7 +42,11 @@
             // without responsive breakpoints. (Inline styles can't carry media queries.)
             if (string.IsNullOrEmpty(ColumnsClass))
             {
-                return $"grid-template-columns: repeat({Columns}, minmax(0, 1fr));";
+                // Clamp the lower bound: repeat(0, …) / repeat(-1, …) is invalid CSS and
+                // collapses the grid to a single implicit column. A degenerate/empty bound
+                // count (Columns <= 0) still yields a valid single-column template.
+                var n = Math.Max(1, Columns);
+                return $"grid-template-columns: repeat({n}, minmax(0, 1fr));";
             }
             return string.Empty;
         }

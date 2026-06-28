@@ -83,7 +83,15 @@
             // to a literal and optionally anchor on word boundaries.
             if (RegexMode) return t;
             var e = System.Text.RegularExpressions.Regex.Escape(t);
-            return WholeWord ? $@"\b{e}\b" : e;
+            if (!WholeWord)
+                return e;
+            // Only anchor a \b on a side whose adjacent term char is itself a word
+            // character. A \b next to punctuation (e.g. "C#", ".NET", "(World)")
+            // can never match, which would silently drop the term. (t is already
+            // guaranteed non-empty by the collection filters above.)
+            var left = char.IsLetterOrDigit(t[0]) || t[0] == '_' ? @"\b" : "";
+            var right = char.IsLetterOrDigit(t[^1]) || t[^1] == '_' ? @"\b" : "";
+            return $"{left}{e}{right}";
         });
         var pattern = string.Join("|", escaped);
         var options = System.Text.RegularExpressions.RegexOptions.None;
@@ -105,6 +113,12 @@
         int pos = 0;
         foreach (System.Text.RegularExpressions.Match m in regex.Matches(Text))
         {
+            // Skip zero-length matches (e.g. a RegexMode pattern like "a*" or "\b")
+            // so we never emit an empty highlight element. The surrounding non-match
+            // text is still preserved by the next match's `m.Index > pos` check and
+            // the trailing-text logic below. (#296)
+            if (m.Length == 0)
+                continue;
             if (m.Index > pos)
                 _segments.Add(new Segment(Text[pos..m.Index], false));
             _segments.Add(new Segment(m.Value, true));

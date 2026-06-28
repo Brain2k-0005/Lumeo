@@ -105,13 +105,16 @@ export const motion = {
         const el = document.getElementById(elementId);
         if (!el) return;
 
-        const stagger = (options && options.stagger) || 80;
-        const threshold = (options && options.threshold) || 0.3;
+        // Per-word transition-delay is rendered declaratively by the Blazor component
+        // (style="transition-delay:Nms"), so it stays in sync with the bound Text:
+        // added words re-stagger and an intentional Stagger of 0 is honored. JS only
+        // wires up the reveal trigger here — no transitionDelay assignment.
 
-        const words = el.querySelectorAll('[data-motion-word]');
-        words.forEach((w, i) => {
-            w.style.transitionDelay = `${i * stagger}ms`;
-        });
+        // Explicit null/undefined check (NOT `|| 0.3`) so an intentional threshold of 0
+        // is honored, then clamp to the IntersectionObserver-legal [0,1] range so an
+        // out-of-range value can't throw and leave the text permanently hidden.
+        const rawThreshold = (options && options.threshold != null) ? options.threshold : 0.3;
+        const threshold = Math.min(1, Math.max(0, rawThreshold));
 
         const observer = new IntersectionObserver((entries) => {
             for (const entry of entries) {
@@ -449,8 +452,8 @@ export const motion = {
         const prev = motionTickers.get(tickerKey);
         if (prev) cancelAnimationFrame(prev);
 
-        const particleCount = (options && options.particleCount) || 80;
-        const spread = (options && options.spread) || 70;
+        const particleCount = (options && options.particleCount !== undefined) ? options.particleCount : 80;
+        const spread = (options && options.spread !== undefined) ? options.spread : 70;
         const colors = (options && options.colors) || ['#ff595e','#ffca3a','#6a4c93','#1982c4','#8ac926'];
         const originX = (options && options.origin && options.origin.x) !== undefined ? options.origin.x : 0.5;
         const originY = (options && options.origin && options.origin.y) !== undefined ? options.origin.y : 0.5;

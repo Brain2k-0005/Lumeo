@@ -206,4 +206,58 @@ public class NumberTickerTests : IAsyncLifetime
             Assert.Contains(">1234<", cut.Markup);
         });
     }
+
+    // --- Wave 3 battle-test regressions ---
+
+    // #50 (edge-data): a negative Decimals built a bogus "N-1" standard-format
+    // string, so C# rendered the literal text "N-1" for ANY value (while the JS
+    // count-up clamped to 0 decimals). Decimals must clamp to a non-negative count.
+    [Fact]
+    public void Negative_Decimals_Are_Clamped_To_Zero_Not_Rendered_As_Garbage()
+    {
+        WithCulture("en-US", () =>
+        {
+            var cut = _ctx.Render<Lumeo.NumberTicker>(p => p
+                .Add(n => n.Value, 9_999)
+                .Add(n => n.StartValue, 1_234)
+                .Add(n => n.Decimals, -1));
+
+            // Before the fix the inner span rendered the literal "N-1".
+            Assert.DoesNotContain("N-1", cut.Markup);
+            Assert.Contains(">1,234<", cut.Markup);
+        });
+    }
+
+    // #14 (edge-data): the JS formatter hardcodes uniform groups-of-3, but C#
+    // FormatValue inherited the culture's NumberGroupSizes. Under an Indian-style
+    // [3,2] grouping the initial/final C# render (12,34,567) diverged from the
+    // animated JS values (1,234,567). C# must force uniform groups-of-3 so both
+    // sides agree, honouring the documented "mirrors the JS formatter" invariant.
+    [Fact]
+    public void Indian_Group_Sizes_Render_As_Uniform_Groups_Of_Three()
+    {
+        var original = CultureInfo.CurrentCulture;
+        try
+        {
+            // Explicit [3,2] grouping so the test is deterministic regardless of
+            // the ICU data backing a named culture like en-IN.
+            var indian = (CultureInfo)CultureInfo.InvariantCulture.Clone();
+            indian.NumberFormat.NumberGroupSizes = new[] { 3, 2 };
+            indian.NumberFormat.NumberGroupSeparator = ",";
+            indian.NumberFormat.NumberDecimalSeparator = ".";
+            CultureInfo.CurrentCulture = indian;
+
+            var cut = _ctx.Render<Lumeo.NumberTicker>(p => p
+                .Add(n => n.Value, 2_000_000)
+                .Add(n => n.StartValue, 1_234_567));
+
+            // Before the fix this rendered the Indian grouping ">12,34,567<".
+            Assert.Contains(">1,234,567<", cut.Markup);
+            Assert.DoesNotContain("12,34,567", cut.Markup);
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = original;
+        }
+    }
 }

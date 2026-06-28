@@ -118,10 +118,6 @@ else
         {
             try
             {
-                if (PressEffect == Button.ButtonPressEffect.Ripple)
-                {
-                    await Interop.RippleAttachAsync(_el);
-                }
                 // div[role=button]: Space activated the card AND scrolled the
                 // page (no native key synthesis on a div). Suppress only
                 // Space's default; Enter has none on a div.
@@ -133,12 +129,56 @@ else
             catch (Microsoft.JSInterop.JSDisconnectedException) { }
             catch (InvalidOperationException) { } // JS interop unavailable during prerender
         }
+
+        // Reconcile the ripple pointerdown listener with the LIVE
+        // PressEffect/IsInteractive on EVERY render — not latched on firstRender
+        // (triage wave-3 #6, mirrors Button.razor). A runtime None->Ripple flip
+        // must now attach, and a Ripple->None (or interactive->non-interactive)
+        // flip must detach the otherwise-leaked listener.
+        var wantRipple = IsInteractive && PressEffect == Button.ButtonPressEffect.Ripple;
+        if (wantRipple && !_rippleAttached)
+        {
+            try
+            {
+                await Interop.RippleAttachAsync(_el);
+                _rippleAttached = true;
+            }
+            catch (Microsoft.JSInterop.JSDisconnectedException) { }
+            catch (InvalidOperationException) { } // JS interop unavailable during prerender
+        }
+        else if (!wantRipple && _rippleAttached)
+        {
+            try
+            {
+                await Interop.RippleDetachAsync(_el);
+            }
+            catch (Microsoft.JSInterop.JSDisconnectedException) { }
+            catch (InvalidOperationException) { }
+            _rippleAttached = false;
+        }
     }
 
     private bool _pdRegistered;
 
+    // Whether the JS pointerdown ripple listener is currently bound to _el.
+    // Tracked so attach/detach is reconciled against the live PressEffect on
+    // every render (not latched on firstRender) and torn down on dispose.
+    private bool _rippleAttached;
+
     public async ValueTask DisposeAsync()
     {
+        if (_rippleAttached)
+        {
+            try
+            {
+                await Interop.RippleDetachAsync(_el);
+            }
+            catch (Microsoft.JSInterop.JSDisconnectedException) { }
+            catch (ObjectDisposedException) { }
+            catch (InvalidOperationException) { }
+            _rippleAttached = false;
+        }
+
         if (!_pdRegistered) return;
         try
         {

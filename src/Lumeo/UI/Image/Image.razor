@@ -27,10 +27,11 @@
 
     @if (Preview)
     {
-        <div class="absolute inset-0 flex items-center justify-center bg-black/0 hover:bg-black/20 transition-colors cursor-pointer opacity-0 hover:opacity-100"
-             @onclick="HandleClick">
-            <Blazicon Svg="Lucide.ZoomIn" class="h-6 w-6 text-white drop-shadow-lg" />
-        </div>
+        <button type="button" aria-label="@PreviewLabel"
+                class="absolute inset-0 flex items-center justify-center bg-black/0 hover:bg-black/20 focus-visible:bg-black/20 transition-colors cursor-pointer opacity-0 hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-white"
+                @onclick="HandleClick">
+            <Blazicon Svg="Lucide.ZoomIn" class="h-6 w-6 text-white drop-shadow-lg" aria-hidden="true" />
+        </button>
     }
 </div>
 
@@ -51,7 +52,7 @@
             </button>
         </div>
 
-        <img src="@Src" alt="@Alt" class="max-h-[85vh] max-w-[90vw] object-contain transition-transform" style="transform: scale(@(_zoom / 100.0))" @onclick:stopPropagation="true" />
+        <img src="@Src" alt="@Alt" class="max-h-[85vh] max-w-[90vw] object-contain transition-transform" style="@($"transform: scale({(_zoom / 100.0).ToString("0.###", System.Globalization.CultureInfo.InvariantCulture)})")" @onclick:stopPropagation="true" />
     </div>
 }
 
@@ -90,6 +91,9 @@
         ? $"transform: scale({_zoomScale.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture)}); transform-origin: center center;"
         : null;
 
+    // Accessible name for the keyboard-reachable preview trigger button.
+    private string PreviewLabel => string.IsNullOrWhiteSpace(Alt) ? "Open image preview" : $"Open preview: {Alt}";
+
     private string ContainerClass => Cx.Merge("relative inline-block overflow-hidden", Class);
     // When the consumer sized the wrapper via Class (e.g. "h-14 w-auto") but
     // didn't pass explicit Width / Height params, the <img> had no size
@@ -109,6 +113,19 @@
             var w = Width is not null ? $"width:{Width}px;" : "width:100%;";
             var h = Height is not null ? $"height:{Height}px;" : "height:8rem;";
             return w + h;
+        }
+    }
+
+    // Reset the error latch when the source genuinely changes so a new, valid
+    // Src is given a fresh chance to load instead of staying hidden behind the
+    // fallback because a *previous* Src had errored.
+    private string? _lastSrc;
+    protected override void OnParametersSet()
+    {
+        if (Src != _lastSrc)
+        {
+            _lastSrc = Src;
+            _hasError = false;
         }
     }
 

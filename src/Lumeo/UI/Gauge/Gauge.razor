@@ -4,10 +4,10 @@
 {
     <div class="@ContainerClass"
          role="meter"
-         aria-valuenow="@Value.ToString(System.Globalization.CultureInfo.InvariantCulture)"
+         aria-valuenow="@AriaValueNow.ToString(System.Globalization.CultureInfo.InvariantCulture)"
          aria-valuemin="@Min.ToString(System.Globalization.CultureInfo.InvariantCulture)"
          aria-valuemax="@Max.ToString(System.Globalization.CultureInfo.InvariantCulture)"
-         aria-label="@(Label ?? DisplayValue)"
+         aria-label="@(string.IsNullOrWhiteSpace(Label) ? DisplayValue : Label)"
          @attributes="AdditionalAttributes">
         <svg width="@Size" height="@StrokeWidth" viewBox="0 0 @Size @StrokeWidth"
              xmlns="http://www.w3.org/2000/svg">
@@ -31,10 +31,10 @@ else
     @* Radial = 270° arc (gap at bottom), Arc = 180° semicircle (top half) *@
     <div class="@ArcContainerClass"
          role="meter"
-         aria-valuenow="@Value.ToString(System.Globalization.CultureInfo.InvariantCulture)"
+         aria-valuenow="@AriaValueNow.ToString(System.Globalization.CultureInfo.InvariantCulture)"
          aria-valuemin="@Min.ToString(System.Globalization.CultureInfo.InvariantCulture)"
          aria-valuemax="@Max.ToString(System.Globalization.CultureInfo.InvariantCulture)"
-         aria-label="@(Label ?? DisplayValue)"
+         aria-label="@(string.IsNullOrWhiteSpace(Label) ? DisplayValue : Label)"
          style="@ArcContainerStyle"
          @attributes="AdditionalAttributes">
         <svg width="@Size" height="@SvgHeight"
@@ -105,7 +105,13 @@ else
         ? Math.Clamp((Value - Min) / (Max - Min) * 100.0, 0.0, 100.0)
         : 0;
 
-    private string DisplayValue => Label ?? $"{(int)Math.Round(Percentage)}%";
+    // aria-valuenow must stay within the declared [Min,Max] range so screen
+    // readers announce the same value the meter visually clamps to (#42).
+    private double AriaValueNow => Max > Min ? Math.Clamp(Value, Min, Max) : Min;
+
+    private string DisplayValue => string.IsNullOrWhiteSpace(Label)
+        ? $"{(int)Math.Round(Percentage)}%"
+        : Label!;
 
     private string ActiveColor
     {

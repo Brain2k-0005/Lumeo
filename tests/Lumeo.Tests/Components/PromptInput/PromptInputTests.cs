@@ -1,5 +1,7 @@
+using System.Reflection;
 using Bunit;
 using Xunit;
+using Lumeo.Services;
 using Lumeo.Tests.Helpers;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Web;
@@ -9,9 +11,22 @@ namespace Lumeo.Tests.Components.PromptInput;
 public class PromptInputTests : IAsyncLifetime
 {
     private readonly BunitContext _ctx = new();
+    private readonly BunitJSModuleInterop _module;
 
     public PromptInputTests()
     {
+        // The lib appends ?v=<assembly-version> to the components.js import URL;
+        // mirror it (RatingTests pattern) so this handle captures the module-scoped
+        // ai.autosize invocations the component issues through the interop service.
+        _ctx.JSInterop.Mode = JSRuntimeMode.Loose;
+        var v = typeof(ComponentInteropService).Assembly
+            .GetCustomAttribute<AssemblyInformationalVersionAttribute>()
+            ?.InformationalVersion
+            ?? typeof(ComponentInteropService).Assembly.GetName().Version?.ToString()
+            ?? "0";
+        _module = _ctx.JSInterop.SetupModule($"./_content/Lumeo/js/components.js?v={v}");
+        _module.Mode = JSRuntimeMode.Loose;
+
         _ctx.AddLumeoServices();
     }
 
@@ -298,5 +313,29 @@ public class PromptInputTests : IAsyncLifetime
 
         Assert.Contains(">3<", cut.Markup);
         Assert.False(cut.Find("textarea").HasAttribute("maxlength"));
+    }
+
+    // ── Wave 3 #16: external Value change re-runs autosize ────────────────────
+
+    [Fact]
+    public void External_Value_Change_Reruns_Autosize()
+    {
+        var cut = _ctx.Render<Lumeo.PromptInput>(p => p
+            .Add(x => x.Value, "first line\nsecond line\nthird line"));
+
+        // First render autosizes the textarea exactly once. Wait for the call to
+        // be recorded so the baseline is taken AFTER the first-render reflow.
+        cut.WaitForAssertion(() => Assert.NotEmpty(_module.Invocations["ai.autosize"]));
+        var initialCount = _module.Invocations["ai.autosize"].Count;
+
+        // The consumer clears the value from OUTSIDE the textarea (the clear-on-send
+        // pattern). Without the fix, autosize never re-runs for an external Value
+        // change, so the textarea keeps its stale multi-line height. The fix
+        // re-invokes ai.autosize from the non-first-render OnAfterRenderAsync branch.
+        cut.Render(p => p.Add(x => x.Value, ""));
+
+        cut.WaitForAssertion(() =>
+            Assert.True(_module.Invocations["ai.autosize"].Count > initialCount,
+                $"ai.autosize should re-run after an external Value change (initial {initialCount})."));
     }
 }

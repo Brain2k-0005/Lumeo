@@ -140,4 +140,64 @@ public class DeltaTests : IAsyncLifetime
 
         Assert.Equal("delta", cut.Find("span").GetAttribute("data-testid"));
     }
+
+    // Bug 37 (edge-data): a non-finite Value (NaN) must not emit a "NaN%" badge
+    // nor a coloured (good/bad) state — it falls back to neutral, no arrow.
+    [Fact]
+    public void NaN_Value_Renders_Neutral_And_No_Garbage()
+    {
+        var cut = _ctx.Render<Lumeo.Delta>(p => p
+            .Add(d => d.Value, double.NaN));
+
+        var valueText = cut.FindAll("span")[^1].TextContent;
+        Assert.DoesNotContain("NaN", valueText);
+
+        var cls = cut.Find("span").GetAttribute("class");
+        Assert.Contains("bg-muted", cls);
+        Assert.Contains("text-muted-foreground", cls);
+        Assert.Empty(cut.FindAll("svg"));
+    }
+
+    // Bug 37 (edge-data): +Infinity (e.g. a zero-baseline ratio) must not emit a
+    // green up-arrow "∞" badge — it is non-finite, so neutral with no arrow.
+    [Fact]
+    public void PositiveInfinity_Renders_Neutral_And_No_Arrow()
+    {
+        var cut = _ctx.Render<Lumeo.Delta>(p => p
+            .Add(d => d.Value, double.PositiveInfinity));
+
+        var cls = cut.Find("span").GetAttribute("class");
+        Assert.Contains("bg-muted", cls);
+        Assert.Empty(cut.FindAll("svg"));
+    }
+
+    // Bug 38 (edge-data): +0.004 rounds to "0" so it must render a neutral "0%"
+    // with no "+" sign, no green up-arrow, and neutral colours.
+    [Fact]
+    public void SubThreshold_Positive_Renders_Neutral_Zero_No_Arrow()
+    {
+        var cut = _ctx.Render<Lumeo.Delta>(p => p
+            .Add(d => d.Value, 0.004));
+
+        Assert.Equal("0%", cut.FindAll("span")[^1].TextContent);
+
+        var cls = cut.Find("span").GetAttribute("class");
+        Assert.Contains("bg-muted", cls);
+        Assert.Empty(cut.FindAll("svg"));
+    }
+
+    // Bug 38 (edge-data): -0.004 rounds to "0" — it must NOT render "-0%" negative
+    // zero text nor a red down-arrow; the rounded magnitude drives the neutral state.
+    [Fact]
+    public void SubThreshold_Negative_Eliminates_Negative_Zero_Text()
+    {
+        var cut = _ctx.Render<Lumeo.Delta>(p => p
+            .Add(d => d.Value, -0.004));
+
+        Assert.Equal("0%", cut.FindAll("span")[^1].TextContent);
+
+        var cls = cut.Find("span").GetAttribute("class");
+        Assert.Contains("bg-muted", cls);
+        Assert.Empty(cut.FindAll("svg"));
+    }
 }

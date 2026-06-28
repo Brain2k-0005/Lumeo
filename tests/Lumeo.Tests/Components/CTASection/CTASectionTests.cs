@@ -30,4 +30,26 @@ public class CTASectionTests : IAsyncLifetime
             .Add(c => c.Subtitle, "Sign up in seconds"));
         Assert.Contains("Sign up in seconds", cut.Markup);
     }
+
+    // Regression (#36): a whitespace-only Title must be treated as absent —
+    // no empty <h2>, and no aria-labelledby pointing at an empty region name.
+    [Fact]
+    public void Whitespace_Title_Renders_No_Heading_And_No_AriaLabelledBy()
+    {
+        var cut = _ctx.Render<L.CTASection>(p => p.Add(c => c.Title, "   "));
+
+        Assert.Empty(cut.FindAll("h2"));
+        Assert.False(cut.Find("section").HasAttribute("aria-labelledby"));
+    }
+
+    // Regression (#36): a whitespace-only Subtitle must not emit an empty <p>.
+    [Fact]
+    public void Whitespace_Subtitle_Renders_No_Paragraph()
+    {
+        var cut = _ctx.Render<L.CTASection>(p => p
+            .Add(c => c.Title, "Get started")
+            .Add(c => c.Subtitle, "   "));
+
+        Assert.Empty(cut.FindAll("p"));
+    }
 }

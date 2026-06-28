@@ -138,4 +138,37 @@ public class LinkTests : IAsyncLifetime
 
         Assert.Equal("page", cut.Find("a").GetAttribute("aria-current"));
     }
+
+    // ── battle-wave3 #48: disabled link must keep aria-current ───────────────
+
+    [Fact]
+    public void Disabled_Link_Still_Emits_AriaCurrent()
+    {
+        // A disabled link can still be the current page; the Disabled branch
+        // must not drop the aria-current indicator.
+        var cut = _ctx.Render<Lumeo.Link>(p => p
+            .Add(l => l.Href, "/active")
+            .Add(l => l.AriaCurrent, "page")
+            .Add(l => l.Disabled, true)
+            .AddChildContent("Active but disabled"));
+
+        var a = cut.Find("a");
+        Assert.Equal("page", a.GetAttribute("aria-current"));
+        Assert.Equal("true", a.GetAttribute("aria-disabled"));
+        Assert.False(a.HasAttribute("href"));
+    }
+
+    // ── battle-wave3 #49: whitespace-only Href must stay inert (#296) ─────────
+
+    [Fact]
+    public void Whitespace_Only_Href_Does_Not_Emit_Href_Attribute()
+    {
+        // " " is not a real destination — emitting href=" " navigates to the
+        // current page, reintroducing #296. It must be treated like null/empty.
+        var cut = _ctx.Render<Lumeo.Link>(p => p
+            .Add(l => l.Href, "   ")
+            .AddChildContent("No destination"));
+
+        Assert.False(cut.Find("a").HasAttribute("href"));
+    }
 }

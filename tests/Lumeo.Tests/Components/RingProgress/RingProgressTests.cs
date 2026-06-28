@@ -147,4 +147,26 @@ public class RingProgressTests : IAsyncLifetime
         var style = container.GetAttribute("style") ?? "";
         Assert.Contains("80px", style);
     }
+
+    [Fact]
+    public void NaN_Value_Does_Not_Produce_Invalid_Dashoffset()
+    {
+        var cut = _ctx.Render<Lumeo.RingProgress>(p => p
+            .Add(r => r.Value, double.NaN));
+
+        var valueCircle = cut.FindAll("circle")[1];
+        var offset = valueCircle.GetAttribute("stroke-dashoffset") ?? "";
+
+        // Without the NaN guard, Math.Clamp(NaN, 0, 100) == NaN, so the
+        // dashoffset renders as the literal "NaN" (invalid SVG -> broken/full ring).
+        Assert.DoesNotContain("NaN", offset, System.StringComparison.OrdinalIgnoreCase);
+        Assert.True(
+            double.TryParse(offset, System.Globalization.NumberStyles.Float,
+                System.Globalization.CultureInfo.InvariantCulture, out _),
+            $"stroke-dashoffset '{offset}' is not a valid number");
+
+        // aria-valuenow stays consistent with the rendered (zeroed) ring.
+        var container = cut.Find("[role='progressbar']");
+        Assert.Equal("0", container.GetAttribute("aria-valuenow"));
+    }
 }
