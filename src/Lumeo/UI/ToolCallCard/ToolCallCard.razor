@@ -1,5 +1,6 @@
 @namespace Lumeo
 @inject IComponentInteropService Interop
+@implements IDisposable
 
 <details class="@RootClass" open="@DefaultOpen" @attributes="AdditionalAttributes">
     <summary class="@SummaryClass">
@@ -42,7 +43,7 @@
             <div class="space-y-1">
                 <div class="flex items-center justify-between gap-2">
                     <div class="font-semibold uppercase tracking-wider text-destructive" style="font-size: 10px">Error</div>
-                    @CopyButton(CopyTarget.Output, ErrorMessage!)
+                    @CopyButton(CopyTarget.Error, ErrorMessage!)
                 </div>
                 <pre class="max-h-48 overflow-auto rounded-md border border-destructive/30 bg-destructive/10 p-2 text-xs font-mono text-destructive whitespace-pre-wrap break-words"><code>@ErrorMessage</code></pre>
             </div>
@@ -119,9 +120,15 @@
     }
 
     // Which section's copy button last fired, so only that button shows the
-    // transient "copied" check. Error and Output never render together, so they
-    // share the Output slot.
+    // transient "copied" check. Each slot (Input/Output/Error) has its own
+    // CopyTarget identity so the indicator can never leak across the Error<->Output
+    // swap (they never render together, but a shared key would still carry the flag).
     private CopyTarget? _copied;
+
+    // Cancels the pending "copied" -> "Copy" revert. A rapid second copy supersedes
+    // the previous revert; cancelled on dispose so the delayed StateHasChanged never
+    // runs against a torn-down component.
+    private CancellationTokenSource? _copyResetCts;
 
     private RenderFragment CopyButton(CopyTarget target, string text) => __builder =>
     {
@@ -141,9 +148,48 @@
         {
             await Interop.CopyToClipboard(text);
             _copied = target;
+            ScheduleCopyReset(target);
         }
         catch (JSDisconnectedException) { }
         catch (InvalidOperationException) { } // JS interop unavailable (e.g. prerender)
+    }
+
+    // The "copied" affordance is transient: revert it to "Copy" after a short
+    // delay so it reflects a single copy action instead of latching forever.
+    private void ScheduleCopyReset(CopyTarget target)
+    {
+        _copyResetCts?.Cancel();
+        _copyResetCts?.Dispose();
+        var cts = new CancellationTokenSource();
+        _copyResetCts = cts;
+        _ = RevertCopiedAfterDelayAsync(target, cts);
+    }
+
+    private async Task RevertCopiedAfterDelayAsync(CopyTarget target, CancellationTokenSource cts)
+    {
+        try
+        {
+            await Task.Delay(2000, cts.Token);
+        }
+        catch (TaskCanceledException)
+        {
+            return;
+        }
+
+        // Only clear if this is still the active copy — a later copy may have
+        // re-pointed _copied at a different slot.
+        if (_copied == target)
+        {
+            _copied = null;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    public void Dispose()
+    {
+        _copyResetCts?.Cancel();
+        _copyResetCts?.Dispose();
+        _copyResetCts = null;
     }
 
     public enum ToolCallStatus
@@ -154,5 +200,5 @@
         Error
     }
 
-    private enum CopyTarget { Input, Output }
+    private enum CopyTarget { Input, Output, Error }
 }

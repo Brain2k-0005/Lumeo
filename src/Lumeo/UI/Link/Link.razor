@@ -32,6 +32,14 @@
                 ? new Dictionary<string, object>(AdditionalAttributes)
                 : new Dictionary<string, object>();
 
+            // aria-current is independent of interactivity: a disabled link can
+            // still be the current page, so emit it before the Disabled early
+            // return (otherwise the current-page indicator is silently lost).
+            if (!string.IsNullOrEmpty(AriaCurrent))
+            {
+                attrs["aria-current"] = AriaCurrent;
+            }
+
             if (Disabled)
             {
                 // A disabled link is inert: drop href so it can't navigate, and
@@ -44,8 +52,9 @@
 
             // href: only emit when we actually have one. Rendering href="" (the
             // old behaviour for Href=null) makes the anchor navigate to the
-            // current page root rather than being inert.
-            if (!string.IsNullOrEmpty(Href))
+            // current page root rather than being inert. Whitespace-only Href is
+            // treated the same as null/empty so it can't reintroduce that bug.
+            if (!string.IsNullOrWhiteSpace(Href))
             {
                 attrs["href"] = Href;
             }
@@ -64,11 +73,6 @@
                 && !attrs.ContainsKey("rel"))
             {
                 attrs["rel"] = "noopener noreferrer";
-            }
-
-            if (!string.IsNullOrEmpty(AriaCurrent))
-            {
-                attrs["aria-current"] = AriaCurrent;
             }
 
             return attrs;

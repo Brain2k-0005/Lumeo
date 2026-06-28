@@ -79,6 +79,20 @@ public class BarcodeTests : IAsyncLifetime
     }
 
     [Fact]
+    public void Empty_Value_Does_Not_Expose_Img_Role_Or_Aria_Label()
+    {
+        // #31: an empty Value has no bars and no error, so the layout-only
+        // container must NOT claim role="img" with a meaningless "Barcode: "
+        // accessible name. Without the fix the root div still carried
+        // role="img" aria-label="Barcode: ".
+        var cut = _ctx.Render<Lumeo.Barcode>(p => p
+            .Add(b => b.Value, ""));
+
+        Assert.Empty(cut.FindAll("[role='img']"));
+        Assert.Empty(cut.FindAll("[aria-label]"));
+    }
+
+    [Fact]
     public void Custom_Class_Is_Applied()
     {
         var cut = _ctx.Render<Lumeo.Barcode>(p => p

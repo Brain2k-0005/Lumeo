@@ -7,7 +7,7 @@
    context and the image always renders, preserving the old behaviour. *@
 @if (ShowImage)
 {
-    <img class="@CssClass" src="@Src" alt="@Alt" @attributes="AdditionalAttributes"
+    <img class="@CssClass" src="@Src" alt="@(Alt ?? string.Empty)" @attributes="AdditionalAttributes"
          @onload="HandleLoad" @onerror="HandleError" />
 }
 
@@ -21,6 +21,7 @@
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     private bool _errored;
+    private string? _lastSrc;
 
     private string CssClass => Cx.Merge("aspect-square h-full w-full object-cover", Class);
 
@@ -30,17 +31,22 @@
 
     protected override void OnParametersSet()
     {
-        if (string.IsNullOrEmpty(Src))
+        // Whitespace-only Src is treated like a blank Src: skip the wasted
+        // request to the current page and show the fallback immediately.
+        if (string.IsNullOrWhiteSpace(Src))
         {
             _errored = true;
             ImageContext?.SetLoaded(false);
         }
-        else if (_errored)
+        else if (Src != _lastSrc)
         {
-            // Src changed to a real value after a previous failure — give it
-            // another chance to load.
+            // Src genuinely changed to a real value — give it another chance to
+            // load. A broken image stays hidden across unrelated re-renders
+            // (same Src) so it never un-hides itself without a real change.
             _errored = false;
         }
+
+        _lastSrc = Src;
     }
 
     private void HandleLoad()

@@ -33,9 +33,17 @@
 
     // Image mode wins when an Image URL is supplied; otherwise fall back to the
     // generated SVG text watermark (empty when no Text either).
+    //
+    // Text mode paints the SVG as a CSS mask over `background-color: currentColor`
+    // rather than as a background-image. `currentColor` inside a background-image
+    // data-URI SVG cannot reach the host element's color — it resolves to the
+    // isolated SVG document's default (black), so the watermark was invisible/wrong
+    // in dark mode. A mask only uses the SVG's alpha channel (the text's
+    // `opacity` dims it), while the visible color comes from the overlay div's own
+    // `background-color: currentColor`, which DOES inherit the host theme color.
     private string OverlayStyle => !string.IsNullOrEmpty(Image)
         ? ImageOverlayStyle
-        : FormattableString.Invariant($"background-image: url('data:image/svg+xml,{EncodedSvg}'); background-repeat: repeat;");
+        : FormattableString.Invariant($"-webkit-mask-image: url('data:image/svg+xml,{EncodedSvg}'); mask-image: url('data:image/svg+xml,{EncodedSvg}'); -webkit-mask-repeat: repeat; mask-repeat: repeat; background-color: currentColor;");
 
     private string ImageOverlayStyle
     {
@@ -70,7 +78,12 @@
             // width="236,8" / rotate(-22 118,4 50), invalid SVG → no watermark.
             // (Single interpolated string: concatenating $-strings degrades to
             // string and can't bind to the FormattableString overload.)
-            var svg = FormattableString.Invariant($"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{svgWidth}\" height=\"{svgHeight}\"><text x=\"50%\" y=\"50%\" text-anchor=\"middle\" dominant-baseline=\"middle\" font-size=\"{FontSize}\" fill=\"currentColor\" opacity=\"{Opacity}\" transform=\"rotate({Rotation} {svgWidth / 2} {svgHeight / 2})\">{System.Net.WebUtility.HtmlEncode(Text)}</text></svg>");
+            //
+            // fill is a solid opaque color (not currentColor): this SVG is used as a
+            // CSS mask, so only its alpha matters — the theme color comes from the
+            // overlay div's `background-color: currentColor` (see OverlayStyle). The
+            // text's `opacity` carries through the mask alpha to dim the watermark.
+            var svg = FormattableString.Invariant($"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{svgWidth}\" height=\"{svgHeight}\"><text x=\"50%\" y=\"50%\" text-anchor=\"middle\" dominant-baseline=\"middle\" font-size=\"{FontSize}\" fill=\"#000\" opacity=\"{Opacity}\" transform=\"rotate({Rotation} {svgWidth / 2} {svgHeight / 2})\">{System.Net.WebUtility.HtmlEncode(Text)}</text></svg>");
 
             return Uri.EscapeDataString(svg);
         }

@@ -51,6 +51,10 @@
     // value and the animated values share identical grouping/decimal handling.
     private string FormatValue(double value)
     {
+        // Negative Decimals would build a bogus "N-1" format string (an
+        // unrecognised standard specifier renders the literal text); clamp to a
+        // non-negative count, mirroring the JS side (motion.js: Math.max(0, decimals)).
+        var dec = Math.Max(0, Decimals);
         var nfi = (System.Globalization.NumberFormatInfo)NumberFormat.Clone();
         nfi.NumberDecimalSeparator = DecimalSeparator;
         nfi.NumberGroupSeparator = GroupSeparator;
@@ -59,7 +63,15 @@
         {
             nfi.NumberGroupSizes = new[] { 0 };
         }
-        return value.ToString("N" + Decimals, nfi);
+        else
+        {
+            // Force uniform groups-of-3 so the C# render agrees with the JS
+            // count-up, which hardcodes 3-digit grouping. Cultures with variable
+            // group sizes (e.g. Indian [3,2] → 12,34,567) would otherwise diverge
+            // from the animated values (1,234,567).
+            nfi.NumberGroupSizes = new[] { 3 };
+        }
+        return value.ToString("N" + dec, nfi);
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -82,7 +94,7 @@
     {
         try
         {
-            await Interop.MotionTickNumber(_elementId, from, to, DurationMs, Decimals, GroupSeparator, DecimalSeparator);
+            await Interop.MotionTickNumber(_elementId, from, to, DurationMs, Math.Max(0, Decimals), GroupSeparator, DecimalSeparator);
         }
         catch (JSDisconnectedException) { }
     }

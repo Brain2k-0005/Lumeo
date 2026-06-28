@@ -33,6 +33,7 @@
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     private bool _isDark;
+    private bool _disposed;
 
     // Merge the consumer's AdditionalAttributes with the Tooltip AsChild slot's
     // attributes (aria-describedby while open) onto the single button element.
@@ -59,6 +60,11 @@
             }
             catch (JSDisconnectedException) { return; }
             catch (ObjectDisposedException) { return; }
+            // The awaits above can yield long enough for the component to be
+            // disposed before this tail runs. Without this guard we would
+            // re-subscribe to the shared ThemeService event (a leak) and call
+            // StateHasChanged on a torn-down component.
+            if (_disposed) return;
             _isDark = Theme.IsDark;
             Theme.OnThemeChanged += OnThemeChanged;
             StateHasChanged();
@@ -67,7 +73,12 @@
 
     private async Task ToggleTheme()
     {
-        _isDark = !_isDark;
+        // No optimistic `_isDark = !_isDark` flip: the mode cycle is three-way
+        // (System -> Dark -> Light -> System), so a binary negation shows the
+        // wrong icon for a System->Dark step until the async correction lands.
+        // OnThemeChanged (raised synchronously at the end of ToggleModeAsync once
+        // IsDark is re-read) is the single source of truth and updates the icon
+        // exactly once to the resolved state.
         await Theme.ToggleModeAsync();
     }
 
@@ -79,6 +90,7 @@
 
     public void Dispose()
     {
+        _disposed = true;
         Theme.OnThemeChanged -= OnThemeChanged;
     }
 }

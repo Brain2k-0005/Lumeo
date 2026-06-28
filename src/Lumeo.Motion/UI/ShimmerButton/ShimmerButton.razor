@@ -78,7 +78,11 @@
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (firstRender && PressEffect == Button.ButtonPressEffect.Ripple)
+        // Reconcile the ripple listener with the current PressEffect on EVERY render,
+        // not just the first-render value (triage #18, mirrors Button.razor): a runtime
+        // None->Ripple flip must now attach, and a Ripple->None flip must detach the
+        // leaked listener. DisposeAsync handles the unmount teardown.
+        if (PressEffect == Button.ButtonPressEffect.Ripple && !_rippleAttached)
         {
             try
             {
@@ -86,6 +90,15 @@
                 _rippleAttached = true;
             }
             catch (Microsoft.JSInterop.JSDisconnectedException) { }
+        }
+        else if (PressEffect != Button.ButtonPressEffect.Ripple && _rippleAttached)
+        {
+            try
+            {
+                await Interop.RippleDetachAsync(_el);
+            }
+            catch (Microsoft.JSInterop.JSDisconnectedException) { }
+            _rippleAttached = false;
         }
     }
 

@@ -1,7 +1,7 @@
 @namespace Lumeo
 
 <div class="@ContainerClass"
-     role="img"
+     role="@(HasContent ? "img" : null)"
      aria-label="@AriaLabel"
      @attributes="AdditionalAttributes">
     @if (_error is not null)
@@ -84,9 +84,17 @@
 
     private string ContainerClass => Cx.Merge("inline-block", Class);
 
-    private string AriaLabel => _error is null
-        ? $"Barcode: {_text}"
-        : $"Barcode error: {_error}";
+    // There is something to announce only once we have rendered bars or an
+    // encoding error. With an empty/blank Value the container is a layout-only
+    // shell, so it must NOT claim role="img" with a meaningless "Barcode: "
+    // accessible name. (#31)
+    private bool HasContent => _modules.Count > 0 || _error is not null;
+
+    private string? AriaLabel => !HasContent
+        ? null
+        : _error is null
+            ? $"Barcode: {_text}"
+            : $"Barcode error: {_error}";
 
     private string? _lastError;
     private bool _reportedOnce;

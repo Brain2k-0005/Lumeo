@@ -5,7 +5,7 @@
 <span id="@_elementId" class="@CssClass" @attributes="AdditionalAttributes">
     @for (var i = 0; i < _words.Length; i++)
     {
-        <span data-motion-word>@_words[i]</span>
+        <span data-motion-word style="transition-delay:@(i * Stagger)ms">@_words[i]</span>
         @if (i < _words.Length - 1)
         {
             @(" ")
@@ -40,9 +40,16 @@
             _registered = true;
             try
             {
-                await Interop.MotionRevealText(_elementId, Stagger, Threshold);
+                // Clamp Threshold to the IntersectionObserver-legal [0,1] range before
+                // it reaches JS. An out-of-range value (>1 or <0) throws inside
+                // `new IntersectionObserver(..., { threshold })`, which left the text
+                // permanently invisible and surfaced an unhandled circuit exception.
+                // Scoped to the component (not the shared interop service) so the guard
+                // doesn't ripple to other MotionRevealText callers.
+                await Interop.MotionRevealText(_elementId, Stagger, Math.Clamp(Threshold, 0d, 1d));
             }
             catch (JSDisconnectedException) { }
+            catch (JSException) { }
         }
     }
 

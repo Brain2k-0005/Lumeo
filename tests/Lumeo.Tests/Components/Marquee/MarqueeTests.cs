@@ -112,4 +112,25 @@ public class MarqueeTests : IAsyncLifetime
 
         Assert.Equal("marquee", cut.Find("div").GetAttribute("data-testid"));
     }
+
+    // Regression (battle-wave3 #13, keyboard-a11y): the duplicated marquee track is
+    // aria-hidden, but without `inert` its focusable children stay in the tab order,
+    // causing a double-tab and an aria-hidden-focus violation. The clone must be inert.
+    [Fact]
+    public void Duplicated_Track_Is_Inert_To_Remove_Clones_From_Tab_Order()
+    {
+        var cut = _ctx.Render<Lumeo.Marquee>(p => p
+            .AddChildContent("<a href=\"#\">link</a>"));
+
+        var tracks = cut.FindAll(".lumeo-marquee-track");
+        Assert.Equal(2, tracks.Count);
+
+        // The aria-hidden clone is the second track.
+        var clone = tracks[1];
+        Assert.Equal("true", clone.GetAttribute("aria-hidden"));
+        Assert.True(clone.HasAttribute("inert"));
+
+        // The visible track must remain interactive (not inert).
+        Assert.False(tracks[0].HasAttribute("inert"));
+    }
 }

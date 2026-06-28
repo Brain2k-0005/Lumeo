@@ -118,6 +118,12 @@
     private readonly string _textareaId = LumeoIds.New("prompt-input");
     private bool _autosizeReady;
 
+    // Tracks the value last pushed through autosize so an EXTERNAL Value change
+    // (e.g. a consumer clearing the box after send) can be detected in
+    // OnAfterRenderAsync and re-autosized — keystroke edits keep this in sync via
+    // HandleInput, so only out-of-band changes trigger the extra reflow.
+    private string? _lastAutosizedValue;
+
     private string RootClass =>
         Cx.Merge("flex flex-col rounded-xl border border-border/40 bg-card p-2 shadow-sm transition-colors focus-within:border-ring/60 focus-within:ring-[1.5px] focus-within:ring-ring/40", Class);
 
@@ -159,25 +165,47 @@
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (!firstRender) return;
-        try
+        if (firstRender)
         {
-            _autosizeReady = true;
-            await Interop.AiAutosize(_textareaId, MaxHeight);
-            // Suppress the native newline for plain Enter synchronously in JS.
-            // The former @onkeydown:preventDefault="_suppressNextKey" bool was
-            // applied at render time — one event LATE: the sending Enter still
-            // inserted a newline and the next keystroke after a send was
-            // swallowed. SkipComposing keeps Enter alive while an IME
-            // composition (Japanese/Chinese/Korean) is being confirmed.
-            await Interop.RegisterPreventDefaultKeys(
-                _textareaId,
-                new[] { new PreventDefaultKeyRule("Enter", RequireNoModifiers: true, SkipComposing: true) });
-            _pdRegistered = true;
+            try
+            {
+                _autosizeReady = true;
+                await Interop.AiAutosize(_textareaId, MaxHeight);
+                _lastAutosizedValue = Value;
+                // Suppress the native newline for plain Enter synchronously in JS.
+                // The former @onkeydown:preventDefault="_suppressNextKey" bool was
+                // applied at render time — one event LATE: the sending Enter still
+                // inserted a newline and the next keystroke after a send was
+                // swallowed. SkipComposing keeps Enter alive while an IME
+                // composition (Japanese/Chinese/Korean) is being confirmed.
+                await Interop.RegisterPreventDefaultKeys(
+                    _textareaId,
+                    new[] { new PreventDefaultKeyRule("Enter", RequireNoModifiers: true, SkipComposing: true) });
+                _pdRegistered = true;
+            }
+            catch (JSDisconnectedException) { }
+            catch (ObjectDisposedException) { }
+            catch (InvalidOperationException) { } // JS interop unavailable during prerender
+            return;
         }
-        catch (JSDisconnectedException) { }
-        catch (ObjectDisposedException) { }
-        catch (InvalidOperationException) { } // JS interop unavailable during prerender
+
+        // Value can change from OUTSIDE the textarea — e.g. a consumer clearing it
+        // after send, or setting it programmatically. HandleInput keeps
+        // _lastAutosizedValue in sync for keystroke edits; an external change
+        // leaves them divergent, so re-run autosize to drop the now-stale height.
+        // autosize is idempotent so the extra call is cheap; gated on
+        // _autosizeReady so it never runs before the first render / during prerender.
+        if (_autosizeReady && Value != _lastAutosizedValue)
+        {
+            _lastAutosizedValue = Value;
+            try
+            {
+                await Interop.AiAutosize(_textareaId, MaxHeight);
+            }
+            catch (JSDisconnectedException) { }
+            catch (ObjectDisposedException) { }
+            catch (InvalidOperationException) { }
+        }
     }
 
     // Set only after a successful JS registration so dispose during static
@@ -191,6 +219,7 @@
         await ValueChanged.InvokeAsync(Value);
         if (_autosizeReady)
         {
+            _lastAutosizedValue = Value;
             await Interop.AiAutosize(_textareaId, MaxHeight);
         }
     }

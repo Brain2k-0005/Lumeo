@@ -52,6 +52,30 @@ public class CodeTests : IAsyncLifetime
     }
 
     [Fact]
+    public void Block_Variant_Preserves_Whitespace_For_MultiLine_Code()
+    {
+        // Regression (#wave3-8): without whitespace-pre the block variant collapses
+        // newlines/indentation, making multi-line code unreadable and breaking horizontal scroll.
+        var cut = _ctx.Render<Lumeo.Code>(p => p
+            .Add(c => c.Variant, "block")
+            .AddChildContent("line one\n    line two"));
+
+        var cls = cut.Find("code").GetAttribute("class");
+        Assert.Contains("whitespace-pre", cls);
+        Assert.Contains("overflow-x-auto", cls);
+    }
+
+    [Fact]
+    public void Inline_Variant_Does_Not_Force_Preformatted_Whitespace()
+    {
+        var cut = _ctx.Render<Lumeo.Code>(p => p
+            .AddChildContent("inline code"));
+
+        var cls = cut.Find("code").GetAttribute("class");
+        Assert.DoesNotContain("whitespace-pre", cls);
+    }
+
+    [Fact]
     public void Size_Parameter_Adds_Text_Size_Class()
     {
         var cut = _ctx.Render<Lumeo.Code>(p => p

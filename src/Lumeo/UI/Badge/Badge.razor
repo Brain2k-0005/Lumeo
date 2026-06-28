@@ -1,35 +1,32 @@
 @namespace Lumeo
 @inject Lumeo.Services.Localization.ILumeoLocalizer L
 
-@if (!_isRemoved)
+@if (IsDot && Pulse)
 {
-    @if (IsDot && Pulse)
-    {
-        <span class="relative inline-flex h-2 w-2" @attributes="AdditionalAttributes">
-            <span class="animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 @PulseColorClass"></span>
-            <span class="relative inline-flex rounded-full h-2 w-2 @DotClasses @Class"></span>
-        </span>
-    }
-    else if (IsDot)
-    {
-        <div class="@CssClass" @attributes="AdditionalAttributes"></div>
-    }
-    else
-    {
-        <div class="@CssClass" @attributes="AdditionalAttributes">
-            @if (IconContent != null)
-            {
-                <span class="me-1 inline-flex items-center">@IconContent</span>
-            }
-            @ChildContent
-            @if (IsRemovable)
-            {
-                <button type="button" class="ms-1 rounded-full hover:bg-foreground/20 focus:outline-none" @onclick="HandleRemove" aria-label="@L["Badge.Remove"]">
-                    <Blazicon Svg="Lucide.X" class="h-3 w-3" />
-                </button>
-            }
-        </div>
-    }
+    <span class="relative inline-flex h-2 w-2" @attributes="AdditionalAttributes">
+        <span class="animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 @PulseColorClass"></span>
+        <span class="relative inline-flex rounded-full h-2 w-2 @DotClasses @Class"></span>
+    </span>
+}
+else if (IsDot)
+{
+    <div class="@CssClass" @attributes="AdditionalAttributes"></div>
+}
+else
+{
+    <div class="@CssClass" @attributes="AdditionalAttributes">
+        @if (IconContent != null)
+        {
+            <span class="me-1 inline-flex items-center">@IconContent</span>
+        }
+        @ChildContent
+        @if (IsRemovable)
+        {
+            <button type="button" class="ms-1 rounded-full hover:bg-foreground/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1" @onclick="HandleRemove" aria-label="@L["Badge.Remove"]">
+                <Blazicon Svg="Lucide.X" class="h-3 w-3" />
+            </button>
+        }
+    </div>
 }
 
 @code {
@@ -67,8 +64,6 @@
     [CascadingParameter] private Density? InheritedDensity { get; set; }
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
-
-    private bool _isRemoved;
 
     private Lumeo.Density EffectiveDensity => Density ?? InheritedDensity ?? Lumeo.Density.Comfortable;
 
@@ -132,11 +127,11 @@
         _ => ""
     };
 
-    private async Task HandleRemove()
-    {
-        _isRemoved = true;
-        await OnRemove.InvokeAsync();
-    }
+    // Visibility is driven by data, not internal latch state: HandleRemove
+    // notifies the consumer, who removes the item from their model. This avoids
+    // a stale _isRemoved latch hiding the wrong badge when an instance is reused
+    // (e.g. an unkeyed list that recycles this component for different content).
+    private Task HandleRemove() => OnRemove.InvokeAsync();
 
     public enum BadgeVariant { Default, Secondary, Destructive, Outline, Success, Warning }
     public enum BadgeSize { Sm, Md, Lg }

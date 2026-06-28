@@ -1,8 +1,9 @@
 @namespace Lumeo
+@implements IAsyncDisposable
 @inject Lumeo.Services.IComponentInteropService Interop
 @inject Lumeo.Services.Localization.ILumeoLocalizer L
 
-<div @ref="_el" class="@CssClass" @onclick="HandleClick" @onkeydown="HandleKeyDown" @attributes="AdditionalAttributes" role="@(Clickable ? "button" : null)" tabindex="@(Clickable ? "0" : null)" aria-disabled="@(Clickable && Disabled ? "true" : null)">
+<div @ref="_el" id="@_chipId" class="@CssClass" @onclick="HandleClick" @onkeydown="HandleKeyDown" @attributes="AdditionalAttributes" role="@(Clickable ? "button" : null)" tabindex="@(Clickable ? "0" : null)" aria-disabled="@(Clickable && Disabled ? "true" : null)">
     @if (!string.IsNullOrEmpty(Avatar))
     {
         <img src="@Avatar" alt="" class="@AvatarSizeClass rounded-full object-cover shrink-0" />
@@ -56,6 +57,7 @@
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     private Microsoft.AspNetCore.Components.ElementReference _el;
+    private readonly string _chipId = LumeoIds.New("chip");
 
     private string? PressEffectClass => PressEffect switch
     {
@@ -151,15 +153,93 @@
         await OnClose.InvokeAsync();
     }
 
+    // Whether the JS pointerdown ripple listener is currently bound to _el.
+    // Reconciled against the live Clickable/PressEffect on EVERY render — not
+    // latched on firstRender — and torn down on dispose (triage #33).
+    private bool _rippleAttached;
+
+    // Whether the Space-key preventDefault rule is registered for this chip's
+    // role=button surface. A div[role=button] has no native key synthesis, so
+    // Space both activated the chip AND scrolled the page; the rule suppresses
+    // only Space's default while Clickable (Enter has no default on a div).
+    // Reconciled per-render and torn down on dispose (triage #7).
+    private bool _pdRegistered;
+
+    private bool NeedsRipple => Clickable && PressEffect == Button.ButtonPressEffect.Ripple;
+
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (firstRender && Clickable && PressEffect == Button.ButtonPressEffect.Ripple)
+        // Reconcile the ripple listener with the current Clickable/PressEffect,
+        // not just the first-render value: a runtime None/Clickable->Ripple flip
+        // must now attach, and a Ripple->None flip must detach the leaked
+        // listener (triage #33, copying Button.razor's proven reconcile logic).
+        if (NeedsRipple && !_rippleAttached)
         {
             try
             {
                 await Interop.RippleAttachAsync(_el);
+                _rippleAttached = true;
             }
             catch (Microsoft.JSInterop.JSDisconnectedException) { }
+        }
+        else if (!NeedsRipple && _rippleAttached)
+        {
+            try
+            {
+                await Interop.RippleDetachAsync(_el);
+            }
+            catch (Microsoft.JSInterop.JSDisconnectedException) { }
+            _rippleAttached = false;
+        }
+
+        // Suppress Space's page-scroll default while the chip is a role=button
+        // surface (triage #7). Reconciled so a Clickable flip wires/unwires it.
+        if (Clickable && !_pdRegistered)
+        {
+            try
+            {
+                await Interop.RegisterPreventDefaultKeys(
+                    _chipId,
+                    new[] { new Lumeo.Services.PreventDefaultKeyRule(" ") });
+                _pdRegistered = true;
+            }
+            catch (Microsoft.JSInterop.JSDisconnectedException) { }
+            catch (InvalidOperationException) { } // JS interop unavailable during prerender
+        }
+        else if (!Clickable && _pdRegistered)
+        {
+            try
+            {
+                await Interop.UnregisterPreventDefaultKeys(_chipId);
+            }
+            catch (Microsoft.JSInterop.JSDisconnectedException) { }
+            catch (ObjectDisposedException) { }
+            catch (InvalidOperationException) { }
+            _pdRegistered = false;
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_rippleAttached)
+        {
+            try
+            {
+                await Interop.RippleDetachAsync(_el);
+            }
+            catch (Microsoft.JSInterop.JSDisconnectedException) { }
+            _rippleAttached = false;
+        }
+        if (_pdRegistered)
+        {
+            try
+            {
+                await Interop.UnregisterPreventDefaultKeys(_chipId);
+            }
+            catch (Microsoft.JSInterop.JSDisconnectedException) { }
+            catch (ObjectDisposedException) { }
+            catch (InvalidOperationException) { }
+            _pdRegistered = false;
         }
     }
 

@@ -68,4 +68,51 @@ public class DescriptionsTests : IAsyncLifetime
 
         Assert.Contains("gap-4", cut.Markup);
     }
+
+    // Regression (battle-wave3 #39): a value-only DescriptionsItem (empty/null
+    // Label) must still emit a <dt> so each div group is a valid dt/dd pair and
+    // the <dd> is not orphaned inside the <dl> for screen readers. Without the
+    // fix no <dt> is rendered at all when Label is empty.
+    [Fact]
+    public void DescriptionsItem_Without_Label_Still_Emits_Dt()
+    {
+        var cut = _ctx.Render<Lumeo.Descriptions>(p => p
+            .AddChildContent<Lumeo.DescriptionsItem>(item => item
+                .AddChildContent("value only")));
+
+        var dts = cut.FindAll("dt");
+        Assert.Single(dts);
+        // Hidden visually but kept in the a11y tree to preserve the dt/dd pair.
+        Assert.Contains("sr-only", dts[0].GetAttribute("class"));
+        Assert.Single(cut.FindAll("dd"));
+    }
+
+    // Regression (battle-wave3 #39): a whitespace-only Label is treated as empty
+    // (IsNullOrWhiteSpace), so the <dt> is emitted but visually hidden. Without
+    // the fix the old IsNullOrEmpty guard would render a visible, blank <dt>.
+    [Fact]
+    public void DescriptionsItem_Whitespace_Label_Is_Hidden()
+    {
+        var cut = _ctx.Render<Lumeo.Descriptions>(p => p
+            .AddChildContent<Lumeo.DescriptionsItem>(item => item
+                .Add(i => i.Label, "   ")
+                .AddChildContent("value")));
+
+        var dt = cut.Find("dt");
+        Assert.Contains("sr-only", dt.GetAttribute("class"));
+    }
+
+    // Positive control: a real Label still renders a visible <dt> (not sr-only).
+    [Fact]
+    public void DescriptionsItem_With_Label_Emits_Visible_Dt()
+    {
+        var cut = _ctx.Render<Lumeo.Descriptions>(p => p
+            .AddChildContent<Lumeo.DescriptionsItem>(item => item
+                .Add(i => i.Label, "Name")
+                .AddChildContent("Ada")));
+
+        var dt = cut.Find("dt");
+        Assert.Equal("Name", dt.TextContent);
+        Assert.DoesNotContain("sr-only", dt.GetAttribute("class"));
+    }
 }
