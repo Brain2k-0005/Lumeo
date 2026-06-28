@@ -12,7 +12,7 @@
 [![GitHub stars](https://img.shields.io/github/stars/Brain2k-0005/Lumeo?style=flat&logo=github)](https://github.com/Brain2k-0005/Lumeo/stargazers)
 [![Sponsor](https://img.shields.io/github/sponsors/Brain2k-0005?logo=github-sponsors&color=ea4aaa)](https://github.com/sponsors/Brain2k-0005)
 
-> **Lumeo 3.5.3 is on NuGet — `Cx.Merge` tailwind-merge class composition (consumer `Class` wins conflicts without `!important`), Sidebar `Bordered`, Badge `Size`/`Pill`, Card `Flat` variant**. `dotnet add package Lumeo`. See [`MIGRATION.md`](./MIGRATION.md) for upgrade notes from 2.x (the 3.0 enum unification is the only breaking change; 3.x → 3.x patches require no migration).
+> **Lumeo 4.0.0 is on NuGet — `Cx.Merge` tailwind-merge class composition (consumer `Class` wins conflicts without `!important`), Sidebar `Bordered`, Badge `Size`/`Pill`, Card `Flat` variant**. `dotnet add package Lumeo`. See [`MIGRATION.md`](./MIGRATION.md) for upgrade notes — 4.0 is a major release; upgrading from 3.x is a recompile-and-run upgrade with a few behaviour changes documented in MIGRATION.md.
 
 ## What's new in 3.0
 
@@ -91,18 +91,18 @@ Or reference them in your `.csproj`. All packages share one version (lockstep) �
 
 ```xml
 <ItemGroup>
-  <PackageReference Include="Lumeo"            Version="3.5.3" />
+  <PackageReference Include="Lumeo"            Version="4.0.0" />
   <!-- add only the satellites you need: -->
-  <PackageReference Include="Lumeo.Charts"    Version="3.5.3" />
-  <PackageReference Include="Lumeo.DataGrid"  Version="3.5.3" />
-  <PackageReference Include="Lumeo.Editor"    Version="3.5.3" />
-  <PackageReference Include="Lumeo.Scheduler" Version="3.5.3" />
-  <PackageReference Include="Lumeo.Gantt"     Version="3.5.3" />
-  <PackageReference Include="Lumeo.Motion"    Version="3.5.3" />
-  <PackageReference Include="Lumeo.PdfViewer" Version="3.5.3" />
-  <PackageReference Include="Lumeo.Maps"      Version="3.5.3" />
-  <PackageReference Include="Lumeo.CodeEditor" Version="3.5.3" />
-  <PackageReference Include="Lumeo.FileViewer" Version="3.5.3" />
+  <PackageReference Include="Lumeo.Charts"    Version="4.0.0" />
+  <PackageReference Include="Lumeo.DataGrid"  Version="4.0.0" />
+  <PackageReference Include="Lumeo.Editor"    Version="4.0.0" />
+  <PackageReference Include="Lumeo.Scheduler" Version="4.0.0" />
+  <PackageReference Include="Lumeo.Gantt"     Version="4.0.0" />
+  <PackageReference Include="Lumeo.Motion"    Version="4.0.0" />
+  <PackageReference Include="Lumeo.PdfViewer" Version="4.0.0" />
+  <PackageReference Include="Lumeo.Maps"      Version="4.0.0" />
+  <PackageReference Include="Lumeo.CodeEditor" Version="4.0.0" />
+  <PackageReference Include="Lumeo.FileViewer" Version="4.0.0" />
 </ItemGroup>
 ```
 
