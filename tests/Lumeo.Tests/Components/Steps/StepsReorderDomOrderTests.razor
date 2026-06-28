@@ -1,0 +1,77 @@
+@inherits Bunit.BunitContext
+@using Lumeo.Services
+@using Lumeo.Tests.Helpers
+@using Microsoft.Extensions.DependencyInjection
+
+@code {
+    // #43/#44 — the displayed step number / completed-current status / click target
+    // are all derived from the item's index, which used to come from the mount-order
+    // registry. A keyed REORDER of the StepsItem children MOVES them in the DOM
+    // without re-registering, so the registry index goes stale. Steps now reconciles
+    // to the LIVE DOM order after each render (Interop.GetOrderedDescendantIds). A
+    // physical @key reorder-with-reuse is not reproducible in bUnit, so we MODEL it:
+    // seed the interop's DOM order and assert the numbers renumber to match.
+    private readonly TrackingInteropService _interop = new();
+
+    public StepsReorderDomOrderTests()
+    {
+        this.AddLumeoServices();
+        Services.AddSingleton<IComponentInteropService>(_interop);
+    }
+
+    private RenderFragment ThreeSteps => @<text>
+        <StepsItem Title="A" />
+        <StepsItem Title="B" />
+        <StepsItem Title="C" />
+    </text>;
+
+    [Fact]
+    public void Step_Numbers_Follow_Live_DOM_Order_After_A_Keyed_Reorder()
+    {
+        var cut = Render<Steps>(p => p
+            .Add(s => s.CurrentStep, 0)
+            .Add(s => s.ChildContent, ThreeSteps));
+
+        var indicators = cut.FindAll("[data-step-indicator]");
+        var stepsId = cut.Find("[role='list']").GetAttribute("id");
+        var idA = indicators[0].GetAttribute("id");
+        var idB = indicators[1].GetAttribute("id");
+        var idC = indicators[2].GetAttribute("id");
+
+        // Registry/mount order is a, b, c. Model a keyed reorder: the live DOM is now
+        // c, a, b. The after-render reconcile must renumber by DOM order. Re-rendering
+        // the component (re-specifying params) fires OnAfterRenderAsync with the seed.
+        _interop.OrderedDescendantIds[stepsId!] = new[] { idC!, idA!, idB! };
+        cut.Render(p => p
+            .Add(s => s.CurrentStep, 0)
+            .Add(s => s.ChildContent, ThreeSteps));
+
+        cut.WaitForAssertion(() =>
+        {
+            string NumOf(string id) => cut.FindAll("[data-step-indicator]")
+                .First(e => e.GetAttribute("id") == id).TextContent.Trim();
+            // CurrentStep=0 so nothing is completed (no checkmarks) — every indicator
+            // shows its 1-based number, now following DOM order c(1), a(2), b(3).
+            Assert.Equal("1", NumOf(idC!));
+            Assert.Equal("2", NumOf(idA!));
+            Assert.Equal("3", NumOf(idB!));
+        });
+    }
+
+    [Fact]
+    public void Without_A_Reorder_Numbers_Stay_In_Mount_Order()
+    {
+        // Guard: when the DOM-order probe is unconfigured (empty), the registry/mount
+        // order is used verbatim — the common, non-reordered case is unchanged.
+        var cut = Render(@<Steps CurrentStep="0">
+            <StepsItem Title="A" />
+            <StepsItem Title="B" />
+            <StepsItem Title="C" />
+        </Steps>);
+
+        var indicators = cut.FindAll("[data-step-indicator]");
+        Assert.Equal("1", indicators[0].TextContent.Trim());
+        Assert.Equal("2", indicators[1].TextContent.Trim());
+        Assert.Equal("3", indicators[2].TextContent.Trim());
+    }
+}

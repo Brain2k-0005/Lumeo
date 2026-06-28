@@ -134,7 +134,16 @@ else
         _tasks = SortedTasks(Tasks?.ToList() ?? new List<GanttTask>());
         _lastTasksHash = ComputeTasksHash(_tasks);
         _lastParentHash = _lastTasksHash;
+        _lastOptionsHash = ComputeOptionsHash();
     }
+
+    // The init-only render options (Readonly / TodayHighlight / BarHeight /
+    // ColumnWidth) used to be captured ONCE in the GanttInitAsync options bag, so
+    // changing any of them after init was silently dropped (battle-test wave 1 #2).
+    // We now fingerprint them and push the new bag to the live instance via
+    // gantt.refresh whenever the fingerprint changes.
+    private int _lastOptionsHash;
+    private int ComputeOptionsHash() => System.HashCode.Combine(Readonly, TodayHighlight, BarHeight, ColumnWidth);
 
     // When GroupBy is set, sort tasks so that each group clusters together.
     // The original relative order within a group is preserved (stable sort).
@@ -186,6 +195,22 @@ else
         }
 
         if (!_initialized || _instanceId is null) return;
+
+        // Push changed init-only render options (Readonly/TodayHighlight/BarHeight/
+        // ColumnWidth) to the live instance — these are NOT folded into the tasks
+        // payload, so without this they only ever applied at init (#2).
+        var optionsHash = ComputeOptionsHash();
+        if (optionsHash != _lastOptionsHash)
+        {
+            _lastOptionsHash = optionsHash;
+            await Interop.GanttRefreshAsync(_instanceId, new
+            {
+                @readonly = Readonly,
+                todayHighlight = TodayHighlight,
+                barHeight = BarHeight,
+                columnWidth = ColumnWidth,
+            });
+        }
 
         if (Tasks is not null)
         {

@@ -1401,6 +1401,16 @@ public sealed class ComponentInteropService : IComponentInteropService
         catch (JSDisconnectedException) { }
     }
 
+    public async Task GanttRefreshAsync(string id, object options)
+    {
+        try
+        {
+            var module = await GetGanttModuleAsync();
+            await module.InvokeVoidAsync("gantt.refresh", id, options);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
     public async Task GanttChangeViewModeAsync(string id, string mode)
     {
         try
