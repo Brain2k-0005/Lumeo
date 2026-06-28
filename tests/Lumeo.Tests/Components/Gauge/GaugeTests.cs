@@ -132,6 +132,34 @@ public class GaugeTests : IAsyncLifetime
     }
 
     [Fact]
+    public void Arc_Value_Label_Is_Vertically_Centered_In_The_Arc_Band()
+    {
+        // The Arc band spans y in [Cy-Radius, Cy]; its vertical midpoint is
+        // (Size+StrokeWidth)/4. The label is a `flex items-center` box of height
+        // SvgHeight, so the bottom pad must be SvgHeight-(Size+StrokeWidth)/2 to
+        // land the text centre exactly on that midpoint. Regression guard: the old
+        // Size*0.3 pad (36px at the default size) pushed the value up near the apex.
+        const int size = 120, stroke = 8;
+        var cut = _ctx.Render<Lumeo.Gauge>(p => p
+            .Add(g => g.Value, 30)
+            .Add(g => g.Variant, Lumeo.Gauge.GaugeVariant.Arc)
+            .Add(g => g.Size, size)
+            .Add(g => g.StrokeWidth, stroke));
+
+        var svgHeight = (int)System.Math.Ceiling(size / 2.0 + stroke * 1.5); // 72
+        var expectedPad = svgHeight - (size + stroke) / 2.0;                 // 8
+
+        var label = cut.FindAll("span").Single(s => s.TextContent.Contains("30%"));
+        var style = label.GetAttribute("style") ?? "";
+
+        Assert.Contains(
+            $"padding-bottom: {expectedPad.ToString(System.Globalization.CultureInfo.InvariantCulture)}px",
+            style);
+        // Must NOT regress to the old off-centre pad that scaled with Size.
+        Assert.DoesNotContain($"padding-bottom: {(int)(size * 0.3)}px", style);
+    }
+
+    [Fact]
     public void Value_Affects_Stroke_Dasharray()
     {
         var cut25 = _ctx.Render<Lumeo.Gauge>(p => p

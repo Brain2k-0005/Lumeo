@@ -32,9 +32,12 @@ public class TransferStateOnDataChangeTests : IAsyncLifetime
     ];
 
     // Item checkbox whose row label contains the given text.
+    // Checkbox now wraps its <button> in an outer <div>, so ParentElement is that
+    // wrapper div; ParentElement.ParentElement is the item <label> row that holds
+    // the visible label text.
     private static IElement ItemCheckbox(IRenderedComponent<L.Transfer> cut, string label)
         => cut.FindAll("button[role='checkbox']")
-            .First(c => (c.ParentElement?.TextContent ?? "").Contains(label));
+            .First(c => (c.ParentElement?.ParentElement?.TextContent ?? "").Contains(label));
 
     // ---- #33: stale selection is pruned on a same-set/shrink data refresh ----
 

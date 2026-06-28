@@ -221,7 +221,7 @@ public class InputTests : IAsyncLifetime
             .Add(t => t.MaxLength, 3)
             .Add(t => t.Value, "hello")); // 5 > 3
 
-        var counterDivs = cut.FindAll("div").Where(d => d.TextContent.Contains("5/3")).ToList();
+        var counterDivs = cut.FindAll("div.text-end").ToList();
         Assert.Single(counterDivs);
         Assert.Contains("text-destructive", counterDivs[0].GetAttribute("class") ?? "");
     }

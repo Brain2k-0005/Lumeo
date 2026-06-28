@@ -144,7 +144,7 @@ public class SliderTests : IAsyncLifetime
     {
         var cut = _ctx.Render<Lumeo.Slider>();
 
-        var div = cut.Find("div");
+        var div = cut.Find("div > div");
         var cls = div.GetAttribute("class") ?? "";
         Assert.Contains("relative", cls);
         Assert.Contains("w-full", cls);
@@ -156,7 +156,7 @@ public class SliderTests : IAsyncLifetime
         var cut = _ctx.Render<Lumeo.Slider>(p => p
             .Add(b => b.Class, "my-slider"));
 
-        var div = cut.Find("div");
+        var div = cut.Find("div > div");
         Assert.Contains("my-slider", div.GetAttribute("class"));
     }
 
@@ -169,7 +169,7 @@ public class SliderTests : IAsyncLifetime
                 ["data-testid"] = "slider-wrap"
             }));
 
-        var div = cut.Find("div");
+        var div = cut.Find("div > div");
         Assert.Equal("slider-wrap", div.GetAttribute("data-testid"));
     }
 

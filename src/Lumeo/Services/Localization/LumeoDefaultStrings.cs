@@ -253,6 +253,7 @@ internal static partial class LumeoDefaultStrings
         ["TreeSelect.NoResults"] = "No results",
         ["TreeSelect.ClearSelection"] = "Clear selection",
         ["TagInput.Placeholder"] = "Add tag…",
+        ["TagInput.MaxTagsReached"] = "Maximum number of tags reached.",
 
         // ── Cascader ────────────────────────────────────────────────
         ["Cascader.Placeholder"] = "Select…",
@@ -753,6 +754,7 @@ internal static partial class LumeoDefaultStrings
         ["TreeSelect.NoResults"] = "Keine Ergebnisse",
         ["TreeSelect.ClearSelection"] = "Auswahl leeren",
         ["TagInput.Placeholder"] = "Tag hinzufügen…",
+        ["TagInput.MaxTagsReached"] = "Maximale Anzahl an Tags erreicht.",
 
         // ── Cascader ────────────────────────────────────────────────
         ["Cascader.Placeholder"] = "Auswählen…",
