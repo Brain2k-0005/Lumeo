@@ -6,8 +6,11 @@
     {
         @foreach (var (image, index) in Images.Select((img, i) => (img, i)))
         {
+            @* aspect-square gives each grid cell a definite height so the h-full image fills
+               it. Without it the cell collapses to 0 height (the img is h-full of a
+               height-less button) and the whole gallery renders blank even with valid Src. *@
             <button @key="image.Src" type="button"
-                    class="overflow-hidden rounded-md cursor-pointer group focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-2"
+                    class="aspect-square overflow-hidden rounded-md cursor-pointer group focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-2"
                     aria-label="@($"Open image {index + 1}")"
                     @onclick="() => OpenPreview(index)">
                 <img src="@image.Src" alt="@image.Alt" loading="lazy"
@@ -102,7 +105,10 @@
                 _ => "grid-cols-3"
             };
             var gap = Gap ?? "gap-2";
-            return Cx.Merge("grid", cols, gap, Class);
+            // w-full so the grid keeps a definite width even as a content-sized flex child
+            // (e.g. a centered container): without it the aspect-square cells have no width
+            // to derive their height from and the whole gallery collapses to zero.
+            return Cx.Merge("grid w-full", cols, gap, Class);
         }
     }
 
