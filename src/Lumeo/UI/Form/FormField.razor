@@ -3,7 +3,7 @@
 @implements IDisposable
 
 @{
-    var context = new FormFieldContext(Name, EffectiveError, IsValidating, _controlId, DescribedBy);
+    var context = new FormFieldContext(Name, EffectiveError, IsValidating, _controlId, DescribedBy, AutoRenderMessage);
 }
 
 <CascadingValue Value="context" IsFixed="false">
@@ -31,7 +31,7 @@
             {
                 <p id="@_descriptionId" class="text-xs text-muted-foreground">@HelpText</p>
             }
-            @if (EffectiveError is not null)
+            @if (EffectiveError is not null && AutoRenderMessage)
             {
                 <p id="@_errorId" class="text-xs text-destructive" role="alert" aria-live="polite">@EffectiveError</p>
             }
@@ -61,7 +61,7 @@
                     {
                         <p id="@_descriptionId" class="text-xs text-muted-foreground mt-1">@HelpText</p>
                     }
-                    @if (EffectiveError is not null)
+                    @if (EffectiveError is not null && AutoRenderMessage)
                     {
                         <p id="@_errorId" class="text-xs text-destructive mt-1" role="alert" aria-live="polite">@EffectiveError</p>
                     }
@@ -77,6 +77,16 @@
     [Parameter] public string? Error { get; set; }
     [Parameter] public bool Required { get; set; }
     [Parameter] public Lumeo.Orientation Orientation { get; set; } = Lumeo.Orientation.Vertical;
+
+    /// <summary>
+    /// When <c>true</c> (default — the simple-mode API used by the vast majority of
+    /// consumers), FormField renders the validation error itself below the control.
+    /// Set <c>false</c> when you compose the field with a child <see cref="FormMessage"/>
+    /// that should own the error rendering: this suppresses FormField's own error so the
+    /// two never render it twice. The error still flows into the cascaded context either
+    /// way, so a deferred FormMessage can pick it up.
+    /// </summary>
+    [Parameter] public bool AutoRenderMessage { get; set; } = true;
     [Parameter] public string? LabelWidth { get; set; }
     [Parameter] public string? Name { get; set; }
     [Parameter] public RenderFragment? ChildContent { get; set; }
@@ -353,7 +363,7 @@
     ///   parity). Empty when the field generated none.</param>
     /// <param name="DescribedBy">Id of the currently-rendered help OR error text, for
     ///   the control's <c>aria-describedby</c>; null when neither is shown.</param>
-    public record FormFieldContext(string? Name, string? Error, bool IsValidating, string ControlId = "", string? DescribedBy = null)
+    public record FormFieldContext(string? Name, string? Error, bool IsValidating, string ControlId = "", string? DescribedBy = null, bool AutoRenderMessage = true)
     {
         public bool HasError => !string.IsNullOrEmpty(Error);
     }
