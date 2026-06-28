@@ -31,9 +31,12 @@ public class TransferDisabledReconcileTests : IAsyncLifetime
     ];
 
     // Item checkbox whose row label contains the given text.
+    // Checkbox now wraps its <button> in an outer <div>, so ParentElement is that
+    // wrapper div; ParentElement.ParentElement is the item <label> row that holds
+    // the visible label text.
     private static IElement ItemCheckbox(IRenderedComponent<L.Transfer> cut, string label)
         => cut.FindAll("button[role='checkbox']")
-            .First(c => (c.ParentElement?.TextContent ?? "").Contains(label));
+            .First(c => (c.ParentElement?.ParentElement?.TextContent ?? "").Contains(label));
 
     [Fact]
     public void Selecting_Then_Flipping_Item_To_Disabled_Drops_It_From_Selection()

@@ -32,7 +32,7 @@ public class NumberInputTests : IAsyncLifetime
     {
         var cut = _ctx.Render<Lumeo.NumberInput>();
 
-        var cls = cut.Find("div").GetAttribute("class");
+        var cls = cut.Find("div.inline-flex").GetAttribute("class");
         Assert.Contains("inline-flex", cls);
         Assert.Contains("items-center", cls);
     }
@@ -72,7 +72,7 @@ public class NumberInputTests : IAsyncLifetime
         var cut = _ctx.Render<Lumeo.NumberInput>(p => p
             .Add(n => n.Class, "my-number-input"));
 
-        var cls = cut.Find("div").GetAttribute("class");
+        var cls = cut.Find("div.inline-flex").GetAttribute("class");
         Assert.Contains("my-number-input", cls);
     }
 

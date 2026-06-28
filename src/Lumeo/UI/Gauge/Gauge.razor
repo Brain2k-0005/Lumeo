@@ -169,10 +169,22 @@ else
 
     private int LabelFontSize => Math.Max(10, Size / 7);
 
-    /// For Arc variant, shift label up slightly so it sits inside the semicircle.
-    private string LabelOffset => Variant == GaugeVariant.Arc
-        ? $"padding-bottom: {(int)(Size * 0.3)}px;"
-        : "";
+    /// For the Arc (semicircle) variant, vertically centre the value within the
+    /// arc band (apex .. diameter). The label is a `flex items-center` box of
+    /// height <see cref="SvgHeight"/>, so a bottom pad of
+    /// <c>SvgHeight - (Size+StrokeWidth)/2</c> lands the text centre exactly on
+    /// the arc's vertical midpoint <c>Cy - Radius/2 == (Size+StrokeWidth)/4</c>
+    /// at any Size/StrokeWidth. The previous `Size*0.3` pad scaled with Size and
+    /// pushed the value up near the apex (visibly off-centre).
+    private string LabelOffset
+    {
+        get
+        {
+            if (Variant != GaugeVariant.Arc) return "";
+            var pad = Math.Max(0, SvgHeight - (Size + StrokeWidth) / 2.0);
+            return $"padding-bottom: {pad.ToString(System.Globalization.CultureInfo.InvariantCulture)}px;";
+        }
+    }
 
     // ── Linear geometry ───────────────────────────────────────────────────────
     private string LinearFillWidth

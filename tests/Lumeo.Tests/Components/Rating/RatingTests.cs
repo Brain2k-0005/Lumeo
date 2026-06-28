@@ -53,7 +53,7 @@ public class RatingTests : IAsyncLifetime
     {
         var cut = _ctx.Render<Lumeo.Rating>();
 
-        var cls = cut.Find("div").GetAttribute("class");
+        var cls = cut.Find("[role='radiogroup']").GetAttribute("class");
         Assert.Contains("inline-flex", cls);
         Assert.Contains("items-center", cls);
     }
@@ -74,7 +74,7 @@ public class RatingTests : IAsyncLifetime
         var cut = _ctx.Render<Lumeo.Rating>(p => p
             .Add(r => r.Class, "my-rating"));
 
-        var cls = cut.Find("div").GetAttribute("class");
+        var cls = cut.Find("[role='radiogroup']").GetAttribute("class");
         Assert.Contains("my-rating", cls);
     }
 

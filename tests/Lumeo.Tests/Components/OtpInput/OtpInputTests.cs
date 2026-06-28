@@ -215,7 +215,7 @@ public class OtpInputTests : IAsyncLifetime
     public void Container_Has_Default_Classes()
     {
         var cut = _ctx.Render<L.OtpInput>();
-        var cls = cut.Find("div").GetAttribute("class") ?? "";
+        var cls = cut.FindAll("div")[1].GetAttribute("class") ?? "";
         Assert.Contains("flex", cls);
         Assert.Contains("items-center", cls);
         Assert.Contains("gap-2", cls);
@@ -225,7 +225,7 @@ public class OtpInputTests : IAsyncLifetime
     public void Custom_Class_Is_Applied()
     {
         var cut = _ctx.Render<L.OtpInput>(p => p.Add(c => c.Class, "my-otp"));
-        var cls = cut.Find("div").GetAttribute("class") ?? "";
+        var cls = cut.FindAll("div")[1].GetAttribute("class") ?? "";
         Assert.Contains("my-otp", cls);
         Assert.Contains("flex", cls);
     }
@@ -235,7 +235,7 @@ public class OtpInputTests : IAsyncLifetime
     {
         var cut = _ctx.Render<L.OtpInput>(p => p
             .Add(c => c.AdditionalAttributes, new Dictionary<string, object> { ["data-testid"] = "my-otp" }));
-        Assert.Equal("my-otp", cut.Find("div").GetAttribute("data-testid"));
+        Assert.Equal("my-otp", cut.FindAll("div")[1].GetAttribute("data-testid"));
     }
 
     [Fact]

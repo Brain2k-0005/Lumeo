@@ -1,6 +1,10 @@
 @namespace Lumeo
 @implements IAsyncDisposable
 
+@* Render the label, control and helper/error as ONE self-contained vertical block so the
+   field never splays into a row when dropped in a flex / centered container. Standalone
+   form-field structural fix. *@
+<div class="flex flex-col items-start">
 @if (Label is not null && !InsideFormField)
 {
     <label class="block text-sm font-medium text-foreground mb-1.5">
@@ -45,14 +49,17 @@
             @if (ShowSearch)
             {
                 <div class="px-2 py-1.5 border-b border-border/40">
+                    @* Mirror TreeSelect: forward menu-owned keys (Up/Down/Enter/Escape)
+                       to HandleKeyDown while keeping caret keys (Left/Right/Home/End/Space)
+                       in the text box, and stopPropagation so they never reach an outer
+                       overlay. A blunt stop alone would also swallow Escape-to-close.
+                       NOTE: keep this Razor comment OUTSIDE the input tag — a comment
+                       placed between attributes is emitted as a literal attribute name
+                       at runtime (setAttribute InvalidCharacterError crash). *@
                     <input type="text" placeholder="@L["Combobox.SearchPlaceholder"]"
                            class="flex h-7 w-full rounded-md border border-input bg-transparent px-2 py-1 text-xs placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring"
                            value="@_searchText"
                            @oninput="OnSearchInput"
-                           @* Mirror TreeSelect: forward menu-owned keys (Up/Down/Enter/Escape)
-                              to HandleKeyDown while keeping caret keys (Left/Right/Home/End/Space)
-                              in the text box, and stopPropagation so they never reach an outer
-                              overlay. A blunt stop alone would also swallow Escape-to-close. *@
                            @onkeydown="OnSearchKeyDown"
                            @onkeydown:stopPropagation="true" />
                 </div>
@@ -108,6 +115,7 @@
         <p class="text-xs text-muted-foreground mt-1.5">@HelperText</p>
     }
 }
+</div>
 
 @inject IComponentInteropService Interop
 @inject Lumeo.Services.Localization.ILumeoLocalizer L
