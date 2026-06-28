@@ -1,6 +1,9 @@
 #!/usr/bin/env node
 /**
- * Lumeo MCP Server v2.0.1
+ * Lumeo MCP Server
+ *
+ * (Runtime version is read from package.json at startup — see SERVER_VERSION below —
+ *  so it never drifts from the published package.)
  *
  * Source-of-truth schema for ALL Lumeo components, generated at build time
  * by `tools/Lumeo.RegistryGen` from the actual Razor source via Roslyn. Every
@@ -21,6 +24,7 @@
  *   Resources (URI template):
  *     - lumeo://component/{name}   — markdown reference per component
  *     - lumeo://category/{name}    — overview of all components in a category
+ *     - lumeo://service/{name}     — markdown reference per injectable service
  *
  * Transport: stdio (the standard for spawned MCP servers).
  */

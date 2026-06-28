@@ -124,16 +124,17 @@ npm run dev   # tsc --watch
 npm start     # run the built server
 ```
 
-The component catalog is built at startup by merging two sources:
+The component schema is generated at build time, not hand-maintained:
+`tools/Lumeo.RegistryGen` reads the actual Razor source via Roslyn and emits full
+params / enums / events / sub-component metadata for every component into
+`src/Lumeo/registry/`. `scripts/sync-registry.mjs` copies the generated
+`registry.json` (164 components) and `components-api.json` here at `prebuild`
+time, so the catalog never drifts from the source.
 
-- `src/components.ts` — hand-curated rich entries (top ~35) with full
-  `params`, `slots`, and `example` fields
-- `src/registry.json` — the full 125-component registry, copied from
-  `src/Lumeo/registry/registry.json` at `prebuild` time by
-  `scripts/sync-registry.mjs`
-
-To enrich a thin entry, add a full entry for it in `src/components.ts` — the
-merge layer will automatically upgrade it to the rich schema.
+`src/components.ts` only layers a few extra hand-curated example snippets on top —
+there is no thin/rich split and no manual catalog drift. To add a richer example
+for a component, add an entry for it in `src/components.ts`; the merge layer
+overlays it onto the generated schema.
 
 ## License
 

@@ -13,7 +13,7 @@ var root = new RootCommand("Lumeo CLI — vendorize Lumeo components into your p
 // --- init ---
 var initNamespaceOpt = new Option<string?>("--namespace", "Target namespace for generated components (e.g. MyApp.Components).");
 var initPathOpt = new Option<string?>("--path", "Components folder relative to the current directory. Default: Components/Ui");
-var initRegistryOpt = new Option<string?>("--registry", "Registry URL. Default: jsDelivr CDN at cdn.jsdelivr.net/gh/Brain2k-0005/Lumeo@<version>/src/Lumeo/wwwroot/registry/registry.json");
+var initRegistryOpt = new Option<string?>("--registry", "Registry URL. Default: https://lumeo.nativ.sh/registry.json");
 var initForceOpt = new Option<bool>("--force", "Overwrite an existing lumeo.json.");
 var initYesOpt = new Option<bool>(new[] { "--yes", "-y" }, "Accept all defaults, skip prompts (CI mode).");
 var initWithCssOpt = new Option<bool>("--with-css", "Copy Lumeo's pre-built CSS/JS into wwwroot/ (no Tailwind required).");
