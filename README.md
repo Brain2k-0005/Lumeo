@@ -1,8 +1,8 @@
 # Lumeo
 
-**163 accessible Blazor components, AI-ready, motion-integrated, shadcn-inspired.**
+**164 accessible Blazor components, AI-ready, motion-integrated, shadcn-inspired.**
 
-**163 components · 2,500+ tests** · 14 locales · mobile-first · MIT · .NET 10
+**164 components · 4,831 tests** · 14 locales · mobile-first · MIT · .NET 10
 
 [![NuGet](https://img.shields.io/nuget/v/Lumeo?logo=nuget&label=Lumeo)](https://www.nuget.org/packages/Lumeo)
 [![NuGet Downloads](https://img.shields.io/nuget/dt/Lumeo?logo=nuget&label=downloads)](https://www.nuget.org/packages/Lumeo)
@@ -32,7 +32,7 @@
 
 ## Feature overview
 
-- **163 components** — accessible UI primitives, Blazor WASM & Server
+- **164 components** — accessible UI primitives, Blazor WASM & Server
 - **AI primitives** — `PromptInput`, `StreamingText`, `AgentMessageList`, `ToolCallCard`, `ReasoningDisplay`
 - **Motion primitives** — `Marquee`, `NumberTicker`, `TextReveal`, `BlurFade`, `BorderBeam`, `ShimmerButton`, `Sparkles`, `Sparkline`
 - **Dashboard tiles** — `KpiCard`, `SparkCard`, `Delta`, `Bento`, `BentoTile`, `PickList<T>`
@@ -51,7 +51,7 @@
 - **Form validation** — DataAnnotations + custom validators with styled error states
 - **Accessible** — ARIA roles, keyboard navigation, focus trapping, screen-reader support
 - **Mobile-first** — touch gestures (swipe, pinch, long-press, pull-to-refresh, swipe-actions), 44×44 px hit targets per WCAG 2.5.5, iOS-style wheel pickers, haptic feedback service, safe-area helpers — try it at `/docs/mobile`
-- **2,500+ bUnit tests** — CI-enforced on every PR
+- **4,831 bUnit tests** — CI-enforced on every PR
 
 ## Component Categories
 
