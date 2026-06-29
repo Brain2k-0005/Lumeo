@@ -168,7 +168,7 @@
             <Stack Gap="3" Class="mb-6">
                 <Heading Level="2" Class="text-2xl font-semibold tracking-tight">How it compares</Heading>
                 <Lumeo.Text Size="sm" Color="muted">
-                    Brotli-compressed DLL size for the core package of each library.
+                    Brotli-compressed size of each library's core component DLL — managed code only (see note).
                 </Lumeo.Text>
             </Stack>
         </BlurFade>
@@ -212,8 +212,13 @@
                 </table>
             </div>
             <Lumeo.Text Size="xs" Color="muted" Class="mt-3 italic leading-relaxed">
-                * Approximate brotli sizes for the core library DLL of each project at their latest stable release as of 2026.
-                Independent verification recommended — numbers vary by build configuration and linker trimming.
+                * Brotli (quality 11) of each library's core component DLL — latest stable as of June 2026,
+                .NET 10 target (Telerik: .NET 8, its latest published build). Measured 2026-06-29 and
+                reproducible by brotli-compressing the DLL inside each public .nupkg. This counts the managed
+                assembly only: it excludes app-specific IL trimming (which shrinks every library in a real
+                published app) and the JS/CSS static web assets each library ships separately — some
+                substantial (e.g. Telerik's ~4.8&nbsp;MB JS bundle, Radzen's multi-theme CSS, and Lumeo's own
+                components.js&nbsp;+&nbsp;lumeo.css). DLL size reflects managed footprint, not features or final shipped size.
             </Lumeo.Text>
         </BlurFade>
     </section>
@@ -543,13 +548,17 @@
             "MSBuild .props integration (auto-imports lumeo.css + components.js), PDB symbols for debugging. Never reaches the browser."),
     ];
 
+    // Measured 2026-06-29: brotli (quality 11) of each library's core component DLL from its
+    // latest-stable public .nupkg, .NET 10 target where shipped (Telerik ships net8.0 only).
+    // Sorted ascending — neutral measured ranking, no cherry-picked order. Reproducible by
+    // brotli-compressing the DLL inside each package. See the note under the table for exclusions.
     private readonly List<ComparisonRow> _comparisonRows =
     [
-        new("Lumeo (core)",      "627 KB",   "Brotli DLL — measured 2026-06-28 (4.0.0)",            IsUs: true),
-        new("FluentUI Blazor",   "~500 KB",  "Approximate; varies by component set referenced"),
-        new("MudBlazor",         "~600 KB",  "Approximate; typical published-app measurement"),
-        new("Radzen Blazor",     "~700 KB",  "Approximate; includes bundled JS interop"),
-        new("Telerik UI Blazor", "~1 MB+",   "Estimate; runtime licensing + JS runtime included"),
+        new("FluentUI Blazor",   "302 KB",    "v4.14.3 (net10.0)"),
+        new("Lumeo (core)",      "627 KB",    "v4.0.0 (net10.0)",   IsUs: true),
+        new("Radzen Blazor",     "1,003 KB",  "v11.0.5 (net10.0)"),
+        new("MudBlazor",         "1,318 KB",  "v9.6.0 (net10.0)"),
+        new("Telerik UI Blazor", "1,480 KB",  "v14.0.0 (net8.0)"),
     ];
 
     private readonly List<string> _excludedDeps =
