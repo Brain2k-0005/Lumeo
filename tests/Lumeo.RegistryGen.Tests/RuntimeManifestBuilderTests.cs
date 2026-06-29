@@ -20,13 +20,20 @@ public class RuntimeManifestBuilderTests
         Assert.Contains("Extensions/LumeoServiceExtensions.cs", files);
         Assert.Contains("_Imports.razor", files);
 
-        // Overlay host (infrastructure).
-        Assert.Contains("UI/Overlay/OverlayProvider.razor", files);
-        Assert.Contains("UI/OverlayForm/OverlayForm.razor", files);
-        Assert.Contains("overlay", components);
-        Assert.Contains("overlay-form", components);
+        // Root-level shared enums every component references.
+        Assert.Contains("Size.cs", files);
+        Assert.Contains("Side.cs", files);
+        Assert.Contains("Orientation.cs", files);
 
-        // Paths are forward-slashed and de-duplicated/sorted.
+        // Shared event-args (Dialog/Sheet/Drawer OnBeforeClose) — the one UI/ file the runtime needs.
+        Assert.Contains("UI/Overlay/DismissEventArgs.cs", files);
+
+        // No UI components: the service layer is decoupled (SignaturePadInit is generic), so the
+        // runtime drags in no overlay host and no compile-closure components — only DismissEventArgs.
+        Assert.Empty(components);
+        Assert.DoesNotContain(files, f => f.StartsWith("UI/", StringComparison.Ordinal) && f != "UI/Overlay/DismissEventArgs.cs");
+
+        // Paths are forward-slashed and sorted.
         Assert.All(files, f => Assert.DoesNotContain('\\', f));
         Assert.Equal(files.OrderBy(x => x, StringComparer.Ordinal).ToList(), files);
     }

@@ -1514,7 +1514,7 @@ public sealed class ComponentInteropService : IComponentInteropService
         return _signaturePadModule;
     }
 
-    public async ValueTask SignaturePadInit(string elementId, object options, DotNetObjectReference<SignaturePad> dotNetRef)
+    public async ValueTask SignaturePadInit<T>(string elementId, object options, DotNetObjectReference<T> dotNetRef) where T : class
     {
         try
         {
