@@ -887,6 +887,10 @@ foreach (var pkgDir in Directory.EnumerateDirectories(Path.Combine(repoRoot, "sr
     if (assets.Length > 0) satelliteAssets[Path.GetFileName(pkgDir)] = assets;
 }
 
+// The runtime manifest: the shared C# substrate + overlay host the CLI vendors verbatim (Lumeo
+// namespace) for NuGet-free / standalone projects. Derived from the source tree so it never drifts.
+var (runtimeFiles, runtimeComponents) = RuntimeManifestBuilder.Build(Path.Combine(repoRoot, "src", "Lumeo"));
+
 var root = new Dictionary<string, object>
 {
     ["$schema"] = "https://lumeo.nativ.sh/registry-schema.json",
@@ -894,6 +898,11 @@ var root = new Dictionary<string, object>
     ["generated"] = DateTime.UtcNow.ToString("O"),
     ["components"] = components,
     ["satelliteAssets"] = satelliteAssets,
+    ["runtime"] = new Dictionary<string, object>
+    {
+        ["files"] = runtimeFiles,
+        ["components"] = runtimeComponents,
+    },
 };
 
 var jsonOpts = new JsonSerializerOptions
