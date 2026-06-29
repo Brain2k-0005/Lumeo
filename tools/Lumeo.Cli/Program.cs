@@ -312,6 +312,9 @@ namespace Lumeo.Cli
         [JsonPropertyName("assets")] public AssetsConfig? Assets { get; set; }
         [JsonPropertyName("theme")] public LumeoThemeConfig? Theme { get; set; }
         [JsonPropertyName("components")] public Dictionary<string, InstalledComponent>? Components { get; set; }
+        /// <summary>When true, the project is fully NuGet-free: `add` vendors the shared Lumeo
+        /// runtime into _LumeoRuntime/ and never emits a Lumeo/satellite PackageReference.</summary>
+        [JsonPropertyName("standalone")] public bool Standalone { get; set; }
     }
 
     internal sealed class RegistryEntry
@@ -341,6 +344,17 @@ namespace Lumeo.Cli
         /// `lumeo add --vendor` to copy a satellite's static assets alongside its
         /// vendored source so its <c>_content/&lt;package&gt;/...</c> imports keep resolving.</summary>
         [JsonPropertyName("satelliteAssets")] public Dictionary<string, List<string>>? SatelliteAssets { get; set; }
+
+        /// <summary>The shared runtime closure (Internal/Services/Extensions/Attributes/Theming/
+        /// _Imports + overlay host) the CLI vendors verbatim into _LumeoRuntime/ — keeping the
+        /// Lumeo namespace — for standalone / NuGet-free projects.</summary>
+        [JsonPropertyName("runtime")] public RuntimeManifest? Runtime { get; set; }
+    }
+
+    internal sealed class RuntimeManifest
+    {
+        [JsonPropertyName("files")] public List<string> Files { get; set; } = new();
+        [JsonPropertyName("components")] public List<string> Components { get; set; } = new();
     }
 
     internal static class Paths
