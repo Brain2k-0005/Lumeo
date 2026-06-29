@@ -178,4 +178,37 @@ public sealed class CliStandaloneE2ETests : IDisposable
         Assert.DoesNotContain("Include=\"Lumeo\"", csproj);            // the Lumeo package was stripped
         Assert.Contains("Include=\"Blazicons.Lucide\"", csproj);        // external deps are left intact
     }
+
+    [Fact]
+    public void Standalone_Satellite_DataGrid_Builds_NuGetFree()
+    {
+        File.WriteAllText(Path.Combine(_proj, "App.csproj"), MinimalCsproj());
+        Assert.Equal(0, RunCli("init", "--yes", "--standalone", "--namespace", "Acme.Ui", "--path", "Components/Ui", "--no-assets").Exit);
+        // DataGrid is a satellite (Lumeo.DataGrid) with ~15 component deps incl. form controls —
+        // exercises satellite source+JS vendoring AND the form/FormFieldContext type-dep closure.
+        Assert.Equal(0, RunCli("add", "data-grid", "--local", "--yes", "--force").Exit);
+
+        var build = RunDotnet("build", "-c", "Debug", "--nologo");
+        Assert.True(build.Exit == 0, $"DataGrid standalone build FAILED:\n{build.Stdout}\n{build.Stderr}");
+        Assert.DoesNotContain("Include=\"Lumeo\"", File.ReadAllText(Path.Combine(_proj, "App.csproj")));  // no Lumeo / Lumeo.DataGrid
+    }
+
+    [Fact]
+    public void Standalone_Satellite_Editor_Builds_NuGetFree_With_External_Package()
+    {
+        // The Editor satellite's WordImporter needs the external Mammoth package — pre-reference it (it
+        // is not Lumeo, so it stays a NuGet dependency that the registry now reports for the consumer).
+        File.WriteAllText(Path.Combine(_proj, "App.csproj"),
+            "<Project Sdk=\"Microsoft.NET.Sdk.Razor\"><PropertyGroup><TargetFramework>net10.0</TargetFramework>"
+          + "<Nullable>enable</Nullable><ImplicitUsings>enable</ImplicitUsings></PropertyGroup><ItemGroup>"
+          + "<PackageReference Include=\"Microsoft.AspNetCore.Components.Web\" Version=\"10.0.6\" />"
+          + "<PackageReference Include=\"Blazicons.Lucide\" Version=\"2.1.3\" />"
+          + "<PackageReference Include=\"Mammoth\" Version=\"1.11.0\" /></ItemGroup></Project>");
+        Assert.Equal(0, RunCli("init", "--yes", "--standalone", "--namespace", "Acme.Ui", "--path", "Components/Ui", "--no-assets").Exit);
+        Assert.Equal(0, RunCli("add", "rich-text-editor", "--local", "--yes", "--force").Exit);
+
+        var build = RunDotnet("build", "-c", "Debug", "--nologo");
+        Assert.True(build.Exit == 0, $"Editor standalone build FAILED:\n{build.Stdout}\n{build.Stderr}");
+        Assert.DoesNotContain("Include=\"Lumeo\"", File.ReadAllText(Path.Combine(_proj, "App.csproj")));
+    }
 }

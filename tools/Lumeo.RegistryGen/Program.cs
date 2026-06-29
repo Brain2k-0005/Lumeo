@@ -760,6 +760,23 @@ foreach (var dir in componentDirs)
     var gotchas = new List<string>();
     var seenGotchas = new HashSet<string>(StringComparer.Ordinal);
 
+    // External NuGet packages this satellite package declares (e.g. Mammoth, ClosedXML, QuestPDF). A
+    // component gets one in its packageDependencies only if its vendored source actually references it
+    // (checked per file below) — NOT just because the satellite project lists it, since export-only
+    // libs like ClosedXML/QuestPDF aren't used by the base grid component's source.
+    var satExtPackages = System.Array.Empty<string>();
+    if (Path.GetFileName(packageSrcRoot) is { Length: > 0 } satNm && satNm.StartsWith("Lumeo.", StringComparison.Ordinal))
+    {
+        var satCsproj = Directory.EnumerateFiles(packageSrcRoot, "*.csproj").FirstOrDefault();
+        if (satCsproj is not null)
+            satExtPackages = Regex.Matches(File.ReadAllText(satCsproj), @"<PackageReference\s+Include=""([^""]+)""")
+                .Select(m => m.Groups[1].Value)
+                .Where(p => !p.StartsWith("Microsoft.", StringComparison.Ordinal)
+                         && !p.StartsWith("Lumeo", StringComparison.Ordinal)
+                         && !p.Contains("SourceLink", StringComparison.OrdinalIgnoreCase))
+                .Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+    }
+
     foreach (var file in files)
     {
         // file path is relative to packageSrcRoot (e.g. src/Lumeo.Charts).
@@ -782,6 +799,12 @@ foreach (var dir in componentDirs)
         // Package dependencies: detect <Blazicon usage → Blazicons.Lucide
         if (content.Contains("<Blazicon ", StringComparison.Ordinal))
             packageDeps.Add("Blazicons.Lucide");
+        // Satellite external package actually referenced by THIS file's vendored source (precise:
+        // an export-only lib a component never touches isn't pulled in).
+        foreach (var satPkg in satExtPackages)
+            if (content.Contains(satPkg + ".", StringComparison.Ordinal)
+                || content.Contains("using " + satPkg, StringComparison.Ordinal))
+                packageDeps.Add(satPkg);
         // Dependencies: only for .razor, match `<OtherComponent` where OtherComponent is a known sibling.
         if (file.EndsWith(".razor", StringComparison.OrdinalIgnoreCase))
         {
@@ -814,6 +837,14 @@ foreach (var dir in componentDirs)
                     deps.Add(ToKebabCase(parent));
             }
         }
+
+        // Type-level dependency the markup scan can't see: form controls consume the Form
+        // component's cascading FormFieldContext via [CascadingParameter] (they never render
+        // <FormField>), so a FormFieldContext reference in any of a component's files implies a
+        // dependency on `form`. Precise — only form-integrated controls match. Without it they
+        // vendor with no FormFieldContext type and fail to compile standalone.
+        if (content.Contains("FormFieldContext") && !string.Equals(name, "Form", StringComparison.OrdinalIgnoreCase))
+            deps.Add("form");
     }
 
     // Sensible defaults when a component has no themed class usage.

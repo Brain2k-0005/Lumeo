@@ -401,6 +401,13 @@ internal static class Commands
     private const string RuntimeFolder = "_LumeoRuntime";
     private const string RuntimeRecordKey = "_lumeo-runtime";
 
+    // In standalone mode the vendored components keep the Lumeo namespace (like the runtime), so they
+    // compile without any rewriting: relative references (Services.X), shared cascading types
+    // (FormField.FormFieldContext) and inter-component references all bind under Lumeo. Rewriting them
+    // to the consumer namespace is exactly what broke those. Normal (NuGet) mode still rebrands.
+    private static string MaybeRewrite(string content, string relFile, LumeoConfig cfg)
+        => cfg.Standalone ? content : NamespaceRewriter.Rewrite(content, relFile, cfg.Namespace);
+
     // Vendors the full shared Lumeo runtime (RuntimeManifest.Files) into
     // <componentsPath>/_LumeoRuntime/ VERBATIM — keeping the Lumeo namespace — so the
     // user-namespace components resolve Cx, the injected services and Lumeo.* types against it.
@@ -912,7 +919,7 @@ internal static class Commands
                 if (opts.Diff || opts.View)
                 {
                     var upstream = await RegistryLoader.GetFileAsync(relFile, opts.Local, cfg.Registry, itemPackage);
-                    upstream = NamespaceRewriter.Rewrite(upstream, relFile, cfg.Namespace);
+                    upstream = MaybeRewrite(upstream, relFile, cfg);
 
                     if (File.Exists(dest))
                     {
@@ -962,7 +969,7 @@ internal static class Commands
                     if (!forceAll)
                     {
                         var upstream = await RegistryLoader.GetFileAsync(relFile, opts.Local, cfg.Registry, itemPackage);
-                        upstream = NamespaceRewriter.Rewrite(upstream, relFile, cfg.Namespace);
+                        upstream = MaybeRewrite(upstream, relFile, cfg);
 
                         char? choice = null;
                         while (choice is null)
@@ -1002,7 +1009,7 @@ internal static class Commands
                     continue;
                 }
                 var content = await RegistryLoader.GetFileAsync(relFile, opts.Local, cfg.Registry, itemPackage);
-                content = NamespaceRewriter.Rewrite(content, relFile, cfg.Namespace);
+                content = MaybeRewrite(content, relFile, cfg);
                 Directory.CreateDirectory(Path.GetDirectoryName(dest)!);
                 await File.WriteAllTextAsync(dest, content, new UTF8Encoding(false));
                 Console.WriteLine(Ansi.Green("  +   ") + displayPath);
@@ -1194,7 +1201,7 @@ internal static class Commands
 
                 var localContent = await File.ReadAllTextAsync(dest);
                 var upstream = await RegistryLoader.GetFileAsync(relFile, local, cfg.Registry, entryPackage);
-                upstream = NamespaceRewriter.Rewrite(upstream, relFile, cfg.Namespace);
+                upstream = MaybeRewrite(upstream, relFile, cfg);
 
                 if (Diffing.Normalize(localContent) == Diffing.Normalize(upstream))
                 {
@@ -1456,7 +1463,7 @@ internal static class Commands
             var local0 = await File.ReadAllTextAsync(dest);
             var upstream = await RegistryLoader.GetFileAsync(relFile, local, cfg.Registry,
                 string.IsNullOrEmpty(entry.NugetPackage) ? "Lumeo" : entry.NugetPackage);
-            upstream = NamespaceRewriter.Rewrite(upstream, relFile, cfg.Namespace);
+            upstream = MaybeRewrite(upstream, relFile, cfg);
 
             if (Diffing.Normalize(local0) == Diffing.Normalize(upstream)) same++;
             else
@@ -1517,8 +1524,9 @@ internal static class Commands
                 Environment.ExitCode = 1;
                 continue;
             }
-            // Only rewrite namespace if a config exists (so we show what `add` WOULD produce).
-            if (cfg is not null)
+            // Only rewrite namespace if a config exists and the project isn't standalone (standalone
+            // keeps the Lumeo namespace) — so we show what `add` WOULD produce.
+            if (cfg is not null && !cfg.Standalone)
                 content = NamespaceRewriter.Rewrite(content, relFile, targetNamespace);
             Console.WriteLine(content);
             Console.WriteLine();
