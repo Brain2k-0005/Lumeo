@@ -30,8 +30,10 @@ public class NamespaceRewriterTests
     [Fact]
     public void CSharp_File_Scoped_Namespace_Is_Rewritten()
     {
+        // The .cs rewrite also re-adds `using Lumeo;` so relative references (e.g. `Services.X`
+        // meaning `Lumeo.Services.X`) still bind once the file leaves the Lumeo namespace.
         Assert.Equal(
-            "namespace MyApp.Ui.Services;",
+            "using Lumeo;\nnamespace MyApp.Ui.Services;",
             NamespaceRewriter.Rewrite("namespace Lumeo.Services;", "ThemeService.cs", "MyApp.Ui"));
     }
 
@@ -39,7 +41,7 @@ public class NamespaceRewriterTests
     public void CSharp_Block_Namespace_Is_Rewritten()
     {
         Assert.Equal(
-            "namespace MyApp.Ui\n{",
+            "using Lumeo;\nnamespace MyApp.Ui\n{",
             NamespaceRewriter.Rewrite("namespace Lumeo\n{", "ThemeService.cs", "MyApp.Ui"));
     }
 
@@ -66,8 +68,17 @@ public class NamespaceRewriterTests
     public void CSharp_File_Scoped_Namespace_With_CRLF_Is_Rewritten()
     {
         Assert.Equal(
-            "namespace MyApp.Services;\r\n",
+            "using Lumeo;\nnamespace MyApp.Services;\r\n",
             NamespaceRewriter.Rewrite("namespace Lumeo.Services;\r\n", "ThemeService.cs", "MyApp"));
+    }
+
+    [Fact]
+    public void CSharp_Existing_Using_Lumeo_Is_Not_Duplicated()
+    {
+        // The using-Lumeo re-add is guarded: a file that already imports Lumeo doesn't get a second.
+        Assert.Equal(
+            "using Lumeo;\nnamespace MyApp.Services;",
+            NamespaceRewriter.Rewrite("using Lumeo;\nnamespace Lumeo.Services;", "ThemeService.cs", "MyApp"));
     }
 
     [Fact]

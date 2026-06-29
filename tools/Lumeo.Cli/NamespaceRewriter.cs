@@ -28,8 +28,13 @@ internal static class NamespaceRewriter
         }
         else if (filePath.EndsWith(".cs", StringComparison.OrdinalIgnoreCase))
         {
+            // When a .cs file moves out of the Lumeo namespace, relative references it made by
+            // virtue of living there — e.g. `Services.Foo` meaning `Lumeo.Services.Foo`, or a nested
+            // `FormField.FormFieldContext` — no longer resolve under the consumer namespace. Re-add
+            // `using Lumeo;` (only if absent) so those relative names still bind to Lumeo.*.
+            var hadLumeoUsing = Regex.IsMatch(content, @"^using\s+Lumeo\s*;\s*$", RegexOptions.Multiline);
             content = Regex.Replace(content, @"^namespace\s+Lumeo(\.[A-Za-z0-9_.]*)?(\s*[;{])",
-                m => $"namespace {targetNamespace}{m.Groups[1].Value}{m.Groups[2].Value}",
+                m => (hadLumeoUsing ? "" : "using Lumeo;\n") + $"namespace {targetNamespace}{m.Groups[1].Value}{m.Groups[2].Value}",
                 RegexOptions.Multiline);
         }
         return content;
