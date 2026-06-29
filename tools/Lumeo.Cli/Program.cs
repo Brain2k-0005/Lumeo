@@ -241,6 +241,15 @@ depsInstallCmd.SetHandler(async ctx =>
 var depsCmd = new Command("deps", "Manage CDN JavaScript/CSS dependencies for self-hosting.");
 depsCmd.AddCommand(depsInstallCmd);
 
+// --- eject ---
+var ejectLocalOpt = new Option<bool>("--local", "Read the registry + runtime source from a local Lumeo checkout (dev).");
+var ejectCmd = new Command("eject",
+    "Convert this project to fully NuGet-free standalone: vendor the Lumeo runtime + already-installed components as source, then strip the Lumeo/satellite PackageReference(s).")
+{
+    ejectLocalOpt,
+};
+ejectCmd.SetHandler(async ctx => await Commands.Eject(ctx.ParseResult.GetValueForOption(ejectLocalOpt)));
+
 root.AddCommand(initCmd);
 root.AddCommand(addCmd);
 root.AddCommand(updateCmd);
@@ -254,6 +263,7 @@ root.AddCommand(updateAssetsCmd);
 root.AddCommand(depsCmd);
 root.AddCommand(presetCmd);
 root.AddCommand(themeCmd);
+root.AddCommand(ejectCmd);
 
 var parseExit = await root.InvokeAsync(args);
 // Respect handler-set Environment.ExitCode (e.g. `update --check` → 1 on drift).

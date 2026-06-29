@@ -152,4 +152,30 @@ public sealed class CliStandaloneE2ETests : IDisposable
         Assert.True(build.Exit == 0, $"standalone build FAILED — the runtime closure is incomplete:\n{build.Stdout}\n{build.Stderr}");
         Assert.DoesNotContain("Include=\"Lumeo\"", File.ReadAllText(Path.Combine(_proj, "App.csproj")));
     }
+
+    [Fact]
+    public void Eject_Converts_A_Normal_Project_To_Standalone()
+    {
+        // A NORMAL (non-standalone) project that references the Lumeo package + the external icon dep.
+        File.WriteAllText(Path.Combine(_proj, "App.csproj"),
+            "<Project Sdk=\"Microsoft.NET.Sdk.Razor\"><PropertyGroup><TargetFramework>net10.0</TargetFramework>"
+          + "<ImplicitUsings>enable</ImplicitUsings></PropertyGroup><ItemGroup>"
+          + "<PackageReference Include=\"Microsoft.AspNetCore.Components.Web\" Version=\"10.0.6\" />"
+          + "<PackageReference Include=\"Blazicons.Lucide\" Version=\"2.1.3\" />"
+          + "<PackageReference Include=\"Lumeo\" Version=\"4.0.0\" /></ItemGroup></Project>");
+
+        Assert.Equal(0, RunCli("init", "--yes", "--namespace", "Acme.Ui", "--path", "Components/Ui", "--no-assets").Exit);
+        Assert.Equal(0, RunCli("add", "dialog", "--local", "--yes", "--force").Exit);
+
+        var eject = RunCli("eject", "--local");
+        Assert.True(eject.Exit == 0, $"eject failed (exit {eject.Exit}). {eject.Stderr}{eject.Stdout}");
+
+        Assert.Contains("\"standalone\": true", File.ReadAllText(Path.Combine(_proj, "lumeo.json")));
+        Assert.True(File.Exists(Path.Combine(_proj, "Components", "Ui", "_LumeoRuntime", "Internal", "Cx.cs")),
+            "eject did not vendor the runtime");
+
+        var csproj = File.ReadAllText(Path.Combine(_proj, "App.csproj"));
+        Assert.DoesNotContain("Include=\"Lumeo\"", csproj);            // the Lumeo package was stripped
+        Assert.Contains("Include=\"Blazicons.Lucide\"", csproj);        // external deps are left intact
+    }
 }
