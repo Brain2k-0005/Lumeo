@@ -489,7 +489,10 @@ public interface IComponentInteropService : IAsyncDisposable, IDisposable
     // SignaturePad — canvas-based handwritten signature capture (3.1.0).
     // Ships its own tiny JS module (signature-pad.js) loaded lazily on first
     // use so apps that never render a SignaturePad don't pay the import cost.
-    ValueTask SignaturePadInit(string elementId, object options, DotNetObjectReference<SignaturePad> dotNetRef);
+    // Generic in the .NET object-reference type so this core interop interface stays decoupled from
+    // the SignaturePad UI component (T is inferred from the call site as SignaturePad). This keeps
+    // the service layer free of UI-component references so it can be vendored standalone.
+    ValueTask SignaturePadInit<T>(string elementId, object options, DotNetObjectReference<T> dotNetRef) where T : class;
     ValueTask SignaturePadClear(string elementId);
     ValueTask<string?> SignaturePadDataUrl(string elementId, string mimeType);
     ValueTask SignaturePadSetStrokeStyle(string elementId, string color, double width);

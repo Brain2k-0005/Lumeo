@@ -20,10 +20,11 @@ var initWithCssOpt = new Option<bool>("--with-css", "Copy Lumeo's pre-built CSS/
 var initWithTailwindOpt = new Option<bool>("--with-tailwind", "Scaffold Tailwind v4 setup (Styles/input.css + package.json).");
 var initNoAssetsOpt = new Option<bool>("--no-assets", "Skip asset setup entirely (you'll wire CSS up yourself).");
 var initLocalOpt = new Option<bool>("--local", "Copy assets from a local Lumeo checkout (dev only).");
+var initStandaloneOpt = new Option<bool>("--standalone", "Set up a fully NuGet-free project: 'add' vendors the whole Lumeo runtime into _LumeoRuntime/ and never adds a Lumeo PackageReference.");
 var initCmd = new Command("init", "Create a lumeo.json in the current directory.")
 {
     initNamespaceOpt, initPathOpt, initRegistryOpt, initForceOpt, initYesOpt,
-    initWithCssOpt, initWithTailwindOpt, initNoAssetsOpt, initLocalOpt,
+    initWithCssOpt, initWithTailwindOpt, initNoAssetsOpt, initLocalOpt, initStandaloneOpt,
 };
 initCmd.SetHandler(async ctx =>
 {
@@ -36,7 +37,8 @@ initCmd.SetHandler(async ctx =>
         WithCss: ctx.ParseResult.GetValueForOption(initWithCssOpt),
         WithTailwind: ctx.ParseResult.GetValueForOption(initWithTailwindOpt),
         NoAssets: ctx.ParseResult.GetValueForOption(initNoAssetsOpt),
-        Local: ctx.ParseResult.GetValueForOption(initLocalOpt));
+        Local: ctx.ParseResult.GetValueForOption(initLocalOpt),
+        Standalone: ctx.ParseResult.GetValueForOption(initStandaloneOpt));
     await Commands.Init(opts);
 });
 

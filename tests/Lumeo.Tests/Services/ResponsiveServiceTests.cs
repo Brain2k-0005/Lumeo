@@ -242,7 +242,7 @@ public class ResponsiveServiceTests
         public ValueTask SeekMedia(Microsoft.AspNetCore.Components.ElementReference element, double seconds) => ValueTask.CompletedTask;
         public ValueTask SetPlaybackRate(Microsoft.AspNetCore.Components.ElementReference element, double rate) => ValueTask.CompletedTask;
         public ValueTask<Lumeo.Services.MediaState> GetMediaState(Microsoft.AspNetCore.Components.ElementReference element) => ValueTask.FromResult(new Lumeo.Services.MediaState(0, 0));
-        public ValueTask SignaturePadInit(string elementId, object options, Microsoft.JSInterop.DotNetObjectReference<Lumeo.SignaturePad> dotNetRef) => ValueTask.CompletedTask;
+        public ValueTask SignaturePadInit<T>(string elementId, object options, Microsoft.JSInterop.DotNetObjectReference<T> dotNetRef) where T : class => ValueTask.CompletedTask;
         public ValueTask SignaturePadClear(string elementId) => ValueTask.CompletedTask;
         public ValueTask<string?> SignaturePadDataUrl(string elementId, string mimeType) => ValueTask.FromResult<string?>(null);
         public ValueTask SignaturePadSetStrokeStyle(string elementId, string color, double width) => ValueTask.CompletedTask;

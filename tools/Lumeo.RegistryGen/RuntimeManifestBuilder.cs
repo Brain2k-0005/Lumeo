@@ -13,11 +13,6 @@ public static class RuntimeManifestBuilder
     // theme token C#).
     private static readonly string[] SubstrateDirs = { "Internal", "Services", "Extensions", "Attributes", "Theming" };
 
-    // Overlay host components — infrastructure (one <OverlayProvider/> in the layout), not a
-    // user-added component. Their kebab keys are reported so the CLI's add-BFS skips re-vendoring
-    // them into the user namespace (the runtime already provides them under Lumeo).
-    private static readonly string[] OverlayHostDirs = { "UI/Overlay", "UI/OverlayForm" };
-
     /// <summary>
     /// Enumerates the runtime closure under <paramref name="coreSrcRoot"/> (= the <c>src/Lumeo</c>
     /// directory). Returns runtime file paths relative to that root (forward-slashed, sorted) and the
@@ -35,21 +30,30 @@ public static class RuntimeManifestBuilder
                 if (IsSource(f)) files.Add(Rel(coreSrcRoot, f));
         }
 
+        // Root-level shared types: the unified Lumeo.Size / Side / Align / Orientation enums,
+        // Density, TriggerSlot, etc. Every component references these, so they are part of the
+        // runtime. Top-directory only (the UI/ component dirs are vendored per-component).
+        foreach (var f in Directory.EnumerateFiles(coreSrcRoot, "*.cs", SearchOption.TopDirectoryOnly))
+            files.Add(Rel(coreSrcRoot, f));
+
         var imports = Path.Combine(coreSrcRoot, "_Imports.razor");
         if (File.Exists(imports)) files.Add("_Imports.razor");
 
+        // DismissEventArgs lives under UI/Overlay/ but is shared event-args (Dialog/Sheet/Drawer
+        // OnBeforeClose), not the overlay host — include just that one file.
+        if (File.Exists(Path.Combine(coreSrcRoot, "UI", "Overlay", "DismissEventArgs.cs")))
+            files.Add("UI/Overlay/DismissEventArgs.cs");
+
+        // The runtime is the pure C# substrate (plus DismissEventArgs) — NO UI components. The
+        // service layer is decoupled from UI components (e.g. SignaturePadInit is generic, not typed
+        // to the SignaturePad component), so the substrate has no UI references to drag in. Keeping
+        // UI components OUT also avoids a namespace clash: they'd live under the root Lumeo namespace
+        // that `@using Lumeo` pulls in for the enums, colliding with the consumer's own vendored
+        // Button/etc. The overlay host (OverlayProvider) is likewise excluded — consumers reach
+        // overlays via OverlayService and add <OverlayProvider/> separately. No skip-these components.
         var components = new List<string>();
-        foreach (var rel in OverlayHostDirs)
-        {
-            var abs = Path.Combine(coreSrcRoot, rel.Replace('/', Path.DirectorySeparatorChar));
-            if (!Directory.Exists(abs)) continue;
-            components.Add(Kebab(Path.GetFileName(abs)));
-            foreach (var f in Directory.EnumerateFiles(abs, "*.*", SearchOption.AllDirectories))
-                if (IsSource(f)) files.Add(Rel(coreSrcRoot, f));
-        }
 
         files.Sort(StringComparer.Ordinal);
-        components.Sort(StringComparer.Ordinal);
         return (files, components);
     }
 
@@ -59,18 +63,4 @@ public static class RuntimeManifestBuilder
 
     private static string Rel(string root, string f)
         => Path.GetRelativePath(root, f).Replace('\\', '/');
-
-    // PascalCase dir name -> kebab key ("Overlay" -> "overlay", "OverlayForm" -> "overlay-form"),
-    // matching the component keys RegistryGen emits for these dirs.
-    private static string Kebab(string s)
-    {
-        var sb = new System.Text.StringBuilder(s.Length + 4);
-        for (var i = 0; i < s.Length; i++)
-        {
-            var c = s[i];
-            if (char.IsUpper(c) && i > 0) sb.Append('-');
-            sb.Append(char.ToLowerInvariant(c));
-        }
-        return sb.ToString();
-    }
 }
