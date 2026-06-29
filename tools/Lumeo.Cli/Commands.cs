@@ -431,6 +431,64 @@ internal static class Commands
         ConfigIO.RecordInstall(cfg, RuntimeRecordKey, registry.Version, written);
     }
 
+    /// <summary>
+    /// Converts an existing (NuGet-referencing) Lumeo project into a fully NuGet-free standalone one:
+    /// flips standalone mode on, vendors the shared runtime (the services/Cx that previously came from
+    /// the package), re-vendors every installed component as source, and strips the Lumeo/satellite
+    /// PackageReference(s) from the consumer .csproj.
+    /// </summary>
+    public static async Task Eject(bool local)
+    {
+        var cfg = ConfigIO.TryLoad();
+        if (cfg is null)
+        {
+            Console.Error.WriteLine(Ansi.Red("No lumeo.json found — run 'lumeo init' first."));
+            Environment.ExitCode = 1;
+            return;
+        }
+        if (cfg.Standalone)
+        {
+            Console.WriteLine(Ansi.Yellow("Project is already standalone (NuGet-free). Nothing to eject."));
+            return;
+        }
+
+        var registry = await RegistryLoader.LoadAsync(local, cfg.Registry);
+        cfg.Standalone = true;
+        ConfigIO.Save(cfg);
+
+        var opts = new AddOptions(Component: null, Local: local, Yes: true, Force: true, SkipExisting: false,
+            Overwrite: true, DryRun: false, All: false, Diff: false, View: false, Vendor: true);
+        await EnsureRuntimeVendoredAsync(cfg, registry, opts);
+
+        // Re-vendor every already-installed component as SOURCE (satellites included), skipping the runtime record.
+        var installed = cfg.Components?.Keys.Where(k => k != RuntimeRecordKey).ToList() ?? new List<string>();
+        foreach (var key in installed)
+            await Add(opts with { Component = key });
+
+        var removed = StripLumeoPackageReferences();
+        Console.WriteLine();
+        Console.WriteLine(Ansi.Green("OK ") + "Ejected — this project is now standalone (no Lumeo NuGet reference).");
+        if (removed.Count > 0) Console.WriteLine("  Removed PackageReference: " + string.Join(", ", removed));
+        Console.WriteLine($"  Runtime vendored to {cfg.ComponentsPath}/{RuntimeFolder}/");
+    }
+
+    // Removes self-closing <PackageReference Include="Lumeo[.Satellite]" .../> lines from the consumer
+    // .csproj. Returns the package ids removed. External deps (e.g. Blazicons.Lucide) are left intact.
+    private static List<string> StripLumeoPackageReferences()
+    {
+        var removed = new List<string>();
+        var csproj = FindConsumerCsproj(Environment.CurrentDirectory);
+        if (csproj is null) return removed;
+        var text = File.ReadAllText(csproj);
+        var stripped = System.Text.RegularExpressions.Regex.Replace(
+            text,
+            @"[ \t]*<PackageReference\s+Include=""(Lumeo(?:\.[A-Za-z0-9.]+)?)""[^>]*/>[ \t]*\r?\n?",
+            m => { removed.Add(m.Groups[1].Value); return string.Empty; },
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        if (stripped != text) File.WriteAllText(csproj, stripped, new UTF8Encoding(false));
+        return removed;
+    }
+
     private static async Task<AssetsConfig> CopyPrebuiltAssetsAsync(string registryUrl, bool local)
     {
         var written = new List<string>();
