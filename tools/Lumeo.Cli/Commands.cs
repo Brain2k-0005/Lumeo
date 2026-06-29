@@ -911,6 +911,11 @@ internal static class Commands
 
             foreach (var relFile in item.Files)
             {
+                // Standalone: if the runtime already provides this exact file (e.g.
+                // UI/Overlay/DismissEventArgs.cs, which both the Overlay component and the runtime
+                // contain), skip it so the consumer doesn't get a duplicate type definition (CS0101).
+                if (cfg.Standalone && registry.Runtime is { } rt2 && rt2.Files.Contains(relFile))
+                    continue;
                 var dest = Paths.ToDestPath(outRoot, relFile);
                 var displayPath = Path.GetRelativePath(Environment.CurrentDirectory, dest);
                 recordedFiles.Add(relFile);

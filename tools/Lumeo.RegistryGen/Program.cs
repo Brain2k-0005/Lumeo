@@ -725,6 +725,25 @@ Dictionary<string, object?> ComputeTestCoverage(string componentName)
     };
 }
 
+// Pre-pass: map every type DECLARED in a component's files (nested enums / records / contexts /
+// static helpers) to that component's kebab key. The main loop uses this to add the type-level
+// dependencies the markup <Tag> scan can't see — e.g. a [Parameter] of type Button.ButtonPressEffect,
+// a static DataGridRowKeys.KeyFor(...) call, or Lumeo.Delta.DeltaFormat.
+var typeToComponent = new Dictionary<string, string>(StringComparer.Ordinal);
+foreach (var dir in componentDirs)
+{
+    var cName = Path.GetFileName(dir);
+    if (string.IsNullOrEmpty(cName)) continue;
+    var cKey = ToKebabCase(cName);
+    foreach (var f in Directory.EnumerateFiles(dir, "*.*", SearchOption.AllDirectories))
+    {
+        if (!f.EndsWith(".cs", StringComparison.OrdinalIgnoreCase) && !f.EndsWith(".razor", StringComparison.OrdinalIgnoreCase)) continue;
+        string txt; try { txt = File.ReadAllText(f); } catch { continue; }
+        foreach (Match tm in Regex.Matches(txt, @"\b(?:public|internal)\s+(?:sealed\s+|abstract\s+|static\s+|partial\s+|readonly\s+)*(?:class|record|struct|enum|interface)\s+([A-Z][A-Za-z0-9_]*)"))
+            typeToComponent[tm.Groups[1].Value] = cKey;   // last writer wins; harmless for the eject (a referenced type maps to a real owner)
+    }
+}
+
 foreach (var dir in componentDirs)
 {
     var name = Path.GetFileName(dir);
@@ -754,6 +773,7 @@ foreach (var dir in componentDirs)
     var cssVars = new HashSet<string>(StringComparer.Ordinal);
     var deps = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
     var packageDeps = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+    var contentBlob = new System.Text.StringBuilder();   // all of this component's source, for type-ref dep detection
     // Per-component "gotcha" callouts (#87.5): one-line non-obvious-behaviour
     // notes authored as <gotcha>...</gotcha> anywhere in a .razor file. Order
     // is preserved (file order, then source order) and duplicates dropped.
@@ -765,7 +785,7 @@ foreach (var dir in componentDirs)
     // (checked per file below) — NOT just because the satellite project lists it, since export-only
     // libs like ClosedXML/QuestPDF aren't used by the base grid component's source.
     var satExtPackages = System.Array.Empty<string>();
-    if (Path.GetFileName(packageSrcRoot) is { Length: > 0 } satNm && satNm.StartsWith("Lumeo.", StringComparison.Ordinal))
+    if (Path.GetFileName(packageSrcRoot) is { Length: > 0 } satNm && satNm.StartsWith("Lumeo", StringComparison.Ordinal))
     {
         var satCsproj = Directory.EnumerateFiles(packageSrcRoot, "*.csproj").FirstOrDefault();
         if (satCsproj is not null)
@@ -787,6 +807,7 @@ foreach (var dir in componentDirs)
         // autocrlf) — otherwise the registry's string contents drift per platform.
         try { content = File.ReadAllText(abs).Replace("\r\n", "\n").Replace("\r", "\n"); }
         catch { continue; }
+        contentBlob.Append(content).Append('\n');
 
         foreach (var cls in themedClassPatterns)
         {
@@ -846,6 +867,16 @@ foreach (var dir in componentDirs)
         if (content.Contains("FormFieldContext") && !string.Equals(name, "Form", StringComparison.OrdinalIgnoreCase))
             deps.Add("form");
     }
+
+    // Type-level dependencies the markup <Tag> scan can't see: a reference to ANOTHER component's
+    // declared type — a nested enum (Button.ButtonPressEffect), a cascading context, or a static
+    // helper (DataGridRowKeys, Lumeo.Delta.DeltaFormat). Word-boundary match against the
+    // type->component map from the pre-pass so the consumer vendors the owner too.
+    var typeRefBlob = contentBlob.ToString();
+    foreach (var kv in typeToComponent)
+        if (!string.Equals(kv.Value, componentKey, StringComparison.OrdinalIgnoreCase)
+            && Regex.IsMatch(typeRefBlob, $@"\b{Regex.Escape(kv.Key)}\b"))
+            deps.Add(kv.Value);
 
     // Sensible defaults when a component has no themed class usage.
     if (cssVars.Count == 0) cssVars.Add("--color-foreground");
