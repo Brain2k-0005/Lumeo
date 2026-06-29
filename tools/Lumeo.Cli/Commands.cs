@@ -356,6 +356,15 @@ internal static class Commands
         return choice ?? '1';
     }
 
+    // Asset version recorded in lumeo.json = the CLI's own assembly version, which is
+    // lockstep with the Lumeo library (Directory.Build.props drives both, and the CI
+    // publish job overrides it via /p:Version) — so it always reflects the shipped lib
+    // version the prebuilt assets came from, instead of a hand-edited literal that drifts.
+    private static readonly string s_assetVersion =
+        System.Reflection.Assembly.GetExecutingAssembly().GetName().Version is { } v
+            ? $"{v.Major}.{v.Minor}.{v.Build}"
+            : "0.0.0";
+
     private static async Task<AssetsConfig> CopyPrebuiltAssetsAsync(string registryUrl, bool local)
     {
         var written = new List<string>();
@@ -390,7 +399,7 @@ internal static class Commands
         return new AssetsConfig
         {
             Mode = "prebuilt",
-            Version = "2.0.0",
+            Version = s_assetVersion,
             Files = written,
         };
     }
@@ -604,7 +613,7 @@ internal static class Commands
         }
 
         // Refresh the recorded version/files.
-        cfg.Assets!.Version = "2.0.0";
+        cfg.Assets!.Version = s_assetVersion;
         cfg.Assets.Files = s_prebuiltAssets.Select(a => a.Dest).ToList();
         if (!dryRun) ConfigIO.Save(cfg);
 
