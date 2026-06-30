@@ -101,15 +101,28 @@ else
     // parameter (folding in the BarColor / GroupBy delegate output, which are
     // also parent-owned). Unlike _lastTasksHash, this is advanced ONLY by a
     // genuine parameter change — never by a local JS drag/progress edit via
-    // ReplaceTask. OnParametersSetAsync re-pushes to JS only when THIS moves, so
-    // a stale parent re-render after an uncontrolled drag no longer snaps the
-    // bars back to their pre-drag positions (battle-test wave 1, finding #18).
+    // ReplaceTask. In UNCONTROLLED usage (no TasksChanged binding) OnParametersSetAsync
+    // re-pushes to JS only when THIS moves, so a stale parent re-render after an
+    // uncontrolled drag no longer snaps the bars back to their pre-drag positions
+    // (battle-test wave 1, finding #18).
     private int _lastParentHash;
+    // CONTROLLED discriminator: the hash of the local _tasks snapshot we last pushed UP
+    // via TasksChanged (also re-synced whenever we adopt an authoritative Tasks payload).
+    // A controlled parent re-render that echoes back this exact hash is safe to ignore
+    // (keep the in-flight drag/progress edit); any other hash — including one equal to
+    // the PRE-drag parent hash — is an authoritative assertion (veto / normalization /
+    // reset) and must win, rolling the local _tasks back to it.
+    private int _lastPushedTasksHash;
     private GanttViewMode _currentViewMode;
-    // Last value seen on the ViewMode parameter. We only treat ViewMode as
-    // authoritative when this changes — otherwise a parent re-render with an
-    // unchanged ViewMode would clobber a toolbar selection the user just made.
+    // Last value seen on the ViewMode parameter. Used for UNCONTROLLED usage: we only
+    // treat ViewMode as authoritative when this changes — otherwise a parent re-render
+    // with an unchanged ViewMode would clobber a toolbar selection the user just made.
     private GanttViewMode _lastSeenViewMode;
+    // CONTROLLED discriminator: the last value we pushed UP via ViewModeChanged (also
+    // re-synced whenever we adopt an authoritative ViewMode). A controlled parent
+    // re-render that echoes back this exact value is safe to ignore (keep the toolbar
+    // selection); any other value is an authoritative assertion (veto / reset) and must win.
+    private GanttViewMode _lastPushedViewMode;
 
     // Snapshot of the current tasks used when the JS layer reports a drag
     // or progress change — avoids reaching back into `Tasks` (which may have
@@ -131,9 +144,11 @@ else
     {
         _currentViewMode = ViewMode;
         _lastSeenViewMode = ViewMode;
+        _lastPushedViewMode = ViewMode;
         _tasks = SortedTasks(Tasks?.ToList() ?? new List<GanttTask>());
         _lastTasksHash = ComputeTasksHash(_tasks);
         _lastParentHash = _lastTasksHash;
+        _lastPushedTasksHash = _lastTasksHash;
         _lastOptionsHash = ComputeOptionsHash();
     }
 
@@ -160,18 +175,26 @@ else
 
     protected override async Task OnParametersSetAsync()
     {
-        // Only a genuine change to the ViewMode parameter is authoritative.
-        // Comparing against _lastSeenViewMode (not _currentViewMode) means an
-        // unchanged ViewMode on a parent re-render leaves a toolbar selection
-        // intact, so the user's zoom no longer silently reverts.
-        var viewModeChanged = ViewMode != _lastSeenViewMode;
+        // CONTROLLED (ViewModeChanged bound): adopt the incoming ViewMode whenever it
+        // differs from what we last pushed via ViewModeChanged. An echo of our own push
+        // is a no-op (keep the toolbar selection); anything else — including a veto that
+        // lands back on the pre-click parent value — is authoritative and must win, so
+        // the toolbar rolls back to it.
+        // UNCONTROLLED: only a genuine change against the last value we SAW as a
+        // parameter is authoritative — comparing against _lastSeenViewMode (not
+        // _currentViewMode) means an unchanged ViewMode on a parent re-render leaves a
+        // toolbar selection intact, so the user's zoom no longer silently reverts.
+        var viewModeChanged = ViewModeChanged.HasDelegate
+            ? ViewMode != _lastPushedViewMode
+            : ViewMode != _lastSeenViewMode;
         if (viewModeChanged)
         {
-            _lastSeenViewMode = ViewMode;
             _currentViewMode = ViewMode;
+            _lastPushedViewMode = ViewMode;
             if (_initialized && _instanceId is not null)
                 await Interop.GanttChangeViewModeAsync(_instanceId, ViewMode.ToString());
         }
+        _lastSeenViewMode = ViewMode;
 
         // If a previous GanttInitAsync threw, the component latched into the
         // error state (_initError set, _initialized false, _instanceId null) and
@@ -188,6 +211,7 @@ else
             _tasks = SortedTasks(Tasks?.ToList() ?? new List<GanttTask>());
             _lastTasksHash = ComputeTasksHash(_tasks);
             _lastParentHash = _lastTasksHash;
+            _lastPushedTasksHash = _lastTasksHash;
             // Clearing the error makes the razor render the host element again on
             // the render that follows OnParametersSetAsync; OnAfterRenderAsync then
             // sees no instance + no error and re-attempts init against that host.
@@ -216,20 +240,30 @@ else
         {
             var incoming = SortedTasks(Tasks.ToList());
             var hash = ComputeTasksHash(incoming);
-            // Gate the re-push on the PARENT hash, not _lastTasksHash. A local JS
+            // CONTROLLED (TasksChanged bound): gate the re-push on the PUSHED hash, not
+            // the parent hash. A controlled parent re-render that echoes back exactly
+            // the hash we last pushed via TasksChanged is a no-op (keep the in-flight
+            // drag/progress edit); anything else — including a veto that lands back on
+            // the PRE-drag parent hash — is authoritative and must win, rolling the
+            // bars back to it.
+            // UNCONTROLLED: gate on the PARENT hash, not _lastTasksHash. A local JS
             // drag/progress edit advances _lastTasksHash (via ReplaceTask) but NOT
             // _lastParentHash, so an uncontrolled parent re-render that still
             // carries the original (pre-drag) Tasks is seen as "parent unchanged"
             // and the bars are left where the user dropped them. Only a genuinely
             // new parent payload (different records, or a swapped BarColor/GroupBy
             // delegate output) moves _lastParentHash and re-pushes to JS.
-            if (hash != _lastParentHash)
+            var parentMoved = TasksChanged.HasDelegate
+                ? hash != _lastPushedTasksHash
+                : hash != _lastParentHash;
+            if (parentMoved)
             {
-                _lastParentHash = hash;
                 _lastTasksHash = hash;
+                _lastPushedTasksHash = hash;
                 _tasks = incoming;
                 await Interop.GanttSetTasksAsync(_instanceId, incoming.Select(ToJsTask).Cast<object>());
             }
+            _lastParentHash = hash;
         }
     }
 
@@ -348,9 +382,16 @@ else
         // the *parent* last passed via ViewMode. Leaving it untouched means a
         // subsequent parent re-render that still carries the original (constant)
         // ViewMode is seen as "unchanged" and no longer clobbers this toolbar
-        // selection — which is exactly the revert bug. Uncontrolled usage works
-        // because of this; controlled (@bind-ViewMode) usage re-syncs through
-        // OnParametersSetAsync when the parent echoes the new value back.
+        // selection — which is exactly the revert bug. Uncontrolled usage relies on
+        // this; controlled (@bind-ViewMode) usage instead re-syncs through
+        // OnParametersSetAsync via _lastPushedViewMode below.
+
+        // Record _lastPushedViewMode BEFORE invoking ViewModeChanged: a controlled
+        // parent re-renders synchronously inside InvokeAsync, so OnParametersSetAsync
+        // must already see this value as "the value we just pushed" to distinguish an
+        // accepted echo (keep the toolbar selection) from a veto (parent kept its old
+        // value -> roll back).
+        _lastPushedViewMode = parsed;
 
         // Keep a bound parent's ViewMode in lock-step with the toolbar. Without
         // a binding this is a no-op and the component stays uncontrolled.
@@ -373,7 +414,16 @@ else
     {
         ReplaceTask(t);
         if (OnDateChange.HasDelegate) await OnDateChange.InvokeAsync(t);
-        if (TasksChanged.HasDelegate) await TasksChanged.InvokeAsync(_tasks.ToList());
+        if (TasksChanged.HasDelegate)
+        {
+            // Record _lastPushedTasksHash BEFORE invoking TasksChanged: a controlled
+            // parent re-renders synchronously inside InvokeAsync, so OnParametersSetAsync
+            // must already see this hash as "the value we just pushed" to distinguish an
+            // accepted echo (keep the in-flight edit) from a veto (parent kept its old
+            // value -> roll back).
+            _lastPushedTasksHash = _lastTasksHash;
+            await TasksChanged.InvokeAsync(_tasks.ToList());
+        }
     }
 
     [JSInvokable]
@@ -381,7 +431,12 @@ else
     {
         ReplaceTask(t);
         if (OnProgressChange.HasDelegate) await OnProgressChange.InvokeAsync(t);
-        if (TasksChanged.HasDelegate) await TasksChanged.InvokeAsync(_tasks.ToList());
+        if (TasksChanged.HasDelegate)
+        {
+            // See JsOnDateChange — record the pushed-hash discriminator before invoking.
+            _lastPushedTasksHash = _lastTasksHash;
+            await TasksChanged.InvokeAsync(_tasks.ToList());
+        }
     }
 
     private void ReplaceTask(GanttTask t)

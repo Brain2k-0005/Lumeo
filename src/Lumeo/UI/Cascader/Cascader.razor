@@ -161,6 +161,13 @@
     // OnParametersSet doesn't rebuild the trail on every parent re-render —
     // it should only respond when Value actually changes from outside.
     private List<string>? _lastSyncedValue;
+    // CONTROLLED discriminator: the last Value we pushed UP via ValueChanged
+    // (also re-synced whenever we adopt an authoritative Value). A controlled
+    // parent re-render that echoes back this exact value is safe to ignore
+    // (keep the in-flight _selectedPath/_activePanels trail); any other value
+    // is an authoritative assertion (normalization / veto / reset) and must
+    // win — including rolling a rejected selection back to the bound Value.
+    private List<string>? _lastPushedValue;
     // Tracks the Options reference last synced. When async-loaded options
     // arrive after the Value parameter was already set, the value-based
     // guard alone would skip the rebuild and leave _selectedPath /
@@ -235,7 +242,23 @@
         // without the Options check the rebuild gets skipped on that
         // arrival, and opening the picker still uses the empty panel
         // trail until Value changes again (Codex #81 review).
-        var valueChanged = !ValueEquals(_lastSyncedValue, Value);
+        bool valueChanged;
+        if (ValueChanged.HasDelegate)
+        {
+            // CONTROLLED: the parent owns Value and it is authoritative — EXCEPT
+            // when it echoes back the exact value we just pushed (_lastPushedValue).
+            // Any OTHER incoming value wins: a normalization, programmatic reset, or
+            // a REJECTION where the parent kept its old value (!= what we pushed).
+            // That last case is what rolls a rejected selection back to the bound
+            // Value, including the drill-down trail (_selectedPath/_activePanels).
+            valueChanged = !ValueEquals(_lastPushedValue, Value);
+        }
+        else
+        {
+            // UNCONTROLLED: keep existing param-change detection — adopt only when
+            // Value differs from the last value we saw as an incoming parameter.
+            valueChanged = !ValueEquals(_lastSyncedValue, Value);
+        }
         var optionsChanged = !ReferenceEquals(_lastSyncedOptions, Options);
         if (!valueChanged && !optionsChanged) return;
 
@@ -254,6 +277,7 @@
         }
 
         _lastSyncedValue = Value is null ? null : new List<string>(Value);
+        _lastPushedValue = _lastSyncedValue;
         _lastSyncedOptions = Options;
 
         // Rebuild the drill-down trail from the (possibly null) Value. A null /
@@ -349,6 +373,12 @@
         {
             // Leaf node — set value and close
             Value = [.._selectedPath];
+            // Record _lastPushedValue BEFORE invoking ValueChanged: a controlled
+            // parent re-renders synchronously inside InvokeAsync, so OnParametersSet
+            // must already see this value as "the value we just pushed" to
+            // distinguish an accepted echo (keep in-flight state) from a veto
+            // (parent kept its old value → roll back).
+            _lastPushedValue = Value;
             await ValueChanged.InvokeAsync(Value);
             await SetOpen(false);
         }
@@ -407,6 +437,8 @@
     private async Task Clear()
     {
         Value = null;
+        // Record BEFORE InvokeAsync — see the comment in SelectOption's leaf branch.
+        _lastPushedValue = null;
         _selectedPath.Clear();
         _activePanels.Clear();
         // Collapsing the drill-down removes every column except the root. If the

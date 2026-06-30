@@ -196,6 +196,12 @@
 
     private List<TItem> _sourceItems = new();
     private List<TItem> _targetItems = new();
+    // CONTROLLED discriminator: the last SelectedItems order/set we pushed UP via
+    // SelectedItemsChanged (also re-synced whenever we adopt an authoritative
+    // SelectedItems). A controlled parent re-render that echoes back this exact
+    // order is safe to ignore (keep in-flight _targetItems); any other order/set
+    // is an authoritative assertion (veto / external reorder / reset) and must win.
+    private List<TItem>? _lastPushedSelectedItems;
     private readonly HashSet<TItem> _sourceSelected = new();
     private readonly HashSet<TItem> _targetSelected = new();
     private string _sourceSearch = "";
@@ -249,14 +255,30 @@
         var sel = (SelectedItems ?? []).ToList();
         var selSet = new HashSet<TItem>(sel);
 
-        // #38 — Within-target reorder is owned by the component until the
-        // *set* of selected items actually changes. If the incoming
-        // SelectedItems is the same set we already hold (the parent simply
-        // didn't echo the emitted order, or re-rendered for an unrelated
-        // reason), keep the user's current ordering instead of snapping back
-        // to the parameter's order.
-        if (sel.Count == _targetItems.Count && selSet.SetEquals(_targetItems))
+        if (SelectedItemsChanged.HasDelegate)
         {
+            // CONTROLLED: the parent owns SelectedItems.
+            // Echo of our own push (sel sequence-equals what we last pushed via
+            // SelectedItemsChanged) → keep the in-flight _targetItems as-is.
+            // Anything else — a veto that restores the previous set/order, an
+            // externally-applied reorder/filter, a reset — is an authoritative
+            // assertion and must win, even when it's "merely" a reorder of the
+            // same set (the #38 preserve-order carve-out below only applies when
+            // nobody is listening for the change).
+            if (_lastPushedSelectedItems is null || !sel.SequenceEqual(_lastPushedSelectedItems))
+            {
+                _targetItems = sel;
+                _lastPushedSelectedItems = sel;
+            }
+        }
+        else if (sel.Count == _targetItems.Count && selSet.SetEquals(_targetItems))
+        {
+            // #38 — UNCONTROLLED (nobody observes SelectedItemsChanged): within-target
+            // reorder is owned by the component until the *set* of selected items
+            // actually changes. If the incoming SelectedItems is the same set we
+            // already hold (the parent simply didn't echo the emitted order, or
+            // re-rendered for an unrelated reason), keep the user's current ordering
+            // instead of snapping back to the parameter's order.
             // Same set, possibly reordered: preserve _targetItems as-is.
         }
         else
@@ -450,6 +472,12 @@
         // Assign a fresh list reference so FilteredTargetItems recomputes against
         // the reordered order (the cache keys on ReferenceEquals of the list).
         _targetItems = new List<TItem>(list);
+        // Record _lastPushedSelectedItems BEFORE invoking SelectedItemsChanged: a
+        // controlled parent may re-render synchronously inside InvokeAsync, so
+        // OnParametersSet must already see this order as "the order we just
+        // pushed" to distinguish an accepted echo (keep in-flight state) from a
+        // veto (parent kept its old order → roll back).
+        _lastPushedSelectedItems = _targetItems.ToList();
         await SelectedItemsChanged.InvokeAsync(_targetItems.ToList());
     }
 
@@ -475,6 +503,8 @@
         _sourceItems = _sourceItems.Where(i => !moveSet.Contains(i)).ToList();
         _targetItems = _targetItems.Concat(toMove.Where(i => !_targetItems.Contains(i))).ToList();
         _sourceSelected.Clear();
+        // Record BEFORE invoking — see ReorderTarget for why.
+        _lastPushedSelectedItems = _targetItems.ToList();
         await SelectedItemsChanged.InvokeAsync(_targetItems.ToList());
     }
 
@@ -485,6 +515,8 @@
         _targetItems = _targetItems.Where(i => !moveSet.Contains(i)).ToList();
         _sourceItems = _sourceItems.Concat(toMove.Where(i => !_sourceItems.Contains(i))).ToList();
         _targetSelected.Clear();
+        // Record BEFORE invoking — see ReorderTarget for why.
+        _lastPushedSelectedItems = _targetItems.ToList();
         await SelectedItemsChanged.InvokeAsync(_targetItems.ToList());
     }
 

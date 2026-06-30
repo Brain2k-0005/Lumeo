@@ -279,8 +279,20 @@
     private bool _isOpen;
     private DateOnly? _dateValue;
     private TimeSpan? _timeValue;
-    private DateTime? _prevValue;
-    private DateTimeOffset? _prevOffsetValue;
+    // Uncontrolled discriminator: the last Value we last SAW as an incoming PARAMETER
+    // (regardless of who pushed it). Consulted only when ValueChanged has no delegate.
+    private DateTime? _lastValueParam;
+    // CONTROLLED discriminator: the last value WE pushed via ValueChanged (also
+    // re-synced whenever we adopt an authoritative Value, including a Value derived
+    // from OffsetValue/TimeZone below). A controlled parent re-render that echoes
+    // back this exact value is safe to ignore (keep the optimistic _dateValue/
+    // _timeValue); anything else (veto / normalization / reset) is authoritative and
+    // wins. Mirrors Switch's _lastPushed discriminator.
+    private DateTime? _lastValuePushed;
+    // Same CONTROLLED/UNCONTROLLED split for the independently-bindable
+    // OffsetValue/OffsetValueChanged pair.
+    private DateTimeOffset? _lastOffsetValueParam;
+    private DateTimeOffset? _lastOffsetValuePushed;
     private TimeZoneInfo? _prevTimeZone;
 
     private string CssClass => Cx.Merge("group flex h-9 w-full items-center rounded-md border", (EffectiveInvalid ? "border-destructive ring-1 ring-destructive/20" : "border-input"), "bg-transparent px-3 py-2 text-sm shadow-sm hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50", Class);
@@ -293,11 +305,19 @@
         // on a TimeZone change keeps the wall-clock display in step with the zone
         // label (FormatZoneLabel reads TimeZone live); otherwise a zone swap left
         // the displayed instant from the old zone while the label showed the new.
-        var offsetChanged = OffsetValue != _prevOffsetValue;
+        //
+        // CONTROLLED/UNCONTROLLED split (mirrors Switch): when OffsetValueChanged
+        // has a delegate, an echo of our own last push (OffsetValue == _lastOffsetValuePushed)
+        // is a no-op — anything else (veto, normalization, reset) is authoritative
+        // and must win. When uncontrolled, only a genuinely new incoming literal
+        // (vs. the last one we SAW as a parameter) triggers a re-projection.
+        var offsetChanged = OffsetValueChanged.HasDelegate
+            ? OffsetValue != _lastOffsetValuePushed
+            : OffsetValue != _lastOffsetValueParam;
         var zoneChanged = !Equals(TimeZone, _prevTimeZone);
         if (offsetChanged || zoneChanged)
         {
-            _prevOffsetValue = OffsetValue;
+            _lastOffsetValuePushed = OffsetValue;
             _prevTimeZone = TimeZone;
             if (OffsetValue.HasValue)
             {
@@ -314,15 +334,27 @@
                 Value = null;
             }
         }
+        _lastOffsetValueParam = OffsetValue;
 
         // Resync the internal date/time selection only when the bound Value
-        // actually changed. A time picked before any date lives solely in
+        // genuinely changed. A time picked before any date lives solely in
         // _timeValue (UpdateValue can't commit without a date) — resyncing
         // unconditionally meant any parent re-render wiped that pending
         // selection back to the (null) Value.
-        if (Value != _prevValue)
+        //
+        // Same CONTROLLED/UNCONTROLLED split as above, applied to Value itself:
+        // CONTROLLED — echo of our own push (Value == _lastValuePushed) keeps the
+        // in-flight _dateValue/_timeValue; anything else (veto / normalization /
+        // reset, or the offset-derivation above) is authoritative and wins.
+        // UNCONTROLLED — adopt only when the parent genuinely changes the literal
+        // Value it supplies; a stale re-render with the same literal must not
+        // clobber the user's pending pick.
+        var valueChanged = ValueChanged.HasDelegate
+            ? Value != _lastValuePushed
+            : Value != _lastValueParam;
+        if (valueChanged)
         {
-            _prevValue = Value;
+            _lastValuePushed = Value;
             if (Value.HasValue)
             {
                 _dateValue = DateOnly.FromDateTime(Value.Value);
@@ -334,6 +366,7 @@
                 _timeValue = null;
             }
         }
+        _lastValueParam = Value;
     }
 
     private string FormatZoneLabel(DateTime wallClock)
@@ -739,13 +772,18 @@
             // mark it Unspecified so callers don't mistake it for system-local.
             if (TimeZone is not null) dt = DateTime.SpecifyKind(dt, DateTimeKind.Unspecified);
             Value = dt;
-            _prevValue = dt;
+            // Record _lastValuePushed BEFORE invoking ValueChanged: a controlled
+            // parent re-renders synchronously inside InvokeAsync, so OnParametersSet
+            // must already see this value as "the value we just pushed" to
+            // distinguish an accepted echo (keep in-flight state) from a veto
+            // (parent kept its old value → roll back).
+            _lastValuePushed = dt;
             await ValueChanged.InvokeAsync(dt);
 
             if (OffsetValueChanged.HasDelegate)
             {
                 var offset = ToOffset(dt);
-                _prevOffsetValue = offset;
+                _lastOffsetValuePushed = offset;
                 await OffsetValueChanged.InvokeAsync(offset);
             }
         }
@@ -754,13 +792,13 @@
     private async Task HandleClear()
     {
         Value = null;
-        _prevValue = null;
+        _lastValuePushed = null;
         _dateValue = null;
         _timeValue = null;
         await ValueChanged.InvokeAsync(null);
         if (OffsetValueChanged.HasDelegate)
         {
-            _prevOffsetValue = null;
+            _lastOffsetValuePushed = null;
             await OffsetValueChanged.InvokeAsync(null);
         }
     }

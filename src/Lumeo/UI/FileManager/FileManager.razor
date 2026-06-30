@@ -237,19 +237,29 @@
     // folder loads concurrently in the tree pane.
     private bool _loadingFolder => _pathStack.Count > 0 && _loadingNodeIds.Contains(_pathStack[^1].Id);
 
-    // ── Uncontrolled view-mode / selection backing state ──────────────────────
-    // ViewMode and SelectedNode can be used uncontrolled (no *Changed delegate).
-    // Storing the live value in the [Parameter] alone would let any unrelated
-    // parent re-render re-push the parameter's default and wipe the user's
-    // choice. So we keep a private backing field as the source of truth and only
-    // adopt the parameter when it ACTUALLY changes (tracked by a separate param
-    // snapshot, mirroring the _lastRoot pattern above).
+    // ── View-mode / selection backing state (controlled + uncontrolled) ───────
+    // ViewMode and SelectedNode can be used controlled (ViewModeChanged /
+    // SelectedNodeChanged bound) or uncontrolled. Storing the live value in the
+    // [Parameter] alone would let any unrelated parent re-render re-push the
+    // parameter's default and wipe the user's choice. So we keep a private
+    // backing field as the source of truth and only adopt the parameter when it
+    // ACTUALLY changes (tracked by a separate param snapshot, mirroring the
+    // _lastRoot pattern above).
     private FileManagerViewMode _viewMode = FileManagerViewMode.List;
     private FileManagerViewMode _lastViewModeParam = FileManagerViewMode.List;
     private bool _viewModeParamInit;
+    // CONTROLLED discriminator: the last value WE pushed up via ViewModeChanged
+    // (also re-synced whenever we adopt an authoritative ViewMode). A controlled
+    // parent re-render that echoes back this exact value is safe to ignore (keep
+    // in-flight state); any other value is an authoritative assertion
+    // (normalization / veto / reset) and must win. Mirrors Switch.razor's
+    // _lastPushed pattern.
+    private FileManagerViewMode _lastPushedViewMode = FileManagerViewMode.List;
     private FileSystemNode? _selectedNode;
     private FileSystemNode? _lastSelectedParam;
     private bool _selectedParamInit;
+    // CONTROLLED discriminator for SelectedNode, mirroring _lastPushedViewMode above.
+    private FileSystemNode? _lastPushedSelectedNode;
     // Which nodes currently have their children expanded in the tree pane
     private readonly HashSet<string> _expandedTreeNodes = [];
     // Inline-rename state
@@ -307,19 +317,62 @@
         // Adopt ViewMode / SelectedNode from the parameter only when the consumer
         // actually changed the supplied value (or on first set), so an unrelated
         // parent re-render that re-pushes the same/default parameter does NOT
-        // clobber an uncontrolled choice the user made via the toolbar / a click.
-        if (!_viewModeParamInit || ViewMode != _lastViewModeParam)
+        // clobber a choice the user made via the toolbar / a click. CONTROLLED
+        // consumers (the *Changed delegate is bound) are reconciled against
+        // _lastPushed* — the last value WE pushed via the callback — so a parent
+        // VETO (re-render with the value unchanged from before the interaction)
+        // is correctly detected and rolled back, even though it looks identical
+        // to "no external change" from the last-incoming-param's point of view.
+        if (!_viewModeParamInit)
         {
             _viewMode = ViewMode;
-            _lastViewModeParam = ViewMode;
+            _lastPushedViewMode = ViewMode;
             _viewModeParamInit = true;
         }
-        if (!_selectedParamInit || !ReferenceEquals(SelectedNode, _lastSelectedParam))
+        else if (ViewModeChanged.HasDelegate)
+        {
+            // CONTROLLED: the parent owns the value. Echo of our own push
+            // (ViewMode == _lastPushedViewMode) → keep in-flight backing state.
+            // Anything else (veto, normalization, reset) → adopt the parent's
+            // assertion.
+            if (ViewMode != _lastPushedViewMode)
+            {
+                _viewMode = ViewMode;
+                _lastPushedViewMode = ViewMode;
+            }
+        }
+        else if (ViewMode != _lastViewModeParam)
+        {
+            // UNCONTROLLED: component owns the live value. Adopt the parameter
+            // only when the parent genuinely changes it; a stale re-render that
+            // re-supplies the same literal must not clobber the user's choice.
+            _viewMode = ViewMode;
+            _lastPushedViewMode = ViewMode;
+        }
+        _lastViewModeParam = ViewMode;
+
+        if (!_selectedParamInit)
         {
             _selectedNode = SelectedNode;
-            _lastSelectedParam = SelectedNode;
+            _lastPushedSelectedNode = SelectedNode;
             _selectedParamInit = true;
         }
+        else if (SelectedNodeChanged.HasDelegate)
+        {
+            // CONTROLLED: mirrors the ViewMode discriminator above.
+            if (!ReferenceEquals(SelectedNode, _lastPushedSelectedNode))
+            {
+                _selectedNode = SelectedNode;
+                _lastPushedSelectedNode = SelectedNode;
+            }
+        }
+        else if (!ReferenceEquals(SelectedNode, _lastSelectedParam))
+        {
+            // UNCONTROLLED: adopt only on a genuine external change.
+            _selectedNode = SelectedNode;
+            _lastPushedSelectedNode = SelectedNode;
+        }
+        _lastSelectedParam = SelectedNode;
 
         // Detect a Root replacement. If the consumer swaps in a fresh tree, any
         // nodes cached in _pathStack point at the OLD tree and must be discarded
@@ -345,6 +398,7 @@
                 && !ContainsNodeId(Root, _selectedNode.Id))
             {
                 _selectedNode = null;
+                _lastPushedSelectedNode = null;
                 await SelectedNodeChanged.InvokeAsync(null);
             }
         }
@@ -516,10 +570,14 @@
         // [Parameter] — so an uncontrolled choice survives unrelated parent
         // re-renders that re-push the default. Do NOT touch _lastViewModeParam:
         // it must keep tracking what the PARENT last supplied, so a later
-        // same-default re-push is still recognised as "no external change". A
-        // controlled consumer reconciles via OnParametersSetAsync when its bound
-        // value comes back through ViewModeChanged below.
+        // same-default re-push is still recognised as "no external change".
+        // Record _lastPushedViewMode BEFORE invoking ViewModeChanged: a
+        // controlled parent re-renders synchronously inside InvokeAsync, so
+        // OnParametersSetAsync must already see this value as "the value we just
+        // pushed" to distinguish an accepted echo (keep in-flight state) from a
+        // veto (parent kept its old value → roll back).
         _viewMode = mode;
+        _lastPushedViewMode = mode;
         await ViewModeChanged.InvokeAsync(mode);
     }
 
@@ -542,10 +600,14 @@
         // uncontrolled selection survives unrelated parent re-renders that
         // re-push the default (null). _lastSelectedParam keeps tracking the
         // PARENT's last-supplied value so a later same-value re-push isn't
-        // mistaken for a genuine external change. A controlled consumer
-        // reconciles via OnParametersSetAsync when its bound value flows back
-        // through SelectedNodeChanged below.
+        // mistaken for a genuine external change.
+        // Record _lastPushedSelectedNode BEFORE invoking SelectedNodeChanged: a
+        // controlled parent re-renders synchronously inside InvokeAsync, so
+        // OnParametersSetAsync must already see this value as "the value we just
+        // pushed" to distinguish an accepted echo (keep in-flight state) from a
+        // veto (parent kept its old value → roll back).
         _selectedNode = node;
+        _lastPushedSelectedNode = node;
         await SelectedNodeChanged.InvokeAsync(node);
     }
 
@@ -817,6 +879,7 @@
     {
         if (_selectedNode is null || _selectedNode.Id != deleted.Id) return;
         _selectedNode = null;
+        _lastPushedSelectedNode = null;
         await SelectedNodeChanged.InvokeAsync(null);
     }
 

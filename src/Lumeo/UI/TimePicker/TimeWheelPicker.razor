@@ -99,17 +99,30 @@
     // External-change resync — see DateWheelPicker for the rationale: columns
     // are scroll-positioned only programmatically, so a Value change from
     // outside must re-scroll them or the next user scroll commits from stale
-    // offsets. RaiseChange pre-marks its own commits as synced.
+    // offsets. Tracks the last incoming Value seen; consulted by the
+    // null-Value path of OnParametersSet's resync gate below (both controlled-
+    // but-unsupplied and uncontrolled use — see _ownLastEmitted).
     private TimeSpan? _lastSyncedValue;
-    // Battle-wave2 #68 (state-on-data-change): the last value RaiseChange emitted,
-    // tracked separately from _lastSyncedValue. When the picker is used UNCONTROLLED
-    // (ValueChanged not bound back), the parent re-renders with Value still null
-    // after a self-commit. Without this, OnParametersSet saw `null != _lastSyncedValue`
-    // (which RaiseChange had set to the committed time), treated it as an external
-    // clear, and reseeded the columns back to 00:00 — wiping the user's selection.
-    // We remember our own last emission so a "Value came back unchanged-as-null"
-    // re-render is NOT mistaken for an external resync, and so the seed falls back
-    // to the committed selection rather than TimeSpan.Zero.
+    // CONTROLLED discriminator (controlled-component rollback fix): the last
+    // value RaiseChange pushed UP via ValueChanged — also re-synced whenever
+    // OnParametersSet adopts an authoritative non-null Value. A controlled
+    // parent re-render that echoes back this exact value is an accepted commit
+    // (we're already positioned there from the user's own scroll, no resync
+    // needed); any OTHER non-null Value — including the parent VETOING by
+    // re-rendering with its prior value unchanged — is an authoritative
+    // assertion and must win, re-scrolling the columns back to it.
+    // Battle-wave2 #68 (state-on-data-change): also doubles as the seed
+    // fallback for controlled-but-unsupplied use, where a delegate is attached
+    // purely to observe commits without writing Value back, so it stays null.
+    // Without this, OnParametersSet saw `null != _lastSyncedValue` (which
+    // RaiseChange had set to the committed time), treated it as an external
+    // clear, and reseeded the columns back to 00:00 — wiping the user's
+    // selection. We remember our own last emission so a "Value came back
+    // unchanged-as-null" re-render is NOT mistaken for an external resync, and
+    // so the seed falls back to the committed selection rather than
+    // TimeSpan.Zero. (A null Value carries no authoritative assertion of its
+    // own, so while it stays null we fall back to the same "differs from last
+    // incoming" check as fully uncontrolled use.)
     private TimeSpan? _ownLastEmitted;
     private bool _resyncPending;
 
@@ -134,13 +147,42 @@
         _minutes = new List<int>();
         for (var i = 0; i < 60; i += step) _minutes.Add(i);
 
-        // Only resync (re-scroll the columns) when Value is a genuine EXTERNAL
-        // change — i.e. it differs from BOTH the last value we synced AND the last
-        // value we ourselves emitted. In uncontrolled use the parent echoes Value
-        // back as null after our commit; that is not an external change, so we must
-        // not reseed the columns to zero. (#68)
-        if (Value != _lastSyncedValue && Value != _ownLastEmitted)
+        if (ValueChanged.HasDelegate)
         {
+            // CONTROLLED: the parent owns Value. A non-null Value is always an
+            // authoritative assertion — echo of our own push (Value ==
+            // _ownLastEmitted) needs no re-scroll; anything else, INCLUDING the
+            // parent VETOING a commit by re-rendering with its prior value
+            // unchanged, is authoritative and must win. (Requiring it to ALSO
+            // differ from the last INCOMING Value — the pre-fix check — is what
+            // let a veto slip through: the pre- and post-veto Value are the
+            // same literal, so that comparison never re-fired even though this
+            // one does.) A null Value carries no assertion of its own — some
+            // controlled consumers attach ValueChanged purely to observe
+            // commits without writing back (#68) — so while Value stays null
+            // we fall back to the same "differs from last incoming" check as
+            // uncontrolled use.
+            if (Value.HasValue)
+            {
+                if (Value != _ownLastEmitted)
+                {
+                    _lastSyncedValue = Value;
+                    _ownLastEmitted = Value;
+                    _resyncPending = true;
+                }
+            }
+            else if (Value != _lastSyncedValue)
+            {
+                _lastSyncedValue = Value;
+                _resyncPending = true;
+            }
+        }
+        else if (Value != _lastSyncedValue && Value != _ownLastEmitted)
+        {
+            // UNCONTROLLED: component owns the live selection (#68) — adopt the
+            // parameter only when the parent genuinely changes it; a parent
+            // re-render that echoes Value back as null after our own commit
+            // must not reseed the columns to zero.
             _lastSyncedValue = Value;
             _resyncPending = true;
         }

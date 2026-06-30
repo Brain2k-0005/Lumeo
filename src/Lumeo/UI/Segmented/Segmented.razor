@@ -9,7 +9,7 @@
            Options parameter. Original API; kept verbatim. *@
         @foreach (var option in Options)
         {
-            var isActive = option.Value == Value;
+            var isActive = option.Value == _value;
             <button type="button"
                     id="@OptionId(option.Value)"
                     role="radio"
@@ -61,6 +61,23 @@
     private SegmentedContext _context = default!;
     private readonly string _id = LumeoIds.New("segmented");
 
+    // Live selected value. Decoupled from the [Parameter] Value — mutated
+    // OPTIMISTICALLY by SelectOption — so the framework's parameter-binding
+    // never silently snaps it back, and OnParametersSet below decides exactly
+    // when to (re)adopt it.
+    private string? _value;
+    // Last-seen bound parameter — lets the UNCONTROLLED branch distinguish "the
+    // parent genuinely changed Value" from "a plain re-render re-supplied the
+    // same literal" (which must not clobber the user's selection).
+    private string? _lastValueParam;
+    // CONTROLLED discriminator: the last value we pushed UP via ValueChanged
+    // (also re-synced whenever we adopt an authoritative Value). A controlled
+    // parent re-render that echoes back this exact value is safe to ignore (keep
+    // in-flight state); any other value is an authoritative assertion
+    // (normalization / veto / reset) and must win — that's what rolls a rejected
+    // selection back to the bound value.
+    private string? _lastPushed;
+
     // Ordered item registry — one entry per segment in DOM/declaration order.
     // In Options mode it is rebuilt from Options every parameter set; in compound
     // mode SegmentedItem children register/replace/unregister themselves keyed by
@@ -107,6 +124,28 @@
 
     protected override void OnParametersSet()
     {
+        if (ValueChanged.HasDelegate)
+        {
+            // CONTROLLED: the parent owns Value.
+            // Echo of our own push (Value == _lastPushed) → keep in-flight backing state.
+            // Anything else (veto, normalization, reset) → adopt the parent's assertion.
+            if (Value != _lastPushed)
+            {
+                _value = Value;
+                _lastPushed = Value;
+            }
+        }
+        else if (Value != _lastValueParam)
+        {
+            // UNCONTROLLED: component owns the live value.
+            // Adopt the parameter only when the parent genuinely changes it; a stale
+            // re-render that re-supplies the same literal must not clobber the user's selection.
+            _value = Value;
+            _lastPushed = Value;
+        }
+        // Keep the uncontrolled discriminator pointing at the last Value we observed.
+        _lastValueParam = Value;
+
         if (Options is not null)
         {
             // Rebuild the ordered registry from the declarative Options each
@@ -125,7 +164,7 @@
         }
 
         _context = new SegmentedContext(
-            Value,
+            _value,
             EventCallback.Factory.Create<string>(this, SelectOption),
             GetItemClasses,
             GetTabIndex,
@@ -206,7 +245,14 @@
 
     private async Task SelectOption(string value)
     {
-        Value = value;
+        // Mutate the working backing field only — NEVER the [Parameter] Value.
+        // Record _lastPushed BEFORE invoking ValueChanged: a controlled parent
+        // re-renders synchronously inside InvokeAsync, so OnParametersSet must
+        // already see this value as "the value we just pushed" to distinguish an
+        // accepted echo (keep in-flight state) from a veto (parent kept its old
+        // value → roll back).
+        _value = value;
+        _lastPushed = value;
         await ValueChanged.InvokeAsync(value);
     }
 
@@ -220,9 +266,9 @@
         // A selected Value that is missing or itself disabled can't hold the tab
         // stop — fall back to the first enabled segment so the radiogroup always
         // has exactly one entry point.
-        var selectedIsEnabled = !string.IsNullOrEmpty(Value)
-            && _items.Any(i => i.Value == Value) && !IsItemDisabledIn(_items, Value);
-        if (selectedIsEnabled && Value == value) return "0";
+        var selectedIsEnabled = !string.IsNullOrEmpty(_value)
+            && _items.Any(i => i.Value == _value) && !IsItemDisabledIn(_items, _value);
+        if (selectedIsEnabled && _value == value) return "0";
         if (!selectedIsEnabled
             && FirstEnabledValue(_items) == value) return "0";
         return "-1";
@@ -276,8 +322,8 @@
         // to the first enabled segment (which holds the lone tab stop). Resolve its
         // position by INDEX into the ordered list so navigation follows live DOM
         // order even after an in-place Value re-key or a keyed reorder.
-        var currentIdx = !string.IsNullOrEmpty(Value) && items.Any(i => i.Value == Value) && !IsItemDisabledIn(items, Value)
-            ? items.FindIndex(i => i.Value == Value)
+        var currentIdx = !string.IsNullOrEmpty(_value) && items.Any(i => i.Value == _value) && !IsItemDisabledIn(items, _value)
+            ? items.FindIndex(i => i.Value == _value)
             : items.FindIndex(i => !i.Disabled);
         if (currentIdx < 0) return;
 

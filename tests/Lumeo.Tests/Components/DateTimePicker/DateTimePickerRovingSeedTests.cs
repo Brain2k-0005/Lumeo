@@ -83,18 +83,27 @@ public class DateTimePickerRovingSeedTests : IAsyncLifetime
         // MinDate 09:00 on the selected day disables hours 00-08. With no time
         // selected the seeded tab stop must land on the first ENABLED hour (09),
         // not the disabled 00.
+        //
+        // The min day is the 10th of the CURRENT month (not a hardcoded calendar
+        // month/year) — with no Value, the popover's Calendar opens on DateTime.Today's
+        // month (Calendar.OnInitialized: DisplayDate falls back to DateTime.Today when
+        // no anchor is supplied), so "click the cell labelled 10" must target a day in
+        // THAT same month or it silently clicks the wrong day. A fixed past date (e.g.
+        // a hardcoded June) breaks the moment "today" rolls into a later month.
+        var minDate = new DateTime(DateTime.Today.Year, DateTime.Today.Month, 10, 9, 0, 0);
         var cut = RenderOpen(extra: p =>
         {
-            p.Add(c => c.MinDate, new DateTime(2026, 6, 10, 9, 0, 0));
+            p.Add(c => c.MinDate, minDate);
             // A date (but no usable time match) so MinTimeForSelectedDate bites.
             // _dateValue is seeded from Value's date; pick a Value on the min day
             // whose time is null-equivalent by clearing it afterwards is awkward,
             // so instead drive the date through the calendar below.
         });
 
-        // Pick the min day (10) in the calendar so the hour bounds apply, but the
-        // time itself is still effectively unselected for the seed (00:00 default
-        // is disabled, so no enabled option equals the live time -> seed kicks in).
+        // Pick the min day (10, in the currently-displayed month) in the calendar so
+        // the hour bounds apply, but the time itself is still effectively unselected
+        // for the seed (00:00 default is disabled, so no enabled option equals the
+        // live time -> seed kicks in).
         cut.FindAll("button")
             .First(b => b.TextContent.Trim() == "10" && (b.GetAttribute("class") ?? "").Contains("h-8 w-8"))
             .Click();
