@@ -93,18 +93,20 @@ public sealed class CliStandaloneE2ETests : IDisposable
     }
 
     [Fact]
-    public void Init_Standalone_Marks_Config_And_Scaffolds_Using()
+    public void Init_Standalone_Marks_Config_And_Defers_Imports()
     {
         Assert.True(File.Exists(_lumeoDll), "Built CLI (lumeo.dll) not found — build the solution first.");
         var init = RunCli("init", "--yes", "--standalone", "--namespace", "Acme.Ui", "--path", "Components/Ui", "--no-assets");
         Assert.True(init.Exit == 0, $"init failed (exit {init.Exit}). {init.Stderr}{init.Stdout}");
 
         Assert.Contains("\"standalone\": true", File.ReadAllText(Path.Combine(_proj, "lumeo.json")));
-        // The standalone @using Lumeo bridge goes in the PROJECT-ROOT _Imports.razor (not under
-        // componentsPath) so it cascades to app pages too — Razor imports only flow downward.
-        var imports = Path.Combine(_proj, "_Imports.razor");
-        Assert.True(File.Exists(imports), "standalone init did not scaffold the project-root _Imports.razor");
-        Assert.Contains("@using Lumeo", File.ReadAllText(imports));
+        // The standalone @using Lumeo bridge is DEFERRED until `add`/`eject` vendors the runtime: those
+        // namespaces (Lumeo, Lumeo.Internal, Lumeo.Services, …) don't exist on disk until then, so writing
+        // them into _Imports.razor at init would make a bare `init --standalone` project fail Razor
+        // compilation before any component is added (Codex P2). init must NOT create _Imports.razor — the
+        // first `add` writes it (asserted in Standalone_Add_Vendors_Runtime_Keeping_Lumeo_Namespace).
+        Assert.False(File.Exists(Path.Combine(_proj, "_Imports.razor")),
+            "init --standalone must NOT scaffold _Imports.razor before the runtime is vendored");
     }
 
     [Fact]
@@ -123,6 +125,13 @@ public sealed class CliStandaloneE2ETests : IDisposable
             "AddLumeo extension not vendored");
         Assert.True(File.Exists(Path.Combine(_proj, "Components", "Ui", "_LumeoRuntime", "Size.cs")),
             "root-level Size enum not vendored");
+
+        // The standalone @using Lumeo bridge is written by `add` (deferred from init), once the runtime it
+        // references actually exists on disk. It goes in the PROJECT-ROOT _Imports.razor so it cascades to
+        // app pages too — Razor imports only flow downward.
+        var imports = Path.Combine(_proj, "_Imports.razor");
+        Assert.True(File.Exists(imports), $"standalone `add` did not write the deferred project-root _Imports.razor\n{add.Stdout}");
+        Assert.Contains("@using Lumeo", File.ReadAllText(imports));
     }
 
     [Fact]
