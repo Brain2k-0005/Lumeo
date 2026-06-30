@@ -1071,18 +1071,24 @@ internal static class Commands
             var itemIsSatellite = !string.Equals(itemPackage, "Lumeo", StringComparison.OrdinalIgnoreCase);
             if (itemIsSatellite && !forceVendor)
             {
-                // The satellite was routed to NuGet (above) instead of vendored — so skip copying its source.
-                // BUT EnsureNuGetPackageAsync reports success for "no project found" / user-declined too, so
-                // the package may NOT actually be referenced; silently skipping then would add 0 files with no
-                // PackageReference yet still print OK (Codex P2). Only skip quietly when the package is truly
-                // present; otherwise surface a clear error + non-zero exit instead of a silent no-op.
+                // Preview modes (dry-run / diff / view without --yes) neither install nor write, so keep them
+                // as NON-mutating previews: skip the source copy WITHOUT the presence check below, which would
+                // otherwise turn `add chart --dry-run` into an error instead of a planned-install preview
+                // (Codex P2). EnsureNuGetPackageAsync already printed the dry-run/preview install line above.
+                if (!writeAllowed) continue;
+                // Real write: the satellite was routed to NuGet rather than vendored — so skip copying its
+                // source. BUT EnsureNuGetPackageAsync reports success for "no project found" / user-declined
+                // too, so the package may NOT actually be referenced; silently skipping then writes 0 files yet
+                // the command would still print OK. ABORT with a clear error (not just ExitCode + continue,
+                // which falls through to the success summary) so a missing required package is never a silent
+                // or misleading no-op (Codex P2).
                 if (FindCsprojReferencingPackage(Environment.CurrentDirectory, itemPackage) is not null)
                     continue;
                 Console.Error.WriteLine(Ansi.Red(
                     $"  {item.Name} needs the {itemPackage} package, which is not installed — nothing was written. " +
                     $"Add the package, or vendor the source with 'lumeo add {ToKebab(item.Name)} --vendor'."));
                 Environment.ExitCode = 1;
-                continue;
+                return;
             }
 
             var folder = Path.Combine(outRoot, item.Name);
