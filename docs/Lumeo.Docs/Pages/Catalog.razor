@@ -5,6 +5,7 @@
 @inject RegistryService Registry
 @inject Lumeo.Services.OverlayService Overlays
 @inject NavigationManager Nav
+@implements IDisposable
 
 <PageTitle>Components — Lumeo</PageTitle>
 
@@ -135,6 +136,30 @@ else
             if (match is not null)
                 _filters = new HashSet<string>(new[] { match }, StringComparer.OrdinalIgnoreCase);
         }
+
+        // Re-sync the category filter on every query-string-only navigation
+        // (Blazor reuses this component instance, so OnInitializedAsync won't re-run).
+        Nav.LocationChanged += OnLocationChanged;
+    }
+
+    private void OnLocationChanged(object? sender, LocationChangedEventArgs e)
+    {
+        // _categoryNames is populated before we subscribe, so it's safe to use here.
+        var wanted = GetQueryValue(e.Location, "category");
+        if (wanted is null) return;
+
+        var match = _categoryNames.FirstOrDefault(c => string.Equals(c, wanted, StringComparison.OrdinalIgnoreCase));
+        if (match is null) return;
+
+        _filters = new HashSet<string>(new[] { match }, StringComparer.OrdinalIgnoreCase);
+        // LocationChanged fires on a background thread in Blazor Server; use InvokeAsync
+        // to marshal StateHasChanged back to the component's synchronization context.
+        InvokeAsync(StateHasChanged);
+    }
+
+    public void Dispose()
+    {
+        Nav.LocationChanged -= OnLocationChanged;
     }
 
     private static string? GetQueryValue(string uri, string key)
