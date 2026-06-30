@@ -3,7 +3,7 @@
 @implements IDisposable
 
 @{
-    var context = new FormFieldContext(Name, EffectiveError, IsValidating, _controlId, DescribedBy, AutoRenderMessage, _errorId, SetLabelSuppressed);
+    var context = new FormFieldContext(Name, EffectiveError, IsValidating, _controlId, DescribedBy, AutoRenderMessage, _errorId);
 }
 
 <CascadingValue Value="context" IsFixed="false">
@@ -12,7 +12,7 @@
         {
             @if (Label is not null)
             {
-                <Label For="@LabelFor">
+                <Label For="@_controlId">
                     <span class="inline-flex items-center gap-1.5">
                         @Label
                         @if (Required)
@@ -41,7 +41,7 @@
             <div class="grid grid-cols-[auto_1fr] items-center gap-x-4 gap-y-1">
                 @if (Label is not null)
                 {
-                    <Label For="@LabelFor" Class="@(Cx.Join("text-end", LabelWidth is not null ? $"w-[{LabelWidth}]" : null))">
+                    <Label For="@_controlId" Class="@(Cx.Join("text-end", LabelWidth is not null ? $"w-[{LabelWidth}]" : null))">
                         <span class="inline-flex items-center justify-end gap-1.5">
                             @Label
                             @if (Required)
@@ -127,18 +127,6 @@
     private readonly string _controlId = LumeoIds.New("form-field");
     private readonly string _descriptionId = LumeoIds.New("form-field-desc");
     private readonly string _errorId = LumeoIds.New("form-field-error");
-
-    // Whether to DROP the label's `for`. Set by a child variant that renders no element bearing
-    // _controlId (TimePicker Wheel, DatePicker Inline) so the label doesn't dangle a `for` at a
-    // missing id. The label's effective For below resolves to null when this is true.
-    private bool _suppressLabelFor;
-    private void SetLabelSuppressed(bool suppress)
-    {
-        if (_suppressLabelFor == suppress) return;
-        _suppressLabelFor = suppress;
-        StateHasChanged();   // re-render the label with/without `for`; idempotent guard prevents a loop
-    }
-    private string? LabelFor => _suppressLabelFor ? null : _controlId;
 
     // Point aria-describedby at whichever message is actually rendered: the error
     // when present (it replaces the help text), else the help text, else nothing.
@@ -375,12 +363,7 @@
     ///   parity). Empty when the field generated none.</param>
     /// <param name="DescribedBy">Id of the currently-rendered help OR error text, for
     ///   the control's <c>aria-describedby</c>; null when neither is shown.</param>
-    /// <param name="SetLabelSuppressed">A child control calls this to tell the FormField whether to DROP
-    ///   the label's <c>for</c>. Picker variants that render no element bearing the cascaded
-    ///   <see cref="ControlId"/> (TimePicker <c>Wheel</c> → TimeWheelPicker, DatePicker <c>Inline</c> →
-    ///   Calendar) pass <c>true</c> so the label doesn't point its <c>for</c> at an id that never renders
-    ///   (Base UI Field a11y — a dangling for is worse than none). Conforming controls do nothing.</param>
-    public record FormFieldContext(string? Name, string? Error, bool IsValidating, string ControlId = "", string? DescribedBy = null, bool AutoRenderMessage = true, string? ErrorId = null, Action<bool>? SetLabelSuppressed = null)
+    public record FormFieldContext(string? Name, string? Error, bool IsValidating, string ControlId = "", string? DescribedBy = null, bool AutoRenderMessage = true, string? ErrorId = null)
     {
         public bool HasError => !string.IsNullOrEmpty(Error);
     }
