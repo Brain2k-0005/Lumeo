@@ -418,7 +418,13 @@ public sealed class TrackingInteropService : IComponentInteropService
             throw new ObjectDisposedException(nameof(TrackingInteropService));
         return ValueTask.CompletedTask;
     }
-    public ValueTask RegisterPreventDefaultKeys(string elementId, IReadOnlyList<PreventDefaultKeyRule> rules) => ValueTask.CompletedTask;
+    private readonly List<string> _registerPreventDefaultKeysElementIds = new();
+    public IReadOnlyList<string> RegisterPreventDefaultKeysElementIds => _registerPreventDefaultKeysElementIds;
+    public ValueTask RegisterPreventDefaultKeys(string elementId, IReadOnlyList<PreventDefaultKeyRule> rules)
+    {
+        _registerPreventDefaultKeysElementIds.Add(elementId);
+        return ValueTask.CompletedTask;
+    }
     public ValueTask UnregisterPreventDefaultKeys(string elementId) => ValueTask.CompletedTask;
     public ValueTask ScrollSelectorIntoView(string selector) => ValueTask.CompletedTask;
 

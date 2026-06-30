@@ -49,10 +49,18 @@ jobs:
         run: |
           set -o pipefail
           dotnet run --project tools/Lumeo.RegistryGen -c Release --no-build
-          PATHS="src/Lumeo/registry tools/lumeo-mcp/src/components-api.json tools/lumeo-mcp/src/registry.json docs/Lumeo.Docs/wwwroot/registry"
+          # docs/Lumeo.Docs/wwwroot/registry.json (the top-level docs app artifact, distinct from
+          # the per-component wwwroot/registry/*.json files RegistryGen writes directly above) is
+          # normally refreshed by an MSBuild <Copy> target in Lumeo.Docs.csproj — but that project
+          # is NOT part of Lumeo.slnx (only Lumeo.Docs.Tests.csproj is), so it never runs here and
+          # the committed copy can silently drift from the freshly-regenerated source registry
+          # (caught after several rounds of drift — Codex P2). Mirror the Copy target's effect
+          # directly so the freshness check below actually covers it.
+          cp src/Lumeo/registry/registry.json docs/Lumeo.Docs/wwwroot/registry.json
+          PATHS="src/Lumeo/registry tools/lumeo-mcp/src/components-api.json tools/lumeo-mcp/src/registry.json docs/Lumeo.Docs/wwwroot/registry docs/Lumeo.Docs/wwwroot/registry.json"
           DRIFT=$(git diff -U0 -- $PATHS | grep -E '^[+-]' | grep -vE '^[+-]{3}' | grep -v '"generated"' || true)
           if [ -n "$DRIFT" ]; then
-            echo "::error::Registry is stale. Run 'dotnet run --project tools/Lumeo.RegistryGen' and commit the result."
+            echo "::error::Registry is stale. Run 'dotnet run --project tools/Lumeo.RegistryGen', sync docs/Lumeo.Docs/wwwroot/registry.json from src/Lumeo/registry/registry.json, and commit the result."
             git --no-pager diff -- $PATHS
             exit 1
           fi
