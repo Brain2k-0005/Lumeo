@@ -496,6 +496,17 @@ internal static class Commands
                 return false;   // standalone can't run without these — don't report a successful vendor
             }
         }
+
+        // The standalone _Imports.razor adds `@using Blazicons` UNCONDITIONALLY, and the component library
+        // renders icons via <Blazicon Svg="Lucide.…"> — but Blazicons.Lucide is a RUNTIME-WIDE dependency,
+        // not declared by every component's packageDependencies. A first standalone `add` of an icon-free
+        // component (separator, center, text) would otherwise leave Blazicons uninstalled, so `@using Blazicons`
+        // (and any later icon-using component) fails Razor compilation (Codex P2). Ensure it here whenever the
+        // runtime is vendored — before the imports are written. Idempotent (skips if already referenced);
+        // Blazicons.Lucide pulls in the base Blazicons package transitively, so the using resolves.
+        await EnsureNuGetPackageAsync("Blazicons.Lucide",
+            "The vendored Lumeo runtime + standalone imports use the Blazicons.Lucide package for icons.", opts);
+
         return true;
     }
 
