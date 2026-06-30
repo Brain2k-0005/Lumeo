@@ -251,6 +251,7 @@ public class TourScrollIntoViewTests : IAsyncLifetime
         public ValueTask RichTextSetDisabledAsync(string id, bool disabled) => _inner.RichTextSetDisabledAsync(id, disabled);
         public ValueTask RichTextDestroyAsync(string id) => _inner.RichTextDestroyAsync(id);
         public ValueTask<string?> RichTextPromptLinkAsync(string? initial) => _inner.RichTextPromptLinkAsync(initial);
+        public ValueTask RichTextSetAriaAttributesAsync(string id, bool ariaInvalid, string? ariaDescribedBy) => _inner.RichTextSetAriaAttributesAsync(id, ariaInvalid, ariaDescribedBy);
         public ValueTask SignaturePadInit<T>(string elementId, object options, DotNetObjectReference<T> dotNetRef) where T : class => _inner.SignaturePadInit(elementId, options, dotNetRef);
         public ValueTask SignaturePadClear(string elementId) => _inner.SignaturePadClear(elementId);
         public ValueTask<string?> SignaturePadDataUrl(string elementId, string mimeType) => _inner.SignaturePadDataUrl(elementId, mimeType);

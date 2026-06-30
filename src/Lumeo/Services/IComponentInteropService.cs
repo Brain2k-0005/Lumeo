@@ -485,6 +485,9 @@ public interface IComponentInteropService : IAsyncDisposable, IDisposable
     ValueTask RichTextSetDisabledAsync(string id, bool disabled);
     ValueTask RichTextDestroyAsync(string id);
     ValueTask<string?> RichTextPromptLinkAsync(string? initial);
+    // Additive — default no-op so existing IComponentInteropService implementations / test fakes don't
+    // need to change. ComponentInteropService overrides it with the real setAttribute interop.
+    ValueTask RichTextSetAriaAttributesAsync(string id, bool ariaInvalid, string? ariaDescribedBy) => ValueTask.CompletedTask;
 
     // SignaturePad — canvas-based handwritten signature capture (3.1.0).
     // Ships its own tiny JS module (signature-pad.js) loaded lazily on first

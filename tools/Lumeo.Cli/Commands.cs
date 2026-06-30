@@ -444,15 +444,19 @@ internal static class Commands
             return false;
         }
         var runtimeRoot = Path.Combine(Environment.CurrentDirectory, cfg.ComponentsPath, RuntimeFolder);
-        // Self-healing & idempotent: (re)copy every runtime file that is MISSING, rather than trusting one
-        // sentinel as proof the whole closure is present. An earlier interrupted vendor could have written
-        // Internal/Cx.cs but not the rest; a coarse "Cx.cs exists → skip all" would then leave an incomplete
-        // runtime that mis-compiles / 404s while eject happily strips the package.
+        // On a registry-version UPGRADE, REFRESH the vendored runtime (+ its assets below) — otherwise an
+        // older standalone project keeps compiling/running against a stale Cx/services after the registry
+        // moves on. When the recorded runtime version matches, stay self-healing (only fill in MISSING files):
+        // (re)copy every missing file rather than trusting one sentinel as proof the whole closure is present.
+        var recordedRuntimeVersion = cfg.Components is not null
+            && cfg.Components.TryGetValue(RuntimeRecordKey, out var rtRec) ? rtRec.Version : null;
+        var refreshRuntime = recordedRuntimeVersion is not null
+            && !string.Equals(recordedRuntimeVersion, registry.Version, StringComparison.OrdinalIgnoreCase);
         var newlyWritten = 0;
         foreach (var rel in registry.Runtime.Files)
         {
             var dest = Path.Combine(runtimeRoot, rel.Replace('/', Path.DirectorySeparatorChar));
-            if (File.Exists(dest)) continue;
+            if (File.Exists(dest) && !refreshRuntime) continue;
             var content = await RegistryLoader.GetFileAsync(rel, opts.Local, cfg.Registry);  // sourcePackage defaults to "Lumeo"
             Directory.CreateDirectory(Path.GetDirectoryName(dest)!);
             await File.WriteAllTextAsync(dest, content, new UTF8Encoding(false));   // VERBATIM — no NamespaceRewriter
@@ -475,7 +479,7 @@ internal static class Commands
         {
             var assetDest = Path.Combine(Environment.CurrentDirectory, "wwwroot",
                 assetSrc.Replace('/', Path.DirectorySeparatorChar));   // assetSrc already begins "_content/Lumeo/…"
-            if (File.Exists(assetDest)) continue;
+            if (File.Exists(assetDest) && !refreshRuntime) continue;
             try
             {
                 var bytes = await RegistryLoader.GetAssetBytesAsync(assetSrc, opts.Local, cfg.Registry);
@@ -529,11 +533,12 @@ internal static class Commands
                 "Eject aborted — could not vendor the Lumeo runtime. The project is unchanged; update the CLI/registry and retry."));
             return;
         }
-        // Flip standalone in MEMORY so the re-vendor loop below vendors satellites as source — but DON'T
-        // persist it yet. If eject aborts mid-loop (a stale component, a failed asset), a persisted
-        // standalone:true would make a retry exit "already standalone" and never finish. Save only after
-        // all abortable work (runtime + every component re-vendor) succeeds, right before stripping.
+        // Persist standalone mode NOW, before the re-vendor loop: each Add() below reloads lumeo.json from
+        // disk, so it must already read standalone:true — otherwise it would NamespaceRewriter the re-vendored
+        // source out of the Lumeo namespace and break the build. If anything below aborts, we roll standalone
+        // back to false (see the abort paths) so a retry isn't stuck on "already standalone".
         cfg.Standalone = true;
+        ConfigIO.Save(cfg);
 
         // The re-vendored components keep the Lumeo namespace, so the project needs the same root-level
         // @using bridge that `init --standalone` writes — otherwise <Dialog>/<Button> stop resolving the
@@ -550,14 +555,17 @@ internal static class Commands
             await Add(opts with { Component = key });
             if (Environment.ExitCode != 0)
             {
+                cfg.Standalone = false;            // roll back so a retry isn't stuck on "already standalone"
+                ConfigIO.Save(cfg);
                 Console.Error.WriteLine(Ansi.Red(
-                    $"Eject aborted while re-vendoring '{key}' — the Lumeo package was NOT removed. Resolve the error above (e.g. a stale lumeo.json component) and retry."));
+                    $"Eject aborted while re-vendoring '{key}' — the Lumeo package was NOT removed (standalone rolled back). Resolve the error above (e.g. a stale lumeo.json component) and retry."));
                 return;
             }
         }
 
-        // All abortable work succeeded — NOW persist standalone mode, then strip the packages.
-        ConfigIO.Save(cfg);
+        // All abortable work succeeded — strip the packages. (standalone was already persisted above; the
+        // Add() calls have since re-saved lumeo.json with their component records, so don't re-Save our stale
+        // local cfg here or it would clobber those records.)
 
         // Strip only the Lumeo packages we actually vendored: core (always — the runtime is vendored) plus
         // the satellite package of every re-vendored component. A satellite used via the default NuGet flow
@@ -593,9 +601,10 @@ internal static class Commands
         var text = File.ReadAllText(csproj);
         var stripped = System.Text.RegularExpressions.Regex.Replace(
             text,
-            // `\s+[^>]*?\bInclude=` allows other attributes (Version=, Condition=, …) BEFORE Include, so
+            // `(?:[^>]*?\s)?Include=` allows other attributes (Version=, Condition=, …) BEFORE Include, so
             // `<PackageReference Version="4.0.0" Include="Lumeo" />` is matched too, not only Include-first.
-            @"[ \t]*<PackageReference\s+(?:[^>]*?\s)?Include=""(Lumeo(?:\.[A-Za-z0-9.]+)?)""[^>]*(?:/>|>[\s\S]*?</PackageReference>)[ \t]*\r?\n?",
+            // `[""']` accepts single- OR double-quoted attribute values (`Include='Lumeo'` is valid XML too).
+            @"[ \t]*<PackageReference\s+(?:[^>]*?\s)?Include=[""'](Lumeo(?:\.[A-Za-z0-9.]+)?)[""'][^>]*(?:/>|>[\s\S]*?</PackageReference>)[ \t]*\r?\n?",
             m =>
             {
                 var pkg = m.Groups[1].Value;
@@ -1291,6 +1300,16 @@ internal static class Commands
 
         var registry = await RegistryLoader.LoadAsync(local, cfg.Registry);
         var outRoot = Path.Combine(Environment.CurrentDirectory, cfg.ComponentsPath);
+
+        // Standalone projects vendor the Lumeo runtime (Cx, the services, …) as source. `update` is the
+        // canonical "pull upstream" command, so refresh that runtime too — EnsureRuntimeVendoredAsync
+        // re-copies it when the recorded runtime version differs from the registry's. Skip in check/dry-run.
+        if (cfg.Standalone && !check && !dryRun)
+        {
+            var rtOpts = new AddOptions(Component: null, Local: local, Yes: true, Force: force, SkipExisting: false,
+                Overwrite: false, DryRun: false, All: false, Diff: false, View: false, Vendor: true);
+            await EnsureRuntimeVendoredAsync(cfg, registry, rtOpts);
+        }
 
         List<string> targets;
         if (!string.IsNullOrEmpty(component))

@@ -838,7 +838,14 @@ foreach (var dir in componentDirs)
                     gotchas.Add(note);
             }
 
-            var matches = Regex.Matches(content, @"<([A-Z][A-Za-z0-9]*)\b");
+            // Strip comments first so a `<Tag>` that appears ONLY in a Razor comment (@* … *@), an HTML
+            // comment (<!-- … -->), or a C# block comment doesn't become a false dependency — e.g. a
+            // `<Label For>` inside a Checkbox comment was marking Checkbox as depending on `label`.
+            // NOTE: line comments (//) are deliberately NOT stripped here — markup attribute values
+            // routinely contain `//` (e.g. https:// URLs), and stripping to end-of-line would drop real
+            // `<Tag>` deps that follow on the same line (false negatives are worse than false positives).
+            var markupScan = Regex.Replace(content, @"@\*[\s\S]*?\*@|<!--[\s\S]*?-->|/\*[\s\S]*?\*/", " ");
+            var matches = Regex.Matches(markupScan, @"<([A-Z][A-Za-z0-9]*)\b");
             foreach (Match m in matches)
             {
                 var tag = m.Groups[1].Value;

@@ -207,16 +207,28 @@
     // store live edit state back into the [Parameter] Value, so an unrelated parent
     // re-render that re-supplies a stale Value cannot clobber in-progress typing.
     private string? _lastSetValue;
-    // The last value the PARENT actually supplied via the Value parameter. We push
-    // setContent only when THIS changes (the consumer drove Value), never when our
-    // own OnContentUpdate round-trips through _lastSetValue.
+    // UNCONTROLLED discriminator: the last Value the PARENT supplied. Used only when
+    // ValueChanged is NOT bound — we adopt the parameter only when it genuinely changes.
     private string? _lastParamValue;
+    // CONTROLLED discriminator: the last value WE pushed UP via ValueChanged (set before
+    // raising ValueChanged so the parent's synchronous re-render sees it immediately).
+    // When ValueChanged IS bound the parent owns Value, so in OnParametersSet we compare
+    // against _lastPushed: equal → echo of our own edit → keep editor state; unequal →
+    // parent asserted a different value (normalization, reset, or REJECTION that left the
+    // old Value in place) → authoritative re-sync, which is the controlled-rollback fix.
+    private string? _lastPushed;
     // Snapshot of the trigger char-set last handed to JS, so a Triggers change after
     // init can be detected and the editor re-initialized (suggestion extensions are
     // registered at construction time inside the JS module).
     private string _lastTriggerChars = string.Empty;
     private bool _lastDisabled;
     private bool _lastReadOnly;
+    // Last aria-invalid / aria-describedby values pushed to the editor's contenteditable
+    // via rte.setAriaAttributes. Tracked so we only call the interop when they change —
+    // validation state (EffectiveInvalid) and the describedby id both change post-mount
+    // when a Form submit fires, which the init-time snapshot misses (Fix 2).
+    private bool _lastAriaInvalid;
+    private string? _lastAriaDescribedBy;
     private Services.Interop.RichTextActiveState? _active;
     private bool _initialized;
     private string? _initError;
@@ -290,6 +302,7 @@
             _selfRef = DotNetObjectReference.Create(this);
             _lastSetValue = Value;
             _lastParamValue = Value;
+            _lastPushed = Value;
             _lastDisabled = Disabled;
             _lastReadOnly = ReadOnly;
 
@@ -395,6 +408,10 @@
             // Recovered: a successful (re-)init clears any prior error banner so the
             // component returns to its normal rendered state.
             _initError = null;
+            // Seed the aria snapshot with what we just passed to rte.init so the
+            // post-init change-detection in OnParametersSetAsync starts from truth.
+            _lastAriaInvalid = EffectiveInvalid;
+            _lastAriaDescribedBy = EditorDescribedBy;
             await RefreshActiveAsync();
         }
     }
@@ -441,22 +458,55 @@
             return;
         }
 
-        // Push setContent only when the PARENT actually changed Value — compared against
-        // the last value the parent supplied, NOT against the live document we emitted.
-        // This stops an unrelated re-render that re-supplies a stale Value (one-way
-        // binding) from clobbering in-progress typing.
-        if (!string.Equals(Value, _lastParamValue, StringComparison.Ordinal))
+        // Content sync — split on controlled vs. uncontrolled (same pattern as Input).
+        //
+        // CONTROLLED (ValueChanged bound): compare against _lastPushed (the last value WE
+        // emitted). If Value equals _lastPushed the parent is echoing our own edit — skip so
+        // we don't disturb the editor or cursor. If Value differs, the parent asserted a new
+        // value: a normalization, a programmatic reset, or — crucially — a REJECTION that
+        // kept the old Value in place (Value != html we pushed) → must re-sync TipTap to
+        // roll back the rejected edit. (Codex P2 controlled-rollback fix.)
+        //
+        // UNCONTROLLED (no ValueChanged): compare against _lastParamValue (the last Value
+        // the parent supplied). An unrelated re-render that re-supplies the same stale Value
+        // must not clobber in-progress typing; adopt only on genuine parent-driven changes.
+        if (ValueChanged.HasDelegate)
         {
-            _lastParamValue = Value;
+            if (!string.Equals(Value, _lastPushed, StringComparison.Ordinal))
+            {
+                _lastPushed = Value;
+                _lastSetValue = Value;
+                await Interop.RichTextSetContentAsync(_instanceId, Value);
+            }
+        }
+        else if (!string.Equals(Value, _lastParamValue, StringComparison.Ordinal))
+        {
             _lastSetValue = Value;
             await Interop.RichTextSetContentAsync(_instanceId, Value);
         }
+        // Always keep the uncontrolled discriminator current.
+        _lastParamValue = Value;
 
         if (Disabled != _lastDisabled || ReadOnly != _lastReadOnly)
         {
             _lastDisabled = Disabled;
             _lastReadOnly = ReadOnly;
             await Interop.RichTextSetDisabledAsync(_instanceId, Disabled || ReadOnly);
+        }
+
+        // Aria attributes post-mount sync (Codex P2 aria-after-mount fix):
+        // aria-invalid and aria-describedby are passed to TipTap at init but can change
+        // later (e.g. a Form submit adds a validation error). The wrapper div re-renders
+        // automatically, but TipTap's contenteditable keeps the init-time snapshot unless
+        // we push the update via interop. Only call when the values actually changed.
+        var currentAriaInvalid = EffectiveInvalid;
+        var currentAriaDescribedBy = EditorDescribedBy;
+        if (currentAriaInvalid != _lastAriaInvalid ||
+            !string.Equals(currentAriaDescribedBy, _lastAriaDescribedBy, StringComparison.Ordinal))
+        {
+            _lastAriaInvalid = currentAriaInvalid;
+            _lastAriaDescribedBy = currentAriaDescribedBy;
+            await Interop.RichTextSetAriaAttributesAsync(_instanceId, currentAriaInvalid, currentAriaDescribedBy);
         }
     }
 
@@ -470,6 +520,11 @@
         // unrelated parent re-render (which re-supplies the parent's stale Value) wipe
         // in-progress typing.
         _lastSetValue = html;
+        // Record _lastPushed BEFORE raising ValueChanged: a controlled parent may
+        // re-render synchronously inside InvokeAsync, so OnParametersSet must already
+        // see this as "the value we pushed" to recognise the echo and not disturb the
+        // editor. This is what makes the controlled-rollback detection work correctly.
+        _lastPushed = html;
         await ValueChanged.InvokeAsync(html);
         await RefreshActiveAsync();
     }
@@ -640,6 +695,7 @@
         // document in sync and notify via ValueChanged, but do NOT write back into
         // the [Parameter] Value — it stays a controlled input owned by the parent.
         _lastSetValue = html;
+        _lastPushed = html; // Set before ValueChanged so a controlled parent sees the echo.
         await Interop.RichTextSetContentAsync(_instanceId, html);
         await ValueChanged.InvokeAsync(html);
     }

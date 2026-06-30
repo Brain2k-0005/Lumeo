@@ -48,7 +48,7 @@
                aria-required="@Required.ToString().ToLowerInvariant()"
                aria-invalid="@((EffectiveInvalid || IsOverLimit).ToString().ToLowerInvariant())"
                aria-describedby="@FormFieldDescribedBy"
-               maxlength="@EffectiveMaxLength" class="@WrappedInputClass" value="@SafeValue" @oninput="HandleInput" disabled="@Disabled" @attributes="AdditionalAttributes" />
+               maxlength="@EffectiveMaxLength" class="@WrappedInputClass" value="@SafeValue" @oninput="HandleInput" disabled="@Disabled" @attributes="EffectiveAttributes" />
         @if (Clearable && !string.IsNullOrEmpty(_current))
         {
             <button type="button" class="@($"flex items-center {AccessoryClearPad} text-muted-foreground hover:text-foreground transition-colors")" @onclick="HandleClear" tabindex="-1" aria-label="@L["Common.Clear"]">
@@ -69,7 +69,7 @@ else
            aria-required="@Required.ToString().ToLowerInvariant()"
            aria-invalid="@((EffectiveInvalid || IsOverLimit).ToString().ToLowerInvariant())"
            aria-describedby="@FormFieldDescribedBy"
-           maxlength="@EffectiveMaxLength" class="@CssClass" value="@SafeValue" @oninput="HandleInput" disabled="@Disabled" @attributes="AdditionalAttributes" />
+           maxlength="@EffectiveMaxLength" class="@CssClass" value="@SafeValue" @oninput="HandleInput" disabled="@Disabled" @attributes="EffectiveAttributes" />
 }
 
 @if (ShowCount)
@@ -204,6 +204,18 @@ else
     // (it splats after these). Empty guard avoids id="" if no id was generated.
     private string? FormFieldControlId => string.IsNullOrEmpty(FormField?.ControlId) ? null : FormField!.ControlId;
     private string? FormFieldDescribedBy => FormField?.DescribedBy;
+
+    // Inside a FormField the generated FormFieldControlId must own the <input> id so
+    // the <label for> and <input id> always agree (Base UI Field a11y, Codex P2).
+    // A consumer-supplied id in the splat would otherwise render AFTER the generated
+    // id attribute and silently win, causing the label's `for` to point at an id that
+    // no longer exists on the input. Strip it from the splat when inside a FormField;
+    // outside a FormField FormFieldControlId is null (attribute omitted entirely) so
+    // the consumer's splat id still reaches the input unchanged.
+    private Dictionary<string, object>? EffectiveAttributes =>
+        InsideFormField && AdditionalAttributes?.ContainsKey("id") == true
+            ? AdditionalAttributes.Where(kv => kv.Key != "id").ToDictionary(kv => kv.Key, kv => kv.Value)
+            : AdditionalAttributes;
 
     // Character-counter helpers, mirroring Textarea's pattern. These read the
     // live displayed value (_current), not the raw Value parameter, so the count

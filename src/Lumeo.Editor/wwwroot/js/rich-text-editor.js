@@ -1185,6 +1185,26 @@ export const rte = {
         entry.editor.setEditable(!disabled);
     },
 
+    // Push updated aria-invalid / aria-describedby onto the editor's contenteditable
+    // after init. TipTap sets these once via editorProps.attributes at construction —
+    // they do not react to later changes — so this explicit setAttribute path is
+    // needed when validation state changes post-mount (Codex P2 aria-after-mount fix).
+    setAriaAttributes(id, ariaInvalid, ariaDescribedBy) {
+        const entry = instances.get(id);
+        if (!entry) return;
+        const dom = entry.editor.view.dom;
+        if (ariaInvalid) {
+            dom.setAttribute('aria-invalid', 'true');
+        } else {
+            dom.removeAttribute('aria-invalid');
+        }
+        if (ariaDescribedBy) {
+            dom.setAttribute('aria-describedby', String(ariaDescribedBy));
+        } else {
+            dom.removeAttribute('aria-describedby');
+        }
+    },
+
     executeCommand(id, name, payload) {
         return this.command(id, name, payload);
     },

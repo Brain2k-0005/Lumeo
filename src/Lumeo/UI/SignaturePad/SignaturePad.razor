@@ -114,12 +114,13 @@
     // value every render (commonly null), so comparing the incoming Value
     // against this detects a real consumer-driven change vs. an unchanged echo.
     private string? _lastParamValue;
-    // The value our own OnStrokeEnded / ClearAsync last emitted. A *controlled*
-    // parent echoes this exact value straight back into the Value parameter; we
-    // recognise that echo and skip the (destructive, raster) reload, so a
-    // normalised round-trip never wipes the just-drawn vector signature.
-    private string? _emittedValue;
-    private bool _hasEmitted;
+    // The last value WE pushed to the parent via ValueChanged (seeded to Value at
+    // init). A *controlled* parent echoes this exact string back as Value; we
+    // recognise that echo and skip the destructive raster reload so vector stroke
+    // data is preserved. Any OTHER incoming Value — normalisation, programmatic
+    // reset, or a REJECTION where the parent kept the old value — is authoritative
+    // and must repaint the canvas back to the bound Value (Codex P2 fix).
+    private string? _lastPushed;
     private bool _paramSeeded;
     // Set true in OnParametersSet when the parent genuinely changed Value,
     // consumed in OnAfterRenderAsync to repaint the canvas from the new value.
@@ -147,41 +148,45 @@
 
     protected override void OnParametersSet()
     {
-        // Seed the working value from the parameter on first set; thereafter
-        // adopt the parameter ONLY when the parent actually changed it. Our own
-        // OnStrokeEnded/ClearAsync mutate _currentValue (not Value), so a parent
-        // re-render that echoes back the same value (or a one-way binding that
-        // leaves Value unchanged at null) does NOT trigger a destructive reload.
+        // Seed the working value from the parameter on first set; seed both
+        // discriminators so neither fires on the very first normal render.
         if (!_paramSeeded)
         {
             _currentValue = Value;
             _lastParamValue = Value;
+            _lastPushed = Value;
             _paramSeeded = true;
             return;
         }
 
-        // Unchanged parameter (the typical one-way / uncontrolled re-render):
-        // nothing to do. This is the case the old code got wrong — it compared
-        // the unchanged Value against the value WE emitted and reloaded.
-        if (string.Equals(_lastParamValue, Value, StringComparison.Ordinal))
+        if (ValueChanged.HasDelegate)
         {
-            return;
+            // CONTROLLED: parent owns Value. Echo of our own push (Value ==
+            // _lastPushed) → canvas already shows it, skip destructive reload so
+            // vector stroke data is preserved. Any other Value — normalisation,
+            // programmatic reset, or a REJECTION where the parent kept the OLD
+            // value (!= what we emitted) — is authoritative and must repaint the
+            // canvas back to the bound Value (Codex P2 fix).
+            if (!string.Equals(Value, _lastPushed, StringComparison.Ordinal))
+            {
+                _currentValue = Value;
+                _lastPushed = Value;
+                _statusMessage = null;
+                _pendingParamReload = true;
+            }
+        }
+        else if (!string.Equals(_lastParamValue, Value, StringComparison.Ordinal))
+        {
+            // UNCONTROLLED: component owns the live value; adopt the parameter
+            // only when the parent genuinely changes it. An unrelated re-render
+            // that re-supplies the same (or stale) Value must NOT clobber the
+            // drawn signature.
+            _currentValue = Value;
+            _statusMessage = null;
+            _pendingParamReload = true;
         }
 
         _lastParamValue = Value;
-
-        // A controlled parent echoes back exactly the value we just emitted.
-        // Adopt it as the param baseline but do NOT reload — the canvas already
-        // shows it, and a raster reload would discard the vector stroke data.
-        if (_hasEmitted && string.Equals(_emittedValue, Value, StringComparison.Ordinal))
-        {
-            return;
-        }
-
-        // A genuine consumer-driven change — adopt it and repaint the canvas.
-        _currentValue = Value;
-        _statusMessage = null;
-        _pendingParamReload = true;
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -270,9 +275,8 @@
         // echoing the identical string back is recognised as our own
         // round-trip and skips the destructive reload.
         _currentValue = dataUrl;
-        _emittedValue = dataUrl;
-        _hasEmitted = true;
-        _statusMessage = null; // drop any stale "cleared" announcement
+        _lastPushed = dataUrl; // set BEFORE ValueChanged so a synchronous controlled
+        _statusMessage = null; // re-render sees the echo and skips the destructive reload
         await ValueChanged.InvokeAsync(dataUrl);
         await OnSign.InvokeAsync();
         StateHasChanged();
@@ -286,8 +290,7 @@
         // OnStrokeEnded, record the emitted value so a controlled parent setting
         // Value=null in response doesn't re-trigger a reload.
         _currentValue = null;
-        _emittedValue = null;
-        _hasEmitted = true;
+        _lastPushed = null; // set BEFORE ValueChanged (same echo-detection as OnStrokeEnded)
         _statusMessage = L["SignaturePad.Cleared"];
         await ValueChanged.InvokeAsync(null);
         await OnClear.InvokeAsync();

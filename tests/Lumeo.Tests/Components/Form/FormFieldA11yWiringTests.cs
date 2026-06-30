@@ -160,4 +160,47 @@ public class FormFieldA11yWiringTests : IAsyncLifetime
         Assert.Equal(cut.Find("label").GetAttribute("for"), trigger.GetAttribute("id"));
         Assert.Equal(helpId, trigger.GetAttribute("aria-describedby"));
     }
+
+    // --- Codex P2: id-splat does not break label-for wiring ---
+
+    [Fact]
+    public void Consumer_Splatted_Id_Inside_FormField_Does_Not_Break_Label_For()
+    {
+        // Regression (Codex P2): when a consumer passes id="..." through AdditionalAttributes
+        // on an Input inside a FormField, the splat used to render AFTER the generated
+        // FormFieldControlId and silently win, leaving the label's `for` pointing at an
+        // id that no longer existed on the <input>. Input now strips the splatted id when
+        // inside a FormField so the generated id is the one both the label and the input use.
+        var cut = _ctx.Render(builder =>
+        {
+            builder.OpenComponent<L.FormField>(0);
+            builder.AddAttribute(1, "Label", "Email");
+            builder.AddAttribute(2, "ChildContent", (RenderFragment)(b =>
+            {
+                b.OpenComponent<L.Input>(0);
+                b.AddAttribute(1, "AdditionalAttributes", new Dictionary<string, object> { ["id"] = "consumer-id" });
+                b.CloseComponent();
+            }));
+            builder.CloseComponent();
+        });
+
+        var inputId = cut.Find("input").GetAttribute("id");
+        var labelFor = cut.Find("label").GetAttribute("for");
+        Assert.False(string.IsNullOrEmpty(inputId));
+        // The input id and the label for must agree — the consumer-splatted "consumer-id" must
+        // have been stripped in favour of the generated FormFieldControlId.
+        Assert.Equal(labelFor, inputId);
+        Assert.NotEqual("consumer-id", inputId); // confirm the splat id was suppressed
+    }
+
+    [Fact]
+    public void Consumer_Splatted_Id_Outside_FormField_Still_Reaches_Input()
+    {
+        // Guard: the id-stripping only applies inside a FormField. A standalone Input
+        // with a consumer-supplied id via AdditionalAttributes must still have that id.
+        var cut = _ctx.Render<L.Input>(p => p
+            .Add(b => b.AdditionalAttributes, new Dictionary<string, object> { ["id"] = "standalone-id" }));
+
+        Assert.Equal("standalone-id", cut.Find("input").GetAttribute("id"));
+    }
 }

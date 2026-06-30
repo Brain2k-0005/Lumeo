@@ -105,6 +105,52 @@ public class SignaturePadValuePersistenceTests : IAsyncLifetime
     }
 
     /// <summary>
+    /// Codex P2 — Controlled parent rejects stroke: canvas repaints back to bound Value.
+    ///
+    /// When a controlled parent receives the emitted data URL via ValueChanged but
+    /// deliberately keeps its OLD Value (e.g. validation rejection), the next
+    /// OnParametersSet sees <c>Value != _lastPushed</c>. It MUST repaint the canvas back
+    /// to the bound Value — not leave the rejected stroke on-screen. Pre-fix, the
+    /// <c>_lastParamValue == Value</c> early-return fired (Value hadn't changed from the
+    /// parent's perspective) and the canvas kept the rejected stroke indefinitely.
+    /// </summary>
+    [Fact]
+    public async Task Controlled_Parent_Rejection_Repaints_Canvas_To_Bound_Value()
+    {
+        // Controlled parent that intentionally NEVER updates its bound value,
+        // simulating a validation rejection (the field stays at its old value).
+        string? bound = null;
+        var cut = _ctx.Render<L.SignaturePad>(p => p
+            .Add(s => s.Value, bound)
+            .Add(s => s.ValueChanged, EventCallback.Factory.Create<string?>(this, _ => { /* reject: do not update bound */ })));
+
+        // Initially empty — placeholder visible, Clear disabled.
+        Assert.Contains("Sign here", cut.Markup);
+        Assert.True(cut.Find("button[aria-label='Clear signature']").HasAttribute("disabled"));
+
+        // User draws: JS callback fires with a data URL. Component optimistically
+        // shows the drawn value (_currentValue = DrawnUrl).
+        await cut.InvokeAsync(() => cut.Instance.OnStrokeEnded(DrawnUrl));
+
+        Assert.DoesNotContain("Sign here", cut.Markup);
+        Assert.False(cut.Find("button[aria-label='Clear signature']").HasAttribute("disabled"));
+
+        // Parent re-renders with the SAME old Value (null) — the rejection.
+        // Pre-fix: _lastParamValue (null) == Value (null) → early return → rejected
+        //          stroke stays on-screen. Canvas says "has content", pad is wrong.
+        // Post-fix: Value (null) != _lastPushed (DrawnUrl) → authoritative →
+        //           _currentValue = null, _pendingParamReload = true → canvas repainted.
+        cut.Render(p => p
+            .Add(s => s.Value, bound)   // bound is still null — parent rejected
+            .Add(s => s.ValueChanged, EventCallback.Factory.Create<string?>(this, _ => { })));
+
+        // Canvas must have been repainted back to null — placeholder visible again,
+        // Clear button disabled (pad is empty from the component's perspective).
+        Assert.Contains("Sign here", cut.Markup);
+        Assert.True(cut.Find("button[aria-label='Clear signature']").HasAttribute("disabled"));
+    }
+
+    /// <summary>
     /// Regression guard for the legitimate controlled path: when the PARENT
     /// genuinely changes Value to a brand-new external image, the component still
     /// adopts it (placeholder stays hidden, Clear stays enabled). This proves the
