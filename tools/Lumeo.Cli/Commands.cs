@@ -1069,7 +1069,21 @@ internal static class Commands
             // which src/<package>/ root to read each file from.
             var itemPackage = string.IsNullOrEmpty(item.NugetPackage) ? "Lumeo" : item.NugetPackage;
             var itemIsSatellite = !string.Equals(itemPackage, "Lumeo", StringComparison.OrdinalIgnoreCase);
-            if (itemIsSatellite && !forceVendor) continue;
+            if (itemIsSatellite && !forceVendor)
+            {
+                // The satellite was routed to NuGet (above) instead of vendored — so skip copying its source.
+                // BUT EnsureNuGetPackageAsync reports success for "no project found" / user-declined too, so
+                // the package may NOT actually be referenced; silently skipping then would add 0 files with no
+                // PackageReference yet still print OK (Codex P2). Only skip quietly when the package is truly
+                // present; otherwise surface a clear error + non-zero exit instead of a silent no-op.
+                if (FindCsprojReferencingPackage(Environment.CurrentDirectory, itemPackage) is not null)
+                    continue;
+                Console.Error.WriteLine(Ansi.Red(
+                    $"  {item.Name} needs the {itemPackage} package, which is not installed — nothing was written. " +
+                    $"Add the package, or vendor the source with 'lumeo add {ToKebab(item.Name)} --vendor'."));
+                Environment.ExitCode = 1;
+                continue;
+            }
 
             var folder = Path.Combine(outRoot, item.Name);
             if (writeAllowed) Directory.CreateDirectory(folder);

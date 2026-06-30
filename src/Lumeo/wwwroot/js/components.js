@@ -1406,12 +1406,19 @@ export function registerPreventDefaultKeys(elementId, rules) {
             // keyCode 229 covers engines that fire composition keydowns
             // without setting isComposing.
             if (r.skipComposing && (e.isComposing || e.keyCode === 229)) continue;
-            // skipEditable also exempts focusable INTERACTIVE descendants (buttons, links,
-            // role=button), not just text-editable fields: a Space/Enter rule registered on a
-            // container (e.g. the DataGrid roving grid, FileManager, AudioPlayer) must not cancel
-            // native Space/Enter activation of a button inside a CellTemplate / item (Codex P2).
-            if (r.skipEditable && e.target instanceof Element &&
-                e.target.closest('input, textarea, select, button, a[href], [role="button"], [contenteditable=""], [contenteditable="true"]')) continue;
+            // skipEditable exemptions:
+            //  - text-editable fields (input/textarea/select/contenteditable) are exempt for EVERY key:
+            //    typing must win over the container's key handling.
+            //  - interactive controls (button/a/role=button) are exempt ONLY for ACTIVATION keys
+            //    (Space/Enter) so their native activation isn't cancelled (Codex P2) — but the container
+            //    STILL suppresses Arrow/Home/End/Page on them: otherwise e.g. AudioPlayer's ArrowLeft/Right
+            //    seek (registered with skipEditable) would also let the browser scroll the page when focus
+            //    is on a transport button (Codex P2, round-12 regression of the round-9 button exemption).
+            if (r.skipEditable && e.target instanceof Element) {
+                if (e.target.closest('input, textarea, select, [contenteditable=""], [contenteditable="true"]')) continue;
+                const isActivation = e.key === ' ' || e.key === 'Spacebar' || e.key === 'Enter';
+                if (isActivation && e.target.closest('button, a[href], [role="button"]')) continue;
+            }
             e.preventDefault();
             return;
         }
