@@ -1501,6 +1501,9 @@ public sealed class ComponentInteropService : IComponentInteropService
     public ValueTask<string?> RichTextPromptLinkAsync(string? initial)
         => _richText.PromptLinkAsync(_jsRuntime, initial);
 
+    public ValueTask RichTextSetAriaAttributesAsync(string id, bool ariaInvalid, string? ariaDescribedBy)
+        => _richText.SetAriaAttributesAsync(_jsRuntime, id, ariaInvalid, ariaDescribedBy);
+
     // --- SignaturePad ---
     // SignaturePad ships its own tiny JS module (signature-pad.js) that wires
     // pointer events to a canvas. Loaded lazily so apps that never sign a

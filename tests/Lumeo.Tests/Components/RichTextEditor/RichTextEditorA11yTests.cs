@@ -1,5 +1,6 @@
 using AngleSharp.Dom;
 using Bunit;
+using Microsoft.JSInterop;
 using Xunit;
 using Lumeo.Tests.Helpers;
 using L = Lumeo;
@@ -109,5 +110,95 @@ public class RichTextEditorA11yTests : IAsyncLifetime
         // so the attribute must be omitted rather than emitted empty.
         var cut = _ctx.Render<L.RichTextEditor>();
         Assert.False(Editable(cut).HasAttribute("aria-labelledby"));
+    }
+
+    // ---- Codex P2: aria-after-mount ----
+    // The following tests assert that when aria-invalid or aria-describedby changes after
+    // the editor has been initialized, the component pushes the new values to the editor's
+    // contenteditable via rte.setAriaAttributes so TipTap's DOM stays in sync.
+
+    /// <summary>
+    /// When Invalid changes from false to true after the editor is mounted, the component
+    /// must call rte.setAriaAttributes so TipTap's contenteditable carries aria-invalid=true
+    /// rather than the stale init-time value.
+    /// </summary>
+    [Fact]
+    public void AriaInvalid_changesAfterMount_pushesInteropUpdate()
+    {
+        // Use a module stub that records calls (Loose mode is the fixture default).
+        // Re-configure for this test so rte.init returns a real id.
+        var ctx2 = new BunitContext();
+        ctx2.AddLumeoServices();
+        var mod = ctx2.JSInterop.SetupModule("./_content/Lumeo.Editor/js/rich-text-editor.js");
+        mod.Mode = JSRuntimeMode.Loose;
+        mod.Setup<string>("rte.init", _ => true).SetResult("rte-instance-aria");
+
+        var cut = ctx2.Render<L.RichTextEditor>(p => p
+            .Add(c => c.Invalid, false)
+            .Add(c => c.ErrorText, "Required"));
+
+        var callsBefore = mod.Invocations.Count(i => i.Identifier == "rte.setAriaAttributes");
+
+        // Simulate a form-submit validation that sets Invalid=true.
+        cut.Render(p => p
+            .Add(c => c.Invalid, true)
+            .Add(c => c.ErrorText, "Required"));
+
+        Assert.True(
+            mod.Invocations.Count(i => i.Identifier == "rte.setAriaAttributes") > callsBefore,
+            "Changing Invalid after mount must push rte.setAriaAttributes to update the contenteditable.");
+    }
+
+    /// <summary>
+    /// When validation state clears (Invalid returns to false), the component must push
+    /// the reset so aria-invalid is removed from the contenteditable.
+    /// </summary>
+    [Fact]
+    public void AriaInvalid_clearedAfterMount_pushesInteropUpdate()
+    {
+        var ctx2 = new BunitContext();
+        ctx2.AddLumeoServices();
+        var mod = ctx2.JSInterop.SetupModule("./_content/Lumeo.Editor/js/rich-text-editor.js");
+        mod.Mode = JSRuntimeMode.Loose;
+        mod.Setup<string>("rte.init", _ => true).SetResult("rte-instance-aria2");
+
+        // Start with an invalid state.
+        var cut = ctx2.Render<L.RichTextEditor>(p => p
+            .Add(c => c.Invalid, true)
+            .Add(c => c.ErrorText, "Required"));
+
+        var callsBefore = mod.Invocations.Count(i => i.Identifier == "rte.setAriaAttributes");
+
+        // Validation clears.
+        cut.Render(p => p
+            .Add(c => c.Invalid, false)
+            .Add(c => c.ErrorText, null));
+
+        Assert.True(
+            mod.Invocations.Count(i => i.Identifier == "rte.setAriaAttributes") > callsBefore,
+            "Clearing Invalid after mount must push rte.setAriaAttributes to reset the contenteditable.");
+    }
+
+    /// <summary>
+    /// When aria state does NOT change across a re-render, rte.setAriaAttributes must
+    /// NOT be called — avoids redundant interop noise on every parent re-render.
+    /// </summary>
+    [Fact]
+    public void UnchangedAria_acrossReRender_doesNotCallSetAriaAttributes()
+    {
+        var ctx2 = new BunitContext();
+        ctx2.AddLumeoServices();
+        var mod = ctx2.JSInterop.SetupModule("./_content/Lumeo.Editor/js/rich-text-editor.js");
+        mod.Mode = JSRuntimeMode.Loose;
+        mod.Setup<string>("rte.init", _ => true).SetResult("rte-instance-aria3");
+
+        var cut = ctx2.Render<L.RichTextEditor>(p => p.Add(c => c.Invalid, false));
+
+        var callsBefore = mod.Invocations.Count(i => i.Identifier == "rte.setAriaAttributes");
+
+        // Re-render with identical aria state.
+        cut.Render(p => p.Add(c => c.Invalid, false));
+
+        Assert.Equal(callsBefore, mod.Invocations.Count(i => i.Identifier == "rte.setAriaAttributes"));
     }
 }

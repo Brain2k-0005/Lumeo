@@ -231,6 +231,7 @@ public class ResponsiveServiceTests
         public ValueTask RichTextSetDisabledAsync(string id, bool disabled) => ValueTask.CompletedTask;
         public ValueTask RichTextDestroyAsync(string id) => ValueTask.CompletedTask;
         public ValueTask<string?> RichTextPromptLinkAsync(string? initial) => ValueTask.FromResult<string?>(null);
+        public ValueTask RichTextSetAriaAttributesAsync(string id, bool ariaInvalid, string? ariaDescribedBy) => ValueTask.CompletedTask;
         public ValueTask<Lumeo.Services.ComponentInteropService.TabMeasurement?> TabsMeasure(string elementId)
             => ValueTask.FromResult<Lumeo.Services.ComponentInteropService.TabMeasurement?>(null);
         public ValueTask RegisterToolbarOverflow(string elementId, Func<int, int, Task> handler) => ValueTask.CompletedTask;

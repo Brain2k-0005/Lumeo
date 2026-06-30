@@ -79,4 +79,46 @@ public class CodeEditorControlledValueTests : IAsyncLifetime
                  && i.Arguments.Count >= 2
                  && (string?)i.Arguments[1] == "totally new doc");
     }
+
+    /// <summary>
+    /// Codex P2 regression — controlled parent REJECTS an edit by keeping its
+    /// previous Value. Because the rejection supplies the SAME Value as before
+    /// the edit, the old <c>_lastValueParam</c> comparison saw no change and
+    /// never armed <c>setValue</c>. The fix compares against <c>_lastPushed</c>
+    /// (what we emitted) instead: the rejection value ("world") differs from
+    /// what we pushed ("hello"), so <c>_valueParamChanged</c> is set and
+    /// CodeMirror receives <c>setValue("world")</c> to roll the editor back.
+    /// </summary>
+    [Fact]
+    public async Task Controlled_Parent_Rejects_Edit_Triggers_SetValue_Rollback()
+    {
+        // Bind ValueChanged but never update Value — this models a parent that
+        // owns its own state and silently rejects every edit attempt.
+        var cut = _ctx.Render<L.CodeEditor>(p => p
+            .Add(c => c.Value, "world")
+            .Add(c => c.ValueChanged, (string _) => { }));
+
+        // The editor (CodeMirror, via JS) reports the user typed "hello".
+        // _lastPushed is set to "hello" before ValueChanged fires.
+        await cut.InvokeAsync(() => cut.Instance.OnEditorChange("hello"));
+
+        var beforeCount = _ctx.JSInterop.Invocations.Count(i => i.Identifier == "setValue");
+
+        // Parent re-renders with the SAME Value="world" (rejection: it kept its
+        // old state). _lastPushed is "hello" but Value is "world" → differs →
+        // _valueParamChanged is set → setValue("world") must be called to roll back.
+        cut.Render(p => p
+            .Add(c => c.Value, "world")
+            .Add(c => c.ValueChanged, (string _) => { }));
+
+        var afterCount = _ctx.JSInterop.Invocations.Count(i => i.Identifier == "setValue");
+
+        Assert.True(afterCount > beforeCount,
+            "setValue must be called to roll the editor back when the controlled parent rejects an edit");
+        Assert.Contains(
+            _ctx.JSInterop.Invocations.Skip(beforeCount),
+            i => i.Identifier == "setValue"
+                 && i.Arguments.Count >= 2
+                 && (string?)i.Arguments[1] == "world");
+    }
 }

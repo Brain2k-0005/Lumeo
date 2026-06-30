@@ -131,4 +131,72 @@ public class RichTextEditorStateOnDataChangeTests : IAsyncLifetime
         Assert.Equal(1, _module.Invocations.Count(i => i.Identifier == "rte.init"));
         Assert.DoesNotContain(_module.Invocations, i => i.Identifier == "rte.destroy");
     }
+
+    // ----------------------------------------------------------------- Codex P2 — controlled rollback
+
+    /// <summary>
+    /// When ValueChanged IS bound and the parent REJECTS an edit by leaving Value at the
+    /// prior HTML, the editor must be re-synced to the accepted value. Before the fix,
+    /// OnParametersSet compared Value against _lastParamValue (which equalled the accepted
+    /// value, unchanged), so the re-sync condition was false and TipTap kept the rejected
+    /// edit. The fix tracks _lastPushed (the value WE emitted) instead: after a rejection
+    /// Value != _lastPushed, triggering the authoritative setContent rollback.
+    /// </summary>
+    [Fact]
+    public async Task ControlledValue_rejectedByParent_rollsBackEditorContent()
+    {
+        const string accepted = "<p>clean</p>";
+        const string rejected = "<p>dirty</p>";
+
+        var cut = _ctx.Render<L.RichTextEditor>(p => p
+            .Add(c => c.Value, accepted)
+            .Add(c => c.ValueChanged, (string? _) => { /* parent rejects: never adopts */ }));
+
+        var setContentBefore = _module.Invocations.Count(i => i.Identifier == "rte.setContent");
+
+        // JS editor reports the user's edit via the [JSInvokable] callback.
+        await cut.InvokeAsync(() => cut.Instance.OnContentUpdate(rejected));
+
+        // Parent re-renders: ValueChanged was called but parent kept Value = accepted.
+        cut.Render(p => p
+            .Add(c => c.Value, accepted)
+            .Add(c => c.ValueChanged, (string? _) => { }));
+
+        var setContentAfter = _module.Invocations.Count(i => i.Identifier == "rte.setContent");
+
+        // Fix: _lastPushed == rejected != Value (accepted) → authoritative → setContent(accepted).
+        Assert.True(setContentAfter > setContentBefore,
+            "A rejected edit must trigger rte.setContent to roll TipTap back to the accepted value.");
+        Assert.Contains(
+            _module.Invocations,
+            i => i.Identifier == "rte.setContent" && i.Arguments.Contains(accepted));
+    }
+
+    /// <summary>
+    /// When ValueChanged IS bound and the parent ACCEPTS an edit (echoes back the same
+    /// value we pushed), OnParametersSet must NOT call rte.setContent — that would disturb
+    /// the cursor / undo history for no functional reason.
+    /// </summary>
+    [Fact]
+    public async Task ControlledValue_acceptedByParent_doesNotCallSetContent()
+    {
+        string? parentValue = "<p>initial</p>";
+
+        var cut = _ctx.Render<L.RichTextEditor>(p => p
+            .Add(c => c.Value, parentValue)
+            .Add(c => c.ValueChanged, (string? html) => parentValue = html));
+
+        await cut.InvokeAsync(() => cut.Instance.OnContentUpdate("<p>typed</p>"));
+
+        var setContentBefore = _module.Invocations.Count(i => i.Identifier == "rte.setContent");
+
+        // Parent accepted the edit: re-renders with Value == the html we emitted.
+        cut.Render(p => p
+            .Add(c => c.Value, parentValue) // "<p>typed</p>"
+            .Add(c => c.ValueChanged, (string? html) => parentValue = html));
+
+        var setContentAfter = _module.Invocations.Count(i => i.Identifier == "rte.setContent");
+
+        Assert.Equal(setContentBefore, setContentAfter);
+    }
 }
