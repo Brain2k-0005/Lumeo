@@ -235,4 +235,37 @@ public class ScrollspyControlledRollbackTests : IAsyncLifetime
             .ToList();
         Assert.Empty(active);
     }
+
+    // --- Controlled: clearing ActiveId must never leave a stale pending scroll that later fires
+    //     for the empty id (round-17 Codex P3 follow-up) ---
+
+    [Fact]
+    public void Clearing_ActiveId_Never_Triggers_A_Scroll_To_The_Empty_Id()
+    {
+        // Real section -> empty, in successive renders (the closest bUnit can model the "a clear
+        // arrives before OnAfterRenderAsync consumes the prior pending scroll" race — bUnit's Render
+        // flushes OnAfterRenderAsync synchronously per call, so this asserts the durable guarantee:
+        // across the WHOLE sequence, a ScrollspyScrollTo call for an empty/null section id never
+        // happens, regardless of how _pendingProgrammaticScroll's lifecycle is implemented internally.
+        var cut = _ctx.Render<L.Scrollspy>(p => p
+            .Add(b => b.ActiveId, "intro")
+            .Add(b => b.ActiveIdChanged, EventCallback.Factory.Create<string>(_ctx, (_) => { }))
+            .Add(b => b.ChildContent, LinksAndSections()));
+
+        cut.Render(p =>
+        {
+            p.Add(b => b.ActiveId, "features");
+            p.Add(b => b.ActiveIdChanged, EventCallback.Factory.Create<string>(_ctx, (_) => { }));
+            p.Add(b => b.ChildContent, LinksAndSections());
+        });
+
+        cut.Render(p =>
+        {
+            p.Add(b => b.ActiveId, "");
+            p.Add(b => b.ActiveIdChanged, EventCallback.Factory.Create<string>(_ctx, (_) => { }));
+            p.Add(b => b.ChildContent, LinksAndSections());
+        });
+
+        Assert.DoesNotContain(_interop.ScrollspyScrollToCalls, c => string.IsNullOrEmpty(c.SectionId));
+    }
 }

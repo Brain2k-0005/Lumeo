@@ -170,6 +170,16 @@
                     _ownLastEmitted = Value;
                     _resyncPending = true;
                 }
+                else
+                {
+                    // Accepted echo — already positioned, so no resync is needed, but
+                    // _lastSyncedValue must still track the TRUE authoritative Value (not just the
+                    // resync cases). Without this, a LATER genuine clear-to-null couldn't tell "Value
+                    // demonstrably HAD a value" from the #68 "Value has always been null" ambiguity
+                    // (round-17 Codex follow-up to the round-16 fix above): _lastSyncedValue would
+                    // still read null even though the parent's accepted commit made Value real.
+                    _lastSyncedValue = Value;
+                }
             }
             else if (Value != _lastSyncedValue)
             {

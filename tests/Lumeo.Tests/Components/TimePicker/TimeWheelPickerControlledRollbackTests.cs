@@ -208,4 +208,50 @@ public class TimeWheelPickerControlledRollbackTests : IAsyncLifetime
         Assert.DoesNotContain(highlighted, e => e.TextContent.Trim() == "11");
         Assert.Contains(highlighted, e => e.TextContent.Trim() == "00");
     }
+
+    // --- Controlled: start at null, ACCEPT a commit, THEN clear back to null — round-17 Codex
+    //     follow-up: the accepted-echo path (Value == _ownLastEmitted) never updated
+    //     _lastSyncedValue, so a LATER genuine clear couldn't tell "Value was real" from the #68
+    //     ambiguous "always null" case and kept showing the stale rejected time. ---
+
+    [Fact]
+    public async Task Controlled_Clear_To_Null_After_An_Accepted_Commit_Resets_The_Wheel()
+    {
+        // Start at null with a real two-way binding. Commit to 10:00 and the parent ACCEPTS (echoes
+        // it back) — at this point _lastSyncedValue must reflect the now-real Value, not still read
+        // null from before the commit. Then the parent genuinely clears back to null.
+        TimeSpan? parentState = null;
+        IRenderedComponent<L.TimeWheelPicker>? cut = null;
+        var accepting = true;
+
+        EventCallback<TimeSpan?> callback = default;
+        callback = EventCallback.Factory.Create<TimeSpan?>(_ctx, (TimeSpan? incoming) =>
+        {
+            parentState = accepting ? incoming : null; // accept the first commit, clear on the second
+            cut!.Render(p =>
+            {
+                p.Add(c => c.Use24Hour, true);
+                p.Add(c => c.Value, parentState);
+                p.Add(c => c.ValueChanged, callback);
+            });
+        });
+
+        cut = _ctx.Render<L.TimeWheelPicker>(p => p
+            .Add(c => c.Use24Hour, true)
+            .Add(c => c.Value, parentState)
+            .Add(c => c.ValueChanged, callback));
+
+        // First commit — accepted.
+        await cut.InvokeAsync(() => cut.Instance.CommitSelectionForTest(new TimeSpan(10, 0, 0)));
+        Assert.Contains(cut.FindAll(".font-semibold"), e => e.TextContent.Trim() == "10");
+
+        // Second commit — the parent's handler genuinely clears to null this time.
+        accepting = false;
+        await cut.InvokeAsync(() => cut.Instance.CommitSelectionForTest(new TimeSpan(14, 0, 0)));
+
+        // Must reset to the TimeSpan.Zero default, not keep showing the rejected 14:00.
+        var highlighted = cut.FindAll(".font-semibold");
+        Assert.DoesNotContain(highlighted, e => e.TextContent.Trim() == "14");
+        Assert.Contains(highlighted, e => e.TextContent.Trim() == "00");
+    }
 }
