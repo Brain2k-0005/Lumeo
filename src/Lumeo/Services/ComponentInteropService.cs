@@ -270,6 +270,15 @@ public sealed class ComponentInteropService : IComponentInteropService
         return await _floatingPosition.PositionFixed(module, contentId, referenceId, align, matchWidth, side, offset);
     }
 
+    public async ValueTask<string> PositionFixed(string contentId, string referenceId, string align, bool matchWidth, string side, int offset, Func<string, Task>? onSideChanged)
+    {
+        var module = await GetModuleAsync();
+        return await _floatingPosition.PositionFixed(module, GetSelfRef(), contentId, referenceId, align, matchWidth, side, offset, onSideChanged);
+    }
+
+    [JSInvokable]
+    public async Task OnPositionSideChanged(string contentId, string side) => await _floatingPosition.OnSideChanged(contentId, side);
+
     public async ValueTask UnpositionFixed(string contentId)
     {
         var module = await GetModuleAsync();

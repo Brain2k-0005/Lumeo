@@ -2,6 +2,7 @@ using System.Reflection;
 using Bunit;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Web;
+using Microsoft.Extensions.DependencyInjection;
 using Xunit;
 using Lumeo.Tests.Helpers;
 using L = Lumeo;
@@ -156,5 +157,31 @@ public class TooltipArrowFollowsSideTests : IAsyncLifetime
         var arrowClass = content.QuerySelector(".rotate-45")!.GetAttribute("class") ?? "";
         Assert.Contains("bottom-full", arrowClass);   // arrow moved to the trigger-facing edge
         Assert.DoesNotContain("top-full", arrowClass); // not the stale requested side
+    }
+
+    [Fact]
+    public async Task Live_Collision_Flip_During_Scroll_Resize_Moves_Arrow_And_DataSide()
+    {
+        // Codex P2 (round-11 #2 / round-14 #1): the synchronous PositionFixed return only covers the
+        // INITIAL placement. A LATER scroll/resize reposition can flip the box again while the tooltip
+        // stays open — the arrow + data-side must follow that too. ComponentInteropService.
+        // OnPositionSideChanged is the [JSInvokable] the JS scroll/resize listener calls back into; bUnit
+        // can't run real floating-ui, so invoke it directly the same way JS would, simulating a live flip.
+        var cut = _ctx.Render<TooltipSideProbe>(p => p.Add(x => x.Side, L.Side.Top));
+        OpenTooltip(cut);
+
+        var content = cut.Find("[role='tooltip']");
+        Assert.Equal("top", content.GetAttribute("data-side"));  // no flip yet — loose-mode JS echoes Top
+        var contentId = content.Id;
+        Assert.False(string.IsNullOrEmpty(contentId));
+
+        var interop = _ctx.Services.GetRequiredService<Lumeo.Services.ComponentInteropService>();
+        await cut.InvokeAsync(() => interop.OnPositionSideChanged(contentId!, "bottom"));
+
+        content = cut.Find("[role='tooltip']");
+        Assert.Equal("bottom", content.GetAttribute("data-side"));
+        var arrowClass = content.QuerySelector(".rotate-45")!.GetAttribute("class") ?? "";
+        Assert.Contains("bottom-full", arrowClass);
+        Assert.DoesNotContain("top-full", arrowClass);
     }
 }

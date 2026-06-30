@@ -396,7 +396,7 @@ export async function attachOverlaySlideEnd(elementId) {
 
 const positionCleanups = new Map();
 
-export function positionFixed(contentId, referenceId, align, matchWidth, side, offset) {
+export function positionFixed(contentId, referenceId, align, matchWidth, side, offset, dotnetRef) {
     const content = document.getElementById(contentId);
     const reference = document.getElementById(referenceId);
     if (!content || !reference) return side || 'bottom';
@@ -405,6 +405,12 @@ export function positionFixed(contentId, referenceId, align, matchWidth, side, o
     // The side the box ACTUALLY lands on after any collision flip — returned to the caller so a
     // directional-arrow consumer (Tooltip) can keep its arrow on the edge facing the trigger.
     let computedSide = resolvedSide;
+    // round-14: the synchronous return above only covers the INITIAL placement. A later scroll/resize
+    // reposition (the rAF-driven update() below) can flip the box again while the surface stays open, and
+    // a directional-arrow consumer needs to follow THAT too — so report any LATER change to dotnetRef.
+    // lastReportedSide starts null so the first update() pass (the synchronous one) never notifies — that
+    // placement is already conveyed by the function's return value.
+    let lastReportedSide = null;
     // Trigger->content gap. Callers that don't pass an offset (legacy 5-arg
     // interop path) keep the historical 4px default.
     const gap = (typeof offset === 'number' && Number.isFinite(offset) && offset >= 0) ? offset : 4;
@@ -609,6 +615,13 @@ export function positionFixed(contentId, referenceId, align, matchWidth, side, o
         } else if (resolvedSide === 'left' || resolvedSide === 'right') {
             computedSide = (cRect.left + cRect.width / 2) <= (rRect.left + rRect.width / 2) ? 'left' : 'right';
         }
+
+        // Notify .NET of a LATER side change (skips the very first pass — lastReportedSide is still null
+        // there, and that placement is already conveyed by positionFixed's synchronous return).
+        if (dotnetRef && lastReportedSide !== null && computedSide !== lastReportedSide) {
+            dotnetRef.invokeMethodAsync('OnPositionSideChanged', contentId, computedSide).catch(() => {});
+        }
+        lastReportedSide = computedSide;
     }
 
     // Initial position
