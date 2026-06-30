@@ -144,3 +144,31 @@ test("non-Lumeo / lowercase HTML tags are ignored", () => {
   assert.equal(r.ok, true);
   assert.equal(r.issues.length, 0);
 });
+
+// Nesting-aware parent-child regression tests (Codex P3 fix).
+// Previously the check was flat-presence: if the parent appeared ANYWHERE in the
+// snippet the child was considered valid. These cases must now FAIL because the
+// child is not nested inside the parent.
+
+test("nesting-aware: sibling ordering — child before parent is rejected", () => {
+  // <SelectItem/> appears before <Select>, so Select is not an open ancestor when
+  // SelectItem is encountered. Old flat check wrongly passed this.
+  const r = validate('<SelectItem Value="x" /> <Select />');
+  assert.equal(r.ok, false);
+  assert.ok(r.issues.some((i) => /must be used inside <Select>/.test(i.message)));
+});
+
+test("nesting-aware: sibling ordering — child after parent (not nested) is rejected", () => {
+  // <Select/> appears before <SelectItem/> but closes immediately (self-closing),
+  // so SelectItem has no open ancestor.
+  const r = validate('<Select /> <SelectItem Value="x" />');
+  assert.equal(r.ok, false);
+  assert.ok(r.issues.some((i) => /must be used inside <Select>/.test(i.message)));
+});
+
+test("nesting-aware: child after parent closed is rejected", () => {
+  // Select opens and closes, then SelectItem appears outside — not a valid ancestor.
+  const r = validate('<Select></Select> <SelectItem Value="x" />');
+  assert.equal(r.ok, false);
+  assert.ok(r.issues.some((i) => /must be used inside <Select>/.test(i.message)));
+});

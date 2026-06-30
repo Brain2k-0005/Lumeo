@@ -444,20 +444,25 @@ internal static class Commands
             return false;
         }
         var runtimeRoot = Path.Combine(Environment.CurrentDirectory, cfg.ComponentsPath, RuntimeFolder);
-        var sentinel = Path.Combine(runtimeRoot, "Internal", "Cx.cs");
-        if (!File.Exists(sentinel))   // vendor the runtime source once — idempotent
+        // Self-healing & idempotent: (re)copy every runtime file that is MISSING, rather than trusting one
+        // sentinel as proof the whole closure is present. An earlier interrupted vendor could have written
+        // Internal/Cx.cs but not the rest; a coarse "Cx.cs exists → skip all" would then leave an incomplete
+        // runtime that mis-compiles / 404s while eject happily strips the package.
+        var newlyWritten = 0;
+        foreach (var rel in registry.Runtime.Files)
         {
-            var written = new List<string>();
-            foreach (var rel in registry.Runtime.Files)
-            {
-                var content = await RegistryLoader.GetFileAsync(rel, opts.Local, cfg.Registry);  // sourcePackage defaults to "Lumeo"
-                var dest = Path.Combine(runtimeRoot, rel.Replace('/', Path.DirectorySeparatorChar));
-                Directory.CreateDirectory(Path.GetDirectoryName(dest)!);
-                await File.WriteAllTextAsync(dest, content, new UTF8Encoding(false));   // VERBATIM — no NamespaceRewriter
-                written.Add($"{cfg.ComponentsPath}/{RuntimeFolder}/{rel}");
-            }
-            Console.WriteLine(Ansi.Green("  +   ") + $"{RuntimeFolder}/ ({written.Count} Lumeo runtime files)");
-            ConfigIO.RecordInstall(cfg, RuntimeRecordKey, registry.Version, written);
+            var dest = Path.Combine(runtimeRoot, rel.Replace('/', Path.DirectorySeparatorChar));
+            if (File.Exists(dest)) continue;
+            var content = await RegistryLoader.GetFileAsync(rel, opts.Local, cfg.Registry);  // sourcePackage defaults to "Lumeo"
+            Directory.CreateDirectory(Path.GetDirectoryName(dest)!);
+            await File.WriteAllTextAsync(dest, content, new UTF8Encoding(false));   // VERBATIM — no NamespaceRewriter
+            newlyWritten++;
+        }
+        if (newlyWritten > 0)
+        {
+            Console.WriteLine(Ansi.Green("  +   ") + $"{RuntimeFolder}/ ({newlyWritten} Lumeo runtime files)");
+            ConfigIO.RecordInstall(cfg, RuntimeRecordKey, registry.Version,
+                registry.Runtime.Files.Select(f => $"{cfg.ComponentsPath}/{RuntimeFolder}/{f}").ToList());
         }
 
         // The vendored runtime + components import their JS/CSS from `_content/Lumeo/…` (baked into the
@@ -524,8 +529,11 @@ internal static class Commands
                 "Eject aborted — could not vendor the Lumeo runtime. The project is unchanged; update the CLI/registry and retry."));
             return;
         }
+        // Flip standalone in MEMORY so the re-vendor loop below vendors satellites as source — but DON'T
+        // persist it yet. If eject aborts mid-loop (a stale component, a failed asset), a persisted
+        // standalone:true would make a retry exit "already standalone" and never finish. Save only after
+        // all abortable work (runtime + every component re-vendor) succeeds, right before stripping.
         cfg.Standalone = true;
-        ConfigIO.Save(cfg);
 
         // The re-vendored components keep the Lumeo namespace, so the project needs the same root-level
         // @using bridge that `init --standalone` writes — otherwise <Dialog>/<Button> stop resolving the
@@ -548,30 +556,54 @@ internal static class Commands
             }
         }
 
-        var removed = StripLumeoPackageReferences();
+        // All abortable work succeeded — NOW persist standalone mode, then strip the packages.
+        ConfigIO.Save(cfg);
+
+        // Strip only the Lumeo packages we actually vendored: core (always — the runtime is vendored) plus
+        // the satellite package of every re-vendored component. A satellite used via the default NuGet flow
+        // (`add <component>` without --vendor) has NO vendored source, so removing its package would leave
+        // the project with neither package nor source — keep it and tell the user how to finish.
+        var vendoredPackages = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "Lumeo" };
+        foreach (var key in installed)
+            if (registry.Components.TryGetValue(key, out var ce) && !string.IsNullOrEmpty(ce.NugetPackage))
+                vendoredPackages.Add(ce.NugetPackage!);
+
+        var (removed, kept) = StripLumeoPackageReferences(vendoredPackages);
         Console.WriteLine();
-        Console.WriteLine(Ansi.Green("OK ") + "Ejected — this project is now standalone (no Lumeo NuGet reference).");
-        if (removed.Count > 0) Console.WriteLine("  Removed PackageReference: " + string.Join(", ", removed));
+        Console.WriteLine(Ansi.Green("OK ") + "Ejected — vendored components now build with no Lumeo NuGet reference.");
+        if (removed.Count > 0) Console.WriteLine("  Removed PackageReference: " + string.Join(", ", removed.Distinct()));
         Console.WriteLine($"  Runtime vendored to {cfg.ComponentsPath}/{RuntimeFolder}/");
+        if (kept.Count > 0)
+            Console.WriteLine(Ansi.Yellow("  note: ") +
+                $"left these packages in place — their components weren't vendored as source: {string.Join(", ", kept.Distinct())}. " +
+                "Run `lumeo add <component> --vendor` for those, then `lumeo eject` again to go fully NuGet-free.");
     }
 
     // Removes <PackageReference Include="Lumeo[.Satellite]" …> entries from the consumer .csproj —
-    // BOTH the self-closing form (`… />`) and the expanded form
-    // (`…><Version>4.0.0</Version></PackageReference>`). Returns the package ids removed.
-    // External deps (e.g. Blazicons.Lucide) are left intact.
-    private static List<string> StripLumeoPackageReferences()
+    // BOTH the self-closing form (`… />`) and the expanded form (`…><Version>4.0.0</Version></PackageReference>`).
+    // Removes ONLY packages in `vendoredPackages` (those whose source we actually vendored); any other Lumeo.*
+    // reference is left intact and returned in `kept` so the caller can warn. External deps (Blazicons.Lucide,
+    // etc.) are never touched.
+    private static (List<string> removed, List<string> kept) StripLumeoPackageReferences(HashSet<string> vendoredPackages)
     {
         var removed = new List<string>();
+        var kept = new List<string>();
         var csproj = FindConsumerCsproj(Environment.CurrentDirectory);
-        if (csproj is null) return removed;
+        if (csproj is null) return (removed, kept);
         var text = File.ReadAllText(csproj);
         var stripped = System.Text.RegularExpressions.Regex.Replace(
             text,
             @"[ \t]*<PackageReference\s+Include=""(Lumeo(?:\.[A-Za-z0-9.]+)?)""[^>]*(?:/>|>[\s\S]*?</PackageReference>)[ \t]*\r?\n?",
-            m => { removed.Add(m.Groups[1].Value); return string.Empty; },
+            m =>
+            {
+                var pkg = m.Groups[1].Value;
+                if (vendoredPackages.Contains(pkg)) { removed.Add(pkg); return string.Empty; }
+                kept.Add(pkg);            // referenced but not vendored — leave the package in place
+                return m.Value;
+            },
             System.Text.RegularExpressions.RegexOptions.IgnoreCase);
         if (stripped != text) File.WriteAllText(csproj, stripped, new UTF8Encoding(false));
-        return removed;
+        return (removed, kept);
     }
 
     private static async Task<AssetsConfig> CopyPrebuiltAssetsAsync(string registryUrl, bool local)
@@ -1227,7 +1259,12 @@ internal static class Commands
             }
             catch (Exception ex)
             {
-                Console.WriteLine(Ansi.Yellow($"  ! skipped asset {assetRel}: {ex.Message}"));
+                // A satellite component's source imports `_content/<package>/…` for this asset, so a
+                // missing asset is a runtime 404, not a cosmetic skip. Signal failure (eject's per-component
+                // check then aborts before stripping; a bare `add … --vendor` exits non-zero) rather than
+                // reporting success over an app that will 404 at runtime.
+                Console.Error.WriteLine(Ansi.Red("  error: ") + $"couldn't vendor required asset {assetRel} for {package}: {ex.Message}");
+                Environment.ExitCode = 1;
             }
         }
 
