@@ -1,4 +1,4 @@
-@namespace Lumeo
+﻿@namespace Lumeo
 
 @* Inline SVGs sized to the checkbox's 12-unit viewBox. Stroke-width ~2.75 gives a crisper check
    than Lucide's default 2 at this size, and `stroke-linecap/join="round"` kills the pixel-corner
@@ -15,7 +15,7 @@
                 aria-required="@Required.ToString().ToLowerInvariant()"
                 aria-invalid="@EffectiveInvalid.ToString().ToLowerInvariant()"
                 aria-describedby="@DescribedBy"
-                class="@CssClass" @onclick="Toggle" disabled="@Disabled" @attributes="AdditionalAttributes">
+                class="@CssClass" @onclick="Toggle" disabled="@Disabled" @attributes="EffectiveAttributes">
             @RenderIcon()
         </button>
         <div class="grid gap-1 leading-none pt-[1px]">
@@ -39,7 +39,7 @@ else
             aria-required="@Required.ToString().ToLowerInvariant()"
             aria-invalid="@EffectiveInvalid.ToString().ToLowerInvariant()"
             aria-describedby="@DescribedBy"
-            class="@CssClass" @onclick="Toggle" disabled="@Disabled" @attributes="AdditionalAttributes">
+            class="@CssClass" @onclick="Toggle" disabled="@Disabled" @attributes="EffectiveAttributes">
         @RenderIcon()
     </button>
 }
@@ -129,17 +129,24 @@ else
     // <button id> and the <label for> instead of latching to the first-render value.
     private readonly string _generatedId = LumeoIds.New("checkbox");
 
-    // Inside a FormField, adopt its generated ControlId so the field's
-    // <Label For> resolves to this checkbox button (an explicit Id still wins).
-    // A consumer-splatted id="..." wins over all of the above, because @attributes
-    // renders AFTER the explicit id=, so it is what actually lands on the <button>.
-    // Routing through LumeoIds.Effective keeps the <label for> bound to the SAME id
-    // the button ends up with (otherwise clicking the label no longer toggles it).
-    private string EffectiveId => LumeoIds.Effective(
-        AdditionalAttributes,
-        Id
-            ?? (string.IsNullOrEmpty(FormField?.ControlId) ? null : FormField!.ControlId)
-            ?? _generatedId);
+    // Inside a FormField the generated ControlId must own the <button> id so the
+    // FormField's <Label For> always resolves to this button (Codex P2). A
+    // consumer-splatted id in AdditionalAttributes is therefore ignored in that
+    // context (and stripped from EffectiveAttributes below). Outside a FormField a
+    // splatted id wins via LumeoIds.Effective, which keeps the component's own
+    // <label for> in sync with whatever id actually lands on the button (Triage #23).
+    private string EffectiveId => InsideFormField
+        ? (Id ?? (string.IsNullOrEmpty(FormField?.ControlId) ? null : FormField!.ControlId) ?? _generatedId)
+        : LumeoIds.Effective(AdditionalAttributes, Id ?? _generatedId);
+
+    // Inside a FormField the generated id (EffectiveId above) must win on the
+    // <button>. Strip a consumer-splatted id from the attribute bag so it cannot
+    // override the explicit id= that renders before @attributes. Outside a FormField
+    // the bag passes through unchanged.
+    private Dictionary<string, object>? EffectiveAttributes =>
+        InsideFormField && AdditionalAttributes?.ContainsKey("id") == true
+            ? AdditionalAttributes.Where(kv => kv.Key != "id").ToDictionary(kv => kv.Key, kv => kv.Value)
+            : AdditionalAttributes;
 
     // Stable id for the standalone Description <p> so it can be referenced by
     // aria-describedby (only meaningful/rendered when Description is non-empty).

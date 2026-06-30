@@ -1,4 +1,4 @@
-@namespace Lumeo
+﻿@namespace Lumeo
 @inject IComponentInteropService Interop
 
 @* Render the label, control and helper/error as ONE self-contained vertical block so the
@@ -26,7 +26,7 @@
        aria-invalid="@(EffectiveInvalid ? "true" : "false")"
        aria-describedby="@FormFieldDescribedBy"
        @oninput="HandleInput"
-       @attributes="AdditionalAttributes" />
+       @attributes="EffectiveAttributes" />
 
 @if (!InsideFormField)
 {
@@ -65,6 +65,16 @@
     // Point aria-describedby at the FormField's rendered help/error text so a screen
     // reader announces it on this input (null outside a FormField).
     private string? FormFieldDescribedBy => FormField?.DescribedBy;
+
+    // A consumer-supplied id in the splat would otherwise render AFTER the generated
+    // EffectiveId attribute and silently win, leaving the FormField label's `for`
+    // pointing at an id that no longer exists on the input. Strip it from the splat
+    // when inside a FormField; outside a FormField the splat passes through unchanged
+    // so the consumer's id still reaches the input.
+    private Dictionary<string, object>? EffectiveAttributes =>
+        InsideFormField && AdditionalAttributes?.ContainsKey("id") == true
+            ? AdditionalAttributes.Where(kv => kv.Key != "id").ToDictionary(kv => kv.Key, kv => kv.Value)
+            : AdditionalAttributes;
 
     // Inside a FormField, adopt its ControlId as the input's id so the field's
     // <Label For> actually click-focuses it (Base UI Field parity, matching

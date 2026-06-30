@@ -46,7 +46,7 @@
                         aria-describedby="@FormFieldDescribedBy"
                         class="@CssClass"
                         disabled="@Disabled"
-                        @attributes="AdditionalAttributes">
+                        @attributes="EffectiveAttributes">
                     <Blazicon Svg="Lucide.Calendar" class="me-2 h-4 w-4 shrink-0" />
                     @if (TriggerContent != null)
                     {
@@ -204,7 +204,7 @@ else
                     aria-describedby="@FormFieldDescribedBy"
                     class="@CssClass"
                     disabled="@Disabled"
-                    @attributes="AdditionalAttributes">
+                    @attributes="EffectiveAttributes">
                 <Blazicon Svg="Lucide.Calendar" class="me-2 h-4 w-4 shrink-0" />
                 @if (TriggerContent != null)
                 {
@@ -500,6 +500,12 @@ else
 
     private string _inputBuffer = string.Empty;
     private DateOnly? _lastSyncedValue;
+    // CONTROLLED discriminator: the last Value we pushed to the parent via ValueChanged
+    // (also updated whenever we adopt an authoritative incoming Value). Supports
+    // controlled-rollback: if the parent re-renders with the SAME value we just pushed
+    // it is merely an echo — skip re-syncing _inputBuffer; if it differs the parent
+    // asserted a different value (normalization/rejection) and we adopt it.
+    private DateOnly? _lastPushed;
 
     /// <summary>
     /// Optional controlled-mode override for the popover open state. When non-null,
@@ -601,12 +607,29 @@ else
             Value = DateTimeValue.HasValue ? DateOnly.FromDateTime(DateTimeValue.Value) : null;
         }
 
-        // Keep the typeable buffer in sync with Value whenever the parent
-        // pushes a new bound value (not while the user is typing — we only
-        // resync when the underlying value actually changed).
-        if (Value != _lastSyncedValue)
+        // Keep the typeable buffer in sync with Value whenever the parent pushes a new
+        // bound value. The two branches implement the controlled/uncontrolled distinction:
+        if (ValueChanged.HasDelegate)
         {
+            // CONTROLLED: the parent owns Value and it is authoritative — EXCEPT when it
+            // merely echoes back the exact value we just pushed (_lastPushed), where
+            // adopting would disturb in-flight user text. Any OTHER incoming Value wins:
+            // a normalisation, a programmatic reset, or a REJECTION that kept the old
+            // value (crucial for controlled rollback — Codex P2).
+            if (Value != _lastPushed)
+            {
+                _lastPushed = Value;
+                _lastSyncedValue = Value;
+                _inputBuffer = FormatBuffer(Value);
+            }
+        }
+        else if (Value != _lastSyncedValue)
+        {
+            // UNCONTROLLED: component owns the live value; adopt only when the parent
+            // genuinely changes the parameter — an unrelated re-render that re-supplies
+            // the same stale Value must not clobber in-flight typed text.
             _lastSyncedValue = Value;
+            _lastPushed = Value;
             _inputBuffer = FormatBuffer(Value);
         }
     }
@@ -653,6 +676,7 @@ else
             {
                 Value = null;
                 _lastSyncedValue = null;
+                _lastPushed = null;
                 await ValueChanged.InvokeAsync(null);
                 await RaiseDateTimeValueChanged(null);
             }
@@ -679,6 +703,7 @@ else
             {
                 Value = parsed;
                 _lastSyncedValue = parsed;
+                _lastPushed = parsed;
                 _inputBuffer = FormatBuffer(parsed);
                 await ValueChanged.InvokeAsync(parsed);
                 await RaiseDateTimeValueChanged(parsed);
@@ -775,11 +800,23 @@ else
 
     private string CssClass => Cx.Merge("group flex h-9 w-full items-center rounded-md border", (EffectiveInvalid ? "border-destructive ring-1 ring-destructive/20" : "border-input"), "bg-transparent px-3 py-2 text-sm shadow-sm hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50", Class);
 
+    // Inside a FormField the EffectiveTriggerId must own the trigger element's id so
+    // the <label for> and the rendered element always agree. A consumer-splatted id in
+    // AdditionalAttributes would otherwise render after the generated id attribute and
+    // silently win, causing the label's `for` to point at a missing element (Codex P2).
+    // Strip the splatted id when inside a FormField; outside a FormField the consumer's
+    // id passes through unchanged (EffectiveTriggerId falls back to the internal _triggerId).
+    private Dictionary<string, object>? EffectiveAttributes =>
+        InsideFormField && AdditionalAttributes?.ContainsKey("id") == true
+            ? AdditionalAttributes.Where(kv => kv.Key != "id").ToDictionary(kv => kv.Key, kv => kv.Value)
+            : AdditionalAttributes;
+
     private async Task HandleDateSelected(DateOnly? date)
     {
         if (Mode == DatePickerMode.Month && date.HasValue)
         {
             Value = new DateOnly(date.Value.Year, date.Value.Month, 1);
+            _lastPushed = Value;
             await ValueChanged.InvokeAsync(Value);
             await RaiseDateTimeValueChanged(Value);
             _isOpen = false;
@@ -787,6 +824,7 @@ else
         else if (Mode == DatePickerMode.Year && date.HasValue)
         {
             Value = new DateOnly(date.Value.Year, 1, 1);
+            _lastPushed = Value;
             await ValueChanged.InvokeAsync(Value);
             await RaiseDateTimeValueChanged(Value);
             _isOpen = false;
@@ -794,6 +832,7 @@ else
         else
         {
             Value = date;
+            _lastPushed = date;
             await ValueChanged.InvokeAsync(date);
             await RaiseDateTimeValueChanged(date);
             if (!ShowTimePicker)
@@ -850,6 +889,7 @@ else
         else
         {
             Value = preset.Date;
+            _lastPushed = preset.Date;
             await ValueChanged.InvokeAsync(preset.Date);
             await RaiseDateTimeValueChanged(preset.Date);
         }
@@ -873,6 +913,7 @@ else
         else
         {
             Value = null;
+            _lastPushed = null;
             await ValueChanged.InvokeAsync(null);
             await RaiseDateTimeValueChanged(null);
         }

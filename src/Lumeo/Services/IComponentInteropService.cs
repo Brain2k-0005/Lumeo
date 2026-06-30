@@ -67,10 +67,12 @@ public interface IComponentInteropService : IAsyncDisposable, IDisposable
     /// <see cref="SetupFocusTrap"/> this installs NO Tab trap — use it for non-modal
     /// surfaces (menus, listbox popovers) that move focus inward on open but must let
     /// Tab close them per the WAI-ARIA pattern.</summary>
-    ValueTask SaveFocus(string key);
+    ValueTask SaveFocus(string key) => ValueTask.CompletedTask;
     /// <summary>Returns focus to the element saved by <see cref="SaveFocus"/> under
     /// the same key, if it is still in the document (WCAG 2.4.3).</summary>
-    ValueTask RestoreFocus(string key);
+    // Additive — default no-op so external/test implementations of IComponentInteropService keep
+    // compiling; ComponentInteropService overrides both with the real JS focus save/restore.
+    ValueTask RestoreFocus(string key) => ValueTask.CompletedTask;
 
     /// <summary>Registers a native animationend listener that filters strictly on
     /// the slide-in animation name and, on completion, sets the element's inline
