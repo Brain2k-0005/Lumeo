@@ -131,6 +131,17 @@
     private string? _lastValue;
     private IEnumerable<string>? _lastSelectedValues;
 
+    // CONTROLLED discriminator: the last value/collection we pushed UP via the
+    // change callback. Used to detect echoes (parent accepted our edit and
+    // re-rendered with the exact value we pushed — do nothing) vs authoritative
+    // parent overrides (normalization, programmatic reset, or REJECTION where the
+    // parent kept its old value — roll back the UI to the bound value).
+    // Must be set BEFORE InvokeAsync because a controlled parent may re-render
+    // synchronously inside the callback, and OnParametersSet must see the correct
+    // _lastPushed so it can distinguish echo vs. override.
+    private string? _lastPushedValue;
+    private IEnumerable<string>? _lastPushedSelectedValues;
+
     private string CssClass => Cx.Merge("flex items-center gap-1", Class);
 
     // Roving tabindex: the first selected item is the tab stop; if nothing is
@@ -286,29 +297,67 @@
     {
         if (Type == ToggleGroupType.Single)
         {
-            if (Value is not null)
+            if (ValueChanged.HasDelegate)
             {
-                _selectedItems.Clear();
-                _selectedItems.Add(Value);
+                // CONTROLLED: the parent owns Value and it is authoritative — EXCEPT
+                // when it echoes back the exact value we just pushed (_lastPushedValue).
+                // Any OTHER incoming value wins: a normalization, programmatic reset,
+                // or a REJECTION where the parent kept its old value (!= what we pushed).
+                // That last case is what rolls a rejected toggle back to the bound value.
+                if (Value != _lastPushedValue)
+                {
+                    _selectedItems.Clear();
+                    if (Value is not null) _selectedItems.Add(Value);
+                    _lastPushedValue = Value;
+                }
+                // else: echo of our own toggle — keep the in-flight selection.
             }
-            else if (_lastValue is not null)
+            else
             {
-                // Bound value was reset to null — drop the stale selection.
-                _selectedItems.Clear();
+                // UNCONTROLLED: keep existing param-change detection.
+                if (Value is not null)
+                {
+                    _selectedItems.Clear();
+                    _selectedItems.Add(Value);
+                }
+                else if (_lastValue is not null)
+                {
+                    // Bound value was reset to null — drop the stale selection.
+                    _selectedItems.Clear();
+                }
             }
             _lastValue = Value;
         }
         else if (Type == ToggleGroupType.Multiple)
         {
-            if (SelectedValues is not null)
+            if (SelectedValuesChanged.HasDelegate)
             {
-                _selectedItems.Clear();
-                foreach (var v in SelectedValues) _selectedItems.Add(v);
+                // CONTROLLED: adopt only when SelectedValues is NOT the same object
+                // reference we just pushed (reference equality is sufficient: a veto
+                // keeps the OLD reference; an echo re-supplies the same list object we
+                // handed the parent; a programmatic override supplies a new reference).
+                if (!ReferenceEquals(SelectedValues, _lastPushedSelectedValues))
+                {
+                    _selectedItems.Clear();
+                    if (SelectedValues is not null)
+                        foreach (var v in SelectedValues) _selectedItems.Add(v);
+                    _lastPushedSelectedValues = SelectedValues;
+                }
+                // else: echo of our own toggle — keep the in-flight selection.
             }
-            else if (_lastSelectedValues is not null)
+            else
             {
-                // Bound collection was reset to null — drop the stale selection.
-                _selectedItems.Clear();
+                // UNCONTROLLED: keep existing param-change detection.
+                if (SelectedValues is not null)
+                {
+                    _selectedItems.Clear();
+                    foreach (var v in SelectedValues) _selectedItems.Add(v);
+                }
+                else if (_lastSelectedValues is not null)
+                {
+                    // Bound collection was reset to null — drop the stale selection.
+                    _selectedItems.Clear();
+                }
             }
             _lastSelectedValues = SelectedValues;
         }
@@ -331,9 +380,20 @@
         StateHasChanged();
 
         if (Type == ToggleGroupType.Single)
-            await ValueChanged.InvokeAsync(_selectedItems.FirstOrDefault());
+        {
+            var outgoing = _selectedItems.FirstOrDefault();
+            // Record BEFORE InvokeAsync — a controlled parent re-renders synchronously
+            // inside the callback; OnParametersSet must already see this as the value
+            // we pushed so it can distinguish an echo from an authoritative override.
+            _lastPushedValue = outgoing;
+            await ValueChanged.InvokeAsync(outgoing);
+        }
         else
-            await SelectedValuesChanged.InvokeAsync(_selectedItems.ToList());
+        {
+            var outgoing = _selectedItems.ToList();
+            _lastPushedSelectedValues = outgoing;
+            await SelectedValuesChanged.InvokeAsync(outgoing);
+        }
     }
 
     public enum ToggleGroupType { Single, Multiple }

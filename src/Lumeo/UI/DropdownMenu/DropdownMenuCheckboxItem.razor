@@ -24,10 +24,21 @@
     // only when the parameter actually changes — mirrors DropdownMenuSub's _open.
     private bool _checked;
     private bool _lastCheckedParam;
+    private bool _lastPushed;   // the last value WE emitted via CheckedChanged
 
     protected override void OnParametersSet()
     {
-        if (Checked != _lastCheckedParam)
+        if (CheckedChanged.HasDelegate)
+        {
+            // Controlled: adopt any incoming Checked that isn't the echo of our own toggle — a parent
+            // veto (re-render with the OLD value) rolls the visible state back; an echo is a no-op.
+            if (Checked != _lastPushed)
+            {
+                _checked = Checked;
+                _lastPushed = Checked;
+            }
+        }
+        else if (Checked != _lastCheckedParam)   // Uncontrolled: adopt only on a genuine param change
         {
             _checked = Checked;
             _lastCheckedParam = Checked;
@@ -48,6 +59,7 @@
     private async Task Toggle()
     {
         _checked = !_checked;
+        _lastPushed = _checked;   // record what we're about to push so a synchronous parent veto is detectable
         await CheckedChanged.InvokeAsync(_checked);
     }
 }
