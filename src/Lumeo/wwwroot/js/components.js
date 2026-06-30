@@ -295,9 +295,16 @@ export function saveFocus(key) {
 export function restoreFocus(key) {
     const prev = savedFocusByKey.get(key);
     savedFocusByKey.delete(key);
-    if (prev && prev.isConnected && typeof prev.focus === 'function') {
-        try { prev.focus(); } catch { /* element no longer focusable — ignore */ }
-    }
+    if (!(prev && prev.isConnected && typeof prev.focus === 'function')) return;
+    // Only hand focus back if the user hasn't ALREADY moved it elsewhere. Restore when focus was lost to
+    // <body> (the dismissed surface took its focused child down with it) or still sits inside the dismissed
+    // surface (`key` is the surface's content id) — e.g. an Escape/keyboard dismiss. If focus is on some
+    // OTHER connected control, a controlled close (parent dismisses the surface while the user is typing in
+    // another field) would otherwise STEAL focus back to the old trigger (Codex P2).
+    const ae = document.activeElement;
+    const surface = document.getElementById(key);
+    if (ae && ae !== document.body && !(surface && surface.contains(ae))) return;
+    try { prev.focus(); } catch { /* element no longer focusable — ignore */ }
 }
 
 // --- Slide-animation transform cleanup (Sheet / Drawer) ---
