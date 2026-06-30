@@ -122,10 +122,11 @@ public class PickListControlledRollbackTests : IAsyncLifetime
         Assert.Equal(new[] { "Alpha", "Gamma", "Beta" }, TargetOrder(cut));
     }
 
-    // --- Controlled: veto of a move rolls back the target list ---
+    // --- Controlled: a move re-render UNCHANGED from before the interaction is NOT a veto
+    //     (the #38 observer-only contract, extended consistently to moves too — see the class doc) ---
 
     [Fact]
-    public async Task Controlled_Veto_Move_Selected_Rolls_Back_Target()
+    public async Task Controlled_Move_Unchanged_From_Before_Keeps_Local_Move()
     {
         var items = new List<string> { "Alpha", "Beta", "Gamma" };
         var parentSelected = new List<string> { "Alpha" };
@@ -133,7 +134,7 @@ public class PickListControlledRollbackTests : IAsyncLifetime
 
         var callback = EventCallback.Factory.Create<IEnumerable<string>>(_ctx, (IEnumerable<string> _) =>
         {
-            // Veto: do NOT adopt the move; re-render with the original SelectedItems.
+            // Observer: never echoes back; re-renders with the SAME pre-interaction SelectedItems.
             cut!.Render(p =>
             {
                 p.Add(c => c.Items, items);
@@ -149,15 +150,48 @@ public class PickListControlledRollbackTests : IAsyncLifetime
 
         Assert.Equal(new[] { "Alpha" }, TargetOrder(cut));
 
-        // Select "Beta" in the source panel, then move it to the target — the
-        // optimistic local mutation the pre-fix code never rolled back unless
-        // the resulting count happened to mismatch.
         SourceOption(cut, "Beta").Click();
         var moveSelected = cut.FindAll("button").First(b => b.GetAttribute("aria-label") == "Move selected");
         await moveSelected.ClickAsync(new MouseEventArgs());
 
-        // The parent vetoed the move — target must roll back to just "Alpha".
+        // The unchanged-from-before re-render must NOT undo the local move.
+        Assert.Equal(new[] { "Alpha", "Beta" }, TargetOrder(cut));
+    }
+
+    // --- Controlled: a GENUINE, distinguishable veto (the parent asserts a DIFFERENT set) rolls back ---
+
+    [Fact]
+    public async Task Controlled_Veto_Move_With_Distinct_Selection_Rolls_Back_To_That_Selection()
+    {
+        var items = new List<string> { "Alpha", "Beta", "Gamma" };
+        var parentSelected = new List<string> { "Alpha" };
+        IRenderedComponent<L.PickList<string>>? cut = null;
+
+        var callback = EventCallback.Factory.Create<IEnumerable<string>>(_ctx, (IEnumerable<string> _) =>
+        {
+            // Genuine veto: explicitly select Gamma instead — distinct from both what the user
+            // moved (Alpha+Beta) and the pre-interaction baseline (Alpha only).
+            cut!.Render(p =>
+            {
+                p.Add(c => c.Items, items);
+                p.Add(c => c.SelectedItems, new List<string> { "Gamma" });
+                p.Add(c => c.SelectedItemsChanged, EventCallback.Factory.Create<IEnumerable<string>>(_ctx, (_2) => { }));
+            });
+        });
+
+        cut = _ctx.Render<L.PickList<string>>(p => p
+            .Add(c => c.Items, items)
+            .Add(c => c.SelectedItems, parentSelected)
+            .Add(c => c.SelectedItemsChanged, callback));
+
         Assert.Equal(new[] { "Alpha" }, TargetOrder(cut));
+
+        SourceOption(cut, "Beta").Click();
+        var moveSelected = cut.FindAll("button").First(b => b.GetAttribute("aria-label") == "Move selected");
+        await moveSelected.ClickAsync(new MouseEventArgs());
+
+        // The parent's distinct, authoritative decision wins.
+        Assert.Equal(new[] { "Gamma" }, TargetOrder(cut));
     }
 
     // --- Controlled: a genuine external reorder (not an echo of our push) is adopted ---

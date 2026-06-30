@@ -167,4 +167,45 @@ public class TimeWheelPickerControlledRollbackTests : IAsyncLifetime
         Assert.Contains(cut.FindAll(".font-semibold"), e => e.TextContent.Trim() == "09");
         Assert.Contains(cut.FindAll(".font-semibold"), e => e.TextContent.Trim() == "30");
     }
+
+    // --- Controlled: a GENUINE clear-to-null veto (Value WAS non-null, parent explicitly nulls it
+    //     out) rolls back — distinct from the #68 "Value has always been null" observer-only case,
+    //     which intentionally keeps the local commit (round-16 Codex finding) ---
+
+    [Fact]
+    public async Task Controlled_Genuine_Clear_To_Null_After_Commit_Resets_The_Wheel()
+    {
+        // Start bound at a real, non-null 10:00 with a genuine two-way binding. Commit to 11:00, then
+        // the parent's handler explicitly REJECTS by clearing its own state to null and re-rendering
+        // with Value=null — a real, distinguishable decision (Value demonstrably HAD a value and now
+        // demonstrably doesn't), not an ambiguous "hasn't propagated" re-render.
+        var parentState = (TimeSpan?)new TimeSpan(10, 0, 0);
+        IRenderedComponent<L.TimeWheelPicker>? cut = null;
+
+        var callback = EventCallback.Factory.Create<TimeSpan?>(_ctx, (TimeSpan? incoming) =>
+        {
+            parentState = null; // genuine veto: clear, don't adopt `incoming`
+            cut!.Render(p =>
+            {
+                p.Add(c => c.Use24Hour, true);
+                p.Add(c => c.Value, parentState);
+                p.Add(c => c.ValueChanged, EventCallback.Factory.Create<TimeSpan?>(_ctx, (_) => { }));
+            });
+        });
+
+        cut = _ctx.Render<L.TimeWheelPicker>(p => p
+            .Add(c => c.Use24Hour, true)
+            .Add(c => c.Value, parentState)
+            .Add(c => c.ValueChanged, callback));
+        cut.WaitForAssertion(() => Assert.Equal(2, _interop.WheelScrollToCallCount));
+        Assert.Contains(cut.FindAll(".font-semibold"), e => e.TextContent.Trim() == "10");
+
+        await cut.InvokeAsync(() => cut.Instance.CommitSelectionForTest(new TimeSpan(11, 0, 0)));
+
+        // After the genuine clear, the wheel must NOT keep showing the rejected 11:00 commit — it
+        // resets to the TimeSpan.Zero default (hour 00), not the stale optimistic value.
+        var highlighted = cut.FindAll(".font-semibold");
+        Assert.DoesNotContain(highlighted, e => e.TextContent.Trim() == "11");
+        Assert.Contains(highlighted, e => e.TextContent.Trim() == "00");
+    }
 }

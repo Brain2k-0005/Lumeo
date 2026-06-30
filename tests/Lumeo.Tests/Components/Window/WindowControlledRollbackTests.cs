@@ -1,5 +1,7 @@
 using Bunit;
+using Lumeo.Services;
 using Microsoft.AspNetCore.Components;
+using Microsoft.Extensions.DependencyInjection;
 using Xunit;
 using Lumeo.Tests.Helpers;
 using L = Lumeo;
@@ -109,5 +111,79 @@ public class WindowControlledRollbackTests : IAsyncLifetime
         cut.Render(p => p.Add(w => w.Open, false));
 
         Assert.Empty(cut.FindAll("[role='dialog']"));
+    }
+
+    // --- Controlled: a vetoed close must NOT have already moved focus away (round-16 Codex
+    //     finding) — Close() used to RestoreFocus BEFORE invoking OpenChanged, so a synchronous
+    //     veto left focus moved outside a window that stays visible. ---
+
+    [Fact]
+    public void Controlled_Veto_Does_Not_Restore_Focus()
+    {
+        var interop = new TrackingInteropService();
+        var ctx = new BunitContext();
+        ctx.AddLumeoServices();
+        ctx.Services.AddSingleton<IComponentInteropService>(interop);
+
+        bool parentState = true;
+        IRenderedComponent<L.Window>? cut = null;
+
+        var callback = EventCallback.Factory.Create<bool>(ctx, (bool _) =>
+        {
+            // Veto: re-render with Open unchanged from before the close attempt.
+            cut!.Render(p =>
+            {
+                p.Add(w => w.Open, parentState);
+                p.Add(w => w.OpenChanged, EventCallback.Factory.Create<bool>(ctx, (_) => { }));
+            });
+        });
+
+        cut = ctx.Render<L.Window>(p => p
+            .Add(w => w.Open, true)
+            .Add(w => w.OpenChanged, callback)
+            .Add(w => w.Title, "Test Window")
+            .AddChildContent("body"));
+
+        cut.Find("button[aria-label='Close']").Click();
+
+        // The window correctly stays open (covered by Controlled_Veto_Rolls_Back_To_Bound_Value)...
+        cut.WaitForAssertion(() => Assert.NotEmpty(cut.FindAll("[role='dialog']")));
+        // ...AND focus must never have been handed back to the opener, since the close was rejected.
+        Assert.Equal(0, interop.RestoreFocusCallCount);
+    }
+
+    [Fact]
+    public void Controlled_Accepted_Close_Does_Restore_Focus()
+    {
+        // Guard against over-correction: an ACCEPTED close must still restore focus (WCAG 2.4.3).
+        var interop = new TrackingInteropService();
+        var ctx = new BunitContext();
+        ctx.AddLumeoServices();
+        ctx.Services.AddSingleton<IComponentInteropService>(interop);
+
+        bool parentState = true;
+        IRenderedComponent<L.Window>? cut = null;
+
+        EventCallback<bool> callback = default;
+        callback = EventCallback.Factory.Create<bool>(ctx, (bool incoming) =>
+        {
+            parentState = incoming;
+            cut!.Render(p =>
+            {
+                p.Add(w => w.Open, parentState);
+                p.Add(w => w.OpenChanged, callback);
+            });
+        });
+
+        cut = ctx.Render<L.Window>(p => p
+            .Add(w => w.Open, true)
+            .Add(w => w.OpenChanged, callback)
+            .Add(w => w.Title, "Test Window")
+            .AddChildContent("body"));
+
+        cut.Find("button[aria-label='Close']").Click();
+
+        cut.WaitForAssertion(() => Assert.Empty(cut.FindAll("[role='dialog']")));
+        Assert.Equal(1, interop.RestoreFocusCallCount);
     }
 }

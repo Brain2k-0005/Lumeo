@@ -140,7 +140,14 @@ public sealed class TrackingInteropService : IComponentInteropService
         return ValueTask.CompletedTask;
     }
     public ValueTask SaveFocus(string key) => ValueTask.CompletedTask;
-    public ValueTask RestoreFocus(string key) => ValueTask.CompletedTask;
+    private readonly List<string> _restoreFocusKeys = new();
+    public int RestoreFocusCallCount => _restoreFocusKeys.Count;
+    public IReadOnlyList<string> RestoreFocusKeys => _restoreFocusKeys;
+    public ValueTask RestoreFocus(string key)
+    {
+        _restoreFocusKeys.Add(key);
+        return ValueTask.CompletedTask;
+    }
     public ValueTask AttachOverlaySlideEnd(string elementId) => ValueTask.CompletedTask;
     public ValueTask RegisterSvDrag(string elementId, Func<double, double, Task> handler) => ValueTask.CompletedTask;
     public ValueTask UnregisterSvDrag(string elementId) => ValueTask.CompletedTask;
