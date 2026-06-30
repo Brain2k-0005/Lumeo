@@ -86,7 +86,7 @@ public class MenubarSubDisposeTests : IAsyncLifetime
     }
 
     [Fact]
-    public void Unmounting_MenubarSub_While_Close_Timer_Is_Pending_Cancels_The_Timer()
+    public async Task Unmounting_MenubarSub_While_Close_Timer_Is_Pending_Cancels_The_Timer()
     {
         var cut = _ctx.Render<SubVisibilityProbe>(p => p.Add(x => x.ShowSub, true));
         var sub = cut.FindComponent<L.MenubarSub>().Instance;
@@ -95,8 +95,8 @@ public class MenubarSubDisposeTests : IAsyncLifetime
         // Open the submenu (so a later SetOpen(false) would actually flip state and
         // call StateHasChanged), then schedule the deferred close — exactly the
         // sequence MenubarSubTrigger/Content drive on mouse-enter then mouse-leave.
-        cut.InvokeAsync(() => ctx.SetOpen.InvokeAsync(true)).GetAwaiter().GetResult();
-        cut.InvokeAsync(() => ctx.ScheduleClose()).GetAwaiter().GetResult();
+        await cut.InvokeAsync(() => ctx.SetOpen.InvokeAsync(true));
+        await cut.InvokeAsync(() => ctx.ScheduleClose());
 
         // The close timer is now live: its CancellationTokenSource is allocated and
         // un-cancelled. (Guards the repro precondition.)
@@ -119,7 +119,7 @@ public class MenubarSubDisposeTests : IAsyncLifetime
     }
 
     [Fact]
-    public void Tearing_Down_The_Context_While_Close_Timer_Is_Pending_Cancels_The_Timer()
+    public async Task Tearing_Down_The_Context_While_Close_Timer_Is_Pending_Cancels_The_Timer()
     {
         // Render the MenubarSub directly and tear down the whole bUnit context to
         // exercise teardown — a component's root need not be disposable, so disposing
@@ -137,8 +137,8 @@ public class MenubarSubDisposeTests : IAsyncLifetime
 
         var sub = cut.FindComponent<L.MenubarSub>().Instance;
         var ctx = cut.FindComponent<SubContextProbe>().Instance.Context;
-        cut.InvokeAsync(() => ctx.SetOpen.InvokeAsync(true)).GetAwaiter().GetResult();
-        cut.InvokeAsync(() => ctx.ScheduleClose()).GetAwaiter().GetResult();
+        await cut.InvokeAsync(() => ctx.SetOpen.InvokeAsync(true));
+        await cut.InvokeAsync(() => ctx.ScheduleClose());
 
         var ctsBefore = GetCloseCts(sub);
         Assert.NotNull(ctsBefore);
@@ -148,7 +148,7 @@ public class MenubarSubDisposeTests : IAsyncLifetime
         // Disposing the context disposes every rendered component, invoking
         // MenubarSub.Dispose -> CancelClose. Without the fix MenubarSub has no
         // Dispose and the leaked CTS is never cancelled.
-        _ctx.DisposeAsync().GetAwaiter().GetResult();
+        await _ctx.DisposeAsync();
 
         Assert.Null(GetCloseCts(sub));
         Assert.True(ctsBefore.IsCancellationRequested,

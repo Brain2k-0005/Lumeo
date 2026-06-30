@@ -59,15 +59,14 @@ public class StepperReorderClassTests : IAsyncLifetime
     // ---- #197 / #196: roving tabindex follows focus, selection does not ----
 
     [Fact]
-    public void ArrowKey_Moves_Roving_TabIndex_To_Focused_Tab_But_Not_Selection()
+    public async Task ArrowKey_Moves_Roving_TabIndex_To_Focused_Tab_But_Not_Selection()
     {
         // Active = 0, so tab[0] starts as the single roving stop (tabindex=0).
         var cut = RenderThreeSteps(activeStep: 0);
 
         // ArrowRight on the active tab roves FOCUS to tab[1] (focus, not activation).
-        cut.InvokeAsync(() =>
-            cut.FindAll("[role='tab']")[0].KeyDown(new KeyboardEventArgs { Key = "ArrowRight" }))
-            .GetAwaiter().GetResult();
+        await cut.InvokeAsync(() =>
+            cut.FindAll("[role='tab']")[0].KeyDown(new KeyboardEventArgs { Key = "ArrowRight" }));
 
         var tabs = cut.FindAll("[role='tab']");
 
@@ -86,16 +85,15 @@ public class StepperReorderClassTests : IAsyncLifetime
     }
 
     [Fact]
-    public void End_Key_Roves_TabIndex_To_Last_Tab_Without_Changing_Selection()
+    public async Task End_Key_Roves_TabIndex_To_Last_Tab_Without_Changing_Selection()
     {
         var fired = false;
         var cb = EventCallback.Factory.Create<int>(this, _ => fired = true);
         var cut = RenderThreeSteps(activeStep: 0, activeStepChanged: cb);
 
         // End jumps focus to the LAST tab (#196).
-        cut.InvokeAsync(() =>
-            cut.FindAll("[role='tab']")[0].KeyDown(new KeyboardEventArgs { Key = "End" }))
-            .GetAwaiter().GetResult();
+        await cut.InvokeAsync(() =>
+            cut.FindAll("[role='tab']")[0].KeyDown(new KeyboardEventArgs { Key = "End" }));
 
         var tabs = cut.FindAll("[role='tab']");
         Assert.Equal("0", tabs[2].GetAttribute("tabindex"));
@@ -108,16 +106,15 @@ public class StepperReorderClassTests : IAsyncLifetime
     }
 
     [Fact]
-    public void Home_Key_Roves_TabIndex_To_First_Tab_From_A_Later_Tab()
+    public async Task Home_Key_Roves_TabIndex_To_First_Tab_From_A_Later_Tab()
     {
         // Active = 2: tab[2] owns the roving stop initially.
         var cut = RenderThreeSteps(activeStep: 2);
         Assert.Equal("0", cut.FindAll("[role='tab']")[2].GetAttribute("tabindex"));
 
         // Home jumps focus to the FIRST tab (#196).
-        cut.InvokeAsync(() =>
-            cut.FindAll("[role='tab']")[2].KeyDown(new KeyboardEventArgs { Key = "Home" }))
-            .GetAwaiter().GetResult();
+        await cut.InvokeAsync(() =>
+            cut.FindAll("[role='tab']")[2].KeyDown(new KeyboardEventArgs { Key = "Home" }));
 
         var tabs = cut.FindAll("[role='tab']");
         Assert.Equal("0", tabs[0].GetAttribute("tabindex"));

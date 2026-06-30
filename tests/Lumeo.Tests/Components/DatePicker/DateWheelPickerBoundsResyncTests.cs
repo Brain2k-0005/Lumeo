@@ -102,7 +102,7 @@ public class DateWheelPickerBoundsResyncTests : IAsyncLifetime
     }
 
     [Fact]
-    public void Clamped_Scroll_Commit_ReScrolls_Columns_Back_To_The_Clamp()
+    public async Task Clamped_Scroll_Commit_ReScrolls_Columns_Back_To_The_Clamp()
     {
         // #55: a value with Min/Max bounds. The user scrolls the day column below
         // the Min day; RaiseChange clamps the commit to Min.
@@ -115,8 +115,7 @@ public class DateWheelPickerBoundsResyncTests : IAsyncLifetime
         // User settles the day wheel on day 1 (2024-03-01), which is < Min
         // (2024-03-10). RaiseChange clamps to 2024-03-10. This runs the same
         // commit the debounced scroll handlers do.
-        cut.InvokeAsync(() => cut.Instance.CommitSelectionForTest(2024, 3, 1))
-            .GetAwaiter().GetResult();
+        await cut.InvokeAsync(() => cut.Instance.CommitSelectionForTest(2024, 3, 1));
 
         // The parent adopts the clamped value (controlled usage). Because
         // RaiseChange pre-synced _lastSyncedValue to the clamp, OnParametersSet

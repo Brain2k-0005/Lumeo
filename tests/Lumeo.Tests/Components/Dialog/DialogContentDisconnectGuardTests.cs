@@ -63,7 +63,7 @@ public class DialogContentDisconnectGuardTests : IAsyncLifetime
     }
 
     [Fact]
-    public void Disconnect_During_Open_Does_Not_Throw_On_Subsequent_Dispose()
+    public async Task Disconnect_During_Open_Does_Not_Throw_On_Subsequent_Dispose()
     {
         // After a disconnect during open, tearing the component down must also
         // not throw (Cleanup is already guarded, and _wasOpen was never latched
@@ -74,8 +74,7 @@ public class DialogContentDisconnectGuardTests : IAsyncLifetime
         // its Cleanup() teardown after the disconnect-during-open. (Dialog itself is
         // not IAsyncDisposable; the guarded cleanup lives in DialogContent.) bUnit's
         // DisposeAsync is idempotent, so the IAsyncLifetime teardown is a safe no-op.
-        var ex = Record.ExceptionAsync(async () => await _ctx.DisposeAsync())
-            .GetAwaiter().GetResult();
+        var ex = await Record.ExceptionAsync(async () => await _ctx.DisposeAsync());
 
         Assert.Null(ex);
     }

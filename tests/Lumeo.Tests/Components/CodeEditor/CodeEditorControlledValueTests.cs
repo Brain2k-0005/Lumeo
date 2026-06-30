@@ -40,14 +40,14 @@ public class CodeEditorControlledValueTests : IAsyncLifetime
     public async Task DisposeAsync() => await _ctx.DisposeAsync();
 
     [Fact]
-    public void EditorReportedValue_Then_SameValue_Rerender_Does_Not_Push_SetValue()
+    public async Task EditorReportedValue_Then_SameValue_Rerender_Does_Not_Push_SetValue()
     {
         var cut = _ctx.Render<L.CodeEditor>(p => p.Add(c => c.Value, "initial"));
 
         // The editor (CodeMirror, via JS) reports the user typed -> the bound
         // value the parent holds is unchanged here (uncontrolled / not yet
         // echoed). This mutates the internal _lastSyncedValue.
-        cut.InvokeAsync(() => cut.Instance.OnEditorChange("initialX")).GetAwaiter().GetResult();
+        await cut.InvokeAsync(() => cut.Instance.OnEditorChange("initialX"));
 
         var setValueCallsBefore = _ctx.JSInterop.Invocations.Count(i => i.Identifier == "setValue");
 

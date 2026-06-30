@@ -108,7 +108,7 @@ public class FileViewerLifecycleTests : IAsyncLifetime
     // ──────────────────────────────────────────────────────────────────────────
 
     [Fact]
-    public void Normal_Fetch_Still_Completes_And_Fires_OnLoaded()
+    public async Task Normal_Fetch_Still_Completes_And_Fires_OnLoaded()
     {
         var handler = RegisterGatedHttpClient();
 
@@ -123,7 +123,7 @@ public class FileViewerLifecycleTests : IAsyncLifetime
 
         // Release the fetch on the renderer's synchronization context so the
         // resumed load pass settles cleanly.
-        cut.InvokeAsync(() => handler.Release()).GetAwaiter().GetResult();
+        await cut.InvokeAsync(() => handler.Release());
 
         cut.WaitForAssertion(() =>
         {

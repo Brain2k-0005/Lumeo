@@ -27,7 +27,7 @@ public class DatePickerTimeValueCompositionTests : IAsyncLifetime
     public async Task DisposeAsync() => await _ctx.DisposeAsync();
 
     [Fact]
-    public void TimeOnly_Change_Propagates_To_DateTimeValue()
+    public async Task TimeOnly_Change_Propagates_To_DateTimeValue()
     {
         DateTime? emitted = null;
         var emittedCount = 0;
@@ -43,9 +43,8 @@ public class DatePickerTimeValueCompositionTests : IAsyncLifetime
 
         // Pick a time only (no date change). The TimePicker is the bound time control.
         var timePicker = cut.FindComponent<L.TimePicker>();
-        cut.InvokeAsync(() =>
-            timePicker.Instance.ValueChanged.InvokeAsync(new TimeSpan(14, 30, 0)))
-            .GetAwaiter().GetResult();
+        await cut.InvokeAsync(() =>
+            timePicker.Instance.ValueChanged.InvokeAsync(new TimeSpan(14, 30, 0)));
 
         // Before the fix HandleTimeChanged never raised DateTimeValueChanged at all,
         // so emitted stayed null. After the fix it raises with the date + folded time.
@@ -56,7 +55,7 @@ public class DatePickerTimeValueCompositionTests : IAsyncLifetime
     }
 
     [Fact]
-    public void Picking_A_Date_Keeps_The_Already_Selected_Time()
+    public async Task Picking_A_Date_Keeps_The_Already_Selected_Time()
     {
         DateTime? emitted = null;
         var cut = _ctx.Render<L.DatePicker>(p => p
@@ -68,9 +67,8 @@ public class DatePickerTimeValueCompositionTests : IAsyncLifetime
 
         // Pick a date via the Calendar (HandleDateSelected -> RaiseDateTimeValueChanged).
         var calendar = cut.FindComponent<L.Calendar>();
-        cut.InvokeAsync(() =>
-            calendar.Instance.ValueChanged.InvokeAsync(new DateOnly(2026, 6, 15)))
-            .GetAwaiter().GetResult();
+        await cut.InvokeAsync(() =>
+            calendar.Instance.ValueChanged.InvokeAsync(new DateOnly(2026, 6, 15)));
 
         // Before the fix the commit composed at midnight, discarding the 09:15 time.
         Assert.NotNull(emitted);
@@ -79,7 +77,7 @@ public class DatePickerTimeValueCompositionTests : IAsyncLifetime
     }
 
     [Fact]
-    public void Without_Time_DateTimeValue_Still_Defaults_To_Midnight()
+    public async Task Without_Time_DateTimeValue_Still_Defaults_To_Midnight()
     {
         // Regression guard: the normal (no-time) path must be unchanged — still midnight.
         DateTime? emitted = null;
@@ -88,9 +86,8 @@ public class DatePickerTimeValueCompositionTests : IAsyncLifetime
             .Add(c => c.DateTimeValueChanged, EventCallback.Factory.Create<DateTime?>(_ctx, (DateTime? v) => emitted = v)));
 
         var calendar = cut.FindComponent<L.Calendar>();
-        cut.InvokeAsync(() =>
-            calendar.Instance.ValueChanged.InvokeAsync(new DateOnly(2026, 6, 15)))
-            .GetAwaiter().GetResult();
+        await cut.InvokeAsync(() =>
+            calendar.Instance.ValueChanged.InvokeAsync(new DateOnly(2026, 6, 15)));
 
         Assert.NotNull(emitted);
         Assert.Equal(TimeSpan.Zero, emitted!.Value.TimeOfDay);

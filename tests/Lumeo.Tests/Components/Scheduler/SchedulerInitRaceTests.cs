@@ -57,7 +57,7 @@ public class SchedulerInitRaceTests : IAsyncLifetime
         new(id, title, DateTime.Today.AddHours(10), DateTime.Today.AddHours(11));
 
     [Fact]
-    public void Events_swapped_while_init_is_in_flight_are_pushed_after_init_completes()
+    public async Task Events_swapped_while_init_is_in_flight_are_pushed_after_init_completes()
     {
         // Leave scheduler.init PENDING: holding the handler without SetResult keeps the
         // OnAfterRenderAsync await suspended, so _initialized stays false — exactly the
@@ -84,7 +84,7 @@ public class SchedulerInitRaceTests : IAsyncLifetime
         // OnAfterRenderAsync continuation that resumes AFTER init's await — that
         // continuation is scheduled on the dispatcher and is not awaited by the
         // SetResult InvokeAsync, so poll for it rather than asserting synchronously.
-        cut.InvokeAsync(() => initHandler.SetResult(InstanceId)).GetAwaiter().GetResult();
+        await cut.InvokeAsync(() => initHandler.SetResult(InstanceId));
 
         cut.WaitForAssertion(() => Assert.True(
             SetEventsCount(_module) > 0,
@@ -99,7 +99,7 @@ public class SchedulerInitRaceTests : IAsyncLifetime
     }
 
     [Fact]
-    public void Unchanged_events_across_init_do_not_trigger_a_redundant_push()
+    public async Task Unchanged_events_across_init_do_not_trigger_a_redundant_push()
     {
         // No mid-init swap: the same Events snapshot init rendered is still current when
         // init completes, so the reconciliation must NOT fire a needless setEvents.
@@ -109,7 +109,7 @@ public class SchedulerInitRaceTests : IAsyncLifetime
         var cut = _ctx.Render<L.Scheduler>(p => p.Add(c => c.Events, events));
 
         // Complete init without any intervening param change.
-        cut.InvokeAsync(() => initHandler.SetResult(InstanceId)).GetAwaiter().GetResult();
+        await cut.InvokeAsync(() => initHandler.SetResult(InstanceId));
 
         Assert.Equal(0, SetEventsCount(_module));
     }

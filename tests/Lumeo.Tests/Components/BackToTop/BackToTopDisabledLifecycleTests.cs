@@ -90,14 +90,14 @@ public class BackToTopDisabledLifecycleTests : IAsyncLifetime
     }
 
     [Fact]
-    public void Disposing_Does_Not_Throw_When_Disabled_Never_Registered()
+    public async Task Disposing_Does_Not_Throw_When_Disabled_Never_Registered()
     {
         var cut = _ctx.Render<Lumeo.BackToTop>(p => p
             .Add(b => b.Disabled, true));
 
         // Teardown must be safe even though no observer was ever registered.
-        var exception = Record.ExceptionAsync(async () =>
-            await cut.Instance.DisposeAsync()).GetAwaiter().GetResult();
+        var exception = await Record.ExceptionAsync(async () =>
+            await cut.Instance.DisposeAsync());
 
         Assert.Null(exception);
     }

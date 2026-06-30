@@ -59,7 +59,7 @@ public class ThemeToggleBattleWave3Tests : IAsyncLifetime
     }
 
     [Fact]
-    public void Dispose_During_InFlight_Init_Leaves_No_Subscription_On_Shared_ThemeService()
+    public async Task Dispose_During_InFlight_Init_Leaves_No_Subscription_On_Shared_ThemeService()
     {
         var theme = _ctx.Services.GetRequiredService<ThemeService>();
 
@@ -82,7 +82,7 @@ public class ThemeToggleBattleWave3Tests : IAsyncLifetime
         // the `_disposed` guard.
         getMode.SetResult("system");
         // Flush the resumed continuation onto the renderer dispatcher.
-        cut.InvokeAsync(() => { }).GetAwaiter().GetResult();
+        await cut.InvokeAsync(() => { });
 
         // The shared, long-lived ThemeService event must carry no handler from the
         // disposed toggle. Pre-fix this is 1 (leak); with the guard it stays 0.

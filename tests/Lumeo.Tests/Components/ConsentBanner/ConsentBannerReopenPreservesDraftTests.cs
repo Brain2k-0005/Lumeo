@@ -87,7 +87,7 @@ public class ConsentBannerReopenPreservesDraftTests : IAsyncLifetime
     }
 
     [Fact]
-    public void Public_ShowPreferences_While_Open_Preserves_InProgress_Toggle_Edits()
+    public async Task Public_ShowPreferences_While_Open_Preserves_InProgress_Toggle_Edits()
     {
         var cut = _ctx.Render<L.ConsentBanner>();
 
@@ -103,7 +103,7 @@ public class ConsentBannerReopenPreservesDraftTests : IAsyncLifetime
         // The public reopen entry point must also preserve the pending edit when
         // invoked while the dialog is already open. Call it through the component
         // instance so it runs on the renderer's sync context (StateHasChanged).
-        cut.InvokeAsync(() => cut.Instance.ShowPreferences()).GetAwaiter().GetResult();
+        await cut.InvokeAsync(() => cut.Instance.ShowPreferences());
 
         cut.WaitForAssertion(() => Assert.True(IsBoxChecked(cut)));
     }

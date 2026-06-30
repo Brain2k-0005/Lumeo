@@ -45,7 +45,7 @@ public class ToolbarOverflowStateTests : IAsyncLifetime
         cut.FindAll("[data-toolbar-overflow-trigger]").Count > 0;
 
     [Fact]
-    public void AutoMeasure_All_Items_Fit_Survives_Unrelated_ReRender()
+    public async Task AutoMeasure_All_Items_Fit_Survives_Unrelated_ReRender()
     {
         // Auto-measure mode: Overflow=true, VisibleCount left at its -1 default.
         var cut = _ctx.Render<L.Toolbar>(p => p
@@ -53,7 +53,7 @@ public class ToolbarOverflowStateTests : IAsyncLifetime
             .AddChildContent("<button>A</button><button>B</button><button>C</button>"));
 
         // Simulate the JS ResizeObserver reporting that all 3 items fit (fitting == total).
-        cut.InvokeAsync(() => cut.Instance.OnOverflowMeasured(3, 3)).GetAwaiter().GetResult();
+        await cut.InvokeAsync(() => cut.Instance.OnOverflowMeasured(3, 3));
 
         // Everything fits → no empty "⋯" overflow trigger.
         Assert.False(HasOverflowTrigger(cut), "Overflow trigger should be hidden when all items fit.");
@@ -71,7 +71,7 @@ public class ToolbarOverflowStateTests : IAsyncLifetime
     }
 
     [Fact]
-    public void AutoMeasure_Overflowing_Still_Shows_Trigger_After_ReRender()
+    public async Task AutoMeasure_Overflowing_Still_Shows_Trigger_After_ReRender()
     {
         // Sanity guard: when items genuinely overflow (fitting < total), the trigger
         // is shown and the fix must not suppress it across re-renders.
@@ -80,7 +80,7 @@ public class ToolbarOverflowStateTests : IAsyncLifetime
             .AddChildContent("<button>A</button><button>B</button><button>C</button>"));
 
         // Only 2 of 3 fit.
-        cut.InvokeAsync(() => cut.Instance.OnOverflowMeasured(2, 3)).GetAwaiter().GetResult();
+        await cut.InvokeAsync(() => cut.Instance.OnOverflowMeasured(2, 3));
         Assert.True(HasOverflowTrigger(cut), "Overflow trigger should be shown when not all items fit.");
 
         cut.Render(p => p

@@ -50,7 +50,7 @@ public class TimeWheelPickerUncontrolledCommitTests : IAsyncLifetime
     private const int ItemHeight = 40; // must match TimeWheelPicker's h-10 rows
 
     [Fact]
-    public void Uncontrolled_Commit_Then_Rerender_Does_Not_Reseed_Columns_To_Zero()
+    public async Task Uncontrolled_Commit_Then_Rerender_Does_Not_Reseed_Columns_To_Zero()
     {
         // Uncontrolled: a ValueChanged delegate is attached (so the commit is
         // observed) but it does NOT write the value back, so Value stays null —
@@ -68,8 +68,7 @@ public class TimeWheelPickerUncontrolledCommitTests : IAsyncLifetime
         // User settles the wheels on 05:45. This runs the same RaiseChange the
         // debounced scroll handlers do, emitting the value to the (non-binding)
         // parent.
-        cut.InvokeAsync(() => cut.Instance.CommitSelectionForTest(new TimeSpan(5, 45, 0)))
-            .GetAwaiter().GetResult();
+        await cut.InvokeAsync(() => cut.Instance.CommitSelectionForTest(new TimeSpan(5, 45, 0)));
         Assert.Equal(new TimeSpan(5, 45, 0), emitted);
 
         var scrollsAfterCommit = _interop.WheelScrollToCallCount;
@@ -95,7 +94,7 @@ public class TimeWheelPickerUncontrolledCommitTests : IAsyncLifetime
     }
 
     [Fact]
-    public void Genuine_External_Value_Change_Still_ReSyncs_After_A_Commit()
+    public async Task Genuine_External_Value_Change_Still_ReSyncs_After_A_Commit()
     {
         // Guards against the fix over-correcting: a real external Value change (a
         // different non-null time) after a self-commit must still re-scroll the
@@ -105,8 +104,7 @@ public class TimeWheelPickerUncontrolledCommitTests : IAsyncLifetime
             .Add(c => c.Value, (TimeSpan?)null));
         cut.WaitForAssertion(() => Assert.Equal(2, _interop.WheelScrollToCallCount));
 
-        cut.InvokeAsync(() => cut.Instance.CommitSelectionForTest(new TimeSpan(5, 45, 0)))
-            .GetAwaiter().GetResult();
+        await cut.InvokeAsync(() => cut.Instance.CommitSelectionForTest(new TimeSpan(5, 45, 0)));
         var scrollsAfterCommit = _interop.WheelScrollToCallCount;
 
         // Parent genuinely sets a new, different value (e.g. 08:15).
