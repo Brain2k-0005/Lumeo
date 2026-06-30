@@ -593,7 +593,9 @@ internal static class Commands
         var text = File.ReadAllText(csproj);
         var stripped = System.Text.RegularExpressions.Regex.Replace(
             text,
-            @"[ \t]*<PackageReference\s+Include=""(Lumeo(?:\.[A-Za-z0-9.]+)?)""[^>]*(?:/>|>[\s\S]*?</PackageReference>)[ \t]*\r?\n?",
+            // `\s+[^>]*?\bInclude=` allows other attributes (Version=, Condition=, …) BEFORE Include, so
+            // `<PackageReference Version="4.0.0" Include="Lumeo" />` is matched too, not only Include-first.
+            @"[ \t]*<PackageReference\s+(?:[^>]*?\s)?Include=""(Lumeo(?:\.[A-Za-z0-9.]+)?)""[^>]*(?:/>|>[\s\S]*?</PackageReference>)[ \t]*\r?\n?",
             m =>
             {
                 var pkg = m.Groups[1].Value;
@@ -941,7 +943,10 @@ internal static class Commands
         // runtime is vendored once into _LumeoRuntime/ (verbatim, Lumeo namespace) so core and
         // satellite source compile with no Lumeo PackageReference.
         var forceVendor = opts.Vendor || cfg.Standalone;
-        if (cfg.Standalone && !opts.DryRun && !await EnsureRuntimeVendoredAsync(cfg, registry, opts)) return;
+        // --diff / --view without --yes are preview-only — don't vendor the runtime (or its wwwroot assets)
+        // to disk just to show a diff. Matches the writeAllowed gate used for component files + sat assets.
+        var previewOnly = (opts.Diff || opts.View) && !opts.Yes;
+        if (cfg.Standalone && !opts.DryRun && !previewOnly && !await EnsureRuntimeVendoredAsync(cfg, registry, opts)) return;
 
         // ── Satellite NuGet package check ──────────────────────────────────────
         // If the component lives in a satellite package (nugetPackage != "Lumeo"),
