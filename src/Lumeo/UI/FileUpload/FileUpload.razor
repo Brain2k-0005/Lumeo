@@ -343,6 +343,11 @@ else
     // would then dispatch against a disposed renderer and throw
     // ObjectDisposedException. This flag short-circuits those late dispatches.
     private bool _disposed;
+    // Cancelled at the very start of DisposeAsync so any task blocked in
+    // _concurrencySemaphore.WaitAsync() receives OperationCanceledException and
+    // exits without ever acquiring a slot — and therefore without needing to call
+    // Release(), which eliminates the semaphore-disposed / over-release race.
+    private readonly CancellationTokenSource _disposeCts = new();
 
     // Dispatches a render only while the component is still alive. Used by the
     // post-await callbacks in the upload pipeline (progress reports, success/fail
@@ -674,7 +679,22 @@ else
 
     private async Task UploadOneAsync(FileUploadItem item)
     {
-        await _concurrencySemaphore!.WaitAsync();
+        // Pass _disposeCts.Token so a task waiting for a concurrency slot is
+        // woken with OperationCanceledException during disposal — not left
+        // hanging or hit with ObjectDisposedException. If WaitAsync throws we
+        // never acquired the slot, so we mark the item Cancelled and return
+        // immediately: no Release() call, no over-release.
+        try
+        {
+            await _concurrencySemaphore!.WaitAsync(_disposeCts.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            item.Status = FileUploadStatus.Cancelled;
+            return;
+        }
+        // Semaphore slot acquired — Release() in the finally below is guaranteed
+        // to run once and only once for this acquisition.
         try
         {
             var cts = new CancellationTokenSource();
@@ -756,10 +776,10 @@ else
         }
         finally
         {
-            // Release must always run to unblock other waiters; the render
-            // dispatch is guarded so a post-dispose completion can't throw
-            // ObjectDisposedException. DisposeAsync() nulls the semaphore, so
-            // null-guard the release against that teardown race too.
+            // Release always runs here because WaitAsync succeeded (the early-return
+            // path above handles the cancelled-before-acquire case). Null-guard is
+            // kept for the RunUploadsAsync hot-swap path where a MaxConcurrentUploads
+            // change can replace the instance while this task is in-flight.
             _concurrencySemaphore?.Release();
             await SafeInvokeStateHasChangedAsync();
         }
@@ -774,16 +794,29 @@ else
         // instead of calling InvokeAsync(StateHasChanged) on a disposed renderer.
         _disposed = true;
 
-        // Cancel + dispose all in-flight upload tokens. Without this, every upload
-        // that was running when the component unmounted leaks its CancellationTokenSource.
+        // Cancel pending WaitAsync calls BEFORE touching per-file tokens.
+        // Any UploadOneAsync task blocked waiting for a semaphore slot will
+        // receive OperationCanceledException, mark the item Cancelled, and
+        // return WITHOUT calling Release() — so no slot is over-released and
+        // the semaphore is never accessed after this point by those tasks.
+        _disposeCts.Cancel();
+
+        // Cancel + dispose all per-file in-flight upload tokens so running
+        // OnUpload handlers observe cancellation and unwind cleanly.
         foreach (var cts in _cancellations.Values.ToList())
         {
             try { cts.Cancel(); } catch (ObjectDisposedException) { }
             cts.Dispose();
         }
         _cancellations.Clear();
-        _concurrencySemaphore?.Dispose();
-        _concurrencySemaphore = null;
+
+        // Do NOT dispose _concurrencySemaphore here. Tasks that already passed
+        // WaitAsync still hold a slot and will call Release() in their finally
+        // block; disposing the semaphore before those Release() calls completes
+        // would throw ObjectDisposedException. SemaphoreSlim backed by a .NET
+        // Monitor (no unmanaged wait handle) is safe to leave for the GC —
+        // its finalizer is a no-op in that configuration.
+        _disposeCts.Dispose();
         await Task.CompletedTask;
     }
 

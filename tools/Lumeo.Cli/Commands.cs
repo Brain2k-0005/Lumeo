@@ -41,6 +41,21 @@ internal static class Commands
         ("_content/Lumeo/js/components.js",        "wwwroot/js/components.js"),
     };
 
+    // EVERY core runtime asset a standalone (NuGet-free) build needs mirrored under
+    // wwwroot/_content/Lumeo/ — the verbatim-vendored interop dynamically imports these by their
+    // `_content/Lumeo/…` URL (ComponentInteropService → js/{components,toolbar,signature-pad}.js,
+    // theme.js for the FOUC guard, the two CSS files for tokens/utilities). Superset of
+    // s_prebuiltAssets (which is only the host-wired subset). Keep in sync with src/Lumeo/wwwroot/{js,css}.
+    private static readonly string[] s_standaloneCoreAssets =
+    {
+        "_content/Lumeo/js/components.js",
+        "_content/Lumeo/js/theme.js",
+        "_content/Lumeo/js/signature-pad.js",
+        "_content/Lumeo/js/toolbar.js",
+        "_content/Lumeo/css/lumeo.css",
+        "_content/Lumeo/css/lumeo-utilities.css",
+    };
+
     // ---------------------------------------------------------------- init
     public static async Task Init(InitOptions opts)
     {
@@ -132,39 +147,11 @@ internal static class Commands
         var readme = System.IO.Path.Combine(uiDir, "README.md");
         if (!File.Exists(readme)) File.WriteAllText(readme, BuildReadme(ns, path));
 
-        // Standalone: the vendored runtime lives under _LumeoRuntime/ keeping the Lumeo namespace,
-        // so a project-level @using Lumeo is what lets the user-namespace components resolve Cx,
-        // the injected services, Lumeo.* enums, etc. against it. Bridge it here.
+        // Standalone: the vendored runtime/components keep the Lumeo namespace, so the project needs a
+        // root-level @using Lumeo (+ framework / Blazicons / services) for both the app pages and the
+        // vendored tree to resolve <Button>, Cx, the injected services, etc.
         if (opts.Standalone)
-        {
-            // Write to the PROJECT-ROOT _Imports.razor (not componentsPath): Razor `_Imports` flow only
-            // DOWNWARD, so one under Components/Ui would never let app pages (Pages/, the project root)
-            // resolve <Button> etc. A root _Imports cascades to BOTH the app pages and the vendored tree.
-            var importsPath = System.IO.Path.Combine(Environment.CurrentDirectory, "_Imports.razor");
-            // Mirror src/Lumeo/_Imports.razor: the framework + Blazicons + Lumeo usings the vendored
-            // .razor components rely on (KeyboardEventArgs, Blazicon, Cx, the injected services, …).
-            const string lumeoUsings =
-                "@using Microsoft.AspNetCore.Components\n" +
-                "@using Microsoft.AspNetCore.Components.Forms\n" +
-                "@using Microsoft.AspNetCore.Components.Web\n" +
-                "@using Microsoft.AspNetCore.Components.Web.Virtualization\n" +
-                "@using Microsoft.JSInterop\n" +
-                "@using Blazicons\n" +
-                "@using Lumeo\n" +
-                "@using Lumeo.Internal\n" +
-                "@using Lumeo.Services\n" +
-                "@using Lumeo.Services.Localization\n";
-            if (File.Exists(importsPath))
-            {
-                var existing = await File.ReadAllTextAsync(importsPath);
-                if (!existing.Contains("@using Lumeo"))
-                    await File.WriteAllTextAsync(importsPath, existing.TrimEnd() + "\n" + lumeoUsings, new UTF8Encoding(false));
-            }
-            else
-            {
-                await File.WriteAllTextAsync(importsPath, lumeoUsings, new UTF8Encoding(false));
-            }
-        }
+            await EnsureStandaloneImportsAsync();
 
         Console.WriteLine();
         Console.WriteLine(Ansi.Green("OK ") + $"Wrote {Paths.ConfigFile}");
@@ -175,6 +162,36 @@ internal static class Commands
             Console.WriteLine($"  assets.mode     {assets.Mode}");
         Console.WriteLine();
         Console.WriteLine($"Next: {Ansi.Cyan("lumeo add button")}");
+    }
+
+    // Ensures the PROJECT-ROOT _Imports.razor carries every framework / Blazicons / Lumeo using the
+    // standalone-vendored .razor components (and the app pages that use them) rely on. Appends only the
+    // lines actually MISSING — matched WHOLE-LINE, so an existing `@using Lumeo.Components` does not mask
+    // the still-required `@using Lumeo`, `@using Blazicons`, `@using Lumeo.Services`, … Idempotent; shared
+    // by `init --standalone` and `eject`.
+    private static async Task EnsureStandaloneImportsAsync()
+    {
+        string[] usings =
+        {
+            "@using Microsoft.AspNetCore.Components",
+            "@using Microsoft.AspNetCore.Components.Forms",
+            "@using Microsoft.AspNetCore.Components.Web",
+            "@using Microsoft.AspNetCore.Components.Web.Virtualization",
+            "@using Microsoft.JSInterop",
+            "@using Blazicons",
+            "@using Lumeo",
+            "@using Lumeo.Internal",
+            "@using Lumeo.Services",
+            "@using Lumeo.Services.Localization",
+        };
+        var importsPath = Path.Combine(Environment.CurrentDirectory, "_Imports.razor");
+        var existing = File.Exists(importsPath) ? await File.ReadAllTextAsync(importsPath) : "";
+        var present = new HashSet<string>(
+            existing.Replace("\r\n", "\n").Split('\n').Select(l => l.Trim()), StringComparer.Ordinal);
+        var missing = usings.Where(u => !present.Contains(u)).ToList();
+        if (missing.Count == 0) return;
+        var prefix = existing.Length == 0 ? "" : existing.TrimEnd() + "\n";
+        await File.WriteAllTextAsync(importsPath, prefix + string.Join("\n", missing) + "\n", new UTF8Encoding(false));
     }
 
     private static string? DetectProjectNamespace(string cwd)
@@ -444,10 +461,12 @@ internal static class Commands
         }
 
         // The vendored runtime + components import their JS/CSS from `_content/Lumeo/…` (baked into the
-        // source verbatim — e.g. ComponentInteropService loads `_content/Lumeo/js/components.js`). With no
-        // Lumeo package there is no `_content/Lumeo`, so mirror the core assets under wwwroot/_content/Lumeo/
-        // where exactly those URLs resolve. Idempotent (skips files already present).
-        foreach (var (assetSrc, _) in s_prebuiltAssets)
+        // source verbatim — ComponentInteropService loads _content/Lumeo/js/{components,toolbar,
+        // signature-pad}.js, plus theme.js and the two CSS files). With no Lumeo package there is no
+        // `_content/Lumeo`, so mirror EVERY core runtime asset under wwwroot/_content/Lumeo/ where those
+        // URLs resolve. Idempotent (skips files already present). These are MANDATORY for a NuGet-free
+        // build — a fetch failure fails the whole vendor so callers (eject) won't then strip the package.
+        foreach (var assetSrc in s_standaloneCoreAssets)
         {
             var assetDest = Path.Combine(Environment.CurrentDirectory, "wwwroot",
                 assetSrc.Replace('/', Path.DirectorySeparatorChar));   // assetSrc already begins "_content/Lumeo/…"
@@ -461,7 +480,10 @@ internal static class Commands
             }
             catch (Exception ex)
             {
-                Console.Error.WriteLine(Ansi.Yellow("  warn: ") + $"couldn't vendor core asset {assetSrc}: {ex.Message}");
+                Console.Error.WriteLine(Ansi.Red("  error: ") +
+                    $"couldn't vendor required core asset {assetSrc}: {ex.Message}");
+                Environment.ExitCode = 1;
+                return false;   // standalone can't run without these — don't report a successful vendor
             }
         }
         return true;
@@ -505,10 +527,26 @@ internal static class Commands
         cfg.Standalone = true;
         ConfigIO.Save(cfg);
 
-        // Re-vendor every already-installed component as SOURCE (satellites included), skipping the runtime record.
+        // The re-vendored components keep the Lumeo namespace, so the project needs the same root-level
+        // @using bridge that `init --standalone` writes — otherwise <Dialog>/<Button> stop resolving the
+        // moment the package is gone.
+        await EnsureStandaloneImportsAsync();
+
+        // Re-vendor every already-installed component as SOURCE (satellites included), skipping the runtime
+        // record. If any re-vendor fails (e.g. a stale lumeo.json key the current registry no longer knows),
+        // abort BEFORE stripping the package — never leave the project with missing source and no fallback.
         var installed = cfg.Components?.Keys.Where(k => k != RuntimeRecordKey).ToList() ?? new List<string>();
         foreach (var key in installed)
+        {
+            Environment.ExitCode = 0;
             await Add(opts with { Component = key });
+            if (Environment.ExitCode != 0)
+            {
+                Console.Error.WriteLine(Ansi.Red(
+                    $"Eject aborted while re-vendoring '{key}' — the Lumeo package was NOT removed. Resolve the error above (e.g. a stale lumeo.json component) and retry."));
+                return;
+            }
+        }
 
         var removed = StripLumeoPackageReferences();
         Console.WriteLine();
@@ -888,12 +926,14 @@ internal static class Commands
             Console.WriteLine(Ansi.Dim(
                 $"  Vendoring {entry.Name} as source from {satellitePkg} (omit --vendor to add the NuGet package instead)."));
             // The DataGrid's Excel/PDF export runs through the compiled Lumeo.DataGrid.Export backend
-            // (ClosedXML + QuestPDF) bundled inside the NuGet — it can't be vendored as source. The grid
-            // renders/sorts/filters fine without it; only export needs it. Surface that honestly.
+            // (ClosedXML + QuestPDF). That backend is NOT a standalone NuGet package — it ships bundled
+            // inside the Lumeo.DataGrid package and can't be vendored as source. The grid renders/sorts/
+            // filters fine without it; only export needs it. Point users at the package that exists.
             if (string.Equals(ToKebab(entry.Name), "data-grid", StringComparison.OrdinalIgnoreCase))
                 Console.WriteLine(Ansi.Yellow("  note: ") +
-                    "Excel/PDF export needs the compiled Lumeo.DataGrid.Export backend, which isn't vendorable as source — " +
-                    "add `<PackageReference Include=\"Lumeo.DataGrid.Export\" />` if you need export (grid rendering works without it).");
+                    "Excel/PDF export uses the compiled Lumeo.DataGrid.Export backend, which ships only inside the " +
+                    "Lumeo.DataGrid NuGet and can't be vendored as source. Reference the Lumeo.DataGrid package " +
+                    "(add it without --vendor) if you need export — the vendored grid renders without it.");
         }
         else if (isSatellite && !((opts.Diff || opts.View) && !opts.Yes))
         {
@@ -1233,6 +1273,7 @@ internal static class Commands
         }
 
         int driftTotal = 0, updatedTotal = 0, skippedTotal = 0;
+        var refreshedSatelliteAssets = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var key in targets)
         {
             if (!registry.Components.TryGetValue(key, out var entry)) continue;
@@ -1296,6 +1337,18 @@ internal static class Commands
                 await File.WriteAllTextAsync(dest, upstream, new UTF8Encoding(false));
                 Console.WriteLine(Ansi.Green("  update  ") + displayPath);
                 updatedTotal++;
+            }
+
+            // Refresh vendored satellite interop assets (wwwroot/_content/<package>/…) so updated Razor/C#
+            // isn't left calling stale JS/CSS. Only when those assets are actually vendored locally
+            // (standalone, or an earlier `add --vendor`) — a NuGet-referencing project gets them from the
+            // package and must not have them copied in. Once per package.
+            if (!check && !dryRun
+                && !string.Equals(entryPackage, "Lumeo", StringComparison.OrdinalIgnoreCase)
+                && (cfg.Standalone || Directory.Exists(Path.Combine(Environment.CurrentDirectory, "wwwroot", "_content", entryPackage)))
+                && refreshedSatelliteAssets.Add(entryPackage))
+            {
+                await VendorSatelliteAssetsAsync(registry, entryPackage, local, cfg.Registry);
             }
 
             if (!check && !dryRun && registry.Components.TryGetValue(key, out var e2))

@@ -146,12 +146,15 @@ else
     {
         // _categoryNames is populated before we subscribe, so it's safe to use here.
         var wanted = GetQueryValue(e.Location, "category");
-        if (wanted is null) return;
+        var match = wanted is not null
+            ? _categoryNames.FirstOrDefault(c => string.Equals(c, wanted, StringComparison.OrdinalIgnoreCase))
+            : null;
 
-        var match = _categoryNames.FirstOrDefault(c => string.Equals(c, wanted, StringComparison.OrdinalIgnoreCase));
-        if (match is null) return;
+        // When category is absent/unknown, clear all filters so the URL is reflected faithfully.
+        _filters = match is not null
+            ? new HashSet<string>(new[] { match }, StringComparer.OrdinalIgnoreCase)
+            : new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-        _filters = new HashSet<string>(new[] { match }, StringComparer.OrdinalIgnoreCase);
         // LocationChanged fires on a background thread in Blazor Server; use InvokeAsync
         // to marshal StateHasChanged back to the component's synchronization context.
         InvokeAsync(StateHasChanged);
