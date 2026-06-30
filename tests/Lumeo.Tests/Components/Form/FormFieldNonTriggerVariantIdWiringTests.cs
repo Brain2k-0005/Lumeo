@@ -99,4 +99,82 @@ public class FormFieldNonTriggerVariantIdWiringTests : IAsyncLifetime
         var id = AssertLabelForResolvesToARenderedElement(cut);
         Assert.Equal("BUTTON", cut.Find($"#{id}").TagName);
     }
+
+    // --- round-15: aria-labelledby on non-labelable group pickers ---
+
+    [Fact]
+    public void TimePicker_Wheel_Variant_Also_Wires_Aria_Labelledby_To_The_Label()
+    {
+        // Codex P2: `<label for>` does not reliably associate with a non-labelable element
+        // (`<div role="group">`), so the group additionally wires aria-labelledby straight at the
+        // FormField's own <label> id.
+        var cut = RenderField(b =>
+        {
+            b.OpenComponent<L.TimePicker>(0);
+            b.AddAttribute(1, "Variant", L.TimePicker.TimePickerVariant.Wheel);
+            b.CloseComponent();
+        });
+
+        var labelId = cut.Find("label").GetAttribute("id");
+        Assert.False(string.IsNullOrEmpty(labelId));
+
+        var group = cut.Find("[role='group']");
+        Assert.Equal(labelId, group.GetAttribute("aria-labelledby"));
+    }
+
+    [Fact]
+    public void DatePicker_Inline_Variant_Also_Wires_Aria_Labelledby_To_The_Label()
+    {
+        var cut = RenderField(b =>
+        {
+            b.OpenComponent<L.DatePicker>(0);
+            b.AddAttribute(1, "Inline", true);
+            b.CloseComponent();
+        });
+
+        var labelId = cut.Find("label").GetAttribute("id");
+        Assert.False(string.IsNullOrEmpty(labelId));
+
+        var group = cut.Find("[role='group']");
+        Assert.Equal(labelId, group.GetAttribute("aria-labelledby"));
+    }
+
+    // --- round-15: compound pickers (date + nested time-of-day) must not duplicate the FormField id ---
+
+    [Fact]
+    public void DatePicker_Inline_With_ShowTimePicker_Does_Not_Duplicate_The_FormField_Id()
+    {
+        // Codex P2: ShowTimePicker nests a <TimePicker> for the time-of-day portion inside the SAME
+        // FormField cascade as the outer DatePicker. Left cascaded, the inner TimePicker would ALSO
+        // compute the same FormFieldControlId and render a duplicate DOM id — ambiguous label/focus
+        // target. The nested TimePicker must be detached from the cascade.
+        var cut = RenderField(b =>
+        {
+            b.OpenComponent<L.DatePicker>(0);
+            b.AddAttribute(1, "Inline", true);
+            b.AddAttribute(2, "ShowTimePicker", true);
+            b.CloseComponent();
+        });
+
+        var labelFor = cut.Find("label").GetAttribute("for");
+        var matches = cut.FindAll($"#{labelFor}");
+        Assert.Single(matches);
+    }
+
+    [Fact]
+    public void DatePicker_Inline_Wheel_With_ShowTimePicker_Does_Not_Duplicate_The_FormField_Id()
+    {
+        var cut = RenderField(b =>
+        {
+            b.OpenComponent<L.DatePicker>(0);
+            b.AddAttribute(1, "Inline", true);
+            b.AddAttribute(2, "Variant", L.DatePicker.DatePickerVariant.Wheel);
+            b.AddAttribute(3, "ShowTimePicker", true);
+            b.CloseComponent();
+        });
+
+        var labelFor = cut.Find("label").GetAttribute("for");
+        var matches = cut.FindAll($"#{labelFor}");
+        Assert.Single(matches);
+    }
 }

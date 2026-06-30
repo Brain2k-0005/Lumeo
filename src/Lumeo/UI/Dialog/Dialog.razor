@@ -1,7 +1,7 @@
 @namespace Lumeo
 
 @{
-    var context = new DialogContext(EffectiveOpen, EventCallback.Factory.Create<bool>(this, SetOpen), _titleId, _descriptionId, TryDismiss, _descriptionRegistry, RegisterDescription);
+    var context = new DialogContext(EffectiveOpen, EventCallback.Factory.Create<bool>(this, SetOpen), _titleId, _descriptionId, TryDismiss, _descriptionRegistry, RegisterDescription, UnregisterDescription);
 }
 
 <CascadingValue Value="context" IsFixed="false">
@@ -187,28 +187,42 @@
     // aria-describedby when a description actually exists (no dangling IDREF).
     // Re-renders so the content's aria-describedby picks up the registration on
     // the next pass (child OnInitialized runs after the parent's first render).
+    // Counted (not a bool) so a description that is conditionally REMOVED while
+    // the dialog stays mounted is correctly un-registered via UnregisterDescription
+    // below (Codex P2) — a bare bool latched true forever and left aria-describedby
+    // pointing at an id no longer in the DOM once the description disappeared.
     private void RegisterDescription()
     {
-        if (!_descriptionRegistry.HasDescription)
-        {
-            _descriptionRegistry.HasDescription = true;
-            StateHasChanged();
-        }
+        _descriptionRegistry.Count++;
+        if (_descriptionRegistry.Count == 1) StateHasChanged();
     }
 
-    // DescriptionRegistry + RegisterDescription default to null! so the 4.0 additions stay a
-    // non-breaking signature change: Lumeo always constructs the context with real values, and
-    // any external 3.x constructor of the 5-arg shape still compiles.
-    public record DialogContext(bool IsOpen, EventCallback<bool> SetOpen, string TitleId, string DescriptionId, Func<string, Task<bool>> TryDismiss, DialogDescriptionRegistry DescriptionRegistry = null!, Action RegisterDescription = null!);
+    // Called by DialogDescription.Dispose when it is removed from the tree (a
+    // conditionally-rendered <DialogDescription>, or the dialog itself closing).
+    // Only re-renders on the 1->0 transition, so multiple descriptions removing in
+    // the same batch don't thrash StateHasChanged.
+    private void UnregisterDescription()
+    {
+        _descriptionRegistry.Count--;
+        if (_descriptionRegistry.Count == 0) StateHasChanged();
+    }
+
+    // DescriptionRegistry + RegisterDescription/UnregisterDescription default to null! so the 4.0
+    // additions stay a non-breaking signature change: Lumeo always constructs the context with real
+    // values, and any external 3.x constructor of the 5-arg shape still compiles.
+    public record DialogContext(bool IsOpen, EventCallback<bool> SetOpen, string TitleId, string DescriptionId, Func<string, Task<bool>> TryDismiss, DialogDescriptionRegistry DescriptionRegistry = null!, Action RegisterDescription = null!, Action UnregisterDescription = null!);
 
     /// <summary>
     /// Persistent, mutable holder that survives the per-render rebuild of
     /// <see cref="DialogContext"/>. Lets <see cref="DialogContent"/> know whether
-    /// a <see cref="DialogDescription"/> was rendered so it can avoid emitting a
-    /// dangling <c>aria-describedby</c> IDREF (mirrors the AlertDialog pattern).
+    /// a <see cref="DialogDescription"/> is CURRENTLY rendered so it can avoid
+    /// emitting a dangling <c>aria-describedby</c> IDREF (mirrors the AlertDialog
+    /// pattern). A count, not a bool: a description that mounts then is later
+    /// removed must un-register, which a one-way-latched bool cannot represent.
     /// </summary>
     public sealed class DialogDescriptionRegistry
     {
-        public bool HasDescription { get; set; }
+        public int Count { get; set; }
+        public bool HasDescription => Count > 0;
     }
 }
