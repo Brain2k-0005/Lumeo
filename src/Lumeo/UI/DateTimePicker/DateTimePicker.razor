@@ -666,6 +666,20 @@
             catch (JSDisconnectedException) { _navKeysRegistered = false; }
             catch (InvalidOperationException) { _navKeysRegistered = false; } // prerender
         }
+        else if (_isOpen && _navKeysRegistered && ShowSeconds && !_secondsNavRegistered)
+        {
+            // Seconds was enabled AFTER the popover (and the hour/minute columns) were
+            // already registered — the open-time branch above won't run again, so register
+            // the seconds column now. Otherwise Arrow/Home/End on the freshly rendered
+            // seconds column scroll the page instead of being suppressed (Codex P2).
+            try
+            {
+                await Interop.RegisterPreventDefaultKeys(_secondsColId, ColumnNavKeys);
+                _secondsNavRegistered = true;
+            }
+            catch (JSDisconnectedException) { }
+            catch (InvalidOperationException) { } // prerender
+        }
         else if (!_isOpen && _navKeysRegistered)
         {
             _navKeysRegistered = false;

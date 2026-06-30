@@ -379,16 +379,17 @@ else
     }
 
     // The single tabbable ("roving root") option value for a column. When an
-    // option is selected it stays the tab stop (existing behaviour). When NOTHING
-    // is selected — e.g. Value is null — the first ENABLED option becomes the tab
-    // stop so the column keeps a keyboard entry point (every option would
-    // otherwise be tabindex=-1, leaving the listbox unreachable). Returns
-    // int.MinValue (matches no rendered option) when every option is disabled.
+    // ENABLED option is selected it stays the tab stop (existing behaviour). When
+    // nothing is selected — or the selection has since become disabled (e.g. Min/Max
+    // moved past it) — the first ENABLED option becomes the tab stop so the column
+    // keeps a keyboard entry point. A disabled button can never hold focus, so it must
+    // not be seeded as the tab stop or the column would lose its tab entry entirely.
+    // Returns int.MinValue (matches no rendered option) when every option is disabled.
     private int RovingValue(string colId, List<int> values)
     {
         foreach (var v in values)
         {
-            if (IsColItemSelected(colId, v)) return v;
+            if (IsColItemSelected(colId, v) && !IsColItemDisabled(colId, v)) return v;
         }
         foreach (var v in values)
         {

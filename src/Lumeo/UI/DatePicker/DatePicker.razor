@@ -817,6 +817,10 @@ else
         {
             Value = new DateOnly(date.Value.Year, date.Value.Month, 1);
             _lastPushed = Value;
+            // Refresh the typed buffer to the picked value. Without this, a controlled
+            // parent that echoes Value back hits the _lastPushed echo-skip in
+            // OnParametersSet, leaving any in-flight draft text in the textbox (Codex P2).
+            _inputBuffer = FormatBuffer(Value);
             await ValueChanged.InvokeAsync(Value);
             await RaiseDateTimeValueChanged(Value);
             _isOpen = false;
@@ -825,6 +829,7 @@ else
         {
             Value = new DateOnly(date.Value.Year, 1, 1);
             _lastPushed = Value;
+            _inputBuffer = FormatBuffer(Value);
             await ValueChanged.InvokeAsync(Value);
             await RaiseDateTimeValueChanged(Value);
             _isOpen = false;
@@ -833,6 +838,7 @@ else
         {
             Value = date;
             _lastPushed = date;
+            _inputBuffer = FormatBuffer(date);
             await ValueChanged.InvokeAsync(date);
             await RaiseDateTimeValueChanged(date);
             if (!ShowTimePicker)
@@ -890,6 +896,7 @@ else
         {
             Value = preset.Date;
             _lastPushed = preset.Date;
+            _inputBuffer = FormatBuffer(preset.Date);
             await ValueChanged.InvokeAsync(preset.Date);
             await RaiseDateTimeValueChanged(preset.Date);
         }
@@ -914,6 +921,7 @@ else
         {
             Value = null;
             _lastPushed = null;
+            _inputBuffer = FormatBuffer(null);
             await ValueChanged.InvokeAsync(null);
             await RaiseDateTimeValueChanged(null);
         }

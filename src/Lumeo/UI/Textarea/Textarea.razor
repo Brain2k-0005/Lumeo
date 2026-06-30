@@ -24,7 +24,7 @@
               aria-invalid="@((EffectiveInvalid || IsOverLimit).ToString().ToLowerInvariant())"
               aria-describedby="@FormFieldDescribedBy"
               class="@CssClass" value="@Value" @oninput="HandleInput" disabled="@Disabled"
-              maxlength="@EffectiveMaxLength" @attributes="AdditionalAttributes"></textarea>
+              maxlength="@EffectiveMaxLength" @attributes="EffectiveAttributes"></textarea>
     @if (ShowCount)
     {
         <div class="mt-1 text-xs @CountClass text-end">
@@ -113,6 +113,15 @@
     // registered element id matches the rendered id — otherwise auto-resize can't
     // find the element. _elementId stays as the fallback.
     private string EffectiveId => FormFieldControlId ?? _elementId;
+
+    // Inside a FormField the generated EffectiveId must own the <textarea id> so the
+    // field's <Label For> and the auto-resize JS (keyed off EffectiveId) stay in sync.
+    // A consumer-splatted id in AdditionalAttributes renders after the explicit id= and
+    // would override it, so strip it here. Outside a FormField the bag passes through.
+    private Dictionary<string, object>? EffectiveAttributes =>
+        InsideFormField && AdditionalAttributes?.ContainsKey("id") == true
+            ? AdditionalAttributes.Where(kv => kv.Key != "id").ToDictionary(kv => kv.Key, kv => kv.Value)
+            : AdditionalAttributes;
 
     private string ResizeClass => Resize switch
     {
