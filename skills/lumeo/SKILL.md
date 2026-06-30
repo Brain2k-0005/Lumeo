@@ -5,7 +5,7 @@ description: Use when building or editing a Blazor UI that uses the Lumeo compon
 
 # Lumeo
 
-Lumeo is a Blazor component library for .NET 10 on Tailwind CSS v4 — 131 components (forms, data display, overlays, charts, DataGrid, AI primitives, motion) plus 16 full-page "block" patterns. shadcn-style API: composable sub-components, `CascadingValue` context, theme tokens.
+Lumeo is a Blazor component library for .NET 10 on Tailwind CSS v4 — 164 components (forms, data display, overlays, charts, DataGrid, AI primitives, motion) plus 16 full-page "block" patterns. shadcn-style API: composable sub-components, `CascadingValue` context, theme tokens.
 
 ## First move: use the lumeo-mcp server
 
@@ -54,5 +54,5 @@ The registry CLI is an alternative: `lumeo init` then `lumeo add <component>` co
 ## References
 
 - [references/conventions.md](references/conventions.md) — the full coding-conventions checklist
-- [references/catalog.md](references/catalog.md) — all 131 components by category (offline fallback for when the MCP isn't connected)
+- [references/catalog.md](references/catalog.md) — all 164 components by category (offline fallback for when the MCP isn't connected)
 - [references/mcp.md](references/mcp.md) — detailed lumeo-mcp tool reference + example calls
