@@ -64,18 +64,19 @@
     };
 
     // Rotated square — same visual as Popover/HoverCard but no border (tooltip is a solid primary surface).
-    // Derived from SideStr (the SAME value rendered as data-side) — not from the raw Side enum — so the
-    // arrow edge and the data-side attribute can never disagree. positionFixed collision-flips the box and
-    // rewrites content.dataset.side to the resolved side; a CSS rule keyed on [data-side] can re-point the
-    // arrow without a Blazor re-render. For the no-flip (and live-Side-change) path the C# value is the
-    // single source of truth, so the rendered arrow always matches the box's side.
+    // Derived from SideStr (the SAME value rendered as data-side) so the arrow edge and the data-side
+    // attribute agree on the INITIAL placement. Horizontal centering for Top/Bottom uses the PHYSICAL
+    // `left-1/2` (not logical `start-1/2`): the box is positioned by JS in LTR coordinates and the arrow's
+    // `-translate-x-1/2` is physical, so under RTL `start-1/2` (→ right:50%) would push the arrow off-center
+    // (Codex P2). NOTE: a positionFixed COLLISION FLIP currently moves the box but does NOT yet re-point this
+    // arrow (no resolved-side feedback to C#, no [data-side] CSS) — tracked separately.
     private string ArrowClasses => SideStr switch
     {
-        "top" => "absolute start-1/2 top-full -translate-x-1/2 -translate-y-1/2 rotate-45 h-2 w-2 bg-primary",
-        "bottom" => "absolute start-1/2 bottom-full -translate-x-1/2 translate-y-1/2 rotate-45 h-2 w-2 bg-primary",
+        "top" => "absolute left-1/2 top-full -translate-x-1/2 -translate-y-1/2 rotate-45 h-2 w-2 bg-primary",
+        "bottom" => "absolute left-1/2 bottom-full -translate-x-1/2 translate-y-1/2 rotate-45 h-2 w-2 bg-primary",
         "left" => "absolute top-1/2 left-full -translate-y-1/2 -translate-x-1/2 rotate-45 h-2 w-2 bg-primary",
         "right" => "absolute top-1/2 right-full -translate-y-1/2 translate-x-1/2 rotate-45 h-2 w-2 bg-primary",
-        _ => "absolute start-1/2 top-full -translate-x-1/2 -translate-y-1/2 rotate-45 h-2 w-2 bg-primary"
+        _ => "absolute left-1/2 top-full -translate-x-1/2 -translate-y-1/2 rotate-45 h-2 w-2 bg-primary"
     };
 
     protected override async Task OnAfterRenderAsync(bool firstRender)

@@ -90,16 +90,25 @@ public class DateTimePickerKeyboardNavTests : IAsyncLifetime
     public void Enter_Selects_The_Focused_Hour()
     {
         DateTime? captured = null;
-        var cb = EventCallback.Factory.Create<DateTime?>(this, (DateTime? d) => captured = d);
+        var fires = 0;
+        var cb = EventCallback.Factory.Create<DateTime?>(this, (DateTime? d) => { captured = d; fires++; });
         var cut = RenderOpen(p =>
         {
             p.Add(c => c.Value, new DateTime(2026, 6, 10, 12, 0, 0));
             p.Add(c => c.ValueChanged, cb);
         });
 
-        HourOption(cut, 15).KeyDown("Enter");
-
+        // The option is a native <button>, so Enter/Space activate it via a synthesized native click
+        // (modelled here with .Click()). Selection fires exactly once.
+        HourOption(cut, 15).Click();
         Assert.Equal(15, captured?.Hour);
+        Assert.Equal(1, fires);
+
+        // The keydown handler intentionally does NOT also select on Enter/Space — otherwise Enter in a
+        // real browser would fire ValueChanged twice (keydown handler + the synthesized native click).
+        // A bare Enter keydown must be a no-op for selection (Codex P3).
+        HourOption(cut, 15).KeyDown("Enter");
+        Assert.Equal(1, fires);
     }
 
     [Fact]

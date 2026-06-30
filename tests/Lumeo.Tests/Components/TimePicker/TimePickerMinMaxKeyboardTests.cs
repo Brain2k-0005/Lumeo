@@ -152,14 +152,24 @@ public class TimePickerMinMaxKeyboardTests : IAsyncLifetime
     public void Enter_On_Hour_Option_Selects_It()
     {
         TimeSpan? captured = null;
-        var cb = EventCallback.Factory.Create<TimeSpan?>(this, (TimeSpan? t) => captured = t);
+        var fires = 0;
+        var cb = EventCallback.Factory.Create<TimeSpan?>(this, (TimeSpan? t) => { captured = t; fires++; });
         var cut = Render(p => p.Add(c => c.ValueChanged, cb));
         cut.Find("button").Click();
 
-        HourOption(cut, 14).KeyDown(new KeyboardEventArgs { Key = "Enter" });
+        // The option is a native <button>, so Enter/Space activate it via a synthesized native click
+        // (modelled here with .Click()). Selection fires exactly once.
+        HourOption(cut, 14).Click();
 
         Assert.NotNull(captured);
         Assert.Equal(14, captured!.Value.Hours);
+        Assert.Equal(1, fires);
+
+        // The keydown handler intentionally does NOT also select on Enter/Space — otherwise a real
+        // browser would fire ValueChanged twice (keydown handler + the synthesized native click). So a
+        // bare Enter keydown must be a no-op for selection (Codex P3).
+        HourOption(cut, 14).KeyDown(new KeyboardEventArgs { Key = "Enter" });
+        Assert.Equal(1, fires);
     }
 
     [Fact]
