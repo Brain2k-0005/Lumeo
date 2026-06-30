@@ -23,7 +23,7 @@
 }
 else
 {
-    <div id="@_triggerId" class="@CssClass" role="button" tabindex="0" aria-expanded="@(Context.IsOpen ? "true" : "false")" aria-haspopup="dialog" aria-controls="@(Context.IsOpen ? Context.ContentId : null)" @onclick="Toggle" @onkeydown="HandleKeyDown" @attributes="AdditionalAttributes">
+    <div id="@EffectiveTriggerId" class="@CssClass" role="button" tabindex="0" aria-expanded="@(Context.IsOpen ? "true" : "false")" aria-haspopup="dialog" aria-controls="@(Context.IsOpen ? Context.ContentId : null)" @onclick="Toggle" @onkeydown="HandleKeyDown" @attributes="AdditionalAttributes">
         @ChildContent
     </div>
 }
@@ -59,10 +59,16 @@ else
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
-    // Stable id for the fallback role=button trigger so the Space-default
-    // suppression (battle-wave2 #88) can target it. AsChild renders no wrapper, so
+    // Stable FALLBACK id for the role=button trigger. AsChild renders no wrapper, so
     // this id is only emitted/registered on the non-AsChild branch below.
     private readonly string _triggerId = LumeoIds.New("popover-trigger");
+    // The id that ACTUALLY renders on the <div>: a consumer-splatted id in AdditionalAttributes
+    // wins (it renders after the explicit id= in the markup above), else the fallback. The Space-
+    // default suppression (battle-wave2 #88) must register against THIS, not the raw _triggerId —
+    // otherwise a consumer-supplied id leaves the suppression targeting an id no element carries,
+    // so Space silently scrolls the page again while toggling the popover (Codex P3). Mirrors
+    // DialogTrigger/SheetTrigger's _id.
+    private string EffectiveTriggerId => LumeoIds.Effective(AdditionalAttributes, _triggerId);
     private bool _pdRegistered;
 
     private string CssClass => Cx.Merge("inline-flex", Class);
@@ -107,7 +113,7 @@ else
             // @onkeydown:preventDefault would also trap Tab; the JS-side key-selective
             // rule is the library idiom (Collapsible/Accordion/Tabs triggers).
             await Interop.RegisterPreventDefaultKeys(
-                _triggerId,
+                EffectiveTriggerId,
                 new[] { new Lumeo.Services.PreventDefaultKeyRule(" ") });
             _pdRegistered = true;
         }
@@ -121,7 +127,7 @@ else
         if (!_pdRegistered) return;
         try
         {
-            await Interop.UnregisterPreventDefaultKeys(_triggerId);
+            await Interop.UnregisterPreventDefaultKeys(EffectiveTriggerId);
         }
         catch (JSDisconnectedException) { }
         catch (ObjectDisposedException) { }
