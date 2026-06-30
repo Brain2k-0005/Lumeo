@@ -27,6 +27,17 @@ public class AudioPlayerTests : IAsyncLifetime
         Assert.NotNull(cut.Find("audio"));
     }
 
+    [Fact]
+    public void Scrub_Fill_Uses_Physical_Left_So_It_Matches_The_Physical_Seek_Math()
+    {
+        // Codex P2: the seek percentage is physical (e.OffsetX / width, left-to-right), so the progress
+        // fill must grow from the physical LEFT edge — `left-0`, not logical `start-0` (which under RTL
+        // grows from the right and ends up mirrored against the pointer seek math).
+        var cut = Render();
+        Assert.Contains("inset-y-0 left-0 rounded-full bg-primary", cut.Markup);
+        Assert.DoesNotContain("inset-y-0 start-0 rounded-full bg-primary", cut.Markup);
+    }
+
     // --- Skip buttons (#302) ---
 
     [Fact]
