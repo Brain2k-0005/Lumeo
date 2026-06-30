@@ -78,7 +78,11 @@
                 {
                     _currentActiveId = ActiveId;
                     _context = new ScrollspyContext(_currentActiveId, EventCallback.Factory.Create<string>(this, OnNavigate));
+                    // Clearing must also cancel any STALE pending scroll from a real section assigned
+                    // moments earlier but not yet consumed by OnAfterRenderAsync — otherwise that flag
+                    // survives and fires a scroll to the now-empty id once it IS consumed (Codex P3).
                     if (!string.IsNullOrEmpty(ActiveId)) _pendingProgrammaticScroll = true;
+                    else _pendingProgrammaticScroll = false;
                 }
             }
         }
@@ -94,6 +98,7 @@
                 _currentActiveId = ActiveId;
                 _context = new ScrollspyContext(_currentActiveId, EventCallback.Factory.Create<string>(this, OnNavigate));
                 if (!string.IsNullOrEmpty(ActiveId)) _pendingProgrammaticScroll = true;
+                else _pendingProgrammaticScroll = false;
             }
         }
 
@@ -123,15 +128,22 @@
             catch (ObjectDisposedException) { }
         }
 
-        if (_pendingProgrammaticScroll && _currentActiveId is not null)
+        if (_pendingProgrammaticScroll)
         {
+            // Consume the flag unconditionally — belt-and-suspenders alongside the OnParametersSet fix
+            // above: never programmatically scroll to an empty/null id (regardless of how a stale flag
+            // might survive), but also never LEAVE it pending, or a later unrelated id assignment (e.g.
+            // OnScrollspyUpdate, which doesn't touch this flag at all) could pick up this stale request.
             _pendingProgrammaticScroll = false;
-            try
+            if (!string.IsNullOrEmpty(_currentActiveId))
             {
-                await Interop.ScrollspyScrollTo(_containerId, _currentActiveId, Smooth, Offset);
+                try
+                {
+                    await Interop.ScrollspyScrollTo(_containerId, _currentActiveId, Smooth, Offset);
+                }
+                catch (JSDisconnectedException) { }
+                catch (ObjectDisposedException) { }
             }
-            catch (JSDisconnectedException) { }
-            catch (ObjectDisposedException) { }
         }
     }
 
