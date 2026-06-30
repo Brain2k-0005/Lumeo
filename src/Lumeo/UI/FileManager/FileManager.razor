@@ -360,7 +360,17 @@
         else if (SelectedNodeChanged.HasDelegate)
         {
             // CONTROLLED: mirrors the ViewMode discriminator above.
-            if (!ReferenceEquals(SelectedNode, _lastPushedSelectedNode))
+            //
+            // ALSO a no-op when SelectedNode is unchanged from before this interaction
+            // (_lastSelectedParam): an observer-only consumer that binds SelectedNodeChanged purely to
+            // react to selection without also echoing SelectedNode back leaves the parameter at its
+            // default (often null) forever — that re-render must not be treated as "the parent cleared
+            // the selection", or every click would select-then-immediately-clear. Only a value that
+            // differs from BOTH our own push AND the pre-interaction snapshot is an authoritative,
+            // distinguishable veto/reset.
+            var isEcho = ReferenceEquals(SelectedNode, _lastPushedSelectedNode);
+            var isUnchangedFromBeforeInteraction = ReferenceEquals(SelectedNode, _lastSelectedParam);
+            if (!isEcho && !isUnchangedFromBeforeInteraction)
             {
                 _selectedNode = SelectedNode;
                 _lastPushedSelectedNode = SelectedNode;

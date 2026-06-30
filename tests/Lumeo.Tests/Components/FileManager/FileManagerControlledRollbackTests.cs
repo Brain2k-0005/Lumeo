@@ -119,16 +119,21 @@ public class FileManagerControlledRollbackTests : IAsyncLifetime
     }
 
     // ──────────────────────────────────────────────────────────────────────────
-    // SelectedNode: controlled veto rolls back
+    // SelectedNode: a re-render UNCHANGED from before the interaction is NOT a
+    // veto — it is the established Lumeo convention for an observer-only
+    // consumer that binds SelectedNodeChanged purely to react, without echoing
+    // SelectedNode back (the parameter then stays at its initial value forever).
+    // See PickList's #38 / SortableList's #144 for the same, deliberately-tested
+    // contract elsewhere in this library.
     // ──────────────────────────────────────────────────────────────────────────
 
     [Fact]
-    public void Controlled_SelectedNode_Veto_Rolls_Back_To_Bound_Value()
+    public void Controlled_SelectedNode_Unchanged_Reselect_Keeps_Local_Selection()
     {
         var tree = BuildSampleTree();
 
-        // Parent starts unselected and vetoes every selection by always
-        // re-rendering with SelectedNode=null (its own state never updates).
+        // Parent starts unselected and its handler never echoes SelectedNode back
+        // (re-renders with the SAME null it always had — an observer, not a veto).
         FileSystemNode? parentSelection = null;
         IRenderedComponent<Lumeo.FileManager>? cut = null;
 
@@ -147,15 +152,53 @@ public class FileManagerControlledRollbackTests : IAsyncLifetime
             .Add(x => x.SelectedNode, parentSelection)
             .Add(x => x.SelectedNodeChanged, callback));
 
-        // Click report.pdf: SelectNode optimistically sets _selectedNode and
-        // fires SelectedNodeChanged; the parent vetoes and re-renders with
-        // SelectedNode=null.
         var reportRow = cut.FindAll("[role='row']").First(r => r.TextContent.Contains("report.pdf"));
         reportRow.Click();
 
-        // After the veto, no row may report aria-selected=true.
+        // The unchanged-from-before re-render must NOT clear the optimistic selection.
+        var selected = cut.FindAll("[role='row']").First(r => r.TextContent.Contains("report.pdf"));
+        Assert.Equal("true", selected.GetAttribute("aria-selected"));
+    }
+
+    // ──────────────────────────────────────────────────────────────────────────
+    // SelectedNode: a GENUINE, distinguishable veto (the parent selects something
+    // ELSE) rolls back to that value.
+    // ──────────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void Controlled_SelectedNode_Veto_With_Distinct_Value_Rolls_Back_To_That_Value()
+    {
+        var tree = BuildSampleTree();
+        FileSystemNode? parentSelection = null;
+        IRenderedComponent<Lumeo.FileManager>? cut = null;
+
+        var callback = EventCallback.Factory.Create<FileSystemNode?>(_ctx, (incoming) =>
+        {
+            // Genuine veto: explicitly select notes.txt instead — a value that differs from BOTH
+            // what the user clicked (report.pdf) AND the pre-interaction snapshot (null).
+            var notes = tree[0].Children!.First(c => c.Id == "notes");
+            cut!.Render(p => p
+                .Add(x => x.Root, tree)
+                .Add(x => x.CurrentPath, "docs")
+                .Add(x => x.SelectedNode, notes)
+                .Add(x => x.SelectedNodeChanged, EventCallback.Factory.Create<FileSystemNode?>(_ctx, _ => { })));
+        });
+
+        cut = _ctx.Render<Lumeo.FileManager>(p => p
+            .Add(x => x.Root, tree)
+            .Add(x => x.CurrentPath, "docs")
+            .Add(x => x.SelectedNode, parentSelection)
+            .Add(x => x.SelectedNodeChanged, callback));
+
+        var reportRow = cut.FindAll("[role='row']").First(r => r.TextContent.Contains("report.pdf"));
+        reportRow.Click();
+
+        // The parent's distinct, authoritative decision wins — notes.txt is selected, report.pdf is not.
         var rows = cut.FindAll("[role='row']");
-        Assert.All(rows, r => Assert.Equal("false", r.GetAttribute("aria-selected")));
+        var reportSelected = rows.First(r => r.TextContent.Contains("report.pdf")).GetAttribute("aria-selected");
+        var notesSelected = rows.First(r => r.TextContent.Contains("notes.txt")).GetAttribute("aria-selected");
+        Assert.Equal("false", reportSelected);
+        Assert.Equal("true", notesSelected);
     }
 
     // ──────────────────────────────────────────────────────────────────────────

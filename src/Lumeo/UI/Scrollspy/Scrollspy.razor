@@ -69,11 +69,16 @@
             if (ActiveId != _lastPushed)
             {
                 _lastPushed = ActiveId;
-                if (!string.IsNullOrEmpty(ActiveId) && ActiveId != _currentActiveId)
+                // A genuinely empty/null ActiveId is itself an authoritative assertion (a deliberate
+                // reset, or a veto of a click/scroll update back to "nothing active") and must be
+                // adopted just like a real id — clearing _currentActiveId, not merely ignored (Codex
+                // P2). Only the PROGRAMMATIC SCROLL is scoped to a real, non-empty id below — there is
+                // nothing to scroll to when clearing.
+                if (ActiveId != _currentActiveId)
                 {
                     _currentActiveId = ActiveId;
                     _context = new ScrollspyContext(_currentActiveId, EventCallback.Factory.Create<string>(this, OnNavigate));
-                    _pendingProgrammaticScroll = true;
+                    if (!string.IsNullOrEmpty(ActiveId)) _pendingProgrammaticScroll = true;
                 }
             }
         }
@@ -82,12 +87,13 @@
             // UNCONTROLLED: component owns the live value. Adopt the parameter
             // only when the parent genuinely changes it; a stale re-render that
             // re-supplies the same literal must not clobber a scroll/click update.
+            // Same empty-is-authoritative handling as the controlled branch above.
             _lastPushed = ActiveId;
-            if (!string.IsNullOrEmpty(ActiveId) && ActiveId != _currentActiveId)
+            if (ActiveId != _currentActiveId)
             {
                 _currentActiveId = ActiveId;
                 _context = new ScrollspyContext(_currentActiveId, EventCallback.Factory.Create<string>(this, OnNavigate));
-                _pendingProgrammaticScroll = true;
+                if (!string.IsNullOrEmpty(ActiveId)) _pendingProgrammaticScroll = true;
             }
         }
 

@@ -8,23 +8,18 @@ using L = Lumeo;
 namespace Lumeo.Tests.Components.TreeView;
 
 /// <summary>
-/// Regression: when a controlled parent vetoes a selection (re-renders with the
-/// same bound SelectedValues it held before the user's click), the component must
-/// roll the UI back to the parent-owned selection instead of keeping the
-/// optimistically-clicked (rejected) selection.
+/// Regression: a controlled parent must be able to override TreeView's selection, AND an
+/// observer-only consumer (binds SelectedValuesChanged purely to react, without echoing
+/// SelectedValues back) must not have its local click immediately snapped back by its own
+/// re-render — the established Lumeo convention also tested for PickList's #38 and
+/// SortableList's #144: a re-render that supplies the SAME reference the parent held BEFORE
+/// the interaction is indistinguishable from "hasn't propagated yet", so it stays a no-op.
+/// Only a value that differs from BOTH our own push AND that pre-interaction snapshot is an
+/// authoritative, distinguishable decision (a genuine veto / normalization / reset).
 ///
-/// Bug: OnParametersSet only re-seeded _selectedValues when the incoming
-/// SelectedValues reference differed from _previousSelectedValues (the last
-/// reference the parent SUPPLIED). When a controlled parent vetoes by
-/// re-rendering with the SAME SelectedValues reference it held before the click,
-/// the comparison saw "no change" and skipped the resync, leaving the rejected
-/// click's selection visible.
-///
-/// Fix: track _lastPushedSelectedValues (the list reference WE emitted via
-/// SelectedValuesChanged). A controlled re-render that supplies anything other
-/// than that exact reference is authoritative (veto / normalization / reset) and
-/// must win; a re-render that echoes the pushed reference is a benign round-trip
-/// and is ignored (keeps the in-flight selection).
+/// Fix shape: track _lastPushedSelectedValues (what WE emitted) AND consult
+/// _previousSelectedValues (what the parent held immediately before this interaction) in the
+/// CONTROLLED branch — an echo of either is a no-op; anything else wins.
 /// </summary>
 public class TreeViewControlledRollbackTests : IAsyncLifetime
 {
@@ -49,15 +44,15 @@ public class TreeViewControlledRollbackTests : IAsyncLifetime
         => TreeItem(cut, text).Children[0];
 
     [Fact]
-    public async Task Controlled_Veto_From_Null_Rolls_Back_To_Nothing_Selected()
+    public async Task Controlled_Unchanged_From_Null_Keeps_Local_Click_Selected()
     {
-        // Controlled parent holds SelectedValues = null and vetoes every change
-        // (the callback never updates its own bound state).
+        // Controlled parent holds SelectedValues = null and never echoes it back — an
+        // observer that reacts to selection without owning it (re-renders with the SAME
+        // null it always had, not a deliberate decision).
         IRenderedComponent<L.TreeView<string>>? cut = null;
 
         var callback = EventCallback.Factory.Create<List<string>>(_ctx, (List<string> _) =>
         {
-            // Veto: re-render with the SAME null SelectedValues.
             cut!.Render(p =>
             {
                 p.Add(c => c.SelectedValues, (List<string>?)null);
@@ -72,19 +67,16 @@ public class TreeViewControlledRollbackTests : IAsyncLifetime
 
         Assert.Empty(cut.FindAll("[role='treeitem'][aria-selected='true']"));
 
-        // User clicks "Images" — HandleSelectionChanged optimistically selects it
-        // and pushes ["imgs"] via SelectedValuesChanged; the parent vetoes.
         await cut.InvokeAsync(() => Row(cut, "Images").Click());
 
-        // After the veto the UI must roll back — nothing selected.
-        Assert.Empty(cut.FindAll("[role='treeitem'][aria-selected='true']"));
+        // The unchanged-from-before re-render must NOT clear the optimistic click.
+        Assert.Equal("true", TreeItem(cut, "Images").GetAttribute("aria-selected"));
     }
 
     [Fact]
-    public async Task Controlled_Veto_From_Selected_Rolls_Back_To_Original_Selection()
+    public async Task Controlled_Unchanged_From_Selected_Keeps_Local_Click_Selected()
     {
-        // Controlled parent holds SelectedValues = ["docs"] and vetoes any change.
-        // Reusing the same list reference simulates a parent that keeps its old binding.
+        // Same as above, but the parent's unchanging baseline is a real (non-null) selection.
         var originalSelection = new List<string> { "docs" };
         IRenderedComponent<L.TreeView<string>>? cut = null;
 
@@ -104,13 +96,55 @@ public class TreeViewControlledRollbackTests : IAsyncLifetime
 
         Assert.Equal("true", TreeItem(cut, "Documents").GetAttribute("aria-selected"));
 
-        // User clicks "Images" — selection optimistically moves to "Images" and
-        // pushes ["imgs"]; the parent vetoes and re-renders with ["docs"] again.
         await cut.InvokeAsync(() => Row(cut, "Images").Click());
 
-        // "Documents" must snap back to selected; "Images" must NOT stay selected.
+        // The unchanged-from-before re-render must NOT snap the click back to Documents.
+        Assert.Equal("true", TreeItem(cut, "Images").GetAttribute("aria-selected"));
+    }
+
+    [Fact]
+    public async Task Controlled_Veto_With_Distinct_Selection_Rolls_Back_To_That_Selection()
+    {
+        // A GENUINE, distinguishable veto: the parent's handler explicitly asserts a DIFFERENT
+        // selection than both what the user clicked AND what it held before — e.g. a server-side
+        // validation rule that redirects selection elsewhere. Unlike the pre-interaction-baseline
+        // case above, this is unambiguous and must win.
+        var before = new List<string> { "docs" };
+        var redirected = new List<string> { "imgs" }; // a NEW reference, distinct from `before`
+        IRenderedComponent<L.TreeView<string>>? cut = null;
+
+        // Click target is "Documents" so the optimistic push differs from BOTH `before` (docs) and
+        // the veto's redirect target... use a tree with a third node so all three values differ.
+        var threeNode = new List<L.TreeView<string>.TreeViewItem<string>>
+        {
+            new() { Text = "Documents", Value = "docs" },
+            new() { Text = "Images", Value = "imgs" },
+            new() { Text = "Videos", Value = "vids" },
+        };
+
+        var callback = EventCallback.Factory.Create<List<string>>(_ctx, (List<string> _) =>
+        {
+            cut!.Render(p =>
+            {
+                p.Add(c => c.Items, threeNode);
+                p.Add(c => c.SelectedValues, redirected); // redirects to "imgs", not "vids" (clicked) or "docs" (before)
+                p.Add(c => c.SelectedValuesChanged, EventCallback.Factory.Create<List<string>>(_ctx, (List<string> _2) => { }));
+            });
+        });
+
+        cut = _ctx.Render<L.TreeView<string>>(p => p
+            .Add(c => c.Items, threeNode)
+            .Add(c => c.SelectedValues, before)
+            .Add(c => c.SelectedValuesChanged, callback));
+
         Assert.Equal("true", TreeItem(cut, "Documents").GetAttribute("aria-selected"));
-        Assert.Equal("false", TreeItem(cut, "Images").GetAttribute("aria-selected"));
+
+        // User clicks "Videos" — pushes ["vids"]; the parent's distinct redirect to ["imgs"] wins.
+        await cut.InvokeAsync(() => Row(cut, "Videos").Click());
+
+        Assert.Equal("true", TreeItem(cut, "Images").GetAttribute("aria-selected"));
+        Assert.Equal("false", TreeItem(cut, "Videos").GetAttribute("aria-selected"));
+        Assert.Equal("false", TreeItem(cut, "Documents").GetAttribute("aria-selected"));
     }
 
     [Fact]

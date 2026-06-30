@@ -196,4 +196,43 @@ public class ScrollspyControlledRollbackTests : IAsyncLifetime
         Assert.Single(active);
         Assert.Equal("Features", active[0].TextContent.Trim());
     }
+
+    // --- Controlled: a genuine empty/null clear-veto rolls back to NOTHING active (round-16 Codex
+    //     finding — only updating _currentActiveId when ActiveId was non-empty meant an authoritative
+    //     reset to "" couldn't clear the optimistically-active link) ---
+
+    [Fact]
+    public void Controlled_Veto_With_Empty_ActiveId_Clears_The_Active_Link()
+    {
+        // Parent starts with ActiveId="intro" and its handler explicitly CLEARS to "" — a real,
+        // distinguishable decision (ActiveId demonstrably HAD a value and now demonstrably doesn't).
+        IRenderedComponent<L.Scrollspy>? cut = null;
+
+        var callback = EventCallback.Factory.Create<string>(_ctx, (string _) =>
+        {
+            cut!.Render(p =>
+            {
+                p.Add(b => b.ActiveId, "");
+                p.Add(b => b.ActiveIdChanged, EventCallback.Factory.Create<string>(_ctx, (_2) => { }));
+                p.Add(b => b.ChildContent, LinksAndSections());
+            });
+        });
+
+        cut = _ctx.Render<L.Scrollspy>(p => p
+            .Add(b => b.ActiveId, "intro")
+            .Add(b => b.ActiveIdChanged, callback)
+            .Add(b => b.ChildContent, LinksAndSections()));
+
+        Assert.Equal("true", cut.FindAll("[data-slot='scrollspy-link']")
+            .First(l => l.TextContent.Trim() == "Intro").GetAttribute("data-active"));
+
+        // Click "Features" — optimistically activates it; the parent's genuine clear-veto fires.
+        cut.FindAll("[data-slot='scrollspy-link']").First(l => l.TextContent.Trim() == "Features").Click();
+
+        // No link may remain active — the clear must be honoured, not silently ignored.
+        var active = cut.FindAll("[data-slot='scrollspy-link']")
+            .Where(l => l.GetAttribute("data-active") == "true")
+            .ToList();
+        Assert.Empty(active);
+    }
 }

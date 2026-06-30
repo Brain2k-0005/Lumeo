@@ -173,6 +173,15 @@
             }
             else if (Value != _lastSyncedValue)
             {
+                // A GENUINE, distinguishable change to null: _lastSyncedValue was non-null on the
+                // previous render, so this is NOT the #68 "Value has always been null" observer-only
+                // ambiguity (where there is nothing to distinguish a deliberate clear from "hasn't
+                // propagated yet" — that case intentionally falls through unchanged below, preserving
+                // #68's keep-the-local-commit behavior). Here the parent demonstrably HAD a value and
+                // now demonstrably doesn't — an authoritative clear/veto — so also reset
+                // _ownLastEmitted, or the seed fallback on line ~193 would keep showing the rejected
+                // optimistic commit instead of resetting (Codex P2).
+                if (_lastSyncedValue.HasValue) _ownLastEmitted = null;
                 _lastSyncedValue = Value;
                 _resyncPending = true;
             }

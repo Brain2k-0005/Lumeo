@@ -202,6 +202,11 @@
     // order is safe to ignore (keep in-flight _targetItems); any other order/set
     // is an authoritative assertion (veto / external reorder / reset) and must win.
     private List<TItem>? _lastPushedSelectedItems;
+    // The last SelectedItems SET (content, not order) we last SAW as an incoming parameter, regardless
+    // of source. Distinguishes a TRUE veto/reset (the parent supplies a genuinely different set) from
+    // an observer-only consumer that binds SelectedItemsChanged purely to react to it without echoing
+    // SelectedItems back — see the #38 carve-out below, now also honoured in CONTROLLED mode.
+    private List<TItem>? _lastSelectedItemsParam;
     private readonly HashSet<TItem> _sourceSelected = new();
     private readonly HashSet<TItem> _targetSelected = new();
     private string _sourceSearch = "";
@@ -260,12 +265,31 @@
             // CONTROLLED: the parent owns SelectedItems.
             // Echo of our own push (sel sequence-equals what we last pushed via
             // SelectedItemsChanged) → keep the in-flight _targetItems as-is.
-            // Anything else — a veto that restores the previous set/order, an
-            // externally-applied reorder/filter, a reset — is an authoritative
-            // assertion and must win, even when it's "merely" a reorder of the
-            // same set (the #38 preserve-order carve-out below only applies when
-            // nobody is listening for the change).
-            if (_lastPushedSelectedItems is null || !sel.SequenceEqual(_lastPushedSelectedItems))
+            //
+            // ALSO a no-op: the incoming SET (order ignored) is unchanged from what we last saw as a
+            // PARAMETER before this interaction (_lastSelectedItemsParam). This is the #38 contract —
+            // an observer that binds SelectedItemsChanged purely to react to moves, without echoing
+            // SelectedItems back, must not have its local reorder snapped back by its own re-render;
+            // a same-set re-render is indistinguishable from "hasn't propagated yet", so it stays local.
+            //
+            // Anything else — a set that differs from BOTH our own push AND the pre-interaction
+            // snapshot — is an authoritative, distinguishable assertion (veto / external reorder /
+            // reset) and must win.
+            var isEcho = _lastPushedSelectedItems is not null && sel.SequenceEqual(_lastPushedSelectedItems);
+            // Gate the "unchanged from before" check behind an ACTUAL in-flight push: only treat
+            // incoming-equals-pre-interaction-set as ambiguous when _lastPushedSelectedItems genuinely
+            // differs from _lastSelectedItemsParam (a local interaction pushed something new since the
+            // baseline was last observed). Without this gate, a SET-equality check alone also (wrongly)
+            // swallows a pure EXTERNAL reorder that happens with NO prior local interaction — e.g. a
+            // server-driven sort to the same set in a different order, fired before the user ever
+            // touched the list. There, _lastPushedSelectedItems still equals _lastSelectedItemsParam
+            // (nothing pushed it apart from the baseline yet), so the gate is false and the external
+            // reorder is adopted normally, exactly like the OUTER isEcho/distinct-value cases.
+            var hasInFlightPush = _lastPushedSelectedItems is not null && _lastSelectedItemsParam is not null
+                && !_lastPushedSelectedItems.SequenceEqual(_lastSelectedItemsParam);
+            var isUnchangedSetFromBeforeInteraction = hasInFlightPush
+                && selSet.SetEquals(_lastSelectedItemsParam!);
+            if (!isEcho && !isUnchangedSetFromBeforeInteraction)
             {
                 _targetItems = sel;
                 _lastPushedSelectedItems = sel;
@@ -285,6 +309,7 @@
         {
             _targetItems = sel;
         }
+        _lastSelectedItemsParam = sel;
         _sourceItems = all.Where(i => !_targetItems.Contains(i)).ToList();
 
         // Clean out selections that are no longer in their side. Guard against

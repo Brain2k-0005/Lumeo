@@ -110,12 +110,22 @@
             // reference we just pushed (reference equality is sufficient: a veto
             // keeps the OLD reference; an echo re-supplies the same list object we
             // handed the parent; a programmatic override supplies a new reference).
-            if (!ReferenceEquals(SelectedValues, _lastPushedSelectedValues))
+            //
+            // ALSO a no-op when SelectedValues is unchanged from before this interaction
+            // (_previousSelectedValues, read here BEFORE it is overwritten below): an observer-only
+            // consumer that binds SelectedValuesChanged purely to react to selection — without also
+            // echoing SelectedValues back — leaves the parameter at whatever reference it started with
+            // forever, and that re-render must not be treated as the parent clearing the selection.
+            // Only a reference that differs from BOTH our own push AND the pre-interaction snapshot is
+            // an authoritative, distinguishable veto/reset.
+            var isEcho = ReferenceEquals(SelectedValues, _lastPushedSelectedValues);
+            var isUnchangedFromBeforeInteraction = ReferenceEquals(SelectedValues, _previousSelectedValues);
+            if (!isEcho && !isUnchangedFromBeforeInteraction)
             {
                 _selectedValues = SelectedValues is not null ? [..SelectedValues] : [];
                 _lastPushedSelectedValues = SelectedValues;
             }
-            // else: echo of our own selection — keep the in-flight selection.
+            // else: echo of our own selection, or unchanged from before — keep the in-flight selection.
             _previousSelectedValues = SelectedValues;
         }
         else if (!ReferenceEquals(SelectedValues, _previousSelectedValues))
