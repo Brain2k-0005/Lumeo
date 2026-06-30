@@ -64,4 +64,20 @@ public class ToastPositioningTests : IAsyncLifetime
 
         Assert.Equal(2, cut.FindAll("[role='alert'],[role='status']").Count);
     }
+
+    [Theory]
+    [InlineData(L.ToastViewport.ToastPosition.TopCenter)]
+    [InlineData(L.ToastViewport.ToastPosition.BottomCenter)]
+    public void ToastViewport_Center_Positions_Use_Physical_Left_For_RTL_Safe_Centering(
+        L.ToastViewport.ToastPosition pos)
+    {
+        // Codex P2: TopCenter/BottomCenter centered the stack with logical `start-1/2`, which under RTL
+        // resolves to right:50% while the paired physical `-translate-x-1/2` stays leftward — shifting the
+        // stack off-center by ~its own width. Physical `left-1/2` centers correctly in both directions.
+        var cut = _ctx.Render<L.ToastViewport>(p => p.Add(b => b.Position, pos));
+        var cls = cut.Find("div").GetAttribute("class") ?? "";
+
+        Assert.Contains("left-1/2", cls);
+        Assert.DoesNotContain("start-1/2", cls);
+    }
 }
