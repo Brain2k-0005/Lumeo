@@ -20,9 +20,15 @@
 {
     @* iOS-style wheel picker — hours + minutes (+ AM/PM if 12-hour).
        Seconds are not supported in the wheel variant. *@
+    @* id/role/aria-describedby splat into TimeWheelPicker's AdditionalAttributes (it has no matching
+       [Parameter]s for these) so the FormField <Label For> resolves to a real rendered element even on
+       this trigger-less variant — the List branch's button gets the same EffectiveTriggerId (Codex P2). *@
     <TimeWheelPicker Value="@Value" ValueChanged="HandleWheelChanged"
                      Use24Hour="@Use24Hour" MinuteStep="@MinuteStep"
-                     Culture="@Culture" Class="@Class" />
+                     Culture="@Culture" Class="@Class"
+                     id="@EffectiveTriggerId"
+                     role="group"
+                     aria-describedby="@FormFieldDescribedBy" />
 }
 else
 {
@@ -415,14 +421,6 @@ else
     [
         new("ArrowUp"), new("ArrowDown"), new("Home"), new("End"),
     ];
-
-    protected override void OnParametersSet()
-    {
-        // The Wheel variant renders TimeWheelPicker, which carries NO element with the cascaded
-        // FormField ControlId (only the List trigger button does), so tell the FormField to drop its
-        // label's `for` rather than dangle it at a missing id (Codex P2). Idempotent on the FormField side.
-        FormField?.SetLabelSuppressed?.Invoke(Variant == TimePickerVariant.Wheel);
-    }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
