@@ -385,10 +385,11 @@ Lumeo 2.0 ships with three optional companion packages. You can ignore them if y
 ```bash
 dotnet tool install -g Lumeo.Cli
 
-lumeo init                   # writes lumeo.config.json
+lumeo init                   # writes lumeo.json
 lumeo add button             # copy Button source into your repo
 lumeo list                   # list all registry entries
 lumeo diff button            # diff vendored copy vs registry
+lumeo eject                  # go 100% NuGet-free (vendor the runtime too)
 ```
 
 ### `Lumeo.Templates` — `dotnet new` scaffolders

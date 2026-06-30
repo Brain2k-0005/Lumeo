@@ -12,23 +12,20 @@
 [![GitHub stars](https://img.shields.io/github/stars/Brain2k-0005/Lumeo?style=flat&logo=github)](https://github.com/Brain2k-0005/Lumeo/stargazers)
 [![Sponsor](https://img.shields.io/github/sponsors/Brain2k-0005?logo=github-sponsors&color=ea4aaa)](https://github.com/sponsors/Brain2k-0005)
 
-> **Lumeo 4.0.0 is on NuGet — `Cx.Merge` tailwind-merge class composition (consumer `Class` wins conflicts without `!important`), Sidebar `Bordered`, Badge `Size`/`Pill`, Card `Flat` variant**. `dotnet add package Lumeo`. See [`MIGRATION.md`](./MIGRATION.md) for upgrade notes — 4.0 is a major release; upgrading from 3.x is a recompile-and-run upgrade with a few behaviour changes documented in MIGRATION.md.
+> **Lumeo 4.0.0 is on NuGet** — a Radix / Base UI / shadcn parity audit + a 164-component battle-test (~355 bugs fixed, 4,831 tests), and the CLI can now vendor **100% NuGet-free** (`lumeo eject` / `lumeo init --standalone`). `dotnet add package Lumeo`. See [`MIGRATION.md`](./MIGRATION.md) — 4.0 is a major release; upgrading from 3.x is a recompile-and-run upgrade with a few documented behaviour changes.
 
-## What's new in 3.0
+## What's new in 4.0
 
-- **BREAKING — unified enums.** 39 per-component `Size` / `Side` / `Align` / `Orientation` enums collapsed into `Lumeo.Size`, `Lumeo.Side`, `Lumeo.Align`, `Lumeo.Orientation`. See [`MIGRATION.md`](./MIGRATION.md).
-- **Overlay dismiss gate** — `OnBeforeClose` + `DismissEventArgs` on Dialog / Sheet / Drawer / AlertDialog, with auto-cancelling reasons (`escape` / `outside` / `swipe` / `close` / `action` / `cancel`).
-- **Nested overlay z-stacking** — Dialog-in-Dialog and Sheet-in-Dialog now layer correctly via monotonic z-index allocation.
-- **DatePicker keyboard input** — type a date in the configured `Format`; auto-parses on Enter/blur with an `OnParseError` callback.
-- **DateTimePicker time zone** — bind a `DateTimeOffset` while displaying in a specific `TimeZoneInfo` (DST-aware).
-- **Async field validators** — `FormField.AsyncValidator` with debounce, in-flight cancellation, and a pending spinner. `FormContext.IsAnyFieldValidating` aggregator.
-- **Menu submenus** — `DropdownMenuSub` / `ContextMenuSub` / `MenubarSub` triplets with recursive nesting, hover-open with intent delay, ArrowRight/ArrowLeft keyboard.
-- **Tabs drag-to-reorder** — opt-in `TabsList.Reorderable` with `OnReorder` callback (consumer mutates the collection).
-- **`Form.ResetValues()`** — restore model from initial JSON snapshot; pairs with the existing `Reset()` (which only clears errors).
-- **Toast pause + variant-aware ARIA** — toasts pause auto-dismiss on hover/focus; `Destructive` toasts render `role="alert"` + `aria-live="assertive"`, others `role="status"` + polite.
-- **Tooltip collision flip** — fixed-position with auto-flip away from viewport edges (no API change).
-- **ARIA live error regions** — form-control error text now announces to screen readers.
-- **Internal helpers** — `LumeoIds`, `Cx`, `DebouncedValue<T>` for consistent IDs, class composition, and debounce across the library. All components now inject `IComponentInteropService` (the interface) so test projects can swap a mock.
+4.0 pairs a Radix / Base UI / shadcn **parity audit** with a library-wide **correctness hardening** pass. There are **no API-signature breaks** — see [`MIGRATION.md`](./MIGRATION.md) for the handful of behaviour changes.
+
+- **NuGet-free standalone eject** — `lumeo eject` (or `lumeo init --standalone`) vendors components **plus the whole runtime** as source, so a project compiles and runs with zero `Lumeo` / satellite `PackageReference`. Proven across all 164 components.
+- **Battle-test campaign** — an adversarial sweep of all 164 components fixed ~355 confirmed bugs (UI state surviving data refreshes, keyboard / ARIA, edge data, lifecycle teardown, keyed reorder), each with a bUnit regression test (suite 4,831 green).
+- **OKLCH theme palette** — base + all 8 themes (878 tokens) migrated HSL → OKLCH, exact 1:1 (brand identity unchanged), matching Tailwind v4 / current shadcn.
+- **RTL** — new `DirectionProvider` + a logical-utility migration (`ml-→ms-`, `left-→start-`, …); identical in LTR, mirrored in RTL.
+- **tweakcn / shadcn native compatibility** — a bare shadcn `--primary` (or a pasted tweakcn export) drives Lumeo's tokens 1:1 with zero setup.
+- **Accessibility & composition** — `aria-describedby` across every form control, `aria-current`, reduced-motion entry gating; Card `CardTitle` / `CardDescription`, Avatar `StatusLabel`, Chart `AriaLabel`, `AsChild` on AlertDialog / Drawer triggers, public `Lumeo.Cx`, DataTable `ItemKey`.
+- **LumeoFormGenerator** — TimeOnly / TimeSpan / `List<string>` / Phone / Url mappings, `[Range]` / `[StringLength]` validation, `[Display(Order)]` ordering.
+- **MCP** — type-bound enum validation + a new `lumeo_get_a11y` tool (roles, keyboard keys, focus).
 
 ## Feature overview
 
@@ -85,6 +82,10 @@ dotnet add package Lumeo.Editor      # RichTextEditor
 dotnet add package Lumeo.Scheduler   # Scheduler
 dotnet add package Lumeo.Gantt       # Gantt
 dotnet add package Lumeo.Motion      # 30 motion primitives
+dotnet add package Lumeo.Maps        # Map
+dotnet add package Lumeo.PdfViewer   # PdfViewer
+dotnet add package Lumeo.FileViewer  # FileViewer
+dotnet add package Lumeo.CodeEditor  # CodeEditor
 ```
 
 Or reference them in your `.csproj`. All packages share one version (lockstep) — always upgrade them together:
@@ -118,11 +119,14 @@ Copy component source into your own repo so you can fork and customize it — li
 
 ```bash
 dotnet tool install -g Lumeo.Cli
-lumeo init                # one-time — writes lumeo.config.json
+lumeo init                # one-time — writes lumeo.json
 lumeo add button dialog   # copy components into your repo
 lumeo list                # list all registry entries
 lumeo diff button         # diff vendored copy vs registry
+lumeo eject               # go 100% NuGet-free (vendor the runtime too)
 ```
+
+`lumeo eject` (or `lumeo init --standalone`) vendors the components **and** the runtime they need, so the project builds with no `Lumeo` package reference at all — proven across all 164 components.
 
 ### `Lumeo.Templates` — `dotnet new` scaffolders
 
@@ -135,7 +139,7 @@ dotnet new lumeo-component  -n FancyCard
 
 ### `@lumeo-ui/mcp-server` — MCP server for LLM codegen
 
-Give Claude, ChatGPT, Copilot, or Cursor the schemas + examples they need to write correct Lumeo markup. Nine tools: `lumeo_list_components`, `lumeo_search`, `lumeo_get_component` (full per-parameter schema), `lumeo_get_example`, `lumeo_get_install`, `lumeo_validate_markup` (pre-flight check Razor for hallucinated APIs / bad enums / bad nesting), `lumeo_get_theme_tokens`, `lumeo_list_patterns` / `lumeo_get_pattern`, `lumeo_changelog`.
+Give Claude, ChatGPT, Copilot, or Cursor the schemas + examples they need to write correct Lumeo markup. 13 tools: `lumeo_list_components`, `lumeo_search`, `lumeo_get_component` (full per-parameter schema), `lumeo_get_example`, `lumeo_get_install`, `lumeo_validate_markup` (pre-flight check Razor for hallucinated APIs / bad enums / bad nesting), `lumeo_get_a11y` (roles / keyboard / focus), `lumeo_get_theme_tokens`, `lumeo_list_services` / `lumeo_get_service`, `lumeo_list_patterns` / `lumeo_get_pattern`, `lumeo_changelog`.
 
 ```bash
 npm install -g @lumeo-ui/mcp-server
@@ -349,7 +353,7 @@ await Theme.ToggleModeAsync();              // Toggle current
 - **[Accessibility Guide](https://lumeo.nativ.sh/docs/accessibility)** — ARIA roles, keyboard patterns, focus management
 - **[Contributing Guide](https://lumeo.nativ.sh/docs/contributing)** — Setup, component creation, testing, code style
 - **[Changelog](https://lumeo.nativ.sh/docs/changelog)** — Full release history
-- **[Migration Guide](./MIGRATION.md)** — 2.x → 3.0 upgrade notes
+- **[Migration Guide](./MIGRATION.md)** — 3.x → 4.0 upgrade notes
 
 ## Tech Stack
 
