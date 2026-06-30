@@ -28,7 +28,12 @@ public class DateRangePickerExternalValueFlickerTests : IAsyncLifetime
     public Task InitializeAsync() => Task.CompletedTask;
     public async Task DisposeAsync() => await _ctx.DisposeAsync();
 
-    private static string MonthHeader(DateOnly d) => $"{d.ToString("MMMM")} {d.Year}";
+    // Match the month-panel grid's aria-label ("MMMM yyyy"), not a bare "March 2024"
+    // substring of the whole markup: an adjacent-month day cell — e.g. "31 March 2024"
+    // under the invariant culture's "dd MMMM yyyy" long-date format (CI runs without a
+    // locale → invariant) — would otherwise trip Assert.DoesNotContain. The aria-label
+    // is unique per rendered panel and uses the same ToString the component does.
+    private static string MonthHeader(DateOnly d) => $"aria-label=\"{d.ToString("MMMM yyyy")}\"";
 
     [Fact]
     public void StartDate_Empty_Then_Refilled_Same_Anchor_Does_Not_Yank_Browsed_Month()
