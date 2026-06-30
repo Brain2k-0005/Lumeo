@@ -14,7 +14,7 @@ skills/lumeo/
   references/
     conventions.md          # full coding-conventions checklist
     mcp.md                  # lumeo-mcp tool reference + example calls
-    catalog.md              # all 131 components by category + 16 patterns + 58 theme tokens (offline fallback)
+    catalog.md              # all 164 components by category + 16 patterns + 58 theme tokens (offline fallback)
   gen-catalog.mjs            # regenerates references/catalog.md from components-api.json
 ```
 

@@ -1,6 +1,6 @@
 # Lumeo component catalog
 
-All 163 components by category, plus 16 full-page patterns and the 58 theme tokens. Generated from `components-api.json` (`node skills/lumeo/gen-catalog.mjs`).
+All 164 components by category, plus 16 full-page patterns and the 58 theme tokens. Generated from `components-api.json` (`node skills/lumeo/gen-catalog.mjs`).
 
 > This is the **offline fallback**. When the `lumeo-mcp` server is connected, prefer `lumeo_search` / `lumeo_get_component` / `lumeo_get_example` — they give the live, complete per-parameter API.
 
@@ -28,7 +28,7 @@ Satellite packages: a component tagged **[Charts]** needs `Lumeo.Charts`, **[Dat
 - **Badge** — Small label for counts, statuses, or category tags.
 - **Barcode** — Inline SVG Code 128B barcode renderer (scannable).
 - **Calendar** — Date picker calendar grid with single, range, and multi-select modes.
-- **Card** — Flexible container with header, content, and footer slots. _(sub-components: CardContent, CardFooter, CardHeader)_
+- **Card** — Flexible container with header, content, and footer slots. _(sub-components: CardContent, CardDescription, CardFooter, CardHeader, CardTitle)_
 - **Chart** **[Charts]** — Declarative chart wrapper over ECharts — 30+ types supported. _(sub-components: AreaChart, BarChart, BoxPlotChart, CalendarHeatmapChart, CandlestickChart, ChartReferenceZone, ChartSkeleton, ChartThreshold, ChartTooltip, DonutChart, EffectScatterChart, FunnelChart, GaugeChart, GeoMapChart, GraphChart, HeatmapChart, LineChart, LiquidFillChart, MixedChart, NightingaleChart, ParallelChart, PictorialBarChart, PieChart, PolarBarChart, RadarChart, RadialChart, SankeyChart, ScatterChart, SunburstChart, ThemeRiverChart, TreeChart, TreemapChart, WaterfallChart, WordCloudChart)_
 - **Chip** — Compact removable tag, optionally toggleable. _(sub-components: ChipGroup)_
 - **DataGrid** **[DataGrid]** — Enterprise grid: sort, filter, inline edit, multi-level group (client + server), pin, virtualize, export. _(sub-components: DataGridBody, DataGridCell, DataGridColumnDef, DataGridColumnFilter, DataGridColumnGroup, DataGridColumnVisibility, DataGridDetailRow, DataGridFooter, DataGridGroupRow, DataGridHeader, DataGridHeaderCell, DataGridPagination, DataGridRow, DataGridToolbar, DataGridToolbarColumns, DataGridToolbarCopySelected, DataGridToolbarExport, DataGridToolbarFullscreen, DataGridToolbarLayouts, ToolbarContent)_
@@ -195,6 +195,7 @@ Satellite packages: a component tagged **[Charts]** needs `Lumeo.Charts`, **[Dat
 - **ButtonGroup** — Button Group component.
 - **ConsentBanner** — Consent Banner component.
 - **DensityScope** — Density Scope component.
+- **DirectionProvider** — Direction Provider component.
 - **DropdownButton** — Dropdown Button component.
 - **Icon** — Icon wrapper — renders Lucide icons via Blazicons.
 - **Kbd** — Keyboard shortcut glyph — renders <kbd> with styling.
