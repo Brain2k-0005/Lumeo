@@ -392,9 +392,12 @@ const positionCleanups = new Map();
 export function positionFixed(contentId, referenceId, align, matchWidth, side, offset) {
     const content = document.getElementById(contentId);
     const reference = document.getElementById(referenceId);
-    if (!content || !reference) return;
+    if (!content || !reference) return side || 'bottom';
 
     const resolvedSide = side || 'bottom';
+    // The side the box ACTUALLY lands on after any collision flip — returned to the caller so a
+    // directional-arrow consumer (Tooltip) can keep its arrow on the edge facing the trigger.
+    let computedSide = resolvedSide;
     // Trigger->content gap. Callers that don't pass an offset (legacy 5-arg
     // interop path) keep the historical 4px default.
     const gap = (typeof offset === 'number' && Number.isFinite(offset) && offset >= 0) ? offset : 4;
@@ -588,6 +591,17 @@ export function positionFixed(contentId, referenceId, align, matchWidth, side, o
             const offX = settled.left - intendedLeft;
             if (Math.abs(offX) > 0.5) content.style.left = `${intendedLeft - offX}px`;
         }
+
+        // Report the side the box ACTUALLY landed on. A collision flip above may have moved a preferred
+        // Top box below its trigger (or vice-versa); compare final box-center vs reference-center so a
+        // directional-arrow consumer can re-point its arrow to the edge facing the trigger.
+        const rRect = reference.getBoundingClientRect();
+        const cRect = content.getBoundingClientRect();
+        if (resolvedSide === 'top' || resolvedSide === 'bottom') {
+            computedSide = (cRect.top + cRect.height / 2) <= (rRect.top + rRect.height / 2) ? 'top' : 'bottom';
+        } else if (resolvedSide === 'left' || resolvedSide === 'right') {
+            computedSide = (cRect.left + cRect.width / 2) <= (rRect.left + rRect.width / 2) ? 'left' : 'right';
+        }
     }
 
     // Initial position
@@ -615,6 +629,7 @@ export function positionFixed(contentId, referenceId, align, matchWidth, side, o
         positionCleanups.delete(contentId);
     };
     positionCleanups.set(contentId, cleanup);
+    return computedSide;
 }
 
 export function unpositionFixed(contentId) {

@@ -141,7 +141,7 @@ public class TourScrollIntoViewTests : IAsyncLifetime
         public ValueTask<ViewportSize> GetViewportSize() => _inner.GetViewportSize();
         public ValueTask<ViewportSize?> RegisterViewportListener(DotNetObjectReference<ResponsiveService> dotnetRef) => _inner.RegisterViewportListener(dotnetRef);
         public ValueTask UnregisterViewportListener() => _inner.UnregisterViewportListener();
-        public ValueTask PositionFixed(string contentId, string referenceId, string align = "start", bool matchWidth = false, string side = "bottom") => _inner.PositionFixed(contentId, referenceId, align, matchWidth, side);
+        public ValueTask<string> PositionFixed(string contentId, string referenceId, string align = "start", bool matchWidth = false, string side = "bottom") => _inner.PositionFixed(contentId, referenceId, align, matchWidth, side);
         public ValueTask UnpositionFixed(string contentId) => _inner.UnpositionFixed(contentId);
         public ValueTask PositionAtPoint(string contentId, double x, double y) => _inner.PositionAtPoint(contentId, x, y);
         public ValueTask InitToolbarRoving(string toolbarId) => _inner.InitToolbarRoving(toolbarId);

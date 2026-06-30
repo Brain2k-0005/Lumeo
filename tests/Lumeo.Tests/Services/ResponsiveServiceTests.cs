@@ -137,7 +137,7 @@ public class ResponsiveServiceTests
         public ValueTask UnregisterSvDrag(string elementId) => ValueTask.CompletedTask;
         public ValueTask RegisterPinchZoom(string elementId, Func<double, Task> handler) => ValueTask.CompletedTask;
         public ValueTask UnregisterPinchZoom(string elementId) => ValueTask.CompletedTask;
-        public ValueTask PositionFixed(string contentId, string referenceId, string align = "start", bool matchWidth = false, string side = "bottom") => ValueTask.CompletedTask;
+        public ValueTask<string> PositionFixed(string contentId, string referenceId, string align = "start", bool matchWidth = false, string side = "bottom") => ValueTask.FromResult(side);
         public ValueTask UnpositionFixed(string contentId) => ValueTask.CompletedTask;
         public ValueTask<ElementRect?> GetElementRect(string elementId) => ValueTask.FromResult<ElementRect?>(null);
         public ValueTask<double> GetElementDimension(string elementId, string dimension) => ValueTask.FromResult(0d);

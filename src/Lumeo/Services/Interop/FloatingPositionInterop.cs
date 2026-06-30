@@ -5,7 +5,7 @@ namespace Lumeo.Services.Interop;
 
 internal sealed class FloatingPositionInterop
 {
-    public async ValueTask PositionFixed(
+    public async ValueTask<string> PositionFixed(
         IJSObjectReference module,
         string contentId,
         string referenceId,
@@ -14,7 +14,11 @@ internal sealed class FloatingPositionInterop
         string side = "bottom",
         int offset = 4)
     {
-        await module.InvokeVoidAsync("positionFixed", contentId, referenceId, align, matchWidth, side, offset);
+        // The JS returns the side the box ACTUALLY resolved to (a collision flip can move a preferred-Top
+        // box below its trigger, etc.). Fall back to the requested side if an older/stale cached script
+        // returns null/undefined, so a directional-arrow consumer still gets a sensible value.
+        var resolved = await module.InvokeAsync<string?>("positionFixed", contentId, referenceId, align, matchWidth, side, offset);
+        return string.IsNullOrEmpty(resolved) ? side : resolved!;
     }
 
     public async ValueTask UnpositionFixed(IJSObjectReference module, string contentId)

@@ -104,15 +104,17 @@ public interface IComponentInteropService : IAsyncDisposable, IDisposable
     ValueTask<ViewportSize?> RegisterViewportListener(Microsoft.JSInterop.DotNetObjectReference<ResponsiveService> dotnetRef);
     ValueTask UnregisterViewportListener();
 
-    // Floating Position
-    ValueTask PositionFixed(string contentId, string referenceId, string align = "start", bool matchWidth = false, string side = "bottom");
+    // Floating Position. Returns the side the content box ACTUALLY resolved to: a collision flip can move
+    // a preferred-Top box below its trigger (etc.), so a directional-arrow consumer (Tooltip) reads this to
+    // keep the arrow on the edge facing the trigger. Equals the requested side when no flip occurs.
+    ValueTask<string> PositionFixed(string contentId, string referenceId, string align = "start", bool matchWidth = false, string side = "bottom");
     /// <summary>
     /// 3.12.x — extended overload with an explicit trigger→content gap in pixels
     /// (Tooltip <c>Offset</c>). The default implementation ignores the offset and
     /// falls back to the 5-arg overload (JS hardcoded 4px) so existing
-    /// implementations keep compiling unchanged.
+    /// implementations keep compiling unchanged. Returns the resolved side (see above).
     /// </summary>
-    ValueTask PositionFixed(string contentId, string referenceId, string align, bool matchWidth, string side, int offset) =>
+    ValueTask<string> PositionFixed(string contentId, string referenceId, string align, bool matchWidth, string side, int offset) =>
         PositionFixed(contentId, referenceId, align, matchWidth, side);
     ValueTask UnpositionFixed(string contentId);
 
