@@ -26,7 +26,7 @@
                 aria-describedby="@FormFieldDescribedBy"
                 class="@CssClass"
                 disabled="@Disabled"
-                @attributes="AdditionalAttributes">
+                @attributes="EffectiveAttributes">
             <Blazicon Svg="Lucide.Calendar" class="me-2 h-4 w-4 shrink-0" />
             @if (Value.HasValue)
             {
@@ -201,6 +201,14 @@
 
     private string? FormFieldControlId => string.IsNullOrEmpty(FormField?.ControlId) ? null : FormField!.ControlId;
     private string? FormFieldDescribedBy => FormField?.DescribedBy;
+
+    // Inside a FormField the generated id must own this element so the FormField <Label For> (and any
+    // interop keyed off the id) stays valid; a consumer-splatted id in AdditionalAttributes renders after
+    // the explicit id= and would override it. Strip it here when InsideFormField; outside, pass through.
+    private Dictionary<string, object>? EffectiveAttributes =>
+        InsideFormField && AdditionalAttributes?.ContainsKey("id") == true
+            ? AdditionalAttributes.Where(kv => kv.Key != "id").ToDictionary(kv => kv.Key, kv => kv.Value)
+            : AdditionalAttributes;
 
     [Parameter] public DateTime? Value { get; set; }
     [Parameter] public EventCallback<DateTime?> ValueChanged { get; set; }

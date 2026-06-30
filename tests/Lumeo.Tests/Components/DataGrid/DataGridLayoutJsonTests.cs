@@ -387,8 +387,9 @@ public class DataGridLayoutJsonTests : IAsyncLifetime
         Assert.DoesNotContain(cut.FindAll("th"), th => th.TextContent.Contains("Name"));
         Assert.NotEmpty(cut.FindAll("[data-slot=\"datagrid-group-row\"]"));
 
-        // Remove the restored chip — the column must come back.
-        cut.Find("[data-slot=\"datagrid-group-panel\"] span button").Click();
+        // Remove the restored chip — the column must come back. Target the remove button by its
+        // aria-label (structure-independent: the chip wrapper is a <div>, not a <span>).
+        cut.Find("[data-slot=\"datagrid-group-panel\"] button[aria-label=\"Remove grouping\"]").Click();
 
         Assert.Empty(cut.FindAll("[data-slot=\"datagrid-group-row\"]"));
         Assert.Contains(cut.FindAll("th"), th => th.TextContent.Contains("Name"));

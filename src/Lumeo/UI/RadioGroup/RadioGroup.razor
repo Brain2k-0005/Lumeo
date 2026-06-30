@@ -34,7 +34,7 @@
      aria-invalid="@EffectiveInvalid.ToString().ToLower()"
      aria-describedby="@FormFieldDescribedBy"
      class="@CssClass"
-     @attributes="AdditionalAttributes">
+     @attributes="EffectiveAttributes">
     <CascadingValue Value="context" IsFixed="false">
         @ChildContent
     </CascadingValue>
@@ -84,6 +84,14 @@
     // container id (keeping the <Label For> association); standalone, a generated id.
     private readonly string _groupId = LumeoIds.New("radio-group");
     private string EffectiveContainerId => !string.IsNullOrEmpty(FormFieldControlId) ? FormFieldControlId! : _groupId;
+
+    // Inside a FormField the generated id must own this element so the FormField <Label For> (and any
+    // interop keyed off the id) stays valid; a consumer-splatted id in AdditionalAttributes renders after
+    // the explicit id= and would override it. Strip it here when InsideFormField; outside, pass through.
+    private Dictionary<string, object>? EffectiveAttributes =>
+        InsideFormField && AdditionalAttributes?.ContainsKey("id") == true
+            ? AdditionalAttributes.Where(kv => kv.Key != "id").ToDictionary(kv => kv.Key, kv => kv.Value)
+            : AdditionalAttributes;
 
     [Parameter] public RenderFragment? ChildContent { get; set; }
     [Parameter] public string? Value { get; set; }

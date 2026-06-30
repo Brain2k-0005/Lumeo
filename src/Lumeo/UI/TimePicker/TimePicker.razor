@@ -36,7 +36,7 @@ else
                 aria-describedby="@FormFieldDescribedBy"
                 class="@CssClass"
                 disabled="@Disabled"
-                @attributes="AdditionalAttributes">
+                @attributes="EffectiveAttributes">
             <Blazicon Svg="Lucide.Clock" class="me-2 h-4 w-4 shrink-0" />
             @if (Value.HasValue)
             {
@@ -196,6 +196,14 @@ else
     // fallback when not inside a FormField.
     private readonly string _triggerId = LumeoIds.New("time-picker-trigger");
     private string EffectiveTriggerId => FormFieldControlId ?? _triggerId;
+
+    // Inside a FormField the generated id must own this element so the FormField <Label For> (and any
+    // interop keyed off the id) stays valid; a consumer-splatted id in AdditionalAttributes renders after
+    // the explicit id= and would override it. Strip it here when InsideFormField; outside, pass through.
+    private Dictionary<string, object>? EffectiveAttributes =>
+        InsideFormField && AdditionalAttributes?.ContainsKey("id") == true
+            ? AdditionalAttributes.Where(kv => kv.Key != "id").ToDictionary(kv => kv.Key, kv => kv.Value)
+            : AdditionalAttributes;
 
     [Parameter] public TimeSpan? Value { get; set; }
     [Parameter] public EventCallback<TimeSpan?> ValueChanged { get; set; }

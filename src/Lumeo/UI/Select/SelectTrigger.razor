@@ -12,7 +12,7 @@
         disabled="@Context.Disabled"
         @onclick="Toggle"
         @onkeydown="HandleKeyDown"
-        @attributes="AdditionalAttributes">
+        @attributes="EffectiveAttributes">
     @if (Context.Multiple && Context.Values != null && Context.Values.Count > 0)
     {
         <div class="flex flex-wrap gap-1 items-center flex-1 min-w-0">
@@ -62,6 +62,15 @@
     [Parameter] public string? Placeholder { get; set; }
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    // Inside a FormField the trigger's id is the FormField's ControlId (Context.TriggerId) and the field
+    // <Label For> targets it; a consumer-splatted id renders after the explicit id= and would override it,
+    // orphaning the label. Strip the id from the splat in that case (Codex P2). Outside a FormField the
+    // consumer id passes through.
+    private Dictionary<string, object>? EffectiveAttributes =>
+        Context.InsideFormField && AdditionalAttributes?.ContainsKey("id") == true
+            ? AdditionalAttributes.Where(kv => kv.Key != "id").ToDictionary(kv => kv.Key, kv => kv.Value)
+            : AdditionalAttributes;
 
     // Height + body padding track the ambient DensityScope; Comfortable
     // reproduces the historical `h-9 px-3 py-2`.
