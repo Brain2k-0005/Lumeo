@@ -3,7 +3,7 @@
 @implements IDisposable
 
 @{
-    var context = new FormFieldContext(Name, EffectiveError, IsValidating, _controlId, DescribedBy, AutoRenderMessage, _errorId);
+    var context = new FormFieldContext(Name, EffectiveError, IsValidating, _controlId, DescribedBy, AutoRenderMessage, _errorId, Label is not null ? _labelId : null);
 }
 
 <CascadingValue Value="context" IsFixed="false">
@@ -12,7 +12,7 @@
         {
             @if (Label is not null)
             {
-                <Label For="@_controlId">
+                <Label For="@_controlId" id="@_labelId">
                     <span class="inline-flex items-center gap-1.5">
                         @Label
                         @if (Required)
@@ -41,7 +41,7 @@
             <div class="grid grid-cols-[auto_1fr] items-center gap-x-4 gap-y-1">
                 @if (Label is not null)
                 {
-                    <Label For="@_controlId" Class="@(Cx.Join("text-end", LabelWidth is not null ? $"w-[{LabelWidth}]" : null))">
+                    <Label For="@_controlId" id="@_labelId" Class="@(Cx.Join("text-end", LabelWidth is not null ? $"w-[{LabelWidth}]" : null))">
                         <span class="inline-flex items-center justify-end gap-1.5">
                             @Label
                             @if (Required)
@@ -127,6 +127,12 @@
     private readonly string _controlId = LumeoIds.New("form-field");
     private readonly string _descriptionId = LumeoIds.New("form-field-desc");
     private readonly string _errorId = LumeoIds.New("form-field-error");
+    // Stable id on the <Label> itself, exposed via FormFieldContext.LabelId, for controls whose root
+    // is NOT a "labelable" element (a <div role="group">, e.g. TimeWheelPicker/Calendar) — `<label for>`
+    // does not reliably associate with those, so they additionally wire `aria-labelledby` to this id
+    // (Codex P2). Only set in the context when Label is actually rendered (else it would be a dangling
+    // IDREF with nothing in the DOM to point at).
+    private readonly string _labelId = LumeoIds.New("form-field-label");
 
     // Point aria-describedby at whichever message is actually rendered: the error
     // when present (it replaces the help text), else the help text, else nothing.
@@ -363,7 +369,10 @@
     ///   parity). Empty when the field generated none.</param>
     /// <param name="DescribedBy">Id of the currently-rendered help OR error text, for
     ///   the control's <c>aria-describedby</c>; null when neither is shown.</param>
-    public record FormFieldContext(string? Name, string? Error, bool IsValidating, string ControlId = "", string? DescribedBy = null, bool AutoRenderMessage = true, string? ErrorId = null)
+    /// <param name="LabelId">Id of the rendered &lt;label&gt; element, for controls whose root is NOT
+    ///   labelable (a &lt;div role="group"&gt;) to wire as their own <c>aria-labelledby</c> — `label for`
+    ///   alone doesn't reliably associate with a non-labelable element. Null when no Label is rendered.</param>
+    public record FormFieldContext(string? Name, string? Error, bool IsValidating, string ControlId = "", string? DescribedBy = null, bool AutoRenderMessage = true, string? ErrorId = null, string? LabelId = null)
     {
         public bool HasError => !string.IsNullOrEmpty(Error);
     }

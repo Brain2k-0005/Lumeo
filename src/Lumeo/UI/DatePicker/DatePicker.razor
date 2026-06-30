@@ -29,11 +29,17 @@
                [Parameter]s) so the FormField <Label For> resolves to a real element on this trigger-less
                variant too — the popover-trigger button gets the same EffectiveTriggerId (Codex P2). *@
             <DateWheelPicker Value="@Value" ValueChanged="HandleDateSelected" Min="@MinDate" Max="@MaxDate" Culture="@Culture"
-                              id="@EffectiveTriggerId" role="group" aria-describedby="@FormFieldDescribedBy" />
+                              id="@EffectiveTriggerId" role="group" aria-labelledby="@FormField?.LabelId" aria-describedby="@FormFieldDescribedBy" />
             @if (ShowTimePicker)
             {
                 <div class="border-t border-border/40 p-3">
-                    <TimePicker Value="@Time" ValueChanged="HandleTimeChanged" Culture="@Culture" Variant="TimePicker.TimePickerVariant.Wheel" />
+                    @* Detach the FormField cascade for the nested time-of-day picker: it is a sub-widget
+                       of THIS DatePicker, not an independently field-associated control. Left cascaded,
+                       it would ALSO compute the same FormFieldControlId as the date picker above and
+                       render a DUPLICATE DOM id (Codex P2). *@
+                    <CascadingValue Value="(FormField.FormFieldContext?)null" IsFixed="true">
+                        <TimePicker Value="@Time" ValueChanged="HandleTimeChanged" Culture="@Culture" Variant="TimePicker.TimePickerVariant.Wheel" />
+                    </CascadingValue>
                 </div>
             }
         </div>
@@ -77,7 +83,12 @@
                 @if (ShowTimePicker)
                 {
                     <div class="border-t border-border/40 mt-3 pt-3">
-                        <TimePicker Value="@Time" ValueChanged="HandleTimeChanged" Culture="@Culture" Variant="TimePicker.TimePickerVariant.Wheel" />
+                        @* Detach the FormField cascade — see the Inline+Wheel branch's comment above
+                           (Codex P2): a nested time-of-day TimePicker must not also claim the FormField's
+                           ControlId, which is already on this Popover's trigger button. *@
+                        <CascadingValue Value="(FormField.FormFieldContext?)null" IsFixed="true">
+                            <TimePicker Value="@Time" ValueChanged="HandleTimeChanged" Culture="@Culture" Variant="TimePicker.TimePickerVariant.Wheel" />
+                        </CascadingValue>
                     </div>
                 }
             </PopoverContent>
@@ -92,15 +103,15 @@ else if (Inline)
            EffectiveTriggerId in the non-Inline branches (Codex P2). *@
         @if (Mode == DatePickerMode.Multiple)
         {
-            <Calendar IsMultiple="true" Values="@Values" ValuesChanged="HandleValuesSelected" MinDate="@MinDate" MaxDate="@MaxDate" IsDateDisabled="@IsDateDisabled" DateClass="@DateClass" DateTooltip="@DateTooltip" DateBadge="@DateBadge" NumberOfMonths="@EffectiveNumberOfMonths" FirstDayOfWeek="@FirstDayOfWeek" ShowWeekNumbers="@ShowWeekNumbers" id="@EffectiveTriggerId" role="group" aria-describedby="@FormFieldDescribedBy" />
+            <Calendar IsMultiple="true" Values="@Values" ValuesChanged="HandleValuesSelected" MinDate="@MinDate" MaxDate="@MaxDate" IsDateDisabled="@IsDateDisabled" DateClass="@DateClass" DateTooltip="@DateTooltip" DateBadge="@DateBadge" NumberOfMonths="@EffectiveNumberOfMonths" FirstDayOfWeek="@FirstDayOfWeek" ShowWeekNumbers="@ShowWeekNumbers" id="@EffectiveTriggerId" role="group" aria-labelledby="@FormField?.LabelId" aria-describedby="@FormFieldDescribedBy" />
         }
         else if (Mode == DatePickerMode.Month)
         {
-            <Calendar Value="@Value" ValueChanged="HandleDateSelected" MinDate="@MinDate" MaxDate="@MaxDate" IsDateDisabled="@IsDateDisabled" DateClass="@DateClass" DateTooltip="@DateTooltip" DateBadge="@DateBadge" InitialView="@Calendar.CalendarView.Months" FirstDayOfWeek="@FirstDayOfWeek" ShowWeekNumbers="@ShowWeekNumbers" id="@EffectiveTriggerId" role="group" aria-describedby="@FormFieldDescribedBy" />
+            <Calendar Value="@Value" ValueChanged="HandleDateSelected" MinDate="@MinDate" MaxDate="@MaxDate" IsDateDisabled="@IsDateDisabled" DateClass="@DateClass" DateTooltip="@DateTooltip" DateBadge="@DateBadge" InitialView="@Calendar.CalendarView.Months" FirstDayOfWeek="@FirstDayOfWeek" ShowWeekNumbers="@ShowWeekNumbers" id="@EffectiveTriggerId" role="group" aria-labelledby="@FormField?.LabelId" aria-describedby="@FormFieldDescribedBy" />
         }
         else if (Mode == DatePickerMode.Year)
         {
-            <Calendar Value="@Value" ValueChanged="HandleDateSelected" MinDate="@MinDate" MaxDate="@MaxDate" IsDateDisabled="@IsDateDisabled" DateClass="@DateClass" DateTooltip="@DateTooltip" DateBadge="@DateBadge" InitialView="@Calendar.CalendarView.Years" FirstDayOfWeek="@FirstDayOfWeek" ShowWeekNumbers="@ShowWeekNumbers" id="@EffectiveTriggerId" role="group" aria-describedby="@FormFieldDescribedBy" />
+            <Calendar Value="@Value" ValueChanged="HandleDateSelected" MinDate="@MinDate" MaxDate="@MaxDate" IsDateDisabled="@IsDateDisabled" DateClass="@DateClass" DateTooltip="@DateTooltip" DateBadge="@DateBadge" InitialView="@Calendar.CalendarView.Years" FirstDayOfWeek="@FirstDayOfWeek" ShowWeekNumbers="@ShowWeekNumbers" id="@EffectiveTriggerId" role="group" aria-labelledby="@FormField?.LabelId" aria-describedby="@FormFieldDescribedBy" />
         }
         else if (Mode == DatePickerMode.Range)
         {
@@ -119,7 +130,7 @@ else if (Inline)
                     <Calendar IsRange="true" RangeStart="@RangeStart" RangeStartChanged="HandleRangeStartChanged"
                               RangeEnd="@RangeEnd" RangeEndChanged="HandleRangeEndChanged"
                               MinDate="@MinDate" MaxDate="@MaxDate" IsDateDisabled="@IsDateDisabled" DateClass="@DateClass" DateTooltip="@DateTooltip" DateBadge="@DateBadge" NumberOfMonths="@EffectiveNumberOfMonths" FirstDayOfWeek="@FirstDayOfWeek" ShowWeekNumbers="@ShowWeekNumbers"
-                              id="@EffectiveTriggerId" role="group" aria-describedby="@FormFieldDescribedBy" />
+                              id="@EffectiveTriggerId" role="group" aria-labelledby="@FormField?.LabelId" aria-describedby="@FormFieldDescribedBy" />
                 </div>
             }
             else
@@ -127,7 +138,7 @@ else if (Inline)
                 <Calendar IsRange="true" RangeStart="@RangeStart" RangeStartChanged="HandleRangeStartChanged"
                           RangeEnd="@RangeEnd" RangeEndChanged="HandleRangeEndChanged"
                           MinDate="@MinDate" MaxDate="@MaxDate" IsDateDisabled="@IsDateDisabled" DateClass="@DateClass" DateTooltip="@DateTooltip" DateBadge="@DateBadge" NumberOfMonths="@EffectiveNumberOfMonths" FirstDayOfWeek="@FirstDayOfWeek" ShowWeekNumbers="@ShowWeekNumbers"
-                          id="@EffectiveTriggerId" role="group" aria-describedby="@FormFieldDescribedBy" />
+                          id="@EffectiveTriggerId" role="group" aria-labelledby="@FormField?.LabelId" aria-describedby="@FormFieldDescribedBy" />
             }
         }
         else
@@ -145,18 +156,23 @@ else if (Inline)
                                 </button>
                             }
                         </div>
-                        <Calendar Value="@Value" ValueChanged="HandleDateSelected" MinDate="@MinDate" MaxDate="@MaxDate" IsDateDisabled="@IsDateDisabled" DateClass="@DateClass" DateTooltip="@DateTooltip" DateBadge="@DateBadge" NumberOfMonths="@EffectiveNumberOfMonths" FirstDayOfWeek="@FirstDayOfWeek" ShowWeekNumbers="@ShowWeekNumbers" id="@EffectiveTriggerId" role="group" aria-describedby="@FormFieldDescribedBy" />
+                        <Calendar Value="@Value" ValueChanged="HandleDateSelected" MinDate="@MinDate" MaxDate="@MaxDate" IsDateDisabled="@IsDateDisabled" DateClass="@DateClass" DateTooltip="@DateTooltip" DateBadge="@DateBadge" NumberOfMonths="@EffectiveNumberOfMonths" FirstDayOfWeek="@FirstDayOfWeek" ShowWeekNumbers="@ShowWeekNumbers" id="@EffectiveTriggerId" role="group" aria-labelledby="@FormField?.LabelId" aria-describedby="@FormFieldDescribedBy" />
                     </div>
                 }
                 else
                 {
-                    <Calendar Value="@Value" ValueChanged="HandleDateSelected" MinDate="@MinDate" MaxDate="@MaxDate" IsDateDisabled="@IsDateDisabled" DateClass="@DateClass" DateTooltip="@DateTooltip" DateBadge="@DateBadge" NumberOfMonths="@EffectiveNumberOfMonths" FirstDayOfWeek="@FirstDayOfWeek" ShowWeekNumbers="@ShowWeekNumbers" id="@EffectiveTriggerId" role="group" aria-describedby="@FormFieldDescribedBy" />
+                    <Calendar Value="@Value" ValueChanged="HandleDateSelected" MinDate="@MinDate" MaxDate="@MaxDate" IsDateDisabled="@IsDateDisabled" DateClass="@DateClass" DateTooltip="@DateTooltip" DateBadge="@DateBadge" NumberOfMonths="@EffectiveNumberOfMonths" FirstDayOfWeek="@FirstDayOfWeek" ShowWeekNumbers="@ShowWeekNumbers" id="@EffectiveTriggerId" role="group" aria-labelledby="@FormField?.LabelId" aria-describedby="@FormFieldDescribedBy" />
                 }
 
                 @if (ShowTimePicker)
                 {
                     <div class="border-t border-border/40 p-3">
-                        <TimePicker Value="@Time" ValueChanged="HandleTimeChanged" Culture="@Culture" />
+                        @* Detach the FormField cascade — see the Inline+Wheel branch's comment above
+                           (Codex P2): a nested time-of-day TimePicker must not also claim the FormField's
+                           ControlId, which is already on the Calendar above. *@
+                        <CascadingValue Value="(FormField.FormFieldContext?)null" IsFixed="true">
+                            <TimePicker Value="@Time" ValueChanged="HandleTimeChanged" Culture="@Culture" />
+                        </CascadingValue>
                     </div>
                 }
             </div>
@@ -354,7 +370,12 @@ else
                     @if (ShowTimePicker)
                     {
                         <div class="border-t border-border/40 p-3">
-                            <TimePicker Value="@Time" ValueChanged="HandleTimeChanged" Culture="@Culture" />
+                            @* Detach the FormField cascade — see the Inline+Wheel branch's comment above
+                               (Codex P2): a nested time-of-day TimePicker must not also claim the
+                               FormField's ControlId, which is already on this Popover's trigger button. *@
+                            <CascadingValue Value="(FormField.FormFieldContext?)null" IsFixed="true">
+                                <TimePicker Value="@Time" ValueChanged="HandleTimeChanged" Culture="@Culture" />
+                            </CascadingValue>
                         </div>
                     }
                 </div>
