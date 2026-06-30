@@ -137,7 +137,10 @@ internal static class Commands
         // the injected services, Lumeo.* enums, etc. against it. Bridge it here.
         if (opts.Standalone)
         {
-            var importsPath = System.IO.Path.Combine(uiDir, "_Imports.razor");
+            // Write to the PROJECT-ROOT _Imports.razor (not componentsPath): Razor `_Imports` flow only
+            // DOWNWARD, so one under Components/Ui would never let app pages (Pages/, the project root)
+            // resolve <Button> etc. A root _Imports cascades to BOTH the app pages and the vendored tree.
+            var importsPath = System.IO.Path.Combine(Environment.CurrentDirectory, "_Imports.razor");
             // Mirror src/Lumeo/_Imports.razor: the framework + Blazicons + Lumeo usings the vendored
             // .razor components rely on (KeyboardEventArgs, Blazicon, Cx, the injected services, …).
             const string lumeoUsings =
@@ -412,30 +415,56 @@ internal static class Commands
     // <componentsPath>/_LumeoRuntime/ VERBATIM — keeping the Lumeo namespace — so the
     // user-namespace components resolve Cx, the injected services and Lumeo.* types against it.
     // Idempotent: skips entirely if already present.
-    private static async Task EnsureRuntimeVendoredAsync(LumeoConfig cfg, Registry registry, AddOptions opts)
+    // Returns true when the standalone runtime is in place (or was already), false when it could not be
+    // vendored (no 'runtime' manifest) — callers must NOT proceed to strip the NuGet on a false.
+    private static async Task<bool> EnsureRuntimeVendoredAsync(LumeoConfig cfg, Registry registry, AddOptions opts)
     {
         if (registry.Runtime is null || registry.Runtime.Files.Count == 0)
         {
             Console.Error.WriteLine(Ansi.Red(
                 "Standalone mode needs a registry with a 'runtime' manifest. Update the CLI/registry, or drop --standalone."));
             Environment.ExitCode = 1;
-            return;
+            return false;
         }
         var runtimeRoot = Path.Combine(Environment.CurrentDirectory, cfg.ComponentsPath, RuntimeFolder);
         var sentinel = Path.Combine(runtimeRoot, "Internal", "Cx.cs");
-        if (File.Exists(sentinel)) return;   // already vendored — idempotent
-
-        var written = new List<string>();
-        foreach (var rel in registry.Runtime.Files)
+        if (!File.Exists(sentinel))   // vendor the runtime source once — idempotent
         {
-            var content = await RegistryLoader.GetFileAsync(rel, opts.Local, cfg.Registry);  // sourcePackage defaults to "Lumeo"
-            var dest = Path.Combine(runtimeRoot, rel.Replace('/', Path.DirectorySeparatorChar));
-            Directory.CreateDirectory(Path.GetDirectoryName(dest)!);
-            await File.WriteAllTextAsync(dest, content, new UTF8Encoding(false));   // VERBATIM — no NamespaceRewriter
-            written.Add($"{cfg.ComponentsPath}/{RuntimeFolder}/{rel}");
+            var written = new List<string>();
+            foreach (var rel in registry.Runtime.Files)
+            {
+                var content = await RegistryLoader.GetFileAsync(rel, opts.Local, cfg.Registry);  // sourcePackage defaults to "Lumeo"
+                var dest = Path.Combine(runtimeRoot, rel.Replace('/', Path.DirectorySeparatorChar));
+                Directory.CreateDirectory(Path.GetDirectoryName(dest)!);
+                await File.WriteAllTextAsync(dest, content, new UTF8Encoding(false));   // VERBATIM — no NamespaceRewriter
+                written.Add($"{cfg.ComponentsPath}/{RuntimeFolder}/{rel}");
+            }
+            Console.WriteLine(Ansi.Green("  +   ") + $"{RuntimeFolder}/ ({written.Count} Lumeo runtime files)");
+            ConfigIO.RecordInstall(cfg, RuntimeRecordKey, registry.Version, written);
         }
-        Console.WriteLine(Ansi.Green("  +   ") + $"{RuntimeFolder}/ ({written.Count} Lumeo runtime files)");
-        ConfigIO.RecordInstall(cfg, RuntimeRecordKey, registry.Version, written);
+
+        // The vendored runtime + components import their JS/CSS from `_content/Lumeo/…` (baked into the
+        // source verbatim — e.g. ComponentInteropService loads `_content/Lumeo/js/components.js`). With no
+        // Lumeo package there is no `_content/Lumeo`, so mirror the core assets under wwwroot/_content/Lumeo/
+        // where exactly those URLs resolve. Idempotent (skips files already present).
+        foreach (var (assetSrc, _) in s_prebuiltAssets)
+        {
+            var assetDest = Path.Combine(Environment.CurrentDirectory, "wwwroot",
+                assetSrc.Replace('/', Path.DirectorySeparatorChar));   // assetSrc already begins "_content/Lumeo/…"
+            if (File.Exists(assetDest)) continue;
+            try
+            {
+                var bytes = await RegistryLoader.GetAssetBytesAsync(assetSrc, opts.Local, cfg.Registry);
+                Directory.CreateDirectory(Path.GetDirectoryName(assetDest)!);
+                await File.WriteAllBytesAsync(assetDest, bytes);
+                Console.WriteLine(Ansi.Green("  +   ") + $"wwwroot/{assetSrc}");
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine(Ansi.Yellow("  warn: ") + $"couldn't vendor core asset {assetSrc}: {ex.Message}");
+            }
+        }
+        return true;
     }
 
     /// <summary>
@@ -460,12 +489,21 @@ internal static class Commands
         }
 
         var registry = await RegistryLoader.LoadAsync(local, cfg.Registry);
-        cfg.Standalone = true;
-        ConfigIO.Save(cfg);
 
         var opts = new AddOptions(Component: null, Local: local, Yes: true, Force: true, SkipExisting: false,
             Overwrite: true, DryRun: false, All: false, Diff: false, View: false, Vendor: true);
-        await EnsureRuntimeVendoredAsync(cfg, registry, opts);
+
+        // Vendor the runtime FIRST, and only flip to standalone / strip the NuGet if it succeeds.
+        // Otherwise (e.g. an older registry with no 'runtime' manifest) leave the project exactly as it
+        // was — no half-ejected state with the package gone but no vendored runtime to compile against.
+        if (!await EnsureRuntimeVendoredAsync(cfg, registry, opts))
+        {
+            Console.Error.WriteLine(Ansi.Red(
+                "Eject aborted — could not vendor the Lumeo runtime. The project is unchanged; update the CLI/registry and retry."));
+            return;
+        }
+        cfg.Standalone = true;
+        ConfigIO.Save(cfg);
 
         // Re-vendor every already-installed component as SOURCE (satellites included), skipping the runtime record.
         var installed = cfg.Components?.Keys.Where(k => k != RuntimeRecordKey).ToList() ?? new List<string>();
@@ -479,8 +517,10 @@ internal static class Commands
         Console.WriteLine($"  Runtime vendored to {cfg.ComponentsPath}/{RuntimeFolder}/");
     }
 
-    // Removes self-closing <PackageReference Include="Lumeo[.Satellite]" .../> lines from the consumer
-    // .csproj. Returns the package ids removed. External deps (e.g. Blazicons.Lucide) are left intact.
+    // Removes <PackageReference Include="Lumeo[.Satellite]" …> entries from the consumer .csproj —
+    // BOTH the self-closing form (`… />`) and the expanded form
+    // (`…><Version>4.0.0</Version></PackageReference>`). Returns the package ids removed.
+    // External deps (e.g. Blazicons.Lucide) are left intact.
     private static List<string> StripLumeoPackageReferences()
     {
         var removed = new List<string>();
@@ -489,7 +529,7 @@ internal static class Commands
         var text = File.ReadAllText(csproj);
         var stripped = System.Text.RegularExpressions.Regex.Replace(
             text,
-            @"[ \t]*<PackageReference\s+Include=""(Lumeo(?:\.[A-Za-z0-9.]+)?)""[^>]*/>[ \t]*\r?\n?",
+            @"[ \t]*<PackageReference\s+Include=""(Lumeo(?:\.[A-Za-z0-9.]+)?)""[^>]*(?:/>|>[\s\S]*?</PackageReference>)[ \t]*\r?\n?",
             m => { removed.Add(m.Groups[1].Value); return string.Empty; },
             System.Text.RegularExpressions.RegexOptions.IgnoreCase);
         if (stripped != text) File.WriteAllText(csproj, stripped, new UTF8Encoding(false));
@@ -831,7 +871,7 @@ internal static class Commands
         // runtime is vendored once into _LumeoRuntime/ (verbatim, Lumeo namespace) so core and
         // satellite source compile with no Lumeo PackageReference.
         var forceVendor = opts.Vendor || cfg.Standalone;
-        if (cfg.Standalone && !opts.DryRun) await EnsureRuntimeVendoredAsync(cfg, registry, opts);
+        if (cfg.Standalone && !opts.DryRun && !await EnsureRuntimeVendoredAsync(cfg, registry, opts)) return;
 
         // ── Satellite NuGet package check ──────────────────────────────────────
         // If the component lives in a satellite package (nugetPackage != "Lumeo"),
@@ -847,6 +887,13 @@ internal static class Commands
             // component's packageDependencies — surfaced after the files are written.
             Console.WriteLine(Ansi.Dim(
                 $"  Vendoring {entry.Name} as source from {satellitePkg} (omit --vendor to add the NuGet package instead)."));
+            // The DataGrid's Excel/PDF export runs through the compiled Lumeo.DataGrid.Export backend
+            // (ClosedXML + QuestPDF) bundled inside the NuGet — it can't be vendored as source. The grid
+            // renders/sorts/filters fine without it; only export needs it. Surface that honestly.
+            if (string.Equals(ToKebab(entry.Name), "data-grid", StringComparison.OrdinalIgnoreCase))
+                Console.WriteLine(Ansi.Yellow("  note: ") +
+                    "Excel/PDF export needs the compiled Lumeo.DataGrid.Export backend, which isn't vendorable as source — " +
+                    "add `<PackageReference Include=\"Lumeo.DataGrid.Export\" />` if you need export (grid rendering works without it).");
         }
         else if (isSatellite && !((opts.Diff || opts.View) && !opts.Yes))
         {
