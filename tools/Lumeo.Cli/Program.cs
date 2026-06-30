@@ -493,11 +493,19 @@ namespace Lumeo.Cli
             else
                 baseUrl = registryUrl.TrimEnd('/') + "/raw/";
 
-            // A satellite component's source lives under src/<package>/ rather than
-            // src/Lumeo/ — swap the package segment when the base carries it (the
-            // jsDelivr "…/src/Lumeo/" layout used by `lumeo init`).
+            // A satellite component's source lives under its own package dir, not src/Lumeo/.
             if (!string.IsNullOrEmpty(package) && !string.Equals(package, "Lumeo", StringComparison.OrdinalIgnoreCase))
-                baseUrl = baseUrl.Replace("/src/Lumeo/", $"/src/{package}/", StringComparison.OrdinalIgnoreCase);
+            {
+                if (baseUrl.Contains("/src/Lumeo/", StringComparison.OrdinalIgnoreCase))
+                    // jsDelivr "…/src/Lumeo/" layout — swap the package segment.
+                    baseUrl = baseUrl.Replace("/src/Lumeo/", $"/src/{package}/", StringComparison.OrdinalIgnoreCase);
+                else
+                    // Self-hosted "/raw/" layout (e.g. the default https://lumeo.nativ.sh/raw/): the deploy
+                    // publishes each satellite's source under /raw/<package>/, so nest the package folder
+                    // (core stays at /raw/, which maps to src/Lumeo/). Keeps `add <satellite> --vendor`
+                    // resolving instead of 404ing against the core raw tree.
+                    baseUrl = baseUrl.TrimEnd('/') + $"/{package}/";
+            }
             return baseUrl;
         }
 

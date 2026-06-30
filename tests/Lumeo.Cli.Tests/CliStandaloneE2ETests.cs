@@ -100,8 +100,10 @@ public sealed class CliStandaloneE2ETests : IDisposable
         Assert.True(init.Exit == 0, $"init failed (exit {init.Exit}). {init.Stderr}{init.Stdout}");
 
         Assert.Contains("\"standalone\": true", File.ReadAllText(Path.Combine(_proj, "lumeo.json")));
-        var imports = Path.Combine(_proj, "Components", "Ui", "_Imports.razor");
-        Assert.True(File.Exists(imports), "standalone init did not scaffold _Imports.razor");
+        // The standalone @using Lumeo bridge goes in the PROJECT-ROOT _Imports.razor (not under
+        // componentsPath) so it cascades to app pages too — Razor imports only flow downward.
+        var imports = Path.Combine(_proj, "_Imports.razor");
+        Assert.True(File.Exists(imports), "standalone init did not scaffold the project-root _Imports.razor");
         Assert.Contains("@using Lumeo", File.ReadAllText(imports));
     }
 
