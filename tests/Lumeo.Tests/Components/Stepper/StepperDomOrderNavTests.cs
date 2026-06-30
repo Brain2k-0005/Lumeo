@@ -60,7 +60,7 @@ public class StepperDomOrderNavTests : IAsyncLifetime
         });
 
     [Fact]
-    public void Arrow_And_End_Roving_Follows_Live_DOM_Order_After_A_Keyed_Reorder()
+    public async Task Arrow_And_End_Roving_Follows_Live_DOM_Order_After_A_Keyed_Reorder()
     {
         var cut = RenderThreeSteps(); // registry order: step0, step1, step2
 
@@ -78,9 +78,8 @@ public class StepperDomOrderNavTests : IAsyncLifetime
         // ArrowRight from the focused tab[0]: in DOM order its neighbour is step
         // index 2, NOT the registry neighbour (step index 1). The roving tab stop
         // must therefore land on tab[2].
-        cut.InvokeAsync(() =>
-            cut.FindAll("[role='tab']")[0].KeyDown(new KeyboardEventArgs { Key = "ArrowRight" }))
-            .GetAwaiter().GetResult();
+        await cut.InvokeAsync(() =>
+            cut.FindAll("[role='tab']")[0].KeyDown(new KeyboardEventArgs { Key = "ArrowRight" }));
 
         var afterArrow = cut.FindAll("[role='tab']");
         Assert.Equal("0", afterArrow[2].GetAttribute("tabindex"));  // DOM-order neighbour
@@ -99,9 +98,8 @@ public class StepperDomOrderNavTests : IAsyncLifetime
 
         // End jumps to the LAST tab in DOM order (step index 1) — NOT registry-last
         // (step index 2). Same roving-only contract: selection is untouched.
-        cut.InvokeAsync(() =>
-            cut.FindAll("[role='tab']")[2].KeyDown(new KeyboardEventArgs { Key = "End" }))
-            .GetAwaiter().GetResult();
+        await cut.InvokeAsync(() =>
+            cut.FindAll("[role='tab']")[2].KeyDown(new KeyboardEventArgs { Key = "End" }));
 
         var afterEnd = cut.FindAll("[role='tab']");
         Assert.Equal("0", afterEnd[1].GetAttribute("tabindex"));  // DOM-order last

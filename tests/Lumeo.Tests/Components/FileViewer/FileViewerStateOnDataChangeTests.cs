@@ -76,7 +76,7 @@ public class FileViewerStateOnDataChangeTests : IAsyncLifetime
     // ──────────────────────────────────────────────────────────────────────────
 
     [Fact]
-    public void Stale_Image_Error_From_Previous_Src_Does_Not_Latch_Error_On_New_Src()
+    public async Task Stale_Image_Error_From_Previous_Src_Does_Not_Latch_Error_On_New_Src()
     {
         // Image kind needs no fetch, so the component settles to Loaded immediately.
         var cut = _ctx.Render<L.FileViewer>(p => p
@@ -95,8 +95,7 @@ public class FileViewerStateOnDataChangeTests : IAsyncLifetime
             Assert.Equal("https://cdn.example.com/new.png", cut.Find("img").GetAttribute("src")));
 
         // The OLD image now fails to load and its (stale) @onerror finally fires.
-        cut.InvokeAsync(() => cut.Instance.HandleChildError(staleGeneration, "Image failed to load."))
-            .GetAwaiter().GetResult();
+        await cut.InvokeAsync(() => cut.Instance.HandleChildError(staleGeneration, "Image failed to load."));
 
         // Pre-fix: this flipped the component to the Error panel, hiding the valid
         // new image. Post-fix: the stale generation is ignored, so the new image
@@ -106,7 +105,7 @@ public class FileViewerStateOnDataChangeTests : IAsyncLifetime
     }
 
     [Fact]
-    public void Current_Generation_Image_Error_Still_Latches_Error()
+    public async Task Current_Generation_Image_Error_Still_Latches_Error()
     {
         // Guards against the fix over-suppressing: a *current*-generation error
         // must still show the Error panel.
@@ -115,8 +114,7 @@ public class FileViewerStateOnDataChangeTests : IAsyncLifetime
 
         cut.WaitForAssertion(() => Assert.NotEmpty(cut.FindAll("img")));
 
-        cut.InvokeAsync(() => cut.Instance.HandleChildError(cut.Instance._loadGeneration, "Image failed to load."))
-            .GetAwaiter().GetResult();
+        await cut.InvokeAsync(() => cut.Instance.HandleChildError(cut.Instance._loadGeneration, "Image failed to load."));
 
         Assert.Contains("Could not display file", cut.Markup);
     }
@@ -160,7 +158,7 @@ public class FileViewerStateOnDataChangeTests : IAsyncLifetime
     // ──────────────────────────────────────────────────────────────────────────
 
     [Fact]
-    public void RefreshAsync_Recovers_From_Error_On_Unchanged_Src()
+    public async Task RefreshAsync_Recovers_From_Error_On_Unchanged_Src()
     {
         var handler = RegisterHttpClient();
         // First load fails (server error); the retry succeeds.
@@ -181,7 +179,7 @@ public class FileViewerStateOnDataChangeTests : IAsyncLifetime
         // parameter early-out made this impossible (nothing changed → no reload).
         handler.RespondWith(_ => Ok("h\n1\n2\n3"));
 
-        cut.InvokeAsync(() => cut.Instance.RefreshAsync()).GetAwaiter().GetResult();
+        await cut.InvokeAsync(() => cut.Instance.RefreshAsync());
 
         cut.WaitForAssertion(() =>
         {

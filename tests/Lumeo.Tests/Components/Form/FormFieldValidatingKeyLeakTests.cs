@@ -42,7 +42,7 @@ public class FormFieldValidatingKeyLeakTests : IAsyncLifetime
             .Add(h => h.AsyncValidator, validator));
 
     [Fact]
-    public void Name_Change_Mid_Validation_Does_Not_Leak_The_Old_Validating_Key()
+    public async Task Name_Change_Mid_Validation_Does_Not_Leak_The_Old_Validating_Key()
     {
         var ctx = new L.FormContext();
 
@@ -56,7 +56,7 @@ public class FormFieldValidatingKeyLeakTests : IAsyncLifetime
         // Kick off validation (no debounce => RunValidationAsync runs immediately and
         // awaits the gate). ValidateAsync returns before the inner task registers, so
         // wait until the field is recorded as validating under its original Name.
-        field.InvokeAsync(() => field.Instance.ValidateAsync()).GetAwaiter().GetResult();
+        await field.InvokeAsync(() => field.Instance.ValidateAsync());
         host.WaitForState(() => ctx.IsAnyFieldValidating);
         Assert.Contains("email", ctx.ValidatingFields);
 
@@ -81,7 +81,7 @@ public class FormFieldValidatingKeyLeakTests : IAsyncLifetime
     }
 
     [Fact]
-    public void Dispose_Mid_Validation_Clears_The_Original_Validating_Key_After_A_Name_Change()
+    public async Task Dispose_Mid_Validation_Clears_The_Original_Validating_Key_After_A_Name_Change()
     {
         // Same leak via the disposal path: if the field is torn down while validation
         // is in flight AND its Name changed first, Dispose must clear the ORIGINAL key.
@@ -92,7 +92,7 @@ public class FormFieldValidatingKeyLeakTests : IAsyncLifetime
         var host = RenderHost(ctx, "email", validator);
         var field = host.FindComponent<L.FormField>();
 
-        field.InvokeAsync(() => field.Instance.ValidateAsync()).GetAwaiter().GetResult();
+        await field.InvokeAsync(() => field.Instance.ValidateAsync());
         host.WaitForState(() => ctx.IsAnyFieldValidating);
         Assert.Contains("email", ctx.ValidatingFields);
 
@@ -111,7 +111,7 @@ public class FormFieldValidatingKeyLeakTests : IAsyncLifetime
     }
 
     [Fact]
-    public void Normal_Validation_Cycle_Without_A_Name_Change_Still_Clears_The_Key()
+    public async Task Normal_Validation_Cycle_Without_A_Name_Change_Still_Clears_The_Key()
     {
         // Guard the happy path: when Name does NOT change, the validating key must be
         // registered and then cleared exactly as before (no behavior change).
@@ -122,7 +122,7 @@ public class FormFieldValidatingKeyLeakTests : IAsyncLifetime
         var host = RenderHost(ctx, "email", validator);
         var field = host.FindComponent<L.FormField>();
 
-        field.InvokeAsync(() => field.Instance.ValidateAsync()).GetAwaiter().GetResult();
+        await field.InvokeAsync(() => field.Instance.ValidateAsync());
         host.WaitForState(() => ctx.IsAnyFieldValidating);
         Assert.Contains("email", ctx.ValidatingFields);
 

@@ -51,7 +51,7 @@ public class FileManagerLifecycleTests : IAsyncLifetime
     // ──────────────────────────────────────────────────────────────────────────
 
     [Fact]
-    public void FileManager_Concurrent_FolderLoad_DoesNotClear_OtherFolders_Spinner()
+    public async Task FileManager_Concurrent_FolderLoad_DoesNotClear_OtherFolders_Spinner()
     {
         // Per-folder completion gates. Alpha's load is held open for the whole
         // test; Beta's completes the instant it is requested.
@@ -88,10 +88,10 @@ public class FileManagerLifecycleTests : IAsyncLifetime
             "Concurrent load of Beta must NOT clear the current folder (Alpha) spinner.");
 
         // Finish Alpha's load → its spinner clears and the children render.
-        cut.InvokeAsync(() => alphaGate.SetResult(new List<FileSystemNode>
+        await cut.InvokeAsync(() => alphaGate.SetResult(new List<FileSystemNode>
         {
             new FileSystemNode { Id = "alpha-child", Name = "alpha-child.txt", IsFolder = false, Size = 8 }
-        })).GetAwaiter().GetResult();
+        }));
 
         cut.WaitForAssertion(() =>
         {
@@ -107,7 +107,7 @@ public class FileManagerLifecycleTests : IAsyncLifetime
     // ──────────────────────────────────────────────────────────────────────────
 
     [Fact]
-    public void FileManager_ParameterPath_LazyLoad_RendersChildren_AfterAwait()
+    public async Task FileManager_ParameterPath_LazyLoad_RendersChildren_AfterAwait()
     {
         var gate = new TaskCompletionSource<List<FileSystemNode>>();
 
@@ -122,10 +122,10 @@ public class FileManagerLifecycleTests : IAsyncLifetime
         // Complete the load. The OnParametersSetAsync load path must StateHasChanged
         // after the await so the newly-arrived children render (pre-fix the load
         // path issued no post-await render).
-        cut.InvokeAsync(() => gate.SetResult(new List<FileSystemNode>
+        await cut.InvokeAsync(() => gate.SetResult(new List<FileSystemNode>
         {
             new FileSystemNode { Id = "a1", Name = "alpha-one.txt", IsFolder = false, Size = 1 }
-        })).GetAwaiter().GetResult();
+        }));
 
         cut.WaitForAssertion(() =>
         {
@@ -141,7 +141,7 @@ public class FileManagerLifecycleTests : IAsyncLifetime
     // ──────────────────────────────────────────────────────────────────────────
 
     [Fact]
-    public void FileManager_SingleNavigationLazyLoad_ShowsThenResolves_NoThrowOnDispose()
+    public async Task FileManager_SingleNavigationLazyLoad_ShowsThenResolves_NoThrowOnDispose()
     {
         var gate = new TaskCompletionSource<List<FileSystemNode>>();
 
@@ -153,10 +153,10 @@ public class FileManagerLifecycleTests : IAsyncLifetime
         alphaRow.DoubleClick();
         Assert.True(HasSpinner(cut));
 
-        cut.InvokeAsync(() => gate.SetResult(new List<FileSystemNode>
+        await cut.InvokeAsync(() => gate.SetResult(new List<FileSystemNode>
         {
             new FileSystemNode { Id = "only", Name = "only.txt", IsFolder = false, Size = 2 }
-        })).GetAwaiter().GetResult();
+        }));
 
         cut.WaitForAssertion(() =>
         {
@@ -170,7 +170,7 @@ public class FileManagerLifecycleTests : IAsyncLifetime
         // double-dispose the shared context (the IAsyncLifetime DisposeAsync does
         // that).
         var instance = cut.Instance;
-        var ex = Record.ExceptionAsync(async () => await instance.DisposeAsync()).GetAwaiter().GetResult();
+        var ex = await Record.ExceptionAsync(async () => await instance.DisposeAsync());
         Assert.Null(ex);
     }
 }

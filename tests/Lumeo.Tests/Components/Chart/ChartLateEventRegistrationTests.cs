@@ -77,7 +77,7 @@ public class ChartLateEventRegistrationTests : IAsyncLifetime
             .Add(x => x.ShowLoadingSkeleton, false)
             .Add(x => x.OnClick, EventCallback.Factory.Create<L.Chart.ChartEventArgs>(this, _ => { })));
 
-        Assert.Single(RegisteredEventNames().Where(n => n == "click"));
+        Assert.Single(RegisteredEventNames(), n => n == "click");
 
         // An unrelated data update re-renders the chart — it must NOT double-attach the
         // already-bound click handler (registerChartEvent does not de-dupe on the JS side).
@@ -86,6 +86,6 @@ public class ChartLateEventRegistrationTests : IAsyncLifetime
             .Add(x => x.ShowLoadingSkeleton, false)
             .Add(x => x.OnClick, EventCallback.Factory.Create<L.Chart.ChartEventArgs>(this, _ => { })));
 
-        Assert.Single(RegisteredEventNames().Where(n => n == "click"));
+        Assert.Single(RegisteredEventNames(), n => n == "click");
     }
 }

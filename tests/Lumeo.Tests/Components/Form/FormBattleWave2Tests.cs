@@ -34,7 +34,7 @@ public class FormBattleWave2Tests : IAsyncLifetime
     }
 
     [Fact]
-    public void ResetValues_After_Model_Instance_Swap_Restores_New_Model_Baseline()
+    public async Task ResetValues_After_Model_Instance_Swap_Restores_New_Model_Baseline()
     {
         // Baseline 1: first instance with Name="first".
         var modelA = new SnapshotModel { Name = "first" };
@@ -49,7 +49,7 @@ public class FormBattleWave2Tests : IAsyncLifetime
 
         // User edits the new model, then asks to reset.
         modelB.Name = "edited";
-        cut.InvokeAsync(() => cut.Instance.ResetValues()).GetAwaiter().GetResult();
+        await cut.InvokeAsync(() => cut.Instance.ResetValues());
 
         // ResetValues must restore modelB's OWN baseline ("second"), NOT clobber
         // it with modelA's stale snapshot ("first"). Without the fix the snapshot
@@ -58,7 +58,7 @@ public class FormBattleWave2Tests : IAsyncLifetime
     }
 
     [Fact]
-    public void ResetValues_Without_Swap_Still_Restores_Original_Baseline()
+    public async Task ResetValues_Without_Swap_Still_Restores_Original_Baseline()
     {
         // Guard the common edit-then-reset flow on a single instance still works:
         // same-instance mutations must keep the ORIGINAL baseline.
@@ -69,7 +69,7 @@ public class FormBattleWave2Tests : IAsyncLifetime
             .AddChildContent("<button type=\"submit\">go</button>"));
 
         model.Name = "changed";
-        cut.InvokeAsync(() => cut.Instance.ResetValues()).GetAwaiter().GetResult();
+        await cut.InvokeAsync(() => cut.Instance.ResetValues());
 
         Assert.Equal("original", model.Name);
     }
