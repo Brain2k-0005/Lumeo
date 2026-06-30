@@ -1,3 +1,4 @@
+using System.Reflection;
 using Bunit;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Web;
@@ -128,5 +129,32 @@ public class TooltipArrowFollowsSideTests : IAsyncLifetime
         var arrowClass = content.QuerySelector(".rotate-45")!.GetAttribute("class") ?? "";
         Assert.Contains("bottom-full", arrowClass);
         Assert.DoesNotContain("top-full", arrowClass);
+    }
+
+    [Fact]
+    public void Collision_Flip_Resolved_Side_Moves_Arrow_And_DataSide()
+    {
+        // Codex P2: positionFixed can collision-flip a preferred-Top tooltip to render BELOW its trigger.
+        // It now ECHOES the resolved side back; the arrow + data-side must follow that resolved side, not
+        // the requested Top. bUnit can't run floating-ui, so we stub the JS return to simulate the flip.
+        // The interop imports components.js with a version cache-buster, so stub THAT exact path.
+        var v = typeof(Lumeo.Services.ComponentInteropService).Assembly
+            .GetCustomAttribute<System.Reflection.AssemblyInformationalVersionAttribute>()
+            ?.InformationalVersion
+            ?? typeof(Lumeo.Services.ComponentInteropService).Assembly.GetName().Version?.ToString()
+            ?? "0";
+        var module = _ctx.JSInterop.SetupModule($"./_content/Lumeo/js/components.js?v={v}");
+        // positionFixed is called with 6 args, so match by identifier with an any-args predicate.
+        module.Setup<string>("positionFixed", _ => true).SetResult("bottom");
+
+        var cut = _ctx.Render<TooltipSideProbe>(p => p.Add(x => x.Side, L.Side.Top));
+        OpenTooltip(cut);
+
+        var content = cut.Find("[role='tooltip']");
+        // The RESOLVED side (bottom) wins over the requested Top.
+        Assert.Equal("bottom", content.GetAttribute("data-side"));
+        var arrowClass = content.QuerySelector(".rotate-45")!.GetAttribute("class") ?? "";
+        Assert.Contains("bottom-full", arrowClass);   // arrow moved to the trigger-facing edge
+        Assert.DoesNotContain("top-full", arrowClass); // not the stale requested side
     }
 }

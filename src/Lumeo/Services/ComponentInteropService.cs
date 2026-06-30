@@ -261,13 +261,13 @@ public sealed class ComponentInteropService : IComponentInteropService
 
     // --- Floating Position ---
 
-    public ValueTask PositionFixed(string contentId, string referenceId, string align = "start", bool matchWidth = false, string side = "bottom")
+    public ValueTask<string> PositionFixed(string contentId, string referenceId, string align = "start", bool matchWidth = false, string side = "bottom")
         => PositionFixed(contentId, referenceId, align, matchWidth, side, 4);
 
-    public async ValueTask PositionFixed(string contentId, string referenceId, string align, bool matchWidth, string side, int offset)
+    public async ValueTask<string> PositionFixed(string contentId, string referenceId, string align, bool matchWidth, string side, int offset)
     {
         var module = await GetModuleAsync();
-        await _floatingPosition.PositionFixed(module, contentId, referenceId, align, matchWidth, side, offset);
+        return await _floatingPosition.PositionFixed(module, contentId, referenceId, align, matchWidth, side, offset);
     }
 
     public async ValueTask UnpositionFixed(string contentId)

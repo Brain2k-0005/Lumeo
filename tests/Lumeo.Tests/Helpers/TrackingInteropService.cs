@@ -154,7 +154,8 @@ public sealed class TrackingInteropService : IComponentInteropService
     // 2.1.3: viewport listener no-ops (IResponsiveService is exercised separately via NoOpInterop)
     public ValueTask<ViewportSize?> RegisterViewportListener(DotNetObjectReference<ResponsiveService> dotnetRef) => ValueTask.FromResult<ViewportSize?>(new ViewportSize(0, 0));
     public ValueTask UnregisterViewportListener() => ValueTask.CompletedTask;
-    public ValueTask PositionFixed(string contentId, string referenceId, string align = "start", bool matchWidth = false, string side = "bottom") => ValueTask.CompletedTask;
+    // No JS in tests — echo the requested side back (no collision flip), matching the live fallback.
+    public ValueTask<string> PositionFixed(string contentId, string referenceId, string align = "start", bool matchWidth = false, string side = "bottom") => ValueTask.FromResult(side);
     public ValueTask UnpositionFixed(string contentId) => ValueTask.CompletedTask;
 
     // ContextMenu root-menu viewport clamp (#224) — opens at click coords with

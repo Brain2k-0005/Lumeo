@@ -11,7 +11,7 @@
     space is tight. Side is still consumer-controlled as a preference. *@
 @if (IsOpen)
 {
-    <div id="@_contentId" role="tooltip" data-side="@SideStr" class="@CssClass" @attributes="AdditionalAttributes">
+    <div id="@_contentId" role="tooltip" data-side="@EffectiveSide" class="@CssClass" @attributes="AdditionalAttributes">
         @ChildContent
         @if (ShowArrow)
         {
@@ -43,6 +43,10 @@
     private string? _appliedSide;
     private int? _appliedOffset;
 
+    // The side the box ACTUALLY resolved to, echoed back by PositionFixed after any collision flip.
+    // Null until the first placement; the arrow + data-side render from EffectiveSide so they follow a flip.
+    private string? _resolvedSide;
+
     private bool IsOpen => Context?.IsOpen ?? false;
 
     private string CssClass => Cx.Merge(
@@ -63,14 +67,17 @@
         _ => "top"
     };
 
+    // The side the arrow + data-side actually render from: the resolved side once positionFixed has run
+    // (so a collision flip re-points the arrow), falling back to the requested SideStr before placement.
+    private string EffectiveSide => _resolvedSide ?? SideStr;
+
     // Rotated square — same visual as Popover/HoverCard but no border (tooltip is a solid primary surface).
-    // Derived from SideStr (the SAME value rendered as data-side) so the arrow edge and the data-side
-    // attribute agree on the INITIAL placement. Horizontal centering for Top/Bottom uses the PHYSICAL
-    // `left-1/2` (not logical `start-1/2`): the box is positioned by JS in LTR coordinates and the arrow's
-    // `-translate-x-1/2` is physical, so under RTL `start-1/2` (→ right:50%) would push the arrow off-center
-    // (Codex P2). NOTE: a positionFixed COLLISION FLIP currently moves the box but does NOT yet re-point this
-    // arrow (no resolved-side feedback to C#, no [data-side] CSS) — tracked separately.
-    private string ArrowClasses => SideStr switch
+    // Derived from EffectiveSide (the SAME value rendered as data-side) so the arrow edge and the data-side
+    // attribute always agree — including after a positionFixed COLLISION FLIP, which echoes the resolved
+    // side back to _resolvedSide. Horizontal centering for Top/Bottom uses the PHYSICAL `left-1/2` (not
+    // logical `start-1/2`): the box is positioned by JS in LTR coordinates and the arrow's `-translate-x-1/2`
+    // is physical, so under RTL `start-1/2` (→ right:50%) would push the arrow off-center (Codex P2).
+    private string ArrowClasses => EffectiveSide switch
     {
         "top" => "absolute left-1/2 top-full -translate-x-1/2 -translate-y-1/2 rotate-45 h-2 w-2 bg-primary",
         "bottom" => "absolute left-1/2 bottom-full -translate-x-1/2 translate-y-1/2 rotate-45 h-2 w-2 bg-primary",
@@ -88,10 +95,18 @@
         if (IsOpen && Context is not null
             && (!_registered || _appliedSide != SideStr || _appliedOffset != Offset))
         {
-            await Interop.PositionFixed(_contentId, Context.WrapperId, "center", false, SideStr, Offset);
+            var resolved = await Interop.PositionFixed(_contentId, Context.WrapperId, "center", false, SideStr, Offset);
             _registered = true;
             _appliedSide = SideStr;
             _appliedOffset = Offset;
+            // The box may have collision-flipped to the opposite side; re-render so the arrow + data-side
+            // follow it. The guard above keys off SideStr/Offset (NOT _resolvedSide), so this StateHasChanged
+            // does not re-enter PositionFixed — no render loop.
+            if (resolved != _resolvedSide)
+            {
+                _resolvedSide = resolved;
+                StateHasChanged();
+            }
         }
         else if (!IsOpen && _registered)
         {
@@ -106,6 +121,7 @@
         _registered = false;
         _appliedSide = null;
         _appliedOffset = null;
+        _resolvedSide = null;
     }
 
     public async ValueTask DisposeAsync()
