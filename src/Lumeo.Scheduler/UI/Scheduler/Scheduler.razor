@@ -153,6 +153,13 @@ else
     // been replaced by the parent since init).
     private List<SchedulerEvent> _events = new();
 
+    // CONTROLLED discriminator: hash of the events collection most recently pushed via
+    // EventsChanged (also re-synced whenever we adopt an authoritative Events collection).
+    // A controlled parent re-render that echoes back this exact collection is safe to
+    // ignore (keep in-flight state); any other collection is an authoritative assertion
+    // (veto / normalization / reset) and must win.
+    private int _lastPushedEventsHash;
+
     // Resolved resource lookup — built once and used for both legend rendering
     // and event color-coding in ToJsEvent.
     private List<SchedulerResource> _resolvedResources = new();
@@ -163,6 +170,7 @@ else
         _currentView = InitialView;
         _events = Events?.ToList() ?? new List<SchedulerEvent>();
         _lastEventsHash = ComputeEventsHash(_events);
+        _lastPushedEventsHash = _lastEventsHash;
         _title = ComputeTitle(InitialDate ?? DateTime.Today, _currentView);
         RebuildResourceLookup();
     }
@@ -176,12 +184,32 @@ else
         {
             var incoming = Events.ToList();
             var hash = ComputeEventsHash(incoming);
-            if (hash != _lastEventsHash)
+
+            bool shouldAdopt;
+            if (EventsChanged.HasDelegate)
             {
-                _lastEventsHash = hash;
+                // CONTROLLED: the parent owns the collection.
+                // Echo of our own push (hash == _lastPushedEventsHash) → keep in-flight state.
+                // Anything else (veto, normalization, reset) → adopt the parent's assertion.
+                shouldAdopt = hash != _lastPushedEventsHash;
+            }
+            else
+            {
+                // UNCONTROLLED: component owns the live collection.
+                // Adopt the parameter only when the parent genuinely changes it; a stale
+                // re-render that re-supplies the same collection must not clobber local edits.
+                shouldAdopt = hash != _lastEventsHash;
+            }
+
+            if (shouldAdopt)
+            {
                 _events = incoming;
+                _lastPushedEventsHash = hash;
                 await Interop.SchedulerSetEventsAsync(_instanceId!, incoming.Select(ToJsEvent).Cast<object>());
             }
+
+            // Keep the uncontrolled discriminator pointing at the last Events hash observed.
+            _lastEventsHash = hash;
         }
     }
 
@@ -229,6 +257,7 @@ else
                 {
                     _events = current;
                     _lastEventsHash = currentHash;
+                    _lastPushedEventsHash = currentHash;
                     await Interop.SchedulerSetEventsAsync(_instanceId, current.Select(ToJsEvent).Cast<object>());
                 }
             }
@@ -488,7 +517,11 @@ else
             _events[idx] = ev;
         }
 
-        _lastEventsHash = ComputeEventsHash(_events);
+        // Record _lastPushedEventsHash BEFORE invoking EventsChanged: a controlled parent
+        // re-renders synchronously inside InvokeAsync, so OnParametersSetAsync must already
+        // see this hash as "the value we just pushed" to distinguish an accepted echo (keep
+        // in-flight state) from a veto (parent kept its old collection → roll back).
+        _lastPushedEventsHash = ComputeEventsHash(_events);
 
         if (OnEventChange.HasDelegate) await OnEventChange.InvokeAsync(ev);
         if (EventsChanged.HasDelegate) await EventsChanged.InvokeAsync(_events.ToList());

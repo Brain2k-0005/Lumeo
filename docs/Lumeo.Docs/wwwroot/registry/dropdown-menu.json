@@ -955,8 +955,8 @@
   },
   "testCoverage": {
     "tier": 4,
-    "files": 8,
-    "tests": 38,
+    "files": 9,
+    "tests": 42,
     "relatedFiles": 0,
     "render": true,
     "behavior": true,
@@ -1053,7 +1053,7 @@
     },
     {
       "path": "UI/DropdownMenu/DropdownMenuRadioGroup.razor",
-      "content": "@namespace Lumeo\n\n@{\n    var context = new DropdownMenuRadioGroupContext(_value, EventCallback.Factory.Create<string>(this, OnValueSelected));\n}\n\n<CascadingValue Value=\"context\" IsFixed=\"false\">\n    <div role=\"group\" @attributes=\"AdditionalAttributes\">\n        @ChildContent\n    </div>\n</CascadingValue>\n\n@code {\n    [Parameter] public RenderFragment? ChildContent { get; set; }\n    [Parameter] public string? Value { get; set; }\n    [Parameter] public EventCallback<string> ValueChanged { get; set; }\n    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }\n\n    // Selected value lives in a private backing field, not the [Parameter]. This\n    // keeps an uncontrolled group's optimistic selection from being clobbered when\n    // a parent re-render pushes the same (stale) Value. Seeded from Value only when\n    // the parameter actually changes — mirrors DropdownMenuSub's internal _open.\n    private string? _value;\n    private string? _lastValueParam;\n\n    protected override void OnParametersSet()\n    {\n        if (!Equals(Value, _lastValueParam))\n        {\n            _value = Value;\n            _lastValueParam = Value;\n        }\n    }\n\n    private async Task OnValueSelected(string value)\n    {\n        _value = value;\n        await ValueChanged.InvokeAsync(value);\n    }\n\n    public record DropdownMenuRadioGroupContext(string? Value, EventCallback<string> OnSelect);\n}\n"
+      "content": "@namespace Lumeo\n\n@{\n    var context = new DropdownMenuRadioGroupContext(_value, EventCallback.Factory.Create<string>(this, OnValueSelected));\n}\n\n<CascadingValue Value=\"context\" IsFixed=\"false\">\n    <div role=\"group\" @attributes=\"AdditionalAttributes\">\n        @ChildContent\n    </div>\n</CascadingValue>\n\n@code {\n    [Parameter] public RenderFragment? ChildContent { get; set; }\n    [Parameter] public string? Value { get; set; }\n    [Parameter] public EventCallback<string> ValueChanged { get; set; }\n    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }\n\n    // Selected value lives in a private backing field, not the [Parameter]. This\n    // keeps an uncontrolled group's optimistic selection from being clobbered when\n    // a parent re-render pushes the same (stale) Value. Seeded from Value only when\n    // the parameter actually changes — mirrors DropdownMenuSub's internal _open.\n    private string? _value;\n    private string? _lastValueParam;\n    private string? _lastPushed;   // the last value WE emitted via ValueChanged\n\n    protected override void OnParametersSet()\n    {\n        if (ValueChanged.HasDelegate)\n        {\n            // Controlled: adopt any incoming Value that isn't the echo of our own selection — a parent\n            // veto (re-render with the OLD value) rolls the visible state back; an echo is a no-op.\n            if (!Equals(Value, _lastPushed))\n            {\n                _value = Value;\n                _lastPushed = Value;\n            }\n        }\n        else if (!Equals(Value, _lastValueParam))   // Uncontrolled: adopt only on a genuine param change\n        {\n            _value = Value;\n            _lastValueParam = Value;\n        }\n    }\n\n    private async Task OnValueSelected(string value)\n    {\n        _value = value;\n        _lastPushed = value;   // record what we're about to push so a synchronous parent veto is detectable\n        await ValueChanged.InvokeAsync(value);\n    }\n\n    public record DropdownMenuRadioGroupContext(string? Value, EventCallback<string> OnSelect);\n}\n"
     },
     {
       "path": "UI/DropdownMenu/DropdownMenuRadioItem.razor",
@@ -1259,6 +1259,7 @@
     "tests/Lumeo.Tests/Components/DropdownMenu/DropdownMenuCheckboxItemControlledRollbackTests.cs",
     "tests/Lumeo.Tests/Components/DropdownMenu/DropdownMenuFocusRestoreTests.cs",
     "tests/Lumeo.Tests/Components/DropdownMenu/DropdownMenuLifecycleTests.cs",
+    "tests/Lumeo.Tests/Components/DropdownMenu/DropdownMenuRadioGroupControlledRollbackTests.cs",
     "tests/Lumeo.Tests/Components/DropdownMenu/DropdownMenuStateOnDataChangeTests.cs",
     "tests/Lumeo.Tests/Components/DropdownMenu/DropdownMenuTests.cs",
     "tests/Lumeo.Tests/Components/DropdownMenu/DropdownMenuTriggerAsChildTests.cs",

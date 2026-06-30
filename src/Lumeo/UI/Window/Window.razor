@@ -234,6 +234,14 @@ else if (EffectiveOpen && _maximized)
     private bool _open;
     private bool _lastOpenParam;
     private bool _hasOpenParam;
+    // CONTROLLED discriminator: the last value we pushed UP via OpenChanged (also
+    // re-synced whenever we adopt an authoritative Open). A controlled parent
+    // re-render that echoes back this exact value is safe to ignore (keep
+    // in-flight state); any other value is an authoritative assertion (veto /
+    // normalization / reset) and must win — this is what rolls a vetoed close
+    // back to the parent's rejected value instead of leaving the window stuck
+    // showing the rejected state forever.
+    private bool _lastPushedOpen;
 
     // Set when the window transitions hidden->visible so OnAfterRenderAsync
     // re-clamps the position/size to the CURRENT viewport on every reopen, not
@@ -277,24 +285,60 @@ else if (EffectiveOpen && _maximized)
         var hasOpen = parameters.TryGetValue<bool>(nameof(Open), out var incomingOpen);
 
         // Reseed the live _open from the parent ONLY on a real change (first
-        // observation, or a value different from the last one the parent
-        // supplied). A same-value re-render must NOT overwrite an internal close
-        // — that is what let an uncontrolled window silently reopen after Escape.
-        if (hasOpen && (!_hasOpenParam || incomingOpen != _lastOpenParam))
+        // observation, or an authoritative assertion). A same-value re-render must
+        // NOT overwrite an internal close — that is what let an uncontrolled window
+        // silently reopen after Escape.
+        if (hasOpen)
         {
-            // Reopen (false->true): clear any stale minimized/maximized view so a
-            // window that was minimized/maximized when closed comes back as a
-            // normal window, and re-clamp to the live viewport on the next render.
-            if (incomingOpen && _hasOpenParam && !_lastOpenParam)
+            if (OpenChanged.HasDelegate)
             {
-                _minimized = false;
-                _maximized = false;
-                _needsClamp = true;
-                _needsFocus = true;
+                // CONTROLLED: the parent owns the value via OpenChanged. Echo of our
+                // own push (incomingOpen == _lastPushedOpen) → keep in-flight state
+                // (an internal close still pending the parent's re-render). Anything
+                // else — veto, normalization, reset, or the very first observation —
+                // is an authoritative assertion from the parent and must win. This is
+                // what rolls a vetoed close (parent re-renders with Open unchanged)
+                // back to the rejected value instead of permanently showing the
+                // optimistic state.
+                if (!_hasOpenParam || incomingOpen != _lastPushedOpen)
+                {
+                    // Reopen (false->true): clear any stale minimized/maximized view
+                    // so a window that was minimized/maximized when closed comes back
+                    // as a normal window, and re-clamp to the live viewport on the
+                    // next render.
+                    if (incomingOpen && _hasOpenParam && !_lastOpenParam)
+                    {
+                        _minimized = false;
+                        _maximized = false;
+                        _needsClamp = true;
+                        _needsFocus = true;
+                    }
+                    _open = incomingOpen;
+                    _lastPushedOpen = incomingOpen;
+                    _hasOpenParam = true;
+                }
             }
-            _open = incomingOpen;
+            else if (!_hasOpenParam || incomingOpen != _lastOpenParam)
+            {
+                // UNCONTROLLED: adopt only when the parent genuinely changes the
+                // value it supplies, so a same-value re-render must NOT overwrite an
+                // internal close.
+                if (incomingOpen && _hasOpenParam && !_lastOpenParam)
+                {
+                    _minimized = false;
+                    _maximized = false;
+                    _needsClamp = true;
+                    _needsFocus = true;
+                }
+                _open = incomingOpen;
+                _lastPushedOpen = incomingOpen;
+                _hasOpenParam = true;
+            }
+
+            // Keep the uncontrolled discriminator pointing at the last Open we
+            // observed, even in controlled mode, so a parent that later unbinds
+            // OpenChanged falls back to accurate state-on-data-change tracking.
             _lastOpenParam = incomingOpen;
-            _hasOpenParam = true;
         }
 
         return base.SetParametersAsync(parameters);
@@ -562,6 +606,12 @@ else if (EffectiveOpen && _maximized)
         _minimized = false;
         _maximized = false;
         _open = false;
+        // Record _lastPushedOpen BEFORE invoking OpenChanged: a controlled parent
+        // re-renders synchronously inside InvokeAsync, so SetParametersAsync must
+        // already see this value as "the value we just pushed" to distinguish an
+        // accepted echo (keep in-flight state) from a veto (parent kept its old
+        // value → roll back to it).
+        _lastPushedOpen = false;
         // Return focus to the element that was focused when the window opened
         // (WCAG 2.4.3) — typically the trigger that launched it. Saved under the
         // stable per-instance _windowId key in OnAfterRenderAsync on open.

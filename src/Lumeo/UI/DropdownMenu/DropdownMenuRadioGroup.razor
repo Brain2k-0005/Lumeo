@@ -22,10 +22,21 @@
     // the parameter actually changes — mirrors DropdownMenuSub's internal _open.
     private string? _value;
     private string? _lastValueParam;
+    private string? _lastPushed;   // the last value WE emitted via ValueChanged
 
     protected override void OnParametersSet()
     {
-        if (!Equals(Value, _lastValueParam))
+        if (ValueChanged.HasDelegate)
+        {
+            // Controlled: adopt any incoming Value that isn't the echo of our own selection — a parent
+            // veto (re-render with the OLD value) rolls the visible state back; an echo is a no-op.
+            if (!Equals(Value, _lastPushed))
+            {
+                _value = Value;
+                _lastPushed = Value;
+            }
+        }
+        else if (!Equals(Value, _lastValueParam))   // Uncontrolled: adopt only on a genuine param change
         {
             _value = Value;
             _lastValueParam = Value;
@@ -35,6 +46,7 @@
     private async Task OnValueSelected(string value)
     {
         _value = value;
+        _lastPushed = value;   // record what we're about to push so a synchronous parent veto is detectable
         await ValueChanged.InvokeAsync(value);
     }
 

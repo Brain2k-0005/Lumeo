@@ -27,8 +27,16 @@
     // apart from both our own ActiveIdChanged echo AND an unrelated re-render that
     // left ActiveId unchanged. Without this separation a scroll the consumer never
     // round-trips would make the next re-render force-scroll back to the param
-    // value (Gantt-class state-on-data-change bug).
+    // value (Gantt-class state-on-data-change bug). Used for the UNCONTROLLED
+    // (no ActiveIdChanged delegate) path only.
     private string? _lastParamActiveId;
+    // CONTROLLED discriminator: the last value we pushed UP via ActiveIdChanged (also
+    // re-synced whenever we adopt an authoritative ActiveId). A controlled parent
+    // re-render that echoes back this exact value is safe to ignore (keep the
+    // in-flight _currentActiveId); anything else — including a veto that re-renders
+    // with the SAME ActiveId the parent had before our optimistic update — is an
+    // authoritative assertion and must win (roll back).
+    private string? _lastPushed;
     private bool _pendingProgrammaticScroll;
     // Last (Offset, Smooth) the JS observer was registered with. The JS closure
     // captures `offset` (and `smooth`) by value, so an Offset/Smooth change after
@@ -43,18 +51,38 @@
     {
         _currentActiveId = ActiveId;
         _lastParamActiveId = ActiveId;
+        _lastPushed = ActiveId;
         _context = new ScrollspyContext(_currentActiveId, EventCallback.Factory.Create<string>(this, OnNavigate));
     }
 
     protected override void OnParametersSet()
     {
         // Two-way control input (#246): when the consumer sets ActiveId to a new
-        // value, scroll that section into view (honouring Offset). Compared
-        // against _lastParamActiveId — not _currentActiveId — so the echo of our
-        // own ActiveIdChanged doesn't re-trigger a scroll.
-        if (ActiveId != _lastParamActiveId)
+        // value, scroll that section into view (honouring Offset).
+        if (ActiveIdChanged.HasDelegate)
         {
-            _lastParamActiveId = ActiveId;
+            // CONTROLLED: the parent owns the value. Echo of our own push
+            // (ActiveId == _lastPushed) → keep the in-flight _currentActiveId.
+            // Anything else (veto, normalization, external reset) is an
+            // authoritative assertion and must win, even if it equals the value
+            // the parent had before our optimistic local update.
+            if (ActiveId != _lastPushed)
+            {
+                _lastPushed = ActiveId;
+                if (!string.IsNullOrEmpty(ActiveId) && ActiveId != _currentActiveId)
+                {
+                    _currentActiveId = ActiveId;
+                    _context = new ScrollspyContext(_currentActiveId, EventCallback.Factory.Create<string>(this, OnNavigate));
+                    _pendingProgrammaticScroll = true;
+                }
+            }
+        }
+        else if (ActiveId != _lastParamActiveId)
+        {
+            // UNCONTROLLED: component owns the live value. Adopt the parameter
+            // only when the parent genuinely changes it; a stale re-render that
+            // re-supplies the same literal must not clobber a scroll/click update.
+            _lastPushed = ActiveId;
             if (!string.IsNullOrEmpty(ActiveId) && ActiveId != _currentActiveId)
             {
                 _currentActiveId = ActiveId;
@@ -62,6 +90,9 @@
                 _pendingProgrammaticScroll = true;
             }
         }
+
+        // Keep the uncontrolled discriminator pointing at the last ActiveId we observed.
+        _lastParamActiveId = ActiveId;
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -112,6 +143,12 @@
             // absorbs it (no redundant scroll), since _currentActiveId already
             // equals the echoed value.
             _context = new ScrollspyContext(_currentActiveId, EventCallback.Factory.Create<string>(this, OnNavigate));
+            // Record _lastPushed BEFORE invoking ActiveIdChanged: a controlled
+            // parent re-renders synchronously inside InvokeAsync, so OnParametersSet
+            // must already see this value as "the value we just pushed" to
+            // distinguish an accepted echo (keep in-flight state) from a veto
+            // (parent kept its old value → roll back).
+            _lastPushed = activeId ?? string.Empty;
             await ActiveIdChanged.InvokeAsync(activeId ?? string.Empty);
             await InvokeAsync(StateHasChanged);
         }
@@ -132,6 +169,8 @@
             // isn't round-tripped into ActiveId must not be misread as an external
             // set on a later re-render (which would force-scroll back).
             _context = new ScrollspyContext(_currentActiveId, EventCallback.Factory.Create<string>(this, OnNavigate));
+            // Record _lastPushed BEFORE invoking ActiveIdChanged — see OnScrollspyUpdate.
+            _lastPushed = sectionId;
             await ActiveIdChanged.InvokeAsync(sectionId);
             await InvokeAsync(StateHasChanged);
         }

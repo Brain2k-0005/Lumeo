@@ -87,6 +87,14 @@
     // @bind-Items echo or an external replacement) differs by reference and re-syncs.
     // Mirrors Gantt's _lastSeenViewMode and Collapsible's last-param tracking.
     private List<TItem>? _lastItems;
+    // CONTROLLED discriminator: the exact list instance/content we last pushed UP via
+    // ItemsChanged (re-synced whenever we adopt an authoritative Items). A controlled
+    // parent that echoes this back (e.g. a @bind-Items round-trip) is safe to ignore
+    // (keep the in-flight _items); anything else — a veto (re-render with the
+    // pre-reorder Items unchanged), normalization, or an external replacement — is an
+    // authoritative assertion and must win, rolling _items back to it. Mirrors
+    // Switch's _lastPushed / DropdownMenuCheckboxItem's _lastPushed discriminator.
+    private List<TItem>? _lastPushedItems;
     private int _dragFromIndex = -1;
     private int _dragOverIndex = -1;
     private bool _touchRegistered;
@@ -97,29 +105,70 @@
 
     protected override void OnParametersSet()
     {
-        // #144 (state-on-data-change): only rebuild _items when the incoming Items
-        // parameter is a genuinely different instance from the one we last saw AND its
-        // content actually differs from the order we currently hold. Previously this
-        // ran `_items = Items.ToList()` on EVERY render, so any parent re-render that
-        // had not (yet) propagated an applied reorder back into Items silently reverted
-        // the user's order. A reorder mutates _items in place and deliberately leaves
-        // _lastItems pointing at the parent's instance, so a subsequent re-render
-        // carrying that SAME instance is seen as "unchanged" and preserves the order;
-        // a real replacement (including a @bind-Items echo of a new list) differs by
-        // reference and re-syncs. The SequenceEqual guard also spares a redundant
-        // rebuild when a new-but-content-equal list arrives. Mirrors Gantt's
-        // _lastSeenViewMode / Collapsible's last-param tracking.
-        if (!ReferenceEquals(Items, _lastItems) && !_items.SequenceEqual(Items))
+        // controlled-rollback: branch on whether ItemsChanged is bound, mirroring
+        // Switch's CheckedChanged.HasDelegate split. A bound ItemsChanged means the
+        // parent OWNS the order; rebuilding _items only when "Items differs from the
+        // last *incoming* parameter" (the old #144 rule, kept below for the
+        // uncontrolled path) cannot tell a parent VETO (re-render with the
+        // pre-reorder Items unchanged) apart from "nothing happened" — both look like
+        // "same instance as last seen". A veto must roll _items back; the old rule
+        // silently kept the rejected optimistic order forever.
+        if (ItemsChanged.HasDelegate)
         {
-            _items = Items.ToList();
+            // CONTROLLED: adopt the incoming Items whenever it is NOT a safe-to-ignore
+            // echo of our own last push (_lastPushedItems, set immediately before each
+            // ItemsChanged.InvokeAsync in NotifyReordered) — an echo (matching
+            // instance, e.g. a @bind-Items round-trip, or matching content) is a no-op
+            // that keeps the in-flight _items; anything else — veto, normalization, or
+            // an outright replacement — is authoritative and wins.
+            //
+            // EXCEPT: Items that still match _lastItems (the snapshot from BEFORE this
+            // interaction) is NOT a deliberate veto — it is the pre-existing #144
+            // contract (regression-tested) for a parent that binds ItemsChanged purely
+            // to OBSERVE reorders without echoing them back into Items. That parent's
+            // re-render carries the SAME pre-interaction value on every render, which
+            // is indistinguishable from "hasn't propagated yet" — and #144 deliberately
+            // keeps the local reorder in that case rather than reverting it. A TRUE
+            // veto looks different: the parent computes and re-supplies some OTHER
+            // value (not what we pushed, not what it had before), which still rolls
+            // back correctly below.
+            var isEcho = _lastPushedItems is not null
+                && (ReferenceEquals(Items, _lastPushedItems) || Items.SequenceEqual(_lastPushedItems));
+            var isUnchangedFromBeforeInteraction = _lastItems is not null
+                && (ReferenceEquals(Items, _lastItems) || Items.SequenceEqual(_lastItems));
+            if (!isEcho && !isUnchangedFromBeforeInteraction)
+            {
+                _items = Items.ToList();
+                _lastPushedItems = _items.ToList();
 
-            // #4 (state-on-data-change): a genuine Items replacement that changes the
-            // content rebuilds _items, so any drag indices captured against the OLD
-            // list now address a DIFFERENT item — even when the new list is the SAME
-            // length (so the out-of-range guard below never fires). The dragged item
-            // and drag-over highlight (GetItemClass) and a subsequent OnDrop would
-            // then target the wrong row. A refresh mid-drag must abort the drag:
-            // unconditionally clear both indices when the content actually changes.
+                // #4 (state-on-data-change): a genuine Items replacement that changes the
+                // content rebuilds _items, so any drag indices captured against the OLD
+                // list now address a DIFFERENT item — even when the new list is the SAME
+                // length (so the out-of-range guard below never fires). The dragged item
+                // and drag-over highlight (GetItemClass) and a subsequent OnDrop would
+                // then target the wrong row. A refresh mid-drag must abort the drag:
+                // unconditionally clear both indices when the content actually changes.
+                _dragFromIndex = -1;
+                _dragOverIndex = -1;
+            }
+        }
+        else if (!ReferenceEquals(Items, _lastItems) && !_items.SequenceEqual(Items))
+        {
+            // UNCONTROLLED (#144, state-on-data-change): only rebuild _items when the
+            // incoming Items parameter is a genuinely different instance from the one
+            // we last saw AND its content actually differs from the order we currently
+            // hold. Previously this ran `_items = Items.ToList()` on EVERY render, so
+            // any parent re-render that had not (yet) propagated an applied reorder
+            // back into Items silently reverted the user's order. A reorder mutates
+            // _items in place and deliberately leaves _lastItems pointing at the
+            // parent's instance, so a subsequent re-render carrying that SAME instance
+            // is seen as "unchanged" and preserves the order; a real replacement
+            // differs by reference and re-syncs. The SequenceEqual guard also spares a
+            // redundant rebuild when a new-but-content-equal list arrives. Mirrors
+            // Gantt's _lastSeenViewMode / Collapsible's last-param tracking.
+            _items = Items.ToList();
+            _lastPushedItems = _items.ToList();
+
             _dragFromIndex = -1;
             _dragOverIndex = -1;
         }
@@ -383,7 +432,15 @@
         // "unchanged" by OnParametersSet and no longer clobbers the applied order.
         // Uncontrolled usage survives because of this; a controlled @bind-Items echo
         // arrives as a new instance and re-syncs through OnParametersSet normally.
-        await ItemsChanged.InvokeAsync(_items.ToList());
+        //
+        // controlled-rollback: record this exact snapshot as _lastPushedItems BEFORE
+        // invoking ItemsChanged. A controlled parent re-renders synchronously inside
+        // InvokeAsync, so OnParametersSet must already see it as "the value we just
+        // pushed" to distinguish an accepted echo (keep the in-flight _items) from a
+        // veto (parent kept the old Items → roll back). Mirrors Switch's Toggle().
+        var pushed = _items.ToList();
+        _lastPushedItems = pushed;
+        await ItemsChanged.InvokeAsync(pushed);
         if (OnReorder.HasDelegate)
             await OnReorder.InvokeAsync(new SortableMoved(item, oldIndex, newIndex));
     }

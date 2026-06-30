@@ -50,6 +50,12 @@
     private bool _open;
     private bool _lastOpenParam;
     private bool _hasOpenParam;
+    // CONTROLLED discriminator: the last value WE pushed UP via OpenChanged (also
+    // re-synced whenever we adopt an authoritative Open). A controlled parent
+    // re-render that echoes back this exact value is safe to ignore (keep the
+    // in-flight hover/pin state); any other value is an authoritative assertion
+    // (veto / normalization / reset) and must win — see Switch.razor.
+    private bool _lastPushed;
 
     private bool EffectiveOpen => _open;
 
@@ -62,12 +68,35 @@
             || parameters.TryGetValue<bool>(nameof(IsOpen), out incomingOpen);
 #pragma warning restore CS0618
 
-        // Reseed the working state from the parent ONLY on a real change of the
-        // supplied Open value (first observation, or a different literal than last
-        // time). A same-value re-render must NOT clobber a live hover/open state.
-        if (hasOpen && (!_hasOpenParam || incomingOpen != _lastOpenParam))
+        if (hasOpen)
         {
-            _open = incomingOpen;
+            if (!_hasOpenParam)
+            {
+                // First observation: seed unconditionally before the initial render.
+                _open = incomingOpen;
+                _lastPushed = incomingOpen;
+            }
+            else if (OpenChanged.HasDelegate)
+            {
+                // CONTROLLED: the parent owns the value. Echo of our own push
+                // (Open == _lastPushed) → keep the in-flight hover/pin state.
+                // Anything else (veto, normalization, reset) → adopt the parent's
+                // assertion, even if it equals the value the user just left behind.
+                if (incomingOpen != _lastPushed)
+                {
+                    _open = incomingOpen;
+                    _lastPushed = incomingOpen;
+                }
+            }
+            else if (incomingOpen != _lastOpenParam)
+            {
+                // UNCONTROLLED: component owns the live value. Reseed only on a
+                // real change of the supplied Open value; a same-value re-render
+                // must NOT clobber a live hover/open state.
+                _open = incomingOpen;
+                _lastPushed = incomingOpen;
+            }
+
             _lastOpenParam = incomingOpen;
             _hasOpenParam = true;
         }
@@ -83,7 +112,12 @@
         {
             // Write the live open-state to the backing field, never to the
             // [Parameter] Open. OpenChanged still notifies two-way consumers.
+            // Record _lastPushed BEFORE invoking: a controlled parent re-renders
+            // synchronously inside InvokeAsync, so SetParametersAsync must already
+            // see this value as "the value we just pushed" to distinguish an
+            // accepted echo (keep in-flight state) from a veto (roll back).
             _open = true;
+            _lastPushed = true;
             await OpenChanged.InvokeAsync(true);
             StateHasChanged();
         }));
@@ -97,7 +131,10 @@
         if (!EffectiveOpen) return;
         _dispatch.Schedule(CloseDelay, () => InvokeAsync(async () =>
         {
+            // See RequestOpen: record _lastPushed before invoking so a
+            // synchronous controlled-parent veto is detectable on re-render.
             _open = false;
+            _lastPushed = false;
             await OpenChanged.InvokeAsync(false);
             StateHasChanged();
         }));
@@ -127,7 +164,10 @@
             // Optional auto-collapse on unpin if the user wasn't hovering.
             if (EffectiveOpen)
             {
+                // See RequestOpen: record _lastPushed before invoking so a
+                // synchronous controlled-parent veto is detectable on re-render.
                 _open = false;
+                _lastPushed = false;
                 await OpenChanged.InvokeAsync(false);
             }
         }
@@ -148,7 +188,10 @@
             await UnregisterClickOutsideIfNeeded();
             if (EffectiveOpen)
             {
+                // See RequestOpen: record _lastPushed before invoking so a
+                // synchronous controlled-parent veto is detectable on re-render.
                 _open = false;
+                _lastPushed = false;
                 await OpenChanged.InvokeAsync(false);
             }
             StateHasChanged();
