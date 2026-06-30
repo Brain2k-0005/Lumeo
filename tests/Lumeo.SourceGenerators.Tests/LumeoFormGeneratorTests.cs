@@ -212,6 +212,27 @@ public class LumeoFormGeneratorTests
     }
 
     [Fact]
+    public void Enum_Select_Trigger_Reflects_The_Current_Value()
+    {
+        // Codex P2: a SelectTrigger with no ChildContent renders blank (just the chevron). The closed
+        // trigger must show the current value, mapped to the SAME humanized label the matching SelectItem
+        // shows, so the closed field and the option text agree.
+        var src = Gen("""
+            namespace App {
+                public enum Status { Active, InProgress }
+                [Lumeo.LumeoForm] public partial class M { public Status Status { get; set; } }
+            }
+            """);
+
+        // The trigger's ChildContent switches on the live model value...
+        Assert.Contains("model.Status switch", src);
+        // ...to the humanized labels (same text the SelectItems render): Active -> "Active",
+        // InProgress -> "In Progress".
+        Assert.Contains("global::App.Status.Active => \"Active\"", src);
+        Assert.Contains("global::App.Status.InProgress => \"In Progress\"", src);
+    }
+
+    [Fact]
     public void Nullable_Enum_Is_Null_Safe_And_Clears_To_Null()
     {
         var src = Gen("""

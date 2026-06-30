@@ -335,10 +335,10 @@ else
             case "ArrowUp": await FocusAdjacent(colId, values, current, -1); break;
             case "Home": await FocusEdge(colId, values, fromStart: true); break;
             case "End": await FocusEdge(colId, values, fromStart: false); break;
-            case "Enter":
-            case " ":
-                await SelectForColumn(colId, current);
-                break;
+            // Enter/Space are intentionally NOT handled here: each option is a native <button> with an
+            // @onclick, so Enter/Space already activate it (the browser synthesizes a click → SelectHour/
+            // Minute/Second). Handling them here too would fire the selection — and ValueChanged — twice
+            // (Codex P3). Arrow/Home/End only move the roving focus.
         }
     }
 
@@ -404,14 +404,6 @@ else
             if (!IsColItemDisabled(colId, v)) return v;
         }
         return int.MinValue;
-    }
-
-    private Task SelectForColumn(string colId, int value)
-    {
-        if (colId == _hoursColId) return SelectHour(value);
-        if (colId == _minutesColId) return SelectMinute(value);
-        if (colId == _secondsColId) return SelectSecond(value);
-        return Task.CompletedTask;
     }
 
     // Suppress page / column scroll for the arrow keys while the list popover

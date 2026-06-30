@@ -1384,8 +1384,12 @@ export function registerPreventDefaultKeys(elementId, rules) {
             // keyCode 229 covers engines that fire composition keydowns
             // without setting isComposing.
             if (r.skipComposing && (e.isComposing || e.keyCode === 229)) continue;
+            // skipEditable also exempts focusable INTERACTIVE descendants (buttons, links,
+            // role=button), not just text-editable fields: a Space/Enter rule registered on a
+            // container (e.g. the DataGrid roving grid, FileManager, AudioPlayer) must not cancel
+            // native Space/Enter activation of a button inside a CellTemplate / item (Codex P2).
             if (r.skipEditable && e.target instanceof Element &&
-                e.target.closest('input, textarea, select, [contenteditable=""], [contenteditable="true"]')) continue;
+                e.target.closest('input, textarea, select, button, a[href], [role="button"], [contenteditable=""], [contenteditable="true"]')) continue;
             e.preventDefault();
             return;
         }

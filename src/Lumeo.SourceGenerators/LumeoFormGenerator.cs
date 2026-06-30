@@ -888,6 +888,26 @@ public sealed class LumeoFormGenerator : IIncrementalGenerator
         // value/placeholder) + SelectContent (the role=listbox popover) — otherwise
         // the field is a flat, always-open, inaccessible list.
         sb.Append("                        __sel.OpenComponent<global::Lumeo.SelectTrigger>(").Append(next()).AppendLine(");");
+        // The closed trigger must reflect the current value: a SelectTrigger with no ChildContent renders
+        // blank (Codex P2). Emit a switch mapping the live enum value to the SAME humanized label the
+        // matching SelectItem shows, so the closed field and the option text agree. (When the value is
+        // null/unset the Select's Value is "" and SelectTrigger shows its placeholder instead.)
+        sb.Append("                        __sel.AddAttribute(").Append(next())
+          .AppendLine(", \"ChildContent\", (global::Microsoft.AspNetCore.Components.RenderFragment)((__t) =>");
+        sb.AppendLine("                        {");
+        sb.Append("                            __t.AddContent(").Append(next()).Append(", model.").Append(f.PropertyName).AppendLine(" switch");
+        sb.AppendLine("                            {");
+        if (f.EnumMembers is not null)
+        {
+            foreach (var em in f.EnumMembers)
+            {
+                sb.Append("                                ").Append(typeArg).Append('.').Append(em.Name)
+                  .Append(" => ").Append(Str(SplitPascal(em.Name))).AppendLine(",");
+            }
+        }
+        sb.AppendLine("                                _ => global::System.String.Empty");
+        sb.AppendLine("                            });");
+        sb.AppendLine("                        }));");
         sb.AppendLine("                        __sel.CloseComponent();");
         sb.Append("                        __sel.OpenComponent<global::Lumeo.SelectContent>(").Append(next()).AppendLine(");");
         sb.Append("                        __sel.AddAttribute(").Append(next())
