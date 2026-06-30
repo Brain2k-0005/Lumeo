@@ -324,16 +324,20 @@ internal static class Commands
     /// <summary>Ensure a NuGet package is referenced by the consumer project, running
     /// <c>dotnet add package</c> (with a prompt unless --yes/--force) if it isn't.
     /// Used both for satellite packages and for a component's packageDependencies
-    /// (e.g. Blazicons.Lucide) — without the latter, vendored .razor won't compile.</summary>
-    private static async Task EnsureNuGetPackageAsync(string pkg, string reason, AddOptions opts)
+    /// (e.g. Blazicons.Lucide) — without the latter, vendored .razor won't compile.
+    /// Returns <c>false</c> ONLY when an install was attempted and the <c>dotnet add package</c>
+    /// process failed — so a caller for whom the package is mandatory (the standalone runtime's
+    /// Blazicons) can abort before mutating anything. Already-present / dry-run / no-project /
+    /// user-skipped all return <c>true</c> (no install failure to abort on).</summary>
+    private static async Task<bool> EnsureNuGetPackageAsync(string pkg, string reason, AddOptions opts)
     {
-        if (string.IsNullOrWhiteSpace(pkg)) return;
-        if (FindCsprojReferencingPackage(Environment.CurrentDirectory, pkg) is not null) return;
+        if (string.IsNullOrWhiteSpace(pkg)) return true;
+        if (FindCsprojReferencingPackage(Environment.CurrentDirectory, pkg) is not null) return true;
 
         if (opts.DryRun)
         {
             Console.WriteLine(Ansi.Yellow($"  dry-run  would install NuGet package {pkg}"));
-            return;
+            return true;
         }
 
         bool doInstall;
@@ -351,7 +355,7 @@ internal static class Commands
         if (!doInstall)
         {
             Console.WriteLine(Ansi.Yellow($"Skipped {pkg}. The component may not compile/render without it."));
-            return;
+            return true;
         }
 
         var csprojPath = FindConsumerCsproj(Environment.CurrentDirectory);
@@ -362,7 +366,7 @@ internal static class Commands
             // "Could not find any project", which is not an install failure to abort
             // on; point the user at the manual step instead of flipping the exit code.
             Console.WriteLine(Ansi.Yellow($"  !   No project found here — add the {pkg} NuGet package to your project manually."));
-            return;
+            return true;
         }
         var dotnetArgs = $"add \"{csprojPath}\" package {pkg}";
 
@@ -374,7 +378,7 @@ internal static class Commands
             UseShellExecute = false,
         };
         var proc = System.Diagnostics.Process.Start(psi);
-        if (proc is null) return;
+        if (proc is null) return false;
         var stderr = await proc.StandardError.ReadToEndAsync();
         await proc.WaitForExitAsync();
         if (proc.ExitCode != 0)
@@ -383,11 +387,11 @@ internal static class Commands
             if (!string.IsNullOrWhiteSpace(stderr))
                 Console.Error.WriteLine(Ansi.Red(stderr.Trim()));
             Environment.ExitCode = 1;
+            return false;
         }
-        else
-        {
-            Console.WriteLine(Ansi.Green($"  +   {pkg} added to project."));
-        }
+
+        Console.WriteLine(Ansi.Green($"  +   {pkg} added to project."));
+        return true;
     }
 
     private static char PromptAssetSetup()
@@ -504,8 +508,18 @@ internal static class Commands
         // (and any later icon-using component) fails Razor compilation (Codex P2). Ensure it here whenever the
         // runtime is vendored — before the imports are written. Idempotent (skips if already referenced);
         // Blazicons.Lucide pulls in the base Blazicons package transitively, so the using resolves.
-        await EnsureNuGetPackageAsync("Blazicons.Lucide",
-            "The vendored Lumeo runtime + standalone imports use the Blazicons.Lucide package for icons.", opts);
+        // Blazicons.Lucide is MANDATORY for standalone (the _Imports `@using Blazicons` + every icon-using
+        // component need it). Treat an install FAILURE like the core-asset failure above: abort the vendor so
+        // a caller — crucially `eject` — does NOT then flip standalone and strip the Lumeo PackageReferences,
+        // which would leave the project with `@using Blazicons` but no Blazicons package and no NuGet
+        // fallback (Codex P2). Already-present / no-project / skipped do NOT abort (they return true).
+        if (!await EnsureNuGetPackageAsync("Blazicons.Lucide",
+            "The vendored Lumeo runtime + standalone imports use the Blazicons.Lucide package for icons.", opts))
+        {
+            Console.Error.WriteLine(Ansi.Red(
+                "  Could not install the required Blazicons.Lucide package — leaving the project unchanged."));
+            return false;
+        }
 
         return true;
     }
