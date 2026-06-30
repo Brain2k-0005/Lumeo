@@ -116,6 +116,18 @@ public interface IComponentInteropService : IAsyncDisposable, IDisposable
     /// </summary>
     ValueTask<string> PositionFixed(string contentId, string referenceId, string align, bool matchWidth, string side, int offset) =>
         PositionFixed(contentId, referenceId, align, matchWidth, side);
+    /// <summary>
+    /// round-14 — extended overload that ALSO reports LIVE collision flips: the synchronous return only
+    /// covers the initial placement, but a later scroll/resize reposition can flip the box to a different
+    /// side while the tooltip stays open, and a directional-arrow consumer needs to follow that too
+    /// (Codex P2). <paramref name="onSideChanged"/> is invoked with the newly-resolved side whenever a
+    /// LATER reposition changes it (never for the initial placement — that's the synchronous return).
+    /// The default implementation ignores the callback and behaves like the 6-arg overload — only
+    /// <c>ComponentInteropService</c> overrides this with real live notification; test doubles don't run
+    /// real JS, so there is nothing to notify.
+    /// </summary>
+    ValueTask<string> PositionFixed(string contentId, string referenceId, string align, bool matchWidth, string side, int offset, Func<string, Task>? onSideChanged) =>
+        PositionFixed(contentId, referenceId, align, matchWidth, side, offset);
     ValueTask UnpositionFixed(string contentId);
 
     /// <summary>

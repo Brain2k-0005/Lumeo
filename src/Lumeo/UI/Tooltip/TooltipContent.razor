@@ -95,13 +95,16 @@
         if (IsOpen && Context is not null
             && (!_registered || _appliedSide != SideStr || _appliedOffset != Offset))
         {
-            var resolved = await Interop.PositionFixed(_contentId, Context.WrapperId, "center", false, SideStr, Offset);
+            // OnLiveSideChanged covers a LATER flip too — a scroll/resize reposition while this tooltip
+            // stays open at the same Side/Offset (Codex P2, round-11/14). The guard above keys off
+            // SideStr/Offset (NOT _resolvedSide), so OnLiveSideChanged's StateHasChanged does not re-enter
+            // this branch — no render loop, no re-registering positionFixed.
+            var resolved = await Interop.PositionFixed(_contentId, Context.WrapperId, "center", false, SideStr, Offset, OnLiveSideChanged);
             _registered = true;
             _appliedSide = SideStr;
             _appliedOffset = Offset;
-            // The box may have collision-flipped to the opposite side; re-render so the arrow + data-side
-            // follow it. The guard above keys off SideStr/Offset (NOT _resolvedSide), so this StateHasChanged
-            // does not re-enter PositionFixed — no render loop.
+            // The box may have collision-flipped to the opposite side on this INITIAL placement; re-render
+            // so the arrow + data-side follow it.
             if (resolved != _resolvedSide)
             {
                 _resolvedSide = resolved;
@@ -112,6 +115,14 @@
         {
             await Cleanup();
         }
+    }
+
+    private Task OnLiveSideChanged(string side)
+    {
+        if (side == _resolvedSide) return Task.CompletedTask;
+        _resolvedSide = side;
+        StateHasChanged();
+        return Task.CompletedTask;
     }
 
     private async Task Cleanup()
