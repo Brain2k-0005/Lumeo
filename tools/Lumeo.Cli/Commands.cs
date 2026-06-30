@@ -147,11 +147,12 @@ internal static class Commands
         var readme = System.IO.Path.Combine(uiDir, "README.md");
         if (!File.Exists(readme)) File.WriteAllText(readme, BuildReadme(ns, path));
 
-        // Standalone: the vendored runtime/components keep the Lumeo namespace, so the project needs a
-        // root-level @using Lumeo (+ framework / Blazicons / services) for both the app pages and the
-        // vendored tree to resolve <Button>, Cx, the injected services, etc.
-        if (opts.Standalone)
-            await EnsureStandaloneImportsAsync();
+        // NOTE: the standalone root @using bridge (@using Lumeo, Lumeo.Internal, Lumeo.Services, …) is
+        // deliberately NOT written here. Those namespaces do not exist until the runtime is vendored, so
+        // emitting them into _Imports.razor at init time would make a bare `init --standalone` project fail
+        // Razor compilation before any component is added (Codex P2). The imports are written by the first
+        // `lumeo add` (after it vendors the runtime) and by `eject` — i.e. only once the namespaces they
+        // reference actually exist on disk. See the EnsureStandaloneImportsAsync call sites.
 
         Console.WriteLine();
         Console.WriteLine(Ansi.Green("OK ") + $"Wrote {Paths.ConfigFile}");
@@ -956,6 +957,13 @@ internal static class Commands
         // to disk just to show a diff. Matches the writeAllowed gate used for component files + sat assets.
         var previewOnly = (opts.Diff || opts.View) && !opts.Yes;
         if (cfg.Standalone && !opts.DryRun && !previewOnly && !await EnsureRuntimeVendoredAsync(cfg, registry, opts)) return;
+
+        // Now that the runtime is vendored (the gate above returned on failure), write the root-level
+        // @using bridge so the vendored Lumeo-namespace tree + app pages resolve <Button>, Cx, services, …
+        // Done HERE rather than at `init` so the imports only appear once the namespaces they reference
+        // exist on disk — a bare `init --standalone` stays compilable (Codex P2). Idempotent.
+        if (cfg.Standalone && !opts.DryRun && !previewOnly)
+            await EnsureStandaloneImportsAsync();
 
         // ── Satellite NuGet package check ──────────────────────────────────────
         // If the component lives in a satellite package (nugetPackage != "Lumeo"),
