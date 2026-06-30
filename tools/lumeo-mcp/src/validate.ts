@@ -114,16 +114,47 @@ export function createValidator(components: ValidatorComponent[], sharedEnums: S
     const issues: ValidationIssue[] = [];
     // Find component tags: <Foo ...> or <Foo .../> or </Foo>. Lumeo components are PascalCase.
     const tagRx = /<\/?([A-Z][A-Za-z0-9]*)((?:\s+[^<>]*?)?)\/?>/g;
-    // Track which known Lumeo components appear, to validate parent-child.
-    const present = new Set<string>();
+    // Stack of currently-open Lumeo elements for nesting-aware parent-child enforcement.
+    // Only known Lumeo components are tracked; non-Lumeo wrappers are invisible to this stack.
+    const openStack: string[] = [];
     let m: RegExpExecArray | null;
     while ((m = tagRx.exec(markup)) !== null) {
       const tag = m[1]!;
       const isClose = m[0].startsWith("</");
+      // A tag ending in "/>" is self-closing: it opens and immediately closes, so it is
+      // never pushed onto openStack and is not a valid ancestor for anything.
+      const isSelfClosing = !isClose && m[0].endsWith("/>");
       const known = elementIndex.get(tag.toLowerCase());
       if (!known) continue; // not a Lumeo element (could be a user component / HTML — ignore)
-      present.add(tag);
-      if (isClose) continue;
+
+      // Closing tag: pop the stack down to and including this element.
+      // Tolerate minor mis-nesting gracefully — stop at the first match found from the top;
+      // if not found (stray close tag), leave the stack unchanged rather than throwing.
+      if (isClose) {
+        const tagLower = tag.toLowerCase();
+        for (let i = openStack.length - 1; i >= 0; i--) {
+          const popped = openStack.pop()!;
+          if (popped.toLowerCase() === tagLower) break;
+        }
+        continue;
+      }
+
+      // Parent-child (nesting-aware): a sub-component that reads a CascadingValue from its
+      // parent (parentCascades=true) must have that parent as an OPEN ANCESTOR — i.e. the
+      // parent must currently be on the open-element stack, not merely present somewhere in
+      // the markup. Self-closing tags are checked against the stack at the moment they appear
+      // (they are never on the stack themselves). Purely presentational sub-components
+      // (parentCascades=false / undefined) are still allowed standalone.
+      if (known.parent && known.parentCascades) {
+        const parentLower = known.parent.toLowerCase();
+        if (!openStack.some((t) => t.toLowerCase() === parentLower)) {
+          issues.push({ severity: "error", component: tag, message: `<${tag}> must be used inside <${known.parent}> (it reads a CascadingValue from it). No <${known.parent}> found as an open ancestor.` });
+        }
+      }
+
+      // Push opening (non-self-closing) tags onto the ancestor stack so they can act as
+      // valid parents for subsequent child elements.
+      if (!isSelfClosing) openStack.push(tag);
 
       // Parse attributes (best-effort): Name="..." | Name='...' | Name="@expr" | Name=@expr | bare-name
       const attrBlob = m[2] ?? "";
@@ -162,17 +193,6 @@ export function createValidator(components: ValidatorComponent[], sharedEnums: S
             issues.push({ severity: "error", component: tag, message: `\`${name}="${rawVal}"\` — \`${lastSegRaw}\` is not a valid ${boundEnum} value. Allowed: ${display.join(", ")}.` });
           }
         }
-      }
-    }
-
-    // Parent-child: a sub-component that actually reads a CascadingValue from its parent
-    // (parentCascades) must have that parent present. Purely presentational sub-components
-    // — e.g. a DialogHeader that is just a styled div with no [CascadingParameter] — are
-    // NOT flagged, so they can be used standalone without a false "must be used inside" error.
-    for (const tag of present) {
-      const known = elementIndex.get(tag.toLowerCase())!;
-      if (known.parent && known.parentCascades && !present.has(known.parent)) {
-        issues.push({ severity: "error", component: tag, message: `<${tag}> must be used inside <${known.parent}> (it reads a CascadingValue from it). No <${known.parent}> found in this markup.` });
       }
     }
 

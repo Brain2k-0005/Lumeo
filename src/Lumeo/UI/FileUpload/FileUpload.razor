@@ -2,10 +2,11 @@
 @implements IAsyncDisposable
 @inject Lumeo.Services.Localization.ILumeoLocalizer L
 
-@* Render the label, control and helper/error as ONE self-contained vertical block so the
-   field never splays into a row when dropped in a flex / centered container. Standalone
-   form-field structural fix. *@
-<div class="flex flex-col items-start">
+@* Render the label, control and helper/error as ONE self-contained block so the field
+   never splays into a row when dropped in a flex / centered container. Root class is
+   variant-aware: Button/Avatar stay inline-flex so they work inside toolbars; Dropzone
+   uses flex-col w-full (no items-start) so the zone can stretch to its container. *@
+<div class="@RootClass">
 @if (Label is not null && !InsideFormField && Variant != FileUploadVariant.Button && Variant != FileUploadVariant.Avatar)
 {
     <label class="text-sm font-medium leading-none">
@@ -369,6 +370,19 @@ else
     private List<IBrowserFile> _selectedFiles => _uploadItems.Select(i => i.File).ToList();
 
     // ── CSS helpers ──────────────────────────────────────────────────────────
+
+    // Variant-aware root-wrapper class.
+    // • Button / Avatar → inline-flex: renders inline so the component stays in-flow
+    //   inside toolbars and doesn't break onto its own block line.
+    // • Dropzone        → flex flex-col w-full: vertical stack that stretches to the
+    //   container's full width (no items-start shrink-wrapping).
+    private string RootClass => Variant switch
+    {
+        FileUploadVariant.Button => "inline-flex",
+        FileUploadVariant.Avatar => "inline-flex",
+        _ => "flex flex-col w-full"
+    };
+
     private string ButtonSizeClasses => Size switch
     {
         Lumeo.Size.Sm => "h-8 px-3 text-xs",

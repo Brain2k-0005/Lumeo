@@ -873,9 +873,18 @@ foreach (var dir in componentDirs)
     // helper (DataGridRowKeys, Lumeo.Delta.DeltaFormat). Word-boundary match against the
     // type->component map from the pre-pass so the consumer vendors the owner too.
     var typeRefBlob = contentBlob.ToString();
+    // Strip comments before the type-ref scan so doc-comment references such as
+    // <see cref="TabsLayout"/> in <remarks> blocks don't create false-positive deps.
+    // Heuristic regex strip — not a full parser: does not handle // inside string or
+    // char literals, but that is rare in Blazor source and the false-positive risk
+    // from those is negligible compared to the XML-doc false-positives we're fixing.
+    // Block comments (/* … */) first, then line/XML-doc comments (// to end-of-line).
+    // NOTE: contentBlob and the per-file `content` stored in the registry are untouched.
+    var typeRefBlobStripped = Regex.Replace(typeRefBlob, @"/\*[\s\S]*?\*/", " ");
+    typeRefBlobStripped = Regex.Replace(typeRefBlobStripped, @"//[^\n]*", " ");
     foreach (var kv in typeToComponent)
         if (!string.Equals(kv.Value, componentKey, StringComparison.OrdinalIgnoreCase)
-            && Regex.IsMatch(typeRefBlob, $@"\b{Regex.Escape(kv.Key)}\b"))
+            && Regex.IsMatch(typeRefBlobStripped, $@"\b{Regex.Escape(kv.Key)}\b"))
             deps.Add(kv.Value);
 
     // Sensible defaults when a component has no themed class usage.
