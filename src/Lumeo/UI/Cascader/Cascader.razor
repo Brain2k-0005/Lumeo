@@ -592,6 +592,17 @@
             // Left/Right/Home/End also scroll a scrollable ancestor while the roving focus
             // moves between columns. SkipEditable keeps the search input's own caret/typing
             // keys alive. Mirrors TreeSelect.OpenDropdown (Codex P2).
+            //
+            // Enter/" " are ALSO registered here (not just the roving-nav keys): when focus
+            // is on an option <button>, HandleKeyDown's "Enter"/" " case already invokes
+            // SelectOption via the bubbled keydown — but a focused native <button> ALSO
+            // synthesizes its own click on Enter/Space by browser default, which fires the
+            // button's own @onclick="SelectOption" a SECOND time, double-invoking a leaf
+            // selection's ValueChanged and re-running parent-expansion logic (Codex P2).
+            // preventDefault on the keydown suppresses that native click synthesis, leaving
+            // HandleKeyDown's own invocation as the only one. SkipEditable keeps Space
+            // typing a literal space (and Enter still forwarding via OnSearchKeyDown) alive
+            // in the search input.
             try
             {
                 await Interop.RegisterPreventDefaultKeys(_contentId, new[]
@@ -602,6 +613,8 @@
                     new Lumeo.Services.PreventDefaultKeyRule("ArrowRight", SkipEditable: true),
                     new Lumeo.Services.PreventDefaultKeyRule("Home", SkipEditable: true),
                     new Lumeo.Services.PreventDefaultKeyRule("End", SkipEditable: true),
+                    new Lumeo.Services.PreventDefaultKeyRule("Enter", SkipEditable: true),
+                    new Lumeo.Services.PreventDefaultKeyRule(" ", SkipEditable: true),
                 });
             }
             catch (JSDisconnectedException) { }

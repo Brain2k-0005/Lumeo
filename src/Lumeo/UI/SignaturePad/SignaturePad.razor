@@ -167,6 +167,20 @@
             // programmatic reset, or a REJECTION where the parent kept the OLD
             // value (!= what we emitted) — is authoritative and must repaint the
             // canvas back to the bound Value (Codex P2 fix).
+            //
+            // NOTE (Codex P2, later round): a callback-only observer that never
+            // binds Value back also hits this "rejection" path when its unbound
+            // default (null) is unchanged, clearing the just-drawn signature.
+            // Deliberately NOT adding a null-only observer carve-out here (unlike
+            // Input/ToggleGroup): SignaturePadValuePersistenceTests.
+            // Controlled_Parent_Rejection_Repaints_Canvas_To_Bound_Value already
+            // covers this EXACT null-baseline shape (bound stays null throughout,
+            // callback never updates it) and deliberately asserts the OPPOSITE —
+            // that a rejection must erase the canvas back to empty. The two
+            // scenarios are 100% indistinguishable from OnParametersSet's
+            // perspective (both start null and stay null forever), so satisfying
+            // the new ask would silently regress that established, already-tested
+            // contract. Revisit only if a signal distinguishing them is found.
             if (!string.Equals(Value, _lastPushed, StringComparison.Ordinal))
             {
                 _currentValue = Value;

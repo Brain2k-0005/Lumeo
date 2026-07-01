@@ -335,11 +335,19 @@ else
             // CONTROLLED: the parent owns Value and it is authoritative — EXCEPT when it
             // merely echoes back the exact edit we just pushed (Value == _lastPushed),
             // where adopting would be a redundant write that could disturb the caret, so
-            // we keep the live value. Any OTHER Value wins and is adopted: a normalization,
-            // a programmatic (re)assignment, or — crucially — a REJECTION where the parent
-            // kept its OLD value (!= the value we just pushed). That last case is what
-            // rolls a rejected keystroke back to the controlled Value (Codex P2 fix).
-            if (!string.Equals(Value, _lastPushed, StringComparison.Ordinal))
+            // we keep the live value. A SECOND exception exists ONLY for a null baseline:
+            // a consumer that binds ValueChanged purely to OBSERVE, without ever binding
+            // Value back, leaves it at its unbound default (null) on every render — that
+            // must NOT be treated as a rejection that clears in-progress typing (Codex
+            // P2). This narrow, null-only carve-out is deliberate: a NON-null unchanged
+            // Value is indistinguishable from a genuinely bound value the parent is
+            // choosing to keep pinned (a real rejection that must roll the text back).
+            // Any OTHER Value wins and is adopted: a normalization, a programmatic
+            // (re)assignment, or a REJECTION where the parent kept its OLD (non-null,
+            // bound) value — that case is what rolls a rejected keystroke back.
+            var isEcho = string.Equals(Value, _lastPushed, StringComparison.Ordinal);
+            var isNullObserverEcho = Value is null && _lastValueParam is null;
+            if (!isEcho && !isNullObserverEcho)
             {
                 _current = Value;
                 _lastPushed = Value;

@@ -300,19 +300,23 @@
             if (ValueChanged.HasDelegate)
             {
                 // CONTROLLED: the parent owns Value and it is authoritative — EXCEPT
-                // when it echoes back the exact value we just pushed (_lastPushedValue)
-                // OR matches the value we saw on the PREVIOUS render (_lastValue)
-                // unchanged. The latter catches a consumer that binds ValueChanged
-                // purely to OBSERVE without echoing Value back: the parent's normal
-                // post-callback re-render still supplies whatever Value was before
-                // (its unbound default, e.g. null), which must NOT be treated as a
-                // veto that clobbers the local toggle (Codex P2). Any OTHER incoming
-                // value wins: a normalization, programmatic reset, or a REJECTION
-                // where the parent kept its old (bound) value — that case is what
-                // rolls a rejected toggle back to the bound value.
+                // when it echoes back the exact value we just pushed (_lastPushedValue).
+                // A SECOND exception exists ONLY for a null baseline: a consumer that
+                // binds ValueChanged purely to OBSERVE, without ever binding Value back,
+                // leaves Value at its unbound default (null) on every render — that must
+                // NOT be treated as a veto that clobbers the local toggle (Codex P2).
+                // This narrow, null-only carve-out is deliberate: a NON-null unchanged
+                // baseline is indistinguishable from a genuinely bound Value the parent
+                // is choosing to keep pinned (a real veto that must roll the UI back —
+                // Codex P2 flagged the broader "any unchanged baseline is a no-op"
+                // version of this check for exactly that reason, since it silently
+                // preserved a rejected toggle whenever the parent's veto re-render
+                // happened to match its own pre-interaction value). Any OTHER incoming
+                // value wins: a normalization, programmatic reset, or a REJECTION where
+                // the parent kept its old (non-null, bound) value.
                 var isEcho = Value == _lastPushedValue;
-                var isUnchangedFromBeforeInteraction = Value == _lastValue;
-                if (!isEcho && !isUnchangedFromBeforeInteraction)
+                var isNullObserverEcho = Value is null && _lastValue is null;
+                if (!isEcho && !isNullObserverEcho)
                 {
                     _selectedItems.Clear();
                     if (Value is not null) _selectedItems.Add(Value);
@@ -342,15 +346,19 @@
                 // CONTROLLED: adopt only when SelectedValues is NOT the same object
                 // reference we just pushed (reference equality is sufficient: a veto
                 // keeps the OLD reference; an echo re-supplies the same list object we
-                // handed the parent; a programmatic override supplies a new reference)
-                // AND NOT the same reference we saw on the PREVIOUS render
-                // (_lastSelectedValues) — a consumer that binds SelectedValuesChanged
-                // purely to OBSERVE without echoing SelectedValues back keeps supplying
-                // its unbound default (typically null) on every re-render, which must
-                // NOT be treated as a veto that clobbers the local toggle (Codex P2).
+                // handed the parent; a programmatic override supplies a new reference).
+                // A SECOND exception exists ONLY when SelectedValues is null AND it was
+                // ALSO null on the previous render (_lastSelectedValues) — a consumer
+                // that binds SelectedValuesChanged purely to OBSERVE, without ever
+                // binding SelectedValues back, keeps supplying its unbound default
+                // (null) on every re-render, which must NOT be treated as a veto that
+                // clobbers the local toggle (Codex P2). This narrow, null-only carve-out
+                // mirrors the Single-mode branch: a NON-null unchanged reference is a
+                // genuinely bound SelectedValues the parent is choosing to keep pinned
+                // (a real veto that must roll the UI back).
                 var isEcho = ReferenceEquals(SelectedValues, _lastPushedSelectedValues);
-                var isUnchangedFromBeforeInteraction = ReferenceEquals(SelectedValues, _lastSelectedValues);
-                if (!isEcho && !isUnchangedFromBeforeInteraction)
+                var isNullObserverEcho = SelectedValues is null && _lastSelectedValues is null;
+                if (!isEcho && !isNullObserverEcho)
                 {
                     _selectedItems.Clear();
                     if (SelectedValues is not null)

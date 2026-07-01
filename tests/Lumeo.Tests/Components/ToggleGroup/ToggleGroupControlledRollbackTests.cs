@@ -31,14 +31,27 @@ namespace Lumeo.Tests.Components.ToggleGroup;
 /// toggle — making callback-only single/multiple toggle groups appear unable to
 /// stay selected.
 ///
-/// Fix (this pass): a SECOND baseline — _lastValue/_lastSelectedValues, i.e. what
-/// the PARAMETER held on the render immediately before this interaction — is also
-/// treated as a no-op alongside the echo check. An incoming value matching that
-/// pre-interaction baseline is indistinguishable from "the parent isn't actually
-/// driving this parameter" and must NOT clobber local state. Only a value that
-/// differs from BOTH the push AND the pre-interaction baseline is a genuine,
-/// distinguishable authoritative assertion (veto-with-a-different-value,
-/// normalization, or programmatic reset) and rolls the UI back.
+/// Fix (this pass, first attempt): a SECOND baseline — _lastValue/_lastSelectedValues,
+/// i.e. what the PARAMETER held on the render immediately before this interaction —
+/// was ALSO treated as a no-op alongside the echo check, regardless of what that
+/// baseline value was.
+///
+/// Bug (Codex P2, third pass): that second-pass fix over-generalized. A parent using
+/// ToggleGroup as a genuinely controlled component — Value/SelectedValues bound to
+/// real state, e.g. Value="a" — that VETOES a change by leaving that bound value
+/// unchanged is, on the wire, indistinguishable from an observer that never bound
+/// Value at all: both show "the same value as before" on the post-callback
+/// re-render. Treating ANY unchanged baseline as observer-only silently preserved
+/// the rejected toggle instead of rolling back to the parent's real (bound, just
+/// not null) value.
+///
+/// Fix (this pass, final): the "unchanged baseline is a no-op" exception is narrowed
+/// to ONLY apply when that baseline is null — Blazor's type default for an unbound
+/// parameter. Seeing null both before AND after the interaction is the strongest
+/// available signal that Value/SelectedValues was never actually bound (a true
+/// observer-only consumer); once EITHER has ever been observed as non-null, ANY
+/// future unchanged re-render is treated as an authoritative, bound veto and rolls
+/// the UI back — matching how a real two-way-bound `@bind-Value` parent behaves.
 /// </summary>
 public class ToggleGroupControlledRollbackTests : IAsyncLifetime
 {
@@ -98,15 +111,17 @@ public class ToggleGroupControlledRollbackTests : IAsyncLifetime
     }
 
     [Fact]
-    public void Single_Controlled_Unchanged_From_Selected_Baseline_Keeps_Local_Toggle()
+    public void Single_Controlled_Veto_From_Selected_Baseline_Rolls_Back_To_Original_Selection()
     {
-        // Same observer-only contract, starting from a non-null baseline: the parent
-        // binds Value="a" once (its own local state) and ValueChanged purely to
-        // observe, without ever re-binding Value after the callback fires.
+        // A GENUINE veto starting from a non-null (bound) baseline: the parent binds
+        // Value="a" to real state and rejects the deselect by leaving Value unchanged
+        // — indistinguishable, on the wire, from an observer that never bound Value,
+        // but the null-only carve-out (Codex P2) means a NON-null unchanged baseline
+        // is always treated as an authoritative, bound veto.
         var cut = _ctx.Render<L.ToggleGroup>(p => p
             .Add(g => g.Type, L.ToggleGroup.ToggleGroupType.Single)
             .Add(g => g.Value, "a")
-            .Add(g => g.ValueChanged, (string? _) => { })  // observes only, never echoes
+            .Add(g => g.ValueChanged, (string? _) => { })  // veto: never re-supplies Value
             .Add(g => g.ChildContent, TwoItems()));
 
         Assert.Equal("true", cut.FindAll("button")[0].GetAttribute("aria-pressed"));
@@ -114,15 +129,15 @@ public class ToggleGroupControlledRollbackTests : IAsyncLifetime
         // User clicks "a" to deselect — pushes null via ValueChanged.
         cut.FindAll("button")[0].Click();
 
-        // The parent's re-render still supplies Value="a" — unchanged from the
-        // baseline this component saw before the click, not an echo of the push.
+        // The parent's re-render still supplies Value="a" — the veto.
         cut.Render(p => p
             .Add(g => g.Type, L.ToggleGroup.ToggleGroupType.Single)
             .Add(g => g.Value, "a")
             .Add(g => g.ValueChanged, (string? _) => { }));
 
-        // Not a veto — the local deselect must stick.
-        Assert.All(cut.FindAll("button"), b => Assert.Equal("false", b.GetAttribute("aria-pressed")));
+        // "a" must snap back to pressed.
+        Assert.Equal("true",  cut.FindAll("button")[0].GetAttribute("aria-pressed"));
+        Assert.Equal("false", cut.FindAll("button")[1].GetAttribute("aria-pressed"));
     }
 
     [Fact]
@@ -208,17 +223,18 @@ public class ToggleGroupControlledRollbackTests : IAsyncLifetime
     }
 
     [Fact]
-    public void Multiple_Controlled_Unchanged_From_Selected_Baseline_Keeps_Local_Toggle()
+    public void Multiple_Controlled_Veto_From_Selected_Baseline_Rolls_Back_To_Original_Selection()
     {
-        // Callback-only consumer starting from a non-null baseline: SelectedValues is
-        // bound once to the parent's own list, SelectedValuesChanged purely observes
-        // and never re-supplies SelectedValues after the callback fires.
+        // A GENUINE veto starting from a non-null (bound) baseline: SelectedValues is
+        // bound once to the parent's own list and the parent rejects the deselect by
+        // never re-supplying it — the null-only carve-out (Codex P2) means a NON-null
+        // unchanged reference is always treated as an authoritative, bound veto.
         var originalList = new List<string> { "a" };
 
         var cut = _ctx.Render<L.ToggleGroup>(p => p
             .Add(g => g.Type, L.ToggleGroup.ToggleGroupType.Multiple)
             .Add(g => g.SelectedValues, originalList)
-            .Add(g => g.SelectedValuesChanged, (IEnumerable<string> _) => { })  // observes only
+            .Add(g => g.SelectedValuesChanged, (IEnumerable<string> _) => { })  // veto
             .Add(g => g.ChildContent, TwoItems()));
 
         Assert.Equal("true", cut.FindAll("button")[0].GetAttribute("aria-pressed"));
@@ -226,15 +242,14 @@ public class ToggleGroupControlledRollbackTests : IAsyncLifetime
         // User deselects "a" — pushes [] via SelectedValuesChanged.
         cut.FindAll("button")[0].Click();
 
-        // The parent's re-render still supplies the SAME originalList reference it
-        // held before the click — unchanged from the pre-interaction baseline.
+        // The parent's re-render still supplies the SAME originalList reference — the veto.
         cut.Render(p => p
             .Add(g => g.Type, L.ToggleGroup.ToggleGroupType.Multiple)
             .Add(g => g.SelectedValues, originalList)
             .Add(g => g.SelectedValuesChanged, (IEnumerable<string> _) => { }));
 
-        // Not a veto — the local deselect must stick.
-        Assert.All(cut.FindAll("button"), b => Assert.Equal("false", b.GetAttribute("aria-pressed")));
+        Assert.Equal("true",  cut.FindAll("button")[0].GetAttribute("aria-pressed"));
+        Assert.Equal("false", cut.FindAll("button")[1].GetAttribute("aria-pressed"));
     }
 
     [Fact]
