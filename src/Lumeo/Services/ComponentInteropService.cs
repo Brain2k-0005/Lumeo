@@ -973,6 +973,19 @@ public sealed class ComponentInteropService : IComponentInteropService
         catch (JSDisconnectedException) { return false; }
     }
 
+    public async ValueTask<bool> IsActiveElementFocusVisible()
+    {
+        // Fails OPEN (assume focus-visible) on ANY interop failure, not just disconnection:
+        // this is a UI-polish detail (avoid a click-focus tooltip sticking open), so an
+        // unrelated interop hiccup must never suppress a genuine keyboard-focus tooltip.
+        try
+        {
+            var module = await GetModuleAsync();
+            return await module.InvokeAsync<bool>("isActiveElementFocusVisible");
+        }
+        catch (Exception) { return true; }
+    }
+
     public async ValueTask<RipplePoint> TouchRippleCoords(string hostElementId, double clientX, double clientY)
     {
         try

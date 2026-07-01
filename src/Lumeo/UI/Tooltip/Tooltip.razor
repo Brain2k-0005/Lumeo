@@ -96,9 +96,20 @@
     // Keyboard parity: focusing the trigger (or any focusable child) shows the
     // tooltip immediately; blur hides it. Radix opens HoverCard/Tooltip on
     // keyboard focus so keyboard-only users can read it.
-    private void HandleFocusIn()
+    //
+    // Gated on :focus-visible (via IsActiveElementFocusVisible), not plain focus: a mouse
+    // click ALSO fires focusin (a native <button> keeps DOM focus after a click, and
+    // nothing clears it), so opening unconditionally here meant the tooltip stayed open
+    // after a click + moving the mouse away, until focus happened to move elsewhere for an
+    // unrelated reason — reported production bug, reproducible on any clickable
+    // Tooltip-wrapped element. :focus-visible is false for that click-driven focus in
+    // supporting browsers, true for real keyboard navigation, so this distinguishes the
+    // two without any manual pointer-type bookkeeping.
+    private async Task HandleFocusIn()
     {
         _dispatch.Cancel();
+        var visible = await Interop.IsActiveElementFocusVisible();
+        if (!visible) return;
         _focused = true;
         StateHasChanged();
     }
