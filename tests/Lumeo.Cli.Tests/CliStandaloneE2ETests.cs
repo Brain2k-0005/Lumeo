@@ -191,6 +191,42 @@ public sealed class CliStandaloneE2ETests : IDisposable
     }
 
     [Fact]
+    public void Eject_On_Already_Standalone_Project_Finishes_Stripping_A_Later_Vendored_Satellite()
+    {
+        // Reproduces Codex's exact P2 scenario: the FIRST eject can't vendor every Lumeo.* package
+        // reference as source — here, a stray "Lumeo.Motion" reference (AnimatedBeam was never added
+        // via the CLI, so it has no lumeo.json record and no vendored source) — so it must KEEP that
+        // PackageReference and tell the user to `lumeo add <component> --vendor` then re-run `eject`.
+        // Before the fix, the SECOND eject hit an unconditional `if (cfg.Standalone) return;` (standalone
+        // was already persisted true by the first run), making it a total no-op and leaving the kept
+        // package stuck in the csproj forever with no CLI path to finish.
+        File.WriteAllText(Path.Combine(_proj, "App.csproj"),
+            "<Project Sdk=\"Microsoft.NET.Sdk.Razor\"><PropertyGroup><TargetFramework>net10.0</TargetFramework>"
+          + "<ImplicitUsings>enable</ImplicitUsings></PropertyGroup><ItemGroup>"
+          + "<PackageReference Include=\"Microsoft.AspNetCore.Components.Web\" Version=\"10.0.6\" />"
+          + "<PackageReference Include=\"Blazicons.Lucide\" Version=\"2.1.3\" />"
+          + "<PackageReference Include=\"Lumeo\" Version=\"4.0.0\" />"
+          + "<PackageReference Include=\"Lumeo.Motion\" Version=\"4.0.0\" /></ItemGroup></Project>");
+
+        Assert.Equal(0, RunCli("init", "--yes", "--namespace", "Acme.Ui", "--path", "Components/Ui", "--no-assets").Exit);
+        Assert.Equal(0, RunCli("add", "dialog", "--local", "--yes", "--force").Exit);
+
+        var firstEject = RunCli("eject", "--local");
+        Assert.True(firstEject.Exit == 0, $"first eject failed (exit {firstEject.Exit}). {firstEject.Stderr}{firstEject.Stdout}");
+        Assert.Contains("\"standalone\": true", File.ReadAllText(Path.Combine(_proj, "lumeo.json")));
+        var afterFirst = File.ReadAllText(Path.Combine(_proj, "App.csproj"));
+        Assert.DoesNotContain("Include=\"Lumeo\"", afterFirst);             // Dialog's package WAS stripped (now vendored as source)
+        Assert.Contains("Include=\"Lumeo.Motion\"", afterFirst);            // AnimatedBeam's package was KEPT — never vendored
+
+        // The remedy the first eject's own console message points at.
+        Assert.Equal(0, RunCli("add", "animated-beam", "--local", "--yes", "--force", "--vendor").Exit);
+
+        var secondEject = RunCli("eject", "--local");
+        Assert.True(secondEject.Exit == 0, $"second eject failed (exit {secondEject.Exit}). {secondEject.Stderr}{secondEject.Stdout}");
+        Assert.DoesNotContain("Include=\"Lumeo.Motion\"", File.ReadAllText(Path.Combine(_proj, "App.csproj")));
+    }
+
+    [Fact]
     public void Standalone_Satellite_DataGrid_Builds_NuGetFree()
     {
         File.WriteAllText(Path.Combine(_proj, "App.csproj"), MinimalCsproj());

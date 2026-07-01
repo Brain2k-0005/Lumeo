@@ -4,8 +4,12 @@
 
 @* Registry-driven props/API table. Renders api.parameters (+ events) straight from
    registry/{slug}.json — the single source of truth — so the API never drifts from
-   the actual component source and is identical in shape across every page. *@
-@if (_detail?.Api is { } api && api.Parameters.Count > 0)
+   the actual component source and is identical in shape across every page.
+   [CascadingParameter]s (FormField, InheritedDensity, ScopedDirection, a parent
+   Context/Shell, ...) are excluded: they are supplied automatically by an ancestor
+   component, not set by the consumer, so listing them as a settable prop would
+   advertise internal/invalid markup (Codex P2). *@
+@if (_detail?.Api is { } api && ConsumerParameters(api).Any())
 {
     <div class="overflow-x-auto rounded-lg border border-border/60">
         <table class="w-full text-sm">
@@ -18,7 +22,7 @@
                 </tr>
             </thead>
             <tbody>
-                @foreach (var p in api.Parameters)
+                @foreach (var p in ConsumerParameters(api))
                 {
                     <tr class="border-t border-border/40 align-top hover:bg-muted/20">
                         <td class="px-3 py-2 font-mono text-xs font-medium text-foreground whitespace-nowrap">
@@ -68,4 +72,10 @@ else if (_loaded)
         _detail = await Registry.GetComponentAsync(Slug);
         _loaded = true;
     }
+
+    // [CascadingParameter]s are supplied by an ancestor (FormField, a parent Context/Shell,
+    // InheritedDensity, ScopedDirection, ...), not set by the consumer — exclude them from the
+    // consumer-facing props table (Codex P2).
+    private static IEnumerable<ApiParameter> ConsumerParameters(ApiInfo api) =>
+        api.Parameters.Where(p => !p.IsCascading);
 }
