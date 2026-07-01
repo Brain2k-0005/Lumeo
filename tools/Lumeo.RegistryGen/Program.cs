@@ -873,6 +873,17 @@ foreach (var dir in componentDirs)
         // vendor with no FormFieldContext type and fail to compile standalone.
         if (content.Contains("FormFieldContext") && !string.Equals(name, "Form", StringComparison.OrdinalIgnoreCase))
             deps.Add("form");
+
+        // Same class of gap for the overlay host: a component that drives overlays IMPERATIVELY via
+        // IOverlayService (e.g. ConfirmButton -> Overlay.ShowAlertDialogAsync) never renders
+        // <OverlayProvider> in its own markup, so the <Tag> scan above can't see that it needs the
+        // host mounted somewhere in the tree. Standalone/eject vendors only a component's declared
+        // dependencies, so without this the overlay host silently never gets vendored and a project
+        // that only has (say) ConfirmButton installed loses the NuGet-provided OverlayProvider type
+        // entirely once the package is stripped — the app fails to compile (or, if OverlayProvider
+        // was never added at all, ShowAlertDialogAsync's Task simply never completes) (Codex P2).
+        if (content.Contains("IOverlayService") && !string.Equals(name, "Overlay", StringComparison.OrdinalIgnoreCase))
+            deps.Add("overlay");
     }
 
     // Type-level dependencies the markup <Tag> scan can't see: a reference to ANOTHER component's

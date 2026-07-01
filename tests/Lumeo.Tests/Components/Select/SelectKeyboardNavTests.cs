@@ -238,6 +238,69 @@ public class SelectKeyboardNavTests : IAsyncLifetime
         Assert.Equal("blueberry", selected);
     }
 
+    // --- Codex P2: the search input's keydown must not ALSO fire the listbox's own
+    //     handler via bubbling — HandleKeyDown was invoked twice per keystroke ---
+
+    [Fact]
+    public void Enter_On_The_Search_Input_Itself_Selects_Only_Once()
+    {
+        // Dispatching on the LISTBOX (as the other tests above do) never exercised the
+        // bubbling path — the bug only reproduces when the keydown originates on the
+        // INPUT, which bubbles to the outer listbox div's own @onkeydown="HandleKeyDown"
+        // unless stopped. Without the fix, Enter here invoked Context.OnSelect twice for
+        // the same FocusedItemValue (ValueChanged fired twice for the same value).
+        var callCount = 0;
+        string? selected = null;
+        var cb = EventCallback.Factory.Create<string?>(_ctx, (string? v) => { callCount++; selected = v; });
+        var cut = RenderSearchableComposition(valueChanged: cb);
+
+        var input = cut.Find("input");
+        input.KeyDown("ArrowDown"); // focus "apple"
+        try { input.KeyDown("Enter"); } catch (ArgumentException) { } // selecting closes the popover
+
+        Assert.Equal("apple", selected);
+        Assert.Equal(1, callCount);
+    }
+
+    [Fact]
+    public void Enter_On_The_Search_Input_In_Multiple_Mode_Adds_The_Value_Once()
+    {
+        // Multiple mode toggles membership and never closes the popover, so a double
+        // invocation is directly observable: the first call ADDS the value, the bubbled
+        // call immediately REMOVES it again — keyboard selection appeared to do nothing.
+        List<string>? selected = null;
+        var cb = EventCallback.Factory.Create<List<string>?>(_ctx, (List<string>? v) => selected = v);
+        var cut = _ctx.Render<L.Select>(p =>
+        {
+            p.Add(s => s.Open, true);
+            p.Add(s => s.Multiple, true);
+            p.Add(s => s.Searchable, true);
+            p.Add(s => s.ValuesChanged, cb);
+            p.Add(s => s.ChildContent, (RenderFragment)(b =>
+            {
+                b.OpenComponent<L.SelectTrigger>(0);
+                b.AddAttribute(1, "ChildContent", (RenderFragment)(t => t.AddContent(0, "Choose...")));
+                b.CloseComponent();
+                b.OpenComponent<L.SelectContent>(2);
+                b.AddAttribute(3, "ChildContent", (RenderFragment)(c =>
+                {
+                    c.OpenComponent<L.SelectItem>(0);
+                    c.AddAttribute(1, "Value", "apple");
+                    c.AddAttribute(2, "ChildContent", (RenderFragment)(i => i.AddContent(0, "Apple")));
+                    c.CloseComponent();
+                }));
+                b.CloseComponent();
+            }));
+        });
+
+        var input = cut.Find("input");
+        input.KeyDown("ArrowDown"); // focus "apple"
+        input.KeyDown("Enter");     // popover stays open in Multiple mode — no unmount
+
+        Assert.NotNull(selected);
+        Assert.Equal(new[] { "apple" }, selected);
+    }
+
     // --- Click outside must exclude the trigger ---
 
     [Fact]

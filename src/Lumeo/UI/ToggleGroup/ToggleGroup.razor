@@ -300,17 +300,24 @@
             if (ValueChanged.HasDelegate)
             {
                 // CONTROLLED: the parent owns Value and it is authoritative — EXCEPT
-                // when it echoes back the exact value we just pushed (_lastPushedValue).
-                // Any OTHER incoming value wins: a normalization, programmatic reset,
-                // or a REJECTION where the parent kept its old value (!= what we pushed).
-                // That last case is what rolls a rejected toggle back to the bound value.
-                if (Value != _lastPushedValue)
+                // when it echoes back the exact value we just pushed (_lastPushedValue)
+                // OR matches the value we saw on the PREVIOUS render (_lastValue)
+                // unchanged. The latter catches a consumer that binds ValueChanged
+                // purely to OBSERVE without echoing Value back: the parent's normal
+                // post-callback re-render still supplies whatever Value was before
+                // (its unbound default, e.g. null), which must NOT be treated as a
+                // veto that clobbers the local toggle (Codex P2). Any OTHER incoming
+                // value wins: a normalization, programmatic reset, or a REJECTION
+                // where the parent kept its old (bound) value — that case is what
+                // rolls a rejected toggle back to the bound value.
+                var isEcho = Value == _lastPushedValue;
+                var isUnchangedFromBeforeInteraction = Value == _lastValue;
+                if (!isEcho && !isUnchangedFromBeforeInteraction)
                 {
                     _selectedItems.Clear();
                     if (Value is not null) _selectedItems.Add(Value);
                     _lastPushedValue = Value;
                 }
-                // else: echo of our own toggle — keep the in-flight selection.
             }
             else
             {
@@ -335,15 +342,21 @@
                 // CONTROLLED: adopt only when SelectedValues is NOT the same object
                 // reference we just pushed (reference equality is sufficient: a veto
                 // keeps the OLD reference; an echo re-supplies the same list object we
-                // handed the parent; a programmatic override supplies a new reference).
-                if (!ReferenceEquals(SelectedValues, _lastPushedSelectedValues))
+                // handed the parent; a programmatic override supplies a new reference)
+                // AND NOT the same reference we saw on the PREVIOUS render
+                // (_lastSelectedValues) — a consumer that binds SelectedValuesChanged
+                // purely to OBSERVE without echoing SelectedValues back keeps supplying
+                // its unbound default (typically null) on every re-render, which must
+                // NOT be treated as a veto that clobbers the local toggle (Codex P2).
+                var isEcho = ReferenceEquals(SelectedValues, _lastPushedSelectedValues);
+                var isUnchangedFromBeforeInteraction = ReferenceEquals(SelectedValues, _lastSelectedValues);
+                if (!isEcho && !isUnchangedFromBeforeInteraction)
                 {
                     _selectedItems.Clear();
                     if (SelectedValues is not null)
                         foreach (var v in SelectedValues) _selectedItems.Add(v);
                     _lastPushedSelectedValues = SelectedValues;
                 }
-                // else: echo of our own toggle — keep the in-flight selection.
             }
             else
             {

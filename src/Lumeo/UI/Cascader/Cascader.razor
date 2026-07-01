@@ -587,6 +587,24 @@
                 await SetOpen(false);
                 await InvokeAsync(StateHasChanged);
             });
+            // Suppress the browser default (page/panel scroll) for the roving-focus
+            // navigation keys HandleKeyDown consumes above. Without this, ArrowUp/Down/
+            // Left/Right/Home/End also scroll a scrollable ancestor while the roving focus
+            // moves between columns. SkipEditable keeps the search input's own caret/typing
+            // keys alive. Mirrors TreeSelect.OpenDropdown (Codex P2).
+            try
+            {
+                await Interop.RegisterPreventDefaultKeys(_contentId, new[]
+                {
+                    new Lumeo.Services.PreventDefaultKeyRule("ArrowDown", SkipEditable: true),
+                    new Lumeo.Services.PreventDefaultKeyRule("ArrowUp", SkipEditable: true),
+                    new Lumeo.Services.PreventDefaultKeyRule("ArrowLeft", SkipEditable: true),
+                    new Lumeo.Services.PreventDefaultKeyRule("ArrowRight", SkipEditable: true),
+                    new Lumeo.Services.PreventDefaultKeyRule("Home", SkipEditable: true),
+                    new Lumeo.Services.PreventDefaultKeyRule("End", SkipEditable: true),
+                });
+            }
+            catch (JSDisconnectedException) { }
             _registered = true;
 
             // Focus the seeded roving option so keyboard users can immediately
@@ -626,6 +644,7 @@
     {
         try { await Interop.UnpositionFixed(_contentId); } catch (JSDisconnectedException) { }
         try { await Interop.UnregisterClickOutside(_contentId); } catch (JSDisconnectedException) { }
+        try { await Interop.UnregisterPreventDefaultKeys(_contentId); } catch (JSDisconnectedException) { }
         _registered = false;
         _lastPositionedColumns = -1;
     }
