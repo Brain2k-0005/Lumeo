@@ -539,13 +539,36 @@ internal static class Commands
             Environment.ExitCode = 1;
             return;
         }
+        var registry = await RegistryLoader.LoadAsync(local, cfg.Registry);
+
         if (cfg.Standalone)
         {
-            Console.WriteLine(Ansi.Yellow("Project is already standalone (NuGet-free). Nothing to eject."));
+            // A prior eject may have had to KEEP some satellite PackageReference(s) — their
+            // components weren't vendored as source yet — and told the user to run
+            // `lumeo add <component> --vendor` then `lumeo eject` again to finish. Without this,
+            // the early return below made that second eject a complete no-op: cfg.Standalone was
+            // already persisted true by the FIRST run, so the project got stuck with the kept
+            // package forever unless the user hand-edited the csproj (Codex P2). Re-derive the
+            // packages every CURRENTLY-vendored component needs (cfg.Components now includes
+            // whatever the user just `add --vendor`ed) and strip any that are still referenced.
+            var stillNeeded = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "Lumeo" };
+            foreach (var key in cfg.Components?.Keys.Where(k => k != RuntimeRecordKey) ?? Enumerable.Empty<string>())
+                if (registry.Components.TryGetValue(key, out var ce) && !string.IsNullOrEmpty(ce.NugetPackage))
+                    stillNeeded.Add(ce.NugetPackage!);
+            var (removedNow, keptNow) = StripLumeoPackageReferences(stillNeeded);
+            if (removedNow.Count > 0)
+            {
+                Console.WriteLine(Ansi.Green("OK ") + "Stripped newly-vendorable PackageReference(s): " + string.Join(", ", removedNow.Distinct()));
+                if (keptNow.Count > 0)
+                    Console.WriteLine(Ansi.Yellow("  note: ") +
+                        $"still left in place — their components aren't vendored as source: {string.Join(", ", keptNow.Distinct())}.");
+            }
+            else
+            {
+                Console.WriteLine(Ansi.Yellow("Project is already standalone (NuGet-free). Nothing to eject."));
+            }
             return;
         }
-
-        var registry = await RegistryLoader.LoadAsync(local, cfg.Registry);
 
         var opts = new AddOptions(Component: null, Local: local, Yes: true, Force: true, SkipExisting: false,
             Overwrite: true, DryRun: false, All: false, Diff: false, View: false, Vendor: true);
