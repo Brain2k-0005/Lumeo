@@ -1,4 +1,5 @@
 @namespace Lumeo
+@implements IAsyncDisposable
 
 @{
     // Refresh the count at render start (not only in OnParametersSet) so the
@@ -319,6 +320,45 @@
         {
             StateHasChanged();
         }
+    }
+
+    // Suppress the browser default (page/panel scroll) for the roving-focus
+    // navigation keys HandleStepKeyDown consumes above. Without this, Home/End (and
+    // the arrow keys) also scroll a scrollable ancestor while the roving focus moves
+    // between step tabs — a long form with many steps is exactly where this bites
+    // (Codex P2). Registered once against the stable _tablistId; the tablist is
+    // always mounted (no open/close cycle like an overlay), so this fires only on
+    // the component's first render and stays registered for its whole lifetime.
+    private bool _pdRegistered;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        try
+        {
+            await Interop.RegisterPreventDefaultKeys(_tablistId, new[]
+            {
+                new Lumeo.Services.PreventDefaultKeyRule("ArrowDown"),
+                new Lumeo.Services.PreventDefaultKeyRule("ArrowUp"),
+                new Lumeo.Services.PreventDefaultKeyRule("ArrowLeft"),
+                new Lumeo.Services.PreventDefaultKeyRule("ArrowRight"),
+                new Lumeo.Services.PreventDefaultKeyRule("Home"),
+                new Lumeo.Services.PreventDefaultKeyRule("End"),
+            });
+            _pdRegistered = true;
+        }
+        catch (Microsoft.JSInterop.JSDisconnectedException) { }
+        catch (ObjectDisposedException) { }
+        catch (InvalidOperationException) { }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (!_pdRegistered) return;
+        try { await Interop.UnregisterPreventDefaultKeys(_tablistId); }
+        catch (Microsoft.JSInterop.JSDisconnectedException) { }
+        catch (ObjectDisposedException) { }
+        catch (InvalidOperationException) { }
     }
 
     protected override void OnParametersSet()

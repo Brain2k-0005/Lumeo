@@ -14,13 +14,27 @@ const componentPagesDir = join(repoRoot, 'docs', 'Lumeo.Docs', 'Pages', 'Compone
 
 const registry = JSON.parse(readFileSync(registryPath, 'utf-8'));
 
+// Case-INSENSITIVE page-file lookup, mirroring RegistryGen's Program.cs PageFileExists.
+// A component's slug->PascalCase derivation ("cta-section" -> "CtaSection") can differ in
+// casing from the actual page file ("CTASectionPage.razor" keeps the CTA acronym upper-case),
+// so a plain existsSync(exact name) silently passes on Windows (case-insensitive NTFS) but
+// fails on Linux CI (case-sensitive ext4) — dropping that component from the search index and
+// failing the "Registry is up to date" gate there, even though nothing about the component
+// actually changed. Build a lower-cased filename set per directory once and compare against it.
+function fileNamesLowerCased(dir) {
+    if (!existsSync(dir)) return new Set();
+    return new Set(readdirSync(dir).map(f => f.toLowerCase()));
+}
+const topPageNames = fileNamesLowerCased(componentPagesDir);
+const chartPageNames = fileNamesLowerCased(join(componentPagesDir, 'Charts'));
+
 // --- Components (filtered to slugs with a real docs page) ---
 const componentItems = Object.entries(registry.components)
     .filter(([slug]) => {
         // Accept if a top-level page exists or a Charts sub-page exists
-        const topPage = join(componentPagesDir, `${toPascalCase(slug)}Page.razor`);
-        const chartPage = join(componentPagesDir, 'Charts', `${toPascalCase(slug)}ChartPage.razor`);
-        return existsSync(topPage) || existsSync(chartPage);
+        const topPage = `${toPascalCase(slug)}Page.razor`.toLowerCase();
+        const chartPage = `${toPascalCase(slug)}ChartPage.razor`.toLowerCase();
+        return topPageNames.has(topPage) || chartPageNames.has(chartPage);
     })
     .map(([slug, c]) => ({
         id: `component:${slug}`,

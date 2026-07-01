@@ -465,11 +465,25 @@ export function positionFixed(contentId, referenceId, align, matchWidth, side, o
         // shifts replace the former transforms: translateX(-50%) -> -cw/2,
         // translateX(-100%) -> -cw, translateY(-50%) -> -ch/2,
         // translateY(-100%) -> -ch.
+        // "align" is a LOGICAL (writing-mode-relative) direction only on the HORIZONTAL
+        // axis — i.e. for side === 'top'/'bottom', where it picks the box's left/right
+        // edge. DirectionProvider makes start/end logical for the component tree, but
+        // this entry point had no direction input, so align="start" always resolved to
+        // the physical LEFT edge even under <DirectionProvider Direction="Rtl"> — where
+        // "start" should mean the trigger's RIGHT edge (Select/DropdownMenu pass "start"
+        // and landed flipped). The side === 'left'/'right' usage below (picking the
+        // box's top/bottom edge) is a BLOCK-direction concern that RTL does not flip, so
+        // it is deliberately left untouched.
+        const isRtl = getComputedStyle(reference).direction === 'rtl';
+        const horizontalAlign = isRtl
+            ? (align === 'center' ? 'center' : (align === 'end' ? 'start' : 'end'))
+            : align;
+
         let top, left;
         if (resolvedSide === 'top') {
             top = refRect.top - gap - ch;
-            if (align === 'center') left = refRect.left + refRect.width / 2 - cw / 2;
-            else if (align === 'end') left = refRect.right - cw;
+            if (horizontalAlign === 'center') left = refRect.left + refRect.width / 2 - cw / 2;
+            else if (horizontalAlign === 'end') left = refRect.right - cw;
             else left = refRect.left;
         } else if (resolvedSide === 'left') {
             left = refRect.left - gap - cw;
@@ -484,8 +498,8 @@ export function positionFixed(contentId, referenceId, align, matchWidth, side, o
         } else {
             // bottom (default)
             top = refRect.bottom + gap;
-            if (align === 'center') left = refRect.left + refRect.width / 2 - cw / 2;
-            else if (align === 'end') left = refRect.right - cw;
+            if (horizontalAlign === 'center') left = refRect.left + refRect.width / 2 - cw / 2;
+            else if (horizontalAlign === 'end') left = refRect.right - cw;
             else left = refRect.left;
         }
 
@@ -493,6 +507,43 @@ export function positionFixed(contentId, referenceId, align, matchWidth, side, o
         content.style.top = `${top}px`;
         content.style.left = `${left}px`;
         content.style.right = '';
+
+        // --- Containing-block compensation (transformed ancestor) -------------
+        // position:fixed resolves against the nearest transformed / filtered /
+        // backdrop-filtered ancestor (which becomes its containing block), NOT
+        // the viewport. When such an ancestor exists — e.g. this content is a
+        // SelectContent / DropdownMenuSubContent rendered inside a centered
+        // Dialog (which uses transform) — every top/left we write lands offset
+        // by the ancestor's origin, so the popover renders off its trigger. All
+        // the math in this function is in viewport space, so content.style.
+        // top/left always hold the INTENDED viewport coordinates; measuring the
+        // residual between intended and actual yields exactly the ancestor's
+        // origin offset, which we fold back. Applied here — BEFORE the flip/
+        // clamp overflow checks below — so those checks measure the box's TRUE
+        // on-screen position; measuring the uncompensated (ancestor-offset-
+        // inflated) position could make a box that actually fits on screen look
+        // like it overflows, triggering an unwarranted flip. Applied AGAIN at
+        // the end of this function (after the flip/clamp logic may have written
+        // fresh top/left values of its own, which need the same fold-back). A
+        // no-op (offset ~ 0) when no transformed ancestor exists, so it never
+        // affects the common page-level case. Compensating here instead of
+        // reparenting the node to <body> keeps Blazor's DOM ownership intact.
+        function compensateContainingBlock() {
+            void content.offsetHeight;
+            const intendedTop = parseFloat(content.style.top);
+            const intendedLeft = parseFloat(content.style.left);
+            const settled = content.getBoundingClientRect();
+            if (Number.isFinite(intendedTop)) {
+                const offY = settled.top - intendedTop;
+                if (Math.abs(offY) > 0.5) content.style.top = `${intendedTop - offY}px`;
+            }
+            if (Number.isFinite(intendedLeft)) {
+                const offX = settled.left - intendedLeft;
+                if (Math.abs(offX) > 0.5) content.style.left = `${intendedLeft - offX}px`;
+            }
+        }
+        compensateContainingBlock();
+
         void content.offsetHeight;
         const cr = content.getBoundingClientRect();
 
@@ -578,32 +629,12 @@ export function positionFixed(contentId, referenceId, align, matchWidth, side, o
             }
         }
 
-        // --- Containing-block compensation (transformed ancestor) -------------
-        // position:fixed resolves against the nearest transformed / filtered /
-        // backdrop-filtered ancestor (which becomes its containing block), NOT
-        // the viewport. When such an ancestor exists — e.g. this content is a
-        // SelectContent / DropdownMenuSubContent rendered inside a centered
-        // Dialog (which uses transform) — every top/left we wrote above lands
-        // offset by the ancestor's origin, so the popover renders off its
-        // trigger. All the math above is in viewport space, so content.style.
-        // top/left already hold the INTENDED viewport coordinates; measuring the
-        // residual between intended and actual yields exactly the ancestor's
-        // origin offset, which we fold back. This re-runs on every scroll/resize
-        // (update is the rAF handler), so it stays correct as the page moves —
-        // and is a no-op (offset ~ 0) when no transformed ancestor exists, so it
-        // never affects the common page-level case. Compensating here instead of
-        // reparenting the node to <body> keeps Blazor's DOM ownership intact.
-        const intendedTop = parseFloat(content.style.top);
-        const intendedLeft = parseFloat(content.style.left);
-        const settled = content.getBoundingClientRect();
-        if (Number.isFinite(intendedTop)) {
-            const offY = settled.top - intendedTop;
-            if (Math.abs(offY) > 0.5) content.style.top = `${intendedTop - offY}px`;
-        }
-        if (Number.isFinite(intendedLeft)) {
-            const offX = settled.left - intendedLeft;
-            if (Math.abs(offX) > 0.5) content.style.left = `${intendedLeft - offX}px`;
-        }
+        // Fold back the containing-block offset a second time: the flip/clamp
+        // logic above may have written fresh top/left values of its own (e.g. a
+        // vertical flip, or a viewport-edge clamp), and those are ALSO
+        // viewport-space intended values that need the same ancestor-origin
+        // compensation applied near the top of this function.
+        compensateContainingBlock();
 
         // Report the side the box ACTUALLY landed on. A collision flip above may have moved a preferred
         // Top box below its trigger (or vice-versa); compare final box-center vs reference-center so a
