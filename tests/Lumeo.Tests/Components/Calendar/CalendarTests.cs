@@ -193,7 +193,7 @@ public class CalendarTests : IAsyncLifetime
     // --- rc.20 booking-API additions: DateTooltip + DateBadge ---
 
     [Fact]
-    public void DateTooltip_Renders_Title_Attribute_On_Day_Buttons()
+    public void DateTooltip_Renders_The_Lumeo_Tooltip_Not_A_Native_Title()
     {
         var today = DateOnly.FromDateTime(DateTime.Today);
         var cut = _ctx.Render(builder =>
@@ -205,9 +205,14 @@ public class CalendarTests : IAsyncLifetime
             builder.CloseComponent();
         });
 
-        // The day matching today should have title="today-tooltip"; days without
-        // a tooltip should have no title or an empty one.
-        Assert.Contains("title=\"today-tooltip\"", cut.Markup);
+        // The hint is dogfooded through the Lumeo <Tooltip>, NOT the native title:
+        // no day button carries a title attribute, and the tooltipped day is wrapped
+        // in the tooltip root (relative + w-full) as an AsChild trigger.
+        Assert.DoesNotContain("title=\"today-tooltip\"", cut.Markup);
+        Assert.DoesNotContain(cut.FindAll("button"), b => b.HasAttribute("title"));
+        Assert.Contains(cut.FindAll("button"),
+            b => (b.ParentElement?.GetAttribute("class") ?? "").Contains("w-full")
+                 && (b.ParentElement?.GetAttribute("class") ?? "").Contains("relative"));
     }
 
     [Fact]
@@ -228,7 +233,7 @@ public class CalendarTests : IAsyncLifetime
         // The badge slot is wrapped in a span with absolute positioning so it
         // sits in the bottom-right of the day cell. Confirm content + wrapper.
         Assert.Contains("badge-marker", cut.Markup);
-        Assert.Contains("absolute -bottom-0.5 -right-0.5 pointer-events-none", cut.Markup);
+        Assert.Contains("absolute -bottom-0.5 -end-0.5 pointer-events-none", cut.Markup);
     }
 
     // --- AdditionalAttributes ---

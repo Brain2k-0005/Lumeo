@@ -95,11 +95,24 @@
     private DotNetObjectReference<Map>? _selfRef;
     private MapContext _context = null!;
     private readonly List<MapMarker> _markers = new();
+    // Stable-id -> marker lookup, rebuilt on every SyncMarkersAsync so an
+    // in-flight click/drag from JS routes to the marker JS actually drew,
+    // even after an async remove shifts the positional order of _markers.
+    private readonly Dictionary<string, MapMarker> _markersById = new();
     private readonly Dictionary<object, MapShape> _shapes = new();
     private readonly List<MapPopup> _standalonePopups = new();
     private bool _initialized;
+    // Live view echoed back from JS (user pan/zoom). NOT the parameter.
     private (double Lat, double Lon) _lastCenter;
     private int _lastZoom;
+    // Last *parameter* value the consumer actually supplied. We push setCenter to
+    // the live map only when THIS changes — never when the live view (_lastCenter,
+    // mutated by OnViewChanged) drifts from a re-pushed same-literal Center param.
+    // Without this, an unrelated parent re-render that re-passes the original Center
+    // overwrites the panned [Parameter] back to the literal, and the else-branch
+    // below sees Center != _lastCenter and snaps the user's pan back to the start.
+    private (double Lat, double Lon) _lastCenterParam;
+    private int _lastZoomParam;
     private string _lastMarkerJson = "[]";
     private string _lastShapeJson = "[]";
     private string _lastPopupJson = "[]";
@@ -112,6 +125,8 @@
         _context = new MapContext(this);
         _lastCenter = Center;
         _lastZoom = Zoom;
+        _lastCenterParam = Center;
+        _lastZoomParam = Zoom;
     }
 
     internal void RegisterMarker(MapMarker marker)
@@ -219,8 +234,14 @@
 
         if (!_initialized || _module is null) return;
 
-        if (Center != _lastCenter || Zoom != _lastZoom)
+        // Only push setCenter when the CONSUMER changed the Center/Zoom parameter —
+        // i.e. the incoming param differs from the last param we applied. Comparing
+        // against the live view (_lastCenter, mutated by OnViewChanged) would snap a
+        // user-panned map back to the original literal on every unrelated re-render.
+        if (Center != _lastCenterParam || Zoom != _lastZoomParam)
         {
+            _lastCenterParam = Center;
+            _lastZoomParam = Zoom;
             _lastCenter = Center;
             _lastZoom = Zoom;
             try
@@ -234,15 +255,21 @@
     private async Task SyncMarkersAsync()
     {
         if (_module is null || !_initialized) return;
-        var payload = _markers.Select((m, i) => new
+        // Rebuild the id->marker routing table to exactly match the set we are
+        // about to hand JS, so OnMarkerClick/OnMarkerDragEnd resolve by stable
+        // id rather than a positional index that shifts when a marker is removed.
+        _markersById.Clear();
+        foreach (var m in _markers) _markersById[m.MarkerId] = m;
+        var payload = _markers.Select(m => new
         {
-            id = i,
+            id = m.MarkerId,
             lat = m.Lat,
             lon = m.Lon,
             title = m.Title,
             iconUrl = m.IconUrl,
             variant = m.Variant,
             color = m.Color,
+            highlighted = m.Highlighted,
             label = m.Label,
             labelHoverOnly = m.LabelHoverOnly,
             iconHostId = m.HasIcon ? m.IconHostId : null,
@@ -346,34 +373,49 @@
     [JSInvokable]
     public async Task OnViewChanged(double lat, double lon, int zoom)
     {
+        // Track the live view separately from the parameter. Only write the
+        // [Parameter] when the consumer is controlling it (a *Changed callback is
+        // bound) — otherwise we'd store uncontrolled view state in the parameter and
+        // a parent re-render that re-passes the original literal would snap us back.
         var newCenter = (lat, lon);
-        if (newCenter != Center)
+        if (newCenter != _lastCenter)
         {
-            Center = newCenter;
             _lastCenter = newCenter;
-            if (CenterChanged.HasDelegate) await CenterChanged.InvokeAsync(newCenter);
+            if (CenterChanged.HasDelegate)
+            {
+                Center = newCenter;
+                // Keep the param-baseline in step so the parent's echo of this very
+                // value does not re-trigger a redundant setCenter push.
+                _lastCenterParam = newCenter;
+                await CenterChanged.InvokeAsync(newCenter);
+            }
         }
-        if (zoom != Zoom)
+        if (zoom != _lastZoom)
         {
-            Zoom = zoom;
             _lastZoom = zoom;
-            if (ZoomChanged.HasDelegate) await ZoomChanged.InvokeAsync(zoom);
+            if (ZoomChanged.HasDelegate)
+            {
+                Zoom = zoom;
+                _lastZoomParam = zoom;
+                await ZoomChanged.InvokeAsync(zoom);
+            }
         }
     }
 
     [JSInvokable]
-    public async Task OnMarkerClick(int markerId)
+    public async Task OnMarkerClick(string markerId)
     {
-        if (markerId < 0 || markerId >= _markers.Count) return;
-        var marker = _markers[markerId];
+        // Route by stable id: an in-flight click that arrives after the marker
+        // was removed simply finds no entry and is ignored, instead of indexing
+        // _markers positionally and firing the WRONG (reused-index) marker.
+        if (!_markersById.TryGetValue(markerId, out var marker)) return;
         if (marker.OnClick.HasDelegate) await marker.OnClick.InvokeAsync();
     }
 
     [JSInvokable]
-    public async Task OnMarkerDragEnd(int markerId, double lat, double lon)
+    public async Task OnMarkerDragEnd(string markerId, double lat, double lon)
     {
-        if (markerId < 0 || markerId >= _markers.Count) return;
-        var marker = _markers[markerId];
+        if (!_markersById.TryGetValue(markerId, out var marker)) return;
         if (marker.OnDragEnd.HasDelegate) await marker.OnDragEnd.InvokeAsync((lat, lon));
     }
 

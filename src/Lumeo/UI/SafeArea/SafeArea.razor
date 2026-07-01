@@ -1,6 +1,6 @@
 @namespace Lumeo
 
-<div class="@CssClass" style="@StyleValue" @attributes="AdditionalAttributes">
+<div class="@CssClass" style="@StyleValue" @attributes="SplatAttributes">
     @ChildContent
 </div>
 
@@ -13,7 +13,30 @@
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
-    private string CssClass => Cx.Merge("lumeo-safe-area", Class);
+    private string? CallerClass => AdditionalAttributes is not null
+        && AdditionalAttributes.TryGetValue("class", out var c) ? c as string : null;
+
+    private string? CallerStyle => AdditionalAttributes is not null
+        && AdditionalAttributes.TryGetValue("style", out var s) ? s as string : null;
+
+    private string CssClass => Cx.Merge("lumeo-safe-area", Class, CallerClass);
+
+    // Splat everything EXCEPT class/style, which are merged into the computed
+    // values above so a caller-supplied class/style is additive and can never
+    // wipe the base class or the safe-area insets.
+    private IReadOnlyDictionary<string, object>? SplatAttributes
+    {
+        get
+        {
+            if (AdditionalAttributes is null) return null;
+            if (!AdditionalAttributes.ContainsKey("class") && !AdditionalAttributes.ContainsKey("style"))
+                return AdditionalAttributes;
+            var filtered = new Dictionary<string, object>(AdditionalAttributes);
+            filtered.Remove("class");
+            filtered.Remove("style");
+            return filtered;
+        }
+    }
 
     private string StyleValue
     {
@@ -24,7 +47,10 @@
             if (Bottom) parts.Add("padding-bottom: env(safe-area-inset-bottom, 0)");
             if (Left)   parts.Add("padding-left: env(safe-area-inset-left, 0)");
             if (Right)  parts.Add("padding-right: env(safe-area-inset-right, 0)");
-            return string.Join("; ", parts);
+            var computed = string.Join("; ", parts);
+            var caller = CallerStyle;
+            if (string.IsNullOrWhiteSpace(caller)) return computed;
+            return string.IsNullOrEmpty(computed) ? caller : $"{computed}; {caller}";
         }
     }
 }

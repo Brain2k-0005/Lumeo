@@ -215,7 +215,7 @@ public class ToastTests : IAsyncLifetime
         var div = cut.Find("div");
         var cls = div.GetAttribute("class") ?? "";
         Assert.Contains("bottom-4", cls);
-        Assert.Contains("right-4", cls);
+        Assert.Contains("end-4", cls);
     }
 
     [Fact]
@@ -227,7 +227,7 @@ public class ToastTests : IAsyncLifetime
         var div = cut.Find("div");
         var cls = div.GetAttribute("class") ?? "";
         Assert.Contains("top-4", cls);
-        Assert.Contains("left-4", cls);
+        Assert.Contains("start-4", cls);
     }
 
     [Fact]
@@ -239,7 +239,7 @@ public class ToastTests : IAsyncLifetime
         var div = cut.Find("div");
         var cls = div.GetAttribute("class") ?? "";
         Assert.Contains("top-4", cls);
-        Assert.Contains("right-4", cls);
+        Assert.Contains("end-4", cls);
     }
 
     [Fact]
@@ -337,7 +337,7 @@ public class ToastTests : IAsyncLifetime
         Assert.Contains(divs, d =>
         {
             var cls = d.GetAttribute("class") ?? "";
-            return cls.Contains("bottom-4") && cls.Contains("right-4");
+            return cls.Contains("bottom-4") && cls.Contains("end-4");
         });
     }
 
@@ -351,7 +351,7 @@ public class ToastTests : IAsyncLifetime
         Assert.Contains(divs, d =>
         {
             var cls = d.GetAttribute("class") ?? "";
-            return cls.Contains("top-4") && cls.Contains("left-4");
+            return cls.Contains("top-4") && cls.Contains("start-4");
         });
     }
 }

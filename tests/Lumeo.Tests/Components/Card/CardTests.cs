@@ -42,6 +42,45 @@ public class CardTests : IAsyncLifetime
     }
 
     [Fact]
+    public void Card_Default_Has_No_Resting_Shadow()
+    {
+        // Default is bordered + filled but flat (no shadow) — Elevated owns the shadow.
+        var cls = _ctx.Render<L.Card>(p => p.AddChildContent("x")).Find("div").GetAttribute("class");
+        Assert.DoesNotContain("shadow", cls);
+    }
+
+    [Fact]
+    public void Card_Outline_Variant_Is_Bordered_But_Unfilled()
+    {
+        var cls = _ctx.Render<L.Card>(p => p
+            .Add(c => c.Variant, L.Card.CardVariant.Outline)
+            .AddChildContent("x")).Find("div").GetAttribute("class");
+        Assert.Contains("border-border", cls);
+        Assert.DoesNotContain("bg-card", cls); // transparent fill — the page bg shows through
+    }
+
+    [Fact]
+    public void Card_Elevated_Variant_Adds_Resting_Shadow_On_Filled_Surface()
+    {
+        var cls = _ctx.Render<L.Card>(p => p
+            .Add(c => c.Variant, L.Card.CardVariant.Elevated)
+            .AddChildContent("x")).Find("div").GetAttribute("class");
+        Assert.Contains("shadow-sm", cls);
+        Assert.Contains("bg-card", cls);
+        Assert.Contains("border-border", cls);
+    }
+
+    [Fact]
+    public void Card_Flat_Variant_Drops_Border_And_Fill()
+    {
+        var cls = _ctx.Render<L.Card>(p => p
+            .Add(c => c.Variant, L.Card.CardVariant.Flat)
+            .AddChildContent("x")).Find("div").GetAttribute("class");
+        Assert.DoesNotContain("border-border", cls);
+        Assert.DoesNotContain("bg-card", cls);
+    }
+
+    [Fact]
     public void Card_Renders_Child_Content()
     {
         var cut = _ctx.Render<L.Card>(p => p.AddChildContent("Hello Card"));

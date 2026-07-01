@@ -1,0 +1,83 @@
+@inherits Bunit.BunitContext
+@using Lumeo.Services
+@using Lumeo.Tests.Helpers
+@using Microsoft.AspNetCore.Components.Web
+@using Microsoft.Extensions.DependencyInjection
+
+@code {
+    // Battle-test #50 (state-on-data-change): the roving-focus trigger registry
+    // (_triggers) must stay in DOM/declaration order across a runtime change to
+    // an item's Value. The old code unregistered the stale value (RemoveAt) then
+    // re-registered the new value by APPENDING to the tail, so a Value change on
+    // a middle item scrambled the registry — corrupting ArrowUp/Down/Home/End.
+    //
+    // Repro: three items [a, b, c]. Re-render with the middle item's Value
+    // changed b -> b2. The registry must remain [a, b2, c] (DOM order), so
+    //   • End from the first trigger focuses item c (the last DOM trigger), and
+    //   • ArrowDown from the first trigger focuses b2 (the new middle trigger),
+    // NOT the scrambled order [a, c, b2] the appending re-register produced.
+
+    private readonly TrackingInteropService _interop = new();
+    private string _midValue = "b";
+
+    public AccordionTriggerRegistryOrderTests()
+    {
+        this.AddLumeoServices();
+        Services.AddSingleton<IComponentInteropService>(_interop);
+    }
+
+    private RenderFragment ThreeItems => @<Accordion Type="Accordion.AccordionType.Multiple">
+        <AccordionItem Value="a">
+            <AccordionTrigger>A</AccordionTrigger>
+            <AccordionContent>CA</AccordionContent>
+        </AccordionItem>
+        <AccordionItem Value="@_midValue">
+            <AccordionTrigger>B</AccordionTrigger>
+            <AccordionContent>CB</AccordionContent>
+        </AccordionItem>
+        <AccordionItem Value="c">
+            <AccordionTrigger>C</AccordionTrigger>
+            <AccordionContent>CC</AccordionContent>
+        </AccordionItem>
+    </Accordion>;
+
+    [Fact]
+    public void End_Focuses_Last_Dom_Trigger_After_Middle_Value_Change()
+    {
+        var cut = Render(ThreeItems);
+
+        // The middle item's Value changes at runtime (e.g. a keyed data refresh
+        // reassigns ids). Re-render the root so AccordionTrigger.OnParametersSet
+        // re-keys the registry slot in place rather than appending to the tail.
+        _midValue = "b2";
+        cut.Render();
+
+        var triggers = cut.FindAll("button");
+        var lastDomId = triggers[2].GetAttribute("id");   // item c, the last DOM trigger
+
+        triggers[0].KeyDown(new KeyboardEventArgs { Key = "End" });
+
+        // Without the fix the registry is [a, c, b2], so End lands on b2's id.
+        var lastFocused = _interop.FocusElementCalls.Last();
+        Assert.Equal(lastDomId, lastFocused);
+    }
+
+    [Fact]
+    public void ArrowDown_From_First_Focuses_Renamed_Middle_Trigger()
+    {
+        var cut = Render(ThreeItems);
+
+        _midValue = "b2";
+        cut.Render();
+
+        var triggers = cut.FindAll("button");
+        var middleDomId = triggers[1].GetAttribute("id");  // the renamed middle trigger
+
+        triggers[0].KeyDown(new KeyboardEventArgs { Key = "ArrowDown" });
+
+        // Registry order [a, b2, c] => ArrowDown from a focuses b2.
+        // The scrambled order [a, c, b2] would focus c instead.
+        var lastFocused = _interop.FocusElementCalls.Last();
+        Assert.Equal(middleDomId, lastFocused);
+    }
+}

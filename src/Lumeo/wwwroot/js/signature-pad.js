@@ -222,6 +222,10 @@ export function init(elementId, options, dotnetRef) {
 export function clear(elementId) {
     const pad = pads.get(elementId);
     if (!pad) return;
+    // Cancel any stroke-end debounce still pending from the user's last stroke,
+    // so a programmatic clear can't be followed by a stale OnStrokeEnded emit
+    // that reports the just-cleared (or about-to-be-replaced) content.
+    clearTimeout(pad.debounceTimer);
     clearCanvas(pad);
 }
 
@@ -265,6 +269,10 @@ export function setDisabled(elementId, disabled) {
 export function loadDataUrl(elementId, dataUrl) {
     const pad = pads.get(elementId);
     if (!pad) return;
+    // Cancel any stroke-end debounce still pending from the user's last stroke.
+    // Otherwise a programmatic load that lands inside the debounce window would
+    // be re-emitted via OnStrokeEnded as if the just-loaded image were drawn.
+    clearTimeout(pad.debounceTimer);
     clearCanvas(pad);
     if (dataUrl) {
         loadDataUrlInto(pad, dataUrl);

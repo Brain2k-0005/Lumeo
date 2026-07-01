@@ -275,11 +275,25 @@ public static class QueryBuilderSerialization
 
         if (rule.Operator == "between")
         {
-            var lo = Expression.Constant(ConvertValue(rule.Value, underlying), memberType);
-            var hi = Expression.Constant(ConvertValue(rule.Value2, underlying), memberType);
-            return Expression.AndAlso(
-                Expression.GreaterThanOrEqual(member, lo),
-                Expression.LessThanOrEqual(member, hi));
+            // A "between" with a missing bound is an open-ended range, not a comparison
+            // against default(T). Dropping the absent term avoids a silent `member <= 0`
+            // (or `member >= 0`) that would exclude almost everything. Both bounds missing
+            // is an unconstrained range — true for every row.
+            var hasLo = !IsBlank(rule.Value);
+            var hasHi = !IsBlank(rule.Value2);
+            Expression? lower = hasLo
+                ? Expression.GreaterThanOrEqual(member, Expression.Constant(ConvertValue(rule.Value, underlying), memberType))
+                : null;
+            Expression? upper = hasHi
+                ? Expression.LessThanOrEqual(member, Expression.Constant(ConvertValue(rule.Value2, underlying), memberType))
+                : null;
+            return (lower, upper) switch
+            {
+                ({ } lo, { } hi) => Expression.AndAlso(lo, hi),
+                ({ } lo, null) => lo,
+                (null, { } hi) => hi,
+                _ => Expression.Constant(true)
+            };
         }
 
         if (rule.Operator is "in" or "notIn")
@@ -311,6 +325,11 @@ public static class QueryBuilderSerialization
 
     private static Expression EnsureString(Expression member) =>
         member.Type == typeof(string) ? member : Expression.Call(member, nameof(object.ToString), Type.EmptyTypes);
+
+    /// <summary>A rule value is "blank" when it is null or an empty/whitespace string —
+    /// i.e. the editor was left untouched. Such a bound is dropped rather than coerced to default(T).</summary>
+    private static bool IsBlank(object? value) =>
+        value is null || (value is string s && string.IsNullOrWhiteSpace(s));
 
     private static object? ConvertValue(object? value, Type targetType)
     {

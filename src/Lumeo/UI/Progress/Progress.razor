@@ -63,7 +63,7 @@
     @if (ShowLabel)
     {
         <div class="flex items-center gap-2">
-            <div class="@CircularWrapperClass" role="progressbar" aria-valuenow="@(IsIndeterminate ? null : Value)" aria-valuemin="0" aria-valuemax="@Max" aria-busy="@IsIndeterminate.ToString().ToLowerInvariant()" @attributes="AdditionalAttributes">
+            <div class="@CircularWrapperClass" role="progressbar" aria-valuenow="@(Indeterminate ? null : (int?)AriaValue)" aria-valuemin="0" aria-valuemax="@Max" aria-busy="@Indeterminate.ToString().ToLowerInvariant()" @attributes="AdditionalAttributes">
                 <svg viewBox="0 0 36 36" class="@CircularSvgClass" style="@CircularSizeStyle">
                     <circle cx="18" cy="18" r="@CircularRadius" fill="none" stroke="currentColor" class="text-primary/20" stroke-width="@StrokeWidth" />
                     <circle cx="18" cy="18" r="@CircularRadius" fill="none" stroke="currentColor" class="@CircularStrokeColor"
@@ -87,7 +87,7 @@
     }
     else
     {
-        <div class="@CircularWrapperClass" role="progressbar" aria-valuenow="@(IsIndeterminate ? null : Value)" aria-valuemin="0" aria-valuemax="@Max" aria-busy="@IsIndeterminate.ToString().ToLowerInvariant()" @attributes="AdditionalAttributes">
+        <div class="@CircularWrapperClass" role="progressbar" aria-valuenow="@(Indeterminate ? null : (int?)AriaValue)" aria-valuemin="0" aria-valuemax="@Max" aria-busy="@Indeterminate.ToString().ToLowerInvariant()" @attributes="AdditionalAttributes">
             <svg viewBox="0 0 36 36" class="@CircularSvgClass" style="@CircularSizeStyle">
                 <circle cx="18" cy="18" r="@CircularRadius" fill="none" stroke="currentColor" class="text-primary/20" stroke-width="@StrokeWidth" />
                 <circle cx="18" cy="18" r="@CircularRadius" fill="none" stroke="currentColor" class="@CircularStrokeColor"
@@ -110,7 +110,7 @@ else
     @if (ShowLabel)
     {
         <div class="flex items-center gap-2">
-            <div class="@CssClass" role="progressbar" aria-valuenow="@(IsIndeterminate ? null : Value)" aria-valuemin="0" aria-valuemax="@Max" aria-busy="@IsIndeterminate.ToString().ToLowerInvariant()" @attributes="AdditionalAttributes">
+            <div class="@CssClass" role="progressbar" aria-valuenow="@(Indeterminate ? null : (int?)AriaValue)" aria-valuemin="0" aria-valuemax="@Max" aria-busy="@Indeterminate.ToString().ToLowerInvariant()" @attributes="AdditionalAttributes">
                 @if (IsIndeterminate)
                 {
                     <div class="@($"animate-progress-indeterminate rounded-[var(--radius)] {VariantClasses}")"></div>
@@ -125,7 +125,7 @@ else
     }
     else
     {
-        <div class="@CssClass" role="progressbar" aria-valuenow="@(IsIndeterminate ? null : Value)" aria-valuemin="0" aria-valuemax="@Max" aria-busy="@IsIndeterminate.ToString().ToLowerInvariant()" @attributes="AdditionalAttributes">
+        <div class="@CssClass" role="progressbar" aria-valuenow="@(Indeterminate ? null : (int?)AriaValue)" aria-valuemin="0" aria-valuemax="@Max" aria-busy="@Indeterminate.ToString().ToLowerInvariant()" @attributes="AdditionalAttributes">
             @if (IsIndeterminate)
             {
                 <div class="@($"animate-progress-indeterminate rounded-[var(--radius)] {VariantClasses}")"></div>
@@ -166,6 +166,16 @@ else
     // Clamp BOTH ends: a negative Value produced `width: -N%`, which browsers
     // drop as invalid — leaving the indicator div un-sized, i.e. a full bar.
     private int Percentage => Max > 0 ? Math.Clamp((int)((double)Value / Max * 100), 0, 100) : 0;
+
+    // Treat BOTH the legacy IsIndeterminate bool and the Animation enum's
+    // Indeterminate value as indeterminate for ARIA: the enum path renders a
+    // visually indeterminate sweep, so assistive tech must hear aria-busy=true
+    // and no aria-valuenow (not a stale determinate value).
+    private bool Indeterminate => IsIndeterminate || Animation == ProgressAnimation.Indeterminate;
+
+    // Announce the CLAMPED value so a screen reader matches the visually clamped
+    // bar — a raw out-of-range Value would otherwise contradict the rendered fill.
+    private int AriaValue => Max > 0 ? Math.Clamp(Value, 0, Max) : 0;
 
     // --- Linear progress ---
     private string SizeClass => Size switch

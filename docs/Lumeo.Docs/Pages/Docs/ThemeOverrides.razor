@@ -29,62 +29,52 @@
             matching <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">-foreground</code> for
             readable text on top.
         </Lumeo.Text>
-        <div class="overflow-x-auto rounded-lg border border-border/40">
-            <Table>
-                <TableHeader>
-                    <TableRow>
-                        <TableHead Class="w-56">Variable</TableHead>
-                        <TableHead>Used by</TableHead>
-                    </TableRow>
-                </TableHeader>
-                <TableBody>
-                    <TableRow>
-                        <TableCell Class="font-medium"><code class="text-xs font-mono">--color-background</code> / <code class="text-xs font-mono">--color-foreground</code></TableCell>
-                        <TableCell>Page surface and primary text.</TableCell>
-                    </TableRow>
-                    <TableRow>
-                        <TableCell Class="font-medium"><code class="text-xs font-mono">--color-card</code> / <code class="text-xs font-mono">--color-card-foreground</code></TableCell>
-                        <TableCell>Card, Sheet, Popover, Dropdown, Dialog body.</TableCell>
-                    </TableRow>
-                    <TableRow>
-                        <TableCell Class="font-medium"><code class="text-xs font-mono">--color-primary</code> / <code class="text-xs font-mono">--color-primary-foreground</code></TableCell>
-                        <TableCell>Primary button, active links, accent fills.</TableCell>
-                    </TableRow>
-                    <TableRow>
-                        <TableCell Class="font-medium"><code class="text-xs font-mono">--color-secondary</code> / <code class="text-xs font-mono">--color-secondary-foreground</code></TableCell>
-                        <TableCell>Secondary button, subtle chips.</TableCell>
-                    </TableRow>
-                    <TableRow>
-                        <TableCell Class="font-medium"><code class="text-xs font-mono">--color-muted</code> / <code class="text-xs font-mono">--color-muted-foreground</code></TableCell>
-                        <TableCell>Muted surfaces (skeletons, code blocks) and secondary text.</TableCell>
-                    </TableRow>
-                    <TableRow>
-                        <TableCell Class="font-medium"><code class="text-xs font-mono">--color-accent</code> / <code class="text-xs font-mono">--color-accent-foreground</code></TableCell>
-                        <TableCell>Hover backgrounds for menu items, navigation links.</TableCell>
-                    </TableRow>
-                    <TableRow>
-                        <TableCell Class="font-medium"><code class="text-xs font-mono">--color-destructive</code> / <code class="text-xs font-mono">--color-destructive-foreground</code></TableCell>
-                        <TableCell>Destructive buttons, invalid form rings, error alerts.</TableCell>
-                    </TableRow>
-                    <TableRow>
-                        <TableCell Class="font-medium"><code class="text-xs font-mono">--color-border</code></TableCell>
-                        <TableCell>Default border for inputs, cards, dividers.</TableCell>
-                    </TableRow>
-                    <TableRow>
-                        <TableCell Class="font-medium"><code class="text-xs font-mono">--color-input</code></TableCell>
-                        <TableCell>Form input borders.</TableCell>
-                    </TableRow>
-                    <TableRow>
-                        <TableCell Class="font-medium"><code class="text-xs font-mono">--color-ring</code></TableCell>
-                        <TableCell>Focus-visible ring color.</TableCell>
-                    </TableRow>
-                    <TableRow>
-                        <TableCell Class="font-medium"><code class="text-xs font-mono">--radius</code></TableCell>
-                        <TableCell>Base border-radius. Components derive <code class="text-xs font-mono">--radius-sm</code> / <code class="text-xs font-mono">--radius-xl</code> from it.</TableCell>
-                    </TableRow>
-                </TableBody>
-            </Table>
-        </div>
+        @* Live token reference: every swatch is filled from the actual variable, so it
+           tracks the current theme (and dark mode). Pairs render their -foreground on top
+           of the background as an "Aa" chip so you can see the contrast. *@
+        <Stack Gap="6">
+            @foreach (var group in _tokenGroups)
+            {
+                <Stack Gap="3">
+                    <p class="text-xs font-semibold uppercase tracking-wide text-muted-foreground">@group.Title</p>
+                    <div class="grid gap-2 sm:grid-cols-2">
+                        @foreach (var t in group.Tokens)
+                        {
+                            <div class="flex items-center gap-3 rounded-lg border border-border/40 bg-card p-3">
+                                @if (t.Kind == TokenKind.Pair)
+                                {
+                                    <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-md border border-border/40 text-sm font-semibold"
+                                         style="background: var(@(t.Var)); color: var(@(t.Fg));">Aa</div>
+                                }
+                                else if (t.Kind == TokenKind.Line)
+                                {
+                                    <div class="h-11 w-11 shrink-0 rounded-md bg-background" style="border: 2px solid var(@(t.Var));"></div>
+                                }
+                                else if (t.Kind == TokenKind.Ring)
+                                {
+                                    <div class="h-11 w-11 shrink-0 rounded-md border border-border/40 bg-background" style="box-shadow: 0 0 0 2px var(@(t.Var));"></div>
+                                }
+                                else
+                                {
+                                    <div class="h-11 w-11 shrink-0 border border-primary/30 bg-primary/15" style="border-radius: var(@(t.Var));"></div>
+                                }
+                                <div class="min-w-0">
+                                    <div class="flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
+                                        <code class="text-xs font-mono text-foreground">@t.Var</code>
+                                        @if (t.Fg is not null)
+                                        {
+                                            <span class="text-muted-foreground/40">·</span>
+                                            <code class="text-xs font-mono text-muted-foreground">@t.Fg</code>
+                                        }
+                                    </div>
+                                    <p class="mt-0.5 text-xs leading-snug text-muted-foreground">@t.Desc</p>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                </Stack>
+            }
+        </Stack>
     </Stack>
 
     <Separator Class="my-4" />
@@ -322,4 +312,38 @@
 
 <!-- avoid: raw hex breaks in dark mode -->
 <Button Class=""bg-[#1e40af] text-white"">Don't do this</Button>";
+
+    private enum TokenKind { Pair, Line, Ring, Radius }
+    private sealed record Token(string Var, string? Fg, string Desc, TokenKind Kind);
+    private sealed record TokenGroup(string Title, Token[] Tokens);
+
+    private static readonly TokenGroup[] _tokenGroups =
+    [
+        new("Surfaces & text",
+        [
+            new("--color-background", "--color-foreground", "Page surface and primary text.", TokenKind.Pair),
+            new("--color-card", "--color-card-foreground", "Card, Sheet, Popover, Dropdown, Dialog body.", TokenKind.Pair),
+            new("--color-muted", "--color-muted-foreground", "Muted surfaces (skeletons, code blocks) and secondary text.", TokenKind.Pair),
+        ]),
+        new("Brand & accent",
+        [
+            new("--color-primary", "--color-primary-foreground", "Primary button, active links, accent fills.", TokenKind.Pair),
+            new("--color-secondary", "--color-secondary-foreground", "Secondary button, subtle chips.", TokenKind.Pair),
+            new("--color-accent", "--color-accent-foreground", "Hover backgrounds for menu items and navigation links.", TokenKind.Pair),
+        ]),
+        new("Feedback",
+        [
+            new("--color-destructive", "--color-destructive-foreground", "Destructive buttons, invalid form rings, error alerts.", TokenKind.Pair),
+        ]),
+        new("Lines & focus",
+        [
+            new("--color-border", null, "Default border for inputs, cards, dividers.", TokenKind.Line),
+            new("--color-input", null, "Form input borders.", TokenKind.Line),
+            new("--color-ring", null, "Focus-visible ring color.", TokenKind.Ring),
+        ]),
+        new("Radius",
+        [
+            new("--radius", null, "Base border-radius. Components derive --radius-sm … --radius-xl from it.", TokenKind.Radius),
+        ]),
+    ];
 }

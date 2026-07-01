@@ -69,6 +69,37 @@
         </Container>
     </ComponentDemo>
 
+    <ComponentDemo Title="Icon reveal" Code="@_iconRevealCode">
+        <Container MaxWidth="md" Center="false">
+            @* Compact icon bar: inactive tabs are icon-only; the active tab smoothly
+               animates its label open next to the icon. Great for space-tight tab rows. *@
+            <Tabs ActiveValue="members" IconReveal Variant="Tabs.TabsVariant.Card">
+                <TabsList>
+                    <TabsTrigger Value="members">
+                        <IconContent><Blazicon Svg="Lucide.Users" class="h-4 w-4" /></IconContent>
+                        <ChildContent>Members</ChildContent>
+                    </TabsTrigger>
+                    <TabsTrigger Value="credentials">
+                        <IconContent><Blazicon Svg="Lucide.Award" class="h-4 w-4" /></IconContent>
+                        <ChildContent>Shared Credentials</ChildContent>
+                    </TabsTrigger>
+                    <TabsTrigger Value="requirements">
+                        <IconContent><Blazicon Svg="Lucide.ShieldCheck" class="h-4 w-4" /></IconContent>
+                        <ChildContent>Requirements</ChildContent>
+                    </TabsTrigger>
+                    <TabsTrigger Value="settings">
+                        <IconContent><Blazicon Svg="Lucide.Settings" class="h-4 w-4" /></IconContent>
+                        <ChildContent>Settings</ChildContent>
+                    </TabsTrigger>
+                </TabsList>
+                <TabsContent Value="members"><Lumeo.Text Size="sm" Color="muted" Class="p-4 block">Team members and their roles.</Lumeo.Text></TabsContent>
+                <TabsContent Value="credentials"><Lumeo.Text Size="sm" Color="muted" Class="p-4 block">Credentials shared with this team.</Lumeo.Text></TabsContent>
+                <TabsContent Value="requirements"><Lumeo.Text Size="sm" Color="muted" Class="p-4 block">Compliance requirements.</Lumeo.Text></TabsContent>
+                <TabsContent Value="settings"><Lumeo.Text Size="sm" Color="muted" Class="p-4 block">Team settings.</Lumeo.Text></TabsContent>
+            </Tabs>
+        </Container>
+    </ComponentDemo>
+
     <ComponentDemo Title="Notifications" Code="@_notifCode">
         <Container MaxWidth="md" Center="false">
             <Tabs ActiveValue="all">
@@ -266,6 +297,42 @@
                 <TabsContent Value="settings"><Lumeo.Text Size="sm" Color="muted" Class="p-4">Active (default): panel unmounts on switch. Lazy: stays mounted. Eager: all panels render up-front.</Lumeo.Text></TabsContent>
             </Tabs>
         </Stack>
+    </ComponentDemo>
+
+    <ComponentDemo Title="Closable Tabs" Code="@_closableCode">
+        <Container MaxWidth="md" Center="false">
+            <Tabs @bind-ActiveValue="_closableActive">
+                <TabsList>
+                    @foreach (var t in _closableTabs)
+                    {
+                        var tab = t;
+                        <TabsTrigger Value="@tab" IsClosable="true" OnClose="@(() => CloseTab(tab))">@tab</TabsTrigger>
+                    }
+                </TabsList>
+                @foreach (var t in _closableTabs)
+                {
+                    <TabsContent Value="@t"><Lumeo.Text Size="sm" Color="muted" Class="p-4 block">Content for @t. Click the × to close this tab.</Lumeo.Text></TabsContent>
+                }
+            </Tabs>
+        </Container>
+    </ComponentDemo>
+
+    <ComponentDemo Title="Trailing Content (badge / disabled)" Code="@_trailingCode">
+        <Container MaxWidth="md" Center="false">
+            <Tabs ActiveValue="inbox">
+                <TabsList>
+                    <TabsTrigger Value="inbox">
+                        <ChildContent>Inbox</ChildContent>
+                        <TrailingContent><Badge Variant="Badge.BadgeVariant.Secondary">12</Badge></TrailingContent>
+                    </TabsTrigger>
+                    <TabsTrigger Value="sent">Sent</TabsTrigger>
+                    <TabsTrigger Value="spam" Disabled="true">Spam</TabsTrigger>
+                </TabsList>
+                <TabsContent Value="inbox"><Lumeo.Text Size="sm" Color="muted" Class="p-4 block">12 unread messages.</Lumeo.Text></TabsContent>
+                <TabsContent Value="sent"><Lumeo.Text Size="sm" Color="muted" Class="p-4 block">Your sent messages.</Lumeo.Text></TabsContent>
+                <TabsContent Value="spam"><Lumeo.Text Size="sm" Color="muted" Class="p-4 block">This tab is disabled.</Lumeo.Text></TabsContent>
+            </Tabs>
+        </Container>
     </ComponentDemo>
 
     <ComponentDemo Title="Swipe (Mobile)" Code="@_swipeCode">
@@ -517,6 +584,17 @@
     private string _rmTab = "form";
     private string _swipeTab = "alpha";
 
+    private string _closableActive = "Tab 1";
+    private List<string> _closableTabs = new() { "Tab 1", "Tab 2", "Tab 3" };
+
+    private void CloseTab(string tab)
+    {
+        var idx = _closableTabs.IndexOf(tab);
+        _closableTabs.Remove(tab);
+        if (_closableActive == tab && _closableTabs.Count > 0)
+            _closableActive = _closableTabs[Math.Min(idx, _closableTabs.Count - 1)];
+    }
+
     private record ReorderTabModel(string Id, string Label, string Body);
     private string _reorderActive = "overview";
     private List<ReorderTabModel> _reorderTabs = new()
@@ -739,6 +817,22 @@
         new("Report ready to download.", "2 days ago", false),
     };
 
+    private string _iconRevealCode = @"<Tabs ActiveValue=""members"" IconReveal Variant=""Tabs.TabsVariant.Card"">
+    <TabsList>
+        <TabsTrigger Value=""members"">
+            <IconContent><Blazicon Svg=""Lucide.Users"" class=""h-4 w-4"" /></IconContent>
+            Members
+        </TabsTrigger>
+        <TabsTrigger Value=""credentials"">
+            <IconContent><Blazicon Svg=""Lucide.Award"" class=""h-4 w-4"" /></IconContent>
+            Shared Credentials
+        </TabsTrigger>
+        @* …more icon tabs… *@
+    </TabsList>
+    <TabsContent Value=""members"">Team members and their roles.</TabsContent>
+    <TabsContent Value=""credentials"">Credentials shared with this team.</TabsContent>
+</Tabs>";
+
     private string _notifCode = @"<Tabs ActiveValue=""all"">
     <TabsList>
         <TabsTrigger Value=""all"">All</TabsTrigger>
@@ -829,6 +923,39 @@
     <TabsContent Value=""reports"">
         <Lumeo.Text Size=""sm"" Color=""muted"" Class=""p-4"">Reports content goes here.</Lumeo.Text>
     </TabsContent>
+</Tabs>";
+
+    private string _closableCode = @"<Tabs @bind-ActiveValue=""_active"">
+    <TabsList>
+        @foreach (var tab in _tabs)
+        {
+            <TabsTrigger Value=""@tab"" IsClosable=""true"" OnClose=""@(() => CloseTab(tab))"">@tab</TabsTrigger>
+        }
+    </TabsList>
+    @foreach (var tab in _tabs)
+    {
+        <TabsContent Value=""@tab"">Content for @tab.</TabsContent>
+    }
+</Tabs>
+
+@code {
+    string _active = ""Tab 1"";
+    List<string> _tabs = new() { ""Tab 1"", ""Tab 2"", ""Tab 3"" };
+    void CloseTab(string tab) => _tabs.Remove(tab);
+}";
+
+    private string _trailingCode = @"<Tabs ActiveValue=""inbox"">
+    <TabsList>
+        <TabsTrigger Value=""inbox"">
+            <ChildContent>Inbox</ChildContent>
+            <TrailingContent><Badge Variant=""Badge.BadgeVariant.Secondary"">12</Badge></TrailingContent>
+        </TabsTrigger>
+        <TabsTrigger Value=""sent"">Sent</TabsTrigger>
+        <TabsTrigger Value=""spam"" Disabled=""true"">Spam</TabsTrigger>
+    </TabsList>
+    <TabsContent Value=""inbox"">12 unread messages.</TabsContent>
+    <TabsContent Value=""sent"">Your sent messages.</TabsContent>
+    <TabsContent Value=""spam"">This tab is disabled.</TabsContent>
 </Tabs>";
 
     private string _swipeCode = @"@* SwipeEnabled=""true"" — horizontal drag (>50 px) on a panel switches tabs.

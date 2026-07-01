@@ -1,4 +1,5 @@
 @namespace Lumeo
+@implements IAsyncDisposable
 @inject Lumeo.Services.Localization.ILumeoLocalizer L
 @inject IComponentInteropService Interop
 
@@ -6,14 +7,21 @@
     @* ── Toolbar ─────────────────────────────────────────────────────────── *@
     <div class="flex items-center gap-2 px-3 py-2 border-b border-border/40 bg-card shrink-0">
         @* Up button *@
-        <button type="button"
-                class="@UpButtonClass"
-                @onclick="NavigateUp"
-                disabled="@(_pathStack.Count == 0)"
-                title="@L["FileManager.UpOneLevel"]"
-                aria-label="@L["FileManager.NavigateUp"]">
-            <Blazicon Svg="Lucide.ArrowUp" class="h-4 w-4" />
-        </button>
+        <Tooltip>
+            <TooltipTrigger AsChild>
+                <ChildContentSlot Context="slot">
+                    <button type="button"
+                            class="@UpButtonClass"
+                            @onclick="NavigateUp"
+                            disabled="@(_pathStack.Count == 0)"
+                            aria-label="@L["FileManager.NavigateUp"]"
+                            @attributes="slot.Attributes">
+                        <Blazicon Svg="Lucide.ArrowUp" class="h-4 w-4" />
+                    </button>
+                </ChildContentSlot>
+            </TooltipTrigger>
+            <TooltipContent>@L["FileManager.UpOneLevel"]</TooltipContent>
+        </Tooltip>
 
         @* Breadcrumb path *@
         <nav aria-label="@L["FileManager.Path"]" class="flex-1 min-w-0">
@@ -57,42 +65,70 @@
         <div class="flex items-center gap-1 shrink-0">
             @if (OnNewFolder.HasDelegate)
             {
-                <button type="button"
-                        class="@ToolbarButtonClass"
-                        @onclick="HandleNewFolder"
-                        title="@L["FileManager.NewFolder"]"
-                        aria-label="@L["FileManager.NewFolder"]">
-                    <Blazicon Svg="Lucide.FolderPlus" class="h-4 w-4" />
-                </button>
+                <Tooltip>
+                    <TooltipTrigger AsChild>
+                        <ChildContentSlot Context="slot">
+                            <button type="button"
+                                    class="@ToolbarButtonClass"
+                                    @onclick="HandleNewFolder"
+                                    aria-label="@L["FileManager.NewFolder"]"
+                                    @attributes="slot.Attributes">
+                                <Blazicon Svg="Lucide.FolderPlus" class="h-4 w-4" />
+                            </button>
+                        </ChildContentSlot>
+                    </TooltipTrigger>
+                    <TooltipContent>@L["FileManager.NewFolder"]</TooltipContent>
+                </Tooltip>
             }
-            @if (OnDelete.HasDelegate && SelectedNode is not null)
+            @if (OnDelete.HasDelegate && _selectedNode is not null)
             {
-                <button type="button"
-                        class="@ToolbarButtonClass"
-                        @onclick="HandleDeleteSelected"
-                        title="@L["FileManager.DeleteSelected"]"
-                        aria-label="@L["FileManager.DeleteSelected"]">
-                    <Blazicon Svg="Lucide.Trash2" class="h-4 w-4" />
-                </button>
+                <Tooltip>
+                    <TooltipTrigger AsChild>
+                        <ChildContentSlot Context="slot">
+                            <button type="button"
+                                    class="@ToolbarButtonClass"
+                                    @onclick="HandleDeleteSelected"
+                                    aria-label="@L["FileManager.DeleteSelected"]"
+                                    @attributes="slot.Attributes">
+                                <Blazicon Svg="Lucide.Trash2" class="h-4 w-4" />
+                            </button>
+                        </ChildContentSlot>
+                    </TooltipTrigger>
+                    <TooltipContent>@L["FileManager.DeleteSelected"]</TooltipContent>
+                </Tooltip>
             }
             <div class="w-px h-4 bg-border/60 mx-0.5"></div>
             @* View mode toggle *@
-            <button type="button"
-                    class="@(ViewMode == FileManagerViewMode.List ? ToolbarButtonActiveClass : ToolbarButtonClass)"
-                    @onclick="() => SetViewMode(FileManagerViewMode.List)"
-                    title="@L["FileManager.ListView"]"
-                    aria-label="@L["FileManager.SwitchListView"]"
-                    aria-pressed="@(ViewMode == FileManagerViewMode.List)">
-                <Blazicon Svg="Lucide.List" class="h-4 w-4" />
-            </button>
-            <button type="button"
-                    class="@(ViewMode == FileManagerViewMode.Grid ? ToolbarButtonActiveClass : ToolbarButtonClass)"
-                    @onclick="() => SetViewMode(FileManagerViewMode.Grid)"
-                    title="@L["FileManager.GridView"]"
-                    aria-label="@L["FileManager.SwitchGridView"]"
-                    aria-pressed="@(ViewMode == FileManagerViewMode.Grid)">
-                <Blazicon Svg="Lucide.LayoutGrid" class="h-4 w-4" />
-            </button>
+            <Tooltip>
+                <TooltipTrigger AsChild>
+                    <ChildContentSlot Context="slot">
+                        <button type="button"
+                                class="@(_viewMode == FileManagerViewMode.List ? ToolbarButtonActiveClass : ToolbarButtonClass)"
+                                @onclick="() => SetViewMode(FileManagerViewMode.List)"
+                                aria-label="@L["FileManager.SwitchListView"]"
+                                aria-pressed="@(_viewMode == FileManagerViewMode.List)"
+                                @attributes="slot.Attributes">
+                            <Blazicon Svg="Lucide.List" class="h-4 w-4" />
+                        </button>
+                    </ChildContentSlot>
+                </TooltipTrigger>
+                <TooltipContent>@L["FileManager.ListView"]</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+                <TooltipTrigger AsChild>
+                    <ChildContentSlot Context="slot">
+                        <button type="button"
+                                class="@(_viewMode == FileManagerViewMode.Grid ? ToolbarButtonActiveClass : ToolbarButtonClass)"
+                                @onclick="() => SetViewMode(FileManagerViewMode.Grid)"
+                                aria-label="@L["FileManager.SwitchGridView"]"
+                                aria-pressed="@(_viewMode == FileManagerViewMode.Grid)"
+                                @attributes="slot.Attributes">
+                            <Blazicon Svg="Lucide.LayoutGrid" class="h-4 w-4" />
+                        </button>
+                    </ChildContentSlot>
+                </TooltipTrigger>
+                <TooltipContent>@L["FileManager.GridView"]</TooltipContent>
+            </Tooltip>
         </div>
     </div>
 
@@ -100,7 +136,7 @@
     <div class="flex flex-1 min-h-0 overflow-hidden">
 
         @* ── Left: folder tree ──────────────────────────────────────────── *@
-        <div class="w-52 shrink-0 border-r border-border/40 overflow-y-auto bg-card p-2" role="tree" aria-label="@L["FileManager.FolderTree"]">
+        <div class="w-52 shrink-0 border-e border-border/40 overflow-y-auto bg-card p-2" role="tree" aria-label="@L["FileManager.FolderTree"]">
             @foreach (var node in Root ?? [])
             {
                 @RenderTreeNode(node, 0)
@@ -108,15 +144,21 @@
         </div>
 
         @* ── Right: file list ───────────────────────────────────────────── *@
-        <div class="flex-1 overflow-auto bg-background p-2">
+        <div id="@_fileListId" class="flex-1 overflow-auto bg-background p-2">
             @{
                 var items = GetCurrentFolderContents();
+                _fileItemCount = items.Count;
+                // Keep the roving active index inside the rendered range so exactly
+                // one row/tile stays in the tab sequence even after the folder's
+                // contents shrink (otherwise no item would carry tabindex=0 and the
+                // list would silently drop out of the tab order).
+                if (_activeItemIndex >= _fileItemCount) _activeItemIndex = Math.Max(0, _fileItemCount - 1);
             }
 
             @if (_loadingFolder)
             {
                 <div class="flex items-center justify-center h-32 text-muted-foreground text-sm">
-                    <Blazicon Svg="Lucide.Loader" class="h-5 w-5 animate-spin mr-2" />
+                    <Blazicon Svg="Lucide.Loader" class="h-5 w-5 animate-spin me-2" />
                     @L["FileManager.Loading"]
                 </div>
             }
@@ -128,7 +170,7 @@
                     <p class="text-xs text-muted-foreground mt-1">@L["FileManager.EmptyState"]</p>
                 </div>
             }
-            else if (ViewMode == FileManagerViewMode.List)
+            else if (_viewMode == FileManagerViewMode.List)
             {
                 @RenderListView(items)
             }
@@ -181,21 +223,80 @@
     // The Root reference seen on the previous parameter set, used to detect a
     // tree swap so cached stack nodes from the old tree get discarded.
     private IReadOnlyList<FileSystemNode>? _lastRoot;
-    private bool _loadingFolder;
+    // Per-node lazy-load tracking. A single shared bool would let two concurrent
+    // loads (e.g. a tree-pane ToggleTreeFolder and a right-pane NavigateToFolder)
+    // interfere: the faster request's finally would clear the flag while the
+    // slower one is still running, so the right-pane spinner flickers off early or
+    // sticks against the wrong folder (#130). Tracking the in-flight node ids lets
+    // each request own only its own entry, and the right-pane spinner is gated on
+    // whether the CURRENT folder specifically is loading.
+    private readonly HashSet<string> _loadingNodeIds = [];
+
+    // The right-pane spinner shows only while the folder whose contents are
+    // displayed (the deepest stack node) is itself loading — not while some other
+    // folder loads concurrently in the tree pane.
+    private bool _loadingFolder => _pathStack.Count > 0 && _loadingNodeIds.Contains(_pathStack[^1].Id);
+
+    // ── View-mode / selection backing state (controlled + uncontrolled) ───────
+    // ViewMode and SelectedNode can be used controlled (ViewModeChanged /
+    // SelectedNodeChanged bound) or uncontrolled. Storing the live value in the
+    // [Parameter] alone would let any unrelated parent re-render re-push the
+    // parameter's default and wipe the user's choice. So we keep a private
+    // backing field as the source of truth and only adopt the parameter when it
+    // ACTUALLY changes (tracked by a separate param snapshot, mirroring the
+    // _lastRoot pattern above).
+    private FileManagerViewMode _viewMode = FileManagerViewMode.List;
+    private FileManagerViewMode _lastViewModeParam = FileManagerViewMode.List;
+    private bool _viewModeParamInit;
+    // CONTROLLED discriminator: the last value WE pushed up via ViewModeChanged
+    // (also re-synced whenever we adopt an authoritative ViewMode). A controlled
+    // parent re-render that echoes back this exact value is safe to ignore (keep
+    // in-flight state); any other value is an authoritative assertion
+    // (normalization / veto / reset) and must win. Mirrors Switch.razor's
+    // _lastPushed pattern.
+    private FileManagerViewMode _lastPushedViewMode = FileManagerViewMode.List;
+    private FileSystemNode? _selectedNode;
+    private FileSystemNode? _lastSelectedParam;
+    private bool _selectedParamInit;
+    // CONTROLLED discriminator for SelectedNode, mirroring _lastPushedViewMode above.
+    private FileSystemNode? _lastPushedSelectedNode;
     // Which nodes currently have their children expanded in the tree pane
     private readonly HashSet<string> _expandedTreeNodes = [];
     // Inline-rename state
     private FileSystemNode? _renamingNode;
     private string _renameValue = "";
+    private readonly string _renameInputId = LumeoIds.New("fm-rename");
+    // Set when a rename begins so OnAfterRender moves focus into the inline input
+    // — otherwise keyboard users start a rename with no focused field.
+    private bool _shouldFocusRenameInput;
     // Context menu state
     private FileSystemNode? _contextMenuNode;
     private bool _contextMenuOpen;
     private double _contextMenuX;
     private double _contextMenuY;
     private readonly string _contextMenuId = LumeoIds.New("fm-ctx");
-    // Set when the context menu opens so OnAfterRender moves focus into it
-    // (so keyboard users land on the menu and Escape closes it).
-    private bool _shouldFocusContextMenu;
+    // Tracks whether the role=menu's focus trap is currently engaged so the
+    // OnAfterRender hop only sets it up once per open and tears it down on close.
+    // The trap (SetupFocusTrap) also SAVES the trigger element and RESTORES focus
+    // to it on RemoveFocusTrap (#126: focus restore + Tab trapping), and lands
+    // focus on the first menuitem so Arrow/Home/End nav works (#127).
+    private bool _contextMenuTrapped;
+    // Roving index across the open menu's menuitems, mirroring MenubarContent.
+    private int _contextMenuFocusIndex = -1;
+
+    // ── File list / grid roving-tabindex (a11y #128/#129) ─────────────────────
+    // The file rows (list) and tiles (grid) form a single composite widget. Only
+    // the active item carries tabindex=0 (the rest tabindex=-1) so the whole list
+    // is a single tab stop; Arrow/Home/End move the active item and DOM focus.
+    // A stable container id lets us register a native key-selective preventDefault
+    // (Space/Enter/Arrows/Home/End would otherwise scroll the page — #129) and
+    // focus the active item by id after an arrow move.
+    private readonly string _fileListId = LumeoIds.New("fm-list");
+    private int _activeItemIndex;
+    private int _fileItemCount;
+    // Whether the file-list scroll-suppression keys are registered with JS.
+    private bool _fileListPdRegistered;
+    private string FileItemId(int index) => $"{_fileListId}-item-{index}";
 
     // ──────────────────────────────────────────────────────────────────────────
     // CSS helpers
@@ -213,6 +314,76 @@
 
     protected override async Task OnParametersSetAsync()
     {
+        // Adopt ViewMode / SelectedNode from the parameter only when the consumer
+        // actually changed the supplied value (or on first set), so an unrelated
+        // parent re-render that re-pushes the same/default parameter does NOT
+        // clobber a choice the user made via the toolbar / a click. CONTROLLED
+        // consumers (the *Changed delegate is bound) are reconciled against
+        // _lastPushed* — the last value WE pushed via the callback — so a parent
+        // VETO (re-render with the value unchanged from before the interaction)
+        // is correctly detected and rolled back, even though it looks identical
+        // to "no external change" from the last-incoming-param's point of view.
+        if (!_viewModeParamInit)
+        {
+            _viewMode = ViewMode;
+            _lastPushedViewMode = ViewMode;
+            _viewModeParamInit = true;
+        }
+        else if (ViewModeChanged.HasDelegate)
+        {
+            // CONTROLLED: the parent owns the value. Echo of our own push
+            // (ViewMode == _lastPushedViewMode) → keep in-flight backing state.
+            // Anything else (veto, normalization, reset) → adopt the parent's
+            // assertion.
+            if (ViewMode != _lastPushedViewMode)
+            {
+                _viewMode = ViewMode;
+                _lastPushedViewMode = ViewMode;
+            }
+        }
+        else if (ViewMode != _lastViewModeParam)
+        {
+            // UNCONTROLLED: component owns the live value. Adopt the parameter
+            // only when the parent genuinely changes it; a stale re-render that
+            // re-supplies the same literal must not clobber the user's choice.
+            _viewMode = ViewMode;
+            _lastPushedViewMode = ViewMode;
+        }
+        _lastViewModeParam = ViewMode;
+
+        if (!_selectedParamInit)
+        {
+            _selectedNode = SelectedNode;
+            _lastPushedSelectedNode = SelectedNode;
+            _selectedParamInit = true;
+        }
+        else if (SelectedNodeChanged.HasDelegate)
+        {
+            // CONTROLLED: mirrors the ViewMode discriminator above.
+            //
+            // ALSO a no-op when SelectedNode is unchanged from before this interaction
+            // (_lastSelectedParam): an observer-only consumer that binds SelectedNodeChanged purely to
+            // react to selection without also echoing SelectedNode back leaves the parameter at its
+            // default (often null) forever — that re-render must not be treated as "the parent cleared
+            // the selection", or every click would select-then-immediately-clear. Only a value that
+            // differs from BOTH our own push AND the pre-interaction snapshot is an authoritative,
+            // distinguishable veto/reset.
+            var isEcho = ReferenceEquals(SelectedNode, _lastPushedSelectedNode);
+            var isUnchangedFromBeforeInteraction = ReferenceEquals(SelectedNode, _lastSelectedParam);
+            if (!isEcho && !isUnchangedFromBeforeInteraction)
+            {
+                _selectedNode = SelectedNode;
+                _lastPushedSelectedNode = SelectedNode;
+            }
+        }
+        else if (!ReferenceEquals(SelectedNode, _lastSelectedParam))
+        {
+            // UNCONTROLLED: adopt only on a genuine external change.
+            _selectedNode = SelectedNode;
+            _lastPushedSelectedNode = SelectedNode;
+        }
+        _lastSelectedParam = SelectedNode;
+
         // Detect a Root replacement. If the consumer swaps in a fresh tree, any
         // nodes cached in _pathStack point at the OLD tree and must be discarded
         // — otherwise GetCurrentFolderContents returns the previous tree's
@@ -222,7 +393,25 @@
         var rootChanged = !ReferenceEquals(Root, _lastRoot);
         _lastRoot = Root;
         if (rootChanged)
+        {
             _pathStack = [];
+
+            // The selected node may have been deleted (or filtered) out of the
+            // refreshed tree. Drop a now-orphaned selection so the Delete toolbar
+            // button doesn't stay active against a node that no longer exists.
+            // Only reconcile against a genuinely-present tree (Root non-null) and
+            // skip when the consumer just re-supplied this exact selection this
+            // render (it is authoritative then).
+            if (_selectedNode is not null
+                && !ReferenceEquals(_selectedNode, _lastSelectedParam)
+                && Root is not null
+                && !ContainsNodeId(Root, _selectedNode.Id))
+            {
+                _selectedNode = null;
+                _lastPushedSelectedNode = null;
+                await SelectedNodeChanged.InvokeAsync(null);
+            }
+        }
 
         // Sync _pathStack when CurrentPath is changed externally
         if (CurrentPath is null)
@@ -231,11 +420,22 @@
             return;
         }
 
-        // If path stack already ends at this id, nothing to do. (After a Root
-        // swap the stack was cleared above, so this won't short-circuit on a
-        // stale node.)
+        // If path stack already ends at this id, nothing to do — UNLESS the live
+        // tree has replaced that node in place. A consumer can refresh a folder
+        // by swapping in a fresh FileSystemNode (new Children) at the same Id
+        // while keeping the SAME Root list reference; then rootChanged above is
+        // false and an Id-equality early-return would latch the stale cached node
+        // (GetCurrentFolderContents returns its old Children). Re-resolve the
+        // current node from the live Root by Id and only short-circuit when it is
+        // the very same instance we already hold; otherwise fall through to
+        // rebuild the stack from the fresh tree.
         if (_pathStack.Count > 0 && _pathStack[^1].Id == CurrentPath)
-            return;
+        {
+            var liveStack = new List<FileSystemNode>();
+            if (FindPath(Root ?? [], CurrentPath, liveStack)
+                && ReferenceEquals(liveStack[^1], _pathStack[^1]))
+                return;
+        }
 
         // Rebuild stack by finding the path in the tree
         var newStack = new List<FileSystemNode>();
@@ -247,17 +447,32 @@
         {
             var current = _pathStack[^1];
             if (current.IsFolder && current.Children is null && LoadChildren is not null)
-            {
-                _loadingFolder = true;
-                try
-                {
-                    current.Children = await LoadChildren(current);
-                }
-                finally
-                {
-                    _loadingFolder = false;
-                }
-            }
+                // Re-render after the await so the freshly-loaded children render
+                // (OnParametersSetAsync already triggers one render before the
+                // await, but that render shows the spinner; the loaded list needs
+                // its own StateHasChanged once the await resolves — #130).
+                await LoadFolderChildrenAsync(current, render: true);
+        }
+    }
+
+    // Centralised lazy-load: mark the node loading, await LoadChildren, and clear
+    // ONLY this node's loading entry in a finally so concurrent loads of other
+    // folders are never disturbed (#130). A second concurrent call for the same
+    // node is skipped (its entry is already present), so a folder is never loaded
+    // twice. <paramref name="render"/> requests a StateHasChanged after the await
+    // for call sites (OnParametersSetAsync) that don't otherwise re-render.
+    private async Task LoadFolderChildrenAsync(FileSystemNode folder, bool render)
+    {
+        if (LoadChildren is null || folder.Children is not null) return;
+        if (!_loadingNodeIds.Add(folder.Id)) return; // already loading this node
+        try
+        {
+            folder.Children = await LoadChildren(folder);
+        }
+        finally
+        {
+            _loadingNodeIds.Remove(folder.Id);
+            if (render) StateHasChanged();
         }
     }
 
@@ -272,6 +487,20 @@
 
         var current = _pathStack[^1];
         return current.Children ?? [];
+    }
+
+    // Depth-first check for a node with the given Id anywhere in the tree. Used
+    // to reconcile an orphaned selection after a Root refresh (deleted/filtered).
+    private static bool ContainsNodeId(IEnumerable<FileSystemNode> nodes, string targetId)
+    {
+        foreach (var node in nodes)
+        {
+            if (node.Id == targetId)
+                return true;
+            if (node.Children is { Count: > 0 } && ContainsNodeId(node.Children, targetId))
+                return true;
+        }
+        return false;
     }
 
     private static bool FindPath(IEnumerable<FileSystemNode> nodes, string targetId, List<FileSystemNode> stack)
@@ -303,19 +532,13 @@
 
         _pathStack = newStack;
 
-        // Lazy-load children if needed
+        // Lazy-load children if needed. Marking the node loading (in the shared
+        // set) before the StateHasChanged shows the spinner only for THIS folder;
+        // the finally inside the helper clears just this node's entry.
         if (folder.Children is null && LoadChildren is not null)
         {
-            _loadingFolder = true;
             StateHasChanged();
-            try
-            {
-                folder.Children = await LoadChildren(folder);
-            }
-            finally
-            {
-                _loadingFolder = false;
-            }
+            await LoadFolderChildrenAsync(folder, render: false);
         }
 
         // Expand in tree pane
@@ -353,7 +576,18 @@
 
     private async Task SetViewMode(FileManagerViewMode mode)
     {
-        ViewMode = mode;
+        // Drive the private backing field (the render source of truth) — NOT the
+        // [Parameter] — so an uncontrolled choice survives unrelated parent
+        // re-renders that re-push the default. Do NOT touch _lastViewModeParam:
+        // it must keep tracking what the PARENT last supplied, so a later
+        // same-default re-push is still recognised as "no external change".
+        // Record _lastPushedViewMode BEFORE invoking ViewModeChanged: a
+        // controlled parent re-renders synchronously inside InvokeAsync, so
+        // OnParametersSetAsync must already see this value as "the value we just
+        // pushed" to distinguish an accepted echo (keep in-flight state) from a
+        // veto (parent kept its old value → roll back).
+        _viewMode = mode;
+        _lastPushedViewMode = mode;
         await ViewModeChanged.InvokeAsync(mode);
     }
 
@@ -361,9 +595,29 @@
     // Selection
     // ──────────────────────────────────────────────────────────────────────────
 
+    // Click handler for a row/tile: sync the roving active index to the clicked
+    // item (so a subsequent Arrow keypress continues from where the user clicked)
+    // then run the normal selection.
+    private async Task SelectRow(FileSystemNode node, int index)
+    {
+        _activeItemIndex = index;
+        await SelectNode(node);
+    }
+
     private async Task SelectNode(FileSystemNode node)
     {
-        SelectedNode = node;
+        // Drive the private backing field — NOT the [Parameter] — so an
+        // uncontrolled selection survives unrelated parent re-renders that
+        // re-push the default (null). _lastSelectedParam keeps tracking the
+        // PARENT's last-supplied value so a later same-value re-push isn't
+        // mistaken for a genuine external change.
+        // Record _lastPushedSelectedNode BEFORE invoking SelectedNodeChanged: a
+        // controlled parent re-renders synchronously inside InvokeAsync, so
+        // OnParametersSetAsync must already see this value as "the value we just
+        // pushed" to distinguish an accepted echo (keep in-flight state) from a
+        // veto (parent kept its old value → roll back).
+        _selectedNode = node;
+        _lastPushedSelectedNode = node;
         await SelectedNodeChanged.InvokeAsync(node);
     }
 
@@ -381,21 +635,53 @@
     }
 
     // Keyboard handler for file rows / grid tiles (a11y): Enter opens (folder
-    // navigate / file open), Space selects. Mirrors the click/double-click
-    // mouse affordances so the role=grid / role=listbox containers are actually
-    // keyboard-operable.
-    private async Task HandleRowKeyDown(FileSystemNode node, KeyboardEventArgs e)
+    // navigate / file open), Space selects, Arrow/Home/End roves the active item.
+    // Mirrors the click/double-click mouse affordances AND adds roving-tabindex
+    // arrow navigation so the role=grid / role=listbox containers behave as a
+    // single composite widget per the WAI-ARIA pattern (#128). The actual
+    // page-scroll suppression for Space/Arrows is wired natively via
+    // RegisterPreventDefaultKeys in OnAfterRenderAsync (#129) — not
+    // @onkeydown:preventDefault, which would also swallow Tab.
+    private async Task HandleRowKeyDown(FileSystemNode node, int index, KeyboardEventArgs e)
     {
         switch (e.Key)
         {
             case "Enter":
                 await HandleNodeDoubleClick(node);
-                break;
+                return;
             case " ":
             case "Spacebar": // legacy key name
                 await SelectNode(node);
-                break;
+                return;
+            case "ArrowDown":
+            case "ArrowRight":
+                await MoveActiveItem(index + 1);
+                return;
+            case "ArrowUp":
+            case "ArrowLeft":
+                await MoveActiveItem(index - 1);
+                return;
+            case "Home":
+                await MoveActiveItem(0);
+                return;
+            case "End":
+                await MoveActiveItem(_fileItemCount - 1);
+                return;
         }
+    }
+
+    // Roving tabindex: clamp to the rendered range, flip the active item (which
+    // re-renders the new item with tabindex=0 and the old one with -1), then move
+    // DOM focus to it by id. Out-of-range targets are ignored so the active item
+    // never leaves the list.
+    private async Task MoveActiveItem(int target)
+    {
+        if (_fileItemCount == 0) return;
+        var next = Math.Clamp(target, 0, _fileItemCount - 1);
+        if (next == _activeItemIndex) return;
+        _activeItemIndex = next;
+        StateHasChanged();
+        try { await Interop.FocusElement(FileItemId(next)); } catch (JSDisconnectedException) { }
     }
 
     // ──────────────────────────────────────────────────────────────────────────
@@ -408,34 +694,158 @@
         _contextMenuX = e.ClientX;
         _contextMenuY = e.ClientY;
         _contextMenuOpen = true;
-        _shouldFocusContextMenu = true;
+        _contextMenuFocusIndex = -1;
     }
 
-    private void CloseContextMenu()
+    private async Task CloseContextMenu()
     {
+        if (!_contextMenuOpen) return;
         _contextMenuOpen = false;
         _contextMenuNode = null;
+        // Release the Tab-cycling trap; RemoveFocusTrap also returns focus to the
+        // element that was focused when the menu opened — the row or actions
+        // button — so keyboard focus is never stranded after close (#126: WCAG
+        // 2.4.3). Also drop the arrow-scroll suppression.
+        if (_contextMenuTrapped)
+        {
+            _contextMenuTrapped = false;
+            _contextMenuFocusIndex = -1;
+            try { await Interop.RemoveFocusTrap(_contextMenuId); } catch (JSDisconnectedException) { }
+            try { await Interop.UnregisterPreventDefaultKeys(_contextMenuId); } catch (JSDisconnectedException) { }
+        }
     }
 
-    private void HandleContextMenuKeyDown(KeyboardEventArgs e)
+    private async Task HandleContextMenuKeyDown(KeyboardEventArgs e)
     {
-        if (e.Key == "Escape") CloseContextMenu();
+        switch (e.Key)
+        {
+            case "Escape":
+                await CloseContextMenu();
+                return;
+            case "ArrowDown":
+            {
+                var count = await Interop.GetMenuItemCount(_contextMenuId);
+                if (count > 0)
+                {
+                    _contextMenuFocusIndex = (_contextMenuFocusIndex + 1) % count;
+                    await Interop.FocusMenuItemByIndex(_contextMenuId, _contextMenuFocusIndex);
+                }
+                return;
+            }
+            case "ArrowUp":
+            {
+                var count = await Interop.GetMenuItemCount(_contextMenuId);
+                if (count > 0)
+                {
+                    _contextMenuFocusIndex = _contextMenuFocusIndex <= 0 ? count - 1 : _contextMenuFocusIndex - 1;
+                    await Interop.FocusMenuItemByIndex(_contextMenuId, _contextMenuFocusIndex);
+                }
+                return;
+            }
+            case "Home":
+            {
+                var count = await Interop.GetMenuItemCount(_contextMenuId);
+                if (count > 0)
+                {
+                    _contextMenuFocusIndex = 0;
+                    await Interop.FocusMenuItemByIndex(_contextMenuId, _contextMenuFocusIndex);
+                }
+                return;
+            }
+            case "End":
+            {
+                var count = await Interop.GetMenuItemCount(_contextMenuId);
+                if (count > 0)
+                {
+                    _contextMenuFocusIndex = count - 1;
+                    await Interop.FocusMenuItemByIndex(_contextMenuId, _contextMenuFocusIndex);
+                }
+                return;
+            }
+        }
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (_shouldFocusContextMenu && _contextMenuOpen)
+        // Engage a Tab-cycling focus trap on the open menu. SetupFocusTrap saves
+        // the element that had focus (the row / actions button) so RemoveFocusTrap
+        // can restore it on close, traps Tab/Shift+Tab inside the menu (#126), and
+        // lands focus on the first menuitem so Arrow/Home/End nav is reachable
+        // (#127). The Arrow/Home/End keys also scroll the page by default — suppress
+        // them in JS (Escape has no scroll default) so keyboard menu navigation
+        // doesn't scroll behind the open menu.
+        if (_contextMenuOpen && !_contextMenuTrapped)
         {
-            _shouldFocusContextMenu = false;
-            try { await Interop.FocusElement(_contextMenuId); } catch (JSDisconnectedException) { }
+            _contextMenuTrapped = true;
+            try
+            {
+                await Interop.RegisterPreventDefaultKeys(_contextMenuId, new[]
+                {
+                    new Lumeo.Services.PreventDefaultKeyRule("ArrowDown"),
+                    new Lumeo.Services.PreventDefaultKeyRule("ArrowUp"),
+                    new Lumeo.Services.PreventDefaultKeyRule("Home"),
+                    new Lumeo.Services.PreventDefaultKeyRule("End"),
+                });
+            }
+            catch (JSDisconnectedException) { }
+            try { await Interop.SetupFocusTrap(_contextMenuId); } catch (JSDisconnectedException) { }
+        }
+
+        // Auto-focus the inline rename field the render after a rename begins so
+        // keyboard users can type immediately (mirrors the context-menu path).
+        if (_shouldFocusRenameInput && _renamingNode is not null)
+        {
+            _shouldFocusRenameInput = false;
+            try { await Interop.FocusElement(_renameInputId); } catch (JSDisconnectedException) { }
+        }
+
+        // Register the native scroll-suppression for the file list once it exists
+        // (#129: Space / Arrows would otherwise scroll the page). SkipEditable
+        // keeps typing in the inline rename input alive. Registered here rather
+        // than via @onkeydown:preventDefault so Tab is never swallowed.
+        if (!_fileListPdRegistered)
+        {
+            _fileListPdRegistered = true;
+            try
+            {
+                await Interop.RegisterPreventDefaultKeys(_fileListId, new[]
+                {
+                    new Lumeo.Services.PreventDefaultKeyRule(" ", SkipEditable: true),
+                    new Lumeo.Services.PreventDefaultKeyRule("Spacebar", SkipEditable: true),
+                    new Lumeo.Services.PreventDefaultKeyRule("ArrowDown", SkipEditable: true),
+                    new Lumeo.Services.PreventDefaultKeyRule("ArrowUp", SkipEditable: true),
+                    new Lumeo.Services.PreventDefaultKeyRule("ArrowLeft", SkipEditable: true),
+                    new Lumeo.Services.PreventDefaultKeyRule("ArrowRight", SkipEditable: true),
+                    new Lumeo.Services.PreventDefaultKeyRule("Home", SkipEditable: true),
+                    new Lumeo.Services.PreventDefaultKeyRule("End", SkipEditable: true),
+                });
+            }
+            catch (JSDisconnectedException) { }
+            catch (InvalidOperationException) { } // JS interop unavailable during prerender
         }
     }
 
-    private void BeginRename(FileSystemNode node)
+    public async ValueTask DisposeAsync()
     {
-        CloseContextMenu();
+        if (_contextMenuTrapped)
+        {
+            try { await Interop.RemoveFocusTrap(_contextMenuId); } catch (JSDisconnectedException) { }
+            try { await Interop.UnregisterPreventDefaultKeys(_contextMenuId); } catch (JSDisconnectedException) { }
+        }
+        if (_fileListPdRegistered)
+        {
+            try { await Interop.UnregisterPreventDefaultKeys(_fileListId); } catch (JSDisconnectedException) { }
+        }
+    }
+
+    private async Task BeginRename(FileSystemNode node)
+    {
+        await CloseContextMenu();
         _renamingNode = node;
         _renameValue = node.Name;
+        // Move focus into the inline input on the next render so keyboard users
+        // can edit immediately (mirrors the context-menu focus path).
+        _shouldFocusRenameInput = true;
     }
 
     private async Task CommitRename()
@@ -458,14 +868,29 @@
 
     private async Task HandleDeleteNode(FileSystemNode node)
     {
-        CloseContextMenu();
+        await CloseContextMenu();
+        await ClearSelectionIfDeleted(node);
         await OnDelete.InvokeAsync([node]);
     }
 
     private async Task HandleDeleteSelected()
     {
-        if (SelectedNode is null) return;
-        await OnDelete.InvokeAsync([SelectedNode]);
+        if (_selectedNode is null) return;
+        var node = _selectedNode;
+        await ClearSelectionIfDeleted(node);
+        await OnDelete.InvokeAsync([node]);
+    }
+
+    // Drop the live selection when the node being deleted is the selected one, so
+    // the Delete toolbar button (gated on _selectedNode is not null) doesn't stay
+    // active against an already-removed node. Fired before OnDelete so the
+    // selection clears regardless of how the consumer mutates the tree.
+    private async Task ClearSelectionIfDeleted(FileSystemNode deleted)
+    {
+        if (_selectedNode is null || _selectedNode.Id != deleted.Id) return;
+        _selectedNode = null;
+        _lastPushedSelectedNode = null;
+        await SelectedNodeChanged.InvokeAsync(null);
     }
 
     private async Task HandleNewFolder()
@@ -476,7 +901,7 @@
 
     private async Task HandleOpenNode(FileSystemNode node)
     {
-        CloseContextMenu();
+        await CloseContextMenu();
         if (node.IsFolder)
             await NavigateToFolder(node);
         else
@@ -499,16 +924,12 @@
 
             if (folder.Children is null && LoadChildren is not null)
             {
-                _loadingFolder = true;
+                // Expanding a tree-pane folder loads ITS children. This must not
+                // disturb a concurrent right-pane load of a different folder — the
+                // per-node set keeps the two independent (#130). The right-pane
+                // spinner only reacts if this folder is also the current one.
                 StateHasChanged();
-                try
-                {
-                    folder.Children = await LoadChildren(folder);
-                }
-                finally
-                {
-                    _loadingFolder = false;
-                }
+                await LoadFolderChildrenAsync(folder, render: false);
             }
         }
     }
@@ -601,31 +1022,36 @@
         builder.OpenElement(10, "thead");
         builder.OpenElement(11, "tr");
         builder.AddAttribute(12, "class", "border-b border-border/40 text-muted-foreground");
-        AppendTh(builder, 13, L["FileManager.Name"], "text-left p-2 font-medium w-full");
-        AppendTh(builder, 14, L["FileManager.Size"], "text-right p-2 font-medium whitespace-nowrap w-28");
-        AppendTh(builder, 15, L["FileManager.Modified"], "text-right p-2 font-medium whitespace-nowrap w-40");
+        AppendTh(builder, 13, L["FileManager.Name"], "text-start p-2 font-medium w-full");
+        AppendTh(builder, 14, L["FileManager.Size"], "text-end p-2 font-medium whitespace-nowrap w-28");
+        AppendTh(builder, 15, L["FileManager.Modified"], "text-end p-2 font-medium whitespace-nowrap w-40");
         AppendTh(builder, 16, "", "w-8 p-2"); // context menu column
         builder.CloseElement(); // tr
         builder.CloseElement(); // thead
 
         // tbody
         builder.OpenElement(20, "tbody");
+        var rowIndex = 0;
         foreach (var node in items)
         {
             var n = node;
-            bool isSelected = SelectedNode?.Id == n.Id;
+            var idx = rowIndex++;
+            bool isSelected = _selectedNode?.Id == n.Id;
             var rowClass = $"group border-b border-border/20 cursor-pointer transition-colors {(isSelected ? "bg-accent" : "hover:bg-muted/40")}";
 
             builder.OpenElement(30, "tr");
+            builder.SetKey(n.Id);
             builder.AddAttribute(31, "class", rowClass);
             builder.AddAttribute(32, "role", "row");
             builder.AddAttribute(33, "aria-selected", isSelected.ToString().ToLowerInvariant());
-            builder.AddAttribute(34, "tabindex", 0);
-            builder.AddAttribute(35, "onclick", Microsoft.AspNetCore.Components.EventCallback.Factory.Create<Microsoft.AspNetCore.Components.Web.MouseEventArgs>(this, _ => SelectNode(n)));
-            builder.AddAttribute(36, "ondblclick", Microsoft.AspNetCore.Components.EventCallback.Factory.Create<Microsoft.AspNetCore.Components.Web.MouseEventArgs>(this, _ => HandleNodeDoubleClick(n)));
-            builder.AddAttribute(37, "oncontextmenu", Microsoft.AspNetCore.Components.EventCallback.Factory.Create<Microsoft.AspNetCore.Components.Web.MouseEventArgs>(this, e => OpenContextMenu(n, e)));
-            builder.AddAttribute(38, "oncontextmenu:preventDefault", true);
-            builder.AddAttribute(39, "onkeydown", Microsoft.AspNetCore.Components.EventCallback.Factory.Create<Microsoft.AspNetCore.Components.Web.KeyboardEventArgs>(this, e => HandleRowKeyDown(n, e)));
+            // Roving tabindex (#128): only the active row is in the tab sequence.
+            builder.AddAttribute(34, "tabindex", idx == _activeItemIndex ? 0 : -1);
+            builder.AddAttribute(35, "id", FileItemId(idx));
+            builder.AddAttribute(36, "onclick", Microsoft.AspNetCore.Components.EventCallback.Factory.Create<Microsoft.AspNetCore.Components.Web.MouseEventArgs>(this, _ => SelectRow(n, idx)));
+            builder.AddAttribute(37, "ondblclick", Microsoft.AspNetCore.Components.EventCallback.Factory.Create<Microsoft.AspNetCore.Components.Web.MouseEventArgs>(this, _ => HandleNodeDoubleClick(n)));
+            builder.AddAttribute(38, "oncontextmenu", Microsoft.AspNetCore.Components.EventCallback.Factory.Create<Microsoft.AspNetCore.Components.Web.MouseEventArgs>(this, e => OpenContextMenu(n, e)));
+            builder.AddAttribute(39, "oncontextmenu:preventDefault", true);
+            builder.AddAttribute(391, "onkeydown", Microsoft.AspNetCore.Components.EventCallback.Factory.Create<Microsoft.AspNetCore.Components.Web.KeyboardEventArgs>(this, e => HandleRowKeyDown(n, idx, e)));
 
             // Name cell
             builder.OpenElement(40, "td");
@@ -657,6 +1083,9 @@
                 // to the row's keyboard handler.
                 builder.AddAttribute(67, "onkeydown:stopPropagation", true);
                 builder.AddAttribute(68, "onclick:stopPropagation", true);
+                // Stable id so OnAfterRenderAsync can focus the field by id when a
+                // rename begins (keyboard a11y — #325).
+                builder.AddAttribute(69, "id", _renameInputId);
                 builder.CloseElement();
             }
             else
@@ -672,35 +1101,53 @@
 
             // Size cell
             builder.OpenElement(80, "td");
-            builder.AddAttribute(81, "class", "p-2 text-right text-muted-foreground whitespace-nowrap");
+            builder.AddAttribute(81, "class", "p-2 text-end text-muted-foreground whitespace-nowrap");
             builder.AddContent(82, n.IsFolder ? "—" : FormatSize(n.Size ?? 0));
             builder.CloseElement();
 
             // Modified cell
             builder.OpenElement(90, "td");
-            builder.AddAttribute(91, "class", "p-2 text-right text-muted-foreground whitespace-nowrap");
+            builder.AddAttribute(91, "class", "p-2 text-end text-muted-foreground whitespace-nowrap");
             builder.AddContent(92, n.Modified.HasValue ? n.Modified.Value.ToString("yyyy-MM-dd HH:mm") : "—");
             builder.CloseElement();
 
             // Context menu cell
             builder.OpenElement(100, "td");
             builder.AddAttribute(101, "class", "p-2");
-            builder.OpenElement(102, "button");
-            builder.AddAttribute(103, "type", "button");
-            builder.AddAttribute(104, "class", "inline-flex items-center justify-center h-6 w-6 rounded opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity hover:bg-accent text-muted-foreground hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-1");
-            builder.AddAttribute(105, "title", L["FileManager.MoreActions"]);
-            builder.AddAttribute(106, "aria-label", L["FileManager.MoreActionsForName", n.Name]);
-            builder.AddAttribute(107, "onclick", Microsoft.AspNetCore.Components.EventCallback.Factory.Create<Microsoft.AspNetCore.Components.Web.MouseEventArgs>(this, e => OpenContextMenu(n, e)));
-            builder.AddAttribute(108, "onclick:stopPropagation", true);
-            // Enter on the focused actions button natively triggers its onclick
-            // (opens the menu); stop the keydown here so it doesn't also bubble up
-            // to the row handler and open/navigate the file or folder.
-            builder.AddAttribute(109, "onkeydown:stopPropagation", true);
-            builder.OpenComponent<Blazicon>(110);
-            builder.AddAttribute(111, "Svg", Lucide.EllipsisVertical);
-            builder.AddAttribute(112, "class", "h-3.5 w-3.5");
+            // Dogfood the Lumeo <Tooltip> instead of the native title (the button keeps
+            // its per-item aria-label as the accessible name; AsChild puts describedby
+            // on the button, lazy content keeps the row cheap).
+            builder.OpenComponent<Tooltip>(102);
+            builder.AddAttribute(103, "ChildContent", (RenderFragment)(tip =>
+            {
+                tip.OpenComponent<TooltipTrigger>(0);
+                tip.AddAttribute(1, "AsChild", true);
+                tip.AddAttribute(2, "ChildContentSlot", (RenderFragment<Lumeo.TriggerSlot>)(slot => sb =>
+                {
+                    sb.OpenElement(0, "button");
+                    sb.AddAttribute(1, "type", "button");
+                    sb.AddAttribute(2, "class", "inline-flex items-center justify-center h-6 w-6 rounded opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity hover:bg-accent text-muted-foreground hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-1");
+                    sb.AddAttribute(3, "aria-label", L["FileManager.MoreActionsForName", n.Name]);
+                    sb.AddAttribute(4, "onclick", Microsoft.AspNetCore.Components.EventCallback.Factory.Create<Microsoft.AspNetCore.Components.Web.MouseEventArgs>(this, e => OpenContextMenu(n, e)));
+                    sb.AddAttribute(5, "onclick:stopPropagation", true);
+                    // Enter on the focused actions button natively triggers its onclick
+                    // (opens the menu); stop the keydown so it doesn't also bubble up to
+                    // the row handler and open/navigate the file or folder.
+                    sb.AddAttribute(6, "onkeydown:stopPropagation", true);
+                    sb.AddMultipleAttributes(7, slot.Attributes);
+                    sb.OpenComponent<Blazicon>(8);
+                    sb.AddAttribute(9, "Svg", Lucide.EllipsisVertical);
+                    sb.AddAttribute(10, "class", "h-3.5 w-3.5");
+                    sb.CloseComponent();
+                    sb.CloseElement();
+                }));
+                tip.CloseComponent();
+
+                tip.OpenComponent<TooltipContent>(3);
+                tip.AddAttribute(4, "ChildContent", (RenderFragment)(cb => cb.AddContent(0, L["FileManager.MoreActions"])));
+                tip.CloseComponent();
+            }));
             builder.CloseComponent();
-            builder.CloseElement(); // button
             builder.CloseElement(); // td
 
             builder.CloseElement(); // tr
@@ -716,23 +1163,28 @@
         builder.AddAttribute(2, "role", "listbox");
         builder.AddAttribute(3, "aria-label", "File grid");
 
+        var tileIndex = 0;
         foreach (var node in items)
         {
             var n = node;
-            bool isSelected = SelectedNode?.Id == n.Id;
+            var idx = tileIndex++;
+            bool isSelected = _selectedNode?.Id == n.Id;
             var tileClass = $"flex flex-col items-center gap-2 p-3 rounded-lg cursor-pointer transition-colors border focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring {(isSelected ? "bg-accent border-ring" : "border-transparent hover:bg-muted/40 hover:border-border/40")}";
 
             builder.OpenElement(10, "div");
+            builder.SetKey(n.Id);
             builder.AddAttribute(11, "class", tileClass);
             builder.AddAttribute(12, "role", "option");
             builder.AddAttribute(13, "aria-selected", isSelected.ToString().ToLowerInvariant());
             builder.AddAttribute(14, "aria-label", n.Name);
-            builder.AddAttribute(15, "tabindex", 0);
-            builder.AddAttribute(16, "onclick", Microsoft.AspNetCore.Components.EventCallback.Factory.Create<Microsoft.AspNetCore.Components.Web.MouseEventArgs>(this, _ => SelectNode(n)));
-            builder.AddAttribute(17, "ondblclick", Microsoft.AspNetCore.Components.EventCallback.Factory.Create<Microsoft.AspNetCore.Components.Web.MouseEventArgs>(this, _ => HandleNodeDoubleClick(n)));
-            builder.AddAttribute(18, "oncontextmenu", Microsoft.AspNetCore.Components.EventCallback.Factory.Create<Microsoft.AspNetCore.Components.Web.MouseEventArgs>(this, e => OpenContextMenu(n, e)));
-            builder.AddAttribute(19, "oncontextmenu:preventDefault", true);
-            builder.AddAttribute(20, "onkeydown", Microsoft.AspNetCore.Components.EventCallback.Factory.Create<Microsoft.AspNetCore.Components.Web.KeyboardEventArgs>(this, e => HandleRowKeyDown(n, e)));
+            // Roving tabindex (#128): only the active tile is in the tab sequence.
+            builder.AddAttribute(15, "tabindex", idx == _activeItemIndex ? 0 : -1);
+            builder.AddAttribute(16, "id", FileItemId(idx));
+            builder.AddAttribute(17, "onclick", Microsoft.AspNetCore.Components.EventCallback.Factory.Create<Microsoft.AspNetCore.Components.Web.MouseEventArgs>(this, _ => SelectRow(n, idx)));
+            builder.AddAttribute(18, "ondblclick", Microsoft.AspNetCore.Components.EventCallback.Factory.Create<Microsoft.AspNetCore.Components.Web.MouseEventArgs>(this, _ => HandleNodeDoubleClick(n)));
+            builder.AddAttribute(19, "oncontextmenu", Microsoft.AspNetCore.Components.EventCallback.Factory.Create<Microsoft.AspNetCore.Components.Web.MouseEventArgs>(this, e => OpenContextMenu(n, e)));
+            builder.AddAttribute(20, "oncontextmenu:preventDefault", true);
+            builder.AddAttribute(21, "onkeydown", Microsoft.AspNetCore.Components.EventCallback.Factory.Create<Microsoft.AspNetCore.Components.Web.KeyboardEventArgs>(this, e => HandleRowKeyDown(n, idx, e)));
 
             // Icon
             builder.OpenComponent<Blazicon>(25);

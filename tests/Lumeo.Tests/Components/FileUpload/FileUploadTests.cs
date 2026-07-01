@@ -147,8 +147,8 @@ public class FileUploadTests : IAsyncLifetime
         var cut = _ctx.Render<Lumeo.FileUpload>(p => p
             .Add(b => b.Class, "my-uploader"));
 
-        // Class is applied to the root wrapper div, not the label
-        var root = cut.Find("div");
+        // Class is applied to the inner control div (one level inside the structural wrapper)
+        var root = cut.Find("div > div");
         Assert.Contains("my-uploader", root.GetAttribute("class"));
     }
 
@@ -171,7 +171,7 @@ public class FileUploadTests : IAsyncLifetime
         var cut = _ctx.Render<Lumeo.FileUpload>(p => p
             .Add(b => b.Variant, Lumeo.FileUpload.FileUploadVariant.Button));
 
-        var root = cut.Find("div");
+        var root = cut.Find("div > div");
         Assert.Contains("inline-flex", root.GetAttribute("class") ?? "");
     }
 

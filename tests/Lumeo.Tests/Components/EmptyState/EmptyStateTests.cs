@@ -196,4 +196,30 @@ public class EmptyStateTests : IAsyncLifetime
 
         Assert.Equal("empty-state", cut.Find("div").GetAttribute("data-testid"));
     }
+
+    // Regression (battle-wave3 #41, edge-data): a whitespace-only Title/Description
+    // must not render an empty <h3>/<p> inside the role="status" live region.
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    [InlineData("\t")]
+    public void Does_Not_Render_Empty_Title_For_Blank_Text(string blank)
+    {
+        var cut = _ctx.Render<Lumeo.EmptyState>(p => p
+            .Add(e => e.Title, blank));
+
+        Assert.Empty(cut.FindAll("h3"));
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    [InlineData("\t")]
+    public void Does_Not_Render_Empty_Description_For_Blank_Text(string blank)
+    {
+        var cut = _ctx.Render<Lumeo.EmptyState>(p => p
+            .Add(e => e.Description, blank));
+
+        Assert.Empty(cut.FindAll("p"));
+    }
 }

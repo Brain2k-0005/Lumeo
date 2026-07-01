@@ -44,20 +44,50 @@
 
     private QueryBuilderContext _context = default!;
 
-    private QueryGroup EffectiveQuery => Query ??= QueryGroup.CreateEmpty();
+    // The working query tree. We deliberately do NOT store uncontrolled state in the
+    // [Parameter] Query: Blazor resets parameter values to the parent's supplied value
+    // on every render, so an auto-seeded tree written back into Query would be wiped
+    // (and re-created empty) whenever an unrelated parent re-render pushed null again.
+    // The backing field survives those re-renders; we only adopt the parameter when the
+    // consumer actually supplies a (changed) instance.
+    private QueryGroup _query = QueryGroup.CreateEmpty();
+    private QueryGroup? _lastSuppliedQuery;
+    private bool _seededFired;
+
+    private QueryGroup EffectiveQuery => _query;
 
     private string CssClass => Cx.Merge("w-full text-sm", Class);
 
-    protected override void OnInitialized()
+    protected override void OnInitialized() => SyncQuery();
+
+    protected override void OnParametersSet() => SyncQuery();
+
+    private void SyncQuery()
     {
-        Query ??= QueryGroup.CreateEmpty();
+        // Adopt the parameter only when the consumer actually supplied one and it changed
+        // (identity compare against the last value we accepted — never against the live
+        // backing field, which our own callbacks mutate).
+        if (Query is not null && !ReferenceEquals(Query, _lastSuppliedQuery))
+        {
+            _query = Query;
+            _lastSuppliedQuery = Query;
+            _seededFired = true; // a real instance is in play; no auto-seed needed
+        }
+
         RebuildContext();
     }
 
-    protected override void OnParametersSet()
+    protected override async Task OnInitializedAsync()
     {
-        Query ??= QueryGroup.CreateEmpty();
-        RebuildContext();
+        // On the first render of an uncontrolled (Query == null) builder, publish the
+        // auto-seeded instance so a two-way @bind-Query captures it instead of being
+        // perpetually reset to null.
+        if (!_seededFired && Query is null)
+        {
+            _seededFired = true;
+            _lastSuppliedQuery = _query;
+            await QueryChanged.InvokeAsync(_query);
+        }
     }
 
     private void RebuildContext()

@@ -36,18 +36,27 @@ public static class ExampleExtractor
     public static IReadOnlyList<Example> ForComponent(string repoRoot, string componentName, int maxPerComponent = 4)
     {
         var pagesDir = Path.Combine(repoRoot, "docs", "Lumeo.Docs", "Pages", "Components");
-        var candidates = new[]
-        {
-            Path.Combine(pagesDir, $"{componentName}Page.razor"),
-            Path.Combine(pagesDir, "Charts", $"{componentName}ChartPage.razor"),
-            // a few components live under a differently-named page (e.g. "Ai" page covers AgentMessageList etc.)
-        };
 
-        var pagePath = candidates.FirstOrDefault(File.Exists);
+        // Resolve the page file case-INSENSITIVELY. A component's name casing does
+        // not always match the page file's on-disk casing — e.g. component "QRCode"
+        // vs the git-tracked "QrCodePage.razor". File.Exists is case-insensitive on
+        // Windows but case-sensitive on Linux, so a literal lookup found the page on
+        // a Windows dev box yet missed it on CI, dropping every example and drifting
+        // the registry per platform (a registry-freshness gate failure). Matching the
+        // real directory entry is deterministic on every OS.
+        static string? FindPage(string dir, string fileName)
+            => Directory.Exists(dir)
+                ? Directory.EnumerateFiles(dir, "*.razor")
+                    .FirstOrDefault(p => string.Equals(Path.GetFileName(p), fileName, StringComparison.OrdinalIgnoreCase))
+                : null;
+
+        var pagePath = FindPage(pagesDir, $"{componentName}Page.razor")
+                    ?? FindPage(Path.Combine(pagesDir, "Charts"), $"{componentName}ChartPage.razor");
         if (pagePath is null) return Array.Empty<Example>();
 
         string src;
-        try { src = File.ReadAllText(pagePath); }
+        // Normalize CRLF -> LF so extracted example code is platform-stable.
+        try { src = File.ReadAllText(pagePath).Replace("\r\n", "\n").Replace("\r", "\n"); }
         catch { return Array.Empty<Example>(); }
 
         // field name -> code
@@ -103,7 +112,7 @@ public static class ExampleExtractor
         foreach (var file in Directory.EnumerateFiles(dir, "*.razor").OrderBy(p => p, StringComparer.OrdinalIgnoreCase))
         {
             string src;
-            try { src = File.ReadAllText(file); }
+            try { src = File.ReadAllText(file).Replace("\r\n", "\n").Replace("\r", "\n"); }
             catch { continue; }
 
             var route = pageRx.Match(src) is { Success: true } pm ? pm.Groups["route"].Value : "";
@@ -137,7 +146,7 @@ public static class ExampleExtractor
         var cssPath = Path.Combine(repoRoot, "src", "Lumeo", "wwwroot", "css", "lumeo.css");
         if (!File.Exists(cssPath)) return Array.Empty<(string, string)>();
         string css;
-        try { css = File.ReadAllText(cssPath); }
+        try { css = File.ReadAllText(cssPath).Replace("\r\n", "\n").Replace("\r", "\n"); }
         catch { return Array.Empty<(string, string)>(); }
 
         // --color-primary: ...;  --color-primary-foreground: ...;  --radius: ...;  --radius-xl: ...;

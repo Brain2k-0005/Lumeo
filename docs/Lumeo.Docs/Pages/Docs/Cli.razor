@@ -69,7 +69,7 @@
                 <Stack Class="code-block rounded-lg border border-border/40 bg-muted px-4 py-3 font-mono text-sm text-foreground whitespace-pre">@("{")
   "namespace": "MyApp.Components",
   "componentsPath": "Components/Ui",
-  "registry": "https://lumeo.nativ.sh/registry/registry.json"
+  "registry": "https://lumeo.nativ.sh/registry.json"
 @("}")</Stack>
             </Stack>
 
@@ -212,7 +212,9 @@ npm run watch:css</Stack>
 --with-css           Copy Lumeo's pre-built CSS/JS into wwwroot/.
 --with-tailwind      Scaffold Tailwind v4 (Styles/input.css + package.json).
 --no-assets          Skip asset setup entirely.
---local              Copy assets from a local Lumeo checkout (dev only).</Stack>
+--local              Copy assets from a local Lumeo checkout (dev only).
+--standalone         NuGet-free project: 'add' vendors the whole runtime into _LumeoRuntime/;
+                     never adds a Lumeo PackageReference.</Stack>
             </Stack>
 
             <Stack Gap="3">
@@ -245,15 +247,26 @@ npm run watch:css</Stack>
                     <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">.csproj</code>. If not, it prompts:
                     <Lumeo.Text As="span" Weight="medium" Class="text-foreground font-mono">"Lumeo.Charts is required for this component — install it now?"</Lumeo.Text>
                     Confirming runs <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">dotnet add package Lumeo.Charts</code> before copying the component files.
-                    This applies to all five satellites: <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">Lumeo.Charts</code>,
+                    This applies to all ten satellites: <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">Lumeo.Charts</code>,
+                    <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">Lumeo.CodeEditor</code>,
                     <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">Lumeo.DataGrid</code>,
                     <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">Lumeo.Editor</code>,
-                    <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">Lumeo.Scheduler</code>, and
-                    <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">Lumeo.Gantt</code>.
+                    <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">Lumeo.FileViewer</code>,
+                    <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">Lumeo.Gantt</code>,
+                    <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">Lumeo.Maps</code>,
+                    <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">Lumeo.Motion</code>,
+                    <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">Lumeo.PdfViewer</code>, and
+                    <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">Lumeo.Scheduler</code>.
+                    Or vendor a satellite's source instead with <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">lumeo add &lt;component&gt; --vendor</code>.
                     Components in the core <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">Lumeo</code> package skip this check.
                 </Lumeo.Text>
                 <Stack Class="code-block rounded-lg border border-border/40 bg-muted px-4 py-3 font-mono text-xs text-foreground whitespace-pre">--local              Read files from a local Lumeo checkout (dev only).
 --yes, -y            Skip dependency confirmation prompts.
+--vendor             Vendor satellite components (Charts, DataGrid, …) as SOURCE + JS assets
+                     instead of adding their NuGet package (off by default).
+--all                Install every component in the registry.
+--diff               Show a unified diff vs existing files; skip writing unless --yes is set.
+--view               Preview content that WOULD be written for new files; skip writing unless --yes.
 --force              Overwrite all conflicts without prompting (CI).
 --skip-existing      Silently skip files that already exist.
 --dry-run            Print what would happen; don&apos;t touch the filesystem.
@@ -368,6 +381,34 @@ npm run watch:css</Stack>
 --dark               Encode dark mode as the default.
 --command            Print `lumeo apply --preset &lt;code&gt;` instead of just the code.</Stack>
             </Stack>
+
+            <Stack Gap="2">
+                <Heading Level="3"><code class="rounded bg-muted px-1.5 py-0.5 text-sm font-mono text-foreground">lumeo eject</code></Heading>
+                <Lumeo.Text Size="sm" Color="muted" Leading="relaxed">
+                    Converts an existing project to <Lumeo.Text As="span" Weight="medium" Class="text-foreground">fully NuGet-free standalone</Lumeo.Text>:
+                    vendors the Lumeo runtime + every already-installed component as source (the runtime lands once in
+                    <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">_LumeoRuntime/</code>, kept under the
+                    <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">Lumeo</code> namespace), then strips the Lumeo / satellite
+                    <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">PackageReference</code>(s) so the project builds with zero Lumeo packages.
+                    For a fresh project, <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">lumeo init --standalone</code> sets this up from the start.
+                </Lumeo.Text>
+                <Stack Class="code-block rounded-lg border border-border/40 bg-muted px-4 py-3 font-mono text-xs text-foreground whitespace-pre">--local              Read the registry + runtime source from a local Lumeo checkout (dev).</Stack>
+            </Stack>
+
+            <Stack Gap="2">
+                <Heading Level="3"><code class="rounded bg-muted px-1.5 py-0.5 text-sm font-mono text-foreground">lumeo deps install</code></Heading>
+                <Lumeo.Text Size="sm" Color="muted" Leading="relaxed">
+                    Self-hosts the vendorable JavaScript/CSS dependencies — downloads copies into
+                    <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">wwwroot/lib/lumeo-vendor/</code> and writes a bootstrap
+                    (<code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">wwwroot/js/lumeo-cdn-init.js</code>) that serves them locally.
+                    ESM-only dependencies are skipped and continue to load from their public CDN — notably FullCalendar (Scheduler) and CodeMirror (CodeEditor) — so strict-CSP or fully-offline deployments must still account for those.
+                </Lumeo.Text>
+                <Stack Class="code-block rounded-lg border border-border/40 bg-muted px-4 py-3 font-mono text-xs text-foreground whitespace-pre">--lib &lt;name&gt;         Satellite, package, or key to download. Default: all.
+--target &lt;dir&gt;       Target project dir (defaults to nearest parent with a *.csproj).
+--no-bootstrap       Skip generating wwwroot/js/lumeo-cdn-init.js.
+--force              Re-download files that already exist locally.
+--dry-run            Print what would happen; don&apos;t touch the filesystem.</Stack>
+            </Stack>
         </Stack>
     </Stack>
 
@@ -389,10 +430,10 @@ npm run watch:css</Stack>
             <Stack Class="code-block rounded-lg border border-border/40 bg-muted px-4 py-3 font-mono text-xs text-foreground whitespace-pre">@("{")
   "namespace": "MyApp.Components",
   "componentsPath": "Components/Ui",
-  "registry": "https://lumeo.nativ.sh/registry/registry.json",
+  "registry": "https://lumeo.nativ.sh/registry.json",
   "assets": @("{")
     "mode": "prebuilt",
-    "version": "2.0.0",
+    "version": "4.0.0",
     "files": [
       "wwwroot/css/lumeo.css",
       "wwwroot/css/lumeo-utilities.css",
@@ -401,8 +442,8 @@ npm run watch:css</Stack>
     ]
   @("}"),
   "components": @("{")
-    "button":  @("{") "version": "2.0.0", "files": ["UI/Button/Button.razor"] @("}"),
-    "spinner": @("{") "version": "2.0.0", "files": ["UI/Spinner/Spinner.razor"] @("}")
+    "button":  @("{") "version": "4.0.0", "files": ["UI/Button/Button.razor"] @("}"),
+    "spinner": @("{") "version": "4.0.0", "files": ["UI/Spinner/Spinner.razor"] @("}")
   @("}")
 @("}")</Stack>
             <Lumeo.Text Size="sm" Color="muted" Leading="relaxed">
@@ -454,12 +495,13 @@ npm run watch:css</Stack>
     <!-- Limitations -->
     <Stack>
         <Stack Gap="4">
-            <Heading Level="2">What the CLI can and can't vendor</Heading>
+            <Heading Level="2">Vendoring modes: default vs. standalone</Heading>
             <Lumeo.Text Size="base" Color="muted" Leading="relaxed">
-                Only <Lumeo.Text As="span" Weight="medium" Class="text-foreground">presentation components</Lumeo.Text> —
-                <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">.razor</code> and their code-behind
-                <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">.cs</code> files — can be vendored.
-                Runtime services still require a reference to the <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">Lumeo</code> NuGet package:
+                <Lumeo.Text As="span" Weight="medium" Class="text-foreground">Default — recommended for most apps.</Lumeo.Text>
+                The CLI vendors <Lumeo.Text As="span" Weight="medium" Class="text-foreground">presentation components</Lumeo.Text> —
+                <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">.razor</code> + their code-behind
+                <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">.cs</code> — and you keep a reference to the
+                <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">Lumeo</code> NuGet for the shared runtime. In this mode the package still provides:
             </Lumeo.Text>
             <ul class="list-disc list-inside space-y-1.5 text-muted-foreground text-sm leading-relaxed ml-2">
                 <li><code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">ToastService</code>, <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">OverlayService</code>, <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">ThemeService</code>, <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">KeyboardShortcutService</code>, <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">ComponentInteropService</code>.</li>
@@ -467,8 +509,21 @@ npm run watch:css</Stack>
                 <li>Pre-compiled CSS (<code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">lumeo.css</code>, <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">lumeo-utilities.css</code>).</li>
                 <li>The <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">[LumeoForm]</code> source generator.</li>
             </ul>
+            <Lumeo.Text Size="base" Color="muted" Leading="relaxed">
+                <Lumeo.Text As="span" Weight="medium" Class="text-foreground">Standalone — fully NuGet-free (4.0.0+).</Lumeo.Text>
+                Run <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">lumeo init --standalone</code>
+                (or <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">lumeo eject</code> on an existing project) and
+                <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">add</code> vendors each component
+                <Lumeo.Text As="span" Weight="medium" Class="text-foreground">plus the whole runtime it needs</Lumeo.Text> as source — the
+                Internal / Services / Theming / interop closure, copied once into
+                <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">_LumeoRuntime/</code> (kept under the
+                <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">Lumeo</code> namespace) — so the project builds and runs with
+                <Lumeo.Text As="span" Weight="medium" Class="text-foreground">zero Lumeo / satellite PackageReference</Lumeo.Text>, validated across all 164 components.
+                To also self-host CDN-delivered JS/CSS, run <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">lumeo deps install</code>.
+            </Lumeo.Text>
             <Lumeo.Text Size="sm" Color="muted" Leading="relaxed">
-                In practice: keep the NuGet reference; vendor the components you want to customize; delete any that you fully own.
+                In practice: most teams keep the NuGet and vendor the few components they want to customize; reach for
+                standalone when you need an airgapped or fully self-owned build with no Lumeo package at all.
             </Lumeo.Text>
         </Stack>
     </Stack>

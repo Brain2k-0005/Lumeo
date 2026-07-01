@@ -57,7 +57,7 @@ Parameters:
 
 ### `lumeo-component`
 
-Scaffolds a reusable `.razor` component pre-wired with the Lumeo 2.0 contract: `@namespace`, `Class` parameter, `AdditionalAttributes` splat, theme-token-only CSS, plus `Variant` and `Size` enums and a `Disabled` parameter wired into the class builder.
+Scaffolds a reusable `.razor` component pre-wired with the Lumeo component contract: `@namespace`, `Class` parameter, `AdditionalAttributes` splat, theme-token-only CSS, plus `Variant` and `Size` enums and a `Disabled` parameter wired into the class builder.
 
 ```bash
 dotnet new lumeo-component --ComponentName Hero --namespace MyApp.Components
@@ -75,7 +75,7 @@ dotnet new uninstall Lumeo.Templates
 
 ## Conventions enforced
 
-Every template follows the Lumeo 2.0 component contract:
+Every template follows the Lumeo component contract:
 
 - `@namespace` declared at the top of `.razor` files.
 - `[Parameter] public string? Class` for consumer-supplied CSS classes.

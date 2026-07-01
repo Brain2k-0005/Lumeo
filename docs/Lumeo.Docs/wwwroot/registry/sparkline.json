@@ -34,7 +34,8 @@
         "default": null,
         "description": null,
         "isCascading": false,
-        "captureUnmatched": false
+        "captureUnmatched": false,
+        "isEditorRequired": false
       },
       {
         "name": "Height",
@@ -42,7 +43,8 @@
         "default": "32",
         "description": null,
         "isCascading": false,
-        "captureUnmatched": false
+        "captureUnmatched": false,
+        "isEditorRequired": false
       },
       {
         "name": "Color",
@@ -50,7 +52,8 @@
         "default": null,
         "description": null,
         "isCascading": false,
-        "captureUnmatched": false
+        "captureUnmatched": false,
+        "isEditorRequired": false
       },
       {
         "name": "Type",
@@ -58,7 +61,8 @@
         "default": "SparkType.Line",
         "description": null,
         "isCascading": false,
-        "captureUnmatched": false
+        "captureUnmatched": false,
+        "isEditorRequired": false
       },
       {
         "name": "ShowArea",
@@ -66,7 +70,8 @@
         "default": null,
         "description": null,
         "isCascading": false,
-        "captureUnmatched": false
+        "captureUnmatched": false,
+        "isEditorRequired": false
       },
       {
         "name": "ShowLast",
@@ -74,7 +79,8 @@
         "default": null,
         "description": null,
         "isCascading": false,
-        "captureUnmatched": false
+        "captureUnmatched": false,
+        "isEditorRequired": false
       },
       {
         "name": "ShowTooltips",
@@ -82,7 +88,8 @@
         "default": null,
         "description": "Render a marker dot at every data point with a native SVG &lt;title&gt; (hover tooltip showing the value) — point highlight + tooltips with no JS. Off by default. (#275)",
         "isCascading": false,
-        "captureUnmatched": false
+        "captureUnmatched": false,
+        "isEditorRequired": false
       },
       {
         "name": "StrokeWidth",
@@ -90,7 +97,8 @@
         "default": "1.5",
         "description": null,
         "isCascading": false,
-        "captureUnmatched": false
+        "captureUnmatched": false,
+        "isEditorRequired": false
       },
       {
         "name": "AriaLabel",
@@ -98,7 +106,8 @@
         "default": "\"Trend\"",
         "description": null,
         "isCascading": false,
-        "captureUnmatched": false
+        "captureUnmatched": false,
+        "isEditorRequired": false
       },
       {
         "name": "Class",
@@ -106,7 +115,8 @@
         "default": null,
         "description": null,
         "isCascading": false,
-        "captureUnmatched": false
+        "captureUnmatched": false,
+        "isEditorRequired": false
       },
       {
         "name": "AdditionalAttributes",
@@ -114,7 +124,8 @@
         "default": null,
         "description": null,
         "isCascading": false,
-        "captureUnmatched": true
+        "captureUnmatched": true,
+        "isEditorRequired": false
       }
     ],
     "events": [],
@@ -136,8 +147,33 @@
     ],
     "examples": [],
     "subComponents": {},
+    "a11y": {
+      "roles": [
+        "img"
+      ],
+      "ariaAttributes": [
+        "aria-label"
+      ],
+      "keys": [],
+      "keyboardInteractive": false,
+      "focusManaged": false
+    },
     "parseFailed": false,
     "parseError": null
+  },
+  "testCoverage": {
+    "tier": 1,
+    "files": 1,
+    "tests": 9,
+    "relatedFiles": 1,
+    "render": true,
+    "behavior": false,
+    "a11y": true,
+    "keyboard": false,
+    "scale": false,
+    "e2e": false,
+    "e2eFiles": [],
+    "contract": "smoke"
   },
   "$schema": "https://lumeo.nativ.sh/registry-component-schema.json",
   "key": "sparkline",
@@ -151,7 +187,7 @@
   "source": [
     {
       "path": "UI/Sparkline/Sparkline.razor",
-      "content": "@namespace Lumeo\n\n<svg viewBox=\"0 0 100 @Height\"\n     preserveAspectRatio=\"none\"\n     class=\"@CssClass\"\n     style=\"@InlineStyle\"\n     aria-label=\"@AriaLabel\"\n     role=\"img\"\n     @attributes=\"AdditionalAttributes\">\n    @((MarkupString)_shapesHtml)\n</svg>\n\n@code {\n    public enum SparkType { Line, Area, Bars }\n\n    [Parameter] public IEnumerable<double>? Values { get; set; }\n    [Parameter] public int Height { get; set; } = 32;\n    [Parameter] public string? Color { get; set; }\n    [Parameter] public SparkType Type { get; set; } = SparkType.Line;\n    [Parameter] public bool ShowArea { get; set; }\n    [Parameter] public bool ShowLast { get; set; }\n    /// <summary>\n    /// Render a marker dot at every data point with a native SVG <c>&lt;title&gt;</c>\n    /// (hover tooltip showing the value) — point highlight + tooltips with no JS.\n    /// Off by default. (#275)\n    /// </summary>\n    [Parameter] public bool ShowTooltips { get; set; }\n    [Parameter] public double StrokeWidth { get; set; } = 1.5;\n    [Parameter] public string? AriaLabel { get; set; } = \"Trend\";\n    [Parameter] public string? Class { get; set; }\n    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }\n\n    private string _shapesHtml = string.Empty;\n\n    private string CssClass => Cx.Merge(\"inline-block w-full align-middle\", Class);\n\n    private string InlineStyle\n    {\n        get\n        {\n            var style = $\"height: {Height}px;\";\n            if (!string.IsNullOrEmpty(Color)) style += $\" color: {Color};\";\n            return style;\n        }\n    }\n\n    protected override void OnParametersSet()\n    {\n        _shapesHtml = BuildShapes();\n    }\n\n    private string BuildShapes()\n    {\n        var list = Values?.ToList();\n        if (list is null || list.Count == 0)\n        {\n            // Baseline rect so the component has a visible footprint.\n            return $\"<rect x=\\\"0\\\" y=\\\"{F(Height / 2.0 - 0.5)}\\\" width=\\\"100\\\" height=\\\"1\\\" fill=\\\"var(--color-muted-foreground, currentColor)\\\" opacity=\\\"0.35\\\" />\";\n        }\n\n        var color = string.IsNullOrEmpty(Color) ? \"var(--color-primary, currentColor)\" : Color;\n        var min = list.Min();\n        var max = list.Max();\n        var range = max - min;\n        const double pad = 2.0;\n        var usable = Height - (pad * 2);\n\n        double ScaleY(double v)\n        {\n            if (range == 0) return Height / 2.0;\n            var norm = (v - min) / range;\n            return Height - pad - (norm * usable);\n        }\n\n        var sb = new System.Text.StringBuilder();\n\n        if (Type == SparkType.Bars)\n        {\n            var n = list.Count;\n            var slot = 100.0 / n;\n            var barWidth = Math.Max(0.5, slot - 1);\n            var zeroY = Height - pad;\n            for (int i = 0; i < n; i++)\n            {\n                var x = i * slot + (slot - barWidth) / 2.0;\n                var y = ScaleY(list[i]);\n                var h = Math.Max(0.5, zeroY - y);\n                sb.Append($\"<rect x=\\\"{F(x)}\\\" y=\\\"{F(y)}\\\" width=\\\"{F(barWidth)}\\\" height=\\\"{F(h)}\\\" fill=\\\"{color}\\\" />\");\n            }\n        }\n        else\n        {\n            var n = list.Count;\n            var pts = new System.Text.StringBuilder();\n            for (int i = 0; i < n; i++)\n            {\n                var x = n == 1 ? 50.0 : (double)i / (n - 1) * 100.0;\n                var y = ScaleY(list[i]);\n                if (i > 0) pts.Append(' ');\n                pts.Append($\"{F(x)},{F(y)}\");\n            }\n            var pointsStr = pts.ToString();\n\n            if (Type == SparkType.Area || ShowArea)\n            {\n                var lastX = n == 1 ? 50.0 : 100.0;\n                var firstX = n == 1 ? 50.0 : 0.0;\n                var polyPoints = $\"{F(firstX)},{F(Height)} {pointsStr} {F(lastX)},{F(Height)}\";\n                sb.Append($\"<polygon points=\\\"{polyPoints}\\\" fill=\\\"{color}\\\" fill-opacity=\\\"0.2\\\" stroke=\\\"none\\\" />\");\n                sb.Append($\"<polyline points=\\\"{pointsStr}\\\" fill=\\\"none\\\" stroke=\\\"{color}\\\" stroke-width=\\\"{F(StrokeWidth)}\\\" stroke-linecap=\\\"round\\\" stroke-linejoin=\\\"round\\\" vector-effect=\\\"non-scaling-stroke\\\" />\");\n            }\n            else\n            {\n                sb.Append($\"<polyline points=\\\"{pointsStr}\\\" fill=\\\"none\\\" stroke=\\\"{color}\\\" stroke-width=\\\"{F(StrokeWidth)}\\\" stroke-linecap=\\\"round\\\" stroke-linejoin=\\\"round\\\" vector-effect=\\\"non-scaling-stroke\\\" />\");\n            }\n        }\n\n        if (ShowLast && list.Count > 0)\n        {\n            double lx, ly;\n            if (Type == SparkType.Bars)\n            {\n                var n = list.Count;\n                var slot = 100.0 / n;\n                lx = (n - 1) * slot + slot / 2.0;\n                ly = ScaleY(list[^1]);\n            }\n            else\n            {\n                var n = list.Count;\n                lx = n == 1 ? 50.0 : 100.0;\n                ly = ScaleY(list[^1]);\n            }\n            var r = (Type == SparkType.Area || ShowArea) ? 2.75 : 2.25;\n            sb.Append($\"<circle cx=\\\"{F(lx)}\\\" cy=\\\"{F(ly)}\\\" r=\\\"{F(r)}\\\" fill=\\\"{color}\\\" />\");\n        }\n\n        // Per-point markers + native <title> hover tooltips (#275). Opt-in.\n        if (ShowTooltips)\n        {\n            var n = list.Count;\n            var slot = 100.0 / n;\n            for (int i = 0; i < n; i++)\n            {\n                var cx = Type == SparkType.Bars\n                    ? i * slot + slot / 2.0\n                    : (n == 1 ? 50.0 : (double)i / (n - 1) * 100.0);\n                var cy = ScaleY(list[i]);\n                sb.Append($\"<circle cx=\\\"{F(cx)}\\\" cy=\\\"{F(cy)}\\\" r=\\\"1.75\\\" fill=\\\"{color}\\\"><title>{F(list[i])}</title></circle>\");\n            }\n        }\n\n        return sb.ToString();\n    }\n\n    private static string F(double v) => v.ToString(\"0.##\", System.Globalization.CultureInfo.InvariantCulture);\n}\n"
+      "content": "@namespace Lumeo\n\n<svg viewBox=\"0 0 100 @Height\"\n     preserveAspectRatio=\"none\"\n     class=\"@CssClass\"\n     style=\"@InlineStyle\"\n     aria-label=\"@AriaLabel\"\n     role=\"img\"\n     @attributes=\"AdditionalAttributes\">\n    @((MarkupString)_shapesHtml)\n</svg>\n\n@code {\n    public enum SparkType { Line, Area, Bars }\n\n    [Parameter] public IEnumerable<double>? Values { get; set; }\n    [Parameter] public int Height { get; set; } = 32;\n    [Parameter] public string? Color { get; set; }\n    [Parameter] public SparkType Type { get; set; } = SparkType.Line;\n    [Parameter] public bool ShowArea { get; set; }\n    [Parameter] public bool ShowLast { get; set; }\n    /// <summary>\n    /// Render a marker dot at every data point with a native SVG <c>&lt;title&gt;</c>\n    /// (hover tooltip showing the value) — point highlight + tooltips with no JS.\n    /// Off by default. (#275)\n    /// </summary>\n    [Parameter] public bool ShowTooltips { get; set; }\n    [Parameter] public double StrokeWidth { get; set; } = 1.5;\n    [Parameter] public string? AriaLabel { get; set; } = \"Trend\";\n    [Parameter] public string? Class { get; set; }\n    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }\n\n    private string _shapesHtml = string.Empty;\n\n    private string CssClass => Cx.Merge(\"inline-block w-full align-middle\", Class);\n\n    private string InlineStyle\n    {\n        get\n        {\n            var style = $\"height: {Height}px;\";\n            if (!string.IsNullOrEmpty(Color)) style += $\" color: {Color};\";\n            return style;\n        }\n    }\n\n    protected override void OnParametersSet()\n    {\n        _shapesHtml = BuildShapes();\n    }\n\n    private string BuildShapes()\n    {\n        var list = Values?.ToList();\n        if (list is null || list.Count == 0)\n        {\n            // Baseline rect so the component has a visible footprint.\n            return $\"<rect x=\\\"0\\\" y=\\\"{F(Height / 2.0 - 0.5)}\\\" width=\\\"100\\\" height=\\\"1\\\" fill=\\\"var(--color-muted-foreground, currentColor)\\\" opacity=\\\"0.35\\\" />\";\n        }\n\n        var color = string.IsNullOrEmpty(Color) ? \"var(--color-primary, currentColor)\" : Color;\n        var min = list.Min();\n        var max = list.Max();\n        var range = max - min;\n        const double pad = 2.0;\n        var usable = Height - (pad * 2);\n\n        double ScaleY(double v)\n        {\n            if (range == 0) return Height / 2.0;\n            var norm = (v - min) / range;\n            return Height - pad - (norm * usable);\n        }\n\n        var sb = new System.Text.StringBuilder();\n\n        if (Type == SparkType.Bars)\n        {\n            var n = list.Count;\n            var slot = 100.0 / n;\n            var barWidth = Math.Max(0.5, slot - 1);\n            var zeroY = Height - pad;\n            for (int i = 0; i < n; i++)\n            {\n                var x = i * slot + (slot - barWidth) / 2.0;\n                var y = ScaleY(list[i]);\n                var h = Math.Max(0.5, zeroY - y);\n                sb.Append($\"<rect x=\\\"{F(x)}\\\" y=\\\"{F(y)}\\\" width=\\\"{F(barWidth)}\\\" height=\\\"{F(h)}\\\" fill=\\\"{color}\\\" />\");\n            }\n        }\n        else\n        {\n            var n = list.Count;\n            string pointsStr;\n            if (n == 1)\n            {\n                // A single data point can't form a line segment — a one-coordinate\n                // polyline (and the matching zero-width area polygon) render nothing.\n                // Emit a flat line across the full width so the sparkline stays visible.\n                var ly = ScaleY(list[0]);\n                pointsStr = $\"0,{F(ly)} 100,{F(ly)}\";\n            }\n            else\n            {\n                var pts = new System.Text.StringBuilder();\n                for (int i = 0; i < n; i++)\n                {\n                    var x = (double)i / (n - 1) * 100.0;\n                    var y = ScaleY(list[i]);\n                    if (i > 0) pts.Append(' ');\n                    pts.Append($\"{F(x)},{F(y)}\");\n                }\n                pointsStr = pts.ToString();\n            }\n\n            if (Type == SparkType.Area || ShowArea)\n            {\n                // pointsStr always spans x=0..100 (incl. the single-point flat line),\n                // so the area baseline polygon does too.\n                const double firstX = 0.0;\n                const double lastX = 100.0;\n                var polyPoints = $\"{F(firstX)},{F(Height)} {pointsStr} {F(lastX)},{F(Height)}\";\n                sb.Append($\"<polygon points=\\\"{polyPoints}\\\" fill=\\\"{color}\\\" fill-opacity=\\\"0.2\\\" stroke=\\\"none\\\" />\");\n                sb.Append($\"<polyline points=\\\"{pointsStr}\\\" fill=\\\"none\\\" stroke=\\\"{color}\\\" stroke-width=\\\"{F(StrokeWidth)}\\\" stroke-linecap=\\\"round\\\" stroke-linejoin=\\\"round\\\" vector-effect=\\\"non-scaling-stroke\\\" />\");\n            }\n            else\n            {\n                sb.Append($\"<polyline points=\\\"{pointsStr}\\\" fill=\\\"none\\\" stroke=\\\"{color}\\\" stroke-width=\\\"{F(StrokeWidth)}\\\" stroke-linecap=\\\"round\\\" stroke-linejoin=\\\"round\\\" vector-effect=\\\"non-scaling-stroke\\\" />\");\n            }\n        }\n\n        if (ShowLast && list.Count > 0)\n        {\n            double lx, ly;\n            if (Type == SparkType.Bars)\n            {\n                var n = list.Count;\n                var slot = 100.0 / n;\n                lx = (n - 1) * slot + slot / 2.0;\n                ly = ScaleY(list[^1]);\n            }\n            else\n            {\n                var n = list.Count;\n                lx = n == 1 ? 50.0 : 100.0;\n                ly = ScaleY(list[^1]);\n            }\n            var r = (Type == SparkType.Area || ShowArea) ? 2.75 : 2.25;\n            sb.Append($\"<circle cx=\\\"{F(lx)}\\\" cy=\\\"{F(ly)}\\\" r=\\\"{F(r)}\\\" fill=\\\"{color}\\\" />\");\n        }\n\n        // Per-point markers + native <title> hover tooltips (#275). Opt-in.\n        if (ShowTooltips)\n        {\n            var n = list.Count;\n            var slot = 100.0 / n;\n            for (int i = 0; i < n; i++)\n            {\n                var cx = Type == SparkType.Bars\n                    ? i * slot + slot / 2.0\n                    : (n == 1 ? 50.0 : (double)i / (n - 1) * 100.0);\n                var cy = ScaleY(list[i]);\n                sb.Append($\"<circle cx=\\\"{F(cx)}\\\" cy=\\\"{F(cy)}\\\" r=\\\"1.75\\\" fill=\\\"{color}\\\"><title>{F(list[i])}</title></circle>\");\n            }\n        }\n\n        return sb.ToString();\n    }\n\n    private static string F(double v) => v.ToString(\"0.##\", System.Globalization.CultureInfo.InvariantCulture);\n}\n"
     }
   ],
   "slots": [],

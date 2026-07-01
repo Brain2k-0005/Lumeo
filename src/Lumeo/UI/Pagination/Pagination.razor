@@ -70,6 +70,35 @@
 
     private int CurrentPage => Math.Clamp(Page ?? 1, 1, Math.Max(1, EffectiveTotalPages));
 
+    private bool _reconciling;
+
+    // Reconcile a shrunk TotalItems/TotalPages back to the parent. In data-driven
+    // mode the render clamps Page for display, but the controlled Page held by the
+    // parent would otherwise stay out of range forever; push the clamped value via
+    // PageChanged so Page, the fetched data and the highlight stay in sync (#42).
+    protected override async Task OnParametersSetAsync()
+    {
+        if (_reconciling) return;
+        if (ChildContent is not null || Page is null) return;
+
+        var total = EffectiveTotalPages;
+        if (total <= 0) return;
+
+        var requested = Page.Value;
+        var clamped = Math.Clamp(requested, 1, total);
+        if (clamped == requested) return;
+
+        _reconciling = true;
+        try
+        {
+            await PageChanged.InvokeAsync(clamped);
+        }
+        finally
+        {
+            _reconciling = false;
+        }
+    }
+
     private string NavButtonClass =>
         "inline-flex h-11 w-11 sm:h-9 sm:w-9 items-center justify-center rounded-md text-sm font-medium cursor-pointer transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50";
 

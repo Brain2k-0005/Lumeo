@@ -1,18 +1,22 @@
 @namespace Lumeo
 @inject IComponentInteropService Interop
 
+@* Render the label, control and helper/error as ONE self-contained vertical block so the
+   field never splays into a row when dropped in a flex / centered container. Standalone
+   form-field structural fix. *@
+<div class="flex flex-col items-start">
 @if (Label is not null && !InsideFormField)
 {
     <label class="block text-sm font-medium text-foreground mb-1.5">
         @Label
         @if (Required)
         {
-            <span class="text-destructive ml-0.5">*</span>
+            <span class="text-destructive ms-0.5">*</span>
         }
     </label>
 }
 
-<input id="@_id"
+<input id="@EffectiveId"
        class="@CssClass"
        value="@_displayValue"
        placeholder="@EffectivePlaceholder"
@@ -20,8 +24,9 @@
        name="@(Name ?? FormField?.Name)"
        aria-required="@(Required ? "true" : "false")"
        aria-invalid="@(EffectiveInvalid ? "true" : "false")"
+       aria-describedby="@FormFieldDescribedBy"
        @oninput="HandleInput"
-       @attributes="AdditionalAttributes" />
+       @attributes="EffectiveAttributes" />
 
 @if (!InsideFormField)
 {
@@ -34,6 +39,7 @@
         <p class="text-xs text-muted-foreground mt-1.5">@HelperText</p>
     }
 }
+</div>
 
 @code {
     [CascadingParameter] private FormField.FormFieldContext? FormField { get; set; }
@@ -56,6 +62,29 @@
     private bool EffectiveInvalid => Invalid || FormField?.HasError == true;
     private bool InsideFormField => FormField is not null;
 
+    // Point aria-describedby at the FormField's rendered help/error text so a screen
+    // reader announces it on this input (null outside a FormField).
+    private string? FormFieldDescribedBy => FormField?.DescribedBy;
+
+    // A consumer-supplied id in the splat would otherwise render AFTER the generated
+    // EffectiveId attribute and silently win, leaving the FormField label's `for`
+    // pointing at an id that no longer exists on the input. Strip it from the splat
+    // when inside a FormField; outside a FormField the splat passes through unchanged
+    // so the consumer's id still reaches the input.
+    private Dictionary<string, object>? EffectiveAttributes =>
+        InsideFormField && AdditionalAttributes?.ContainsKey("id") == true
+            ? AdditionalAttributes.Where(kv => kv.Key != "id").ToDictionary(kv => kv.Key, kv => kv.Value)
+            : AdditionalAttributes;
+
+    // Inside a FormField, adopt its ControlId as the input's id so the field's
+    // <Label For> actually click-focuses it (Base UI Field parity, matching
+    // Select/Textarea/DatePicker/TimePicker). Standalone, keep our own generated id.
+    // Every internal id use (the rendered id attribute and the caret JS interop in
+    // HandleInput/OnAfterRenderAsync) flows through this so the rendered id and the
+    // focus/caret targets stay consistent.
+    private string EffectiveId =>
+        !string.IsNullOrEmpty(FormField?.ControlId) ? FormField!.ControlId : _id;
+
     private readonly string _id = LumeoIds.New("inputmask");
 
     private string _displayValue = "";
@@ -63,6 +92,29 @@
     // Set in HandleInput to ask OnAfterRender to restore the caret to this display
     // index. -1 means "no pending restore".
     private int _pendingCaret = -1;
+    // Set in HandleInput when the re-masked display differs from the raw browser
+    // string (a char was rejected or a literal auto-inserted). OnAfterRender then
+    // force-writes _displayValue to the DOM because Blazor's diff may not patch an
+    // input whose value attribute equals the PREVIOUS render's value (#41).
+    private bool _pendingValueSync;
+    // Last Mask / PromptChar the display was derived against, so OnParametersSet
+    // re-derives the masked display when the mask definition changes even though
+    // the bound Value stayed the same (#155).
+    private string _lastMask = "";
+    private char _lastPromptChar = '_';
+
+    // UNCONTROLLED discriminator: the last Value parameter we observed. When the
+    // consumer does NOT bind ValueChanged the component owns the live value, so we
+    // adopt the parameter only when it genuinely CHANGES from this — an unrelated
+    // re-render that re-supplies the same/stale Value must not clobber typed text.
+    private string? _lastValueParam;
+    // CONTROLLED discriminator: the last value we pushed UP to the parent via
+    // ValueChanged (also re-synced whenever we adopt an authoritative Value). A
+    // controlled parent re-render that echoes back this exact value is safe to
+    // ignore (keep in-flight state); any other value — a normalization, reset, or
+    // a REJECTION that kept the OLD value — is authoritative and must win.
+    private string? _lastPushed;
+    private bool _paramSeeded;
 
     private string CssClass => Cx.Merge("flex h-9 w-full rounded-md border", (EffectiveInvalid ? "border-destructive focus-visible:ring-destructive/20" : "border-input focus-visible:ring-ring"), "bg-transparent px-3 py-1 text-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-[1.5px] disabled:cursor-not-allowed disabled:opacity-50", Class);
 
@@ -70,11 +122,62 @@
 
     protected override void OnParametersSet()
     {
-        if (Value != _rawValue)
+        // Seed the working value from the parameter on the first set. _lastPushed and
+        // _lastValueParam both start at the seed so neither discriminator misfires.
+        if (!_paramSeeded)
         {
             _rawValue = Value ?? "";
             _displayValue = ApplyMask(_rawValue);
+            _lastValueParam = Value;
+            _lastPushed = Value;
+            _lastMask = Mask;
+            _lastPromptChar = PromptChar;
+            _paramSeeded = true;
+            return;
         }
+
+        // The two usages need opposite defaults, distinguished by whether the consumer
+        // bound ValueChanged (the established controlled/uncontrolled signal used across
+        // the library). HandleInput mutates _rawValue (not Value) and records _lastPushed,
+        // so in BOTH branches our own in-flight typing is never clobbered.
+        bool adoptValue;
+        if (ValueChanged.HasDelegate)
+        {
+            // CONTROLLED: the parent owns Value and it is authoritative — EXCEPT when it
+            // merely echoes back the exact edit we just pushed (Value == _lastPushed),
+            // where adopting would be a redundant write that could disturb the caret, so
+            // we keep the live value. Any OTHER Value wins and is adopted: a normalization,
+            // a programmatic (re)assignment, or — crucially — a REJECTION where the parent
+            // kept its OLD value (!= the value we just pushed). That last case is what
+            // rolls a rejected keystroke back to the controlled Value.
+            adoptValue = !string.Equals(Value, _lastPushed, StringComparison.Ordinal);
+        }
+        else
+        {
+            // UNCONTROLLED: no ValueChanged binding, so the component owns the live value.
+            // Adopt the parameter ONLY when the PARENT actually changes it; an unrelated
+            // re-render that re-supplies the same (or a stale) Value must NOT clobber the
+            // user's typed text.
+            adoptValue = !string.Equals(Value, _lastValueParam, StringComparison.Ordinal);
+        }
+
+        // Re-derive the masked display when adopting Value OR when the mask
+        // definition itself changes (Mask / PromptChar) while Value stays the
+        // same — otherwise a runtime mask swap left a stale display (#155).
+        if (adoptValue || Mask != _lastMask || PromptChar != _lastPromptChar)
+        {
+            if (adoptValue)
+            {
+                _rawValue = Value ?? "";
+                _lastPushed = Value;
+            }
+            _displayValue = ApplyMask(_rawValue);
+            _lastMask = Mask;
+            _lastPromptChar = PromptChar;
+        }
+
+        // Keep the uncontrolled discriminator pointing at the last Value we observed.
+        _lastValueParam = Value;
     }
 
     private string BuildMaskPlaceholder()
@@ -168,12 +271,25 @@
         // Read the caret BEFORE we rewrite the value — the DOM still holds the
         // post-edit string the browser produced, so selectionStart is meaningful.
         int browserCaret;
-        try { browserCaret = await Interop.GetInputCaret(_id); }
+        try { browserCaret = await Interop.GetInputCaret(EffectiveId); }
         catch (JSDisconnectedException) { browserCaret = inputVal.Length; }
 
         _rawValue = ExtractRaw(inputVal);
         _displayValue = ApplyMask(_rawValue);
+        // Record _lastPushed BEFORE raising ValueChanged: a controlled parent
+        // re-renders synchronously inside InvokeAsync, so OnParametersSet must
+        // already see this as "the value we pushed" to recognise the echo and
+        // keep the caret (and, on a rejection, roll back to the parent's
+        // authoritative value).
+        _lastPushed = _rawValue;
         await ValueChanged.InvokeAsync(_rawValue);
+
+        // When the masked display differs from what the browser produced (a char
+        // was rejected, or a literal/separator was auto-inserted), the new
+        // _displayValue may equal the PREVIOUS render's value — so Blazor's diff
+        // emits no patch and the browser keeps showing the unmasked string. Ask
+        // OnAfterRender to force-write the value to the DOM (#41).
+        _pendingValueSync = _displayValue != inputVal;
 
         // Map the browser caret (in the typed string) onto the re-masked display:
         // count the significant chars before the caret, then land just after that
@@ -229,10 +345,24 @@
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
+        // Force the masked display into the DOM first (so the caret restore below
+        // operates on the corrected string). This runs only when HandleInput saw
+        // the display diverge from the raw browser string, i.e. a char was
+        // rejected or a literal auto-inserted and Blazor's diff may not patch it
+        // because the value equals the previous render (#41).
+        if (_pendingValueSync)
+        {
+            _pendingValueSync = false;
+            try { await Interop.SetInputValue(EffectiveId, _displayValue); }
+            catch (JSDisconnectedException) { }
+            catch (ObjectDisposedException) { }
+            catch (InvalidOperationException) { } // JS interop unavailable during prerender
+        }
+
         if (_pendingCaret < 0) return;
         var pos = _pendingCaret;
         _pendingCaret = -1;
-        try { await Interop.SetInputCaret(_id, pos); }
+        try { await Interop.SetInputCaret(EffectiveId, pos); }
         catch (JSDisconnectedException) { }
         catch (ObjectDisposedException) { }
         catch (InvalidOperationException) { } // JS interop unavailable during prerender

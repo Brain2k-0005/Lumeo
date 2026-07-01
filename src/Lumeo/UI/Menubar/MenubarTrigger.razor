@@ -1,6 +1,8 @@
 @namespace Lumeo
 
-<button class="@CssClass" tabindex="@TabIndex" @onclick="HandleClick" @onmouseenter="HandleMouseEnter" @onkeydown="HandleKeyDown" @attributes="AdditionalAttributes">
+<button id="@TriggerId" class="@CssClass" tabindex="@TabIndex"
+        role="menuitem" aria-haspopup="menu" aria-expanded="@IsOpen.ToString().ToLowerInvariant()"
+        @onclick="HandleClick" @onmouseenter="HandleMouseEnter" @onkeydown="HandleKeyDown" @attributes="AdditionalAttributes">
     @ChildContent
 </button>
 
@@ -12,6 +14,10 @@
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     private bool IsOpen => Context.OpenMenuId == MenuContext.MenuId;
+
+    // Deterministic id (derived from the menu wrapper) so MenubarContent can return
+    // focus here on Escape (WCAG 2.4.3). Must match the id MenubarContent computes.
+    private string TriggerId => $"{MenuContext.WrapperId}-trigger";
 
     // Roving tabindex: the active (open) trigger — or the first registered trigger
     // when none is open — gets tabindex=0; all others get tabindex=-1.

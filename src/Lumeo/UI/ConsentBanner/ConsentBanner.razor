@@ -29,7 +29,7 @@
                     </p>
                 </div>
                 <div class="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap sm:items-center sm:shrink-0">
-                    @if (Categories.Any(c => !c.Required))
+                    @if (EffectiveCategories.Any(c => !c.Required))
                     {
                         <button type="button"
                                 class="inline-flex items-center justify-center rounded-md text-xs font-medium w-full sm:w-auto h-8 px-3 text-muted-foreground hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-2"
@@ -55,18 +55,18 @@
 
 @if (_preferencesOpen)
 {
-    <div id="@_prefDialogId" role="dialog" aria-modal="true" aria-labelledby="@_prefTitleId"
+    <div id="@_prefDialogId" role="dialog" aria-modal="true" aria-labelledby="@_prefTitleId" aria-describedby="@_prefDescId"
          tabindex="-1"
          @onkeydown="HandlePrefKeyDown" @onkeydown:stopPropagation="true"
          class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/70 backdrop-blur-sm animate-fade-in">
         <div class="w-full max-w-lg rounded-lg border border-border/60 bg-popover text-popover-foreground shadow-2xl">
             <div class="p-6 border-b border-border/40">
                 <h3 id="@_prefTitleId" class="text-lg font-semibold">@PreferencesTitle</h3>
-                <p class="text-sm text-muted-foreground mt-1 leading-relaxed">@PreferencesDescription</p>
+                <p id="@_prefDescId" class="text-sm text-muted-foreground mt-1 leading-relaxed">@PreferencesDescription</p>
             </div>
 
             <div class="p-6 space-y-4 max-h-[50vh] overflow-y-auto">
-                @foreach (var cat in Categories)
+                @foreach (var cat in EffectiveCategories)
                 {
                     var catKey = cat.Key;
                     var locked = cat.Required;
@@ -122,6 +122,12 @@
     /// <summary>Consent buckets to expose in the preferences dialog. Omit `Required: true` ones if your site doesn't use strictly-necessary cookies.</summary>
     [Parameter] public IReadOnlyList<Lumeo.Services.ConsentCategory> Categories { get; set; } = DefaultCategories;
 
+    // Categories is declared non-nullable, but a consumer can still push null
+    // through the parameter setter (e.g. an unresolved binding). Coalesce to the
+    // default set everywhere we enumerate it so a transiently-null binding renders
+    // the defaults instead of NRE-ing on every render / dialog open.
+    private IReadOnlyList<Lumeo.Services.ConsentCategory> EffectiveCategories => Categories ?? DefaultCategories;
+
     /// <summary>URL to your privacy policy page. If null, the link is hidden.</summary>
     [Parameter] public string? PrivacyPolicyUrl { get; set; }
 
@@ -149,6 +155,7 @@
     private readonly string _titleId = LumeoIds.New("lumeo-consent-title");
     private readonly string _descId  = LumeoIds.New("lumeo-consent-desc");
     private readonly string _prefTitleId = LumeoIds.New("lumeo-consent-pref-title");
+    private readonly string _prefDescId = LumeoIds.New("lumeo-consent-pref-desc");
     private readonly string _prefDialogId = LumeoIds.New("lumeo-consent-pref-dialog");
 
     private bool _ready;
@@ -228,20 +235,35 @@
 
     private async Task AcceptAll()
     {
-        await Consent.AcceptAllAsync(Categories.Where(c => !c.Required).Select(c => c.Key));
+        await Consent.AcceptAllAsync(EffectiveCategories.Where(c => !c.Required).Select(c => c.Key));
         _preferencesOpen = false;
     }
 
     private async Task RejectAll()
     {
-        await Consent.RejectAllAsync(Categories.Where(c => !c.Required).Select(c => c.Key));
+        await Consent.RejectAllAsync(EffectiveCategories.Where(c => !c.Required).Select(c => c.Key));
         _preferencesOpen = false;
     }
 
     private void OpenPreferences()
     {
-        // Seed the draft from current consent so the toggles reflect reality.
-        _draft = Categories.ToDictionary(c => c.Key, c => c.Required || Consent.HasConsent(c.Key), StringComparer.OrdinalIgnoreCase);
+        // Only seed the draft on a genuine closed->open transition. A redundant
+        // reopen request (ConsentService.RequestOpenPreferences fired again, or
+        // ShowPreferences() called) while the dialog is already open must NOT
+        // re-seed, otherwise the user's in-progress (unsaved) toggle edits are
+        // silently discarded.
+        if (!_preferencesOpen)
+        {
+            // Seed the draft from current consent so the toggles reflect reality.
+            // Build defensively rather than ToDictionary: two ConsentCategory entries
+            // sharing a Key (case-insensitively, since the dictionary is
+            // OrdinalIgnoreCase) would make ToDictionary throw and tear down the
+            // circuit. Last-wins keeps the dialog openable for misconfigured inputs.
+            var draft = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
+            foreach (var c in EffectiveCategories)
+                draft[c.Key] = c.Required || Consent.HasConsent(c.Key);
+            _draft = draft;
+        }
         _preferencesOpen = true;
     }
 

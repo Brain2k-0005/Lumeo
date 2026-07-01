@@ -170,9 +170,21 @@ let scrollLockCount = 0;
 // some Firefox configurations — the page still scrolls because the scroll
 // chain reaches <html>. We lock both elements together (and restore both on
 // unlock) so the modal/sheet/overlay actually traps scroll across browsers.
+let lockedPaddingRight = '';
+
 export function lockScroll() {
     scrollLockCount++;
     if (scrollLockCount === 1) {
+        // Compensate for the scrollbar that overflow:hidden removes. Without this the
+        // page content (and any position:fixed chrome) jumps right by the scrollbar
+        // width the instant an overlay opens — the classic modal layout-shift jank.
+        // Measure the gutter BEFORE hiding overflow, then pad the body by it.
+        const scrollbarWidth = window.innerWidth - document.documentElement.clientWidth;
+        lockedPaddingRight = document.body.style.paddingRight;
+        if (scrollbarWidth > 0) {
+            const current = parseFloat(getComputedStyle(document.body).paddingRight) || 0;
+            document.body.style.paddingRight = `${current + scrollbarWidth}px`;
+        }
         document.body.style.overflow = 'hidden';
         document.documentElement.style.overflow = 'hidden';
     }
@@ -183,6 +195,10 @@ export function unlockScroll() {
     if (scrollLockCount === 0) {
         document.body.style.overflow = '';
         document.documentElement.style.overflow = '';
+        // Restore the exact inline padding-right we saved (empty string → falls back
+        // to the stylesheet value), undoing the scrollbar-width compensation.
+        document.body.style.paddingRight = lockedPaddingRight;
+        lockedPaddingRight = '';
     }
 }
 
@@ -262,6 +278,33 @@ export function removeFocusTrap(elementId) {
     if (prev && prev.isConnected && typeof prev.focus === 'function') {
         try { prev.focus(); } catch { /* element no longer focusable — ignore */ }
     }
+}
+
+// --- Lightweight focus save / restore (no Tab trap) ---------------------------
+// For NON-modal overlays — menus, listbox popovers — where focus moves into the
+// surface on open but Tab must NOT be trapped (the WAI-ARIA menu pattern closes
+// the menu on Tab). saveFocus stashes whatever had focus (the trigger) keyed by
+// the surface id; restoreFocus hands it back on close (WCAG 2.4.3) without
+// installing any keydown handler. Distinct map from setupFocusTrap so the two
+// never collide.
+const savedFocusByKey = new Map();
+export function saveFocus(key) {
+    const ae = document.activeElement;
+    savedFocusByKey.set(key, (ae && ae !== document.body && typeof ae.focus === 'function') ? ae : null);
+}
+export function restoreFocus(key) {
+    const prev = savedFocusByKey.get(key);
+    savedFocusByKey.delete(key);
+    if (!(prev && prev.isConnected && typeof prev.focus === 'function')) return;
+    // Only hand focus back if the user hasn't ALREADY moved it elsewhere. Restore when focus was lost to
+    // <body> (the dismissed surface took its focused child down with it) or still sits inside the dismissed
+    // surface (`key` is the surface's content id) — e.g. an Escape/keyboard dismiss. If focus is on some
+    // OTHER connected control, a controlled close (parent dismisses the surface while the user is typing in
+    // another field) would otherwise STEAL focus back to the old trigger (Codex P2).
+    const ae = document.activeElement;
+    const surface = document.getElementById(key);
+    if (ae && ae !== document.body && !(surface && surface.contains(ae))) return;
+    try { prev.focus(); } catch { /* element no longer focusable — ignore */ }
 }
 
 // --- Slide-animation transform cleanup (Sheet / Drawer) ---
@@ -353,12 +396,21 @@ export async function attachOverlaySlideEnd(elementId) {
 
 const positionCleanups = new Map();
 
-export function positionFixed(contentId, referenceId, align, matchWidth, side, offset) {
+export function positionFixed(contentId, referenceId, align, matchWidth, side, offset, dotnetRef) {
     const content = document.getElementById(contentId);
     const reference = document.getElementById(referenceId);
-    if (!content || !reference) return;
+    if (!content || !reference) return side || 'bottom';
 
     const resolvedSide = side || 'bottom';
+    // The side the box ACTUALLY lands on after any collision flip — returned to the caller so a
+    // directional-arrow consumer (Tooltip) can keep its arrow on the edge facing the trigger.
+    let computedSide = resolvedSide;
+    // round-14: the synchronous return above only covers the INITIAL placement. A later scroll/resize
+    // reposition (the rAF-driven update() below) can flip the box again while the surface stays open, and
+    // a directional-arrow consumer needs to follow THAT too — so report any LATER change to dotnetRef.
+    // lastReportedSide starts null so the first update() pass (the synchronous one) never notifies — that
+    // placement is already conveyed by the function's return value.
+    let lastReportedSide = null;
     // Trigger->content gap. Callers that don't pass an offset (legacy 5-arg
     // interop path) keep the historical 4px default.
     const gap = (typeof offset === 'number' && Number.isFinite(offset) && offset >= 0) ? offset : 4;
@@ -413,11 +465,25 @@ export function positionFixed(contentId, referenceId, align, matchWidth, side, o
         // shifts replace the former transforms: translateX(-50%) -> -cw/2,
         // translateX(-100%) -> -cw, translateY(-50%) -> -ch/2,
         // translateY(-100%) -> -ch.
+        // "align" is a LOGICAL (writing-mode-relative) direction only on the HORIZONTAL
+        // axis — i.e. for side === 'top'/'bottom', where it picks the box's left/right
+        // edge. DirectionProvider makes start/end logical for the component tree, but
+        // this entry point had no direction input, so align="start" always resolved to
+        // the physical LEFT edge even under <DirectionProvider Direction="Rtl"> — where
+        // "start" should mean the trigger's RIGHT edge (Select/DropdownMenu pass "start"
+        // and landed flipped). The side === 'left'/'right' usage below (picking the
+        // box's top/bottom edge) is a BLOCK-direction concern that RTL does not flip, so
+        // it is deliberately left untouched.
+        const isRtl = getComputedStyle(reference).direction === 'rtl';
+        const horizontalAlign = isRtl
+            ? (align === 'center' ? 'center' : (align === 'end' ? 'start' : 'end'))
+            : align;
+
         let top, left;
         if (resolvedSide === 'top') {
             top = refRect.top - gap - ch;
-            if (align === 'center') left = refRect.left + refRect.width / 2 - cw / 2;
-            else if (align === 'end') left = refRect.right - cw;
+            if (horizontalAlign === 'center') left = refRect.left + refRect.width / 2 - cw / 2;
+            else if (horizontalAlign === 'end') left = refRect.right - cw;
             else left = refRect.left;
         } else if (resolvedSide === 'left') {
             left = refRect.left - gap - cw;
@@ -432,8 +498,8 @@ export function positionFixed(contentId, referenceId, align, matchWidth, side, o
         } else {
             // bottom (default)
             top = refRect.bottom + gap;
-            if (align === 'center') left = refRect.left + refRect.width / 2 - cw / 2;
-            else if (align === 'end') left = refRect.right - cw;
+            if (horizontalAlign === 'center') left = refRect.left + refRect.width / 2 - cw / 2;
+            else if (horizontalAlign === 'end') left = refRect.right - cw;
             else left = refRect.left;
         }
 
@@ -441,6 +507,43 @@ export function positionFixed(contentId, referenceId, align, matchWidth, side, o
         content.style.top = `${top}px`;
         content.style.left = `${left}px`;
         content.style.right = '';
+
+        // --- Containing-block compensation (transformed ancestor) -------------
+        // position:fixed resolves against the nearest transformed / filtered /
+        // backdrop-filtered ancestor (which becomes its containing block), NOT
+        // the viewport. When such an ancestor exists — e.g. this content is a
+        // SelectContent / DropdownMenuSubContent rendered inside a centered
+        // Dialog (which uses transform) — every top/left we write lands offset
+        // by the ancestor's origin, so the popover renders off its trigger. All
+        // the math in this function is in viewport space, so content.style.
+        // top/left always hold the INTENDED viewport coordinates; measuring the
+        // residual between intended and actual yields exactly the ancestor's
+        // origin offset, which we fold back. Applied here — BEFORE the flip/
+        // clamp overflow checks below — so those checks measure the box's TRUE
+        // on-screen position; measuring the uncompensated (ancestor-offset-
+        // inflated) position could make a box that actually fits on screen look
+        // like it overflows, triggering an unwarranted flip. Applied AGAIN at
+        // the end of this function (after the flip/clamp logic may have written
+        // fresh top/left values of its own, which need the same fold-back). A
+        // no-op (offset ~ 0) when no transformed ancestor exists, so it never
+        // affects the common page-level case. Compensating here instead of
+        // reparenting the node to <body> keeps Blazor's DOM ownership intact.
+        function compensateContainingBlock() {
+            void content.offsetHeight;
+            const intendedTop = parseFloat(content.style.top);
+            const intendedLeft = parseFloat(content.style.left);
+            const settled = content.getBoundingClientRect();
+            if (Number.isFinite(intendedTop)) {
+                const offY = settled.top - intendedTop;
+                if (Math.abs(offY) > 0.5) content.style.top = `${intendedTop - offY}px`;
+            }
+            if (Number.isFinite(intendedLeft)) {
+                const offX = settled.left - intendedLeft;
+                if (Math.abs(offX) > 0.5) content.style.left = `${intendedLeft - offX}px`;
+            }
+        }
+        compensateContainingBlock();
+
         void content.offsetHeight;
         const cr = content.getBoundingClientRect();
 
@@ -525,6 +628,31 @@ export function positionFixed(contentId, referenceId, align, matchWidth, side, o
                 content.style.overflow = 'auto';
             }
         }
+
+        // Fold back the containing-block offset a second time: the flip/clamp
+        // logic above may have written fresh top/left values of its own (e.g. a
+        // vertical flip, or a viewport-edge clamp), and those are ALSO
+        // viewport-space intended values that need the same ancestor-origin
+        // compensation applied near the top of this function.
+        compensateContainingBlock();
+
+        // Report the side the box ACTUALLY landed on. A collision flip above may have moved a preferred
+        // Top box below its trigger (or vice-versa); compare final box-center vs reference-center so a
+        // directional-arrow consumer can re-point its arrow to the edge facing the trigger.
+        const rRect = reference.getBoundingClientRect();
+        const cRect = content.getBoundingClientRect();
+        if (resolvedSide === 'top' || resolvedSide === 'bottom') {
+            computedSide = (cRect.top + cRect.height / 2) <= (rRect.top + rRect.height / 2) ? 'top' : 'bottom';
+        } else if (resolvedSide === 'left' || resolvedSide === 'right') {
+            computedSide = (cRect.left + cRect.width / 2) <= (rRect.left + rRect.width / 2) ? 'left' : 'right';
+        }
+
+        // Notify .NET of a LATER side change (skips the very first pass — lastReportedSide is still null
+        // there, and that placement is already conveyed by positionFixed's synchronous return).
+        if (dotnetRef && lastReportedSide !== null && computedSide !== lastReportedSide) {
+            dotnetRef.invokeMethodAsync('OnPositionSideChanged', contentId, computedSide).catch(() => {});
+        }
+        lastReportedSide = computedSide;
     }
 
     // Initial position
@@ -552,6 +680,7 @@ export function positionFixed(contentId, referenceId, align, matchWidth, side, o
         positionCleanups.delete(contentId);
     };
     positionCleanups.set(contentId, cleanup);
+    return computedSide;
 }
 
 export function unpositionFixed(contentId) {
@@ -1321,8 +1450,19 @@ export function registerPreventDefaultKeys(elementId, rules) {
             // keyCode 229 covers engines that fire composition keydowns
             // without setting isComposing.
             if (r.skipComposing && (e.isComposing || e.keyCode === 229)) continue;
-            if (r.skipEditable && e.target instanceof Element &&
-                e.target.closest('input, textarea, select, [contenteditable=""], [contenteditable="true"]')) continue;
+            // skipEditable exemptions:
+            //  - text-editable fields (input/textarea/select/contenteditable) are exempt for EVERY key:
+            //    typing must win over the container's key handling.
+            //  - interactive controls (button/a/role=button) are exempt ONLY for ACTIVATION keys
+            //    (Space/Enter) so their native activation isn't cancelled (Codex P2) — but the container
+            //    STILL suppresses Arrow/Home/End/Page on them: otherwise e.g. AudioPlayer's ArrowLeft/Right
+            //    seek (registered with skipEditable) would also let the browser scroll the page when focus
+            //    is on a transport button (Codex P2, round-12 regression of the round-9 button exemption).
+            if (r.skipEditable && e.target instanceof Element) {
+                if (e.target.closest('input, textarea, select, [contenteditable=""], [contenteditable="true"]')) continue;
+                const isActivation = e.key === ' ' || e.key === 'Spacebar' || e.key === 'Enter';
+                if (isActivation && e.target.closest('button, a[href], [role="button"]')) continue;
+            }
             e.preventDefault();
             return;
         }
@@ -1368,7 +1508,9 @@ export function registerHorizontalSwipe(elementId, dotnetRef, options) {
         const deltaY = e.changedTouches[0].clientY - startY;
         if (Math.abs(deltaY) >= verticalDeadZone) return; // too much vertical — ignore
         if (Math.abs(deltaX) < swipeThreshold) return;    // below horizontal threshold — ignore
-        dotnetRef.invokeMethodAsync('OnCalendarSwipe', elementId, deltaX < 0 ? 'next' : 'prev');
+        const rtl = getComputedStyle(el).direction === 'rtl';
+        const forward = rtl ? deltaX > 0 : deltaX < 0; // RTL mirrors physical deltaX
+        dotnetRef.invokeMethodAsync('OnCalendarSwipe', elementId, forward ? 'next' : 'prev');
     };
 
     el.addEventListener('touchstart', onTouchStart, { passive: true });
@@ -1425,7 +1567,9 @@ export function registerGallerySwipe(elementId, dotnetRef, options) {
         const deltaY = e.changedTouches[0].clientY - startY;
         if (Math.abs(deltaY) >= verticalDeadZone) return; // too much vertical — ignore
         if (Math.abs(deltaX) < swipeThreshold) return;    // below horizontal threshold — ignore
-        dotnetRef.invokeMethodAsync('OnGallerySwipe', elementId, deltaX < 0 ? 'next' : 'prev');
+        const rtl = getComputedStyle(el).direction === 'rtl';
+        const forward = rtl ? deltaX > 0 : deltaX < 0; // RTL mirrors physical deltaX
+        dotnetRef.invokeMethodAsync('OnGallerySwipe', elementId, forward ? 'next' : 'prev');
     };
 
     el.addEventListener('touchstart', onTouchStart, { passive: true });
@@ -1490,7 +1634,9 @@ export function registerTabSwipe(elementId, wrap, dotnetRef, options) {
         if (Math.abs(deltaY) >= verticalDeadZone) return; // too much vertical drift — ignore
         if (Math.abs(deltaX) < swipeThreshold) return;    // below horizontal threshold — ignore
 
-        const direction = deltaX < 0 ? 'next' : 'prev';
+        const rtl = getComputedStyle(el).direction === 'rtl';
+        const forward = rtl ? deltaX > 0 : deltaX < 0; // RTL mirrors physical deltaX
+        const direction = forward ? 'next' : 'prev';
         dotnetRef.invokeMethodAsync('OnTabSwipe', elementId, direction);
     };
 
@@ -1938,6 +2084,20 @@ export function focusMenuItemByIndex(containerId, index) {
 
 export function getMenuItemCount(containerId) {
     return getMenuItems(containerId).length;
+}
+
+// Returns the `id` attributes of the descendants of `containerId` matching
+// `selector`, in live DOM order. Compound widgets (RadioGroup / ToggleGroup /
+// Segmented / Stepper / Splitter, …) call this at navigation time so roving /
+// arrow-key / neighbour order tracks the real DOM even after a keyed reorder
+// moved reused child instances without re-rendering them. Ids without a value
+// are dropped (only registered, addressable items participate in roving nav).
+export function getOrderedDescendantIds(containerId, selector) {
+    const container = document.getElementById(containerId);
+    if (!container) return [];
+    return Array.from(container.querySelectorAll(selector))
+        .map(el => el.id)
+        .filter(id => id);
 }
 
 // --- Toolbar roving focus (Radix Toolbar keyboard model) ---
@@ -2525,12 +2685,20 @@ export function unregisterAffix(elementId) {
 
 const backToTopHandlers = new Map();
 
-export function registerBackToTop(id, dotnetRef, threshold) {
-    // Clean up previous registration for this id
+export function registerBackToTop(id, dotnetRef, threshold, target) {
+    // Clean up previous registration for this id (detach from whatever scroll
+    // source the previous registration was bound to, not necessarily window).
     if (backToTopHandlers.has(id)) {
         const prev = backToTopHandlers.get(id);
-        window.removeEventListener('scroll', prev.handler);
+        prev.scrollSource.removeEventListener('scroll', prev.handler);
     }
+
+    // When a Target selector is supplied, observe that container's scrollTop and
+    // listen for scroll on it; otherwise fall back to the window/document. A
+    // selector that doesn't resolve also falls back to window so registration
+    // never throws on a stale/typo'd Target. (#98)
+    const container = target ? document.querySelector(target) : null;
+    const scrollSource = container || window;
 
     const effectiveThreshold = threshold || 300;
     // Throttle to one check per animation frame — a raw scroll handler fires
@@ -2540,7 +2708,9 @@ export function registerBackToTop(id, dotnetRef, threshold) {
     let lastVisible = null;
     const compute = () => {
         rafPending = false;
-        const scrollY = window.scrollY || document.documentElement.scrollTop;
+        const scrollY = container
+            ? container.scrollTop
+            : (window.scrollY || document.documentElement.scrollTop);
         const visible = scrollY > effectiveThreshold;
         if (visible === lastVisible) return;
         lastVisible = visible;
@@ -2552,21 +2722,25 @@ export function registerBackToTop(id, dotnetRef, threshold) {
         requestAnimationFrame(compute);
     };
 
-    window.addEventListener('scroll', handler, { passive: true });
-    backToTopHandlers.set(id, { handler, dotnetRef });
+    scrollSource.addEventListener('scroll', handler, { passive: true });
+    backToTopHandlers.set(id, { handler, dotnetRef, scrollSource, target: target || null });
     compute(); // initial check (synchronous)
 }
 
 export function unregisterBackToTop(id) {
     const entry = backToTopHandlers.get(id);
     if (entry) {
-        window.removeEventListener('scroll', entry.handler);
+        entry.scrollSource.removeEventListener('scroll', entry.handler);
         backToTopHandlers.delete(id);
     }
 }
 
-export function scrollToTop() {
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+export function scrollToTop(target) {
+    // Scroll the targeted container back to the top when a selector is given,
+    // otherwise scroll the window. A stale/unresolved selector falls back to
+    // the window so the button never silently no-ops. (#98)
+    const container = target ? document.querySelector(target) : null;
+    (container || window).scrollTo({ top: 0, behavior: 'smooth' });
 }
 
 // --- InputMask: read / restore a text input's caret (selectionStart) ---
@@ -2585,6 +2759,14 @@ export function setInputCaret(elementId, position) {
     const len = (el.value || '').length;
     const pos = Math.max(0, Math.min(position, len));
     try { el.setSelectionRange(pos, pos); } catch { /* element not focusable yet */ }
+}
+
+// Force the live DOM value of a masked <input> when Blazor's diff won't patch it
+// (the re-masked display equals the previous render after a rejected char, #41).
+export function setInputValue(elementId, value) {
+    const el = document.getElementById(elementId);
+    if (!el) return;
+    if (el.value !== value) el.value = value;
 }
 
 // --- Mention: get textarea caret coordinates ---
@@ -3024,6 +3206,18 @@ function detachRipple(el) {
 }
 
 export const ripple = { attach: attachRipple, detach: detachRipple };
+
+/* =============================================================
+ * File input reset (#70) — clear a native <input type="file">'s
+ * value so re-picking the SAME file re-fires `change`. Browsers
+ * suppress `change` when the selected path equals the input's
+ * current value; UploadTrigger has no accumulating list to mask
+ * this, so it resets the element after every pick.
+ * ============================================================= */
+export function resetFileInput(el) {
+    if (!el) return;
+    try { el.value = ''; } catch { /* not a value-bearing input */ }
+}
 
 /* =============================================================
  * Reduced-motion gate (core) — mirror of the Lumeo.Motion helper

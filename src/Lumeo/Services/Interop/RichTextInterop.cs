@@ -86,6 +86,22 @@ internal sealed class RichTextInterop
         catch (JSDisconnectedException) { }
     }
 
+    /// <summary>
+    /// Pushes updated <c>aria-invalid</c> and <c>aria-describedby</c> onto the editor's
+    /// live contenteditable element. TipTap stamps these once at construction via
+    /// <c>editorProps.attributes</c> and does not react to later changes, so explicit
+    /// setAttribute calls are required when validation state changes post-mount.
+    /// </summary>
+    public async ValueTask SetAriaAttributesAsync(IJSRuntime js, string id, bool ariaInvalid, string? ariaDescribedBy)
+    {
+        try
+        {
+            var module = await GetModuleAsync(js);
+            await module.InvokeVoidAsync("rte.setAriaAttributes", id, ariaInvalid, ariaDescribedBy);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
     public async ValueTask DestroyAsync(IJSRuntime js, string id)
     {
         try

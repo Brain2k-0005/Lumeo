@@ -1,8 +1,8 @@
 @namespace Lumeo
 
-<button type="button" role="menuitemcheckbox" aria-checked="@Checked.ToString().ToLower()" class="@CssClass" @onclick="Toggle" disabled="@Disabled" @attributes="AdditionalAttributes">
+<button type="button" role="menuitemcheckbox" aria-checked="@EffectiveChecked.ToString().ToLower()" class="@CssClass" @onclick="Toggle" disabled="@Disabled" aria-disabled="@(Disabled ? "true" : null)" @attributes="AdditionalAttributes">
     <span class="flex h-3.5 w-3.5 items-center justify-center">
-        @if (Checked)
+        @if (EffectiveChecked)
         {
             <Blazicon Svg="Lucide.Check" class="h-3.5 w-3.5" />
         }
@@ -20,12 +20,53 @@
 
     // disabled native attribute also makes the JS menu nav (getMenuItems uses
     // :not([disabled])) skip this item during arrow-key roving.
-    private string CssClass => Cx.Merge("relative flex w-full cursor-default select-none items-center gap-2 rounded-sm py-1.5 pl-8 pr-2 text-sm outline-none transition-colors hover:bg-accent hover:text-accent-foreground focus:bg-accent focus:text-accent-foreground disabled:pointer-events-none disabled:opacity-50 disabled:cursor-not-allowed", Class);
+    private string CssClass => Cx.Merge("relative flex w-full cursor-default select-none items-center gap-2 rounded-sm py-1.5 ps-8 pe-2 text-sm outline-none transition-colors hover:bg-accent hover:text-accent-foreground focus:bg-accent focus:text-accent-foreground disabled:pointer-events-none disabled:opacity-50 disabled:cursor-not-allowed", Class);
+
+    // Uncontrolled checked state lives in a private backing field, NOT in the
+    // [Parameter] Checked. Blazor re-applies [Parameter] values from the parent on
+    // every render, so self-managing state by writing back into Checked got silently
+    // reverted whenever an unrelated parent re-render pushed the original Checked
+    // value down. Mirrors the Collapsible controlled/uncontrolled fix (#246).
+    private bool _checkedState;
+    private bool _initialized;
+    private bool _lastCheckedParam;
+
+    /// <summary>
+    /// State the component actually renders from. Controlled (CheckedChanged bound):
+    /// the parent owns it, so mirror Checked verbatim. Uncontrolled: use our own
+    /// backing field so parent re-renders can't clobber the toggle.
+    /// </summary>
+    private bool EffectiveChecked => CheckedChanged.HasDelegate ? Checked : _checkedState;
+
+    protected override void OnParametersSet()
+    {
+        // Seed the uncontrolled backing field from Checked on first set (honours an
+        // initial Checked="true") and whenever the bound Checked value actually
+        // changes (lets callers still drive it imperatively), but never on the no-op
+        // re-applications that caused the revert.
+        if (!_initialized || Checked != _lastCheckedParam)
+        {
+            _checkedState = Checked;
+            _lastCheckedParam = Checked;
+            _initialized = true;
+        }
+    }
 
     private async Task Toggle()
     {
         if (Disabled) return;
-        Checked = !Checked;
-        await CheckedChanged.InvokeAsync(Checked);
+        var next = !EffectiveChecked;
+        // Controlled (Checked bound via CheckedChanged): let the parent own state —
+        // fire the callback and render from the parent's next value instead of
+        // mutating our own [Parameter], which desyncs if the parent ignores the
+        // change. Uncontrolled: self-manage via the backing field. (#246)
+        if (CheckedChanged.HasDelegate)
+        {
+            await CheckedChanged.InvokeAsync(next);
+        }
+        else
+        {
+            _checkedState = next;
+        }
     }
 }

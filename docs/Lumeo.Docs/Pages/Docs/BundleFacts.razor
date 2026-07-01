@@ -17,7 +17,7 @@
                 <Heading Level="1" Class="text-4xl sm:text-5xl font-bold tracking-tight leading-tight">
                     How Lumeo stays at
                     <Sparkles Count="6" Class="inline-flex items-baseline">
-                        <NumberTicker Value="400"
+                        <NumberTicker Value="627"
                                       Suffix=" KB"
                                       DurationMs="2000"
                                       Class="text-primary font-mono" />
@@ -26,7 +26,7 @@
 
                 <Lumeo.Text Size="base" Color="muted" Class="max-w-xl leading-relaxed">
                     What the browser actually downloads — brotli-compressed assembly size, measured
-                    <Lumeo.Text As="span" Weight="medium" Color="foreground">2026-05-22 (3.1.0)</Lumeo.Text>.
+                    <Lumeo.Text As="span" Weight="medium" Color="foreground">2026-06-28 (4.0.0)</Lumeo.Text>.
                 </Lumeo.Text>
             </Stack>
         </BlurFade>
@@ -119,8 +119,8 @@
         <BlurFade DelayMs="320" ForceHidden="true">
             <div class="mt-4 rounded-lg border border-border/40 bg-muted/20 px-4 py-3">
                 <Lumeo.Text Size="xs" Color="muted">
-                    Total: <Lumeo.Text As="span" Weight="semibold" Color="foreground">~556 KB compressed</Lumeo.Text> in the .nupkg —
-                    matches the NuGet "Download package" badge. The <Lumeo.Text As="span" Weight="semibold" Color="foreground">400 KB brotli number</Lumeo.Text>
+                    Total: <Lumeo.Text As="span" Weight="semibold" Color="foreground">~1,090 KB</Lumeo.Text> in the .nupkg —
+                    matches the NuGet "Download package" badge (~1.09 MB). The <Lumeo.Text As="span" Weight="semibold" Color="foreground">627 KB brotli number</Lumeo.Text>
                     is just the DLL, which is the only thing the WASM linker ships to the browser.
                 </Lumeo.Text>
             </div>
@@ -168,7 +168,7 @@
             <Stack Gap="3" Class="mb-6">
                 <Heading Level="2" Class="text-2xl font-semibold tracking-tight">How it compares</Heading>
                 <Lumeo.Text Size="sm" Color="muted">
-                    Brotli-compressed DLL size for the core package of each library.
+                    Brotli-compressed size of each library's core component DLL — managed code only (see note).
                 </Lumeo.Text>
             </Stack>
         </BlurFade>
@@ -212,8 +212,13 @@
                 </table>
             </div>
             <Lumeo.Text Size="xs" Color="muted" Class="mt-3 italic leading-relaxed">
-                * Approximate brotli sizes for the core library DLL of each project at their latest stable release as of 2026.
-                Independent verification recommended — numbers vary by build configuration and linker trimming.
+                * Brotli (quality 11) of each library's core component DLL — latest stable as of June 2026,
+                .NET 10 target (Telerik: .NET 8, its latest published build). Measured 2026-06-29 and
+                reproducible by brotli-compressing the DLL inside each public .nupkg. This counts the managed
+                assembly only: it excludes app-specific IL trimming (which shrinks every library in a real
+                published app) and the JS/CSS static web assets each library ships separately — some
+                substantial (e.g. Telerik's ~4.8&nbsp;MB JS bundle, Radzen's multi-theme CSS, and Lumeo's own
+                components.js&nbsp;+&nbsp;lumeo.css). DLL size reflects managed footprint, not features or final shipped size.
             </Lumeo.Text>
         </BlurFade>
     </section>
@@ -241,7 +246,7 @@
                             <Flex Align="center" Justify="center" Class="h-8 w-8 rounded-md bg-accent/40 text-primary">
                                 <DynamicIcon Name="BarChart3" Class="h-4 w-4" />
                             </Flex>
-                            <Chip Class="font-mono text-xs">120 KB</Chip>
+                            <Chip Class="font-mono text-xs">128 KB</Chip>
                         </Flex>
                         <Heading Level="3" Class="text-base font-semibold">Charts</Heading>
                         <Lumeo.Text Size="xs" Weight="medium" Color="muted" Class="font-mono">Lumeo.Charts</Lumeo.Text>
@@ -260,7 +265,7 @@
                             <Flex Align="center" Justify="center" Class="h-8 w-8 rounded-md bg-accent/40 text-primary">
                                 <DynamicIcon Name="Table2" Class="h-4 w-4" />
                             </Flex>
-                            <Chip Class="font-mono text-xs">100 KB</Chip>
+                            <Chip Class="font-mono text-xs">120 KB</Chip>
                         </Flex>
                         <Heading Level="3" Class="text-base font-semibold">DataGrid</Heading>
                         <Lumeo.Text Size="xs" Weight="medium" Color="muted" Class="font-mono">Lumeo.DataGrid</Lumeo.Text>
@@ -281,7 +286,7 @@
                             <Flex Align="center" Justify="center" Class="h-8 w-8 rounded-md bg-accent/40 text-primary">
                                 <DynamicIcon Name="PenLine" Class="h-4 w-4" />
                             </Flex>
-                            <Chip Class="font-mono text-xs">26 KB</Chip>
+                            <Chip Class="font-mono text-xs">29 KB</Chip>
                         </Flex>
                         <Heading Level="3" Class="text-base font-semibold">Rich Text Editor</Heading>
                         <Lumeo.Text Size="xs" Weight="medium" Color="muted" Class="font-mono">Lumeo.Editor</Lumeo.Text>
@@ -305,7 +310,7 @@
             <Stack Gap="3" Class="mb-6">
                 <Heading Level="2" Class="text-2xl font-semibold tracking-tight">Why brotli, not .nupkg?</Heading>
                 <Lumeo.Text Size="sm" Color="muted">
-                    NuGet shows 1.35 MB for the core .nupkg — here's what that actually means.
+                    NuGet shows ~1.09 MB for the core .nupkg — here's what that actually means.
                 </Lumeo.Text>
             </Stack>
         </BlurFade>
@@ -317,9 +322,13 @@
                     <AccordionContent Class="px-5">
                         <Stack Gap="3">
                             <Lumeo.Text Size="sm" Color="muted" Leading="relaxed">
-                                The .nupkg bundles everything the package author ships: the compiled DLL, debug symbols, MSBuild
-                                integration props, XML documentation, and — until rc.40 — a full shadcn-style CLI source registry
-                                (~700 KB of JSON). That registry now lives on a CDN as of 3.0.0. None of it reaches the browser; it only exists so
+                                The .nupkg bundles everything the package author ships: the compiled DLL, XML documentation,
+                                static web assets (CSS + JS files), a Roslyn source generator, MSBuild integration props, and —
+                                until rc.40 — a full shadcn-style CLI source registry (~700 KB of JSON). That registry now lives
+                                on a CDN as of 3.0.0. Debug symbols ship separately as a
+                                <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">.snupkg</code>
+                                symbol package, keeping the .nupkg leaner than older builds. None of the above reaches the
+                                browser; it only exists so
                                 <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">lumeo add</code>
                                 and the MCP server can resolve component source offline.
                             </Lumeo.Text>
@@ -331,20 +340,24 @@
                                         <Lumeo.Text As="span" Size="xs" Class="font-mono text-muted-foreground line-through">~1.35 MB</Lumeo.Text>
                                     </Flex>
                                     <Flex Align="center" Justify="between">
-                                        <Lumeo.Text Size="xs" Weight="medium" Color="foreground">.nupkg size as of 3.1.0 (registry moved to CDN in 3.0.0)</Lumeo.Text>
-                                        <Lumeo.Text As="span" Size="xs" Class="font-mono font-semibold text-primary">~660 KB</Lumeo.Text>
+                                        <Lumeo.Text Size="xs" Weight="medium" Color="foreground">.nupkg size as of 4.0.0 (registry on CDN, PDB ships as .snupkg)</Lumeo.Text>
+                                        <Lumeo.Text As="span" Size="xs" Class="font-mono font-semibold text-primary">~1.09 MB</Lumeo.Text>
                                     </Flex>
                                     <Flex Align="center" Justify="between">
                                         <Lumeo.Text Size="xs" Weight="medium" Color="foreground">Brotli DLL actually shipped to browser</Lumeo.Text>
-                                        <Lumeo.Text As="span" Size="xs" Class="font-mono font-semibold text-primary">~400 KB</Lumeo.Text>
+                                        <Lumeo.Text As="span" Size="xs" Class="font-mono font-semibold text-primary">~627 KB</Lumeo.Text>
                                     </Flex>
                                 </Stack>
                             </div>
 
                             <Lumeo.Text Size="sm" Color="muted" Leading="relaxed">
-                                Even the 3.1.0 660 KB overstates the browser cost by ~40% because PDB symbols, MSBuild
-                                .props, and XML docs never ship to the browser — they only matter at development time. You can
-                                verify on
+                                Even the 4.0.0 ~1.09 MB overstates the browser cost because XML docs (77 KB), static web
+                                assets (components.js, lumeo-utilities.css, lumeo.css, and smaller JS files totalling ~98 KB),
+                                the Roslyn source generator (14 KB), and MSBuild props (~3 KB) never reach the browser — they
+                                only matter at development time. And PDB symbols no longer inflate the .nupkg at all: they now
+                                ship separately as a
+                                <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">.snupkg</code>
+                                symbol package. You can verify on
                                 <Lumeo.Link Href="https://www.nuget.org/packages/Lumeo" Target="_blank" Class="underline">nuget.org/packages/Lumeo</Lumeo.Link>:
                                 the "Download package" badge shows the current .nupkg size.
                             </Lumeo.Text>
@@ -361,8 +374,8 @@
                             the .NET IL linker (trimmer) walks your dependency graph and removes every type, method, and
                             field that is not reachable from your entry points. A component you never instantiate is stripped
                             entirely. The resulting <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">.dll</code>
-                            is then brotli-compressed before being transferred to the browser. The 400 KB figure is what
-                            survives that process for a reference Lumeo app that uses all 149 core components — real apps
+                            is then brotli-compressed before being transferred to the browser. The 627 KB figure is what
+                            survives that process for a reference Lumeo app that uses all 143 core components — real apps
                             using a subset will be smaller.
                         </Lumeo.Text>
                     </AccordionContent>
@@ -377,7 +390,7 @@
                             against .NET 10. The <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">_framework/</code>
                             folder in the publish output was inspected; the
                             <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">Lumeo.dll.br</code>
-                            file was 400 KB. Measurement was taken on 2026-05-22 against 3.1.0.
+                            file was 627 KB. Measurement was taken on 2026-06-30 against 4.0.0.
                             .NET runtime DLLs (~3–4 MB brotli total) are excluded — they are shared across all Blazor apps
                             and cached aggressively by the browser.
                         </Lumeo.Text>
@@ -518,38 +531,51 @@
 
     private readonly List<PackageRow> _packages =
     [
-        new("Lumeo",            "400 KB", 100, true,  "core — 154 components"),
-        new("Lumeo.Charts",     "120 KB",  30, false, "opt-in satellite"),
-        new("Lumeo.DataGrid",   "100 KB",  25, false, "opt-in satellite"),
-        new("Lumeo.Editor",      "26 KB",   7, false, "opt-in satellite"),
-        new("Lumeo.Motion",      "18 KB",   5, false, "opt-in satellite"),
-        new("Lumeo.Scheduler",   "16 KB",   4, false, "opt-in satellite"),
-        new("Lumeo.Gantt",       "12 KB",   3, false, "opt-in satellite"),
+        new("Lumeo",            "627 KB", 100, true,  "core — 143 components"),
+        new("Lumeo.Charts",     "128 KB",  20, false, "opt-in satellite"),
+        new("Lumeo.DataGrid",   "120 KB",  19, false, "opt-in satellite"),
+        new("Lumeo.Editor",      "29 KB",   5, false, "opt-in satellite"),
+        new("Lumeo.Motion",      "18 KB",   3, false, "opt-in satellite"),
+        new("Lumeo.Scheduler",   "16 KB",   3, false, "opt-in satellite"),
+        new("Lumeo.Gantt",       "12 KB",   2, false, "opt-in satellite"),
     ];
 
     private readonly List<NupkgAsset> _nupkgAssets =
     [
         new("Package", "Lumeo.dll",
-            "400 KB brotli",
-            "1.9 MB raw IL → 400 KB after WASM linker trimming + brotli compression. This is the only file the browser downloads from the Lumeo package."),
-        new("Palette", "lumeo.css",
-            "49 KB",
-            "Theme tokens, dark-mode variable swaps, and component-scoped styles. Generated by Tailwind v4 at build time — no CSS-in-JS, no runtime style injection."),
+            "878 KB",
+            "Main Blazor component assembly — 2,837 KB raw IL, zip-compressed to 878 KB inside the .nupkg. The WASM linker then trims unused code and brotli-compresses it to the 627 KB the browser actually downloads."),
+        new("FileText", "Lumeo.xml",
+            "77 KB",
+            "XML documentation comments for every public API. Powers IntelliSense in Visual Studio and Rider. Never included in the WASM publish output."),
         new("Zap", "components.js",
-            "57 KB",
-            "Focus traps, scroll lock, element measurement, and third-party canvas wrappers. JS is reserved for what Blazor genuinely cannot do in pure Razor."),
-        new("FileCode2", "Build props + symbols",
-            "~50 KB",
-            "MSBuild .props integration (auto-imports lumeo.css + components.js), PDB symbols for debugging. Never reaches the browser."),
+            "36 KB",
+            "Static web asset: focus traps, scroll lock, element measurement, and third-party canvas wrappers. Automatically injected into host projects via MSBuild StaticWebAssets."),
+        new("Palette", "lumeo-utilities.css",
+            "35 KB",
+            "Tailwind v4 utility bundle, generated at build time from component markup. One flat CSS file — no per-component isolation scopes, no runtime injection."),
+        new("Paintbrush", "lumeo.css",
+            "16 KB",
+            "Theme tokens and dark-mode variable swaps. CSS-only — switching themes is a variable swap, not a C# rebuild."),
+        new("Cpu", "Lumeo.SourceGenerators.dll",
+            "14 KB",
+            "Roslyn analyzer and source generator for the opt-in [LumeoForm] attribute. Compile-time only — never reaches the browser."),
+        new("FileCode2", "JS utilities + package metadata",
+            "~23 KB",
+            "theme.js (5 KB), signature-pad.js (4 KB), toolbar.js (2 KB), README.md (7 KB), MSBuild .props for StaticWebAssets integration (~3 KB), icon.png + .nuspec (~2 KB). Dev-time and discovery artefacts — none reach the browser. Debug symbols ship separately as a .snupkg symbol package and are not included here."),
     ];
 
+    // Measured 2026-06-29: brotli (quality 11) of each library's core component DLL from its
+    // latest-stable public .nupkg, .NET 10 target where shipped (Telerik ships net8.0 only).
+    // Sorted ascending — neutral measured ranking, no cherry-picked order. Reproducible by
+    // brotli-compressing the DLL inside each package. See the note under the table for exclusions.
     private readonly List<ComparisonRow> _comparisonRows =
     [
-        new("Lumeo (core)",      "400 KB",   "Brotli DLL — measured 2026-05-22 (3.1.0)",            IsUs: true),
-        new("FluentUI Blazor",   "~500 KB",  "Approximate; varies by component set referenced"),
-        new("MudBlazor",         "~600 KB",  "Approximate; typical published-app measurement"),
-        new("Radzen Blazor",     "~700 KB",  "Approximate; includes bundled JS interop"),
-        new("Telerik UI Blazor", "~1 MB+",   "Estimate; runtime licensing + JS runtime included"),
+        new("FluentUI Blazor",   "302 KB",    "v4.14.3 (net10.0)"),
+        new("Lumeo (core)",      "627 KB",    "v4.0.0 (net10.0)",   IsUs: true),
+        new("Radzen Blazor",     "1,003 KB",  "v11.0.5 (net10.0)"),
+        new("MudBlazor",         "1,318 KB",  "v9.6.0 (net10.0)"),
+        new("Telerik UI Blazor", "1,480 KB",  "v14.0.0 (net8.0)"),
     ];
 
     private readonly List<string> _excludedDeps =

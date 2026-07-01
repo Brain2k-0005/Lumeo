@@ -162,4 +162,37 @@ public class HighlighterTests : IAsyncLifetime
         // Should not throw; "(World)" should be escaped and matched literally
         Assert.NotEmpty(cut.FindAll("mark"));
     }
+
+    // Bug #46 (edge-data): a RegexMode pattern that produces zero-width matches
+    // (e.g. "x*" which matches the empty string at every position) must not emit
+    // empty <mark> elements. Without the `m.Length == 0` guard this renders one
+    // empty highlight per position.
+    [Fact]
+    public void RegexMode_ZeroWidth_Match_Does_Not_Emit_Empty_Mark()
+    {
+        var cut = _ctx.Render<Lumeo.Highlighter>(p => p
+            .Add(h => h.Text, "abc")
+            .Add(h => h.RegexMode, true)
+            .Add(h => h.Highlight, "x*"));
+
+        // "x*" matches zero-width at every position; none should become a <mark>.
+        Assert.Empty(cut.FindAll("mark"));
+        Assert.Contains("abc", cut.Markup);
+    }
+
+    // Bug #47 (edge-data): WholeWord must not blanket-wrap a term in \b...\b when
+    // an edge char is not a word char. "C#" ends in '#', so a trailing \b can
+    // never match and the term would silently never highlight.
+    [Fact]
+    public void WholeWord_Matches_Term_With_NonWord_Edge_Char()
+    {
+        var cut = _ctx.Render<Lumeo.Highlighter>(p => p
+            .Add(h => h.Text, "I love C# a lot")
+            .Add(h => h.Highlight, "C#")
+            .Add(h => h.WholeWord, true));
+
+        var marks = cut.FindAll("mark");
+        Assert.Single(marks);
+        Assert.Equal("C#", marks[0].TextContent);
+    }
 }

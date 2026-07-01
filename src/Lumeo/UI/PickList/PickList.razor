@@ -36,7 +36,7 @@
                             tabindex="@(index == SourceFocusIndex ? "0" : "-1")"
                             class="@RowClass(selected)"
                             @onclick="() => ToggleSource(item)"
-                            @onfocus="() => _sourceFocusIndex = index"
+                            @onfocus="() => SetSourceFocus(index, item)"
                             @onkeydown="e => HandleSourceKeyDown(e, index)">
                         @if (ItemTemplate != null)
                         {
@@ -58,18 +58,46 @@
 
     @* Middle buttons *@
     <div class="flex flex-col items-center justify-center gap-1.5">
-        <button type="button" class="@ButtonClass" @onclick="MoveAllToTarget" disabled="@(_sourceItems.Count == 0)" title="@L["PickList.MoveAll"]">
-            <Blazicon Svg="Lucide.ChevronsRight" class="h-4 w-4" />
-        </button>
-        <button type="button" class="@ButtonClass" @onclick="MoveSelectedToTarget" disabled="@(_sourceSelected.Count == 0)" title="@L["PickList.MoveSelected"]">
-            <Blazicon Svg="Lucide.ChevronRight" class="h-4 w-4" />
-        </button>
-        <button type="button" class="@ButtonClass" @onclick="MoveSelectedToSource" disabled="@(_targetSelected.Count == 0)" title="@L["PickList.MoveBackSelected"]">
-            <Blazicon Svg="Lucide.ChevronLeft" class="h-4 w-4" />
-        </button>
-        <button type="button" class="@ButtonClass" @onclick="MoveAllToSource" disabled="@(_targetItems.Count == 0)" title="@L["PickList.MoveBackAll"]">
-            <Blazicon Svg="Lucide.ChevronsLeft" class="h-4 w-4" />
-        </button>
+        <Tooltip>
+            <TooltipTrigger AsChild>
+                <ChildContentSlot Context="slot">
+                    <button type="button" class="@ButtonClass" @onclick="MoveAllToTarget" disabled="@(FilteredSourceItems.Count == 0)" aria-label="@L["PickList.MoveAll"]" @attributes="slot.Attributes">
+                        <Blazicon Svg="Lucide.ChevronsRight" class="h-4 w-4" />
+                    </button>
+                </ChildContentSlot>
+            </TooltipTrigger>
+            <TooltipContent>@L["PickList.MoveAll"]</TooltipContent>
+        </Tooltip>
+        <Tooltip>
+            <TooltipTrigger AsChild>
+                <ChildContentSlot Context="slot">
+                    <button type="button" class="@ButtonClass" @onclick="MoveSelectedToTarget" disabled="@(_sourceSelected.Count == 0)" aria-label="@L["PickList.MoveSelected"]" @attributes="slot.Attributes">
+                        <Blazicon Svg="Lucide.ChevronRight" class="h-4 w-4" />
+                    </button>
+                </ChildContentSlot>
+            </TooltipTrigger>
+            <TooltipContent>@L["PickList.MoveSelected"]</TooltipContent>
+        </Tooltip>
+        <Tooltip>
+            <TooltipTrigger AsChild>
+                <ChildContentSlot Context="slot">
+                    <button type="button" class="@ButtonClass" @onclick="MoveSelectedToSource" disabled="@(_targetSelected.Count == 0)" aria-label="@L["PickList.MoveBackSelected"]" @attributes="slot.Attributes">
+                        <Blazicon Svg="Lucide.ChevronLeft" class="h-4 w-4" />
+                    </button>
+                </ChildContentSlot>
+            </TooltipTrigger>
+            <TooltipContent>@L["PickList.MoveBackSelected"]</TooltipContent>
+        </Tooltip>
+        <Tooltip>
+            <TooltipTrigger AsChild>
+                <ChildContentSlot Context="slot">
+                    <button type="button" class="@ButtonClass" @onclick="MoveAllToSource" disabled="@(FilteredTargetItems.Count == 0)" aria-label="@L["PickList.MoveBackAll"]" @attributes="slot.Attributes">
+                        <Blazicon Svg="Lucide.ChevronsLeft" class="h-4 w-4" />
+                    </button>
+                </ChildContentSlot>
+            </TooltipTrigger>
+            <TooltipContent>@L["PickList.MoveBackAll"]</TooltipContent>
+        </Tooltip>
     </div>
 
     @* Target panel *@
@@ -79,12 +107,26 @@
             <div class="flex items-center gap-1.5 shrink-0">
                 @if (Reorderable)
                 {
-                    <button type="button" class="@ReorderButtonClass" @onclick="MoveSelectedUp" disabled="@(!CanReorder)" title="@L["PickList.MoveUp"]" aria-label="@L["PickList.MoveUp"]">
-                        <Blazicon Svg="Lucide.ChevronUp" class="h-3.5 w-3.5" />
-                    </button>
-                    <button type="button" class="@ReorderButtonClass" @onclick="MoveSelectedDown" disabled="@(!CanReorder)" title="@L["PickList.MoveDown"]" aria-label="@L["PickList.MoveDown"]">
-                        <Blazicon Svg="Lucide.ChevronDown" class="h-3.5 w-3.5" />
-                    </button>
+                    <Tooltip>
+                        <TooltipTrigger AsChild>
+                            <ChildContentSlot Context="slot">
+                                <button type="button" class="@ReorderButtonClass" @onclick="MoveSelectedUp" disabled="@(!CanReorder)" aria-label="@L["PickList.MoveUp"]" @attributes="slot.Attributes">
+                                    <Blazicon Svg="Lucide.ChevronUp" class="h-3.5 w-3.5" />
+                                </button>
+                            </ChildContentSlot>
+                        </TooltipTrigger>
+                        <TooltipContent>@L["PickList.MoveUp"]</TooltipContent>
+                    </Tooltip>
+                    <Tooltip>
+                        <TooltipTrigger AsChild>
+                            <ChildContentSlot Context="slot">
+                                <button type="button" class="@ReorderButtonClass" @onclick="MoveSelectedDown" disabled="@(!CanReorder)" aria-label="@L["PickList.MoveDown"]" @attributes="slot.Attributes">
+                                    <Blazicon Svg="Lucide.ChevronDown" class="h-3.5 w-3.5" />
+                                </button>
+                            </ChildContentSlot>
+                        </TooltipTrigger>
+                        <TooltipContent>@L["PickList.MoveDown"]</TooltipContent>
+                    </Tooltip>
                 }
                 <span class="text-xs text-muted-foreground">@_targetSelected.Count / @_targetItems.Count</span>
             </div>
@@ -111,7 +153,7 @@
                             tabindex="@(index == TargetFocusIndex ? "0" : "-1")"
                             class="@RowClass(selected)"
                             @onclick="() => ToggleTarget(item)"
-                            @onfocus="() => _targetFocusIndex = index"
+                            @onfocus="() => SetTargetFocus(index, item)"
                             @onkeydown="e => HandleTargetKeyDown(e, index)">
                         @if (ItemTemplate != null)
                         {
@@ -154,6 +196,17 @@
 
     private List<TItem> _sourceItems = new();
     private List<TItem> _targetItems = new();
+    // CONTROLLED discriminator: the last SelectedItems order/set we pushed UP via
+    // SelectedItemsChanged (also re-synced whenever we adopt an authoritative
+    // SelectedItems). A controlled parent re-render that echoes back this exact
+    // order is safe to ignore (keep in-flight _targetItems); any other order/set
+    // is an authoritative assertion (veto / external reorder / reset) and must win.
+    private List<TItem>? _lastPushedSelectedItems;
+    // The last SelectedItems SET (content, not order) we last SAW as an incoming parameter, regardless
+    // of source. Distinguishes a TRUE veto/reset (the parent supplies a genuinely different set) from
+    // an observer-only consumer that binds SelectedItemsChanged purely to react to it without echoing
+    // SelectedItems back — see the #38 carve-out below, now also honoured in CONTROLLED mode.
+    private List<TItem>? _lastSelectedItemsParam;
     private readonly HashSet<TItem> _sourceSelected = new();
     private readonly HashSet<TItem> _targetSelected = new();
     private string _sourceSearch = "";
@@ -162,15 +215,34 @@
     // Roving-tabindex focus targets (one tabbable option per list).
     private int _sourceFocusIndex;
     private int _targetFocusIndex;
+    // #71 — anchor the roving focus to the focused *item* (stable identity), not a
+    // bare position. After items move between panels or reorder, the positional
+    // index points at a different item; remembering the item lets us re-resolve
+    // the index to the same item (falling back to a clamp only when it's gone).
+    private TItem? _sourceFocusItem;
+    private TItem? _targetFocusItem;
     private readonly string _sourceListId = LumeoIds.New("picklist-src");
     private readonly string _targetListId = LumeoIds.New("picklist-tgt");
 
     private static string ItemId(string listId, int index) => $"{listId}-{index}";
 
-    // Clamp the roving index into the current filtered list so a tabbable
-    // option always exists even after items move between panels.
-    private int SourceFocusIndex => FilteredSourceItems.Count == 0 ? 0 : Math.Clamp(_sourceFocusIndex, 0, FilteredSourceItems.Count - 1);
-    private int TargetFocusIndex => FilteredTargetItems.Count == 0 ? 0 : Math.Clamp(_targetFocusIndex, 0, FilteredTargetItems.Count - 1);
+    // Resolve the roving index from the remembered focused item so the tabbable
+    // option stays anchored to the user's place after items move/reorder. Falls
+    // back to a clamp of the last positional index only when the item is gone,
+    // so a tabbable option always exists even after items leave the panel.
+    private int SourceFocusIndex => ResolveFocusIndex(FilteredSourceItems, _sourceFocusItem, _sourceFocusIndex);
+    private int TargetFocusIndex => ResolveFocusIndex(FilteredTargetItems, _targetFocusItem, _targetFocusIndex);
+
+    private static int ResolveFocusIndex(List<TItem> filtered, TItem? focusItem, int lastIndex)
+    {
+        if (filtered.Count == 0) return 0;
+        if (focusItem is not null)
+        {
+            var found = filtered.IndexOf(focusItem);
+            if (found >= 0) return found;
+        }
+        return Math.Clamp(lastIndex, 0, filtered.Count - 1);
+    }
 
     private string CssClass => Cx.Merge("w-full", Class);
 
@@ -179,8 +251,8 @@
 
     private string RowClass(bool selected) =>
         selected
-            ? "w-full text-left flex items-center gap-2 px-2 py-1.5 rounded-md text-sm bg-accent text-accent-foreground transition-colors"
-            : "w-full text-left flex items-center gap-2 px-2 py-1.5 rounded-md text-sm hover:bg-accent/50 transition-colors focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-1";
+            ? "w-full text-start flex items-center gap-2 px-2 py-1.5 rounded-md text-sm bg-accent text-accent-foreground transition-colors"
+            : "w-full text-start flex items-center gap-2 px-2 py-1.5 rounded-md text-sm hover:bg-accent/50 transition-colors focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-1";
 
     protected override void OnParametersSet()
     {
@@ -188,11 +260,67 @@
         var sel = (SelectedItems ?? []).ToList();
         var selSet = new HashSet<TItem>(sel);
 
-        _targetItems = sel;
-        _sourceItems = all.Where(i => !selSet.Contains(i)).ToList();
+        if (SelectedItemsChanged.HasDelegate)
+        {
+            // CONTROLLED: the parent owns SelectedItems.
+            // Echo of our own push (sel sequence-equals what we last pushed via
+            // SelectedItemsChanged) → keep the in-flight _targetItems as-is.
+            //
+            // ALSO a no-op: the incoming SET (order ignored) is unchanged from what we last saw as a
+            // PARAMETER before this interaction (_lastSelectedItemsParam). This is the #38 contract —
+            // an observer that binds SelectedItemsChanged purely to react to moves, without echoing
+            // SelectedItems back, must not have its local reorder snapped back by its own re-render;
+            // a same-set re-render is indistinguishable from "hasn't propagated yet", so it stays local.
+            //
+            // Anything else — a set that differs from BOTH our own push AND the pre-interaction
+            // snapshot — is an authoritative, distinguishable assertion (veto / external reorder /
+            // reset) and must win.
+            var isEcho = _lastPushedSelectedItems is not null && sel.SequenceEqual(_lastPushedSelectedItems);
+            // Gate the "unchanged from before" check behind an ACTUAL in-flight push: only treat
+            // incoming-equals-pre-interaction-set as ambiguous when _lastPushedSelectedItems genuinely
+            // differs from _lastSelectedItemsParam (a local interaction pushed something new since the
+            // baseline was last observed). Without this gate, a SET-equality check alone also (wrongly)
+            // swallows a pure EXTERNAL reorder that happens with NO prior local interaction — e.g. a
+            // server-driven sort to the same set in a different order, fired before the user ever
+            // touched the list. There, _lastPushedSelectedItems still equals _lastSelectedItemsParam
+            // (nothing pushed it apart from the baseline yet), so the gate is false and the external
+            // reorder is adopted normally, exactly like the OUTER isEcho/distinct-value cases.
+            var hasInFlightPush = _lastPushedSelectedItems is not null && _lastSelectedItemsParam is not null
+                && !_lastPushedSelectedItems.SequenceEqual(_lastSelectedItemsParam);
+            var isUnchangedSetFromBeforeInteraction = hasInFlightPush
+                && selSet.SetEquals(_lastSelectedItemsParam!);
+            if (!isEcho && !isUnchangedSetFromBeforeInteraction)
+            {
+                _targetItems = sel;
+                _lastPushedSelectedItems = sel;
+            }
+        }
+        else if (sel.Count == _targetItems.Count && selSet.SetEquals(_targetItems))
+        {
+            // #38 — UNCONTROLLED (nobody observes SelectedItemsChanged): within-target
+            // reorder is owned by the component until the *set* of selected items
+            // actually changes. If the incoming SelectedItems is the same set we
+            // already hold (the parent simply didn't echo the emitted order, or
+            // re-rendered for an unrelated reason), keep the user's current ordering
+            // instead of snapping back to the parameter's order.
+            // Same set, possibly reordered: preserve _targetItems as-is.
+        }
+        else
+        {
+            _targetItems = sel;
+        }
+        _lastSelectedItemsParam = sel;
+        _sourceItems = all.Where(i => !_targetItems.Contains(i)).ToList();
 
-        // Clean out selections that are no longer in their side
-        _sourceSelected.RemoveWhere(i => !_sourceItems.Contains(i));
+        // Clean out selections that are no longer in their side. Guard against
+        // a transient-empty incoming Items during async refresh (#37): a wholly
+        // empty incoming Items snapshot (a loading flicker) must not wipe the
+        // user's in-progress source checkbox selection — only prune once there is
+        // a settled (non-empty) data set to reconcile against.
+        if (all.Count > 0)
+        {
+            _sourceSelected.RemoveWhere(i => !_sourceItems.Contains(i));
+        }
         _targetSelected.RemoveWhere(i => !_targetItems.Contains(i));
     }
 
@@ -293,23 +421,40 @@
         }
     }
 
+    // Record the roving focus by both position AND item identity (#71) so the
+    // tabbable option stays anchored to the same item if the lists later move
+    // or reorder.
+    private void SetSourceFocus(int index, TItem item)
+    {
+        _sourceFocusIndex = index;
+        _sourceFocusItem = item;
+    }
+
+    private void SetTargetFocus(int index, TItem item)
+    {
+        _targetFocusIndex = index;
+        _targetFocusItem = item;
+    }
+
     private async Task MoveSourceFocus(int target)
     {
-        var count = FilteredSourceItems.Count;
-        if (count == 0) return;
-        _sourceFocusIndex = Math.Clamp(target, 0, count - 1);
+        var list = FilteredSourceItems;
+        if (list.Count == 0) return;
+        var idx = Math.Clamp(target, 0, list.Count - 1);
+        SetSourceFocus(idx, list[idx]);
         StateHasChanged();
-        try { await Interop.FocusElement(ItemId(_sourceListId, _sourceFocusIndex)); }
+        try { await Interop.FocusElement(ItemId(_sourceListId, idx)); }
         catch (JSDisconnectedException) { }
     }
 
     private async Task MoveTargetFocus(int target)
     {
-        var count = FilteredTargetItems.Count;
-        if (count == 0) return;
-        _targetFocusIndex = Math.Clamp(target, 0, count - 1);
+        var list = FilteredTargetItems;
+        if (list.Count == 0) return;
+        var idx = Math.Clamp(target, 0, list.Count - 1);
+        SetTargetFocus(idx, list[idx]);
         StateHasChanged();
-        try { await Interop.FocusElement(ItemId(_targetListId, _targetFocusIndex)); }
+        try { await Interop.FocusElement(ItemId(_targetListId, idx)); }
         catch (JSDisconnectedException) { }
     }
 
@@ -352,13 +497,22 @@
         // Assign a fresh list reference so FilteredTargetItems recomputes against
         // the reordered order (the cache keys on ReferenceEquals of the list).
         _targetItems = new List<TItem>(list);
+        // Record _lastPushedSelectedItems BEFORE invoking SelectedItemsChanged: a
+        // controlled parent may re-render synchronously inside InvokeAsync, so
+        // OnParametersSet must already see this order as "the order we just
+        // pushed" to distinguish an accepted echo (keep in-flight state) from a
+        // veto (parent kept its old order → roll back).
+        _lastPushedSelectedItems = _targetItems.ToList();
         await SelectedItemsChanged.InvokeAsync(_targetItems.ToList());
     }
 
     private Task MoveSelectedToTarget() => MoveToTarget(_sourceSelected.ToList());
-    private Task MoveAllToTarget() => MoveToTarget(_sourceItems.ToList());
+    // #39 — "Move all" operates on the *visible* (filtered) items so an active
+    // search never silently moves rows the user can't see. With no search the
+    // filtered list is the full list, so the unfiltered behaviour is preserved.
+    private Task MoveAllToTarget() => MoveToTarget(FilteredSourceItems.ToList());
     private Task MoveSelectedToSource() => MoveToSource(_targetSelected.ToList());
-    private Task MoveAllToSource() => MoveToSource(_targetItems.ToList());
+    private Task MoveAllToSource() => MoveToSource(FilteredTargetItems.ToList());
 
     private async Task MoveToTarget(List<TItem> toMove)
     {
@@ -374,6 +528,8 @@
         _sourceItems = _sourceItems.Where(i => !moveSet.Contains(i)).ToList();
         _targetItems = _targetItems.Concat(toMove.Where(i => !_targetItems.Contains(i))).ToList();
         _sourceSelected.Clear();
+        // Record BEFORE invoking — see ReorderTarget for why.
+        _lastPushedSelectedItems = _targetItems.ToList();
         await SelectedItemsChanged.InvokeAsync(_targetItems.ToList());
     }
 
@@ -384,6 +540,8 @@
         _targetItems = _targetItems.Where(i => !moveSet.Contains(i)).ToList();
         _sourceItems = _sourceItems.Concat(toMove.Where(i => !_sourceItems.Contains(i))).ToList();
         _targetSelected.Clear();
+        // Record BEFORE invoking — see ReorderTarget for why.
+        _lastPushedSelectedItems = _targetItems.ToList();
         await SelectedItemsChanged.InvokeAsync(_targetItems.ToList());
     }
 

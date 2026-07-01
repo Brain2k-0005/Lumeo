@@ -1,12 +1,17 @@
 @namespace Lumeo
+@implements IAsyncDisposable
 
+@* Render the label, control and helper/error as ONE self-contained vertical block so the
+   field never splays into a row when dropped in a flex / centered container. Standalone
+   form-field structural fix. *@
+<div class="flex flex-col items-start">
 @if (Label is not null && !InsideFormField)
 {
     <label class="text-sm font-medium leading-none">
         @Label
         @if (Required)
         {
-            <span class="text-destructive ml-0.5">*</span>
+            <span class="text-destructive ms-0.5">*</span>
         }
     </label>
 }
@@ -14,19 +19,21 @@
 <Popover @bind-Open="_isOpen">
     <PopoverTrigger>
         <button type="button"
+                id="@FormFieldControlId"
                 name="@Name"
                 aria-required="@Required.ToString().ToLower()"
                 aria-invalid="@EffectiveInvalid.ToString().ToLower()"
+                aria-describedby="@FormFieldDescribedBy"
                 class="@CssClass"
                 disabled="@Disabled"
-                @attributes="AdditionalAttributes">
-            <Blazicon Svg="Lucide.Calendar" class="mr-2 h-4 w-4 shrink-0" />
+                @attributes="EffectiveAttributes">
+            <Blazicon Svg="Lucide.Calendar" class="me-2 h-4 w-4 shrink-0" />
             @if (Value.HasValue)
             {
                 <span>@FormatDateTime(Value.Value)</span>
                 @if (ShowTimeZoneLabel && TimeZone is not null)
                 {
-                    <span class="ml-2 text-xs text-muted-foreground">@FormatZoneLabel(Value.Value)</span>
+                    <span class="ms-2 text-xs text-muted-foreground">@FormatZoneLabel(Value.Value)</span>
                 }
             }
             else
@@ -35,7 +42,7 @@
             }
             @if (Clearable && Value.HasValue)
             {
-                <button type="button" class="ml-auto pl-1 hover:text-foreground focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-1 rounded" aria-label="@L["DateTimePicker.ClearDate"]" @onclick="HandleClear" @onclick:stopPropagation="true">
+                <button type="button" class="ms-auto ps-1 hover:text-foreground focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-1 rounded" aria-label="@L["DateTimePicker.ClearDate"]" @onclick="HandleClear" @onclick:stopPropagation="true">
                     <Blazicon Svg="Lucide.X" class="h-3.5 w-3.5" />
                 </button>
             }
@@ -50,40 +57,56 @@
                   IsDateDisabled="@IsDateDisabled"
                   FirstDayOfWeek="@FirstDayOfWeek" />
             </div>
-            <div class="border-l border-border/40">
+            <div class="border-s border-border/40">
                 <div class="p-3 pb-1">
                     <span class="text-xs font-medium text-muted-foreground">@L["DateTimePicker.TimeLabel"]</span>
                 </div>
                 <div class="flex divide-x divide-border/40">
                     @* Hours column *@
-                    <div role="listbox" aria-label="@L["TimePicker.HoursLabel"]" class="flex flex-col h-[240px] overflow-y-auto py-1 scrollbar-thin">
-                        @foreach (var hour in GetHours())
+                    <div id="@_hoursColId" role="listbox" aria-label="@L["TimePicker.HoursLabel"]" class="flex flex-col h-[240px] overflow-y-auto py-1 scrollbar-thin">
+                        @{
+                            var hours = GetHours();
+                            var hoursRovingRoot = RovingRoot(_hoursColId, hours, _timeValue.HasValue ? GetDisplayHour(_timeValue.Value) : (int?)null);
+                        }
+                        @foreach (var hour in hours)
                         {
                             var h = hour;
                             var isSelected = _timeValue.HasValue && GetDisplayHour(_timeValue.Value) == h;
                             var disabled = IsHourDisabled(h);
-                            <button type="button" role="option"
+                            <button type="button" id="@ColItemId(_hoursColId, h)" role="option"
                                     aria-selected="@(isSelected ? "true" : "false")"
+                                    tabindex="@(h == hoursRovingRoot ? "0" : "-1")"
                                     disabled="@disabled"
                                     class="@TimeItemClass(isSelected)"
-                                    @onclick="() => SelectHour(h)">
+                                    @onclick="() => SelectHour(h)"
+                                    @onkeydown="e => HandleColumnKeyDown(e, _hoursColId, hours, h)">
                                 @h.ToString("D2")
                             </button>
                         }
                     </div>
 
                     @* Minutes column *@
-                    <div role="listbox" aria-label="@L["TimePicker.MinutesLabel"]" class="flex flex-col h-[240px] overflow-y-auto py-1 scrollbar-thin">
-                        @foreach (var minute in GetMinutes())
+                    <div id="@_minutesColId" role="listbox" aria-label="@L["TimePicker.MinutesLabel"]" class="flex flex-col h-[240px] overflow-y-auto py-1 scrollbar-thin">
+                        @{
+                            var minutes = GetMinutes();
+                            // A Value whose minute isn't a multiple of MinuteStep lists no
+                            // exact match — snap selection to the nearest listed step so the
+                            // option still highlights and seeds the column's roving tab stop.
+                            var selectedMinute = _timeValue.HasValue ? NearestListed(minutes, _timeValue.Value.Minutes) : (int?)null;
+                            var minutesRovingRoot = RovingRoot(_minutesColId, minutes, selectedMinute);
+                        }
+                        @foreach (var minute in minutes)
                         {
                             var m = minute;
-                            var isSelected = _timeValue.HasValue && _timeValue.Value.Minutes == m;
+                            var isSelected = selectedMinute == m;
                             var disabled = IsMinuteDisabled(m);
-                            <button type="button" role="option"
+                            <button type="button" id="@ColItemId(_minutesColId, m)" role="option"
                                     aria-selected="@(isSelected ? "true" : "false")"
+                                    tabindex="@(m == minutesRovingRoot ? "0" : "-1")"
                                     disabled="@disabled"
                                     class="@TimeItemClass(isSelected)"
-                                    @onclick="() => SelectMinute(m)">
+                                    @onclick="() => SelectMinute(m)"
+                                    @onkeydown="e => HandleColumnKeyDown(e, _minutesColId, minutes, m)">
                                 @m.ToString("D2")
                             </button>
                         }
@@ -92,17 +115,26 @@
                     @* Seconds column *@
                     @if (ShowSeconds)
                     {
-                        <div role="listbox" aria-label="@L["TimePicker.SecondsLabel"]" class="flex flex-col h-[240px] overflow-y-auto py-1 scrollbar-thin">
-                            @foreach (var second in GetSeconds())
+                        <div id="@_secondsColId" role="listbox" aria-label="@L["TimePicker.SecondsLabel"]" class="flex flex-col h-[240px] overflow-y-auto py-1 scrollbar-thin">
+                            @{
+                                var seconds = GetSeconds();
+                                // Same nearest-step snap as minutes: a Value whose second isn't
+                                // a multiple of SecondStep would otherwise highlight nothing.
+                                var selectedSecond = _timeValue.HasValue ? NearestListed(seconds, _timeValue.Value.Seconds) : (int?)null;
+                                var secondsRovingRoot = RovingRoot(_secondsColId, seconds, selectedSecond);
+                            }
+                            @foreach (var second in seconds)
                             {
                                 var s = second;
-                                var isSelected = _timeValue.HasValue && _timeValue.Value.Seconds == s;
+                                var isSelected = selectedSecond == s;
                                 var disabled = IsSecondDisabled(s);
-                                <button type="button" role="option"
+                                <button type="button" id="@ColItemId(_secondsColId, s)" role="option"
                                         aria-selected="@(isSelected ? "true" : "false")"
+                                        tabindex="@(s == secondsRovingRoot ? "0" : "-1")"
                                         disabled="@disabled"
                                         class="@TimeItemClass(isSelected)"
-                                        @onclick="() => SelectSecond(s)">
+                                        @onclick="() => SelectSecond(s)"
+                                        @onkeydown="e => HandleColumnKeyDown(e, _secondsColId, seconds, s)">
                                     @s.ToString("D2")
                                 </button>
                             }
@@ -119,11 +151,13 @@
                                 var pmLabel = string.IsNullOrEmpty(EffectiveCulture.DateTimeFormat.PMDesignator) ? "PM" : EffectiveCulture.DateTimeFormat.PMDesignator;
                             }
                             <button type="button"
+                                    aria-pressed="@(isAm ? "true" : "false")"
                                     class="@TimeItemClass(isAm)"
                                     @onclick="() => SelectAmPm(true)">
                                 @amLabel
                             </button>
                             <button type="button"
+                                    aria-pressed="@((!isAm) ? "true" : "false")"
                                     class="@TimeItemClass(!isAm)"
                                     @onclick="() => SelectAmPm(false)">
                                 @pmLabel
@@ -147,8 +181,10 @@
         <p class="text-xs text-muted-foreground">@HelperText</p>
     }
 }
+</div>
 
 @inject Lumeo.Services.Localization.ILumeoLocalizer L
+@inject Lumeo.Services.IComponentInteropService Interop
 
 @code {
     [CascadingParameter] private FormField.FormFieldContext? FormField { get; set; }
@@ -162,6 +198,17 @@
 
     private bool EffectiveInvalid => Invalid || FormField?.HasError == true;
     private bool InsideFormField => FormField is not null;
+
+    private string? FormFieldControlId => string.IsNullOrEmpty(FormField?.ControlId) ? null : FormField!.ControlId;
+    private string? FormFieldDescribedBy => FormField?.DescribedBy;
+
+    // Inside a FormField the generated id must own this element so the FormField <Label For> (and any
+    // interop keyed off the id) stays valid; a consumer-splatted id in AdditionalAttributes renders after
+    // the explicit id= and would override it. Strip it here when InsideFormField; outside, pass through.
+    private Dictionary<string, object>? EffectiveAttributes =>
+        InsideFormField && AdditionalAttributes?.ContainsKey("id") == true
+            ? AdditionalAttributes.Where(kv => kv.Key != "id").ToDictionary(kv => kv.Key, kv => kv.Value)
+            : AdditionalAttributes;
 
     [Parameter] public DateTime? Value { get; set; }
     [Parameter] public EventCallback<DateTime?> ValueChanged { get; set; }
@@ -232,18 +279,46 @@
     private bool _isOpen;
     private DateOnly? _dateValue;
     private TimeSpan? _timeValue;
-    private DateTime? _prevValue;
-    private DateTimeOffset? _prevOffsetValue;
+    // Uncontrolled discriminator: the last Value we last SAW as an incoming PARAMETER
+    // (regardless of who pushed it). Consulted only when ValueChanged has no delegate.
+    private DateTime? _lastValueParam;
+    // CONTROLLED discriminator: the last value WE pushed via ValueChanged (also
+    // re-synced whenever we adopt an authoritative Value, including a Value derived
+    // from OffsetValue/TimeZone below). A controlled parent re-render that echoes
+    // back this exact value is safe to ignore (keep the optimistic _dateValue/
+    // _timeValue); anything else (veto / normalization / reset) is authoritative and
+    // wins. Mirrors Switch's _lastPushed discriminator.
+    private DateTime? _lastValuePushed;
+    // Same CONTROLLED/UNCONTROLLED split for the independently-bindable
+    // OffsetValue/OffsetValueChanged pair.
+    private DateTimeOffset? _lastOffsetValueParam;
+    private DateTimeOffset? _lastOffsetValuePushed;
+    private TimeZoneInfo? _prevTimeZone;
 
     private string CssClass => Cx.Merge("group flex h-9 w-full items-center rounded-md border", (EffectiveInvalid ? "border-destructive ring-1 ring-destructive/20" : "border-input"), "bg-transparent px-3 py-2 text-sm shadow-sm hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50", Class);
 
     protected override void OnParametersSet()
     {
-        // When the parent binds OffsetValue and it changed, derive Value from it
-        // by projecting into the configured TimeZone (or local if null).
-        if (OffsetValue != _prevOffsetValue)
+        // When the parent binds OffsetValue and it changed — OR the TimeZone the
+        // value is projected through changed — derive Value from OffsetValue by
+        // projecting into the configured TimeZone (or local if null). Re-projecting
+        // on a TimeZone change keeps the wall-clock display in step with the zone
+        // label (FormatZoneLabel reads TimeZone live); otherwise a zone swap left
+        // the displayed instant from the old zone while the label showed the new.
+        //
+        // CONTROLLED/UNCONTROLLED split (mirrors Switch): when OffsetValueChanged
+        // has a delegate, an echo of our own last push (OffsetValue == _lastOffsetValuePushed)
+        // is a no-op — anything else (veto, normalization, reset) is authoritative
+        // and must win. When uncontrolled, only a genuinely new incoming literal
+        // (vs. the last one we SAW as a parameter) triggers a re-projection.
+        var offsetChanged = OffsetValueChanged.HasDelegate
+            ? OffsetValue != _lastOffsetValuePushed
+            : OffsetValue != _lastOffsetValueParam;
+        var zoneChanged = !Equals(TimeZone, _prevTimeZone);
+        if (offsetChanged || zoneChanged)
         {
-            _prevOffsetValue = OffsetValue;
+            _lastOffsetValuePushed = OffsetValue;
+            _prevTimeZone = TimeZone;
             if (OffsetValue.HasValue)
             {
                 var local = TimeZone is null
@@ -251,20 +326,35 @@
                     : TimeZoneInfo.ConvertTime(OffsetValue.Value, TimeZone).DateTime;
                 Value = DateTime.SpecifyKind(local, DateTimeKind.Unspecified);
             }
-            else
+            else if (offsetChanged)
             {
+                // Only the OffsetValue going null should clear Value; a bare
+                // TimeZone change with no OffsetValue bound must not wipe a
+                // plain Value-bound selection.
                 Value = null;
             }
         }
+        _lastOffsetValueParam = OffsetValue;
 
         // Resync the internal date/time selection only when the bound Value
-        // actually changed. A time picked before any date lives solely in
+        // genuinely changed. A time picked before any date lives solely in
         // _timeValue (UpdateValue can't commit without a date) — resyncing
         // unconditionally meant any parent re-render wiped that pending
         // selection back to the (null) Value.
-        if (Value != _prevValue)
+        //
+        // Same CONTROLLED/UNCONTROLLED split as above, applied to Value itself:
+        // CONTROLLED — echo of our own push (Value == _lastValuePushed) keeps the
+        // in-flight _dateValue/_timeValue; anything else (veto / normalization /
+        // reset, or the offset-derivation above) is authoritative and wins.
+        // UNCONTROLLED — adopt only when the parent genuinely changes the literal
+        // Value it supplies; a stale re-render with the same literal must not
+        // clobber the user's pending pick.
+        var valueChanged = ValueChanged.HasDelegate
+            ? Value != _lastValuePushed
+            : Value != _lastValueParam;
+        if (valueChanged)
         {
-            _prevValue = Value;
+            _lastValuePushed = Value;
             if (Value.HasValue)
             {
                 _dateValue = DateOnly.FromDateTime(Value.Value);
@@ -276,6 +366,7 @@
                 _timeValue = null;
             }
         }
+        _lastValueParam = Value;
     }
 
     private string FormatZoneLabel(DateTime wallClock)
@@ -471,23 +562,228 @@
         await UpdateValue();
     }
 
+    // ---- Arrow-key list navigation (roving focus per time column) ----
+    // Mirrors TimePicker so the DateTimePicker's time columns are keyboard-navigable
+    // too: ArrowDown/Up move to the next/previous ENABLED option, Home/End jump to
+    // the first/last enabled option, Enter/Space select. The arrow keys' page/column
+    // scroll is suppressed via the prevent-default registration below.
+    private readonly string _hoursColId = LumeoIds.New("dtp-hours");
+    private readonly string _minutesColId = LumeoIds.New("dtp-minutes");
+    private readonly string _secondsColId = LumeoIds.New("dtp-seconds");
+
+    private static string ColItemId(string colId, int value) => $"{colId}-{value}";
+
+    // Roving tab stop seed: each listbox must always expose exactly ONE tabbable
+    // option so the column is keyboard-reachable. When a value is selected that
+    // option is the tab stop; otherwise (e.g. _timeValue is null — no time picked
+    // yet) seed the FIRST ENABLED option, falling back to the first option if every
+    // option is disabled. Mirrors Calendar's EnsureFocusedDate idea. Returns null
+    // only for an empty column. Note GetDisplayHour/Minutes/Seconds always emit a
+    // value present in `values`, so a real selection wins here.
+    // Snap an actual value to the nearest option present in a stepped column.
+    // GetMinutes/GetSeconds only emit multiples of the step, so a Value of e.g.
+    // 37 minutes with MinuteStep=15 matches none by exact equality — pick the
+    // closest listed value (30, since |37-30|=7 < |37-45|=8) so the option still
+    // highlights and the column keeps a seeded roving tab stop. On a tie the lower
+    // value wins (stable).
+    private static int? NearestListed(List<int> values, int actual)
+    {
+        if (values.Count == 0) return null;
+        var best = values[0];
+        var bestDist = Math.Abs(actual - best);
+        foreach (var v in values)
+        {
+            var dist = Math.Abs(actual - v);
+            if (dist < bestDist)
+            {
+                best = v;
+                bestDist = dist;
+            }
+        }
+        return best;
+    }
+
+    private int? RovingRoot(string colId, List<int> values, int? selected)
+    {
+        if (values.Count == 0) return null;
+        // A selected, still-enabled option is the tab stop.
+        if (selected.HasValue && values.Contains(selected.Value) && !IsColItemDisabled(colId, selected.Value))
+            return selected.Value;
+        // Otherwise (nothing selected, or the selection is now disabled) seed the
+        // first ENABLED option so the column stays both keyboard-reachable and
+        // actionable; fall back to the first option only if every option is disabled.
+        foreach (var v in values)
+        {
+            if (!IsColItemDisabled(colId, v)) return v;
+        }
+        return values[0];
+    }
+
+    private async Task HandleColumnKeyDown(KeyboardEventArgs e, string colId, List<int> values, int current)
+    {
+        switch (e.Key)
+        {
+            case "ArrowDown": await FocusAdjacent(colId, values, current, +1); break;
+            case "ArrowUp": await FocusAdjacent(colId, values, current, -1); break;
+            case "Home": await FocusEdge(colId, values, fromStart: true); break;
+            case "End": await FocusEdge(colId, values, fromStart: false); break;
+            // Enter/Space are intentionally NOT handled here: each option is a native <button> with an
+            // @onclick, so Enter/Space already activate it (the browser synthesizes a click → SelectHour/
+            // Minute/Second). Handling them here too would fire the selection — and ValueChanged — twice
+            // (Codex P3). Arrow/Home/End only move the roving focus.
+        }
+    }
+
+    private async Task FocusAdjacent(string colId, List<int> values, int current, int step)
+    {
+        var idx = values.IndexOf(current);
+        if (idx < 0) return;
+        for (var i = idx + step; i >= 0 && i < values.Count; i += step)
+        {
+            if (!IsColItemDisabled(colId, values[i]))
+            {
+                await Interop.FocusElement(ColItemId(colId, values[i]));
+                return;
+            }
+        }
+    }
+
+    private async Task FocusEdge(string colId, List<int> values, bool fromStart)
+    {
+        var ordered = fromStart ? values : Enumerable.Reverse(values).ToList();
+        foreach (var v in ordered)
+        {
+            if (!IsColItemDisabled(colId, v))
+            {
+                await Interop.FocusElement(ColItemId(colId, v));
+                return;
+            }
+        }
+    }
+
+    private bool IsColItemDisabled(string colId, int value)
+    {
+        if (colId == _hoursColId) return IsHourDisabled(value);
+        if (colId == _minutesColId) return IsMinuteDisabled(value);
+        if (colId == _secondsColId) return IsSecondDisabled(value);
+        return false;
+    }
+
+    private bool _navKeysRegistered;
+    // Captures whether the seconds column was registered AT registration time.
+    // Unregistration must key off this snapshot, not the live ShowSeconds: toggling
+    // ShowSeconds false while the popover is open would otherwise leave the seconds
+    // column's prevent-default-keys handler-map entry registered forever (the
+    // unregister branch reads ShowSeconds==false and skips it).
+    private bool _secondsNavRegistered;
+    private static readonly PreventDefaultKeyRule[] ColumnNavKeys =
+    [
+        new("ArrowUp"), new("ArrowDown"), new("Home"), new("End"),
+    ];
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_isOpen && !_navKeysRegistered)
+        {
+            _navKeysRegistered = true;
+            try
+            {
+                await Interop.RegisterPreventDefaultKeys(_hoursColId, ColumnNavKeys);
+                await Interop.RegisterPreventDefaultKeys(_minutesColId, ColumnNavKeys);
+                if (ShowSeconds)
+                {
+                    await Interop.RegisterPreventDefaultKeys(_secondsColId, ColumnNavKeys);
+                    _secondsNavRegistered = true;
+                }
+            }
+            catch (JSDisconnectedException) { _navKeysRegistered = false; }
+            catch (InvalidOperationException) { _navKeysRegistered = false; } // prerender
+        }
+        else if (_isOpen && _navKeysRegistered && ShowSeconds && !_secondsNavRegistered)
+        {
+            // Seconds was enabled AFTER the popover (and the hour/minute columns) were
+            // already registered — the open-time branch above won't run again, so register
+            // the seconds column now. Otherwise Arrow/Home/End on the freshly rendered
+            // seconds column scroll the page instead of being suppressed (Codex P2).
+            try
+            {
+                await Interop.RegisterPreventDefaultKeys(_secondsColId, ColumnNavKeys);
+                _secondsNavRegistered = true;
+            }
+            catch (JSDisconnectedException) { }
+            catch (InvalidOperationException) { } // prerender
+        }
+        else if (!_isOpen && _navKeysRegistered)
+        {
+            _navKeysRegistered = false;
+            await UnregisterNavKeys();
+        }
+    }
+
+    // Tear down the JS prevent-default key handlers registered for the time
+    // columns. Mirrors TimePicker so a picker disposed while its popover is open
+    // (route change, conditional form section) doesn't leak stale handler-map
+    // entries for the generated column ids.
+    private async Task UnregisterNavKeys()
+    {
+        // Unregister the seconds column off the captured registration flag, NOT the
+        // live ShowSeconds: toggling ShowSeconds false while the popover is open would
+        // otherwise skip this branch and leak the handler-map entry for the column id
+        // we DID register on open. Reset the flag so a later reopen re-snapshots.
+        var unregisterSeconds = _secondsNavRegistered;
+        _secondsNavRegistered = false;
+        try
+        {
+            await Interop.UnregisterPreventDefaultKeys(_hoursColId);
+            await Interop.UnregisterPreventDefaultKeys(_minutesColId);
+            if (unregisterSeconds) await Interop.UnregisterPreventDefaultKeys(_secondsColId);
+        }
+        // DisposeAsync routes through here, and a mid-navigation dispose can surface
+        // ObjectDisposed/InvalidOperation from the JS layer — swallow all three, matching
+        // the codebase dispose convention (Carousel/Rating/Segmented/ToggleGroup).
+        catch (JSDisconnectedException) { }
+        catch (ObjectDisposedException) { }
+        catch (InvalidOperationException) { }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_navKeysRegistered) await UnregisterNavKeys();
+    }
+
     private async Task UpdateValue()
     {
         if (_dateValue.HasValue)
         {
             var time = _timeValue ?? TimeSpan.Zero;
+            // Date-aware clamp: switching to a boundary day can leave a stale
+            // time-of-day outside [MinDate, MaxDate]. The time columns gate clicks
+            // via IsHour/Minute/SecondDisabled, but a date change carries the old
+            // time across unchecked. Re-derive the per-day bounds against the new
+            // _dateValue and clamp before committing, writing the clamped time back
+            // into _timeValue so the columns and the committed Value agree.
+            var minTod = MinTimeForSelectedDate;
+            var maxTod = MaxTimeForSelectedDate;
+            if (minTod.HasValue && time < minTod.Value) time = minTod.Value;
+            if (maxTod.HasValue && time > maxTod.Value) time = maxTod.Value;
+            _timeValue = time;
             var dt = _dateValue.Value.ToDateTime(new TimeOnly(time.Hours, time.Minutes, time.Seconds));
             // When a TimeZone is configured, the wall-clock value is zone-relative —
             // mark it Unspecified so callers don't mistake it for system-local.
             if (TimeZone is not null) dt = DateTime.SpecifyKind(dt, DateTimeKind.Unspecified);
             Value = dt;
-            _prevValue = dt;
+            // Record _lastValuePushed BEFORE invoking ValueChanged: a controlled
+            // parent re-renders synchronously inside InvokeAsync, so OnParametersSet
+            // must already see this value as "the value we just pushed" to
+            // distinguish an accepted echo (keep in-flight state) from a veto
+            // (parent kept its old value → roll back).
+            _lastValuePushed = dt;
             await ValueChanged.InvokeAsync(dt);
 
             if (OffsetValueChanged.HasDelegate)
             {
                 var offset = ToOffset(dt);
-                _prevOffsetValue = offset;
+                _lastOffsetValuePushed = offset;
                 await OffsetValueChanged.InvokeAsync(offset);
             }
         }
@@ -496,13 +792,13 @@
     private async Task HandleClear()
     {
         Value = null;
-        _prevValue = null;
+        _lastValuePushed = null;
         _dateValue = null;
         _timeValue = null;
         await ValueChanged.InvokeAsync(null);
         if (OffsetValueChanged.HasDelegate)
         {
-            _prevOffsetValue = null;
+            _lastOffsetValuePushed = null;
             await OffsetValueChanged.InvokeAsync(null);
         }
     }

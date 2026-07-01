@@ -3,7 +3,7 @@ namespace Lumeo.Services.Localization;
 /// <summary>
 /// Built-in translations for Lumeo component UI text. Ships with EN, DE, ES, FR,
 /// IT, PT, NL, PL, JA, ZH-Hans (Simplified Chinese), KO, AR, RU, TR out of the box.
-/// Applied by <see cref="LumeoServiceExtensions.AddLumeo"/> before any consumer
+/// Applied by <see cref="LumeoServiceExtensions.AddLumeo(Microsoft.Extensions.DependencyInjection.IServiceCollection)"/> before any consumer
 /// override callback runs — so consumers can replace individual keys or add whole
 /// cultures without having to redefine everything.
 /// Keys are namespaced by component: "DataGrid.NoData", "Pagination.Previous", etc.
@@ -109,6 +109,7 @@ internal static partial class LumeoDefaultStrings
         ["Filter.Clear"] = "Clear",
         ["Filter.Value"] = "Value",
         ["Filter.SelectAll"] = "All",
+        ["Filter.Operator"] = "Filter operator",
         ["Filter.ValuePlaceholder"] = "Value…",
         ["Filter.ToValuePlaceholder"] = "To value…",
 
@@ -129,6 +130,8 @@ internal static partial class LumeoDefaultStrings
         // ── PasswordInput ───────────────────────────────────────────
         ["Password.Placeholder"] = "Enter password",
         ["Password.Toggle"] = "Toggle password visibility",
+        ["Password.Show"] = "Show password",
+        ["Password.Hide"] = "Hide password",
         ["Password.Weak"] = "Weak",
         ["Password.Fair"] = "Fair",
         ["Password.Good"] = "Good",
@@ -235,6 +238,10 @@ internal static partial class LumeoDefaultStrings
         ["Common.Actions"] = "Actions",
         ["Common.BackToTop"] = "Back to top",
 
+        // ── SortableList ────────────────────────────────────────────
+        ["Sortable.DragHandleItem"] = "Reorder item {0} of {1}, use arrow keys",
+        ["Sortable.Moved"] = "Moved {0} to position {1} of {2}",
+
         // ── Transfer / TreeSelect / TagInput ────────────────────────
         ["Transfer.SourceHeader"] = "Available",
         ["Transfer.TargetHeader"] = "Selected",
@@ -246,6 +253,7 @@ internal static partial class LumeoDefaultStrings
         ["TreeSelect.NoResults"] = "No results",
         ["TreeSelect.ClearSelection"] = "Clear selection",
         ["TagInput.Placeholder"] = "Add tag…",
+        ["TagInput.MaxTagsReached"] = "Maximum number of tags reached.",
 
         // ── Cascader ────────────────────────────────────────────────
         ["Cascader.Placeholder"] = "Select…",
@@ -346,6 +354,7 @@ internal static partial class LumeoDefaultStrings
         ["QueryBuilder.RemoveRule"] = "Remove rule",
         ["QueryBuilder.Field"] = "Field",
         ["QueryBuilder.Operator"] = "Operator",
+        ["QueryBuilder.UnknownField"] = "Unknown field",
 
         // ── PickList ────────────────────────────────────────────────
         ["PickList.MoveAll"] = "Move all",
@@ -396,6 +405,7 @@ internal static partial class LumeoDefaultStrings
         ["Editor.InsertLinkDescription"] = "Paste or type a URL to link the selected text to.",
         ["Editor.Cancel"] = "Cancel",
         ["Editor.Apply"] = "Apply",
+        ["Editor.Retry"] = "Retry",
         ["Editor.AiImproveWriting"] = "Improve writing",
         ["Editor.AiMakeShorter"] = "Make shorter",
         ["Editor.AiMakeLonger"] = "Make longer",
@@ -466,6 +476,7 @@ internal static partial class LumeoDefaultStrings
         // ── ImageCompare ────────────────────────────────────────────
         ["ImageCompare.Slider"] = "Image compare slider",
         ["ImageCompare.Before"] = "Before",
+        ["ImageCompare.After"] = "After",
         ["ImageCompare.ValueText"] = "{0} {1}%",
 
         // ── PromptInput ─────────────────────────────────────────────
@@ -601,6 +612,7 @@ internal static partial class LumeoDefaultStrings
         ["Filter.Clear"] = "Zurücksetzen",
         ["Filter.Value"] = "Wert",
         ["Filter.SelectAll"] = "Alle",
+        ["Filter.Operator"] = "Filteroperator",
         ["Filter.ValuePlaceholder"] = "Wert…",
         ["Filter.ToValuePlaceholder"] = "Bis Wert…",
 
@@ -621,6 +633,8 @@ internal static partial class LumeoDefaultStrings
         // ── PasswordInput ───────────────────────────────────────────
         ["Password.Placeholder"] = "Passwort eingeben",
         ["Password.Toggle"] = "Passwort anzeigen/verbergen",
+        ["Password.Show"] = "Passwort anzeigen",
+        ["Password.Hide"] = "Passwort verbergen",
         ["Password.Weak"] = "Schwach",
         ["Password.Fair"] = "Ausreichend",
         ["Password.Good"] = "Gut",
@@ -725,6 +739,10 @@ internal static partial class LumeoDefaultStrings
         ["Common.Actions"] = "Aktionen",
         ["Common.BackToTop"] = "Nach oben",
 
+        // ── SortableList ────────────────────────────────────────────
+        ["Sortable.DragHandleItem"] = "Element {0} von {1} neu anordnen, Pfeiltasten verwenden",
+        ["Sortable.Moved"] = "{0} an Position {1} von {2} verschoben",
+
         // ── Transfer / TreeSelect / TagInput ────────────────────────
         ["Transfer.SourceHeader"] = "Verfügbar",
         ["Transfer.TargetHeader"] = "Ausgewählt",
@@ -736,6 +754,7 @@ internal static partial class LumeoDefaultStrings
         ["TreeSelect.NoResults"] = "Keine Ergebnisse",
         ["TreeSelect.ClearSelection"] = "Auswahl leeren",
         ["TagInput.Placeholder"] = "Tag hinzufügen…",
+        ["TagInput.MaxTagsReached"] = "Maximale Anzahl an Tags erreicht.",
 
         // ── Cascader ────────────────────────────────────────────────
         ["Cascader.Placeholder"] = "Auswählen…",
@@ -835,6 +854,7 @@ internal static partial class LumeoDefaultStrings
         ["QueryBuilder.RemoveRule"] = "Regel entfernen",
         ["QueryBuilder.Field"] = "Feld",
         ["QueryBuilder.Operator"] = "Operator",
+        ["QueryBuilder.UnknownField"] = "Unbekanntes Feld",
 
         // ── PickList ────────────────────────────────────────────────
         ["PickList.MoveAll"] = "Alle verschieben",
@@ -885,6 +905,7 @@ internal static partial class LumeoDefaultStrings
         ["Editor.InsertLinkDescription"] = "URL einfügen oder eingeben, um den ausgewählten Text zu verlinken.",
         ["Editor.Cancel"] = "Abbrechen",
         ["Editor.Apply"] = "Anwenden",
+        ["Editor.Retry"] = "Erneut versuchen",
         ["Editor.AiImproveWriting"] = "Schreibstil verbessern",
         ["Editor.AiMakeShorter"] = "Kürzen",
         ["Editor.AiMakeLonger"] = "Verlängern",
@@ -955,6 +976,7 @@ internal static partial class LumeoDefaultStrings
         // ── ImageCompare ────────────────────────────────────────────
         ["ImageCompare.Slider"] = "Bildvergleichs-Schieberegler",
         ["ImageCompare.Before"] = "Vorher",
+        ["ImageCompare.After"] = "Nachher",
         ["ImageCompare.ValueText"] = "{0} {1} %",
 
         // ── PromptInput ─────────────────────────────────────────────

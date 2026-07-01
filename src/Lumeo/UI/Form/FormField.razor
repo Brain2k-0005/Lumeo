@@ -3,7 +3,7 @@
 @implements IDisposable
 
 @{
-    var context = new FormFieldContext(Name, EffectiveError, IsValidating);
+    var context = new FormFieldContext(Name, EffectiveError, IsValidating, _controlId, DescribedBy, AutoRenderMessage, _errorId, Label is not null ? _labelId : null);
 }
 
 <CascadingValue Value="context" IsFixed="false">
@@ -12,12 +12,12 @@
         {
             @if (Label is not null)
             {
-                <Label>
+                <Label For="@_controlId" id="@_labelId">
                     <span class="inline-flex items-center gap-1.5">
                         @Label
                         @if (Required)
                         {
-                            <span class="text-destructive ml-0.5">*</span>
+                            <span class="text-destructive ms-0.5">*</span>
                         }
                         @if (IsValidating)
                         {
@@ -29,11 +29,11 @@
             @ChildContent
             @if (HelpText is not null && EffectiveError is null)
             {
-                <p class="text-xs text-muted-foreground">@HelpText</p>
+                <p id="@_descriptionId" class="text-xs text-muted-foreground">@HelpText</p>
             }
-            @if (EffectiveError is not null)
+            @if (EffectiveError is not null && AutoRenderMessage)
             {
-                <p class="text-xs text-destructive" role="alert" aria-live="polite">@EffectiveError</p>
+                <p id="@_errorId" class="text-xs text-destructive" role="alert" aria-live="polite">@EffectiveError</p>
             }
         }
         else
@@ -41,12 +41,12 @@
             <div class="grid grid-cols-[auto_1fr] items-center gap-x-4 gap-y-1">
                 @if (Label is not null)
                 {
-                    <Label Class="@(Cx.Join("text-right", LabelWidth is not null ? $"w-[{LabelWidth}]" : null))">
+                    <Label For="@_controlId" id="@_labelId" Class="@(Cx.Join("text-end", LabelWidth is not null ? $"w-[{LabelWidth}]" : null))">
                         <span class="inline-flex items-center justify-end gap-1.5">
                             @Label
                             @if (Required)
                             {
-                                <span class="text-destructive ml-0.5">*</span>
+                                <span class="text-destructive ms-0.5">*</span>
                             }
                             @if (IsValidating)
                             {
@@ -59,11 +59,11 @@
                     @ChildContent
                     @if (HelpText is not null && EffectiveError is null)
                     {
-                        <p class="text-xs text-muted-foreground mt-1">@HelpText</p>
+                        <p id="@_descriptionId" class="text-xs text-muted-foreground mt-1">@HelpText</p>
                     }
-                    @if (EffectiveError is not null)
+                    @if (EffectiveError is not null && AutoRenderMessage)
                     {
-                        <p class="text-xs text-destructive mt-1" role="alert" aria-live="polite">@EffectiveError</p>
+                        <p id="@_errorId" class="text-xs text-destructive mt-1" role="alert" aria-live="polite">@EffectiveError</p>
                     }
                 </div>
             </div>
@@ -77,6 +77,16 @@
     [Parameter] public string? Error { get; set; }
     [Parameter] public bool Required { get; set; }
     [Parameter] public Lumeo.Orientation Orientation { get; set; } = Lumeo.Orientation.Vertical;
+
+    /// <summary>
+    /// When <c>true</c> (default — the simple-mode API used by the vast majority of
+    /// consumers), FormField renders the validation error itself below the control.
+    /// Set <c>false</c> when you compose the field with a child <see cref="FormMessage"/>
+    /// that should own the error rendering: this suppresses FormField's own error so the
+    /// two never render it twice. The error still flows into the cascaded context either
+    /// way, so a deferred FormMessage can pick it up.
+    /// </summary>
+    [Parameter] public bool AutoRenderMessage { get; set; } = true;
     [Parameter] public string? LabelWidth { get; set; }
     [Parameter] public string? Name { get; set; }
     [Parameter] public RenderFragment? ChildContent { get; set; }
@@ -112,6 +122,24 @@
     // Bug D fix: receive the parent Form's context so Reset() clears cascade to child fields.
     [CascadingParameter] private FormContext? ParentFormContext { get; set; }
 
+    // Stable ids so the field's label points at the control and the control's
+    // aria-describedby points at the help/error text (Base UI Field a11y parity).
+    private readonly string _controlId = LumeoIds.New("form-field");
+    private readonly string _descriptionId = LumeoIds.New("form-field-desc");
+    private readonly string _errorId = LumeoIds.New("form-field-error");
+    // Stable id on the <Label> itself, exposed via FormFieldContext.LabelId, for controls whose root
+    // is NOT a "labelable" element (a <div role="group">, e.g. TimeWheelPicker/Calendar) — `<label for>`
+    // does not reliably associate with those, so they additionally wire `aria-labelledby` to this id
+    // (Codex P2). Only set in the context when Label is actually rendered (else it would be a dangling
+    // IDREF with nothing in the DOM to point at).
+    private readonly string _labelId = LumeoIds.New("form-field-label");
+
+    // Point aria-describedby at whichever message is actually rendered: the error
+    // when present (it replaces the help text), else the help text, else nothing.
+    private string? DescribedBy => EffectiveError is not null
+        ? _errorId
+        : (HelpText is not null ? _descriptionId : null);
+
     // Use live errors from FormContext when available; fall back to the manually-set Error param.
     private string? EffectiveError =>
         ParentFormContext is { } pc && !string.IsNullOrEmpty(Name)
@@ -130,6 +158,11 @@
     private bool _hasPreviousValue;
     // Synthetic key used when no Name is set so the validating-fields set still aggregates.
     private string FieldKey => string.IsNullOrEmpty(Name) ? $"__field_{GetHashCode()}" : Name!;
+    // The key this field was last registered under as "validating". Captured when
+    // validation starts so the matching un-register targets the SAME key even if the
+    // Name parameter changes mid-flight — otherwise the old key leaks in
+    // FormContext.ValidatingFields and IsAnyFieldValidating stays stuck true.
+    private string? _validatingKey;
 
     protected override async Task OnParametersSetAsync()
     {
@@ -146,9 +179,19 @@
 
         // Detect value changes for OnChange trigger. Skip the first parameter-set
         // pass so we don't auto-validate before the user has interacted.
+        //
+        // Use a CONTENT-aware comparison rather than the static object.Equals:
+        // when the parent re-renders and pushes a NEW reference that is value-equal
+        // to the previous one (e.g. a freshly-allocated but same-content collection
+        // produced by an immutable update, or a record), that must NOT count as a
+        // change. The static object.Equals path falls back to reference equality for
+        // any reference type that doesn't override Equals (sequences in particular),
+        // so an identical-content re-render spuriously re-fired async validation on
+        // every unrelated parent render — kicking off a network call the user never
+        // asked for and flickering IsValidating.
         if (AsyncValidator is not null && AsyncValidateOn == AsyncValidationTrigger.OnChange)
         {
-            if (_hasPreviousValue && !Equals(_previousValue, Value))
+            if (_hasPreviousValue && !ValueContentEquals(_previousValue, Value))
             {
                 ScheduleValidation(Value);
             }
@@ -157,6 +200,51 @@
         _hasPreviousValue = true;
 
         await Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// Content-aware equality for the OnChange trigger. Treats two distinct
+    /// references as equal when they carry the same content, so an immutable
+    /// "rebuild a new equal collection each render" parent (or a value-equal
+    /// record) does not look like a user edit. Falls back to <see cref="object.Equals(object?, object?)"/>
+    /// for everything that already has value semantics.
+    /// </summary>
+    private static bool ValueContentEquals(object? a, object? b)
+    {
+        if (ReferenceEquals(a, b)) return true;
+        if (a is null || b is null) return false;
+        // Same-content sequence (List/array/etc.) rebuilt across renders: a brand-new
+        // reference that object.Equals would wrongly report as different. Only when both
+        // sides are non-string enumerables (strings are themselves IEnumerable<char> but
+        // already have value equality, so let them fall through to Equals).
+        if (a is System.Collections.IEnumerable ea and not string &&
+            b is System.Collections.IEnumerable eb and not string)
+        {
+            return SequenceContentEquals(ea, eb);
+        }
+        return Equals(a, b);
+    }
+
+    private static bool SequenceContentEquals(System.Collections.IEnumerable a, System.Collections.IEnumerable b)
+    {
+        var ia = a.GetEnumerator();
+        var ib = b.GetEnumerator();
+        try
+        {
+            while (true)
+            {
+                var ha = ia.MoveNext();
+                var hb = ib.MoveNext();
+                if (ha != hb) return false;      // different lengths
+                if (!ha) return true;            // both exhausted, all equal
+                if (!Equals(ia.Current, ib.Current)) return false;
+            }
+        }
+        finally
+        {
+            (ia as IDisposable)?.Dispose();
+            (ib as IDisposable)?.Dispose();
+        }
     }
 
     /// <summary>
@@ -234,7 +322,19 @@
         IsValidating = validating;
         if (ParentFormContext is not null)
         {
-            ParentFormContext.MarkValidating(FieldKey, validating);
+            // Register under the CURRENT key, but un-register under the key we
+            // registered with. If Name changed while validation was in flight,
+            // FieldKey now differs and a naive un-register would leak the old key.
+            if (validating)
+            {
+                _validatingKey = FieldKey;
+                ParentFormContext.MarkValidating(_validatingKey, true);
+            }
+            else
+            {
+                ParentFormContext.MarkValidating(_validatingKey ?? FieldKey, false);
+                _validatingKey = null;
+            }
         }
         if (OnValidatingChanged.HasDelegate)
         {
@@ -250,7 +350,11 @@
         _cts?.Dispose();
         if (ParentFormContext is not null)
         {
-            ParentFormContext.MarkValidating(FieldKey, false);
+            // Clear under the key we actually registered with (which may differ from
+            // the current FieldKey if Name changed mid-flight), so no stale entry is
+            // left behind in FormContext.ValidatingFields.
+            ParentFormContext.MarkValidating(_validatingKey ?? FieldKey, false);
+            _validatingKey = null;
         }
     }
 
@@ -260,7 +364,15 @@
         OnChange
     }
 
-    public record FormFieldContext(string? Name, string? Error, bool IsValidating)
+    /// <param name="ControlId">Stable id the bound control should apply as its
+    ///   <c>id</c> so the field's <c>&lt;label for&gt;</c> points at it (Base UI Field
+    ///   parity). Empty when the field generated none.</param>
+    /// <param name="DescribedBy">Id of the currently-rendered help OR error text, for
+    ///   the control's <c>aria-describedby</c>; null when neither is shown.</param>
+    /// <param name="LabelId">Id of the rendered &lt;label&gt; element, for controls whose root is NOT
+    ///   labelable (a &lt;div role="group"&gt;) to wire as their own <c>aria-labelledby</c> — `label for`
+    ///   alone doesn't reliably associate with a non-labelable element. Null when no Label is rendered.</param>
+    public record FormFieldContext(string? Name, string? Error, bool IsValidating, string ControlId = "", string? DescribedBy = null, bool AutoRenderMessage = true, string? ErrorId = null, string? LabelId = null)
     {
         public bool HasError => !string.IsNullOrEmpty(Error);
     }

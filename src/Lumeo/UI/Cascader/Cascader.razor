@@ -1,20 +1,25 @@
 @namespace Lumeo
 @implements IAsyncDisposable
 
+@* Render the label, control and helper/error as ONE self-contained vertical block so the
+   field never splays into a row when dropped in a flex / centered container. Standalone
+   form-field structural fix. *@
+<div class="flex flex-col items-start">
 @if (Label is not null && !InsideFormField)
 {
     <label class="block text-sm font-medium text-foreground mb-1.5">
         @Label
         @if (Required)
         {
-            <span class="text-destructive ml-0.5">*</span>
+            <span class="text-destructive ms-0.5">*</span>
         }
     </label>
 }
 
 <div id="@_wrapperId" class="@ContainerClass" @attributes="AdditionalAttributes">
     @* Trigger *@
-    <button type="button" class="@TriggerClass" @onclick="ToggleOpen" id="@_triggerId" disabled="@Disabled"
+    <button type="button" class="@TriggerClass" @onclick="ToggleOpen" id="@EffectiveTriggerId" disabled="@Disabled"
+            aria-describedby="@FormFieldDescribedBy"
             aria-required="@(Required ? "true" : "false")"
             aria-invalid="@(EffectiveInvalid ? "true" : "false")">
         @if (SelectedLabels.Count > 0)
@@ -26,7 +31,7 @@
             <span class="text-sm text-muted-foreground">@(Placeholder ?? L["Cascader.Placeholder"])</span>
         }
 
-        <span class="ml-auto flex items-center gap-1">
+        <span class="ms-auto flex items-center gap-1">
             @if (Clearable && Value is { Count: > 0 })
             {
                 <button type="button" class="rounded-full hover:bg-foreground/20 p-0.5 focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-1" aria-label="@L["Cascader.ClearSelection"]" @onclick="Clear" @onclick:stopPropagation="true">
@@ -44,10 +49,19 @@
             @if (ShowSearch)
             {
                 <div class="px-2 py-1.5 border-b border-border/40">
+                    @* Mirror TreeSelect: forward menu-owned keys (Up/Down/Enter/Escape)
+                       to HandleKeyDown while keeping caret keys (Left/Right/Home/End/Space)
+                       in the text box, and stopPropagation so they never reach an outer
+                       overlay. A blunt stop alone would also swallow Escape-to-close.
+                       NOTE: keep this Razor comment OUTSIDE the input tag — a comment
+                       placed between attributes is emitted as a literal attribute name
+                       at runtime (setAttribute InvalidCharacterError crash). *@
                     <input type="text" placeholder="@L["Combobox.SearchPlaceholder"]"
                            class="flex h-7 w-full rounded-md border border-input bg-transparent px-2 py-1 text-xs placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring"
                            value="@_searchText"
-                           @oninput="OnSearchInput" />
+                           @oninput="OnSearchInput"
+                           @onkeydown="OnSearchKeyDown"
+                           @onkeydown:stopPropagation="true" />
                 </div>
             }
 
@@ -58,21 +72,28 @@
                     if (options.Count == 0) break;
 
                     var level = levelIdx;
-                    <div class="@PanelClass">
-                        @foreach (var option in options)
+                    <div class="@PanelClass" role="menu">
+                        @for (var optIdx = 0; optIdx < options.Count; optIdx++)
                         {
+                            var option = options[optIdx];
+                            var idx = optIdx;
                             var isSelected = level < _selectedPath.Count && _selectedPath[level] == option.Value;
+                            var hasChildren = option.Children is { Count: > 0 };
                             <button type="button"
+                                    id="@OptionId(level, idx)"
+                                    role="menuitem"
+                                    aria-haspopup="@(hasChildren ? "menu" : null)"
+                                    tabindex="@(level == _focusCol && idx == _focusIdx ? 0 : -1)"
                                     class="@GetOptionClass(isSelected)"
                                     @onclick="() => SelectOption(option, level)">
                                 <span class="truncate">@option.Label</span>
-                                @if (option.Children is { Count: > 0 })
+                                @if (hasChildren)
                                 {
-                                    <Blazicon Svg="Lucide.ChevronRight" class="h-4 w-4 text-muted-foreground ml-auto shrink-0" />
+                                    <Blazicon Svg="Lucide.ChevronRight" class="h-4 w-4 text-muted-foreground ms-auto shrink-0" />
                                 }
                                 else if (isSelected)
                                 {
-                                    <Blazicon Svg="Lucide.Check" class="h-4 w-4 text-primary ml-auto shrink-0" />
+                                    <Blazicon Svg="Lucide.Check" class="h-4 w-4 text-primary ms-auto shrink-0" />
                                 }
                             </button>
                         }
@@ -94,12 +115,23 @@
         <p class="text-xs text-muted-foreground mt-1.5">@HelperText</p>
     }
 }
+</div>
 
 @inject IComponentInteropService Interop
 @inject Lumeo.Services.Localization.ILumeoLocalizer L
 
 @code {
     [CascadingParameter] private FormField.FormFieldContext? FormField { get; set; }
+
+    // aria-describedby on the trigger announces the FormField help/error to a screen reader.
+    private string? FormFieldDescribedBy => FormField?.DescribedBy;
+
+    // Inside a FormField, adopt its ControlId as the trigger button's id so the field's
+    // <Label For> click-focuses the cascader (Base UI Field parity, matching Select).
+    // Standalone, keep our own generated id. Popover anchoring, focus-restore and the
+    // click-outside guard all target this same id, so they stay consistent.
+    private string EffectiveTriggerId =>
+        !string.IsNullOrEmpty(FormField?.ControlId) ? FormField!.ControlId : _triggerId;
 
     [Parameter] public List<string>? Value { get; set; }
     [Parameter] public EventCallback<List<string>?> ValueChanged { get; set; }
@@ -129,6 +161,13 @@
     // OnParametersSet doesn't rebuild the trail on every parent re-render —
     // it should only respond when Value actually changes from outside.
     private List<string>? _lastSyncedValue;
+    // CONTROLLED discriminator: the last Value we pushed UP via ValueChanged
+    // (also re-synced whenever we adopt an authoritative Value). A controlled
+    // parent re-render that echoes back this exact value is safe to ignore
+    // (keep the in-flight _selectedPath/_activePanels trail); any other value
+    // is an authoritative assertion (normalization / veto / reset) and must
+    // win — including rolling a rejected selection back to the bound Value.
+    private List<string>? _lastPushedValue;
     // Tracks the Options reference last synced. When async-loaded options
     // arrive after the Value parameter was already set, the value-based
     // guard alone would skip the rebuild and leave _selectedPath /
@@ -142,10 +181,36 @@
     private readonly string _triggerId = LumeoIds.New("cascader-trigger");
     private readonly string _contentId = LumeoIds.New("cascader-content");
 
+    // Keyboard roving state: which column (panel) and which option index currently
+    // holds focus. The matching option button carries tabindex=0 (all others -1), and
+    // arrow keys move this position. _pendingFocusId is the DOM id to focus after the
+    // next render (set during a keydown; applied in OnAfterRenderAsync once the target
+    // — possibly a freshly-expanded child panel — is in the DOM).
+    private int _focusCol;
+    private int _focusIdx;
+    private string? _pendingFocusId;
+    // Column count the fixed popover was last anchored against. When the rendered
+    // column count changes while open (drilling deeper, or re-opening onto a
+    // committed multi-column path), the anchor is recomputed so the widening
+    // panel stays attached to the trigger (battle-test #69).
+    private int _lastPositionedColumns = -1;
+
+    private string OptionId(int col, int idx) => $"{_contentId}-opt-{col}-{idx}";
+    private void QueueFocus() => _pendingFocusId = OptionId(_focusCol, _focusIdx);
+
+    // Index of the parent option in column <paramref name="col"/> whose children are
+    // currently expanded into col+1 (used so ArrowLeft lands back on that parent).
+    private int ParentIndexAt(int col)
+    {
+        if (col < 0 || col >= _activePanels.Count) return 0;
+        var i = GetOptionsForLevel(col).FindIndex(o => o.Value == _activePanels[col].Value);
+        return i < 0 ? 0 : i;
+    }
+
     private string ContainerClass => Cx.Merge("relative inline-block", Class);
     private string TriggerClass => $"flex items-center w-full h-9 px-3 rounded-md border {(EffectiveInvalid ? "border-destructive focus:ring-destructive/20" : "border-input")} bg-background text-sm hover:bg-accent/50 transition-colors disabled:cursor-not-allowed disabled:opacity-50 focus:outline-none focus:ring-[1.5px] {(EffectiveInvalid ? "focus:ring-destructive/20" : "focus:ring-ring")}";
     private const string ContentClass = "fixed z-50 overflow-hidden rounded-md border border-border/40 bg-popover text-popover-foreground shadow-lg animate-fade-in";
-    private const string PanelClass = "min-w-[160px] max-h-64 overflow-y-auto border-r border-border/40 last:border-r-0 p-1";
+    private const string PanelClass = "min-w-[160px] max-h-64 overflow-y-auto border-e border-border/40 last:border-e-0 p-1";
 
     private List<string> SelectedLabels
     {
@@ -177,10 +242,42 @@
         // without the Options check the rebuild gets skipped on that
         // arrival, and opening the picker still uses the empty panel
         // trail until Value changes again (Codex #81 review).
-        var valueChanged = !ValueEquals(_lastSyncedValue, Value);
+        bool valueChanged;
+        if (ValueChanged.HasDelegate)
+        {
+            // CONTROLLED: the parent owns Value and it is authoritative — EXCEPT
+            // when it echoes back the exact value we just pushed (_lastPushedValue).
+            // Any OTHER incoming value wins: a normalization, programmatic reset, or
+            // a REJECTION where the parent kept its old value (!= what we pushed).
+            // That last case is what rolls a rejected selection back to the bound
+            // Value, including the drill-down trail (_selectedPath/_activePanels).
+            valueChanged = !ValueEquals(_lastPushedValue, Value);
+        }
+        else
+        {
+            // UNCONTROLLED: keep existing param-change detection — adopt only when
+            // Value differs from the last value we saw as an incoming parameter.
+            valueChanged = !ValueEquals(_lastSyncedValue, Value);
+        }
         var optionsChanged = !ReferenceEquals(_lastSyncedOptions, Options);
         if (!valueChanged && !optionsChanged) return;
+
+        // While the picker is open with no committed Value, the live drill-down
+        // trail (_selectedPath / _activePanels) is owned by the user, not by
+        // Value. A parent that re-creates the Options list each render (a fresh
+        // instance with identical content) would otherwise trip optionsChanged
+        // and wipe that in-progress, uncommitted drill back to the empty
+        // Value-mandated state. Adopt the new Options reference but DON'T clear
+        // the trail unless Value itself actually changed. Committed-Value resync
+        // (valueChanged == true) still rebuilds as before.
+        if (!valueChanged && _isOpen && Value is not { Count: > 0 })
+        {
+            _lastSyncedOptions = Options;
+            return;
+        }
+
         _lastSyncedValue = Value is null ? null : new List<string>(Value);
+        _lastPushedValue = _lastSyncedValue;
         _lastSyncedOptions = Options;
 
         // Rebuild the drill-down trail from the (possibly null) Value. A null /
@@ -256,6 +353,12 @@
 
     private async Task SelectOption(CascaderOption option, int level)
     {
+        // Keep keyboard roving in sync with the activated option so arrow keys resume
+        // from here (e.g. after a mouse click or an Enter/Space activation).
+        _focusCol = level;
+        var clickedIdx = GetOptionsForLevel(level).FindIndex(o => o.Value == option.Value);
+        _focusIdx = clickedIdx < 0 ? 0 : clickedIdx;
+
         // Trim path and panels to current level
         while (_selectedPath.Count > level) _selectedPath.RemoveAt(_selectedPath.Count - 1);
         while (_activePanels.Count > level) _activePanels.RemoveAt(_activePanels.Count - 1);
@@ -270,6 +373,12 @@
         {
             // Leaf node — set value and close
             Value = [.._selectedPath];
+            // Record _lastPushedValue BEFORE invoking ValueChanged: a controlled
+            // parent re-renders synchronously inside InvokeAsync, so OnParametersSet
+            // must already see this value as "the value we just pushed" to
+            // distinguish an accepted echo (keep in-flight state) from a veto
+            // (parent kept its old value → roll back).
+            _lastPushedValue = Value;
             await ValueChanged.InvokeAsync(Value);
             await SetOpen(false);
         }
@@ -282,31 +391,187 @@
         var wasOpen = _isOpen;
         _isOpen = value;
         if (!value) _searchText = "";
+        // On open, seed roving focus. When a value is already committed the
+        // drill-down trail (_selectedPath / _activePanels) is rebuilt from it, so
+        // the visible columns reach down to the committed leaf. Seed the roving
+        // stop onto that committed option in the deepest rendered column instead
+        // of resetting to (0,0) — otherwise re-opening a populated cascader parks
+        // focus on the root and a keyboard user has to re-drill (battle-test #69).
+        // Fall back to (0,0) when there is no committed path.
+        if (value) SeedFocusToSelection();
 
         // On close: return focus to the trigger button immediately (it is in the DOM).
         if (wasOpen && !value)
         {
-            try { await Interop.FocusElement(_triggerId); } catch (JSDisconnectedException) { }
+            try { await Interop.FocusElement(EffectiveTriggerId); } catch (JSDisconnectedException) { }
         }
         // On open: focus happens in OnAfterRenderAsync once the panel DOM is ready.
+    }
+
+    // Seed the roving stop onto the committed selection's option in the deepest
+    // rendered column. The deepest column index is _activePanels.Count (each
+    // expanded parent adds a child column; a committed leaf does not, so its
+    // own column is the last one). Within that column, find the option whose
+    // value matches the committed path entry for that level. Falls back to the
+    // first option of the first column when there is no committed path or the
+    // selection can't be resolved against the current options.
+    private void SeedFocusToSelection()
+    {
+        _focusCol = 0;
+        _focusIdx = 0;
+
+        var deepest = _activePanels.Count;
+        if (deepest >= _selectedPath.Count) return; // nothing committed at this column
+
+        var options = GetOptionsForLevel(deepest);
+        if (options.Count == 0) return;
+
+        var selectedValue = _selectedPath[deepest];
+        var idx = options.FindIndex(o => o.Value == selectedValue);
+        if (idx < 0) return;
+
+        _focusCol = deepest;
+        _focusIdx = idx;
     }
 
     private async Task Clear()
     {
         Value = null;
+        // Record BEFORE InvokeAsync — see the comment in SelectOption's leaf branch.
+        _lastPushedValue = null;
         _selectedPath.Clear();
         _activePanels.Clear();
+        // Collapsing the drill-down removes every column except the root. If the
+        // roving stop was parked on a deeper column (_focusCol > 0) it would now
+        // point at a panel that no longer renders, so no option carries
+        // tabindex=0 and keyboard focus is silently dropped. Re-anchor the
+        // roving stop onto the first root option and (while open) queue focus so
+        // a valid tab stop / focus target survives the clear (battle-test #29).
+        _focusCol = 0;
+        _focusIdx = 0;
+        if (_isOpen) QueueFocus();
         await ValueChanged.InvokeAsync(null);
     }
 
+    // Arrow-key roving across the cascader's columns (WAI-ARIA menu pattern):
+    // Up/Down move within the focused column, Right drills into a parent's children
+    // (focusing the first child), Left returns to the parent column, Home/End jump to
+    // the column edges, and Enter/Space activate (select a leaf or expand a parent).
     private async Task HandleKeyDown(KeyboardEventArgs e)
     {
-        if (e.Key == "Escape") await SetOpen(false);
+        switch (e.Key)
+        {
+            case "Escape":
+                await SetOpen(false);
+                return;
+
+            case "ArrowDown":
+            {
+                var count = GetOptionsForLevel(_focusCol).Count;
+                if (count > 0) _focusIdx = Math.Min(_focusIdx + 1, count - 1);
+                QueueFocus();
+                break;
+            }
+
+            case "ArrowUp":
+                _focusIdx = Math.Max(_focusIdx - 1, 0);
+                QueueFocus();
+                break;
+
+            case "ArrowRight":
+            {
+                var opts = GetOptionsForLevel(_focusCol);
+                if (_focusIdx >= 0 && _focusIdx < opts.Count && opts[_focusIdx].Children is { Count: > 0 })
+                {
+                    await SelectOption(opts[_focusIdx], _focusCol); // expands into the next column
+                    _focusCol += 1;
+                    _focusIdx = 0;
+                    QueueFocus();
+                }
+                break;
+            }
+
+            case "ArrowLeft":
+                if (_focusCol > 0)
+                {
+                    _focusCol -= 1;
+                    _focusIdx = ParentIndexAt(_focusCol);
+                    QueueFocus();
+                }
+                break;
+
+            case "Home":
+                _focusIdx = 0;
+                QueueFocus();
+                break;
+
+            case "End":
+            {
+                var count = GetOptionsForLevel(_focusCol).Count;
+                _focusIdx = count > 0 ? count - 1 : 0;
+                QueueFocus();
+                break;
+            }
+
+            case "Enter":
+            case " ":
+            {
+                var opts = GetOptionsForLevel(_focusCol);
+                if (_focusIdx >= 0 && _focusIdx < opts.Count)
+                {
+                    var opt = opts[_focusIdx];
+                    await SelectOption(opt, _focusCol);
+                    if (opt.Children is { Count: > 0 })
+                    {
+                        _focusCol += 1;
+                        _focusIdx = 0;
+                        QueueFocus();
+                    }
+                }
+                break;
+            }
+        }
+    }
+
+    // Mirror TreeSelect.OnSearchKeyDown: caret/space keys stay in the text box; the
+    // menu-owned keys (ArrowUp/Down, Enter, Escape) forward to HandleKeyDown. The input
+    // also has @onkeydown:stopPropagation so nothing leaks to an outer overlay.
+    private async Task OnSearchKeyDown(KeyboardEventArgs e)
+    {
+        switch (e.Key)
+        {
+            case "ArrowLeft":
+            case "ArrowRight":
+            case "Home":
+            case "End":
+            case " ":
+                return; // belongs to the text box (caret move / space)
+            default:
+                await HandleKeyDown(e);
+                return;
+        }
     }
 
     private void OnSearchInput(ChangeEventArgs e)
     {
-        _searchText = e.Value?.ToString() ?? "";
+        var next = e.Value?.ToString() ?? "";
+        if (string.Equals(next, _searchText, StringComparison.Ordinal)) return;
+        _searchText = next;
+
+        // GetOptionsForLevel only filters the ROOT column (level 0); deeper
+        // columns render verbatim from _activePanels. If a stale drill-down
+        // trail survives a search edit, level 0 shows the filtered root while
+        // level 1+ still renders children of a parent that may no longer be in
+        // the filtered root list — the columns visibly desync (battle-test
+        // #27). Collapse the drill trail back to the (filtered) root on every
+        // search-text change and re-anchor the roving stop onto the first
+        // visible option so the keyboard tabindex=0 stop stays meaningful
+        // (#28, paired here so column indices don't go stale).
+        _selectedPath.Clear();
+        _activePanels.Clear();
+        _focusCol = 0;
+        _focusIdx = 0;
+        if (_isOpen) QueueFocus();
     }
 
     private static string GetOptionClass(bool isSelected) =>
@@ -316,21 +581,75 @@
     {
         if (_isOpen && !_registered)
         {
-            await Interop.PositionFixed(_contentId, _triggerId, "start", false, "bottom");
-            await Interop.RegisterClickOutside(_contentId, _triggerId, async () =>
+            await Interop.PositionFixed(_contentId, EffectiveTriggerId, "start", false, "bottom");
+            await Interop.RegisterClickOutside(_contentId, EffectiveTriggerId, async () =>
             {
                 await SetOpen(false);
                 await InvokeAsync(StateHasChanged);
             });
+            // Suppress the browser default (page/panel scroll) for the roving-focus
+            // navigation keys HandleKeyDown consumes above. Without this, ArrowUp/Down/
+            // Left/Right/Home/End also scroll a scrollable ancestor while the roving focus
+            // moves between columns. SkipEditable keeps the search input's own caret/typing
+            // keys alive. Mirrors TreeSelect.OpenDropdown (Codex P2).
+            //
+            // Enter/" " are ALSO registered here (not just the roving-nav keys): when focus
+            // is on an option <button>, HandleKeyDown's "Enter"/" " case already invokes
+            // SelectOption via the bubbled keydown — but a focused native <button> ALSO
+            // synthesizes its own click on Enter/Space by browser default, which fires the
+            // button's own @onclick="SelectOption" a SECOND time, double-invoking a leaf
+            // selection's ValueChanged and re-running parent-expansion logic (Codex P2).
+            // preventDefault on the keydown suppresses that native click synthesis, leaving
+            // HandleKeyDown's own invocation as the only one. SkipEditable keeps Space
+            // typing a literal space (and Enter still forwarding via OnSearchKeyDown) alive
+            // in the search input.
+            try
+            {
+                await Interop.RegisterPreventDefaultKeys(_contentId, new[]
+                {
+                    new Lumeo.Services.PreventDefaultKeyRule("ArrowDown", SkipEditable: true),
+                    new Lumeo.Services.PreventDefaultKeyRule("ArrowUp", SkipEditable: true),
+                    new Lumeo.Services.PreventDefaultKeyRule("ArrowLeft", SkipEditable: true),
+                    new Lumeo.Services.PreventDefaultKeyRule("ArrowRight", SkipEditable: true),
+                    new Lumeo.Services.PreventDefaultKeyRule("Home", SkipEditable: true),
+                    new Lumeo.Services.PreventDefaultKeyRule("End", SkipEditable: true),
+                    new Lumeo.Services.PreventDefaultKeyRule("Enter", SkipEditable: true),
+                    new Lumeo.Services.PreventDefaultKeyRule(" ", SkipEditable: true),
+                });
+            }
+            catch (JSDisconnectedException) { }
             _registered = true;
 
-            // Focus the first option in the first panel so keyboard users can
-            // immediately navigate without an extra Tab press.
-            try { await Interop.FocusMenuItemByIndex(_contentId, 0); } catch (JSDisconnectedException) { }
+            // Focus the seeded roving option so keyboard users can immediately
+            // navigate without an extra Tab press. SetOpen seeds (_focusCol/
+            // _focusIdx) to the committed selection's deepest column when a value
+            // is already chosen, falling back to (0,0) otherwise (battle-test #69).
+            _pendingFocusId = OptionId(_focusCol, _focusIdx);
+            _lastPositionedColumns = _activePanels.Count;
+        }
+        else if (_isOpen && _registered && _lastPositionedColumns != _activePanels.Count)
+        {
+            // The fixed popover was anchored at its initial column count. When the
+            // drill-down widens (or narrows) the panel — re-opening onto a
+            // committed multi-column path, or drilling deeper interactively — the
+            // anchor must be recomputed so the wider layout stays attached to the
+            // trigger rather than overflowing off-screen (battle-test #69).
+            _lastPositionedColumns = _activePanels.Count;
+            try { await Interop.PositionFixed(_contentId, EffectiveTriggerId, "start", false, "bottom"); }
+            catch (JSDisconnectedException) { }
         }
         else if (!_isOpen && _registered)
         {
             await Cleanup();
+        }
+
+        // Apply any queued roving focus once the target option (possibly in a
+        // freshly-expanded child panel) has rendered into the DOM.
+        if (_pendingFocusId is not null)
+        {
+            var id = _pendingFocusId;
+            _pendingFocusId = null;
+            try { await Interop.FocusElement(id); } catch (JSDisconnectedException) { }
         }
     }
 
@@ -338,7 +657,9 @@
     {
         try { await Interop.UnpositionFixed(_contentId); } catch (JSDisconnectedException) { }
         try { await Interop.UnregisterClickOutside(_contentId); } catch (JSDisconnectedException) { }
+        try { await Interop.UnregisterPreventDefaultKeys(_contentId); } catch (JSDisconnectedException) { }
         _registered = false;
+        _lastPositionedColumns = -1;
     }
 
     public async ValueTask DisposeAsync()

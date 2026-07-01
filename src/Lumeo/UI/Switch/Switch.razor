@@ -1,37 +1,46 @@
 @namespace Lumeo
 
+@* Render the label, control and helper/error as ONE self-contained vertical block so the
+   field never splays into a row when dropped in a flex / centered container. Standalone
+   form-field structural fix. *@
+<div class="flex flex-col items-start">
 @if (Label is not null && !InsideFormField)
 {
     <label for="@EffectiveId" class="text-sm font-medium leading-none">
         @Label
         @if (Required)
         {
-            <span class="text-destructive ml-0.5">*</span>
+            <span class="text-destructive ms-0.5">*</span>
         }
     </label>
 }
 
 <div class="inline-flex items-center">
     <button type="button" id="@EffectiveId" role="switch"
-            aria-checked="@Checked.ToString().ToLower()"
+            aria-checked="@_checked.ToString().ToLower()"
             aria-label="@AriaLabelValue"
             aria-required="@Required.ToString().ToLower()"
             aria-invalid="@EffectiveInvalid.ToString().ToLower()"
+            aria-busy="@Loading.ToString().ToLower()"
+            aria-describedby="@FormFieldDescribedBy"
             name="@Name"
             class="@CssClass"
             @onclick="Toggle"
             disabled="@(Disabled || Loading)"
-            @attributes="AdditionalAttributes">
+            @attributes="EffectiveAttributes">
         <span class="@ThumbClasses">
             @if (Loading)
             {
-                <Spinner Size="Lumeo.Size.Sm" Class="@ThumbSpinnerClass" />
+                @* aria-hidden so the spinner's own role=status / aria-label="Loading"
+                   doesn't leak into the switch button's accessible name; aria-busy on
+                   the button already announces the in-flight state to AT. *@
+                <Spinner Size="Lumeo.Size.Sm" Class="@ThumbSpinnerClass" aria-hidden="true" />
             }
         </span>
     </button>
     @if (HasOnOffLabel)
     {
-        <span class="text-xs text-muted-foreground ml-2">@CurrentOnOffLabel</span>
+        <span class="text-xs text-muted-foreground ms-2">@CurrentOnOffLabel</span>
     }
 </div>
 
@@ -46,6 +55,7 @@
         <p class="text-xs text-muted-foreground">@HelperText</p>
     }
 }
+</div>
 
 @code {
     [CascadingParameter] private FormField.FormFieldContext? FormField { get; set; }
@@ -60,16 +70,93 @@
     private bool EffectiveInvalid => Invalid || FormField?.HasError == true;
     private bool InsideFormField => FormField is not null;
 
+    // Inside a FormField, adopt its generated ControlId so the field's <Label For>
+    // resolves to this switch button; aria-describedby announces help/error text.
+    private string? FormFieldControlId => string.IsNullOrEmpty(FormField?.ControlId) ? null : FormField!.ControlId;
+    private string? FormFieldDescribedBy => FormField?.DescribedBy;
+
     // Links the visible <label for> to the switch button (Checkbox pattern) so
     // clicking the label toggles the switch and AT announces the association.
     private readonly string _id = LumeoIds.New("switch");
-    // A consumer `id` in the splat overrides the generated one on the button;
-    // the label's `for` must point at the SAME rendered id or the association
-    // (click-to-toggle, AT) breaks for custom-id switches (Codex P3).
-    private string EffectiveId => LumeoIds.Effective(AdditionalAttributes, _id);
+    // Inside a FormField the generated FormFieldControlId must own the button's id so
+    // the <label for> and <button id> always agree. A consumer-splatted id in
+    // AdditionalAttributes would otherwise win (splat renders after the explicit attr)
+    // and orphan the label. Outside a FormField a consumer-supplied id still wins via
+    // LumeoIds.Effective so the standalone label's `for` stays in sync.
+    private string EffectiveId => InsideFormField
+        ? (FormFieldControlId ?? _id)
+        : LumeoIds.Effective(AdditionalAttributes, _id);
+
+    // Strip a consumer-supplied id from the splat when inside a FormField so the
+    // generated EffectiveId on the button element cannot be overridden by @attributes.
+    private Dictionary<string, object>? EffectiveAttributes =>
+        InsideFormField && AdditionalAttributes?.ContainsKey("id") == true
+            ? AdditionalAttributes.Where(kv => kv.Key != "id").ToDictionary(kv => kv.Key, kv => kv.Value)
+            : AdditionalAttributes;
 
     [Parameter] public bool Checked { get; set; }
     [Parameter] public EventCallback<bool> CheckedChanged { get; set; }
+
+    // Uncontrolled state guard (state-on-data-change). The live checked state
+    // lives in _checked, NEVER in the [Parameter] Checked. We reseed _checked
+    // from the parent ONLY when it genuinely changes the Checked value it
+    // supplies (first observation, or a different literal than last time), so a
+    // plain parent re-render that re-pushes the same Checked literal no longer
+    // clobbers the user's toggle. A genuinely new Checked value still wins. This
+    // mirrors the Radix/Base UI controlled-vs-uncontrolled disambiguation a bool
+    // param cannot be "undefined", so we inspect which parameters were provided.
+    private bool _checked;
+    private bool _lastCheckedParam;
+    // CONTROLLED discriminator: the last value we pushed UP via CheckedChanged (also
+    // re-synced whenever we adopt an authoritative Checked). A controlled parent re-render
+    // that echoes back this exact value is safe to ignore (keep in-flight state); any other
+    // value is an authoritative assertion (normalization / veto / reset) and must win.
+    private bool _lastPushed;
+    private bool _hasCheckedParam;
+
+    public override Task SetParametersAsync(ParameterView parameters)
+    {
+        // Seed _checked and both discriminators from the incoming parameter BEFORE
+        // base.SetParametersAsync triggers the initial render, so the first painted
+        // frame already reflects the correct checked state.
+        if (!_hasCheckedParam && parameters.TryGetValue<bool>(nameof(Checked), out var incoming))
+        {
+            _checked = incoming;
+            _lastCheckedParam = incoming;
+            _lastPushed = incoming;
+            _hasCheckedParam = true;
+        }
+
+        return base.SetParametersAsync(parameters);
+    }
+
+    protected override void OnParametersSet()
+    {
+        if (!_hasCheckedParam) return;
+
+        if (CheckedChanged.HasDelegate)
+        {
+            // CONTROLLED: the parent owns the value.
+            // Echo of our own push (Checked == _lastPushed) → keep in-flight backing state.
+            // Anything else (veto, normalization, reset) → adopt the parent's assertion.
+            if (Checked != _lastPushed)
+            {
+                _checked = Checked;
+                _lastPushed = Checked;
+            }
+        }
+        else if (Checked != _lastCheckedParam)
+        {
+            // UNCONTROLLED: component owns the live value.
+            // Adopt the parameter only when the parent genuinely changes it; a stale
+            // re-render that re-supplies the same literal must not clobber the user's toggle.
+            _checked = Checked;
+            _lastPushed = Checked;
+        }
+
+        // Keep the uncontrolled discriminator pointing at the last Checked we observed.
+        _lastCheckedParam = Checked;
+    }
     [Parameter] public bool Disabled { get; set; }
     [Parameter] public bool Loading { get; set; }
     [Parameter] public string? OnLabel { get; set; }
@@ -104,7 +191,7 @@
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     private bool HasOnOffLabel => OnLabel != null || OffLabel != null;
-    private string? CurrentOnOffLabel => Checked ? OnLabel : OffLabel;
+    private string? CurrentOnOffLabel => _checked ? OnLabel : OffLabel;
 
     // Prefer an explicit AriaLabel, then fall back to the currently visible On/Off text, then to Label
     // so even consumers who don't set AriaLabel get a reasonable screen-reader announcement.
@@ -126,9 +213,9 @@
 
     private string ThumbTranslateClass => Size switch
     {
-        Lumeo.Size.Sm => Checked ? "translate-x-3" : "translate-x-0",
-        Lumeo.Size.Lg => Checked ? "translate-x-5" : "translate-x-0",
-        _ => Checked ? "translate-x-4" : "translate-x-0"
+        Lumeo.Size.Sm => _checked ? "translate-x-3" : "translate-x-0",
+        Lumeo.Size.Lg => _checked ? "translate-x-5" : "translate-x-0",
+        _ => _checked ? "translate-x-4" : "translate-x-0"
     };
 
     private string ThumbSpinnerClass => Size switch
@@ -142,7 +229,7 @@
         "peer inline-flex",
         TrackSizeClasses,
         "shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50",
-        Checked ? "bg-primary" : "bg-input",
+        _checked ? "bg-primary" : "bg-input",
         Cx.When(EffectiveInvalid, "ring-2 ring-destructive/20 focus-visible:ring-destructive"),
         Cx.When(Loading, "pointer-events-none opacity-70"),
         Class);
@@ -165,8 +252,14 @@
     {
         if (!Disabled && !Loading)
         {
-            Checked = !Checked;
-            await CheckedChanged.InvokeAsync(Checked);
+            // Mutate the working backing field only — NEVER the [Parameter] Checked.
+            // Record _lastPushed BEFORE invoking CheckedChanged: a controlled parent
+            // re-renders synchronously inside InvokeAsync, so OnParametersSet must already
+            // see this value as "the value we just pushed" to distinguish an accepted echo
+            // (keep in-flight state) from a veto (parent kept its old value → roll back).
+            _checked = !_checked;
+            _lastPushed = _checked;
+            await CheckedChanged.InvokeAsync(_checked);
             if (HapticFeedback) await Haptics.Light();
         }
     }

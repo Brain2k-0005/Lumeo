@@ -126,4 +126,121 @@ public class ImageCompareTests : IAsyncLifetime
         slider.Input("1000"); // beyond max — must clamp to 100
         Assert.Equal("100", cut.Find("input[type='range']").GetAttribute("aria-valuenow"));
     }
+
+    // --- Regression: battle-wave2 #134 (keyboard-a11y) ---
+    // The badge label and the image's accessible name (<img alt>) are separate
+    // concerns. Hiding a badge (BeforeLabel/AfterLabel = "") must NOT blank the
+    // alt — the alt falls back to the localized "Before"/"After" so the image is
+    // always named. Before the fix, alt was bound straight to the label, so an
+    // empty label produced alt="" (no accessible name).
+
+    [Fact]
+    public void Hiding_Before_Label_Keeps_Before_Image_Alt()
+    {
+        var cut = _ctx.Render<L.ImageCompare>(p => p
+            .Add(c => c.BeforeSrc, "/b.jpg")
+            .Add(c => c.AfterSrc, "/a.jpg")
+            .Add(c => c.BeforeLabel, "")
+            .Add(c => c.AfterLabel, "Edited"));
+
+        // The before image is the second <img> (the clip-path overlay).
+        var beforeImg = cut.FindAll("img")[1];
+        var alt = beforeImg.GetAttribute("alt") ?? "";
+        Assert.False(string.IsNullOrEmpty(alt));
+        Assert.Equal("Before", alt);
+    }
+
+    [Fact]
+    public void Hiding_After_Label_Keeps_After_Image_Alt()
+    {
+        var cut = _ctx.Render<L.ImageCompare>(p => p
+            .Add(c => c.BeforeSrc, "/b.jpg")
+            .Add(c => c.AfterSrc, "/a.jpg")
+            .Add(c => c.BeforeLabel, "Original")
+            .Add(c => c.AfterLabel, ""));
+
+        // The after image is the first <img> (the full-size background).
+        var afterImg = cut.FindAll("img")[0];
+        var alt = afterImg.GetAttribute("alt") ?? "";
+        Assert.False(string.IsNullOrEmpty(alt));
+        Assert.Equal("After", alt);
+    }
+
+    [Fact]
+    public void Custom_Labels_Are_Used_As_Image_Alt()
+    {
+        var cut = _ctx.Render<L.ImageCompare>(p => p
+            .Add(c => c.BeforeSrc, "/b.jpg")
+            .Add(c => c.AfterSrc, "/a.jpg")
+            .Add(c => c.BeforeLabel, "Original")
+            .Add(c => c.AfterLabel, "Edited"));
+
+        Assert.Equal("Edited", cut.FindAll("img")[0].GetAttribute("alt"));
+        Assert.Equal("Original", cut.FindAll("img")[1].GetAttribute("alt"));
+    }
+
+    // --- Regression: battle-wave2 #211 (edge-data) ---
+    // BeforeSrc/AfterSrc default to "" (empty string). Rendering <img src="">
+    // is broken: browsers treat src="" as a request to the current page URL and
+    // show a broken-image glyph. The component must NOT emit an <img> with an
+    // empty src; before the fix both images were emitted unconditionally so the
+    // out-of-the-box default (no srcs supplied) produced two broken images.
+
+    [Fact]
+    public void Default_Empty_Srcs_Emit_No_Img_Elements()
+    {
+        // No BeforeSrc/AfterSrc supplied — they default to "".
+        var cut = _ctx.Render<L.ImageCompare>();
+
+        // Neither image should render (no broken src="").
+        Assert.Empty(cut.FindAll("img"));
+        // The component itself still renders (slider present).
+        Assert.NotEmpty(cut.FindAll("input[type='range']"));
+        // And it never emits an empty src attribute.
+        Assert.DoesNotContain("src=\"\"", cut.Markup);
+    }
+
+    [Fact]
+    public void Empty_Before_Src_Skips_Only_The_Before_Image()
+    {
+        var cut = _ctx.Render<L.ImageCompare>(p => p
+            .Add(c => c.BeforeSrc, "")
+            .Add(c => c.AfterSrc, "/a.jpg"));
+
+        var imgs = cut.FindAll("img");
+        // Only the after image is rendered.
+        Assert.Single(imgs);
+        Assert.Equal("/a.jpg", imgs[0].GetAttribute("src"));
+        Assert.DoesNotContain("src=\"\"", cut.Markup);
+    }
+
+    [Fact]
+    public void Empty_After_Src_Skips_Only_The_After_Image()
+    {
+        var cut = _ctx.Render<L.ImageCompare>(p => p
+            .Add(c => c.BeforeSrc, "/b.jpg")
+            .Add(c => c.AfterSrc, ""));
+
+        var imgs = cut.FindAll("img");
+        // Only the before image is rendered.
+        Assert.Single(imgs);
+        Assert.Equal("/b.jpg", imgs[0].GetAttribute("src"));
+        Assert.DoesNotContain("src=\"\"", cut.Markup);
+    }
+
+    [Fact]
+    public void Null_Srcs_Emit_No_Img_Elements()
+    {
+        // A consumer may bind null directly; must not throw or emit src="".
+        var ex = Record.Exception(() =>
+        {
+            var cut = _ctx.Render<L.ImageCompare>(p => p
+                .Add(c => c.BeforeSrc, null!)
+                .Add(c => c.AfterSrc, null!));
+
+            Assert.Empty(cut.FindAll("img"));
+            Assert.DoesNotContain("src=\"\"", cut.Markup);
+        });
+        Assert.Null(ex);
+    }
 }

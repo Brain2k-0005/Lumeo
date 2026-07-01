@@ -1,0 +1,69 @@
+@inherits Bunit.BunitContext
+
+@code {
+    // #45 (battle-test, keyboard-a11y) — when the Steps is NOT Clickable, every
+    // step indicator used to render as a `disabled <button>`. A disabled button
+    // is dropped from the keyboard tab order AND ignored by assistive
+    // technology, so the current-step marker (its aria-current="step" + its
+    // descriptive aria-label) became unreachable/unannounceable. The fix renders
+    // a non-interactive element (carrying aria-current/aria-label) when not
+    // Clickable, and only emits a real <button> when Clickable=true.
+
+    public StepsItemA11yTests() { this.AddLumeoServices(); }
+
+    [Fact]
+    public void NonClickable_Indicators_Are_Not_Disabled_Buttons()
+    {
+        var cut = Render(@<Steps CurrentStep="1">
+            <StepsItem Title="One" />
+            <StepsItem Title="Two" />
+            <StepsItem Title="Three" />
+        </Steps>);
+
+        // Default (Clickable=false): NO indicator may be rendered as a button at
+        // all, because a non-clickable indicator must not be a disabled control.
+        // (Pre-fix this rendered three `<button disabled>` indicators.)
+        Assert.Empty(cut.FindAll("button"));
+        Assert.Empty(cut.FindAll("[disabled]"));
+    }
+
+    [Fact]
+    public void NonClickable_Current_Marker_Stays_Reachable_To_AT()
+    {
+        var cut = Render(@<Steps CurrentStep="1">
+            <StepsItem Title="One" />
+            <StepsItem Title="Two" />
+            <StepsItem Title="Three" />
+        </Steps>);
+
+        // The current-step marker (aria-current="step" + aria-label) must exist
+        // on a NON-disabled element so AT can announce it. Pre-fix it sat on a
+        // `<button disabled>` and was effectively hidden from AT.
+        var current = cut.FindAll("[aria-current='step']");
+        Assert.Single(current);
+
+        var marker = current[0];
+        Assert.False(marker.HasAttribute("disabled"));
+        Assert.NotEqual("BUTTON", marker.TagName);
+        Assert.Contains("(current)", marker.GetAttribute("aria-label"));
+    }
+
+    [Fact]
+    public void Clickable_Indicators_Are_Interactive_Buttons()
+    {
+        // When Clickable=true the indicator IS a real, ENABLED <button> so it
+        // stays operable by mouse and keyboard.
+        var cut = Render(@<Steps CurrentStep="1" Clickable="true">
+            <StepsItem Title="One" />
+            <StepsItem Title="Two" />
+            <StepsItem Title="Three" />
+        </Steps>);
+
+        var buttons = cut.FindAll("button");
+        Assert.Equal(3, buttons.Count);
+        Assert.All(buttons, b => Assert.False(b.HasAttribute("disabled")));
+
+        var current = cut.Find("button[aria-current='step']");
+        Assert.Contains("(current)", current.GetAttribute("aria-label"));
+    }
+}

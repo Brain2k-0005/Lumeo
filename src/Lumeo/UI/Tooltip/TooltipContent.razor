@@ -3,7 +3,7 @@
 
 @*  rc.45 — fixed-position rendering + collision flip.
     Previously the tooltip was an absolutely positioned child of the trigger
-    wrapper, anchored with Tailwind classes (`bottom-full left-1/2 ...`).
+    wrapper, anchored with Tailwind classes (`bottom-full start-1/2 ...`).
     That meant a tooltip near the viewport edge clipped against it.
     We now mirror the Popover pattern: render with `position: fixed`, hand
     placement off to `ComponentInteropService.PositionFixed` (floating-ui
@@ -11,7 +11,7 @@
     space is tight. Side is still consumer-controlled as a preference. *@
 @if (IsOpen)
 {
-    <div id="@_contentId" role="tooltip" class="@CssClass" @attributes="AdditionalAttributes">
+    <div id="@_contentId" role="tooltip" data-side="@EffectiveSide" class="@CssClass" @attributes="AdditionalAttributes">
         @ChildContent
         @if (ShowArrow)
         {
@@ -37,6 +37,16 @@
     private string _contentId => Context?.ContentId ?? string.Empty;
     private bool _registered;
 
+    // Last placement values actually handed to PositionFixed. A live Side/Offset
+    // change while the tooltip is open must re-run PositionFixed so the box moves;
+    // storing the applied values stops a same-value re-render from thrashing JS.
+    private string? _appliedSide;
+    private int? _appliedOffset;
+
+    // The side the box ACTUALLY resolved to, echoed back by PositionFixed after any collision flip.
+    // Null until the first placement; the arrow + data-side render from EffectiveSide so they follow a flip.
+    private string? _resolvedSide;
+
     private bool IsOpen => Context?.IsOpen ?? false;
 
     private string CssClass => Cx.Merge(
@@ -57,22 +67,49 @@
         _ => "top"
     };
 
+    // The side the arrow + data-side actually render from: the resolved side once positionFixed has run
+    // (so a collision flip re-points the arrow), falling back to the requested SideStr before placement.
+    private string EffectiveSide => _resolvedSide ?? SideStr;
+
     // Rotated square — same visual as Popover/HoverCard but no border (tooltip is a solid primary surface).
-    private string ArrowClasses => Side switch
+    // Derived from EffectiveSide (the SAME value rendered as data-side) so the arrow edge and the data-side
+    // attribute always agree — including after a positionFixed COLLISION FLIP, which echoes the resolved
+    // side back to _resolvedSide. Horizontal centering for Top/Bottom uses the PHYSICAL `left-1/2` (not
+    // logical `start-1/2`): the box is positioned by JS in LTR coordinates and the arrow's `-translate-x-1/2`
+    // is physical, so under RTL `start-1/2` (→ right:50%) would push the arrow off-center (Codex P2).
+    private string ArrowClasses => EffectiveSide switch
     {
-        Lumeo.Side.Top => "absolute left-1/2 top-full -translate-x-1/2 -translate-y-1/2 rotate-45 h-2 w-2 bg-primary",
-        Lumeo.Side.Bottom => "absolute left-1/2 bottom-full -translate-x-1/2 translate-y-1/2 rotate-45 h-2 w-2 bg-primary",
-        Lumeo.Side.Left => "absolute top-1/2 left-full -translate-y-1/2 -translate-x-1/2 rotate-45 h-2 w-2 bg-primary",
-        Lumeo.Side.Right => "absolute top-1/2 right-full -translate-y-1/2 translate-x-1/2 rotate-45 h-2 w-2 bg-primary",
+        "top" => "absolute left-1/2 top-full -translate-x-1/2 -translate-y-1/2 rotate-45 h-2 w-2 bg-primary",
+        "bottom" => "absolute left-1/2 bottom-full -translate-x-1/2 translate-y-1/2 rotate-45 h-2 w-2 bg-primary",
+        "left" => "absolute top-1/2 left-full -translate-y-1/2 -translate-x-1/2 rotate-45 h-2 w-2 bg-primary",
+        "right" => "absolute top-1/2 right-full -translate-y-1/2 translate-x-1/2 rotate-45 h-2 w-2 bg-primary",
         _ => "absolute left-1/2 top-full -translate-x-1/2 -translate-y-1/2 rotate-45 h-2 w-2 bg-primary"
     };
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (IsOpen && !_registered && Context is not null)
+        // Re-position when first opening OR when Side/Offset changed while already
+        // open. The old `!_registered` one-shot latch ignored live placement changes,
+        // leaving the box at its original spot. positionFixed cleans up the prior
+        // placement (keyed by contentId) at entry, so re-calling it is safe.
+        if (IsOpen && Context is not null
+            && (!_registered || _appliedSide != SideStr || _appliedOffset != Offset))
         {
-            await Interop.PositionFixed(_contentId, Context.WrapperId, "center", false, SideStr, Offset);
+            // OnLiveSideChanged covers a LATER flip too — a scroll/resize reposition while this tooltip
+            // stays open at the same Side/Offset (Codex P2, round-11/14). The guard above keys off
+            // SideStr/Offset (NOT _resolvedSide), so OnLiveSideChanged's StateHasChanged does not re-enter
+            // this branch — no render loop, no re-registering positionFixed.
+            var resolved = await Interop.PositionFixed(_contentId, Context.WrapperId, "center", false, SideStr, Offset, OnLiveSideChanged);
             _registered = true;
+            _appliedSide = SideStr;
+            _appliedOffset = Offset;
+            // The box may have collision-flipped to the opposite side on this INITIAL placement; re-render
+            // so the arrow + data-side follow it.
+            if (resolved != _resolvedSide)
+            {
+                _resolvedSide = resolved;
+                StateHasChanged();
+            }
         }
         else if (!IsOpen && _registered)
         {
@@ -80,11 +117,22 @@
         }
     }
 
+    private Task OnLiveSideChanged(string side)
+    {
+        if (side == _resolvedSide) return Task.CompletedTask;
+        _resolvedSide = side;
+        StateHasChanged();
+        return Task.CompletedTask;
+    }
+
     private async Task Cleanup()
     {
         try { await Interop.UnpositionFixed(_contentId); }
         catch (Microsoft.JSInterop.JSDisconnectedException) { }
         _registered = false;
+        _appliedSide = null;
+        _appliedOffset = null;
+        _resolvedSide = null;
     }
 
     public async ValueTask DisposeAsync()

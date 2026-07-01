@@ -320,7 +320,10 @@ public class FormTests : IAsyncLifetime
         {
             builder.OpenComponent<L.FormField>(0);
             builder.AddAttribute(1, "Error", "Error!");
-            builder.AddAttribute(2, "ChildContent", (RenderFragment)(b =>
+            // FormField auto-renders the error by default; AutoRenderMessage="false" hands
+            // error rendering to the child FormMessage (so they never render it twice).
+            builder.AddAttribute(2, "AutoRenderMessage", false);
+            builder.AddAttribute(3, "ChildContent", (RenderFragment)(b =>
             {
                 b.OpenComponent<L.FormMessage>(0);
                 b.AddAttribute(1, "Class", "custom-msg");

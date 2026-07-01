@@ -1,18 +1,24 @@
 @namespace Lumeo
+@using Lumeo.Internal
 @inject Services.ComponentInteropService Interop
 @inject Lumeo.Services.Localization.ILumeoLocalizer L
 @implements IAsyncDisposable
 
+@* Init-failure banner renders ABOVE the editor, never INSTEAD of it: keeping the
+   content host (@ref="_contentRef") mounted means a retry has a valid ElementReference
+   to re-init against. Replacing the whole tree with an error div would orphan the ref
+   and make recovery impossible. *@
 @if (_initError is not null)
 {
-    <div class="rounded-lg border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive">Editor failed to initialize: @_initError</div>
+    <div role="alert" class="rounded-lg border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive mb-2 flex items-center justify-between gap-3">
+        <span>Editor failed to initialize: @_initError</span>
+        <Button Variant="Button.ButtonVariant.Outline" Size="Button.ButtonSize.Sm" OnClick="RetryInitAsync">@L["Editor.Retry"]</Button>
+    </div>
 }
-else
-{
 
 @if (Label is not null && !InsideFormField)
 {
-    <label class="block text-sm font-medium text-foreground mb-1.5">
+    <label id="@_labelId" class="block text-sm font-medium text-foreground mb-1.5">
         @Label
         @if (Required)
         {
@@ -21,7 +27,7 @@ else
     </label>
 }
 
-<div class="@RootClass" @attributes="AdditionalAttributes" aria-required="@(Required ? "true" : "false")" aria-invalid="@(EffectiveInvalid ? "true" : "false")">
+<div class="@RootClass" @attributes="AdditionalAttributes">
     @if (EffectiveToolbar != EditorToolbarPreset.None)
     {
         <EditorToolbar Preset="EffectiveToolbar"
@@ -32,7 +38,19 @@ else
                        OnCommand="HandleToolbarCommand" />
     }
 
-    <div @ref="_contentRef" style="@ContentStyle" class="lumeo-rte-content bg-card"></div>
+    @* role/aria live on the editable surface itself (not the presentational
+       wrapper) so assistive tech announces it as a multi-line textbox tied to
+       its label, helper and error text. TipTap mounts the contenteditable into
+       this host and also receives a mirrored set via editorProps.attributes. *@
+    <div @ref="_contentRef"
+         style="@ContentStyle"
+         class="lumeo-rte-content bg-card"
+         role="textbox"
+         aria-multiline="true"
+         aria-required="@(Required ? "true" : "false")"
+         aria-invalid="@(EffectiveInvalid ? "true" : "false")"
+         aria-labelledby="@EditorLabelledBy"
+         aria-describedby="@EditorDescribedBy"></div>
 </div>
 
 @if (!InsideFormField)
@@ -43,11 +61,11 @@ else
     }
     else if (EffectiveInvalid && ErrorText is not null)
     {
-        <p class="text-xs text-destructive mt-1.5">@ErrorText</p>
+        <p id="@_errorId" class="text-xs text-destructive mt-1.5">@ErrorText</p>
     }
     else if (HelperText is not null)
     {
-        <p class="text-xs text-muted-foreground mt-1.5">@HelperText</p>
+        <p id="@_helperId" class="text-xs text-muted-foreground mt-1.5">@HelperText</p>
     }
 }
 
@@ -70,8 +88,6 @@ else
         </DialogFooter>
     </DialogContent>
 </Dialog>
-
-} @* end @if (_initError is not null) else *@
 
 @code {
     [CascadingParameter] private FormField.FormFieldContext? FormField { get; set; }
@@ -115,7 +131,7 @@ else
     /// <summary>
     /// Maximum size, in bytes, of a Word document accepted by the in-browser import path.
     /// Defaults to 8 MB. Larger files are refused before being read into memory and surfaced
-    /// to the user via <see cref="WordImportError"/>. Set explicitly when consumers expect
+    /// to the user via <c>WordImportError</c>. Set explicitly when consumers expect
     /// large documents and the deployment can afford the memory.
     /// </summary>
     [Parameter] public long MaxWordImportBytes { get; set; } = 8L * 1024L * 1024L;
@@ -143,6 +159,38 @@ else
     private bool EffectiveInvalid => Invalid || FormField?.HasError == true;
     private bool InsideFormField => FormField is not null;
 
+    // Stable ids so the editable surface can be associated with its Label,
+    // helper, and error text via aria-labelledby / aria-describedby (Base UI
+    // Field a11y parity). Generated once per instance; only emitted onto the
+    // markup when the corresponding text is actually rendered.
+    private readonly string _labelId = $"rte-label-{Guid.NewGuid():N}";
+    private readonly string _helperId = $"rte-helper-{Guid.NewGuid():N}";
+    private readonly string _errorId = $"rte-error-{Guid.NewGuid():N}";
+
+    // The element id of the standalone label, when one is rendered (i.e. a Label
+    // was supplied AND we're not inside a FormField, which owns its own label).
+    private string? StandaloneLabelId =>
+        Label is not null && !InsideFormField ? _labelId : null;
+
+    // aria-labelledby for the editable surface: our own standalone label. Inside a
+    // FormField the label association is owned by the FormField's <label for> ->
+    // control id link, so we do NOT emit a (potentially wrong) aria-labelledby here.
+    private string? EditorLabelledBy => StandaloneLabelId;
+
+    // aria-describedby for the editable surface: the FormField's active message id
+    // when nested, else whichever of our own helper/error <p> is currently shown.
+    private string? EditorDescribedBy
+    {
+        get
+        {
+            if (InsideFormField) return FormField!.DescribedBy;
+            if (_wordImportError is not null) return null; // role=alert <p> announces itself
+            if (EffectiveInvalid && ErrorText is not null) return _errorId;
+            if (HelperText is not null) return _helperId;
+            return null;
+        }
+    }
+
     private EditorToolbarPreset EffectiveToolbar => ToolbarMode switch
     {
         RichTextToolbarMode.None => EditorToolbarPreset.None,
@@ -154,12 +202,39 @@ else
     private Microsoft.AspNetCore.Components.ElementReference _contentRef;
     private DotNetObjectReference<RichTextEditor>? _selfRef;
     private string? _instanceId;
+    // The live document the editor currently holds (seeded from Value, then driven
+    // by OnContentUpdate). This is the source of truth for editor content — we never
+    // store live edit state back into the [Parameter] Value, so an unrelated parent
+    // re-render that re-supplies a stale Value cannot clobber in-progress typing.
     private string? _lastSetValue;
+    // UNCONTROLLED discriminator: the last Value the PARENT supplied. Used only when
+    // ValueChanged is NOT bound — we adopt the parameter only when it genuinely changes.
+    private string? _lastParamValue;
+    // CONTROLLED discriminator: the last value WE pushed UP via ValueChanged (set before
+    // raising ValueChanged so the parent's synchronous re-render sees it immediately).
+    // When ValueChanged IS bound the parent owns Value, so in OnParametersSet we compare
+    // against _lastPushed: equal → echo of our own edit → keep editor state; unequal →
+    // parent asserted a different value (normalization, reset, or REJECTION that left the
+    // old Value in place) → authoritative re-sync, which is the controlled-rollback fix.
+    private string? _lastPushed;
+    // Snapshot of the trigger char-set last handed to JS, so a Triggers change after
+    // init can be detected and the editor re-initialized (suggestion extensions are
+    // registered at construction time inside the JS module).
+    private string _lastTriggerChars = string.Empty;
     private bool _lastDisabled;
     private bool _lastReadOnly;
+    // Last aria-invalid / aria-describedby values pushed to the editor's contenteditable
+    // via rte.setAriaAttributes. Tracked so we only call the interop when they change —
+    // validation state (EffectiveInvalid) and the describedby id both change post-mount
+    // when a Form submit fires, which the init-time snapshot misses (Fix 2).
+    private bool _lastAriaInvalid;
+    private string? _lastAriaDescribedBy;
     private Services.Interop.RichTextActiveState? _active;
     private bool _initialized;
     private string? _initError;
+    // Set by the Retry button; consumed in the next OnAfterRenderAsync once the content
+    // host has been re-rendered, so init runs against a live ElementReference.
+    private bool _retryRequested;
 
     // Link dialog state (replaces the native browser prompt for the toolbar
     // and bubble menu's Link button).
@@ -226,75 +301,220 @@ else
         {
             _selfRef = DotNetObjectReference.Create(this);
             _lastSetValue = Value;
+            _lastParamValue = Value;
+            _lastPushed = Value;
             _lastDisabled = Disabled;
             _lastReadOnly = ReadOnly;
 
-            // Build the "trigger" descriptor list passed into JS — only the
-            // metadata the JS needs (char + label). Item resolution happens via
-            // the OnTriggerQuery JSInvokable below, which fans queries out to
-            // the matching EditorTrigger registered server-side.
-            var triggerMeta = (Triggers ?? Array.Empty<EditorTrigger>())
-                .Select(t => new { @char = t.Char.ToString(), label = $"{t.Char} suggestions" })
-                .ToArray();
+            await InitEditorAsync();
+            return;
+        }
 
-            var options = new
-            {
-                content = Value ?? string.Empty,
-                initialHtml = Value ?? string.Empty,
-                placeholder = EffectivePlaceholder,
-                disabled = Disabled,
-                readOnly = ReadOnly,
-                editable = !Disabled && !ReadOnly,
-                mentionTriggers = triggerMeta,
-                enableSlashCommand = EnableSlashCommand,
-                enableTables = EnableTables,
-                enableCodeBlock = EnableCodeBlock,
-                enableImages = EnableImages,
-                enableTaskList = EnableTaskList,
-                enableMarkdownShortcuts = EnableMarkdownShortcuts,
-                enableAiActions = EnableAiActions,
-                enableBubbleMenu = EnableBubbleMenu,
-                enableDragHandle = EnableDragHandle,
-                maxLength = MaxLength,
-                maxWordImportBytes = MaxWordImportBytes,
-            };
-
-            try
-            {
-                _instanceId = await Interop.RichTextInitAsync(_contentRef, _selfRef, options);
-            }
-            catch (JSException ex)
-            {
-                _initError = ex.Message;
-                Console.Error.WriteLine($"[Lumeo RichTextEditor] Init failed: {ex.Message}");
-                if (OnInitError.HasDelegate)
-                    await OnInitError.InvokeAsync(ex.Message);
-                StateHasChanged();
-                return;
-            }
-            _initialized = !string.IsNullOrEmpty(_instanceId);
-            if (_initialized)
-            {
-                await RefreshActiveAsync();
-            }
+        // Retry path: the user clicked "Retry" on the init-failure banner. The content
+        // host stayed mounted (the error renders ABOVE it, not instead of it), so the
+        // ElementReference is still valid and a fresh init can succeed. The flag is
+        // consumed here — after a render that re-mounts the host — so _contentRef is live.
+        if (_retryRequested)
+        {
+            _retryRequested = false;
+            await InitEditorAsync();
         }
     }
+
+    /// <summary>
+    /// (Re-)creates the underlying JS editor instance against the current content host.
+    /// Called once on first render, and again whenever a Triggers change requires the
+    /// suggestion extensions to be rebuilt (they are registered at construction time in
+    /// the JS module, so a live change cannot be applied in place without re-init).
+    /// </summary>
+    private async Task InitEditorAsync()
+    {
+        if (_selfRef is null) return;
+
+        // Build the "trigger" descriptor list passed into JS — only the
+        // metadata the JS needs (char + label). Item resolution happens via
+        // the OnTriggerQuery JSInvokable below, which fans queries out to
+        // the matching EditorTrigger registered server-side.
+        var triggers = Triggers ?? Array.Empty<EditorTrigger>();
+        var triggerMeta = triggers
+            .Select(t => new { @char = t.Char.ToString(), label = $"{t.Char} suggestions" })
+            .ToArray();
+        _lastTriggerChars = TriggerCharSet(triggers);
+
+        // Seed the new instance with the live document (what's currently in the
+        // editor) rather than the [Parameter] Value, so a re-init triggered by an
+        // unrelated parameter change (e.g. Triggers) preserves in-progress edits.
+        var seed = _lastSetValue ?? Value ?? string.Empty;
+
+        var options = new
+        {
+            content = seed,
+            initialHtml = seed,
+            placeholder = EffectivePlaceholder,
+            disabled = Disabled,
+            readOnly = ReadOnly,
+            editable = !Disabled && !ReadOnly,
+            mentionTriggers = triggerMeta,
+            enableSlashCommand = EnableSlashCommand,
+            enableTables = EnableTables,
+            enableCodeBlock = EnableCodeBlock,
+            enableImages = EnableImages,
+            enableTaskList = EnableTaskList,
+            enableMarkdownShortcuts = EnableMarkdownShortcuts,
+            enableAiActions = EnableAiActions,
+            enableBubbleMenu = EnableBubbleMenu,
+            enableDragHandle = EnableDragHandle,
+            maxLength = MaxLength,
+            maxWordImportBytes = MaxWordImportBytes,
+            // A11y: TipTap mounts the contenteditable as a child of the content
+            // host, so role/aria-multiline/required/invalid and the label/desc
+            // associations must be pushed onto it via editorProps.attributes too
+            // (the host wrapper carries the same set for non-TipTap consumers).
+            role = "textbox",
+            ariaMultiline = true,
+            ariaRequired = Required,
+            ariaInvalid = EffectiveInvalid,
+            ariaLabelledBy = EditorLabelledBy,
+            ariaDescribedBy = EditorDescribedBy,
+        };
+
+        try
+        {
+            _instanceId = await Interop.RichTextInitAsync(_contentRef, _selfRef, options);
+        }
+        catch (JSDisconnectedException)
+        {
+            // The circuit went away mid-init (navigation/teardown). Nothing to surface —
+            // there is no live UI to retry against — and this must not be reported as an
+            // init failure the consumer can recover from.
+            return;
+        }
+        catch (Exception ex)
+        {
+            // Catch the broader set (not just JSException): a malformed option payload,
+            // a serialization error, or an exception thrown inside the JS module all
+            // leave the editor unmounted. Surface a recoverable banner + Retry rather
+            // than letting the component render blank or rethrow into the parent.
+            _initError = ex.Message;
+            Console.Error.WriteLine($"[Lumeo RichTextEditor] Init failed: {ex.Message}");
+            if (OnInitError.HasDelegate)
+                await OnInitError.InvokeAsync(ex.Message);
+            StateHasChanged();
+            return;
+        }
+        _initialized = !string.IsNullOrEmpty(_instanceId);
+        if (_initialized)
+        {
+            // Recovered: a successful (re-)init clears any prior error banner so the
+            // component returns to its normal rendered state.
+            _initError = null;
+            // Seed the aria snapshot with what we just passed to rte.init so the
+            // post-init change-detection in OnParametersSetAsync starts from truth.
+            _lastAriaInvalid = EffectiveInvalid;
+            _lastAriaDescribedBy = EditorDescribedBy;
+            await RefreshActiveAsync();
+        }
+    }
+
+    /// <summary>
+    /// Retry handler for the init-failure banner. Clears the error and flags a re-init,
+    /// which runs in the NEXT OnAfterRenderAsync — by then the content host has been
+    /// re-rendered (the banner sits above it, so the host is always mounted) and its
+    /// ElementReference is valid to init against. Idempotent: a re-init already in flight
+    /// is not double-scheduled.
+    /// </summary>
+    private void RetryInitAsync()
+    {
+        if (_initialized) return;
+        _initError = null;
+        _retryRequested = true;
+        StateHasChanged();
+    }
+
+    // Normalize a trigger list to its (ordered, distinct) char set so Triggers changes
+    // are detected by what JS actually keys off — the activation characters.
+    private static string TriggerCharSet(IReadOnlyList<EditorTrigger> triggers)
+        => triggers.Count == 0
+            ? string.Empty
+            : string.Concat(triggers.Select(t => t.Char).Distinct().OrderBy(c => c));
 
     protected override async Task OnParametersSetAsync()
     {
         if (!_initialized || _instanceId is null) return;
 
-        if (!string.Equals(Value, _lastSetValue, StringComparison.Ordinal))
+        // Re-init when the activation char-set changes: suggestion extensions are wired
+        // at construction in the JS module, so an added char would never fire and a
+        // removed char would keep firing without a rebuild. Re-init seeds from the live
+        // document (_lastSetValue), so this preserves in-progress edits.
+        var triggerChars = TriggerCharSet(Triggers ?? Array.Empty<EditorTrigger>());
+        if (!string.Equals(triggerChars, _lastTriggerChars, StringComparison.Ordinal))
+        {
+            var oldId = _instanceId;
+            _instanceId = null;
+            _initialized = false;
+            try { await Interop.RichTextDestroyAsync(oldId); }
+            catch (JSDisconnectedException) { /* circuit gone */ }
+            await InitEditorAsync();
+            return;
+        }
+
+        // Content sync — split on controlled vs. uncontrolled (same pattern as Input).
+        //
+        // CONTROLLED (ValueChanged bound): compare against _lastPushed (the last value WE
+        // emitted). If Value equals _lastPushed the parent is echoing our own edit — skip so
+        // we don't disturb the editor or cursor. A SECOND exception exists ONLY for a null
+        // baseline: a consumer that binds ValueChanged purely to OBSERVE, without ever binding
+        // Value back, leaves it at its unbound default (null) on every render — that must NOT
+        // be treated as a rejection that reloads (and erases) the just-typed content (Codex
+        // P2). This narrow, null-only carve-out mirrors Input/ToggleGroup: a NON-null unchanged
+        // Value is indistinguishable from a genuinely bound value the parent is choosing to
+        // keep pinned (a real rejection that must re-sync TipTap back to it). Any OTHER Value
+        // — normalisation, programmatic reset, or a REJECTION that kept the old (non-null,
+        // bound) Value — is authoritative and must roll TipTap back. (Codex P2
+        // controlled-rollback fix.)
+        //
+        // UNCONTROLLED (no ValueChanged): compare against _lastParamValue (the last Value
+        // the parent supplied). An unrelated re-render that re-supplies the same stale Value
+        // must not clobber in-progress typing; adopt only on genuine parent-driven changes.
+        if (ValueChanged.HasDelegate)
+        {
+            var isEcho = string.Equals(Value, _lastPushed, StringComparison.Ordinal);
+            var isNullObserverEcho = Value is null && _lastParamValue is null;
+            if (!isEcho && !isNullObserverEcho)
+            {
+                _lastPushed = Value;
+                _lastSetValue = Value;
+                await Interop.RichTextSetContentAsync(_instanceId, Value);
+            }
+        }
+        else if (!string.Equals(Value, _lastParamValue, StringComparison.Ordinal))
         {
             _lastSetValue = Value;
             await Interop.RichTextSetContentAsync(_instanceId, Value);
         }
+        // Always keep the uncontrolled discriminator current.
+        _lastParamValue = Value;
 
         if (Disabled != _lastDisabled || ReadOnly != _lastReadOnly)
         {
             _lastDisabled = Disabled;
             _lastReadOnly = ReadOnly;
             await Interop.RichTextSetDisabledAsync(_instanceId, Disabled || ReadOnly);
+        }
+
+        // Aria attributes post-mount sync (Codex P2 aria-after-mount fix):
+        // aria-invalid and aria-describedby are passed to TipTap at init but can change
+        // later (e.g. a Form submit adds a validation error). The wrapper div re-renders
+        // automatically, but TipTap's contenteditable keeps the init-time snapshot unless
+        // we push the update via interop. Only call when the values actually changed.
+        var currentAriaInvalid = EffectiveInvalid;
+        var currentAriaDescribedBy = EditorDescribedBy;
+        if (currentAriaInvalid != _lastAriaInvalid ||
+            !string.Equals(currentAriaDescribedBy, _lastAriaDescribedBy, StringComparison.Ordinal))
+        {
+            _lastAriaInvalid = currentAriaInvalid;
+            _lastAriaDescribedBy = currentAriaDescribedBy;
+            await Interop.RichTextSetAriaAttributesAsync(_instanceId, currentAriaInvalid, currentAriaDescribedBy);
         }
     }
 
@@ -303,8 +523,16 @@ else
     [JSInvokable]
     public async Task OnContentUpdate(string html)
     {
+        // Track the live document only; do NOT write back into the [Parameter] Value.
+        // Value is a controlled input — storing our own edit state there would let an
+        // unrelated parent re-render (which re-supplies the parent's stale Value) wipe
+        // in-progress typing.
         _lastSetValue = html;
-        Value = html;
+        // Record _lastPushed BEFORE raising ValueChanged: a controlled parent may
+        // re-render synchronously inside InvokeAsync, so OnParametersSet must already
+        // see this as "the value we pushed" to recognise the echo and not disturb the
+        // editor. This is what makes the controlled-rollback detection work correctly.
+        _lastPushed = html;
         await ValueChanged.InvokeAsync(html);
         await RefreshActiveAsync();
     }
@@ -471,8 +699,11 @@ else
     public async ValueTask SetHtmlAsync(string? html)
     {
         if (_instanceId is null) return;
+        // Imperative content replace (consumer API / Word import). Keep the live
+        // document in sync and notify via ValueChanged, but do NOT write back into
+        // the [Parameter] Value — it stays a controlled input owned by the parent.
         _lastSetValue = html;
-        Value = html;
+        _lastPushed = html; // Set before ValueChanged so a controlled parent sees the echo.
         await Interop.RichTextSetContentAsync(_instanceId, html);
         await ValueChanged.InvokeAsync(html);
     }

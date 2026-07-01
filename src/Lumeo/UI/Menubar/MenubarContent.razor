@@ -67,6 +67,20 @@
             // button and keyboard nav silently breaks (per WAI-ARIA menu pattern).
             try { await Interop.FocusElement(_contentId); } catch (JSDisconnectedException) { }
         }
+        else if (Context.OpenMenuId == MenuContext.MenuId && _registered)
+        {
+            // The menu is already open and the item set may have changed under it
+            // (async refill / sort / add / remove) — _focusedIndex is positional,
+            // so a stale index would silently retarget a different item on the
+            // next Arrow/Home/End/typeahead move. Re-validate against the current
+            // count and drop the highlight when it no longer maps to a real item.
+            try
+            {
+                var count = await Interop.GetMenuItemCount(_contentId);
+                if (_focusedIndex >= count) _focusedIndex = -1;
+            }
+            catch (JSDisconnectedException) { }
+        }
         else if (Context.OpenMenuId != MenuContext.MenuId && _registered)
         {
             await Cleanup();
@@ -87,6 +101,12 @@
         {
             case "Escape":
                 await Context.SetOpenMenuId.InvokeAsync(null);
+                // WCAG 2.4.3: closing the menu from the keyboard returns focus to the
+                // trigger that opened it (not done for pointer click-outside, where
+                // the user has already moved focus elsewhere — matches Radix). The id
+                // mirrors MenubarTrigger's TriggerId.
+                try { await Interop.FocusElement($"{MenuContext.WrapperId}-trigger"); }
+                catch (JSDisconnectedException) { }
                 break;
             case "ArrowLeft":
                 // WAI-ARIA menubar: Left/Right inside an open menu close it and

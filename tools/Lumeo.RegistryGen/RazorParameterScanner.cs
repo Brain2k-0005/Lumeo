@@ -20,7 +20,8 @@ public static class RazorParameterScanner
         string? Default,
         string? Description,
         bool IsCascading,
-        bool CaptureUnmatched);
+        bool CaptureUnmatched,
+        bool IsEditorRequired = false);
 
     public sealed record EventInfo(
         string Name,
@@ -81,7 +82,8 @@ public static class RazorParameterScanner
     {
         var componentName = Path.GetFileNameWithoutExtension(razorPath);
         string text;
-        try { text = File.ReadAllText(razorPath); }
+        // Normalize CRLF -> LF so extracted XML-doc text is platform-stable.
+        try { text = File.ReadAllText(razorPath).Replace("\r\n", "\n").Replace("\r", "\n"); }
         catch (Exception ex)
         {
             return new RazorFileSchema(
@@ -174,6 +176,8 @@ public static class RazorParameterScanner
                 var paramAttr = attrs.FirstOrDefault(a => IsAttr(a, "Parameter"));
                 var cascadingAttr = attrs.FirstOrDefault(a => IsAttr(a, "CascadingParameter"));
                 if (paramAttr is null && cascadingAttr is null) continue;
+                // [Parameter, EditorRequired] — the consumer MUST supply this param.
+                var editorRequired = attrs.Any(a => IsAttr(a, "EditorRequired"));
 
                 var name = prop.Identifier.Text;
                 if (!seenParams.Add(name)) continue;
@@ -201,7 +205,8 @@ public static class RazorParameterScanner
                     Default: defaultValue,
                     Description: description,
                     IsCascading: cascadingAttr is not null,
-                    CaptureUnmatched: captureUnmatched));
+                    CaptureUnmatched: captureUnmatched,
+                    IsEditorRequired: editorRequired));
 
                 // EventCallback<T> or EventCallback → also surface as event for convenience
                 if (type.StartsWith("EventCallback", StringComparison.Ordinal) && seenEvents.Add(name))

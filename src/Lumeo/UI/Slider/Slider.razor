@@ -1,13 +1,17 @@
 @namespace Lumeo
 @inject Lumeo.Services.Localization.ILumeoLocalizer L
 
+@* Render the label, control and helper/error as ONE self-contained vertical block so the
+   field never splays into a row when dropped in a flex / centered container. Standalone
+   form-field structural fix. *@
+<div class="flex flex-col items-start">
 @if (Label is not null && !InsideFormField)
 {
     <label class="text-sm font-medium leading-none">
         @Label
         @if (Required)
         {
-            <span class="text-destructive ml-0.5">*</span>
+            <span class="text-destructive ms-0.5">*</span>
         }
     </label>
 }
@@ -18,7 +22,7 @@
         <div class="relative flex h-full flex-col items-center">
             @if (Marks is not null || ShowTicks)
             {
-                <div class="absolute left-6 top-0 flex h-full flex-col justify-between">
+                <div class="absolute start-6 top-0 flex h-full flex-col justify-between">
                     @foreach (var mark in GetTickValues())
                     {
                         var pos = GetPercent(mark);
@@ -30,17 +34,20 @@
                 <div class="absolute bottom-0 w-full rounded-[var(--radius)] @(EffectiveInvalid ? "bg-destructive" : "bg-primary")" style="height: @(GetPercent(Value))%"></div>
                 <input type="range" min="@Min" max="@Max" step="@Step" value="@Value" disabled="@Disabled"
                        name="@Name"
-                       aria-label="@AriaLabel" aria-valuemin="@Min" aria-valuemax="@Max" aria-valuenow="@Value"
+                       aria-label="@AriaLabel" aria-valuemin="@Min" aria-valuemax="@Max" aria-valuenow="@Value" aria-valuetext="@ValueText(Value)"
                        aria-required="@Required.ToString().ToLower()"
                        aria-invalid="@EffectiveInvalid.ToString().ToLower()"
+                       id="@FormFieldControlId" aria-describedby="@FormFieldDescribedBy"
                        class="@VerticalInputClasses"
                        @oninput="OnInput"
                        @onpointerenter="() => _showTooltipThumb = true"
-                       @onpointerleave="() => _showTooltipThumb = false" />
+                       @onpointerleave="() => _showTooltipThumb = false"
+                       @onfocus="() => _showTooltipThumb = true"
+                       @onblur="() => _showTooltipThumb = false" />
             </div>
             @if (ShowTooltip && _showTooltipThumb)
             {
-                <div class="absolute -left-10 rounded-md bg-popover px-2 py-1 text-xs text-popover-foreground shadow-md"
+                <div class="absolute -start-10 rounded-md bg-popover px-2 py-1 text-xs text-popover-foreground shadow-md"
                      style="top: @(100 - GetPercent(Value))%; transform: translateY(-50%);">
                     @FormatValue(Value)
                 </div>
@@ -63,17 +70,19 @@ else if (IsRange)
                    the THUMBS (pseudo-elements), not the inputs: with the whole
                    end input set to pointer-events:auto it sat on top across the
                    entire width and the start thumb could never be grabbed. *@
-                <input type="range" min="@Min" max="@Max" step="@Step" value="@Value" disabled="@Disabled"
+                <input type="range" min="@Min" max="@StartThumbMax" step="@Step" value="@Value" disabled="@Disabled"
                        name="@Name"
-                       aria-label="@AriaLabel" aria-valuemin="@Min" aria-valuemax="@Max" aria-valuenow="@Value"
+                       aria-label="@AriaLabel" aria-valuemin="@Min" aria-valuemax="@StartThumbMax" aria-valuenow="@Value" aria-valuetext="@ValueText(Value)"
                        aria-required="@Required.ToString().ToLower()"
                        aria-invalid="@EffectiveInvalid.ToString().ToLower()"
+                       id="@FormFieldControlId" aria-describedby="@FormFieldDescribedBy"
                        class="@RangeInputClasses"
                        @oninput="OnStartInput" />
-                <input type="range" min="@Min" max="@Max" step="@Step" value="@ValueEnd" disabled="@Disabled"
-                       aria-label="@EndAriaLabel" aria-valuemin="@Min" aria-valuemax="@Max" aria-valuenow="@ValueEnd"
+                <input type="range" min="@EndThumbMin" max="@Max" step="@Step" value="@ValueEnd" disabled="@Disabled"
+                       aria-label="@EndAriaLabel" aria-valuemin="@EndThumbMin" aria-valuemax="@Max" aria-valuenow="@ValueEnd" aria-valuetext="@ValueText(ValueEnd)"
                        aria-required="@Required.ToString().ToLower()"
                        aria-invalid="@EffectiveInvalid.ToString().ToLower()"
+                       aria-describedby="@FormFieldDescribedBy"
                        class="@RangeInputClasses"
                        style="position: absolute; left: 0; width: 100%;"
                        @oninput="OnEndInput" />
@@ -104,13 +113,16 @@ else
             <div class="relative">
                 <input type="range" min="@Min" max="@Max" step="@Step" value="@Value" disabled="@Disabled"
                        name="@Name"
-                       aria-label="@AriaLabel" aria-valuemin="@Min" aria-valuemax="@Max" aria-valuenow="@Value"
+                       aria-label="@AriaLabel" aria-valuemin="@Min" aria-valuemax="@Max" aria-valuenow="@Value" aria-valuetext="@ValueText(Value)"
                        aria-required="@Required.ToString().ToLower()"
                        aria-invalid="@EffectiveInvalid.ToString().ToLower()"
+                       id="@FormFieldControlId" aria-describedby="@FormFieldDescribedBy"
                        class="@InputClasses"
                        @oninput="OnInput"
                        @onpointerenter="() => _showTooltipThumb = true"
-                       @onpointerleave="() => _showTooltipThumb = false" />
+                       @onpointerleave="() => _showTooltipThumb = false"
+                       @onfocus="() => _showTooltipThumb = true"
+                       @onblur="() => _showTooltipThumb = false" />
                 @if (ShowTooltip && _showTooltipThumb)
                 {
                     <div class="absolute -top-8 rounded-md bg-popover px-2 py-1 text-xs text-popover-foreground shadow-md"
@@ -150,6 +162,7 @@ else
         <p class="text-xs text-muted-foreground">@HelperText</p>
     }
 }
+</div>
 
 @code {
     [CascadingParameter] private FormField.FormFieldContext? FormField { get; set; }
@@ -163,6 +176,12 @@ else
 
     private bool EffectiveInvalid => Invalid || FormField?.HasError == true;
     private bool InsideFormField => FormField is not null;
+
+    // Adopt the FormField's generated id + describedby on the range <input> (the
+    // focusable slider thumb) so the field's <Label For> click-focuses the slider and
+    // aria-describedby points at the help/error text. Null outside a FormField.
+    private string? FormFieldControlId => string.IsNullOrEmpty(FormField?.ControlId) ? null : FormField!.ControlId;
+    private string? FormFieldDescribedBy => FormField?.DescribedBy;
 
     // Localized "(end)" suffix for the range slider's second thumb so screen
     // readers in non-English locales announce a meaningful label.
@@ -212,14 +231,34 @@ else
 
     private bool _showTooltipThumb;
 
+    // A zero / negative / NaN / Infinite Step is meaningless for a slider: the
+    // native control renders inert (step="0" snaps to no value), and it poisons
+    // the tick + range-gap math (MinGap = MinStepsBetweenThumbs * Step, the native
+    // step="@Step" attribute, and the percentage math). Mirror native/Radix
+    // semantics by falling back to 1 for any non-positive or non-finite Step.
+    // (Step > 0 is already false for NaN; the explicit IsFinite also rejects
+    // +Infinity, which would otherwise pass the > 0 test.)
+    protected override void OnParametersSet()
+    {
+        if (!(Step > 0) || double.IsInfinity(Step))
+        {
+            Step = 1;
+        }
+    }
+
     private string CssClass => Cx.Merge("relative flex w-full touch-none select-none items-center", Class);
     private string VerticalCssClass => Cx.Merge("relative flex h-full min-h-[200px] touch-none select-none justify-center", Class);
 
-    private string InputClasses => $"w-full h-2 cursor-pointer appearance-none rounded-[var(--radius)] {(EffectiveInvalid ? "bg-destructive/20 accent-destructive" : "bg-primary/20 accent-primary")} disabled:cursor-not-allowed disabled:opacity-50";
+    // appearance-none strips the native focus outline, so add an explicit
+    // focus-visible ring (WCAG 2.4.7) — without it a keyboard user can't see which
+    // slider, or which range thumb, is focused. The rounded ring follows the track.
+    private const string FocusRing = "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background";
 
-    private string VerticalInputClasses => $"absolute inset-0 h-full w-full cursor-pointer appearance-none bg-transparent {(EffectiveInvalid ? "accent-destructive" : "accent-primary")} disabled:cursor-not-allowed disabled:opacity-50 [writing-mode:vertical-lr] [direction:rtl]";
+    private string InputClasses => $"w-full h-2 cursor-pointer appearance-none rounded-[var(--radius)] {(EffectiveInvalid ? "bg-destructive/20 accent-destructive" : "bg-primary/20 accent-primary")} {FocusRing} disabled:cursor-not-allowed disabled:opacity-50";
 
-    private const string RangeInputClasses = "w-full h-2 cursor-pointer appearance-none bg-transparent accent-primary disabled:cursor-not-allowed disabled:opacity-50 pointer-events-none [&::-webkit-slider-thumb]:pointer-events-auto [&::-moz-range-thumb]:pointer-events-auto";
+    private string VerticalInputClasses => $"absolute inset-0 h-full w-full cursor-pointer appearance-none rounded-[var(--radius)] bg-transparent {(EffectiveInvalid ? "accent-destructive" : "accent-primary")} {FocusRing} disabled:cursor-not-allowed disabled:opacity-50 [writing-mode:vertical-lr] [direction:rtl]";
+
+    private static readonly string RangeInputClasses = $"w-full h-2 cursor-pointer appearance-none rounded-[var(--radius)] bg-transparent accent-primary {FocusRing} disabled:cursor-not-allowed disabled:opacity-50 pointer-events-none [&::-webkit-slider-thumb]:pointer-events-auto [&::-moz-range-thumb]:pointer-events-auto";
 
     private double StartPercent => Max > Min ? ((Math.Min(Value, ValueEnd) - Min) / (Max - Min)) * 100 : 0;
     private double RangePercent => Max > Min ? ((Math.Abs(ValueEnd - Value)) / (Max - Min)) * 100 : 0;
@@ -227,6 +266,12 @@ else
     private double GetPercent(double value) => Max > Min ? ((value - Min) / (Max - Min)) * 100 : 0;
 
     private string FormatValue(double value) => FormatTooltip is not null ? FormatTooltip(value) : value.ToString("G", EffectiveCulture);
+
+    // aria-valuetext: only when a custom formatter is supplied does the numeric
+    // aria-valuenow need a human-friendly text alternative (e.g. "$50", a date, a
+    // category label). For a plain numeric slider aria-valuenow alone is correct, so
+    // this returns null and the attribute is omitted (WAI-ARIA slider guidance).
+    private string? ValueText(double value) => FormatTooltip is not null ? FormatValue(value) : null;
 
     private List<double> GetTickValues()
     {
@@ -247,6 +292,15 @@ else
     // MinStepsBetweenThumbs is treated as 0 (thumbs may meet but not cross).
     private double MinGap => Math.Max(0, MinStepsBetweenThumbs) * Step;
 
+    // The REACHABLE bounds for each range thumb (the C# clamp stops the start thumb
+    // at ValueEnd-MinGap and the end thumb at Value+MinGap). These drive BOTH the
+    // aria-valuemin/max (so a screen reader announces only the reachable range) AND
+    // the native input min/max (so the native control itself stops at the reachable
+    // bound instead of letting the thumb drag into the forbidden zone and snap back —
+    // keeping native min/max in agreement with ARIA). WAI-ARIA multi-thumb slider.
+    private double StartThumbMax => Math.Max(Min, ValueEnd - MinGap);
+    private double EndThumbMin => Math.Min(Max, Value + MinGap);
+
     private async Task OnStartInput(ChangeEventArgs e)
     {
         if (double.TryParse(e.Value?.ToString(), System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var newValue))
@@ -258,7 +312,14 @@ else
             if (newValue > ceiling) newValue = ceiling;
             if (newValue < Min) newValue = Min;
 
-            if (newValue == Value) return;
+            // The clamped value equals the model: the user dragged into the
+            // forbidden zone but the result snaps back to where we already are.
+            // The native <input>'s own value HAS moved to the raw dragged spot,
+            // so a bare return would leave the thumb desynced in the forbidden
+            // zone. Force a re-render so Blazor re-writes value="@Value" onto the
+            // DOM input and the thumb snaps back. (Single-thumb OnInput never
+            // early-returns, so it isn't affected.)
+            if (newValue == Value) { StateHasChanged(); return; }
             Value = newValue;
             await ValueChanged.InvokeAsync(Value);
         }

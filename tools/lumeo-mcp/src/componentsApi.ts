@@ -3,7 +3,7 @@
  * `tools/Lumeo.RegistryGen` (Roslyn-based scan of every `[Parameter]` /
  * `[CascadingParameter]` property across every Razor component in the repo).
  *
- * This is the source-of-truth schema for ALL 131 Lumeo components. The
+ * This is the source-of-truth schema for ALL Lumeo components. The
  * legacy hand-curated `components.ts` is kept as an OPTIONAL example overlay:
  * when it has an entry for a component we surface its `example` Razor snippet
  * verbatim alongside the auto-generated parameter list.
@@ -19,6 +19,8 @@ export interface ApiParameter {
   description: string | null;
   isCascading: boolean;
   captureUnmatched: boolean;
+  /** True when the param carries [EditorRequired] — the consumer MUST supply it. */
+  isEditorRequired?: boolean;
 }
 
 export interface ApiEvent {
@@ -59,6 +61,17 @@ export interface ApiExample {
   code: string;
 }
 
+/** Static a11y signals extracted from a component's markup by RegistryGen: the ARIA
+ *  roles + aria-* attributes it renders, the keyboard keys it handles, and whether it
+ *  manages focus. Surfaced via lumeo_get_a11y. */
+export interface ApiA11y {
+  roles: string[];
+  ariaAttributes: string[];
+  keys: string[];
+  keyboardInteractive: boolean;
+  focusManaged: boolean;
+}
+
 export interface ApiComponent {
   name: string;
   category: string;
@@ -77,6 +90,7 @@ export interface ApiComponent {
   gotchas?: string[];
   examples?: ApiExample[];
   subComponents: Record<string, ApiSubComponent>;
+  a11y?: ApiA11y;
   parseFailed: boolean;
   parseError: string | null;
 }

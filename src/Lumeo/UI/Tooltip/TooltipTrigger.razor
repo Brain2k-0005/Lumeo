@@ -1,13 +1,76 @@
 @namespace Lumeo
 
-<div class="@CssClass" @attributes="AdditionalAttributes">
-    @ChildContent
-</div>
+@if (AsChild)
+{
+    @* asChild: render NO wrapper. Cascade the slot so a cooperating child (a Lumeo
+       <Button>, or a manual <ChildContentSlot> splat) becomes the single trigger
+       element. Tooltip's open/close behaviour lives on the Tooltip ROOT wrapper and
+       is driven by bubbled mouseenter/focusin, so the slot carries NO handlers — its
+       sole job is to put aria-describedby on the actual focusable element. An ancestor
+       <div> can't describe the inner button, so without asChild a screen reader never
+       announces the tooltip on focus; folding it onto the child fixes that. *@
+    <CascadingValue Value="Slot" IsFixed="false">
+        @if (ChildContentSlot is not null)
+        {
+            @ChildContentSlot(Slot)
+        }
+        else
+        {
+            @ChildContent
+        }
+    </CascadingValue>
+}
+else
+{
+    <div class="@CssClass" @attributes="AdditionalAttributes">
+        @ChildContent
+    </div>
+}
 
 @code {
+    [CascadingParameter] public Tooltip.TooltipContext Context { get; set; } = default!;
     [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    /// <summary>
+    /// Tier-2 escape hatch for <see cref="AsChild"/> with arbitrary (non-Lumeo) markup:
+    /// receives the <see cref="TriggerSlot"/> so the consumer can splat
+    /// <c>@attributes="slot.Attributes"</c> onto their own single element (which adds
+    /// the <c>aria-describedby</c> when the tooltip is open). Lumeo <c>&lt;Button&gt;</c>
+    /// children need only <see cref="AsChild"/> — they consume the slot automatically.
+    /// </summary>
+    [Parameter] public RenderFragment<TriggerSlot>? ChildContentSlot { get; set; }
+
+    /// <summary>
+    /// When <c>true</c>, the trigger renders NO wrapper element and instead cascades a
+    /// <see cref="TriggerSlot"/> that a cooperating child folds onto its own single root
+    /// element. The key effect is correct a11y: <c>aria-describedby</c> lands on the
+    /// real focusable control (so a screen reader announces the tooltip on focus) rather
+    /// than on a non-focusable wrapper <c>&lt;div&gt;</c>. Hover/focus open-close still
+    /// works via the events bubbling to the Tooltip root. Default <c>false</c> preserves
+    /// the current <c>inline-flex</c> wrapper exactly.
+    /// </summary>
+    [Parameter] public bool AsChild { get; set; }
+
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     private string CssClass => Cx.Merge("inline-flex", Class);
+
+    private TriggerSlot Slot => new(
+        Id: null,                                 // Tooltip anchors positioning on its root wrapper, not the trigger
+        Class: Cx.Merge("inline-flex", Class),
+        Attributes: BuildAttrs(),
+        OnClick: default);                        // behaviour bubbles to the Tooltip root; no handler on the child
+
+    private IReadOnlyDictionary<string, object> BuildAttrs()
+    {
+        var d = new Dictionary<string, object>();
+        // aria-describedby must reference the role=tooltip content from the FOCUSABLE
+        // element so the screen reader announces it on focus (only while open — the
+        // content isn't in the DOM when closed).
+        if (Context.IsOpen) d["aria-describedby"] = Context.ContentId;
+        if (AdditionalAttributes is not null)
+            foreach (var kv in AdditionalAttributes) d[kv.Key] = kv.Value; // author wins on collision
+        return d;
+    }
 }

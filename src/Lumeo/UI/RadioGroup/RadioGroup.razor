@@ -1,30 +1,50 @@
 @namespace Lumeo
 
 @{
-    var context = new RadioGroupContext(Value, EventCallback.Factory.Create<string>(this, OnValueSelected), _itemValues, _itemIds, _itemDisabled);
+    var context = new RadioGroupContext(
+        Value,
+        EventCallback.Factory.Create<string>(this, OnValueSelected),
+        _items,
+        RegisterItem,
+        ReplaceItem,
+        UnregisterItem,
+        EffectiveContainerId);
 }
 
+@* Render the label, control and helper/error as ONE self-contained vertical block so the
+   field never splays into a row when dropped in a flex / centered container. Standalone
+   form-field structural fix. *@
+<div class="flex flex-col items-start">
 @if (Label is not null && !InsideFormField)
 {
     <label class="text-sm font-medium leading-none">
         @Label
         @if (Required)
         {
-            <span class="text-destructive ml-0.5">*</span>
+            <span class="text-destructive ms-0.5">*</span>
         }
     </label>
 }
 
 <div role="radiogroup"
+     id="@EffectiveContainerId"
      aria-label="@AriaLabel"
      aria-labelledby="@AriaLabelledBy"
      aria-required="@Required.ToString().ToLower()"
      aria-invalid="@EffectiveInvalid.ToString().ToLower()"
+     aria-describedby="@FormFieldDescribedBy"
      class="@CssClass"
-     @attributes="AdditionalAttributes">
+     @attributes="EffectiveAttributes">
     <CascadingValue Value="context" IsFixed="false">
         @ChildContent
     </CascadingValue>
+    @* Emit the selected value under Name so the group participates in native form
+       submission. The role=radio buttons are not native inputs, so without this the
+       Name parameter was inert (triage #159). Rendered only when Name is set. *@
+    @if (!string.IsNullOrEmpty(Name))
+    {
+        <input type="hidden" name="@Name" value="@Value" />
+    }
 </div>
 
 @if (!InsideFormField)
@@ -38,6 +58,7 @@
         <p class="text-xs text-muted-foreground">@HelperText</p>
     }
 }
+</div>
 
 @code {
     [CascadingParameter] private FormField.FormFieldContext? FormField { get; set; }
@@ -51,6 +72,26 @@
 
     private bool EffectiveInvalid => Invalid || FormField?.HasError == true;
     private bool InsideFormField => FormField is not null;
+
+    // Adopt the FormField's generated id on the role=radiogroup element so the field's
+    // <Label For> associates with the group, and aria-describedby announces help/error.
+    private string? FormFieldControlId => string.IsNullOrEmpty(FormField?.ControlId) ? null : FormField!.ControlId;
+    private string? FormFieldDescribedBy => FormField?.DescribedBy;
+
+    // A stable container id is ALWAYS present on the role=radiogroup element so the
+    // DOM-order roving-nav probe (Interop.GetOrderedDescendantIds) has an anchor to
+    // query from. Inside a FormField the field's generated ControlId doubles as the
+    // container id (keeping the <Label For> association); standalone, a generated id.
+    private readonly string _groupId = LumeoIds.New("radio-group");
+    private string EffectiveContainerId => !string.IsNullOrEmpty(FormFieldControlId) ? FormFieldControlId! : _groupId;
+
+    // Inside a FormField the generated id must own this element so the FormField <Label For> (and any
+    // interop keyed off the id) stays valid; a consumer-splatted id in AdditionalAttributes renders after
+    // the explicit id= and would override it. Strip it here when InsideFormField; outside, pass through.
+    private Dictionary<string, object>? EffectiveAttributes =>
+        InsideFormField && AdditionalAttributes?.ContainsKey("id") == true
+            ? AdditionalAttributes.Where(kv => kv.Key != "id").ToDictionary(kv => kv.Key, kv => kv.Value)
+            : AdditionalAttributes;
 
     [Parameter] public RenderFragment? ChildContent { get; set; }
     [Parameter] public string? Value { get; set; }
@@ -66,9 +107,55 @@
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
-    private readonly List<string> _itemValues = new();
-    private readonly Dictionary<string, string> _itemIds = new();
-    private readonly Dictionary<string, bool> _itemDisabled = new();
+    // Ordered item registry keyed by the UNIQUE per-item id, NOT by Value.
+    // RadioGroupItem.Value is [EditorRequired] but not enforced unique — two
+    // items may legitimately share a Value (triage #56). Keying by Value would
+    // collapse the duplicates into ONE slot (the second register overwrites the
+    // first's id) and a single unregister would delete the OTHER's slot, so the
+    // duplicate became keyboard-unreachable. Keying by id keeps every item a
+    // DISTINCT, independently-reachable roving slot in DOM/declaration order.
+    // IsSelected stays Value-based (Context.Value == Value), so duplicate Values
+    // both legitimately show aria-checked under single-select — same note as the
+    // Accordion duplicate-value registry.
+    private readonly List<(string Id, string Value, bool Disabled)> _items = new();
+
+    // Register an item's slot at the tail in declaration order (idempotent: a
+    // re-register of the same id rewrites its slot in place). Keyed by id.
+    private void RegisterItem(string id, string value, bool disabled)
+    {
+        var idx = _items.FindIndex(i => i.Id == id);
+        if (idx >= 0) _items[idx] = (id, value, disabled);
+        else _items.Add((id, value, disabled));
+    }
+
+    // Re-key an EXISTING item slot in place when its Value changes at runtime
+    // (triage #158). The id is stable across a Value change, so resolve the slot
+    // by id and only rewrite Value/Disabled — preserving the original index keeps
+    // the registry in DOM order (a naive remove+tail-add would move the item to
+    // the nav tail) and is safe when several items share the old/new Value.
+    private void ReplaceItem(string id, string newValue, bool disabled)
+    {
+        var idx = _items.FindIndex(i => i.Id == id);
+        if (idx >= 0) _items[idx] = (id, newValue, disabled);
+        else RegisterItem(id, newValue, disabled);
+    }
+
+    // Remove an item's slot by its UNIQUE id, never by Value: keying by Value
+    // would let one disposed item delete a SIBLING's slot when two share a Value.
+    private void UnregisterItem(string id)
+    {
+        var idx = _items.FindIndex(i => i.Id == id);
+        if (idx >= 0) _items.RemoveAt(idx);
+    }
+
+    // DEFERRED (#55): a PURE physical @key reorder-with-reuse — where two items
+    // swap DOM position while their component instances are reused, so neither
+    // OnParametersSet (Value unchanged) nor Dispose fires — is NOT handled here.
+    // This registry tracks DECLARATION/registration order, which the in-place
+    // Replace/Register/Unregister keep correct for add/remove/value-change; a true
+    // physical swap would need a DOM-order JS interop to re-derive visual order.
+    // No shared interop is added in this batch, so #55 stays deferred (the id-keyed
+    // registry does not regress it — it simply doesn't yet observe the swap).
 
     private Lumeo.Density EffectiveDensity => Density ?? InheritedDensity ?? Lumeo.Density.Comfortable;
 
@@ -91,7 +178,15 @@
     public record RadioGroupContext(
         string? Value,
         EventCallback<string> OnSelect,
-        List<string> ItemValues,
-        Dictionary<string, string> ItemIds,
-        Dictionary<string, bool> ItemDisabled);
+        // Ordered, id-keyed registry (declaration order). Each entry is a DISTINCT
+        // roving slot so duplicate Values stay independently keyboard-reachable.
+        List<(string Id, string Value, bool Disabled)> Items,
+        // Register/Replace/Unregister are keyed by the stable per-item id (see the
+        // RadioGroup.razor registry helpers — mirrors Accordion's trigger registry).
+        Action<string, string, bool> Register,
+        Action<string, string, bool> Replace,
+        Action<string> Unregister,
+        // The role=radiogroup element id — the anchor for the DOM-order roving-nav
+        // probe so arrow-key order tracks the live DOM after a keyed reorder.
+        string ContainerId);
 }

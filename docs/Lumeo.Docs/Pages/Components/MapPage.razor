@@ -298,12 +298,13 @@
                 <ChildContent>
                     @foreach (var (lat, lon, name) in _worldCities)
                     {
-                        <MapMarker Lat="lat" Lon="lon" Title="@name" />
+                        <MapMarker Lat="lat" Lon="lon" Title="@name" Highlighted="@_recommendedCities.Contains(name)" />
                     }
                 </ChildContent>
                 <Overlay>
                     <MapInfoChip Position="top-left">
-                        @_worldCities.Length markers — <code>Cluster="true"</code>
+                        @_worldCities.Length markers — <code>Cluster="true"</code>. A cluster holding a
+                        <span class="font-medium text-amber-600 dark:text-amber-400">recommended</span> marker turns amber.
                     </MapInfoChip>
                 </Overlay>
             </Map>
@@ -431,6 +432,26 @@
         </Stack>
     </ComponentDemo>
 
+    @* Demo 15: Map controls — Geolocate, Fullscreen, Scale, Search, Layers switcher *@
+    <ComponentDemo Title="Map controls — Geolocate, Fullscreen, Scale, Search, Layers">
+        <LazyRender Height="460px">
+            <Map Center="(48.137, 11.575)"
+                 Zoom="11"
+                 Height="460px"
+                 Geolocate="true"
+                 Fullscreen="true"
+                 Scale="true"
+                 Search="true"
+                 Layers="@(new[] { "Positron", "DarkMatter", "Voyager", "Satellite" })">
+                <Overlay>
+                    <MapInfoChip Position="bottom-left">
+                        Geolocate · Fullscreen · Scale · Search · Layer switcher
+                    </MapInfoChip>
+                </Overlay>
+            </Map>
+        </LazyRender>
+    </ComponentDemo>
+
 </Stack>
 
 <div class="mt-16">
@@ -490,6 +511,7 @@
                 <TableRow><TableCell Class="font-mono text-xs">Variant</TableCell><TableCell Class="font-mono text-xs">string</TableCell><TableCell Class="font-mono text-xs">"Default"</TableCell><TableCell>Visual style of the auto-generated marker: <code>Default</code> (filled circle), <code>Outline</code>, <code>Pin</code> (classic teardrop), or <code>Dot</code> (minimal).</TableCell></TableRow>
                 <TableRow><TableCell Class="font-mono text-xs">Color</TableCell><TableCell Class="font-mono text-xs">string?</TableCell><TableCell Class="font-mono text-xs">null</TableCell><TableCell>Override the marker fill. Friendly names (<code>red</code>, <code>green</code>, <code>yellow</code>, <code>blue</code>, <code>purple</code>, <code>pink</code>, <code>orange</code>, <code>teal</code>, <code>gray</code>, <code>slate</code>) or any CSS color. Null = theme primary.</TableCell></TableRow>
                 <TableRow><TableCell Class="font-mono text-xs">Label</TableCell><TableCell Class="font-mono text-xs">string?</TableCell><TableCell Class="font-mono text-xs">null</TableCell><TableCell>Text label rendered above the marker. Always visible by default; set <code>LabelHoverOnly</code> to show only on hover.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">Highlighted</TableCell><TableCell Class="font-mono text-xs">bool</TableCell><TableCell Class="font-mono text-xs">false</TableCell><TableCell>Marks a "recommended" marker. With <code>Cluster</code> on, any cluster bubble containing a highlighted marker is tinted with <code>--lumeo-map-cluster-highlight</code> (default amber), so the recommendation stays visible while clustered. The pin itself is unchanged.</TableCell></TableRow>
                 <TableRow><TableCell Class="font-mono text-xs">LabelHoverOnly</TableCell><TableCell Class="font-mono text-xs">bool</TableCell><TableCell Class="font-mono text-xs">false</TableCell><TableCell>When <code>true</code>, the <code>Label</code> is hidden until the marker is hovered. Useful on dense maps to reduce visual noise.</TableCell></TableRow>
                 <TableRow><TableCell Class="font-mono text-xs">Icon</TableCell><TableCell Class="font-mono text-xs">RenderFragment?</TableCell><TableCell Class="font-mono text-xs">null</TableCell><TableCell>Inline content inside the marker circle — a letter, number, or <code>&lt;Blazicon&gt;</code> SVG.</TableCell></TableRow>
                 <TableRow><TableCell Class="font-mono text-xs">Popup</TableCell><TableCell Class="font-mono text-xs">RenderFragment?</TableCell><TableCell Class="font-mono text-xs">null</TableCell><TableCell>Rich popup body. Falls back to <code>Title</code> when null. Styled as a shadcn card via <code>map.css</code>.</TableCell></TableRow>
@@ -909,6 +931,11 @@
         (55.751,  37.617, "Moscow"),      (41.016,  28.975, "Istanbul"),
     ];
 
+    // A few "recommended" cities — any cluster that swallows one of these turns amber
+    // via MapMarker.Highlighted, so the recommendation stays visible while clustered.
+    private static readonly HashSet<string> _recommendedCities =
+        new() { "Paris", "Tokyo", "New York", "Singapore", "Cape Town", "Buenos Aires" };
+
     // Auto-fit bounds — widely spread markers across continents
     private static readonly (double Lat, double Lon, string Name)[] _spreadMarkers =
     [
@@ -1185,12 +1212,13 @@
     <ChildContent>
         @foreach (var (lat, lon, name) in _worldCities)
         {
-            <MapMarker Lat="lat" Lon="lon" Title="@name" />
+            <MapMarker Lat="lat" Lon="lon" Title="@name"
+                       Highlighted="@_recommendedCities.Contains(name)" />
         }
     </ChildContent>
     <Overlay>
         <MapInfoChip Position="top-left">
-            @_worldCities.Length markers — <code>Cluster="true"</code>
+            @_worldCities.Length markers — a cluster with a recommended marker turns amber
         </MapInfoChip>
     </Overlay>
 </Map>

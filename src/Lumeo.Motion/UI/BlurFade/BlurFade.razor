@@ -2,7 +2,7 @@
 @implements IAsyncDisposable
 @inject ComponentInteropService Interop
 
-<div id="@_elementId" class="@CssClass" style="@StyleString" data-motion-visible="@InitialMotionState" @attributes="AdditionalAttributes">
+<div @attributes="AdditionalAttributes" id="@_elementId" class="@CssClass" style="@StyleString" data-motion-visible="@InitialMotionState">
     @ChildContent
 </div>
 
@@ -33,8 +33,27 @@
     // content before the JS observer marks it hidden.
     private string? InitialMotionState => ForceHidden ? "false" : null;
 
-    private string StyleString =>
-        $"--lumeo-blur-px: {BlurPx}px; --lumeo-blur-y: {Yoffset}px; --lumeo-blur-duration: {DurationMs}ms;";
+    private string StyleString
+    {
+        get
+        {
+            var baseStyle = $"--lumeo-blur-px: {BlurPx}px; --lumeo-blur-y: {Yoffset}px; --lumeo-blur-duration: {DurationMs}ms;";
+
+            // The @attributes splat is rendered FIRST so the explicit id/class/style win and a caller
+            // can never clobber the JS hookup id or the blur CSS variables. For style specifically we
+            // merge the caller's value onto our own so both the blur variables and the caller's layout
+            // styles survive instead of one side silently dropping the other.
+            if (AdditionalAttributes is not null
+                && AdditionalAttributes.TryGetValue("style", out var callerStyle)
+                && callerStyle?.ToString() is { } s
+                && !string.IsNullOrWhiteSpace(s))
+            {
+                return $"{baseStyle} {s.Trim()}";
+            }
+
+            return baseStyle;
+        }
+    }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {

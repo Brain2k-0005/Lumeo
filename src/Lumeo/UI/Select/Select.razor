@@ -13,15 +13,22 @@
         EventCallback.Factory.Create<string>(this, OnSearchChanged),
         EventCallback.Factory.Create(this, OnClear),
         EventCallback.Factory.Create<string>(this, OnCreateItem),
-        _wrapperId, _contentId, _triggerId, _focusedIndex, focusedItemId, focusedItemValue,
+        _wrapperId, _contentId, EffectiveTriggerId, _focusedIndex, focusedItemId, focusedItemValue,
         EventCallback.Factory.Create<int>(this, SetFocusedIndex),
+        EventCallback.Factory.Create<string>(this, HandleTypeahead),
         RegisterItem, UnregisterItem, EffectiveInvalid, Required,
         Items, ItemValue, ItemText, ItemGroup, ItemDisabled, ItemDescription, ItemIcon, ItemTemplate, Virtualize, ItemSize)
     {
         Placeholder = Placeholder,
+        DescribedBy = FormFieldDescribedBy,
+        InsideFormField = InsideFormField,
     };
 }
 
+@* Render the label, control and helper/error as ONE self-contained vertical block so the
+   field never splays into a row when dropped in a flex / centered container. Standalone
+   form-field structural fix. *@
+<div class="flex flex-col items-start">
 @if (Label is not null && !InsideFormField)
 {
     <label class="block text-sm font-medium mb-1.5">
@@ -50,9 +57,21 @@
         <p class="mt-1 text-xs text-muted-foreground">@HelperText</p>
     }
 }
+</div>
 
 @code {
     [CascadingParameter] private FormField.FormFieldContext? FormField { get; set; }
+
+    // Threaded into SelectContext.DescribedBy → SelectTrigger's aria-describedby.
+    private string? FormFieldDescribedBy => FormField?.DescribedBy;
+
+    // Inside a FormField, adopt its ControlId as the trigger button's id so the
+    // field's <Label For> actually click-focuses the combobox (Base UI Field parity,
+    // matching Textarea/DatePicker/TimePicker). Standalone, keep our own generated id.
+    // Every internal id use (context, FocusAsync, AutoFocus, popover anchoring) flows
+    // through this so the rendered id and the focus/anchor targets stay consistent.
+    private string EffectiveTriggerId =>
+        !string.IsNullOrEmpty(FormField?.ControlId) ? FormField!.ControlId : _triggerId;
 
     [Parameter] public RenderFragment? ChildContent { get; set; }
     [Parameter] public string? Value { get; set; }
@@ -105,15 +124,146 @@
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     /// <summary>Programmatically focus the trigger button.</summary>
-    public ValueTask FocusAsync() => Interop.FocusElement(_triggerId);
+    public ValueTask FocusAsync() => Interop.FocusElement(EffectiveTriggerId);
+
+    private bool _wasOpen;
+
+    // _focusedIndex is a POSITION into NavItems; the rendered highlight and what
+    // Enter/Space selects (FocusedItemValue) are read from navItems[_focusedIndex].
+    // An external Items/Value data-change while the popover is open (reorder, filter,
+    // add/remove, or a same-content refresh that creates a fresh list instance) would
+    // leave that index pointing at a DIFFERENT row — silently retargeting the highlight
+    // and the Enter/Space selection. Anchor focus by VALUE rather than position so it
+    // survives a same-content refresh and follows the item across reorders, mirroring
+    // how TrySeedFocusToSelected remaps by value. _focusedValue is the value the index
+    // currently points at; null means "no highlight" (_focusedIndex == -1).
+    private string? _focusedValue;
+
+    protected override void OnParametersSet()
+    {
+        // Re-validate the keyboard highlight against the (possibly new) option list.
+        // Only meaningful while the popover is open; a closed Select has nothing to
+        // re-anchor. We key off _focusedValue (the stable identity) rather than the
+        // raw index so the re-anchor still runs after a transient-empty render dropped
+        // the index to -1 (the refill restores the highlight onto the same row).
+        if (Open && _focusedValue is not null)
+        {
+            var nav = NavItems;
+            // Don't clobber an in-progress highlight on a transient-empty list
+            // (e.g. an async Items refresh that flickers empty→refilled): hide the
+            // highlight for this render (index out of range) but KEEP _focusedValue
+            // so the refill re-anchors onto the same row.
+            if (nav.Count == 0)
+            {
+                _focusedIndex = -1;
+            }
+            else
+            {
+                // Follow the previously-focused VALUE to its new position. If it is
+                // gone from the refreshed list, drop the highlight (-1) rather than
+                // letting the stale index point at an unrelated row.
+                var idx = nav.FindIndex(n => n.Value == _focusedValue);
+                _focusedIndex = idx;
+                if (idx < 0) _focusedValue = null;
+            }
+        }
+        else if (Open && _focusedIndex >= 0)
+        {
+            // No tracked value (shouldn't normally happen) but a live highlight —
+            // clamp the bare index into range so it never points past the list.
+            var count = NavItems.Count;
+            if (_focusedIndex >= count) _focusedIndex = count - 1;
+        }
+
+        // After re-anchoring the existing highlight against the new list, re-run the
+        // seed if the SELECTED value changed while the popover stayed open and the
+        // highlight is still on the previously-seeded value (battle-wave1 #68).
+        ReseedSelectedIfUntouched();
+    }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (firstRender && AutoFocus)
         {
-            try { await Interop.FocusElement(_triggerId); }
+            try { await Interop.FocusElement(EffectiveTriggerId); }
             catch (Microsoft.JSInterop.JSDisconnectedException) { }
         }
+
+        // Seed keyboard focus to the currently-selected option the first time the
+        // listbox opens, so it opens highlighting the current value (Radix / shadcn
+        // behaviour) and the first ArrowDown moves from there rather than the top.
+        // Runs after render so data-bound NavItems and self-registered SelectItems
+        // are present in both modes. Re-armed on close (where SetOpen also resets
+        // _focusedIndex), so a fresh open re-seeds.
+        // Defer latching until the option list actually exists: a Select opened
+        // while its Items are still loading (NavItems empty on the open render)
+        // must re-attempt the seed on the later render where options appear,
+        // instead of consuming the one-shot early and never highlighting the value.
+        if (Open && !_wasOpen && NavItems.Count > 0)
+        {
+            _wasOpen = true;
+            if (TrySeedFocusToSelected())
+                StateHasChanged();
+        }
+        else if (!Open && _wasOpen)
+        {
+            _wasOpen = false;
+        }
+    }
+
+    // Sets _focusedIndex to the index of the current value within NavItems, unless
+    // the user has already navigated (_focusedIndex >= 0) or there is no match.
+    private bool TrySeedFocusToSelected()
+    {
+        if (_focusedIndex >= 0) return false;
+        var nav = NavItems;
+        if (nav.Count == 0) return false;
+        var selected = Multiple ? Values?.FirstOrDefault() : Value;
+        if (string.IsNullOrEmpty(selected)) return false;
+        var idx = nav.FindIndex(n => n.Value == selected);
+        if (idx < 0) return false;
+        _focusedIndex = idx;
+        _focusedValue = nav[idx].Value;
+        // Remember WHAT we auto-seeded to. If the selected Value later changes while
+        // the popover stays open and the highlight is still parked on this seeded
+        // value (the user hasn't ArrowDown'd away), OnParametersSet re-seeds to the
+        // new value — see ReseedSelectedIfUntouched.
+        _seededValue = nav[idx].Value;
+        return true;
+    }
+
+    // The value the seed-to-selected last auto-highlighted (Radix "open on the
+    // current value"). Distinct from _focusedValue, which also tracks user-driven
+    // ArrowDown/typeahead moves: _seededValue is ONLY written by the auto-seed, so a
+    // mismatch between the two means the user has navigated and we must not re-seed.
+    private string? _seededValue;
+
+    // Re-runs the seed-to-selected when the selected Value (single) or first Values
+    // entry (multiple) changes WHILE the popover stays open. The one-shot _wasOpen
+    // latch makes OnAfterRenderAsync seed only on the first open render; without this,
+    // selecting a different value programmatically mid-open (or a parent that swaps
+    // Value while the listbox is showing) would leave the highlight stuck on the
+    // originally-seeded row. We only move the highlight when it is still parked on the
+    // previously-seeded value (untouched), so an explicit user ArrowDown/typeahead —
+    // which sets _focusedValue to something other than _seededValue — is never fought.
+    private void ReseedSelectedIfUntouched()
+    {
+        if (!Open) return;
+        var selected = Multiple ? Values?.FirstOrDefault() : Value;
+        if (string.IsNullOrEmpty(selected)) return;
+        // Already highlighting the current selection — nothing to do.
+        if (_focusedValue == selected) return;
+        // Only re-seed an UNTOUCHED highlight: either nothing is highlighted yet, or
+        // the highlight is still the value we previously auto-seeded (user hasn't
+        // navigated). A user-driven highlight (_focusedValue != _seededValue) is left
+        // alone so we don't yank the keyboard cursor out from under them.
+        if (_focusedIndex >= 0 && _focusedValue != _seededValue) return;
+        var nav = NavItems;
+        var idx = nav.FindIndex(n => n.Value == selected);
+        if (idx < 0) return;
+        _focusedIndex = idx;
+        _focusedValue = nav[idx].Value;
+        _seededValue = nav[idx].Value;
     }
 
     // --- Data-bound mode (non-generic, purely additive) ---
@@ -159,12 +309,22 @@
     private readonly string _triggerId = LumeoIds.New("select-trigger");
     private string SearchText { get; set; } = "";
     private int _focusedIndex = -1;
-    private readonly List<(string Id, string Value)> _items = new();
+    private readonly List<(string Id, string Value, string Text, bool Disabled)> _items = new();
+    // Type-to-jump buffer (non-searchable listbox). Same idle-reset semantics the
+    // menu family uses; here it drives _focusedIndex instead of DOM focus.
+    private readonly Lumeo.Services.MenuTypeahead _typeahead = new();
 
-    private void RegisterItem(string id, string value)
+    private void RegisterItem(string id, string value, string text, bool disabled)
     {
-        if (!_items.Any(i => i.Id == id))
-            _items.Add((id, value));
+        // Upsert: a re-registration with the same id (e.g. an item's Disabled or
+        // search text changed while the menu is open) must UPDATE the cached entry,
+        // not be ignored — otherwise NavItems keeps the stale state and keyboard
+        // nav / Enter could land on an item that is now disabled.
+        var idx = _items.FindIndex(i => i.Id == id);
+        if (idx < 0)
+            _items.Add((id, value, text, disabled));
+        else
+            _items[idx] = (id, value, text, disabled);
     }
 
     private void UnregisterItem(string id)
@@ -177,11 +337,18 @@
     // component instance to register), so derive the list from the same filtered + grouped
     // sequence the content renders, skipping disabled items so ArrowDown/Up, Home/End and
     // Enter can never land on them. Ids must mirror SelectContent.RenderBoundItem.
-    private List<(string Id, string Value)> NavItems => Items is null ? _items : BuildBoundNavItems();
+    // Composition mode excludes disabled items from the nav set (parity with bound
+    // mode + Radix): they still render, but ArrowDown/Up/Home/End, type-to-jump and
+    // Enter-select skip them. Without this, keyboard nav could land on — and Enter
+    // could select — a disabled option (the click path already guards, the keyboard
+    // path did not).
+    private List<(string Id, string Value, string Text)> NavItems => Items is null
+        ? _items.Where(i => !i.Disabled).Select(i => (i.Id, i.Value, i.Text)).ToList()
+        : BuildBoundNavItems();
 
-    private List<(string Id, string Value)> BuildBoundNavItems()
+    private List<(string Id, string Value, string Text)> BuildBoundNavItems()
     {
-        var result = new List<(string Id, string Value)>();
+        var result = new List<(string Id, string Value, string Text)>();
         if (Items is null) return result;
 
         IEnumerable<object> source = Items;
@@ -210,20 +377,61 @@
             var i = index++;
             if (ItemDisabled?.Invoke(item) == true) continue;
             var value = ItemValue(item);
-            result.Add(($"{_contentId}-bound-{i}", value));
+            // Typeahead/search match against the display text (same source the search
+            // filter uses), falling back to the value when no ItemText is supplied.
+            var text = ItemText?.Invoke(item) ?? value;
+            result.Add(($"{_contentId}-bound-{i}", value, text));
         }
         return result;
     }
 
     private async Task SetFocusedIndex(int index)
     {
-        var count = NavItems.Count;
+        var nav = NavItems;
+        var count = nav.Count;
         if (count == 0) return;
         if (index < 0) index = 0;
         if (index >= count) index = count - 1;
         _focusedIndex = index;
+        _focusedValue = nav[index].Value;
         StateHasChanged();
         await Task.CompletedTask;
+    }
+
+    // Type-to-jump: accumulate printable keystrokes and move _focusedIndex to the
+    // first option whose display text starts with the query (Radix's getNextMatch).
+    // Only wired for the non-searchable listbox — when Searchable, printable keys
+    // belong to the search input. Matches against NavItems' Text so it respects each
+    // mode's nav set (bound mode already excludes disabled rows).
+    private void HandleTypeahead(string key)
+    {
+        var nav = NavItems;
+        if (nav.Count == 0) return;
+        var query = _typeahead.Push(key);
+
+        // A repeated single char ("aaa") cycles through items starting with that
+        // char rather than searching for the literal repeat.
+        var isRepeated = query.Length > 1 && query.All(c => c == query[0]);
+        var search = isRepeated ? query[0].ToString() : query;
+
+        // Single-char query starts the scan just past the current item (so the same
+        // key cycles); a multi-char refinement starts at the current item (so a
+        // continued query keeps the current match when it still fits).
+        var current = _focusedIndex < 0 ? -1 : _focusedIndex;
+        var start = search.Length == 1 ? current + 1 : current;
+        if (start < 0) start = 0;
+
+        for (var n = 0; n < nav.Count; n++)
+        {
+            var idx = (start + n) % nav.Count;
+            if (nav[idx].Text.StartsWith(search, StringComparison.OrdinalIgnoreCase))
+            {
+                _focusedIndex = idx;
+                _focusedValue = nav[idx].Value;
+                StateHasChanged();
+                return;
+            }
+        }
     }
 
     private async Task OnValueSelected(string value)
@@ -257,7 +465,10 @@
         {
             SearchText = "";
             _focusedIndex = -1;
+            _focusedValue = null;
+            _seededValue = null;
             _items.Clear();
+            _typeahead.Reset();
         }
         await OpenChanged.InvokeAsync(value);
     }
@@ -266,6 +477,7 @@
     {
         SearchText = text;
         _focusedIndex = -1;
+        _focusedValue = null;
         // Do NOT clear _items here: still-visible SelectItems keep their _registered flag
         // and would never re-register, leaving keyboard nav dead after the first keystroke.
         // Items hidden by the new filter unregister themselves (OnParametersSet/Dispose),
@@ -313,7 +525,8 @@
         EventCallback OnClear, EventCallback<string> OnCreateItem,
         string WrapperId, string ContentId, string TriggerId, int FocusedIndex, string? FocusedItemId, string? FocusedItemValue,
         EventCallback<int> SetFocusedIndex,
-        Action<string, string> RegisterItem, Action<string> UnregisterItem,
+        EventCallback<string> OnTypeahead,
+        Action<string, string, string, bool> RegisterItem, Action<string> UnregisterItem,
         bool Invalid, bool Required,
         // Data-bound mode params (null when composition mode)
         IEnumerable<object>? Items,
@@ -331,5 +544,16 @@
         /// as a fallback when its own Placeholder is unset. Init-only so the positional
         /// constructor above stays source-compatible.</summary>
         public string? Placeholder { get; init; }
+
+        /// <summary>Id of the parent FormField's rendered help/error text, applied as
+        /// <c>aria-describedby</c> on the trigger so a screen reader announces it on focus.
+        /// Null outside a FormField. Init-only to keep the positional ctor source-compatible.</summary>
+        public string? DescribedBy { get; init; }
+
+        /// <summary>True when the parent <c>&lt;Select&gt;</c> is inside a FormField, so
+        /// <see cref="TriggerId"/> is the FormField's ControlId (the field <c>&lt;Label For&gt;</c> targets it).
+        /// SelectTrigger uses this to strip a consumer-splatted <c>id</c> from its attribute bag so it cannot
+        /// override the FormField-owned trigger id. Init-only to keep the positional ctor source-compatible.</summary>
+        public bool InsideFormField { get; init; }
     }
 }

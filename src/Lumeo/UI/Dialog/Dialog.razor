@@ -1,7 +1,7 @@
 @namespace Lumeo
 
 @{
-    var context = new DialogContext(EffectiveOpen, EventCallback.Factory.Create<bool>(this, SetOpen), _titleId, _descriptionId, TryDismiss);
+    var context = new DialogContext(EffectiveOpen, EventCallback.Factory.Create<bool>(this, SetOpen), _titleId, _descriptionId, TryDismiss, _descriptionRegistry, RegisterDescription, UnregisterDescription);
 }
 
 <CascadingValue Value="context" IsFixed="false">
@@ -40,6 +40,14 @@
     private readonly string _titleId = LumeoIds.New("dialog-title");
     private readonly string _descriptionId = LumeoIds.New("dialog-desc");
 
+    // Tracks whether a <DialogDescription> is actually present in the tree. A
+    // mutable holder (not a record field) because the cascaded context is
+    // rebuilt every render, but the registration must persist across renders.
+    // Mirrors AlertDialog's DescriptionRegistry — without this DialogContent
+    // would emit a dangling aria-describedby IDREF whenever no description is
+    // rendered (e.g. every service-opened overlay).
+    private readonly DialogDescriptionRegistry _descriptionRegistry = new();
+
     // Uncontrolled state. _controlled is set in SetParametersAsync when the
     // consumer supplies Open/IsOpen; otherwise the dialog owns _open (Radix
     // controlled-vs-uncontrolled disambiguation — a bool param can't be
@@ -47,7 +55,31 @@
     private bool _controlled;
     private bool _open;
 
-    private bool EffectiveOpen => _controlled ? Open : _open;
+    // The last Open value the PARENT actually supplied. We seed the working
+    // _open backing field from this only when the parent genuinely changes it,
+    // so an internal close (Escape / backdrop / DialogClose) is not clobbered by
+    // a subsequent parent re-render that re-pushes the same Open literal. This
+    // is the state-on-data-change guard: live close-state lives in _open, never
+    // in the [Parameter] Open. _hasOpenParam tracks whether we've observed a
+    // first value yet (so the very first render seeds, even for Open == false).
+    private bool _lastOpenParam;
+    private bool _hasOpenParam;
+    // CONTROLLED discriminator: the last value we pushed UP via OpenChanged (also
+    // re-synced whenever we adopt an authoritative Open). A controlled parent
+    // re-render that echoes back this exact value is safe to ignore (keep
+    // in-flight state); any other value is an authoritative assertion (veto /
+    // normalization / reset) and must win — this is what rolls a vetoed close
+    // back to the parent's rejected value instead of leaving the dialog stuck
+    // showing the rejected state forever.
+    private bool _lastPushedOpen;
+
+    // In both controlled and uncontrolled mode the rendered state is the working
+    // _open backing field. In controlled mode _open is reseeded from Open in
+    // SetParametersAsync whenever the parent actually changes it (see above), so
+    // the parent stays authoritative on real changes while an internal close
+    // survives a same-value re-render — the fix for one-way controlled dialogs
+    // (Open supplied, OpenChanged unbound) that previously could not stay closed.
+    private bool EffectiveOpen => _open;
 
     public override Task SetParametersAsync(ParameterView parameters)
     {
@@ -55,25 +87,82 @@
         // so we must honour it when deciding controlled-ness (suppress CS0618 for
         // the nameof — we're intentionally probing the alias).
 #pragma warning disable CS0618
-        _controlled = parameters.TryGetValue<bool>(nameof(Open), out _)
-            || parameters.TryGetValue<bool>(nameof(IsOpen), out _)
-            || OpenChanged.HasDelegate;
+        var hasOpen = parameters.TryGetValue<bool>(nameof(Open), out var incomingOpen)
+            || parameters.TryGetValue<bool>(nameof(IsOpen), out incomingOpen);
+        _controlled = hasOpen || OpenChanged.HasDelegate;
 #pragma warning restore CS0618
+
+        // Reseed the working state from the parent ONLY on a real change (first
+        // observation, or an authoritative assertion). Done before
+        // base.SetParametersAsync so the render it queues already sees the
+        // correct _open on the very first parameter set.
+        if (hasOpen)
+        {
+            if (OpenChanged.HasDelegate)
+            {
+                // CONTROLLED: the parent owns the value via OpenChanged. Echo of
+                // our own push (incomingOpen == _lastPushedOpen) → keep in-flight
+                // state (an internal close still pending the parent's
+                // re-render). Anything else — veto, normalization, reset, or the
+                // very first observation — is an authoritative assertion from
+                // the parent and must win. This is what rolls a vetoed close
+                // (parent re-renders with Open unchanged) back to the rejected
+                // value instead of permanently showing the optimistic state.
+                if (!_hasOpenParam || incomingOpen != _lastPushedOpen)
+                {
+                    _open = incomingOpen;
+                    _lastPushedOpen = incomingOpen;
+                    _hasOpenParam = true;
+                }
+            }
+            else if (!_hasOpenParam || incomingOpen != _lastOpenParam)
+            {
+                // UNCONTROLLED (Open supplied, OpenChanged unbound): adopt only
+                // when the parent genuinely changes the value, so a same-value
+                // re-render must NOT overwrite an internal close — that is
+                // exactly what let a one-way controlled dialog silently reopen
+                // after the user dismissed it.
+                _open = incomingOpen;
+                _lastPushedOpen = incomingOpen;
+                _hasOpenParam = true;
+            }
+
+            // Keep the uncontrolled discriminator pointing at the last Open we
+            // observed, even in controlled mode, so a parent that later unbinds
+            // OpenChanged falls back to accurate state-on-data-change tracking.
+            _lastOpenParam = incomingOpen;
+        }
+
         return base.SetParametersAsync(parameters);
     }
 
     protected override void OnInitialized()
     {
+        // Uncontrolled dialogs seed their open state from DefaultOpen. Controlled
+        // dialogs were already seeded from Open in SetParametersAsync.
         if (!_controlled) _open = DefaultOpen;
     }
 
     private async Task SetOpen(bool value)
     {
-        // Mirror the new state onto Open so two-way @bind-Open consumers and the
-        // uncontrolled internal state stay in sync; OpenChanged drives controlled
-        // consumers.
+        // Update the working backing field only — NEVER the [Parameter] Open.
+        // OpenChanged notifies two-way @bind-Open / controlled consumers; the
+        // local _open carries the live state so a one-way controlled parent that
+        // does not handle OpenChanged still observes the close until it chooses to
+        // re-assert Open. If the parent later pushes a genuinely different Open,
+        // SetParametersAsync reseeds _open and the parent regains authority.
         _open = value;
-        Open = value;
+        // Record _lastPushedOpen BEFORE invoking OpenChanged: a controlled parent
+        // re-renders synchronously inside InvokeAsync, so SetParametersAsync must
+        // already see this value as "the value we just pushed" to distinguish an
+        // accepted echo (keep in-flight state) from a veto (parent kept its old
+        // value → roll back to it).
+        _lastPushedOpen = value;
+        // Deliberately do NOT touch _lastOpenParam here: it still holds the value
+        // the parent last supplied as a [Parameter], independent of what we just
+        // pushed. The UNCONTROLLED branch in SetParametersAsync compares against
+        // that, so a plain parent re-render that re-pushes the same literal (with
+        // no OpenChanged handler listening) does not revert our internal toggle.
         await OpenChanged.InvokeAsync(value);
         // Re-render so the cascaded context picks up EffectiveOpen. The close
         // paths (Escape / backdrop / DialogClose) call this via TryDismiss as a
@@ -94,5 +183,46 @@
         return true;
     }
 
-    public record DialogContext(bool IsOpen, EventCallback<bool> SetOpen, string TitleId, string DescriptionId, Func<string, Task<bool>> TryDismiss);
+    // Called by DialogDescription on init so DialogContent only wires
+    // aria-describedby when a description actually exists (no dangling IDREF).
+    // Re-renders so the content's aria-describedby picks up the registration on
+    // the next pass (child OnInitialized runs after the parent's first render).
+    // Counted (not a bool) so a description that is conditionally REMOVED while
+    // the dialog stays mounted is correctly un-registered via UnregisterDescription
+    // below (Codex P2) — a bare bool latched true forever and left aria-describedby
+    // pointing at an id no longer in the DOM once the description disappeared.
+    private void RegisterDescription()
+    {
+        _descriptionRegistry.Count++;
+        if (_descriptionRegistry.Count == 1) StateHasChanged();
+    }
+
+    // Called by DialogDescription.Dispose when it is removed from the tree (a
+    // conditionally-rendered <DialogDescription>, or the dialog itself closing).
+    // Only re-renders on the 1->0 transition, so multiple descriptions removing in
+    // the same batch don't thrash StateHasChanged.
+    private void UnregisterDescription()
+    {
+        _descriptionRegistry.Count--;
+        if (_descriptionRegistry.Count == 0) StateHasChanged();
+    }
+
+    // DescriptionRegistry + RegisterDescription/UnregisterDescription default to null! so the 4.0
+    // additions stay a non-breaking signature change: Lumeo always constructs the context with real
+    // values, and any external 3.x constructor of the 5-arg shape still compiles.
+    public record DialogContext(bool IsOpen, EventCallback<bool> SetOpen, string TitleId, string DescriptionId, Func<string, Task<bool>> TryDismiss, DialogDescriptionRegistry DescriptionRegistry = null!, Action RegisterDescription = null!, Action UnregisterDescription = null!);
+
+    /// <summary>
+    /// Persistent, mutable holder that survives the per-render rebuild of
+    /// <see cref="DialogContext"/>. Lets <see cref="DialogContent"/> know whether
+    /// a <see cref="DialogDescription"/> is CURRENTLY rendered so it can avoid
+    /// emitting a dangling <c>aria-describedby</c> IDREF (mirrors the AlertDialog
+    /// pattern). A count, not a bool: a description that mounts then is later
+    /// removed must un-register, which a one-way-latched bool cannot represent.
+    /// </summary>
+    public sealed class DialogDescriptionRegistry
+    {
+        public int Count { get; set; }
+        public bool HasDescription => Count > 0;
+    }
 }

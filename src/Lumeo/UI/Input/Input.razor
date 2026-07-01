@@ -1,12 +1,16 @@
 @namespace Lumeo
 
+@* Render the label, control and helper/error as ONE self-contained vertical block so the
+   field never splays into a row when dropped in a flex / centered container. Standalone
+   form-field structural fix. *@
+<div class="flex flex-col items-start">
 @if (Label is not null && !InsideFormField)
 {
     <label class="block text-sm font-medium mb-1.5">
         @Label
         @if (Required)
         {
-            <span class="text-destructive ml-0.5">*</span>
+            <span class="text-destructive ms-0.5">*</span>
         }
     </label>
 }
@@ -39,11 +43,13 @@
         }
         <input @ref="_inputRef"
                name="@Name"
+               id="@FormFieldControlId"
                type="@(Variant == InputVariant.Search ? "search" : null)"
                aria-required="@Required.ToString().ToLowerInvariant()"
-               aria-invalid="@EffectiveInvalid.ToString().ToLowerInvariant()"
-               maxlength="@MaxLength" class="@WrappedInputClass" value="@Value" @oninput="HandleInput" disabled="@Disabled" @attributes="AdditionalAttributes" />
-        @if (Clearable && !string.IsNullOrEmpty(Value))
+               aria-invalid="@((EffectiveInvalid || IsOverLimit).ToString().ToLowerInvariant())"
+               aria-describedby="@FormFieldDescribedBy"
+               maxlength="@EffectiveMaxLength" class="@WrappedInputClass" value="@SafeValue" @oninput="HandleInput" disabled="@Disabled" @attributes="EffectiveAttributes" />
+        @if (Clearable && !string.IsNullOrEmpty(_current))
         {
             <button type="button" class="@($"flex items-center {AccessoryClearPad} text-muted-foreground hover:text-foreground transition-colors")" @onclick="HandleClear" tabindex="-1" aria-label="@L["Common.Clear"]">
                 <Blazicon Svg="Lucide.X" class="h-3.5 w-3.5" />
@@ -59,15 +65,17 @@ else
 {
     <input @ref="_inputRef"
            name="@Name"
+           id="@FormFieldControlId"
            aria-required="@Required.ToString().ToLowerInvariant()"
-           aria-invalid="@EffectiveInvalid.ToString().ToLowerInvariant()"
-           maxlength="@MaxLength" class="@CssClass" value="@Value" @oninput="HandleInput" disabled="@Disabled" @attributes="AdditionalAttributes" />
+           aria-invalid="@((EffectiveInvalid || IsOverLimit).ToString().ToLowerInvariant())"
+           aria-describedby="@FormFieldDescribedBy"
+           maxlength="@EffectiveMaxLength" class="@CssClass" value="@SafeValue" @oninput="HandleInput" disabled="@Disabled" @attributes="EffectiveAttributes" />
 }
 
 @if (ShowCount)
 {
     @* Counter sits below the input wrapper, matching Textarea. *@
-    <div class="mt-1 text-xs @CountClass text-right">@CountText</div>
+    <div class="mt-1 text-xs @CountClass text-end">@CountText</div>
 }
 
 @if (!InsideFormField)
@@ -81,6 +89,7 @@ else
         <p class="mt-1 text-xs text-muted-foreground">@HelperText</p>
     }
 }
+</div>
 
 @inject Lumeo.Services.Localization.ILumeoLocalizer L
 
@@ -135,9 +144,47 @@ else
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
+    // A file input cannot have its `value` set to anything but the empty string — Blazor
+    // throws InvalidStateError ("may only be programmatically set to the empty string") the
+    // moment a file is picked and the two-way binding tries to push the value back. Input
+    // has no typed Type param, so detect type="file" arriving through the attribute splat
+    // and omit the value binding for it. (For a styled uploader with progress, use
+    // FileUpload / UploadTrigger instead.)
+    private bool IsFileInput =>
+        AdditionalAttributes is not null
+        && AdditionalAttributes.TryGetValue("type", out var t)
+        && string.Equals(t?.ToString(), "file", StringComparison.OrdinalIgnoreCase);
+
+    // null => Blazor omits the `value` attribute entirely, the only legal state for a file input.
+    private string? SafeValue => IsFileInput ? null : _current;
+
     public enum InputVariant { Default, Search }
 
     private ElementReference _inputRef;
+
+    // The live editing value. The <input> renders from this, NOT from the Value
+    // [Parameter] directly, so an unrelated parent re-render that re-supplies the
+    // same (or stale) Value cannot revert the user's typed text. HandleInput
+    // mutates _current and echoes via ValueChanged; the parameter is adopted back
+    // into _current per the rules in OnParametersSet (controlled vs uncontrolled).
+    private string? _current;
+
+    // UNCONTROLLED discriminator: the last Value parameter we observed. When the
+    // consumer does NOT bind ValueChanged the component owns the live value, so we
+    // adopt the parameter only when it genuinely CHANGES from this — an unrelated
+    // re-render that re-supplies the same/stale Value must not clobber typed text.
+    private string? _lastValueParam;
+
+    // CONTROLLED discriminator: the last value we pushed UP to the parent via
+    // ValueChanged (also re-synced whenever we adopt an authoritative Value). When
+    // the consumer binds ValueChanged the parent owns the value, so on a re-render
+    // we compare the incoming Value against THIS: if it equals what we just emitted
+    // it is merely the echo of our own edit (keep _current — don't disturb the
+    // caret); if it DIFFERS the parent asserted a different value — a normalization,
+    // a programmatic reset, or a REJECTION that kept the OLD value — and it must win.
+    private string? _lastPushed;
+
+    private bool _paramSeeded;
 
     /// <summary>The underlying &lt;input&gt; element. Exposed for advanced
     /// scenarios that need direct access; prefer <see cref="FocusAsync"/>.</summary>
@@ -150,14 +197,46 @@ else
     private bool EffectiveInvalid => Invalid || FormField?.HasError == true;
     private bool InsideFormField => FormField is not null;
 
-    // Character-counter helpers, mirroring Textarea's pattern.
-    private bool IsOverLimit => MaxLength.HasValue && (Value?.Length ?? 0) > MaxLength.Value;
+    // Adopt the FormField's generated id + describedby so the field's <label for>
+    // resolves to this input and aria-describedby points at the help/error text
+    // (Base UI Field a11y). Null outside a FormField — the id/aria attributes are
+    // then omitted, and a consumer-set id via AdditionalAttributes still wins
+    // (it splats after these). Empty guard avoids id="" if no id was generated.
+    private string? FormFieldControlId => string.IsNullOrEmpty(FormField?.ControlId) ? null : FormField!.ControlId;
+    private string? FormFieldDescribedBy => FormField?.DescribedBy;
+
+    // Inside a FormField the generated FormFieldControlId must own the <input> id so
+    // the <label for> and <input id> always agree (Base UI Field a11y, Codex P2).
+    // A consumer-supplied id in the splat would otherwise render AFTER the generated
+    // id attribute and silently win, causing the label's `for` to point at an id that
+    // no longer exists on the input. Strip it from the splat when inside a FormField;
+    // outside a FormField FormFieldControlId is null (attribute omitted entirely) so
+    // the consumer's splat id still reaches the input unchanged.
+    private Dictionary<string, object>? EffectiveAttributes =>
+        InsideFormField && AdditionalAttributes?.ContainsKey("id") == true
+            ? AdditionalAttributes.Where(kv => kv.Key != "id").ToDictionary(kv => kv.Key, kv => kv.Value)
+            : AdditionalAttributes;
+
+    // Character-counter helpers, mirroring Textarea's pattern. These read the
+    // live displayed value (_current), not the raw Value parameter, so the count
+    // and over-limit state track what the user actually sees after typing.
+    private bool IsOverLimit => MaxLength.HasValue && (_current?.Length ?? 0) > MaxLength.Value;
+
+    // When a character counter is shown we deliberately DROP the native maxlength
+    // hard-cap so the field behaves as a soft limit (matching Textarea / AntD /
+    // shadcn): the user can type past the limit and the counter turns red
+    // (CountClass -> text-destructive) to warn them. With a hard maxlength the
+    // browser silently blocks the extra characters, so the over-limit warning
+    // state (and CountClass) could never be reached by real typing. Without a
+    // counter we keep the hard cap as a plain input constraint.
+    private int? EffectiveMaxLength => ShowCount ? null : MaxLength;
+
     private string CountClass => IsOverLimit ? "text-destructive" : "text-muted-foreground";
     private string CountText => CountFormat is { } fmt
-        ? fmt(Value?.Length ?? 0)
+        ? fmt(_current?.Length ?? 0)
         : MaxLength.HasValue
-            ? $"{Value?.Length ?? 0}/{MaxLength}"
-            : (Value?.Length ?? 0).ToString();
+            ? $"{_current?.Length ?? 0}/{MaxLength}"
+            : (_current?.Length ?? 0).ToString();
 
     private Lumeo.Density EffectiveDensity => Density ?? InheritedDensity ?? Lumeo.Density.Comfortable;
 
@@ -234,6 +313,60 @@ else
 
     private string WrappedInputClass => $"flex-1 bg-transparent {WrappedInputSizeClasses} py-1 placeholder:text-muted-foreground focus-visible:outline-none disabled:cursor-not-allowed".Trim();
 
+    protected override void OnParametersSet()
+    {
+        // Seed the working value from the parameter on the first set. _lastPushed and
+        // _lastValueParam both start at the seed so neither discriminator misfires.
+        if (!_paramSeeded)
+        {
+            _current = Value;
+            _lastValueParam = Value;
+            _lastPushed = Value;
+            _paramSeeded = true;
+            return;
+        }
+
+        // The two usages need opposite defaults, distinguished by whether the consumer
+        // bound ValueChanged (the established controlled/uncontrolled signal used across
+        // the library). HandleInput / HandleClear mutate _current (not Value) and record
+        // _lastPushed, so in BOTH branches our own in-flight typing is never clobbered.
+        if (ValueChanged.HasDelegate)
+        {
+            // CONTROLLED: the parent owns Value and it is authoritative — EXCEPT when it
+            // merely echoes back the exact edit we just pushed (Value == _lastPushed),
+            // where adopting would be a redundant write that could disturb the caret, so
+            // we keep the live value. A SECOND exception exists ONLY for a null baseline:
+            // a consumer that binds ValueChanged purely to OBSERVE, without ever binding
+            // Value back, leaves it at its unbound default (null) on every render — that
+            // must NOT be treated as a rejection that clears in-progress typing (Codex
+            // P2). This narrow, null-only carve-out is deliberate: a NON-null unchanged
+            // Value is indistinguishable from a genuinely bound value the parent is
+            // choosing to keep pinned (a real rejection that must roll the text back).
+            // Any OTHER Value wins and is adopted: a normalization, a programmatic
+            // (re)assignment, or a REJECTION where the parent kept its OLD (non-null,
+            // bound) value — that case is what rolls a rejected keystroke back.
+            var isEcho = string.Equals(Value, _lastPushed, StringComparison.Ordinal);
+            var isNullObserverEcho = Value is null && _lastValueParam is null;
+            if (!isEcho && !isNullObserverEcho)
+            {
+                _current = Value;
+                _lastPushed = Value;
+            }
+        }
+        else if (!string.Equals(Value, _lastValueParam, StringComparison.Ordinal))
+        {
+            // UNCONTROLLED: no ValueChanged binding, so the component owns the live value.
+            // Adopt the parameter ONLY when the PARENT actually changes it; an unrelated
+            // re-render that re-supplies the same (or a stale) Value must NOT clobber the
+            // user's typed text (triage #39 / state-on-data-change).
+            _current = Value;
+            _lastPushed = Value;
+        }
+
+        // Keep the uncontrolled discriminator pointing at the last Value we observed.
+        _lastValueParam = Value;
+    }
+
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (firstRender && AutoFocus)
@@ -245,17 +378,36 @@ else
 
     private async Task HandleInput(ChangeEventArgs e)
     {
-        Value = e.Value?.ToString();
+        // Update the live editing value (not the [Parameter]) and echo it out.
+        // Record it as _lastPushed BEFORE raising ValueChanged: a controlled parent
+        // re-renders synchronously inside InvokeAsync, so OnParametersSet must already
+        // see this as "the value we pushed" to recognise the echo and keep the caret.
+        // _lastValueParam stays put so the uncontrolled stale-echo guard still holds.
+        _current = e.Value?.ToString();
+        _lastPushed = _current;
         await OnInput.InvokeAsync(e);
-        await ValueChanged.InvokeAsync(Value);
+        await ValueChanged.InvokeAsync(_current);
     }
 
     private async Task HandleClear()
     {
-        Value = "";
+        // Mirror HandleInput: record the cleared value as _lastPushed before raising
+        // ValueChanged so a controlled parent that ACCEPTS the clear sees an echo
+        // (keep), while one that REJECTS it (keeps the old non-empty Value) is adopted
+        // and the display — and the X button — roll back.
+        _current = "";
+        _lastPushed = "";
         await OnInput.InvokeAsync(new ChangeEventArgs { Value = "" });
         await ValueChanged.InvokeAsync("");
         await OnClear.InvokeAsync();
+
+        // Restore focus to the input. Clicking the clear button moved focus to it,
+        // and clearing the value removes the button from the DOM (it is rendered
+        // only while the value is non-empty), so focus would otherwise fall to
+        // <body> — stranding keyboard users (WCAG 2.4.3). Done after the awaits so
+        // the input is guaranteed present (only the button is value-conditional).
+        try { await _inputRef.FocusAsync(); }
+        catch (Microsoft.JSInterop.JSDisconnectedException) { }
     }
 
 }

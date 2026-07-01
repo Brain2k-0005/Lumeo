@@ -122,27 +122,45 @@
                 : "inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-1";
             if (isDisabled) cls += " opacity-50 cursor-not-allowed";
 
-            builder.OpenElement(0, "button");
-            builder.AddAttribute(1, "type", "button");
-            builder.AddAttribute(2, "class", cls);
-            builder.AddAttribute(3, "title", label);
-            builder.AddAttribute(4, "aria-label", label);
-            builder.AddAttribute(5, "aria-pressed", active ? "true" : "false");
-            if (isDisabled)
+            // Dogfood the Lumeo <Tooltip> instead of the native title. AsChild folds
+            // aria-describedby onto the button (it already carries aria-label for the
+            // accessible name); content is lazy so the dense toolbar stays cheap.
+            builder.OpenComponent<Tooltip>(0);
+            builder.AddAttribute(1, "ChildContent", (RenderFragment)(tip =>
             {
-                builder.AddAttribute(6, "disabled", true);
-            }
-            else
-            {
-                builder.AddAttribute(7, "onclick",
-                    Microsoft.AspNetCore.Components.EventCallback.Factory.Create(
-                        this, async () => await OnCommand.InvokeAsync((command, arg))));
-                builder.AddAttribute(8, "onmousedown", "event.preventDefault()");
-            }
-            builder.OpenComponent<Icon>(9);
-            builder.AddAttribute(10, "Name", icon);
-            builder.AddAttribute(11, "Size", Lumeo.Size.Sm);
+                tip.OpenComponent<TooltipTrigger>(0);
+                tip.AddAttribute(1, "AsChild", true);
+                tip.AddAttribute(2, "ChildContentSlot", (RenderFragment<Lumeo.TriggerSlot>)(slot => sb =>
+                {
+                    sb.OpenElement(0, "button");
+                    sb.AddAttribute(1, "type", "button");
+                    sb.AddAttribute(2, "class", cls);
+                    sb.AddAttribute(3, "aria-label", label);
+                    sb.AddAttribute(4, "aria-pressed", active ? "true" : "false");
+                    if (isDisabled)
+                    {
+                        sb.AddAttribute(5, "disabled", true);
+                    }
+                    else
+                    {
+                        sb.AddAttribute(6, "onclick",
+                            Microsoft.AspNetCore.Components.EventCallback.Factory.Create(
+                                this, async () => await OnCommand.InvokeAsync((command, arg))));
+                        sb.AddAttribute(7, "onmousedown", "event.preventDefault()");
+                    }
+                    sb.AddMultipleAttributes(8, slot.Attributes);
+                    sb.OpenComponent<Icon>(9);
+                    sb.AddAttribute(10, "Name", icon);
+                    sb.AddAttribute(11, "Size", Lumeo.Size.Sm);
+                    sb.CloseComponent();
+                    sb.CloseElement();
+                }));
+                tip.CloseComponent();
+
+                tip.OpenComponent<TooltipContent>(3);
+                tip.AddAttribute(4, "ChildContent", (RenderFragment)(cb => cb.AddContent(0, label)));
+                tip.CloseComponent();
+            }));
             builder.CloseComponent();
-            builder.CloseElement();
         };
 }

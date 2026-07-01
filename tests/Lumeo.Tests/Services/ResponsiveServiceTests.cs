@@ -130,12 +130,14 @@ public class ResponsiveServiceTests
         public ValueTask SetHtmlClass(string className, bool active) => ValueTask.CompletedTask;
         public ValueTask SetupFocusTrap(string elementId, string? initialFocusSelector = null) => ValueTask.CompletedTask;
         public ValueTask RemoveFocusTrap(string elementId) => ValueTask.CompletedTask;
+        public ValueTask SaveFocus(string key) => ValueTask.CompletedTask;
+        public ValueTask RestoreFocus(string key) => ValueTask.CompletedTask;
         public ValueTask AttachOverlaySlideEnd(string elementId) => ValueTask.CompletedTask;
         public ValueTask RegisterSvDrag(string elementId, Func<double, double, Task> handler) => ValueTask.CompletedTask;
         public ValueTask UnregisterSvDrag(string elementId) => ValueTask.CompletedTask;
         public ValueTask RegisterPinchZoom(string elementId, Func<double, Task> handler) => ValueTask.CompletedTask;
         public ValueTask UnregisterPinchZoom(string elementId) => ValueTask.CompletedTask;
-        public ValueTask PositionFixed(string contentId, string referenceId, string align = "start", bool matchWidth = false, string side = "bottom") => ValueTask.CompletedTask;
+        public ValueTask<string> PositionFixed(string contentId, string referenceId, string align = "start", bool matchWidth = false, string side = "bottom") => ValueTask.FromResult(side);
         public ValueTask UnpositionFixed(string contentId) => ValueTask.CompletedTask;
         public ValueTask<ElementRect?> GetElementRect(string elementId) => ValueTask.FromResult<ElementRect?>(null);
         public ValueTask<double> GetElementDimension(string elementId, string dimension) => ValueTask.FromResult(0d);
@@ -229,6 +231,7 @@ public class ResponsiveServiceTests
         public ValueTask RichTextSetDisabledAsync(string id, bool disabled) => ValueTask.CompletedTask;
         public ValueTask RichTextDestroyAsync(string id) => ValueTask.CompletedTask;
         public ValueTask<string?> RichTextPromptLinkAsync(string? initial) => ValueTask.FromResult<string?>(null);
+        public ValueTask RichTextSetAriaAttributesAsync(string id, bool ariaInvalid, string? ariaDescribedBy) => ValueTask.CompletedTask;
         public ValueTask<Lumeo.Services.ComponentInteropService.TabMeasurement?> TabsMeasure(string elementId)
             => ValueTask.FromResult<Lumeo.Services.ComponentInteropService.TabMeasurement?>(null);
         public ValueTask RegisterToolbarOverflow(string elementId, Func<int, int, Task> handler) => ValueTask.CompletedTask;
@@ -240,7 +243,7 @@ public class ResponsiveServiceTests
         public ValueTask SeekMedia(Microsoft.AspNetCore.Components.ElementReference element, double seconds) => ValueTask.CompletedTask;
         public ValueTask SetPlaybackRate(Microsoft.AspNetCore.Components.ElementReference element, double rate) => ValueTask.CompletedTask;
         public ValueTask<Lumeo.Services.MediaState> GetMediaState(Microsoft.AspNetCore.Components.ElementReference element) => ValueTask.FromResult(new Lumeo.Services.MediaState(0, 0));
-        public ValueTask SignaturePadInit(string elementId, object options, Microsoft.JSInterop.DotNetObjectReference<Lumeo.SignaturePad> dotNetRef) => ValueTask.CompletedTask;
+        public ValueTask SignaturePadInit<T>(string elementId, object options, Microsoft.JSInterop.DotNetObjectReference<T> dotNetRef) where T : class => ValueTask.CompletedTask;
         public ValueTask SignaturePadClear(string elementId) => ValueTask.CompletedTask;
         public ValueTask<string?> SignaturePadDataUrl(string elementId, string mimeType) => ValueTask.FromResult<string?>(null);
         public ValueTask SignaturePadSetStrokeStyle(string elementId, string color, double width) => ValueTask.CompletedTask;

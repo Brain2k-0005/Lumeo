@@ -1,5 +1,9 @@
 @namespace Lumeo
 
+@* Render the label, control and helper/error as ONE self-contained vertical block so the
+   field never splays into a row when dropped in a flex / centered container. Standalone
+   form-field structural fix. *@
+<div class="flex flex-col items-start">
 @if (Label is not null && !InsideFormField)
 {
     <label class="text-sm font-medium leading-none">
@@ -21,11 +25,21 @@
     @if (Inline)
     {
         <div>
-            <DateWheelPicker Value="@Value" ValueChanged="HandleDateSelected" Min="@MinDate" Max="@MaxDate" Culture="@Culture" />
+            @* id/role/aria-describedby splat into AdditionalAttributes (DateWheelPicker has no matching
+               [Parameter]s) so the FormField <Label For> resolves to a real element on this trigger-less
+               variant too — the popover-trigger button gets the same EffectiveTriggerId (Codex P2). *@
+            <DateWheelPicker Value="@Value" ValueChanged="HandleDateSelected" Min="@MinDate" Max="@MaxDate" Culture="@Culture"
+                              id="@EffectiveTriggerId" role="group" aria-labelledby="@FormField?.LabelId" aria-describedby="@FormFieldDescribedBy" />
             @if (ShowTimePicker)
             {
                 <div class="border-t border-border/40 p-3">
-                    <TimePicker Value="@Time" ValueChanged="HandleTimeChanged" Culture="@Culture" Variant="TimePicker.TimePickerVariant.Wheel" />
+                    @* Detach the FormField cascade for the nested time-of-day picker: it is a sub-widget
+                       of THIS DatePicker, not an independently field-associated control. Left cascaded,
+                       it would ALSO compute the same FormFieldControlId as the date picker above and
+                       render a DUPLICATE DOM id (Codex P2). *@
+                    <CascadingValue Value="(FormField.FormFieldContext?)null" IsFixed="true">
+                        <TimePicker Value="@Time" ValueChanged="HandleTimeChanged" Culture="@Culture" Variant="TimePicker.TimePickerVariant.Wheel" />
+                    </CascadingValue>
                 </div>
             }
         </div>
@@ -35,13 +49,14 @@
         <Popover @bind-Open="_isOpen">
             <PopoverTrigger>
                 <button type="button"
-                        id="@_triggerId"
+                        id="@EffectiveTriggerId"
                         name="@Name"
                         aria-required="@Required.ToString().ToLower()"
                         aria-invalid="@EffectiveInvalid.ToString().ToLower()"
+                        aria-describedby="@FormFieldDescribedBy"
                         class="@CssClass"
                         disabled="@Disabled"
-                        @attributes="AdditionalAttributes">
+                        @attributes="EffectiveAttributes">
                     <Blazicon Svg="Lucide.Calendar" class="me-2 h-4 w-4 shrink-0" />
                     @if (TriggerContent != null)
                     {
@@ -68,7 +83,12 @@
                 @if (ShowTimePicker)
                 {
                     <div class="border-t border-border/40 mt-3 pt-3">
-                        <TimePicker Value="@Time" ValueChanged="HandleTimeChanged" Culture="@Culture" Variant="TimePicker.TimePickerVariant.Wheel" />
+                        @* Detach the FormField cascade — see the Inline+Wheel branch's comment above
+                           (Codex P2): a nested time-of-day TimePicker must not also claim the FormField's
+                           ControlId, which is already on this Popover's trigger button. *@
+                        <CascadingValue Value="(FormField.FormFieldContext?)null" IsFixed="true">
+                            <TimePicker Value="@Time" ValueChanged="HandleTimeChanged" Culture="@Culture" Variant="TimePicker.TimePickerVariant.Wheel" />
+                        </CascadingValue>
                     </div>
                 }
             </PopoverContent>
@@ -77,17 +97,21 @@
 }
 else if (Inline)
 {
+        @* Every Calendar/DateWheelPicker below gets id/role/aria-describedby splatted into its
+           AdditionalAttributes (neither declares matching [Parameter]s) so the FormField <Label For>
+           resolves to a real rendered element here too — the popover-trigger button gets the same
+           EffectiveTriggerId in the non-Inline branches (Codex P2). *@
         @if (Mode == DatePickerMode.Multiple)
         {
-            <Calendar IsMultiple="true" Values="@Values" ValuesChanged="HandleValuesSelected" MinDate="@MinDate" MaxDate="@MaxDate" IsDateDisabled="@IsDateDisabled" DateClass="@DateClass" DateTooltip="@DateTooltip" DateBadge="@DateBadge" NumberOfMonths="@EffectiveNumberOfMonths" FirstDayOfWeek="@FirstDayOfWeek" ShowWeekNumbers="@ShowWeekNumbers" />
+            <Calendar IsMultiple="true" Values="@Values" ValuesChanged="HandleValuesSelected" MinDate="@MinDate" MaxDate="@MaxDate" IsDateDisabled="@IsDateDisabled" DateClass="@DateClass" DateTooltip="@DateTooltip" DateBadge="@DateBadge" NumberOfMonths="@EffectiveNumberOfMonths" FirstDayOfWeek="@FirstDayOfWeek" ShowWeekNumbers="@ShowWeekNumbers" id="@EffectiveTriggerId" role="group" aria-labelledby="@FormField?.LabelId" aria-describedby="@FormFieldDescribedBy" />
         }
         else if (Mode == DatePickerMode.Month)
         {
-            <Calendar Value="@Value" ValueChanged="HandleDateSelected" MinDate="@MinDate" MaxDate="@MaxDate" IsDateDisabled="@IsDateDisabled" DateClass="@DateClass" DateTooltip="@DateTooltip" DateBadge="@DateBadge" InitialView="@Calendar.CalendarView.Months" FirstDayOfWeek="@FirstDayOfWeek" ShowWeekNumbers="@ShowWeekNumbers" />
+            <Calendar Value="@Value" ValueChanged="HandleDateSelected" MinDate="@MinDate" MaxDate="@MaxDate" IsDateDisabled="@IsDateDisabled" DateClass="@DateClass" DateTooltip="@DateTooltip" DateBadge="@DateBadge" InitialView="@Calendar.CalendarView.Months" FirstDayOfWeek="@FirstDayOfWeek" ShowWeekNumbers="@ShowWeekNumbers" id="@EffectiveTriggerId" role="group" aria-labelledby="@FormField?.LabelId" aria-describedby="@FormFieldDescribedBy" />
         }
         else if (Mode == DatePickerMode.Year)
         {
-            <Calendar Value="@Value" ValueChanged="HandleDateSelected" MinDate="@MinDate" MaxDate="@MaxDate" IsDateDisabled="@IsDateDisabled" DateClass="@DateClass" DateTooltip="@DateTooltip" DateBadge="@DateBadge" InitialView="@Calendar.CalendarView.Years" FirstDayOfWeek="@FirstDayOfWeek" ShowWeekNumbers="@ShowWeekNumbers" />
+            <Calendar Value="@Value" ValueChanged="HandleDateSelected" MinDate="@MinDate" MaxDate="@MaxDate" IsDateDisabled="@IsDateDisabled" DateClass="@DateClass" DateTooltip="@DateTooltip" DateBadge="@DateBadge" InitialView="@Calendar.CalendarView.Years" FirstDayOfWeek="@FirstDayOfWeek" ShowWeekNumbers="@ShowWeekNumbers" id="@EffectiveTriggerId" role="group" aria-labelledby="@FormField?.LabelId" aria-describedby="@FormFieldDescribedBy" />
         }
         else if (Mode == DatePickerMode.Range)
         {
@@ -98,21 +122,23 @@ else if (Inline)
                         @foreach (var preset in Presets)
                         {
                             var p = preset;
-                            <button type="button" class="text-sm px-3 py-1.5 rounded-md text-left hover:bg-accent hover:text-accent-foreground transition-colors focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-1" @onclick="() => HandlePresetSelected(p)">
+                            <button type="button" class="text-sm px-3 py-1.5 rounded-md text-start hover:bg-accent hover:text-accent-foreground transition-colors focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-1" @onclick="() => HandlePresetSelected(p)">
                                 @p.Label
                             </button>
                         }
                     </div>
                     <Calendar IsRange="true" RangeStart="@RangeStart" RangeStartChanged="HandleRangeStartChanged"
                               RangeEnd="@RangeEnd" RangeEndChanged="HandleRangeEndChanged"
-                              MinDate="@MinDate" MaxDate="@MaxDate" IsDateDisabled="@IsDateDisabled" DateClass="@DateClass" DateTooltip="@DateTooltip" DateBadge="@DateBadge" NumberOfMonths="@EffectiveNumberOfMonths" FirstDayOfWeek="@FirstDayOfWeek" ShowWeekNumbers="@ShowWeekNumbers" />
+                              MinDate="@MinDate" MaxDate="@MaxDate" IsDateDisabled="@IsDateDisabled" DateClass="@DateClass" DateTooltip="@DateTooltip" DateBadge="@DateBadge" NumberOfMonths="@EffectiveNumberOfMonths" FirstDayOfWeek="@FirstDayOfWeek" ShowWeekNumbers="@ShowWeekNumbers"
+                              id="@EffectiveTriggerId" role="group" aria-labelledby="@FormField?.LabelId" aria-describedby="@FormFieldDescribedBy" />
                 </div>
             }
             else
             {
                 <Calendar IsRange="true" RangeStart="@RangeStart" RangeStartChanged="HandleRangeStartChanged"
                           RangeEnd="@RangeEnd" RangeEndChanged="HandleRangeEndChanged"
-                          MinDate="@MinDate" MaxDate="@MaxDate" IsDateDisabled="@IsDateDisabled" DateClass="@DateClass" DateTooltip="@DateTooltip" DateBadge="@DateBadge" NumberOfMonths="@EffectiveNumberOfMonths" FirstDayOfWeek="@FirstDayOfWeek" ShowWeekNumbers="@ShowWeekNumbers" />
+                          MinDate="@MinDate" MaxDate="@MaxDate" IsDateDisabled="@IsDateDisabled" DateClass="@DateClass" DateTooltip="@DateTooltip" DateBadge="@DateBadge" NumberOfMonths="@EffectiveNumberOfMonths" FirstDayOfWeek="@FirstDayOfWeek" ShowWeekNumbers="@ShowWeekNumbers"
+                          id="@EffectiveTriggerId" role="group" aria-labelledby="@FormField?.LabelId" aria-describedby="@FormFieldDescribedBy" />
             }
         }
         else
@@ -125,23 +151,28 @@ else if (Inline)
                             @foreach (var preset in Presets)
                             {
                                 var p = preset;
-                                <button type="button" class="text-sm px-3 py-1.5 rounded-md text-left hover:bg-accent hover:text-accent-foreground transition-colors focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-1" @onclick="() => HandlePresetSelected(p)">
+                                <button type="button" class="text-sm px-3 py-1.5 rounded-md text-start hover:bg-accent hover:text-accent-foreground transition-colors focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-1" @onclick="() => HandlePresetSelected(p)">
                                     @p.Label
                                 </button>
                             }
                         </div>
-                        <Calendar Value="@Value" ValueChanged="HandleDateSelected" MinDate="@MinDate" MaxDate="@MaxDate" IsDateDisabled="@IsDateDisabled" DateClass="@DateClass" DateTooltip="@DateTooltip" DateBadge="@DateBadge" NumberOfMonths="@EffectiveNumberOfMonths" FirstDayOfWeek="@FirstDayOfWeek" ShowWeekNumbers="@ShowWeekNumbers" />
+                        <Calendar Value="@Value" ValueChanged="HandleDateSelected" MinDate="@MinDate" MaxDate="@MaxDate" IsDateDisabled="@IsDateDisabled" DateClass="@DateClass" DateTooltip="@DateTooltip" DateBadge="@DateBadge" NumberOfMonths="@EffectiveNumberOfMonths" FirstDayOfWeek="@FirstDayOfWeek" ShowWeekNumbers="@ShowWeekNumbers" id="@EffectiveTriggerId" role="group" aria-labelledby="@FormField?.LabelId" aria-describedby="@FormFieldDescribedBy" />
                     </div>
                 }
                 else
                 {
-                    <Calendar Value="@Value" ValueChanged="HandleDateSelected" MinDate="@MinDate" MaxDate="@MaxDate" IsDateDisabled="@IsDateDisabled" DateClass="@DateClass" DateTooltip="@DateTooltip" DateBadge="@DateBadge" NumberOfMonths="@EffectiveNumberOfMonths" FirstDayOfWeek="@FirstDayOfWeek" ShowWeekNumbers="@ShowWeekNumbers" />
+                    <Calendar Value="@Value" ValueChanged="HandleDateSelected" MinDate="@MinDate" MaxDate="@MaxDate" IsDateDisabled="@IsDateDisabled" DateClass="@DateClass" DateTooltip="@DateTooltip" DateBadge="@DateBadge" NumberOfMonths="@EffectiveNumberOfMonths" FirstDayOfWeek="@FirstDayOfWeek" ShowWeekNumbers="@ShowWeekNumbers" id="@EffectiveTriggerId" role="group" aria-labelledby="@FormField?.LabelId" aria-describedby="@FormFieldDescribedBy" />
                 }
 
                 @if (ShowTimePicker)
                 {
                     <div class="border-t border-border/40 p-3">
-                        <TimePicker Value="@Time" ValueChanged="HandleTimeChanged" Culture="@Culture" />
+                        @* Detach the FormField cascade — see the Inline+Wheel branch's comment above
+                           (Codex P2): a nested time-of-day TimePicker must not also claim the FormField's
+                           ControlId, which is already on the Calendar above. *@
+                        <CascadingValue Value="(FormField.FormFieldContext?)null" IsFixed="true">
+                            <TimePicker Value="@Time" ValueChanged="HandleTimeChanged" Culture="@Culture" />
+                        </CascadingValue>
                     </div>
                 }
             </div>
@@ -158,13 +189,14 @@ else
                    Rendering both produced a double calendar-icon affordance,
                    most visible on narrow mobile widths where the input shrinks. *@
                 <div class="@CssClass" @onclick:stopPropagation="true" @attributes="AdditionalAttributes">
-                    <input id="@_triggerId"
+                    <input id="@EffectiveTriggerId"
                            type="text"
                            name="@Name"
                            value="@_inputBuffer"
                            placeholder="@EffectivePlaceholder"
                            aria-required="@Required.ToString().ToLower()"
                            aria-invalid="@EffectiveInvalid.ToString().ToLower()"
+                           aria-describedby="@FormFieldDescribedBy"
                            disabled="@Disabled"
                            readonly="@(!AllowKeyboardInput)"
                            class="flex-1 bg-transparent outline-none border-0 p-0 text-sm placeholder:text-muted-foreground disabled:cursor-not-allowed"
@@ -191,13 +223,14 @@ else
             else
             {
             <button type="button"
-                    id="@_triggerId"
+                    id="@EffectiveTriggerId"
                     name="@Name"
                     aria-required="@Required.ToString().ToLower()"
                     aria-invalid="@EffectiveInvalid.ToString().ToLower()"
+                    aria-describedby="@FormFieldDescribedBy"
                     class="@CssClass"
                     disabled="@Disabled"
-                    @attributes="AdditionalAttributes">
+                    @attributes="EffectiveAttributes">
                 <Blazicon Svg="Lucide.Calendar" class="me-2 h-4 w-4 shrink-0" />
                 @if (TriggerContent != null)
                 {
@@ -294,7 +327,7 @@ else
                             @foreach (var preset in Presets)
                             {
                                 var p = preset;
-                                <button type="button" class="text-sm px-3 py-1.5 rounded-md text-left hover:bg-accent hover:text-accent-foreground transition-colors focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-1" @onclick="() => HandlePresetSelected(p)">
+                                <button type="button" class="text-sm px-3 py-1.5 rounded-md text-start hover:bg-accent hover:text-accent-foreground transition-colors focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-1" @onclick="() => HandlePresetSelected(p)">
                                     @p.Label
                                 </button>
                             }
@@ -321,7 +354,7 @@ else
                                 @foreach (var preset in Presets)
                                 {
                                     var p = preset;
-                                    <button type="button" class="text-sm px-3 py-1.5 rounded-md text-left hover:bg-accent hover:text-accent-foreground transition-colors focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-1" @onclick="() => HandlePresetSelected(p)">
+                                    <button type="button" class="text-sm px-3 py-1.5 rounded-md text-start hover:bg-accent hover:text-accent-foreground transition-colors focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-1" @onclick="() => HandlePresetSelected(p)">
                                         @p.Label
                                     </button>
                                 }
@@ -337,7 +370,12 @@ else
                     @if (ShowTimePicker)
                     {
                         <div class="border-t border-border/40 p-3">
-                            <TimePicker Value="@Time" ValueChanged="HandleTimeChanged" Culture="@Culture" />
+                            @* Detach the FormField cascade — see the Inline+Wheel branch's comment above
+                               (Codex P2): a nested time-of-day TimePicker must not also claim the
+                               FormField's ControlId, which is already on this Popover's trigger button. *@
+                            <CascadingValue Value="(FormField.FormFieldContext?)null" IsFixed="true">
+                                <TimePicker Value="@Time" ValueChanged="HandleTimeChanged" Culture="@Culture" />
+                            </CascadingValue>
                         </div>
                     }
                 </div>
@@ -357,6 +395,7 @@ else
         <p class="text-xs text-muted-foreground">@HelperText</p>
     }
 }
+</div>
 
 @inject Lumeo.Services.Localization.ILumeoLocalizer L
 @inject IComponentInteropService Interop
@@ -387,12 +426,29 @@ else
     private bool EffectiveInvalid => Invalid || FormField?.HasError == true;
     private bool InsideFormField => FormField is not null;
 
+    // aria-describedby on the trigger announces the FormField help/error to a screen reader.
+    private string? FormFieldDescribedBy => FormField?.DescribedBy;
+
+    // Inside a FormField, adopt its generated ControlId so the field's <Label For>
+    // resolves to the rendered trigger (click-to-focus + association). Null outside
+    // a FormField — EffectiveTriggerId then falls back to the generated _triggerId.
+    // The empty guard avoids id="" when no id was generated.
+    private string? FormFieldControlId => string.IsNullOrEmpty(FormField?.ControlId) ? null : FormField!.ControlId;
+
+    // The id actually rendered on whichever trigger variant is active (button /
+    // range button / masked input). Any interop that focuses or anchors the
+    // trigger MUST use this same value so focus/anchoring target the rendered
+    // element. _triggerId stays as the fallback.
+    private string EffectiveTriggerId => FormFieldControlId ?? _triggerId;
+
     [Parameter] public DateOnly? Value { get; set; }
     [Parameter] public EventCallback<DateOnly?> ValueChanged { get; set; }
 
     /// <summary>
     /// Optional DateTime? binding. When set, takes precedence over <see cref="Value"/>.
-    /// Changes fire both <see cref="ValueChanged"/> (DateOnly?) and <see cref="DateTimeValueChanged"/> (DateTime? at midnight).
+    /// Changes fire both <see cref="ValueChanged"/> (DateOnly?) and <see cref="DateTimeValueChanged"/>
+    /// (DateTime?). When <see cref="ShowTimePicker"/> is enabled the current <see cref="Time"/>
+    /// selection is folded into the emitted DateTime; otherwise the time component is midnight.
     /// </summary>
     [Parameter] public DateTime? DateTimeValue { get; set; }
     [Parameter] public EventCallback<DateTime?> DateTimeValueChanged { get; set; }
@@ -475,6 +531,12 @@ else
 
     private string _inputBuffer = string.Empty;
     private DateOnly? _lastSyncedValue;
+    // CONTROLLED discriminator: the last Value we pushed to the parent via ValueChanged
+    // (also updated whenever we adopt an authoritative incoming Value). Supports
+    // controlled-rollback: if the parent re-renders with the SAME value we just pushed
+    // it is merely an echo — skip re-syncing _inputBuffer; if it differs the parent
+    // asserted a different value (normalization/rejection) and we adopt it.
+    private DateOnly? _lastPushed;
 
     /// <summary>
     /// Optional controlled-mode override for the popover open state. When non-null,
@@ -515,13 +577,13 @@ else
     private readonly string _triggerId = LumeoIds.New("date-picker-trigger");
 
     /// <summary>Programmatically focus the trigger.</summary>
-    public ValueTask FocusAsync() => Interop.FocusElement(_triggerId);
+    public ValueTask FocusAsync() => Interop.FocusElement(EffectiveTriggerId);
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (firstRender && AutoFocus)
         {
-            try { await Interop.FocusElement(_triggerId); }
+            try { await Interop.FocusElement(EffectiveTriggerId); }
             catch (Microsoft.JSInterop.JSDisconnectedException) { }
         }
     }
@@ -559,19 +621,55 @@ else
 
     protected override void OnParametersSet()
     {
+        // Keep the uncontrolled fallback (_internalOpen) mirrored to the
+        // controlled Open while the parent owns the state. Without this, a
+        // controlled close (Open toggled false by the parent) never updates the
+        // stale _internalOpen, so a later revert to uncontrolled (Open => null)
+        // would resurrect an old open state and reopen the popover unexpectedly.
+        if (Open is { } controlledOpen)
+        {
+            _internalOpen = controlledOpen;
+        }
+
         // DateTimeValue wins when it changes — sync Value from it.
         if (DateTimeValue != _prevDateTimeValue)
         {
             _prevDateTimeValue = DateTimeValue;
             Value = DateTimeValue.HasValue ? DateOnly.FromDateTime(DateTimeValue.Value) : null;
+            // Also hydrate Time from the incoming DateTimeValue's time-of-day (ShowTimePicker
+            // only — Time has no UI/meaning otherwise). Without this, RaiseDateTimeValueChanged
+            // folds in the stale/null Time field (not what DateTimeValue actually carried), so
+            // picking a new date after binding a non-midnight DateTimeValue silently reset the
+            // committed time back to midnight (Codex P2).
+            if (ShowTimePicker)
+            {
+                Time = DateTimeValue.HasValue ? DateTimeValue.Value.TimeOfDay : null;
+            }
         }
 
-        // Keep the typeable buffer in sync with Value whenever the parent
-        // pushes a new bound value (not while the user is typing — we only
-        // resync when the underlying value actually changed).
-        if (Value != _lastSyncedValue)
+        // Keep the typeable buffer in sync with Value whenever the parent pushes a new
+        // bound value. The two branches implement the controlled/uncontrolled distinction:
+        if (ValueChanged.HasDelegate)
         {
+            // CONTROLLED: the parent owns Value and it is authoritative — EXCEPT when it
+            // merely echoes back the exact value we just pushed (_lastPushed), where
+            // adopting would disturb in-flight user text. Any OTHER incoming Value wins:
+            // a normalisation, a programmatic reset, or a REJECTION that kept the old
+            // value (crucial for controlled rollback — Codex P2).
+            if (Value != _lastPushed)
+            {
+                _lastPushed = Value;
+                _lastSyncedValue = Value;
+                _inputBuffer = FormatBuffer(Value);
+            }
+        }
+        else if (Value != _lastSyncedValue)
+        {
+            // UNCONTROLLED: component owns the live value; adopt only when the parent
+            // genuinely changes the parameter — an unrelated re-render that re-supplies
+            // the same stale Value must not clobber in-flight typed text.
             _lastSyncedValue = Value;
+            _lastPushed = Value;
             _inputBuffer = FormatBuffer(Value);
         }
     }
@@ -618,6 +716,7 @@ else
             {
                 Value = null;
                 _lastSyncedValue = null;
+                _lastPushed = null;
                 await ValueChanged.InvokeAsync(null);
                 await RaiseDateTimeValueChanged(null);
             }
@@ -644,6 +743,7 @@ else
             {
                 Value = parsed;
                 _lastSyncedValue = parsed;
+                _lastPushed = parsed;
                 _inputBuffer = FormatBuffer(parsed);
                 await ValueChanged.InvokeAsync(parsed);
                 await RaiseDateTimeValueChanged(parsed);
@@ -740,11 +840,27 @@ else
 
     private string CssClass => Cx.Merge("group flex h-9 w-full items-center rounded-md border", (EffectiveInvalid ? "border-destructive ring-1 ring-destructive/20" : "border-input"), "bg-transparent px-3 py-2 text-sm shadow-sm hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50", Class);
 
+    // Inside a FormField the EffectiveTriggerId must own the trigger element's id so
+    // the <label for> and the rendered element always agree. A consumer-splatted id in
+    // AdditionalAttributes would otherwise render after the generated id attribute and
+    // silently win, causing the label's `for` to point at a missing element (Codex P2).
+    // Strip the splatted id when inside a FormField; outside a FormField the consumer's
+    // id passes through unchanged (EffectiveTriggerId falls back to the internal _triggerId).
+    private Dictionary<string, object>? EffectiveAttributes =>
+        InsideFormField && AdditionalAttributes?.ContainsKey("id") == true
+            ? AdditionalAttributes.Where(kv => kv.Key != "id").ToDictionary(kv => kv.Key, kv => kv.Value)
+            : AdditionalAttributes;
+
     private async Task HandleDateSelected(DateOnly? date)
     {
         if (Mode == DatePickerMode.Month && date.HasValue)
         {
             Value = new DateOnly(date.Value.Year, date.Value.Month, 1);
+            _lastPushed = Value;
+            // Refresh the typed buffer to the picked value. Without this, a controlled
+            // parent that echoes Value back hits the _lastPushed echo-skip in
+            // OnParametersSet, leaving any in-flight draft text in the textbox (Codex P2).
+            _inputBuffer = FormatBuffer(Value);
             await ValueChanged.InvokeAsync(Value);
             await RaiseDateTimeValueChanged(Value);
             _isOpen = false;
@@ -752,6 +868,8 @@ else
         else if (Mode == DatePickerMode.Year && date.HasValue)
         {
             Value = new DateOnly(date.Value.Year, 1, 1);
+            _lastPushed = Value;
+            _inputBuffer = FormatBuffer(Value);
             await ValueChanged.InvokeAsync(Value);
             await RaiseDateTimeValueChanged(Value);
             _isOpen = false;
@@ -759,6 +877,8 @@ else
         else
         {
             Value = date;
+            _lastPushed = date;
+            _inputBuffer = FormatBuffer(date);
             await ValueChanged.InvokeAsync(date);
             await RaiseDateTimeValueChanged(date);
             if (!ShowTimePicker)
@@ -788,6 +908,10 @@ else
     {
         Time = time;
         await TimeChanged.InvokeAsync(time);
+        // A time-only change must also flow into the DateTime binding — otherwise
+        // ShowTimePicker time selection never reaches DateTimeValue. Re-compose
+        // from the current Value (RaiseDateTimeValueChanged now folds in Time).
+        await RaiseDateTimeValueChanged(Value);
     }
 
     private async Task HandlePresetSelected(DatePickerPreset preset)
@@ -811,6 +935,8 @@ else
         else
         {
             Value = preset.Date;
+            _lastPushed = preset.Date;
+            _inputBuffer = FormatBuffer(preset.Date);
             await ValueChanged.InvokeAsync(preset.Date);
             await RaiseDateTimeValueChanged(preset.Date);
         }
@@ -834,6 +960,8 @@ else
         else
         {
             Value = null;
+            _lastPushed = null;
+            _inputBuffer = FormatBuffer(null);
             await ValueChanged.InvokeAsync(null);
             await RaiseDateTimeValueChanged(null);
         }
@@ -848,7 +976,12 @@ else
     {
         if (DateTimeValueChanged.HasDelegate)
         {
-            var dt = date.HasValue ? (DateTime?)date.Value.ToDateTime(TimeOnly.MinValue) : null;
+            // Fold the current Time selection into the committed DateTime so a date
+            // pick no longer silently resets the bound DateTime to midnight when a
+            // time was already chosen (and so the time picker actually reaches the
+            // DateTime binding). Falls back to midnight when no Time is set.
+            var time = Time.HasValue ? TimeOnly.FromTimeSpan(Time.Value) : TimeOnly.MinValue;
+            var dt = date.HasValue ? (DateTime?)date.Value.ToDateTime(time) : null;
             _prevDateTimeValue = dt;
             await DateTimeValueChanged.InvokeAsync(dt);
         }

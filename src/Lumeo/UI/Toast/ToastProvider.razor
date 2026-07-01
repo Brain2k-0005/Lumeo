@@ -296,7 +296,10 @@
     private async Task RemoveWithExitAsync(string id, bool runOnDismiss)
     {
         var toast = _toasts.FirstOrDefault(t => t.Id == id);
-        if (toast is null) return;
+        // Idempotent dismissal: a toast already playing its exit animation must
+        // not be dismissed again. Re-entry would re-run OnDismiss, cancel the
+        // in-flight exit timer (truncating the animation) and restart it.
+        if (toast is null || toast.Leaving) return;
 
         CancelTimer(id);
         // Detach the swipe gesture before the element animates out and is

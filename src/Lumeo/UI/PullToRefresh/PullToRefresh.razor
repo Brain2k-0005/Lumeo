@@ -18,7 +18,7 @@
     first scrollable ancestor.
 *@
 
-<div id="@_elementId"
+<div id="@EffectiveId"
      class="@CssClass"
      style="@ContainerStyle"
      @ref="_ref"
@@ -30,15 +30,21 @@
     <div class="pointer-events-none absolute inset-x-0 top-0 flex justify-center"
          style="@SpinnerStyle">
         <div class="flex h-10 w-10 items-center justify-center rounded-full bg-background text-foreground shadow-md ring-1 ring-border">
-            <Blazicon Svg="Lucide.RefreshCw" class="@SpinnerIconClass" />
+            <Blazicon Svg="Lucide.RefreshCw" class="@SpinnerIconClass" aria-hidden="true" />
         </div>
     </div>
+    @* Polite live region: announces refresh start/finish to assistive tech.
+       The visible spinner above is purely decorative (aria-hidden), so without
+       this status region a screen-reader user gets no feedback that a refresh
+       is in progress. Empty while idle so nothing is announced until it runs. *@
+    <div role="status" aria-live="polite" class="sr-only">@RefreshAnnouncement</div>
     <div style="@ContentStyle">
         @ChildContent
     </div>
 </div>
 
 @inject IComponentInteropService Interop
+@inject Lumeo.Services.Localization.ILumeoLocalizer L
 
 @code {
     [Parameter] public RenderFragment? ChildContent { get; set; }
@@ -51,6 +57,13 @@
     private readonly string _elementId = LumeoIds.New("ptr");
     private ElementReference _ref;
     private bool _gestureGuardRegistered;
+
+    // When a consumer splats an `id="..."` via AdditionalAttributes it wins in
+    // the rendered DOM (the splat is emitted after the explicit id). All JS
+    // interop must target that same id, otherwise every getElementById lookup
+    // (gesture guard, scrollTop gate, pointer capture) silently no-ops.
+    // Mirror Carousel.razor's EffectiveRootId pattern.
+    private string EffectiveId => LumeoIds.Effective(AdditionalAttributes, _elementId);
 
     private long? _activePointerId;
     private double _startY;
@@ -105,6 +118,15 @@
 
     private string SpinnerIconClass => (_refreshing ? "h-5 w-5 animate-spin" : "h-5 w-5").Trim();
 
+    // Text announced via the polite live region while a refresh is running, and
+    // cleared (empty) when idle so assistive tech only speaks during a refresh.
+    // Localizable via the "PullToRefresh.Refreshing" key, with an English
+    // fallback so the component stays self-contained.
+    private string RefreshAnnouncement =>
+        _refreshing
+            ? (L.TryGet("PullToRefresh.Refreshing", out var msg) ? msg : "Refreshing…")
+            : string.Empty;
+
     // pan-y still lets the container scroll natively everywhere EXCEPT a
     // downward drag pinned at the top — that case is claimed by the non-passive
     // touchmove guard registered in OnAfterRenderAsync (#308). Without the guard
@@ -117,7 +139,7 @@
         if (!firstRender || _gestureGuardRegistered) return;
         try
         {
-            await Interop.RegisterPullToRefresh(_elementId);
+            await Interop.RegisterPullToRefresh(EffectiveId);
             _gestureGuardRegistered = true;
         }
         catch (JSDisconnectedException) { }
@@ -132,23 +154,44 @@
         if (_refreshing) return;
         if (_activePointerId.HasValue) return;
 
-        // Gate on scrollTop == 0; if the container is scrolled, let the native
-        // scroll handle the pointer instead of engaging the pull.
-        double scrollTop = 0;
-        try { scrollTop = await Interop.GetScrollTop(_elementId); }
-        catch (JSDisconnectedException) { return; }
-        if (scrollTop > 0) return;
-
+        // Claim the pointer SYNCHRONOUSLY, before the GetScrollTop await. A fast
+        // tap can fire pointerup while this await is still in flight; because
+        // HandlePointerUp gates on _activePointerId, if we only set it AFTER the
+        // await the racing up sees a null id, no-ops, and is lost — then this
+        // await resumes and latches _activePointerId forever, wedging the
+        // component (every later pointerdown bails at the guard above). Claiming
+        // up front lets the racing up observe and clear the gesture instead.
         _activePointerId = e.PointerId;
         _startY = e.ClientY;
         _currentDelta = 0;
         _engaged = false;
 
+        // Gate on scrollTop == 0; if the container is scrolled, let the native
+        // scroll handle the pointer instead of engaging the pull.
+        double scrollTop = 0;
+        try { scrollTop = await Interop.GetScrollTop(EffectiveId); }
+        catch (JSDisconnectedException) { _activePointerId = null; return; }
+
+        // If a pointerup raced in during the await it already cleared (or
+        // replaced) our id — the gesture is over, so don't re-claim it.
+        if (_activePointerId != e.PointerId) return;
+
+        // Container scrolled — release our claim and let native scroll own it.
+        if (scrollTop > 0)
+        {
+            _activePointerId = null;
+            return;
+        }
+
         // Capture the pointer so pointermove continues to fire even when the
         // pointer leaves the element boundary. This is the key fix for Chrome
         // DevTools mobile emulation where without capture the move events stop.
-        try { await Interop.SetPointerCaptureOnElement(_elementId, e.PointerId); }
-        catch (JSDisconnectedException) { return; }
+        try { await Interop.SetPointerCaptureOnElement(EffectiveId, e.PointerId); }
+        catch (JSDisconnectedException) { _activePointerId = null; return; }
+
+        // A pointerup could also have raced in during the capture await; if so,
+        // it already cleared our id, so abandon the now-defunct gesture.
+        if (_activePointerId != e.PointerId) return;
     }
 
     private void HandlePointerMove(PointerEventArgs e)
@@ -187,7 +230,7 @@
         _currentDelta = 0;
 
         // Release the pointer capture acquired in HandlePointerDown.
-        try { await Interop.ReleasePointerCaptureOnElement(_elementId, e.PointerId); }
+        try { await Interop.ReleasePointerCaptureOnElement(EffectiveId, e.PointerId); }
         catch (JSDisconnectedException) { /* already gone */ }
         catch { /* ignore if capture was already released by the browser */ }
 
@@ -219,7 +262,7 @@
         // Tear down the non-passive touchmove guard registered on first render.
         if (_gestureGuardRegistered)
         {
-            try { await Interop.UnregisterPullToRefresh(_elementId); }
+            try { await Interop.UnregisterPullToRefresh(EffectiveId); }
             catch (JSDisconnectedException) { }
             catch (InvalidOperationException) { } // also covers ObjectDisposedException (a subtype) at shutdown
         }

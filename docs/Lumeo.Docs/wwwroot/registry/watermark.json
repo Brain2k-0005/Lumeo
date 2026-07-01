@@ -34,7 +34,8 @@
         "default": null,
         "description": null,
         "isCascading": false,
-        "captureUnmatched": false
+        "captureUnmatched": false,
+        "isEditorRequired": false
       },
       {
         "name": "Image",
@@ -42,7 +43,8 @@
         "default": null,
         "description": "Optional image URL to tile as the watermark instead of Text. When set, the image is repeated edge-to-edge; ImageWidth/ImageHeight control each tile's size and Opacity dims it. Takes precedence over Text when both are provided.",
         "isCascading": false,
-        "captureUnmatched": false
+        "captureUnmatched": false,
+        "isEditorRequired": false
       },
       {
         "name": "ImageWidth",
@@ -50,7 +52,8 @@
         "default": "120",
         "description": "Tile width in px for the Image watermark. Default 120.",
         "isCascading": false,
-        "captureUnmatched": false
+        "captureUnmatched": false,
+        "isEditorRequired": false
       },
       {
         "name": "ImageHeight",
@@ -58,7 +61,8 @@
         "default": "64",
         "description": "Tile height in px for the Image watermark. Default 64.",
         "isCascading": false,
-        "captureUnmatched": false
+        "captureUnmatched": false,
+        "isEditorRequired": false
       },
       {
         "name": "ChildContent",
@@ -66,7 +70,8 @@
         "default": null,
         "description": null,
         "isCascading": false,
-        "captureUnmatched": false
+        "captureUnmatched": false,
+        "isEditorRequired": false
       },
       {
         "name": "Rotation",
@@ -74,7 +79,8 @@
         "default": "-22",
         "description": null,
         "isCascading": false,
-        "captureUnmatched": false
+        "captureUnmatched": false,
+        "isEditorRequired": false
       },
       {
         "name": "Gap",
@@ -82,7 +88,8 @@
         "default": "100",
         "description": null,
         "isCascading": false,
-        "captureUnmatched": false
+        "captureUnmatched": false,
+        "isEditorRequired": false
       },
       {
         "name": "FontSize",
@@ -90,7 +97,8 @@
         "default": "14",
         "description": null,
         "isCascading": false,
-        "captureUnmatched": false
+        "captureUnmatched": false,
+        "isEditorRequired": false
       },
       {
         "name": "Opacity",
@@ -98,7 +106,8 @@
         "default": "0.1",
         "description": null,
         "isCascading": false,
-        "captureUnmatched": false
+        "captureUnmatched": false,
+        "isEditorRequired": false
       },
       {
         "name": "Class",
@@ -106,7 +115,8 @@
         "default": null,
         "description": null,
         "isCascading": false,
-        "captureUnmatched": false
+        "captureUnmatched": false,
+        "isEditorRequired": false
       },
       {
         "name": "AdditionalAttributes",
@@ -114,7 +124,8 @@
         "default": null,
         "description": null,
         "isCascading": false,
-        "captureUnmatched": true
+        "captureUnmatched": true,
+        "isEditorRequired": false
       }
     ],
     "events": [],
@@ -135,8 +146,31 @@
       }
     ],
     "subComponents": {},
+    "a11y": {
+      "roles": [],
+      "ariaAttributes": [
+        "aria-hidden"
+      ],
+      "keys": [],
+      "keyboardInteractive": false,
+      "focusManaged": false
+    },
     "parseFailed": false,
     "parseError": null
+  },
+  "testCoverage": {
+    "tier": 1,
+    "files": 1,
+    "tests": 11,
+    "relatedFiles": 0,
+    "render": true,
+    "behavior": false,
+    "a11y": false,
+    "keyboard": false,
+    "scale": false,
+    "e2e": false,
+    "e2eFiles": [],
+    "contract": "smoke"
   },
   "$schema": "https://lumeo.nativ.sh/registry-component-schema.json",
   "key": "watermark",
@@ -150,7 +184,7 @@
   "source": [
     {
       "path": "UI/Watermark/Watermark.razor",
-      "content": "@namespace Lumeo\n\n<div class=\"@CssClass\" @attributes=\"AdditionalAttributes\">\n    @ChildContent\n    <div aria-hidden=\"true\" class=\"pointer-events-none absolute inset-0 z-10\" style=\"@OverlayStyle\">\n    </div>\n</div>\n\n@code {\n    [Parameter] public string? Text { get; set; }\n\n    /// <summary>Optional image URL to tile as the watermark instead of <see cref=\"Text\"/>.\n    /// When set, the image is repeated edge-to-edge; <see cref=\"ImageWidth\"/>/<see cref=\"ImageHeight\"/>\n    /// control each tile's size and <see cref=\"Opacity\"/> dims it. Takes precedence over\n    /// <see cref=\"Text\"/> when both are provided.</summary>\n    [Parameter] public string? Image { get; set; }\n\n    /// <summary>Tile width in px for the <see cref=\"Image\"/> watermark. Default 120.</summary>\n    [Parameter] public int ImageWidth { get; set; } = 120;\n\n    /// <summary>Tile height in px for the <see cref=\"Image\"/> watermark. Default 64.</summary>\n    [Parameter] public int ImageHeight { get; set; } = 64;\n\n    [Parameter] public RenderFragment? ChildContent { get; set; }\n    [Parameter] public int Rotation { get; set; } = -22;\n    [Parameter] public int Gap { get; set; } = 100;\n    [Parameter] public int FontSize { get; set; } = 14;\n    [Parameter] public double Opacity { get; set; } = 0.1;\n    [Parameter] public string? Class { get; set; }\n    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }\n\n    private string CssClass => Cx.Merge(\"relative\", Class);\n\n    // Image mode wins when an Image URL is supplied; otherwise fall back to the\n    // generated SVG text watermark (empty when no Text either).\n    private string OverlayStyle => !string.IsNullOrEmpty(Image)\n        ? ImageOverlayStyle\n        : FormattableString.Invariant($\"background-image: url('data:image/svg+xml,{EncodedSvg}'); background-repeat: repeat;\");\n\n    private string ImageOverlayStyle\n    {\n        get\n        {\n            // Tile the image at its own ImageWidth × ImageHeight, repeated edge to\n            // edge, with the whole layer dimmed by Opacity. (Gap is text-mode tile\n            // spacing — a non-distorting CSS image gap isn't expressible in a single\n            // background, so it doesn't apply here.) Escape any \" in the URL.\n            var safeUrl = Image!.Replace(\"\\\"\", \"%22\");\n            var w = Math.Max(ImageWidth, 1);\n            var h = Math.Max(ImageHeight, 1);\n            // FormattableString.Invariant: Opacity is a double — comma-decimal\n            // locales would emit an invalid value otherwise (mirrors the SVG path).\n            return FormattableString.Invariant(\n                $\"background-image: url(\\\"{safeUrl}\\\"); background-repeat: repeat; background-size: {w}px {h}px; opacity: {Opacity};\");\n        }\n    }\n\n    private string EncodedSvg\n    {\n        get\n        {\n            if (string.IsNullOrEmpty(Text)) return \"\";\n\n            var textLength = Text.Length * FontSize * 0.6;\n            var svgWidth = Math.Max(Gap + textLength, 200);\n            var svgHeight = Math.Max(Gap + FontSize * 2, 100);\n\n            // FormattableString.Invariant: svgWidth/svgHeight are doubles — with\n            // CurrentCulture interpolation, comma-decimal locales emitted\n            // width=\"236,8\" / rotate(-22 118,4 50), invalid SVG → no watermark.\n            // (Single interpolated string: concatenating $-strings degrades to\n            // string and can't bind to the FormattableString overload.)\n            var svg = FormattableString.Invariant($\"<svg xmlns=\\\"http://www.w3.org/2000/svg\\\" width=\\\"{svgWidth}\\\" height=\\\"{svgHeight}\\\"><text x=\\\"50%\\\" y=\\\"50%\\\" text-anchor=\\\"middle\\\" dominant-baseline=\\\"middle\\\" font-size=\\\"{FontSize}\\\" fill=\\\"currentColor\\\" opacity=\\\"{Opacity}\\\" transform=\\\"rotate({Rotation} {svgWidth / 2} {svgHeight / 2})\\\">{System.Net.WebUtility.HtmlEncode(Text)}</text></svg>\");\n\n            return Uri.EscapeDataString(svg);\n        }\n    }\n}\n"
+      "content": "@namespace Lumeo\n\n<div class=\"@CssClass\" @attributes=\"AdditionalAttributes\">\n    @ChildContent\n    <div aria-hidden=\"true\" class=\"pointer-events-none absolute inset-0 z-10\" style=\"@OverlayStyle\">\n    </div>\n</div>\n\n@code {\n    [Parameter] public string? Text { get; set; }\n\n    /// <summary>Optional image URL to tile as the watermark instead of <see cref=\"Text\"/>.\n    /// When set, the image is repeated edge-to-edge; <see cref=\"ImageWidth\"/>/<see cref=\"ImageHeight\"/>\n    /// control each tile's size and <see cref=\"Opacity\"/> dims it. Takes precedence over\n    /// <see cref=\"Text\"/> when both are provided.</summary>\n    [Parameter] public string? Image { get; set; }\n\n    /// <summary>Tile width in px for the <see cref=\"Image\"/> watermark. Default 120.</summary>\n    [Parameter] public int ImageWidth { get; set; } = 120;\n\n    /// <summary>Tile height in px for the <see cref=\"Image\"/> watermark. Default 64.</summary>\n    [Parameter] public int ImageHeight { get; set; } = 64;\n\n    [Parameter] public RenderFragment? ChildContent { get; set; }\n    [Parameter] public int Rotation { get; set; } = -22;\n    [Parameter] public int Gap { get; set; } = 100;\n    [Parameter] public int FontSize { get; set; } = 14;\n    [Parameter] public double Opacity { get; set; } = 0.1;\n    [Parameter] public string? Class { get; set; }\n    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }\n\n    private string CssClass => Cx.Merge(\"relative\", Class);\n\n    // Image mode wins when an Image URL is supplied; otherwise fall back to the\n    // generated SVG text watermark (empty when no Text either).\n    //\n    // Text mode paints the SVG as a CSS mask over `background-color: currentColor`\n    // rather than as a background-image. `currentColor` inside a background-image\n    // data-URI SVG cannot reach the host element's color — it resolves to the\n    // isolated SVG document's default (black), so the watermark was invisible/wrong\n    // in dark mode. A mask only uses the SVG's alpha channel (the text's\n    // `opacity` dims it), while the visible color comes from the overlay div's own\n    // `background-color: currentColor`, which DOES inherit the host theme color.\n    private string OverlayStyle => !string.IsNullOrEmpty(Image)\n        ? ImageOverlayStyle\n        : FormattableString.Invariant($\"-webkit-mask-image: url('data:image/svg+xml,{EncodedSvg}'); mask-image: url('data:image/svg+xml,{EncodedSvg}'); -webkit-mask-repeat: repeat; mask-repeat: repeat; background-color: currentColor;\");\n\n    private string ImageOverlayStyle\n    {\n        get\n        {\n            // Tile the image at its own ImageWidth × ImageHeight, repeated edge to\n            // edge, with the whole layer dimmed by Opacity. (Gap is text-mode tile\n            // spacing — a non-distorting CSS image gap isn't expressible in a single\n            // background, so it doesn't apply here.) Escape any \" in the URL.\n            var safeUrl = Image!.Replace(\"\\\"\", \"%22\");\n            var w = Math.Max(ImageWidth, 1);\n            var h = Math.Max(ImageHeight, 1);\n            // FormattableString.Invariant: Opacity is a double — comma-decimal\n            // locales would emit an invalid value otherwise (mirrors the SVG path).\n            return FormattableString.Invariant(\n                $\"background-image: url(\\\"{safeUrl}\\\"); background-repeat: repeat; background-size: {w}px {h}px; opacity: {Opacity};\");\n        }\n    }\n\n    private string EncodedSvg\n    {\n        get\n        {\n            if (string.IsNullOrEmpty(Text)) return \"\";\n\n            var textLength = Text.Length * FontSize * 0.6;\n            var svgWidth = Math.Max(Gap + textLength, 200);\n            var svgHeight = Math.Max(Gap + FontSize * 2, 100);\n\n            // FormattableString.Invariant: svgWidth/svgHeight are doubles — with\n            // CurrentCulture interpolation, comma-decimal locales emitted\n            // width=\"236,8\" / rotate(-22 118,4 50), invalid SVG → no watermark.\n            // (Single interpolated string: concatenating $-strings degrades to\n            // string and can't bind to the FormattableString overload.)\n            //\n            // fill is a solid opaque color (not currentColor): this SVG is used as a\n            // CSS mask, so only its alpha matters — the theme color comes from the\n            // overlay div's `background-color: currentColor` (see OverlayStyle). The\n            // text's `opacity` carries through the mask alpha to dim the watermark.\n            var svg = FormattableString.Invariant($\"<svg xmlns=\\\"http://www.w3.org/2000/svg\\\" width=\\\"{svgWidth}\\\" height=\\\"{svgHeight}\\\"><text x=\\\"50%\\\" y=\\\"50%\\\" text-anchor=\\\"middle\\\" dominant-baseline=\\\"middle\\\" font-size=\\\"{FontSize}\\\" fill=\\\"#000\\\" opacity=\\\"{Opacity}\\\" transform=\\\"rotate({Rotation} {svgWidth / 2} {svgHeight / 2})\\\">{System.Net.WebUtility.HtmlEncode(Text)}</text></svg>\");\n\n            return Uri.EscapeDataString(svg);\n        }\n    }\n}\n"
     }
   ],
   "slots": [

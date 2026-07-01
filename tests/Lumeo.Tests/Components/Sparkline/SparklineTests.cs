@@ -85,6 +85,42 @@ public class SparklineTests : IAsyncLifetime
         Assert.NotNull(cut.Find("circle"));
     }
 
+    // Regression (battle-wave3 #57, edge-data): a single data point used to render an
+    // invisible Line/Area sparkline — the polyline had a single coordinate ("50,16") so
+    // no line segment was drawn, and the Area polygon collapsed to zero width ("50,32
+    // 50,16 50,32"). The fix emits a flat full-width line for n == 1.
+    [Fact]
+    public void Line_SinglePoint_Emits_Visible_Flat_Polyline()
+    {
+        var cut = _ctx.Render<Lumeo.Sparkline>(p => p
+            .Add(s => s.Values, new double[] { 5 })
+            .Add(s => s.Type, Lumeo.Sparkline.SparkType.Line));
+
+        var poly = cut.Find("polyline");
+        var points = poly.GetAttribute("points") ?? string.Empty;
+        var parts = points.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        // One coordinate pair = no visible segment; the fix yields >= 2 points.
+        Assert.True(parts.Length >= 2, $"Expected a visible line (>=2 points) but got '{points}'");
+    }
+
+    [Fact]
+    public void Area_SinglePoint_Emits_NonDegenerate_Polygon()
+    {
+        var cut = _ctx.Render<Lumeo.Sparkline>(p => p
+            .Add(s => s.Values, new double[] { 5 })
+            .Add(s => s.Type, Lumeo.Sparkline.SparkType.Area));
+
+        var poly = cut.Find("polygon");
+        var points = poly.GetAttribute("points") ?? string.Empty;
+        var distinctX = points
+            .Split(' ', StringSplitOptions.RemoveEmptyEntries)
+            .Select(pt => pt.Split(',')[0])
+            .Distinct()
+            .Count();
+        // Before the fix every point shared x=50 (zero-width, invisible polygon).
+        Assert.True(distinctX >= 2, $"Expected the area polygon to span width but got '{points}'");
+    }
+
     [Fact]
     public void Custom_Color_Propagates_To_Stroke()
     {

@@ -133,7 +133,7 @@ public class SidebarTests : IAsyncLifetime
     {
         var cut = RenderSidebar(includeTrigger: true);
 
-        Assert.NotNull(cut.Find("button[title='Toggle sidebar']"));
+        Assert.NotNull(cut.Find("button[aria-label='Toggle sidebar']"));
     }
 
     [Fact]
@@ -142,7 +142,7 @@ public class SidebarTests : IAsyncLifetime
         // When not collapsed, should show PanelLeftClose icon
         var cut = RenderSidebar(isCollapsed: false, includeTrigger: true);
 
-        var button = cut.Find("button[title='Toggle sidebar']");
+        var button = cut.Find("button[aria-label='Toggle sidebar']");
         Assert.NotNull(button);
         // The icon is rendered by Blazicon — just check the button is present with correct state
         Assert.DoesNotContain("disabled", button.GetAttribute("class") ?? "");
@@ -156,7 +156,7 @@ public class SidebarTests : IAsyncLifetime
 
         var cut = RenderSidebar(isCollapsed: false, isCollapsedChanged: callback, includeTrigger: true);
 
-        cut.Find("button[title='Toggle sidebar']").Click();
+        cut.Find("button[aria-label='Toggle sidebar']").Click();
 
         Assert.True(receivedValue, "Clicking trigger when expanded should set IsCollapsed to true");
     }
@@ -169,7 +169,7 @@ public class SidebarTests : IAsyncLifetime
 
         var cut = RenderSidebar(isCollapsed: true, isCollapsedChanged: callback, includeTrigger: true);
 
-        cut.Find("button[title='Toggle sidebar']").Click();
+        cut.Find("button[aria-label='Toggle sidebar']").Click();
 
         Assert.False(receivedValue, "Clicking trigger when collapsed should set IsCollapsed to false");
     }
@@ -179,7 +179,7 @@ public class SidebarTests : IAsyncLifetime
     {
         var cut = RenderSidebar(includeTrigger: true);
 
-        var button = cut.Find("button[title='Toggle sidebar']");
+        var button = cut.Find("button[aria-label='Toggle sidebar']");
         var cls = button.GetAttribute("class") ?? "";
         Assert.Contains("inline-flex", cls);
         Assert.Contains("rounded-md", cls);

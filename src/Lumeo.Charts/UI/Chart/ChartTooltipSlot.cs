@@ -21,7 +21,7 @@ public sealed record ChartTooltipSlotInfo(
 ///
 /// <para>The owner-keyed <see cref="Set(object, ChartTooltipSlotInfo)"/> /
 /// <see cref="Clear(object)"/> pair guards against a stale child disposing AFTER a
-/// new one has already registered &mdash; without it, the disposal would wipe out
+/// new one has already registered — without it, the disposal would wipe out
 /// the newer registration and the tooltip portal would silently vanish.</para>
 /// </summary>
 public sealed class ChartTooltipSlotRegistration

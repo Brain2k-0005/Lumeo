@@ -48,6 +48,16 @@
         </div>
     </ComponentDemo>
 
+    @* ── Demo 2b: Lazy loading ──────────────────────────────────────────────── *@
+    <ComponentDemo Title="Lazy loading folders" Description="Folders with Children == null are loaded on demand via the LoadChildren callback the first time they're opened.">
+        <div style="height: 420px">
+            <FileManager Root="@_lazyTree"
+                         @bind-CurrentPath="_currentPathLazy"
+                         @bind-SelectedNode="_selectedNodeLazy"
+                         LoadChildren="@LoadFolderChildren" />
+        </div>
+    </ComponentDemo>
+
     @* ── Demo 3: Rename / Delete wired up ─────────────────────────────────── *@
     <ComponentDemo Title="With Rename and Delete" Description="Right-click any item or use the toolbar to rename or delete. Changes are applied to the in-memory sample tree." Code="@_renameDeleteCode">
         <div style="height: 420px">
@@ -251,11 +261,40 @@
     private string? _currentPath;
     private string? _currentPath2;
     private string? _currentPath3;
+    private string? _currentPathLazy;
     private FileSystemNode? _selectedNode;
     private FileSystemNode? _selectedNode2;
     private FileSystemNode? _selectedNode3;
+    private FileSystemNode? _selectedNodeLazy;
     private string? _openedFile;
     private string? _statusMessage;
+
+    // ── Lazy-loaded tree (folders start with Children == null) ────────────────
+    private readonly List<FileSystemNode> _lazyTree =
+    [
+        new FileSystemNode { Id = "lazy-docs",   Name = "Documents", IsFolder = true },
+        new FileSystemNode { Id = "lazy-images", Name = "Images",    IsFolder = true },
+        new FileSystemNode { Id = "lazy-readme", Name = "README.md", IsFolder = false, Size = 2_048 },
+    ];
+
+    private async Task<List<FileSystemNode>> LoadFolderChildren(FileSystemNode folder)
+    {
+        // Simulate an async fetch; return in-memory children.
+        await Task.Delay(400);
+        return folder.Id switch
+        {
+            "lazy-docs" =>
+            [
+                new FileSystemNode { Id = "lazy-doc-1", Name = "spec.pdf",  IsFolder = false, Size = 256_000 },
+                new FileSystemNode { Id = "lazy-doc-2", Name = "todo.md",   IsFolder = false, Size = 1_024 },
+            ],
+            "lazy-images" =>
+            [
+                new FileSystemNode { Id = "lazy-img-1", Name = "hero.png",  IsFolder = false, Size = 1_048_576 },
+            ],
+            _ => [],
+        };
+    }
 
     // ── Sample tree (shared for demos 1 and 2) ────────────────────────────────
 

@@ -114,4 +114,37 @@ public class TouchRippleTests : IAsyncLifetime
 
         Assert.Contains("tr-x", cut.Find("div").GetAttribute("class"));
     }
+
+    // #67 — a negative DurationMs was emitted verbatim into the --ripple-duration
+    // CSS var. Math.Max(0, DurationMs) now clamps it so the timing var is never
+    // negative (paired with the Task.Delay clamp below).
+    [Fact]
+    public void Negative_DurationMs_Clamps_Css_Duration_Var_To_Zero()
+    {
+        var cut = _ctx.Render<Lumeo.TouchRipple>(p => p.Add(x => x.DurationMs, -100));
+
+        var style = cut.Find("div").GetAttribute("style") ?? string.Empty;
+        Assert.Contains("--ripple-duration: 0ms", style);
+        Assert.DoesNotContain("-100ms", style);
+    }
+
+    // #67 — RemoveAfterDelayAsync called Task.Delay(DurationMs), which throws
+    // ArgumentOutOfRangeException for any negative value other than -1. The
+    // throw escaped the fire-and-forget continuation (the catch only handles
+    // TaskCanceledException), so the cleanup never ran and the ripple entry
+    // leaked permanently. With the Math.Max(0, DurationMs) clamp the delay
+    // settles immediately and the span is removed.
+    [Fact]
+    public async Task Negative_DurationMs_Removes_Ripple_Without_Leaking()
+    {
+        var cut = _ctx.Render<Lumeo.TouchRipple>(p => p.Add(x => x.DurationMs, -100));
+
+        await cut.Find("div").PointerDownAsync(new PointerEventArgs { ClientX = 5, ClientY = 5 });
+
+        // Without the clamp, Task.Delay(-100) throws inside the fire-and-forget
+        // cleanup, the entry is never removed, and the span leaks forever — so
+        // this eventual-empty assertion times out. With the clamp the delay
+        // settles and the span is removed.
+        cut.WaitForAssertion(() => Assert.Empty(cut.FindAll("span.lumeo-touch-ripple-span")));
+    }
 }

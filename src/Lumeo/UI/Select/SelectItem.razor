@@ -71,16 +71,21 @@
     }
 
     private string CssClass => Cx.Merge(
-        "relative flex w-full select-none items-center gap-2 rounded-sm py-1.5 pl-2 pr-8 text-sm outline-none",
+        "relative flex w-full select-none items-center gap-2 rounded-sm py-1.5 ps-2 pe-8 text-sm outline-none",
         Disabled ? "opacity-50 cursor-not-allowed pointer-events-none" : "cursor-pointer hover:bg-accent hover:text-accent-foreground",
         Cx.When(IsFocused && !Disabled, "bg-accent text-accent-foreground"),
         Class);
 
     protected override void OnParametersSet()
     {
-        if (Visible && !_registered)
+        if (Visible)
         {
-            Context.RegisterItem(_itemId, Value);
+            // SearchValue (falling back to Value) is the text the search filter and
+            // type-to-jump match against — keep both features consistent. Disabled
+            // items register (so they still render) but are excluded from keyboard nav.
+            // RegisterItem upserts, so re-calling it whenever our inputs change keeps
+            // the registry in sync when Disabled/SearchValue flip while the menu is open.
+            Context.RegisterItem(_itemId, Value, SearchValue ?? Value, Disabled);
             _registered = true;
         }
         else if (!Visible && _registered)

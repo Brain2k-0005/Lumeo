@@ -107,10 +107,28 @@ public sealed class ComponentInteropService : IComponentInteropService
         return await _focus.GetMenuItemCount(module, containerId);
     }
 
+    public async ValueTask<string[]> GetOrderedDescendantIds(string containerId, string selector)
+    {
+        var module = await GetModuleAsync();
+        return await _focus.GetOrderedDescendantIds(module, containerId, selector);
+    }
+
     public async ValueTask<int> FocusMenuItemByTypeahead(string containerId, string query, int currentIndex)
     {
         var module = await GetModuleAsync();
         return await _focus.FocusMenuItemByTypeahead(module, containerId, query, currentIndex);
+    }
+
+    public async ValueTask SaveFocus(string key)
+    {
+        var module = await GetModuleAsync();
+        await module.InvokeVoidAsync("saveFocus", key);
+    }
+
+    public async ValueTask RestoreFocus(string key)
+    {
+        var module = await GetModuleAsync();
+        await module.InvokeVoidAsync("restoreFocus", key);
     }
 
     public async ValueTask LockScroll()
@@ -243,14 +261,23 @@ public sealed class ComponentInteropService : IComponentInteropService
 
     // --- Floating Position ---
 
-    public ValueTask PositionFixed(string contentId, string referenceId, string align = "start", bool matchWidth = false, string side = "bottom")
+    public ValueTask<string> PositionFixed(string contentId, string referenceId, string align = "start", bool matchWidth = false, string side = "bottom")
         => PositionFixed(contentId, referenceId, align, matchWidth, side, 4);
 
-    public async ValueTask PositionFixed(string contentId, string referenceId, string align, bool matchWidth, string side, int offset)
+    public async ValueTask<string> PositionFixed(string contentId, string referenceId, string align, bool matchWidth, string side, int offset)
     {
         var module = await GetModuleAsync();
-        await _floatingPosition.PositionFixed(module, contentId, referenceId, align, matchWidth, side, offset);
+        return await _floatingPosition.PositionFixed(module, contentId, referenceId, align, matchWidth, side, offset);
     }
+
+    public async ValueTask<string> PositionFixed(string contentId, string referenceId, string align, bool matchWidth, string side, int offset, Func<string, Task>? onSideChanged)
+    {
+        var module = await GetModuleAsync();
+        return await _floatingPosition.PositionFixed(module, GetSelfRef(), contentId, referenceId, align, matchWidth, side, offset, onSideChanged);
+    }
+
+    [JSInvokable]
+    public async Task OnPositionSideChanged(string contentId, string side) => await _floatingPosition.OnSideChanged(contentId, side);
 
     public async ValueTask UnpositionFixed(string contentId)
     {
@@ -846,12 +873,25 @@ public sealed class ComponentInteropService : IComponentInteropService
         catch (JSDisconnectedException) { }
     }
 
+    public async ValueTask SetInputValue(string elementId, string value)
+    {
+        try
+        {
+            var module = await GetModuleAsync();
+            await module.InvokeVoidAsync("setInputValue", elementId, value);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
     // --- BackToTop ---
 
-    public async ValueTask RegisterBackToTop(string id, int threshold, Func<bool, Task> handler)
+    public ValueTask RegisterBackToTop(string id, int threshold, Func<bool, Task> handler)
+        => RegisterBackToTop(id, threshold, handler, null);
+
+    public async ValueTask RegisterBackToTop(string id, int threshold, Func<bool, Task> handler, string? target)
     {
         var module = await GetModuleAsync();
-        await _scroll.RegisterBackToTop(module, GetSelfRef(), id, threshold, handler);
+        await _scroll.RegisterBackToTop(module, GetSelfRef(), id, threshold, handler, target);
     }
 
     public async ValueTask UnregisterBackToTop(string id)
@@ -860,10 +900,12 @@ public sealed class ComponentInteropService : IComponentInteropService
         await _scroll.UnregisterBackToTop(module, id);
     }
 
-    public async ValueTask ScrollToTop()
+    public ValueTask ScrollToTop() => ScrollToTop(null);
+
+    public async ValueTask ScrollToTop(string? target)
     {
         var module = await GetModuleAsync();
-        await _scroll.ScrollToTop(module);
+        await _scroll.ScrollToTop(module, target);
     }
 
     [JSInvokable]
@@ -903,6 +945,18 @@ public sealed class ComponentInteropService : IComponentInteropService
         {
             var module = await GetModuleAsync();
             await module.InvokeVoidAsync("ripple.detach", element);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
+    // --- File input reset (#70) ---
+
+    public async ValueTask ResetFileInput(Microsoft.AspNetCore.Components.ElementReference element)
+    {
+        try
+        {
+            var module = await GetModuleAsync();
+            await module.InvokeVoidAsync("resetFileInput", element);
         }
         catch (JSDisconnectedException) { }
     }
@@ -1356,6 +1410,16 @@ public sealed class ComponentInteropService : IComponentInteropService
         catch (JSDisconnectedException) { }
     }
 
+    public async Task GanttRefreshAsync(string id, object options)
+    {
+        try
+        {
+            var module = await GetGanttModuleAsync();
+            await module.InvokeVoidAsync("gantt.refresh", id, options);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
     public async Task GanttChangeViewModeAsync(string id, string mode)
     {
         try
@@ -1446,6 +1510,9 @@ public sealed class ComponentInteropService : IComponentInteropService
     public ValueTask<string?> RichTextPromptLinkAsync(string? initial)
         => _richText.PromptLinkAsync(_jsRuntime, initial);
 
+    public ValueTask RichTextSetAriaAttributesAsync(string id, bool ariaInvalid, string? ariaDescribedBy)
+        => _richText.SetAriaAttributesAsync(_jsRuntime, id, ariaInvalid, ariaDescribedBy);
+
     // --- SignaturePad ---
     // SignaturePad ships its own tiny JS module (signature-pad.js) that wires
     // pointer events to a canvas. Loaded lazily so apps that never sign a
@@ -1459,7 +1526,7 @@ public sealed class ComponentInteropService : IComponentInteropService
         return _signaturePadModule;
     }
 
-    public async ValueTask SignaturePadInit(string elementId, object options, DotNetObjectReference<SignaturePad> dotNetRef)
+    public async ValueTask SignaturePadInit<T>(string elementId, object options, DotNetObjectReference<T> dotNetRef) where T : class
     {
         try
         {

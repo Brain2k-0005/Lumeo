@@ -55,7 +55,7 @@ public class TransferSelectAllDisabledTests : IAsyncLifetime
     {
         var cut = Render();
         var cherry = cut.FindAll("button[role='checkbox']")
-            .First(c => (c.ParentElement?.TextContent ?? "").Contains("Cherry"));
+            .First(c => (c.ParentElement?.ParentElement?.TextContent ?? "").Contains("Cherry"));
         Assert.True(cherry.HasAttribute("disabled"));
     }
 
@@ -92,7 +92,7 @@ public class TransferSelectAllDisabledTests : IAsyncLifetime
         var cut = Render();
         // Select just one enabled item (Apple).
         var apple = cut.FindAll("button[role='checkbox']")
-            .First(c => (c.ParentElement?.TextContent ?? "").Contains("Apple"));
+            .First(c => (c.ParentElement?.ParentElement?.TextContent ?? "").Contains("Apple"));
         apple.Click();
 
         // The header select-all is now indeterminate (aria-checked="mixed"),
@@ -116,7 +116,7 @@ public class TransferSelectAllDisabledTests : IAsyncLifetime
     {
         var cut = Render();
         var cherry = cut.FindAll("button[role='checkbox']")
-            .First(c => (c.ParentElement?.TextContent ?? "").Contains("Cherry"));
+            .First(c => (c.ParentElement?.ParentElement?.TextContent ?? "").Contains("Cherry"));
         // A disabled button's click is a no-op; the count stays 0 / 3.
         cherry.Click();
         Assert.Contains("0 / 3", cut.Markup);

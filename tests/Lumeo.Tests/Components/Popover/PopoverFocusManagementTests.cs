@@ -53,8 +53,14 @@ public class PopoverFocusManagementTests : IAsyncLifetime
     }
 
     [Fact]
-    public void Closing_Returns_Focus_To_Trigger_Wrapper()
+    public void Closing_Does_Not_Unconditionally_Focus_The_Wrapper()
     {
+        // battle-wave2 #87 (keyboard-a11y): the close path used to unconditionally
+        // call FocusElement(WrapperId), which stole focus back to the trigger even
+        // on a programmatic/external close when the user's focus had moved on. The
+        // fix routes the restore through SaveFocus/RestoreFocus (the non-modal
+        // idiom shared with Select/DropdownMenu/ContextMenu) — RestoreFocus no-ops
+        // when the saved element is gone, so it never force-focuses the wrapper.
         var cut = _ctx.Render<L.Popover>(p => p
             .Add(x => x.Open, true)
             .Add(x => x.ChildContent, Children));
@@ -64,11 +70,14 @@ public class PopoverFocusManagementTests : IAsyncLifetime
 
         var focusCallsBeforeClose = _interop.FocusElementCalls.Count;
 
-        // Close the popover — content cleanup should focus the wrapper.
+        // Close the popover.
         cut.Render(p => p.Add(x => x.Open, false));
 
-        cut.WaitForAssertion(() =>
-            Assert.Contains(_interop.FocusElementCalls.Skip(focusCallsBeforeClose),
-                id => id.StartsWith("popover-") && !id.StartsWith("popover-content-")));
+        // No new FocusElement(WrapperId) call: the wrapper (a non-content popover-*
+        // id) must NOT be force-focused on close. Before the fix this assertion
+        // failed because Cleanup() always called FocusElement(WrapperId).
+        cut.WaitForState(() => !cut.Markup.Contains("Popover content"));
+        Assert.DoesNotContain(_interop.FocusElementCalls.Skip(focusCallsBeforeClose),
+            id => id.StartsWith("popover-") && !id.StartsWith("popover-content-"));
     }
 }

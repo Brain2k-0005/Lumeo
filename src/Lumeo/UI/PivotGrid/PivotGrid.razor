@@ -31,7 +31,7 @@
                                 @foreach (var rf in _rowFields)
                                 {
                                     <th role="columnheader" rowspan="@HeaderRowSpan"
-                                        class="@HeaderCellClass align-bottom text-left">@rf.Header</th>
+                                        class="@HeaderCellClass align-bottom text-start">@rf.Header</th>
                                 }
                             }
                             @foreach (var entry in row)
@@ -52,7 +52,7 @@
                                 @foreach (var m in _measures)
                                 {
                                     <th role="columnheader"
-                                        class="@($"{HeaderCellClass} text-right {(leaf.IsGrandTotal ? "bg-muted/50" : "")}")">@m.Header</th>
+                                        class="@($"{HeaderCellClass} text-end {(leaf.IsGrandTotal ? "bg-muted/50" : "")}")">@m.Header</th>
                                 }
                             }
                         </tr>
@@ -65,11 +65,11 @@
                             <tr role="row" class="border-b border-border/40">
                                 @foreach (var rf in _rowFields)
                                 {
-                                    <th role="columnheader" class="@HeaderCellClass align-bottom text-left">@rf.Header</th>
+                                    <th role="columnheader" class="@HeaderCellClass align-bottom text-start">@rf.Header</th>
                                 }
                                 @foreach (var m in _measures)
                                 {
-                                    <th role="columnheader" class="@HeaderCellClass text-right">@m.Header</th>
+                                    <th role="columnheader" class="@HeaderCellClass text-end">@m.Header</th>
                                 }
                             </tr>
                         }
@@ -126,7 +126,7 @@
                                         var mIndex = mi;
                                         var theCol = col;
                                         <td role="cell"
-                                            class="@($"{DataCellClass} tabular-nums text-right {(col.IsGrandTotal ? "bg-muted/30 font-medium" : "")}")"
+                                            class="@($"{DataCellClass} tabular-nums text-end {(col.IsGrandTotal ? "bg-muted/30 font-medium" : "")}")"
                                             @onclick="() => OnCellClickHandler(row, theCol, mIndex)">@measure.FormatValue(measure.Compute(items))</td>
                                     }
                                 }
@@ -137,7 +137,7 @@
                                 {
                                     var measure = _measures[mi];
                                     var mIndex = mi;
-                                    <td role="cell" class="@DataCellClass tabular-nums text-right"
+                                    <td role="cell" class="@DataCellClass tabular-nums text-end"
                                         @onclick="() => OnCellClickHandler(row, null, mIndex)">@measure.FormatValue(measure.Compute(row.Node.Items))</td>
                                 }
                             }
@@ -154,7 +154,7 @@
                                     @foreach (var m in _measures)
                                     {
                                         <td role="cell"
-                                            class="@($"{DataCellClass} tabular-nums text-right {(col.IsGrandTotal ? "bg-muted/50" : "")}")">@m.FormatValue(m.Compute(col.Items))</td>
+                                            class="@($"{DataCellClass} tabular-nums text-end {(col.IsGrandTotal ? "bg-muted/50" : "")}")">@m.FormatValue(m.Compute(col.Items))</td>
                                     }
                                 }
                             }
@@ -162,7 +162,7 @@
                             {
                                 @foreach (var m in _measures)
                                 {
-                                    <td role="cell" class="@DataCellClass tabular-nums text-right">@m.FormatValue(m.Compute(_allItems))</td>
+                                    <td role="cell" class="@DataCellClass tabular-nums text-end">@m.FormatValue(m.Compute(_allItems))</td>
                                 }
                             }
                         </tr>
@@ -232,6 +232,7 @@
     private int _lastDimsHash;
     private bool _lastShowRowGrandTotal;
     private bool _lastShowSubtotals;
+    private string? _lastGrandTotalLabel;
 
     private string WrapperClass => Cx.Merge("rounded-lg border border-border/40 bg-card text-foreground overflow-hidden", Class);
     private string HeaderCellClass => (Compact ? "px-2 py-1.5" : "px-3 py-2") + " text-xs font-medium text-foreground bg-muted/40 border border-border/40 whitespace-nowrap";
@@ -265,7 +266,8 @@
         if (ReferenceEquals(Items, _lastItemsRef)
             && dimsHash == _lastDimsHash
             && ShowRowGrandTotal == _lastShowRowGrandTotal
-            && ShowSubtotals == _lastShowSubtotals)
+            && ShowSubtotals == _lastShowSubtotals
+            && GrandTotalLabel == _lastGrandTotalLabel)
         {
             return;
         }
@@ -274,6 +276,7 @@
         _lastDimsHash = dimsHash;
         _lastShowRowGrandTotal = ShowRowGrandTotal;
         _lastShowSubtotals = ShowSubtotals;
+        _lastGrandTotalLabel = GrandTotalLabel;
 
         _allItems = (Items ?? Enumerable.Empty<TItem>()).ToList();
         _rowFields = RowFields ?? Array.Empty<PivotField<TItem>>();
@@ -305,12 +308,59 @@
         // --- aggregation lookup: rowKey -> colKey -> items ---
         _cellItems = BuildCellLookup(_root);
 
+        // Prune stale collapse state: keep only keys that correspond to a group
+        // node in the freshly-built tree. Without this, a collapsed group whose
+        // path later disappears (data change) leaks its key forever, and a future
+        // same-path group would be silently re-collapsed. Only done on a real
+        // rebuild — the empty-data early return above deliberately leaves
+        // _collapsed untouched so a transient empty blip can't wipe it.
+        if (_collapsed.Count > 0)
+        {
+            var liveGroupKeys = new HashSet<string>();
+            CollectGroupKeys(_root, liveGroupKeys);
+            _collapsed.IntersectWith(liveGroupKeys);
+        }
+
         // --- flatten into display rows respecting collapse ---
         _displayRows = new();
         FlattenRows(_root);
     }
 
+    // Collect the Key of every group (non-leaf) row node in the tree — these are
+    // exactly the keys that can ever be added to _collapsed (ToggleCollapse only
+    // accepts nodes with children).
+    private static void CollectGroupKeys(RowNode node, HashSet<string> keys)
+    {
+        foreach (var child in node.Children)
+        {
+            if (child.Children.Count > 0)
+            {
+                keys.Add(child.Key);
+                CollectGroupKeys(child, keys);
+            }
+        }
+    }
+
     // ---- Column-tree construction --------------------------------------
+
+    // Separator + length-prefix scheme for column path-keys, mirroring RowNode.Key.
+    // The Unit Separator control char (U+001F) cannot occur in displayed values, so
+    // segment boundaries are unambiguous; length-prefixing each value (with a -1
+    // marker for null) stops colliding column values from cross-contaminating cells
+    // (e.g. ["1","0"] vs ["10",""], or a literal "_" aliasing a null key).
+    private const char ColumnPathSep = (char)0x1F;
+
+    // Append one column segment to <paramref name="sb"/> in the hardened format.
+    // <paramref name="prependSep"/> controls whether the U+001F separator precedes it
+    // (false for the first segment so leaf keys and per-item keys agree byte-for-byte).
+    private static void AppendColumnSegment(System.Text.StringBuilder sb, int level, object? rawKey, bool prependSep)
+    {
+        if (prependSep) sb.Append(ColumnPathSep);
+        sb.Append('L').Append(level).Append('=');
+        var s = rawKey?.ToString();
+        if (s is null) sb.Append("-1:");
+        else sb.Append(s.Length).Append(':').Append(s);
+    }
 
     private PivotColumnNode BuildColumnRoot()
     {
@@ -358,7 +408,9 @@
         {
             var label = field.FormatValue(g.Key);
             var keyStr = g.Key?.ToString() ?? "_";
-            var pathKey = parent.PathKey.Length == 0 ? $"L{level}={keyStr}" : $"{parent.PathKey}|L{level}={keyStr}";
+            var sb = new System.Text.StringBuilder(parent.PathKey);
+            AppendColumnSegment(sb, level, g.Key, prependSep: parent.PathKey.Length != 0);
+            var pathKey = sb.ToString();
             var node = new PivotColumnNode(label, keyStr, pathKey, level, isGrandTotal: false)
             {
                 RawKey = g.Key,
@@ -384,30 +436,32 @@
     }
 
     private static void CollectColumnLeaves(PivotColumnNode node, List<ColumnLeaf> leaves)
+        => CollectColumnLeaves(node, leaves, new List<object?>());
+
+    private static void CollectColumnLeaves(PivotColumnNode node, List<ColumnLeaf> leaves, List<object?> ancestorRawKeys)
     {
+        // Accumulate the actual RawKey chain (typed) from root-down so the leaf can
+        // carry it verbatim — this preserves the real column-field value types for
+        // drill-down instead of re-parsing the (string-only) PathKey.
+        var pushed = node.Level >= 0;
+        if (pushed) ancestorRawKeys.Add(node.RawKey);
+
         if (node.Level >= 0 && node.Children.Count == 0)
         {
-            // Build path-key array from root-down: this leaf already has a PathKey.
             leaves.Add(new ColumnLeaf(
                 Label: node.Label,
                 PathKey: node.PathKey,
-                Path: BuildPathFromNode(node),
+                Path: node.IsGrandTotal ? Array.Empty<object?>() : ancestorRawKeys.ToArray(),
                 Items: node.Items,
                 IsGrandTotal: node.IsGrandTotal));
-            return;
         }
-        foreach (var c in node.Children)
-            CollectColumnLeaves(c, leaves);
-    }
+        else
+        {
+            foreach (var c in node.Children)
+                CollectColumnLeaves(c, leaves, ancestorRawKeys);
+        }
 
-    private static object?[] BuildPathFromNode(PivotColumnNode leaf)
-    {
-        // The leaf's PathKey encodes ancestor segments — but we need RawKeys.
-        // Easier: walk the tree, since we built linearly, recreate via segments.
-        // Since we don't keep a parent ref, derive from the PathKey segments isn't ideal.
-        // For click-args we'll fall back to splitting PathKey, but raw click info uses Path stored on leaf.
-        // We populate Path on leaves below in another pass.
-        return leaf.PathOverride ?? Array.Empty<object?>();
+        if (pushed) ancestorRawKeys.RemoveAt(ancestorRawKeys.Count - 1);
     }
 
     private List<List<HeaderEntry>> BuildColumnHeaderRows(PivotColumnNode root)
@@ -576,14 +630,12 @@
     private string ComputeItemColumnPathKey(TItem item)
     {
         // Walk the column-field chain for this item and produce its leaf path-key,
-        // formatted identically to BuildColumnChildren.
+        // formatted identically to BuildColumnChildren via the shared helper.
         var sb = new System.Text.StringBuilder();
         for (var level = 0; level < _columnFields.Count; level++)
         {
-            if (level > 0) sb.Append('|');
             var key = _columnFields[level].Selector(item);
-            var keyStr = key?.ToString() ?? "_";
-            sb.Append('L').Append(level).Append('=').Append(keyStr);
+            AppendColumnSegment(sb, level, key, prependSep: level > 0);
         }
         return sb.ToString();
     }
@@ -611,31 +663,17 @@
         var matched = col is not null
             ? LookupCellItems(row.Node.Key, col.PathKey)
             : row.Node.Items;
-        // Decode raw column-keys from the leaf path (skip if grand-total or no columns).
+        // Use the typed RawKey chain captured on the leaf (skip if grand-total or no
+        // columns) so drill-down preserves the real column-field value types.
         var columnKeys = (col is null || col.IsGrandTotal)
             ? Array.Empty<object?>()
-            : DecodeColumnKeys(col);
+            : col.Path;
         var args = new PivotCellClickArgs(
             row.Node.Path.ToArray(),
             columnKeys,
             (measureIndex >= 0 && measureIndex < _measures.Count) ? _measures[measureIndex].Header : "",
             matched.Cast<object?>().ToArray());
         await OnCellClick.InvokeAsync(args);
-    }
-
-    private object?[] DecodeColumnKeys(ColumnLeaf leaf)
-    {
-        // PathKey format: "L0=val0|L1=val1|..." — return raw string segments per level.
-        if (string.IsNullOrEmpty(leaf.PathKey)) return Array.Empty<object?>();
-        var segments = leaf.PathKey.Split('|');
-        var result = new object?[segments.Length];
-        for (var i = 0; i < segments.Length; i++)
-        {
-            var seg = segments[i];
-            var eq = seg.IndexOf('=');
-            result[i] = eq >= 0 ? seg.Substring(eq + 1) : seg;
-        }
-        return result;
     }
 
     private static int CompareValues(object? a, object? b)
@@ -705,7 +743,6 @@
         public int Level { get; }
         public bool IsGrandTotal { get; }
         public object? RawKey { get; set; }
-        public object?[]? PathOverride { get; set; }
         public IReadOnlyList<TItem> Items { get; set; } = Array.Empty<TItem>();
         public List<PivotColumnNode> Children { get; } = new();
         public int LeafCount { get; set; }

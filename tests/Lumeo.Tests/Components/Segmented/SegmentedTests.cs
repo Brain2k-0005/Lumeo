@@ -187,4 +187,30 @@ public class SegmentedTests : IAsyncLifetime
         var rules = Assert.IsAssignableFrom<IReadOnlyList<PreventDefaultKeyRule>>(invocation.Arguments[1]);
         Assert.Contains("ArrowRight", rules.Select(r => r.Key));
     }
+
+    // --- #62: uncontrolled selection must survive an unrelated parent re-render ---
+
+    [Fact]
+    public void Uncontrolled_Selection_Survives_Unrelated_Reparam()
+    {
+        // No ValueChanged binding => uncontrolled. The user's click must be the
+        // source of truth. Previously SelectOption wrote into the Value [Parameter],
+        // so the next OnParametersSet re-applied the parent's (null) Value and wiped
+        // the selection. The fix keeps an internal _value seeded from Value only when
+        // the PARENT actually changes it.
+        var cut = _ctx.Render<Lumeo.Segmented>(p => p
+            .Add(s => s.Options, CreateOptions()));
+
+        // Pick "month" by clicking it.
+        cut.FindAll("button[role='radio']").First(b => b.TextContent.Contains("Month")).Click();
+        Assert.Equal("true",
+            cut.FindAll("button[role='radio']").First(b => b.TextContent.Contains("Month")).GetAttribute("aria-checked"));
+
+        // An unrelated parent re-render (Block toggled) re-runs OnParametersSet with
+        // the SAME (null) Value parameter — it must NOT revert the selection.
+        cut.Render(p => p.Add(s => s.Block, true));
+
+        Assert.Equal("true",
+            cut.FindAll("button[role='radio']").First(b => b.TextContent.Contains("Month")).GetAttribute("aria-checked"));
+    }
 }

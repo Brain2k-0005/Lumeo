@@ -62,10 +62,18 @@
            point advertising drag-to-group when there's nowhere to drop). *@
         @if (Context?.ShowGroupPanel == true && Column.Groupable)
         {
-            <span class="inline-flex items-center justify-center h-5 w-5 rounded text-muted-foreground opacity-0 group-hover/th:opacity-100 transition-opacity cursor-grab"
-                  title="@L["DataGrid.DragToGroup"]">
-                <Blazicon Svg="Lucide.Group" class="h-3 w-3" />
-            </span>
+            <Tooltip>
+                <TooltipTrigger AsChild>
+                    <ChildContentSlot Context="slot">
+                        <span class="inline-flex items-center justify-center h-5 w-5 rounded text-muted-foreground opacity-0 group-hover/th:opacity-100 transition-opacity cursor-grab"
+                              aria-label="@L["DataGrid.DragToGroup"]"
+                              @attributes="slot.Attributes">
+                            <Blazicon Svg="Lucide.Group" class="h-3 w-3" />
+                        </span>
+                    </ChildContentSlot>
+                </TooltipTrigger>
+                <TooltipContent>@L["DataGrid.DragToGroup"]</TooltipContent>
+            </Tooltip>
         }
         @if (Column.Filterable)
         {
@@ -168,11 +176,13 @@
 
     private async Task HandleKeyDown(KeyboardEventArgs e)
     {
-        // Note: we intentionally do NOT preventDefault here. Doing it conditionally
-        // per-key in Blazor requires the directive value to be known at render time,
-        // which would also block Tab from leaving the grid. Arrow keys may scroll the
-        // container a little, but FocusElement() scrolls the target cell back into
-        // view, so the net effect is correct.
+        // Note: we don't preventDefault on the <th> here. A per-key
+        // @onkeydown:preventDefault directive's value is fixed at render time and
+        // would also swallow Tab (which must stay live to leave the grid). The
+        // page-scroll default of the nav keys (Arrow/Home/End/PageUp/PageDown/Space)
+        // is instead suppressed by a key-selective native listener registered on
+        // the table in DataGrid.OnAfterRenderAsync (RegisterPreventDefaultKeys) —
+        // these header keydowns bubble to it. (battle-test n=8)
         if (Context is null) return;
 
         if ((e.Key == "Enter" || e.Key == " " || e.Key == "Spacebar") && Column.Sortable)

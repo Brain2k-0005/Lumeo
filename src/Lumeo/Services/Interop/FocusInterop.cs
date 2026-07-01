@@ -19,6 +19,11 @@ internal sealed class FocusInterop
         return await module.InvokeAsync<int>("getMenuItemCount", containerId);
     }
 
+    public async ValueTask<string[]> GetOrderedDescendantIds(IJSObjectReference module, string containerId, string selector)
+    {
+        return await module.InvokeAsync<string[]>("getOrderedDescendantIds", containerId, selector);
+    }
+
     public async ValueTask<int> FocusMenuItemByTypeahead(IJSObjectReference module, string containerId, string query, int currentIndex)
     {
         return await module.InvokeAsync<int>("focusMenuItemByTypeahead", containerId, query, currentIndex);

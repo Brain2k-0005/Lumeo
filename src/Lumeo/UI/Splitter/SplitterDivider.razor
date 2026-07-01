@@ -3,6 +3,7 @@
 
 <div id="@_dividerId"
      role="separator"
+     data-splitter-divider
      aria-orientation="@(IsHorizontal ? "vertical" : "horizontal")"
      aria-valuenow="@LeadingPaneValue"
      aria-valuemin="@LeadingPaneMin"
@@ -23,6 +24,14 @@
 
 @code {
     [CascadingParameter] public Splitter.SplitterContext Context { get; set; } = default!;
+
+    // A scoped <DirectionProvider> cascades its direction here; when present it
+    // wins over the global ThemeService so a subtree can be RTL even if the app
+    // is LTR (and vice versa). Null when no provider wraps this divider — then
+    // the ambient theme direction applies.
+    [CascadingParameter(Name = "LumeoDirection")] private LayoutDirection? ScopedDirection { get; set; }
+    private LayoutDirection EffectiveDirection => ScopedDirection ?? Theme.CurrentDirection;
+
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
@@ -98,6 +107,9 @@
 
     protected override void OnInitialized()
     {
+        // Expose this divider's element id on its registry token so the group's
+        // DOM-order neighbour probe can locate the divider among its panes.
+        _token.Id = _dividerId;
         Context?.RegisterChild(_token);
     }
 
@@ -106,13 +118,15 @@
         if (!firstRender) return;
         try
         {
-            // Suppress page scroll for the resize arrows ONLY. The previous
+            // Suppress page scroll for the resize keys ONLY. The previous
             // blanket @onkeydown:preventDefault="true" also cancelled Tab on
             // a tabindex="0" element — a WCAG 2.1.2 keyboard trap: focus
             // could never leave the divider via keyboard.
+            // #194 — Home/End/PageUp/PageDown also scroll the page, so they join
+            // the arrows in the preventDefault set (Tab is still left untouched).
             var keys = IsHorizontal
-                ? new[] { "ArrowLeft", "ArrowRight" }
-                : new[] { "ArrowUp", "ArrowDown" };
+                ? new[] { "ArrowLeft", "ArrowRight", "Home", "End", "PageUp", "PageDown" }
+                : new[] { "ArrowUp", "ArrowDown", "Home", "End", "PageUp", "PageDown" };
             await Interop.RegisterPreventDefaultKeys(
                 _dividerId,
                 keys.Select(k => new PreventDefaultKeyRule(k)).ToArray());
@@ -161,18 +175,55 @@
     // preventDefault registration in OnAfterRenderAsync (Tab must pass).
     // In RTL, ArrowLeft/Right are swapped for horizontal splitters so the key
     // that points toward the visual "start" always shrinks the leading panel.
+    //
+    // #194 — WAI-ARIA window-splitter completeness: a separator must also honour
+    // Home/End (jump to the min/max bound) and PageUp/PageDown (a coarser step
+    // than the arrows). These reuse the exact same Context.ResizeNeighbors path
+    // and its built-in clamp, so they never touch pane registration or the
+    // distribution logic — Home/End simply request a delta large enough that the
+    // clamp lands the leading pane on its bound, and PageUp/PageDown request the
+    // larger step. The directional flip mirrors the Arrow keys: in a horizontal
+    // RTL splitter the key pointing toward the visual "start" shrinks the
+    // leading pane, so PageUp/PageDown and Home/End swap sign the same way.
     private async Task OnKeyDown(KeyboardEventArgs e)
     {
         if (Context is null) return;
         const double step = 10.0;
+        const double pageStep = step * 10.0; // PageUp/PageDown: 10× the arrow step.
+        // A delta far larger than any track so the ResizeNeighbors clamp pins the
+        // leading pane exactly on its (neighbour-aware) min/max bound for Home/End.
+        const double toBound = 1_000_000.0;
 
-        var isRtl = IsHorizontal && Theme.CurrentDirection == LayoutDirection.Rtl;
+        var isRtl = IsHorizontal && EffectiveDirection == LayoutDirection.Rtl;
+
+        // "shrink" = move the leading pane toward its minimum; "grow" = toward its
+        // maximum. In horizontal LTR a negative pixel delta shrinks the leading
+        // pane; RTL flips that. Vertical is always top-to-bottom (no flip).
+        var shrinkSign = isRtl ? 1.0 : -1.0;
+        var growSign = -shrinkSign;
+
         var delta = (IsHorizontal, e.Key) switch
         {
             (true,  "ArrowLeft")  => isRtl ?  step : -step,
             (true,  "ArrowRight") => isRtl ? -step :  step,
             (false, "ArrowUp")    => -step,
             (false, "ArrowDown")  =>  step,
+
+            // PageUp moves toward the start (shrink leading), PageDown toward the
+            // end (grow leading) — same convention as ArrowUp/ArrowLeft etc., but
+            // a coarser step. The clamp in ResizeNeighbors keeps it in bounds.
+            (true,  "PageUp")     => shrinkSign * pageStep,
+            (true,  "PageDown")   => growSign   * pageStep,
+            (false, "PageUp")     => -pageStep,
+            (false, "PageDown")   =>  pageStep,
+
+            // Home collapses the leading pane to its min bound; End expands it to
+            // its max bound. The oversized delta is clamped to land exactly there.
+            (true,  "Home")       => shrinkSign * toBound,
+            (true,  "End")        => growSign   * toBound,
+            (false, "Home")       => -toBound,
+            (false, "End")        =>  toBound,
+
             _ => 0.0
         };
 

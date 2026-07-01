@@ -3,7 +3,6 @@ using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using System.Text.RegularExpressions;
 using Lumeo.Cli;
 
 // Clean Ctrl+C handling — exit 130 per POSIX.
@@ -14,17 +13,18 @@ var root = new RootCommand("Lumeo CLI — vendorize Lumeo components into your p
 // --- init ---
 var initNamespaceOpt = new Option<string?>("--namespace", "Target namespace for generated components (e.g. MyApp.Components).");
 var initPathOpt = new Option<string?>("--path", "Components folder relative to the current directory. Default: Components/Ui");
-var initRegistryOpt = new Option<string?>("--registry", "Registry URL. Default: jsDelivr CDN at cdn.jsdelivr.net/gh/Brain2k-0005/Lumeo@<version>/src/Lumeo/wwwroot/registry/registry.json");
+var initRegistryOpt = new Option<string?>("--registry", "Registry URL. Default: https://lumeo.nativ.sh/registry.json");
 var initForceOpt = new Option<bool>("--force", "Overwrite an existing lumeo.json.");
 var initYesOpt = new Option<bool>(new[] { "--yes", "-y" }, "Accept all defaults, skip prompts (CI mode).");
 var initWithCssOpt = new Option<bool>("--with-css", "Copy Lumeo's pre-built CSS/JS into wwwroot/ (no Tailwind required).");
 var initWithTailwindOpt = new Option<bool>("--with-tailwind", "Scaffold Tailwind v4 setup (Styles/input.css + package.json).");
 var initNoAssetsOpt = new Option<bool>("--no-assets", "Skip asset setup entirely (you'll wire CSS up yourself).");
 var initLocalOpt = new Option<bool>("--local", "Copy assets from a local Lumeo checkout (dev only).");
+var initStandaloneOpt = new Option<bool>("--standalone", "Set up a fully NuGet-free project: 'add' vendors the whole Lumeo runtime into _LumeoRuntime/ and never adds a Lumeo PackageReference.");
 var initCmd = new Command("init", "Create a lumeo.json in the current directory.")
 {
     initNamespaceOpt, initPathOpt, initRegistryOpt, initForceOpt, initYesOpt,
-    initWithCssOpt, initWithTailwindOpt, initNoAssetsOpt, initLocalOpt,
+    initWithCssOpt, initWithTailwindOpt, initNoAssetsOpt, initLocalOpt, initStandaloneOpt,
 };
 initCmd.SetHandler(async ctx =>
 {
@@ -37,7 +37,8 @@ initCmd.SetHandler(async ctx =>
         WithCss: ctx.ParseResult.GetValueForOption(initWithCssOpt),
         WithTailwind: ctx.ParseResult.GetValueForOption(initWithTailwindOpt),
         NoAssets: ctx.ParseResult.GetValueForOption(initNoAssetsOpt),
-        Local: ctx.ParseResult.GetValueForOption(initLocalOpt));
+        Local: ctx.ParseResult.GetValueForOption(initLocalOpt),
+        Standalone: ctx.ParseResult.GetValueForOption(initStandaloneOpt));
     await Commands.Init(opts);
 });
 
@@ -52,10 +53,11 @@ var addDryOpt = new Option<bool>("--dry-run", "Print what would happen without w
 var addAllOpt = new Option<bool>("--all", "Install every component in the registry.");
 var addDiffOpt = new Option<bool>("--diff", "Show a unified diff against existing files; skip writing unless --yes is also set.");
 var addViewOpt = new Option<bool>("--view", "Preview content that WOULD be written for new files; skip writing unless --yes is also set.");
+var addVendorOpt = new Option<bool>("--vendor", "Vendor satellite-package components (Charts, DataGrid, …) as SOURCE — copy their files + JS assets into your project instead of adding the NuGet package. Off by default (satellites install via NuGet).");
 var addCmd = new Command("add", "Vendor a component (and its deps) into your project.")
 {
     addNameArg, addLocalOpt, addYesOpt, addForceOpt, addSkipOpt, addOverwriteOpt, addDryOpt,
-    addAllOpt, addDiffOpt, addViewOpt,
+    addAllOpt, addDiffOpt, addViewOpt, addVendorOpt,
 };
 addCmd.SetHandler(async ctx =>
 {
@@ -70,7 +72,8 @@ addCmd.SetHandler(async ctx =>
         DryRun: ctx.ParseResult.GetValueForOption(addDryOpt),
         All: ctx.ParseResult.GetValueForOption(addAllOpt),
         Diff: ctx.ParseResult.GetValueForOption(addDiffOpt),
-        View: ctx.ParseResult.GetValueForOption(addViewOpt));
+        View: ctx.ParseResult.GetValueForOption(addViewOpt),
+        Vendor: ctx.ParseResult.GetValueForOption(addVendorOpt));
     await Commands.Add(opts);
 });
 
@@ -238,6 +241,15 @@ depsInstallCmd.SetHandler(async ctx =>
 var depsCmd = new Command("deps", "Manage CDN JavaScript/CSS dependencies for self-hosting.");
 depsCmd.AddCommand(depsInstallCmd);
 
+// --- eject ---
+var ejectLocalOpt = new Option<bool>("--local", "Read the registry + runtime source from a local Lumeo checkout (dev).");
+var ejectCmd = new Command("eject",
+    "Convert this project to fully NuGet-free standalone: vendor the Lumeo runtime + already-installed components as source, then strip the Lumeo/satellite PackageReference(s).")
+{
+    ejectLocalOpt,
+};
+ejectCmd.SetHandler(async ctx => await Commands.Eject(ctx.ParseResult.GetValueForOption(ejectLocalOpt)));
+
 root.AddCommand(initCmd);
 root.AddCommand(addCmd);
 root.AddCommand(updateCmd);
@@ -251,6 +263,7 @@ root.AddCommand(updateAssetsCmd);
 root.AddCommand(depsCmd);
 root.AddCommand(presetCmd);
 root.AddCommand(themeCmd);
+root.AddCommand(ejectCmd);
 
 var parseExit = await root.InvokeAsync(args);
 // Respect handler-set Environment.ExitCode (e.g. `update --check` → 1 on drift).
@@ -311,6 +324,9 @@ namespace Lumeo.Cli
         [JsonPropertyName("assets")] public AssetsConfig? Assets { get; set; }
         [JsonPropertyName("theme")] public LumeoThemeConfig? Theme { get; set; }
         [JsonPropertyName("components")] public Dictionary<string, InstalledComponent>? Components { get; set; }
+        /// <summary>When true, the project is fully NuGet-free: `add` vendors the shared Lumeo
+        /// runtime into _LumeoRuntime/ and never emits a Lumeo/satellite PackageReference.</summary>
+        [JsonPropertyName("standalone")] public bool Standalone { get; set; }
     }
 
     internal sealed class RegistryEntry
@@ -321,6 +337,10 @@ namespace Lumeo.Cli
         [JsonPropertyName("nugetPackage")] public string? NugetPackage { get; set; }
         [JsonPropertyName("files")] public List<string> Files { get; set; } = new();
         [JsonPropertyName("dependencies")] public List<string> Dependencies { get; set; } = new();
+        /// <summary>External NuGet packages the vendored source references (e.g.
+        /// <c>Blazicons.Lucide</c> for icons). Without these the vendored .razor will
+        /// not compile, so <c>add</c> installs them alongside the component.</summary>
+        [JsonPropertyName("packageDependencies")] public List<string> PackageDependencies { get; set; } = new();
         [JsonPropertyName("cssVars")] public List<string> CssVars { get; set; } = new();
         [JsonPropertyName("registryUrl")] public string? RegistryUrl { get; set; }
     }
@@ -329,6 +349,24 @@ namespace Lumeo.Cli
     {
         [JsonPropertyName("version")] public string Version { get; set; } = "";
         [JsonPropertyName("components")] public Dictionary<string, RegistryEntry> Components { get; set; } = new();
+
+        /// <summary>wwwroot assets (interop JS/CSS) per satellite package, keyed by
+        /// nugetPackage (e.g. "Lumeo.Charts"). Paths are relative to the package
+        /// source root, e.g. "wwwroot/js/echarts-interop.js". Only used by
+        /// `lumeo add --vendor` to copy a satellite's static assets alongside its
+        /// vendored source so its <c>_content/&lt;package&gt;/...</c> imports keep resolving.</summary>
+        [JsonPropertyName("satelliteAssets")] public Dictionary<string, List<string>>? SatelliteAssets { get; set; }
+
+        /// <summary>The shared runtime closure (Internal/Services/Extensions/Attributes/Theming/
+        /// _Imports + overlay host) the CLI vendors verbatim into _LumeoRuntime/ — keeping the
+        /// Lumeo namespace — for standalone / NuGet-free projects.</summary>
+        [JsonPropertyName("runtime")] public RuntimeManifest? Runtime { get; set; }
+    }
+
+    internal sealed class RuntimeManifest
+    {
+        [JsonPropertyName("files")] public List<string> Files { get; set; } = new();
+        [JsonPropertyName("components")] public List<string> Components { get; set; } = new();
     }
 
     internal static class Paths
@@ -349,8 +387,13 @@ namespace Lumeo.Cli
         public static string LocalRegistryPath(string repoRoot) =>
             Path.Combine(repoRoot, "src", "Lumeo", "registry", "registry.json");
 
-        public static string LocalSourceRoot(string repoRoot) =>
-            Path.Combine(repoRoot, "src", "Lumeo");
+        public static string LocalSourceRoot(string repoRoot) => LocalSourceRoot(repoRoot, "Lumeo");
+
+        /// <summary>Source root for a component's owning package. Core lives under
+        /// src/Lumeo/; a satellite (nugetPackage e.g. "Lumeo.Charts") under
+        /// src/Lumeo.Charts/ — the same layout, just a different top folder.</summary>
+        public static string LocalSourceRoot(string repoRoot, string package) =>
+            Path.Combine(repoRoot, "src", string.IsNullOrEmpty(package) ? "Lumeo" : package);
 
         /// <summary>Map registry-relative path ("UI/Button/Button.razor") to a destination under componentsPath.</summary>
         public static string ToDestPath(string componentsRoot, string registryRelFile)
@@ -438,30 +481,45 @@ namespace Lumeo.Cli
         ///   2) Self-hosted with legacy "/raw/" convention (".../registry.json" → ".../raw/")
         ///   3) Anything else: append "/raw/" to the trimmed URL
         /// </summary>
-        public static string DeriveFileBaseUrl(string registryUrl)
+        public static string DeriveFileBaseUrl(string registryUrl, string package = "Lumeo")
         {
             const string marker = "/wwwroot/registry/registry.json";
+            string baseUrl;
             if (registryUrl.EndsWith(marker, StringComparison.OrdinalIgnoreCase))
-            {
                 // Strip marker, keep trailing slash so relative path (e.g. "UI/Button/Button.razor") lands at src/Lumeo/UI/...
-                return registryUrl.Substring(0, registryUrl.Length - marker.Length + 1);
+                baseUrl = registryUrl.Substring(0, registryUrl.Length - marker.Length + 1);
+            else if (registryUrl.Contains("/registry.json", StringComparison.OrdinalIgnoreCase))
+                baseUrl = registryUrl.Replace("/registry.json", "/raw/", StringComparison.OrdinalIgnoreCase);
+            else
+                baseUrl = registryUrl.TrimEnd('/') + "/raw/";
+
+            // A satellite component's source lives under its own package dir, not src/Lumeo/.
+            if (!string.IsNullOrEmpty(package) && !string.Equals(package, "Lumeo", StringComparison.OrdinalIgnoreCase))
+            {
+                if (baseUrl.Contains("/src/Lumeo/", StringComparison.OrdinalIgnoreCase))
+                    // jsDelivr "…/src/Lumeo/" layout — swap the package segment.
+                    baseUrl = baseUrl.Replace("/src/Lumeo/", $"/src/{package}/", StringComparison.OrdinalIgnoreCase);
+                else
+                    // Self-hosted "/raw/" layout (e.g. the default https://lumeo.nativ.sh/raw/): the deploy
+                    // publishes each satellite's source under /raw/<package>/, so nest the package folder
+                    // (core stays at /raw/, which maps to src/Lumeo/). Keeps `add <satellite> --vendor`
+                    // resolving instead of 404ing against the core raw tree.
+                    baseUrl = baseUrl.TrimEnd('/') + $"/{package}/";
             }
-            if (registryUrl.Contains("/registry.json", StringComparison.OrdinalIgnoreCase))
-                return registryUrl.Replace("/registry.json", "/raw/", StringComparison.OrdinalIgnoreCase);
-            return registryUrl.TrimEnd('/') + "/raw/";
+            return baseUrl;
         }
 
-        public static async Task<string> GetFileAsync(string relativePath, bool local, string registryUrl)
+        public static async Task<string> GetFileAsync(string relativePath, bool local, string registryUrl, string sourcePackage = "Lumeo")
         {
             if (local)
             {
                 var repoRoot = Paths.FindRepoRoot(Environment.CurrentDirectory)
                                ?? throw new InvalidOperationException("--local requires running inside the Lumeo repo.");
-                var abs = Path.Combine(Paths.LocalSourceRoot(repoRoot), relativePath.Replace('/', Path.DirectorySeparatorChar));
+                var abs = Path.Combine(Paths.LocalSourceRoot(repoRoot, sourcePackage), relativePath.Replace('/', Path.DirectorySeparatorChar));
                 if (!File.Exists(abs)) throw new FileNotFoundException($"Local file not found: {abs}");
                 return await File.ReadAllTextAsync(abs);
             }
-            var baseUrl = DeriveFileBaseUrl(registryUrl);
+            var baseUrl = DeriveFileBaseUrl(registryUrl, sourcePackage);
             return await s_http.GetStringAsync(baseUrl + relativePath);
         }
 
@@ -490,26 +548,6 @@ namespace Lumeo.Cli
             // Assets live under src/Lumeo/wwwroot/; DeriveFileBaseUrl returns src/Lumeo/ so add wwwroot/.
             var url = $"{baseUrl}wwwroot/{rel}";
             return await s_http.GetByteArrayAsync(url);
-        }
-    }
-
-    internal static class NamespaceRewriter
-    {
-        public static string Rewrite(string content, string filePath, string targetNamespace)
-        {
-            if (filePath.EndsWith(".razor", StringComparison.OrdinalIgnoreCase))
-            {
-                content = Regex.Replace(content, @"^@namespace\s+Lumeo(\.[A-Za-z0-9_.]*)?$",
-                    m => $"@namespace {targetNamespace}{m.Groups[1].Value}",
-                    RegexOptions.Multiline);
-            }
-            else if (filePath.EndsWith(".cs", StringComparison.OrdinalIgnoreCase))
-            {
-                content = Regex.Replace(content, @"^namespace\s+Lumeo(\.[A-Za-z0-9_.]*)?(\s*[;{])",
-                    m => $"namespace {targetNamespace}{m.Groups[1].Value}{m.Groups[2].Value}",
-                    RegexOptions.Multiline);
-            }
-            return content;
         }
     }
 

@@ -76,6 +76,26 @@ public class BentoTests : IAsyncLifetime
         Assert.Contains("grid-cols-1", cut.Find("div").GetAttribute("class"));
     }
 
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-1)]
+    [InlineData(-4)]
+    public void Columns_Zero_Or_Negative_Clamps_To_Valid_Repeat(int columns)
+    {
+        // Regression: Columns <= 0 fell through the ColumnsClass switch's default
+        // arm to an empty class, so RootStyle emitted `repeat(0, …)` / `repeat(-1, …)`,
+        // which is invalid CSS and collapses the grid to one implicit column. The
+        // fallback must clamp the lower bound to 1 so it always produces a valid
+        // single-column template.
+        var cut = _ctx.Render<Lumeo.Bento>(p => p
+            .Add(b => b.Columns, columns));
+
+        var style = cut.Find("div").GetAttribute("style");
+        Assert.Contains("grid-template-columns", style);
+        Assert.Contains("repeat(1", style);
+        Assert.DoesNotContain($"repeat({columns}", style);
+    }
+
     [Fact]
     public void Default_Gap_Is_Medium()
     {

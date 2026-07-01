@@ -20,7 +20,13 @@ public class CalendarExternalValueNavigationTests : IAsyncLifetime
     public Task InitializeAsync() => Task.CompletedTask;
     public async Task DisposeAsync() => await _ctx.DisposeAsync();
 
-    private static string MonthHeader(DateOnly d) => $"{d.ToString("MMMM")} {d.Year}";
+    // Match the month-panel grid's aria-label ("MMMM yyyy") rather than a bare
+    // "March 2024" substring of the whole markup: an adjacent-month day cell —
+    // e.g. "31 March 2024" under the invariant culture's "dd MMMM yyyy" long-date
+    // format (CI runs without a locale → invariant) — would otherwise trip
+    // Assert.DoesNotContain. The aria-label="…" attribute is unique per rendered
+    // panel and uses the same ToString the component does, so it stays culture-robust.
+    private static string MonthHeader(DateOnly d) => $"aria-label=\"{d.ToString("MMMM yyyy")}\"";
 
     [Fact]
     public void External_Value_Change_Navigates_Displayed_Month()
@@ -72,6 +78,51 @@ public class CalendarExternalValueNavigationTests : IAsyncLifetime
 
         // No anchor to navigate to — stay where we were instead of jumping.
         Assert.Contains(MonthHeader(new DateOnly(2024, 3, 1)), cut.Markup);
+    }
+
+    [Fact]
+    public void Value_Empty_Then_Refilled_Same_Anchor_Does_Not_Yank_Browsed_Month()
+    {
+        // #52 — async load flicker: the bound Value momentarily goes null then
+        // refills with the SAME date it had before. The user has browsed away in
+        // the meantime; the value→null→value round trip must be a no-op and leave
+        // the browsed month put (only a genuinely-new anchor should navigate).
+        var anchor = new DateOnly(2024, 3, 15);
+        var cut = _ctx.Render<L.Calendar>(p => p.Add(c => c.Value, anchor));
+
+        // Browse forward one month (prev, header, next → index 2 is next).
+        cut.FindAll("button[type='button']")[2].Click();
+        Assert.Contains(MonthHeader(new DateOnly(2024, 4, 1)), cut.Markup);
+
+        // Transient clear (data reloading) …
+        cut.Render(p => p.Add(c => c.Value, (DateOnly?)null));
+        // … then refill with the very same anchor.
+        cut.Render(p => p.Add(c => c.Value, anchor));
+
+        // The browsed month must survive the flicker — NOT jump back to March.
+        Assert.Contains(MonthHeader(new DateOnly(2024, 4, 1)), cut.Markup);
+        Assert.DoesNotContain(MonthHeader(new DateOnly(2024, 3, 1)), cut.Markup);
+    }
+
+    [Fact]
+    public void RangeStart_Empty_Then_Refilled_Same_Anchor_Does_Not_Yank_Browsed_Month()
+    {
+        // #56 (same OnParametersSet mechanism, range mode): RangeStart flickers to
+        // null and back to the same value during an async refresh; the user's
+        // manual month browsing must survive the round trip.
+        var start = new DateOnly(2024, 3, 10);
+        var cut = _ctx.Render<L.Calendar>(p => p
+            .Add(c => c.IsRange, true)
+            .Add(c => c.RangeStart, start));
+
+        cut.FindAll("button[type='button']")[2].Click(); // browse to April
+        Assert.Contains(MonthHeader(new DateOnly(2024, 4, 1)), cut.Markup);
+
+        cut.Render(p => p.Add(c => c.RangeStart, (DateOnly?)null));
+        cut.Render(p => p.Add(c => c.RangeStart, start));
+
+        Assert.Contains(MonthHeader(new DateOnly(2024, 4, 1)), cut.Markup);
+        Assert.DoesNotContain(MonthHeader(new DateOnly(2024, 3, 1)), cut.Markup);
     }
 
     [Fact]

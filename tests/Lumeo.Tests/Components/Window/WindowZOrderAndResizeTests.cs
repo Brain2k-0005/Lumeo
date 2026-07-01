@@ -83,6 +83,19 @@ public class WindowZOrderAndResizeTests : IAsyncLifetime
     }
 
     [Fact]
+    public void Resize_Handle_Stays_Physical_Right_For_RTL_Safe_Resize()
+    {
+        // Codex P2: the resize math (_dragStartPosX + dx, the max-width clamp) and the cursor-se-resize glyph
+        // are physical southeast, so the handle must stay on the physical bottom-right (right-0), not the
+        // logical end-0 (which lands bottom-LEFT under RTL while the math still grows right — dragging the
+        // visible handle outward would then shrink/stall the window).
+        var cut = _ctx.Render<L.Window>(p => p.Add(w => w.Open, true).Add(w => w.Title, "W"));
+        var cls = cut.Find(".cursor-se-resize").GetAttribute("class") ?? "";
+        Assert.Contains("right-0", cls);
+        Assert.DoesNotContain("end-0", cls);
+    }
+
+    [Fact]
     public void Resize_Is_Clamped_To_Viewport()
     {
         // Small viewport so growing past it is clamped. Window opens at 80,80.

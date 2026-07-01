@@ -183,4 +183,37 @@ public class SpinnerTests : IAsyncLifetime
         var spans = cut.FindAll("span");
         Assert.Empty(spans);
     }
+
+    // --- Regression (battle-wave3 #58): whitespace-only Label must not produce
+    //     an empty accessible name nor an empty visible span. ---
+
+    [Fact]
+    public void Whitespace_Label_Does_Not_Render_Empty_Span()
+    {
+        var cut = _ctx.Render<L.Spinner>(p => p
+            .Add(s => s.Label, "   "));
+
+        var spans = cut.FindAll("span");
+        Assert.Empty(spans);
+    }
+
+    [Fact]
+    public void Whitespace_Label_Falls_Back_To_Loading_Aria_Label()
+    {
+        var cut = _ctx.Render<L.Spinner>(p => p
+            .Add(s => s.Label, "   "));
+
+        var wrapper = cut.Find("div");
+        Assert.Equal("Loading", wrapper.GetAttribute("aria-label"));
+    }
+
+    [Fact]
+    public void Whitespace_AriaLabel_Falls_Back_To_Loading_Aria_Label()
+    {
+        var cut = _ctx.Render<L.Spinner>(p => p
+            .Add(s => s.AriaLabel, "   "));
+
+        var wrapper = cut.Find("div");
+        Assert.Equal("Loading", wrapper.GetAttribute("aria-label"));
+    }
 }

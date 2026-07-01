@@ -60,6 +60,16 @@
 
     private string _searchText = "";
     private List<TreeViewItem<T>>? _previousItems;
+    // #14: last SelectedValues reference we seeded from, so we only re-seed when
+    // the parameter actually changes (not on every unrelated re-render).
+    private List<T>? _previousSelectedValues;
+    // CONTROLLED discriminator: the last SelectedValues list reference we pushed UP
+    // via SelectedValuesChanged. A controlled parent re-render that echoes back this
+    // same object reference (the parent simply re-supplies what we handed it) is
+    // safe to ignore (keep the in-flight _selectedValues); any OTHER reference — a
+    // veto that restores the pre-interaction selection, a programmatic reset, or an
+    // externally-applied selection — is an authoritative assertion and must win.
+    private List<T>? _lastPushedSelectedValues;
     private bool _previousExpandAll;
     private List<TreeViewItem<T>> _displayItems = [];
     private HashSet<T> _selectedValues = [];
@@ -94,8 +104,41 @@
 
     protected override void OnParametersSet()
     {
-        if (SelectedValues is not null)
-            _selectedValues = [..SelectedValues];
+        if (SelectedValuesChanged.HasDelegate)
+        {
+            // CONTROLLED: adopt only when SelectedValues is NOT the same object
+            // reference we just pushed (reference equality is sufficient: a veto
+            // keeps the OLD reference; an echo re-supplies the same list object we
+            // handed the parent; a programmatic override supplies a new reference).
+            //
+            // ALSO a no-op when SelectedValues is unchanged from before this interaction
+            // (_previousSelectedValues, read here BEFORE it is overwritten below): an observer-only
+            // consumer that binds SelectedValuesChanged purely to react to selection — without also
+            // echoing SelectedValues back — leaves the parameter at whatever reference it started with
+            // forever, and that re-render must not be treated as the parent clearing the selection.
+            // Only a reference that differs from BOTH our own push AND the pre-interaction snapshot is
+            // an authoritative, distinguishable veto/reset.
+            var isEcho = ReferenceEquals(SelectedValues, _lastPushedSelectedValues);
+            var isUnchangedFromBeforeInteraction = ReferenceEquals(SelectedValues, _previousSelectedValues);
+            if (!isEcho && !isUnchangedFromBeforeInteraction)
+            {
+                _selectedValues = SelectedValues is not null ? [..SelectedValues] : [];
+                _lastPushedSelectedValues = SelectedValues;
+            }
+            // else: echo of our own selection, or unchanged from before — keep the in-flight selection.
+            _previousSelectedValues = SelectedValues;
+        }
+        else if (!ReferenceEquals(SelectedValues, _previousSelectedValues))
+        {
+            // #14: UNCONTROLLED — only re-seed from SelectedValues when the
+            // parameter ITSELF changed (new reference). Re-seeding on every
+            // OnParametersSet wiped an internally-clicked selection on any
+            // unrelated re-render, breaking the two-way-binding contract used
+            // elsewhere.
+            if (SelectedValues is not null)
+                _selectedValues = [..SelectedValues];
+            _previousSelectedValues = SelectedValues;
+        }
 
         bool itemsChanged = !ReferenceEquals(Items, _previousItems);
         bool expandAllChanged = ExpandAll != _previousExpandAll;
@@ -276,7 +319,16 @@
         }
 
         if (changed && SelectedValuesChanged.HasDelegate)
-            await SelectedValuesChanged.InvokeAsync([.._selectedValues]);
+        {
+            List<T> outgoing = [.._selectedValues];
+            // Record _lastPushedSelectedValues BEFORE invoking SelectedValuesChanged:
+            // a controlled parent re-renders synchronously inside InvokeAsync, so
+            // OnParametersSet must already see this exact list reference as "the
+            // selection we just pushed" to distinguish an accepted echo (keep the
+            // in-flight selection) from a veto (parent kept its old value → roll back).
+            _lastPushedSelectedValues = outgoing;
+            await SelectedValuesChanged.InvokeAsync(outgoing);
+        }
         StateHasChanged();
     }
 
@@ -421,7 +473,16 @@
         _flatVisible = [];
         AppendVisible(_displayItems, _flatVisible);
         if (_activeItem is null || !_flatVisible.Any(i => ReferenceEquals(i, _activeItem)))
-            _activeItem = _flatVisible.Count > 0 ? _flatVisible[0] : null;
+        {
+            // #13: an Items refresh with new (reference-distinct) instances drops
+            // the old _activeItem out of _flatVisible. Re-anchor the roving
+            // tabindex by STABLE identity (Value) so keyboard focus survives a
+            // same-content refresh instead of snapping back to the first node.
+            var byValue = _activeItem is not null
+                ? _flatVisible.FirstOrDefault(i => EqualityComparer<T>.Default.Equals(i.Value, _activeItem.Value))
+                : null;
+            _activeItem = byValue ?? (_flatVisible.Count > 0 ? _flatVisible[0] : null);
+        }
     }
 
     private void AppendVisible(IReadOnlyList<TreeViewItem<T>> items, List<TreeViewItem<T>> result)

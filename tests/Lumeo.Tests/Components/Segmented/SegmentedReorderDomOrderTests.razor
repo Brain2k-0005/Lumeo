@@ -1,0 +1,83 @@
+@inherits Bunit.BunitContext
+@using Lumeo.Services
+@using Lumeo.Tests.Helpers
+@using Microsoft.AspNetCore.Components.Web
+@using Microsoft.Extensions.DependencyInjection
+
+@code {
+    // #63 — the leg that SegmentedItemRegistryOrderTests documents as DEFERRED is
+    // retired here by wiring the shared DOM-order probe into the parent's arrow-key
+    // nav. The compound-mode registry tracks DECLARATION/registration order, which a
+    // pure @key reorder-with-reuse (no Value diff → no OnParametersSet) or a
+    // middle-INSERT (a brand-new child appends at the registry TAIL, NOT its DOM
+    // slot) leaves stale. Neither mutation is reproducible by bUnit physically moving
+    // reused instances, so we model its EFFECT: the C# registry ends up [a, c, b]
+    // while the LIVE DOM is a, b, c. Segmented.HandleKeyDown now consults
+    // Interop.GetOrderedDescendantIds before computing the neighbour, so ArrowRight
+    // from 'a' selects the DOM neighbour 'b' — NOT the registry neighbour 'c'.
+    //
+    // The selection is asserted via the ValueChanged callback (the load-bearing
+    // signal), never real DOM focus. An empty/NULL probe (every existing test)
+    // falls back to registry order verbatim, so behaviour there is unchanged.
+
+    private readonly TrackingInteropService _interop = new();
+    private string? _changed;
+
+    public SegmentedReorderDomOrderTests()
+    {
+        this.AddLumeoServices();
+        Services.AddSingleton<IComponentInteropService>(_interop);
+    }
+
+    // Children as a swappable ChildContent fragment (the proven re-render path).
+    // showB inserts the middle 'b' segment; re-specifying every parameter on the
+    // re-render keeps the surviving segments mounted while the new one registers.
+    private RenderFragment SegItems(bool showB) => @<text>
+        <SegmentedItem Value="a">A</SegmentedItem>
+        @if (showB)
+        {
+            <SegmentedItem Value="b">B</SegmentedItem>
+        }
+        <SegmentedItem Value="c">C</SegmentedItem>
+    </text>;
+
+    private IRenderedComponent<Segmented> RenderSeg(bool showB)
+        => Render<Segmented>(p => p
+            .Add(s => s.Value, "a")
+            .Add(s => s.ValueChanged, EventCallback.Factory.Create<string>(this, v => _changed = v))
+            .Add(s => s.ChildContent, SegItems(showB)));
+
+    private void ReRenderSeg(IRenderedComponent<Segmented> cut, bool showB)
+        => cut.Render(p => p
+            .Add(s => s.Value, "a")
+            .Add(s => s.ValueChanged, EventCallback.Factory.Create<string>(this, v => _changed = v))
+            .Add(s => s.ChildContent, SegItems(showB)));
+
+    [Fact]
+    public void Arrow_Nav_Follows_Live_DOM_Order_After_A_Middle_Insert()
+    {
+        // Start with a, c. Insert 'b' in the MIDDLE of the fragment: the reused a/c
+        // instances keep their registry slots and the brand-new 'b' appends at the
+        // registry TAIL, so the C# registry becomes [a, c, b] while the live DOM
+        // renders a, b, c.
+        var cut = RenderSeg(showB: false);
+        ReRenderSeg(cut, showB: true);
+
+        var buttons = cut.FindAll("button[role='radio']"); // DOM order: a, b, c
+        Assert.Equal(3, buttons.Count);
+        var idA = buttons[0].GetAttribute("id");
+        var idB = buttons[1].GetAttribute("id");
+        var idC = buttons[2].GetAttribute("id");
+        var containerId = cut.Find("[role='radiogroup']").GetAttribute("id");
+
+        // Seed the live-DOM order a, b, c (what the real JS probe would report) — the
+        // reorder/insert bUnit cannot reproduce by physically moving reused instances.
+        _interop.OrderedDescendantIds[containerId!] = new[] { idA!, idB!, idC! };
+
+        cut.Find("[role='radiogroup']").KeyDown(new KeyboardEventArgs { Key = "ArrowRight" });
+
+        // DOM-order neighbour after 'a' is 'b'. Without the DOM-order probe the stale
+        // registry order [a, c, b] would have selected 'c'.
+        Assert.Equal("b", _changed);
+    }
+}

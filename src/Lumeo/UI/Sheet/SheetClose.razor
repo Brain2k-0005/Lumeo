@@ -1,6 +1,8 @@
 @namespace Lumeo
+@implements IAsyncDisposable
+@inject Lumeo.Services.IComponentInteropService Interop
 
-<div class="@CssClass" role="button" tabindex="0" @onclick="Close" @onkeydown="HandleKeyDown" @attributes="AdditionalAttributes">
+<div id="@_id" class="@CssClass" role="button" tabindex="0" @onclick="Close" @onkeydown="HandleKeyDown" @attributes="AdditionalAttributes">
     @ChildContent
 </div>
 
@@ -10,7 +12,31 @@
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
+    private readonly string _fallbackId = LumeoIds.New("sheet-close");
+    // A consumer-supplied id (splatted) wins, so JS key-suppression must target THAT id.
+    private string _id => LumeoIds.Effective(AdditionalAttributes, _fallbackId);
+    private bool _pdRegistered;
+
     private string CssClass => Cx.Merge("inline-flex", Class);
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender || _pdRegistered) return;
+        try
+        {
+            // div[role=button] has no native key synthesis: Space both activated AND
+            // scroll-jumped the page. Suppress only Space's default synchronously in
+            // JS (Enter has no default on a div; a blanket @onkeydown:preventDefault
+            // would also swallow Tab). Mirrors DialogClose / CollapsibleTrigger. #90
+            await Interop.RegisterPreventDefaultKeys(
+                _id,
+                new[] { new Lumeo.Services.PreventDefaultKeyRule(" ") });
+            _pdRegistered = true;
+        }
+        catch (JSDisconnectedException) { }
+        catch (ObjectDisposedException) { }
+        catch (InvalidOperationException) { } // JS interop unavailable during prerender
+    }
 
     // Route through TryDismiss so OnBeforeClose handlers can guard the
     // close from a custom button just like the built-in X / Escape paths.
@@ -19,5 +45,17 @@
     private async Task HandleKeyDown(KeyboardEventArgs e)
     {
         if (e.Key is "Enter" or " ") await Close();
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (!_pdRegistered) return;
+        try
+        {
+            await Interop.UnregisterPreventDefaultKeys(_id);
+        }
+        catch (JSDisconnectedException) { }
+        catch (ObjectDisposedException) { }
+        catch (InvalidOperationException) { }
     }
 }

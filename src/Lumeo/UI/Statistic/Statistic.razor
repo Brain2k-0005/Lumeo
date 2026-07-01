@@ -18,14 +18,14 @@
     </div>
     @if (ShowTrend)
     {
-        <div class="mt-1 flex items-center gap-1 text-sm @TrendClasses">
+        <div class="mt-1 flex items-center gap-1 text-sm @TrendClasses" aria-label="@TrendAriaLabel">
             @if (TrendDirection == TrendType.Up)
             {
-                <Blazicon Svg="Lucide.TrendingUp" class="h-4 w-4" />
+                <Blazicon Svg="Lucide.TrendingUp" class="h-4 w-4" aria-hidden="true" />
             }
             else
             {
-                <Blazicon Svg="Lucide.TrendingDown" class="h-4 w-4" />
+                <Blazicon Svg="Lucide.TrendingDown" class="h-4 w-4" aria-hidden="true" />
             }
             @if (!string.IsNullOrEmpty(TrendValue))
             {
@@ -148,6 +148,14 @@
         TrendType.Down => "text-destructive",
         _ => ""
     };
+
+    // The directional Blazicon is decorative (aria-hidden), so when there is no
+    // visible TrendValue text the trend container would have no accessible name.
+    // Supply a direction label in that case; when TrendValue is present its text
+    // already names the container, so leave it null (attribute omitted).
+    private string? TrendAriaLabel => string.IsNullOrEmpty(TrendValue)
+        ? (TrendDirection == TrendType.Up ? "Trending up" : "Trending down")
+        : null;
 
     public enum TrendType { Up, Down }
     /// <summary>

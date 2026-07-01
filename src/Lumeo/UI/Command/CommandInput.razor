@@ -3,25 +3,31 @@
 @inject IComponentInteropService Interop
 @inject Lumeo.Services.Localization.ILumeoLocalizer L
 
-<div class="flex items-center border-b border-border/40 px-3">
-    <Blazicon Svg="Lucide.Search" class="mr-2 h-4 w-4 shrink-0 opacity-50" />
-    <input type="text"
-           id="@_inputId"
-           role="combobox"
-           aria-expanded="true"
-           aria-autocomplete="list"
-           aria-controls="@Context.ListId"
-           aria-activedescendant="@Context.HighlightedItemId"
-           class="@CssClass"
-           placeholder="@(Placeholder ?? L["Command.Placeholder"])"
-           value="@Context.SearchText"
-           @oninput="HandleInput"
-           @onkeydown="HandleKeyDown"
-           @attributes="AdditionalAttributes" />
-</div>
+@* Mirror every other Command sub-part: a misplaced input (rendered outside a
+   Command, or before the cascade resolves) must not crash the tree, so the
+   markup only renders once the cascading Context is present. *@
+@if (Context is not null)
+{
+    <div class="flex items-center border-b border-border/40 px-3">
+        <Blazicon Svg="Lucide.Search" class="me-2 h-4 w-4 shrink-0 opacity-50" />
+        <input type="text"
+               id="@_inputId"
+               role="combobox"
+               aria-expanded="true"
+               aria-autocomplete="list"
+               aria-controls="@Context.ListId"
+               aria-activedescendant="@Context.HighlightedItemId"
+               class="@CssClass"
+               placeholder="@(Placeholder ?? L["Command.Placeholder"])"
+               value="@Context.SearchText"
+               @oninput="HandleInput"
+               @onkeydown="HandleKeyDown"
+               @attributes="AdditionalAttributes" />
+    </div>
+}
 
 @code {
-    [CascadingParameter] public Command.CommandContext Context { get; set; } = default!;
+    [CascadingParameter] public Command.CommandContext? Context { get; set; }
     [Parameter] public string? Placeholder { get; set; }
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
@@ -62,11 +68,13 @@
 
     private async Task HandleInput(ChangeEventArgs e)
     {
+        if (Context is null) return;
         await Context.OnSearch.InvokeAsync(e.Value?.ToString() ?? "");
     }
 
     private async Task HandleKeyDown(KeyboardEventArgs e)
     {
+        if (Context is null) return;
         if (e.Key is "ArrowDown" or "ArrowUp" or "Home" or "End" or "Enter")
             await Context.OnNavigationKey.InvokeAsync(e);
     }

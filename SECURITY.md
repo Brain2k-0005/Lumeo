@@ -4,14 +4,14 @@
 
 | Version | Supported |
 |---------|-----------|
-| 2.0.x   | ✅ Active — security fixes land here |
-| 1.6.x   | ⚠️ Critical fixes only until 2026-12-31 |
-| < 1.6   | ❌ Unsupported — please upgrade |
+| 4.x     | ✅ Active — security fixes land here |
+| 3.x     | ⚠️ Critical fixes only |
+| < 3.0   | ❌ Unsupported — please upgrade |
 
 All Lumeo packages (`Lumeo`, `Lumeo.Charts`, `Lumeo.DataGrid`, `Lumeo.Editor`,
-`Lumeo.Scheduler`, `Lumeo.Gantt`, `Lumeo.Motion`, `Lumeo.Cli`,
-`Lumeo.Templates`, `@lumeo-ui/mcp-server`) ship lockstep and are covered by
-this policy.
+`Lumeo.Scheduler`, `Lumeo.Gantt`, `Lumeo.Motion`, `Lumeo.Maps`, `Lumeo.PdfViewer`,
+`Lumeo.FileViewer`, `Lumeo.CodeEditor`, `Lumeo.Cli`, `Lumeo.Templates`,
+`@lumeo-ui/mcp-server`) ship lockstep and are covered by this policy.
 
 ## Reporting a vulnerability
 

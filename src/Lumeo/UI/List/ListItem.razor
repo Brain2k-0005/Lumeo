@@ -1,4 +1,6 @@
 @namespace Lumeo
+@implements IAsyncDisposable
+@inject Lumeo.Services.IComponentInteropService Interop
 
 @{
     // Row padding keyed on List Size x ambient DensityScope; Comfortable
@@ -24,8 +26,14 @@
 @if (!string.IsNullOrEmpty(Href))
 {
     <li class="@liClass" @attributes="AdditionalAttributes">
-        @* OnClick fires alongside navigation — no preventDefault, both work. *@
-        <a href="@Href" class="flex flex-1 items-center gap-3 min-w-0" @onclick="HandleClick">
+        @* OnClick fires alongside navigation — no preventDefault, both work.
+           When Disabled, drop the navigable href and pull the anchor out of the
+           tab order with aria-disabled so keyboard + AT honour Disabled, not just
+           the pointer-events-none class (which only blocks mouse). *@
+        <a href="@(Disabled ? null : Href)"
+           tabindex="@(Disabled ? "-1" : null)"
+           aria-disabled="@(Disabled ? "true" : null)"
+           class="flex flex-1 items-center gap-3 min-w-0" @onclick="HandleClick">
             @if (Leading != null)
             {
                 <div class="shrink-0">@Leading</div>
@@ -51,8 +59,10 @@
 else
 {
     <li class="@liClass"
+        id="@(OnClick.HasDelegate ? _buttonId : null)"
         role="@(OnClick.HasDelegate ? "button" : null)"
         tabindex="@(OnClick.HasDelegate && !Disabled ? "0" : null)"
+        aria-disabled="@(Disabled && OnClick.HasDelegate ? "true" : null)"
         @onclick="HandleClick"
         @onkeydown="HandleKeyDown"
         @attributes="AdditionalAttributes">
@@ -92,6 +102,62 @@ else
     [Parameter] public bool Disabled { get; set; }
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    // Stable id on the role=button <li> so the JS key-suppression handler
+    // (RegisterPreventDefaultKeys) has a target to bind to. n=15: a clickable
+    // (non-href) ListItem renders as <li role="button">, which has no native key
+    // synthesis — pressing Space both activated the item (HandleKeyDown) AND fired
+    // the browser's default Space action, scroll-jumping the page. The fix
+    // suppresses Space's default action via the library's RegisterPreventDefaultKeys
+    // interop (same idiom as InplaceEditor / DialogTrigger), which needs an id.
+    private readonly string _buttonId = LumeoIds.New("list-item");
+    // Tracks whether the Space-suppression keydown listener is currently bound. The
+    // listener only makes sense while this is an activatable button (OnClick set),
+    // so we (re-)register/unregister as that condition flips.
+    private bool _pdRegistered;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        // n=15: bind Space's preventDefault to the live role=button node so Space
+        // activates the item without scroll-jumping the page. Only the clickable
+        // (non-href) branch is a role=button; the href branch is a native <a> that
+        // has no Space default action. Enter has no default action on an <li>, so
+        // only Space needs suppression — matching InplaceEditor / DialogTrigger.
+        var isButton = OnClick.HasDelegate;
+        if (isButton && !_pdRegistered)
+        {
+            try
+            {
+                await Interop.RegisterPreventDefaultKeys(
+                    _buttonId,
+                    new[] { new Lumeo.Services.PreventDefaultKeyRule(" ") });
+                _pdRegistered = true;
+            }
+            catch (Microsoft.JSInterop.JSDisconnectedException) { }
+            catch (ObjectDisposedException) { }
+            catch (InvalidOperationException) { } // JS interop unavailable during prerender
+        }
+        else if (!isButton && _pdRegistered)
+        {
+            _pdRegistered = false;
+            try { await Interop.UnregisterPreventDefaultKeys(_buttonId); }
+            catch (Microsoft.JSInterop.JSDisconnectedException) { }
+            catch (ObjectDisposedException) { }
+            catch (InvalidOperationException) { }
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (!_pdRegistered) return;
+        try
+        {
+            await Interop.UnregisterPreventDefaultKeys(_buttonId);
+        }
+        catch (Microsoft.JSInterop.JSDisconnectedException) { }
+        catch (ObjectDisposedException) { }
+        catch (InvalidOperationException) { }
+    }
 
     private async Task HandleClick()
     {

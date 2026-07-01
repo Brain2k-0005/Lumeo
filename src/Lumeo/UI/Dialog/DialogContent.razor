@@ -27,7 +27,7 @@ else if (Context.IsOpen)
            boundary), which is safe for a modal: descendants still receive
            their events first — propagation is only cut once it reaches this
            div — and nothing outside an open modal should react to its keys. *@
-        <div id="@_contentId" class="@CssClass" style="z-index:@ContentZ" role="dialog" aria-modal="true" aria-labelledby="@Context.TitleId" aria-describedby="@Context.DescriptionId" @onkeydown="HandleKeyDown" @onkeydown:stopPropagation tabindex="-1" @attributes="AdditionalAttributes">
+        <div id="@_contentId" class="@CssClass" style="z-index:@ContentZ" role="dialog" aria-modal="true" aria-labelledby="@Context.TitleId" aria-describedby="@DescribedBy" @onkeydown="HandleKeyDown" @onkeydown:stopPropagation tabindex="-1" @attributes="AdditionalAttributes">
             @if (Scrollable)
             {
                 <div class="max-h-[85vh] overflow-y-auto">
@@ -40,7 +40,7 @@ else if (Context.IsOpen)
             }
             @if (!PreventClose)
             {
-                <button type="button" aria-label="@L["Dialog.Close"]" class="absolute right-2 top-2 sm:right-4 sm:top-4 inline-flex items-center justify-center rounded-sm h-11 w-11 sm:h-6 sm:w-6 opacity-70 transition-opacity hover:opacity-100 focus:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-2" @onclick="HandleCloseButton">
+                <button type="button" aria-label="@L["Dialog.Close"]" class="absolute end-2 top-2 sm:end-4 sm:top-4 inline-flex items-center justify-center rounded-sm h-11 w-11 sm:h-6 sm:w-6 opacity-70 transition-opacity hover:opacity-100 focus:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-2" @onclick="HandleCloseButton">
                     <Blazicon Svg="Lucide.X" class="h-4 w-4" />
                     <span class="sr-only">@L["Dialog.Close"]</span>
                 </button>
@@ -75,6 +75,12 @@ else if (Context.IsOpen)
     private int BackdropZ => ZIndex;
     private int ContentZ => ZIndex + 1;
 
+    // Only reference the description id when a <DialogDescription> was actually
+    // rendered; otherwise aria-describedby would dangle to a missing element
+    // (returning null makes Blazor omit the attribute entirely). This is what
+    // every service-opened Dialog (no description child) hits.
+    private string? DescribedBy => Context.DescriptionRegistry.HasDescription ? Context.DescriptionId : null;
+
     private string SizeClass => Size switch
     {
         DialogSize.Sm => "max-w-sm",
@@ -94,9 +100,18 @@ else if (Context.IsOpen)
 
         if (Context.IsOpen && !_wasOpen)
         {
-            await Interop.LockScroll();
-            await Interop.SetupFocusTrap(_contentId);
-            _wasOpen = true;
+            // Guard the open-branch interop against a circuit teardown that
+            // races with this render (e.g. the user navigates away while the
+            // dialog is opening). Mirrors Cleanup()'s JSDisconnectedException
+            // handling so a disconnect during setup degrades gracefully
+            // instead of surfacing an unhandled exception.
+            try
+            {
+                await Interop.LockScroll();
+                await Interop.SetupFocusTrap(_contentId);
+                _wasOpen = true;
+            }
+            catch (JSDisconnectedException) { }
         }
         else if (!Context.IsOpen && _wasOpen)
         {

@@ -22,14 +22,14 @@
     @* Guide path — always visible as a faint track *@
     <path id="@(_elementId + "-track")"
           stroke="@PathColor"
-          stroke-width="@PathWidth"
+          stroke-width="@PathWidth.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)"
           stroke-opacity="@(PathOpacity.ToString("F2", System.Globalization.CultureInfo.InvariantCulture))"
           stroke-linecap="round"
           fill="none" />
     @* Animated beam path — gradient travels along the track *@
     <path id="@(_elementId + "-beam")"
           stroke="url(#@_gradientId)"
-          stroke-width="@BeamWidth"
+          stroke-width="@BeamWidth.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)"
           stroke-linecap="round"
           fill="none" />
 </svg>
@@ -73,26 +73,66 @@
     private readonly string _gradientId = $"lumeo-beam-grad-{Guid.NewGuid():N}";
     private bool _registered;
 
+    // Snapshot of the JS-affecting params at the last (re-)registration, so a
+    // runtime change to any of them re-applies the beam instead of being lost in
+    // the JS closure that captured them once.
+    private string? _lastFromId;
+    private string? _lastToId;
+    private string? _lastContainerId;
+    private int _lastDurationMs;
+    private int _lastDelayMs;
+    private double _lastCurvature;
+    private bool _lastReverse;
+
     private string CssClass => string.Join(" ", new[] { "lumeo-animated-beam", Class }.Where(s => !string.IsNullOrWhiteSpace(s)));
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (firstRender && !_registered && !string.IsNullOrEmpty(FromId) && !string.IsNullOrEmpty(ToId))
+        // The from/to ids may not be present on the first render; OnAfterRenderAsync
+        // runs after every render, so register as soon as they actually arrive and
+        // rely on the _registered latch (not firstRender) to keep it one-shot.
+        if (string.IsNullOrEmpty(FromId) || string.IsNullOrEmpty(ToId))
+            return;
+
+        var changed = _registered && (
+            FromId != _lastFromId ||
+            ToId != _lastToId ||
+            ContainerId != _lastContainerId ||
+            DurationMs != _lastDurationMs ||
+            DelayMs != _lastDelayMs ||
+            Curvature != _lastCurvature ||
+            Reverse != _lastReverse);
+
+        if (_registered && !changed)
+            return;
+
+        try
         {
-            _registered = true;
-            try
+            // Re-apply: tear down the prior ResizeObserver/keyframes first so a
+            // second animatedBeam call doesn't orphan the previous observer (the
+            // JS keys it by svgId and would otherwise overwrite the handle).
+            if (changed)
+                await Interop.MotionDisposeAnimatedBeam(_elementId);
+
+            await Interop.MotionAnimatedBeam(_elementId, FromId, ToId, new
             {
-                await Interop.MotionAnimatedBeam(_elementId, FromId, ToId, new
-                {
-                    containerId = ContainerId,
-                    durationMs = DurationMs,
-                    delayMs = DelayMs,
-                    curvature = Curvature,
-                    reverse = Reverse
-                });
-            }
-            catch (JSDisconnectedException) { }
+                containerId = ContainerId,
+                durationMs = DurationMs,
+                delayMs = DelayMs,
+                curvature = Curvature,
+                reverse = Reverse
+            });
+
+            _registered = true;
+            _lastFromId = FromId;
+            _lastToId = ToId;
+            _lastContainerId = ContainerId;
+            _lastDurationMs = DurationMs;
+            _lastDelayMs = DelayMs;
+            _lastCurvature = Curvature;
+            _lastReverse = Reverse;
         }
+        catch (JSDisconnectedException) { }
     }
 
     public async ValueTask DisposeAsync()

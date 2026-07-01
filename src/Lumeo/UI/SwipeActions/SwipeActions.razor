@@ -33,7 +33,7 @@
 
     @if (LeadingActions is not null)
     {
-        <div class="absolute inset-y-0 left-0 flex items-stretch"
+        <div class="absolute inset-y-0 start-0 flex items-stretch"
              style="@($"width: {OpenWidthPx}px;")">
             @LeadingActions
         </div>
@@ -41,7 +41,7 @@
 
     @if (TrailingActions is not null)
     {
-        <div class="absolute inset-y-0 right-0 flex items-stretch justify-end"
+        <div class="absolute inset-y-0 end-0 flex items-stretch justify-end"
              style="@($"width: {OpenWidthPx}px;")">
             @TrailingActions
         </div>
@@ -119,6 +119,10 @@
     private void HandlePointerDown(PointerEventArgs e)
     {
         if (_activePointerId.HasValue) return;
+        // Clear any stale suppression flag from a prior gesture so it can never
+        // survive into an unrelated later tap (touch never fires the synthetic
+        // click that would otherwise consume it — see HandlePointerUp).
+        _suppressNextClick = false;
         _activePointerId = e.PointerId;
         _startX = e.ClientX;
         _startY = e.ClientY;
@@ -189,8 +193,11 @@
         }
 
         // A real drag just ended — swallow the click the browser synthesizes
-        // next on mouse input, so it doesn't immediately re-close the panel.
-        if (_didDrag) _suppressNextClick = true;
+        // next, so it doesn't immediately re-close the panel. Only MOUSE input
+        // emits a trailing synthetic click; a touch drag does not, so gating on
+        // pointer type keeps the flag from latching forever and swallowing the
+        // first genuine close-tap after a touch swipe-open.
+        if (_didDrag && e.PointerType == "mouse") _suppressNextClick = true;
 
         // Settle: if |offset| >= threshold, lock to that side's full open
         // position; otherwise spring back to 0.

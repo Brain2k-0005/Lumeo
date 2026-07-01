@@ -1,0 +1,33 @@
+@inherits Bunit.BunitContext
+
+@code {
+    // Triage #159 (other, low): the Name parameter was declared + documented but
+    // never emitted to the DOM, so the group could not participate in native form
+    // submission. RadioGroup now renders a hidden input carrying the selected value
+    // under Name (and nothing when Name is unset).
+    public RadioGroupNameEmissionTests() { this.AddLumeoServices(); }
+
+    [Fact]
+    public void Name_Emits_A_Hidden_Input_Carrying_The_Selected_Value()
+    {
+        var cut = Render(@<RadioGroup Name="plan" Value="b">
+            <RadioGroupItem Value="a">Option A</RadioGroupItem>
+            <RadioGroupItem Value="b">Option B</RadioGroupItem>
+        </RadioGroup>);
+
+        var hidden = cut.FindAll("input[type='hidden']");
+        Assert.Single(hidden);
+        Assert.Equal("plan", hidden[0].GetAttribute("name"));
+        Assert.Equal("b", hidden[0].GetAttribute("value"));
+    }
+
+    [Fact]
+    public void Without_Name_No_Hidden_Input_Is_Emitted()
+    {
+        var cut = Render(@<RadioGroup Value="a">
+            <RadioGroupItem Value="a">Option A</RadioGroupItem>
+        </RadioGroup>);
+
+        Assert.Empty(cut.FindAll("input[type='hidden']"));
+    }
+}
