@@ -919,6 +919,18 @@
     }
     private List<TItem> _processedItems = new();
     private List<TItem> _displayedItems = new();
+    // The raw, unfiltered server page (ServerMode only) — set ONLY when Items is actually
+    // reassigned (a genuine server refresh), NEVER by a local expand/collapse toggle.
+    // RegroupServerItems() must regroup from THIS, not from _displayedItems: _displayedItems
+    // is the expand-filtered OUTPUT of the last regroup, so reading it back as the INPUT to
+    // the next regroup means a local toggle regroups an ever-shrinking subset — collapsing
+    // group A removes A's rows from _displayedItems, so collapsing a second group B then
+    // regroups from a list that no longer contains A's rows at all, making A's group ROW
+    // vanish entirely (not just its children). With GroupsExpandedByDefault=false the very
+    // first expand click sees _displayedItems already empty and falls into the "no items"
+    // branch, wiping grouping outright — a full empty-state subtree swap that looks like the
+    // whole grid reloaded. (Reported production bug, post-4.0.1.)
+    private List<TItem> _serverPageItems = new();
     private List<TItem> _selectedItems = new();
     private HashSet<TItem> _selectedSet = new();
     private HashSet<TItem> _expandedRows = new();
@@ -1277,7 +1289,7 @@
 
         if (ServerMode)
         {
-            _displayedItems = Items?.ToList() ?? new List<TItem>();
+            _serverPageItems = Items?.ToList() ?? new List<TItem>();
             RegroupServerItems();
         }
         else
@@ -1487,14 +1499,14 @@
     // to deliver all rows (no pagination) or pre-aggregated groups.
     private void RegroupServerItems()
     {
-        _processedItems = _displayedItems;
+        _processedItems = _serverPageItems;
         var fields = EffectiveGroupFields;
-        if (fields.Count == 1 && _displayedItems.Count > 0)
+        if (fields.Count == 1 && _serverPageItems.Count > 0)
         {
             _groupedTree.Clear();
             ProcessSingleLevelGrouping(fields[0]);
         }
-        else if (fields.Count > 1 && _displayedItems.Count > 0)
+        else if (fields.Count > 1 && _serverPageItems.Count > 0)
         {
             _groupedSections.Clear();
             ProcessMultiLevelGrouping(fields);
@@ -1504,6 +1516,12 @@
             _lastGroupBy = null;
             _groupedSections.Clear();
             _groupedTree.Clear();
+            // No grouping active (or the current server page is genuinely empty): the
+            // un-grouped row set IS the raw page. Previously this branch left
+            // _displayedItems untouched, relying on the caller (OnParametersSetAsync) having
+            // just assigned it from Items — which broke the moment RegroupServerItems() was
+            // called from a local toggle handler instead (no Items reassignment that render).
+            _displayedItems = _serverPageItems;
         }
     }
 

@@ -7,6 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.0.2] - 2026-07-01
+
+### Fixed
+- **DataGrid — ServerMode grouping: expand/collapse "reloads" the whole grid**: after the
+  4.0.1 fix restored expand/collapse *state*, a follow-up report showed every toggle
+  visibly rebuilding the grid. Root cause: `RegroupServerItems()` regrouped from
+  `_displayedItems` — the expand-filtered OUTPUT of the previous regroup — instead of the
+  raw server page. A purely local toggle (no `Items` reassignment) therefore regrouped an
+  ever-shrinking subset: collapsing group A removed A's rows from `_displayedItems`, so
+  collapsing a second, different group B then regrouped from a list that no longer
+  contained A's rows at all, making A's group *row* vanish entirely (not just its
+  children). With `GroupsExpandedByDefault=false`, the very first expand click saw
+  `_displayedItems` already empty and fell into the "no items" branch, wiping grouping
+  outright — a full empty-state subtree swap that looked like the whole grid reloaded.
+  Fixed by tracking the raw server page in a dedicated field (`_serverPageItems`), set
+  only on a genuine `Items` refresh, and regrouping from that instead.
+- **Select — Multiple mode trigger tags show the raw value, not the item's label**: with
+  composition-mode `<SelectItem>` children (not the data-bound `Items` prop) and
+  pre-selected `Values`, the closed trigger's removable tags echoed the raw selected value
+  (e.g. a Guid) instead of the matching `SelectItem`'s rendered label — even though the
+  open dropdown showed the correct labels for the same options. Root cause: the tag
+  markup never resolved a label at all, and an explicit `<SelectTrigger ChildContent="…">`
+  meant to override it was silently ignored whenever `Multiple=true` and a value was
+  selected (the tag branch's condition was structurally identical to the ChildContent
+  branch's guard, making the latter unreachable — not overridden at runtime, dead code).
+  Fixed: an explicit `ChildContent` now always wins when a value is selected, and the
+  default tag rendering resolves each value's label — from `ItemText`/`ItemValue` in
+  data-bound mode, or from a composition-mode `SelectItem`'s registered content once the
+  dropdown has been opened at least once in the session (a value pre-selected before the
+  popover has ever been opened has no label to look up yet; `ChildContent` remains the
+  reliable override for that case). Also fixed a related layout bug: once Multiple-mode
+  tags wrapped to 2+ lines, the trigger's `items-center` vertically centered the
+  chevron/clear icon across the full wrapped height instead of aligning it with the first
+  tag row.
+
 ## [4.0.1] - 2026-07-01
 
 ### Fixed

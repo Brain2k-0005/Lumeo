@@ -22,6 +22,7 @@
         Placeholder = Placeholder,
         DescribedBy = FormFieldDescribedBy,
         InsideFormField = InsideFormField,
+        ResolveTagLabel = ResolveTagLabel,
     };
 }
 
@@ -309,12 +310,24 @@
     private readonly string _triggerId = LumeoIds.New("select-trigger");
     private string SearchText { get; set; } = "";
     private int _focusedIndex = -1;
-    private readonly List<(string Id, string Value, string Text, bool Disabled)> _items = new();
+    private readonly List<(string Id, string Value, string Text, bool Disabled, RenderFragment? Label)> _items = new();
+    // Composition-mode SelectItem instances only EXIST in the render tree while
+    // Context.IsOpen (SelectContent gates its whole subtree on it), so they unregister
+    // themselves (Dispose -> UnregisterItem) the instant the popover closes — _items is
+    // empty exactly when the CLOSED trigger needs a label for its Multiple-mode tags.
+    // This cache is fed by every RegisterItem call but, unlike _items, is never cleared
+    // by UnregisterItem/close: once a value's label has been seen at least once (the
+    // popover was opened while that SelectItem was visible), it is remembered for the
+    // life of the component, so a closed-trigger tag rendered after that still resolves
+    // correctly. Does NOT cover a value pre-selected before the popover was EVER opened
+    // in this session — there is no label to remember yet; ChildContent/TagLabel are the
+    // reliable fallback for that case.
+    private readonly Dictionary<string, RenderFragment> _labelCache = new();
     // Type-to-jump buffer (non-searchable listbox). Same idle-reset semantics the
     // menu family uses; here it drives _focusedIndex instead of DOM focus.
     private readonly Lumeo.Services.MenuTypeahead _typeahead = new();
 
-    private void RegisterItem(string id, string value, string text, bool disabled)
+    private void RegisterItem(string id, string value, string text, bool disabled, RenderFragment? label)
     {
         // Upsert: a re-registration with the same id (e.g. an item's Disabled or
         // search text changed while the menu is open) must UPDATE the cached entry,
@@ -322,9 +335,39 @@
         // nav / Enter could land on an item that is now disabled.
         var idx = _items.FindIndex(i => i.Id == id);
         if (idx < 0)
-            _items.Add((id, value, text, disabled));
+            _items.Add((id, value, text, disabled, label));
         else
-            _items[idx] = (id, value, text, disabled);
+            _items[idx] = (id, value, text, disabled, label);
+
+        if (label is not null) _labelCache[value] = label;
+    }
+
+    // Resolves the display label for a SELECTED value shown as a Multiple-mode trigger
+    // tag. Composition mode: find the SelectItem that registered this value and re-render
+    // ITS ChildContent (the same RenderFragment, rendered a second time in the trigger —
+    // a RenderFragment is just a delegate, so invoking it in two places is the normal,
+    // idiomatic way to reuse a child's content elsewhere) — checked via the persistent
+    // _labelCache so a value seen at least once while the popover was open still resolves
+    // after it closes. Data-bound mode: resolve via ItemText/ItemValue, the same functions
+    // SelectContent already uses for the option list. Falls back to the raw value when
+    // nothing matches (e.g. a value pre-selected before the popover was ever opened, or a
+    // stale selected value whose item was removed) — previously the trigger ALWAYS showed
+    // this raw value, never a resolved label (Codex P2).
+    private RenderFragment ResolveTagLabel(string value)
+    {
+        if (_labelCache.TryGetValue(value, out var cached)) return cached;
+
+        if (Items is not null)
+        {
+            var match = Items.FirstOrDefault(it => ItemValue(it) == value);
+            if (match is not null)
+            {
+                var text = ItemText?.Invoke(match) ?? ItemValue(match);
+                return b => b.AddContent(0, text);
+            }
+        }
+
+        return b => b.AddContent(0, value);
     }
 
     private void UnregisterItem(string id)
@@ -526,7 +569,7 @@
         string WrapperId, string ContentId, string TriggerId, int FocusedIndex, string? FocusedItemId, string? FocusedItemValue,
         EventCallback<int> SetFocusedIndex,
         EventCallback<string> OnTypeahead,
-        Action<string, string, string, bool> RegisterItem, Action<string> UnregisterItem,
+        Action<string, string, string, bool, RenderFragment?> RegisterItem, Action<string> UnregisterItem,
         bool Invalid, bool Required,
         // Data-bound mode params (null when composition mode)
         IEnumerable<object>? Items,
@@ -555,5 +598,12 @@
         /// SelectTrigger uses this to strip a consumer-splatted <c>id</c> from its attribute bag so it cannot
         /// override the FormField-owned trigger id. Init-only to keep the positional ctor source-compatible.</summary>
         public bool InsideFormField { get; init; }
+
+        /// <summary>Resolves the display label for a selected VALUE — used by <see cref="SelectTrigger"/>
+        /// to render Multiple-mode tags. Looks up a composition-mode <c>SelectItem</c>'s registered
+        /// ChildContent by value, falling back to <c>ItemText</c>/<c>ItemValue</c> for data-bound mode,
+        /// and finally to the raw value itself when nothing matches. Init-only to keep the positional
+        /// constructor source-compatible.</summary>
+        public Func<string, RenderFragment>? ResolveTagLabel { get; init; }
     }
 }
