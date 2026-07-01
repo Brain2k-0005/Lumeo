@@ -13,7 +13,18 @@
         @onclick="Toggle"
         @onkeydown="HandleKeyDown"
         @attributes="EffectiveAttributes">
-    @if (Context.Multiple && Context.Values != null && Context.Values.Count > 0)
+    @if (ChildContent is not null && HasValue)
+    {
+        @* An explicit ChildContent wins whenever there IS a value — including in
+           Multiple mode. Previously the Multiple-tags branch below was checked FIRST
+           and its condition (Multiple && Values.Any()) was identical to HasValue's
+           Multiple case, so ChildContent could never be reached whenever Multiple=true
+           and a value was selected: it wasn't overridden at runtime, it was dead code
+           (Codex P2). Still gated on HasValue so the Placeholder branch below continues
+           to win when nothing is selected, regardless of whether ChildContent is set. *@
+        @ChildContent
+    }
+    else if (Context.Multiple && Context.Values != null && Context.Values.Count > 0)
     {
         <div class="flex flex-wrap gap-1 items-center flex-1 min-w-0">
             @{
@@ -23,7 +34,11 @@
             @foreach (var val in displayed)
             {
                 <span class="inline-flex items-center gap-1 rounded-md border border-border/40 bg-secondary px-1.5 py-0.5 text-xs font-medium text-secondary-foreground">
-                    @val
+                    @* Resolve the item's actual label (composition-mode SelectItem ChildContent,
+                       or ItemText/ItemValue in data-bound mode) instead of echoing the raw
+                       value (e.g. a Guid) — the label is what the option itself shows when the
+                       dropdown is open, so the closed trigger's tags must match (Codex P2). *@
+                    @(Context.ResolveTagLabel is not null ? Context.ResolveTagLabel(val) : (RenderFragment)(b => b.AddContent(0, val)))
                     <button type="button" class="cursor-pointer rounded-full hover:bg-foreground/20 focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-1" aria-label="@($"Remove {val}")" @onclick="() => RemoveValue(val)" @onclick:stopPropagation="true">
                         <Blazicon Svg="Lucide.X" class="h-3 w-3" />
                     </button>
@@ -37,14 +52,21 @@
     }
     else if (HasValue)
     {
-        @ChildContent
+        @* No custom ChildContent and not the Multiple-tags case (single mode with a value,
+           nothing else to render here — pre-existing contract, unchanged). *@
     }
     else
     {
         <span class="text-muted-foreground">@(Placeholder ?? Context.Placeholder ?? L["Select.Placeholder"])</span>
     }
 
-    <div class="flex items-center gap-1 ms-auto shrink-0">
+    @* self-start (not the row's default items-center) so the chevron/clear icon aligns
+       with the FIRST tag row instead of being vertically centered across the full height
+       once Multiple-mode tags wrap to 2+ lines — otherwise it floats mid-height "in the
+       air" between rows. pt-0.5 nudges it down slightly for closer optical alignment with
+       the tags' own py-0.5. A no-op in the common single-line case (self-start vs.
+       items-center only differ when the row is taller than this icon strip). *@
+    <div class="flex items-center gap-1 ms-auto shrink-0 self-start pt-0.5">
         @if (Context.Clearable && HasValue)
         {
             <button type="button" class="cursor-pointer hover:text-foreground focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-1 rounded" aria-label="@L["Select.ClearSelection"]" @onclick="HandleClear" @onclick:stopPropagation="true">

@@ -222,6 +222,78 @@ public class DataGridServerModeGroupingTests : IAsyncLifetime
     }
 
     // ===========================================================================
+    // Production bug (post-4.0.1): RegroupServerItems() regrouped from _displayedItems
+    // (the expand-filtered OUTPUT of the last regroup) instead of the raw server page —
+    // a local toggle with no intervening Items refresh therefore regrouped an
+    // ever-shrinking subset. Collapsing group A removed A's rows from _displayedItems;
+    // collapsing a second group B then regrouped from a list that no longer contained
+    // A's rows AT ALL, making A's group ROW vanish entirely (not just its children) —
+    // the reported "whole grid reloads / looks buggy" symptom.
+    // ===========================================================================
+
+    [Fact]
+    public void ServerMode_SequentialCollapses_OfDifferentGroups_DoNotMakeEarlierGroupRowVanish()
+    {
+        var items = GetEmployees();
+        var cut = _ctx.Render<DataGrid<Employee>>(p =>
+        {
+            p.Add(x => x.ServerMode, true);
+            p.Add(x => x.TotalCount, items.Count);
+            p.Add(x => x.Items, items);
+            p.Add(x => x.Columns, GetColumns());
+            p.Add(x => x.GroupByFields, (IReadOnlyList<string>)new[] { "Department" });
+            p.Add(x => x.GroupsExpandedByDefault, true);
+        });
+
+        // Engineering, HR, Marketing (alphabetical) = 3 group rows.
+        Assert.Equal(3, cut.FindAll("[data-slot=\"datagrid-group-row\"]").Count);
+
+        // Collapse Engineering (first group) — no Items reassignment happens.
+        cut.FindAll("[data-slot=\"datagrid-group-row\"]")[0].Click();
+        Assert.Equal(3, cut.FindAll("[data-slot=\"datagrid-group-row\"]").Count);
+        Assert.DoesNotContain("Alice", cut.Markup);
+
+        // Collapse HR (a DIFFERENT group) — still no Items reassignment in between.
+        cut.FindAll("[data-slot=\"datagrid-group-row\"]")[1].Click();
+
+        // Engineering's group row must still be present (not silently dropped) and
+        // Marketing (never touched) must still show its rows.
+        Assert.Equal(3, cut.FindAll("[data-slot=\"datagrid-group-row\"]").Count);
+        Assert.DoesNotContain("Eve", cut.Markup); // HR now collapsed too
+        Assert.Contains("Carol", cut.Markup); // Marketing untouched
+    }
+
+    [Fact]
+    public void ServerMode_FirstExpandClick_WithGroupsCollapsedByDefault_DoesNotWipeGrouping()
+    {
+        var items = GetEmployees();
+        var cut = _ctx.Render<DataGrid<Employee>>(p =>
+        {
+            p.Add(x => x.ServerMode, true);
+            p.Add(x => x.TotalCount, items.Count);
+            p.Add(x => x.Items, items);
+            p.Add(x => x.Columns, GetColumns());
+            p.Add(x => x.GroupByFields, (IReadOnlyList<string>)new[] { "Department" });
+            p.Add(x => x.GroupsExpandedByDefault, false);
+        });
+
+        // Everything starts collapsed: 3 group rows, zero data rows visible, so
+        // _displayedItems is empty right after the initial load.
+        Assert.Equal(3, cut.FindAll("[data-slot=\"datagrid-group-row\"]").Count);
+        Assert.DoesNotContain("Alice", cut.Markup);
+
+        // Expand the first group (Engineering) — the very first local toggle.
+        cut.FindAll("[data-slot=\"datagrid-group-row\"]")[0].Click();
+
+        // Regrouping from the (empty) _displayedItems instead of the raw server page used
+        // to hit the "no items" branch and wipe grouping outright — all 3 group rows
+        // replaced by the empty-state subtree.
+        Assert.Equal(3, cut.FindAll("[data-slot=\"datagrid-group-row\"]").Count);
+        Assert.Contains("Alice", cut.Markup); // Engineering now expanded
+        Assert.DoesNotContain("Carol", cut.Markup); // Marketing still collapsed
+    }
+
+    // ===========================================================================
     // Production bug (post-4.0.0): a collapsed group's state must survive a real
     // page/sort/filter/search refresh — not just the single static Items batch every
     // other test in this file uses. RegroupServerItems() used to IntersectWith the
