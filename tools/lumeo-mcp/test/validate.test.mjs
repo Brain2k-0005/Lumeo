@@ -72,6 +72,33 @@ test("unknown PascalCase parameter is a warning (not a hard error)", () => {
   assert.match(r.issues[0].message, /Unknown parameter/);
 });
 
+test("known @typeparam names (T, TItem, TModel) are never flagged as unknown parameters", () => {
+  // TItem (DataGrid/DataGridColumnDef/TagInput), T (TreeView), TModel (Form) bind a generic
+  // component to a concrete type — they are not [Parameter]s, so the catalog has no entry
+  // for them on ANY component, and every valid use previously warned.
+  const r = validate('<Select TItem="Employee" T="Employee" TModel="Employee" />');
+  assert.equal(r.issues.length, 0);
+});
+
+// Codex P2 — a naive `[^<>]*` attribute-blob scan treated the `>` inside a quoted lambda
+// value (e.g. a DataGrid column's `Field="@(u => u.Name)"`) as the tag's own closing
+// bracket, truncating the match.
+
+test("a quoted attribute containing a lambda (=>) does not drop later attributes", () => {
+  const r = validate('<Select Value="@(u => u.Name)" Bogus="typo" />');
+  assert.equal(r.issues.length, 1);
+  assert.match(r.issues[0].message, /Unknown parameter `Bogus`/);
+});
+
+test("a self-closing tag with a lambda attribute does not corrupt the open-ancestor stack", () => {
+  // Pre-fix, the truncated match for <Select .../> never reached its real "/>", so the
+  // component was wrongly pushed onto openStack as still-open — a later SelectItem then
+  // wrongly appeared "nested" inside it even though Select had actually self-closed.
+  const r = validate('<Select Value="@(u => u.Name)" /><SelectItem Value="x" />');
+  assert.equal(r.ok, false);
+  assert.ok(r.issues.some((i) => /must be used inside <Select>/.test(i.message)));
+});
+
 test("invalid enum value (qualified) is an error", () => {
   const r = validate('<Button Variant="ButtonVariant.Sideways" />');
   assert.equal(r.ok, false);
