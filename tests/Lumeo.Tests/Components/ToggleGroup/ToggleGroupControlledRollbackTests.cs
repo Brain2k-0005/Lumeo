@@ -7,21 +7,38 @@ using L = Lumeo;
 namespace Lumeo.Tests.Components.ToggleGroup;
 
 /// <summary>
-/// Regression: when a controlled parent vetoes a toggle (re-renders with the same
-/// bound Value / SelectedValues it held before the user's action), the component
-/// must roll the UI back to the parent-owned state instead of keeping the
-/// in-flight rejected selection.
+/// Regression: when a controlled parent vetoes a toggle (re-renders with a value
+/// DISTINCT from both what the user pushed and what it held before the
+/// interaction), the component must roll the UI back to that authoritative value
+/// instead of keeping the in-flight rejected selection.
 ///
-/// Bug: the old OnParametersSet compared incoming Value against _lastValue (the
-/// last parameter the parent SUPPLIED). When the parent re-renders after a veto it
-/// supplies the SAME value → the comparison saw "no change" and skipped the
-/// resync, leaving the rejected selection visible.
+/// Bug (original): the old OnParametersSet compared incoming Value against
+/// _lastValue (the last parameter the parent SUPPLIED). When the parent re-renders
+/// after a veto it supplies the SAME value → the comparison saw "no change" and
+/// skipped the resync, leaving the rejected selection visible.
 ///
-/// Fix: track _lastPushedValue/_lastPushedSelectedValues (what WE emitted via the
-/// callback). A controlled re-render that differs from what we pushed is
-/// authoritative (normalization / rejection) and must win; a re-render that echoes
-/// what we pushed is a benign round-trip and must be ignored (preserves in-flight
-/// state).
+/// Fix (first pass): track _lastPushedValue/_lastPushedSelectedValues (what WE
+/// emitted via the callback) and treat ANY incoming value that differs from that
+/// push as authoritative.
+///
+/// Bug (Codex P2, second pass): that first-pass fix used ValueChanged.HasDelegate
+/// alone as the "is controlled" signal. A consumer that binds ValueChanged/
+/// SelectedValuesChanged purely to OBSERVE — without ever binding Value/
+/// SelectedValues back — leaves those parameters at their unbound default (e.g.
+/// null) on every render. The parent's normal post-callback re-render then supplies
+/// that same unbound default, which the first-pass fix treated as an authoritative
+/// override (since it differs from the just-pushed value) and clobbered the local
+/// toggle — making callback-only single/multiple toggle groups appear unable to
+/// stay selected.
+///
+/// Fix (this pass): a SECOND baseline — _lastValue/_lastSelectedValues, i.e. what
+/// the PARAMETER held on the render immediately before this interaction — is also
+/// treated as a no-op alongside the echo check. An incoming value matching that
+/// pre-interaction baseline is indistinguishable from "the parent isn't actually
+/// driving this parameter" and must NOT clobber local state. Only a value that
+/// differs from BOTH the push AND the pre-interaction baseline is a genuine,
+/// distinguishable authoritative assertion (veto-with-a-different-value,
+/// normalization, or programmatic reset) and rolls the UI back.
 /// </summary>
 public class ToggleGroupControlledRollbackTests : IAsyncLifetime
 {
@@ -53,13 +70,15 @@ public class ToggleGroupControlledRollbackTests : IAsyncLifetime
     // ------------------------------------------------------------------
 
     [Fact]
-    public void Single_Controlled_Veto_From_Null_Rolls_Back_To_Nothing_Selected()
+    public void Single_Controlled_Unchanged_From_Null_Baseline_Keeps_Local_Toggle()
     {
-        // Controlled parent holds Value = null and never updates it (veto everything).
+        // A callback-only consumer: ValueChanged is bound, but Value is never bound
+        // back (stays at its unbound default, null) — the #38-class observer-only
+        // contract, extended to ToggleGroup (Codex P2).
         var cut = _ctx.Render<L.ToggleGroup>(p => p
             .Add(g => g.Type, L.ToggleGroup.ToggleGroupType.Single)
             .Add(g => g.Value, (string?)null)
-            .Add(g => g.ValueChanged, (string? _) => { })  // no-op: veto
+            .Add(g => g.ValueChanged, (string? _) => { })  // observes only, never echoes
             .Add(g => g.ChildContent, TwoItems()));
 
         Assert.All(cut.FindAll("button"), b => Assert.Equal("false", b.GetAttribute("aria-pressed")));
@@ -67,24 +86,27 @@ public class ToggleGroupControlledRollbackTests : IAsyncLifetime
         // Click "a" — ToggleItem selects it and pushes "a" via ValueChanged.
         cut.FindAll("button")[0].Click();
 
-        // Simulate the parent re-rendering with the same Value=null (it ignored our push).
+        // The parent's normal post-callback re-render still supplies Value=null — its
+        // unbound default, unchanged from what this component saw before the click.
         cut.Render(p => p
             .Add(g => g.Type, L.ToggleGroup.ToggleGroupType.Single)
             .Add(g => g.Value, (string?)null)
             .Add(g => g.ValueChanged, (string? _) => { }));
 
-        // UI must roll back — nothing should show as pressed.
-        Assert.All(cut.FindAll("button"), b => Assert.Equal("false", b.GetAttribute("aria-pressed")));
+        // Not a veto — the local toggle must stay selected.
+        Assert.Equal("true", cut.FindAll("button")[0].GetAttribute("aria-pressed"));
     }
 
     [Fact]
-    public void Single_Controlled_Veto_From_Selected_Rolls_Back_To_Original_Selection()
+    public void Single_Controlled_Unchanged_From_Selected_Baseline_Keeps_Local_Toggle()
     {
-        // Controlled parent holds Value = "a" and vetoes any deselect attempt.
+        // Same observer-only contract, starting from a non-null baseline: the parent
+        // binds Value="a" once (its own local state) and ValueChanged purely to
+        // observe, without ever re-binding Value after the callback fires.
         var cut = _ctx.Render<L.ToggleGroup>(p => p
             .Add(g => g.Type, L.ToggleGroup.ToggleGroupType.Single)
             .Add(g => g.Value, "a")
-            .Add(g => g.ValueChanged, (string? _) => { })  // no-op: veto
+            .Add(g => g.ValueChanged, (string? _) => { })  // observes only, never echoes
             .Add(g => g.ChildContent, TwoItems()));
 
         Assert.Equal("true", cut.FindAll("button")[0].GetAttribute("aria-pressed"));
@@ -92,15 +114,42 @@ public class ToggleGroupControlledRollbackTests : IAsyncLifetime
         // User clicks "a" to deselect — pushes null via ValueChanged.
         cut.FindAll("button")[0].Click();
 
-        // Parent re-renders with same Value="a" (veto — it kept "a" selected).
+        // The parent's re-render still supplies Value="a" — unchanged from the
+        // baseline this component saw before the click, not an echo of the push.
         cut.Render(p => p
             .Add(g => g.Type, L.ToggleGroup.ToggleGroupType.Single)
             .Add(g => g.Value, "a")
             .Add(g => g.ValueChanged, (string? _) => { }));
 
-        // "a" must snap back to pressed.
-        Assert.Equal("true",  cut.FindAll("button")[0].GetAttribute("aria-pressed"));
-        Assert.Equal("false", cut.FindAll("button")[1].GetAttribute("aria-pressed"));
+        // Not a veto — the local deselect must stick.
+        Assert.All(cut.FindAll("button"), b => Assert.Equal("false", b.GetAttribute("aria-pressed")));
+    }
+
+    [Fact]
+    public void Single_Controlled_Veto_With_Distinct_Value_Rolls_Back_To_That_Value()
+    {
+        // A GENUINE, distinguishable veto: the parent's callback explicitly asserts a
+        // value different from BOTH what the user pushed ("a") AND the pre-interaction
+        // baseline (null) — this must still win and roll the UI back.
+        IRenderedComponent<L.ToggleGroup>? cut = null;
+        var callback = EventCallback.Factory.Create<string?>(_ctx, (string? _) =>
+        {
+            cut!.Render(p => p
+                .Add(g => g.Type, L.ToggleGroup.ToggleGroupType.Single)
+                .Add(g => g.Value, "b")
+                .Add(g => g.ValueChanged, EventCallback.Factory.Create<string?>(_ctx, (string? _2) => { })));
+        });
+
+        cut = _ctx.Render<L.ToggleGroup>(p => p
+            .Add(g => g.Type, L.ToggleGroup.ToggleGroupType.Single)
+            .Add(g => g.Value, (string?)null)
+            .Add(g => g.ValueChanged, callback)
+            .Add(g => g.ChildContent, TwoItems()));
+
+        cut.FindAll("button")[0].Click(); // pushes "a"
+
+        Assert.Equal("false", cut.FindAll("button")[0].GetAttribute("aria-pressed")); // "a" rejected
+        Assert.Equal("true",  cut.FindAll("button")[1].GetAttribute("aria-pressed")); // "b" wins
     }
 
     [Fact]
@@ -134,38 +183,42 @@ public class ToggleGroupControlledRollbackTests : IAsyncLifetime
     // ------------------------------------------------------------------
 
     [Fact]
-    public void Multiple_Controlled_Veto_From_Null_Rolls_Back_To_Nothing_Selected()
+    public void Multiple_Controlled_Unchanged_From_Null_Baseline_Keeps_Local_Toggle()
     {
-        // Controlled parent holds SelectedValues = null and vetoes all changes.
+        // Callback-only consumer: SelectedValuesChanged is bound, SelectedValues is
+        // never bound back and stays at its unbound default (null).
         var cut = _ctx.Render<L.ToggleGroup>(p => p
             .Add(g => g.Type, L.ToggleGroup.ToggleGroupType.Multiple)
             .Add(g => g.SelectedValues, (IEnumerable<string>?)null)
-            .Add(g => g.SelectedValuesChanged, (IEnumerable<string> _) => { })
+            .Add(g => g.SelectedValuesChanged, (IEnumerable<string> _) => { })  // observes only
             .Add(g => g.ChildContent, TwoItems()));
 
         // Click "a" — pushes ["a"] via SelectedValuesChanged.
         cut.FindAll("button")[0].Click();
 
-        // Simulate parent re-rendering with the same null (veto).
+        // The parent's re-render still supplies the same null reference it held
+        // before the click — not an echo of the push, just the unbound default.
         cut.Render(p => p
             .Add(g => g.Type, L.ToggleGroup.ToggleGroupType.Multiple)
             .Add(g => g.SelectedValues, (IEnumerable<string>?)null)
             .Add(g => g.SelectedValuesChanged, (IEnumerable<string> _) => { }));
 
-        Assert.All(cut.FindAll("button"), b => Assert.Equal("false", b.GetAttribute("aria-pressed")));
+        // Not a veto — the local toggle must stay selected.
+        Assert.Equal("true", cut.FindAll("button")[0].GetAttribute("aria-pressed"));
     }
 
     [Fact]
-    public void Multiple_Controlled_Veto_From_Selected_Rolls_Back_To_Original_Selection()
+    public void Multiple_Controlled_Unchanged_From_Selected_Baseline_Keeps_Local_Toggle()
     {
-        // Controlled parent holds SelectedValues = ["a"] and vetoes any change.
-        // Using the same list reference simulates a parent that keeps its old binding.
+        // Callback-only consumer starting from a non-null baseline: SelectedValues is
+        // bound once to the parent's own list, SelectedValuesChanged purely observes
+        // and never re-supplies SelectedValues after the callback fires.
         var originalList = new List<string> { "a" };
 
         var cut = _ctx.Render<L.ToggleGroup>(p => p
             .Add(g => g.Type, L.ToggleGroup.ToggleGroupType.Multiple)
             .Add(g => g.SelectedValues, originalList)
-            .Add(g => g.SelectedValuesChanged, (IEnumerable<string> _) => { })
+            .Add(g => g.SelectedValuesChanged, (IEnumerable<string> _) => { })  // observes only
             .Add(g => g.ChildContent, TwoItems()));
 
         Assert.Equal("true", cut.FindAll("button")[0].GetAttribute("aria-pressed"));
@@ -173,13 +226,41 @@ public class ToggleGroupControlledRollbackTests : IAsyncLifetime
         // User deselects "a" — pushes [] via SelectedValuesChanged.
         cut.FindAll("button")[0].Click();
 
-        // Parent re-renders with the same originalList reference (veto).
+        // The parent's re-render still supplies the SAME originalList reference it
+        // held before the click — unchanged from the pre-interaction baseline.
         cut.Render(p => p
             .Add(g => g.Type, L.ToggleGroup.ToggleGroupType.Multiple)
             .Add(g => g.SelectedValues, originalList)
             .Add(g => g.SelectedValuesChanged, (IEnumerable<string> _) => { }));
 
-        Assert.Equal("true",  cut.FindAll("button")[0].GetAttribute("aria-pressed"));
-        Assert.Equal("false", cut.FindAll("button")[1].GetAttribute("aria-pressed"));
+        // Not a veto — the local deselect must stick.
+        Assert.All(cut.FindAll("button"), b => Assert.Equal("false", b.GetAttribute("aria-pressed")));
+    }
+
+    [Fact]
+    public void Multiple_Controlled_Veto_With_Distinct_Selection_Rolls_Back_To_That_Selection()
+    {
+        // A GENUINE, distinguishable veto: the parent's callback explicitly asserts a
+        // NEW list reference/content different from BOTH what was pushed (["a"]) AND
+        // the pre-interaction baseline (null) — this must still win and roll back.
+        IRenderedComponent<L.ToggleGroup>? cut = null;
+        var callback = EventCallback.Factory.Create<IEnumerable<string>>(_ctx, (IEnumerable<string> _) =>
+        {
+            cut!.Render(p => p
+                .Add(g => g.Type, L.ToggleGroup.ToggleGroupType.Multiple)
+                .Add(g => g.SelectedValues, new List<string> { "b" })
+                .Add(g => g.SelectedValuesChanged, EventCallback.Factory.Create<IEnumerable<string>>(_ctx, (_2) => { })));
+        });
+
+        cut = _ctx.Render<L.ToggleGroup>(p => p
+            .Add(g => g.Type, L.ToggleGroup.ToggleGroupType.Multiple)
+            .Add(g => g.SelectedValues, (IEnumerable<string>?)null)
+            .Add(g => g.SelectedValuesChanged, callback)
+            .Add(g => g.ChildContent, TwoItems()));
+
+        cut.FindAll("button")[0].Click(); // pushes ["a"]
+
+        Assert.Equal("false", cut.FindAll("button")[0].GetAttribute("aria-pressed")); // "a" rejected
+        Assert.Equal("true",  cut.FindAll("button")[1].GetAttribute("aria-pressed")); // "b" wins
     }
 }

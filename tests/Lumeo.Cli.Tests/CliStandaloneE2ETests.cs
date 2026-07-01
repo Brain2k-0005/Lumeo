@@ -135,6 +135,25 @@ public sealed class CliStandaloneE2ETests : IDisposable
     }
 
     [Fact]
+    public void Standalone_Add_ConfirmButton_Also_Vendors_The_Overlay_Host()
+    {
+        // Codex P2 — ConfirmButton drives overlays IMPERATIVELY via IOverlayService
+        // (Overlay.ShowAlertDialogAsync) and never renders <OverlayProvider> itself, so a
+        // project that only has ConfirmButton installed must still get OverlayProvider
+        // vendored as a transitive dependency — otherwise standalone/eject strips the Lumeo
+        // package and the overlay host type no longer exists anywhere in the project.
+        File.WriteAllText(Path.Combine(_proj, "App.csproj"), MinimalCsproj());
+        RunCli("init", "--yes", "--standalone", "--namespace", "Acme.Ui", "--path", "Components/Ui", "--no-assets");
+        var add = RunCli("add", "confirm-button", "--local", "--yes", "--force");
+        Assert.True(add.Exit == 0, $"add failed (exit {add.Exit}). {add.Stderr}{add.Stdout}");
+
+        Assert.True(File.Exists(Path.Combine(_proj, "Components", "Ui", "ConfirmButton", "ConfirmButton.razor")),
+            "ConfirmButton itself was not vendored");
+        Assert.True(File.Exists(Path.Combine(_proj, "Components", "Ui", "Overlay", "OverlayProvider.razor")),
+            $"OverlayProvider was not vendored as a transitive dependency of ConfirmButton\n{add.Stdout}");
+    }
+
+    [Fact]
     public void Standalone_Add_Emits_No_Lumeo_PackageReference()
     {
         File.WriteAllText(Path.Combine(_proj, "App.csproj"), MinimalCsproj());
