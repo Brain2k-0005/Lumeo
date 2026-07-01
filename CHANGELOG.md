@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.0.1] - 2026-07-01
+
+### Fixed
+- **DataGrid — ServerMode + grouping**: a manually collapsed group was silently re-expanded
+  (and the rows the user was looking at could appear to vanish) on the next page turn, sort,
+  filter, or search. `RegroupServerItems()` ran after every server refresh and intersected the
+  tracked expand/collapse state against the CURRENT page's group keys — a new server page's
+  keys are almost never identical to the previous page's, so the intersection wiped out nearly
+  all of the user's manual choices and re-seeded every "new" key from `GroupsExpandedByDefault`
+  (default `true`). Fixed for both single-level and multi-level (`GroupByFields`) grouping: a
+  group key/path, once seen, keeps its expand state for the life of the grid instead of being
+  forgotten the moment it's not on the current page. Also fixed a compounding issue where
+  `RequestServerData` sent the static `GroupBy` parameter to `OnServerRequest` instead of the
+  actual runtime grouping (group-panel / `GroupByFields`), so a consumer's server callback never
+  saw what the user was really grouping by. Verified with new regression tests simulating a real
+  multi-page server refresh (not the single static batch prior tests used), and independently
+  against a real ASP.NET Core API + Blazor WASM client serving 5,000 rows across 200 pages.
+
 ## [4.0.0] - 2026-06-26
 
 Two things in one release: a Radix/Base-UI/shadcn **parity audit** (accessibility, RTL, theming, the FormGenerator, and the MCP/CLI — additive and opt-in; the OKLCH and logical-utility changes are visually/behaviourally identical in LTR) **and** a library-wide **correctness hardening** pass — an adversarial "battle-test" of all 164 components that fixed ~355 confirmed bugs, each with a bUnit regression test (suite 4,983 green). There are **no API-signature breaks**; the major bump signals the scope and the handful of observable **behaviour** changes listed under **Changed** below (and in `MIGRATION.md`).

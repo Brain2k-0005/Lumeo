@@ -2010,9 +2010,15 @@
         }
         else
         {
-            var validKeys = _groupedSections.Select(s => s.Key).ToHashSet();
-            _expandedGroups.IntersectWith(validKeys);
-            _knownGroupKeys.IntersectWith(validKeys);
+            // Do NOT IntersectWith the current section keys: a group key (e.g. "Engineering")
+            // is a stable business value, not a per-page artifact. In ServerMode this method
+            // runs after every page/sort/filter/search refresh — the new page's group keys are
+            // almost never identical to the previous page's, so intersecting wiped nearly all
+            // of _expandedGroups/_knownGroupKeys on every refresh, and every "new" key (i.e.
+            // every key on the new page) got re-seeded from GroupsExpandedByDefault. That
+            // silently discarded the user's manual expand/collapse choices on every page turn,
+            // sort, or filter — the reported "auto-expands / content disappears" production bug.
+            // Only ADD newly-seen keys; a key's expand state, once known, is never forgotten.
             foreach (var section in _groupedSections)
             {
                 if (_knownGroupKeys.Contains(section.Key)) continue;
@@ -2048,15 +2054,20 @@
             foreach (var n in nodes) { allPaths.Add(n.Path); Collect(n.Children); }
         }
         Collect(_groupedTree);
-        var validSet = allPaths.ToHashSet();
 
         if (defaultChanged)
         {
             _expandedGroupPaths.Clear();
             _knownGroupPaths.Clear();
         }
-        _expandedGroupPaths.IntersectWith(validSet);
-        _knownGroupPaths.IntersectWith(validSet);
+        // Do NOT IntersectWith the current paths against a "valid set" — a path is a stable
+        // business value derived from group field values, not a per-page artifact. In
+        // ServerMode this runs after every page/sort/filter/search refresh, and the new page's
+        // paths are almost never identical to the previous page's, so intersecting wiped nearly
+        // all of _expandedGroupPaths/_knownGroupPaths on every refresh and re-seeded every path
+        // on the new page from GroupsExpandedByDefault — silently discarding the user's manual
+        // expand/collapse choices (the reported "auto-expands / content disappears" bug; see
+        // the identical fix + rationale in ProcessSingleLevelGrouping's else branch above).
         foreach (var p in allPaths)
         {
             if (_knownGroupPaths.Contains(p)) continue;
@@ -3383,7 +3394,14 @@
             _currentPage, PageSize,
             _sorts.Count > 0 ? _sorts : null,
             _filters.Count > 0 ? _filters : null,
-            _globalSearch, GroupBy,
+            // The static GroupBy parameter goes stale the moment a consumer changes grouping
+            // at runtime (group panel add/remove, multi-level GroupByFields) — _runtimeGroupFields
+            // is the actual current grouping. DataGridServerRequest only carries a single field,
+            // so fall back to the first runtime field (mirrors BuildLayoutSnapshot's identical
+            // back-compat expression below). Without this, a consumer's OnServerRequest handler
+            // never learns what the user is actually grouping by and can't pre-sort/pre-group
+            // server-side to cooperate with it.
+            _globalSearch, _runtimeGroupFields.Count > 0 ? _runtimeGroupFields[0] : GroupBy,
             OnServerRequest, OnError, StateHasChanged);
 
         // When no OnError handler is wired and a new error occurred, show a default toast
