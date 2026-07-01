@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.0.3] - 2026-07-01
+
+### Fixed
+- **Sidebar — asymmetric label-fade timing against the container's collapse/expand
+  transition**: `SidebarMenuButton`'s label faded with `duration-150` and an asymmetric
+  delay per direction (`delay-0` collapsing, `delay-150` expanding) and its own explicit
+  `ease-out` curve, while `SidebarComponent`'s width transition always used
+  `duration-300` with no delay, in either direction, using Tailwind's implicit default
+  timing function. Collapsing, the label finished fading at t=150ms while the container
+  kept shrinking until t=300ms — two visibly sequential steps. Expanding, the 150ms delay
+  plus 150ms duration happened to sum to exactly 300ms, matching the container's finish
+  time by coincidence — so expanding only *looked* synced at the very end, not throughout.
+  Fixed by matching the label's duration, delay (none), and easing (falls back to the
+  same Tailwind default the container implicitly uses) to the container exactly, in both
+  directions — reported and confirmed via decompiling the shipped 4.0.1 package.
+
 ## [4.0.2] - 2026-07-01
 
 ### Fixed
