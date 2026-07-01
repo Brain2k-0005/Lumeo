@@ -636,6 +636,15 @@ else
         {
             _prevDateTimeValue = DateTimeValue;
             Value = DateTimeValue.HasValue ? DateOnly.FromDateTime(DateTimeValue.Value) : null;
+            // Also hydrate Time from the incoming DateTimeValue's time-of-day (ShowTimePicker
+            // only — Time has no UI/meaning otherwise). Without this, RaiseDateTimeValueChanged
+            // folds in the stale/null Time field (not what DateTimeValue actually carried), so
+            // picking a new date after binding a non-midnight DateTimeValue silently reset the
+            // committed time back to midnight (Codex P2).
+            if (ShowTimePicker)
+            {
+                Time = DateTimeValue.HasValue ? DateTimeValue.Value.TimeOfDay : null;
+            }
         }
 
         // Keep the typeable buffer in sync with Value whenever the parent pushes a new

@@ -1238,6 +1238,18 @@ internal static class Commands
                 && vendoredSatelliteAssets.Add(itemPackage))
             {
                 written += await VendorSatelliteAssetsAsync(registry, itemPackage, opts.Local, cfg.Registry);
+                // VendorSatelliteAssetsAsync signals a required-asset failure via ExitCode (its own
+                // comment says as much), but nothing here was actually checking it — the command fell
+                // through to RecordInstall + the normal OK summary below, leaving the project marked
+                // as installed while _content/<package> is incomplete and the component 404s at
+                // runtime. Abort before recording, matching the "ExitCode + return" pattern already
+                // used elsewhere in this method (Codex P2).
+                if (Environment.ExitCode != 0)
+                {
+                    Console.Error.WriteLine(Ansi.Red(
+                        $"Add aborted — {itemPackage}'s vendored assets are incomplete (see the error above). {item.Name} was NOT recorded as installed."));
+                    return;
+                }
             }
 
             if (writeAllowed)
@@ -1258,10 +1270,25 @@ internal static class Commands
         });
         if (writeAllowed)
         {
+            // EnsureNuGetPackageAsync returns false (and sets ExitCode) when `dotnet add package`
+            // genuinely fails — that result was previously discarded, so a failed install still
+            // fell through to the normal OK summary below even though the vendored source (already
+            // recorded above) won't compile without it. Collect every failure — attempt ALL
+            // dependencies rather than stopping at the first — and skip the misleading success
+            // path if any failed (Codex P2). The vendored files themselves are legitimate; only the
+            // external package is missing, so this does not unwind the already-recorded install.
+            var depFailures = new List<string>();
             foreach (var dep in vendoredItems.SelectMany(i => i.PackageDependencies)
                          .Distinct(StringComparer.OrdinalIgnoreCase))
             {
-                await EnsureNuGetPackageAsync(dep, $"Vendored components reference the {dep} NuGet package.", opts);
+                if (!await EnsureNuGetPackageAsync(dep, $"Vendored components reference the {dep} NuGet package.", opts))
+                    depFailures.Add(dep);
+            }
+            if (depFailures.Count > 0)
+            {
+                Console.Error.WriteLine(Ansi.Red(
+                    $"Add did not complete cleanly — required NuGet package(s) {string.Join(", ", depFailures)} could not be installed (see the error(s) above). The vendored component source was written, but the project will not compile until you add the missing package(s) manually."));
+                return;
             }
         }
 

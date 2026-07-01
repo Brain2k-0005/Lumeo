@@ -77,6 +77,32 @@ public class DatePickerTimeValueCompositionTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Binding_A_NonMidnight_DateTimeValue_Hydrates_Time_So_A_Later_Date_Pick_Keeps_It()
+    {
+        // Codex P2 — OnParametersSet's DateTimeValue -> Value sync only ever copied the DATE
+        // portion, never hydrating Time from the incoming DateTimeValue. So a DatePicker bound
+        // straight to a non-midnight DateTimeValue (no prior interaction ever set Time itself)
+        // saw Time as null, and RaiseDateTimeValueChanged then folded in midnight the next time
+        // a date was picked — silently losing the time that DateTimeValue originally carried.
+        DateTime? emitted = null;
+        var cut = _ctx.Render<L.DatePicker>(p => p
+            .Add(c => c.Inline, true)
+            .Add(c => c.ShowTimePicker, true)
+            .Add(c => c.DateTimeValue, new DateTime(2026, 6, 10, 14, 30, 0))
+            .Add(c => c.DateTimeValueChanged, EventCallback.Factory.Create<DateTime?>(_ctx, (DateTime? v) => emitted = v)));
+
+        // Pick a DIFFERENT date via the Calendar — no time interaction at all.
+        var calendar = cut.FindComponent<L.Calendar>();
+        await cut.InvokeAsync(() =>
+            calendar.Instance.ValueChanged.InvokeAsync(new DateOnly(2026, 6, 15)));
+
+        // The 14:30 time originally carried by DateTimeValue must survive onto the new date.
+        Assert.NotNull(emitted);
+        Assert.Equal(new TimeSpan(14, 30, 0), emitted!.Value.TimeOfDay);
+        Assert.Equal(new DateTime(2026, 6, 15, 14, 30, 0), emitted.Value);
+    }
+
+    [Fact]
     public async Task Without_Time_DateTimeValue_Still_Defaults_To_Midnight()
     {
         // Regression guard: the normal (no-time) path must be unchanged — still midnight.
