@@ -1,0 +1,53 @@
+@page "/"
+@inject HttpClient Http
+
+<h1>DataGrid ServerMode + Grouping — Bug Verification</h1>
+<p>5,000 rows served from a real API, 25 per page (200 pages). Collapse a group, page through
+   several pages, then page back — the collapse must survive.</p>
+
+<DataGrid TItem="EmployeeDto"
+          ServerMode="true"
+          Items="@_items"
+          TotalCount="@_totalCount"
+          OnServerRequest="@HandleServerRequestAsync"
+          Columns="@_columns"
+          PageSize="25"
+          ShowGroupPanel="true"
+          GroupByFields="@_groupByFields"
+          ShowToolbar="true"
+          ShowSearch="true" />
+
+@code {
+    private List<EmployeeDto> _items = new();
+    private int _totalCount;
+    private IReadOnlyList<string> _groupByFields = new List<string> { "Department" };
+
+    private readonly List<DataGridColumn<EmployeeDto>> _columns = new()
+    {
+        new() { Field = "Id",         Title = "ID" },
+        new() { Field = "Name",       Title = "Name" },
+        new() { Field = "Department", Title = "Department", Groupable = true },
+        new() { Field = "Status",     Title = "Status",     Groupable = true },
+        new() { Field = "Salary",     Title = "Salary" },
+    };
+
+    private async Task HandleServerRequestAsync(DataGridServerRequest request)
+    {
+        var sortField = request.Sorts?.FirstOrDefault()?.Field;
+        var sortDir = request.Sorts?.FirstOrDefault()?.Direction == SortDirection.Descending ? "desc" : "asc";
+
+        var url = $"/api/employees?page={request.Page}&pageSize={request.PageSize}" +
+                  $"&groupBy={Uri.EscapeDataString(request.GroupBy ?? "")}" +
+                  $"&sortField={Uri.EscapeDataString(sortField ?? "")}&sortDir={sortDir}" +
+                  $"&search={Uri.EscapeDataString(request.GlobalSearch ?? "")}";
+
+        var response = await Http.GetFromJsonAsync<EmployeeApiResponse>(url, request.CancellationToken);
+        if (!request.IsCurrent || response is null) return;
+
+        _items = response.Items;
+        _totalCount = response.TotalCount;
+    }
+
+    private record EmployeeDto(int Id, string Name, string Department, string Status, int Salary);
+    private record EmployeeApiResponse(List<EmployeeDto> Items, int TotalCount);
+}
