@@ -53,6 +53,14 @@ const catalog = [
       DialogHeader: { componentName: "DialogHeader", parameters: [{ name: "Class", type: "string?" }], enums: [] },
     },
   },
+  {
+    // A generic component (@typeparam TItem) — matches "datagrid" in
+    // GENERIC_TYPE_PARAMS_BY_COMPONENT, exercising the per-component @typeparam scoping.
+    name: "DataGrid",
+    parameters: [{ name: "PageSize", type: "int" }],
+    enums: [],
+    subComponents: {},
+  },
 ];
 
 const sharedEnums = [{ name: "Size", values: ["Xs", "Sm", "Md", "Lg", "Xl"] }];
@@ -72,12 +80,20 @@ test("unknown PascalCase parameter is a warning (not a hard error)", () => {
   assert.match(r.issues[0].message, /Unknown parameter/);
 });
 
-test("known @typeparam names (T, TItem, TModel) are never flagged as unknown parameters", () => {
-  // TItem (DataGrid/DataGridColumnDef/TagInput), T (TreeView), TModel (Form) bind a generic
-  // component to a concrete type — they are not [Parameter]s, so the catalog has no entry
-  // for them on ANY component, and every valid use previously warned.
-  const r = validate('<Select TItem="Employee" T="Employee" TModel="Employee" />');
+test("a generic component's declared @typeparam is never flagged as an unknown parameter", () => {
+  // TItem binds DataGrid to a concrete type (<DataGrid TItem="Employee">) — it is not a
+  // [Parameter], so the catalog has no entry for it, and every valid use previously warned.
+  const r = validate('<DataGrid TItem="Employee" PageSize="10" />');
   assert.equal(r.issues.length, 0);
+});
+
+test("Codex P3 — a @typeparam name is only exempt on components that actually declare it", () => {
+  // Select is NOT generic. The original (unscoped) fix exempted TItem/T/TModel on EVERY
+  // component, so a genuine PascalCase typo like this — exactly the class of mistake the
+  // validator exists to catch — silently passed. Scoped per-component, it must warn again.
+  const r = validate('<Select TItem="Order" T="Foo" TModel="Bar" />');
+  assert.equal(r.issues.length, 3);
+  assert.ok(r.issues.every((i) => i.severity === "warning" && /Unknown parameter/.test(i.message)));
 });
 
 // Codex P2 — a naive `[^<>]*` attribute-blob scan treated the `>` inside a quoted lambda

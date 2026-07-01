@@ -173,6 +173,39 @@ public class RichTextEditorStateOnDataChangeTests : IAsyncLifetime
     }
 
     /// <summary>
+    /// Codex P2 — a consumer that binds ValueChanged purely to OBSERVE, without ever binding
+    /// Value back, leaves Value at its unbound default (null) on every render. Before this fix,
+    /// the controlled branch treated that unchanged null as an authoritative rejection and
+    /// called rte.setContent(null) — clearing the editor the user just typed into. The
+    /// null-only carve-out (mirroring Input/ToggleGroup) skips the resync when Value AND the
+    /// pre-interaction baseline are both null; a non-null unchanged baseline (see
+    /// <see cref="ControlledValue_rejectedByParent_rollsBackEditorContent"/>) is still a
+    /// genuine, authoritative rejection and rolls TipTap back as before.
+    /// </summary>
+    [Fact]
+    public async Task ControlledValue_observerOnly_withNullBaseline_doesNotClearEditor()
+    {
+        var cut = _ctx.Render<L.RichTextEditor>(p => p
+            .Add(c => c.Value, (string?)null)
+            .Add(c => c.ValueChanged, (string? _) => { })); // observes only, never echoes
+
+        await cut.InvokeAsync(() => cut.Instance.OnContentUpdate("<p>typed</p>"));
+
+        var setContentBefore = _module.Invocations.Count(i => i.Identifier == "rte.setContent");
+
+        // The parent's normal post-callback re-render still supplies Value=null — its unbound
+        // default, unchanged from what this component saw before the edit.
+        cut.Render(p => p
+            .Add(c => c.Value, (string?)null)
+            .Add(c => c.ValueChanged, (string? _) => { }));
+
+        var setContentAfter = _module.Invocations.Count(i => i.Identifier == "rte.setContent");
+
+        // Not a rejection — the typed content must survive, no destructive re-sync.
+        Assert.Equal(setContentBefore, setContentAfter);
+    }
+
+    /// <summary>
     /// When ValueChanged IS bound and the parent ACCEPTS an edit (echoes back the same
     /// value we pushed), OnParametersSet must NOT call rte.setContent — that would disturb
     /// the cursor / undo history for no functional reason.

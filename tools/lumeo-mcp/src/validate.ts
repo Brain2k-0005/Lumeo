@@ -37,15 +37,48 @@ export interface SharedEnum {
   values: string[];
 }
 
-/** `@typeparam` names used by Lumeo's generic components (DataGrid/DataGridColumnDef/
- *  TagInput's `TItem`, TreeView's `T`, Form's `TModel`). These bind a generic component to
- *  a concrete type via a Razor attribute (e.g. `<DataGrid TItem="Employee">`), but they are
- *  NOT `[Parameter]` properties — the generated component catalog has no entry for them on
- *  ANY component, so every valid use warned as an unknown parameter. Exempt them globally by
- *  name rather than threading `@typeparam` info through the registry schema: the set is small,
- *  stable, and a real `[Parameter]` named exactly one of these (single-letter or "TModel") is
- *  not a realistic naming collision for Lumeo's descriptive-PascalCase parameter convention. */
-const KNOWN_TYPE_PARAMS = new Set(["T", "TItem", "TModel"]);
+/** `@typeparam` names used by Lumeo's generic components, keyed by component name (lowercase)
+ *  -> the exact type-param name(s) THAT component declares. These bind a generic component to
+ *  a concrete type via a Razor attribute (e.g. `<DataGrid TItem="Employee">`), but they are NOT
+ *  `[Parameter]` properties — the generated component catalog has no entry for them on any
+ *  component. Scoped per-component (Codex P3) rather than a blanket name exemption: many Lumeo
+ *  components capture unmatched attributes, so an unscoped exemption let genuine PascalCase
+ *  typos like `<Button TItem="Order">` or `<Input T="Foo">` — exactly the class of mistake the
+ *  validator exists to catch — through silently on ANY component, not just the generic ones
+ *  that actually declare that type parameter. Derived from every `@typeparam` directive in the
+ *  library (`grep -rn "@typeparam" src/Lumeo.* src/Lumeo`); not threaded through the registry schema for
+ *  the same proportionality reason as the original (unscoped) fix — the set is small and stable. */
+const GENERIC_TYPE_PARAMS_BY_COMPONENT: Record<string, Set<string>> = {
+  form: new Set(["TModel"]),
+  picklist: new Set(["TItem"]),
+  pivotgrid: new Set(["TItem"]),
+  sortablelist: new Set(["TItem"]),
+  taginput: new Set(["TItem"]),
+  treeview: new Set(["T"]),
+  treeviewnode: new Set(["T"]),
+  datagrid: new Set(["TItem"]),
+  datatable: new Set(["TItem"]),
+  datagridbody: new Set(["TItem"]),
+  datagridcell: new Set(["TItem"]),
+  datagridcolumndef: new Set(["TItem"]),
+  datagridcolumnfilter: new Set(["TItem"]),
+  datagridcolumngroup: new Set(["TItem"]),
+  datagridcolumnvisibility: new Set(["TItem"]),
+  datagriddetailrow: new Set(["TItem"]),
+  datagridfooter: new Set(["TItem"]),
+  datagridgrouprow: new Set(["TItem"]),
+  datagridheader: new Set(["TItem"]),
+  datagridheadercell: new Set(["TItem"]),
+  datagridpagination: new Set(["TItem"]),
+  datagridrow: new Set(["TItem"]),
+  datagridtoolbar: new Set(["TItem"]),
+  datagridtoolbarcolumns: new Set(["TItem"]),
+  datagridtoolbarcopyselected: new Set(["TItem"]),
+  datagridtoolbarexport: new Set(["TItem"]),
+  datagridtoolbarfullscreen: new Set(["TItem"]),
+  datagridtoolbarlayouts: new Set(["TItem"]),
+  toolbarcontent: new Set(["TItem"]),
+};
 
 type ElementInfo = {
   params: Set<string>;
@@ -191,7 +224,7 @@ export function createValidator(components: ValidatorComponent[], sharedEnums: S
         if (name.includes(":")) name = name.split(":")[0]!; // EventName:stopPropagation, :preventDefault
         if (name === "class" || name === "style" || name === "id") continue; // pass-through HTML attrs (Lumeo captures unmatched)
         if (/^data-|^aria-/i.test(name)) continue; // captured unmatched
-        if (KNOWN_TYPE_PARAMS.has(name)) continue; // @typeparam binding (Foo TItem="Employee"), not a [Parameter]
+        if (GENERIC_TYPE_PARAMS_BY_COMPONENT[tag.toLowerCase()]?.has(name)) continue; // @typeparam binding (Foo TItem="Employee"), not a [Parameter]
         if (!known.params.has(name)) {
           // Could be a captured-unmatched HTML attr — only flag if it looks like a typo'd Lumeo param (PascalCase).
           if (/^[A-Z]/.test(name)) {

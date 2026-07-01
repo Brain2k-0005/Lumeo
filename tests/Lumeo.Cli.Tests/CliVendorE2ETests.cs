@@ -131,6 +131,62 @@ public sealed class CliVendorE2ETests : IDisposable
     }
 
     [Fact]
+    public void Add_Vendor_Aborts_And_Does_Not_Record_Install_When_A_Satellite_Asset_Cannot_Be_Written()
+    {
+        // Codex P2 — VendorSatelliteAssetsAsync signals a required-asset write failure via
+        // Environment.ExitCode, but the caller never checked it: the command fell through to
+        // RecordInstall + the normal "OK Added" summary even though _content/<package> was left
+        // incomplete, so the vendored component 404s at runtime while lumeo.json (and the CLI's
+        // own exit code) claimed a clean install.
+        Assert.True(File.Exists(_lumeoDll),
+            "Built CLI (lumeo.dll) not found under tools/Lumeo.Cli/bin — build the solution first.");
+
+        var init = RunCli("init", "--yes", "--namespace", "Acme.Ui", "--path", "Components/Ui", "--no-assets");
+        Assert.True(init.Exit == 0, $"init failed (exit {init.Exit}). stderr: {init.Stderr}\nstdout: {init.Stdout}");
+
+        // code-editor's ONLY wwwroot asset is wwwroot/js/code-editor.js. Pre-create a FILE at the
+        // exact path VendorSatelliteAssetsAsync needs to create as a DIRECTORY
+        // (wwwroot/_content/Lumeo.CodeEditor), so Directory.CreateDirectory throws — a
+        // deterministic, network-free reproduction of a required-asset vendoring failure.
+        var blockerPath = Path.Combine(_proj, "wwwroot", "_content", "Lumeo.CodeEditor");
+        Directory.CreateDirectory(Path.GetDirectoryName(blockerPath)!);
+        File.WriteAllText(blockerPath, "blocker");
+
+        var add = RunCli("add", "code-editor", "--local", "--yes", "--force", "--vendor");
+
+        Assert.NotEqual(0, add.Exit);
+        Assert.DoesNotContain("OK Added", add.Stdout);
+        var lumeoJson = File.ReadAllText(Path.Combine(_proj, "lumeo.json"));
+        Assert.DoesNotContain("code-editor", lumeoJson);
+    }
+
+    [Fact]
+    public void Add_Vendor_Reports_Failure_And_Skips_The_Success_Path_When_A_Package_Dependency_Cannot_Be_Installed()
+    {
+        // Codex P2 — the `false` result from EnsureNuGetPackageAsync (dotnet add package
+        // genuinely failed) was discarded entirely: the command had already recorded the
+        // install and still printed the normal "OK Added" summary, leaving the project with
+        // vendored source that won't compile until the missing package is added manually.
+        Assert.True(File.Exists(_lumeoDll),
+            "Built CLI (lumeo.dll) not found under tools/Lumeo.Cli/bin — build the solution first.");
+
+        // A syntactically-INVALID .csproj so `dotnet add package` fails deterministically
+        // (malformed project XML) — no network/NuGet-resolution timing dependency. Created
+        // BEFORE init so FindConsumerCsproj locates THIS file (not something further up the tree).
+        File.WriteAllText(Path.Combine(_proj, "App.csproj"), "<Project><Broken");
+
+        var init = RunCli("init", "--yes", "--namespace", "Acme.Ui", "--path", "Components/Ui", "--no-assets");
+        Assert.True(init.Exit == 0, $"init failed (exit {init.Exit}). stderr: {init.Stderr}\nstdout: {init.Stdout}");
+
+        // `chart` references Blazicons.Lucide as a packageDependency (asserted by
+        // Add_Vendor_Copies_Satellite_Source_And_Its_Wwwroot_Asset above).
+        var add = RunCli("add", "chart", "--local", "--yes", "--force", "--vendor");
+
+        Assert.NotEqual(0, add.Exit);
+        Assert.DoesNotContain("OK Added", add.Stdout);
+    }
+
+    [Fact]
     public void Update_And_Diff_Of_A_Vendored_Satellite_Resolve_The_Right_Package_Root()
     {
         Assert.True(File.Exists(_lumeoDll),

@@ -462,17 +462,25 @@
         //
         // CONTROLLED (ValueChanged bound): compare against _lastPushed (the last value WE
         // emitted). If Value equals _lastPushed the parent is echoing our own edit — skip so
-        // we don't disturb the editor or cursor. If Value differs, the parent asserted a new
-        // value: a normalization, a programmatic reset, or — crucially — a REJECTION that
-        // kept the old Value in place (Value != html we pushed) → must re-sync TipTap to
-        // roll back the rejected edit. (Codex P2 controlled-rollback fix.)
+        // we don't disturb the editor or cursor. A SECOND exception exists ONLY for a null
+        // baseline: a consumer that binds ValueChanged purely to OBSERVE, without ever binding
+        // Value back, leaves it at its unbound default (null) on every render — that must NOT
+        // be treated as a rejection that reloads (and erases) the just-typed content (Codex
+        // P2). This narrow, null-only carve-out mirrors Input/ToggleGroup: a NON-null unchanged
+        // Value is indistinguishable from a genuinely bound value the parent is choosing to
+        // keep pinned (a real rejection that must re-sync TipTap back to it). Any OTHER Value
+        // — normalisation, programmatic reset, or a REJECTION that kept the old (non-null,
+        // bound) Value — is authoritative and must roll TipTap back. (Codex P2
+        // controlled-rollback fix.)
         //
         // UNCONTROLLED (no ValueChanged): compare against _lastParamValue (the last Value
         // the parent supplied). An unrelated re-render that re-supplies the same stale Value
         // must not clobber in-progress typing; adopt only on genuine parent-driven changes.
         if (ValueChanged.HasDelegate)
         {
-            if (!string.Equals(Value, _lastPushed, StringComparison.Ordinal))
+            var isEcho = string.Equals(Value, _lastPushed, StringComparison.Ordinal);
+            var isNullObserverEcho = Value is null && _lastParamValue is null;
+            if (!isEcho && !isNullObserverEcho)
             {
                 _lastPushed = Value;
                 _lastSetValue = Value;
