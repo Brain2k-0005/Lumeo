@@ -3233,6 +3233,23 @@ export function prefersReducedMotion() {
         && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 }
 
+/* Tooltip's focusin handler used to open on ANY DOM focus, including the focus a mouse
+ * click leaves behind on a native <button> — browsers never clear focus after a click, so
+ * the tooltip stayed open until focus moved elsewhere for an unrelated reason, long after
+ * the mouse moved away (reported production bug). :focus-visible is the browser's own
+ * signal for "this focus should be visually/behaviourally indicated" — true for keyboard
+ * navigation, false for a mouse-click focus in supporting browsers — so checking it here
+ * distinguishes "the user tabbed here" from "the user clicked here" without any manual
+ * pointer-type bookkeeping. Falls back to true (old behaviour: always open on focus) if
+ * :focus-visible or document.activeElement is unavailable, so this can only make MORE
+ * focus-driven opens correct, never fewer, in an unsupported environment. */
+export function isActiveElementFocusVisible() {
+    var el = typeof document !== 'undefined' ? document.activeElement : null;
+    if (!el || typeof el.matches !== 'function') return true;
+    try { return el.matches(':focus-visible'); }
+    catch { return true; }
+}
+
 /* TouchRipple — resolve the pointer's coordinates relative to the ripple
  * HOST element (the element the listener is bound to), not the event target.
  * The component previously used PointerEventArgs.OffsetX/OffsetY, which the

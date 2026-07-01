@@ -382,6 +382,19 @@ public interface IComponentInteropService : IAsyncDisposable, IDisposable
     ValueTask<bool> PrefersReducedMotion() => ValueTask.FromResult(false);
 
     /// <summary>
+    /// True when the currently-focused element is in the browser's <c>:focus-visible</c>
+    /// state (keyboard/programmatic focus) rather than a plain <c>:focus</c> a mouse click
+    /// also leaves behind. <see cref="Tooltip"/> uses this to gate opening on
+    /// <c>focusin</c> so a clicked-then-abandoned trigger doesn't stay open forever — a
+    /// native button keeps DOM focus after a mouse click with nothing to clear it, but
+    /// <c>:focus-visible</c> is false for that case in supporting browsers. Default
+    /// returns <c>true</c> (old behaviour: always open on focus) so existing
+    /// implementers/test doubles — which have no real DOM to query — keep compiling and
+    /// behaving unchanged.
+    /// </summary>
+    ValueTask<bool> IsActiveElementFocusVisible() => ValueTask.FromResult(true);
+
+    /// <summary>
     /// Resolves a pointer's viewport coordinates (<paramref name="clientX"/>,
     /// <paramref name="clientY"/>) into coordinates relative to the element
     /// identified by <paramref name="hostElementId"/>. Used by TouchRipple so a

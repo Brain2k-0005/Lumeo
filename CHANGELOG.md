@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.0.4] - 2026-07-01
+
+### Fixed
+- **Tooltip — a Tooltip-wrapped clickable trigger stays open after a click**: clicking any
+  Tooltip-wrapped clickable element (a button, an icon action, a sidebar toggle, ...) left
+  its tooltip visibly stuck open until focus happened to move elsewhere for an unrelated
+  reason, long after the mouse moved away. Root cause: `Tooltip`'s `focusin` handler opened
+  on ANY DOM focus — but a native `<button>` keeps DOM focus after a mouse click (nothing
+  clears it), so the tooltip stayed open on plain `:focus`, not the browser's own
+  `:focus-visible` signal (true for keyboard navigation, false for a mouse-click focus, in
+  supporting browsers). Fixed by gating `Tooltip.HandleFocusIn` on a new
+  `IComponentInteropService.IsActiveElementFocusVisible()` check — real keyboard/
+  programmatic focus still opens the tooltip immediately (unchanged), a click-driven focus
+  no longer does. Confirmed via `document.activeElement` DOM inspection that a manual
+  `.blur()` alone (no mouse movement) hid the tooltip — pinpointing plain `:focus`, not
+  `:focus-visible`, as the trigger.
+
 ## [4.0.3] - 2026-07-01
 
 ### Fixed
