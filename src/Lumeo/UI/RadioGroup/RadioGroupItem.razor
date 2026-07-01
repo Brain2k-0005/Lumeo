@@ -67,6 +67,9 @@ else
     // label element is associated (i.e. when RadioGroupItem is used standalone
     // without a sibling <label> or ChildContent that provides the label text).
     private string EffectiveAriaLabel => !string.IsNullOrEmpty(AriaLabel) ? AriaLabel : Value;
+    // Selection stays Value-based: duplicate Values legitimately both show
+    // aria-checked under single-select (same note as the Accordion duplicate-
+    // value registry); only roving focus is per-item-id.
     private bool IsSelected => Context.Value == Value;
 
     private int Tabindex
@@ -74,37 +77,36 @@ else
         get
         {
             if (Context.Value == Value) return 0;
-            // No selection yet: the first ENABLED radio is the tab stop.
-            if (string.IsNullOrEmpty(Context.Value)
-                && Context.ItemValues.FirstOrDefault(v => !IsItemDisabled(v)) == Value) return 0;
+            // "No live selection" must ALSO fire when Context.Value is a non-empty
+            // value that matches NO registered item (triage #54) — otherwise the
+            // group has no tab stop at all and becomes keyboard-unreachable. A live
+            // selection requires a non-empty Value that some registered item carries.
+            var hasLiveSelection = !string.IsNullOrEmpty(Context.Value)
+                && Context.Items.Any(i => i.Value == Context.Value);
+            if (!hasLiveSelection
+                && Context.Items.FirstOrDefault(i => !i.Disabled).Id == _itemId) return 0;
             return -1;
         }
     }
-
-    private bool IsItemDisabled(string value) =>
-        Context.ItemDisabled.TryGetValue(value, out var d) && d;
 
     private string CssClass => Cx.Merge("aspect-square h-4 w-4 shrink-0 cursor-pointer rounded-full border border-primary text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 flex items-center justify-center", Class);
 
     protected override void OnParametersSet()
     {
-        // Registered every parameter set (idempotent) so Disabled changes stay
-        // current for sibling arrow navigation; ownership-guarded re-key when
-        // Value changes so we never delete a sibling's live registration.
-        if (_registeredValue is not null && _registeredValue != Value
-            && Context.ItemIds.TryGetValue(_registeredValue, out var oldId) && oldId == _itemId)
-        {
-            Context.ItemValues.Remove(_registeredValue);
-            Context.ItemIds.Remove(_registeredValue);
-            Context.ItemDisabled.Remove(_registeredValue);
-        }
-        if (!Context.ItemValues.Contains(Value))
-            Context.ItemValues.Add(Value);
-        Context.ItemIds[Value] = _itemId;
-        Context.ItemDisabled[Value] = Disabled;
+        // Register every parameter set (idempotent) so Disabled changes stay
+        // current for sibling arrow navigation. The registry is keyed by the
+        // stable per-item id, so a Value change re-keys the EXISTING slot IN
+        // PLACE (triage #158 — no remove+tail-add that would move the item to the
+        // nav tail) and duplicate-Value siblings never collapse (triage #56).
+        if (_registered && _registeredValue != Value)
+            Context.Replace(_itemId, Value, Disabled);
+        else
+            Context.Register(_itemId, Value, Disabled);
+        _registered = true;
         _registeredValue = Value;
     }
 
+    private bool _registered;
     private string? _registeredValue;
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -140,9 +142,6 @@ else
         // Space is NOT handled here: on a native <button> the browser
         // synthesizes a click which already runs Select — the old explicit
         // branch double-fired OnSelect.
-        var items = Context.ItemValues;
-        var idx = items.IndexOf(Value);
-
         var direction = e.Key switch
         {
             "ArrowDown" or "ArrowRight" => 1,
@@ -151,20 +150,60 @@ else
         };
         if (direction == 0 || Disabled) return;
 
+        // Resolve the nav order from the LIVE DOM (triage #55): a keyed reorder
+        // MOVES reused RadioGroupItem instances to new positions WITHOUT firing
+        // OnParametersSet, so the C# mount-order registry goes stale. Falls back
+        // to the registry order when the DOM-order probe is unavailable (prerender
+        // / JS off / tests that don't drive a reorder), preserving declaration order.
+        var items = await OrderedItems();
+        // Resolve "current" by this item's UNIQUE id, NOT by Value: when two
+        // items share a Value, an IndexOf-by-Value would land on the wrong slot
+        // and step from the wrong neighbour (triage #56).
+        var idx = items.FindIndex(i => i.Id == _itemId);
+        if (idx < 0) return;
+
         // WAI-ARIA radio group: arrows skip disabled radios (selecting one
         // was possible before because only the CURRENT item was checked).
-        var nextValue = FindNextEnabled(items, idx, direction);
-        if (nextValue is not null)
+        var next = FindNextEnabled(items, idx, direction);
+        if (next is not null)
         {
-            await Context.OnSelect.InvokeAsync(nextValue);
-            if (Context.ItemIds.TryGetValue(nextValue, out var nextId))
-            {
-                await Interop.FocusElement(nextId);
-            }
+            // Selection is reported by Value; focus moves to the resolved slot's
+            // unique id so a duplicate-Value sibling is focused independently.
+            await Context.OnSelect.InvokeAsync(next.Value.Value);
+            await Interop.FocusElement(next.Value.Id);
         }
     }
 
-    private string? FindNextEnabled(List<string> items, int currentIdx, int direction)
+    // The registry (Context.Items) reordered to match live DOM order. The DOM-order
+    // probe returns the role=radio ids in document order; we reproject the registry
+    // tuples onto it (skipping ids the DOM didn't surface, then appending any registry
+    // leftovers). An empty probe result → use the registry order verbatim.
+    private async Task<List<(string Id, string Value, bool Disabled)>> OrderedItems()
+    {
+        var registry = Context.Items;
+        // NOTE: a Loose-mode JSInterop (the default test double) returns NULL for an
+        // unconfigured string[] invocation — null-guard it, don't assume []
+        string[]? domOrder;
+        try
+        {
+            domOrder = await Interop.GetOrderedDescendantIds(Context.ContainerId, "[role='radio']");
+        }
+        catch (JSDisconnectedException) { domOrder = null; }
+        catch (ObjectDisposedException) { domOrder = null; }
+        catch (InvalidOperationException) { domOrder = null; } // JS unavailable (prerender)
+
+        if (domOrder is not { Length: > 0 }) return registry;
+
+        var byId = registry.ToDictionary(i => i.Id);
+        var ordered = new List<(string Id, string Value, bool Disabled)>(registry.Count);
+        foreach (var id in domOrder)
+            if (byId.Remove(id, out var item)) ordered.Add(item);
+        ordered.AddRange(byId.Values);
+        return ordered;
+    }
+
+    private static (string Id, string Value, bool Disabled)? FindNextEnabled(
+        List<(string Id, string Value, bool Disabled)> items, int currentIdx, int direction)
     {
         if (items.Count == 0) return null;
         var idx = currentIdx;
@@ -174,22 +213,17 @@ else
             if (idx < 0) idx = items.Count - 1;
             else if (idx >= items.Count) idx = 0;
             if (idx == currentIdx) return null;
-            if (!IsItemDisabled(items[idx])) return items[idx];
+            if (!items[idx].Disabled) return items[idx];
         }
         return null;
     }
 
     public async ValueTask DisposeAsync()
     {
-        // Conditionally-removed radios must leave the registry (ownership-
-        // guarded — see OnParametersSet).
-        if (_registeredValue is not null
-            && Context.ItemIds.TryGetValue(_registeredValue, out var id) && id == _itemId)
-        {
-            Context.ItemValues.Remove(_registeredValue);
-            Context.ItemIds.Remove(_registeredValue);
-            Context.ItemDisabled.Remove(_registeredValue);
-        }
+        // Conditionally-removed radios leave the registry by their UNIQUE id, so
+        // a disposed duplicate-Value item never deletes a sibling's slot (#56).
+        if (_registered)
+            Context.Unregister(_itemId);
         if (!_pdRegistered) return;
         try
         {

@@ -9,7 +9,7 @@
            Options parameter. Original API; kept verbatim. *@
         @foreach (var option in Options)
         {
-            var isActive = option.Value == Value;
+            var isActive = option.Value == _value;
             <button type="button"
                     id="@OptionId(option.Value)"
                     role="radio"
@@ -20,7 +20,7 @@
                     @onclick="() => SelectOption(option.Value)">
                 @if (option.IconContent is not null)
                 {
-                    <span class="mr-1.5">@option.IconContent</span>
+                    <span class="me-1.5">@option.IconContent</span>
                 }
                 @option.Label
             </button>
@@ -61,18 +61,48 @@
     private SegmentedContext _context = default!;
     private readonly string _id = LumeoIds.New("segmented");
 
-    // Ordered item registry. In Options mode it is rebuilt from Options every
-    // parameter set; in compound mode SegmentedItem children register themselves.
-    // Drives roving tabindex (only ONE item is in the tab sequence) and arrow-key
-    // navigation between segments.
-    private readonly List<string> _itemValues = new();
-    private readonly Dictionary<string, string> _itemIds = new();
-    private readonly Dictionary<string, bool> _itemDisabled = new();
+    // Live selected value. Decoupled from the [Parameter] Value — mutated
+    // OPTIMISTICALLY by SelectOption — so the framework's parameter-binding
+    // never silently snaps it back, and OnParametersSet below decides exactly
+    // when to (re)adopt it.
+    private string? _value;
+    // Last-seen bound parameter — lets the UNCONTROLLED branch distinguish "the
+    // parent genuinely changed Value" from "a plain re-render re-supplied the
+    // same literal" (which must not clobber the user's selection).
+    private string? _lastValueParam;
+    // CONTROLLED discriminator: the last value we pushed UP via ValueChanged
+    // (also re-synced whenever we adopt an authoritative Value). A controlled
+    // parent re-render that echoes back this exact value is safe to ignore (keep
+    // in-flight state); any other value is an authoritative assertion
+    // (normalization / veto / reset) and must win — that's what rolls a rejected
+    // selection back to the bound value.
+    private string? _lastPushed;
+
+    // Ordered item registry — one entry per segment in DOM/declaration order.
+    // In Options mode it is rebuilt from Options every parameter set; in compound
+    // mode SegmentedItem children register/replace/unregister themselves keyed by
+    // their STABLE ItemId (never by Value), exactly like Accordion's trigger
+    // registry. Drives roving tabindex (only ONE item is in the tab sequence) and
+    // arrow-key navigation between segments — both resolve "current position" by
+    // index into this list, so the live DOM order is authoritative.
+    //
+    // Why an ordered list keyed by ItemId rather than a List<string> + two
+    // Value-keyed dictionaries (the previous shape): SegmentedItem.Value is
+    // [EditorRequired] but not enforced unique, and it can change at runtime.
+    // Keying the registry by Value (a) collapsed duplicate-Value siblings into one
+    // slot and (b) on a Value change forced an unregister+append that moved the
+    // segment to the TAIL of the list, scrambling navigation order. Keying every
+    // mutation by the stable ItemId — and rewriting the entry IN PLACE on a Value
+    // change — preserves each segment's declared slot. (#63)
+    private readonly List<SegmentedItemEntry> _items = new();
 
     // Stable per-option element id (Options mode). Indexed rather than slugged
     // from the value so it is always a valid HTML id regardless of value text.
     private string OptionId(string value)
-        => _itemIds.TryGetValue(value, out var id) ? id : $"{_id}-opt{_itemValues.IndexOf(value)}";
+    {
+        var idx = _items.FindIndex(i => i.Value == value);
+        return idx >= 0 ? _items[idx].ItemId : $"{_id}-opt{Options?.FindIndex(o => o.Value == value) ?? -1}";
+    }
 
     private Lumeo.Density EffectiveDensity => Density ?? InheritedDensity ?? Lumeo.Density.Comfortable;
 
@@ -94,33 +124,88 @@
 
     protected override void OnParametersSet()
     {
+        if (ValueChanged.HasDelegate)
+        {
+            // CONTROLLED: the parent owns Value.
+            // Echo of our own push (Value == _lastPushed) → keep in-flight backing state.
+            // Anything else (veto, normalization, reset) → adopt the parent's assertion.
+            if (Value != _lastPushed)
+            {
+                _value = Value;
+                _lastPushed = Value;
+            }
+        }
+        else if (Value != _lastValueParam)
+        {
+            // UNCONTROLLED: component owns the live value.
+            // Adopt the parameter only when the parent genuinely changes it; a stale
+            // re-render that re-supplies the same literal must not clobber the user's selection.
+            _value = Value;
+            _lastPushed = Value;
+        }
+        // Keep the uncontrolled discriminator pointing at the last Value we observed.
+        _lastValueParam = Value;
+
         if (Options is not null)
         {
-            // Rebuild the registry from the declarative Options each parameter
-            // set so reordering / disabling stays in sync for arrow navigation.
-            _itemValues.Clear();
-            _itemIds.Clear();
-            _itemDisabled.Clear();
+            // Rebuild the ordered registry from the declarative Options each
+            // parameter set so reordering / disabling stays in sync for arrow
+            // navigation. Each option's element id is positional and stable.
+            _items.Clear();
+            var seen = new HashSet<string>();
             for (var i = 0; i < Options.Count; i++)
             {
                 var opt = Options[i];
-                if (_itemValues.Contains(opt.Value))
+                if (!seen.Add(opt.Value))
                     throw new InvalidOperationException(
                         $"Duplicate SegmentedOption.Value '{opt.Value}' is not supported — each option needs a unique Value.");
-                _itemValues.Add(opt.Value);
-                _itemIds[opt.Value] = $"{_id}-opt{i}";
-                _itemDisabled[opt.Value] = opt.Disabled;
+                _items.Add(new SegmentedItemEntry(opt.Value, $"{_id}-opt{i}", opt.Disabled));
             }
         }
 
         _context = new SegmentedContext(
-            Value,
+            _value,
             EventCallback.Factory.Create<string>(this, SelectOption),
             GetItemClasses,
             GetTabIndex,
-            _itemValues,
-            _itemIds,
-            _itemDisabled);
+            _items,
+            RegisterItem,
+            ReplaceItem,
+            UnregisterItem,
+            _id);
+    }
+
+    // --- Compound-mode registry mutations, all keyed by the STABLE ItemId ---
+    // (mirrors Accordion.RegisterTrigger / ReplaceTrigger / UnregisterTrigger)
+
+    // Add a segment to the ordered list (or refresh it in place if it is already
+    // present under this ItemId). Append preserves declaration order because
+    // SegmentedItem children register top-to-bottom on first render.
+    private void RegisterItem(string value, string itemId, bool disabled)
+    {
+        var idx = _items.FindIndex(i => i.ItemId == itemId);
+        if (idx >= 0) _items[idx] = new SegmentedItemEntry(value, itemId, disabled);
+        else _items.Add(new SegmentedItemEntry(value, itemId, disabled));
+    }
+
+    // Re-key an existing segment IN PLACE when its Value changes at runtime. The
+    // ItemId is stable across a Value change, so resolve the slot by ItemId and
+    // only rewrite Value/Disabled — keeping the original slot preserves DOM order
+    // (a naive unregister+append would scramble it) AND is safe when several
+    // segments share the old/new Value. Exactly Accordion.ReplaceTrigger.
+    private void ReplaceItem(string oldValue, string newValue, string itemId, bool disabled)
+    {
+        var idx = _items.FindIndex(i => i.ItemId == itemId);
+        if (idx >= 0) _items[idx] = new SegmentedItemEntry(newValue, itemId, disabled);
+        else RegisterItem(newValue, itemId, disabled);
+    }
+
+    // Remove a conditionally-removed segment by its stable ItemId so a
+    // duplicate-Value sibling's slot is never collateral-deleted.
+    private void UnregisterItem(string itemId)
+    {
+        var idx = _items.FindIndex(i => i.ItemId == itemId);
+        if (idx >= 0) _items.RemoveAt(idx);
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -160,72 +245,150 @@
 
     private async Task SelectOption(string value)
     {
-        Value = value;
+        // Mutate the working backing field only — NEVER the [Parameter] Value.
+        // Record _lastPushed BEFORE invoking ValueChanged: a controlled parent
+        // re-renders synchronously inside InvokeAsync, so OnParametersSet must
+        // already see this value as "the value we just pushed" to distinguish an
+        // accepted echo (keep in-flight state) from a veto (parent kept its old
+        // value → roll back).
+        _value = value;
+        _lastPushed = value;
         await ValueChanged.InvokeAsync(value);
     }
 
     // Roving tabindex: only the selected segment (or, when nothing is selected,
     // the first ENABLED segment) is in the tab sequence. Everything else is
-    // tabindex=-1 and reachable only via arrow keys.
+    // tabindex=-1 and reachable only via arrow keys. The "first enabled" fallback
+    // walks the ordered registry, so it tracks live DOM order.
     private string GetTabIndex(string value, bool disabled)
     {
         if (disabled) return "-1";
         // A selected Value that is missing or itself disabled can't hold the tab
         // stop — fall back to the first enabled segment so the radiogroup always
         // has exactly one entry point.
-        var selectedIsEnabled = !string.IsNullOrEmpty(Value)
-            && _itemValues.Contains(Value) && !IsItemDisabled(Value);
-        if (selectedIsEnabled && Value == value) return "0";
+        var selectedIsEnabled = !string.IsNullOrEmpty(_value)
+            && _items.Any(i => i.Value == _value) && !IsItemDisabledIn(_items, _value);
+        if (selectedIsEnabled && _value == value) return "0";
         if (!selectedIsEnabled
-            && _itemValues.FirstOrDefault(v => !IsItemDisabled(v)) == value) return "0";
+            && FirstEnabledValue(_items) == value) return "0";
         return "-1";
     }
 
-    private bool IsItemDisabled(string value) =>
-        _itemDisabled.TryGetValue(value, out var d) && d;
+    // First enabled Value walking the supplied (registry- or DOM-ordered) list.
+    private static string? FirstEnabledValue(IReadOnlyList<SegmentedItemEntry> items)
+    {
+        foreach (var item in items)
+            if (!item.Disabled) return item.Value;
+        return null;
+    }
+
+    // Resolve disabled state by walking the supplied list. When two segments share
+    // a Value (legal in compound mode) the FIRST entry decides — which is the slot
+    // that also holds the lone tab stop, so the two stay consistent.
+    private static bool IsItemDisabledIn(IReadOnlyList<SegmentedItemEntry> items, string value)
+    {
+        foreach (var item in items)
+            if (item.Value == value) return item.Disabled;
+        return false;
+    }
 
     private async Task HandleKeyDown(KeyboardEventArgs e)
     {
-        if (_itemValues.Count == 0) return;
+        if (_items.Count == 0) return;
+
+        // Compute the navigation intent FIRST and bail before any JS interop when the
+        // key isn't one we handle (mirrors RadioGroupItem: direction first, early-out,
+        // THEN probe the DOM). `direction` encodes the arrows; Home/End below.
+        var direction = e.Key switch
+        {
+            "ArrowDown" or "ArrowRight" => 1,
+            "ArrowUp" or "ArrowLeft" => -1,
+            _ => 0
+        };
+        var isHome = e.Key == "Home";
+        var isEnd = e.Key == "End";
+        if (direction == 0 && !isHome && !isEnd) return;
+
+        // Resolve the nav order from the LIVE DOM (#63): a keyed reorder MOVES reused
+        // SegmentedItem instances to new positions WITHOUT firing OnParametersSet, and
+        // a middle-INSERT lands the new child at the registry TAIL (RegisterItem
+        // appends) — both leave the C# declaration-order registry stale. The DOM-order
+        // probe re-derives the true on-screen order. Falls back to the registry order
+        // when the probe is unavailable (prerender / JS off / tests that don't drive a
+        // reorder), so EVERY existing behaviour is unchanged.
+        var items = await OrderedItems();
 
         // The "current" segment for navigation is the selected one, falling back
-        // to the first enabled segment (which holds the lone tab stop).
-        var current = !string.IsNullOrEmpty(Value) && _itemValues.Contains(Value) && !IsItemDisabled(Value)
-            ? Value!
-            : _itemValues.FirstOrDefault(v => !IsItemDisabled(v));
-        if (current is null) return;
-        var idx = _itemValues.IndexOf(current);
+        // to the first enabled segment (which holds the lone tab stop). Resolve its
+        // position by INDEX into the ordered list so navigation follows live DOM
+        // order even after an in-place Value re-key or a keyed reorder.
+        var currentIdx = !string.IsNullOrEmpty(_value) && items.Any(i => i.Value == _value) && !IsItemDisabledIn(items, _value)
+            ? items.FindIndex(i => i.Value == _value)
+            : items.FindIndex(i => !i.Disabled);
+        if (currentIdx < 0) return;
 
-        string? target = e.Key switch
-        {
-            "ArrowDown" or "ArrowRight" => FindNextEnabled(idx, 1),
-            "ArrowUp" or "ArrowLeft" => FindNextEnabled(idx, -1),
-            "Home" => _itemValues.FirstOrDefault(v => !IsItemDisabled(v)),
-            "End" => _itemValues.LastOrDefault(v => !IsItemDisabled(v)),
-            _ => null
-        };
+        string? target =
+            direction != 0 ? FindNextEnabled(items, currentIdx, direction)
+            : isHome ? FirstEnabledValue(items)
+            : LastEnabledValue(items);
         if (target is null) return;
 
         // Radiogroup model: arrows move selection AND focus together.
         await SelectOption(target);
-        if (_itemIds.TryGetValue(target, out var id))
+        var targetIdx = items.FindIndex(i => i.Value == target);
+        if (targetIdx >= 0)
         {
-            try { await Interop.FocusElement(id); }
+            try { await Interop.FocusElement(items[targetIdx].ItemId); }
             catch (JSDisconnectedException) { }
         }
     }
 
-    private string? FindNextEnabled(int currentIdx, int direction)
+    // The registry (_items) reordered to match live DOM order. The DOM-order probe
+    // returns the role=radio ids in document order; we reproject the registry entries
+    // onto it (skipping ids the DOM didn't surface, then appending any registry
+    // leftovers). An empty/NULL probe result → use the registry order verbatim.
+    private async Task<List<SegmentedItemEntry>> OrderedItems()
     {
-        if (_itemValues.Count == 0) return null;
+        var registry = _items;
+        // NOTE: a Loose-mode JSInterop (the default test double) returns NULL for an
+        // unconfigured string[] invocation — null-guard it, don't assume [].
+        string[]? domOrder;
+        try
+        {
+            domOrder = await Interop.GetOrderedDescendantIds(_id, "[role='radio']");
+        }
+        catch (JSDisconnectedException) { domOrder = null; }
+        catch (ObjectDisposedException) { domOrder = null; }
+        catch (InvalidOperationException) { domOrder = null; } // JS unavailable (prerender)
+
+        if (domOrder is not { Length: > 0 }) return registry;
+
+        var byId = registry.ToDictionary(i => i.ItemId);
+        var ordered = new List<SegmentedItemEntry>(registry.Count);
+        foreach (var id in domOrder)
+            if (byId.Remove(id, out var item)) ordered.Add(item);
+        ordered.AddRange(byId.Values);
+        return ordered;
+    }
+
+    private static string? LastEnabledValue(IReadOnlyList<SegmentedItemEntry> items)
+    {
+        for (var i = items.Count - 1; i >= 0; i--)
+            if (!items[i].Disabled) return items[i].Value;
+        return null;
+    }
+
+    private static string? FindNextEnabled(IReadOnlyList<SegmentedItemEntry> items, int currentIdx, int direction)
+    {
+        if (items.Count == 0) return null;
         var idx = currentIdx;
-        for (var i = 0; i < _itemValues.Count; i++)
+        for (var i = 0; i < items.Count; i++)
         {
             idx += direction;
-            if (idx < 0) idx = _itemValues.Count - 1;
-            else if (idx >= _itemValues.Count) idx = 0;
+            if (idx < 0) idx = items.Count - 1;
+            else if (idx >= items.Count) idx = 0;
             if (idx == currentIdx) return null;
-            if (!IsItemDisabled(_itemValues[idx])) return _itemValues[idx];
+            if (!items[idx].Disabled) return items[idx].Value;
         }
         return null;
     }
@@ -252,17 +415,29 @@
         public bool Disabled { get; set; }
     }
 
+    /// <summary>One entry in the ordered segment registry: the segment's current
+    /// <paramref name="Value"/>, its STABLE <paramref name="ItemId"/> (the key for
+    /// every registry mutation — survives a Value change) and its current
+    /// <paramref name="Disabled"/> state.</summary>
+    public readonly record struct SegmentedItemEntry(string Value, string ItemId, bool Disabled);
+
     /// <summary>Cascading context for compound-mode <see cref="SegmentedItem"/>
     /// children — they read the active value + the parent's item-class function
-    /// (so style stays consistent with Options-mode), register themselves into
-    /// the shared item registry (for roving tabindex + arrow navigation) and
-    /// invoke <see cref="Select"/> on click.</summary>
+    /// (so style stays consistent with Options-mode), register / re-key / unregister
+    /// themselves in the shared ordered registry (for roving tabindex + arrow
+    /// navigation) keyed by their stable ItemId, and invoke <see cref="Select"/> on
+    /// click.</summary>
     public sealed record SegmentedContext(
         string? Value,
         EventCallback<string> Select,
         Func<bool, string> GetItemClasses,
         Func<string, bool, string> GetTabIndex,
-        List<string> ItemValues,
-        Dictionary<string, string> ItemIds,
-        Dictionary<string, bool> ItemDisabled);
+        IReadOnlyList<SegmentedItemEntry> Items,
+        Action<string, string, bool> RegisterItem,
+        Action<string, string, string, bool> ReplaceItem,
+        Action<string> UnregisterItem,
+        // The role=radiogroup element id — the anchor for the DOM-order roving-nav
+        // probe (Interop.GetOrderedDescendantIds) so arrow-key order tracks the live
+        // DOM after a keyed reorder / middle-insert of SegmentedItem children.
+        string ContainerId);
 }

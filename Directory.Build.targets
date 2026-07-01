@@ -14,4 +14,19 @@
   <ItemGroup Condition="'$(PackageReadmeFile)' == 'README.md'">
     <None Include="$(MSBuildThisFileDirectory)README.md" Pack="true" PackagePath="\" Visible="false" />
   </ItemGroup>
+
+  <!-- Shared NuGet icon. Satellites / tools / templates that pack the family
+       README but don't define their own PackageIcon get the core icon.png, so the
+       whole package family shows a consistent listing image instead of the generic
+       placeholder. Core (src/Lumeo) already sets PackageIcon + packs its own
+       icon.png, so the '$(PackageIcon)' == '' gate excludes it. The marker property
+       (set under the exclusive condition) drives the pack item, avoiding any
+       dependence on intra-file property/item evaluation order. -->
+  <PropertyGroup Condition="'$(PackageReadmeFile)' == 'README.md' And '$(PackageIcon)' == ''">
+    <_LumeoSharedIcon>true</_LumeoSharedIcon>
+    <PackageIcon>icon.png</PackageIcon>
+  </PropertyGroup>
+  <ItemGroup Condition="'$(_LumeoSharedIcon)' == 'true'">
+    <None Include="$(MSBuildThisFileDirectory)src/Lumeo/icon.png" Pack="true" PackagePath="\" Visible="false" />
+  </ItemGroup>
 </Project>

@@ -36,7 +36,8 @@
         "default": null,
         "description": null,
         "isCascading": false,
-        "captureUnmatched": false
+        "captureUnmatched": false,
+        "isEditorRequired": false
       },
       {
         "name": "DelayMs",
@@ -44,7 +45,8 @@
         "default": "0",
         "description": null,
         "isCascading": false,
-        "captureUnmatched": false
+        "captureUnmatched": false,
+        "isEditorRequired": false
       },
       {
         "name": "DurationMs",
@@ -52,7 +54,8 @@
         "default": "600",
         "description": null,
         "isCascading": false,
-        "captureUnmatched": false
+        "captureUnmatched": false,
+        "isEditorRequired": false
       },
       {
         "name": "BlurPx",
@@ -60,7 +63,8 @@
         "default": "8",
         "description": null,
         "isCascading": false,
-        "captureUnmatched": false
+        "captureUnmatched": false,
+        "isEditorRequired": false
       },
       {
         "name": "Yoffset",
@@ -68,7 +72,8 @@
         "default": "8",
         "description": null,
         "isCascading": false,
-        "captureUnmatched": false
+        "captureUnmatched": false,
+        "isEditorRequired": false
       },
       {
         "name": "Once",
@@ -76,7 +81,8 @@
         "default": "true",
         "description": null,
         "isCascading": false,
-        "captureUnmatched": false
+        "captureUnmatched": false,
+        "isEditorRequired": false
       },
       {
         "name": "ForceHidden",
@@ -84,7 +90,8 @@
         "default": null,
         "description": "When true, always start in the hidden state and animate in — even if the element is already in the viewport at mount. Default (false) is prerender-friendly: above-the-fold BlurFades stay statically visible to avoid a flash of blurred content on first paint. Set to true for docs demos or controlled \"Replay\" scenarios where you always want the animation to play.",
         "isCascading": false,
-        "captureUnmatched": false
+        "captureUnmatched": false,
+        "isEditorRequired": false
       },
       {
         "name": "Class",
@@ -92,7 +99,8 @@
         "default": null,
         "description": null,
         "isCascading": false,
-        "captureUnmatched": false
+        "captureUnmatched": false,
+        "isEditorRequired": false
       },
       {
         "name": "AdditionalAttributes",
@@ -100,7 +108,8 @@
         "default": null,
         "description": null,
         "isCascading": false,
-        "captureUnmatched": true
+        "captureUnmatched": true,
+        "isEditorRequired": false
       }
     ],
     "events": [],
@@ -112,8 +121,29 @@
     ],
     "examples": [],
     "subComponents": {},
+    "a11y": {
+      "roles": [],
+      "ariaAttributes": [],
+      "keys": [],
+      "keyboardInteractive": false,
+      "focusManaged": false
+    },
     "parseFailed": false,
     "parseError": null
+  },
+  "testCoverage": {
+    "tier": 1,
+    "files": 1,
+    "tests": 9,
+    "relatedFiles": 0,
+    "render": true,
+    "behavior": false,
+    "a11y": false,
+    "keyboard": false,
+    "scale": false,
+    "e2e": false,
+    "e2eFiles": [],
+    "contract": "smoke"
   },
   "$schema": "https://lumeo.nativ.sh/registry-component-schema.json",
   "key": "blur-fade",
@@ -127,7 +157,7 @@
   "source": [
     {
       "path": "UI/BlurFade/BlurFade.razor",
-      "content": "@namespace Lumeo\n@implements IAsyncDisposable\n@inject ComponentInteropService Interop\n\n<div id=\"@_elementId\" class=\"@CssClass\" style=\"@StyleString\" data-motion-visible=\"@InitialMotionState\" @attributes=\"AdditionalAttributes\">\n    @ChildContent\n</div>\n\n@code {\n    [Parameter] public RenderFragment? ChildContent { get; set; }\n    [Parameter] public int DelayMs { get; set; } = 0;\n    [Parameter] public int DurationMs { get; set; } = 600;\n    [Parameter] public int BlurPx { get; set; } = 8;\n    [Parameter] public int Yoffset { get; set; } = 8;\n    [Parameter] public bool Once { get; set; } = true;\n    /// <summary>\n    /// When true, always start in the hidden state and animate in — even if the element is already\n    /// in the viewport at mount. Default (false) is prerender-friendly: above-the-fold BlurFades\n    /// stay statically visible to avoid a flash of blurred content on first paint. Set to true for\n    /// docs demos or controlled \"Replay\" scenarios where you always want the animation to play.\n    /// </summary>\n    [Parameter] public bool ForceHidden { get; set; }\n    [Parameter] public string? Class { get; set; }\n    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }\n\n    private readonly string _elementId = $\"lumeo-blurfade-{Guid.NewGuid():N}\";\n    private bool _registered;\n\n    private string CssClass => string.Join(\" \", new[] { \"lumeo-blur-fade\", Class }.Where(s => !string.IsNullOrWhiteSpace(s)));\n\n    // When ForceHidden, render the initial hidden state directly via attribute so the very first\n    // paint already shows the to-be-animated state. Prevents a one-frame flash of fully-visible\n    // content before the JS observer marks it hidden.\n    private string? InitialMotionState => ForceHidden ? \"false\" : null;\n\n    private string StyleString =>\n        $\"--lumeo-blur-px: {BlurPx}px; --lumeo-blur-y: {Yoffset}px; --lumeo-blur-duration: {DurationMs}ms;\";\n\n    protected override async Task OnAfterRenderAsync(bool firstRender)\n    {\n        if (firstRender && !_registered)\n        {\n            _registered = true;\n            try\n            {\n                await Interop.MotionBlurFade(_elementId, DelayMs, Once, ForceHidden);\n            }\n            catch (JSDisconnectedException) { }\n        }\n    }\n\n    public async ValueTask DisposeAsync()\n    {\n        if (!_registered) return;\n        try { await Interop.MotionDisposeObserver(_elementId); }\n        catch (JSDisconnectedException) { }\n    }\n}\n"
+      "content": "@namespace Lumeo\n@implements IAsyncDisposable\n@inject ComponentInteropService Interop\n\n<div @attributes=\"AdditionalAttributes\" id=\"@_elementId\" class=\"@CssClass\" style=\"@StyleString\" data-motion-visible=\"@InitialMotionState\">\n    @ChildContent\n</div>\n\n@code {\n    [Parameter] public RenderFragment? ChildContent { get; set; }\n    [Parameter] public int DelayMs { get; set; } = 0;\n    [Parameter] public int DurationMs { get; set; } = 600;\n    [Parameter] public int BlurPx { get; set; } = 8;\n    [Parameter] public int Yoffset { get; set; } = 8;\n    [Parameter] public bool Once { get; set; } = true;\n    /// <summary>\n    /// When true, always start in the hidden state and animate in — even if the element is already\n    /// in the viewport at mount. Default (false) is prerender-friendly: above-the-fold BlurFades\n    /// stay statically visible to avoid a flash of blurred content on first paint. Set to true for\n    /// docs demos or controlled \"Replay\" scenarios where you always want the animation to play.\n    /// </summary>\n    [Parameter] public bool ForceHidden { get; set; }\n    [Parameter] public string? Class { get; set; }\n    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }\n\n    private readonly string _elementId = $\"lumeo-blurfade-{Guid.NewGuid():N}\";\n    private bool _registered;\n\n    private string CssClass => string.Join(\" \", new[] { \"lumeo-blur-fade\", Class }.Where(s => !string.IsNullOrWhiteSpace(s)));\n\n    // When ForceHidden, render the initial hidden state directly via attribute so the very first\n    // paint already shows the to-be-animated state. Prevents a one-frame flash of fully-visible\n    // content before the JS observer marks it hidden.\n    private string? InitialMotionState => ForceHidden ? \"false\" : null;\n\n    private string StyleString\n    {\n        get\n        {\n            var baseStyle = $\"--lumeo-blur-px: {BlurPx}px; --lumeo-blur-y: {Yoffset}px; --lumeo-blur-duration: {DurationMs}ms;\";\n\n            // The @attributes splat is rendered FIRST so the explicit id/class/style win and a caller\n            // can never clobber the JS hookup id or the blur CSS variables. For style specifically we\n            // merge the caller's value onto our own so both the blur variables and the caller's layout\n            // styles survive instead of one side silently dropping the other.\n            if (AdditionalAttributes is not null\n                && AdditionalAttributes.TryGetValue(\"style\", out var callerStyle)\n                && callerStyle?.ToString() is { } s\n                && !string.IsNullOrWhiteSpace(s))\n            {\n                return $\"{baseStyle} {s.Trim()}\";\n            }\n\n            return baseStyle;\n        }\n    }\n\n    protected override async Task OnAfterRenderAsync(bool firstRender)\n    {\n        if (firstRender && !_registered)\n        {\n            _registered = true;\n            try\n            {\n                await Interop.MotionBlurFade(_elementId, DelayMs, Once, ForceHidden);\n            }\n            catch (JSDisconnectedException) { }\n        }\n    }\n\n    public async ValueTask DisposeAsync()\n    {\n        if (!_registered) return;\n        try { await Interop.MotionDisposeObserver(_elementId); }\n        catch (JSDisconnectedException) { }\n    }\n}\n"
     }
   ],
   "slots": [

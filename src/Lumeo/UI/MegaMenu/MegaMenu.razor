@@ -1,4 +1,6 @@
 @namespace Lumeo
+@inject NavigationManager Nav
+@implements IDisposable
 
 @{
     var context = new MegaMenuContext(
@@ -37,6 +39,29 @@
     // The single item currently in the tab order (tabindex=0). Null until the
     // first item registers; the context falls back to the first enabled item.
     private string? _rovingItemId;
+
+    protected override void OnInitialized()
+    {
+        Nav.LocationChanged += OnLocationChanged;
+    }
+
+    // A mega-menu panel is a navigation affordance: once the user follows a link
+    // (or any in-app navigation happens) the open panel must close. Without this
+    // it lingers over the new page in a Blazor SPA, where the menu isn't unmounted
+    // on navigation the way a full page load would tear it down.
+    private void OnLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e)
+    {
+        if (_activeItemId is not null)
+        {
+            _activeItemId = null;
+            InvokeAsync(StateHasChanged);
+        }
+    }
+
+    public void Dispose()
+    {
+        Nav.LocationChanged -= OnLocationChanged;
+    }
 
     private string CssClass => Cx.Merge("relative", Class);
 

@@ -1,7 +1,7 @@
 @namespace Lumeo
 
 @{
-    var context = new MenubarContext(_openMenuId, EventCallback.Factory.Create<string?>(this, SetOpenMenuId), _openMenuId is not null, _menuIds, RegisterMenuId, NavigateMenus);
+    var context = new MenubarContext(_openMenuId, EventCallback.Factory.Create<string?>(this, SetOpenMenuId), _openMenuId is not null, _menuIds, RegisterMenuId, UnregisterMenuId, NavigateMenus);
 }
 
 <CascadingValue Value="context" IsFixed="false">
@@ -35,6 +35,18 @@
         }
     }
 
+    private void UnregisterMenuId(string menuId)
+    {
+        if (_menuIds.Remove(menuId))
+        {
+            if (_openMenuId == menuId)
+            {
+                _openMenuId = null;
+            }
+            StateHasChanged();
+        }
+    }
+
     private void NavigateMenus(int direction)
     {
         if (_menuIds.Count == 0) return;
@@ -58,5 +70,6 @@
         bool AnyOpen,
         List<string> MenuIds,
         Action<string> RegisterMenuId,
+        Action<string> UnregisterMenuId,
         Action<int> NavigateMenus);
 }

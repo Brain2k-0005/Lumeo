@@ -11,7 +11,8 @@
         RegisterPanel,
         GetPanelConstraints,
         IsPanelCollapsed,
-        EventCallback.Factory.Create<int>(this, ToggleCollapse)
+        EventCallback.Factory.Create<int>(this, ToggleCollapse),
+        UnregisterPanel
     );
 }
 
@@ -69,6 +70,14 @@
     private readonly HashSet<int> _collapsed = new();
     private readonly Dictionary<int, double> _preCollapseSize = new();
     private bool _savedLayoutApplied;
+    // True once a SavedLayout snapshot has been discarded for not matching the
+    // live panel count — stops OnParametersSet from re-applying the same stale
+    // snapshot on the next render and re-introducing the broken mixed layout.
+    private bool _savedLayoutRejected;
+    // True once _sizes has been populated for the initial panel set. A later
+    // panel add/remove must RECONCILE the existing layout, not full-reseed it
+    // back to the default split (which would wipe the user's drag/collapse).
+    private bool _seeded;
 
     private string DirectionString => Direction == Lumeo.Orientation.Horizontal ? "horizontal" : "vertical";
 
@@ -82,11 +91,12 @@
         // SavedLayout wins over DefaultSizes: a persisted layout is the user's
         // last explicit choice. Applied once (per the guard) so a re-render
         // doesn't stomp a live drag.
-        if (!_savedLayoutApplied && SavedLayout is { Sizes.Count: > 0 })
+        if (!_savedLayoutApplied && !_savedLayoutRejected && SavedLayout is { Sizes.Count: > 0 })
         {
             _sizes = new List<double>(SavedLayout.Sizes);
             _panelCount = _sizes.Count;
             _savedLayoutApplied = true;
+            _seeded = true;
             return;
         }
 
@@ -97,13 +107,28 @@
                 _sizes = new List<double>(DefaultSizes);
                 _panelCount = DefaultSizes.Length;
             }
+            _seeded = true;
         }
     }
 
     protected override void OnAfterRender(bool firstRender)
     {
-        // A SavedLayout already seeded _sizes in OnParametersSet — don't override.
-        if (_savedLayoutApplied && _sizes.Count > 0) return;
+        // A SavedLayout already seeded _sizes in OnParametersSet — keep it, but
+        // ONLY when the snapshot's length matches the live registered panel set.
+        // A stale/changed snapshot with a mismatched panel count (e.g. saved for
+        // 2 panels, now rendering 3) would otherwise leave a broken mixed layout
+        // (the surplus panels fall through to GetPanelSize's equal-share fallback,
+        // so the totals don't sum to 100). When the counts disagree, discard the
+        // stale snapshot and fall through to the normal default seeding below.
+        if (_savedLayoutApplied && _sizes.Count > 0)
+        {
+            if (_panelDefaultSizes.Count == 0 || _panelDefaultSizes.Count == _sizes.Count) return;
+
+            _savedLayoutApplied = false;
+            _savedLayoutRejected = true;
+            _seeded = false;
+            _sizes = new List<double>();
+        }
 
         // Panels register from their OnInitialized, which runs during this
         // component's first render — AFTER OnParametersSet has already executed.
@@ -112,18 +137,93 @@
         // render; without this, _sizes stayed empty and HandleDrag rejected
         // every drag (panelIndex + 1 >= _sizes.Count).
         if (DefaultSizes is { Length: > 0 }) return;
-        if (_panelDefaultSizes.Count == 0 || _sizes.Count == _panelDefaultSizes.Count) return;
+        if (_panelDefaultSizes.Count == 0) return;
 
-        // Order keys are the documented zero-based panel indices; sort so the
-        // seeded list lines up with GetPanelSize(order) lookups. Normalize to
-        // 100% (equal split when every panel keeps the 50 default).
+        // Initial population: full-seed once from the registered DefaultSizes.
+        if (!_seeded || _sizes.Count == 0)
+        {
+            SeedFromPanelDefaults();
+            _seeded = true;
+            _panelCount = _sizes.Count;
+            StateHasChanged();
+            return;
+        }
+
+        // The panel set changed AFTER the initial seed (a panel was added or
+        // removed at runtime). Do NOT full-reseed — that would wipe the user's
+        // dragged / collapsed layout back to the default split. Instead grow or
+        // shrink the existing layout in place, preserving the survivors' ratios.
+        if (_sizes.Count != _panelDefaultSizes.Count)
+        {
+            ReconcilePanelCount();
+            _panelCount = _sizes.Count;
+            StateHasChanged();
+        }
+    }
+
+    // Build _sizes from the registered panel DefaultSizes, normalized to 100%.
+    // Order keys are the documented zero-based panel indices; sort so the seeded
+    // list lines up with GetPanelSize(order) lookups.
+    private void SeedFromPanelDefaults()
+    {
         var defaults = _panelDefaultSizes.OrderBy(kv => kv.Key).Select(kv => kv.Value).ToList();
         var total = defaults.Sum();
         _sizes = total > 0
             ? defaults.Select(d => d / total * 100.0).ToList()
             : Enumerable.Repeat(100.0 / defaults.Count, defaults.Count).ToList();
-        _panelCount = _sizes.Count;
-        StateHasChanged();
+    }
+
+    // Reconcile a live panel add/remove against the current (possibly user-edited)
+    // _sizes without discarding the existing layout.
+    //   - GROWTH: each newcomer takes its normalized DefaultSize share; the
+    //     incumbents are proportionally scaled down to make room, so their
+    //     relative split is preserved.
+    //   - SHRINK: drop the removed slots and renormalize the survivors back to
+    //     100, preserving their relative split.
+    // Stale per-index collapse/restore state for indices that no longer exist is
+    // pruned so it can't bleed into a future panel that reuses the index.
+    private void ReconcilePanelCount()
+    {
+        var liveCount = _panelDefaultSizes.Count;
+        var oldCount = _sizes.Count;
+
+        if (liveCount > oldCount)
+        {
+            // Newcomers are the highest Order keys (panels append). Give each its
+            // normalized DefaultSize share of 100; shrink incumbents to fit.
+            var newDefaults = _panelDefaultSizes
+                .OrderBy(kv => kv.Key)
+                .Skip(oldCount)
+                .Select(kv => kv.Value)
+                .ToList();
+            var defaultTotal = _panelDefaultSizes.Values.Sum();
+            var newcomerShare = newDefaults
+                .Select(d => defaultTotal > 0 ? d / defaultTotal * 100.0 : 100.0 / liveCount)
+                .ToList();
+            var totalNewcomer = newcomerShare.Sum();
+
+            var incumbentSum = _sizes.Sum();
+            var scale = incumbentSum > 0 ? (100.0 - totalNewcomer) / incumbentSum : 0.0;
+            for (var i = 0; i < _sizes.Count; i++)
+                _sizes[i] *= scale;
+            _sizes.AddRange(newcomerShare);
+        }
+        else
+        {
+            // SHRINK: keep the leading survivors, renormalize to 100.
+            _sizes = _sizes.Take(liveCount).ToList();
+            var survivorSum = _sizes.Sum();
+            if (survivorSum > 0)
+                for (var i = 0; i < _sizes.Count; i++)
+                    _sizes[i] = _sizes[i] / survivorSum * 100.0;
+            else
+                _sizes = Enumerable.Repeat(100.0 / liveCount, liveCount).ToList();
+
+            // Drop collapse/restore bookkeeping for indices that no longer exist.
+            _collapsed.RemoveWhere(i => i >= liveCount);
+            foreach (var key in _preCollapseSize.Keys.Where(k => k >= liveCount).ToList())
+                _preCollapseSize.Remove(key);
+        }
     }
 
     private async Task EmitLayoutAsync()
@@ -149,6 +249,23 @@
         _panelDefaultSizes[order] = defaultSize;
         _panelConstraints[order] = (minSize, maxSize);
         _collapseConfig[order] = (collapsible, collapsedSize);
+    }
+
+    // Called from ResizablePanel.Dispose when a panel is removed at runtime.
+    // Drops the panel's per-Order entries from every group map so no stale
+    // constraint / collapse config / collapsed flag / remembered pre-collapse
+    // size survives for an index no live panel occupies. Removing from
+    // _panelDefaultSizes also lets OnAfterRender's count-mismatch shrink-reconcile
+    // fire (it compares _sizes.Count against _panelDefaultSizes.Count). _sizes
+    // itself is renormalized by ReconcilePanelCount on the following render, so
+    // we don't touch it here (the panel set isn't fully torn down yet).
+    private void UnregisterPanel(int order)
+    {
+        _panelDefaultSizes.Remove(order);
+        _panelConstraints.Remove(order);
+        _collapseConfig.Remove(order);
+        _collapsed.Remove(order);
+        _preCollapseSize.Remove(order);
     }
 
     private (double MinSize, double MaxSize) GetPanelConstraints(int index) =>
@@ -278,6 +395,7 @@
         Action<int, double, double, double, bool, double> RegisterPanel,
         Func<int, (double MinSize, double MaxSize)> GetPanelConstraints,
         Func<int, bool> IsPanelCollapsed,
-        EventCallback<int> ToggleCollapse
+        EventCallback<int> ToggleCollapse,
+        Action<int> UnregisterPanel
     );
 }

@@ -81,6 +81,31 @@ public class SparklesTests : IAsyncLifetime
     }
 
     [Fact]
+    public void Custom_Class_Containing_Position_Substring_Keeps_Base_Class()
+    {
+        // Bug #56: substring Contains() match wrongly treated "sticky-note" as a position
+        // override and dropped the "lumeo-sparkles" base class (losing position:relative).
+        // A whole-token match must NOT trigger on a class that merely *contains* "sticky".
+        var cut = _ctx.Render<Lumeo.Sparkles>(p => p
+            .Add(s => s.Class, "sticky-note"));
+
+        var rootClass = cut.Find("span").GetAttribute("class");
+        Assert.Contains("lumeo-sparkles", rootClass);
+        Assert.Contains("sticky-note", rootClass);
+    }
+
+    [Fact]
+    public void Actual_Position_Utility_Suppresses_Base_Class()
+    {
+        // The whole-token match still drops the base class for a real "absolute" utility
+        // (incl. Tailwind variant prefixes like "md:absolute").
+        var cut = _ctx.Render<Lumeo.Sparkles>(p => p
+            .Add(s => s.Class, "md:absolute inset-0"));
+
+        Assert.DoesNotContain("lumeo-sparkles", cut.Find("span").GetAttribute("class"));
+    }
+
+    [Fact]
     public void Additional_Attributes_Forward()
     {
         var cut = _ctx.Render<Lumeo.Sparkles>(p => p

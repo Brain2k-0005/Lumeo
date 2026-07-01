@@ -79,4 +79,32 @@ public class HeadingTests : IAsyncLifetime
         var cls = cut.Find("h2").GetAttribute("class");
         Assert.Contains("my-heading", cls);
     }
+
+    // Battle-wave3 bug #44 (edge-data): a whitespace-only `As` passed the
+    // IsNullOrEmpty guard and ran RenderAs -> builder.OpenElement(0, "   "),
+    // emitting an element with a blank/invalid tag name. Whitespace `As`
+    // must be treated as absent and fall through to the semantic h{Level}.
+    [Fact]
+    public void Whitespace_As_Falls_Through_To_Semantic_Heading_Tag()
+    {
+        var cut = _ctx.Render<Lumeo.Heading>(p => p
+            .Add(h => h.As, "   ")
+            .AddChildContent("Section title"));
+
+        // Default Level is 2 -> a real <h2>, not a blank-tag element.
+        var h2 = cut.Find("h2");
+        Assert.Equal("Section title", h2.TextContent);
+    }
+
+    // Guard the normal path: a genuine, non-blank `As` still overrides the tag.
+    [Fact]
+    public void NonBlank_As_Renders_The_Custom_Tag()
+    {
+        var cut = _ctx.Render<Lumeo.Heading>(p => p
+            .Add(h => h.As, "p")
+            .AddChildContent("Looks like a heading"));
+
+        Assert.NotNull(cut.Find("p"));
+        Assert.Empty(cut.FindAll("h2"));
+    }
 }

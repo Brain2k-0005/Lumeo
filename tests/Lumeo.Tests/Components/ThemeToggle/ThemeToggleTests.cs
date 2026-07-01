@@ -29,12 +29,15 @@ public class ThemeToggleTests : IAsyncLifetime
     }
 
     [Fact]
-    public void Button_Has_Toggle_Title()
+    public void Button_Has_Toggle_AriaLabel_And_No_Native_Title()
     {
         var cut = _ctx.Render<L.ThemeToggle>();
 
+        // The hint is dogfooded through the Lumeo <Tooltip>; the accessible name is the
+        // explicit aria-label, and there is no native browser title.
         var button = cut.Find("button");
-        Assert.Equal("Toggle theme", button.GetAttribute("title"));
+        Assert.Equal("Toggle theme", button.GetAttribute("aria-label"));
+        Assert.False(button.HasAttribute("title"));
     }
 
     [Fact]

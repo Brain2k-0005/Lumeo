@@ -32,21 +32,38 @@
 
     private System.Globalization.CultureInfo EffectiveCulture => Culture ?? System.Globalization.CultureInfo.CurrentCulture;
 
-    private bool IsUp => Value > 0;
-    private bool IsDown => Value < 0;
+    private bool IsFinite => !double.IsNaN(Value) && !double.IsInfinity(Value);
+
+    // Round to the same precision the "0.##" format renders, then normalise
+    // negative zero (e.g. Math.Round(-0.004, 2) == -0.0) to +0.0 so direction,
+    // colour, sign, and the displayed magnitude all agree.
+    private double Rounded
+    {
+        get
+        {
+            var r = Math.Round(Value, 2);
+            return r == 0 ? 0d : r;
+        }
+    }
+
+    private bool IsUp => IsFinite && Rounded > 0;
+    private bool IsDown => IsFinite && Rounded < 0;
 
     private string FormattedValue
     {
         get
         {
+            if (!IsFinite) return "—";
+
             var culture = EffectiveCulture;
-            var sign = Value > 0 ? "+" : "";
+            var rounded = Rounded;
+            var sign = rounded > 0 ? "+" : "";
             var absFormat = Format switch
             {
                 DeltaFormat.Percent =>
-                    $"{sign}{Value.ToString("0.##", culture)}%",
+                    $"{sign}{rounded.ToString("0.##", culture)}%",
                 _ =>
-                    $"{sign}{Value.ToString("0.##", culture)}"
+                    $"{sign}{rounded.ToString("0.##", culture)}"
             };
             return absFormat;
         }
@@ -62,7 +79,7 @@
             var badColor = "bg-destructive-light text-destructive-text";
             var neutral = "bg-muted text-muted-foreground";
 
-            if (Value == 0) return neutral;
+            if (!IsFinite || Rounded == 0) return neutral;
 
             var isGood = Positive == DeltaDirection.Good ? IsUp : IsDown;
             return isGood ? goodColor : badColor;

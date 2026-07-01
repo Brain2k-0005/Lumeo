@@ -1,7 +1,7 @@
 @namespace Lumeo
 
 @{
-    var context = new DrawerContext(Open, EventCallback.Factory.Create<bool>(this, SetOpen), _titleId, _descriptionId, TryDismiss);
+    var context = new DrawerContext(Open, EventCallback.Factory.Create<bool>(this, SetOpen), _titleId, _descriptionId, TryDismiss, _descriptionRegistry, RegisterDescription, UnregisterDescription);
 }
 
 <CascadingValue Value="context" IsFixed="false">
@@ -31,6 +31,14 @@
     private readonly string _titleId = LumeoIds.New("drawer-title");
     private readonly string _descriptionId = LumeoIds.New("drawer-desc");
 
+    // Tracks whether a <DrawerDescription> is actually present in the tree. A
+    // mutable holder (not a record field) because the cascaded context is
+    // rebuilt every render, but the registration must persist across renders.
+    // Mirrors AlertDialog's DescriptionRegistry — without this DrawerContent
+    // would emit a dangling aria-describedby IDREF whenever no description is
+    // rendered (e.g. every service-opened overlay).
+    private readonly DrawerDescriptionRegistry _descriptionRegistry = new();
+
     private async Task SetOpen(bool value)
     {
         Open = value;
@@ -49,5 +57,43 @@
         return true;
     }
 
-    public record DrawerContext(bool IsOpen, EventCallback<bool> SetOpen, string TitleId, string DescriptionId, Func<string, Task<bool>> TryDismiss);
+    // Called by DrawerDescription on init so DrawerContent only wires
+    // aria-describedby when a description actually exists (no dangling IDREF).
+    // Re-renders so the content's aria-describedby picks up the registration on
+    // the next pass (child OnInitialized runs after the parent's first render).
+    // Counted (not a bool) so a description that is conditionally REMOVED while
+    // the drawer stays mounted is correctly un-registered via UnregisterDescription
+    // below (Codex P2) — a bare bool latched true forever.
+    private void RegisterDescription()
+    {
+        _descriptionRegistry.Count++;
+        if (_descriptionRegistry.Count == 1) StateHasChanged();
+    }
+
+    // Called by DrawerDescription.Dispose when it is removed from the tree.
+    // Only re-renders on the 1->0 transition.
+    private void UnregisterDescription()
+    {
+        _descriptionRegistry.Count--;
+        if (_descriptionRegistry.Count == 0) StateHasChanged();
+    }
+
+    // DescriptionRegistry + RegisterDescription/UnregisterDescription default to null! so the 4.0
+    // additions stay a non-breaking signature change: Lumeo always constructs the context with real
+    // values, and any external 3.x constructor of the 5-arg shape still compiles.
+    public record DrawerContext(bool IsOpen, EventCallback<bool> SetOpen, string TitleId, string DescriptionId, Func<string, Task<bool>> TryDismiss, DrawerDescriptionRegistry DescriptionRegistry = null!, Action RegisterDescription = null!, Action UnregisterDescription = null!);
+
+    /// <summary>
+    /// Persistent, mutable holder that survives the per-render rebuild of
+    /// <see cref="DrawerContext"/>. Lets <see cref="DrawerContent"/> know whether
+    /// a <see cref="DrawerDescription"/> is CURRENTLY rendered so it can avoid
+    /// emitting a dangling <c>aria-describedby</c> IDREF (mirrors the AlertDialog
+    /// pattern). A count, not a bool, so a description that mounts then is later
+    /// removed un-registers.
+    /// </summary>
+    public sealed class DrawerDescriptionRegistry
+    {
+        public int Count { get; set; }
+        public bool HasDescription => Count > 0;
+    }
 }

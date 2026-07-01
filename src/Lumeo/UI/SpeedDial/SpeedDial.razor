@@ -14,18 +14,25 @@
                     <span class="whitespace-nowrap rounded-md bg-popover border border-border/40 px-2 py-1 text-xs text-popover-foreground shadow-md" aria-hidden="true">
                         @item.Label
                     </span>
-                    <button type="button"
-                            role="menuitem"
-                            class="flex h-10 w-10 cursor-pointer items-center justify-center rounded-full bg-secondary text-secondary-foreground shadow-md transition-all hover:bg-secondary/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                            @onclick="() => HandleItemClick(item)"
-                            disabled="@item.Disabled"
-                            aria-label="@item.Label"
-                            title="@item.Label">
-                        @if (!string.IsNullOrEmpty(item.Icon))
-                        {
-                            <span class="text-sm">@item.Icon</span>
-                        }
-                    </button>
+                    <Tooltip>
+                        <TooltipTrigger AsChild>
+                            <ChildContentSlot Context="slot">
+                                <button type="button"
+                                        role="menuitem"
+                                        class="flex h-10 w-10 cursor-pointer items-center justify-center rounded-full bg-secondary text-secondary-foreground shadow-md transition-all hover:bg-secondary/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                                        @onclick="() => HandleItemClick(item)"
+                                        disabled="@item.Disabled"
+                                        aria-label="@item.Label"
+                                        @attributes="slot.Attributes">
+                                    @if (!string.IsNullOrEmpty(item.Icon))
+                                    {
+                                        <span class="text-sm">@item.Icon</span>
+                                    }
+                                </button>
+                            </ChildContentSlot>
+                        </TooltipTrigger>
+                        <TooltipContent>@item.Label</TooltipContent>
+                    </Tooltip>
                 </div>
             }
         </div>
@@ -37,6 +44,7 @@
             @onclick="ToggleOpen"
             aria-expanded="@(_isOpen ? "true" : "false")"
             aria-haspopup="menu"
+            aria-controls="@(_isOpen ? _contentId : null)"
             aria-label="@L["Common.Actions"]"
             disabled="@Disabled">
         @if (!string.IsNullOrEmpty(Icon))
@@ -74,6 +82,11 @@
     private bool _isOpen;
     private bool _registered;
     private int _focusedIndex = -1;
+    // True from the moment Open() flips the menu visible until it has finished
+    // seeding focus on the first action. Arrow keys that arrive inside this
+    // window (before the open-focus has landed) are ignored so they cannot move
+    // the cursor off the about-to-be-focused first item and desync it.
+    private bool _opening;
 
     // The action menu is laid out vertically for Up/Down directions and
     // horizontally for Left/Right.
@@ -82,10 +95,10 @@
 
     private string PositionClass => Position switch
     {
-        SpeedDialPosition.BottomLeft => "fixed bottom-6 left-6 z-50 flex flex-col-reverse items-start",
-        SpeedDialPosition.TopRight => "fixed top-6 right-6 z-50 flex flex-col items-end",
-        SpeedDialPosition.TopLeft => "fixed top-6 left-6 z-50 flex flex-col items-start",
-        _ => "fixed bottom-6 right-6 z-50 flex flex-col-reverse items-end"
+        SpeedDialPosition.BottomLeft => "fixed bottom-6 start-6 z-50 flex flex-col-reverse items-start",
+        SpeedDialPosition.TopRight => "fixed top-6 end-6 z-50 flex flex-col items-end",
+        SpeedDialPosition.TopLeft => "fixed top-6 start-6 z-50 flex flex-col items-start",
+        _ => "fixed bottom-6 end-6 z-50 flex flex-col-reverse items-end"
     };
 
     private string ItemsContainerClass
@@ -95,8 +108,8 @@
             var directionClass = Direction switch
             {
                 SpeedDialDirection.Down => "flex flex-col mt-2",
-                SpeedDialDirection.Left => "flex flex-row-reverse mr-2",
-                SpeedDialDirection.Right => "flex flex-row ml-2",
+                SpeedDialDirection.Left => "flex flex-row-reverse me-2",
+                SpeedDialDirection.Right => "flex flex-row ms-2",
                 _ => "flex flex-col-reverse mb-2"
             };
             return $"{directionClass} gap-2 animate-fade-in";
@@ -118,6 +131,18 @@
             ? Cx.Join("flex h-14 w-14 cursor-not-allowed items-center justify-center rounded-full shadow-lg opacity-50 pointer-events-none", TriggerVariantClass)
             : Cx.Join("flex h-14 w-14 cursor-pointer items-center justify-center rounded-full shadow-lg transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2", TriggerVariantClass);
 
+    // Disabling the FAB while its menu is open would otherwise trap it open:
+    // the trigger goes pointer-events-none, ToggleOpen/HandleKeyDown early-return
+    // on Disabled (so neither click nor Escape can dismiss it) and the
+    // click-outside JS handler stays registered. Close it the moment Disabled
+    // flips true so keyboard/AT users aren't stranded. Close() already
+    // unregisters click-outside and resets _isOpen/_focusedIndex.
+    protected override async Task OnParametersSetAsync()
+    {
+        if (Disabled && _isOpen)
+            await Close();
+    }
+
     private async Task ToggleOpen()
     {
         if (Disabled) return;
@@ -130,23 +155,35 @@
     private async Task Open()
     {
         _isOpen = true;
-        _focusedIndex = -1;
+        // Seed the cursor on the first action SYNCHRONOUSLY (before any await) so
+        // it matches the DOM focus we are about to apply below. Otherwise a fast
+        // ArrowDown/ArrowUp arriving during the awaits would compute its next
+        // index from a stale -1 and skip/desync the first item.
+        _focusedIndex = 0;
+        _opening = true;
         StateHasChanged();
-        await Task.Yield();
-        await Interop.RegisterClickOutside(_wrapperId, null, async () =>
+        try
         {
-            await Close();
-            await InvokeAsync(StateHasChanged);
-        });
-        _registered = true;
+            await Task.Yield();
+            await Interop.RegisterClickOutside(_wrapperId, null, async () =>
+            {
+                await Close();
+                await InvokeAsync(StateHasChanged);
+            });
+            _registered = true;
 
-        // Move focus to the first action so arrow keys work immediately and
-        // keyboard users land inside the menu (MUI SpeedDial behaviour).
-        var count = await Interop.GetMenuItemCount(_contentId);
-        if (count > 0)
+            // Move focus to the first action so arrow keys work immediately and
+            // keyboard users land inside the menu (MUI SpeedDial behaviour).
+            var count = await Interop.GetMenuItemCount(_contentId);
+            if (count > 0)
+            {
+                _focusedIndex = 0;
+                try { await Interop.FocusMenuItemByIndex(_contentId, 0); } catch (JSDisconnectedException) { }
+            }
+        }
+        finally
         {
-            _focusedIndex = 0;
-            try { await Interop.FocusMenuItemByIndex(_contentId, 0); } catch (JSDisconnectedException) { }
+            _opening = false;
         }
     }
 
@@ -210,6 +247,10 @@
 
     private async Task MoveFocus(int delta)
     {
+        // Ignore arrow keys that arrive before the open-focus has landed: the
+        // menu's items may not exist yet and the cursor would move off the
+        // first item that Open() is about to focus, desyncing the two.
+        if (_opening) return;
         var count = await Interop.GetMenuItemCount(_contentId);
         if (count <= 0) return;
         _focusedIndex = ((_focusedIndex < 0 ? 0 : _focusedIndex) + delta % count + count) % count;
@@ -218,6 +259,7 @@
 
     private async Task FocusIndex(int index)
     {
+        if (_opening) return;
         _focusedIndex = index;
         try { await Interop.FocusMenuItemByIndex(_contentId, index); } catch (JSDisconnectedException) { }
     }

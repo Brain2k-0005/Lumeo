@@ -1,24 +1,119 @@
 @namespace Lumeo
+@implements IAsyncDisposable
+@inject Lumeo.Services.IComponentInteropService Interop
 
-@* Trigger usually wraps a <Button>, which already handles keyboard. When the
-   consumer passes raw text or a non-button child, role=button + tabindex=0 +
-   keyboard handler keep the wrapper itself keyboard-operable. *@
-<div class="@CssClass" role="button" tabindex="0" aria-expanded="@Context.IsOpen" aria-haspopup="dialog" @onclick="Open" @onkeydown="HandleKeyDown" @attributes="AdditionalAttributes">
-    @ChildContent
-</div>
+@if (AsChild)
+{
+    @* asChild: no wrapper — cascade the slot so a Lumeo <Button> (or a manual
+       <ChildContentSlot> splat) becomes the single trigger element. A Dialog is
+       modal with no anchored positioning, so the slot carries no Id. *@
+    <CascadingValue Value="Slot" IsFixed="false">
+        @if (ChildContentSlot is not null)
+        {
+            @ChildContentSlot(Slot)
+        }
+        else
+        {
+            @ChildContent
+        }
+    </CascadingValue>
+}
+else
+{
+    @* Trigger usually wraps a <Button>, which already handles keyboard. When the
+       consumer passes raw text or a non-button child, role=button + tabindex=0 +
+       keyboard handler keep the wrapper itself keyboard-operable. *@
+    <div id="@_id" class="@CssClass" role="button" tabindex="0" aria-expanded="@Context.IsOpen" aria-haspopup="dialog" @onclick="Open" @onkeydown="HandleKeyDown" @attributes="AdditionalAttributes">
+        @ChildContent
+    </div>
+}
 
 @code {
     [CascadingParameter] public Dialog.DialogContext Context { get; set; } = default!;
     [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    /// <summary>Tier-2 escape hatch for <see cref="AsChild"/> with arbitrary markup —
+    /// receives the <see cref="TriggerSlot"/> to splat manually. Lumeo
+    /// <c>&lt;Button&gt;</c> children need only <see cref="AsChild"/>.</summary>
+    [Parameter] public RenderFragment<TriggerSlot>? ChildContentSlot { get; set; }
+
+    /// <summary>
+    /// When <c>true</c>, renders NO wrapper and cascades a <see cref="TriggerSlot"/>
+    /// a cooperating child (a Lumeo <c>&lt;Button&gt;</c>, or a manual
+    /// <see cref="ChildContentSlot"/>) folds onto its own single root element — the
+    /// Radix <c>asChild</c> goal: one DOM node, no nested-interactive markup. Prefer a
+    /// <c>&lt;button&gt;</c> child (a <c>&lt;Button Href&gt;</c> link activates on Enter
+    /// only, not Space). Default <c>false</c> keeps the current <c>role=button</c> wrapper.
+    /// </summary>
+    [Parameter] public bool AsChild { get; set; }
+
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
+    private readonly string _fallbackId = LumeoIds.New("dialog-trigger");
+    // A consumer-supplied id (splatted) wins, so JS key-suppression must target THAT id.
+    private string _id => LumeoIds.Effective(AdditionalAttributes, _fallbackId);
+    private bool _pdRegistered;
+
     private string CssClass => Cx.Merge("inline-flex", Class);
+
+    private TriggerSlot Slot => new(
+        Id: null,
+        Class: Cx.Merge("inline-flex", Class),
+        Attributes: BuildAttrs(),
+        OnClick: EventCallback.Factory.Create<MouseEventArgs>(this, _ => Open()),
+        OnKeyDown: EventCallback.Factory.Create<KeyboardEventArgs>(this, HandleKeyDown));
+
+    private IReadOnlyDictionary<string, object> BuildAttrs()
+    {
+        var d = new Dictionary<string, object>
+        {
+            ["aria-haspopup"] = "dialog",
+            ["aria-expanded"] = Context.IsOpen ? "true" : "false",
+        };
+        if (AdditionalAttributes is not null)
+            foreach (var kv in AdditionalAttributes) d[kv.Key] = kv.Value; // author wins on collision
+        return d;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        // AsChild renders no wrapper — the cooperating child (e.g. a <Button>) is a
+        // real <button> that synthesizes Space/Enter natively, so nothing to suppress.
+        if (!firstRender || AsChild || _pdRegistered) return;
+        try
+        {
+            // div[role=button] has no native key synthesis: Space both activated AND
+            // scroll-jumped the page. Suppress only Space's default synchronously in
+            // JS (Enter has no default on a div, and a blanket
+            // @onkeydown:preventDefault would also swallow Tab). Mirrors
+            // CollapsibleTrigger / AccordionTrigger.
+            await Interop.RegisterPreventDefaultKeys(
+                _id,
+                new[] { new Lumeo.Services.PreventDefaultKeyRule(" ") });
+            _pdRegistered = true;
+        }
+        catch (JSDisconnectedException) { }
+        catch (ObjectDisposedException) { }
+        catch (InvalidOperationException) { } // JS interop unavailable during prerender
+    }
 
     private async Task Open() => await Context.SetOpen.InvokeAsync(true);
 
     private async Task HandleKeyDown(KeyboardEventArgs e)
     {
         if (e.Key is "Enter" or " ") await Open();
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (!_pdRegistered) return;
+        try
+        {
+            await Interop.UnregisterPreventDefaultKeys(_id);
+        }
+        catch (JSDisconnectedException) { }
+        catch (ObjectDisposedException) { }
+        catch (InvalidOperationException) { }
     }
 }

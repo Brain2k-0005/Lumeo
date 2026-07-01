@@ -1,0 +1,49 @@
+@inherits Bunit.BunitContext
+
+@code {
+    // Battle-test finding #47 (state-on-data-change, medium):
+    // In Lazy render mode a panel mounts the first time its tab is activated and
+    // then stays mounted. The activated-set (_activatedValues) was ADD-ONLY:
+    // UnregisterContent removed the value from the swipe order but NOT from
+    // _activatedValues. So when a tab Value string was removed and later REUSED
+    // (a routine pattern with string keys), the new panel mounted IMMEDIATELY —
+    // without ever being activated — because the stale value lingered in the set
+    // and TabsContent.ShouldRender_ honours `Context.ActivatedValues.Contains(Value)`.
+    //
+    // The fix removes the value from _activatedValues in UnregisterContent, tying
+    // the activated-set lifetime to the panel's presence so a reused Value starts
+    // fresh.
+
+    public TabsLazyReuseTests() { this.AddLumeoServices(); }
+
+    [Fact]
+    public void Lazy_Reused_Value_Does_Not_Auto_Mount_After_Its_Panel_Was_Removed()
+    {
+        var cut = Render<LazyReuseHost>(p => p.Add(h => h.ShowBPanel, true));
+
+        // Lazy mode, "a" active: only panel A is mounted; B was never activated.
+        Assert.Single(cut.FindAll("[role='tabpanel']"));
+        Assert.Contains("Panel A", cut.Find("[role='tabpanel']").TextContent);
+
+        // Activate B → it mounts and "b" enters the activated set.
+        cut.FindAll("[role='tab']")[1].Click();
+        Assert.Equal(2, cut.FindAll("[role='tabpanel']").Count);
+
+        // Switch back to A (B stays mounted, hidden — normal Lazy behaviour).
+        cut.FindAll("[role='tab']")[0].Click();
+        Assert.Equal(2, cut.FindAll("[role='tabpanel']").Count);
+
+        // Remove B's panel from the tree → UnregisterContent("b") runs.
+        cut.Render(p => p.Add(h => h.ShowBPanel, false));
+        Assert.Single(cut.FindAll("[role='tabpanel']"));
+
+        // Re-add a FRESH panel for the SAME value "b" while "a" stays active.
+        cut.Render(p => p.Add(h => h.ShowBPanel, true));
+
+        // With the fix, the reused "b" panel must NOT auto-mount — it was never
+        // activated in this lifetime. Only panel A is in the DOM.
+        // Before the fix the stale _activatedValues entry mounted it immediately.
+        Assert.Single(cut.FindAll("[role='tabpanel']"));
+        Assert.Contains("Panel A", cut.Find("[role='tabpanel']").TextContent);
+    }
+}

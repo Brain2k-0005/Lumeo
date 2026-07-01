@@ -96,6 +96,25 @@ public class DataGridTreeBatchGroupTests : IAsyncLifetime
     }
 
     [Fact]
+    public void TreeGrid_DefaultExpanded_Survives_Empty_Items_Flicker()
+    {
+        // Async-load pattern: an empty list renders first (pre-load), then the real
+        // data arrives. The one-shot default-expand seed must NOT be consumed by the
+        // empty render, or the tree renders collapsed once data is present despite
+        // TreeGridDefaultExpanded=true (the sibling of the grouping empty-flicker bug).
+        var cut = _ctx.Render<DataGrid<Node>>(p => p
+            .Add(x => x.Items, new List<Node>())
+            .Add(x => x.Columns, TreeColumns())
+            .Add(x => x.TreeGridDefaultExpanded, true)
+            .Add(x => x.ChildItemsSelector, (Func<Node, IEnumerable<Node>?>)(n => n.Children)));
+
+        cut.Render(p => p.Add(x => x.Items, TreeData()));
+
+        Assert.Contains("Acme East", cut.Markup);
+        Assert.Contains("Acme West", cut.Markup);
+    }
+
+    [Fact]
     public void FlatMode_StillWorks_WhenChildItemsSelectorNull()
     {
         var cut = _ctx.Render<DataGrid<Node>>(p => p

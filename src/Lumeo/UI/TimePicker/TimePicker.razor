@@ -1,13 +1,17 @@
 @namespace Lumeo
 @implements IAsyncDisposable
 
+@* Render the label, control and helper/error as ONE self-contained vertical block so the
+   field never splays into a row when dropped in a flex / centered container. Standalone
+   form-field structural fix. *@
+<div class="flex flex-col items-start">
 @if (Label is not null && !InsideFormField)
 {
     <label class="text-sm font-medium leading-none">
         @Label
         @if (Required)
         {
-            <span class="text-destructive ml-0.5">*</span>
+            <span class="text-destructive ms-0.5">*</span>
         }
     </label>
 }
@@ -16,22 +20,34 @@
 {
     @* iOS-style wheel picker — hours + minutes (+ AM/PM if 12-hour).
        Seconds are not supported in the wheel variant. *@
+    @* id/role/aria-describedby splat into TimeWheelPicker's AdditionalAttributes (it has no matching
+       [Parameter]s for these) so the FormField <Label For> resolves to a real rendered element even on
+       this trigger-less variant — the List branch's button gets the same EffectiveTriggerId. A <div
+       role="group"> is not a "labelable" element though, so `label for` alone may not reliably announce
+       it — also wire aria-labelledby straight at the FormField's <label> id when inside a field
+       (Codex P2). Null outside a FormField, omitting the attribute. *@
     <TimeWheelPicker Value="@Value" ValueChanged="HandleWheelChanged"
                      Use24Hour="@Use24Hour" MinuteStep="@MinuteStep"
-                     Culture="@Culture" Class="@Class" />
+                     Culture="@Culture" Class="@Class"
+                     id="@EffectiveTriggerId"
+                     role="group"
+                     aria-labelledby="@FormField?.LabelId"
+                     aria-describedby="@FormFieldDescribedBy" />
 }
 else
 {
 <Popover @bind-Open="_isOpen">
     <PopoverTrigger>
         <button type="button"
+                id="@EffectiveTriggerId"
                 name="@Name"
                 aria-required="@Required.ToString().ToLower()"
                 aria-invalid="@EffectiveInvalid.ToString().ToLower()"
+                aria-describedby="@FormFieldDescribedBy"
                 class="@CssClass"
                 disabled="@Disabled"
-                @attributes="AdditionalAttributes">
-            <Blazicon Svg="Lucide.Clock" class="mr-2 h-4 w-4 shrink-0" />
+                @attributes="EffectiveAttributes">
+            <Blazicon Svg="Lucide.Clock" class="me-2 h-4 w-4 shrink-0" />
             @if (Value.HasValue)
             {
                 <span>@FormatTime(Value.Value)</span>
@@ -47,6 +63,7 @@ else
             @* Hours column *@
             <div id="@_hoursColId" role="listbox" aria-label="@L["TimePicker.HoursLabel"]" class="flex flex-col h-[200px] overflow-y-auto py-1 scrollbar-thin">
                 @{ var hours = GetHours(); }
+                @{ var hoursRoving = RovingValue(_hoursColId, hours); }
                 @foreach (var hour in hours)
                 {
                     var h = hour;
@@ -54,7 +71,7 @@ else
                     var disabled = IsHourDisabled(h);
                     <button type="button" id="@ColItemId(_hoursColId, h)" role="option"
                             aria-selected="@(isSelected ? "true" : "false")"
-                            tabindex="@(isSelected ? "0" : "-1")"
+                            tabindex="@(h == hoursRoving ? "0" : "-1")"
                             disabled="@disabled"
                             class="@ColItemClass(isSelected)"
                             @onclick="() => SelectHour(h)"
@@ -67,6 +84,7 @@ else
             @* Minutes column *@
             <div id="@_minutesColId" role="listbox" aria-label="@L["TimePicker.MinutesLabel"]" class="flex flex-col h-[200px] overflow-y-auto py-1 scrollbar-thin">
                 @{ var minutes = GetMinutes(); }
+                @{ var minutesRoving = RovingValue(_minutesColId, minutes); }
                 @foreach (var minute in minutes)
                 {
                     var m = minute;
@@ -74,7 +92,7 @@ else
                     var disabled = IsMinuteDisabled(m);
                     <button type="button" id="@ColItemId(_minutesColId, m)" role="option"
                             aria-selected="@(isSelected ? "true" : "false")"
-                            tabindex="@(isSelected ? "0" : "-1")"
+                            tabindex="@(m == minutesRoving ? "0" : "-1")"
                             disabled="@disabled"
                             class="@ColItemClass(isSelected)"
                             @onclick="() => SelectMinute(m)"
@@ -89,6 +107,7 @@ else
             {
                 <div id="@_secondsColId" role="listbox" aria-label="@L["TimePicker.SecondsLabel"]" class="flex flex-col h-[200px] overflow-y-auto py-1 scrollbar-thin">
                     @{ var seconds = GetSeconds(); }
+                    @{ var secondsRoving = RovingValue(_secondsColId, seconds); }
                     @foreach (var second in seconds)
                     {
                         var s = second;
@@ -96,7 +115,7 @@ else
                         var disabled = IsSecondDisabled(s);
                         <button type="button" id="@ColItemId(_secondsColId, s)" role="option"
                                 aria-selected="@(isSelected ? "true" : "false")"
-                                tabindex="@(isSelected ? "0" : "-1")"
+                                tabindex="@(s == secondsRoving ? "0" : "-1")"
                                 disabled="@disabled"
                                 class="@ColItemClass(isSelected)"
                                 @onclick="() => SelectSecond(s)"
@@ -117,11 +136,13 @@ else
                         var pmLabel = string.IsNullOrEmpty(EffectiveCulture.DateTimeFormat.PMDesignator) ? "PM" : EffectiveCulture.DateTimeFormat.PMDesignator;
                     }
                     <button type="button"
+                            aria-pressed="@(isAm ? "true" : "false")"
                             class="@ColItemClass(isAm)"
                             @onclick="() => SelectAmPm(true)">
                         @amLabel
                     </button>
                     <button type="button"
+                            aria-pressed="@(!isAm ? "true" : "false")"
                             class="@ColItemClass(!isAm)"
                             @onclick="() => SelectAmPm(false)">
                         @pmLabel
@@ -144,6 +165,7 @@ else
         <p class="text-xs text-muted-foreground">@HelperText</p>
     }
 }
+</div>
 
 @inject Lumeo.Services.Localization.ILumeoLocalizer L
 @inject IComponentInteropService Interop
@@ -170,6 +192,28 @@ else
 
     private bool EffectiveInvalid => Invalid || FormField?.HasError == true;
     private bool InsideFormField => FormField is not null;
+
+    // Inside a FormField, adopt its generated ControlId so the field's <Label For>
+    // resolves to the rendered trigger (click-to-focus + association). Null outside
+    // a FormField — EffectiveTriggerId then falls back to the generated _triggerId.
+    // The empty guard avoids id="" when no id was generated.
+    private string? FormFieldControlId => string.IsNullOrEmpty(FormField?.ControlId) ? null : FormField!.ControlId;
+    private string? FormFieldDescribedBy => FormField?.DescribedBy;
+
+    // The id actually rendered on the focusable trigger (the List-variant popover
+    // button). Any interop that focuses or anchors the trigger MUST use this same
+    // value so focus/anchoring target the rendered element. _triggerId stays as the
+    // fallback when not inside a FormField.
+    private readonly string _triggerId = LumeoIds.New("time-picker-trigger");
+    private string EffectiveTriggerId => FormFieldControlId ?? _triggerId;
+
+    // Inside a FormField the generated id must own this element so the FormField <Label For> (and any
+    // interop keyed off the id) stays valid; a consumer-splatted id in AdditionalAttributes renders after
+    // the explicit id= and would override it. Strip it here when InsideFormField; outside, pass through.
+    private Dictionary<string, object>? EffectiveAttributes =>
+        InsideFormField && AdditionalAttributes?.ContainsKey("id") == true
+            ? AdditionalAttributes.Where(kv => kv.Key != "id").ToDictionary(kv => kv.Key, kv => kv.Value)
+            : AdditionalAttributes;
 
     [Parameter] public TimeSpan? Value { get; set; }
     [Parameter] public EventCallback<TimeSpan?> ValueChanged { get; set; }
@@ -301,10 +345,10 @@ else
             case "ArrowUp": await FocusAdjacent(colId, values, current, -1); break;
             case "Home": await FocusEdge(colId, values, fromStart: true); break;
             case "End": await FocusEdge(colId, values, fromStart: false); break;
-            case "Enter":
-            case " ":
-                await SelectForColumn(colId, current);
-                break;
+            // Enter/Space are intentionally NOT handled here: each option is a native <button> with an
+            // @onclick, so Enter/Space already activate it (the browser synthesizes a click → SelectHour/
+            // Minute/Second). Handling them here too would fire the selection — and ValueChanged — twice
+            // (Codex P3). Arrow/Home/End only move the roving focus.
         }
     }
 
@@ -343,12 +387,33 @@ else
         return false;
     }
 
-    private Task SelectForColumn(string colId, int value)
+    private bool IsColItemSelected(string colId, int value)
     {
-        if (colId == _hoursColId) return SelectHour(value);
-        if (colId == _minutesColId) return SelectMinute(value);
-        if (colId == _secondsColId) return SelectSecond(value);
-        return Task.CompletedTask;
+        if (!Value.HasValue) return false;
+        if (colId == _hoursColId) return GetDisplayHour(Value.Value) == value;
+        if (colId == _minutesColId) return Value.Value.Minutes == value;
+        if (colId == _secondsColId) return Value.Value.Seconds == value;
+        return false;
+    }
+
+    // The single tabbable ("roving root") option value for a column. When an
+    // ENABLED option is selected it stays the tab stop (existing behaviour). When
+    // nothing is selected — or the selection has since become disabled (e.g. Min/Max
+    // moved past it) — the first ENABLED option becomes the tab stop so the column
+    // keeps a keyboard entry point. A disabled button can never hold focus, so it must
+    // not be seeded as the tab stop or the column would lose its tab entry entirely.
+    // Returns int.MinValue (matches no rendered option) when every option is disabled.
+    private int RovingValue(string colId, List<int> values)
+    {
+        foreach (var v in values)
+        {
+            if (IsColItemSelected(colId, v) && !IsColItemDisabled(colId, v)) return v;
+        }
+        foreach (var v in values)
+        {
+            if (!IsColItemDisabled(colId, v)) return v;
+        }
+        return int.MinValue;
     }
 
     // Suppress page / column scroll for the arrow keys while the list popover
@@ -394,7 +459,11 @@ else
             // unregister it then (mirrors the registration guard).
             if (ShowSeconds) await Interop.UnregisterPreventDefaultKeys(_secondsColId);
         }
+        // DisposeAsync routes through here; a mid-navigation dispose can surface
+        // ObjectDisposed/InvalidOperation from the JS layer — swallow all three.
         catch (JSDisconnectedException) { }
+        catch (ObjectDisposedException) { }
+        catch (InvalidOperationException) { }
     }
 
     public async ValueTask DisposeAsync()
@@ -478,18 +547,16 @@ else
     {
         if (IsHourDisabled(hour)) return;
         var current = Value ?? TimeSpan.Zero;
-        int actualHour;
-        if (EffectiveUse24Hour)
-        {
-            actualHour = hour;
-        }
-        else
-        {
-            var isPm = current.Hours >= 12;
-            actualHour = hour % 12;
-            if (isPm) actualHour += 12;
-        }
+        // Resolve AM/PM the SAME way IsHourDisabled does (via DisplayHourTo24).
+        // When Value is null the enable check infers the AM/PM that keeps the
+        // hour in [Min, Max]; recomputing isPm from the zero default here would
+        // disagree and let an out-of-bounds AM time commit (e.g. Min=14:00 enables
+        // display-hour 2 as PM but a naive AM commit would store 02:00).
+        var actualHour = DisplayHourTo24(hour);
         var newValue = new TimeSpan(actualHour, current.Minutes, current.Seconds);
+        // Defence in depth: never commit outside the bounds even if the enable
+        // check and this resolution ever diverge.
+        if ((Min.HasValue && newValue < Min.Value) || (Max.HasValue && newValue > Max.Value)) return;
         Value = newValue;
         await ValueChanged.InvokeAsync(newValue);
     }
@@ -524,6 +591,10 @@ else
         var hour = current.Hours % 12;
         if (!isAm) hour += 12;
         var newValue = new TimeSpan(hour, current.Minutes, current.Seconds);
+        // The AM/PM buttons carry no per-option disabled gate, so guard the
+        // commit directly: flipping into a half-day that lies outside [Min, Max]
+        // must not change the value.
+        if ((Min.HasValue && newValue < Min.Value) || (Max.HasValue && newValue > Max.Value)) return;
         Value = newValue;
         await ValueChanged.InvokeAsync(newValue);
     }

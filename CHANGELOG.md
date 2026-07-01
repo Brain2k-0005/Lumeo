@@ -5,6 +5,60 @@ All notable changes to Lumeo will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+## [4.0.0] - 2026-06-26
+
+Two things in one release: a Radix/Base-UI/shadcn **parity audit** (accessibility, RTL, theming, the FormGenerator, and the MCP/CLI — additive and opt-in; the OKLCH and logical-utility changes are visually/behaviourally identical in LTR) **and** a library-wide **correctness hardening** pass — an adversarial "battle-test" of all 164 components that fixed ~355 confirmed bugs, each with a bUnit regression test (suite 4,983 green). There are **no API-signature breaks**; the major bump signals the scope and the handful of observable **behaviour** changes listed under **Changed** below (and in `MIGRATION.md`).
+
+This release also ships the CLI's headline **NuGet-free "standalone" eject**: `lumeo add` can now vendor a component *and its full runtime closure* as source, so a project compiles and runs with **zero Lumeo/satellite `PackageReference`** — proven across all 164 components.
+
+### Added
+- **CLI — NuGet-free "standalone" eject**: `lumeo init --standalone` (or `lumeo eject` on an existing project) makes `add` vendor each component **plus the shared runtime it needs** (the `Internal`/`Services`/`Theming`/interop closure, once, into `_LumeoRuntime/`) as source under the `Lumeo` namespace, so the project builds and runs with **zero Lumeo/satellite `PackageReference`**. Satellites (DataGrid, Editor, …) vendor their source + JS too; external NuGet deps a component genuinely uses (e.g. QRCoder, Mammoth) are still installed. Validated by building **all 164 components** standalone (164/164 green).
+- **DirectionProvider**: new component — `<DirectionProvider Direction="LayoutDirection.Rtl">` sets the native `dir` (and cascades it) so descendant layout mirrors for RTL.
+- **Tabs**: `IconReveal` — inactive triggers collapse to icon-only and the active trigger smoothly animates its text label open next to the icon (CSS grid `0fr → 1fr`).
+- **Card**: `CardTitle` (`<h3>`) + `CardDescription` (`<p>`) sub-components (shadcn composition parity).
+- **Avatar**: `StatusLabel` — accessible name for the status dot so the status isn't conveyed by colour alone (WCAG 1.4.1).
+- **Chart**: `AriaLabel` — exposes the canvas as `role="img"` with a text alternative (WCAG 1.1.1).
+- **AlertDialogTrigger / DrawerTrigger**: `AsChild` — fold the trigger onto a single child element (no `div[role=button]` wrapping a real `<button>`, WCAG 4.1.2).
+- **`Lumeo.Cx`**: the class-merge helper (shadcn `cn()` equivalent) is now public for use in consumer components.
+- **DataTable**: `ItemKey` — decide row selection by a stable key, so selection survives an `Items` refresh that re-supplies value-equal but reference-distinct rows (the mainstream async reload).
+- **RadioGroup**: the `Name` parameter now emits a hidden input carrying the selected value, so the group participates in native form submission.
+- **Gantt**: the init-only options `Readonly` / `TodayHighlight` / `BarHeight` / `ColumnWidth` now apply to a live chart when changed after init (new `gantt.refresh` interop path).
+- **Interop (internal/advanced)**: `IComponentInteropService.GetOrderedDescendantIds` (DOM-order roving navigation) and `GanttRefreshAsync` — both default-implemented, additive.
+
+### Improved
+- **RTL**: migrated the component library's directional Tailwind utilities to logical ones (`ml-→ms-`, `left-→start-`, `text-left→text-start`, `rounded-l→rounded-s`, `border-l→border-s`, …) — identical in LTR, mirrored in RTL.
+- **FormField a11y**: `aria-describedby` (help/error) now reaches every form control (Checkbox, Switch, RadioGroup, Slider, Select, Combobox, …) — not just Input; single-focus controls also adopt the field's `ControlId` so `<label for>` resolves.
+- **Accessibility**: `aria-current` on the active Sidebar nav item + Scrollspy link; overlay entry animations now honour `prefers-reduced-motion`; Cascader gained arrow-key roving; Menubar trigger/item roles.
+- **Overlays**: scroll-lock compensates for the scrollbar width so opening a Dialog/Sheet/Drawer no longer shifts page content.
+- **LumeoFormGenerator**: TimeOnly/TimeSpan→TimePicker, `List<string>`→TagInput, MultilineText→Textarea, Phone/Url→typed Input; `[Range]`→Min/Max, `[StringLength]/[MaxLength]`→MaxLength+counter; `bool` no longer implicitly required; nullable numerics clear to null; `[Display(Order)]` field ordering.
+- **MCP**: type-bound enum validation (`Size="Large"` is now caught), cascading-gated parent-child rule, per-component test-coverage and `[EditorRequired]` surfaced, and a new `lumeo_get_a11y` tool (roles, keyboard keys, focus).
+
+### Changed
+- **Theme**: the entire colour palette (base + all 8 themes, 878 tokens) migrated from HSL to **OKLCH** — exact 1:1 conversion (brand identity unchanged), matching Tailwind v4 / current shadcn.
+- **Badge (behaviour)**: a removable badge no longer optimistically hides itself on remove-click — visibility is now fully controlled (data-driven), matching the controlled-component model. Remove the item from your own model in `OnRemove` (and `@key` your list). See `MIGRATION.md`.
+- **Progress / Gauge / RingProgress (behaviour)**: out-of-range values are clamped (`Value=150, Max=100` → `100`; negative → `0`); the indeterminate state reports `aria-busy="true"` and omits `aria-valuenow` instead of rendering a stale determinate value.
+- **Internal state survival (behaviour, library-wide)**: selection / checked / expand-collapse / active index / page / search / scroll / in-progress edit state now **survives** a same-content data refresh, an empty→refill async load and unrelated parent re-renders. If any code relied on that state *resetting* on an unrelated re-render, it no longer does.
+- **Roving keyboard order (behaviour)**: RadioGroup / ToggleGroup / Segmented / Stepper / Splitter / Steps / Accordion track the **live DOM order** for arrow-key navigation, numbering and neighbour resolution after a keyed reorder (previously mount-order).
+
+### Fixed (battle-test campaign — ~355 bugs across all 164 components, each with a bUnit regression test)
+- **State-on-data-change**: internal UI state survives same-content `Items`/`Value` refreshes, empty→refill async loads, sort/filter/reorder/add/remove, and unrelated `[Parameter]` changes — across DataGrid, DataTable, Select, Combobox, Cascader, TreeView, TreeSelect, Transfer, PickList, Calendar, Carousel, Pagination, Scheduler, Tabs, Tour, NavigationMenu, MegaMenu, Menubar, Form, FileManager, Sortable, and ~40 more.
+- **Keyboard & ARIA**: correct roving tabindex, focus restore/trap, and ARIA (`aria-expanded`/`selected`/`current`/`busy`/`pressed`, roles, accessible names, `aria-hidden` on decorative icons, `inert` on aria-hidden clones) across forms, overlays, menus, data widgets and presentational components.
+- **Edge data**: empty/null/whitespace/single/duplicate-key/out-of-range/huge inputs no longer crash or misrender — guards, clamps, bounds checks and culture-invariant number/decimal formatting in inline styles and SVG, library-wide.
+- **Lifecycle**: timers, `IntersectionObserver`/`ResizeObserver`, `requestAnimationFrame` animations, `DotNetObjectReference`s and event subscriptions are torn down on dispose; no `StateHasChanged` after dispose; first-render registrations no longer latch on a not-yet-ready render (late-arriving ids/data now register).
+- **Reorder class**: the keyed-reorder-with-reuse, middle-insert, Steps renumbering and Splitter neighbour legs are closed via a DOM-order interop probe consulted at navigation/render time (`GetOrderedDescendantIds`).
+
+### Fixed (real-browser docs-QA pass — verified with agent-browser)
+- **Render crash — Razor comment inside an element tag** (Cascader, PdfViewer): a multi-line `@* … *@` comment placed BETWEEN an `<input>`'s attributes was emitted as a literal attribute name, throwing `setAttribute` InvalidCharacterError in a real browser and taking the whole page down. Moved the comments outside the tags; added a lint test (`RazorCommentInTagGuardTests`) — this class is invisible to bUnit and to a `pageerror`-only sweep.
+- **Input `Type="file"` crash**: `value` was bound on the `<input>` unconditionally, and a file input rejects any non-empty `value`, so picking a file threw InvalidStateError. The value binding is now dropped for file inputs.
+- **Form-field layout (parity)**: every standalone form field (Input, Mention, Cascader, Select, Combobox, the date/time pickers, Slider, Switch, Checkbox, … 23 components) rendered its label, control and helper/error as loose root-level siblings, so inside a flex / centered container they splayed into a row (label beside the control). Each now renders as one self-contained vertical block; inline-label fields keep their inline label.
+- **FormField + FormMessage** no longer render the validation error twice — `<FormMessage>` defers to FormField's own error by default; the new `FormField.AutoRenderMessage="false"` hands error rendering to a child FormMessage for pure composition.
+- **Gauge (Arc)**: the value sits centred in the semicircle instead of pushed up toward the apex (size-independent).
+- **ImageGallery**: the grid no longer collapses to zero — cells gained an aspect ratio and the grid keeps a definite width as a content-sized flex child.
+- **TagInput**: the "max tags reached" helper showed the raw key `TagInput.MaxTagsReached`; added the missing EN + DE localization defaults.
+- **Form demo**: removed a redundant `<FormMessage/>` that duplicated the validation error.
+
 ## [3.19.0] - 2026-06-18
 
 Two P1 audit features from the backlog. Additive and opt-in.

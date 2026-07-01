@@ -91,20 +91,34 @@
         else
         {
             var n = list.Count;
-            var pts = new System.Text.StringBuilder();
-            for (int i = 0; i < n; i++)
+            string pointsStr;
+            if (n == 1)
             {
-                var x = n == 1 ? 50.0 : (double)i / (n - 1) * 100.0;
-                var y = ScaleY(list[i]);
-                if (i > 0) pts.Append(' ');
-                pts.Append($"{F(x)},{F(y)}");
+                // A single data point can't form a line segment — a one-coordinate
+                // polyline (and the matching zero-width area polygon) render nothing.
+                // Emit a flat line across the full width so the sparkline stays visible.
+                var ly = ScaleY(list[0]);
+                pointsStr = $"0,{F(ly)} 100,{F(ly)}";
             }
-            var pointsStr = pts.ToString();
+            else
+            {
+                var pts = new System.Text.StringBuilder();
+                for (int i = 0; i < n; i++)
+                {
+                    var x = (double)i / (n - 1) * 100.0;
+                    var y = ScaleY(list[i]);
+                    if (i > 0) pts.Append(' ');
+                    pts.Append($"{F(x)},{F(y)}");
+                }
+                pointsStr = pts.ToString();
+            }
 
             if (Type == SparkType.Area || ShowArea)
             {
-                var lastX = n == 1 ? 50.0 : 100.0;
-                var firstX = n == 1 ? 50.0 : 0.0;
+                // pointsStr always spans x=0..100 (incl. the single-point flat line),
+                // so the area baseline polygon does too.
+                const double firstX = 0.0;
+                const double lastX = 100.0;
                 var polyPoints = $"{F(firstX)},{F(Height)} {pointsStr} {F(lastX)},{F(Height)}";
                 sb.Append($"<polygon points=\"{polyPoints}\" fill=\"{color}\" fill-opacity=\"0.2\" stroke=\"none\" />");
                 sb.Append($"<polyline points=\"{pointsStr}\" fill=\"none\" stroke=\"{color}\" stroke-width=\"{F(StrokeWidth)}\" stroke-linecap=\"round\" stroke-linejoin=\"round\" vector-effect=\"non-scaling-stroke\" />");

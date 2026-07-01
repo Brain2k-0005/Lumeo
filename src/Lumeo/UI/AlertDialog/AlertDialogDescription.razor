@@ -1,4 +1,5 @@
 @namespace Lumeo
+@implements IDisposable
 
 <p id="@Context.DescriptionId" class="@CssClass" @attributes="AdditionalAttributes">
     @ChildContent
@@ -11,4 +12,14 @@
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     private string CssClass => Cx.Merge("text-sm text-muted-foreground", Class);
+
+    protected override void OnInitialized()
+        // Signal the root so AlertDialogContent wires aria-describedby to this
+        // <p>'s id — without a registered description the IDREF would dangle.
+        => Context.RegisterDescription();
+
+    // Un-registers on removal — without this, removing the description while the
+    // dialog stays mounted left aria-describedby pointing at an id no longer in the
+    // DOM (Codex P2).
+    public void Dispose() => Context.UnregisterDescription();
 }

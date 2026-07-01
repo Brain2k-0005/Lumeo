@@ -4,6 +4,14 @@ namespace Lumeo;
 
 public class DataAnnotationsFormValidator : IFormValidator
 {
+    /// <summary>
+    /// Sentinel key under which form-level (class-level) validation errors are
+    /// recorded — i.e. results whose <see cref="ValidationResult.MemberNames"/> is
+    /// empty (produced by <see cref="IValidatableObject"/> or a class-scoped
+    /// validation attribute). A FormMessage with this Name surfaces them.
+    /// </summary>
+    public const string FormLevelErrorKey = "__form";
+
     public Dictionary<string, List<string>> Validate(object model)
     {
         var results = new List<ValidationResult>();
@@ -13,7 +21,15 @@ public class DataAnnotationsFormValidator : IFormValidator
         var errors = new Dictionary<string, List<string>>();
         foreach (var result in results)
         {
-            foreach (var memberName in result.MemberNames)
+            // Class-level / form-level validation (e.g. IValidatableObject or a
+            // class-scoped attribute) yields an empty MemberNames. Without a
+            // sentinel key those errors are silently dropped, so the form would
+            // report valid while DataAnnotations actually failed. Record them
+            // under FormLevelErrorKey so a form-level FormMessage can surface them.
+            var memberNames = result.MemberNames.Any()
+                ? result.MemberNames
+                : new[] { FormLevelErrorKey };
+            foreach (var memberName in memberNames)
             {
                 if (!errors.ContainsKey(memberName))
                     errors[memberName] = new List<string>();

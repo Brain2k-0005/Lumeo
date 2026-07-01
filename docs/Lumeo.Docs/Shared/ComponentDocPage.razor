@@ -1,0 +1,74 @@
+@namespace Lumeo.Docs.Shared
+@using Lumeo.Docs.Services
+@inject RegistryService Registry
+
+@* Shared, data-driven component-page shell (shadcn-style, demo-first). The chrome —
+   breadcrumb, title + description, installation, the API/props table, and (via the
+   right rail) the facts — all come from registry/{slug}.json. A page supplies only the
+   bespoke bits: the live HeroDemo + Examples (RenderFragments, fully interactive) and
+   any extra prose as ChildContent. So a component page shrinks from ~450 lines to a
+   thin wrapper, and the look/structure live in exactly one place. *@
+
+<PageTitle>@(Title ?? _detail?.Name ?? Slug) — Lumeo</PageTitle>
+
+<article class="flex flex-col gap-10">
+    <header class="flex flex-col gap-3">
+        <nav class="text-xs text-muted-foreground/70">
+            <a class="hover:text-foreground transition-colors no-underline" href="components">Components</a>
+            <span class="mx-1.5 opacity-50">/</span>
+            <span>@Category</span>
+        </nav>
+        <h1 class="text-3xl font-bold tracking-tight text-foreground">@(Title ?? _detail?.Name ?? Slug)</h1>
+        @if (!string.IsNullOrEmpty(_detail?.Description))
+        {
+            <p class="max-w-2xl text-base leading-relaxed text-muted-foreground">@_detail.Description</p>
+        }
+    </header>
+
+    @if (HeroDemo is not null)
+    {
+        <section>@HeroDemo</section>
+    }
+
+    <section class="flex flex-col gap-3">
+        <h2 id="installation" class="scroll-mt-20 text-xl font-semibold tracking-tight text-foreground">Installation</h2>
+        <p class="text-sm leading-relaxed text-muted-foreground">
+            Ships in the <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">@(_detail?.NugetPackage ?? "Lumeo")</code> package.
+            Already referenced? Just use it — or scaffold it standalone with the CLI:
+        </p>
+        <pre class="code-block rounded-lg border border-border/40 bg-muted px-4 py-3 font-mono text-xs text-foreground whitespace-pre overflow-x-auto">lumeo add @Slug</pre>
+    </section>
+
+    @if (Examples is not null)
+    {
+        <section class="flex flex-col gap-5">
+            <h2 id="examples" class="scroll-mt-20 text-xl font-semibold tracking-tight text-foreground">Examples</h2>
+            @Examples
+        </section>
+    }
+
+    @ChildContent
+
+    <section class="flex flex-col gap-3">
+        <h2 id="api" class="scroll-mt-20 text-xl font-semibold tracking-tight text-foreground">API Reference</h2>
+        <PropsTable Slug="@Slug" />
+    </section>
+</article>
+
+@code {
+    [Parameter, EditorRequired] public string Slug { get; set; } = "";
+    /// <summary>Optional title override; defaults to the registry component name.</summary>
+    [Parameter] public string? Title { get; set; }
+    /// <summary>The big hero Preview/Code demo shown directly under the title.</summary>
+    [Parameter] public RenderFragment? HeroDemo { get; set; }
+    /// <summary>Per-variant example demos rendered under an "Examples" heading.</summary>
+    [Parameter] public RenderFragment? Examples { get; set; }
+    /// <summary>Any extra bespoke prose/sections, rendered between Examples and the API.</summary>
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    private RegistryComponentDetail? _detail;
+    private string Category => _detail?.Category ?? "Components";
+
+    protected override async Task OnParametersSetAsync()
+        => _detail = await Registry.GetComponentAsync(Slug);
+}

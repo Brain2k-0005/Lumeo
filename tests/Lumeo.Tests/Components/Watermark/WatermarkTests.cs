@@ -120,4 +120,42 @@ public class WatermarkTests : IAsyncLifetime
         var style = cut.Find("div.pointer-events-none").GetAttribute("style") ?? "";
         Assert.Contains("data:image/svg+xml", style);
     }
+
+    // --- #wave3-25: text watermark must follow the host theme color ---
+
+    [Fact]
+    public void Text_Watermark_Follows_Theme_Via_Mask_And_BackgroundColor_CurrentColor()
+    {
+        // Regression (#wave3-25): the text watermark embedded `fill="currentColor"`
+        // inside a background-image data-URI SVG. `currentColor` cannot reach a
+        // background-image SVG — it resolves to the isolated SVG document's default
+        // (black) — so the watermark was invisible/wrong in dark mode. The fix paints
+        // the SVG as a CSS mask over `background-color: currentColor`, which DOES
+        // inherit the host element's theme color.
+        var cut = _ctx.Render<Lumeo.Watermark>(p => p
+            .Add(w => w.Text, "Confidential"));
+
+        var style = cut.Find("div.pointer-events-none").GetAttribute("style") ?? "";
+
+        // The visible color now comes from the overlay's own background-color, shaped
+        // by a CSS mask — both honour the host's currentColor.
+        Assert.Contains("mask-image", style);
+        Assert.Contains("background-color: currentColor", style);
+        // Text mode no longer paints a background-image (only the masked SVG remains).
+        Assert.DoesNotContain("background-image", style);
+    }
+
+    [Fact]
+    public void Text_Watermark_Svg_Does_Not_Fill_With_CurrentColor()
+    {
+        // The embedded SVG must NOT paint with fill="currentColor" (URL-escaped as
+        // fill%3D%22currentColor%22) — that was the broken, non-theming mechanism.
+        // A masked SVG uses a solid opaque fill; only its alpha is consumed.
+        var cut = _ctx.Render<Lumeo.Watermark>(p => p
+            .Add(w => w.Text, "Confidential"));
+
+        var style = cut.Find("div.pointer-events-none").GetAttribute("style") ?? "";
+
+        Assert.DoesNotContain("fill%3D%22currentColor", style);
+    }
 }

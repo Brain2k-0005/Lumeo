@@ -75,7 +75,31 @@
     // landed on the column body, not on a specific card).
     private int _pendingIndex = -1;
 
+    // Child cards register themselves (in mount/declaration order) so the column
+    // can derive a hovered card's insert index from its sibling position. This
+    // makes the drop index correct even when the consumer omits KanbanCard.Index
+    // (the documented usage does), where every card would otherwise advertise 0.
+    private readonly List<KanbanCard> _cards = new();
+
     protected override void OnInitialized() => _columnContext = new ColumnContext(this);
+
+    private void RegisterCard(KanbanCard card)
+    {
+        if (!_cards.Contains(card))
+            _cards.Add(card);
+    }
+
+    private void UnregisterCard(KanbanCard card) => _cards.Remove(card);
+
+    // Resolve a card's insert index: prefer the column-derived sibling position;
+    // fall back to a consumer-supplied explicit Index (>= 0), then to append (-1).
+    private void SetHoveredCard(KanbanCard card, int explicitIndex)
+    {
+        var derived = _cards.IndexOf(card);
+        _pendingIndex = derived >= 0 ? derived
+            : explicitIndex >= 0 ? explicitIndex
+            : -1;
+    }
 
     private async Task HandleDrop(DragEventArgs e)
     {
@@ -114,7 +138,16 @@
 
         public string? ColumnId => _column.ColumnId;
 
-        /// <summary>A card reports the insert index when the pointer is over it.</summary>
-        public void SetPendingIndex(int index) => _column._pendingIndex = index;
+        /// <summary>A card registers itself so the column can order its children.</summary>
+        public void RegisterCard(KanbanCard card) => _column.RegisterCard(card);
+
+        /// <summary>A card unregisters on dispose / when it moves columns.</summary>
+        public void UnregisterCard(KanbanCard card) => _column.UnregisterCard(card);
+
+        /// <summary>A card reports itself (and any explicit Index fallback) as the
+        /// insert target when the pointer is over it; the column resolves the index
+        /// from the card's sibling order.</summary>
+        public void SetPendingIndexFor(KanbanCard card, int explicitIndex)
+            => _column.SetHoveredCard(card, explicitIndex);
     }
 }

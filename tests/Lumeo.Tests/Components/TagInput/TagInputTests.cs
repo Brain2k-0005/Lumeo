@@ -31,7 +31,7 @@ public class TagInputTests : IAsyncLifetime
     {
         var cut = _ctx.Render<TagInputCmp>();
 
-        var cls = cut.Find("div").GetAttribute("class");
+        var cls = cut.Find("div.rounded-md").GetAttribute("class");
         Assert.Contains("rounded-md", cls);
         Assert.Contains("border", cls);
     }
@@ -64,7 +64,7 @@ public class TagInputTests : IAsyncLifetime
         var cut = _ctx.Render<TagInputCmp>(p => p
             .Add(t => t.Class, "my-tag-input"));
 
-        var cls = cut.Find("div").GetAttribute("class");
+        var cls = cut.Find("div.rounded-md").GetAttribute("class");
         Assert.Contains("my-tag-input", cls);
     }
 }

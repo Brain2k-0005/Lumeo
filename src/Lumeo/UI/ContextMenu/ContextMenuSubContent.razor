@@ -38,6 +38,14 @@
             await PositionWithFlip();
             _positioned = true;
             _focusedIndex = -1;
+            // Keyboard-opened (ArrowRight): focus the first item now that the content
+            // exists. Hover-open does not set the flag, so it never steals focus.
+            if (SubContext.ConsumeKeyboardOpen())
+            {
+                _focusedIndex = 0;
+                try { await Interop.FocusMenuItemByIndex(SubContext.ContentId, 0); }
+                catch (JSDisconnectedException) { }
+            }
         }
         else if (!SubContext.IsOpen && _positioned)
         {

@@ -36,7 +36,8 @@
         "default": null,
         "description": null,
         "isCascading": false,
-        "captureUnmatched": false
+        "captureUnmatched": false,
+        "isEditorRequired": false
       },
       {
         "name": "TitleSlot",
@@ -44,7 +45,8 @@
         "default": null,
         "description": null,
         "isCascading": false,
-        "captureUnmatched": false
+        "captureUnmatched": false,
+        "isEditorRequired": false
       },
       {
         "name": "Subtitle",
@@ -52,7 +54,8 @@
         "default": null,
         "description": null,
         "isCascading": false,
-        "captureUnmatched": false
+        "captureUnmatched": false,
+        "isEditorRequired": false
       },
       {
         "name": "SubtitleSlot",
@@ -60,7 +63,8 @@
         "default": null,
         "description": null,
         "isCascading": false,
-        "captureUnmatched": false
+        "captureUnmatched": false,
+        "isEditorRequired": false
       },
       {
         "name": "Eyebrow",
@@ -68,7 +72,8 @@
         "default": null,
         "description": null,
         "isCascading": false,
-        "captureUnmatched": false
+        "captureUnmatched": false,
+        "isEditorRequired": false
       },
       {
         "name": "Actions",
@@ -76,7 +81,8 @@
         "default": null,
         "description": null,
         "isCascading": false,
-        "captureUnmatched": false
+        "captureUnmatched": false,
+        "isEditorRequired": false
       },
       {
         "name": "Media",
@@ -84,7 +90,8 @@
         "default": null,
         "description": null,
         "isCascading": false,
-        "captureUnmatched": false
+        "captureUnmatched": false,
+        "isEditorRequired": false
       },
       {
         "name": "Alignment",
@@ -92,7 +99,8 @@
         "default": "HeroAlignment.Start",
         "description": null,
         "isCascading": false,
-        "captureUnmatched": false
+        "captureUnmatched": false,
+        "isEditorRequired": false
       },
       {
         "name": "Class",
@@ -100,7 +108,8 @@
         "default": null,
         "description": null,
         "isCascading": false,
-        "captureUnmatched": false
+        "captureUnmatched": false,
+        "isEditorRequired": false
       },
       {
         "name": "AdditionalAttributes",
@@ -108,7 +117,8 @@
         "default": null,
         "description": null,
         "isCascading": false,
-        "captureUnmatched": true
+        "captureUnmatched": true,
+        "isEditorRequired": false
       }
     ],
     "events": [],
@@ -149,8 +159,31 @@
       }
     ],
     "subComponents": {},
+    "a11y": {
+      "roles": [],
+      "ariaAttributes": [
+        "aria-labelledby"
+      ],
+      "keys": [],
+      "keyboardInteractive": false,
+      "focusManaged": false
+    },
     "parseFailed": false,
     "parseError": null
+  },
+  "testCoverage": {
+    "tier": 1,
+    "files": 1,
+    "tests": 4,
+    "relatedFiles": 0,
+    "render": true,
+    "behavior": false,
+    "a11y": true,
+    "keyboard": false,
+    "scale": false,
+    "e2e": false,
+    "e2eFiles": [],
+    "contract": "smoke"
   },
   "$schema": "https://lumeo.nativ.sh/registry-component-schema.json",
   "key": "hero",
@@ -164,7 +197,7 @@
   "source": [
     {
       "path": "UI/Hero/Hero.razor",
-      "content": "@namespace Lumeo\n\n@*\n    Hero — landing-page hero band. Part of the 3.4 Splash Kit. Provides\n    a centered, max-width content rail with an optional Eyebrow chip,\n    Title, Subtitle, Actions slot, and a Media slot for the side\n    illustration. Layout collapses to a single column under sm:.\n*@\n\n<section class=\"@CssClass\" aria-labelledby=\"@TitleId\" @attributes=\"AdditionalAttributes\">\n    <div class=\"@($\"mx-auto max-w-6xl px-6 py-16 sm:py-24 {GridClass}\")\">\n        <div class=\"@($\"flex flex-col {AlignClass}\")\">\n            @if (Eyebrow is not null)\n            {\n                <div class=\"mb-4\">\n                    @Eyebrow\n                </div>\n            }\n            @if (!string.IsNullOrEmpty(Title))\n            {\n                <h1 id=\"@TitleId\" class=\"text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight text-foreground\">@Title</h1>\n            }\n            @TitleSlot\n            @if (!string.IsNullOrEmpty(Subtitle))\n            {\n                <p class=\"mt-4 text-lg text-muted-foreground max-w-2xl\">@Subtitle</p>\n            }\n            @SubtitleSlot\n            @if (Actions is not null)\n            {\n                <div class=\"mt-8 flex flex-wrap gap-3 @ActionsAlignClass\">\n                    @Actions\n                </div>\n            }\n        </div>\n        @if (Media is not null)\n        {\n            <div class=\"flex items-center justify-center\">\n                @Media\n            </div>\n        }\n    </div>\n</section>\n\n@code {\n    [Parameter] public string? Title { get; set; }\n    [Parameter] public RenderFragment? TitleSlot { get; set; }\n    [Parameter] public string? Subtitle { get; set; }\n    [Parameter] public RenderFragment? SubtitleSlot { get; set; }\n    [Parameter] public RenderFragment? Eyebrow { get; set; }\n    [Parameter] public RenderFragment? Actions { get; set; }\n    [Parameter] public RenderFragment? Media { get; set; }\n    [Parameter] public HeroAlignment Alignment { get; set; } = HeroAlignment.Start;\n    [Parameter] public string? Class { get; set; }\n    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }\n\n    private string CssClass => Cx.Merge(\"w-full\", Class);\n\n    // Name the <section> landmark via its heading so AT exposes it as a region\n    // with an accessible name (#297). Null when there's no Title — a TitleSlot-\n    // only consumer can still supply aria-label/aria-labelledby via attributes.\n    private readonly string _titleId = $\"hero-title-{Guid.NewGuid():N}\";\n    private string? TitleId => string.IsNullOrEmpty(Title) ? null : _titleId;\n\n    private string GridClass => Media is not null\n        ? \"grid gap-10 lg:grid-cols-2 items-center\"\n        : \"\";\n\n    private string AlignClass => Alignment switch\n    {\n        HeroAlignment.Center => \"items-center text-center\",\n        HeroAlignment.End => \"items-end text-end\",\n        _ => \"items-start text-start\"\n    };\n\n    private string ActionsAlignClass => Alignment switch\n    {\n        HeroAlignment.Center => \"justify-center\",\n        HeroAlignment.End => \"justify-end\",\n        _ => \"justify-start\"\n    };\n\n    public enum HeroAlignment { Start, Center, End }\n}\n"
+      "content": "@namespace Lumeo\n\n@*\n    Hero — landing-page hero band. Part of the 3.4 Splash Kit. Provides\n    a centered, max-width content rail with an optional Eyebrow chip,\n    Title, Subtitle, Actions slot, and a Media slot for the side\n    illustration. Layout collapses to a single column under sm:.\n*@\n\n<section class=\"@CssClass\" aria-labelledby=\"@TitleId\" @attributes=\"AdditionalAttributes\">\n    <div class=\"@($\"mx-auto max-w-6xl px-6 py-16 sm:py-24 {GridClass}\")\">\n        <div class=\"@($\"flex flex-col {AlignClass}\")\">\n            @if (Eyebrow is not null)\n            {\n                <div class=\"mb-4\">\n                    @Eyebrow\n                </div>\n            }\n            @if (!string.IsNullOrWhiteSpace(Title))\n            {\n                <h1 id=\"@TitleId\" class=\"text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight text-foreground\">@Title</h1>\n            }\n            @TitleSlot\n            @if (!string.IsNullOrWhiteSpace(Subtitle))\n            {\n                <p class=\"mt-4 text-lg text-muted-foreground max-w-2xl\">@Subtitle</p>\n            }\n            @SubtitleSlot\n            @if (Actions is not null)\n            {\n                <div class=\"mt-8 flex flex-wrap gap-3 @ActionsAlignClass\">\n                    @Actions\n                </div>\n            }\n        </div>\n        @if (Media is not null)\n        {\n            <div class=\"flex items-center justify-center\">\n                @Media\n            </div>\n        }\n    </div>\n</section>\n\n@code {\n    [Parameter] public string? Title { get; set; }\n    [Parameter] public RenderFragment? TitleSlot { get; set; }\n    [Parameter] public string? Subtitle { get; set; }\n    [Parameter] public RenderFragment? SubtitleSlot { get; set; }\n    [Parameter] public RenderFragment? Eyebrow { get; set; }\n    [Parameter] public RenderFragment? Actions { get; set; }\n    [Parameter] public RenderFragment? Media { get; set; }\n    [Parameter] public HeroAlignment Alignment { get; set; } = HeroAlignment.Start;\n    [Parameter] public string? Class { get; set; }\n    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }\n\n    private string CssClass => Cx.Merge(\"w-full\", Class);\n\n    // Name the <section> landmark via its heading so AT exposes it as a region\n    // with an accessible name (#297). Null when there's no Title — a TitleSlot-\n    // only consumer can still supply aria-label/aria-labelledby via attributes.\n    private readonly string _titleId = $\"hero-title-{Guid.NewGuid():N}\";\n    private string? TitleId => string.IsNullOrWhiteSpace(Title) ? null : _titleId;\n\n    private string GridClass => Media is not null\n        ? \"grid gap-10 lg:grid-cols-2 items-center\"\n        : \"\";\n\n    private string AlignClass => Alignment switch\n    {\n        HeroAlignment.Center => \"items-center text-center\",\n        HeroAlignment.End => \"items-end text-end\",\n        _ => \"items-start text-start\"\n    };\n\n    private string ActionsAlignClass => Alignment switch\n    {\n        HeroAlignment.Center => \"justify-center\",\n        HeroAlignment.End => \"justify-end\",\n        _ => \"justify-start\"\n    };\n\n    public enum HeroAlignment { Start, Center, End }\n}\n"
     }
   ],
   "slots": [
@@ -204,7 +237,8 @@
   "relatedComponents": [],
   "keyboardInteractions": [],
   "tests": [
-    "tests/Lumeo.Tests/Components/A11yPolish/A11yPolishTests.cs"
+    "tests/Lumeo.Tests/Components/A11yPolish/A11yPolishTests.cs",
+    "tests/Lumeo.Tests/Components/Hero/HeroTests.cs"
   ],
   "mdSummary": "# Hero\n\nHero component.\n\n**Package:** `Lumeo` · **Category:** Marketing\n**Docs:** https://lumeo.nativ.sh/components/hero\n\n## Parameters\n| Owner | Name | Type | Default | Description |\n|---|---|---|---|---|\n| Hero | Title | `string?` | `` |  |\n| Hero | TitleSlot | `RenderFragment?` | `` |  |\n| Hero | Subtitle | `string?` | `` |  |\n| Hero | SubtitleSlot | `RenderFragment?` | `` |  |\n| Hero | Eyebrow | `RenderFragment?` | `` |  |\n| Hero | Actions | `RenderFragment?` | `` |  |\n| Hero | Media | `RenderFragment?` | `` |  |\n| Hero | Alignment | `HeroAlignment` | `HeroAlignment.Start` |  |\n| Hero | Class | `string?` | `` |  |\n| Hero | AdditionalAttributes | `Dictionary<string, object>?` | `` |  |\n\n## Slots\n- `TitleSlot` (Hero) — RenderFragment slot\n- `SubtitleSlot` (Hero) — RenderFragment slot\n- `Eyebrow` (Hero) — RenderFragment slot\n- `Actions` (Hero) — RenderFragment slot\n- `Media` (Hero) — RenderFragment slot\n\n## Events\n- (none)\n\n## Sub-components\n- (none)\n\n## Cascading values it expects\n- (none)\n\n## Services it injects\n- (none)\n\n## Keyboard\n—\n\n## Example\n```razor\n<Hero />\n```\n\n## CSS variables\n`--color-foreground`, `--color-muted`, `--color-muted-foreground`\n\n## Files\n- `UI/Hero/Hero.razor`\n"
 }

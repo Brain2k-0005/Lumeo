@@ -96,6 +96,42 @@ public class CalendarMultipleSelectionTests : IAsyncLifetime
         Assert.DoesNotContain("bg-primary", eleven.ClassList);
     }
 
+    private static string MonthHeader(DateOnly d) => $"{d.ToString("MMMM")} {d.Year}";
+
+    [Fact]
+    public void Deselecting_Earliest_Day_Does_Not_Teleport_Displayed_Month()
+    {
+        // #53 — multiple mode: CurrentAnchor is Values.Min(). Two selected days in
+        // DIFFERENT months ([March 10, June 20]) anchor the display to March. The
+        // user deselects the earliest (March 10) while looking at March; the parent
+        // echoes the resulting [June 20] back. The display must STAY on March (where
+        // the click happened), not teleport to June 20's month.
+        //
+        // Pre-fix: SelectDay's multiple branch never updated _lastSeenAnchor, so the
+        // echoed June 20 read as a brand-new external anchor in OnParametersSet and
+        // yanked the month to June.
+        var captured = new List<DateOnly>();
+        var cb = EventCallback.Factory.Create<List<DateOnly>?>(this, v => captured = v ?? new());
+        var cut = _ctx.Render<L.Calendar>(p =>
+        {
+            p.Add(c => c.IsMultiple, true);
+            p.Add(c => c.Values, new List<DateOnly> { new(2024, 3, 10), new(2024, 6, 20) });
+            p.Add(c => c.ValuesChanged, cb);
+        });
+
+        Assert.Contains(MonthHeader(new DateOnly(2024, 3, 1)), cut.Markup);
+
+        Day(cut, 10).Click(); // deselect the earliest → [June 20]
+        Assert.Equal(new[] { new DateOnly(2024, 6, 20) }, captured);
+
+        // Parent echoes the new bound list back (controlled usage).
+        cut.Render(p => p.Add(c => c.Values, captured));
+
+        // The display must remain on March (where the user clicked), not jump to June.
+        Assert.Contains(MonthHeader(new DateOnly(2024, 3, 1)), cut.Markup);
+        Assert.DoesNotContain(MonthHeader(new DateOnly(2024, 6, 1)), cut.Markup);
+    }
+
     [Fact]
     public void Disabled_Days_Cannot_Be_Toggled()
     {

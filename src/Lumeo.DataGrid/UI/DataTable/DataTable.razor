@@ -3,13 +3,16 @@
 
 <div class="relative w-full overflow-auto" @attributes="AdditionalAttributes">
     @* role="grid" + aria-row/colcount give AT the table's shape. aria-rowcount
-       includes the header row (+1). aria-multiselectable is only set when the
-       selection checkboxes are present. Consumer-supplied <th>/<td> in the
-       Header/Row templates keep their native table semantics; we add row/cell
-       roles on the markup we own (rows + the selection column). *@
+       counts the actually-rendered role=row elements (data/skeleton rows + the
+       header row), so it stays truthful while loading (skeleton rows, not the
+       provisional Items count) and in the empty state (the "No results"
+       placeholder is NOT a grid row, so it isn't counted). aria-multiselectable
+       is only set when the selection checkboxes are present. Consumer-supplied
+       <th>/<td> in the Header/Row templates keep their native table semantics;
+       we add row/cell roles on the markup we own (rows + the selection column). *@
     <table class="@CssClass"
            role="grid"
-           aria-rowcount="@(_itemsList.Count + 1)"
+           aria-rowcount="@AriaRowCount"
            aria-colcount="@(AriaColCount > 0 ? AriaColCount : null)"
            aria-multiselectable="@(Selectable ? "true" : null)">
         <thead class="[&_tr]:border-b [&_tr]:border-border/40" role="rowgroup">
@@ -35,8 +38,12 @@
             }
             else if (Items is null || !Items.Any())
             {
-                <tr role="row">
-                    <td colspan="100" class="p-8" role="gridcell">
+                @* The "No results" placeholder is presentational, not a data row.
+                   Marking it role=row/gridcell would announce a phantom grid cell
+                   that aria-rowcount (which counts only real rows) does not include,
+                   misannouncing the grid shape — so it carries no grid roles. *@
+                <tr>
+                    <td colspan="100" class="p-8">
                         @if (EmptyTemplate is not null)
                         {
                             @EmptyTemplate
@@ -57,11 +64,11 @@
                        diffs rows by identity, not position — without this the
                        virtualized rows were unkeyed and recycling reused the
                        wrong row state (checkbox/edit state) when scrolling. *@
-                    <tr @key="DataGridRowKeys.KeyFor(item)" class="border-b border-border/40 transition-colors hover:bg-muted/50" role="row" aria-selected="@(Selectable ? (SelectedItems?.Contains(item) == true ? "true" : "false") : null)">
+                    <tr @key="DataGridRowKeys.KeyFor(item)" class="border-b border-border/40 transition-colors hover:bg-muted/50" role="row" aria-selected="@(Selectable ? (IsSelected(item) ? "true" : "false") : null)">
                         @if (Selectable)
                         {
                             <td class="w-10 px-2 py-2 align-middle" role="gridcell">
-                                <Checkbox Checked="@(SelectedItems?.Contains(item) == true)" CheckedChanged="@(c => ToggleItem(item, c))" AriaLabel="Select row" />
+                                <Checkbox Checked="@(IsSelected(item))" CheckedChanged="@(c => ToggleItem(item, c))" AriaLabel="Select row" />
                             </td>
                         }
                         @RowTemplate!(item)
@@ -72,11 +79,11 @@
             {
                 @foreach (var item in _itemsList)
                 {
-                    <tr @key="DataGridRowKeys.KeyFor(item)" class="border-b border-border/40 transition-colors hover:bg-muted/50" role="row" aria-selected="@(Selectable ? (SelectedItems?.Contains(item) == true ? "true" : "false") : null)">
+                    <tr @key="DataGridRowKeys.KeyFor(item)" class="border-b border-border/40 transition-colors hover:bg-muted/50" role="row" aria-selected="@(Selectable ? (IsSelected(item) ? "true" : "false") : null)">
                         @if (Selectable)
                         {
                             <td class="w-10 px-2 py-2 align-middle" role="gridcell">
-                                <Checkbox Checked="@(SelectedItems?.Contains(item) == true)" CheckedChanged="@(c => ToggleItem(item, c))" AriaLabel="Select row" />
+                                <Checkbox Checked="@(IsSelected(item))" CheckedChanged="@(c => ToggleItem(item, c))" AriaLabel="Select row" />
                             </td>
                         }
                         @RowTemplate!(item)
@@ -111,6 +118,19 @@
     [Parameter] public EventCallback<HashSet<TItem>> SelectedItemsChanged { get; set; }
 
     /// <summary>
+    /// Optional stable-key selector for selection membership. When <c>TItem</c>
+    /// is a plain reference type (not a record / value type), the default
+    /// <see cref="HashSet{T}"/> compares by object reference — so refreshing
+    /// <see cref="Items"/> with new instances that are value-equal but
+    /// reference-distinct silently drops the selection highlight. Supply a key
+    /// (e.g. <c>p =&gt; p.Id</c>) and membership is decided by that key instead
+    /// of reference identity, so selection survives a same-content refresh.
+    /// When null, membership falls back to <c>SelectedItems.Contains(item)</c>
+    /// (reference/value equality), preserving the original behaviour.
+    /// </summary>
+    [Parameter] public Func<TItem, object>? ItemKey { get; set; }
+
+    /// <summary>
     /// Total column count reported via <c>aria-colcount</c> on the grid
     /// (including the selection column when <see cref="Selectable"/> is on).
     /// Set this when the header/row templates render a fixed number of columns
@@ -127,19 +147,46 @@
 
     private string CssClass => $"w-full caption-bottom text-sm {Class}".Trim();
 
+    // aria-rowcount must match the role=row elements actually rendered in <tbody>
+    // plus the single header row (+1), or AT announces a grid shape that doesn't
+    // exist. While loading we render SkeletonRows (the provisional Items count is
+    // not yet shown); in the empty state the "No results" placeholder carries no
+    // grid roles, so only the header row counts.
+    private int AriaRowCount =>
+        IsLoading ? Math.Max(SkeletonRows, 0) + 1
+        : (Items is null || !Items.Any()) ? 1
+        : _itemsList.Count + 1;
+
     // Cached per-render — recomputed in OnParametersSet to avoid repeated LINQ on every render pass.
     private List<TItem> _itemsList = [];
     private bool _isAllSelected;
     private bool _isSomeSelected;
+    // When ItemKey is supplied, selection membership is decided by stable key
+    // rather than object reference, so it survives a same-content Items refresh
+    // (new value-equal-but-reference-distinct instances). Rebuilt from
+    // SelectedItems whenever parameters change.
+    private HashSet<object>? _selectedKeys;
 
     private bool IsAllSelected => _isAllSelected;
     private bool IsSomeSelected => _isSomeSelected;
 
+    // Membership decision used by every row's checkbox/aria-selected. With a key
+    // selector, two distinct instances that share a key are treated as the same
+    // selected row; without one, this is the original reference/value compare.
+    private bool IsSelected(TItem item)
+    {
+        if (_selectedKeys is not null)
+            return _selectedKeys.Contains(ItemKey!(item));
+        return SelectedItems?.Contains(item) == true;
+    }
+
     protected override void OnParametersSet()
     {
         _itemsList = Items?.ToList() ?? [];
-        _isAllSelected = _itemsList.Count > 0 && SelectedItems is not null && _itemsList.All(i => SelectedItems.Contains(i));
-        _isSomeSelected = SelectedItems is not null && SelectedItems.Count > 0 && !_isAllSelected;
+        _selectedKeys = ItemKey is not null && SelectedItems is not null
+            ? new HashSet<object>(SelectedItems.Select(ItemKey))
+            : null;
+        RefreshSelectionCache();
     }
 
     // Selection mutations emit a NEW HashSet each time rather than mutating the
@@ -150,9 +197,15 @@
     // the ref-stable contract two-way binding and EventCallback consumers expect.
     private async Task ToggleSelectAll(bool select)
     {
-        if (Items is null) return;
+        // An empty (or fully-filtered-out) table has nothing to select: treat
+        // empty Items the same as null so a select-all toggle is a true no-op —
+        // it must NOT emit a spurious SelectedItemsChanged(empty) event. The
+        // header checkbox already renders unchecked here (_isAllSelected requires
+        // _itemsList.Count > 0), so this keeps the control and its callback aligned.
+        if (Items is null || !Items.Any()) return;
         var next = select ? new HashSet<TItem>(Items) : new HashSet<TItem>();
         SelectedItems = next;
+        _selectedKeys = ItemKey is not null ? new HashSet<object>(next.Select(ItemKey)) : null;
         RefreshSelectionCache();
         await SelectedItemsChanged.InvokeAsync(next);
     }
@@ -160,8 +213,26 @@
     private async Task ToggleItem(TItem item, bool selected)
     {
         var next = SelectedItems is null ? new HashSet<TItem>() : new HashSet<TItem>(SelectedItems);
-        if (selected) next.Add(item);
-        else next.Remove(item);
+        if (ItemKey is not null)
+        {
+            // Decide membership by key so a value-equal-but-reference-distinct
+            // instance toggles the row the user clicked, not a phantom duplicate.
+            var key = ItemKey(item);
+            if (selected)
+            {
+                if (!next.Any(i => Equals(ItemKey(i), key))) next.Add(item);
+            }
+            else
+            {
+                next.RemoveWhere(i => Equals(ItemKey(i), key));
+            }
+            _selectedKeys = new HashSet<object>(next.Select(ItemKey));
+        }
+        else
+        {
+            if (selected) next.Add(item);
+            else next.Remove(item);
+        }
         SelectedItems = next;
         RefreshSelectionCache();
         await SelectedItemsChanged.InvokeAsync(next);
@@ -169,7 +240,7 @@
 
     private void RefreshSelectionCache()
     {
-        _isAllSelected = _itemsList.Count > 0 && SelectedItems is not null && _itemsList.All(i => SelectedItems.Contains(i));
+        _isAllSelected = _itemsList.Count > 0 && SelectedItems is not null && _itemsList.All(IsSelected);
         _isSomeSelected = SelectedItems is not null && SelectedItems.Count > 0 && !_isAllSelected;
     }
 

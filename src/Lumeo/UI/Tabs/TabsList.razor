@@ -76,6 +76,13 @@ else
 @code {
     [CascadingParameter] public Tabs.TabsContext? Context { get; set; }
 
+    // A scoped <DirectionProvider> cascades its direction here; when present it
+    // wins over the global ThemeService so a subtree can be RTL even if the app
+    // is LTR (and vice versa). Null when no provider wraps this list — then the
+    // ambient theme direction applies.
+    [CascadingParameter(Name = "LumeoDirection")] private LayoutDirection? ScopedDirection { get; set; }
+    private LayoutDirection EffectiveDirection => ScopedDirection ?? Theme.CurrentDirection;
+
     [Parameter] public RenderFragment? ChildContent { get; set; }
     [Parameter] public RenderFragment? TrailingContent { get; set; }
     [Parameter] public bool Scrollable { get; set; }
@@ -170,7 +177,6 @@ else
     private double _indicatorX;
     private double _indicatorW;
     private bool _indicatorReady;
-    private string? _lastMeasuredValue;
     private bool _touchRegistered;
     private bool _overflowRegistered;
     private bool _canScrollStart;
@@ -187,10 +193,10 @@ else
     // always points toward the visual beginning.
     private Blazicons.SvgIcon StartArrowIcon => IsVertical
         ? Blazicons.Lucide.ChevronUp
-        : (Theme.CurrentDirection == LayoutDirection.Rtl ? Blazicons.Lucide.ChevronRight : Blazicons.Lucide.ChevronLeft);
+        : (EffectiveDirection == LayoutDirection.Rtl ? Blazicons.Lucide.ChevronRight : Blazicons.Lucide.ChevronLeft);
     private Blazicons.SvgIcon EndArrowIcon => IsVertical
         ? Blazicons.Lucide.ChevronDown
-        : (Theme.CurrentDirection == LayoutDirection.Rtl ? Blazicons.Lucide.ChevronLeft : Blazicons.Lucide.ChevronRight);
+        : (EffectiveDirection == LayoutDirection.Rtl ? Blazicons.Lucide.ChevronLeft : Blazicons.Lucide.ChevronRight);
 
     private string ArrowClass =>
         "z-10 flex shrink-0 items-center justify-center rounded-md text-muted-foreground hover:text-foreground cursor-pointer transition-colors h-8 w-6";
@@ -249,7 +255,12 @@ else
         var active = Context.ActiveValue;
         if (string.IsNullOrEmpty(active)) return;
         if (!Context.TabIds.TryGetValue(active, out var ids)) return;
-        if (_lastMeasuredValue == active && _indicatorReady) return;
+        // NOTE: do NOT short-circuit when only the active tab's value is unchanged.
+        // The active tab's geometry can change while its value stays the same
+        // (a sibling tab is added/removed/relabelled, the list resizes, RTL
+        // flips, a font loads), which would leave the indicator parked at stale
+        // pixel coordinates. We re-measure on every settled render; the `changed`
+        // epsilon check below still suppresses redundant StateHasChanged calls.
 
         ComponentInteropService.TabMeasurement? measurement;
         try
@@ -267,7 +278,6 @@ else
         _indicatorX = measurement.X;
         _indicatorW = measurement.Width;
         _indicatorReady = true;
-        _lastMeasuredValue = active;
 
         if (changed)
         {
@@ -403,7 +413,7 @@ else
             var baseClasses = CurrentVariant switch
             {
                 Tabs.TabsVariant.Card => IsVertical
-                    ? "flex flex-col h-auto w-auto items-stretch justify-start border-r border-border/40 text-muted-foreground"
+                    ? "flex flex-col h-auto w-auto items-stretch justify-start border-e border-border/40 text-muted-foreground"
                     // items-END, not center: the active card pulls itself onto
                     // the list's bottom border (-mb-px); centered tabs floated
                     // above the border line with a visible gap, so the "card"

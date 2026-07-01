@@ -113,6 +113,24 @@ public class DropdownMenuActivationDismissTests : IAsyncLifetime
         cut.WaitForAssertion(() => Assert.Contains("Sub Item A", cut.Markup));
     }
 
+    [Fact]
+    public void SubTrigger_ArrowRight_Focuses_First_Item_When_The_Submenu_Renders()
+    {
+        // Race-free: focus moves to the first submenu item once the content actually
+        // renders (the content consumes the keyboard-open flag in OnAfterRender),
+        // not after a fixed Task.Delay that guessed when the content would exist.
+        var cut = RenderDropdownMenu(withSub: true);
+
+        cut.Find("button[aria-haspopup='menu']").KeyDown(new KeyboardEventArgs { Key = "ArrowRight" });
+
+        // The submenu content id is namespaced ("dropdown-sub-content-…"), which
+        // distinguishes it from the root content (relevant in bUnit, where the
+        // portal JS doesn't run so both menus share a DOM subtree).
+        cut.WaitForAssertion(() =>
+            Assert.Contains(_interop.FocusMenuItemCalls,
+                c => c.Index == 0 && c.ContainerId.StartsWith("dropdown-sub-content")));
+    }
+
     // --- Click-outside trigger exclusion ---
 
     [Fact]

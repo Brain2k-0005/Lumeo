@@ -6,7 +6,7 @@
         @RenderedMarkdown
         @if (IsStreaming)
         {
-            <span class="ml-0.5 inline-block align-baseline bg-current animate-pulse" style="width: 2px; height: 1em;">&nbsp;</span>
+            <span class="ms-0.5 inline-block align-baseline bg-current animate-pulse" style="width: 2px; height: 1em;">&nbsp;</span>
         }
     </div>
 }
@@ -19,11 +19,11 @@ else
         }
         @if (!string.IsNullOrEmpty(_newSuffix))
         {
-            <span class="animate-in fade-in duration-200">@_newSuffix</span>
+            <span @key="_previousLength" class="animate-in fade-in duration-200">@_newSuffix</span>
         }
         @if (IsStreaming)
         {
-            <span class="ml-0.5 inline-block align-baseline bg-current animate-pulse" style="width: 2px; height: 1em;">&nbsp;</span>
+            <span class="ms-0.5 inline-block align-baseline bg-current animate-pulse" style="width: 2px; height: 1em;">&nbsp;</span>
         }
     </span>
 }
@@ -92,8 +92,21 @@ else
         var text = Text ?? string.Empty;
         if (text.Length >= _previousLength)
         {
-            _alreadyRendered = text.Substring(0, _previousLength);
-            _newSuffix = text.Substring(_previousLength);
+            // Don't slice through a UTF-16 surrogate pair. When a single code
+            // point (e.g. an emoji) streams in across two updates, the previous
+            // boundary can land BETWEEN its high and low surrogate; splitting
+            // there would tear the pair across the two spans and render each half
+            // as a U+FFFD glyph. Back the split off by one so the whole code
+            // point lands intact in the new suffix.
+            var split = _previousLength;
+            if (split > 0 && split < text.Length
+                && char.IsHighSurrogate(text[split - 1])
+                && char.IsLowSurrogate(text[split]))
+            {
+                split--;
+            }
+            _alreadyRendered = text.Substring(0, split);
+            _newSuffix = text.Substring(split);
         }
         else
         {

@@ -1,0 +1,35 @@
+@inherits Bunit.BunitContext
+
+@code {
+    // Triage #206 (other, low): the chevron icon never rotated on open because it
+    // had no data-state hook (unlike DropdownButton). The AsChild DropdownMenuTrigger
+    // folds `group` + data-state onto the chevron <button>, so the icon carrying
+    // group-data-[state=open]:rotate-180 now rotates with the menu's state.
+    public SplitButtonRotationTests() { this.AddLumeoServices(); }
+
+    private static readonly RenderFragment Menu = @<text><span>Item</span></text>;
+
+    [Fact]
+    public void Chevron_Icon_Carries_The_Rotate_On_Open_Hook()
+    {
+        var cut = Render(@<SplitButton Text="Save" MenuContent="Menu" />);
+
+        // The chevron Blazicon renders as an <svg>; it must carry the rotate-on-open
+        // utility so it tracks the menu's data-state.
+        var svgs = cut.FindAll("svg");
+        Assert.Contains(svgs, s => (s.GetAttribute("class") ?? "").Contains("group-data-[state=open]:rotate-180"));
+    }
+
+    [Fact]
+    public void Chevron_Trigger_Button_Exposes_Group_And_Data_State()
+    {
+        var cut = Render(@<SplitButton Text="Save" MenuContent="Menu" />);
+
+        // The AsChild fold puts BOTH `group` and data-state on the same <button>, so
+        // the icon's group-data-[state=open] selector actually resolves. (Closed by
+        // default.)
+        var chevron = cut.FindAll("button")
+            .First(b => (b.GetAttribute("class") ?? "").Contains("group") && b.HasAttribute("data-state"));
+        Assert.Equal("closed", chevron.GetAttribute("data-state"));
+    }
+}

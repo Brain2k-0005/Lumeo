@@ -159,6 +159,18 @@ jobs:
           mkdir -p release/wwwroot/raw
           rsync -a --exclude='wwwroot/_content' --exclude='obj' --exclude='bin' \
                 src/Lumeo/ release/wwwroot/raw/
+          # Satellite source for `lumeo add <satellite> --vendor`. Core lives at /raw/
+          # (= src/Lumeo/); each satellite publishes to /raw/<package>/ (= src/Lumeo.<Sat>/),
+          # which is exactly what RegistryLoader.DeriveFileBaseUrl nests for a non-core package.
+          for sat in src/Lumeo.*/; do
+            name=$(basename "$sat")
+            case "$name" in
+              Lumeo.Tests*|Lumeo.SourceGenerators) continue ;;
+            esac
+            mkdir -p "release/wwwroot/raw/$name"
+            rsync -a --exclude='wwwroot/_content' --exclude='obj' --exclude='bin' \
+                  "$sat" "release/wwwroot/raw/$name/"
+          done
 
       - name: Install Chromium deps for Puppeteer
         # ubuntu-latest ships most of these, but a few (libxkbcommon0, libgbm1) are

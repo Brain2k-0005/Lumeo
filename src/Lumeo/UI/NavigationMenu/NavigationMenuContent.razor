@@ -39,6 +39,16 @@
                 await InvokeAsync(StateHasChanged);
             });
             _registered = true;
+
+            // If this submenu was opened from the keyboard (ArrowDown on the
+            // trigger), move focus INTO the content now that it has actually
+            // rendered. The trigger can't focus it synchronously — the element
+            // didn't exist yet when its keydown handler ran (mirrors
+            // MenubarContent's focus-into-content on the open transition).
+            if (Context.Owner.TryConsumeContentFocusRequest(ItemContext.ItemId))
+            {
+                try { await Interop.FocusElement(_contentId); } catch (JSDisconnectedException) { }
+            }
         }
         else if (Context.ActiveItemId != ItemContext.ItemId && _registered)
         {

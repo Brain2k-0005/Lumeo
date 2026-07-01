@@ -46,6 +46,8 @@ internal sealed class NoopInteropService : IComponentInteropService
     public ValueTask SetHtmlClass(string className, bool active) => ValueTask.CompletedTask;
     public ValueTask SetupFocusTrap(string elementId, string? initialFocusSelector = null) => ValueTask.CompletedTask;
     public ValueTask RemoveFocusTrap(string elementId) => ValueTask.CompletedTask;
+    public ValueTask SaveFocus(string key) => ValueTask.CompletedTask;
+    public ValueTask RestoreFocus(string key) => ValueTask.CompletedTask;
 
     // ColorPicker SV Drag
     public ValueTask RegisterSvDrag(string elementId, Func<double, double, Task> handler) => ValueTask.CompletedTask;
@@ -58,7 +60,7 @@ internal sealed class NoopInteropService : IComponentInteropService
     public ValueTask UnregisterViewportListener() => ValueTask.CompletedTask;
 
     // Floating Position
-    public ValueTask PositionFixed(string contentId, string referenceId, string align = "start", bool matchWidth = false, string side = "bottom") => ValueTask.CompletedTask;
+    public ValueTask<string> PositionFixed(string contentId, string referenceId, string align = "start", bool matchWidth = false, string side = "bottom") => ValueTask.FromResult(side);
     public ValueTask UnpositionFixed(string contentId) => ValueTask.CompletedTask;
     public ValueTask<ElementRect?> GetElementRect(string elementId) => ValueTask.FromResult<ElementRect?>(null);
     public ValueTask<double> GetElementDimension(string elementId, string dimension) => ValueTask.FromResult(0.0);
@@ -238,7 +240,7 @@ internal sealed class NoopInteropService : IComponentInteropService
     public ValueTask SeekMedia(Microsoft.AspNetCore.Components.ElementReference element, double seconds) => ValueTask.CompletedTask;
     public ValueTask SetPlaybackRate(Microsoft.AspNetCore.Components.ElementReference element, double rate) => ValueTask.CompletedTask;
     public ValueTask<Lumeo.Services.MediaState> GetMediaState(Microsoft.AspNetCore.Components.ElementReference element) => ValueTask.FromResult(new Lumeo.Services.MediaState(0, 0));
-    public ValueTask SignaturePadInit(string elementId, object options, Microsoft.JSInterop.DotNetObjectReference<Lumeo.SignaturePad> dotNetRef) => ValueTask.CompletedTask;
+    public ValueTask SignaturePadInit<T>(string elementId, object options, Microsoft.JSInterop.DotNetObjectReference<T> dotNetRef) where T : class => ValueTask.CompletedTask;
     public ValueTask SignaturePadClear(string elementId) => ValueTask.CompletedTask;
     public ValueTask<string?> SignaturePadDataUrl(string elementId, string mimeType) => ValueTask.FromResult<string?>(null);
     public ValueTask SignaturePadSetStrokeStyle(string elementId, string color, double width) => ValueTask.CompletedTask;

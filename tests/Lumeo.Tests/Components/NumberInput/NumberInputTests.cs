@@ -32,7 +32,7 @@ public class NumberInputTests : IAsyncLifetime
     {
         var cut = _ctx.Render<Lumeo.NumberInput>();
 
-        var cls = cut.Find("div").GetAttribute("class");
+        var cls = cut.Find("div.inline-flex").GetAttribute("class");
         Assert.Contains("inline-flex", cls);
         Assert.Contains("items-center", cls);
     }
@@ -72,7 +72,7 @@ public class NumberInputTests : IAsyncLifetime
         var cut = _ctx.Render<Lumeo.NumberInput>(p => p
             .Add(n => n.Class, "my-number-input"));
 
-        var cls = cut.Find("div").GetAttribute("class");
+        var cls = cut.Find("div.inline-flex").GetAttribute("class");
         Assert.Contains("my-number-input", cls);
     }
 
@@ -194,5 +194,70 @@ public class NumberInputTests : IAsyncLifetime
         cut.Find("input[type='number']").Change("999");
 
         Assert.Equal(10, value);
+    }
+
+    // --- #156: fractional-Step increment must not accumulate FP drift when Precision is null ---
+
+    [Fact]
+    public void Increment_Fractional_Step_Without_Precision_Does_Not_Drift()
+    {
+        // 0.2 + 0.1 is 0.30000000000000004 in raw binary double. Without the fix the
+        // stepped value is emitted (and printed) verbatim; with it, the result snaps
+        // to Step's decimal scale -> exactly 0.3.
+        double? value = null;
+        var cut = _ctx.Render<Lumeo.NumberInput>(p => p
+            .Add(n => n.Value, 0.2)
+            .Add(n => n.Step, 0.1)
+            .Add(n => n.ValueChanged, v => value = v));
+
+        cut.Find("button[aria-label='Increase']").Click();
+
+        Assert.Equal(0.3, value);
+    }
+
+    [Fact]
+    public void Increment_Fractional_Step_Renders_Clean_DisplayValue()
+    {
+        // The native <input> prints DisplayValue (the raw double) directly, so the
+        // drift is user-visible in the markup. After the fix the value attribute is
+        // the clean "0.3", not "0.30000000000000004".
+        var cut = _ctx.Render<Lumeo.NumberInput>(p => p
+            .Add(n => n.Value, 0.2)
+            .Add(n => n.Step, 0.1));
+
+        cut.Find("button[aria-label='Increase']").Click();
+
+        var rendered = cut.Find("input[type='number']").GetAttribute("value");
+        Assert.Equal("0.3", rendered);
+        Assert.DoesNotContain("0.30000", rendered);
+    }
+
+    [Fact]
+    public void Decrement_Fractional_Step_Without_Precision_Does_Not_Drift()
+    {
+        double? value = null;
+        var cut = _ctx.Render<Lumeo.NumberInput>(p => p
+            .Add(n => n.Value, 0.3)
+            .Add(n => n.Step, 0.1)
+            .Add(n => n.ValueChanged, v => value = v));
+
+        cut.Find("button[aria-label='Decrease']").Click();
+
+        Assert.Equal(0.2, value);
+    }
+
+    [Fact]
+    public void Integer_Step_Increment_Still_Increments_By_One()
+    {
+        // Normal-path regression guard: an integer Step keeps whole-number behaviour
+        // (StepDecimalDigits returns 0, so RoundStepped is a no-op).
+        double? value = null;
+        var cut = _ctx.Render<Lumeo.NumberInput>(p => p
+            .Add(n => n.Value, 5.0)
+            .Add(n => n.ValueChanged, v => value = v));
+
+        cut.Find("button[aria-label='Increase']").Click();
+
+        Assert.Equal(6, value);
     }
 }

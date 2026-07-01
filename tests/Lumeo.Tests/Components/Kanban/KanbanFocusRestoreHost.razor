@@ -1,0 +1,48 @@
+@namespace Lumeo.Tests.Components.Kanban
+@using Microsoft.AspNetCore.Components
+
+@*
+    Stateful consumer host for the keyboard-move focus-restore regression
+    (triage #41). Owns the card list and applies an arrow-key move by reordering
+    it — exactly the "consumer owns the data" pattern. Because the host is a real
+    component in the render tree and is the OnCardMove receiver, Blazor
+    re-renders it automatically after the move completes.
+
+    The cards are rendered WITHOUT @key (the documented pattern), so Blazor
+    reuses the KanbanCard instances positionally across the reorder — which is
+    the precondition that surfaces the bug.
+*@
+
+<Lumeo.Kanban OnCardMove="HandleMove">
+    <Lumeo.KanbanColumn ColumnId="todo">
+        @for (var i = 0; i < _cards.Count; i++)
+        {
+            var card = _cards[i];
+            <Lumeo.KanbanCard CardId="@card.Id" Index="i" Title="@card.Title" />
+        }
+    </Lumeo.KanbanColumn>
+</Lumeo.Kanban>
+
+@code {
+    private readonly List<(string Id, string Title)> _cards = new()
+    {
+        ("a", "Card A"),
+        ("b", "Card B"),
+    };
+
+    private void HandleMove(Lumeo.Kanban.MoveEventArgs e)
+    {
+        var idx = _cards.FindIndex(c => c.Id == e.CardId);
+        if (idx < 0) return;
+
+        switch (e.Direction)
+        {
+            case Lumeo.Kanban.MoveDirection.Down when idx < _cards.Count - 1:
+                (_cards[idx], _cards[idx + 1]) = (_cards[idx + 1], _cards[idx]);
+                break;
+            case Lumeo.Kanban.MoveDirection.Up when idx > 0:
+                (_cards[idx], _cards[idx - 1]) = (_cards[idx - 1], _cards[idx]);
+                break;
+        }
+    }
+}

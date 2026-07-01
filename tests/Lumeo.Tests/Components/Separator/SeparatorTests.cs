@@ -162,4 +162,34 @@ public class SeparatorTests : IAsyncLifetime
         Assert.Equal(2, lines.Count);
         Assert.All(lines, l => Assert.Equal("none", l.GetAttribute("role")));
     }
+
+    // --- Inset ---
+
+    [Fact]
+    public void Default_Horizontal_Spans_Full_Width_Not_Inset()
+    {
+        var cls = _ctx.Render<L.Separator>().Find("div").GetAttribute("class");
+        Assert.Contains("w-full", cls);
+        Assert.DoesNotContain("mx-3", cls);
+    }
+
+    [Fact]
+    public void Inset_Horizontal_Uses_Side_Margin_Instead_Of_Full_Width()
+    {
+        var cls = _ctx.Render<L.Separator>(p => p.Add(s => s.Inset, true))
+            .Find("div").GetAttribute("class");
+        Assert.Contains("mx-3", cls);
+        Assert.DoesNotContain("w-full", cls);
+    }
+
+    [Fact]
+    public void Inset_Vertical_Uses_Block_Margin_Instead_Of_Full_Height()
+    {
+        var cls = _ctx.Render<L.Separator>(p => p
+                .Add(s => s.Orientation, L.Orientation.Vertical)
+                .Add(s => s.Inset, true))
+            .Find("div").GetAttribute("class");
+        Assert.Contains("my-3", cls);
+        Assert.DoesNotContain("h-full", cls);
+    }
 }

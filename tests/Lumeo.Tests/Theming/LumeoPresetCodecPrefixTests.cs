@@ -27,6 +27,30 @@ public class LumeoPresetCodecPrefixTests
         Assert.Equal(8, code.Length); // "l_" + 6-char Base62 payload
     }
 
+    // --- Wire-format golden values (cross-sync guard) ---
+    //
+    // The CLI ships a hand-maintained DUPLICATE of this codec
+    // (tools/Lumeo.Cli/PresetCodec.cs, "KEEP IN SYNC"). These golden strings are
+    // pinned identically in Lumeo.Cli.Tests.PresetCodecTests — if either copy's
+    // alphabet, version, field widths or bit-packing drifts, exactly one suite's
+    // golden breaks, surfacing the divergence instead of letting the two encoders
+    // silently disagree about the same code.
+
+    [Fact]
+    public void Encode_zero_preset_is_the_pinned_wire_format()
+    {
+        var zero = new LumeoPreset(0, 0, 0, 0, 0, 0, 0, 0, 0);
+
+        // Only the version field (=1) is set, at bit 0 -> bits == 1 -> base62 "100000".
+        Assert.Equal("l_100000", LumeoPresetCodec.Encode(zero));
+    }
+
+    [Fact]
+    public void Encode_sample_preset_is_the_pinned_wire_format()
+    {
+        Assert.Equal("l_Js5000", LumeoPresetCodec.Encode(SamplePreset()));
+    }
+
     [Fact]
     public void Decode_accepts_both_prefixed_and_legacy()
     {

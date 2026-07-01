@@ -12,15 +12,24 @@
         <div class="flex flex-wrap gap-2">
             @foreach (var scheme in ThemeService.AvailableSchemes)
             {
-                <button class="@GetSwatchClass(scheme.Id)"
-                        style="background-color: @scheme.PreviewColor;"
-                        title="@scheme.DisplayName"
-                        @onclick="() => SetScheme(scheme.Id)">
-                    @if (scheme.Id == _currentScheme)
-                    {
-                        <Blazicon Svg="Lucide.Check" class="h-3 w-3 text-white" />
-                    }
-                </button>
+                <Tooltip>
+                    <TooltipTrigger AsChild>
+                        <ChildContentSlot Context="slot">
+                            <button class="@GetSwatchClass(scheme.Id)"
+                                    style="background-color: @scheme.PreviewColor;"
+                                    aria-label="@scheme.DisplayName"
+                                    aria-pressed="@(scheme.Id == _currentScheme ? "true" : "false")"
+                                    @attributes="slot.Attributes"
+                                    @onclick="() => SetScheme(scheme.Id)">
+                                @if (scheme.Id == _currentScheme)
+                                {
+                                    <Blazicon Svg="Lucide.Check" class="h-3 w-3 text-white" />
+                                }
+                            </button>
+                        </ChildContentSlot>
+                    </TooltipTrigger>
+                    <TooltipContent>@scheme.DisplayName</TooltipContent>
+                </Tooltip>
             }
         </div>
     </div>
@@ -29,21 +38,9 @@
     <div>
         <p class="mb-2 text-xs font-medium text-muted-foreground">@L["Theme.Mode"]</p>
         <div class="inline-flex items-center gap-1 rounded-lg border border-border/50 bg-muted p-1">
-            <button class="@GetModeButtonClass(ThemeMode.Light)"
-                    title="@L["Theme.Light"]"
-                    @onclick="() => SetMode(ThemeMode.Light)">
-                <Blazicon Svg="Lucide.Sun" class="h-3.5 w-3.5" />
-            </button>
-            <button class="@GetModeButtonClass(ThemeMode.Dark)"
-                    title="@L["Theme.Dark"]"
-                    @onclick="() => SetMode(ThemeMode.Dark)">
-                <Blazicon Svg="Lucide.Moon" class="h-3.5 w-3.5" />
-            </button>
-            <button class="@GetModeButtonClass(ThemeMode.System)"
-                    title="@L["Theme.System"]"
-                    @onclick="() => SetMode(ThemeMode.System)">
-                <Blazicon Svg="Lucide.Monitor" class="h-3.5 w-3.5" />
-            </button>
+            @ModeButton(ThemeMode.Light, L["Theme.Light"], Lucide.Sun)
+            @ModeButton(ThemeMode.Dark, L["Theme.Dark"], Lucide.Moon)
+            @ModeButton(ThemeMode.System, L["Theme.System"], Lucide.Monitor)
         </div>
     </div>
 </div>
@@ -59,6 +56,25 @@
     private ThemeMode _currentMode = ThemeMode.System;
 
     private string CssClass => Cx.Merge("space-y-4", Class);
+
+    // A mode button wrapped in the Lumeo <Tooltip> (styled hint) with an explicit
+    // aria-label for the accessible name (these icon buttons previously relied on the
+    // native title for both the visual hint AND the name).
+    private RenderFragment ModeButton(ThemeMode mode, string label, Blazicons.SvgIcon icon) =>
+        @<Tooltip>
+            <TooltipTrigger AsChild>
+                <ChildContentSlot Context="slot">
+                    <button class="@GetModeButtonClass(mode)"
+                            aria-label="@label"
+                            aria-pressed="@(mode == _currentMode ? "true" : "false")"
+                            @attributes="slot.Attributes"
+                            @onclick="() => SetMode(mode)">
+                        <Blazicon Svg="icon" class="h-3.5 w-3.5" />
+                    </button>
+                </ChildContentSlot>
+            </TooltipTrigger>
+            <TooltipContent>@label</TooltipContent>
+        </Tooltip>;
 
     protected override async Task OnInitializedAsync()
     {

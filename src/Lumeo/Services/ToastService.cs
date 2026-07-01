@@ -79,7 +79,7 @@ public record ToastOptions
     public bool Dismissible { get; init; } = true;
     public string? Class { get; init; }
     /// <summary>Optional per-toast position hint. When null, the viewport's
-    /// <see cref="UI.ToastViewport.Position"/> wins. The viewport groups toasts
+    /// <c>ToastViewport.Position</c> wins. The viewport groups toasts
     /// by their resolved position so a mixed set renders in multiple corners.</summary>
     public ToastPosition? Position { get; init; }
 }

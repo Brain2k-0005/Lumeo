@@ -13,7 +13,7 @@ namespace Lumeo.SourceGenerators;
 /// <summary>
 /// Incremental generator that emits a <c>RenderForm</c> method on every class marked
 /// with <c>[LumeoForm]</c>. The generated method returns a Blazor
-/// <see cref="Microsoft.AspNetCore.Components.RenderFragment"/> that renders a
+/// <c>RenderFragment</c> that renders a
 /// <c>&lt;Form&gt;</c> with one <c>&lt;FormField&gt;</c> per public property,
 /// picking the right Lumeo input component based on the property type.
 ///
@@ -128,6 +128,23 @@ public sealed class LumeoFormGenerator : IIncrementalGenerator
         public bool RequiredFromValueTypeRule { get; set; }
         public InputKind Kind { get; set; }
         public List<EnumMember>? EnumMembers { get; set; }
+
+        /// <summary>HTML <c>type</c> attribute for the text Input — "email", "tel", "url"
+        /// (from <c>[DataType]</c>) — or null for a plain text input.</summary>
+        public string? InputType { get; set; }
+
+        /// <summary>Lower/upper numeric bound from <c>[Range]</c>, mapped to NumberInput
+        /// Min/Max. Null when no range constraint is declared.</summary>
+        public double? Min { get; set; }
+        public double? Max { get; set; }
+
+        /// <summary>Character cap from <c>[StringLength]</c>/<c>[MaxLength]</c>, mapped to the
+        /// text input's MaxLength (and a ShowCount counter). Null when unconstrained.</summary>
+        public int? MaxLength { get; set; }
+
+        /// <summary>Field ordering from <c>[Display(Order = n)]</c>. Unset fields keep
+        /// declaration order via a stable sort (default sorts them after ordered ones).</summary>
+        public int DisplayOrder { get; set; } = int.MaxValue;
     }
 
     private sealed class EnumMember
@@ -139,12 +156,14 @@ public sealed class LumeoFormGenerator : IIncrementalGenerator
     private enum InputKind
     {
         Text,
-        Email,
         Password,
         Number,
         Checkbox,
         Date,
         Enum,
+        Textarea,
+        Time,
+        TagList,
         // fallback
         Unsupported
     }
@@ -233,6 +252,11 @@ public sealed class LumeoFormGenerator : IIncrementalGenerator
             }
             model.Fields.Add(field);
         }
+
+        // Stable sort by [Display(Order)]. Fields without an explicit Order keep their
+        // declaration order (default Order = int.MaxValue); LINQ OrderBy is a stable
+        // sort so equal-Order fields preserve the order they were declared in.
+        model.Fields = model.Fields.OrderBy(f => f.DisplayOrder).ToList();
 
         return model;
     }
@@ -335,22 +359,45 @@ public sealed class LumeoFormGenerator : IIncrementalGenerator
                     {
                         if (na.Key == "Name" && na.Value.Value is string dn) f.Label = dn;
                         else if (na.Key == "Description" && na.Value.Value is string dd) f.HelpText = dd;
+                        else if (na.Key == "Order" && na.Value.Value is int ord) f.DisplayOrder = ord;
                     }
+                    break;
+                case "System.ComponentModel.DataAnnotations.RangeAttribute":
+                    // Range(int,int) / Range(double,double) → NumberInput Min/Max.
+                    // The Range(Type, string, string) ctor is left unmapped (rare).
+                    if (ad.ConstructorArguments.Length >= 2)
+                    {
+                        if (TryToDouble(ad.ConstructorArguments[0].Value, out var lo)) f.Min = lo;
+                        if (TryToDouble(ad.ConstructorArguments[1].Value, out var hi)) f.Max = hi;
+                    }
+                    break;
+                case "System.ComponentModel.DataAnnotations.StringLengthAttribute":
+                    if (ad.ConstructorArguments.Length >= 1 && ad.ConstructorArguments[0].Value is int sl && sl > 0)
+                        f.MaxLength = sl;
+                    break;
+                case "System.ComponentModel.DataAnnotations.MaxLengthAttribute":
+                    // MaxLength() defaults its length to -1 ("no explicit cap"); only a
+                    // positive explicit length maps to the input's MaxLength.
+                    if (ad.ConstructorArguments.Length >= 1 && ad.ConstructorArguments[0].Value is int ml && ml > 0)
+                        f.MaxLength = ml;
                     break;
             }
         }
 
-        // value-type, non-nullable → implicitly required.
+        // value-type, non-nullable → implicitly required. Booleans are excluded:
+        // a non-nullable bool checkbox is always "valid" (false is a legitimate value),
+        // so forcing Required on it would block every form with an unchecked box.
         // Fix E6: track whether Required came from this rule so the emitter can
         // drop a clarifying comment into the generated source.
-        if (type.IsValueType && type.NullableAnnotation != NullableAnnotation.Annotated)
+        if (type.IsValueType && type.NullableAnnotation != NullableAnnotation.Annotated
+            && UnwrapNullable(type).SpecialType != SpecialType.System_Boolean)
         {
             if (!f.Required) f.RequiredFromValueTypeRule = true;
             f.Required = true;
         }
 
-        // Pick input kind
-        f.Kind = MapKind(type, prop);
+        // Pick input kind (may also set f.InputType for typed text inputs)
+        f.Kind = MapKind(type, prop, f);
 
         if (f.Kind == InputKind.Enum)
         {
@@ -372,25 +419,43 @@ public sealed class LumeoFormGenerator : IIncrementalGenerator
         return f;
     }
 
-    private static InputKind MapKind(ITypeSymbol type, IPropertySymbol prop)
+    private static InputKind MapKind(ITypeSymbol type, IPropertySymbol prop, FieldModel f)
     {
         var underlying = UnwrapNullable(type);
-        var name = underlying.ToDisplayString();
+        // ToDisplayString() includes the nullable-reference annotation (e.g. a
+        // nullable string renders as "string?"), which the type switch below would
+        // miss — dropping every nullable reference property (string?, ...) to
+        // Unsupported in any project with <Nullable>enable</Nullable>. UnwrapNullable
+        // only strips Nullable<T> value types, so trim the trailing '?' here so a
+        // nullable reference type maps the same as its non-nullable form.
+        var name = underlying.ToDisplayString().TrimEnd('?');
 
-        // [DataType(DataType.EmailAddress)] / .Password
+        // [DataType(...)] — maps to a specific component or a typed text Input.
+        // DataType enum values: PhoneNumber = 5, MultilineText = 9, EmailAddress = 10,
+        // Password = 11, Url = 12.
         foreach (var ad in prop.GetAttributes())
         {
             if (ad.AttributeClass?.ToDisplayString() == "System.ComponentModel.DataAnnotations.DataTypeAttribute"
                 && ad.ConstructorArguments.Length > 0
                 && ad.ConstructorArguments[0].Value is int dt)
             {
-                // DataType enum: Password = 11, EmailAddress = 10
-                if (dt == 10) return InputKind.Email;
-                if (dt == 11) return InputKind.Password;
+                switch (dt)
+                {
+                    case 10: f.InputType = "email"; return InputKind.Text;   // EmailAddress
+                    case 11: return InputKind.Password;                       // Password
+                    case 9: return InputKind.Textarea;                        // MultilineText
+                    case 5: f.InputType = "tel"; return InputKind.Text;       // PhoneNumber
+                    case 12: f.InputType = "url"; return InputKind.Text;      // Url
+                }
             }
         }
 
         if (underlying.TypeKind == TypeKind.Enum) return InputKind.Enum;
+
+        // List<string> → TagInput<string>. Other string collections (string[],
+        // IEnumerable<string>, …) stay Unsupported and surface the TagInput hint,
+        // because their read/write shapes don't fold onto TagInput's List<T> cleanly.
+        if (name == "System.Collections.Generic.List<string>") return InputKind.TagList;
 
         return name switch
         {
@@ -404,8 +469,32 @@ public sealed class LumeoFormGenerator : IIncrementalGenerator
                 or "System.DateOnly"
                 or "System.DateTimeOffset"
                                   => InputKind.Date,
+            "System.TimeOnly"
+                or "System.TimeSpan"
+                                  => InputKind.Time,
             _ => InputKind.Unsupported
         };
+    }
+
+    /// <summary>Coerces a boxed numeric constant (int/long/double/float/decimal/…) to
+    /// double for the NumberInput Min/Max attributes. Returns false for non-numerics.</summary>
+    private static bool TryToDouble(object? value, out double result)
+    {
+        switch (value)
+        {
+            case int i: result = i; return true;
+            case long l: result = l; return true;
+            case short s: result = s; return true;
+            case byte b: result = b; return true;
+            case double d: result = d; return true;
+            case float fl: result = fl; return true;
+            case decimal m: result = (double)m; return true;
+            case uint ui: result = ui; return true;
+            case ulong ul: result = ul; return true;
+            case ushort us: result = us; return true;
+            case sbyte sb2: result = sb2; return true;
+            default: result = 0; return false;
+        }
     }
 
     private static ITypeSymbol UnwrapNullable(ITypeSymbol t)
@@ -536,12 +625,15 @@ public sealed class LumeoFormGenerator : IIncrementalGenerator
         switch (f.Kind)
         {
             case InputKind.Text:
-            case InputKind.Email:
-                EmitTextInput(sb, f, "global::Lumeo.Input", next, isEmail: f.Kind == InputKind.Email);
+                EmitTextInput(sb, f, "global::Lumeo.Input", next, supportsCount: true);
                 break;
 
             case InputKind.Password:
-                EmitTextInput(sb, f, "global::Lumeo.PasswordInput", next);
+                EmitTextInput(sb, f, "global::Lumeo.PasswordInput", next, supportsCount: false);
+                break;
+
+            case InputKind.Textarea:
+                EmitTextarea(sb, f, next);
                 break;
 
             case InputKind.Number:
@@ -556,6 +648,14 @@ public sealed class LumeoFormGenerator : IIncrementalGenerator
                 EmitDatePicker(sb, f, next);
                 break;
 
+            case InputKind.Time:
+                EmitTimePicker(sb, f, next);
+                break;
+
+            case InputKind.TagList:
+                EmitTagInput(sb, f, next);
+                break;
+
             case InputKind.Enum:
                 EmitEnumSelect(sb, f, next);
                 break;
@@ -566,11 +666,19 @@ public sealed class LumeoFormGenerator : IIncrementalGenerator
     }
 
     // Lumeo.Input / PasswordInput: non-generic, `Value` is string?, `ValueChanged` is EventCallback<string?>.
-    private static void EmitTextInput(StringBuilder sb, FieldModel f, string componentFq, Func<int> next, bool isEmail = false)
+    // supportsCount gates MaxLength/ShowCount + the HTML type attribute, which only the
+    // plain Input exposes (PasswordInput is a fixed-type masked field).
+    private static void EmitTextInput(StringBuilder sb, FieldModel f, string componentFq, Func<int> next, bool supportsCount)
     {
         sb.Append("                    __field.OpenComponent<").Append(componentFq).Append(">(").Append(next()).AppendLine(");");
-        if (isEmail)
-            sb.Append("                    __field.AddAttribute(").Append(next()).AppendLine(", \"type\", \"email\");");
+        if (supportsCount && !string.IsNullOrEmpty(f.InputType))
+            sb.Append("                    __field.AddAttribute(").Append(next()).Append(", \"type\", ").Append(Str(f.InputType!)).AppendLine(");");
+        if (supportsCount && f.MaxLength is int ml)
+        {
+            // [StringLength]/[MaxLength] → MaxLength + a live character counter.
+            sb.Append("                    __field.AddAttribute(").Append(next()).Append(", \"MaxLength\", ").Append(ml).AppendLine(");");
+            sb.Append("                    __field.AddAttribute(").Append(next()).AppendLine(", \"ShowCount\", true);");
+        }
 
         sb.Append("                    __field.AddAttribute(").Append(next()).Append(", \"Value\", model.").Append(f.PropertyName).AppendLine(");");
         // Writeback: nullable string? properties get the value as-is; the
@@ -590,11 +698,100 @@ public sealed class LumeoFormGenerator : IIncrementalGenerator
     private static void EmitNumberInput(StringBuilder sb, FieldModel f, Func<int> next)
     {
         sb.Append("                    __field.OpenComponent<global::Lumeo.NumberInput>(").Append(next()).AppendLine(");");
+        // Full-width so the stepper lines up with the sibling full-width Input/Select
+        // fields instead of rendering as a small content-sized control in the FormField.
+        sb.Append("                    __field.AddAttribute(").Append(next()).AppendLine(", \"Block\", true);");
+        // [Range] → Min/Max so the spinner clamps and the field self-documents its bounds.
+        if (f.Min is double mn)
+            sb.Append("                    __field.AddAttribute(").Append(next()).Append(", \"Min\", (double?)").Append(FormatDouble(mn)).AppendLine(");");
+        if (f.Max is double mx)
+            sb.Append("                    __field.AddAttribute(").Append(next()).Append(", \"Max\", (double?)").Append(FormatDouble(mx)).AppendLine(");");
         // Convert underlying numeric value to double? for the component.
         sb.Append("                    __field.AddAttribute(").Append(next()).Append(", \"Value\", (double?)model.").Append(f.PropertyName).AppendLine(");");
+        // Writeback. For a nullable numeric (int?, double?, …) a cleared input must write
+        // null, not 0 — the old `(T)(__v ?? 0)` silently turned every clear into a zero.
+        // For a non-nullable numeric, clearing falls back to 0 (the type can't hold null).
+        string writeback;
+        if (f.IsNullable)
+        {
+            var underlyingFq = f.PropertyTypeFq.TrimEnd('?'); // e.g. "int" from "int?"
+            writeback = $"__v.HasValue ? ({f.PropertyTypeFq})({underlyingFq})__v.Value : ({f.PropertyTypeFq})null";
+        }
+        else
+        {
+            writeback = $"({f.PropertyTypeFq})(__v ?? 0)";
+        }
         sb.Append("                    __field.AddAttribute(").Append(next())
           .Append(", \"ValueChanged\", global::Microsoft.AspNetCore.Components.EventCallback.Factory.Create<double?>(model, __v => model.")
-          .Append(f.PropertyName).Append(" = (").Append(f.PropertyTypeFq).AppendLine(")(__v ?? 0)));");
+          .Append(f.PropertyName).Append(" = ").Append(writeback).AppendLine("));");
+        sb.AppendLine("                    __field.CloseComponent();");
+    }
+
+    /// <summary>Emits a C# double literal in invariant culture (so a comma-decimal locale
+    /// can't produce invalid source), suffixed with <c>d</c> to force the double type.</summary>
+    private static string FormatDouble(double d)
+        => d.ToString("R", System.Globalization.CultureInfo.InvariantCulture) + "d";
+
+    // Lumeo.Textarea: non-generic, `Value` is string?, mirrors Input's writeback. Used for
+    // [DataType(DataType.MultilineText)] properties.
+    private static void EmitTextarea(StringBuilder sb, FieldModel f, Func<int> next)
+    {
+        sb.Append("                    __field.OpenComponent<global::Lumeo.Textarea>(").Append(next()).AppendLine(");");
+        if (f.MaxLength is int ml)
+        {
+            sb.Append("                    __field.AddAttribute(").Append(next()).Append(", \"MaxLength\", ").Append(ml).AppendLine(");");
+            sb.Append("                    __field.AddAttribute(").Append(next()).AppendLine(", \"ShowCount\", true);");
+        }
+        sb.Append("                    __field.AddAttribute(").Append(next()).Append(", \"Value\", model.").Append(f.PropertyName).AppendLine(");");
+        var writeback = f.IsNullable ? "__v" : "__v ?? string.Empty";
+        sb.Append("                    __field.AddAttribute(").Append(next())
+          .Append(", \"ValueChanged\", global::Microsoft.AspNetCore.Components.EventCallback.Factory.Create<string?>(model, __v => model.")
+          .Append(f.PropertyName).Append(" = ").Append(writeback).AppendLine("));");
+        sb.AppendLine("                    __field.CloseComponent();");
+    }
+
+    // Lumeo.TimePicker operates on TimeSpan?. TimeOnly properties are bridged through
+    // TimeOnly.ToTimeSpan() / TimeOnly.FromTimeSpan().
+    private static void EmitTimePicker(StringBuilder sb, FieldModel f, Func<int> next)
+    {
+        var isNullable = f.PropertyTypeFq.EndsWith("?");
+        var underlying = f.PropertyTypeFq.TrimEnd('?');
+        var isTimeOnly = underlying == "global::System.TimeOnly";
+
+        sb.Append("                    __field.OpenComponent<global::Lumeo.TimePicker>(").Append(next()).AppendLine(");");
+        if (isTimeOnly)
+        {
+            var read = isNullable
+                ? $"model.{f.PropertyName}?.ToTimeSpan()"
+                : $"model.{f.PropertyName}.ToTimeSpan()";
+            sb.Append("                    __field.AddAttribute(").Append(next()).Append(", \"Value\", (global::System.TimeSpan?)").Append(read).AppendLine(");");
+            var clear = isNullable ? "null" : "default";
+            sb.Append("                    __field.AddAttribute(").Append(next())
+              .Append(", \"ValueChanged\", global::Microsoft.AspNetCore.Components.EventCallback.Factory.Create<global::System.TimeSpan?>(model, __v => model.")
+              .Append(f.PropertyName).Append(" = __v.HasValue ? global::System.TimeOnly.FromTimeSpan(__v.Value) : ").Append(clear).AppendLine("));");
+        }
+        else // TimeSpan
+        {
+            sb.Append("                    __field.AddAttribute(").Append(next()).Append(", \"Value\", (global::System.TimeSpan?)model.").Append(f.PropertyName).AppendLine(");");
+            var writeback = isNullable ? "__v" : "(global::System.TimeSpan)(__v ?? default)";
+            sb.Append("                    __field.AddAttribute(").Append(next())
+              .Append(", \"ValueChanged\", global::Microsoft.AspNetCore.Components.EventCallback.Factory.Create<global::System.TimeSpan?>(model, __v => model.")
+              .Append(f.PropertyName).Append(" = ").Append(writeback).AppendLine("));");
+        }
+        sb.AppendLine("                    __field.CloseComponent();");
+    }
+
+    // Lumeo.TagInput<string> for List<string> properties. Tags binds the list directly;
+    // GetTagText is the identity since the items are already strings.
+    private static void EmitTagInput(StringBuilder sb, FieldModel f, Func<int> next)
+    {
+        sb.Append("                    __field.OpenComponent<global::Lumeo.TagInput<string>>(").Append(next()).AppendLine(");");
+        sb.Append("                    __field.AddAttribute(").Append(next()).Append(", \"Tags\", model.").Append(f.PropertyName).AppendLine(");");
+        var writeback = f.IsNullable ? "__v" : "__v ?? new global::System.Collections.Generic.List<string>()";
+        sb.Append("                    __field.AddAttribute(").Append(next())
+          .Append(", \"TagsChanged\", global::Microsoft.AspNetCore.Components.EventCallback.Factory.Create<global::System.Collections.Generic.List<string>>(model, __v => model.")
+          .Append(f.PropertyName).Append(" = ").Append(writeback).AppendLine("));");
+        sb.Append("                    __field.AddAttribute(").Append(next()).AppendLine(", \"GetTagText\", (global::System.Func<string, string>)(__t => __t));");
         sb.AppendLine("                    __field.CloseComponent();");
     }
 
@@ -686,21 +883,53 @@ public sealed class LumeoFormGenerator : IIncrementalGenerator
         sb.Append("                    __field.AddAttribute(").Append(next())
           .AppendLine(", \"ChildContent\", (global::Microsoft.AspNetCore.Components.RenderFragment)((__sel) =>");
         sb.AppendLine("                    {");
+        // A bare <Select> renders its ChildContent in a div with no trigger or
+        // listbox, so options must be composed as SelectTrigger (the closed-state
+        // value/placeholder) + SelectContent (the role=listbox popover) — otherwise
+        // the field is a flat, always-open, inaccessible list.
+        sb.Append("                        __sel.OpenComponent<global::Lumeo.SelectTrigger>(").Append(next()).AppendLine(");");
+        // The closed trigger must reflect the current value: a SelectTrigger with no ChildContent renders
+        // blank (Codex P2). Emit a switch mapping the live enum value to the SAME humanized label the
+        // matching SelectItem shows, so the closed field and the option text agree. (When the value is
+        // null/unset the Select's Value is "" and SelectTrigger shows its placeholder instead.)
+        sb.Append("                        __sel.AddAttribute(").Append(next())
+          .AppendLine(", \"ChildContent\", (global::Microsoft.AspNetCore.Components.RenderFragment)((__t) =>");
+        sb.AppendLine("                        {");
+        sb.Append("                            __t.AddContent(").Append(next()).Append(", model.").Append(f.PropertyName).AppendLine(" switch");
+        sb.AppendLine("                            {");
+        if (f.EnumMembers is not null)
+        {
+            foreach (var em in f.EnumMembers)
+            {
+                sb.Append("                                ").Append(typeArg).Append('.').Append(em.Name)
+                  .Append(" => ").Append(Str(SplitPascal(em.Name))).AppendLine(",");
+            }
+        }
+        sb.AppendLine("                                _ => global::System.String.Empty");
+        sb.AppendLine("                            });");
+        sb.AppendLine("                        }));");
+        sb.AppendLine("                        __sel.CloseComponent();");
+        sb.Append("                        __sel.OpenComponent<global::Lumeo.SelectContent>(").Append(next()).AppendLine(");");
+        sb.Append("                        __sel.AddAttribute(").Append(next())
+          .AppendLine(", \"ChildContent\", (global::Microsoft.AspNetCore.Components.RenderFragment)((__content) =>");
+        sb.AppendLine("                        {");
 
         if (f.EnumMembers is not null)
         {
             foreach (var em in f.EnumMembers)
             {
                 var memberName = em.Name; // Name w/o qualifier for Value string (ToString() of enum gives member name)
-                sb.Append("                        __sel.OpenComponent<global::Lumeo.SelectItem>(").Append(next()).AppendLine(");");
-                sb.Append("                        __sel.AddAttribute(").Append(next()).Append(", \"Value\", ").Append(Str(memberName)).AppendLine(");");
-                sb.Append("                        __sel.AddAttribute(").Append(next())
+                sb.Append("                            __content.OpenComponent<global::Lumeo.SelectItem>(").Append(next()).AppendLine(");");
+                sb.Append("                            __content.AddAttribute(").Append(next()).Append(", \"Value\", ").Append(Str(memberName)).AppendLine(");");
+                sb.Append("                            __content.AddAttribute(").Append(next())
                   .Append(", \"ChildContent\", (global::Microsoft.AspNetCore.Components.RenderFragment)((__b) => __b.AddContent(")
                   .Append(next()).Append(", ").Append(Str(SplitPascal(em.Name))).AppendLine(")));");
-                sb.AppendLine("                        __sel.CloseComponent();");
+                sb.AppendLine("                            __content.CloseComponent();");
             }
         }
 
+        sb.AppendLine("                        }));");
+        sb.AppendLine("                        __sel.CloseComponent();");
         sb.AppendLine("                    }));");
         sb.AppendLine("                    __field.CloseComponent();");
     }

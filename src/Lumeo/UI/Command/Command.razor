@@ -3,8 +3,12 @@
 
 @{
     var visibleItems = VisibleItems;
-    var highlighted = _highlightedIndex >= 0 && _highlightedIndex < visibleItems.Count
-        ? visibleItems[_highlightedIndex]
+    // The highlight is anchored to an item identity (_highlighted), not a raw
+    // ordinal, so inserting/removing an item above it doesn't slide the
+    // highlight (and Enter) onto a different command (#214 follow-up). It only
+    // surfaces while the anchored item is still visible under the current filter.
+    var highlighted = _highlighted is not null && visibleItems.Contains(_highlighted)
+        ? _highlighted
         : null;
     var context = new CommandContext(
         SearchText,
@@ -38,8 +42,11 @@
     // order even after a filter hides and re-shows items.
     private readonly List<CommandItem> _items = new();
 
-    // Index into VisibleItems. -1 = nothing highlighted (pristine palette).
-    private int _highlightedIndex = -1;
+    // The highlighted item, anchored by identity rather than by ordinal so the
+    // highlight (and Enter target) follows the SAME command when items register,
+    // unregister or reorder around it. null = nothing highlighted (pristine
+    // palette). The visible index is derived on demand from this.
+    private CommandItem? _highlighted;
 
     // Last item id we scrolled into view. Tracked so OnAfterRenderAsync only
     // issues a scroll when the highlight actually moves to a different item
@@ -103,7 +110,14 @@
 
     internal void UnregisterItem(CommandItem item)
     {
-        if (_items.Remove(item)) StateHasChanged();
+        if (!_items.Remove(item)) return;
+        // The highlighted command itself was removed (it shrank away, or the
+        // list emptied for a refill). Drop the anchor so a refill starts from a
+        // clean 'pristine' state instead of resurrecting a stale ordinal — the
+        // next ArrowDown/ArrowUp seeds the highlight from the edge.
+        if (ReferenceEquals(item, _highlighted))
+            _highlighted = null;
+        StateHasChanged();
     }
 
     /// <summary>
@@ -118,7 +132,8 @@
         SearchText = text;
         // cmdk resets the highlight to the first selectable result on every
         // filter change so Enter always acts on the top of what the user sees.
-        _highlightedIndex = VisibleItems.FindIndex(i => !i.IsDisabled);
+        // This is the ONLY place that deliberately re-seeds the highlight.
+        _highlighted = VisibleItems.FirstOrDefault(i => !i.IsDisabled);
         StateHasChanged();
         return Task.CompletedTask;
     }
@@ -139,15 +154,17 @@
                 MoveHighlight(-1);
                 break;
             case "Home":
-                _highlightedIndex = VisibleItems.FindIndex(i => !i.IsDisabled);
+                _highlighted = VisibleItems.FirstOrDefault(i => !i.IsDisabled);
                 break;
             case "End":
-                _highlightedIndex = VisibleItems.FindLastIndex(i => !i.IsDisabled);
+                _highlighted = VisibleItems.LastOrDefault(i => !i.IsDisabled);
                 break;
             case "Enter":
+                // Select the anchored highlight only while it is still visible
+                // under the current filter (never a positional fallback).
                 var items = VisibleItems;
-                if (_highlightedIndex >= 0 && _highlightedIndex < items.Count)
-                    await items[_highlightedIndex].SelectAsync();
+                if (_highlighted is not null && items.Contains(_highlighted))
+                    await _highlighted.SelectAsync();
                 break;
         }
     }
@@ -159,12 +176,14 @@
         var items = VisibleItems;
         if (items.Count == 0)
         {
-            _highlightedIndex = -1;
+            _highlighted = null;
             return;
         }
 
-        // A stale index (items unmounted since the last move) restarts from the edge.
-        var idx = _highlightedIndex >= items.Count ? -1 : _highlightedIndex;
+        // Derive the starting ordinal from the anchored item each move so an
+        // insertion/removal around it doesn't desync the step. A highlight that
+        // is no longer visible (filtered or unmounted) restarts from the edge.
+        var idx = _highlighted is not null ? items.IndexOf(_highlighted) : -1;
         for (var step = 0; step < items.Count; step++)
         {
             idx = direction > 0
@@ -172,26 +191,20 @@
                 : idx <= 0 ? items.Count - 1 : idx - 1;
             if (!items[idx].IsDisabled)
             {
-                _highlightedIndex = idx;
+                _highlighted = items[idx];
                 return;
             }
         }
-        _highlightedIndex = -1;
+        _highlighted = null;
     }
 
     /// <summary>The element id of the currently highlighted item, or null when
     /// nothing is highlighted. Drives both <c>aria-activedescendant</c> on the
     /// input and the scroll-into-view target.</summary>
     private string? HighlightedItemId
-    {
-        get
-        {
-            var items = VisibleItems;
-            return _highlightedIndex >= 0 && _highlightedIndex < items.Count
-                ? items[_highlightedIndex].ItemId
-                : null;
-        }
-    }
+        => _highlighted is not null && VisibleItems.Contains(_highlighted)
+            ? _highlighted.ItemId
+            : null;
 
     // Keep the highlighted item visible as the keyboard moves it past the
     // scroll viewport edge (#214). Only scrolls when the target changes so an

@@ -1,0 +1,17 @@
+@namespace Lumeo.Tests.Components.Form
+
+@* Test host for #152 (FormFieldValidatingKeyLeakTests). Supplies the cascading
+   FormContext ONCE (IsFixed — the reference never changes) so it is never re-provided
+   through cut.Render, and exposes a FieldName parameter that flows into the hosted
+   FormField's Name. Re-rendering the HOST with a new FieldName drives a runtime Name
+   change on the FormField without bUnit's "cannot provide a new cascading value through
+   the Render method" restriction. *@
+<CascadingValue Value="Context" IsFixed="true">
+    <Lumeo.FormField Name="@FieldName" AsyncValidator="@AsyncValidator" />
+</CascadingValue>
+
+@code {
+    [Parameter] public Lumeo.FormContext Context { get; set; } = default!;
+    [Parameter] public string? FieldName { get; set; }
+    [Parameter] public Func<object?, Task<string?>>? AsyncValidator { get; set; }
+}

@@ -1,0 +1,59 @@
+@namespace Lumeo.Docs.Shared
+@using Lumeo.Docs.Services
+@inject RegistryService Registry
+
+@* Horizontal Quick-facts strip rendered at the TOP of the main content on /components/{slug}
+   routes (not in the right rail) so the "On this page" outline gets the full right column.
+   Same single-source-of-truth registry data as the old rail, laid out as a compact meta row. *@
+@if (_detail is { } d)
+{
+    <div class="flex flex-wrap items-center gap-x-5 gap-y-2 pb-4 mb-6 border-b border-border/40 text-sm">
+        <span class="inline-flex items-center gap-1.5">
+            <span class="text-[11px] uppercase tracking-wide text-muted-foreground/60">Package</span>
+            <code class="text-xs text-foreground">@d.NugetPackage</code>
+        </span>
+
+        @if (d.Api?.A11y is { } a && (a.FocusManaged || a.KeyboardInteractive || a.Roles.Count > 0))
+        {
+            <span class="inline-flex items-center gap-1.5">
+                <span class="text-[11px] uppercase tracking-wide text-muted-foreground/60">A11y</span>
+                @if (a.FocusManaged) {<span class="rounded bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground">focus-managed</span>}
+                @if (a.KeyboardInteractive) {<span class="rounded bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground">keyboard</span>}
+                @foreach (var role in a.Roles.Take(2)) {<span class="rounded bg-muted px-1.5 py-0.5 text-[11px] font-mono text-muted-foreground">@role</span>}
+            </span>
+        }
+
+        @if (d.Dependencies.Count > 0)
+        {
+            <span class="inline-flex items-center gap-1.5">
+                <span class="text-[11px] uppercase tracking-wide text-muted-foreground/60">Depends on</span>
+                @foreach (var dep in d.Dependencies)
+                {
+                    <a href="components/@dep" class="rounded bg-muted px-1.5 py-0.5 text-[11px] text-foreground hover:bg-accent no-underline transition-colors">@dep</a>
+                }
+            </span>
+        }
+
+        @if (d.TestCoverage is { } tc)
+        {
+            <a href="test-coverage" class="inline-flex items-center gap-1.5 no-underline text-muted-foreground hover:text-foreground transition-colors">
+                <span class="text-[11px] uppercase tracking-wide text-muted-foreground/60">Tested</span>
+                <span class="text-xs">Tier @tc.Tier · @tc.Tests tests</span>
+            </a>
+        }
+
+        @if (d.SourceUrl.FirstOrDefault()?.Url is { } src)
+        {
+            <a href="@src" target="_blank" rel="noopener" class="ms-auto text-xs text-primary hover:underline">View source ↗</a>
+        }
+    </div>
+}
+
+@code {
+    [Parameter, EditorRequired] public string Slug { get; set; } = "";
+
+    private RegistryComponentDetail? _detail;
+
+    protected override async Task OnParametersSetAsync()
+        => _detail = await Registry.GetComponentAsync(Slug);
+}

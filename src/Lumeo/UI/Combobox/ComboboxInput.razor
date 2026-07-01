@@ -1,6 +1,7 @@
 @namespace Lumeo
 @inject Lumeo.Services.Localization.ILumeoLocalizer L
 @inject IComponentInteropService Interop
+@implements IAsyncDisposable
 
 @if (HasChips)
 {
@@ -40,13 +41,14 @@
                aria-controls="@Context.ContentId"
                aria-autocomplete="list"
                aria-activedescendant="@(Context.IsOpen ? Context.FocusedItemId : null)"
+               aria-describedby="@Context.DescribedBy"
                class="flex-1 min-w-[80px] bg-transparent text-sm placeholder:text-muted-foreground focus:outline-none"
                placeholder="@EffectivePlaceholder"
                value="@Context.SearchText"
                @oninput="HandleInput"
                @onfocus="Open"
                @onkeydown="HandleKeyDown"
-               @attributes="AdditionalAttributes" />
+               @attributes="EffectiveAttributes" />
         @if (Context.Clearable)
         {
             <button type="button"
@@ -91,13 +93,14 @@ else if (HasSingleChip)
                aria-controls="@Context.ContentId"
                aria-autocomplete="list"
                aria-activedescendant="@(Context.IsOpen ? Context.FocusedItemId : null)"
+               aria-describedby="@Context.DescribedBy"
                class="flex-1 min-w-[80px] bg-transparent text-sm placeholder:text-muted-foreground focus:outline-none"
                placeholder="@EffectivePlaceholder"
                value="@Context.SearchText"
                @oninput="HandleInput"
                @onfocus="Open"
                @onkeydown="HandleKeyDown"
-               @attributes="AdditionalAttributes" />
+               @attributes="EffectiveAttributes" />
     </div>
 }
 else
@@ -115,13 +118,14 @@ else
                aria-controls="@Context.ContentId"
                aria-autocomplete="list"
                aria-activedescendant="@(Context.IsOpen ? Context.FocusedItemId : null)"
+               aria-describedby="@Context.DescribedBy"
                class="@CssClass"
                placeholder="@EffectivePlaceholder"
                value="@Context.SearchText"
                @oninput="HandleInput"
                @onfocus="Open"
                @onkeydown="HandleKeyDown"
-               @attributes="AdditionalAttributes" />
+               @attributes="EffectiveAttributes" />
     </div>
 }
 
@@ -131,6 +135,15 @@ else
     [Parameter] public string? Placeholder { get; set; }
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    // Inside a FormField the input's id is the FormField's ControlId (Context.InputId) and the field
+    // <Label For> targets it; a consumer-splatted id renders after the explicit id= and would override it,
+    // orphaning the label (and the focus/key interop keyed off Context.InputId). Strip the id from the splat
+    // in that case (Codex P2). Outside a FormField the consumer id passes through.
+    private Dictionary<string, object>? EffectiveAttributes =>
+        Context.InsideFormField && AdditionalAttributes?.ContainsKey("id") == true
+            ? AdditionalAttributes.Where(kv => kv.Key != "id").ToDictionary(kv => kv.Key, kv => kv.Value)
+            : AdditionalAttributes;
 
     // Height + vertical padding track the ambient DensityScope; Comfortable
     // reproduces the historical `h-9 py-2`.
@@ -250,5 +263,37 @@ else
                 }
                 break;
         }
+    }
+
+    private bool _pdRegistered;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        try
+        {
+            // Suppress the input's caret motion for the keys that drive the listbox,
+            // so ArrowUp/Down navigate options (instead of jumping the text caret) and
+            // a plain Enter selects the active option rather than submitting an
+            // enclosing form. Same set as Command. NOT SkipEditable — unlike Select's
+            // listbox, the handler here must fire ON the editable input itself.
+            await Interop.RegisterPreventDefaultKeys(Context.InputId, new[]
+            {
+                new PreventDefaultKeyRule("ArrowDown", SkipComposing: true),
+                new PreventDefaultKeyRule("ArrowUp", SkipComposing: true),
+                new PreventDefaultKeyRule("Enter", RequireNoModifiers: true, SkipComposing: true),
+            });
+            _pdRegistered = true;
+        }
+        catch (Microsoft.JSInterop.JSDisconnectedException) { }
+        catch (InvalidOperationException) { } // JS interop unavailable during prerender
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (!_pdRegistered) return;
+        try { await Interop.UnregisterPreventDefaultKeys(Context.InputId); }
+        catch (Microsoft.JSInterop.JSDisconnectedException) { }
+        catch (InvalidOperationException) { }
     }
 }

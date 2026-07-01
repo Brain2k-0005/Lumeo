@@ -83,6 +83,23 @@
     private DotNetObjectReference<CodeEditor>? _selfRef;
     private bool _initialized;
     private string? _lastSyncedValue;
+    // The last Value the PARENT actually supplied via the parameter. Tracked
+    // separately from _lastSyncedValue (which our own OnEditorChange echo
+    // mutates) so an unrelated parent re-render that re-supplies the SAME
+    // Value never pushes a destructive full-doc setValue back into CodeMirror
+    // and reverts the user's in-progress edit. Only a genuine parameter change
+    // arms the JS push. Used for the UNCONTROLLED path only.
+    private string? _lastValueParam;
+    // CONTROLLED discriminator: the last value we pushed UP to the parent via
+    // ValueChanged. When ValueChanged is bound (controlled), OnParametersSet
+    // compares the incoming Value against this — not _lastValueParam — so that
+    // a rejection (parent keeps its OLD value, which equals _lastValueParam but
+    // differs from what we just pushed) is correctly detected and setValue is
+    // called to roll CodeMirror back. The echo of our own accepted edit
+    // (Value == _lastPushed) suppresses setValue so the caret is preserved.
+    private string? _lastPushed;
+    private bool _valueParamChanged;
+    private bool _firstParametersSet = true;
     private string? _lastLanguage;
     private string? _lastTheme;
     private bool? _lastReadOnly;
@@ -90,6 +107,48 @@
 
     private string RootClass
         => $"rounded-lg border border-border/40 overflow-hidden bg-card {Class}".Trim();
+
+    protected override void OnParametersSet()
+    {
+        // Detect whether the PARENT changed the Value parameter since the last
+        // set. The very first set seeds the baseline (the editor is created with
+        // this value in OnAfterRenderAsync's firstRender path) and must not arm a
+        // redundant push. After that, only a real parameter change arms the JS
+        // setValue — an unrelated re-render that re-supplies the same Value (or
+        // echoes back our own OnEditorChange value) leaves _valueParamChanged
+        // false, so the user's in-progress edit and caret survive.
+        if (_firstParametersSet)
+        {
+            _firstParametersSet = false;
+            _lastValueParam = Value;
+            _lastPushed = Value;
+            return;
+        }
+
+        if (ValueChanged.HasDelegate)
+        {
+            // CONTROLLED: compare incoming Value against _lastPushed (the value we
+            // last emitted via ValueChanged) rather than _lastValueParam. When they
+            // differ, the parent asserted authority — a rejection that kept the old
+            // value, a normalization, or a programmatic reset — so arm setValue to
+            // roll CodeMirror back to the authoritative value. When they match it's
+            // the echo of our own accepted edit; suppress setValue to preserve the
+            // caret and in-flight typing.
+            if (!string.Equals(Value, _lastPushed, StringComparison.Ordinal))
+            {
+                _valueParamChanged = true;
+                _lastPushed = Value;
+            }
+        }
+        else if (!string.Equals(_lastValueParam ?? string.Empty, Value ?? string.Empty, StringComparison.Ordinal))
+        {
+            // UNCONTROLLED: no ValueChanged binding — keep the existing discriminator.
+            // Only adopt a genuine external Value change; an unrelated re-render that
+            // re-supplies the same (or stale) Value must not clobber the user's edit.
+            _valueParamChanged = true;
+            _lastValueParam = Value;
+        }
+    }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -153,11 +212,18 @@
 
         try
         {
-            if (!string.Equals(_lastSyncedValue ?? string.Empty, Value ?? string.Empty, StringComparison.Ordinal))
+            // Only push the Value into CodeMirror when the PARENT genuinely
+            // changed the parameter (_valueParamChanged), not when our own
+            // OnEditorChange echo made _lastSyncedValue diverge from a stale
+            // uncontrolled Value. Pushing on echo-divergence would revert the
+            // user's typing and snap the caret on the next unrelated re-render.
+            if (_valueParamChanged &&
+                !string.Equals(_lastSyncedValue ?? string.Empty, Value ?? string.Empty, StringComparison.Ordinal))
             {
                 _lastSyncedValue = Value;
                 await _module.InvokeVoidAsync("setValue", _editorId, Value ?? string.Empty);
             }
+            _valueParamChanged = false;
 
             if (!string.Equals(_lastLanguage, Language, StringComparison.OrdinalIgnoreCase))
             {
@@ -212,6 +278,12 @@
         // back into CodeMirror after the bound field updates — a self-induced
         // re-set would move the caret to position 0 on every keystroke.
         _lastSyncedValue = value;
+        // Record what we are about to push BEFORE raising ValueChanged. A
+        // controlled parent may re-render synchronously inside InvokeAsync, so
+        // OnParametersSet must already see this as "the value we pushed" when
+        // it runs — otherwise the echo comparison misfires and arms a spurious
+        // setValue that would roll back an accepted edit.
+        _lastPushed = value;
 
         if (ValueChanged.HasDelegate)
             await ValueChanged.InvokeAsync(value);

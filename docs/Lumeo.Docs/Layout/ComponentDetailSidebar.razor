@@ -1,11 +1,106 @@
 @namespace Lumeo.Docs.Layout
+@using Lumeo.Docs.Services
+@using Microsoft.AspNetCore.Components.Routing
+@inject RegistryService Registry
+@inject NavigationManager Nav
+@implements IDisposable
 
+@* The component-detail sidebar shows ONLY the active component's category and its siblings,
+   resolved from the REGISTRY — the same taxonomy the header mega-menu and the catalog use, so
+   all three surfaces agree (the mega-menu "Forms" tile, the catalog "Forms" section, and this
+   sidebar's "Forms" header are one and the same). The registry covers every documented
+   component, so there is no per-page gap; the only non-registry routes are chart sub-pages
+   (components/charts/{type}), which scope to the Chart overview's category. Until the registry
+   has loaded we render a skeleton (NOT the full-nav fallback) so the wrong tree never flashes;
+   the fallback is reserved for a resolved-but-unplaceable route. *@
 <aside class="hidden lg:block w-64 shrink-0 overflow-y-auto sticky top-16 h-[calc(100dvh-64px)] lumeo-sidebar-scroll" aria-label="Component sidebar">
-    <div class="p-4 pb-0">
-        <a href="components" class="flex items-center gap-2 text-xs text-muted-foreground hover:text-foreground transition-colors no-underline mb-3">
+    <div class="p-4 pb-2">
+        <a href="components" class="flex items-center gap-2 text-xs text-muted-foreground hover:text-foreground transition-colors no-underline">
             <Blazicon Svg="Lucide.ArrowLeft" class="h-3 w-3" />
-            Back to catalog
+            All components
         </a>
     </div>
-    <NavMenu Collapsible="true" IsMobile="false" Embedded="true" />
+    <nav class="lumeo-sidebar-nav p-4 pt-2 text-sm" aria-label="@($"{_categoryGroup?.Label ?? "Component"} navigation")">
+        @if (!_resolved)
+        {
+            <Stack Gap="2" Class="px-2">
+                <Skeleton Height="14" Width="55%" />
+                <Skeleton Height="12" Width="80%" />
+                <Skeleton Height="12" Width="70%" />
+                <Skeleton Height="12" Width="75%" />
+                <Skeleton Height="12" Width="65%" />
+            </Stack>
+        }
+        else if (_categoryGroup is { } cat)
+        {
+            <NavGroupSection Group="@cat" Collapsible="false" />
+        }
+        else
+        {
+            <NavMenu Section="components" Collapsible="true" Embedded="true" />
+        }
+    </nav>
 </aside>
+
+@code {
+    private NavGroup? _categoryGroup;
+    private bool _resolved;
+
+    protected override async Task OnInitializedAsync()
+    {
+        Nav.LocationChanged += OnLocationChanged;
+        await ResolveAsync();
+    }
+
+    private async void OnLocationChanged(object? sender, LocationChangedEventArgs e)
+    {
+        await ResolveAsync();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task ResolveAsync()
+    {
+        var rel = Nav.ToBaseRelativePath(Nav.Uri);
+        var cut = rel.IndexOfAny(new[] { '?', '#' });
+        if (cut >= 0) rel = rel[..cut];
+        rel = rel.Trim('/');
+
+        const string prefix = "components/";
+        if (!rel.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+        {
+            _categoryGroup = null;
+            _resolved = true;
+            return;
+        }
+
+        var slug = rel[prefix.Length..];
+        // Chart sub-pages (components/charts/bar) aren't their own registry entries —
+        // scope them to the Chart overview's category (Data Display).
+        var lookup = slug.StartsWith("charts/", StringComparison.OrdinalIgnoreCase) ? "chart" : slug;
+
+        var reg = await Registry.GetAsync();
+        if (reg.Components.TryGetValue(lookup, out var comp))
+        {
+            var category = comp.Category;
+            _categoryGroup = new NavGroup
+            {
+                Label = category,
+                Items = reg.Components.Values
+                    .Where(c => c.HasDocsPage && string.Equals(c.Category, category, StringComparison.Ordinal))
+                    .OrderBy(c => c.Name, StringComparer.OrdinalIgnoreCase)
+                    .Select(c => new NavItem { Label = c.Name, Href = $"components/{c.Slug}" })
+                    .ToList(),
+            };
+        }
+        else
+        {
+            // Resolved, but the route isn't a registry component we can place — keep the
+            // graceful full-nav fallback so the page is still navigable.
+            _categoryGroup = null;
+        }
+
+        _resolved = true;
+    }
+
+    public void Dispose() => Nav.LocationChanged -= OnLocationChanged;
+}

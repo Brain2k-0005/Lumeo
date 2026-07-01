@@ -1,3 +1,30 @@
+# Migrating to Lumeo 4.0
+
+## Overview
+
+Lumeo 4.0 has **no API-signature breaks** — no renamed types, parameters or enums. It is a large additive + bug-fix release (a Radix/shadcn parity audit plus a library-wide correctness "battle-test" of all 164 components, ~355 fixes). The major bump is for the **scope** and a small set of **behaviour** changes below. Most projects upgrade by bumping the version and rebuilding; only review the items here if your code depended on the old (buggy) behaviour.
+
+> **3.x → 4.0 is a recompile-and-run upgrade for almost everyone.** The behaviour changes below are correctness fixes; they only require action if you relied on the previous behaviour.
+
+### Behaviour changes to review
+
+1. **Badge — removable badges are now controlled (no auto-hide).** Previously, clicking a removable badge's × optimistically hid the badge itself. It no longer does — visibility is data-driven, like the rest of the library. **Action:** in your `OnRemove` handler, remove the item from your own collection so the badge disappears, and `@key` the rendered list:
+   ```razor
+   @foreach (var tag in _tags)
+   {
+       <Badge Removable OnRemove="@(() => _tags.Remove(tag))" @key="tag">@tag</Badge>
+   }
+   ```
+2. **Internal state now survives unrelated re-renders.** Selection / checked / expand-collapse / active-index / page / search / scroll / in-progress-edit state across the component library no longer **resets** when the parent re-renders for an unrelated reason, or when bound `Items`/`Value` are re-supplied with the same content (e.g. an async reload). This is the headline fix of the release — but if any code *relied* on that state being wiped by an unrelated re-render, drive the reset explicitly instead (e.g. change the bound `Value`/selection, or `@key` the component to force a remount).
+3. **Progress / Gauge / RingProgress clamp out-of-range values.** A `Value` outside `[0, Max]` is now clamped (`150/100` → `100`, negative → `0`) and the indeterminate state reports `aria-busy` + omits `aria-valuenow`. If you passed out-of-range values intentionally, clamp on your side or widen `Max`.
+4. **DataTable selection across an `Items` reload.** Row selection is still by reference by default. If your `TItem` is a plain class (not a record) and your reload re-supplies value-equal but reference-distinct rows, supply the new opt-in `ItemKey` so selection survives the reload (otherwise selection clears, as before — no behaviour change unless you adopt `ItemKey`).
+5. **Roving keyboard order follows live DOM order.** RadioGroup / ToggleGroup / Segmented / Stepper / Splitter / Steps / Accordion now resolve arrow-key navigation, numbering and neighbour lookup from the **live DOM order** after a keyed reorder, instead of the original mount order. **Action:** none unless you keyed-reorder one of these and relied on arrow-key traversal following mount order — render the items in the order you want them traversed.
+6. **KanbanCard `Index` defaults to `-1` (was `0`).** Omitting `Index` previously made every card report position `0`, so programmatic drops always targeted the first slot. The default is now `-1` ("unpositioned"). **Action:** none unless you omitted `Index` and depended on the old always-zero behaviour — pass the real list index (you almost certainly already do).
+
+> **Theme tokens are now OKLCH.** All 878 colour tokens (base + 8 themes) moved from HSL to OKLCH — an exact 1:1 conversion, so the rendered palette and your brand identity are unchanged. No action needed unless you read or parse the raw CSS custom-property values (`var(--color-…)`), which now hold OKLCH strings instead of HSL.
+
+---
+
 # Migrating to Lumeo 3.0
 
 ## Overview
@@ -358,10 +385,11 @@ Lumeo 2.0 ships with three optional companion packages. You can ignore them if y
 ```bash
 dotnet tool install -g Lumeo.Cli
 
-lumeo init                   # writes lumeo.config.json
+lumeo init                   # writes lumeo.json
 lumeo add button             # copy Button source into your repo
 lumeo list                   # list all registry entries
 lumeo diff button            # diff vendored copy vs registry
+lumeo eject                  # go 100% NuGet-free (vendor the runtime too)
 ```
 
 ### `Lumeo.Templates` — `dotnet new` scaffolders

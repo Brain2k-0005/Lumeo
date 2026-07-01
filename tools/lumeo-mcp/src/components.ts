@@ -344,14 +344,16 @@ export const components: ComponentDoc[] = [
       { name: "ChildContent", description: "DialogHeader / DialogContent / DialogFooter." },
     ],
     example: `<Dialog @bind-Open="_dialogOpen">
-    <DialogHeader>
-        <DialogTitle>Are you sure?</DialogTitle>
-        <DialogDescription>This cannot be undone.</DialogDescription>
-    </DialogHeader>
-    <DialogFooter>
-        <Button Variant="Button.ButtonVariant.Outline" OnClick='() => _dialogOpen = false'>Cancel</Button>
-        <Button Variant="Button.ButtonVariant.Destructive" OnClick="Confirm">Delete</Button>
-    </DialogFooter>
+    <DialogContent>
+        <DialogHeader>
+            <DialogTitle>Are you sure?</DialogTitle>
+            <DialogDescription>This cannot be undone.</DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+            <Button Variant="Button.ButtonVariant.Outline" OnClick='() => _dialogOpen = false'>Cancel</Button>
+            <Button Variant="Button.ButtonVariant.Destructive" OnClick="Confirm">Delete</Button>
+        </DialogFooter>
+    </DialogContent>
 </Dialog>`,
     cssVars: ["--color-background", "--color-foreground", "--color-border"],
   },
@@ -733,7 +735,7 @@ export const registry: RegistryDocument | null = loadRegistry();
 
 /**
  * Build the unified catalog:
- *   - All 125 components from the registry
+ *   - Every component from the registry
  *   - Hand-curated rich entries override the thin registry entries for their name
  */
 function buildCatalog(): CatalogEntry[] {

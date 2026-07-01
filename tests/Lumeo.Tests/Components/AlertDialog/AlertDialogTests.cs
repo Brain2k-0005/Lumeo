@@ -90,14 +90,14 @@ public class AlertDialogTests : IAsyncLifetime
         Assert.NotEmpty(labelledBy);
     }
 
+    // n=171 — aria-describedby must NOT be emitted when there is no
+    // <AlertDialogDescription>, otherwise it dangles to a non-existent id.
     [Fact]
-    public void AlertDialogContent_Has_Aria_Describedby()
+    public void AlertDialogContent_Omits_Aria_Describedby_When_No_Description()
     {
         var cut = RenderAlertDialog(isOpen: true);
         var dialog = cut.Find("[role='alertdialog']");
-        var describedBy = dialog.GetAttribute("aria-describedby");
-        Assert.NotNull(describedBy);
-        Assert.NotEmpty(describedBy);
+        Assert.False(dialog.HasAttribute("aria-describedby"));
     }
 
     // --- Backdrop ---

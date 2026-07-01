@@ -1,25 +1,88 @@
 @namespace Lumeo
 
-@* focusin/focusout give keyboard users parity with hover (Radix opens the card
-   on focus and closes on blur). They sit on the wrapper, so focusing the
-   trigger's inner link/button bubbles up and opens the card; tabbing away fires
-   focusout and closes it. The pin/click path (touch) is unaffected. *@
-<div class="@CssClass"
-     aria-expanded="@Context.IsOpen"
-     @onmouseenter="() => Context.RequestOpen.InvokeAsync()"
-     @onmouseleave="() => Context.RequestClose.InvokeAsync()"
-     @onfocusin="() => Context.RequestOpen.InvokeAsync()"
-     @onfocusout="() => Context.RequestClose.InvokeAsync()"
-     @onclick="() => Context.RequestTogglePin.InvokeAsync()"
-     @attributes="AdditionalAttributes">
-    @ChildContent
-</div>
+@if (AsChild)
+{
+    @* asChild: render NO wrapper. Cascade the slot so a cooperating child (a Lumeo
+       <Button>, or a manual <ChildContentSlot> splat) becomes the single trigger
+       element — the hover/focus/pin handlers and aria-expanded fold onto the child's
+       real control. HoverCard positions against its root wrapper (Context.WrapperId),
+       not this trigger, so dropping the wrapper does not affect positioning. *@
+    <CascadingValue Value="Slot" IsFixed="false">
+        @if (ChildContentSlot is not null)
+        {
+            @ChildContentSlot(Slot)
+        }
+        else
+        {
+            @ChildContent
+        }
+    </CascadingValue>
+}
+else
+{
+    @* focusin/focusout give keyboard users parity with hover (Radix opens the card
+       on focus and closes on blur). They sit on the wrapper, so focusing the
+       trigger's inner link/button bubbles up and opens the card; tabbing away fires
+       focusout and closes it. The pin/click path (touch) is unaffected. *@
+    <div class="@CssClass"
+         aria-expanded="@Context.IsOpen"
+         @onmouseenter="() => Context.RequestOpen.InvokeAsync()"
+         @onmouseleave="() => Context.RequestClose.InvokeAsync()"
+         @onfocusin="() => Context.RequestOpen.InvokeAsync()"
+         @onfocusout="() => Context.RequestClose.InvokeAsync()"
+         @onclick="() => Context.RequestTogglePin.InvokeAsync()"
+         @attributes="AdditionalAttributes">
+        @ChildContent
+    </div>
+}
 
 @code {
     [CascadingParameter] public HoverCard.HoverCardContext Context { get; set; } = default!;
     [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    /// <summary>
+    /// Tier-2 escape hatch for <see cref="AsChild"/> with arbitrary (non-Lumeo) markup:
+    /// receives the <see cref="TriggerSlot"/> so the consumer can splat
+    /// <c>@attributes="slot.Attributes"</c> and wire <c>@onmouseenter="slot.OnMouseEnter.InvokeAsync"</c>
+    /// (etc.) onto their own single element. Lumeo <c>&lt;Button&gt;</c> children need
+    /// only <see cref="AsChild"/> — they consume the slot automatically.
+    /// </summary>
+    [Parameter] public RenderFragment<TriggerSlot>? ChildContentSlot { get; set; }
+
+    /// <summary>
+    /// When <c>true</c>, the trigger renders NO wrapper element and instead cascades a
+    /// <see cref="TriggerSlot"/> that a cooperating child folds onto its own single root
+    /// element — yielding ONE DOM node with the hover/focus open-close handlers, the pin
+    /// toggle and <c>aria-expanded</c> forwarded (the Radix <c>asChild</c> goal). The
+    /// child must resolve to exactly one cooperating element (a Lumeo <c>&lt;Button&gt;</c>,
+    /// or a manual <see cref="ChildContentSlot"/> splat). Default <c>false</c> preserves
+    /// the current <c>inline-flex</c> wrapper exactly.
+    /// </summary>
+    [Parameter] public bool AsChild { get; set; }
+
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     private string CssClass => Cx.Merge("inline-flex", Class);
+
+    private TriggerSlot Slot => new(
+        Id: null,                                 // HoverCard anchors positioning on its root wrapper, not the trigger
+        Class: Cx.Merge("inline-flex", Class),
+        Attributes: BuildAttrs(),
+        OnClick: EventCallback.Factory.Create<MouseEventArgs>(this, _ => Context.RequestTogglePin.InvokeAsync()),
+        OnFocusIn: EventCallback.Factory.Create<FocusEventArgs>(this, _ => Context.RequestOpen.InvokeAsync()),
+        OnFocusOut: EventCallback.Factory.Create<FocusEventArgs>(this, _ => Context.RequestClose.InvokeAsync()),
+        OnMouseEnter: EventCallback.Factory.Create<MouseEventArgs>(this, _ => Context.RequestOpen.InvokeAsync()),
+        OnMouseLeave: EventCallback.Factory.Create<MouseEventArgs>(this, _ => Context.RequestClose.InvokeAsync()));
+
+    private IReadOnlyDictionary<string, object> BuildAttrs()
+    {
+        var d = new Dictionary<string, object>
+        {
+            ["aria-expanded"] = Context.IsOpen ? "true" : "false",
+        };
+        if (AdditionalAttributes is not null)
+            foreach (var kv in AdditionalAttributes) d[kv.Key] = kv.Value; // author wins on collision
+        return d;
+    }
 }

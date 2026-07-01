@@ -1,19 +1,23 @@
 @namespace Lumeo
 @implements IAsyncDisposable
 
+@* Render the label, control and helper/error as ONE self-contained vertical block so the
+   field never splays into a row when dropped in a flex / centered container (the docs
+   preview, or a consumer's flex/grid layout). Standalone form-field structural fix. *@
+<div class="flex flex-col items-start">
 @if (Label is not null && !InsideFormField)
 {
     <label class="block text-sm font-medium text-foreground mb-1.5">
         @Label
         @if (Required)
         {
-            <span class="text-destructive ml-0.5">*</span>
+            <span class="text-destructive ms-0.5">*</span>
         }
     </label>
 }
 
 <div class="relative" @attributes="AdditionalAttributes">
-    <textarea id="@_textareaId"
+    <textarea id="@EffectiveTextareaId"
               class="@TextareaCssClass"
               value="@Value"
               rows="@Rows"
@@ -28,6 +32,7 @@
               aria-expanded="@((_showDropdown && FilteredOptions.Any()) ? "true" : "false")"
               aria-controls="@_dropdownId"
               aria-activedescendant="@((_showDropdown && FilteredOptions.Any()) ? OptionElementId(_activeIndex) : null)"
+              aria-describedby="@FormFieldDescribedBy"
               @ref="_textareaRef"
               @oninput="HandleInput"
               @onkeydown="HandleKeyDown"
@@ -77,11 +82,25 @@
         <p class="text-xs text-muted-foreground mt-1.5">@HelperText</p>
     }
 }
+</div>
 
 @inject IComponentInteropService Interop
 
 @code {
     [CascadingParameter] private FormField.FormFieldContext? FormField { get; set; }
+
+    // aria-describedby on the textarea announces the FormField help/error to a screen
+    // reader.
+    private string? FormFieldDescribedBy => FormField?.DescribedBy;
+
+    // Inside a FormField, adopt its ControlId as the textarea's id so the field's
+    // <Label For> actually click-focuses the textarea (Base UI Field parity, matching
+    // Select/Textarea/DatePicker/TimePicker). Standalone, keep our own generated id.
+    // Every internal id use (rendered id, caret JS interop, prevent-default key
+    // registration) flows through this so the rendered id and the JS targets stay
+    // consistent.
+    private string EffectiveTextareaId =>
+        !string.IsNullOrEmpty(FormField?.ControlId) ? FormField!.ControlId : _textareaId;
 
     [Parameter] public string? Value { get; set; }
     [Parameter] public EventCallback<string> ValueChanged { get; set; }
@@ -125,10 +144,15 @@
     private string DropdownCssClass => "z-50 min-w-[200px] max-h-[200px] overflow-auto rounded-md border border-border/60 bg-popover p-1 shadow-lg animate-fade-in";
 
     private static string OptionCssClass(bool isActive) =>
-        $"flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left outline-none transition-colors {(isActive ? "bg-accent text-accent-foreground" : "hover:bg-accent hover:text-accent-foreground")}";
+        $"flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-start outline-none transition-colors {(isActive ? "bg-accent text-accent-foreground" : "hover:bg-accent hover:text-accent-foreground")}";
 
+    // In server-driven mode (OnSearch.HasDelegate) the parent already returns the
+    // filtered Options for _searchTerm, so re-applying the client substring filter
+    // would silently drop any option whose Label/Value does not literally contain
+    // _searchTerm (e.g. fuzzy/remote matches). Only the local/uncontrolled mode,
+    // which is handed the full Options list up front, applies the client filter.
     private List<MentionOption> FilteredOptions =>
-        string.IsNullOrEmpty(_searchTerm)
+        OnSearch.HasDelegate || string.IsNullOrEmpty(_searchTerm)
             ? Options
             : Options.Where(o => o.Label.Contains(_searchTerm, StringComparison.OrdinalIgnoreCase) ||
                                  o.Value.Contains(_searchTerm, StringComparison.OrdinalIgnoreCase)).ToList();
@@ -140,7 +164,7 @@
         await ValueChanged.InvokeAsync(newValue);
 
         // Get caret position from JS
-        var caretInfo = await Interop.GetTextareaCaretPosition(_textareaId);
+        var caretInfo = await Interop.GetTextareaCaretPosition(EffectiveTextareaId);
         if (caretInfo is null) return;
         var selectionStart = caretInfo.SelectionStart;
 
@@ -200,6 +224,16 @@
                 if (filtered.Count > 0)
                     _activeIndex = (_activeIndex - 1 + filtered.Count) % filtered.Count;
                 break;
+            case "Home":
+                // Jump the highlight to the first option (combobox APG parity).
+                if (filtered.Count > 0)
+                    _activeIndex = 0;
+                break;
+            case "End":
+                // Jump the highlight to the last option (combobox APG parity).
+                if (filtered.Count > 0)
+                    _activeIndex = filtered.Count - 1;
+                break;
             case "Enter" or "Tab":
                 if (filtered.Count > 0 && _activeIndex < filtered.Count)
                 {
@@ -216,13 +250,18 @@
 
     private async Task SelectOption(MentionOption option)
     {
-        if (Value is not null && _triggerStartIndex >= 0)
+        // The parent may have shortened Value (controlled usage) since the
+        // trigger was recorded, leaving _triggerStartIndex (and the caret's
+        // selectionStart) pointing past the current end. Slicing with the stale
+        // index would throw / mis-splice, so clamp both into range and bail out
+        // cleanly if the trigger no longer fits.
+        if (Value is not null && _triggerStartIndex >= 0 && _triggerStartIndex <= Value.Length)
         {
-            var caretInfo = await Interop.GetTextareaCaretPosition(_textareaId);
+            var caretInfo = await Interop.GetTextareaCaretPosition(EffectiveTextareaId);
             if (caretInfo is null) return;
-            var selectionStart = caretInfo.SelectionStart;
+            var selectionStart = Math.Clamp(caretInfo.SelectionStart, _triggerStartIndex, Value.Length);
             var before = Value[.._triggerStartIndex];
-            var after = selectionStart <= Value.Length ? Value[selectionStart..] : "";
+            var after = Value[selectionStart..];
             Value = $"{before}{Trigger}{option.Value} {after}";
             await ValueChanged.InvokeAsync(Value);
         }
@@ -275,19 +314,24 @@
             {
                 _pdRegistered = true;
                 await Interop.RegisterPreventDefaultKeys(
-                    _textareaId,
+                    EffectiveTextareaId,
                     new[]
                     {
                         new Lumeo.Services.PreventDefaultKeyRule("Enter", SkipComposing: true),
                         new Lumeo.Services.PreventDefaultKeyRule("Tab"),
                         new Lumeo.Services.PreventDefaultKeyRule("ArrowDown"),
                         new Lumeo.Services.PreventDefaultKeyRule("ArrowUp"),
+                        // Home/End jump the highlight to first/last option; suppress
+                        // the textarea's native caret-to-line-start/end so the
+                        // dropdown owns these keys while it is open.
+                        new Lumeo.Services.PreventDefaultKeyRule("Home"),
+                        new Lumeo.Services.PreventDefaultKeyRule("End"),
                     });
             }
             else if (!_showDropdown && _pdRegistered)
             {
                 _pdRegistered = false;
-                await Interop.UnregisterPreventDefaultKeys(_textareaId);
+                await Interop.UnregisterPreventDefaultKeys(EffectiveTextareaId);
             }
         }
         catch (JSDisconnectedException) { _pdRegistered = false; }
@@ -303,7 +347,7 @@
         try
         {
             if (_pdRegistered)
-                await Interop.UnregisterPreventDefaultKeys(_textareaId);
+                await Interop.UnregisterPreventDefaultKeys(EffectiveTextareaId);
         }
         catch (JSDisconnectedException) { }
         catch (ObjectDisposedException) { }

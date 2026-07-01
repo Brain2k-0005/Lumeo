@@ -19,6 +19,21 @@ public interface IComponentInteropService : IAsyncDisposable, IDisposable
     ValueTask<int> GetMenuItemCount(string containerId);
 
     /// <summary>
+    /// Returns the <c>id</c> attributes of the descendants of <paramref name="containerId"/>
+    /// matching <paramref name="selector"/>, in live DOM order (document order). Compound
+    /// widgets whose children self-register (RadioGroup / ToggleGroup / Segmented / Stepper /
+    /// Splitter, …) consult this at NAVIGATION time so roving / arrow-key / neighbour order
+    /// tracks the real DOM even after a keyed reorder MOVES reused child instances without
+    /// re-rendering them (so the C# mount-order registry has gone stale). Callers MUST treat
+    /// an empty result as "DOM order unavailable" and fall back to their own registry order,
+    /// so prerender / JS-unavailable / non-configured-test-double paths keep working. Default
+    /// implementation returns an empty array so existing implementers / test doubles keep
+    /// compiling and behave exactly as before (registry-order fallback).
+    /// </summary>
+    ValueTask<string[]> GetOrderedDescendantIds(string containerId, string selector)
+        => ValueTask.FromResult(System.Array.Empty<string>());
+
+    /// <summary>
     /// Type-to-focus (Radix menu typeahead). Focuses the first enabled menu item
     /// in <paramref name="containerId"/> whose text content starts with
     /// <paramref name="query"/> (case-insensitive), searching after
@@ -46,6 +61,18 @@ public interface IComponentInteropService : IAsyncDisposable, IDisposable
     /// focused when <see cref="SetupFocusTrap"/> ran, if it is still in the
     /// document.</summary>
     ValueTask RemoveFocusTrap(string elementId);
+
+    /// <summary>Saves the currently-focused element keyed by <paramref name="key"/>
+    /// so <see cref="RestoreFocus"/> can hand focus back later. Unlike
+    /// <see cref="SetupFocusTrap"/> this installs NO Tab trap — use it for non-modal
+    /// surfaces (menus, listbox popovers) that move focus inward on open but must let
+    /// Tab close them per the WAI-ARIA pattern.</summary>
+    ValueTask SaveFocus(string key) => ValueTask.CompletedTask;
+    /// <summary>Returns focus to the element saved by <see cref="SaveFocus"/> under
+    /// the same key, if it is still in the document (WCAG 2.4.3).</summary>
+    // Additive — default no-op so external/test implementations of IComponentInteropService keep
+    // compiling; ComponentInteropService overrides both with the real JS focus save/restore.
+    ValueTask RestoreFocus(string key) => ValueTask.CompletedTask;
 
     /// <summary>Registers a native animationend listener that filters strictly on
     /// the slide-in animation name and, on completion, sets the element's inline
@@ -77,16 +104,30 @@ public interface IComponentInteropService : IAsyncDisposable, IDisposable
     ValueTask<ViewportSize?> RegisterViewportListener(Microsoft.JSInterop.DotNetObjectReference<ResponsiveService> dotnetRef);
     ValueTask UnregisterViewportListener();
 
-    // Floating Position
-    ValueTask PositionFixed(string contentId, string referenceId, string align = "start", bool matchWidth = false, string side = "bottom");
+    // Floating Position. Returns the side the content box ACTUALLY resolved to: a collision flip can move
+    // a preferred-Top box below its trigger (etc.), so a directional-arrow consumer (Tooltip) reads this to
+    // keep the arrow on the edge facing the trigger. Equals the requested side when no flip occurs.
+    ValueTask<string> PositionFixed(string contentId, string referenceId, string align = "start", bool matchWidth = false, string side = "bottom");
     /// <summary>
     /// 3.12.x — extended overload with an explicit trigger→content gap in pixels
     /// (Tooltip <c>Offset</c>). The default implementation ignores the offset and
     /// falls back to the 5-arg overload (JS hardcoded 4px) so existing
-    /// implementations keep compiling unchanged.
+    /// implementations keep compiling unchanged. Returns the resolved side (see above).
     /// </summary>
-    ValueTask PositionFixed(string contentId, string referenceId, string align, bool matchWidth, string side, int offset) =>
+    ValueTask<string> PositionFixed(string contentId, string referenceId, string align, bool matchWidth, string side, int offset) =>
         PositionFixed(contentId, referenceId, align, matchWidth, side);
+    /// <summary>
+    /// round-14 — extended overload that ALSO reports LIVE collision flips: the synchronous return only
+    /// covers the initial placement, but a later scroll/resize reposition can flip the box to a different
+    /// side while the tooltip stays open, and a directional-arrow consumer needs to follow that too
+    /// (Codex P2). <paramref name="onSideChanged"/> is invoked with the newly-resolved side whenever a
+    /// LATER reposition changes it (never for the initial placement — that's the synchronous return).
+    /// The default implementation ignores the callback and behaves like the 6-arg overload — only
+    /// <c>ComponentInteropService</c> overrides this with real live notification; test doubles don't run
+    /// real JS, so there is nothing to notify.
+    /// </summary>
+    ValueTask<string> PositionFixed(string contentId, string referenceId, string align, bool matchWidth, string side, int offset, Func<string, Task>? onSideChanged) =>
+        PositionFixed(contentId, referenceId, align, matchWidth, side, offset);
     ValueTask UnpositionFixed(string contentId);
 
     /// <summary>
@@ -288,6 +329,13 @@ public interface IComponentInteropService : IAsyncDisposable, IDisposable
     ValueTask<int> GetInputCaret(string elementId) => ValueTask.FromResult(0);
     ValueTask SetInputCaret(string elementId, int position) => ValueTask.CompletedTask;
 
+    // InputMask value (the live el.value of a text <input>) — force-writes the
+    // masked display straight to the DOM. Needed when a re-masked value equals
+    // the PREVIOUS render's value (e.g. an invalid char was rejected): Blazor's
+    // diff then emits no patch, so the browser keeps showing the rejected char
+    // unless we push the value ourselves (#41).
+    ValueTask SetInputValue(string elementId, string value) => ValueTask.CompletedTask;
+
     // Tabs (active indicator measurement for animated underline)
     ValueTask<ComponentInteropService.TabMeasurement?> TabsMeasure(string elementId);
 
@@ -295,6 +343,14 @@ public interface IComponentInteropService : IAsyncDisposable, IDisposable
     ValueTask RegisterBackToTop(string id, int threshold, Func<bool, Task> handler);
     ValueTask UnregisterBackToTop(string id);
     ValueTask ScrollToTop();
+
+    // BackToTop with an optional container Target selector (#98). Default-implemented
+    // so existing IComponentInteropService implementations keep compiling: they fall
+    // back to the window-scoped overloads, ignoring the container target. The concrete
+    // ComponentInteropService overrides these to thread the selector to JS.
+    ValueTask RegisterBackToTop(string id, int threshold, Func<bool, Task> handler, string? target)
+        => RegisterBackToTop(id, threshold, handler);
+    ValueTask ScrollToTop(string? target) => ScrollToTop();
 
     // File Download
     ValueTask DownloadFile(string fileName, string contentBase64, string mimeType = "application/octet-stream");
@@ -305,6 +361,16 @@ public interface IComponentInteropService : IAsyncDisposable, IDisposable
     // Press feedback (ripple click effect on Button, Card, Chip, BottomNavItem, ToggleGroupItem)
     ValueTask RippleAttachAsync(Microsoft.AspNetCore.Components.ElementReference element);
     ValueTask RippleDetachAsync(Microsoft.AspNetCore.Components.ElementReference element);
+
+    /// <summary>
+    /// Clears the <c>value</c> of a native <c>&lt;input type="file"&gt;</c> so that
+    /// re-picking the SAME file fires the <c>change</c> event again. The browser
+    /// suppresses <c>change</c> when the chosen path is identical to the input's
+    /// current value, so UploadTrigger (a pure pick-trigger with no accumulating
+    /// list to mask it) must reset the element after each pick. Default impl is a
+    /// no-op so existing implementers / test doubles keep compiling unchanged (#70).
+    /// </summary>
+    ValueTask ResetFileInput(Microsoft.AspNetCore.Components.ElementReference element) => ValueTask.CompletedTask;
 
     /// <summary>
     /// Core-side <c>prefers-reduced-motion: reduce</c> query (mirrors the
@@ -407,6 +473,17 @@ public interface IComponentInteropService : IAsyncDisposable, IDisposable
     Task GanttChangeViewModeAsync(string id, string mode);
     Task GanttDestroyAsync(string id);
 
+    /// <summary>
+    /// Pushes a partial options bag (any of readonly / todayHighlight / barHeight /
+    /// columnWidth — and optionally tasks / viewMode) to a LIVE Gantt instance and
+    /// re-renders it (gantt.refresh). The init-only options were previously captured
+    /// once at GanttInitAsync, so flipping Readonly / TodayHighlight / BarHeight /
+    /// ColumnWidth after init was silently ignored (battle-test wave 1 #2). Default
+    /// implementation is a no-op so existing implementers / test doubles keep
+    /// compiling and the non-Gantt paths are unaffected.
+    /// </summary>
+    Task GanttRefreshAsync(string id, object options) => Task.CompletedTask;
+
     // Toolbar overflow observer — registers a ResizeObserver on the toolbar
     // element and invokes the handler with (fittingCount, totalCount) whenever
     // the number of items that fit before the "..." overflow trigger changes.
@@ -424,11 +501,17 @@ public interface IComponentInteropService : IAsyncDisposable, IDisposable
     ValueTask RichTextSetDisabledAsync(string id, bool disabled);
     ValueTask RichTextDestroyAsync(string id);
     ValueTask<string?> RichTextPromptLinkAsync(string? initial);
+    // Additive — default no-op so existing IComponentInteropService implementations / test fakes don't
+    // need to change. ComponentInteropService overrides it with the real setAttribute interop.
+    ValueTask RichTextSetAriaAttributesAsync(string id, bool ariaInvalid, string? ariaDescribedBy) => ValueTask.CompletedTask;
 
     // SignaturePad — canvas-based handwritten signature capture (3.1.0).
     // Ships its own tiny JS module (signature-pad.js) loaded lazily on first
     // use so apps that never render a SignaturePad don't pay the import cost.
-    ValueTask SignaturePadInit(string elementId, object options, DotNetObjectReference<SignaturePad> dotNetRef);
+    // Generic in the .NET object-reference type so this core interop interface stays decoupled from
+    // the SignaturePad UI component (T is inferred from the call site as SignaturePad). This keeps
+    // the service layer free of UI-component references so it can be vendored standalone.
+    ValueTask SignaturePadInit<T>(string elementId, object options, DotNetObjectReference<T> dotNetRef) where T : class;
     ValueTask SignaturePadClear(string elementId);
     ValueTask<string?> SignaturePadDataUrl(string elementId, string mimeType);
     ValueTask SignaturePadSetStrokeStyle(string elementId, string color, double width);

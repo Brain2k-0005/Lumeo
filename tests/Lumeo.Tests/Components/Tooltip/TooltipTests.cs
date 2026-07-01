@@ -114,6 +114,50 @@ public class TooltipTests : IAsyncLifetime
         Assert.Contains(elements, e => (e.GetAttribute("class") ?? "").StartsWith("inline-flex"));
     }
 
+    private IRenderedComponent<IComponent> RenderTooltipWithWrapperClass(string wrapperClass)
+    {
+        return _ctx.Render(builder =>
+        {
+            builder.OpenComponent<L.Tooltip>(0);
+            builder.AddAttribute(1, "ShowDelay", 0);
+            builder.AddAttribute(2, "Class", wrapperClass);
+            builder.AddAttribute(3, "ChildContent", (RenderFragment)(b =>
+            {
+                b.OpenComponent<L.TooltipTrigger>(0);
+                b.AddAttribute(1, "ChildContent", (RenderFragment)(inner => inner.AddContent(0, "Hover me")));
+                b.CloseComponent();
+            }));
+            builder.CloseComponent();
+        });
+    }
+
+    [Fact]
+    public void Tooltip_Wrapper_Forwards_Custom_Class()
+    {
+        // The wrapper has no Class param before 3.20 — full-width nav triggers had
+        // to be widened with an app-side CSS attribute-selector hack. Now Class flows
+        // onto the wrapper so consumers control its box width directly.
+        var cut = RenderTooltipWithWrapperClass("w-full custom-x");
+        var cls = cut.Find("div").GetAttribute("class") ?? "";
+        Assert.Contains("relative", cls);
+        Assert.Contains("inline-flex", cls);
+        Assert.Contains("w-full", cls);
+        Assert.Contains("custom-x", cls);
+    }
+
+    [Fact]
+    public void Tooltip_Wrapper_Class_Wins_Conflicts_Via_CxMerge()
+    {
+        // A consumer display utility must OVERRIDE the base inline-flex via
+        // tailwind-merge (Cx.Merge), not merely append — proving the merge is wired,
+        // so consumers never need !important to beat the base class.
+        var cut = RenderTooltipWithWrapperClass("block");
+        var cls = cut.Find("div").GetAttribute("class") ?? "";
+        Assert.Contains("relative", cls);
+        Assert.Contains("block", cls);
+        Assert.DoesNotContain("inline-flex", cls);
+    }
+
     // --- Custom class forwarded ---
 
     [Fact]
@@ -225,5 +269,60 @@ public class TooltipTests : IAsyncLifetime
 
         cut.Find("div").KeyDown(new Microsoft.AspNetCore.Components.Web.KeyboardEventArgs { Key = "Escape" });
         Assert.Empty(cut.FindAll("[role='tooltip']"));
+    }
+
+    // --- G34b: AsChild puts aria-describedby on the focusable element ---
+
+    private IRenderedComponent<IComponent> RenderTooltipAsChild()
+        => _ctx.Render(builder =>
+        {
+            builder.OpenComponent<L.Tooltip>(0);
+            builder.AddAttribute(1, "ShowDelay", 0);
+            builder.AddAttribute(2, "ChildContent", (RenderFragment)(b =>
+            {
+                b.OpenComponent<L.TooltipTrigger>(0);
+                b.AddAttribute(1, "AsChild", true);
+                b.AddAttribute(2, "ChildContent", (RenderFragment)(inner =>
+                {
+                    inner.OpenComponent<L.Button>(0);
+                    inner.AddAttribute(1, "ChildContent", (RenderFragment)(t => t.AddContent(0, "Hover me")));
+                    inner.CloseComponent();
+                }));
+                b.CloseComponent();
+
+                b.OpenComponent<L.TooltipContent>(3);
+                b.AddAttribute(4, "ChildContent", (RenderFragment)(inner => inner.AddContent(0, "Tooltip text")));
+                b.CloseComponent();
+            }));
+            builder.CloseComponent();
+        });
+
+    [Fact]
+    public void AsChild_Renders_The_Button_As_Trigger_Without_The_Inner_Wrapper()
+    {
+        var cut = RenderTooltipAsChild();
+
+        Assert.NotNull(cut.Find("button"));
+        // The Tooltip ROOT keeps "relative inline-flex"; the TooltipTrigger no longer
+        // adds its own bare inline-flex wrapper div.
+        Assert.DoesNotContain(cut.FindAll("div"),
+            d => (d.GetAttribute("class") ?? "") == "inline-flex");
+    }
+
+    [Fact]
+    public void AsChild_Puts_AriaDescribedBy_On_The_Button_When_Open()
+    {
+        var cut = RenderTooltipAsChild();
+        Assert.False(cut.Find("button").HasAttribute("aria-describedby")); // closed: none
+
+        // Open via the Tooltip root wrapper (mirrors OpenTooltip; the root carries the
+        // hover handler).
+        cut.Find("div").TriggerEvent("onmouseenter", new Microsoft.AspNetCore.Components.Web.MouseEventArgs());
+
+        var content = cut.Find("[role='tooltip']");
+        var button = cut.Find("button");
+        // The describedby now sits on the FOCUSABLE button, so a screen reader
+        // announces the tooltip on focus (an ancestor div could not).
+        Assert.Equal(content.GetAttribute("id"), button.GetAttribute("aria-describedby"));
     }
 }

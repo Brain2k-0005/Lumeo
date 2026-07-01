@@ -707,6 +707,19 @@
         </ul>
     </div>
 
+    <ComponentDemo Title="Client virtualisation (50,000 rows)" Description="Pass a large in-memory list with ShowPagination=false and a fixed Height. Once the row count exceeds VirtualizeThreshold (500) the grid renders only the rows in the viewport via Blazor's <Virtualize>, so scrolling stays smooth with tens of thousands of rows and the DOM never holds more than a small window." Code="@_clientVirtualizedCode">
+        <DataGrid TItem="Employee"
+                  Items="@VirtualBackend"
+                  ShowPagination="false"
+                  Height="320px"
+                  data-testid="datagrid-virtualized">
+            <DataGridColumnDef TItem="Employee" Title="Name" Field="Name" Sortable="true" Filterable="true" />
+            <DataGridColumnDef TItem="Employee" Title="Department" Field="Department" Sortable="true" />
+            <DataGridColumnDef TItem="Employee" Title="Salary" Field="Salary" Format="C0" Sortable="true" />
+            <DataGridColumnDef TItem="Employee" Title="Status" Field="Status" />
+        </DataGrid>
+    </ComponentDemo>
+
     <ComponentDemo Title="Virtualised server mode (infinite scroll)" Description="Set Virtualized=true + provide OnRangeRequest. The grid fetches a sliding window of rows from your backend as the user scrolls, hides pagination, and re-fetches automatically when sort/filter/search change. Demo fakes a 50000-row backend with an in-memory list." Code="@_virtualizedServerCode">
         <DataGrid TItem="Employee"
                   Items="@(Array.Empty<Employee>())"
@@ -1842,6 +1855,16 @@
     <DataGridColumnDef TItem=""Employee"" Title=""Salary"" Field=""Salary"" Format=""C0"" />
     <DataGridColumnDef TItem=""Employee"" Title=""Status"" Field=""Status"" />
 </DataGrid>";
+
+    private string _clientVirtualizedCode = @"<DataGrid TItem=""Employee"" Items=""@bigList"" ShowPagination=""false"" Height=""320px"">
+    <DataGridColumnDef TItem=""Employee"" Title=""Name"" Field=""Name"" Sortable=""true"" Filterable=""true"" />
+    <DataGridColumnDef TItem=""Employee"" Title=""Department"" Field=""Department"" Sortable=""true"" />
+    <DataGridColumnDef TItem=""Employee"" Title=""Salary"" Field=""Salary"" Format=""C0"" Sortable=""true"" />
+    <DataGridColumnDef TItem=""Employee"" Title=""Status"" Field=""Status"" />
+</DataGrid>
+
+@* bigList is a plain List<Employee> with 50,000 items. ShowPagination=false +
+   a fixed Height makes the grid virtualise: only the viewport window is rendered. *@";
 
     private string _virtualizedServerCode = @"// Backend interface — replace with your real API call
 async ValueTask<DataGridRangeResponse<Employee>> LoadRange(DataGridRangeRequest req) {

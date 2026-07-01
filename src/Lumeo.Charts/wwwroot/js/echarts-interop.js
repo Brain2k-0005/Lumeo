@@ -634,6 +634,18 @@ export function disconnectCharts(groupId) {
     window.echarts.disconnect(groupId);
 }
 
+// Set (or clear) a SINGLE chart's group membership. connectCharts only ever
+// ASSIGNS a group, so a chart that switches/clears its Group parameter would stay
+// wired to the old group (its cursor/zoom kept syncing with the old siblings).
+// Passing a falsy groupId detaches the chart by setting chart.group = null so it no
+// longer participates in echarts.connect() syncing; a non-empty groupId re-homes it.
+export function setChartGroup(elementId, groupId) {
+    const chart = charts.get(elementId);
+    if (!chart) return;
+    chart.group = groupId || null;
+    if (window.echarts && groupId) window.echarts.connect(groupId);
+}
+
 export function appendData(elementId, seriesIndex, newData) {
     const chart = charts.get(elementId);
     if (!chart) return;

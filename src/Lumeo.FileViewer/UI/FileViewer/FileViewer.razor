@@ -110,6 +110,17 @@
                 <IconContent>
                     <Blazicon Svg="Lucide.FileX" class="h-10 w-10" />
                 </IconContent>
+                <Action>
+                    @if (!string.IsNullOrWhiteSpace(Src))
+                    {
+                        <button type="button"
+                                @onclick="RefreshAsync"
+                                class="inline-flex h-9 items-center gap-2 rounded-md border border-input bg-background px-4 text-sm font-medium hover:bg-accent hover:text-accent-foreground transition-colors focus:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring">
+                            <Blazicon Svg="Lucide.RefreshCw" class="h-4 w-4" />
+                            <span>Retry</span>
+                        </button>
+                    }
+                </Action>
             </EmptyState>
         }
         else if (CustomRenderers is not null && CustomRenderers.TryGetValue(_resolvedKind, out var custom))
@@ -128,11 +139,12 @@
                                Class="h-full border-0 rounded-none" />
                     break;
                 case FileKind.Image:
+                    var imgGeneration = _loadGeneration;
                     <div class="flex h-full min-h-[200px] items-center justify-center p-4">
                         <img src="@Src"
                              alt="@(DisplayName ?? "Image")"
                              class="max-h-full max-w-full object-contain"
-                             @onerror="HandleImageError" />
+                             @onerror="@(() => HandleChildError(imgGeneration, "Image failed to load."))" />
                     </div>
                     break;
                 case FileKind.Video:
@@ -369,8 +381,24 @@
     private string? _lastSrc;
     private FileKind _lastKindParam = FileKind.Auto;
     private string? _lastMime;
+    private int _lastMaxCsvRows = 1000;
+
+    // Monotonic load-pass id. Bumped at the start of every real (re)load so that
+    // late child error events (an <img>/PDF @onerror that fires *after* Src has
+    // already moved on) can be recognised as stale and ignored — otherwise an
+    // error from a superseded Src latches the Error state onto the newer, valid
+    // file. The currently-rendered children capture this value; HandleChildError
+    // discards any callback whose captured generation no longer matches.
+    // internal so the regression test can drive the exact stale-error race.
+    internal int _loadGeneration;
 
     private CancellationTokenSource? _cts;
+
+    // Set in DisposeAsync. The cancellation token is cancelled on dispose, but a
+    // load pass already past its awaits would otherwise keep going and call
+    // StateHasChanged()/OnLoaded against a torn-down component (ObjectDisposedException).
+    // Every post-await step checks this alongside the token before touching state.
+    private bool _disposed;
 
     private string RootClass
         => $"flex flex-col rounded-xl border border-border/40 bg-card overflow-hidden min-h-[400px] {Class}".Trim();
@@ -476,12 +504,38 @@
         var srcChanged = !string.Equals(_lastSrc, Src, StringComparison.Ordinal);
         var kindChanged = _lastKindParam != Kind;
         var mimeChanged = !string.Equals(_lastMime, MimeType, StringComparison.OrdinalIgnoreCase);
+        var maxCsvRowsChanged = _lastMaxCsvRows != MaxCsvRows;
 
-        if (!srcChanged && !kindChanged && !mimeChanged) return;
+        if (!srcChanged && !kindChanged && !mimeChanged && !maxCsvRowsChanged) return;
+
+        _lastMaxCsvRows = MaxCsvRows;
+
+        // A bare MaxCsvRows change on an already-loaded CSV does not need a full
+        // re-fetch — re-parse the bytes we already have so the rendered table
+        // reflects the new cap (or restores rows that a previous lower cap hid).
+        if (!srcChanged && !kindChanged && !mimeChanged
+            && _state == ViewState.Loaded
+            && _resolvedKind == FileKind.Csv
+            && _fetchedText is not null)
+        {
+            (_csvRows, _csvTruncated) = ParseCsv(_fetchedText, MaxCsvRows);
+            StateHasChanged();
+            return;
+        }
 
         _lastSrc = Src;
         _lastKindParam = Kind;
         _lastMime = MimeType;
+
+        await StartLoadAsync();
+    }
+
+    // Begins a fresh load pass: bumps the generation, cancels any in-flight
+    // fetch, resets per-load state, then resolves + prepares. Shared by the
+    // parameter-driven path and the public <see cref="RefreshAsync"/> retry.
+    private async Task StartLoadAsync()
+    {
+        _loadGeneration++;
 
         // Cancel any in-flight work from a previous Src.
         try { _cts?.Cancel(); } catch { /* swallow */ }
@@ -508,11 +562,26 @@
         await ResolveAndPrepareAsync(token);
     }
 
+    /// <summary>
+    /// Re-run detection and (re)load the current <see cref="Src"/> from scratch,
+    /// cancelling any in-flight fetch. Use this to recover from an
+    /// <see cref="ViewState.Error"/> without changing <see cref="Src"/> — the
+    /// parameter-driven path early-outs when nothing changed, so an error against
+    /// a stable URL is otherwise unrecoverable. Also wired to the Error panel's
+    /// Retry button.
+    /// </summary>
+    public Task RefreshAsync() => StartLoadAsync();
+
     private async Task ResolveAndPrepareAsync(CancellationToken token)
     {
         try
         {
             _resolvedKind = await ResolveKindAsync(token);
+            // ResolveKindAsync may return synchronously (e.g. an explicit Kind),
+            // so a cancellation/dispose during it never surfaces as
+            // OperationCanceledException — check explicitly before doing work.
+            if (token.IsCancellationRequested || _disposed) return;
+
             _codeLanguage = _resolvedKind == FileKind.Json
                 ? "json"
                 : _resolvedKind == FileKind.Code
@@ -521,6 +590,7 @@
 
             if (OnKindDetected.HasDelegate)
                 await OnKindDetected.InvokeAsync(_resolvedKind);
+            if (token.IsCancellationRequested || _disposed) return;
 
             if (RequiresTextFetch(_resolvedKind))
             {
@@ -528,6 +598,7 @@
                 StateHasChanged();
 
                 var text = await FetchTextAsync(Src!, token);
+                if (token.IsCancellationRequested || _disposed) return;
                 _fetchedText = text;
 
                 if (_resolvedKind == FileKind.Markdown)
@@ -545,6 +616,7 @@
             }
 
             _state = ViewState.Loaded;
+            if (token.IsCancellationRequested || _disposed) return;
             if (OnLoaded.HasDelegate) await OnLoaded.InvokeAsync();
         }
         catch (OperationCanceledException)
@@ -554,10 +626,15 @@
         }
         catch (Exception ex)
         {
+            if (token.IsCancellationRequested || _disposed) return;
             _errorMessage = ex.Message;
             _state = ViewState.Error;
             if (OnError.HasDelegate) await OnError.InvokeAsync(ex.Message);
         }
+        // Don't re-render a torn-down component (ObjectDisposedException) — the
+        // cancellation token is cancelled on dispose, but the post-await checks
+        // above could be raced by disposal happening during the final stretch.
+        if (token.IsCancellationRequested || _disposed) return;
         StateHasChanged();
     }
 
@@ -833,10 +910,19 @@
         builder.CloseElement(); // outer div
     };
 
-    private Task HandleImageError() => HandleChildError("Image failed to load.");
+    // PDF path: PdfViewer.OnError is EventCallback<string>, so it lands here with
+    // the live generation. (A Src change would have bumped the generation and
+    // re-rendered the child, so "current generation" is the right gate here.)
+    private Task HandleChildError(string message) => HandleChildError(_loadGeneration, message);
 
-    private async Task HandleChildError(string message)
+    // internal so the regression test can replay a stale-generation error.
+    internal async Task HandleChildError(int generation, string message)
     {
+        // Ignore a late error event from a superseded load pass — e.g. the old
+        // <img> firing @onerror after Src already advanced to a valid file. Such
+        // a stale callback must not latch the Error state onto the newer Src.
+        if (generation != _loadGeneration) return;
+
         _errorMessage = message;
         _state = ViewState.Error;
         if (OnError.HasDelegate) await OnError.InvokeAsync(message);
@@ -845,6 +931,7 @@
 
     public ValueTask DisposeAsync()
     {
+        _disposed = true;
         try { _cts?.Cancel(); } catch { /* swallow */ }
         _cts?.Dispose();
         _cts = null;

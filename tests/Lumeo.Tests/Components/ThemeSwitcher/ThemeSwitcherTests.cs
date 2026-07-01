@@ -86,13 +86,16 @@ public class ThemeSwitcherTests : IAsyncLifetime
     }
 
     [Fact]
-    public void Mode_Buttons_Have_Title_Attributes()
+    public void Mode_Buttons_Have_AriaLabels_Via_Lumeo_Tooltip()
     {
         var cut = _ctx.Render<L.ThemeSwitcher>();
 
-        Assert.NotNull(cut.Find("button[title='Light']"));
-        Assert.NotNull(cut.Find("button[title='Dark']"));
-        Assert.NotNull(cut.Find("button[title='System']"));
+        // Mode buttons now carry an explicit aria-label (the Lumeo <Tooltip> supplies
+        // the styled hint), not the native browser title.
+        Assert.NotNull(cut.Find("button[aria-label='Light']"));
+        Assert.NotNull(cut.Find("button[aria-label='Dark']"));
+        Assert.NotNull(cut.Find("button[aria-label='System']"));
+        Assert.Empty(cut.FindAll("button[title]"));
     }
 
     [Fact]

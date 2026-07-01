@@ -192,17 +192,18 @@ public class DataGridGroupPanelTests : IAsyncLifetime
         // Click the "Remove grouping" button for Department.
         // Each chip has exactly one remove button (title="Remove grouping").
         // The first one belongs to the first chip (Department).
-        var removeButtons = cut.FindAll("button[title=\"Remove grouping\"]");
+        var removeButtons = cut.FindAll("button[aria-label=\"Remove grouping\"]");
         Assert.True(removeButtons.Count >= 1, "Expected at least one Remove grouping button");
         removeButtons[0].Click();
 
         // After removal only Status should remain.
-        // NOTE: assert against the chip-span structure, NOT panel.TextContent —
+        // NOTE: assert against the chip structure, NOT panel.TextContent —
         // the removed field reappears in the "+ Add group level" dropdown
         // (which is part of the same panel), so a broad string search would
-        // falsely fail. Each chip is a <span> with a remove button inside;
+        // falsely fail. Each chip is a <div> (it hosts a Tooltip whose block
+        // <div> a <span> can't legally contain) with a remove button inside;
         // count them and inspect their text.
-        var remainingChips = cut.FindAll("[data-slot=\"datagrid-group-panel\"] span.inline-flex.items-center.gap-1.rounded.bg-card");
+        var remainingChips = cut.FindAll("[data-slot=\"datagrid-group-panel\"] div.inline-flex.items-center.gap-1.rounded.bg-card");
         Assert.Single(remainingChips);
         Assert.Contains("Status", remainingChips[0].TextContent);
         Assert.DoesNotContain("Department", remainingChips[0].TextContent);
@@ -223,7 +224,7 @@ public class DataGridGroupPanelTests : IAsyncLifetime
         Assert.Contains("Status",     cut.Markup);
 
         // Click the "Clear all grouping" button.
-        var clearBtn = cut.Find("button[title=\"Clear all grouping\"]");
+        var clearBtn = cut.Find("button[aria-label=\"Clear all grouping\"]");
         clearBtn.Click();
 
         // Panel should revert to the placeholder state — no chips.
@@ -257,7 +258,7 @@ public class DataGridGroupPanelTests : IAsyncLifetime
         Assert.Contains("Department", cut.Find("[data-slot=\"datagrid-group-panel\"]").TextContent);
 
         // Step 2: Clear all.
-        var clearBtn = cut.Find("button[title=\"Clear all grouping\"]");
+        var clearBtn = cut.Find("button[aria-label=\"Clear all grouping\"]");
         clearBtn.Click();
         Assert.Contains("Drag a Groupable column header here", cut.Markup);
 

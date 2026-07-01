@@ -7,7 +7,7 @@
     @switch (overlay.Type)
     {
         case OverlayType.Dialog:
-            <Dialog @key="overlay.Id" Open="true" OpenChanged="(bool val) => OnOverlayClosed(val, overlay.Id)">
+            <Dialog @key="overlay.Id" Open="@IsOverlayOpen(overlay.Id)" OpenChanged="(bool val) => OnOverlayClosed(val, overlay.Id)">
                 <DialogContent ZIndex="@overlay.ZIndex" Size="@EffectiveDialogSize(overlay.Options)" PreventClose="@overlay.Options.PreventClose" Class="@EffectiveClass(overlay.Options)">
                     @if (overlay.Title is not null)
                     {
@@ -25,7 +25,7 @@
             break;
 
         case OverlayType.Sheet:
-            <Sheet @key="overlay.Id" Open="true" OpenChanged="(bool val) => OnOverlayClosed(val, overlay.Id)">
+            <Sheet @key="overlay.Id" Open="@IsOverlayOpen(overlay.Id)" OpenChanged="(bool val) => OnOverlayClosed(val, overlay.Id)">
                 <SheetContent ZIndex="@overlay.ZIndex" Side="@EffectiveSheetSide(overlay.Options)" Size="@EffectiveSheetSize(overlay.Options)" PreventClose="@overlay.Options.PreventClose" SwipeToClose="@EffectiveSwipeToClose(overlay.Options)" Class="@EffectiveClass(overlay.Options)">
                     @if (overlay.Title is not null)
                     {
@@ -64,7 +64,7 @@
             break;
 
         case OverlayType.Drawer:
-            <Drawer @key="overlay.Id" Open="true" OpenChanged="(bool val) => OnOverlayClosed(val, overlay.Id)">
+            <Drawer @key="overlay.Id" Open="@IsOverlayOpen(overlay.Id)" OpenChanged="(bool val) => OnOverlayClosed(val, overlay.Id)">
                 <DrawerContent ZIndex="@overlay.ZIndex" PreventClose="@overlay.Options.PreventClose" Class="@EffectiveClass(overlay.Options)">
                     @if (overlay.Title is not null)
                     {
@@ -118,6 +118,38 @@
 @code {
     private readonly List<OverlayInstance> _overlays = new();
     private readonly Dictionary<string, OverlayReference> _referenceCache = new();
+
+    // Ids whose overlay is currently playing its slide-out animation. While an id
+    // is in this set the cascaded `Open` renders false (true→false), which is what
+    // SheetContent's `_exiting` machinery latches on to run the slide-out instead
+    // of vanishing. The instance stays in `_overlays` until the exit window
+    // elapses, then `FinishClose` drops it. (Battle #82.)
+    private readonly HashSet<string> _closing = new();
+
+    // Per-id deferred-removal timers for the exit-animation window. Keyed by id so
+    // several overlays closing at once each get their own teardown, and each is
+    // disposed when its overlay is finally removed (or on component dispose).
+    private readonly Dictionary<string, DelayedDispatch> _exitDispatchers = new();
+
+    // Ids whose close has already been dispatched through HandleClose
+    // (confirm/cancel/dismiss). The destructive AlertDialog confirm path fires the
+    // close twice — HandleConfirm's OverlayService.Close, then AlertDialogAction's
+    // auto-dismiss flipping Open=false → OnOverlayClosed → Cancel. This set lets
+    // OnOverlayClosed suppress the redundant second Cancel so the same id isn't
+    // close-dispatched as both Ok and Cancel. (Battle #180.)
+    private readonly HashSet<string> _terminated = new();
+
+    // Sheet is the only overlay type whose content runs an exit (slide-out)
+    // animation, so it is the only one we keep mounted (Open=false) for the exit
+    // window before unmounting. Mirrors SheetContent's longest exit (Slide=280ms)
+    // with a small buffer so the keyframe + the final unmount don't race.
+    private const int SheetExitDurationMs = 320;
+
+    private bool _disposed;
+
+    // The cascaded Open for an overlay: true while live, false once it enters the
+    // exit-animation window (so the inner Sheet plays its slide-out).
+    private bool IsOverlayOpen(string id) => !_closing.Contains(id);
 
     protected override void OnInitialized()
     {
@@ -235,32 +267,93 @@
     private Task HandleCloseAsync(string id, object? result, bool cancelled)
     {
         var overlay = _overlays.FirstOrDefault(o => o.Id == id);
-        if (overlay is null) return Task.CompletedTask;
+        // Null when this id is already being torn down (e.g. the destructive
+        // AlertDialog's confirm-then-auto-dismiss double-dispatch, #180) — the
+        // first close already resolved the Tcs, so there is nothing left to do.
+        if (overlay is null || _closing.Contains(id)) return Task.CompletedTask;
 
-        _overlays.Remove(overlay);
-        _referenceCache.Remove(id);
-
+        // Resolve the awaiting caller immediately — the result must NOT wait on the
+        // exit animation. Only the visual teardown is deferred.
         if (cancelled)
             overlay.Tcs.TrySetResult(OverlayResult.CancelResult());
         else
             overlay.Tcs.TrySetResult(OverlayResult.Ok(result));
 
-        StateHasChanged();
+        // Sheets play a slide-out: flip the cascaded Open to false (true→false so
+        // SheetContent._exiting runs) and unmount only after the exit window.
+        // Every other overlay type has no exit animation, so unmount at once —
+        // preserving the previous behaviour exactly. (#82.)
+        if (overlay.Type == OverlayType.Sheet && SheetExitDurationMs > 0)
+        {
+            _closing.Add(id);
+            StateHasChanged();
+
+            var dispatch = new DelayedDispatch();
+            _exitDispatchers[id] = dispatch;
+            dispatch.Schedule(SheetExitDurationMs, () => InvokeAsync(() => FinishClose(id)));
+        }
+        else
+        {
+            RemoveOverlay(id);
+            StateHasChanged();
+        }
+
         return Task.CompletedTask;
+    }
+
+    // Final teardown after the exit-animation window: drop the instance and its
+    // cached reference, then re-render so the now-unmounted overlay disappears.
+    private void FinishClose(string id)
+    {
+        if (_disposed) return;
+        RemoveOverlay(id);
+        StateHasChanged();
+    }
+
+    // Removes an overlay's instance + reference + any deferred-removal timer and
+    // clears its closing bookkeeping. Safe to call once per id.
+    //
+    // NOTE: this intentionally does NOT clear `_terminated`. The destructive
+    // AlertDialog confirm removes the overlay here (via HandleConfirm →
+    // HandleCloseAsync) and only THEN runs AlertDialogAction's auto-dismiss
+    // (Open=false → OnOverlayClosed). If we dropped the `_terminated` marker now,
+    // that trailing OnOverlayClosed would no longer be suppressed and would
+    // re-dispatch the same id as a Cancel — the exact #180 double-close. The
+    // marker is keyed by a never-reused GUID, so a lingering entry can never
+    // falsely suppress a future overlay; it is cleared en masse on dispose.
+    private void RemoveOverlay(string id)
+    {
+        var overlay = _overlays.FirstOrDefault(o => o.Id == id);
+        if (overlay is not null) _overlays.Remove(overlay);
+        _referenceCache.Remove(id);
+        _closing.Remove(id);
+        if (_exitDispatchers.Remove(id, out var dispatch)) dispatch.Dispose();
     }
 
     private void OnOverlayClosed(bool isOpen, string id)
     {
-        if (!isOpen) OverlayService.Cancel(id);
+        // Only a user-initiated dismiss (Escape / backdrop / X) flips Open=false
+        // through here. Suppress it when the id has already been close-dispatched
+        // — the destructive AlertDialog confirm closes the overlay via
+        // HandleConfirm, then AlertDialogAction auto-dismisses, which would
+        // otherwise re-dispatch the same id as a Cancel (double close). (#180.)
+        if (isOpen) return;
+        if (_terminated.Contains(id) || _closing.Contains(id)) return;
+        OverlayService.Cancel(id);
     }
 
     private void HandleConfirm(string id)
     {
+        // Mark terminated BEFORE closing so the AlertDialogAction auto-dismiss that
+        // follows this confirm (Open=false → OnOverlayClosed) can't re-dispatch the
+        // same id as a Cancel. (#180.)
+        _terminated.Add(id);
         OverlayService.Close(id, true);
     }
 
     private void HandleCancel(string id)
     {
+        _terminated.Add(id);
         OverlayService.Cancel(id);
     }
 
@@ -299,9 +392,18 @@
 
     public async ValueTask DisposeAsync()
     {
+        _disposed = true;
         OverlayService.OnShow -= HandleShow;
         OverlayService.OnClose -= HandleClose;
         Responsive.ViewportChanged -= HandleViewportChanged;
+
+        // Cancel + dispose any in-flight exit-animation timers so a pending
+        // FinishClose can't fire StateHasChanged after the component is gone.
+        foreach (var dispatch in _exitDispatchers.Values)
+        {
+            dispatch.Dispose();
+        }
+        _exitDispatchers.Clear();
 
         foreach (var overlay in _overlays)
         {
@@ -309,6 +411,8 @@
         }
         _overlays.Clear();
         _referenceCache.Clear();
+        _closing.Clear();
+        _terminated.Clear();
         await Task.CompletedTask;
     }
 }

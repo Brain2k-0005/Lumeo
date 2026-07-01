@@ -17,8 +17,11 @@
             <StepsItem Title="Three" />
         </Steps>);
 
-        // Future steps render their 1-based number inside the indicator button.
-        var numbers = cut.FindAll("button span")
+        // Future steps render their 1-based number inside the indicator. The
+        // indicator is a <button> only when Clickable; otherwise it is a
+        // non-interactive element carrying aria-label (#45), so query it by
+        // aria-label rather than the button tag.
+        var numbers = cut.FindAll("[aria-label] span")
             .Select(s => s.TextContent.Trim())
             .Where(t => t is "1" or "2" or "3")
             .ToList();
@@ -36,8 +39,9 @@
         </Steps>);
 
         // Step 0 completed (Check icon), step 1 current (aria-current=step),
-        // step 2 future (renders "3").
-        var currentBefore = cut.FindAll("button[aria-current='step']");
+        // step 2 future (renders "3"). The indicator is a non-interactive
+        // element when not Clickable (#45), so match on aria-current alone.
+        var currentBefore = cut.FindAll("[aria-current='step']");
         Assert.Single(currentBefore);
 
         // Force several re-renders; with the old counter model the parent reset
@@ -47,12 +51,12 @@
             cut.Render();
         }
 
-        var currentAfter = cut.FindAll("button[aria-current='step']");
+        var currentAfter = cut.FindAll("[aria-current='step']");
         Assert.Single(currentAfter);
         Assert.Contains("Two", currentAfter[0].ParentElement!.ParentElement!.TextContent);
 
         // The third step still shows its stable 1-based number.
-        var lastNumber = cut.FindAll("button span")
+        var lastNumber = cut.FindAll("[aria-label] span")
             .Select(s => s.TextContent.Trim())
             .FirstOrDefault(t => t == "3");
         Assert.Equal("3", lastNumber);
@@ -66,15 +70,16 @@
         // render would not re-run inside the child content).
         var cut = Render<StepsRemovalHost>(p => p.Add(h => h.ShowThird, true));
 
-        Assert.Equal(3, cut.FindAll("button[aria-label]").Count);
+        Assert.Equal(3, cut.FindAll("[aria-label]").Count);
 
         cut.Render(p => p.Add(h => h.ShowThird, false));
 
         // Two steps remain, numbered 1 and 2 — no ghost index from the removed
-        // third item.
-        var buttons = cut.FindAll("button[aria-label]");
-        Assert.Equal(2, buttons.Count);
-        var numbers = cut.FindAll("button span")
+        // third item. Indicators are non-interactive elements when not Clickable
+        // (#45), so query by aria-label rather than the button tag.
+        var indicators = cut.FindAll("[aria-label]");
+        Assert.Equal(2, indicators.Count);
+        var numbers = cut.FindAll("[aria-label] span")
             .Select(s => s.TextContent.Trim())
             .Where(t => t is "1" or "2" or "3")
             .ToList();

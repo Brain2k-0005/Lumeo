@@ -4,36 +4,42 @@
    than Lucide's default 2 at this size, and `stroke-linecap/join="round"` kills the pixel-corner
    sharpness the user was seeing. *@
 
+@* Render the label, control and helper/error as ONE self-contained vertical block so the
+   field never splays into a row when dropped in a flex / centered container. Standalone
+   form-field structural fix. *@
+<div class="flex flex-col items-start">
 @if (Label is not null)
 {
     <div class="flex items-start gap-2.5">
-        <button type="button" id="@_id" role="checkbox" aria-checked="@AriaChecked"
+        <button type="button" id="@EffectiveId" role="checkbox" aria-checked="@AriaChecked"
                 aria-required="@Required.ToString().ToLowerInvariant()"
                 aria-invalid="@EffectiveInvalid.ToString().ToLowerInvariant()"
-                class="@CssClass" @onclick="Toggle" disabled="@Disabled" @attributes="AdditionalAttributes">
+                aria-describedby="@DescribedBy"
+                class="@CssClass" @onclick="Toggle" disabled="@Disabled" @attributes="EffectiveAttributes">
             @RenderIcon()
         </button>
         <div class="grid gap-1 leading-none pt-[1px]">
-            <label for="@_id" class="text-sm font-medium leading-none cursor-pointer peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+            <label for="@EffectiveId" class="text-sm font-medium leading-none cursor-pointer peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
                 @Label
                 @if (Required)
                 {
-                    <span class="text-destructive ml-0.5">*</span>
+                    <span class="text-destructive ms-0.5">*</span>
                 }
             </label>
             @if (!string.IsNullOrEmpty(Description))
             {
-                <p class="text-xs text-muted-foreground">@Description</p>
+                <p id="@_descriptionId" class="text-xs text-muted-foreground">@Description</p>
             }
         </div>
     </div>
 }
 else
 {
-    <button type="button" id="@_id" role="checkbox" aria-checked="@AriaChecked" aria-label="@AriaLabel"
+    <button type="button" id="@EffectiveId" role="checkbox" aria-checked="@AriaChecked" aria-label="@AriaLabel"
             aria-required="@Required.ToString().ToLowerInvariant()"
             aria-invalid="@EffectiveInvalid.ToString().ToLowerInvariant()"
-            class="@CssClass" @onclick="Toggle" disabled="@Disabled" @attributes="AdditionalAttributes">
+            aria-describedby="@DescribedBy"
+            class="@CssClass" @onclick="Toggle" disabled="@Disabled" @attributes="EffectiveAttributes">
         @RenderIcon()
     </button>
 }
@@ -49,6 +55,7 @@ else
         <p class="mt-1 text-xs text-muted-foreground">@HelperText</p>
     }
 }
+</div>
 
 @code {
     private RenderFragment RenderIcon() => __builder =>
@@ -113,11 +120,50 @@ else
     private bool EffectiveInvalid => Invalid || FormField?.HasError == true;
     private bool InsideFormField => FormField is not null;
 
-    private string _id = default!;
+    // Point aria-describedby at the FormField's help/error text (null outside a field).
+    private string? FormFieldDescribedBy => FormField?.DescribedBy;
 
-    protected override void OnInitialized()
+    // Only the random fallback is cached (it must stay stable across renders).
+    // The effective id is derived per render so that a runtime change to the Id
+    // parameter (or the cascaded FormField.ControlId) flows through to BOTH the
+    // <button id> and the <label for> instead of latching to the first-render value.
+    private readonly string _generatedId = LumeoIds.New("checkbox");
+
+    // Inside a FormField the generated ControlId must own the <button> id so the
+    // FormField's <Label For> always resolves to this button (Codex P2). A
+    // consumer-splatted id in AdditionalAttributes is therefore ignored in that
+    // context (and stripped from EffectiveAttributes below). Outside a FormField a
+    // splatted id wins via LumeoIds.Effective, which keeps the component's own
+    // <label for> in sync with whatever id actually lands on the button (Triage #23).
+    private string EffectiveId => InsideFormField
+        ? ((string.IsNullOrEmpty(FormField?.ControlId) ? null : FormField!.ControlId) ?? Id ?? _generatedId)
+        : LumeoIds.Effective(AdditionalAttributes, Id ?? _generatedId);
+
+    // Inside a FormField the generated id (EffectiveId above) must win on the
+    // <button>. Strip a consumer-splatted id from the attribute bag so it cannot
+    // override the explicit id= that renders before @attributes. Outside a FormField
+    // the bag passes through unchanged.
+    private Dictionary<string, object>? EffectiveAttributes =>
+        InsideFormField && AdditionalAttributes?.ContainsKey("id") == true
+            ? AdditionalAttributes.Where(kv => kv.Key != "id").ToDictionary(kv => kv.Key, kv => kv.Value)
+            : AdditionalAttributes;
+
+    // Stable id for the standalone Description <p> so it can be referenced by
+    // aria-describedby (only meaningful/rendered when Description is non-empty).
+    private readonly string _descriptionId = LumeoIds.New("checkbox-desc");
+
+    // aria-describedby points at the FormField's help/error text (inside a field) AND,
+    // when a standalone Description is shown, that description's <p>. Null/empty parts
+    // are dropped; an empty result renders as no attribute at all (not aria-describedby="").
+    private string? DescribedBy
     {
-        _id = Id ?? LumeoIds.New("checkbox");
+        get
+        {
+            var joined = Cx.Join(
+                FormFieldDescribedBy,
+                string.IsNullOrEmpty(Description) ? null : _descriptionId);
+            return string.IsNullOrEmpty(joined) ? null : joined;
+        }
     }
 
     private string AriaChecked => IsIndeterminate ? "mixed" : Checked.ToString().ToLower();

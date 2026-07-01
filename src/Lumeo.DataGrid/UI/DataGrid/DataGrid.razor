@@ -176,7 +176,7 @@
                     }
                     @($"{pendingTotal} pending change(s)")
                 </span>
-                <div class="ml-auto flex items-center gap-2">
+                <div class="ms-auto flex items-center gap-2">
                     <button type="button"
                             data-slot="datagrid-batch-save"
                             class="inline-flex h-7 items-center rounded-md bg-primary px-3 text-xs font-medium text-primary-foreground hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-2"
@@ -218,16 +218,28 @@
                         var field = _runtimeGroupFields[gi];
                         var col = EffectiveColumns.FirstOrDefault(c => c.Field == field);
                         var label = col?.Title ?? field;
-                        <span class="inline-flex items-center gap-1 rounded bg-card border border-border/60 px-2 py-0.5">
+                        @* div (not span) wrapper: the Tooltip below renders a block <div>, which a <span>
+                           cannot legally contain — the browser would auto-close the chip before the tooltip,
+                           ejecting the remove button outside the bordered chip. inline-flex keeps the inline
+                           chip layout on a div (Codex P3). *@
+                        <div class="inline-flex items-center gap-1 rounded bg-card border border-border/60 px-2 py-0.5">
                             <Blazicon Svg="Lucide.Group" class="h-3 w-3 text-muted-foreground" />
                             <span>@label</span>
-                            <button type="button"
-                                    class="inline-flex items-center justify-center h-4 w-4 rounded hover:bg-muted text-muted-foreground focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-1"
-                                    title="@L["DataGrid.RemoveGrouping"]"
-                                    @onclick="@(() => RemoveGroupField(field))">
-                                <Blazicon Svg="Lucide.X" class="h-3 w-3" />
-                            </button>
-                        </span>
+                            <Tooltip>
+                                <TooltipTrigger AsChild>
+                                    <ChildContentSlot Context="slot">
+                                        <button type="button"
+                                                class="inline-flex items-center justify-center h-4 w-4 rounded hover:bg-muted text-muted-foreground focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-1"
+                                                aria-label="@L["DataGrid.RemoveGrouping"]"
+                                                @onclick="@(() => RemoveGroupField(field))"
+                                                @attributes="slot.Attributes">
+                                            <Blazicon Svg="Lucide.X" class="h-3 w-3" />
+                                        </button>
+                                    </ChildContentSlot>
+                                </TooltipTrigger>
+                                <TooltipContent>@L["DataGrid.RemoveGrouping"]</TooltipContent>
+                            </Tooltip>
+                        </div>
                         @if (gi < _runtimeGroupFields.Count - 1)
                         {
                             <Blazicon Svg="Lucide.ChevronRight" class="h-3 w-3 text-muted-foreground/60" />
@@ -243,13 +255,21 @@
                 {
                     @* Clear-all button: lives next to the chips so it's discoverable
                        and matches the per-chip X visual. rc.41 polish. *@
-                    <button type="button"
-                            class="ml-1 inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-muted-foreground hover:bg-muted hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-1"
-                            title="@L["DataGrid.ClearAllGrouping"]"
-                            @onclick="ClearGroupFields">
-                        <Blazicon Svg="Lucide.X" class="h-3 w-3" />
-                        Clear
-                    </button>
+                    <Tooltip>
+                        <TooltipTrigger AsChild>
+                            <ChildContentSlot Context="slot">
+                                <button type="button"
+                                        class="ms-1 inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-muted-foreground hover:bg-muted hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-1"
+                                        aria-label="@L["DataGrid.ClearAllGrouping"]"
+                                        @onclick="ClearGroupFields"
+                                        @attributes="slot.Attributes">
+                                    <Blazicon Svg="Lucide.X" class="h-3 w-3" />
+                                    Clear
+                                </button>
+                            </ChildContentSlot>
+                        </TooltipTrigger>
+                        <TooltipContent>@L["DataGrid.ClearAllGrouping"]</TooltipContent>
+                    </Tooltip>
                 }
                 @if (addableCols.Count > 0)
                 {
@@ -261,10 +281,10 @@
                        picker, not a "bind a value" picker, so it shouldn't
                        maintain a selected state in the first place. *@
                     @* The DropdownMenu component itself renders a relative-inline-block
-                       wrapper div as its root, so ml-auto on the inner trigger button has
+                       wrapper div as its root, so ms-auto on the inner trigger button has
                        no effect on the flex parent. Wrap the whole component in a div that
-                       takes the ml-auto so the picker sits hard-right on the panel. *@
-                    <div class="ml-auto">
+                       takes the ms-auto so the picker sits at the inline-end of the panel. *@
+                    <div class="ms-auto">
                         <DropdownMenu>
                             <DropdownMenuTrigger>
                                 <button type="button"
@@ -674,6 +694,32 @@
 
     private string CellElementId(int row, int col) => $"{_gridId}-cell-{(row < 0 ? "h" : row.ToString())}-{col}";
 
+    // --- Selective keydown preventDefault (battle-test n=8) ---
+    // The roving-tabindex grid handles Arrow/Home/End/PageUp/PageDown to move the
+    // focused cell, and Space to toggle selection. Without suppressing the browser
+    // default these keys ALSO scroll the page/scroll-container, fighting the cell
+    // navigation. We can't use @onkeydown:preventDefault on the <td>/<th> because
+    // that directive's value is fixed at render time and would also swallow Tab
+    // (which must stay live to leave the grid). Instead we register a key-selective
+    // native preventDefault on the table once it's in the DOM — same idiom as
+    // Select/DateTimePicker/Calendar. SkipEditable keeps the inline-edit <input>'s
+    // caret/typing keys (and its own Tab/Enter/Escape handling) untouched, since
+    // those keydowns originate inside the editor input.
+    private bool _navKeysPrevented;
+    private static readonly Lumeo.Services.PreventDefaultKeyRule[] NavKeyRules =
+    [
+        new("ArrowDown",  SkipEditable: true),
+        new("ArrowUp",    SkipEditable: true),
+        new("ArrowLeft",  SkipEditable: true),
+        new("ArrowRight", SkipEditable: true),
+        new("Home",       SkipEditable: true),
+        new("End",        SkipEditable: true),
+        new("PageDown",   SkipEditable: true),
+        new("PageUp",     SkipEditable: true),
+        new(" ",          SkipEditable: true),
+        new("Spacebar",   SkipEditable: true),
+    ];
+
     /// <summary>Clamp the roving-focus coordinates to the current data extents.
     /// Called after any data/sort/filter/page change so the stored cell never
     /// dangles past the visible range.</summary>
@@ -977,7 +1023,7 @@
 
     /// <summary>
     /// The <see cref="ToolbarContent{TItem}"/> component currently registered inside
-    /// this grid (at most one). Forwarded to <see cref="DataGridToolbar"/> so it can
+    /// this grid (at most one). Forwarded to <c>DataGridToolbar</c> so it can
     /// render the custom ChildContent + Class in the toolbar's left-hand slot.
     /// </summary>
     internal ToolbarContent<TItem>? RegisteredToolbarContent { get; private set; }
@@ -1331,6 +1377,21 @@
                 var key = LayoutStorageKey ?? _layoutId;
                 await _layoutService.LoadPersistedLayoutAsync(key, ApplyLayoutAsync);
             }
+
+            // Suppress the browser default-scroll on the grid's keyboard-nav keys
+            // so Arrow/Space/Home/End/PageUp/PageDown move the roving cell instead
+            // of (or as well as) scrolling the page. Registered on the table (its
+            // id is _gridId) once it's in the DOM; cell/header keydowns bubble to
+            // it. SkipEditable leaves the inline-edit input's keys alone.
+            if (!_navKeysPrevented)
+            {
+                try
+                {
+                    await Interop.RegisterPreventDefaultKeys(_gridId, NavKeyRules);
+                    _navKeysPrevented = true;
+                }
+                catch (JSDisconnectedException) { /* circuit gone — nothing to suppress */ }
+            }
         }
 
         if (_isExpanded && _fullscreenNeedsFocus)
@@ -1490,6 +1551,45 @@
             {
                 _selectedSet = new HashSet<TItem>(_selectedItems);
                 NotifySelectionChanged();
+            }
+        }
+
+        // Re-anchor detail-expand and in-progress row-edit state onto the FRESH
+        // item instances. _expandedRows/_editingRows/_rowEditValues are keyed by
+        // TItem reference, so a same-content Items refresh that produces new
+        // instances (server-mode page fetch, parent re-fetch) would otherwise
+        // silently collapse expanded rows and discard open editors even though
+        // the logical row is still present. When SelectionKeySelector is set we
+        // remap by stable key (mirroring the _selectedItems cleanup above):
+        // entries whose key still exists are rebound to the new instance, the
+        // rest are dropped. Without a selector we leave the sets untouched —
+        // reference identity is all we have and clobbering would lose state on
+        // every benign re-render.
+        if (SelectionKeySelector is not null &&
+            (_expandedRows.Count > 0 || _editingRows.Count > 0))
+        {
+            var keyToCurrent = new Dictionary<object, TItem>();
+            foreach (var it in Items)
+            {
+                var k = SelectionKeySelector(it);
+                if (k is not null) keyToCurrent[k] = it;
+            }
+
+            RemapRowStateByKey(_expandedRows, keyToCurrent);
+            RemapRowStateByKey(_editingRows, keyToCurrent);
+
+            if (_rowEditValues.Count > 0)
+            {
+                var remappedEdits = new Dictionary<TItem, Dictionary<string, object?>>();
+                foreach (var (oldItem, dict) in _rowEditValues)
+                {
+                    var k = SelectionKeySelector(oldItem);
+                    if (k is null) remappedEdits[oldItem] = dict;
+                    else if (keyToCurrent.TryGetValue(k, out var current))
+                        remappedEdits[current] = dict;
+                    // key gone -> drop the buffered edit (row no longer exists)
+                }
+                _rowEditValues = remappedEdits;
             }
         }
 
@@ -1881,6 +1981,20 @@
             })
             .ToList();
 
+        // When the bound data is momentarily empty (an async refresh / loading
+        // cycle that lots-of-data apps do frequently), there are no sections and
+        // therefore no valid keys. Running the IntersectWith below against an
+        // empty set would WIPE _expandedGroups / _knownGroupKeys — so when the
+        // data returns every key looks "new" and gets re-expanded by default,
+        // silently discarding the user's collapse choices. Bail out before
+        // touching the expand-state sets, mirroring ProcessMultiLevelGrouping's
+        // empty-tree guard (which is why multi-level grouping never had this bug).
+        if (_groupedSections.Count == 0)
+        {
+            _displayedItems = new List<TItem>();
+            return true;
+        }
+
         var defaultChanged = _lastGroupsExpandedByDefault is not null && _lastGroupsExpandedByDefault != GroupsExpandedByDefault;
         _lastGroupsExpandedByDefault = GroupsExpandedByDefault;
 
@@ -2096,8 +2210,13 @@
 
         var hasFilter = !string.IsNullOrWhiteSpace(_globalSearch) || _filters.Count > 0;
 
-        // Seed expand state once (or when the default flips).
-        if (!_treeExpandSeeded)
+        // Seed expand state once we ACTUALLY have data. Latching this on an empty
+        // render — the normal pre-load state of an async refresh (bind new List<>(),
+        // then fill it) — would consume the one-shot seed against an empty list, so
+        // when the real data arrives the tree renders fully collapsed despite
+        // TreeGridDefaultExpanded=true. Same empty-data flicker the grouping branch
+        // guards against (see DataGridGroupCollapsePersistenceTests).
+        if (!_treeExpandSeeded && _processedItems.Count > 0)
         {
             _treeExpandSeeded = true;
             if (TreeGridDefaultExpanded)
@@ -2329,6 +2448,27 @@
 
     private bool IsRowEditing(TItem item) => _editingRows.Contains(item);
 
+    // Rebuilds a reference-keyed row-state set against fresh item instances.
+    // Each stored item is re-resolved by its SelectionKeySelector key to the
+    // current instance carrying that key; keyless entries are preserved as-is
+    // (matching the null-key reference fallback used for selection), and
+    // entries whose key has vanished from the data source are dropped. Called
+    // only when SelectionKeySelector is non-null.
+    private void RemapRowStateByKey(HashSet<TItem> set, Dictionary<object, TItem> keyToCurrent)
+    {
+        if (set.Count == 0) return;
+        var rebuilt = new HashSet<TItem>();
+        foreach (var oldItem in set)
+        {
+            var k = SelectionKeySelector!(oldItem);
+            if (k is null) rebuilt.Add(oldItem);
+            else if (keyToCurrent.TryGetValue(k, out var current)) rebuilt.Add(current);
+            // key gone -> drop (logical row removed from the data source)
+        }
+        set.Clear();
+        foreach (var it in rebuilt) set.Add(it);
+    }
+
     private void ToggleSelection(TItem item)
     {
         // Capture both ref-membership and key-membership BEFORE mutating, so a
@@ -2425,7 +2565,7 @@
     /// Invokes the <see cref="SelectedItemsChanged"/> EventCallback safely from sync
     /// call sites. The previous implementation discarded the returned Task; a faulting
     /// async consumer handler would surface as an UnobservedTaskException AND the parent
-    /// re-render after <see cref="StateHasChanged"/> could race a still-running consumer
+    /// re-render after <c>StateHasChanged</c> could race a still-running consumer
     /// callback. <see cref="Lumeo.Services.SafeAsyncDispatcher.FireAndForget"/> dispatches
     /// the InvokeAsync via the component's renderer, swallows lifecycle-class
     /// exceptions silently, and logs anything unexpected with a structured tag.
@@ -3285,6 +3425,16 @@
     {
         _layoutService?.Dispose();
         _serverService?.Dispose();
+
+        // Tear down the native keydown-preventDefault listener registered on the
+        // table in OnAfterRenderAsync so it doesn't outlive the element.
+        if (_navKeysPrevented)
+        {
+            try { await Interop.UnregisterPreventDefaultKeys(_gridId); }
+            catch (Microsoft.JSInterop.JSDisconnectedException) { /* circuit gone */ }
+            catch { /* best-effort */ }
+            _navKeysPrevented = false;
+        }
 
         // Defensive: if disposed while still in fullscreen, unlock scroll AND drop
         // the html-level fullscreen class. ToggleExpanded adds

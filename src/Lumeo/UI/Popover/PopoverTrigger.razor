@@ -1,21 +1,136 @@
 @namespace Lumeo
+@implements IAsyncDisposable
+@inject Lumeo.Services.IComponentInteropService Interop
 
-<div class="@CssClass" role="button" tabindex="0" aria-expanded="@(Context.IsOpen ? "true" : "false")" aria-haspopup="dialog" aria-controls="@(Context.IsOpen ? Context.ContentId : null)" @onclick="Toggle" @onkeydown="HandleKeyDown" @attributes="AdditionalAttributes">
-    @ChildContent
-</div>
+@if (AsChild)
+{
+    @* asChild: render NO wrapper. Cascade the slot so a cooperating child (a Lumeo
+       <Button>, or a manual <ChildContentSlot> splat) becomes the single trigger
+       element — no role=button div, no nested-interactive markup, and the child's
+       own Class/width reach the real control. Popover positions against the Popover
+       ROOT wrapper (Context.WrapperId), not this trigger, so dropping the wrapper
+       does not affect positioning — no id transfer needed. *@
+    <CascadingValue Value="Slot" IsFixed="false">
+        @if (ChildContentSlot is not null)
+        {
+            @ChildContentSlot(Slot)
+        }
+        else
+        {
+            @ChildContent
+        }
+    </CascadingValue>
+}
+else
+{
+    <div id="@EffectiveTriggerId" class="@CssClass" role="button" tabindex="0" aria-expanded="@(Context.IsOpen ? "true" : "false")" aria-haspopup="dialog" aria-controls="@(Context.IsOpen ? Context.ContentId : null)" @onclick="Toggle" @onkeydown="HandleKeyDown" @attributes="AdditionalAttributes">
+        @ChildContent
+    </div>
+}
 
 @code {
     [CascadingParameter] public Popover.PopoverContext Context { get; set; } = default!;
     [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    /// <summary>
+    /// Tier-2 escape hatch for <see cref="AsChild"/> with arbitrary (non-Lumeo) markup:
+    /// receives the <see cref="TriggerSlot"/> so the consumer can splat
+    /// <c>@attributes="slot.Attributes"</c> and wire <c>@onclick="slot.OnClick.InvokeAsync"</c>
+    /// onto their own single element. Lumeo <c>&lt;Button&gt;</c> children need only
+    /// <see cref="AsChild"/> — they consume the slot automatically.
+    /// </summary>
+    [Parameter] public RenderFragment<TriggerSlot>? ChildContentSlot { get; set; }
+
+    /// <summary>
+    /// When <c>true</c>, the trigger renders NO wrapper element and instead cascades a
+    /// <see cref="TriggerSlot"/> that a cooperating child folds onto its own single root
+    /// element — yielding ONE DOM node with merged class, composed click/keyboard, and
+    /// forwarded ARIA/state (the Radix <c>asChild</c> goal). The child must resolve to
+    /// exactly one cooperating element (a Lumeo <c>&lt;Button&gt;</c>, or a manual
+    /// <see cref="ChildContentSlot"/> splat); raw HTML/3rd-party markup receives nothing.
+    /// Default <c>false</c> preserves the current <c>role=button</c> wrapper exactly.
+    ///
+    /// Prefer a <c>&lt;button&gt;</c> child for a click-toggle trigger: a
+    /// <c>&lt;Button Href&gt;</c> renders an <c>&lt;a&gt;</c>, which natively activates
+    /// on Enter only (not Space), so Space would not open the popover.
+    /// </summary>
+    [Parameter] public bool AsChild { get; set; }
+
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
+    // Stable FALLBACK id for the role=button trigger. AsChild renders no wrapper, so
+    // this id is only emitted/registered on the non-AsChild branch below.
+    private readonly string _triggerId = LumeoIds.New("popover-trigger");
+    // The id that ACTUALLY renders on the <div>: a consumer-splatted id in AdditionalAttributes
+    // wins (it renders after the explicit id= in the markup above), else the fallback. The Space-
+    // default suppression (battle-wave2 #88) must register against THIS, not the raw _triggerId —
+    // otherwise a consumer-supplied id leaves the suppression targeting an id no element carries,
+    // so Space silently scrolls the page again while toggling the popover (Codex P3). Mirrors
+    // DialogTrigger/SheetTrigger's _id.
+    private string EffectiveTriggerId => LumeoIds.Effective(AdditionalAttributes, _triggerId);
+    private bool _pdRegistered;
+
     private string CssClass => Cx.Merge("inline-flex", Class);
+
+    private TriggerSlot Slot => new(
+        Id: null,                                 // Popover anchors positioning on its root wrapper, not the trigger
+        Class: Cx.Merge("inline-flex", Class),
+        Attributes: BuildAttrs(),
+        OnClick: EventCallback.Factory.Create<MouseEventArgs>(this, _ => Toggle()),
+        OnKeyDown: EventCallback.Factory.Create<KeyboardEventArgs>(this, HandleKeyDown));
+
+    private IReadOnlyDictionary<string, object> BuildAttrs()
+    {
+        var d = new Dictionary<string, object>
+        {
+            ["aria-haspopup"] = "dialog",
+            ["aria-expanded"] = Context.IsOpen ? "true" : "false",
+        };
+        if (Context.IsOpen) d["aria-controls"] = Context.ContentId;
+        if (AdditionalAttributes is not null)
+            foreach (var kv in AdditionalAttributes) d[kv.Key] = kv.Value; // author wins on collision
+        return d;
+    }
 
     private async Task Toggle() => await Context.SetOpen.InvokeAsync(!Context.IsOpen);
 
     private async Task HandleKeyDown(KeyboardEventArgs e)
     {
         if (e.Key is "Enter" or " ") await Toggle();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender || AsChild) return;
+        try
+        {
+            // battle-wave2 #88 (keyboard-a11y): the fallback div[role=button] has no
+            // native key synthesis, so Space both opened the popover AND scrolled the
+            // page. Suppress only Space's default synchronously in JS (Enter has no
+            // default on a div). Calling e.PreventDefault from the async @onkeydown
+            // handler is too late — the default has already fired — and
+            // @onkeydown:preventDefault would also trap Tab; the JS-side key-selective
+            // rule is the library idiom (Collapsible/Accordion/Tabs triggers).
+            await Interop.RegisterPreventDefaultKeys(
+                EffectiveTriggerId,
+                new[] { new Lumeo.Services.PreventDefaultKeyRule(" ") });
+            _pdRegistered = true;
+        }
+        catch (JSDisconnectedException) { }
+        catch (ObjectDisposedException) { }
+        catch (InvalidOperationException) { } // JS interop unavailable during prerender
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (!_pdRegistered) return;
+        try
+        {
+            await Interop.UnregisterPreventDefaultKeys(EffectiveTriggerId);
+        }
+        catch (JSDisconnectedException) { }
+        catch (ObjectDisposedException) { }
+        catch (InvalidOperationException) { }
     }
 }

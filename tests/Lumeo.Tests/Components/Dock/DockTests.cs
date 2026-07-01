@@ -1,3 +1,4 @@
+using System.Linq;
 using Bunit;
 using Xunit;
 using Lumeo.Tests.Helpers;
@@ -90,5 +91,59 @@ public class DockTests : IAsyncLifetime
             .AddChildContent("<button id='dock-app-1'>One</button><button id='dock-app-2'>Two</button>"));
 
         Assert.Equal(2, cut.FindAll("button").Count);
+    }
+
+    // ── #wave3-40 (state-on-data-change): MaxScale / MagnifyRadius changes after
+    //    first render were silently ignored because the JS dock() config is
+    //    captured into a closure once at registration. The fix re-pushes the
+    //    options (dispose-then-reregister) when either value actually changes. ──
+
+    [Fact]
+    public void Changing_MaxScale_ReApplies_Dock_With_New_Options()
+    {
+        var cut = _ctx.Render<Lumeo.Dock>(p => p
+            .Add(d => d.MaxScale, 1.8)
+            .Add(d => d.MagnifyRadius, 100));
+
+        Assert.Equal(
+            1,
+            _motionModule.Invocations.Count(i => i.Identifier == "motion.dock"));
+
+        // A runtime change to a JS-affecting parameter.
+        cut.Render(p => p.Add(d => d.MaxScale, 2.5));
+
+        // Without the fix the one-shot firstRender latch never re-applies, so the
+        // JS closure keeps the original maxScale forever. The fix tears down the
+        // prior listeners then re-registers with the new options.
+        Assert.Equal(
+            2,
+            _motionModule.Invocations.Count(i => i.Identifier == "motion.dock"));
+        Assert.Contains(
+            _motionModule.Invocations,
+            i => i.Identifier == "motion.disposeDock");
+
+        // The re-applied options carry the new maxScale (anonymous bag → reflect).
+        var last = _motionModule.Invocations.Last(i => i.Identifier == "motion.dock");
+        var options = last.Arguments[1]!;
+        var maxScale = (double)options.GetType().GetProperty("maxScale")!.GetValue(options)!;
+        Assert.Equal(2.5, maxScale);
+    }
+
+    [Fact]
+    public void Re_Render_With_Unchanged_Params_Does_Not_Re_Apply()
+    {
+        var cut = _ctx.Render<Lumeo.Dock>(p => p
+            .Add(d => d.MaxScale, 1.8)
+            .Add(d => d.MagnifyRadius, 100));
+
+        var afterFirst = _motionModule.Invocations.Count(i => i.Identifier == "motion.dock");
+
+        // An unrelated re-render that does not change a JS-affecting value.
+        cut.Render(p => p.Add(d => d.MaxScale, 1.8));
+
+        var afterReRender = _motionModule.Invocations.Count(i => i.Identifier == "motion.dock");
+
+        // Same-value re-renders must not churn the JS observer.
+        Assert.Equal(afterFirst, afterReRender);
     }
 }

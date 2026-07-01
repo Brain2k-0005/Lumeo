@@ -85,4 +85,66 @@ public class ConfirmButtonTests : IAsyncLifetime
 
         Assert.Equal(2, shown.Count);
     }
+
+    /// <summary>
+    /// #29 (lifecycle): the confirm dialog is awaited across a yield, during which
+    /// the parent can remove the ConfirmButton from the tree. Resolving the
+    /// orphaned dialog afterwards must NOT fire the destructive OnConfirm against
+    /// the torn-down component. Without the _disposed guard, OnConfirm would still
+    /// run once the dialog resolves "confirmed".
+    /// </summary>
+    [Fact]
+    public void Disposing_Mid_Dialog_Suppresses_OnConfirm_When_Dialog_Later_Resolves()
+    {
+        var confirmCount = 0;
+        OverlayInstance? instance = null;
+        _overlay.OnShow += i => instance = i;
+
+        // Host the ConfirmButton in a conditional root so we can unmount (and thus
+        // dispose) it while its dialog is still open.
+        var host = _ctx.Render<ConditionalRoot>(p => p
+            .Add(c => c.Show, true)
+            .AddChildContent<Lumeo.ConfirmButton>(cb => cb
+                .Add(b => b.OnConfirm, () => confirmCount++)));
+
+        host.Find("button").Click();
+        Assert.NotNull(instance);
+
+        // Unmount the ConfirmButton — its Dispose() runs, cancelling the dialog and
+        // latching the teardown guard.
+        host.Render(p => p.Add(c => c.Show, false));
+
+        // Simulate the (now orphaned) dialog resolving "confirmed" after disposal.
+        // TrySet is defensive in case the overlay teardown already completed it.
+        host.InvokeAsync(() => instance!.Tcs!.TrySetResult(OverlayResult.Ok(null)));
+
+        Assert.Equal(0, confirmCount);
+    }
+
+    /// <summary>
+    /// #29: unmounting a ConfirmButton with an open dialog must not throw — Dispose
+    /// tears the overlay down cleanly and never double-resolves.
+    /// </summary>
+    [Fact]
+    public void Disposing_Mid_Dialog_Does_Not_Throw()
+    {
+        OverlayInstance? instance = null;
+        _overlay.OnShow += i => instance = i;
+
+        var host = _ctx.Render<ConditionalRoot>(p => p
+            .Add(c => c.Show, true)
+            .AddChildContent<Lumeo.ConfirmButton>(cb => cb
+                .Add(b => b.OnConfirm, () => { })));
+
+        host.Find("button").Click();
+        Assert.NotNull(instance);
+
+        var ex = Record.Exception(() =>
+        {
+            host.Render(p => p.Add(c => c.Show, false));
+            host.InvokeAsync(() => instance!.Tcs!.TrySetResult(OverlayResult.Ok(null)));
+        });
+
+        Assert.Null(ex);
+    }
 }

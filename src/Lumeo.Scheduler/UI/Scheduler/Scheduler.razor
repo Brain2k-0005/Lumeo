@@ -153,6 +153,13 @@ else
     // been replaced by the parent since init).
     private List<SchedulerEvent> _events = new();
 
+    // CONTROLLED discriminator: hash of the events collection most recently pushed via
+    // EventsChanged (also re-synced whenever we adopt an authoritative Events collection).
+    // A controlled parent re-render that echoes back this exact collection is safe to
+    // ignore (keep in-flight state); any other collection is an authoritative assertion
+    // (veto / normalization / reset) and must win.
+    private int _lastPushedEventsHash;
+
     // Resolved resource lookup — built once and used for both legend rendering
     // and event color-coding in ToJsEvent.
     private List<SchedulerResource> _resolvedResources = new();
@@ -163,6 +170,7 @@ else
         _currentView = InitialView;
         _events = Events?.ToList() ?? new List<SchedulerEvent>();
         _lastEventsHash = ComputeEventsHash(_events);
+        _lastPushedEventsHash = _lastEventsHash;
         _title = ComputeTitle(InitialDate ?? DateTime.Today, _currentView);
         RebuildResourceLookup();
     }
@@ -176,12 +184,32 @@ else
         {
             var incoming = Events.ToList();
             var hash = ComputeEventsHash(incoming);
-            if (hash != _lastEventsHash)
+
+            bool shouldAdopt;
+            if (EventsChanged.HasDelegate)
             {
-                _lastEventsHash = hash;
+                // CONTROLLED: the parent owns the collection.
+                // Echo of our own push (hash == _lastPushedEventsHash) → keep in-flight state.
+                // Anything else (veto, normalization, reset) → adopt the parent's assertion.
+                shouldAdopt = hash != _lastPushedEventsHash;
+            }
+            else
+            {
+                // UNCONTROLLED: component owns the live collection.
+                // Adopt the parameter only when the parent genuinely changes it; a stale
+                // re-render that re-supplies the same collection must not clobber local edits.
+                shouldAdopt = hash != _lastEventsHash;
+            }
+
+            if (shouldAdopt)
+            {
                 _events = incoming;
+                _lastPushedEventsHash = hash;
                 await Interop.SchedulerSetEventsAsync(_instanceId!, incoming.Select(ToJsEvent).Cast<object>());
             }
+
+            // Keep the uncontrolled discriminator pointing at the last Events hash observed.
+            _lastEventsHash = hash;
         }
     }
 
@@ -190,6 +218,13 @@ else
         if (!firstRender || _initialized) return;
 
         _selfRef = DotNetObjectReference.Create(this);
+
+        // Snapshot exactly what init is about to render. OnParametersSetAsync drops any
+        // Events refresh that arrives while _initialized is still false (the init is an
+        // async JS handshake), so the parent's latest events can land AFTER these options
+        // were captured but BEFORE init completes. We re-read Events post-init and push
+        // the delta so that mid-init refresh is never silently lost.
+        var initEventsHash = _lastEventsHash;
 
         var options = new
         {
@@ -211,6 +246,22 @@ else
         {
             _instanceId = await Interop.SchedulerInitAsync(_hostRef, _selfRef, options);
             _initialized = true;
+
+            // Reconcile against the latest Events: if the parent swapped them while init
+            // was in flight, init rendered the stale snapshot — push the current set now.
+            if (Events is not null)
+            {
+                var current = Events.ToList();
+                var currentHash = ComputeEventsHash(current);
+                if (currentHash != initEventsHash)
+                {
+                    _events = current;
+                    _lastEventsHash = currentHash;
+                    _lastPushedEventsHash = currentHash;
+                    await Interop.SchedulerSetEventsAsync(_instanceId, current.Select(ToJsEvent).Cast<object>());
+                }
+            }
+
             // Read the real title from FullCalendar now that the view is rendered.
             _title = await Interop.SchedulerGetTitleAsync(_instanceId);
             StateHasChanged();
@@ -247,13 +298,27 @@ else
         // recurrence model: the start/end fields become time-of-day values only.
         if (ev.DaysOfWeek is { Count: > 0 })
         {
+            // Cross-midnight / next-day recurring events: when the end time-of-day is at or
+            // before the start time-of-day, emitting endTime literally (e.g. start 22:00,
+            // end 02:00) hands FullCalendar an end EARLIER than the start, which it silently
+            // mis-renders (zero/negative-length chip). Express the span as an explicit
+            // duration instead — FullCalendar adds it to startTime per occurrence, correctly
+            // carrying the event past midnight. The real elapsed span (End - Start) is the
+            // source of truth, so even a >24h recurring window is represented faithfully.
+            var span = ev.End - ev.Start;
+            var crossesMidnight = ev.End.TimeOfDay <= ev.Start.TimeOfDay;
             return new
             {
                 id = ev.Id,
                 title = ev.Title,
                 // Time-of-day string for recurring events (HH:mm:ss).
                 startTime = ev.Start.ToString("HH:mm:ss"),
-                endTime = ev.End.ToString("HH:mm:ss"),
+                // Same-day window: keep the literal endTime (unchanged normal path).
+                // Cross-midnight window: omit endTime and supply a duration instead.
+                endTime = crossesMidnight ? (string?)null : ev.End.ToString("HH:mm:ss"),
+                duration = crossesMidnight && span > TimeSpan.Zero
+                    ? $"{(int)span.TotalHours:D2}:{span.Minutes:D2}:{span.Seconds:D2}"
+                    : (string?)null,
                 daysOfWeek = ev.DaysOfWeek.Select(d => (int)d).ToArray(),
                 startRecur = ev.Start.ToString("yyyy-MM-dd"),
                 endRecur = ev.RecurrenceEnd.HasValue
@@ -286,7 +351,19 @@ else
     private void RebuildResourceLookup()
     {
         _resolvedResources = Resources?.ToList() ?? new List<SchedulerResource>();
-        _resourceById = _resolvedResources.ToDictionary(r => r.Id, StringComparer.Ordinal);
+
+        // Duplicate (or null) resource Ids must not throw. ToDictionary blows up on a
+        // duplicate key, taking down the whole render; consumers may legitimately pass a
+        // list with repeated/blank Ids (e.g. a merged or partially-populated source).
+        // Build defensively instead — last entry wins, and null Ids are skipped (they can
+        // never be matched by SchedulerEvent.ResourceId lookups anyway).
+        var lookup = new Dictionary<string, SchedulerResource>(StringComparer.Ordinal);
+        foreach (var r in _resolvedResources)
+        {
+            if (r.Id is null) continue;
+            lookup[r.Id] = r;
+        }
+        _resourceById = lookup;
     }
 
     private static int ComputeEventsHash(IEnumerable<SchedulerEvent> events)
@@ -302,9 +379,38 @@ else
             hash.Add(ev.End);
             hash.Add(ev.AllDay);
             hash.Add(ev.Color);
+            hash.Add(ev.Url);
             hash.Add(ev.ResourceId);
-            hash.Add(ev.DaysOfWeek?.Count ?? 0);
+            hash.Add(ev.ClassNames);
             hash.Add(ev.RecurrenceEnd);
+
+            // Hash the recurrence rule by value — not just its length. Folding only
+            // DaysOfWeek.Count missed edits that swap days without changing the count
+            // (e.g. {Mon} → {Tue}), so the calendar never re-rendered.
+            if (ev.DaysOfWeek is { Count: > 0 })
+            {
+                foreach (var d in ev.DaysOfWeek)
+                    hash.Add((int)d);
+            }
+
+            // ExceptionDates carry real recurrence edits (skip/un-skip a day);
+            // omitting them suppressed the JS round-trip entirely.
+            if (ev.ExceptionDates is { Count: > 0 })
+            {
+                foreach (var ex in ev.ExceptionDates)
+                    hash.Add(ex);
+            }
+
+            // ExtendedProps is arbitrary app metadata round-tripped to JS; fold a
+            // stable per-entry signature so changing a value is detected.
+            if (ev.ExtendedProps is { Count: > 0 })
+            {
+                foreach (var kvp in ev.ExtendedProps)
+                {
+                    hash.Add(kvp.Key);
+                    hash.Add(kvp.Value);
+                }
+            }
         }
         return hash.ToHashCode();
     }
@@ -384,15 +490,38 @@ else
         // field it omits — DaysOfWeek/RecurrenceEnd/ExceptionDates/ResourceId/
         // ClassNames — turning a recurring event into a one-off. Merge the new
         // window onto the existing record so the rest of the rule survives.
-        var idx = _events.FindIndex(e => e.Id == ev.Id);
-        if (idx >= 0)
+        //
+        // Reconcile by Id, but only when the Id resolves UNAMBIGUOUSLY. A blank Id can't
+        // identify a unique record (a plain FindIndex would match the first blank-Id event,
+        // or none), and a duplicate Id is genuinely ambiguous — silently mutating the first
+        // match would corrupt the wrong record. In both cases skip the in-place merge and
+        // surface only the JS payload, leaving the stored collection untouched.
+        var matches = 0;
+        var idx = -1;
+        if (!string.IsNullOrEmpty(ev.Id))
+        {
+            for (var i = 0; i < _events.Count; i++)
+            {
+                if (_events[i].Id == ev.Id)
+                {
+                    matches++;
+                    if (idx < 0) idx = i;
+                }
+            }
+        }
+
+        if (idx >= 0 && matches == 1)
         {
             var existing = _events[idx];
             ev = existing with { Start = ev.Start, End = ev.End, AllDay = ev.AllDay };
             _events[idx] = ev;
         }
 
-        _lastEventsHash = ComputeEventsHash(_events);
+        // Record _lastPushedEventsHash BEFORE invoking EventsChanged: a controlled parent
+        // re-renders synchronously inside InvokeAsync, so OnParametersSetAsync must already
+        // see this hash as "the value we just pushed" to distinguish an accepted echo (keep
+        // in-flight state) from a veto (parent kept its old collection → roll back).
+        _lastPushedEventsHash = ComputeEventsHash(_events);
 
         if (OnEventChange.HasDelegate) await OnEventChange.InvokeAsync(ev);
         if (EventsChanged.HasDelegate) await EventsChanged.InvokeAsync(_events.ToList());

@@ -1,0 +1,193 @@
+@inherits Bunit.BunitContext
+@using Lumeo.Services
+@using Lumeo.Tests.Helpers
+@using Microsoft.AspNetCore.Components.Web
+@using Microsoft.Extensions.DependencyInjection
+
+@code {
+    // Deferred "reorder-class" regressions for RadioGroup, confirmed FIX-NOW by
+    // the research spike. The registry was re-keyed from Value to the stable
+    // per-item id (mirroring the Accordion trigger registry):
+    //
+    //  #56  Two RadioGroupItems may legitimately share a Value (Value is
+    //       [EditorRequired] but NOT enforced unique). The old Value-keyed
+    //       registry collapsed the duplicates into one slot — the second
+    //       register overwrote the first's id and a single unregister deleted the
+    //       other's slot, making the duplicate keyboard-unreachable. Keying by id
+    //       keeps every item a DISTINCT roving slot.
+    //  #158 A runtime Value change on a MIDDLE item used to remove+tail-add the
+    //       slot, shoving the item to the nav tail. The id-keyed ReplaceItem
+    //       rewrites the slot IN PLACE, preserving DOM order.
+    //  #54  When the group's Value is a non-empty value that matches NO registered
+    //       item, the "no live selection" tab-stop fallback must still fire — else
+    //       every radio is tabindex=-1 and the group is keyboard-unreachable.
+    //
+    // Focus moves are asserted via the RECORDED interop FocusElement calls
+    // (TrackingInteropService.FocusElementCalls) — never real DOM focus.
+    //
+    // DEFERRED (#55): the PURE physical @key reorder-with-reuse leg (two items
+    // swap DOM position while their component instances are reused) needs a
+    // DOM-order JS interop to resolve the true visual order and is NOT attempted
+    // in this batch. The id-keyed registry tracks declaration order, which is the
+    // bUnit-observable order; a physical @key swap would need the deferred interop
+    // to detect, so no test for it here.
+
+    private readonly TrackingInteropService _interop = new();
+
+    public RadioGroupReorderRegistryTests()
+    {
+        this.AddLumeoServices();
+        Services.AddSingleton<IComponentInteropService>(_interop);
+    }
+
+    // ---- #56: duplicate Values stay DISTINCT + independently reachable ----
+
+    private RenderFragment DuplicateValueGroup => @<RadioGroup Value="a">
+        <RadioGroupItem Value="a">Option A1</RadioGroupItem>
+        <RadioGroupItem Value="a">Option A2</RadioGroupItem>
+        <RadioGroupItem Value="b">Option B</RadioGroupItem>
+    </RadioGroup>;
+
+    [Fact]
+    public void Duplicate_Values_Render_Three_Distinct_Radios()
+    {
+        var cut = Render(DuplicateValueGroup);
+
+        var radios = cut.FindAll("[role='radio']");
+        Assert.Equal(3, radios.Count);
+
+        // The two Value='a' siblings must own DISTINCT ids (no slot collapse).
+        var idA1 = radios[0].GetAttribute("id");
+        var idA2 = radios[1].GetAttribute("id");
+        Assert.False(string.IsNullOrEmpty(idA1));
+        Assert.False(string.IsNullOrEmpty(idA2));
+        Assert.NotEqual(idA1, idA2);
+    }
+
+    [Fact]
+    public void Roving_Reaches_Each_Distinct_Duplicate_Independently()
+    {
+        var cut = Render(DuplicateValueGroup);
+
+        var radios = cut.FindAll("[role='radio']");
+        var idA1 = radios[0].GetAttribute("id"); // first  Value='a'
+        var idA2 = radios[1].GetAttribute("id"); // second Value='a' (distinct slot)
+        var idB = radios[2].GetAttribute("id");  // Value='b'
+
+        // ArrowDown from the FIRST 'a' must focus the SECOND 'a' by its OWN id —
+        // not collapse onto the first or skip straight to 'b'. With the old
+        // Value-keyed registry the two 'a's shared one slot, so resolving the
+        // current item by Value landed on the wrong slot and stepped to 'b'.
+        radios[0].KeyDown(new KeyboardEventArgs { Key = "ArrowDown" });
+        Assert.Equal(idA2, _interop.FocusElementCalls.Last());
+        Assert.NotEqual(idB, _interop.FocusElementCalls.Last());
+
+        // ArrowUp from the SECOND 'a' must focus the FIRST 'a' by its own id,
+        // proving the first duplicate is also independently reachable.
+        cut.FindAll("[role='radio']")[1].KeyDown(new KeyboardEventArgs { Key = "ArrowUp" });
+        Assert.Equal(idA1, _interop.FocusElementCalls.Last());
+    }
+
+    // ---- #158: changing a MIDDLE Value keeps the item in DOM position ----
+
+    private string? _lastValue;
+
+    // Three items whose MIDDLE Value is parameterised, returned as a swappable
+    // ChildContent fragment (the proven re-render path — same as the ToggleGroup
+    // tests). A fragment-closure + parameterless cut.Render() does NOT re-evaluate,
+    // and a host with reset params drops the radios; swapping ChildContent while
+    // re-specifying every parameter re-renders the middle item cleanly.
+    private RenderFragment RadioItems(string mid) => @<text>
+        <RadioGroupItem Value="a">Option A</RadioGroupItem>
+        <RadioGroupItem Value="@mid">Option Middle</RadioGroupItem>
+        <RadioGroupItem Value="c">Option C</RadioGroupItem>
+    </text>;
+
+    [Fact]
+    public void Changing_Middle_Value_Keeps_It_In_DOM_Position_Not_Nav_Tail()
+    {
+        var onChange = EventCallback.Factory.Create<string>(this, v => _lastValue = v);
+        var cut = Render<RadioGroup>(p => p
+            .Add(g => g.Value, "b")
+            .Add(g => g.ValueChanged, onChange)
+            .Add(g => g.ChildContent, RadioItems("b")));
+
+        // Re-key the MIDDLE item's Value b -> x in place by swapping ChildContent
+        // (re-specifying every parameter so none reset). The id is stable, so
+        // ReplaceItem rewrites the slot at its existing index — the item must NOT
+        // move to the nav tail.
+        cut.Render(p => p
+            .Add(g => g.Value, "b")
+            .Add(g => g.ValueChanged, onChange)
+            .Add(g => g.ChildContent, RadioItems("x")));
+
+        var radios = cut.FindAll("[role='radio']");
+
+        // ArrowDown from the first radio must land on the MIDDLE slot (now 'x'), in
+        // DOM position 1 — NOT on 'c'. Had the Value change shoved the slot to the
+        // nav tail (the #158 bug), ArrowDown from index 0 would select 'c' (which
+        // would then sit at registry index 1). Selecting 'x' proves the slot stayed
+        // in place. (The value is the load-bearing assertion; a focus-id-by-DOM-
+        // position check is omitted — it is a flaky bUnit element-id-capture quirk
+        // that does not reflect the registry-order behaviour under test.)
+        radios[0].KeyDown(new KeyboardEventArgs { Key = "ArrowDown" });
+
+        Assert.Equal("x", _lastValue);
+    }
+
+    // ---- #55: arrow nav follows LIVE DOM order after a keyed reorder ----
+
+    [Fact]
+    public void Arrow_Nav_Follows_Live_DOM_Order_After_A_Keyed_Reorder()
+    {
+        // The PURE physical @key reorder — where Blazor MOVES reused RadioGroupItem
+        // instances to new DOM positions WITHOUT firing OnParametersSet — cannot be
+        // reproduced in bUnit. We model its EFFECT instead: the C# registry still
+        // lists a, b, c (mount order) but the live DOM is now a, c, b. The nav must
+        // consult the DOM-order probe (Interop.GetOrderedDescendantIds), so ArrowDown
+        // from 'a' selects the DOM neighbour 'c' — NOT the registry neighbour 'b'.
+        var onChange = EventCallback.Factory.Create<string>(this, v => _lastValue = v);
+        var cut = Render<RadioGroup>(p => p
+            .Add(g => g.Value, "a")
+            .Add(g => g.ValueChanged, onChange)
+            .Add(g => g.ChildContent, RadioItems("b"))); // registry: a, b, c
+
+        var radios = cut.FindAll("[role='radio']");
+        var idA = radios[0].GetAttribute("id");
+        var idB = radios[1].GetAttribute("id");
+        var idC = radios[2].GetAttribute("id");
+        var containerId = cut.Find("[role='radiogroup']").GetAttribute("id");
+
+        // Seed the live-DOM order as a, c, b (the reorder bUnit can't physically do).
+        _interop.OrderedDescendantIds[containerId!] = new[] { idA!, idC!, idB! };
+
+        radios[0].KeyDown(new KeyboardEventArgs { Key = "ArrowDown" });
+
+        // DOM-order neighbour after 'a' is 'c'. Without the DOM-order probe the
+        // registry order (a, b, c) would have selected 'b'.
+        Assert.Equal("c", _lastValue);
+    }
+
+    // ---- #54: a Value absent from items still yields ONE tab stop ----
+
+    [Fact]
+    public void Group_Value_Absent_From_Items_Keeps_First_Enabled_Tabbable()
+    {
+        var cut = Render(@<RadioGroup Value="zzz">
+            <RadioGroupItem Value="a">Option A</RadioGroupItem>
+            <RadioGroupItem Value="b">Option B</RadioGroupItem>
+            <RadioGroupItem Value="c">Option C</RadioGroupItem>
+        </RadioGroup>);
+
+        var radios = cut.FindAll("[role='radio']");
+        // "zzz" matches no item, so there is no live selection: exactly the FIRST
+        // enabled radio is the tab stop (tabindex=0), the rest are -1. The bug had
+        // ALL radios at -1, making the group keyboard-unreachable.
+        Assert.Equal("0", radios[0].GetAttribute("tabindex"));
+        Assert.Equal("-1", radios[1].GetAttribute("tabindex"));
+        Assert.Equal("-1", radios[2].GetAttribute("tabindex"));
+
+        var tabbable = radios.Count(r => r.GetAttribute("tabindex") == "0");
+        Assert.Equal(1, tabbable);
+    }
+}

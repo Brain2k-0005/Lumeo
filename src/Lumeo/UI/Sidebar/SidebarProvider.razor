@@ -6,7 +6,7 @@
 
 @{
     var context = new SidebarState(
-        IsCollapsed,
+        EffectiveIsCollapsed,
         EventCallback.Factory.Create(this, Toggle),
         Variant)
     {
@@ -73,11 +73,50 @@
     private string? _registeredShortcut;
     private bool _viewportSubscribed;
 
+    // Uncontrolled collapse state lives in a private backing field, NOT in the
+    // [Parameter] IsCollapsed. Blazor re-applies [Parameter] values from the parent
+    // on every render, so self-managing state (Toggle, the PersistCollapsed restore)
+    // by writing back into IsCollapsed got silently clobbered whenever an unrelated
+    // parent re-render pushed the original literal IsCollapsed value down again —
+    // most damagingly wiping a value just restored from localStorage. Mirrors the
+    // Collapsible fix (#246). (#11)
+    private bool _isCollapsed;
+    private bool _initialized;
+    private bool _lastCollapsedParam;
+
+    // Last value actually written to localStorage. Drives a single persistence path
+    // (PersistIfChangedAsync, run every render) so EVERY effective-collapsed change is
+    // saved — not just the Toggle() one. Parameter-/@bind-driven collapse changes used
+    // to slip past persistence (only Toggle wrote), leaving localStorage stale. (#101)
+    // Nullable so the first run can adopt the rendered state as the baseline without an
+    // immediate redundant write.
+    private bool? _lastPersisted;
+
+    // State the cascade actually renders from. Controlled (IsCollapsedChanged bound):
+    // the parent owns it, so mirror IsCollapsed verbatim. Uncontrolled: use our own
+    // backing field so parent re-renders — and same-literal parameter pushes after a
+    // localStorage restore — can't clobber it.
+    private bool EffectiveIsCollapsed => IsCollapsedChanged.HasDelegate ? IsCollapsed : _isCollapsed;
+
     // True when the sidebar should render + behave as collapsed for descendants. For
     // MiniRail this is IsCollapsed unless the user is hovering / keyboard-focused on
     // the rail. Other variants ignore the hover state.
     private bool EffectiveCollapsed
-        => IsCollapsed && !(Variant == SidebarVariant.MiniRail && _hoverExpanded);
+        => EffectiveIsCollapsed && !(Variant == SidebarVariant.MiniRail && _hoverExpanded);
+
+    protected override void OnParametersSet()
+    {
+        // Seed the uncontrolled backing field from IsCollapsed on first set (honours
+        // an initial IsCollapsed="true") and whenever the bound IsCollapsed value
+        // actually changes (lets callers still drive it imperatively), but never on
+        // the no-op re-applications that caused the reset / localStorage clobber.
+        if (!_initialized || IsCollapsed != _lastCollapsedParam)
+        {
+            _isCollapsed = IsCollapsed;
+            _lastCollapsedParam = IsCollapsed;
+            _initialized = true;
+        }
+    }
 
     // Off-canvas sheet behaviour only kicks in on mobile, and only when opted in.
     private bool IsMobileSheet => MobileSheet && Responsive.IsMobile;
@@ -96,14 +135,24 @@
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         // React to viewport changes so the mobile-sheet treatment flips on the
-        // md boundary without a manual refresh.
-        if (firstRender && MobileSheet && !_viewportSubscribed)
+        // md boundary without a manual refresh. NOT firstRender-gated: MobileSheet
+        // can be toggled false→true after the first render, and the subscription
+        // (and md-boundary flip) must still come alive then. _viewportSubscribed
+        // keeps it idempotent across re-renders. Symmetrically unsubscribe when
+        // MobileSheet flips back to false so we don't keep reacting to viewport
+        // changes that no longer affect this provider. (#102)
+        if (MobileSheet && !_viewportSubscribed)
         {
             _viewportSubscribed = true;
             Responsive.ViewportChanged += OnViewportChanged;
             try { await Responsive.EnsureInitialisedAsync(); }
             catch (Microsoft.JSInterop.JSDisconnectedException) { }
             StateHasChanged();
+        }
+        else if (!MobileSheet && _viewportSubscribed)
+        {
+            _viewportSubscribed = false;
+            Responsive.ViewportChanged -= OnViewportChanged;
         }
 
         // Run every render (not just firstRender) so a changed ToggleShortcut
@@ -116,14 +165,27 @@
             {
                 var stored = await Interop.LoadFromLocalStorage(PersistenceKey);
                 // Only restore if storage actually held a value AND it differs from the
-                // current parameter — avoids a redundant cascade refresh on every mount.
+                // currently effective state — avoids a redundant cascade refresh on
+                // every mount.
                 if (stored is "true" or "false")
                 {
                     var restored = stored == "true";
-                    if (restored != IsCollapsed)
+                    // The stored value IS the persisted baseline — record it so the
+                    // central PersistIfChangedAsync below doesn't immediately re-write the
+                    // same value we just read back.
+                    _lastPersisted = restored;
+                    if (restored != EffectiveIsCollapsed)
                     {
-                        IsCollapsed = restored;
-                        await IsCollapsedChanged.InvokeAsync(IsCollapsed);
+                        // Write the restored value into our backing field (the
+                        // uncontrolled source of truth) so a later same-literal
+                        // IsCollapsed parameter push can't clobber it — the whole point
+                        // of the fix. Deliberately do NOT touch _lastCollapsedParam: it
+                        // mirrors the *parameter*, which the consumer hasn't changed, so
+                        // OnParametersSet must treat the re-applied literal as a no-op
+                        // and leave the restored state intact. Also notify the parent so
+                        // a controlled consumer can adopt the persisted value.
+                        _isCollapsed = restored;
+                        await IsCollapsedChanged.InvokeAsync(restored);
                         StateHasChanged();
                     }
                 }
@@ -134,6 +196,35 @@
                 // Fall through silently — the cascade keeps the parameter default.
             }
         }
+
+        // Persist whenever the effective collapsed state has drifted from what's in
+        // localStorage — covers parameter-/@bind-driven changes (which never went through
+        // Toggle) as well as the Toggle path, so localStorage can't go stale. Runs after
+        // the restore block so the just-read baseline isn't immediately re-written. (#101)
+        await PersistIfChangedAsync(firstRender);
+    }
+
+    // Writes the current EffectiveIsCollapsed to localStorage iff it differs from the last
+    // persisted value. Single source of persistence for every collapse change. No-op when
+    // PersistCollapsed is off. On the first render we only ADOPT the rendered state as the
+    // baseline (no write) unless the restore block already seeded one — mounting shouldn't
+    // newly stamp localStorage; only genuine changes after mount do. (#101)
+    private async Task PersistIfChangedAsync(bool firstRender)
+    {
+        if (!PersistCollapsed) return;
+        var current = EffectiveIsCollapsed;
+        if (firstRender && _lastPersisted is null)
+        {
+            // Empty storage on mount: take the current state as the baseline silently so
+            // we don't write the initial (unchanged) value — preserves the original
+            // restore-only-on-mount contract.
+            _lastPersisted = current;
+            return;
+        }
+        if (_lastPersisted == current) return;
+        _lastPersisted = current;
+        try { await Interop.SaveToLocalStorage(PersistenceKey, current ? "true" : "false"); }
+        catch (Microsoft.JSInterop.JSDisconnectedException) { }
     }
 
     // (Re)registers the toggle shortcut when ToggleShortcut changes. Releases a
@@ -165,14 +256,22 @@
 
     private async Task Toggle()
     {
-        IsCollapsed = !IsCollapsed;
-        await IsCollapsedChanged.InvokeAsync(IsCollapsed);
+        var next = !EffectiveIsCollapsed;
+        // Uncontrolled (IsCollapsedChanged not bound): self-manage via the backing
+        // field so an unrelated parent re-render — which re-applies the original
+        // literal IsCollapsed — can't revert the toggle. Deliberately do NOT touch
+        // _lastCollapsedParam: the *parameter* hasn't changed, so OnParametersSet must
+        // keep treating the re-applied literal as a no-op. Controlled: don't mutate our
+        // own state — fire the callback and render from the value the parent pushes
+        // back down (OnParametersSet re-seeds when it differs), so we never desync if
+        // the parent rejects or transforms the change. Mirrors Collapsible (#246). (#11)
+        if (!IsCollapsedChanged.HasDelegate)
+            _isCollapsed = next;
+        await IsCollapsedChanged.InvokeAsync(next);
         await InvokeAsync(StateHasChanged);
-        if (PersistCollapsed)
-        {
-            try { await Interop.SaveToLocalStorage(PersistenceKey, IsCollapsed ? "true" : "false"); }
-            catch (Microsoft.JSInterop.JSDisconnectedException) { }
-        }
+        // Persistence is centralised in PersistIfChangedAsync (run from OnAfterRenderAsync
+        // after the StateHasChanged above re-renders), so a parameter-driven change is
+        // persisted just like this toggle — no per-callsite write needed here. (#101)
     }
 
     // Called by SidebarComponent's @onmouseenter / @onmouseleave / focus handlers.
@@ -224,11 +323,11 @@
     /// <summary>
     /// Layout strategy for the sidebar.
     /// <list type="bullet">
-    /// <item><c>Push</c> &mdash; collapses to zero width, pushing main content to the edge.</item>
-    /// <item><c>Overlay</c> &mdash; floats above content with a dismissible scrim.</item>
-    /// <item><c>Icon</c> &mdash; collapses to a narrow icon rail that stays put until toggled back.</item>
-    /// <item><c>MiniRail</c> &mdash; same icon-rail width when collapsed, but expands to full
-    /// width on hover or keyboard focus and collapses again on leave. Material&rsquo;s standard
+    /// <item><c>Push</c> — collapses to zero width, pushing main content to the edge.</item>
+    /// <item><c>Overlay</c> — floats above content with a dismissible scrim.</item>
+    /// <item><c>Icon</c> — collapses to a narrow icon rail that stays put until toggled back.</item>
+    /// <item><c>MiniRail</c> — same icon-rail width when collapsed, but expands to full
+    /// width on hover or keyboard focus and collapses again on leave. Material’s standard
     /// collapsed-sidebar pattern; uses <c>Toggle()</c> to pin open.</item>
     /// </list>
     /// </summary>

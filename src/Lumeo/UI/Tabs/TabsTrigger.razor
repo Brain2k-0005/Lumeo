@@ -38,14 +38,24 @@
     {
         <span class="inline-flex shrink-0">@IconContent</span>
     }
-    @ChildContent
+    @if (Context.IconReveal)
+    {
+        @* Icon-reveal: the label collapses to 0 width when inactive and animates open
+           on the active tab (CSS grid 0fr→1fr + fade). The inner span clips the text
+           during the transition; it stays in the DOM so it's always reachable to AT. *@
+        <span class="lumeo-tab-label@(IsActive ? " lumeo-tab-label-open" : "")"><span>@ChildContent</span></span>
+    }
+    else
+    {
+        @ChildContent
+    }
     @if (TrailingContent is not null)
     {
         <span class="inline-flex shrink-0">@TrailingContent</span>
     }
     @if (IsClosable)
     {
-        <span class="ml-1 inline-flex items-center justify-center rounded-sm cursor-pointer opacity-70 hover:opacity-100 transition-opacity h-11 w-11 -my-2 sm:h-4 sm:w-4 sm:my-0 focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-1"
+        <span class="ms-1 inline-flex items-center justify-center rounded-sm cursor-pointer opacity-70 hover:opacity-100 transition-opacity h-11 w-11 -my-2 sm:h-4 sm:w-4 sm:my-0 focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-1"
               @onclick="HandleClose" @onclick:stopPropagation="true"
               role="button" aria-label="@L["Tabs.CloseTab"]">
             <Blazicon Svg="Lucide.X" class="h-3 w-3" />
@@ -59,6 +69,14 @@
 @code {
     [CascadingParameter] public Tabs.TabsContext Context { get; set; } = default!;
     [CascadingParameter] private Lumeo.Density? Density { get; set; }
+
+    // A scoped <DirectionProvider> cascades its direction here; when present it
+    // wins over the global ThemeService so a subtree can be RTL even if the app
+    // is LTR (and vice versa). Null when no provider wraps this tab — then the
+    // ambient theme direction applies.
+    [CascadingParameter(Name = "LumeoDirection")] private LayoutDirection? ScopedDirection { get; set; }
+    private LayoutDirection EffectiveDirection => ScopedDirection ?? Theme.CurrentDirection;
+
     [Parameter] public RenderFragment? ChildContent { get; set; }
 
     /// <summary>Icon slot. Named <c>IconContent</c> to avoid shadowing the <c>&lt;Icon&gt;</c> component.</summary>
@@ -163,7 +181,7 @@
             // list's edge border; base rounded-md must not survive there.
             var isVerticalTabs = Context.Orientation == Lumeo.Orientation.Vertical;
             var cardGeometry = isVerticalTabs
-                ? "rounded-l-lg rounded-r-none border border-r-0 -mr-px"
+                ? "rounded-s-lg rounded-e-none border border-e-0 -me-px"
                 : "rounded-t-lg rounded-b-none border border-b-0 -mb-px";
             var variantClasses = CurrentVariant switch
             {
@@ -195,7 +213,10 @@
                 ? " ring-2 ring-primary ring-offset-0"
                 : " ring-2 ring-primary ring-offset-0";
 
-            return Cx.Merge("inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md", PadClass, "text-sm font-medium cursor-pointer transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 disabled:cursor-not-allowed", variantClasses, disabledClasses, reorderClasses, Class);
+            // In IconReveal mode the label span owns its spacing via margin-left, so
+            // drop the inter-child gap (otherwise an icon-only inactive tab keeps a
+            // trailing 0.5rem gap and the icon sits off-centre).
+            return Cx.Merge("inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md", PadClass, "text-sm font-medium cursor-pointer transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 disabled:cursor-not-allowed", variantClasses, disabledClasses, reorderClasses, Cx.When(Context.IconReveal, "gap-0"), Class);
         }
     }
 
@@ -257,12 +278,31 @@
         // button inside the tab button would be invalid HTML).
         if (e.Key == "Delete" && IsClosable)
         {
+            // Capture the focus target BEFORE closing: this tab's button is about to
+            // vanish, so move focus to the next enabled tab (or the previous if this
+            // was the last) rather than dropping it to <body> (WCAG 2.4.3). The
+            // neighbour's id is stable across the removal re-render, so focusing it
+            // after the close is robust regardless of render timing.
+            var tabKeys = Context.TabIds.Keys.ToList();
+            var tabIdx = tabKeys.IndexOf(Value);
+            string? neighbourTabId = null;
+            for (var i = tabIdx + 1; i < tabKeys.Count && neighbourTabId is null; i++)
+                if (!IsTabDisabled(tabKeys[i]) && Context.TabIds.TryGetValue(tabKeys[i], out var n)) neighbourTabId = n.TabId;
+            for (var i = tabIdx - 1; i >= 0 && neighbourTabId is null; i--)
+                if (!IsTabDisabled(tabKeys[i]) && Context.TabIds.TryGetValue(tabKeys[i], out var n)) neighbourTabId = n.TabId;
+
             await HandleClose();
+
+            if (neighbourTabId is not null)
+            {
+                try { await Interop.FocusElement(neighbourTabId); }
+                catch (Microsoft.JSInterop.JSDisconnectedException) { }
+            }
             return;
         }
 
         var isHorizontal = Context.Orientation == Lumeo.Orientation.Horizontal;
-        var isRtl = Theme.CurrentDirection == LayoutDirection.Rtl;
+        var isRtl = EffectiveDirection == LayoutDirection.Rtl;
         var keys = Context.TabIds.Keys.ToList();
         var idx = keys.IndexOf(Value);
 

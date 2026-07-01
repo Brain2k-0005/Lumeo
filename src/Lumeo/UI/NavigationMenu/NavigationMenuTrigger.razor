@@ -14,8 +14,6 @@
     <Blazicon Svg="Lucide.ChevronDown" class="@ChevronClasses" />
 </button>
 
-@inject IComponentInteropService Interop
-
 @code {
     [CascadingParameter] public NavigationMenu.NavigationMenuContext Context { get; set; } = default!;
     [CascadingParameter] public NavigationMenuItem.NavigationMenuItemContext ItemContext { get; set; } = default!;
@@ -31,7 +29,7 @@
         Class);
 
     private string ChevronClasses => Cx.Join(
-        "relative top-[1px] ml-1 h-3 w-3 transition-transform duration-200",
+        "relative top-[1px] ms-1 h-3 w-3 transition-transform duration-200",
         Cx.When(IsActive, "rotate-180"));
 
     private async Task HandleClick()
@@ -77,8 +75,14 @@
                 await Context.Owner.FocusTriggerEdge(last: true);
                 break;
             case "ArrowDown":
+                // Open this item and ask its content to grab focus AFTER it
+                // renders. Focusing ItemContext.ContentId synchronously here would
+                // target an element that SetActiveItemId has only scheduled to
+                // mount — it isn't in the DOM yet, so the focus call is silently
+                // dropped in a real browser. NavigationMenuContent consumes this
+                // one-shot request from its own OnAfterRenderAsync instead.
+                Context.Owner.RequestContentFocusOnOpen(ItemContext.ItemId);
                 if (!IsActive) await Context.SetActiveItemId.InvokeAsync(ItemContext.ItemId);
-                try { await Interop.FocusElement(ItemContext.ContentId); } catch (JSDisconnectedException) { }
                 break;
             case "Escape":
                 if (IsActive) await Context.SetActiveItemId.InvokeAsync(null);

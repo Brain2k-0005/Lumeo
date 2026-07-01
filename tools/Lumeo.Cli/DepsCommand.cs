@@ -146,7 +146,11 @@ internal static class DepsCommand
         if (writeBootstrap)
         {
             var bootstrapPath = Path.Combine(targetDir, "wwwroot", "js", "lumeo-cdn-init.js");
-            var script = BuildBootstrapScript(manifest.Deps);
+            // Bootstrap ONLY the deps actually downloaded this run (the --lib-filtered set), not the whole
+            // manifest. Rewriting an un-downloaded key to /lib/lumeo-vendor/… would 404 instead of letting
+            // it fall back to its public CDN — the bug when `deps install --lib Lumeo.Charts` rewrote Map/
+            // PdfViewer too.
+            var script = BuildBootstrapScript(deps);
 
             if (!dryRun)
             {

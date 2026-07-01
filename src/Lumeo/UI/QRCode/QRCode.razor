@@ -1,6 +1,6 @@
 @namespace Lumeo
 
-<div class="@ContainerClass" style="@ContainerStyle" role="img" aria-label="@(AriaLabel ?? $"QR code: {Value}")" @attributes="AdditionalAttributes">
+<div class="@ContainerClass" style="@ContainerStyle" role="@(HasValue ? "img" : null)" aria-label="@(HasValue ? AccessibleLabel : null)" @attributes="AdditionalAttributes">
     <svg viewBox="@ViewBox" xmlns="http://www.w3.org/2000/svg" style="display: block; width: 100%; height: 100%;" aria-hidden="true">
         <rect x="0" y="0" width="@_totalSize" height="@_totalSize" fill="@BackgroundColor" />
         @if (_darkModules is not null)
@@ -44,8 +44,12 @@
 
     private IReadOnlyList<(int x, int y)>? _darkModules;
     private int _moduleCount;
-    private int _margin;
     private int _totalSize;
+
+    private bool HasValue => !string.IsNullOrWhiteSpace(Value);
+    // An empty/whitespace AriaLabel must fall back to the default — the `??`
+    // operator only catches null, so "" or "   " would bypass the fallback.
+    private string AccessibleLabel => string.IsNullOrWhiteSpace(AriaLabel) ? $"QR code: {Value}" : AriaLabel;
 
     private string ContainerClass => Cx.Merge("inline-block overflow-hidden rounded-xl", Class);
     private string ContainerStyle => $"width: {Size}px; height: {Size}px;";
@@ -55,11 +59,10 @@
 
     private void Rebuild()
     {
-        if (string.IsNullOrEmpty(Value))
+        if (string.IsNullOrWhiteSpace(Value))
         {
             _darkModules = null;
             _moduleCount = 0;
-            _margin = 0;
             _totalSize = 0;
             return;
         }
@@ -77,15 +80,21 @@
             using var gen = new QRCoder.QRCodeGenerator();
             using var data = gen.CreateQrCode(Value, ecl);
             var pixels = data.ModuleMatrix;
+            // QRCoder's ModuleMatrix is already padded with a built-in 4-module
+            // quiet zone on every side. IncludeMargin=true keeps that zone;
+            // IncludeMargin=false strips it so the code fills the box. Adding our
+            // own margin on top double-counted the quiet zone — over-padding the
+            // default and leaving IncludeMargin=false with a margin it never removed.
+            const int builtInQuietZone = 4;
             _moduleCount = pixels.Count;
-            _margin = IncludeMargin ? 4 : 0;
-            _totalSize = _moduleCount + _margin * 2;
+            int strip = IncludeMargin ? 0 : builtInQuietZone;
+            _totalSize = _moduleCount - strip * 2;
 
             var modules = new List<(int x, int y)>();
-            for (int row = 0; row < _moduleCount; row++)
-            for (int col = 0; col < _moduleCount; col++)
+            for (int row = strip; row < _moduleCount - strip; row++)
+            for (int col = strip; col < _moduleCount - strip; col++)
                 if (pixels[row][col])
-                    modules.Add((col + _margin, row + _margin));
+                    modules.Add((col - strip, row - strip));
 
             _darkModules = modules;
         }
@@ -93,7 +102,6 @@
         {
             _darkModules = null;
             _moduleCount = 0;
-            _margin = 0;
             _totalSize = 0;
         }
     }

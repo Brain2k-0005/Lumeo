@@ -2,24 +2,39 @@
 @implements IAsyncDisposable
 @inject Lumeo.Services.IComponentInteropService Interop
 
-<button type="button"
-        id="@ItemContext.TriggerId"
-        class="@CssClass"
-        aria-expanded="@IsOpen"
-        aria-controls="@ItemContext.ContentId"
-        disabled="@IsDisabled"
-        @onclick="Toggle"
-        @onkeydown="HandleKeyDown"
-        @attributes="AdditionalAttributes">
-    @ChildContent
-    <Blazicon Svg="Lucide.ChevronDown" class="@IconClasses" />
-</button>
+@* WAI-ARIA accordion: each trigger button is wrapped in an element with
+   role="heading" + aria-level so screen-reader users can navigate the panels by
+   heading. role+aria-level (rather than a fixed <h3>) keeps the level configurable
+   via HeadingLevel without a dynamic element tag; the wrapper is layout-neutral. *@
+<div role="heading" aria-level="@HeadingLevel" class="flex">
+    <button type="button"
+            id="@ItemContext.TriggerId"
+            class="@CssClass"
+            aria-expanded="@(IsOpen ? "true" : "false")"
+            aria-controls="@ItemContext.ContentId"
+            disabled="@IsDisabled"
+            @onclick="Toggle"
+            @onkeydown="HandleKeyDown"
+            @attributes="AdditionalAttributes">
+        @ChildContent
+        <Blazicon Svg="Lucide.ChevronDown" class="@IconClasses" />
+    </button>
+</div>
 
 @code {
     [CascadingParameter] public Accordion.AccordionContext Context { get; set; } = default!;
     [CascadingParameter] public AccordionItem.AccordionItemContext ItemContext { get; set; } = default!;
     [Parameter] public RenderFragment? ChildContent { get; set; }
     [Parameter] public string? Class { get; set; }
+
+    /// <summary>
+    /// Heading level (the <c>aria-level</c> on the role="heading" wrapper) so the
+    /// accordion's headers sit at the right place in the document outline for
+    /// screen-reader heading navigation. Default <c>3</c> (matching the WAI-ARIA
+    /// accordion example); set <c>2</c>/<c>4</c>/... to fit the surrounding page.
+    /// </summary>
+    [Parameter] public int HeadingLevel { get; set; } = 3;
+
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     private bool IsOpen => Context.IsOpen(ItemContext.Value);
@@ -31,12 +46,18 @@
     {
         // Register every parameter set (idempotent) so the parent's roving-focus
         // registry tracks the current value, trigger id and Disabled flag. If
-        // the item's Value changed, drop the stale registry entry first.
+        // the item's Value changed, re-key the EXISTING registry slot in place
+        // rather than unregister+register: the latter would RemoveAt the old
+        // index then Add the new value to the tail, scrambling the registry out
+        // of DOM order and corrupting roving ArrowUp/Down/Home/End nav.
         if (_registeredValue is not null && _registeredValue != ItemContext.Value)
         {
-            Context.UnregisterTrigger(_registeredValue);
+            Context.ReplaceTrigger(_registeredValue, ItemContext.Value, ItemContext.TriggerId, ItemContext.Disabled);
         }
-        Context.RegisterTrigger(ItemContext.Value, ItemContext.TriggerId, ItemContext.Disabled);
+        else
+        {
+            Context.RegisterTrigger(ItemContext.Value, ItemContext.TriggerId, ItemContext.Disabled);
+        }
         _registeredValue = ItemContext.Value;
     }
 
@@ -62,8 +83,11 @@
 
     public async ValueTask DisposeAsync()
     {
+        // Unregister by the UNIQUE TriggerId, not the (possibly duplicated)
+        // Value: keying by Value would let one disposed item delete a SIBLING's
+        // registry slot when two items share a Value.
         if (_registeredValue is not null)
-            Context.UnregisterTrigger(_registeredValue);
+            Context.UnregisterTrigger(ItemContext.TriggerId);
         if (!_pdRegistered) return;
         try { await Interop.UnregisterPreventDefaultKeys(ItemContext.TriggerId); }
         catch (JSDisconnectedException) { }
@@ -94,16 +118,16 @@
         switch (e.Key)
         {
             case "ArrowDown":
-                await Context.MoveFocus.InvokeAsync((ItemContext.Value, 1, false, false));
+                await Context.MoveFocus.InvokeAsync((ItemContext.TriggerId, 1, false, false));
                 break;
             case "ArrowUp":
-                await Context.MoveFocus.InvokeAsync((ItemContext.Value, -1, false, false));
+                await Context.MoveFocus.InvokeAsync((ItemContext.TriggerId, -1, false, false));
                 break;
             case "Home":
-                await Context.MoveFocus.InvokeAsync((ItemContext.Value, 0, true, false));
+                await Context.MoveFocus.InvokeAsync((ItemContext.TriggerId, 0, true, false));
                 break;
             case "End":
-                await Context.MoveFocus.InvokeAsync((ItemContext.Value, 0, true, true));
+                await Context.MoveFocus.InvokeAsync((ItemContext.TriggerId, 0, true, true));
                 break;
         }
     }

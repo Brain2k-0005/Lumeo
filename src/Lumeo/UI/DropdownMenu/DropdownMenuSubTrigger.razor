@@ -16,7 +16,7 @@
         @onkeydown="HandleKeyDown"
         @attributes="AdditionalAttributes">
     @ChildContent
-    <Blazicon Svg="Lucide.ChevronRight" class="ml-auto h-4 w-4" />
+    <Blazicon Svg="Lucide.ChevronRight" class="ms-auto h-4 w-4" />
 </button>
 
 @inject IComponentInteropService Interop
@@ -74,20 +74,20 @@
         {
             case "ArrowRight":
                 SubContext.CancelClose();
-                if (!SubContext.IsOpen)
+                if (SubContext.IsOpen)
                 {
-                    await SubContext.SetOpen.InvokeAsync(true);
-                }
-                // Defer focus until SubContent renders.
-                _ = InvokeAsync(async () =>
-                {
-                    await Task.Delay(20);
-                    try
-                    {
-                        await Interop.FocusMenuItemByIndex(SubContext.ContentId, 0);
-                    }
+                    // Already open (e.g. via hover): the content exists, focus its
+                    // first item immediately — no render to wait for.
+                    try { await Interop.FocusMenuItemByIndex(SubContext.ContentId, 0); }
                     catch (JSDisconnectedException) { }
-                });
+                }
+                else
+                {
+                    // Open from the keyboard and let the content focus its first item
+                    // when it actually renders (race-free; replaces a fixed Task.Delay
+                    // that guessed when the content would exist).
+                    await SubContext.OpenByKeyboard.InvokeAsync();
+                }
                 break;
         }
     }

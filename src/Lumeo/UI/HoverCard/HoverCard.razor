@@ -4,7 +4,7 @@
 
 @{
     var context = new HoverCardContext(
-        Open || _pinned,
+        EffectiveOpen || _pinned,
         EventCallback.Factory.Create(this, RequestOpen),
         EventCallback.Factory.Create(this, RequestClose),
         EventCallback.Factory.Create(this, TogglePin),
@@ -40,13 +40,84 @@
     private bool _pinned;
     private bool _clickOutsideRegistered;
 
+    // battle-wave2 #81 (state-on-data-change) — live hover/open state lives in
+    // this private backing field, NEVER in the [Parameter] Open. Writing hover
+    // state into the parameter meant (a) a consumer-supplied Open=true was
+    // overwritten the moment the pointer left, and (b) an unrelated parent
+    // re-render re-pushed the old Open literal and reverted the user's hover.
+    // The backing field is reseeded from Open only when the parent genuinely
+    // changes it (see SetParametersAsync), mirroring the Dialog precedent.
+    private bool _open;
+    private bool _lastOpenParam;
+    private bool _hasOpenParam;
+    // CONTROLLED discriminator: the last value WE pushed UP via OpenChanged (also
+    // re-synced whenever we adopt an authoritative Open). A controlled parent
+    // re-render that echoes back this exact value is safe to ignore (keep the
+    // in-flight hover/pin state); any other value is an authoritative assertion
+    // (veto / normalization / reset) and must win — see Switch.razor.
+    private bool _lastPushed;
+
+    private bool EffectiveOpen => _open;
+
+    public override Task SetParametersAsync(ParameterView parameters)
+    {
+        // The legacy IsOpen alias is obsolete but still a valid bound parameter,
+        // so honour it when reseeding (suppress CS0618 for the nameof probe).
+#pragma warning disable CS0618
+        var hasOpen = parameters.TryGetValue<bool>(nameof(Open), out var incomingOpen)
+            || parameters.TryGetValue<bool>(nameof(IsOpen), out incomingOpen);
+#pragma warning restore CS0618
+
+        if (hasOpen)
+        {
+            if (!_hasOpenParam)
+            {
+                // First observation: seed unconditionally before the initial render.
+                _open = incomingOpen;
+                _lastPushed = incomingOpen;
+            }
+            else if (OpenChanged.HasDelegate)
+            {
+                // CONTROLLED: the parent owns the value. Echo of our own push
+                // (Open == _lastPushed) → keep the in-flight hover/pin state.
+                // Anything else (veto, normalization, reset) → adopt the parent's
+                // assertion, even if it equals the value the user just left behind.
+                if (incomingOpen != _lastPushed)
+                {
+                    _open = incomingOpen;
+                    _lastPushed = incomingOpen;
+                }
+            }
+            else if (incomingOpen != _lastOpenParam)
+            {
+                // UNCONTROLLED: component owns the live value. Reseed only on a
+                // real change of the supplied Open value; a same-value re-render
+                // must NOT clobber a live hover/open state.
+                _open = incomingOpen;
+                _lastPushed = incomingOpen;
+            }
+
+            _lastOpenParam = incomingOpen;
+            _hasOpenParam = true;
+        }
+
+        return base.SetParametersAsync(parameters);
+    }
+
     private void RequestOpen()
     {
         _dispatch.Cancel();
-        if (Open) return;
+        if (EffectiveOpen) return;
         _dispatch.Schedule(OpenDelay, () => InvokeAsync(async () =>
         {
-            Open = true;
+            // Write the live open-state to the backing field, never to the
+            // [Parameter] Open. OpenChanged still notifies two-way consumers.
+            // Record _lastPushed BEFORE invoking: a controlled parent re-renders
+            // synchronously inside InvokeAsync, so SetParametersAsync must already
+            // see this value as "the value we just pushed" to distinguish an
+            // accepted echo (keep in-flight state) from a veto (roll back).
+            _open = true;
+            _lastPushed = true;
             await OpenChanged.InvokeAsync(true);
             StateHasChanged();
         }));
@@ -57,10 +128,13 @@
         // If the card is pinned (touch), hover-leave must NOT close it.
         if (_pinned) return;
         _dispatch.Cancel();
-        if (!Open) return;
+        if (!EffectiveOpen) return;
         _dispatch.Schedule(CloseDelay, () => InvokeAsync(async () =>
         {
-            Open = false;
+            // See RequestOpen: record _lastPushed before invoking so a
+            // synchronous controlled-parent veto is detectable on re-render.
+            _open = false;
+            _lastPushed = false;
             await OpenChanged.InvokeAsync(false);
             StateHasChanged();
         }));
@@ -81,10 +155,19 @@
         }
         else
         {
+            // battle-wave2 #179 (lifecycle) — unpin must release the global
+            // click-outside listener, not just flip _pinned. The old code only
+            // unregistered in DisposeAsync, so after one pin/unpin cycle the
+            // listener stayed wired for the component's whole life. The next pin
+            // re-registers lazily via the `if (!_clickOutsideRegistered)` guard.
+            await UnregisterClickOutsideIfNeeded();
             // Optional auto-collapse on unpin if the user wasn't hovering.
-            if (Open)
+            if (EffectiveOpen)
             {
-                Open = false;
+                // See RequestOpen: record _lastPushed before invoking so a
+                // synchronous controlled-parent veto is detectable on re-render.
+                _open = false;
+                _lastPushed = false;
                 await OpenChanged.InvokeAsync(false);
             }
         }
@@ -100,24 +183,36 @@
         if (_pinned)
         {
             _pinned = false;
-            if (Open)
+            // battle-wave2 #179 (lifecycle) — auto-unpin must also unregister the
+            // click-outside listener so it doesn't linger after the card closes.
+            await UnregisterClickOutsideIfNeeded();
+            if (EffectiveOpen)
             {
-                Open = false;
+                // See RequestOpen: record _lastPushed before invoking so a
+                // synchronous controlled-parent veto is detectable on re-render.
+                _open = false;
+                _lastPushed = false;
                 await OpenChanged.InvokeAsync(false);
             }
             StateHasChanged();
         }
     }
 
+    // battle-wave2 #179 (lifecycle) — shared teardown for the global click-outside
+    // listener, idempotent so unpin, click-outside and dispose can all call it.
+    // Resetting _clickOutsideRegistered lets the next pin re-register lazily.
+    private async Task UnregisterClickOutsideIfNeeded()
+    {
+        if (!_clickOutsideRegistered) return;
+        try { await Interop.UnregisterClickOutside(_wrapperId); }
+        catch (Microsoft.JSInterop.JSDisconnectedException) { }
+        _clickOutsideRegistered = false;
+    }
+
     public async ValueTask DisposeAsync()
     {
         _dispatch.Dispose();
-        if (_clickOutsideRegistered)
-        {
-            try { await Interop.UnregisterClickOutside(_wrapperId); }
-            catch (Microsoft.JSInterop.JSDisconnectedException) { }
-            _clickOutsideRegistered = false;
-        }
+        await UnregisterClickOutsideIfNeeded();
     }
 
     public record HoverCardContext(bool IsOpen, EventCallback RequestOpen, EventCallback RequestClose, EventCallback RequestTogglePin, string WrapperId);

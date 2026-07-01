@@ -43,9 +43,10 @@
 
             await ClampToViewport();
 
-            // Move focus to the menu container so Escape/ArrowUp/ArrowDown reach
-            // the @onkeydown handler. Without this, focus stays on the trigger
-            // element and keyboard nav silently breaks (per WAI-ARIA menu pattern).
+            // Save where focus was before opening so it returns there on close
+            // (WCAG 2.4.3), then move focus to the menu container so Escape/Arrow
+            // keys reach the @onkeydown handler. saveFocus installs no Tab trap.
+            try { await Interop.SaveFocus(_contentId); } catch (JSDisconnectedException) { }
             try { await Interop.FocusElement(_contentId); } catch (JSDisconnectedException) { }
         }
         else if (Context.IsOpen && _registered && (Context.X != _positionedX || Context.Y != _positionedY))
@@ -124,6 +125,8 @@
             await Interop.UnregisterClickOutside(_contentId);
         }
         catch (JSDisconnectedException) { }
+        // Return focus to where it was before the menu opened (WCAG 2.4.3).
+        try { await Interop.RestoreFocus(_contentId); } catch (JSDisconnectedException) { }
         _registered = false;
         _positionedX = double.NaN;
         _positionedY = double.NaN;

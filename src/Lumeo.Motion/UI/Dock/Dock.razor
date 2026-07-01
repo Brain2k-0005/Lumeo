@@ -21,6 +21,8 @@
 
     private readonly string _elementId = $"lumeo-dock-{Guid.NewGuid():N}";
     private bool _registered;
+    private double _lastMaxScale;
+    private int _lastRadius;
 
     private string CssClass => string.Join(" ", new[] { "lumeo-dock", Class }.Where(s => !string.IsNullOrWhiteSpace(s)));
 
@@ -29,8 +31,30 @@
         if (firstRender && !_registered)
         {
             _registered = true;
+            _lastMaxScale = MaxScale;
+            _lastRadius = MagnifyRadius;
             try
             {
+                await Interop.MotionDock(_elementId, new
+                {
+                    maxScale = MaxScale,
+                    magnifyRadius = MagnifyRadius
+                });
+            }
+            catch (JSDisconnectedException) { }
+        }
+        else if (_registered && (MaxScale != _lastMaxScale || MagnifyRadius != _lastRadius))
+        {
+            // MaxScale / MagnifyRadius changed at runtime. The JS dock() captures
+            // these into a closure at registration time, so they must be re-pushed.
+            // Dispose first: dock() always adds a fresh listener set and overwrites
+            // its disconnect handle, so a naive re-invoke would leak the previous
+            // listeners — disposeDock removes the old set before we rebind.
+            _lastMaxScale = MaxScale;
+            _lastRadius = MagnifyRadius;
+            try
+            {
+                await Interop.MotionDisposeDock(_elementId);
                 await Interop.MotionDock(_elementId, new
                 {
                     maxScale = MaxScale,
