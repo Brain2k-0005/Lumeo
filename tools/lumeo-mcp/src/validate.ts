@@ -37,6 +37,16 @@ export interface SharedEnum {
   values: string[];
 }
 
+/** `@typeparam` names used by Lumeo's generic components (DataGrid/DataGridColumnDef/
+ *  TagInput's `TItem`, TreeView's `T`, Form's `TModel`). These bind a generic component to
+ *  a concrete type via a Razor attribute (e.g. `<DataGrid TItem="Employee">`), but they are
+ *  NOT `[Parameter]` properties — the generated component catalog has no entry for them on
+ *  ANY component, so every valid use warned as an unknown parameter. Exempt them globally by
+ *  name rather than threading `@typeparam` info through the registry schema: the set is small,
+ *  stable, and a real `[Parameter]` named exactly one of these (single-letter or "TModel") is
+ *  not a realistic naming collision for Lumeo's descriptive-PascalCase parameter convention. */
+const KNOWN_TYPE_PARAMS = new Set(["T", "TItem", "TModel"]);
+
 type ElementInfo = {
   params: Set<string>;
   /** param name → the bare enum name it is typed as (only when that enum is known). */
@@ -113,7 +123,17 @@ export function createValidator(components: ValidatorComponent[], sharedEnums: S
   return function validateMarkup(markup: string): { ok: boolean; issues: ValidationIssue[] } {
     const issues: ValidationIssue[] = [];
     // Find component tags: <Foo ...> or <Foo .../> or </Foo>. Lumeo components are PascalCase.
-    const tagRx = /<\/?([A-Z][A-Za-z0-9]*)((?:\s+[^<>]*?)?)\/?>/g;
+    // The attribute blob is quote-aware: a quoted value (Foo="...", Foo='...') can contain
+    // `<`/`>` and must not end the match early. Common valid Razor like
+    // Field="@(u => u.Name)" (a DataGrid column lambda) has a `>` inside the quoted
+    // attribute value; a naive `[^<>]*` stopped the match right there, truncating the tag
+    // and dropping every attribute after it from validation — and, worse, silently leaving
+    // a self-closing element on `openStack` (the truncated match never reaches its real
+    // `/>`), producing false nesting diagnostics for markup after it. Each alternative below
+    // consumes either a whole double-quoted or single-quoted run, or one plain non-quote/
+    // non-bracket character, so `<`/`>` inside a quoted value are absorbed instead of ending
+    // the tag.
+    const tagRx = /<\/?([A-Z][A-Za-z0-9]*)((?:\s+(?:"[^"]*"|'[^']*'|[^<>"'])*)?)\/?>/g;
     // Stack of currently-open Lumeo elements for nesting-aware parent-child enforcement.
     // Only known Lumeo components are tracked; non-Lumeo wrappers are invisible to this stack.
     const openStack: string[] = [];
@@ -171,6 +191,7 @@ export function createValidator(components: ValidatorComponent[], sharedEnums: S
         if (name.includes(":")) name = name.split(":")[0]!; // EventName:stopPropagation, :preventDefault
         if (name === "class" || name === "style" || name === "id") continue; // pass-through HTML attrs (Lumeo captures unmatched)
         if (/^data-|^aria-/i.test(name)) continue; // captured unmatched
+        if (KNOWN_TYPE_PARAMS.has(name)) continue; // @typeparam binding (Foo TItem="Employee"), not a [Parameter]
         if (!known.params.has(name)) {
           // Could be a captured-unmatched HTML attr — only flag if it looks like a typo'd Lumeo param (PascalCase).
           if (/^[A-Z]/.test(name)) {
