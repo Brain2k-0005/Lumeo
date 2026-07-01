@@ -89,9 +89,20 @@ else
     // Opacity-only fade. The sidebar's own width transition handles the visual shrink
     // — the label stays at natural width and is clipped by the parent's overflow-x-hidden,
     // so the icon stays put while the sidebar narrows instead of "sliding to center".
-    // A small delay on the fade makes the sidebar start shrinking first, avoiding the
-    // awkward mid-state where labels are gone but sidebar is still wide.
+    // Duration/easing MUST match SidebarComponent.CssClass's container transition
+    // (transition-all duration-300, Tailwind's default cubic-bezier(0.4,0,0.2,1) timing
+    // function) EXACTLY, with no delay in either direction — not just "close enough":
+    // the previous asymmetric delay-0 (collapsing) / delay-150 (expanding) with a shorter
+    // duration-150 + an explicit ease-out (a DIFFERENT curve than the container's default)
+    // only accidentally looked synced while EXPANDING, because a 150ms delay + 150ms
+    // duration happens to sum to 300ms — matching the container's finish time by
+    // coincidence, not because the two curves actually tracked together throughout. While
+    // COLLAPSING there was no such coincidence: the label finished fading at t=150ms while
+    // the container kept shrinking until t=300ms, reading as two sequential steps instead
+    // of one motion (user-reported production bug). No delay + identical duration/easing
+    // makes both directions track the container continuously from t=0, not just meet it
+    // at the end.
     private string LabelCssClass => Cx.Join(
-        "whitespace-nowrap transition-opacity duration-150 ease-out",
-        EffectiveCollapsed ? "opacity-0 delay-0" : "opacity-100 delay-150");
+        "whitespace-nowrap transition-opacity duration-300",
+        EffectiveCollapsed ? "opacity-0" : "opacity-100");
 }
