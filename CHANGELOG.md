@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [4.0.0] - 2026-06-26
 
-Two things in one release: a Radix/Base-UI/shadcn **parity audit** (accessibility, RTL, theming, the FormGenerator, and the MCP/CLI — additive and opt-in; the OKLCH and logical-utility changes are visually/behaviourally identical in LTR) **and** a library-wide **correctness hardening** pass — an adversarial "battle-test" of all 164 components that fixed ~355 confirmed bugs, each with a bUnit regression test (suite 4,831 green). There are **no API-signature breaks**; the major bump signals the scope and the handful of observable **behaviour** changes listed under **Changed** below (and in `MIGRATION.md`).
+Two things in one release: a Radix/Base-UI/shadcn **parity audit** (accessibility, RTL, theming, the FormGenerator, and the MCP/CLI — additive and opt-in; the OKLCH and logical-utility changes are visually/behaviourally identical in LTR) **and** a library-wide **correctness hardening** pass — an adversarial "battle-test" of all 164 components that fixed ~355 confirmed bugs, each with a bUnit regression test (suite 4,983 green). There are **no API-signature breaks**; the major bump signals the scope and the handful of observable **behaviour** changes listed under **Changed** below (and in `MIGRATION.md`).
 
 This release also ships the CLI's headline **NuGet-free "standalone" eject**: `lumeo add` can now vendor a component *and its full runtime closure* as source, so a project compiles and runs with **zero Lumeo/satellite `PackageReference`** — proven across all 164 components.
 
