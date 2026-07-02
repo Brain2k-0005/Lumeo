@@ -96,7 +96,8 @@ public class BottomNavFabTests : IAsyncLifetime
             .Add(f => f.AriaLabel, "X"));
 
         var cls = cut.Find("button").GetAttribute("class");
-        Assert.Contains("rounded-full", cls);
+        // Radius-token-aware rounding (was a hardcoded rounded-full that ignored the theme radius).
+        Assert.Contains("rounded-[calc(var(--radius)*3)]", cls);
         Assert.Contains("bg-primary", cls);
     }
 

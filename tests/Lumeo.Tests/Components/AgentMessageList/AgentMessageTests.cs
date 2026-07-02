@@ -59,7 +59,8 @@ public class AgentMessageTests : IAsyncLifetime
 
         var cls = cut.Find("div").GetAttribute("class");
         Assert.Contains("mx-auto", cls);
-        Assert.Contains("rounded-full", cls);
+        // Radius-token-aware rounding (was a hardcoded rounded-full that ignored the theme radius).
+        Assert.Contains("rounded-[calc(var(--radius)*2)]", cls);
         Assert.Contains("italic", cls);
     }
 

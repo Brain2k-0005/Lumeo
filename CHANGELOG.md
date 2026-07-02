@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.1.0-preview.3] - 2026-07-02
+
+### Fixed
+- **Theme radius wave — ~75 hardcoded roundings across ~40 components now follow the
+  radius token** (consumer report, starting from the Switch): Switch track/thumb, Badge
+  (Pill variant, ping/pulse, dot, dismiss), Tabs Pill variant, Chip/TagInput/Combobox/
+  Select/Cascader/TreeSelect/FilterPill remove+clear buttons, DataGrid filter chips +
+  sort badge + drop indicator, Chart loading pill, AudioPlayer seekbar, FileUpload
+  progress, PasswordInput strength segments, Stepper/Steps/StepsProgress/Timeline
+  indicators, Result status circle, BackToTop/SpeedDial/BottomNav FABs + pill bar,
+  Carousel/ImageGallery navigation, ImageCompare drag handles, Scheduler legend dots,
+  Delta/Kanban/AgentMessage/ToolCallCard/ReasoningDisplay pills+dots, ThemeSwitcher
+  swatches (now self-demonstrating), Avatar presence dot, QueryBuilder combinator pills
+  (`rounded-[5px]` → `rounded-md`). Mechanic: `rounded-[calc(var(--radius)*N)]` with N
+  sized per element so every stock theme renders PIXEL-IDENTICAL to before (the value
+  exceeds half the element height and clamps to the old pill/circle) — only deliberately
+  sharp themes (`--radius: 0`) square these elements off along with the rest of the UI.
+  Semantic circles are deliberately untouched (radio indicators, spinners, ColorPicker
+  pick-point, drawer grabber, circular avatars and their embedded followers, map-marker
+  legend) and pinned by a new source-level guard test with an audited allowlist.
+
+### Added
+- **`AvatarShape.Themed`** — third avatar shape following the theme radius (identical to
+  Circle at stock radii, squares off in sharp themes). `Circle` and `Square` remain
+  literal contracts: a consumer who asked for a circle keeps a circle in every theme.
+
 ## [4.1.0-preview.2] - 2026-07-02
 
 ### Added

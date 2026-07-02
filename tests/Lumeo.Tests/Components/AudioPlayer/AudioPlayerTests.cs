@@ -34,8 +34,9 @@ public class AudioPlayerTests : IAsyncLifetime
         // fill must grow from the physical LEFT edge — `left-0`, not logical `start-0` (which under RTL
         // grows from the right and ends up mirrored against the pointer seek math).
         var cut = Render();
-        Assert.Contains("inset-y-0 left-0 rounded-full bg-primary", cut.Markup);
-        Assert.DoesNotContain("inset-y-0 start-0 rounded-full bg-primary", cut.Markup);
+        // Radius-token-aware rounding (was a hardcoded rounded-full that ignored the theme radius).
+        Assert.Contains("inset-y-0 left-0 rounded-[calc(var(--radius)*2)] bg-primary", cut.Markup);
+        Assert.DoesNotContain("inset-y-0 start-0 rounded-[calc(var(--radius)*2)] bg-primary", cut.Markup);
     }
 
     // --- Skip buttons (#302) ---

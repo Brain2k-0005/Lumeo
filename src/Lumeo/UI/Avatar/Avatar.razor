@@ -11,7 +11,7 @@
     {
         @* The status is conveyed by colour; role=img + aria-label give it a text
            alternative so it isn't colour-only (WCAG 1.4.1). *@
-        <span class="absolute bottom-0 end-0 block h-2.5 w-2.5 rounded-full ring-2 ring-background @StatusColor"
+        <span class="absolute bottom-0 end-0 block h-2.5 w-2.5 rounded-[calc(var(--radius)*2)] ring-2 ring-background @StatusColor"
               role="img" aria-label="@EffectiveStatusLabel"></span>
     }
 </div>
@@ -24,6 +24,12 @@
     /// <see cref="Lumeo.Size.Md"/> (default), <see cref="Lumeo.Size.Lg"/>,
     /// <see cref="Lumeo.Size.Xl"/>. Other values fall through to <c>Md</c>.</summary>
     [Parameter] public Lumeo.Size Size { get; set; } = Lumeo.Size.Md;
+    /// <summary>Avatar outline. <c>Circle</c> (default) and <c>Square</c> are literal
+    /// contracts — a Circle avatar stays a circle in every theme. <c>Themed</c> follows
+    /// the theme radius token instead: it renders identically to Circle at stock radii
+    /// (the computed radius exceeds half the avatar size, so corners clamp to a full
+    /// circle) and squares off along with the rest of the UI in sharp themes
+    /// (<c>--radius: 0</c>) — pick it for sharp-brand designs.</summary>
     [Parameter] public AvatarShape Shape { get; set; } = AvatarShape.Circle;
     [Parameter] public AvatarStatus Status { get; set; } = AvatarStatus.None;
     /// <summary>Accessible label for the status dot (e.g. "Online"). Defaults to the
@@ -80,6 +86,9 @@
     private string ShapeClasses => Shape switch
     {
         AvatarShape.Square => "rounded-md",
+        // *3 keeps Themed a full circle at stock radii for every size up to Xl
+        // (3 x 0.75rem = 36px >= h-16's 32px half-height); sharp themes square it.
+        AvatarShape.Themed => "rounded-[calc(var(--radius)*3)]",
         _ => "rounded-full"
     };
 
@@ -104,7 +113,7 @@
     // Text alternative for the status dot — the consumer override, else the enum name.
     private string EffectiveStatusLabel => StatusLabel ?? Status.ToString();
 
-    public enum AvatarShape { Circle, Square }
+    public enum AvatarShape { Circle, Square, Themed }
     public enum AvatarStatus { None, Online, Offline, Away, Busy }
 
     /// <summary>

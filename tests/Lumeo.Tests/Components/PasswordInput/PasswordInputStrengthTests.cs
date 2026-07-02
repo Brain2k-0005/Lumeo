@@ -52,7 +52,8 @@ public class PasswordInputStrengthTests : IAsyncLifetime
             .Add(c => c.Value, "abc"));
 
         // Four bar segments always render; exactly one is filled at level 1.
-        var bars = cut.FindAll("div.rounded-full");
+        // Radius-token-aware rounding (was a hardcoded rounded-full that ignored the theme radius).
+        var bars = cut.FindAll("div.rounded-\\[calc\\(var\\(--radius\\)\\*2\\)\\]");
         Assert.Equal(4, bars.Count);
         Assert.Equal(1, bars.Count(b => (b.GetAttribute("class") ?? "").Contains("bg-destructive")));
 
@@ -70,7 +71,8 @@ public class PasswordInputStrengthTests : IAsyncLifetime
             .Add(c => c.Value, "Abcd1234!"));
 
         // All four segments filled with the success color at the top level.
-        var bars = cut.FindAll("div.rounded-full");
+        // Radius-token-aware rounding (was a hardcoded rounded-full that ignored the theme radius).
+        var bars = cut.FindAll("div.rounded-\\[calc\\(var\\(--radius\\)\\*2\\)\\]");
         Assert.Equal(4, bars.Count);
         Assert.Equal(4, bars.Count(b => (b.GetAttribute("class") ?? "").Contains("bg-success")));
 
@@ -87,7 +89,8 @@ public class PasswordInputStrengthTests : IAsyncLifetime
             .Add(c => c.ShowStrength, true)
             .Add(c => c.Value, "ab12"));
 
-        var bars = cut.FindAll("div.rounded-full");
+        // Radius-token-aware rounding (was a hardcoded rounded-full that ignored the theme radius).
+        var bars = cut.FindAll("div.rounded-\\[calc\\(var\\(--radius\\)\\*2\\)\\]");
         Assert.Equal(4, bars.Count);
         Assert.Equal(2, bars.Count(b => (b.GetAttribute("class") ?? "").Contains("bg-warning")));
 

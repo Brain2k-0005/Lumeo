@@ -86,9 +86,9 @@ public class BottomNavTests : IAsyncLifetime
         Assert.Contains("px-4", navCls);
         Assert.Contains("pb-3", navCls);
 
-        // Inner pill container should have rounded-full
+        // Inner pill container should have radius-token-aware rounding (was a hardcoded rounded-full that ignored the theme radius).
         var inner = cut.Find("nav > div");
-        Assert.Contains("rounded-full", inner.GetAttribute("class"));
+        Assert.Contains("rounded-[calc(var(--radius)*4)]", inner.GetAttribute("class"));
     }
 
     [Fact]
