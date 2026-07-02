@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.1.0-preview.4] - 2026-07-02
+
+### Fixed
+- **Avatar — Square/Themed avatars with initials rendered as circles**: `AvatarFallback`
+  painted its `bg-muted` surface with its own hardcoded full-circle radius; the avatar's
+  shape clip is larger than that circle, so clipping never took effect and any
+  non-circle avatar showing fallback initials stayed round (reported against the new
+  `Themed` shape in a sharp theme; had silently affected `Shape=Square` since its
+  introduction). The fallback now carries no own border-radius and inherits the
+  wrapper's clip — verified across Circle/Square/Themed at default and sharp radii.
+
 ## [4.1.0-preview.3] - 2026-07-02
 
 ### Fixed
