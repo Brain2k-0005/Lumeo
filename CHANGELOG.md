@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.1.0-preview.2] - 2026-07-02
+
+### Added
+- **`TabsVariant.Underline`** — text tabs with an underline indicator: the classic compact
+  style for detail pages with many tabs (previously only Default/Card/Pill existed, so
+  consumers hand-built this with raw buttons + CSS). The list draws a shared baseline
+  border and no background box; every trigger carries the 2px indicator border with
+  constant geometry (inactive = transparent) so activation never reflows the row, and the
+  underline seats exactly on the baseline. Vertical orientation moves the indicator to the
+  trailing edge. Combines with the existing `TabsList.Scrollable` (arrows + overflow) for
+  horizontally scrollable tab rows, with `IconReveal`, and with `AnimatedIndicator` — the
+  variant then uses the sliding underline bar (the trigger's own static underline yields,
+  so the indicator is never doubled).
+
 ## [4.1.0-preview.1] - 2026-07-02
 
 Preview release bundling a full consumer-feedback wave: five bug-fix clusters and four
