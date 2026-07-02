@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [4.1.0-preview.1] - 2026-07-02
 
-Preview release bundling the full consumer feedback wave: five bug-fix clusters and four
+Preview release bundling a full consumer-feedback wave: five bug-fix clusters and four
 feature additions. Please battle-test before the stable 4.1.0.
 
 > Changelog correction (post-release): the first three entries below shipped in this
