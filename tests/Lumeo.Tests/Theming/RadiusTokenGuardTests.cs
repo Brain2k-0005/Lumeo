@@ -36,7 +36,6 @@ public class RadiusTokenGuardTests
         // Circular-avatar contract (Shape=Circle stays literal; Themed opts into the
         // token) and its embedded-avatar followers.
         "src/Lumeo/UI/Avatar/Avatar.razor",
-        "src/Lumeo/UI/Avatar/AvatarFallback.razor",
         "src/Lumeo/UI/Avatar/AvatarGroup.razor",
         "src/Lumeo/UI/Chip/Chip.razor",
         "src/Lumeo/UI/FileUpload/FileUpload.razor",

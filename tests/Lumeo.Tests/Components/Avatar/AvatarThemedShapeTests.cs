@@ -41,4 +41,21 @@ public class AvatarThemedShapeTests : IAsyncLifetime
         var cut = _ctx.Render<Lumeo.Avatar>(p => p.Add(a => a.Shape, Lumeo.Avatar.AvatarShape.Square));
         Assert.Contains("rounded-md", cut.Find("div").ClassList);
     }
+
+    [Theory]
+    [InlineData(Lumeo.Avatar.AvatarShape.Square)]
+    [InlineData(Lumeo.Avatar.AvatarShape.Themed)]
+    public void Fallback_Does_Not_Paint_Its_Own_Circle_Inside_NonCircle_Shapes(Lumeo.Avatar.AvatarShape shape)
+    {
+        // User-reported (screenshot: sharp theme, Themed avatar still a circle): the
+        // fallback's own hardcoded rounded-full painted the visible bg-muted surface as
+        // a circle regardless of the wrapper's shape clip — the clip was LARGER than
+        // the circle, so Square/Themed avatars with initials rendered round anyway.
+        var cut = _ctx.Render<Lumeo.Avatar>(p => p
+            .Add(a => a.Shape, shape)
+            .AddChildContent<Lumeo.AvatarFallback>(f => f.AddChildContent("MB")));
+
+        var fallback = cut.FindAll("div").First(d => d.ClassList.Contains("bg-muted"));
+        Assert.DoesNotContain("rounded-full", fallback.ClassList);
+    }
 }

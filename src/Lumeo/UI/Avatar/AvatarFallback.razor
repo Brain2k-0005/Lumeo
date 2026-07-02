@@ -36,7 +36,15 @@
 
     private void OnImageStateChanged() => InvokeAsync(StateHasChanged);
 
-    private string CssClass => Cx.Merge("flex h-full w-full items-center justify-center rounded-full bg-muted text-sm font-medium", Class);
+    // No own border-radius: the fallback fills the avatar's inner wrapper, which
+    // already clips to the active shape (Circle/Square/Themed via ShapeClasses +
+    // overflow-hidden). A hardcoded full-circle class here painted the bg-muted
+    // surface as a circle INSIDE the square/themed clip — since the clip was larger
+    // than the circle, Square and Themed avatars with initials rendered as circles
+    // anyway (user-reported against Themed; had silently affected Square since day
+    // one). Also why the radius-token guard test scans raw file text: keep the class
+    // name out of comments here.
+    private string CssClass => Cx.Merge("flex h-full w-full items-center justify-center bg-muted text-sm font-medium", Class);
 
     public void Dispose()
     {

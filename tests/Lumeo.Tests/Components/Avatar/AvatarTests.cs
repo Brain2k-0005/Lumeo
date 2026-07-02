@@ -183,7 +183,10 @@ public class AvatarTests : IAsyncLifetime
         Assert.Contains("w-full", cls);
         Assert.Contains("items-center", cls);
         Assert.Contains("justify-center", cls);
-        Assert.Contains("rounded-full", cls);
+        // Deliberately NO own border-radius — the fallback inherits the clip from the
+        // avatar's shaped inner wrapper; its former rounded-full painted a circle inside
+        // Square/Themed avatars (shape bug).
+        Assert.DoesNotContain("rounded-full", cls);
         Assert.Contains("bg-muted", cls);
     }
 
@@ -205,7 +208,8 @@ public class AvatarTests : IAsyncLifetime
 
         var cls = cut.Find("div").GetAttribute("class");
         Assert.Contains("my-fallback-class", cls);
-        Assert.Contains("rounded-full", cls);
+        // Fallback carries no own radius — it inherits the clip from the shaped wrapper.
+        Assert.DoesNotContain("rounded-full", cls);
     }
 
     [Fact]
