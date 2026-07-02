@@ -225,10 +225,20 @@
         _ => "!h-3 !w-3"
     };
 
+    // rounded-full instead of a hardcoded rounded-full: the theme's
+    // radius token now reaches the Switch. At every stock radius (0.75rem default → 24px,
+    // even a 0.5rem theme → 16px) the computed radius exceeds half the track height of
+    // ALL sizes (Sm h-4/8px … Lg h-6/12px), so CSS corner-overlap reduction renders the
+    // exact same full pill as before — pixel-identical default. Only a deliberately sharp
+    // theme (small/zero --radius) squares the Switch off along with everything else;
+    // previously it stayed a pill in an otherwise square UI (user-reported inconsistency).
+    // Note: stock shadcn keeps its Switch rounded-full regardless of radius — this is a
+    // deliberate divergence in favor of theme consistency. The *2 factor (not the *1.5 of
+    // --radius-xl) is what keeps the 0.5rem-radius case a true pill on the Lg track.
     private string CssClass => Cx.Merge(
         "peer inline-flex",
         TrackSizeClasses,
-        "shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50",
+        "shrink-0 cursor-pointer items-center rounded-[calc(var(--radius)*2)] border-2 border-transparent shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50",
         _checked ? "bg-primary" : "bg-input",
         Cx.When(EffectiveInvalid, "ring-2 ring-destructive/20 focus-visible:ring-destructive"),
         Cx.When(Loading, "pointer-events-none opacity-70"),
@@ -242,7 +252,9 @@
             return Cx.Join(
                 "pointer-events-none flex items-center justify-center",
                 ThumbSizeClasses,
-                "rounded-full bg-background shadow-sm ring-0 transition-transform",
+                // Same radius-token mapping as the track (see CssClass) — a circular thumb
+                // in a squared track would look just as inconsistent as the old pill.
+                "rounded-[calc(var(--radius)*2)] bg-background shadow-sm ring-0 transition-transform",
                 ThumbTranslateClass,
                 springClass);
         }

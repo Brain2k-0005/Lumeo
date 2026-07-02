@@ -178,7 +178,8 @@ public class SwitchTests : IAsyncLifetime
             .Add(b => b.Class, "my-custom-class"));
 
         Assert.Contains("my-custom-class", cut.Find("button").GetAttribute("class"));
-        Assert.Contains("rounded-full", cut.Find("button").GetAttribute("class"));
+        // Radius-token-aware rounding (was a hardcoded rounded-full that ignored the theme radius).
+        Assert.Contains("rounded-[calc(var(--radius)*2)]", cut.Find("button").GetAttribute("class"));
     }
 
     [Fact]
