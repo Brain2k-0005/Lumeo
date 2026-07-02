@@ -12,7 +12,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Preview release bundling the full consumer feedback wave: five bug-fix clusters and four
 feature additions. Please battle-test before the stable 4.1.0.
 
+> Changelog correction (post-release): the first three entries below shipped in this
+> preview but were initially missing from this section — they landed in the preparatory
+> commit directly before the release commit and the section was written against the
+> release commit's diff only. Nothing about the package changed; only this document.
+
 ### Fixed
+- **Tooltip stays open after clicking its trigger (B8, the click/pin path)** — HandleTap
+  toggled the touch tap-to-pin state on EVERY click, so a desktop mouse click pinned the
+  tooltip open (mouseleave only clears the hover bit; the pin kept it visible until a
+  click landed elsewhere — and with the cursor resting, not even that). Now only a real
+  TOUCH tap pins (`pointerdown.pointerType == "touch"`); mouse/pen/keyboard activation
+  CLOSES the tooltip (Radix parity — clicking a trigger dismisses its hint), and a cursor
+  resting on the trigger keeps it closed until an actual leave + re-enter. Verified with
+  the exact reported automation scenario (CDP click, virtual cursor left resting).
+  Together with 4.0.4's focus-visible fix and this preview's rAF watchdog, all three
+  reported B8 aspects are closed; the `@key`-remount and synthetic-event workarounds are
+  obsolete.
+- **Tooltip arrow points into empty space when the box is clamped at the viewport edge
+  (B9)** — the arrow was hardcoded box-centered (`left-1/2`/`top-1/2`); `positionFixed`
+  now writes `--lumeo-arrow-x/y` (the trigger's center within the FINAL box, clamped 12px
+  from the box corners — floating-ui arrow-middleware equivalent) on every reposition and
+  the arrow renders at `var(--lumeo-arrow-x, 50%)`. Browser-measured: arrow-to-trigger
+  delta 0px on an edge-clamped box.
+- **Sidebar collapse/expand now matches shadcn 1:1** — container
+  `transition-[width,translate] duration-200 ease-linear` (was 300ms eased), menu-button
+  labels hard-clipped by the collapsing width instead of opacity-faded (span stays
+  mounted, `truncate`), `SidebarGroupLabel` slides out via `-mt-8 + opacity-0` over
+  `transition-[margin,opacity] duration-200 ease-linear` (was an untransitioned `sr-only`
+  pop) and now also reveals on MiniRail hover-expand, collapsed rail is `w-12` (3rem,
+  shadcn `SIDEBAR_WIDTH_ICON`) with `p-2` icon-square buttons — note the rail is 16px
+  narrower than before.
 - **Popovers inside dialogs land offset (B1)** — root-caused to a DOUBLE containing-block
   compensation in `positionFixed`: the fold-back ran twice per placement and subtracted the
   transformed ancestor's origin again from the already-corrected value, so a Select/
