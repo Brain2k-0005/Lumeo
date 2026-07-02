@@ -1,0 +1,127 @@
+@inherits Bunit.BunitContext
+
+@*
+    TabsVariant.Underline (consumer wish): text tabs with an underline indicator —
+    the classic compact style for detail pages with many tabs. Consumers previously
+    hand-built this with raw buttons + CSS; the native variant replaces that.
+    Contract pinned here:
+    - the list draws the shared baseline border (border-b horizontal / border-e
+      vertical), no background box, items-end + justify-start (horizontal);
+    - EVERY trigger carries the 2px indicator border with constant geometry
+      (inactive = transparent) so activation never reflows the row — the Card lesson;
+    - -mb-px/-me-px seats the 2px indicator on the list's 1px border (seam mechanic);
+    - with AnimatedIndicator the sliding lumeo-tabs-underline bar owns the indicator
+      and the active trigger's own border stays transparent (no doubled underline);
+    - combines with the existing TabsList.Scrollable path unchanged.
+*@
+
+@code {
+    public TabsUnderlineVariantTests() { this.AddLumeoServices(); }
+
+    [Fact]
+    public void Underline_List_Has_Baseline_Border_And_No_Background_Box()
+    {
+        var cut = Render(@<Tabs ActiveValue="a" Variant="Tabs.TabsVariant.Underline">
+            <TabsList>
+                <TabsTrigger Value="a">Alpha</TabsTrigger>
+                <TabsTrigger Value="b">Beta</TabsTrigger>
+            </TabsList>
+        </Tabs>);
+
+        var list = cut.Find("[role='tablist']");
+        Assert.Contains("border-b", list.ClassList);
+        Assert.Contains("items-end", list.ClassList);
+        Assert.Contains("justify-start", list.ClassList);
+        Assert.DoesNotContain("bg-muted", list.ClassList);
+        Assert.DoesNotContain("rounded-lg", list.ClassList);
+    }
+
+    [Fact]
+    public void Underline_Triggers_Keep_Constant_Geometry_Only_Colors_Swap()
+    {
+        var cut = Render(@<Tabs ActiveValue="a" Variant="Tabs.TabsVariant.Underline">
+            <TabsList>
+                <TabsTrigger Value="a">Alpha</TabsTrigger>
+                <TabsTrigger Value="b">Beta</TabsTrigger>
+            </TabsList>
+        </Tabs>);
+
+        var tabs = cut.FindAll("[role='tab']");
+        // BOTH tabs carry the 2px border + seam margin (constant geometry, no reflow).
+        foreach (var tab in tabs)
+        {
+            Assert.Contains("border-b-2", tab.ClassList);
+            Assert.Contains("-mb-px", tab.ClassList);
+            Assert.Contains("rounded-none", tab.ClassList);
+            Assert.DoesNotContain("rounded-md", tab.ClassList);
+        }
+        // Active: primary underline + foreground text; inactive: transparent border.
+        Assert.Contains("border-primary", tabs[0].ClassList);
+        Assert.Contains("text-foreground", tabs[0].ClassList);
+        Assert.Contains("border-transparent", tabs[1].ClassList);
+        Assert.Contains("text-muted-foreground", tabs[1].ClassList);
+        // The Default variant's active box styling must NOT leak in.
+        Assert.DoesNotContain("shadow", tabs[0].ClassList);
+        Assert.DoesNotContain("bg-background", tabs[0].ClassList);
+    }
+
+    [Fact]
+    public void Underline_Vertical_Uses_The_Trailing_Edge()
+    {
+        var cut = Render(@<Tabs ActiveValue="a" Variant="Tabs.TabsVariant.Underline" Orientation="Lumeo.Orientation.Vertical">
+            <TabsList>
+                <TabsTrigger Value="a">Alpha</TabsTrigger>
+                <TabsTrigger Value="b">Beta</TabsTrigger>
+            </TabsList>
+        </Tabs>);
+
+        var list = cut.Find("[role='tablist']");
+        Assert.Contains("border-e", list.ClassList);
+        Assert.Contains("flex-col", list.ClassList);
+
+        var tabs = cut.FindAll("[role='tab']");
+        Assert.Contains("border-e-2", tabs[0].ClassList);
+        Assert.Contains("-me-px", tabs[0].ClassList);
+        Assert.Contains("border-primary", tabs[0].ClassList);
+        Assert.Contains("border-transparent", tabs[1].ClassList);
+    }
+
+    [Fact]
+    public void AnimatedIndicator_Uses_The_Sliding_Underline_Not_The_Pill()
+    {
+        var cut = Render(@<Tabs ActiveValue="a" Variant="Tabs.TabsVariant.Underline" AnimatedIndicator="true">
+            <TabsList>
+                <TabsTrigger Value="a">Alpha</TabsTrigger>
+                <TabsTrigger Value="b">Beta</TabsTrigger>
+            </TabsList>
+        </Tabs>);
+
+        var list = cut.Find("[role='tablist']");
+        // NOT the pill mode (data-sliding-pill absent) → indicator renders as the
+        // sliding lumeo-tabs-underline bar.
+        Assert.Null(list.GetAttribute("data-sliding-pill"));
+        Assert.NotNull(cut.Find(".lumeo-tabs-underline"));
+
+        // The active trigger's own static underline yields to the animated bar —
+        // border stays transparent so the indicator is never doubled.
+        var active = cut.FindAll("[role='tab']")[0];
+        Assert.Contains("border-transparent", active.ClassList);
+        Assert.DoesNotContain("border-primary", active.ClassList);
+        Assert.Contains("text-foreground", active.ClassList);
+    }
+
+    [Fact]
+    public void Underline_Combines_With_The_Scrollable_List_Path()
+    {
+        var cut = Render(@<Tabs ActiveValue="a" Variant="Tabs.TabsVariant.Underline">
+            <TabsList Scrollable="true">
+                <TabsTrigger Value="a">Alpha</TabsTrigger>
+                <TabsTrigger Value="b">Beta</TabsTrigger>
+            </TabsList>
+        </Tabs>);
+
+        var list = cut.Find("[role='tablist']");
+        Assert.Contains("overflow-x-auto", list.ClassList);
+        Assert.Contains("border-b", list.ClassList);
+    }
+}

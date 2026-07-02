@@ -183,6 +183,17 @@
             var cardGeometry = isVerticalTabs
                 ? "rounded-s-lg rounded-e-none border border-e-0 -me-px"
                 : "rounded-t-lg rounded-b-none border border-b-0 -mb-px";
+            // Underline: constant geometry like Card — EVERY tab carries the 2px
+            // indicator border (inactive ones transparent), so activation only swaps
+            // colors and the row never reflows. -mb-px/-me-px pulls the indicator onto
+            // the list's 1px baseline border (the Card seam mechanic). When the ANIMATED
+            // indicator is on (horizontal only — RenderIndicator is horizontal-only),
+            // the sliding lumeo-tabs-underline bar owns the indicator, so the active
+            // trigger keeps its border transparent to avoid a doubled underline.
+            var underlineGeometry = isVerticalTabs
+                ? "rounded-none border-e-2 -me-px"
+                : "rounded-none border-b-2 -mb-px";
+            var slidingUnderlineOwnsIndicator = Context.AnimatedIndicator && !isVerticalTabs;
             var variantClasses = CurrentVariant switch
             {
                 Tabs.TabsVariant.Card => Cx.Join(
@@ -193,6 +204,11 @@
                 Tabs.TabsVariant.Pill => IsActive
                     ? "rounded-full bg-primary text-primary-foreground"
                     : "text-muted-foreground hover:bg-muted/50 rounded-full",
+                Tabs.TabsVariant.Underline => Cx.Join(
+                    underlineGeometry,
+                    IsActive
+                        ? Cx.Join(slidingUnderlineOwnsIndicator ? "border-transparent" : "border-primary", "text-foreground")
+                        : "border-transparent text-muted-foreground hover:text-foreground hover:border-border/60"),
                 _ => IsActive
                     ? "bg-background text-foreground shadow"
                     : ""

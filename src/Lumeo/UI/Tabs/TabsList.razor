@@ -203,8 +203,13 @@ else
 
     private bool RenderIndicator => Context?.AnimatedIndicator == true && !IsVertical;
 
-    // Default and Pill variants render a background pill that slides; Card uses an underline.
-    private bool UsePillIndicator => RenderIndicator && CurrentVariant != Tabs.TabsVariant.Card;
+    // Default and Pill variants render a background pill that slides; Card and
+    // Underline use the sliding underline bar (for Underline that IS the natural
+    // indicator — the trigger's own static border stays transparent while the
+    // animated bar is in charge, see TabsTrigger).
+    private bool UsePillIndicator => RenderIndicator
+        && CurrentVariant != Tabs.TabsVariant.Card
+        && CurrentVariant != Tabs.TabsVariant.Underline;
 
     private string IndicatorClass => UsePillIndicator ? "lumeo-tabs-indicator" : "lumeo-tabs-underline";
 
@@ -422,6 +427,19 @@ else
                 Tabs.TabsVariant.Pill => IsVertical
                     ? "flex flex-col h-auto w-auto items-stretch justify-start gap-1 text-muted-foreground"
                     : "inline-flex h-10 items-center justify-center gap-1 text-muted-foreground",
+                // Underline: text tabs on a shared baseline border — no background box,
+                // items-END so each trigger's 2px underline (-mb-px) sits exactly on the
+                // list's 1px border line (same seam mechanic as Card). justify-START, not
+                // center: underline tab rows read as a left-anchored strip, and a
+                // Scrollable list must start at its first tab.
+                // Underline: text tabs on a shared baseline border — no background box,
+                // items-END so each trigger's 2px underline (-mb-px) sits exactly on the
+                // list's 1px border line (same seam mechanic as Card). justify-START, not
+                // center: underline tab rows read as a left-anchored strip, and a
+                // Scrollable list must start at its first tab.
+                Tabs.TabsVariant.Underline => IsVertical
+                    ? "flex flex-col h-auto w-auto items-stretch justify-start border-e border-border/40 text-muted-foreground"
+                    : "inline-flex h-10 items-end justify-start border-b border-border/40 text-muted-foreground",
                 _ => IsVertical
                     ? "flex flex-col h-auto w-auto items-stretch justify-start rounded-lg bg-muted p-1 text-muted-foreground"
                     : "inline-flex h-9 items-center justify-center rounded-lg bg-muted p-1 text-muted-foreground"
