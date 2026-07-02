@@ -7,20 +7,22 @@ using L = Lumeo;
 namespace Lumeo.Tests.Components.Sidebar;
 
 /// <summary>
-/// Regression tests for a user-reported asymmetric-timing bug (confirmed via decompiling
-/// the shipped NuGet package): SidebarMenuButton's label faded with duration-150 and an
-/// ASYMMETRIC delay per direction (delay-0 collapsing, delay-150 expanding), while
-/// SidebarComponent's own width transition always used duration-300 with no delay in
-/// either direction. Collapsing: the label finished fading at t=150ms while the container
-/// kept shrinking until t=300ms — two visibly sequential steps ("items shrink first, then
-/// the sidebar catches up"). Expanding: the 150ms delay + 150ms duration happened to SUM to
-/// 300ms, exactly matching the container's finish time by coincidence — so expanding looked
-/// synced only at the very end, not throughout. The label's own <c>ease-out</c> class was
-/// also a different curve than the container's implicit Tailwind default
-/// (cubic-bezier(0.4,0,0.2,1) from transition-all, unless overridden).
+/// shadcn-sidebar motion-parity contract (user request: the sidebar must feel 1:1 like
+/// https://ui.shadcn.com/docs/components/radix/sidebar). History: 4.0.3 fixed a
+/// user-reported asymmetric label-fade (duration-150 + per-direction delays vs the
+/// container's duration-300) by syncing the fade to the container — but shadcn doesn't
+/// fade menu labels AT ALL, and the residual cross-fade still felt different. The current
+/// contract, matching shadcn exactly:
 ///
-/// Fix: duration-300, no delay, no explicit easing override (falls back to the same
-/// Tailwind default the container uses) — identical in both directions.
+/// - Container (aside): geometry-only transition at 200ms LINEAR
+///   (transition-[width,translate] duration-200 ease-linear) — shadcn's sidebar-gap/
+///   -container animate width/left/right at exactly duration-200 ease-linear.
+/// - Menu-button label: NO transition, NO opacity classes — the span stays mounted and is
+///   hard-CLIPPED by the collapsing width (button overflow-hidden), shadcn's
+///   [&gt;span:last-child]:truncate mechanism. Visibility comes from geometry alone.
+/// - Group label (SidebarGroupLabel): animates out via -mt-8 + opacity-0 over
+///   transition-[margin,opacity] duration-200 ease-linear (shadcn's exact classes) —
+///   the -mt-8 equals the label's fixed h-8 so following rows slide up seamlessly.
 /// </summary>
 public class SidebarLabelFadeTimingTests : IAsyncLifetime
 {
@@ -30,27 +32,32 @@ public class SidebarLabelFadeTimingTests : IAsyncLifetime
     public Task InitializeAsync() => Task.CompletedTask;
     public async Task DisposeAsync() => await _ctx.DisposeAsync();
 
-    private IRenderedComponent<IComponent> RenderMenuButton(bool isCollapsed)
+    private IRenderedComponent<IComponent> RenderSidebar(bool isCollapsed, bool withGroupLabel = false)
     {
         return _ctx.Render(builder =>
         {
             builder.OpenComponent<L.SidebarProvider>(0);
             builder.AddAttribute(1, "IsCollapsed", isCollapsed);
-            builder.AddAttribute(2, "ChildContent", (RenderFragment)(b =>
+            builder.AddAttribute(2, "Variant", L.SidebarProvider.SidebarVariant.Icon);
+            builder.AddAttribute(3, "ChildContent", (RenderFragment)(b =>
             {
                 b.OpenComponent<L.SidebarComponent>(0);
                 b.AddAttribute(1, "ChildContent", (RenderFragment)(sc =>
                 {
-                    sc.OpenComponent<L.SidebarMenu>(0);
-                    sc.AddAttribute(1, "ChildContent", (RenderFragment)(menu =>
+                    if (withGroupLabel)
+                    {
+                        sc.OpenComponent<L.SidebarGroupLabel>(0);
+                        sc.AddAttribute(1, "ChildContent", (RenderFragment)(g => g.AddContent(0, "Platform")));
+                        sc.CloseComponent();
+                    }
+                    sc.OpenComponent<L.SidebarMenu>(2);
+                    sc.AddAttribute(3, "ChildContent", (RenderFragment)(menu =>
                     {
                         menu.OpenComponent<L.SidebarMenuItem>(0);
                         menu.AddAttribute(1, "ChildContent", (RenderFragment)(item =>
                         {
                             item.OpenComponent<L.SidebarMenuButton>(0);
-                            // The label span only renders when IconContent is ALSO set
-                            // (SidebarMenuButton.razor's Anchor: @if (IconContent is not
-                            // null) { icon; @if (LabelContent is not null) { label } }).
+                            // The label span only renders when IconContent is ALSO set.
                             item.AddAttribute(1, "IconContent", (RenderFragment)(i => i.AddContent(0, "★")));
                             item.AddAttribute(2, "LabelContent", (RenderFragment)(l => l.AddContent(0, "Dashboard")));
                             item.CloseComponent();
@@ -71,31 +78,78 @@ public class SidebarLabelFadeTimingTests : IAsyncLifetime
     [Theory]
     [InlineData(true)]
     [InlineData(false)]
-    public void Label_Fade_Duration_And_Delay_Match_The_Container_Transition_In_Both_Directions(bool isCollapsed)
+    public void Container_Animates_Geometry_At_200ms_Linear(bool isCollapsed)
     {
-        var cut = RenderMenuButton(isCollapsed);
-
-        var labelClass = FindLabelSpan(cut).ClassList;
+        var cut = RenderSidebar(isCollapsed);
         var containerClass = cut.Find("aside").ClassList;
 
-        // Must match the container's actual duration (duration-300) and have NO delay in
-        // either direction — the exact bug: the label used to differ from this per-direction.
-        Assert.Contains("duration-300", labelClass);
-        Assert.Contains("duration-300", containerClass);
-        Assert.DoesNotContain(labelClass, c => c.StartsWith("delay-"));
+        Assert.Contains("duration-200", containerClass);
+        Assert.Contains("ease-linear", containerClass);
+        Assert.Contains("transition-[width,translate]", containerClass);
+        Assert.DoesNotContain("transition-all", containerClass);
+        Assert.DoesNotContain(containerClass, c => c.StartsWith("delay-"));
+    }
 
-        // Must NOT carry its own easing override — falls back to the same Tailwind default
-        // (cubic-bezier(0.4,0,0.2,1) from transition-all/transition-opacity) the container
-        // implicitly uses, instead of a different explicit curve like ease-out.
-        Assert.DoesNotContain(labelClass, c => c.StartsWith("ease-"));
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void MenuButton_Label_Is_Clipped_Not_Faded(bool isCollapsed)
+    {
+        var cut = RenderSidebar(isCollapsed);
+        var labelClass = FindLabelSpan(cut).ClassList;
+
+        // shadcn parity: no fade — the span carries no transition/opacity/delay classes
+        // in EITHER state; visibility comes entirely from the width clip.
+        Assert.DoesNotContain(labelClass, c => c.StartsWith("transition"));
+        Assert.DoesNotContain(labelClass, c => c.StartsWith("opacity-"));
+        Assert.DoesNotContain(labelClass, c => c.StartsWith("delay-"));
+        Assert.DoesNotContain(labelClass, c => c.StartsWith("duration-"));
+        Assert.Contains("whitespace-nowrap", labelClass);
+        Assert.Contains("truncate", labelClass);
     }
 
     [Fact]
-    public void Label_Is_Invisible_When_Collapsed_And_Visible_When_Expanded()
+    public void MenuButton_Label_Stays_Mounted_When_Collapsed()
     {
-        // Guard: the opacity toggle itself (the actual visual effect) must survive the
-        // timing-symmetry fix untouched.
-        Assert.Contains("opacity-0", FindLabelSpan(RenderMenuButton(isCollapsed: true)).ClassList);
-        Assert.Contains("opacity-100", FindLabelSpan(RenderMenuButton(isCollapsed: false)).ClassList);
+        // Clip-not-fade only works if the span is still in the DOM on the collapsed rail.
+        Assert.NotNull(FindLabelSpan(RenderSidebar(isCollapsed: true)));
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void GroupLabel_Slides_Out_Via_Margin_And_Opacity_At_200ms_Linear(bool isCollapsed)
+    {
+        var cut = RenderSidebar(isCollapsed, withGroupLabel: true);
+        var groupLabel = cut.FindAll("div").Single(d => d.TextContent.Trim() == "Platform");
+        var cls = groupLabel.ClassList;
+
+        // shadcn's exact mechanism: -mt-8 pulls following content up by the label's own
+        // fixed h-8 while it fades, both over transition-[margin,opacity] 200ms linear.
+        Assert.Contains("transition-[margin,opacity]", cls);
+        Assert.Contains("duration-200", cls);
+        Assert.Contains("ease-linear", cls);
+        Assert.Contains("h-8", cls);
+        Assert.DoesNotContain("sr-only", cls);
+        if (isCollapsed)
+        {
+            Assert.Contains("-mt-8", cls);
+            Assert.Contains("opacity-0", cls);
+        }
+        else
+        {
+            Assert.DoesNotContain("-mt-8", cls);
+            Assert.DoesNotContain("opacity-0", cls);
+        }
+    }
+
+    [Fact]
+    public void Collapsed_Icon_Rail_Is_ShadcnWidth_With_IconSquare_Button_Padding()
+    {
+        var cut = RenderSidebar(isCollapsed: true);
+
+        // shadcn geometry: SIDEBAR_WIDTH_ICON = 3rem (w-12) with p-2 icon-square buttons.
+        Assert.Contains("w-12", cut.Find("aside").ClassList);
+        Assert.Contains("px-2", cut.Find("a").ClassList);
     }
 }

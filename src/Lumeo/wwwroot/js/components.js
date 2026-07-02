@@ -647,6 +647,20 @@ export function positionFixed(contentId, referenceId, align, matchWidth, side, o
             computedSide = (cRect.left + cRect.width / 2) <= (rRect.left + rRect.width / 2) ? 'left' : 'right';
         }
 
+        // Arrow anchor (floating-ui "arrow middleware" equivalent): a directional-arrow
+        // consumer (Tooltip) renders its arrow at `var(--lumeo-arrow-x/y, 50%)` — the 50%
+        // fallback is the classic box-centered arrow. When the viewport-edge clamps above
+        // shift the box away from being trigger-centered (e.g. a trigger near the screen
+        // edge), a box-centered arrow points into empty space instead of at the trigger;
+        // compute where the TRIGGER's center actually falls within the final box and pin
+        // the arrow there. Clamped to 12px from either box edge so the rotated square
+        // never escapes the box's rounded corners. Set unconditionally — consumers that
+        // don't read the vars are unaffected.
+        const arrowX = Math.min(Math.max(rRect.left + rRect.width / 2 - cRect.left, 12), Math.max(cRect.width - 12, 12));
+        const arrowY = Math.min(Math.max(rRect.top + rRect.height / 2 - cRect.top, 12), Math.max(cRect.height - 12, 12));
+        content.style.setProperty('--lumeo-arrow-x', `${arrowX}px`);
+        content.style.setProperty('--lumeo-arrow-y', `${arrowY}px`);
+
         // Notify .NET of a LATER side change (skips the very first pass — lastReportedSide is still null
         // there, and that placement is already conveyed by positionFixed's synchronous return).
         if (dotnetRef && lastReportedSide !== null && computedSide !== lastReportedSide) {

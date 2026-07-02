@@ -248,7 +248,7 @@ public class SidebarTests : IAsyncLifetime
     {
         var cut = RenderMiniRail(isCollapsed: true);
         var cls = cut.Find("aside").GetAttribute("class") ?? "";
-        Assert.Contains("w-16", cls);
+        Assert.Contains("w-12", cls);
         Assert.DoesNotContain("w-64", cls);
         Assert.Equal("false", cut.Find("aside").GetAttribute("aria-expanded"));
     }
@@ -267,7 +267,7 @@ public class SidebarTests : IAsyncLifetime
     {
         var cut = RenderMiniRail(isCollapsed: true);
         var aside = cut.Find("aside");
-        Assert.Contains("w-16", aside.GetAttribute("class") ?? "");
+        Assert.Contains("w-12", aside.GetAttribute("class") ?? "");
 
         aside.TriggerEvent("onmouseenter", new Microsoft.AspNetCore.Components.Web.MouseEventArgs());
 
@@ -288,7 +288,7 @@ public class SidebarTests : IAsyncLifetime
 
         aside.TriggerEvent("onmouseleave", new Microsoft.AspNetCore.Components.Web.MouseEventArgs());
 
-        Assert.Contains("w-16", cut.Find("aside").GetAttribute("class") ?? "");
+        Assert.Contains("w-12", cut.Find("aside").GetAttribute("class") ?? "");
         Assert.Equal("false", cut.Find("aside").GetAttribute("aria-expanded"));
     }
 
@@ -307,9 +307,10 @@ public class SidebarTests : IAsyncLifetime
     [Fact]
     public void MiniRail_Hover_Reveals_Menu_Button_Labels()
     {
-        // Bug fix: previously _hoverExpanded lived only on SidebarComponent so the
-        // cascade only saw the pinned IsCollapsed — SidebarMenuButton kept its
-        // labels at opacity-0 even after the rail widened on hover.
+        // shadcn parity: labels are CLIPPED by the rail width, not opacity-faded — the
+        // span stays mounted (and carries NO opacity classes) in both states; what
+        // reveals it on hover is the aside widening w-12 → w-64 (the cascaded
+        // EffectiveCollapsed flag drives the width, the width drives visibility).
         var cut = _ctx.Render(builder =>
         {
             builder.OpenComponent<L.SidebarProvider>(0);
@@ -331,17 +332,19 @@ public class SidebarTests : IAsyncLifetime
             builder.CloseComponent();
         });
 
-        // Label span exists but starts at opacity-0 (collapsed rail).
+        // Label span exists even on the collapsed rail (mounted, clipped — never faded).
         var labelSpan = cut.FindAll("span").First(s => s.TextContent.Trim() == "Home");
-        Assert.Contains("opacity-0", labelSpan.GetAttribute("class") ?? "");
+        Assert.DoesNotContain("opacity-0", labelSpan.GetAttribute("class") ?? "");
+        Assert.Contains("w-12", cut.Find("aside").GetAttribute("class") ?? "");
 
         // Hover the rail.
         cut.Find("aside").TriggerEvent("onmouseenter", new Microsoft.AspNetCore.Components.Web.MouseEventArgs());
 
-        // Now the same label flips to opacity-100 — driven by the cascaded
-        // EffectiveCollapsed flag from SidebarProvider.
+        // The rail widens to w-64 — driven by the cascaded EffectiveCollapsed flag from
+        // SidebarProvider — which is what visually reveals the (always-mounted) label.
+        Assert.Contains("w-64", cut.Find("aside").GetAttribute("class") ?? "");
         var labelSpan2 = cut.FindAll("span").First(s => s.TextContent.Trim() == "Home");
-        Assert.Contains("opacity-100", labelSpan2.GetAttribute("class") ?? "");
+        Assert.DoesNotContain("opacity-0", labelSpan2.GetAttribute("class") ?? "");
     }
 
     [Fact]
@@ -362,7 +365,7 @@ public class SidebarTests : IAsyncLifetime
         });
 
         cut.Find("aside").TriggerEvent("onmouseenter", new Microsoft.AspNetCore.Components.Web.MouseEventArgs());
-        Assert.Contains("w-16", cut.Find("aside").GetAttribute("class") ?? "");
+        Assert.Contains("w-12", cut.Find("aside").GetAttribute("class") ?? "");
         Assert.DoesNotContain("w-64", cut.Find("aside").GetAttribute("class") ?? "");
     }
 }

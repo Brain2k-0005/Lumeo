@@ -103,8 +103,8 @@ public class SidebarMobileShortcutTests : IAsyncLifetime
             .Add(h => h.Collapsed, true));
 
         var aside = cut.Find("aside");
-        // Icon variant collapsed = w-16 rail, not an off-canvas sheet.
-        Assert.Contains("w-16", aside.GetAttribute("class"));
+        // Icon variant collapsed = w-12 rail (shadcn SIDEBAR_WIDTH_ICON), not an off-canvas sheet.
+        Assert.Contains("w-12", aside.GetAttribute("class"));
         Assert.DoesNotContain("absolute", aside.GetAttribute("class"));
     }
 

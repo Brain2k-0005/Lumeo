@@ -81,28 +81,26 @@ else
 
     private string CssClass => Cx.Merge(
         "flex items-center gap-3 rounded-lg py-2 min-h-11 sm:min-h-0 text-muted-foreground hover:text-foreground hover:bg-sidebar-accent focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-2 w-full overflow-hidden",
-        "transition-[padding,background-color,color] duration-300 ease-out",
-        EffectiveCollapsed ? "px-4" : "px-3",
+        // shadcn sidebar parity: its menu button transitions exactly
+        // `transition-[width,height,padding]` with NO explicit duration/easing (Tailwind's
+        // 150ms default), and deliberately does NOT transition colors — hover color changes
+        // snap. The button runs on a different clock than the 200ms-linear container by
+        // design; 1:1 parity means keeping that split rather than syncing them.
+        "transition-[width,height,padding]",
+        // Collapsed rail buttons shrink to p-2 icon squares inside the 3rem (w-12) rail —
+        // shadcn's group-data-[collapsible=icon]:!p-2 on a SIDEBAR_WIDTH_ICON rail.
+        EffectiveCollapsed ? "px-2" : "px-3",
         Cx.When(IsActive, "bg-sidebar-accent text-sidebar-accent-foreground font-medium"),
         Class);
 
-    // Opacity-only fade. The sidebar's own width transition handles the visual shrink
-    // — the label stays at natural width and is clipped by the parent's overflow-x-hidden,
-    // so the icon stays put while the sidebar narrows instead of "sliding to center".
-    // Duration/easing MUST match SidebarComponent.CssClass's container transition
-    // (transition-all duration-300, Tailwind's default cubic-bezier(0.4,0,0.2,1) timing
-    // function) EXACTLY, with no delay in either direction — not just "close enough":
-    // the previous asymmetric delay-0 (collapsing) / delay-150 (expanding) with a shorter
-    // duration-150 + an explicit ease-out (a DIFFERENT curve than the container's default)
-    // only accidentally looked synced while EXPANDING, because a 150ms delay + 150ms
-    // duration happens to sum to 300ms — matching the container's finish time by
-    // coincidence, not because the two curves actually tracked together throughout. While
-    // COLLAPSING there was no such coincidence: the label finished fading at t=150ms while
-    // the container kept shrinking until t=300ms, reading as two sequential steps instead
-    // of one motion (user-reported production bug). No delay + identical duration/easing
-    // makes both directions track the container continuously from t=0, not just meet it
-    // at the end.
-    private string LabelCssClass => Cx.Join(
-        "whitespace-nowrap transition-opacity duration-300",
-        EffectiveCollapsed ? "opacity-0" : "opacity-100");
+    // shadcn sidebar parity: NO opacity fade on the label — shadcn's menu-button text is
+    // hard-CLIPPED by the collapsing width (button `overflow-hidden` +
+    // `[&>span:last-child]:truncate`; the 200ms-linear width animation slides the clip
+    // edge across the text). The span stays mounted in both states; visibility comes
+    // entirely from geometry. Lumeo's DOM already provides the clip container (the
+    // anchor's overflow-hidden above + the aside's overflow-x-hidden), so the label needs
+    // no transition classes at all. The previous opacity cross-fade — even after 4.0.3
+    // synced its timing to the container — was itself the remaining felt difference from
+    // shadcn ("instant text reveal" vs fade), so it's removed rather than re-tuned.
+    private string LabelCssClass => "whitespace-nowrap truncate";
 }

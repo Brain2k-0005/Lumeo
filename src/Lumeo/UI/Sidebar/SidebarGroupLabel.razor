@@ -10,10 +10,20 @@
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
-    private bool IsCollapsed => State?.IsCollapsed ?? false;
+    // EffectiveCollapsed (not just IsCollapsed) so a MiniRail hover-expand reveals the
+    // group labels along with the menu-button labels — the provider owns the hover bit
+    // and cascades it, same dispatch SidebarMenuButton already uses.
+    private bool IsCollapsed => State?.EffectiveCollapsed ?? State?.IsCollapsed ?? false;
 
+    // shadcn sidebar parity: the group label animates OUT on collapse via -mt-8 +
+    // opacity-0 over `transition-[margin,opacity] duration-200 ease-linear` — the -mt-8
+    // pulls the following content up by exactly the label's own height (hence the fixed
+    // h-8 instead of py-1: the margin must equal the height for the rows below to land
+    // seamlessly) while it fades, tracking the container's 200ms-linear width clip.
+    // Previously this was an untransitioned sr-only swap — an instant pop while
+    // everything around it animated.
     private string CssClass => Cx.Merge(
-        "px-3 py-1 text-xs font-medium text-muted-foreground",
-        Cx.When(IsCollapsed, "sr-only"),
+        "flex h-8 shrink-0 items-center px-3 text-xs font-medium text-muted-foreground transition-[margin,opacity] duration-200 ease-linear",
+        Cx.When(IsCollapsed, "-mt-8 opacity-0"),
         Class);
 }

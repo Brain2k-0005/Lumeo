@@ -17,6 +17,7 @@
      @onfocusin="HandleFocusIn"
      @onfocusout="HandleFocusOut"
      @onkeydown="HandleKeyDown"
+     @onpointerdown="HandlePointerDown"
      @onclick="HandleTap"
      @attributes="AdditionalAttributes">
     <CascadingValue Value="context" IsFixed="false">
@@ -135,16 +136,49 @@
         }
     }
 
-    // Tap toggles the pinned state. The first tap on a touch device fires
-    // both `mouseenter` (browser-emulated) and `click` — that's fine: pin
-    // simply sticks open. A second tap on the trigger unpins.
+    // The click's input modality, recorded from the preceding pointerdown ("mouse",
+    // "touch", "pen"). Null when the click had no pointerdown at all — i.e. keyboard
+    // activation (Enter/Space fire a click without any pointer event).
+    private string? _lastPointerType;
+
+    private void HandlePointerDown(PointerEventArgs e) => _lastPointerType = e.PointerType;
+
+    // TOUCH tap toggles the pinned state (rc.44): a touch device has no hover, so the
+    // first tap pins the tooltip open and a second tap (or a tap elsewhere, via
+    // registerClickOutside) dismisses it.
+    //
+    // Any OTHER activation — mouse, pen, keyboard — CLOSES the tooltip instead (Radix
+    // parity: clicking a tooltip trigger dismisses its tooltip; the user has acted, the
+    // hint has served its purpose). This used to pin on EVERY click: a desktop mouse
+    // click flipped _pinned=true, so the tooltip stuck open even after the pointer left
+    // (mouseleave only clears _hovered — _pinned kept _isOpen true) until a click landed
+    // somewhere else. Reported in production on the sidebar-toggle button, reproducible
+    // on every Tooltip-wrapped clickable element; nothing a consumer could do about it,
+    // since no synthetic event can clear the internal state (and the 4.0.4 focus-visible
+    // fix only covered the FOCUS path, not this pin/hover path). Clearing _hovered here
+    // also means a cursor RESTING on the trigger after the click keeps the tooltip
+    // closed until it actually leaves and re-enters — mouseenter only fires on a real
+    // re-entry, so no reopen loop.
     private async Task HandleTap()
     {
-        _pinned = !_pinned;
-        if (_pinned && !_clickOutsideRegistered)
+        var isTouch = _lastPointerType == "touch";
+        _lastPointerType = null;
+
+        if (isTouch)
         {
-            await Interop.RegisterClickOutside(_wrapperId, null, OnClickOutside);
-            _clickOutsideRegistered = true;
+            _pinned = !_pinned;
+            if (_pinned && !_clickOutsideRegistered)
+            {
+                await Interop.RegisterClickOutside(_wrapperId, null, OnClickOutside);
+                _clickOutsideRegistered = true;
+            }
+        }
+        else
+        {
+            _dispatch.Cancel();
+            _pinned = false;
+            _hovered = false;
+            _focused = false;
         }
         StateHasChanged();
     }

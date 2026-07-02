@@ -15,7 +15,7 @@
         @ChildContent
         @if (ShowArrow)
         {
-            <div class="@ArrowClasses"></div>
+            <div class="@ArrowClasses" style="@ArrowStyle"></div>
         }
     </div>
 }
@@ -74,16 +74,31 @@
     // Rotated square — same visual as Popover/HoverCard but no border (tooltip is a solid primary surface).
     // Derived from EffectiveSide (the SAME value rendered as data-side) so the arrow edge and the data-side
     // attribute always agree — including after a positionFixed COLLISION FLIP, which echoes the resolved
-    // side back to _resolvedSide. Horizontal centering for Top/Bottom uses the PHYSICAL `left-1/2` (not
-    // logical `start-1/2`): the box is positioned by JS in LTR coordinates and the arrow's `-translate-x-1/2`
-    // is physical, so under RTL `start-1/2` (→ right:50%) would push the arrow off-center (Codex P2).
+    // side back to _resolvedSide.
     private string ArrowClasses => EffectiveSide switch
     {
-        "top" => "absolute left-1/2 top-full -translate-x-1/2 -translate-y-1/2 rotate-45 h-2 w-2 bg-primary",
-        "bottom" => "absolute left-1/2 bottom-full -translate-x-1/2 translate-y-1/2 rotate-45 h-2 w-2 bg-primary",
-        "left" => "absolute top-1/2 left-full -translate-y-1/2 -translate-x-1/2 rotate-45 h-2 w-2 bg-primary",
-        "right" => "absolute top-1/2 right-full -translate-y-1/2 translate-x-1/2 rotate-45 h-2 w-2 bg-primary",
-        _ => "absolute left-1/2 top-full -translate-x-1/2 -translate-y-1/2 rotate-45 h-2 w-2 bg-primary"
+        "top" => "absolute top-full -translate-x-1/2 -translate-y-1/2 rotate-45 h-2 w-2 bg-primary",
+        "bottom" => "absolute bottom-full -translate-x-1/2 translate-y-1/2 rotate-45 h-2 w-2 bg-primary",
+        "left" => "absolute left-full -translate-y-1/2 -translate-x-1/2 rotate-45 h-2 w-2 bg-primary",
+        "right" => "absolute right-full -translate-y-1/2 translate-x-1/2 rotate-45 h-2 w-2 bg-primary",
+        _ => "absolute top-full -translate-x-1/2 -translate-y-1/2 rotate-45 h-2 w-2 bg-primary"
+    };
+
+    // Anchors the arrow to where the TRIGGER's center falls within the box, not the box's own
+    // center: positionFixed writes --lumeo-arrow-x/y (viewport-collision-aware, the floating-ui
+    // "arrow middleware" equivalent) onto the content element on every reposition; the 50%
+    // fallback preserves the classic box-centered arrow until the first placement runs (and in
+    // bUnit, where no JS executes). Previously this was a hardcoded left-1/2 / top-1/2, so a
+    // box shifted by the viewport-edge clamp (trigger near the screen edge) kept its arrow at
+    // the box center, pointing into empty space instead of at the trigger (user-reported,
+    // screenshot-confirmed: box center ~27px off the trigger center, arrow still box-centered).
+    // The offset is PHYSICAL (left/top, not logical inset-inline-start): the box is positioned
+    // by JS in LTR viewport coordinates and the translate is physical too, so this stays
+    // correct under RTL (same reasoning as the former physical left-1/2, Codex P2).
+    private string ArrowStyle => EffectiveSide switch
+    {
+        "left" or "right" => "top: var(--lumeo-arrow-y, 50%)",
+        _ => "left: var(--lumeo-arrow-x, 50%)"
     };
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
