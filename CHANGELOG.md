@@ -7,6 +7,82 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.1.0-preview.1] - 2026-07-02
+
+Preview release bundling the full consumer feedback wave: five bug-fix clusters and four
+feature additions. Please battle-test before the stable 4.1.0.
+
+### Fixed
+- **Popovers inside dialogs land offset (B1)** — root-caused to a DOUBLE containing-block
+  compensation in `positionFixed`: the fold-back ran twice per placement and subtracted the
+  transformed ancestor's origin again from the already-corrected value, so a Select/
+  DropdownMenu/DatePicker inside a service dialog rendered at exactly
+  `intended − dialogOrigin` (empirically proven in Chromium against the shipped 4.0.4
+  assets). The fold is now idempotent per axis (re-folds only when the flip/clamp logic
+  wrote a fresh viewport value). Additionally: `positionAtPoint` (ContextMenu root menu)
+  had NO compensation at all — added; and the Dialog/AlertDialog panel's `animate-zoom-in`
+  (fill-mode:both) left a permanent identity-matrix transform making the panel a containing
+  block forever — the panels now neutralize the entry animation once finished (the same
+  rc.25 `getAnimations()+.finished` pattern Sheets/Drawers already used). Consumer-side
+  portal/measurement workarounds are obsolete.
+- **Popovers freeze when their trigger moves (Tooltip stuck at old coordinates)** —
+  `positionFixed` only repositioned on scroll/resize; a trigger moving through a CSS layout
+  animation (e.g. the sidebar toggle riding the collapsing sidebar) left the box at its
+  opening position. An always-on rAF reference-rect watchdog (floating-ui
+  `autoUpdate({animationFrame})` semantics — one rect read per idle frame, full reposition
+  only on frames where the trigger actually moved) now keeps every positioned surface
+  glued to its trigger.
+- **Select/Combobox lists grow past the viewport and can't scroll** — two layers: a
+  `max-h-96 overflow-y-auto` default on SelectContent/ComboboxContent (shadcn parity;
+  Select's pinned search input stays outside the new inner scroll region), and a
+  ResizeObserver in `positionFixed` re-running the viewport clamp when content grows
+  after opening (async items, search filtering) — previously the clamp only ran against
+  the small initial box.
+- **OverlayForm/Sheet scroll bodies grew a spurious horizontal scrollbar (B3)** — the
+  deliberate `-mx-1 px-1` focus-ring gutter makes the body 8px wider than its parent;
+  `overflow-x-clip` now rides along at all three gutter sites (OverlayForm,
+  OverlayProvider ScrollableBody, ScrollArea FocusRingGutter) plus `overflow-x-hidden`
+  on DialogContent's Scrollable wrapper. Rings still render (the clip edge is the padding
+  box, 4px outside the fields).
+- **DatePicker/TimePicker can't shrink below ~238px (B2, bugfix half)** — the inner
+  keyboard input now carries `min-w-0`, collapsing the flex min-content chain that blew
+  out narrow grid columns.
+- **Overlay input-hardening (B4)** — every overlay shell's full-viewport wrapper is now
+  `pointer-events-none` (backdrop + panel restore `pointer-events-auto`), so a panel that
+  wedges mid-animation can never leave an invisible input-eating layer over the app; and
+  the focus trap now focuses the PANEL itself instead of auto-focusing the first input
+  (Radix/vaul parity — no more mobile keyboard summoned mid slide-in). The reported
+  drawer-over-drawer break did not reproduce on 4.0.4 in desktop or touch-emulated
+  Chromium; these changes structurally remove its most likely failure shape. A device
+  repro on 4.x is welcome if it still occurs.
+- **Stale `Map.Cluster` XML doc (B5)** — claimed leaflet.markercluster + CDN fallback;
+  clustering has been native MapLibre GL layers for a long time. Rewritten (registry/MCP
+  regenerate from it).
+
+### Added
+- **`TooltipContent.Align`** (Start/Center/End, default Center) — matches
+  Popover/HoverCard/DropdownMenu; RTL-aware via the existing interop; renders
+  `data-align`. The 4.1 arrow anchoring is align-agnostic and keeps pointing at the
+  trigger for any alignment.
+- **`OverlayOptions.ShowCloseButton` / `DialogContent.ShowCloseButton` /
+  `SheetContent.ShowCloseButton`** (bool?, default null = legacy `!PreventClose`
+  coupling) — force the X on a modal overlay or hide it for custom chrome. The X now
+  carries stable hook classes (`lumeo-dialog-close` / `lumeo-sheet-close`) and `z-10` so
+  consumer sticky headers can't paint over it.
+- **`DatePicker.FullWidth` / `TimePicker.FullWidth` / `DateRangePicker.FullWidth`**
+  (Button precedent) — threads `w-full` through the previously shrink-wrapped
+  Popover/PopoverTrigger wrapper chain; `Popover` itself gained a `Class` parameter.
+- **Maps cluster + interop APIs (W4)**: `MapMarker.ClusterExclude` (render a marker as a
+  DOM marker outside the cluster source — highlighted markers no longer vanish into
+  cluster bubbles), `MapMarker.Properties` (custom GeoJSON feature properties for
+  cluster aggregation), `Map.ClusterProperties` / `Map.ClusterColorExpression` /
+  `Map.ClusterRadius` / `Map.ClusterMaxZoom` (raw MapLibre passthrough, defaults
+  byte-for-byte unchanged), and `Map.ElementId` + the `getMap(elementId)` JS export for
+  direct MapLibre instance access.
+- **Self-hosting docs for the CDN-loaded engines (B5)** — `window.lumeoCdn` override now
+  documented on the Map docs page (mirroring the PdfViewer page) and surfaced to the MCP
+  via `<gotcha>` annotations on Map and PdfViewer.
+
 ## [4.0.4] - 2026-07-01
 
 ### Fixed

@@ -538,11 +538,17 @@ input[type="range"]::-moz-range-thumb {
 }
 
 @keyframes zoom-in {
-  /* End state uses `transform: none` rather than `scale(1)` so the element
-     does NOT keep a transform after the animation finishes. A lingering
-     `scale(1)` creates a containing block for position:fixed descendants,
-     which breaks popovers / selects / comboboxes rendered inside a Dialog
-     (they end up positioned relative to the dialog, not the viewport). */
+  /* NOTE: `to: transform none` does NOT prevent the containing-block trap —
+     under fill-mode:both the browser resolves the filled end state to the
+     identity matrix (measured: computed transform matrix(1,0,0,1,0,0) on the
+     settled panel), and even with a computed transform of `none` a live
+     `animation` declaration keeps Chrome treating the element as a containing
+     block for position:fixed descendants (compositor pre-creates the layer).
+     The actual guarantee comes from Dialog/AlertDialogContent calling
+     AttachOverlaySlideEnd, which sets inline `animation:none !important` +
+     `transform:none !important` once the animation finishes (rc.25 pattern,
+     shared with Sheet/Drawer). Keeping `to: none` here is still preferable to
+     `scale(1)` — it minimizes the window during the animation itself. */
   from { opacity: 0; transform: scale(0.95); }
   to   { opacity: 1; transform: none; }
 }

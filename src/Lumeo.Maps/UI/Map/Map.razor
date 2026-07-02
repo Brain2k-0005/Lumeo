@@ -2,6 +2,8 @@
 @implements IAsyncDisposable
 @inject ComponentInteropService Interop
 
+@* <gotcha>MapLibre GL JS and its stylesheet are loaded at runtime from unpkg (CDN) the first time a Map mounts. For strict-CSP or air-gapped deployments, self-host them and set window.lumeoCdn = { mapLibreJs: '/your/maplibre-gl.js', mapLibreCss: '/your/maplibre-gl.css' } before the first Map renders, or run `lumeo deps install --lib maplibre` (CLI). See /docs/cdn-deps.</gotcha> *@
+
 <CascadingValue Value="_context" IsFixed="true">
     <div id="@_mapId"
          role="application"
@@ -51,9 +53,36 @@
     [Parameter] public bool Attribution { get; set; } = true;
     [Parameter] public bool ScrollWheelZoom { get; set; } = true;
 
-    /// <summary>Marker clustering via leaflet.markercluster. CDN-loaded on
-    /// first use; falls back to plain markers if the script fails to fetch.</summary>
+    /// <summary>Enable MapLibre GL native marker clustering. When <c>true</c>, markers are
+    /// aggregated into circle bubbles via a GeoJSON cluster source — no additional script is
+    /// fetched. Cluster bubbles are tinted with <c>--lumeo-map-cluster-highlight</c> (default
+    /// amber) when at least one child marker is <see cref="MapMarker.Highlighted"/>. Fine-tune
+    /// with <see cref="ClusterRadius"/>, <see cref="ClusterMaxZoom"/>,
+    /// <see cref="ClusterProperties"/>, and <see cref="ClusterColorExpression"/>.</summary>
     [Parameter] public bool Cluster { get; set; }
+
+    /// <summary>Additional MapLibre
+    /// <see href="https://maplibre.org/maplibre-gl-js/docs/API/type-aliases/ClusterProperties/">clusterProperties</see>
+    /// expressions merged into the GeoJSON cluster source alongside the built-in
+    /// <c>highlighted</c> aggregator. Each entry maps a property name to a raw
+    /// <c>[operator, expression]</c> array — e.g.
+    /// <c>{ "totalScore", new object[] { "+", new object[] { "get", "score" } } }</c>.
+    /// Only meaningful when <see cref="Cluster"/> is <c>true</c>. Built-in keys
+    /// (<c>highlighted</c>) win on collision.</summary>
+    [Parameter] public Dictionary<string, object[]>? ClusterProperties { get; set; }
+
+    /// <summary>Replaces the default <c>circle-color</c> MapLibre paint expression on cluster
+    /// circles. The default expression tints any bubble that contains a highlighted marker with
+    /// <c>--lumeo-map-cluster-highlight</c> (default amber). Pass a raw MapLibre expression
+    /// array to drive cluster color from a custom aggregated property instead.</summary>
+    [Parameter] public object[]? ClusterColorExpression { get; set; }
+
+    /// <summary>Target pixel radius of each cluster circle. Default is <c>50</c>.</summary>
+    [Parameter] public int ClusterRadius { get; set; } = 50;
+
+    /// <summary>Zoom level at which markers fully emerge from their cluster. Default is
+    /// <c>14</c>. Lower values break clusters apart at coarser zoom levels.</summary>
+    [Parameter] public int ClusterMaxZoom { get; set; } = 14;
 
     /// <summary>Adds a "My location" button that geolocates the user.</summary>
     [Parameter] public bool Geolocate { get; set; }
@@ -91,6 +120,16 @@
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     private readonly string _mapId = $"lumeo-map-{Guid.NewGuid():N}";
+
+    /// <summary>The underlying MapLibre element id for this map instance. Useful for
+    /// advanced JS interop — pass this to the <c>getMap</c> export to obtain the raw
+    /// MapLibre map object:
+    /// <code>
+    /// const { getMap } = await import('/_content/Lumeo.Maps/js/map.js');
+    /// const map = getMap(mapRef.ElementId);
+    /// </code></summary>
+    public string ElementId => _mapId;
+
     private IJSObjectReference? _module;
     private DotNetObjectReference<Map>? _selfRef;
     private MapContext _context = null!;
@@ -199,6 +238,10 @@
                 attribution = Attribution,
                 scrollWheelZoom = ScrollWheelZoom,
                 cluster = Cluster,
+                clusterProperties = ClusterProperties,
+                clusterColorExpression = ClusterColorExpression,
+                clusterRadius = ClusterRadius,
+                clusterMaxZoom = ClusterMaxZoom,
                 geolocate = Geolocate,
                 fullscreen = Fullscreen,
                 scale = Scale,
@@ -278,6 +321,8 @@
             hasClick = m.OnClick.HasDelegate,
             draggable = m.Draggable,
             hasDragEnd = m.OnDragEnd.HasDelegate,
+            clusterExclude = m.ClusterExclude,
+            properties = m.Properties,
         }).ToArray();
 
         var json = System.Text.Json.JsonSerializer.Serialize(payload);

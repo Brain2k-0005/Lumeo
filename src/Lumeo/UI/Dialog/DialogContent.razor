@@ -10,13 +10,19 @@
 }
 else if (Context.IsOpen)
 {
-    <div class="fixed inset-0 flex items-center justify-center" style="z-index:@BackdropZ">
+    @* pointer-events-none on the full-viewport wrapper + pointer-events-auto on
+       backdrop/panel: the wrapper itself must never be a hit-target. If a panel
+       ever wedges off-screen (e.g. an interrupted entry animation on a mobile
+       viewport shift), an input-eating invisible full-screen layer is exactly the
+       "overlay can't be closed and blocks everything below" failure mode reported
+       for stacked service overlays — this makes it structurally impossible. *@
+    <div class="fixed inset-0 flex items-center justify-center pointer-events-none" style="z-index:@BackdropZ">
         @* Backdrop — theme-aware overlay token. Uses the --color-overlay-backdrop
            CSS variable (defined + light/dark-swapped in lumeo.css) directly via
            inline style rather than a Tailwind utility, so it resolves for every
            consumer of the pre-built bundle without depending on the token class
            being safelisted (same approach as Tour's SVG scrim). *@
-        <div class="fixed inset-0 animate-fade-in" style="background-color:var(--color-overlay-backdrop);z-index:@BackdropZ" @onclick="HandleBackdropClick"></div>
+        <div class="fixed inset-0 animate-fade-in pointer-events-auto" style="background-color:var(--color-overlay-backdrop);z-index:@BackdropZ" @onclick="HandleBackdropClick"></div>
         <!-- Content -->
         @* @onkeydown:stopPropagation — a modal surface owns the keys pressed
            inside it. Nested overlays render INSIDE this div, so their keydown
@@ -30,7 +36,11 @@ else if (Context.IsOpen)
         <div id="@_contentId" class="@CssClass" style="z-index:@ContentZ" role="dialog" aria-modal="true" aria-labelledby="@Context.TitleId" aria-describedby="@DescribedBy" @onkeydown="HandleKeyDown" @onkeydown:stopPropagation tabindex="-1" @attributes="AdditionalAttributes">
             @if (Scrollable)
             {
-                <div class="max-h-[85vh] overflow-y-auto">
+                @* overflow-x-hidden: a child with the -mx-1 focus-ring gutter
+                   (OverlayForm's body) is 8px wider than this scrollport; without
+                   the explicit x-clip, overflow-y:auto promotes overflow-x to auto
+                   and the 4px overhang grows a spurious horizontal scrollbar. *@
+                <div class="max-h-[85vh] overflow-y-auto overflow-x-hidden">
                     @ChildContent
                 </div>
             }
@@ -38,9 +48,13 @@ else if (Context.IsOpen)
             {
                 @ChildContent
             }
-            @if (!PreventClose)
+            @* lumeo-dialog-close: stable consumer hook (restyle/hide without relying
+               on utility-class internals). z-10 keeps the X clickable above any
+               positioned child a consumer renders full-bleed (sticky headers etc.),
+               which previously painted over the un-z-indexed button. *@
+            @if (ShowCloseButton ?? !PreventClose)
             {
-                <button type="button" aria-label="@L["Dialog.Close"]" class="absolute end-2 top-2 sm:end-4 sm:top-4 inline-flex items-center justify-center rounded-sm h-11 w-11 sm:h-6 sm:w-6 opacity-70 transition-opacity hover:opacity-100 focus:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-2" @onclick="HandleCloseButton">
+                <button type="button" aria-label="@L["Dialog.Close"]" class="lumeo-dialog-close absolute end-2 top-2 sm:end-4 sm:top-4 z-10 inline-flex items-center justify-center rounded-sm h-11 w-11 sm:h-6 sm:w-6 opacity-70 transition-opacity hover:opacity-100 focus:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-2" @onclick="HandleCloseButton">
                     <Blazicon Svg="Lucide.X" class="h-4 w-4" />
                     <span class="sr-only">@L["Dialog.Close"]</span>
                 </button>
@@ -57,6 +71,13 @@ else if (Context.IsOpen)
     [CascadingParameter] public OverlayShellMarker? Shell { get; set; }
     [Parameter] public RenderFragment? ChildContent { get; set; }
     [Parameter] public bool PreventClose { get; set; }
+    /// <summary>Whether the top-end close (X) button renders. <c>null</c> (default)
+    /// keeps the legacy coupling — X shows whenever <see cref="PreventClose"/> is
+    /// <c>false</c>. <c>true</c> forces the X even on a modal dialog (backdrop/Escape
+    /// stay disabled; the X still routes through the dismiss guard so an
+    /// <c>OnBeforeClose</c> veto applies); <c>false</c> hides it for fully custom
+    /// close chrome. Mirrors <c>OverlayOptions.ShowCloseButton</c> for service dialogs.</summary>
+    [Parameter] public bool? ShowCloseButton { get; set; }
     [Parameter] public DialogSize Size { get; set; } = DialogSize.Default;
     [Parameter] public bool Scrollable { get; set; }
     [Parameter] public string? Class { get; set; }
@@ -91,7 +112,7 @@ else if (Context.IsOpen)
         _ => "max-w-lg"
     };
 
-    private string CssClass => Cx.Merge("relative grid w-full", SizeClass, "gap-4 bg-background p-6 shadow-lg animate-zoom-in sm:rounded-lg", Class);
+    private string CssClass => Cx.Merge("relative grid w-full pointer-events-auto", SizeClass, "gap-4 bg-background p-6 shadow-lg animate-zoom-in sm:rounded-lg", Class);
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -109,6 +130,16 @@ else if (Context.IsOpen)
             {
                 await Interop.LockScroll();
                 await Interop.SetupFocusTrap(_contentId);
+                // Neutralize the entry animation once it finishes (the Sheet/Drawer
+                // rc.25 pattern): animate-zoom-in transform-animates with
+                // fill-mode:both, which leaves the settled panel with an
+                // identity-matrix transform — and even transform:none plus a live
+                // `animation` declaration keeps Chrome treating the panel as a
+                // containing block for position:fixed descendants. Without this, a
+                // Select/DropdownMenu/DatePicker opened INSIDE the dialog resolves
+                // its fixed coordinates against the panel instead of the viewport
+                // (the B1 mispositioning report's second ingredient).
+                await Interop.AttachOverlaySlideEnd(_contentId);
                 _wasOpen = true;
             }
             catch (JSDisconnectedException) { }

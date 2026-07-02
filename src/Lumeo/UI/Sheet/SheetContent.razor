@@ -15,7 +15,9 @@
 }
 else if (Context.IsOpen || _exiting)
 {
-    <div class="fixed inset-0" style="z-index:@BackdropZ">
+    @* pointer-events-none wrapper + -auto on backdrop/panel: the full-viewport
+       wrapper must never be a hit-target itself — see DialogContent (B4 hardening). *@
+    <div class="fixed inset-0 pointer-events-none" style="z-index:@BackdropZ">
         @* Backdrop — theme-aware --color-overlay-backdrop token via inline style
            (see DialogContent). Fades out alongside the panel while exiting. *@
         <div class="@BackdropClass" style="background-color:var(--color-overlay-backdrop);z-index:@BackdropZ" @onclick="HandleBackdropClick"></div>
@@ -28,9 +30,11 @@ else if (Context.IsOpen || _exiting)
            matches the live behaviour instead of trapping AT on a non-trapping panel. #185 *@
         <div id="@_contentId" class="@CssClass" style="z-index:@ContentZ" role="dialog" aria-modal="@(Context.IsOpen ? "true" : "false")" aria-labelledby="@Context.TitleId" aria-describedby="@DescribedBy" @onkeydown="HandleKeyDown" @onkeydown:stopPropagation tabindex="-1" @attributes="AdditionalAttributes">
             @ChildContent
-            @if (!PreventClose)
+            @* lumeo-sheet-close: stable consumer hook; z-10 keeps the X above
+               full-bleed positioned children (see DialogContent). *@
+            @if (ShowCloseButton ?? !PreventClose)
             {
-                <button type="button" aria-label="@L["Dialog.Close"]" class="absolute end-4 top-4 rounded-sm opacity-70 transition-opacity hover:opacity-100 focus:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-2" @onclick="HandleCloseButton">
+                <button type="button" aria-label="@L["Dialog.Close"]" class="lumeo-sheet-close absolute end-4 top-4 z-10 rounded-sm opacity-70 transition-opacity hover:opacity-100 focus:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-2" @onclick="HandleCloseButton">
                     <Blazicon Svg="Lucide.X" class="h-4 w-4" />
                     <span class="sr-only">@L["Dialog.Close"]</span>
                 </button>
@@ -64,6 +68,12 @@ else if (Context.IsOpen || _exiting)
     /// compete. <c>None</c> disables the animation entirely.</summary>
     [Parameter] public SheetAnimation Animation { get; set; } = SheetAnimation.Slide;
     [Parameter] public bool PreventClose { get; set; }
+    /// <summary>Whether the top-end close (X) button renders. <c>null</c> (default)
+    /// keeps the legacy coupling — X shows whenever <see cref="PreventClose"/> is
+    /// <c>false</c>. <c>true</c> forces the X on a modal sheet (backdrop/Escape stay
+    /// disabled; the X routes through the dismiss guard); <c>false</c> hides it.
+    /// Mirrors <c>OverlayOptions.ShowCloseButton</c> for service sheets.</summary>
+    [Parameter] public bool? ShowCloseButton { get; set; }
     /// <summary>When true, the sheet can be dismissed by swiping in the
     /// direction opposite to its Side (e.g. swipe-down on a Bottom sheet).
     /// Default false to avoid conflicts with scrollable content. Wire to
@@ -121,7 +131,7 @@ else if (Context.IsOpen || _exiting)
     // don't trigger us), then sets inline `transform: none`. Inline style
     // beats the keyframe fill-mode forwarding — guarantees no containing
     // block trap for popovers (Select / DatePicker / Combobox).
-    private string CssClass => Cx.Merge("fixed flex flex-col gap-4 bg-background p-6 shadow-lg", PositionClasses, AnimationClass, Class);
+    private string CssClass => Cx.Merge("fixed flex flex-col gap-4 bg-background p-6 shadow-lg pointer-events-auto", PositionClasses, AnimationClass, Class);
 
     private SheetSize EffectiveSize => SizePreset switch
     {

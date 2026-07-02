@@ -19,10 +19,15 @@
 }
 else if (Context.IsOpen)
 {
-    <div class="fixed inset-0" style="z-index:@BackdropZ">
+    @* pointer-events-none wrapper + -auto on backdrop/panel: the full-viewport
+       wrapper must never be a hit-target itself. A drawer panel that wedges
+       mid slide-in (mobile viewport shift) previously left this invisible layer
+       swallowing every tap below it — the reported "second drawer breaks and the
+       first can no longer be closed" failure shape (B4 hardening). *@
+    <div class="fixed inset-0 pointer-events-none" style="z-index:@BackdropZ">
         @* Backdrop — theme-aware --color-overlay-backdrop token (was a hardcoded
            bg-black/80 that ignored the token, unlike Sheet/Dialog). #218 *@
-        <div class="fixed inset-0 animate-fade-in" style="background-color:var(--color-overlay-backdrop);z-index:@BackdropZ" @onclick="HandleBackdropClick"></div>
+        <div class="fixed inset-0 animate-fade-in pointer-events-auto" style="background-color:var(--color-overlay-backdrop);z-index:@BackdropZ" @onclick="HandleBackdropClick"></div>
         @* @onkeydown:stopPropagation — keys handled inside this modal must not
            bubble into ancestor overlays (an Escape would cascade-close them).
            See DialogContent for the full rationale. *@
@@ -150,7 +155,7 @@ else if (Context.IsOpen)
     };
 
     private string CssClass =>
-        Cx.Merge("fixed mt-24 flex h-auto flex-col bg-background shadow-lg", PositionClasses, AnimationClass, Class);
+        Cx.Merge("fixed mt-24 flex h-auto flex-col bg-background shadow-lg pointer-events-auto", PositionClasses, AnimationClass, Class);
 
     // A scoped <DirectionProvider> wins over the global ThemeService, so a subtree
     // can be RTL even if the app is LTR. Null when no provider wraps this drawer.

@@ -219,6 +219,16 @@ public record OverlayOptions
     /// <b>Applies to:</b> Dialog, Sheet, Drawer.</summary>
     public bool PreventClose { get; init; }
 
+    /// <summary>Whether the shell renders its top-end close (X) button.
+    /// <c>null</c> (default) keeps the legacy coupling — the X shows whenever
+    /// <see cref="PreventClose"/> is <c>false</c>. Set <c>true</c> to force the X
+    /// even on a modal overlay (<c>PreventClose=true</c>: backdrop/Escape stay
+    /// disabled, but the X still offers an explicit way out — it routes through
+    /// the same dismiss guard, so an <c>OnBeforeClose</c> veto still applies), or
+    /// <c>false</c> to hide it and own the close chrome yourself.
+    /// <b>Applies to:</b> Dialog, Sheet. (Drawer has no X by design — drag handle.)</summary>
+    public bool? ShowCloseButton { get; init; }
+
     /// <summary>Edge the sheet slides in from. <b>Applies to:</b> Sheet.</summary>
     public Lumeo.Side SheetSide { get; init; } = Lumeo.Side.Right;
 

@@ -131,7 +131,7 @@ public class OverlayProviderTests : IAsyncLifetime
     // --- Scrollable body wrapper (3.2.6) -----------------------------------
     //
     // Sheets opened via OverlayService now wrap the rendered component in a
-    // flex-1 min-h-0 overflow-y-auto -mx-1 px-1 div so consumers don't roll
+    // flex-1 min-h-0 overflow-y-auto overflow-x-clip -mx-1 px-1 div so consumers don't roll
     // their own scrollable form wrappers (which trip the box-shadow focus-
     // ring clip the report flagged). Default ScrollableBody=true; opt-out
     // via OverlayOptions { ScrollableBody = false } for sheets whose content
@@ -159,7 +159,7 @@ public class OverlayProviderTests : IAsyncLifetime
         // The wrapper carries flex-1 + overflow-y-auto and the -mx-1 px-1
         // breathing room. Asserting the class string is enough — a typo
         // here would silently lose the focus-ring fix.
-        Assert.Contains("flex-1 min-h-0 overflow-y-auto -mx-1 px-1", cut.Markup);
+        Assert.Contains("flex-1 min-h-0 overflow-y-auto overflow-x-clip -mx-1 px-1", cut.Markup);
     }
 
     [Fact]
@@ -176,7 +176,7 @@ public class OverlayProviderTests : IAsyncLifetime
 
         // Opt-out path: the body still renders, just without the auto-scroll
         // chrome — consumer's component handles its own layout.
-        Assert.DoesNotContain("flex-1 min-h-0 overflow-y-auto -mx-1 px-1", cut.Markup);
+        Assert.DoesNotContain("flex-1 min-h-0 overflow-y-auto overflow-x-clip -mx-1 px-1", cut.Markup);
         Assert.Contains("BODY", cut.Markup);
     }
 

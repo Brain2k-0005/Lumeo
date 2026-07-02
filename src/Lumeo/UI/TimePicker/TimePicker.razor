@@ -4,7 +4,7 @@
 @* Render the label, control and helper/error as ONE self-contained vertical block so the
    field never splays into a row when dropped in a flex / centered container. Standalone
    form-field structural fix. *@
-<div class="flex flex-col items-start">
+<div class="@Cx.Merge("flex flex-col items-start", Cx.When(FullWidth, "w-full"))">
 @if (Label is not null && !InsideFormField)
 {
     <label class="text-sm font-medium leading-none">
@@ -36,8 +36,8 @@
 }
 else
 {
-<Popover @bind-Open="_isOpen">
-    <PopoverTrigger>
+<Popover @bind-Open="_isOpen" Class="@(FullWidth ? "w-full" : null)">
+    <PopoverTrigger Class="@(FullWidth ? "w-full" : null)">
         <button type="button"
                 id="@EffectiveTriggerId"
                 name="@Name"
@@ -257,6 +257,14 @@ else
     [Parameter] public Density? Density { get; set; }
     [CascadingParameter] private Density? InheritedDensity { get; set; }
     [Parameter] public string? Class { get; set; }
+    /// <summary>
+    /// When <c>true</c>, the time picker expands to fill its container width —
+    /// equivalent to <c>FullWidth</c> on a <see cref="Button"/>. Propagates
+    /// <c>w-full</c> to the Popover wrapper, PopoverTrigger, and the trigger
+    /// button so the constraint reaches the rendered element through the
+    /// shrink-wrap chain.
+    /// </summary>
+    [Parameter] public bool FullWidth { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     private bool _isOpen;
@@ -482,7 +490,7 @@ else
         _ => "h-9 px-3 py-2"
     };
 
-    private string CssClass => Cx.Merge("group flex", SizeClasses, "items-center rounded-md border", (EffectiveInvalid ? "border-destructive ring-1 ring-destructive/20" : "border-input"), "bg-transparent text-sm shadow-sm hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50", Class);
+    private string CssClass => Cx.Merge("group flex", SizeClasses, Cx.When(FullWidth, "w-full"), "items-center rounded-md border", (EffectiveInvalid ? "border-destructive ring-1 ring-destructive/20" : "border-input"), "bg-transparent text-sm shadow-sm hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50", Class);
 
     private string FormatTime(TimeSpan time)
     {

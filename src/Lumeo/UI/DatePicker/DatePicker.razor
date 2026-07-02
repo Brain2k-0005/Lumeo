@@ -3,7 +3,7 @@
 @* Render the label, control and helper/error as ONE self-contained vertical block so the
    field never splays into a row when dropped in a flex / centered container. Standalone
    form-field structural fix. *@
-<div class="flex flex-col items-start">
+<div class="@Cx.Merge("flex flex-col items-start", Cx.When(FullWidth, "w-full"))">
 @if (Label is not null && !InsideFormField)
 {
     <label class="text-sm font-medium leading-none">
@@ -46,8 +46,8 @@
     }
     else
     {
-        <Popover @bind-Open="_isOpen">
-            <PopoverTrigger>
+        <Popover @bind-Open="_isOpen" Class="@(FullWidth ? "w-full" : null)">
+            <PopoverTrigger Class="@(FullWidth ? "w-full" : null)">
                 <button type="button"
                         id="@EffectiveTriggerId"
                         name="@Name"
@@ -180,8 +180,8 @@ else if (Inline)
 }
 else
 {
-    <Popover @bind-Open="_isOpen">
-        <PopoverTrigger>
+    <Popover @bind-Open="_isOpen" Class="@(FullWidth ? "w-full" : null)">
+        <PopoverTrigger Class="@(FullWidth ? "w-full" : null)">
             @if (AllowKeyboardInput && Mode != DatePickerMode.Range && Mode != DatePickerMode.Multiple && TriggerContent == null)
             {
                 @* No leading Lucide.Calendar here — the trailing CalendarDays
@@ -199,7 +199,7 @@ else
                            aria-describedby="@FormFieldDescribedBy"
                            disabled="@Disabled"
                            readonly="@(!AllowKeyboardInput)"
-                           class="flex-1 bg-transparent outline-none border-0 p-0 text-sm placeholder:text-muted-foreground disabled:cursor-not-allowed"
+                           class="flex-1 min-w-0 bg-transparent outline-none border-0 p-0 text-sm placeholder:text-muted-foreground disabled:cursor-not-allowed"
                            @oninput="HandleInputChanged"
                            @onblur="HandleInputBlur"
                            @onkeydown="HandleInputKeyDown"
@@ -567,6 +567,13 @@ else
     [Parameter] public EventCallback<bool> OpenChanged { get; set; }
 
     [Parameter] public string? Class { get; set; }
+    /// <summary>
+    /// When <c>true</c>, the date picker expands to fill its container width —
+    /// equivalent to <c>FullWidth</c> on a <see cref="Button"/>. Propagates
+    /// <c>w-full</c> to the Popover wrapper and PopoverTrigger so the constraint
+    /// reaches the rendered trigger element through the shrink-wrap chain.
+    /// </summary>
+    [Parameter] public bool FullWidth { get; set; }
     /// <summary>Focuses the date-picker trigger on first render. Whichever
     /// trigger element is rendered (button / range-button / masked input)
     /// receives the focus via its shared id. See <c>Input.AutoFocus</c> for

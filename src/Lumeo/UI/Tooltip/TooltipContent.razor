@@ -11,7 +11,7 @@
     space is tight. Side is still consumer-controlled as a preference. *@
 @if (IsOpen)
 {
-    <div id="@_contentId" role="tooltip" data-side="@EffectiveSide" class="@CssClass" @attributes="AdditionalAttributes">
+    <div id="@_contentId" role="tooltip" data-side="@EffectiveSide" data-align="@AlignStr" class="@CssClass" @attributes="AdditionalAttributes">
         @ChildContent
         @if (ShowArrow)
         {
@@ -27,6 +27,7 @@
 
     [Parameter] public RenderFragment? ChildContent { get; set; }
     [Parameter] public Lumeo.Side Side { get; set; } = Lumeo.Side.Top;
+    [Parameter] public Lumeo.Align Align { get; set; } = Lumeo.Align.Center;
     [Parameter] public bool ShowArrow { get; set; } = true;
     [Parameter] public int Offset { get; set; } = 8;
     [Parameter] public string? Class { get; set; }
@@ -37,11 +38,12 @@
     private string _contentId => Context?.ContentId ?? string.Empty;
     private bool _registered;
 
-    // Last placement values actually handed to PositionFixed. A live Side/Offset
+    // Last placement values actually handed to PositionFixed. A live Side/Offset/Align
     // change while the tooltip is open must re-run PositionFixed so the box moves;
     // storing the applied values stops a same-value re-render from thrashing JS.
     private string? _appliedSide;
     private int? _appliedOffset;
+    private string? _appliedAlign;
 
     // The side the box ACTUALLY resolved to, echoed back by PositionFixed after any collision flip.
     // Null until the first placement; the arrow + data-side render from EffectiveSide so they follow a flip.
@@ -65,6 +67,13 @@
         Lumeo.Side.Left => "left",
         Lumeo.Side.Right => "right",
         _ => "top"
+    };
+
+    private string AlignStr => Align switch
+    {
+        Lumeo.Align.Start => "start",
+        Lumeo.Align.End => "end",
+        _ => "center"
     };
 
     // The side the arrow + data-side actually render from: the resolved side once positionFixed has run
@@ -108,16 +117,17 @@
         // leaving the box at its original spot. positionFixed cleans up the prior
         // placement (keyed by contentId) at entry, so re-calling it is safe.
         if (IsOpen && Context is not null
-            && (!_registered || _appliedSide != SideStr || _appliedOffset != Offset))
+            && (!_registered || _appliedSide != SideStr || _appliedOffset != Offset || _appliedAlign != AlignStr))
         {
             // OnLiveSideChanged covers a LATER flip too — a scroll/resize reposition while this tooltip
-            // stays open at the same Side/Offset (Codex P2, round-11/14). The guard above keys off
-            // SideStr/Offset (NOT _resolvedSide), so OnLiveSideChanged's StateHasChanged does not re-enter
-            // this branch — no render loop, no re-registering positionFixed.
-            var resolved = await Interop.PositionFixed(_contentId, Context.WrapperId, "center", false, SideStr, Offset, OnLiveSideChanged);
+            // stays open at the same Side/Offset/Align (Codex P2, round-11/14). The guard above keys off
+            // SideStr/Offset/AlignStr (NOT _resolvedSide), so OnLiveSideChanged's StateHasChanged does
+            // not re-enter this branch — no render loop, no re-registering positionFixed.
+            var resolved = await Interop.PositionFixed(_contentId, Context.WrapperId, AlignStr, false, SideStr, Offset, OnLiveSideChanged);
             _registered = true;
             _appliedSide = SideStr;
             _appliedOffset = Offset;
+            _appliedAlign = AlignStr;
             // The box may have collision-flipped to the opposite side on this INITIAL placement; re-render
             // so the arrow + data-side follow it.
             if (resolved != _resolvedSide)
@@ -147,6 +157,7 @@
         _registered = false;
         _appliedSide = null;
         _appliedOffset = null;
+        _appliedAlign = null;
         _resolvedSide = null;
     }
 

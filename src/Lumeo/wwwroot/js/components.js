@@ -253,6 +253,16 @@ export function setupFocusTrap(elementId, initialFocusSelector) {
     }
     if (initial && typeof initial.focus === 'function') {
         initial.focus();
+    } else if (el.tabIndex >= -1 && typeof el.focus === 'function') {
+        // Focus the PANEL itself (all overlay shells carry tabindex="-1"), not the
+        // first focusable child — Radix/vaul parity. Auto-focusing the first child
+        // meant a form overlay focused its first <input> mid slide-in, summoning
+        // the mobile keyboard while the panel was still animating (an iOS
+        // visual-viewport + position:fixed hazard implicated in the stacked-drawer
+        // breakage report, B4). Escape/Tab still work from the panel, and the trap
+        // below keeps Tab cycling within it; a consumer who wants a specific
+        // control focused passes initialFocusSelector (AlertDialog already does).
+        el.focus();
     } else {
         const focusable = el.querySelectorAll(FOCUS_TRAP_FOCUSABLE);
         if (focusable.length > 0) {
@@ -359,9 +369,18 @@ export async function attachOverlaySlideEnd(elementId) {
 
     // Web Animations API: returns running + already-finished animations
     // (fill-mode keeps finished ones alive in this list).
+    // 'zoom-in' is included alongside the sheet/drawer slide-ins: the Dialog/
+    // AlertDialog panel's animate-zoom-in ALSO transform-animates with
+    // fill-mode:both, so the settled panel keeps an identity-matrix transform
+    // (matrix(1,0,0,1,0,0)) forever — a permanent containing block for every
+    // position:fixed descendant (the B1 "Select inside a dialog lands offset"
+    // report's second ingredient; the lumeo.css keyframe comment claiming the
+    // `to: transform:none` avoids this is factually wrong under fill-mode:both,
+    // exactly the rc.21 lesson above).
     const slideAnimations = el.getAnimations({ subtree: false })
         .filter(a => typeof a.animationName === 'string'
-                  && a.animationName.startsWith('slide-in-from-'));
+                  && (a.animationName.startsWith('slide-in-from-')
+                      || a.animationName === 'zoom-in'));
 
     if (slideAnimations.length === 0) {
         // No slide animation found — defensive: clear both transform AND
@@ -515,9 +534,9 @@ export function positionFixed(contentId, referenceId, align, matchWidth, side, o
         // SelectContent / DropdownMenuSubContent rendered inside a centered
         // Dialog (which uses transform) — every top/left we write lands offset
         // by the ancestor's origin, so the popover renders off its trigger. All
-        // the math in this function is in viewport space, so content.style.
-        // top/left always hold the INTENDED viewport coordinates; measuring the
-        // residual between intended and actual yields exactly the ancestor's
+        // the math in this function is in viewport space, so a freshly-written
+        // content.style.top/left holds an INTENDED viewport coordinate; measuring
+        // the residual between intended and actual yields exactly the ancestor's
         // origin offset, which we fold back. Applied here — BEFORE the flip/
         // clamp overflow checks below — so those checks measure the box's TRUE
         // on-screen position; measuring the uncompensated (ancestor-offset-
@@ -528,18 +547,35 @@ export function positionFixed(contentId, referenceId, align, matchWidth, side, o
         // no-op (offset ~ 0) when no transformed ancestor exists, so it never
         // affects the common page-level case. Compensating here instead of
         // reparenting the node to <body> keeps Blazor's DOM ownership intact.
+        //
+        // IDEMPOTENCE (production bug, reported as "Select inside a service
+        // dialog lands offset"): folding must happen exactly ONCE per axis per
+        // freshly-written viewport value. The old code re-read style.top/left on
+        // the second call and treated the ALREADY-FOLDED value as a new intent —
+        // measuring the (now correct) settled position against it re-derived the
+        // ancestor offset and subtracted it AGAIN, landing the box at exactly
+        // `intended − ancestorOrigin` whenever the flip/clamp branches did NOT
+        // rewrite that axis (the common no-flip case; empirically proven with a
+        // Chromium harness against the shipped 4.0.4 assets). foldedTop/foldedLeft
+        // remember the value THIS pass last wrote for each axis, so an axis is
+        // re-folded only when flip/clamp actually replaced it with a fresh
+        // viewport-space value. (Number→string→number round-trips exactly in JS,
+        // so the equality check against the re-parsed style value is safe.)
+        let foldedTop = null, foldedLeft = null;
         function compensateContainingBlock() {
             void content.offsetHeight;
-            const intendedTop = parseFloat(content.style.top);
-            const intendedLeft = parseFloat(content.style.left);
+            const curTop = parseFloat(content.style.top);
+            const curLeft = parseFloat(content.style.left);
             const settled = content.getBoundingClientRect();
-            if (Number.isFinite(intendedTop)) {
-                const offY = settled.top - intendedTop;
-                if (Math.abs(offY) > 0.5) content.style.top = `${intendedTop - offY}px`;
+            if (Number.isFinite(curTop) && curTop !== foldedTop) {
+                const offY = settled.top - curTop;
+                foldedTop = Math.abs(offY) > 0.5 ? curTop - offY : curTop;
+                if (foldedTop !== curTop) content.style.top = `${foldedTop}px`;
             }
-            if (Number.isFinite(intendedLeft)) {
-                const offX = settled.left - intendedLeft;
-                if (Math.abs(offX) > 0.5) content.style.left = `${intendedLeft - offX}px`;
+            if (Number.isFinite(curLeft) && curLeft !== foldedLeft) {
+                const offX = settled.left - curLeft;
+                foldedLeft = Math.abs(offX) > 0.5 ? curLeft - offX : curLeft;
+                if (foldedLeft !== curLeft) content.style.left = `${foldedLeft}px`;
             }
         }
         compensateContainingBlock();
@@ -682,8 +718,55 @@ export function positionFixed(contentId, referenceId, align, matchWidth, side, o
     window.addEventListener('scroll', onScrollOrResize, { capture: true, passive: true });
     window.addEventListener('resize', onScrollOrResize, { passive: true });
 
+    // Reference-rect watchdog (floating-ui autoUpdate({animationFrame:true})
+    // semantics): a trigger that MOVES without any scroll/resize — e.g. the
+    // sidebar-toggle button riding the sidebar's animating width, a layout
+    // shift from content inserted above, an accordion expanding — fires
+    // neither listener above, so the fixed-position box froze at its opening
+    // coordinates (user-reported). Poll the reference's rect once per frame
+    // and re-run the full pipeline only when it actually changed: the idle
+    // cost is a single getBoundingClientRect() read with zero writes
+    // (sub-0.05ms, no layout thrash — layout is clean between frames), the
+    // expensive update() runs only on frames where the trigger really moved.
+    // Exact !== compare (floating-ui does the same): during an animation every
+    // subpixel change is real movement; at rest the rect is bit-stable.
+    // The scroll/resize listeners stay — a window resize can require a
+    // re-clamp even when the reference keeps its viewport coordinates.
+    let lastRefRect = reference.getBoundingClientRect();
+    let watchId = requestAnimationFrame(function watch() {
+        if (!reference.isConnected || !content.isConnected) { cleanup(); return; }
+        const r = reference.getBoundingClientRect();
+        if (r.top !== lastRefRect.top || r.left !== lastRefRect.left ||
+            r.width !== lastRefRect.width || r.height !== lastRefRect.height) {
+            lastRefRect = r;
+            update();
+        }
+        watchId = requestAnimationFrame(watch);
+    });
+
+    // Content-resize re-clamp: a popover that GROWS after opening (async
+    // Items landing in a Select, search filter expanding a list) never
+    // re-enters update(), so the viewport-overflow clamp/maxHeight logic ran
+    // only against the small initial box and a long list ended up taller than
+    // the screen with no scroll (user-reported). ResizeObserver on the content
+    // drives the same rAF-debounced update() as scroll/resize. Guarded — RO is
+    // universal in supported browsers but keeps test hosts (bUnit/jsdom) safe.
+    let contentRO = null;
+    if (typeof ResizeObserver === 'function') {
+        let firstRO = true;
+        contentRO = new ResizeObserver(() => {
+            // The observer fires once immediately on observe() — that's the
+            // just-measured initial size, already handled by update() above.
+            if (firstRO) { firstRO = false; return; }
+            onScrollOrResize();
+        });
+        contentRO.observe(content);
+    }
+
     const cleanup = () => {
         cancelAnimationFrame(rafId);
+        cancelAnimationFrame(watchId);
+        if (contentRO) { try { contentRO.disconnect(); } catch (_) {} contentRO = null; }
         // Wrap removeEventListener in try/catch — the window object can
         // throw in detached / cross-realm scenarios (worker hosts, MAUI
         // Hybrid teardown), and we don't want a failure to remove one
@@ -746,6 +829,22 @@ export function positionAtPoint(contentId, x, y) {
 
     el.style.left = `${left}px`;
     el.style.top = `${top}px`;
+
+    // Containing-block compensation — same fold-back as positionFixed's
+    // compensateContainingBlock (see there for the full rationale): a transformed/
+    // filtered ancestor (e.g. a service dialog's animated panel) becomes this
+    // fixed element's containing block, so the viewport-space left/top above land
+    // offset by the ancestor's origin. Measure the residual once and subtract it.
+    // positionAtPoint previously had NO compensation at all, so a ContextMenu
+    // opened inside a dialog rendered at click-point + panel-origin (empirically
+    // confirmed against the 4.0.4 assets). Single write → single fold; the
+    // idempotence bookkeeping positionFixed needs does not apply here.
+    void el.offsetHeight;
+    const settled = el.getBoundingClientRect();
+    const offX = settled.left - left;
+    const offY = settled.top - top;
+    if (Math.abs(offX) > 0.5) el.style.left = `${left - offX}px`;
+    if (Math.abs(offY) > 0.5) el.style.top = `${top - offY}px`;
 }
 
 // --- Viewport Size ---

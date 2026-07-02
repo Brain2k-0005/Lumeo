@@ -79,10 +79,23 @@
     /// Only fires when <see cref="Draggable"/> is <c>true</c>.</summary>
     [Parameter] public EventCallback<(double Lat, double Lon)> OnDragEnd { get; set; }
 
+    /// <summary>When <c>true</c> and the parent <see cref="Map"/> has <see cref="Map.Cluster"/>
+    /// enabled, this marker is rendered as a DOM element rather than being absorbed into the
+    /// cluster source. Use for permanently-visible markers (e.g. a depot, a selected result)
+    /// that must never be hidden inside a cluster bubble. Default is <c>false</c>.</summary>
+    [Parameter] public bool ClusterExclude { get; set; }
+
+    /// <summary>Arbitrary key-value properties merged into this marker's GeoJSON feature
+    /// when <see cref="Map.Cluster"/> is enabled. Drives custom
+    /// <see cref="Map.ClusterProperties"/> aggregation expressions
+    /// (e.g. a <c>score</c> field summed across the cluster). Built-in keys
+    /// (<c>id</c>, <c>highlighted</c>, <c>color</c>, <c>hasClick</c>) win on collision.</summary>
+    [Parameter] public Dictionary<string, object>? Properties { get; set; }
+
     [CascadingParameter] internal Map.MapContext? MapCtx { get; set; }
 
     private Map? _registeredOwner;
-    private (double Lat, double Lon, string? Title, string? IconUrl, string Variant, string? Color, string? Label, bool LabelHoverOnly, bool HasIcon, bool Draggable, bool Highlighted)? _lastState;
+    private (double Lat, double Lon, string? Title, string? IconUrl, string Variant, string? Color, string? Label, bool LabelHoverOnly, bool HasIcon, bool Draggable, bool Highlighted, bool ClusterExclude, int PropertiesCount)? _lastState;
     private readonly string _popupHostId = $"lumeo-map-popup-{Guid.NewGuid():N}";
     private readonly string _iconHostId = $"lumeo-map-icon-{Guid.NewGuid():N}";
     // Stable per-instance id sent to JS and used to route click/drag callbacks
@@ -102,11 +115,11 @@
         }
         else
         {
-            var snapshot = (Lat, Lon, Title, IconUrl, Variant, Color, Label, LabelHoverOnly, Icon is not null, Draggable, Highlighted);
+            var snapshot = (Lat, Lon, Title, IconUrl, Variant, Color, Label, LabelHoverOnly, Icon is not null, Draggable, Highlighted, ClusterExclude, Properties?.Count ?? -1);
             if (_lastState is { } prev && prev != snapshot)
                 owner.NotifyMarkerChanged(this);
         }
-        _lastState = (Lat, Lon, Title, IconUrl, Variant, Color, Label, LabelHoverOnly, Icon is not null, Draggable, Highlighted);
+        _lastState = (Lat, Lon, Title, IconUrl, Variant, Color, Label, LabelHoverOnly, Icon is not null, Draggable, Highlighted, ClusterExclude, Properties?.Count ?? -1);
     }
 
     internal string? GetPopupHtml() => Title;

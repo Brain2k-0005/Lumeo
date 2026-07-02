@@ -658,11 +658,19 @@ export async function init(elementId, options, dotNetRef) {
 
     const inst = {
         maplibregl, map, dotNetRef,
-        markers: [],          // [{ marker, popup, id, hasClick, listener }]
-        markerSpecs: [],      // last spec list (so we can re-render after a style swap in cluster mode)
-        shapeSpecs: [],       // last shape spec list (re-applied after style swap)
-        standalonePopups: [], // [{ maplibrePopup }] — programmatic popups not tied to markers
+        markers: [],               // [{ marker, popup, id, hasClick, listener }]
+        markerSpecs: [],           // full spec list (all markers, including excluded)
+        clusterMarkerSpecs: [],    // specs entering the GeoJSON cluster source
+        excludedMarkerSpecs: [],   // specs rendered as DOM markers even in cluster mode
+        shapeSpecs: [],            // last shape spec list (re-applied after style swap)
+        standalonePopups: [],      // [{ maplibrePopup }] — programmatic popups not tied to markers
         clusterEnabled: !!options.cluster,
+        clusterOpts: {
+            clusterProperties:     options.clusterProperties   ?? null,
+            clusterColorExpression: options.clusterColorExpression ?? null,
+            clusterRadius:         options.clusterRadius        ?? 50,
+            clusterMaxZoom:        options.clusterMaxZoom       ?? 14,
+        },
         autoFitBounds: !!options.autoFitBounds,
         controls,
         requestedStyle: options.tileLayer,
@@ -671,10 +679,14 @@ export async function init(elementId, options, dotNetRef) {
 
     // After a setStyle() call, MapLibre wipes user-added sources/layers.
     // Re-apply our cluster source and shape layers when the new style finishes
-    // loading. DOM markers (non-cluster mode) survive automatically.
+    // loading. DOM markers survive automatically in non-cluster mode; in cluster
+    // mode the excluded DOM markers must also be re-applied.
     map.on('styledata', () => {
         if (!map.isStyleLoaded()) return;
-        if (inst.clusterEnabled) applyClusterMarkers(inst);
+        if (inst.clusterEnabled) {
+            applyClusterMarkers(inst);
+            applyDomMarkers(inst, inst.excludedMarkerSpecs);
+        }
         applyShapes(inst);
     });
 
@@ -694,11 +706,14 @@ function clearDomMarkers(inst) {
     inst.markers = [];
 }
 
-function applyDomMarkers(inst) {
-    const { maplibregl, map, dotNetRef, markerSpecs } = inst;
+// specs — optional explicit list to render. Defaults to inst.markerSpecs (non-cluster mode).
+// In cluster mode, pass inst.excludedMarkerSpecs so clusterExclude markers still get a DOM element.
+function applyDomMarkers(inst, specs) {
+    const { maplibregl, map, dotNetRef } = inst;
     clearDomMarkers(inst);
+    const list = specs ?? inst.markerSpecs;
 
-    for (const m of markerSpecs) {
+    for (const m of list) {
         const { el, anchor } = buildMarkerElement(m);
         const marker = new maplibregl.Marker({ element: el, anchor, draggable: !!m.draggable })
             .setLngLat(toLngLat(m.lat, m.lon))
@@ -758,16 +773,27 @@ function resolveCssVar(varName, fallback) {
 }
 
 function applyClusterMarkers(inst) {
-    const { map, markerSpecs } = inst;
+    const { map } = inst;
+    // Only the non-excluded markers enter the cluster source.
+    const markerSpecs = inst.clusterMarkerSpecs.length || inst.excludedMarkerSpecs.length
+        ? inst.clusterMarkerSpecs
+        : inst.markerSpecs;
+    const opts = inst.clusterOpts ?? {};
     const sourceId = 'lumeo-markers';
 
-    // Build a FeatureCollection from the marker specs — each point carries
-    // the original spec id so click handlers can fire OnMarkerClick.
+    // Build a FeatureCollection from the cluster-eligible marker specs.
+    // Consumer properties are spread first; built-in keys win on collision.
     const features = markerSpecs.map(m => ({
         type: 'Feature',
         // highlighted is stored as 0/1 so it can be aggregated up to the cluster via a
         // numeric 'max' clusterProperty (1 when any child marker is highlighted).
-        properties: { id: m.id, hasClick: !!m.hasClick, color: resolveColor(m.color), highlighted: m.highlighted ? 1 : 0 },
+        properties: {
+            ...(m.properties || {}),
+            id: m.id,
+            hasClick: !!m.hasClick,
+            color: resolveColor(m.color),
+            highlighted: m.highlighted ? 1 : 0,
+        },
         geometry: { type: 'Point', coordinates: toLngLat(m.lat, m.lon) },
     }));
 
@@ -785,16 +811,25 @@ function applyClusterMarkers(inst) {
     // recommendations stay visible even while clustered (themeable, default amber).
     const clusterHighlightColor = resolveCssVar('--lumeo-map-cluster-highlight', '#f59e0b');
 
+    // Consumer clusterProperties are merged first; built-in 'highlighted' aggregator wins.
+    const clusterProperties = {
+        ...(opts.clusterProperties || {}),
+        highlighted: ['max', ['get', 'highlighted']],
+    };
+
     map.addSource(sourceId, {
         type: 'geojson',
         data: { type: 'FeatureCollection', features },
         cluster: true,
-        clusterMaxZoom: 14,
-        clusterRadius: 50,
-        // Aggregate the per-marker highlighted flag (0/1) up to the cluster: max == 1
-        // when at least one child marker is highlighted. Drives the cluster tint below.
-        clusterProperties: { highlighted: ['max', ['get', 'highlighted']] },
+        clusterMaxZoom: opts.clusterMaxZoom ?? 14,
+        clusterRadius: opts.clusterRadius ?? 50,
+        clusterProperties,
     });
+
+    // Use the consumer-supplied color expression when provided; otherwise the default
+    // case-expression tints the bubble amber when any child marker is highlighted.
+    const clusterColorExpr = opts.clusterColorExpression ??
+        ['case', ['>', ['coalesce', ['get', 'highlighted'], 0], 0], clusterHighlightColor, clusterColor];
 
     map.addLayer({
         id: 'lumeo-clusters',
@@ -802,9 +837,7 @@ function applyClusterMarkers(inst) {
         source: sourceId,
         filter: ['has', 'point_count'],
         paint: {
-            // Data-driven: tint the bubble with the highlight color when its aggregated
-            // 'highlighted' clusterProperty is >0 (any child marker highlighted).
-            'circle-color': ['case', ['>', ['coalesce', ['get', 'highlighted'], 0], 0], clusterHighlightColor, clusterColor],
+            'circle-color': clusterColorExpr,
             'circle-stroke-color': clusterBgColor,
             'circle-stroke-width': 2,
             'circle-radius': ['step', ['get', 'point_count'], 18, 25, 24, 100, 30],
@@ -873,9 +906,18 @@ export async function setMarkers(elementId, markers) {
     inst.markerSpecs = markers || [];
 
     if (inst.clusterEnabled) {
+        // Split: markers with clusterExclude render as DOM elements; the rest enter the
+        // GeoJSON cluster source so they aggregate into count bubbles.
+        inst.excludedMarkerSpecs = inst.markerSpecs.filter(m => !!m.clusterExclude);
+        inst.clusterMarkerSpecs  = inst.markerSpecs.filter(m => !m.clusterExclude);
+
+        const apply = () => {
+            applyClusterMarkers(inst);
+            applyDomMarkers(inst, inst.excludedMarkerSpecs);
+        };
         // Wait for the style to be ready before adding the cluster source.
-        if (inst.map.isStyleLoaded()) applyClusterMarkers(inst);
-        else inst.map.once('load', () => applyClusterMarkers(inst));
+        if (inst.map.isStyleLoaded()) apply();
+        else inst.map.once('load', apply);
     } else {
         applyDomMarkers(inst);
     }
@@ -1312,6 +1354,14 @@ export async function exportPng(elementId) {
 
         return out.toDataURL('image/png');
     } catch (_) { return null; }
+}
+
+// Returns the raw MapLibre GL map instance for a mounted Map component.
+// Consumer usage:
+//   const { getMap } = await import('/_content/Lumeo.Maps/js/map.js');
+//   const map = getMap(mapRef.ElementId);  // Map.ElementId from C#
+export function getMap(elementId) {
+    return instances.get(elementId)?.map ?? null;
 }
 
 export async function destroy(elementId) {
