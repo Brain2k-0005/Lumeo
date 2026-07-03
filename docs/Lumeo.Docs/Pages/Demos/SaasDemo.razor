@@ -12,15 +12,24 @@
 
 <PageTitle>Northlight — Lumeo SaaS demo</PageTitle>
 
+@* Row-density override. The DataGrid's Compact parameter only swaps the root
+   font-size (text-sm) and never reaches the body cells, whose padding is
+   hard-coded px-3 py-2 — so toggling Compact does NOT change row height. Since
+   this demo can only touch its own files, we drive density from a wrapper class
+   and override the cell block-padding here (higher specificity than Tailwind's
+   .py-2, so no !important needed). Emitted as raw markup so Razor doesn't try to
+   parse the CSS braces. *@
+@((MarkupString)DensityStyles)
+
 <SidebarProvider @bind-IsCollapsed="_navCollapsed"
                  Variant="SidebarProvider.SidebarVariant.Icon"
                  MobileSheet="true"
                  Class="bg-background">
 
-    <SidebarComponent>
-        <SidebarHeader>
-            <Flex Align="center" Gap="2" Class="min-w-0">
-                <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+    <SidebarComponent Class="@_railSurfaceClass">
+        <SidebarHeader Class="@(_navCollapsed ? "p-2" : "p-4")">
+            <Flex Align="center" Justify="@(_navCollapsed ? "center" : "start")" Gap="2" Class="min-w-0">
+                <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground shadow-sm">
                     <DynamicIcon Name="Compass" Class="h-4 w-4" />
                 </span>
                 @if (!_navCollapsed)
@@ -33,29 +42,18 @@
             </Flex>
         </SidebarHeader>
 
+        @* Nav items are hand-rolled <button>s (not SidebarMenuButton) on purpose:
+           these switch an in-page view via @onclick, not navigate to a route, and
+           SidebarMenuButton is anchor/Href-based. We still lean on every structural
+           Sidebar primitive (Group / GroupLabel / Menu / MenuItem / Separator) and
+           dogfood the Lumeo Tooltip for the collapsed-rail labels — see NavLink. *@
         <SidebarContent>
             <SidebarGroup>
-                @if (!_navCollapsed)
-                {
-                    <SidebarGroupLabel>Workspace</SidebarGroupLabel>
-                }
+                <SidebarGroupLabel>Workspace</SidebarGroupLabel>
                 <SidebarMenu>
                     @foreach (var item in NorthlightData.PrimaryNav)
                     {
-                        <SidebarMenuItem>
-                            <button type="button" class="@NavBtnClass(item.Key)" @onclick="() => SetView(item.Key)"
-                                    title="@(_navCollapsed ? item.Label : null)" aria-current="@(_view == item.Key ? "page" : null)">
-                                <span class="inline-flex shrink-0 items-center justify-center"><DynamicIcon Name="@item.Icon" Class="h-4 w-4" /></span>
-                                @if (!_navCollapsed)
-                                {
-                                    <span class="flex-1 truncate text-left">@item.Label</span>
-                                    @if (item.Key == "customers")
-                                    {
-                                        <Badge Variant="Badge.BadgeVariant.Secondary" Class="h-5 px-1.5 text-[10px]">@_customers.Count</Badge>
-                                    }
-                                }
-                            </button>
-                        </SidebarMenuItem>
+                        @NavLink(item)
                     }
                 </SidebarMenu>
             </SidebarGroup>
@@ -63,30 +61,18 @@
             <SidebarSeparator />
 
             <SidebarGroup>
-                @if (!_navCollapsed)
-                {
-                    <SidebarGroupLabel>Account</SidebarGroupLabel>
-                }
+                <SidebarGroupLabel>Account</SidebarGroupLabel>
                 <SidebarMenu>
                     @foreach (var item in NorthlightData.SecondaryNav)
                     {
-                        <SidebarMenuItem>
-                            <button type="button" class="@NavBtnClass(item.Key)" @onclick="() => SetView(item.Key)"
-                                    title="@(_navCollapsed ? item.Label : null)" aria-current="@(_view == item.Key ? "page" : null)">
-                                <span class="inline-flex shrink-0 items-center justify-center"><DynamicIcon Name="@item.Icon" Class="h-4 w-4" /></span>
-                                @if (!_navCollapsed)
-                                {
-                                    <span class="flex-1 truncate text-left">@item.Label</span>
-                                }
-                            </button>
-                        </SidebarMenuItem>
+                        @NavLink(item)
                     }
                 </SidebarMenu>
             </SidebarGroup>
         </SidebarContent>
 
-        <SidebarFooter>
-            <Flex Align="center" Gap="2" Class="min-w-0">
+        <SidebarFooter Class="@(_navCollapsed ? "p-2" : "p-4")">
+            <Flex Align="center" Justify="@(_navCollapsed ? "center" : "start")" Gap="2" Class="min-w-0">
                 <Avatar Size="Lumeo.Size.Sm" Class="shrink-0">
                     <AvatarFallback>AC</AvatarFallback>
                 </Avatar>
@@ -96,7 +82,7 @@
                         <Lumeo.Text As="span" Size="xs" Weight="medium" Class="truncate leading-tight">Ava Chen</Lumeo.Text>
                         <Lumeo.Text As="span" Size="xs" Color="muted" Class="truncate leading-tight">Admin</Lumeo.Text>
                     </Stack>
-                    <span class="inline-flex h-2 w-2 shrink-0 rounded-full bg-primary" title="Online"></span>
+                    <span class="inline-flex h-2 w-2 shrink-0 rounded-full bg-emerald-500" title="Online"></span>
                 }
             </Flex>
         </SidebarFooter>
@@ -356,15 +342,15 @@
                 {
                     <div @key="'c'">
                         <BlurFade DelayMs="0">
-                            <Lumeo.Text Size="sm" Color="muted" Class="mb-3 block">@FilteredCustomers.Count of @_customers.Count accounts · group, pin, filter and expand a row for the full profile. Ungrouped rows virtualize for scroll performance.</Lumeo.Text>
+                            <Lumeo.Text Size="sm" Color="muted" Class="mb-3 block">@FilteredCustomers.Count of @_customers.Count accounts · drag a column header onto the group panel, reorder headers, pin, filter and expand a row for the full profile. Ungrouped rows virtualize for scroll performance.</Lumeo.Text>
                         </BlurFade>
 
-                        <!-- CRM controls: lifecycle quick-filter chips + group-by + density.
-                             NOT wrapped in BlurFade: its transform would trap the group-by
-                             Select popover in a stacking context the grid paints over. The
-                             `relative z-30` lifts the controls (and the fixed popover) above
-                             the grid's own stacking context. -->
-                        <div class="relative z-30 mb-3">
+                        <!-- CRM controls: lifecycle quick-filter chips + density toggle.
+                             Grouping now lives in the grid's own drag-to-group panel
+                             (ShowGroupPanel="true") — drag a Groupable column header onto
+                             it, or use its "Add group level" dropdown — so the standalone
+                             group-by Select is gone. -->
+                        <div class="mb-3">
                             <Flex Align="center" Justify="between" Wrap="true" Gap="3">
                                 <div class="flex flex-wrap items-center gap-1.5" role="group" aria-label="Filter by lifecycle stage">
                                     @foreach (var chip in _statusChips)
@@ -382,39 +368,24 @@
                                     }
                                 </div>
 
-                                <Flex Align="center" Gap="2" Class="shrink-0">
-                                    <Flex Align="center" Gap="1.5">
-                                        <DynamicIcon Name="Layers" Class="h-3.5 w-3.5 text-muted-foreground" />
-                                        <div class="w-40">
-                                            <Select @bind-Value="_groupBy">
-                                                <SelectTrigger><span>@GroupByLabel(_groupBy)</span></SelectTrigger>
-                                                <SelectContent>
-                                                    <SelectItem Value="none">No grouping</SelectItem>
-                                                    <SelectItem Value="Plan">Group by plan</SelectItem>
-                                                    <SelectItem Value="Status">Group by status</SelectItem>
-                                                    <SelectItem Value="Region">Group by region</SelectItem>
-                                                    <SelectItem Value="Owner">Group by owner</SelectItem>
-                                                </SelectContent>
-                                            </Select>
-                                        </div>
-                                    </Flex>
-                                    <Button Variant="Button.ButtonVariant.Outline" Size="Button.ButtonSize.Sm" OnClick="ToggleDensity"
-                                            title="Toggle row density">
-                                        <DynamicIcon Name="@(_gridCompact ? "List" : "LayoutList")" Class="mr-2 h-3.5 w-3.5" />
-                                        <span>@(_gridCompact ? "Compact" : "Comfortable")</span>
-                                    </Button>
-                                </Flex>
+                                <Button Variant="Button.ButtonVariant.Outline" Size="Button.ButtonSize.Sm" OnClick="ToggleDensity"
+                                        Class="shrink-0" title="Toggle row density">
+                                    <DynamicIcon Name="@(_gridCompact ? "List" : "LayoutList")" Class="mr-2 h-3.5 w-3.5" />
+                                    <span>@(_gridCompact ? "Compact" : "Comfortable")</span>
+                                </Button>
                             </Flex>
                         </div>
 
                         <BlurFade DelayMs="60">
-                            <div class="rounded-xl border border-border/50 bg-card p-2 sm:p-3">
+                            <div class="@_densityWrapClass rounded-xl border border-border/50 bg-card p-2 sm:p-3">
                                 <DataGrid TItem="NorthlightCustomer" Items="FilteredCustomers"
-                                          GroupByFields="_groupByFields" GroupsExpandedByDefault="false"
+                                          GroupsExpandedByDefault="false"
+                                          ShowGroupPanel="true"
+                                          GroupPanelText="Drag a column header here — or use Add group level — to roll accounts up by Plan, Status, Region or Owner."
                                           ShowPagination="false" Height="calc(100dvh - 320px)"
                                           ShowToolbar="true" ShowSearch="true" ShowColumnChooser="true" ShowExport="false"
                                           Striped="true" Hoverable="true" Compact="_gridCompact" Reorderable="true"
-                                          VirtualizeThreshold="200"
+                                          VirtualizeThreshold="200" VirtualItemSize="@(_gridCompact ? 40f : 52f)"
                                           DetailTemplate="CustomerDetail">
                                     <DataGridColumnDef TItem="NorthlightCustomer" Title="Company" Field="Company" Sortable="true" Filterable="true"
                                                        Pin="PinDirection.Left" Pinnable="true" MinWidth="240">
@@ -761,7 +732,6 @@
         new("Churned", "Churned", "bg-rose-500"),
     };
     private string _statusFilter = "all";
-    private string _groupBy = "none";
     private bool _gridCompact = true;
 
     private IReadOnlyList<NorthlightCustomer> FilteredCustomers =>
@@ -769,9 +739,27 @@
             ? _customers
             : _customers.Where(c => c.Status == _statusFilter).ToList();
 
-    // Derived each render from the group-by Select. A fresh 1-element array is cheap and the
-    // grid re-seeds by joined-field-name content (not reference), so identity churn is a no-op.
-    private IReadOnlyList<string>? _groupByFields => _groupBy == "none" ? null : new[] { _groupBy };
+    // Row-density workaround (see the <style> at the top of the page): the wrapper
+    // class the CSS override keys off. Toggling _gridCompact swaps the class, and the
+    // scoped rule changes the body cells' block padding — the only path to a visible
+    // row-height change, because the DataGrid's own Compact parameter never reaches
+    // the cells.
+    private string _densityWrapClass => _gridCompact ? "nl-dense-compact" : "nl-dense-comfortable";
+
+    // Raw <style> emitted via MarkupString so Razor doesn't parse the CSS braces.
+    private const string DensityStyles = """
+        <style>
+            .nl-dense-comfortable [data-slot="datagrid-cell"] { padding-top: 0.625rem; padding-bottom: 0.625rem; }
+            .nl-dense-compact [data-slot="datagrid-cell"] { padding-top: 0.25rem; padding-bottom: 0.25rem; }
+        </style>
+        """;
+
+    // Sidebar surface: an explicit sidebar-border divider (the default rule is nearly
+    // invisible against the dark rail) + a widened 4rem icon rail when collapsed so the
+    // brand mark, icon pills and avatar have room to breathe instead of a raw strip.
+    private string _railSurfaceClass => _navCollapsed
+        ? "w-16 border-sidebar-border"
+        : "border-sidebar-border";
 
     // Select-filter option lists (drive the per-column Select filter popovers).
     private readonly List<FilterOption> _planOptions = new()
@@ -813,14 +801,40 @@
             ? "border-primary bg-primary text-primary-foreground"
             : "border-border bg-background text-muted-foreground hover:bg-accent hover:text-foreground");
 
-    private static string GroupByLabel(string key) => key switch
-    {
-        "Plan" => "Group by plan",
-        "Status" => "Group by status",
-        "Region" => "Group by region",
-        "Owner" => "Group by owner",
-        _ => "No grouping",
-    };
+    // A single nav entry. Structural Sidebar primitives wrap a hand-rolled <button>
+    // (in-page view switch, so not an anchor). When the rail is collapsed the button
+    // becomes a centered icon pill and its label moves into a Lumeo Tooltip anchored
+    // to the right; expanded, the label + (Customers) count badge show inline.
+    private RenderFragment<NavEntry> NavLink => item =>
+        @<SidebarMenuItem>
+            @if (_navCollapsed)
+            {
+                <Tooltip>
+                    <TooltipTrigger AsChild>
+                        <ChildContentSlot Context="slot">
+                            <button type="button" class="@NavBtnClass(item.Key)" @onclick="() => SetView(item.Key)"
+                                    aria-label="@item.Label" aria-current="@(_view == item.Key ? "page" : null)"
+                                    @attributes="slot.Attributes">
+                                <span class="inline-flex shrink-0 items-center justify-center"><DynamicIcon Name="@item.Icon" Class="h-4 w-4" /></span>
+                            </button>
+                        </ChildContentSlot>
+                    </TooltipTrigger>
+                    <TooltipContent Side="Lumeo.Side.Right">@item.Label</TooltipContent>
+                </Tooltip>
+            }
+            else
+            {
+                <button type="button" class="@NavBtnClass(item.Key)" @onclick="() => SetView(item.Key)"
+                        aria-current="@(_view == item.Key ? "page" : null)">
+                    <span class="inline-flex shrink-0 items-center justify-center"><DynamicIcon Name="@item.Icon" Class="h-4 w-4" /></span>
+                    <span class="flex-1 truncate text-left">@item.Label</span>
+                    @if (item.Key == "customers")
+                    {
+                        <Badge Variant="Badge.BadgeVariant.Secondary" Class="h-5 px-1.5 text-[10px]">@_customers.Count</Badge>
+                    }
+                </button>
+            }
+        </SidebarMenuItem>;
 
     // Detail row: a mini account profile revealed when a row is expanded.
     private RenderFragment<NorthlightCustomer> CustomerDetail => c =>
@@ -984,11 +998,12 @@
     private string NavBtnClass(string key)
     {
         var active = _view == key;
-        var layout = _navCollapsed ? "justify-center px-2" : "gap-3 px-3";
+        // Collapsed: a fixed-height centered icon pill. Expanded: icon + label row.
+        var layout = _navCollapsed ? "h-9 justify-center px-2" : "gap-3 px-3 py-2";
         var state = active
             ? "bg-sidebar-accent text-sidebar-accent-foreground font-medium"
-            : "text-muted-foreground hover:bg-sidebar-accent hover:text-foreground";
-        return $"flex w-full items-center overflow-hidden rounded-lg py-2 text-sm transition-colors focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring {layout} {state}";
+            : "text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground";
+        return $"flex w-full items-center overflow-hidden rounded-lg text-sm transition-colors focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-1 {layout} {state}";
     }
 
     private void SetView(string key)

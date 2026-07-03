@@ -13,17 +13,24 @@
 
     <div class="min-h-0 flex-1 overflow-y-auto">
         <div class="rounded-lg border border-border/60 bg-card p-4 sm:p-6">
-            <div class="grid gap-5 sm:grid-cols-2">
+
+            @* ── Route ─────────────────────────────────────────────────────────────
+               One 2-col grid (single column below lg). EVERY control is full-width
+               within its cell — Cascader (Class="w-full" flips its inline-block
+               container to 100%), the two Select triggers (w-full) and the DatePicker
+               (FullWidth) — so labels and controls share one aligned rhythm. *@
+            <h2 class="mb-4 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Route</h2>
+            <div class="grid grid-cols-1 gap-x-6 gap-y-5 lg:grid-cols-2">
 
                 <FormField Name="lane" Label="Destination hub *" Error="@_laneErr"
-                           HelpText="Region, then discharge port." Class="sm:col-span-2">
-                    <Cascader Options="_laneOptions" @bind-Value="_lane"
+                           HelpText="Region, then discharge port." Class="lg:col-span-2">
+                    <Cascader Options="_laneOptions" @bind-Value="_lane" Class="w-full"
                               Placeholder="Select region → port" Clearable="true" ShowSearch="true"
                               Invalid="@(_laneErr is not null)" />
                 </FormField>
 
                 <FormField Name="carrier" Label="Carrier *" Error="@_carrierErr">
-                    <Select @bind-Value="_carrier">
+                    <Select @bind-Value="_carrier" Class="w-full">
                         <SelectTrigger Class="w-full">
                             <Lumeo.Text As="span" Class="@(_carrier is null ? "text-muted-foreground" : "")">@(_carrier ?? "Select carrier")</Lumeo.Text>
                         </SelectTrigger>
@@ -37,7 +44,7 @@
                 </FormField>
 
                 <FormField Name="mode" Label="Mode *" Error="@_modeErr">
-                    <Select @bind-Value="_mode">
+                    <Select @bind-Value="_mode" Class="w-full">
                         <SelectTrigger Class="w-full">
                             <Lumeo.Text As="span" Class="@(_mode is null ? "text-muted-foreground" : "")">@(_mode ?? "Select mode")</Lumeo.Text>
                         </SelectTrigger>
@@ -50,14 +57,6 @@
                     </Select>
                 </FormField>
 
-                <FormField Name="priority" Label="Priority" Class="sm:col-span-2">
-                    <Segmented @bind-Value="_priority">
-                        <SegmentedItem Value="Standard">Standard</SegmentedItem>
-                        <SegmentedItem Value="Expedited">Expedited</SegmentedItem>
-                        <SegmentedItem Value="Critical">Critical</SegmentedItem>
-                    </Segmented>
-                </FormField>
-
                 <FormField Name="pickup" Label="Requested pickup *" Error="@_pickupErr">
                     @* AllowKeyboardInput=false renders the button trigger whose whole
                        surface opens the calendar on click/tap. The default typeable-input
@@ -67,6 +66,23 @@
                                 AllowKeyboardInput="false" FullWidth="true" />
                 </FormField>
 
+                <FormField Name="priority" Label="Priority">
+                    @* Block=true stretches the segmented track to the cell width so it
+                       aligns to the grid instead of floating at its natural width. *@
+                    <Segmented @bind-Value="_priority" Block="true">
+                        <SegmentedItem Value="Standard">Standard</SegmentedItem>
+                        <SegmentedItem Value="Expedited">Expedited</SegmentedItem>
+                        <SegmentedItem Value="Critical">Critical</SegmentedItem>
+                    </Segmented>
+                </FormField>
+            </div>
+
+            <Separator Class="my-6" />
+
+            @* ── Cargo ─────────────────────────────────────────────────────────────── *@
+            <h2 class="mb-4 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Cargo</h2>
+            <div class="grid grid-cols-1 gap-x-6 gap-y-5 lg:grid-cols-2">
+
                 <FormField Name="value" Label="Declared value (€) *" Error="@_valueErr">
                     <Input Type="number" @bind-Value="_value" Placeholder="0" />
                 </FormField>
@@ -75,25 +91,36 @@
                     <Input Type="number" @bind-Value="_weight" Placeholder="0" />
                 </FormField>
 
-                <FormField Name="hazmat" Label="Dangerous goods">
-                    <div class="flex items-center gap-2">
-                        <Switch @bind-Checked="_hazmat" />
-                        <Lumeo.Text As="span" Size="sm" Color="muted">Requires ADR/IMDG documentation</Lumeo.Text>
+                @* Dangerous-goods toggle row: label + helper on the left, switch on the
+                   right, vertically centered — a self-contained control spanning the grid. *@
+                <div class="flex items-center justify-between gap-4 rounded-lg border border-border/60 px-3.5 py-3 lg:col-span-2">
+                    <div class="space-y-0.5">
+                        <Lumeo.Text As="div" Size="sm" Weight="medium">Dangerous goods</Lumeo.Text>
+                        <Lumeo.Text As="div" Size="xs" Color="muted">Requires ADR/IMDG documentation for hazardous cargo.</Lumeo.Text>
                     </div>
-                </FormField>
+                    <Switch @bind-Checked="_hazmat" AriaLabel="Dangerous goods" />
+                </div>
 
-                <FormField Name="notes" Label="Handling notes" Class="sm:col-span-2">
-                    <Textarea @bind-Value="_notes" Placeholder="Temperature range, stacking limits, special handling…" />
+                <FormField Name="notes" Label="Handling notes" Class="lg:col-span-2"
+                           HelpText="Temperature range, stacking limits, or other carrier instructions.">
+                    @* Textarea wraps itself in `flex flex-col items-start`; its inner div has no
+                       width, so the control's own `w-full` resolves against a shrink-wrapped
+                       parent and collapses. Force every wrapper div full-width so the textarea
+                       fills the two-column span (fixes the clipped-placeholder / dead-space bug). *@
+                    <div class="w-full [&_div]:w-full">
+                        <Textarea @bind-Value="_notes" Class="min-h-28"
+                                  Placeholder="Temperature range, stacking limits, special handling…" />
+                    </div>
                 </FormField>
             </div>
 
-            <Separator Class="my-5" />
+            <Separator Class="my-6" />
 
             <div class="flex flex-wrap items-center gap-2">
                 <Button OnClick="Submit">
                     <DynamicIcon Name="Check" Class="mr-1.5 h-4 w-4" /> Create booking
                 </Button>
-                <Button Variant="Button.ButtonVariant.Outline" OnClick="Reset">Reset</Button>
+                <Button Variant="Button.ButtonVariant.Ghost" OnClick="Reset">Reset</Button>
                 <div class="flex-1"></div>
                 @if (_submitted)
                 {

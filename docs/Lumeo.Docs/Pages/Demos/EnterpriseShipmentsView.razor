@@ -78,7 +78,7 @@
                   GroupPanelText="Drag a column here — or use Add group level — to roll shipments up by Region, Status, Carrier…"
                   ShowExport="true" ExportFormats="DataGridExportFormat.Csv | DataGridExportFormat.Excel"
                   SelectionMode="DataGridSelectionMode.Multiple" @bind-SelectedItems="_selected"
-                  Striped="true" Compact="true" Bordered="true"
+                  Striped="true" Compact="true" Bordered="true" Reorderable="true"
                   Height="calc(100dvh - 22rem)"
                   VirtualizeThreshold="200" VirtualItemSize="42"
                   RowStyle="RowEmphasis">
@@ -154,80 +154,98 @@
                     var s = context;
                     var active = ActiveStage(s);
                     var stages = Stages(s);
+                    // Shared item set so the horizontal (sm+) and vertical (phone)
+                    // timelines render identical stages without duplicated markup.
+                    RenderFragment journeyItems =
+                        @<text>
+                            @for (var i = 0; i < stages.Length; i++)
+                            {
+                                var st = stages[i];
+                                <TimelineItem Title="@st.Title" Description="@st.Desc" Time="@st.Time">
+                                    <IconContent>
+                                        <DynamicIcon Name="@st.Icon" Class="h-4 w-4" />
+                                    </IconContent>
+                                </TimelineItem>
+                            }
+                        </text>;
                 }
-                @* The detail <td> spans the full (scrollable) table width, so an inner
-                   sticky-left + capped-width wrapper keeps the panel glued to the viewport's
-                   left edge and fully visible without horizontal scrolling. *@
+                @* The detail <td> spans the full (scrollable) table width, so the inner
+                   panel is sticky-left and sized to the visible viewport (never the wide
+                   table), keeping the full-width timeline + facts strip glued to the left
+                   edge and clear of any horizontal scroll. min(100%, …) fills the grid when
+                   it fits and clamps to the viewport when the table overflows. *@
                 <div class="border-y border-border/40 bg-muted/20">
-                    <div class="sticky left-0 max-w-4xl px-4 py-4">
-                    <div class="grid gap-5 sm:grid-cols-[minmax(0,1fr)_17rem]">
+                    <div class="sticky left-0 w-[min(100%,calc(100dvw-3rem))] space-y-5 px-4 py-4 lg:w-[min(100%,calc(100dvw-17rem))]">
 
-                        <!-- Journey timeline -->
+                        <!-- Journey timeline — horizontal strip across the full width -->
                         <div class="min-w-0">
                             <div class="mb-3 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
                                 <DynamicIcon Name="Route" Class="h-3.5 w-3.5" /> Shipment journey
                             </div>
-                            <Timeline ActiveIndex="@active">
-                                @for (var i = 0; i < stages.Length; i++)
-                                {
-                                    var st = stages[i];
-                                    <TimelineItem Title="@st.Title" Description="@st.Desc" Time="@st.Time">
-                                        <IconContent>
-                                            <DynamicIcon Name="@st.Icon" Class="h-4 w-4" />
-                                        </IconContent>
-                                    </TimelineItem>
-                                }
-                            </Timeline>
+                            @* Horizontal on tablet/desktop (scrolls if the container is
+                               narrower than the readable minimum); a clean vertical list
+                               on phone, where 5 stages across would be too cramped. *@
+                            <div class="hidden overflow-x-auto sm:block">
+                                <Timeline Orientation="Lumeo.Orientation.Horizontal" ActiveIndex="@active" Class="min-w-[36rem]">
+                                    @journeyItems
+                                </Timeline>
+                            </div>
+                            <div class="sm:hidden">
+                                <Timeline ActiveIndex="@active">
+                                    @journeyItems
+                                </Timeline>
+                            </div>
                         </div>
 
-                        <!-- Facts card -->
-                        <div class="rounded-lg border border-border/60 bg-card p-3">
+                        <!-- Facts strip — full-width, columnar -->
+                        <div class="rounded-lg border border-border/60 bg-card p-3 sm:p-4">
                             <div class="mb-3 flex items-center justify-between gap-2">
                                 <span class="text-sm font-semibold tabular-nums">@s.Reference</span>
                                 <Badge Variant="@StatusVariant(s.Status)" Class="gap-1">
                                     <span class="h-1.5 w-1.5 rounded-full bg-current opacity-70"></span>@s.Status
                                 </Badge>
                             </div>
-                            <dl class="grid grid-cols-2 gap-x-4 gap-y-2.5 text-xs">
-                                <div class="col-span-2">
-                                    <dt class="text-muted-foreground">Lane</dt>
-                                    <dd class="font-medium">@s.Lane</dd>
+                            <dl class="grid grid-cols-2 gap-x-4 gap-y-3 sm:grid-cols-4 xl:grid-cols-8">
+                                <div class="min-w-0">
+                                    <dt class="text-[11px] uppercase tracking-wide text-muted-foreground">Lane</dt>
+                                    <dd class="truncate text-sm font-medium" title="@s.Lane">@s.Lane</dd>
+                                </div>
+                                <div class="min-w-0">
+                                    <dt class="text-[11px] uppercase tracking-wide text-muted-foreground">Carrier</dt>
+                                    <dd class="truncate text-sm font-medium" title="@s.Carrier">@s.Carrier</dd>
                                 </div>
                                 <div>
-                                    <dt class="text-muted-foreground">Carrier</dt>
-                                    <dd class="font-medium">@s.Carrier</dd>
+                                    <dt class="text-[11px] uppercase tracking-wide text-muted-foreground">Mode</dt>
+                                    <dd class="flex items-center gap-1 text-sm font-medium">
+                                        <DynamicIcon Name="@ModeIcon(s.Mode)" Class="h-3.5 w-3.5 text-muted-foreground" />@s.Mode
+                                    </dd>
                                 </div>
                                 <div>
-                                    <dt class="text-muted-foreground">Mode</dt>
-                                    <dd class="font-medium">@s.Mode</dd>
+                                    <dt class="text-[11px] uppercase tracking-wide text-muted-foreground">Weight</dt>
+                                    <dd class="text-sm font-medium tabular-nums">@s.Weight.ToString("N0") kg</dd>
                                 </div>
                                 <div>
-                                    <dt class="text-muted-foreground">Weight</dt>
-                                    <dd class="font-medium tabular-nums">@s.Weight.ToString("N0") kg</dd>
+                                    <dt class="text-[11px] uppercase tracking-wide text-muted-foreground">Value</dt>
+                                    <dd class="text-sm font-medium tabular-nums">€@s.Value.ToString("N0")</dd>
                                 </div>
                                 <div>
-                                    <dt class="text-muted-foreground">Value</dt>
-                                    <dd class="font-medium tabular-nums">€@s.Value.ToString("N0")</dd>
+                                    <dt class="text-[11px] uppercase tracking-wide text-muted-foreground">ETA</dt>
+                                    <dd class="text-sm font-medium tabular-nums">@s.Eta.ToString("MMM d")</dd>
                                 </div>
                                 <div>
-                                    <dt class="text-muted-foreground">ETA</dt>
-                                    <dd class="font-medium tabular-nums">@s.Eta.ToString("MMM d")</dd>
-                                </div>
-                                <div>
-                                    <dt class="text-muted-foreground">Priority</dt>
+                                    <dt class="text-[11px] uppercase tracking-wide text-muted-foreground">Priority</dt>
                                     <dd><Badge Variant="@PriorityVariant(s.Priority)">@s.Priority</Badge></dd>
                                 </div>
+                                <div class="min-w-0">
+                                    <dt class="mb-1 flex items-center justify-between text-[11px] uppercase tracking-wide text-muted-foreground">
+                                        <span>Progress</span><span class="tabular-nums">@s.ProgressPct%</span>
+                                    </dt>
+                                    <dd class="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-muted">
+                                        <div class="h-full rounded-full @ProgressColor(s.Status)" style="width:@(s.ProgressPct)%"></div>
+                                    </dd>
+                                </div>
                             </dl>
-                            <div class="mt-3 border-t border-border/40 pt-3">
-                                <div class="mb-1 flex items-center justify-between text-[11px] text-muted-foreground">
-                                    <span>Progress</span><span class="tabular-nums">@s.ProgressPct%</span>
-                                </div>
-                                <div class="h-1.5 w-full overflow-hidden rounded-full bg-muted">
-                                    <div class="h-full rounded-full @ProgressColor(s.Status)" style="width:@(s.ProgressPct)%"></div>
-                                </div>
-                            </div>
                         </div>
-                    </div>
                     </div>
                 </div>
             </DetailTemplate>
