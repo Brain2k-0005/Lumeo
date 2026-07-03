@@ -1,15 +1,42 @@
 @namespace Lumeo.Docs.Shared
+@using Blazicons
+@using Lumeo.Docs.Services
+@inject DynamicIconResolver _resolver
 
 @{
-    // Lucide now comes from the first-party Lumeo.Icons.Lucide pack (IconSource, rendered
-    // via <SvgGlyph>); the other libraries are Blazicons comparison packs (SvgIcon, rendered
-    // via <Blazicon>). The two render paths can't share one typed list, so branch by library.
-    var isPack = IsPackLibrary;
+    var isFirstParty = IconPackCatalog.IsFirstParty(Library);
     var glyphClass = Count > 0 ? "h-3.5 w-3.5 text-foreground" : "h-5 w-5 text-foreground";
 }
 <div class="@($"{(Count > 0 ? "" : "p-3")} {Class}".Trim())" @attributes="AdditionalAttributes">
     <div class="grid grid-cols-6 gap-1.5">
-        @if (isPack)
+        @if (isFirstParty)
+        {
+            @if (_resolver.IsReady(Library))
+            {
+                var names = Count > 0 ? PreviewSemantics.Take(Count) : PreviewSemantics;
+                @foreach (var name in names)
+                {
+                    <Flex Class="flex-col items-center gap-0.5">
+                        <SvgGlyph Svg="@_resolver.Resolve(Library, name)" class="@glyphClass" />
+                        @if (Count == 0)
+                        {
+                            <Lumeo.Text As="span" Class="text-[9px] text-muted-foreground truncate w-full text-center">@name</Lumeo.Text>
+                        }
+                    </Flex>
+                }
+            }
+            else
+            {
+                @* Assembly still lazy-loading — show a skeleton so the picker has a loading state. *@
+                @for (var i = 0; i < (Count > 0 ? Count : 18); i++)
+                {
+                    <div class="flex items-center justify-center">
+                        <span class="h-3.5 w-3.5 rounded-sm bg-muted-foreground/15 animate-pulse"></span>
+                    </div>
+                }
+            }
+        }
+        else
         {
             var packIcons = GetPackIcons();
             var display = Count > 0 ? packIcons.Take(Count).ToList() : packIcons;
@@ -24,25 +51,10 @@
                 </Flex>
             }
         }
-        else
-        {
-            var glyphIcons = GetGlyphIcons();
-            var display = Count > 0 ? glyphIcons.Take(Count).ToList() : glyphIcons;
-            @foreach (var (icon, name) in display)
-            {
-                <Flex Class="flex-col items-center gap-0.5">
-                    <SvgGlyph Svg="@icon" class="@glyphClass" />
-                    @if (Count == 0)
-                    {
-                        <Lumeo.Text As="span" Class="text-[9px] text-muted-foreground truncate w-full text-center">@name</Lumeo.Text>
-                    }
-                </Flex>
-            }
-        }
     </div>
     @if (Count == 0)
     {
-        <Lumeo.Text Class="text-[10px] text-muted-foreground text-center mt-2">@GetIconCount() icons · @GetPackageName()</Lumeo.Text>
+        <Lumeo.Text Class="text-[10px] text-muted-foreground text-center mt-2">@GetPackageName()</Lumeo.Text>
     }
 </div>
 
@@ -52,45 +64,21 @@
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
-    // The seven remaining Blazicons THIRD-PARTY INTEROP packs. Bootstrap is NOT here anymore —
-    // it renders from the first-party Lumeo.Icons.Bootstrap pack via <SvgGlyph> (GetGlyphIcons).
-    // Everything else (lucide + any unknown key) resolves to a first-party Lumeo.Icons pack.
-    private bool IsPackLibrary => Library is
-        "fluentui" or "font-awesome" or "google-material"
-        or "ionicons" or "material-design" or "devicon" or "flag-icons";
-
-    // First-party Lumeo.Icons packs (IconSource → <SvgGlyph>): Lucide (default) + Bootstrap.
-    private List<(Lumeo.IconSource Icon, string Name)> GetGlyphIcons() => Library switch
+    // Recognizable semantic names that resolve well across every first-party pack — the
+    // resolver maps each one to that pack's own glyph, so each preview shows the pack's real style.
+    private static readonly string[] PreviewSemantics =
     {
-        "bootstrap" =>
-        [
-            (Bootstrap.Search, "Search"), (Bootstrap.Gear, "Settings"), (Bootstrap.Person, "User"),
-            (Bootstrap.Heart, "Heart"), (Bootstrap.Star, "Star"), (Bootstrap.Bell, "Bell"),
-            (Bootstrap.Envelope, "Mail"), (Bootstrap.Calendar, "Calendar"), (Bootstrap.Check, "Check"),
-            (Bootstrap.Plus, "Plus"), (Bootstrap.Dash, "Minus"), (Bootstrap.Eye, "Eye"),
-            (Bootstrap.Lock, "Lock"), (Bootstrap.Trash, "Trash"), (Bootstrap.Share, "Share"),
-            (Bootstrap.Download, "Download"), (Bootstrap.Upload, "Upload"), (Bootstrap.Phone, "Phone"),
-            (Bootstrap.Camera, "Camera"), (Bootstrap.Image, "Image"), (Bootstrap.MusicNoteBeamed, "Music"),
-            (Bootstrap.Play, "Play"), (Bootstrap.Sun, "Sun"), (Bootstrap.Moon, "Moon"),
-        ],
-        _ =>
-        [
-            (Lucide.Search, "Search"), (Lucide.Settings, "Settings"), (Lucide.User, "User"),
-            (Lucide.Heart, "Heart"), (Lucide.Star, "Star"), (Lucide.Bell, "Bell"),
-            (Lucide.Mail, "Mail"), (Lucide.Calendar, "Calendar"), (Lucide.Check, "Check"),
-            (Lucide.Plus, "Plus"), (Lucide.Minus, "Minus"), (Lucide.Eye, "Eye"),
-            (Lucide.Lock, "Lock"), (Lucide.Trash, "Trash"), (Lucide.Share, "Share"),
-            (Lucide.Download, "Download"), (Lucide.Upload, "Upload"), (Lucide.Phone, "Phone"),
-            (Lucide.Camera, "Camera"), (Lucide.Image, "Image"), (Lucide.Music, "Music"),
-            (Lucide.Play, "Play"), (Lucide.Sun, "Sun"), (Lucide.Moon, "Moon"),
-        ],
+        "Search", "Settings", "User", "Heart", "Star", "Bell",
+        "Mail", "Calendar", "Check", "Plus", "Minus", "Eye",
+        "Lock", "Trash", "Share", "Download", "Upload", "Phone",
+        "Camera", "Image", "Music", "Play", "Sun", "Moon",
     };
 
+    // The remaining Blazicons THIRD-PARTY INTEROP packs (SvgIcon -> <Blazicon>). Everything
+    // first-party renders above via the reflection resolver, so it is not listed here.
     private List<(SvgIcon Icon, string Name)> GetPackIcons() => Library switch
     {
-        "fluentui" => [(FluentUiIcon.Home, "Home"), (FluentUiIcon.Search, "Search"), (FluentUiIcon.Settings, "Settings"), (FluentUiIcon.Heart, "Heart"), (FluentUiIcon.Star, "Star"), (FluentUiIcon.Mail, "Mail"), (FluentUiIcon.Calendar, "Calendar"), (FluentUiIcon.Check, "Check"), (FluentUiIcon.Eye, "Eye"), (FluentUiIcon.LockClosed, "Lock"), (FluentUiIcon.Edit, "Edit"), (FluentUiIcon.Share, "Share"), (FluentUiIcon.Phone, "Phone"), (FluentUiIcon.Camera, "Camera"), (FluentUiIcon.Image, "Image"), (FluentUiIcon.MusicNote1, "Music"), (FluentUiIcon.Play, "Play"), (FluentUiIcon.Cloud, "Cloud"), (FluentUiIcon.Map, "Map"), (FluentUiIcon.Globe, "Globe"), (FluentUiIcon.AccessTime, "Time"), (FluentUiIcon.Accessibility, "Access"), (FluentUiIcon.AccessibilityCheckmark, "Check2"), (FluentUiIcon.AccessibilityError, "Error")],
         "font-awesome" => [(FontAwesomeSolidIcon.User, "User"), (FontAwesomeSolidIcon.Heart, "Heart"), (FontAwesomeSolidIcon.Star, "Star"), (FontAwesomeSolidIcon.Bell, "Bell"), (FontAwesomeSolidIcon.Calendar, "Calendar"), (FontAwesomeSolidIcon.Check, "Check"), (FontAwesomeSolidIcon.Plus, "Plus"), (FontAwesomeSolidIcon.Minus, "Minus"), (FontAwesomeSolidIcon.Eye, "Eye"), (FontAwesomeSolidIcon.Lock, "Lock"), (FontAwesomeSolidIcon.Trash, "Trash"), (FontAwesomeSolidIcon.Share, "Share"), (FontAwesomeSolidIcon.Download, "Download"), (FontAwesomeSolidIcon.Upload, "Upload"), (FontAwesomeSolidIcon.Phone, "Phone"), (FontAwesomeSolidIcon.Camera, "Camera"), (FontAwesomeSolidIcon.Image, "Image"), (FontAwesomeSolidIcon.Music, "Music"), (FontAwesomeSolidIcon.Play, "Play"), (FontAwesomeSolidIcon.Sun, "Sun"), (FontAwesomeSolidIcon.Moon, "Moon"), (FontAwesomeSolidIcon.Cloud, "Cloud"), (FontAwesomeSolidIcon.Map, "Map"), (FontAwesomeSolidIcon.Globe, "Globe")],
-        "google-material" => [(GoogleMaterialOutlinedIcon.Home, "Home"), (GoogleMaterialOutlinedIcon.Search, "Search"), (GoogleMaterialOutlinedIcon.Settings, "Settings"), (GoogleMaterialOutlinedIcon.HeartBroken, "Heart"), (GoogleMaterialOutlinedIcon.Star, "Star"), (GoogleMaterialOutlinedIcon.Mail, "Mail"), (GoogleMaterialOutlinedIcon.CalendarMonth, "Calendar"), (GoogleMaterialOutlinedIcon.Check, "Check"), (GoogleMaterialOutlinedIcon.PlusOne, "Plus"), (GoogleMaterialOutlinedIcon.Lock, "Lock"), (GoogleMaterialOutlinedIcon.Edit, "Edit"), (GoogleMaterialOutlinedIcon.Share, "Share"), (GoogleMaterialOutlinedIcon.Download, "Download"), (GoogleMaterialOutlinedIcon.Upload, "Upload"), (GoogleMaterialOutlinedIcon.Phone, "Phone"), (GoogleMaterialOutlinedIcon.Camera, "Camera"), (GoogleMaterialOutlinedIcon.Image, "Image"), (GoogleMaterialOutlinedIcon.MusicNote, "Music"), (GoogleMaterialOutlinedIcon.PlaylistAdd, "Playlist"), (GoogleMaterialOutlinedIcon.Cloud, "Cloud"), (GoogleMaterialOutlinedIcon.Map, "Map"), (GoogleMaterialOutlinedIcon.FileCopy, "Copy")],
         "ionicons" => [(Ionicon.Home, "Home"), (Ionicon.Search, "Search"), (Ionicon.Settings, "Settings"), (Ionicon.Heart, "Heart"), (Ionicon.Star, "Star"), (Ionicon.Mail, "Mail"), (Ionicon.Calendar, "Calendar"), (Ionicon.CheckboxOutline, "Check"), (Ionicon.Eye, "Eye"), (Ionicon.LockClosedOutline, "Lock"), (Ionicon.Trash, "Trash"), (Ionicon.Share, "Share"), (Ionicon.Download, "Download"), (Ionicon.PhoneLandscapeOutline, "Phone"), (Ionicon.Camera, "Camera"), (Ionicon.Image, "Image"), (Ionicon.MusicalNoteOutline, "Music"), (Ionicon.Play, "Play"), (Ionicon.SunnyOutline, "Sun"), (Ionicon.Moon, "Moon"), (Ionicon.Cloud, "Cloud"), (Ionicon.Map, "Map"), (Ionicon.Globe, "Globe"), (Ionicon.FileTrayFullOutline, "Files")],
         "material-design" => [(MdiIcon.Home, "Home"), (MdiIcon.SearchWeb, "Search"), (MdiIcon.SettingsHelper, "Settings"), (MdiIcon.Heart, "Heart"), (MdiIcon.Star, "Star"), (MdiIcon.Bell, "Bell"), (MdiIcon.Mail, "Mail"), (MdiIcon.Calendar, "Calendar"), (MdiIcon.Check, "Check"), (MdiIcon.Plus, "Plus"), (MdiIcon.Minus, "Minus"), (MdiIcon.Eye, "Eye"), (MdiIcon.Lock, "Lock"), (MdiIcon.TrashCanOutline, "Trash"), (MdiIcon.Share, "Share"), (MdiIcon.Download, "Download"), (MdiIcon.Upload, "Upload"), (MdiIcon.Phone, "Phone"), (MdiIcon.Camera, "Camera"), (MdiIcon.Image, "Image"), (MdiIcon.Music, "Music"), (MdiIcon.Play, "Play"), (MdiIcon.SunAngleOutline, "Sun"), (MdiIcon.MoonFirstQuarter, "Moon")],
         "devicon" => [(DeviconOriginal.Homebrew, "Homebrew"), (DeviconOriginal.Playwright, "Playwright"), (DeviconOriginal.Cloudflare, "Cloudflare"), (DeviconOriginal.Mapbox, "Mapbox"), (DeviconOriginal.Filezilla, "Filezilla"), (DeviconOriginal.Adonisjs, "Adonis"), (DeviconOriginal.Aerospike, "Aerospike"), (DeviconOriginal.Aframe, "Aframe"), (DeviconOriginal.Algolia, "Algolia"), (DeviconOriginal.Almalinux, "Almalinux"), (DeviconOriginal.Alpinejs, "Alpine"), (DeviconOriginal.Anaconda, "Anaconda"), (DeviconOriginal.Android, "Android"), (DeviconOriginal.Angular, "Angular"), (DeviconOriginal.Ansible, "Ansible"), (DeviconOriginal.Apache, "Apache"), (DeviconOriginal.AmazonwebservicesWordmark, "AWS"), (DeviconOriginal.Akka, "Akka"), (DeviconOriginal.Aftereffects, "AE"), (DeviconOriginal.Aarch64, "Aarch64")],
@@ -98,31 +86,18 @@
         _ => [],
     };
 
-    private string GetIconCount() => Library switch
+    private string GetPackageName()
     {
-        "lucide" => "1746",
-        "bootstrap" => "2078",
-        "fluentui" => "2406",
-        "font-awesome" => "1402",
-        "google-material" => "2122",
-        "ionicons" => "1357",
-        "material-design" => "7447",
-        "devicon" => "940",
-        "flag-icons" => "271",
-        _ => "1746"
-    };
-
-    private string GetPackageName() => Library switch
-    {
-        "lucide" => "Lumeo.Icons.Lucide",
-        "bootstrap" => "Lumeo.Icons.Bootstrap",
-        "fluentui" => "Blazicons.FluentUiSystemIcons",
-        "font-awesome" => "Blazicons.FontAwesome",
-        "google-material" => "Blazicons.GoogleMaterialIcons",
-        "ionicons" => "Blazicons.Ionicons",
-        "material-design" => "Blazicons.MaterialDesignIcons",
-        "devicon" => "Blazicons.Devicon",
-        "flag-icons" => "Blazicons.FlagIcons",
-        _ => "Lumeo.Icons.Lucide"
-    };
+        var fp = IconPackCatalog.Find(Library);
+        if (fp is not null) return fp.AssemblyName;
+        return Library switch
+        {
+            "font-awesome" => "Blazicons.FontAwesome",
+            "ionicons" => "Blazicons.Ionicons",
+            "material-design" => "Blazicons.MaterialDesignIcons",
+            "devicon" => "Blazicons.Devicon",
+            "flag-icons" => "Blazicons.FlagIcons",
+            _ => "Lumeo.Icons.Lucide"
+        };
+    }
 }

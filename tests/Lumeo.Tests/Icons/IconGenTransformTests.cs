@@ -37,8 +37,23 @@ public class IconGenTransformTests
     [InlineData("house", "House")]
     [InlineData("123", "_123")]       // Tabler digit-only name → leading-digit prefix
     [InlineData("2fa", "_2fa")]
+    [InlineData("account_circle", "AccountCircle")] // Material snake_case → split on '_'
+    [InlineData("access_time", "AccessTime")]       // Fluent snake_case
+    [InlineData("3d_rotation", "_3dRotation")]      // Material digit-leading snake_case
     public void ToPascal_Transforms_And_Prefixes_Digits(string kebab, string expected) =>
         Assert.Equal(expected, NameTransform.ToPascal(kebab));
+
+    // --- Fluent size/style marker strip (StripExact removes the whole literal tail, no hyphen implied) ---
+
+    [Theory]
+    [InlineData("access_time_24_regular", "_24_regular", "access_time")]
+    [InlineData("access_time_24_filled", "_24_filled", "access_time")]
+    public void StripExact_Removes_Literal_Suffix(string name, string suffix, string expected) =>
+        Assert.Equal(expected, NameTransform.StripExact(name, suffix));
+
+    [Fact]
+    public void StripExact_Leaves_NonMatching_Name_Untouched() =>
+        Assert.Equal("access_time", NameTransform.StripExact("access_time", "_24_regular"));
 
     // --- SVG parser: color scrub + duotone attribute preservation ---
 

@@ -16,6 +16,10 @@ public static class DocsTestContextExtensions
         ctx.Services.AddSingleton<NavConfigService>();
         ctx.Services.AddSingleton<RegistryService>();
         ctx.Services.AddSingleton<IconService>();
+        // DynamicIcon (used across nearly every component page) resolves its glyph through the
+        // shared, data-driven resolver. In bUnit only Lucide is loaded, so the resolver degrades
+        // any non-Lucide active pack to Lucide — every page still renders a real icon.
+        ctx.Services.AddSingleton<DynamicIconResolver>();
         // Catalog page injects Lumeo.Services.OverlayService for the mobile
         // filter sheet. Tests never open the sheet, but bUnit's DI fails fast
         // if the dependency isn't registered. Singleton is fine here — the

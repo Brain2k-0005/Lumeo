@@ -14,6 +14,7 @@ builder.RootComponents.Add<HeadOutlet>("head::after");
 builder.Services.AddScoped(sp => new HttpClient { BaseAddress = new Uri(builder.HostEnvironment.BaseAddress) });
 builder.Services.AddLumeo();
 builder.Services.AddSingleton<IconService>();
+builder.Services.AddSingleton<DynamicIconResolver>();
 builder.Services.AddSingleton<PatternFilterService>();
 // Scoped, not Singleton — both depend on HttpClient which is Scoped in Blazor WASM.
 // In WASM there's only one scope per app lifetime, so caching semantics are identical

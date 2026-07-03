@@ -3,6 +3,7 @@
 @using Lumeo.Theming
 @inject IJSRuntime JS
 @inject IconService _iconService
+@inject DynamicIconResolver _resolver
 @inject Lumeo.Services.ThemeService ThemeService
 @inject Lumeo.Services.KeyboardShortcutService Shortcuts
 @inject Microsoft.AspNetCore.Components.WebAssembly.Services.LazyAssemblyLoader LazyLoader
@@ -123,50 +124,65 @@
                         break;
 
                     case "icons":
-                        <Lumeo.Text As="div" Class="px-2 pt-0.5 pb-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Lumeo.Icons — first-party</Lumeo.Text>
-                        @foreach (var lib in _iconLibraries.Where(l => l.FirstParty))
+                        <Flex Class="items-center justify-between px-2 pt-0.5 pb-1">
+                            <Lumeo.Text As="span" Class="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Lumeo.Icons — first-party</Lumeo.Text>
+                            @if (_iconLibsLoading)
+                            {
+                                <span class="inline-flex items-center gap-1 text-[10px] text-muted-foreground">
+                                    <SvgGlyph Svg="@(Lucide.LoaderCircle)" class="h-3 w-3 animate-spin" /> Loading packs…
+                                </span>
+                            }
+                        </Flex>
+                        @* Render the lists only AFTER the lazy pack assemblies finished
+                           loading: the third-party previews reference types living in
+                           lazy Blazicons DLLs, and rendering them mid-preload throws
+                           FileNotFoundException in the renderer (Blazor error bar). *@
+                        @if (!_iconLibsLoading)
                         {
-                            <button class="w-full rounded-md px-2 py-2 text-left hover:bg-accent/50 transition-colors @(lib.Value == _activeIconLibrary ? "bg-accent/30" : "")"
-                                    @onclick="() => SetIconLibrary(lib.Value)">
-                                <Flex Class="items-center justify-between mb-1.5">
-                                    <div class="min-w-0">
-                                        <Lumeo.Text As="span" Class="text-[13px] font-medium text-foreground">@lib.Name</Lumeo.Text>
-                                        <Lumeo.Text As="span" Class="text-[10px] text-muted-foreground ml-1.5">@lib.Package</Lumeo.Text>
-                                    </div>
-                                    @if (lib.Value == _activeIconLibrary)
-                                    {
-                                        <SvgGlyph Svg="@(Lucide.Check)" class="h-3.5 w-3.5 shrink-0 text-foreground" />
-                                    }
-                                </Flex>
-                                <IconPreview Library="@lib.Value" Count="12" />
-                            </button>
+                        @foreach (var family in IconPackCatalog.ByFamily())
+                        {
+                            <Lumeo.Text As="div" Class="px-2 pt-1.5 pb-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground/70">@family.Key</Lumeo.Text>
+                            @foreach (var pack in family)
+                            {
+                                <button class="w-full rounded-md px-2 py-2 text-left hover:bg-accent/50 transition-colors @(pack.Key == _activeIconLibrary ? "bg-accent/30" : "")"
+                                        @onclick="() => SetIconLibrary(pack.Key)">
+                                    <Flex Class="items-center justify-between mb-1.5">
+                                        <div class="min-w-0">
+                                            <Lumeo.Text As="span" Class="text-[13px] font-medium text-foreground">@pack.Display</Lumeo.Text>
+                                            <Lumeo.Text As="span" Class="text-[10px] text-muted-foreground ml-1.5">@pack.AssemblyName</Lumeo.Text>
+                                        </div>
+                                        @if (pack.Key == _activeIconLibrary)
+                                        {
+                                            <SvgGlyph Svg="@(Lucide.Check)" class="h-3.5 w-3.5 shrink-0 text-foreground" />
+                                        }
+                                        else if (_switchingTo == pack.Key)
+                                        {
+                                            <SvgGlyph Svg="@(Lucide.LoaderCircle)" class="h-3.5 w-3.5 shrink-0 text-muted-foreground animate-spin" />
+                                        }
+                                    </Flex>
+                                    <IconPreview Library="@pack.Key" Count="12" />
+                                </button>
+                            }
                         }
 
-                        <a href="icons"
-                           class="block rounded-md px-2 py-2 mt-0.5 hover:bg-accent/50 transition-colors"
-                           @onclick='() => _expandedSection = ""'>
-                            <Lumeo.Text As="span" Class="text-[11px] text-muted-foreground leading-snug">
-                                Also first-party: <span class="text-foreground font-medium">@string.Join(" · ", _galleryOnlyFirstParty)</span> — browse the full family in the icon gallery →
-                            </Lumeo.Text>
-                        </a>
-
                         <Lumeo.Text As="div" Class="px-2 pt-2 pb-1 mt-1 border-t border-border/60 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Third-party interop (Blazicons)</Lumeo.Text>
-                        @foreach (var lib in _iconLibraries.Where(l => !l.FirstParty))
+                        @foreach (var lib in _thirdPartyLibs)
                         {
-                            <button class="w-full rounded-md px-2 py-2 text-left hover:bg-accent/50 transition-colors @(lib.Value == _activeIconLibrary ? "bg-accent/30" : "")"
-                                    @onclick="() => SetIconLibrary(lib.Value)">
+                            <button class="w-full rounded-md px-2 py-2 text-left hover:bg-accent/50 transition-colors @(lib.Key == _activeIconLibrary ? "bg-accent/30" : "")"
+                                    @onclick="() => SetIconLibrary(lib.Key)">
                                 <Flex Class="items-center justify-between mb-1.5">
                                     <div class="min-w-0">
-                                        <Lumeo.Text As="span" Class="text-[13px] font-medium text-foreground">@lib.Name</Lumeo.Text>
+                                        <Lumeo.Text As="span" Class="text-[13px] font-medium text-foreground">@lib.Display</Lumeo.Text>
                                         <Lumeo.Text As="span" Class="text-[10px] text-muted-foreground ml-1.5">@lib.Package</Lumeo.Text>
                                     </div>
-                                    @if (lib.Value == _activeIconLibrary)
+                                    @if (lib.Key == _activeIconLibrary)
                                     {
                                         <SvgGlyph Svg="@(Lucide.Check)" class="h-3.5 w-3.5 shrink-0 text-foreground" />
                                     }
                                 </Flex>
-                                <IconPreview Library="@lib.Value" Count="12" />
+                                <IconPreview Library="@lib.Key" Count="12" />
                             </button>
+                        }
                         }
                         break;
 
@@ -302,7 +318,7 @@
 
         <!-- Icon Library -->
         <button class="w-full flex items-center justify-between px-4 py-2.5 hover:bg-accent/40 transition-colors text-left @(_expandedSection == "icons" ? "bg-accent/40" : "")"
-                @onclick='() => ToggleSection("icons")'>
+                @onclick="ToggleIconsSection">
             <Stack Gap="0">
                 <Lumeo.Text Class="text-[11px] text-muted-foreground leading-none">Icon Library</Lumeo.Text>
                 <Lumeo.Text Class="text-[13px] font-semibold mt-0.5">@GetActiveIconLibraryName()</Lumeo.Text>
@@ -439,7 +455,7 @@
     private record BaseColorOption(string Name, string Value, string Preview);
     private record RadiusOption(string Name, string Value);
     private record FontOption(string Name, string Value, string Family, string Label);
-    private record IconLibraryOption(string Name, string Value, string Package, bool FirstParty = false);
+    private record ThirdPartyLib(string Key, string Display, string Package);
     private record MenuColorOption(string Name, string Value);
     private record MenuAccentOption(string Name, string Value, string Description);
     private record PresetOption(string Name, string ThemeValue, string StyleValue, string BaseColorValue, string RadiusValue, string FontValue, string MenuColorValue, string MenuAccentValue, string Preview, string Description);
@@ -491,29 +507,19 @@
         new("Fira Code", "fira-code", "'Fira Code', monospace", "mono"),
     ];
 
-    // First-party (Lumeo.Icons) libraries drive the docs' site-wide icon re-skin via
-    // DynamicIcon. Lucide + Bootstrap have full canonical-name maps, so they are the
-    // selectable first-party entries here; the rest of the first-party family (Tabler,
-    // Phosphor, Heroicons, Remix, Iconoir) is featured via a gallery callout below the
-    // list. The remaining entries are Blazicons THIRD-PARTY INTEROP examples (no first-party
-    // equivalent) and are labelled as such in the picker.
-    private readonly IconLibraryOption[] _iconLibraries =
+    // EVERY first-party Lumeo.Icons pack class is now a selectable entry, sourced from
+    // IconPackCatalog and rendered grouped by family. Each drives the docs' site-wide icon
+    // re-skin through the data-driven DynamicIconResolver (semantic name -> per-pack IconSource).
+    // The entries below are the remaining Blazicons THIRD-PARTY INTEROP examples with no
+    // first-party equivalent — kept for the /components/icon comparison browser.
+    private readonly ThirdPartyLib[] _thirdPartyLibs =
     [
-        new("Lucide", "lucide", "Lumeo.Icons.Lucide", FirstParty: true),
-        new("Bootstrap", "bootstrap", "Lumeo.Icons.Bootstrap", FirstParty: true),
-        new("Fluent UI", "fluentui", "Blazicons.FluentUI"),
-        new("Font Awesome", "font-awesome", "Blazicons.FontAwesome"),
-        new("Google Material", "google-material", "Blazicons.GoogleMaterialDesign"),
-        new("Material Design", "material-design", "Blazicons.MaterialDesignIcons"),
-        new("Ionicons", "ionicons", "Blazicons.Ionicons"),
-        new("Devicon", "devicon", "Blazicons.Devicon"),
-        new("Flag Icons", "flag-icons", "Blazicons.FlagIcons"),
+        new("font-awesome", "Font Awesome", "Blazicons.FontAwesome"),
+        new("material-design", "Material Design", "Blazicons.MaterialDesignIcons"),
+        new("ionicons", "Ionicons", "Blazicons.Ionicons"),
+        new("devicon", "Devicon", "Blazicons.Devicon"),
+        new("flag-icons", "Flag Icons", "Blazicons.FlagIcons"),
     ];
-
-    // First-party packs with a docs gallery page but no site-wide DynamicIcon map — featured
-    // as a "browse in the gallery" callout in the icon-library picker.
-    private static readonly string[] _galleryOnlyFirstParty =
-        { "Tabler", "Phosphor", "Heroicons", "Remix", "Iconoir" };
 
     private readonly MenuColorOption[] _menuColors =
     [
@@ -586,9 +592,48 @@
     private string GetActiveBaseColorPreview() => _baseColors.FirstOrDefault(c => c.Value == _activeBaseColor)?.Preview ?? "hsl(215 16% 47%)";
     private string GetActiveRadiusName() => _radiiOptions.FirstOrDefault(r => r.Value == _activeRadius)?.Name ?? _activeRadius + "rem";
     private string GetActiveFontName() => _fonts.FirstOrDefault(f => f.Value == _activeFont)?.Name ?? "System";
-    private string GetActiveIconLibraryName() => _iconLibraries.FirstOrDefault(l => l.Value == _activeIconLibrary)?.Name ?? "Lucide";
+    private string GetActiveIconLibraryName()
+    {
+        var fp = IconPackCatalog.Find(_activeIconLibrary);
+        if (fp is not null) return fp.Display;
+        var tp = _thirdPartyLibs.FirstOrDefault(l => l.Key == _activeIconLibrary);
+        return tp?.Display ?? "Lucide";
+    }
 
     private void ToggleSection(string section) => _expandedSection = _expandedSection == section ? "" : section;
+
+    // Opening the icon-library section lazy-loads every pack assembly the previews need, so each
+    // family shows its own glyphs. Kept off the mount path (App.razor/route-based lazy loading
+    // mechanism) so general docs pages stay light — the packs load only on this deliberate action.
+    private bool _iconLibsRequested;
+    private bool _iconLibsLoading;
+    private string? _switchingTo;
+
+    private static readonly string[] _previewDlls =
+        IconPackCatalog.LazyDlls
+            .Concat(new[]
+            {
+                "Blazicons.FontAwesome.dll", "Blazicons.MaterialDesignIcons.dll",
+                "Blazicons.Ionicons.dll", "Blazicons.Devicon.dll", "Blazicons.FlagIcons.dll",
+            })
+            .ToArray();
+
+    private async Task ToggleIconsSection()
+    {
+        var opening = _expandedSection != "icons";
+        _expandedSection = opening ? "icons" : "";
+        if (opening && !_iconLibsRequested)
+        {
+            _iconLibsRequested = true;
+            _iconLibsLoading = true;
+            StateHasChanged();
+            try { await LazyLoader.LoadAssembliesAsync(_previewDlls); }
+            catch (Microsoft.JSInterop.JSDisconnectedException) { }
+            catch (Exception ex) { Console.Error.WriteLine($"[Lumeo Docs] Icon pack preload failed: {ex.Message}"); }
+            _iconLibsLoading = false;
+            StateHasChanged();
+        }
+    }
 
     private async Task ApplyPreset(PresetOption preset)
     {
@@ -637,11 +682,25 @@
         await JS.InvokeVoidAsync("themeManager.setFont", font, css);
     }
 
-    private Task SetIconLibrary(string library)
+    private async Task SetIconLibrary(string library)
     {
+        // First-party packs are lazy — pull the assembly before switching so the resolver can
+        // reflect it. The section-open preload usually has it already; this guards direct clicks
+        // and keeps a per-row loading state while an individual pack lands.
+        var pack = IconPackCatalog.Find(library);
+        if (pack?.LazyDll is { } dll && !_resolver.IsReady(library))
+        {
+            _switchingTo = library;
+            StateHasChanged();
+            try { await LazyLoader.LoadAssembliesAsync(new[] { dll }); }
+            catch (Microsoft.JSInterop.JSDisconnectedException) { }
+            catch (Exception ex) { Console.Error.WriteLine($"[Lumeo Docs] Icon pack load failed: {ex.Message}"); }
+            _switchingTo = null;
+        }
+
         _activeIconLibrary = library;
         _iconService.SetLibrary(library);
-        return Task.CompletedTask;
+        StateHasChanged();
     }
 
     private async Task SetMenuColor(string menuColor)
@@ -656,42 +715,14 @@
         await JS.InvokeVoidAsync("themeManager.setMenuAccent", accent);
     }
 
-    private static readonly string[] _iconPackDlls =
-    {
-        // First-party Bootstrap pack — replaces the dropped Blazicons.Bootstrap. It is lazy
-        // (excluded from the boot manifest) but preloaded here so the customizer preview and
-        // DynamicIcon's site-wide Bootstrap re-skin resolve on any docs page.
-        "Lumeo.Icons.Bootstrap.dll",
-        "Blazicons.Devicon.dll",
-        "Blazicons.FlagIcons.dll",
-        "Blazicons.FluentUI.dll",
-        "Blazicons.FontAwesome.dll",
-        "Blazicons.GoogleMaterialDesign.dll",
-        "Blazicons.Ionicons.dll",
-        "Blazicons.MaterialDesignIcons.dll",
-    };
-    private bool _iconPacksLoaded;
-
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (firstRender)
         {
-            // Lazy-fetch the eight non-Lucide icon packs that the customizer's
-            // icon-library picker enumerates. App.razor only loads them on the
-            // /components/icon route, but the customizer is mounted by
-            // MainLayout on every docs page, and IconPreview references the
-            // pack types when the user opens the picker. Without this preload
-            // the picker hit unresolved-assembly errors on /components/button,
-            // /components/avatar, etc. (Codex #50 review). Fire-and-forget;
-            // failures are bounded by safeInvoke-style behaviour on the
-            // consumer side of the loader.
-            if (!_iconPacksLoaded)
-            {
-                _iconPacksLoaded = true;
-                try { await LazyLoader.LoadAssembliesAsync(_iconPackDlls); }
-                catch (Microsoft.JSInterop.JSDisconnectedException) { }
-            }
-
+            // Icon-pack assemblies are NOT preheated on mount anymore: they load lazily when the
+            // user opens the icon-library section (ToggleIconsSection) or picks a pack
+            // (SetIconLibrary), keeping general docs pages light. The default library (Lucide) is
+            // eager, so DynamicIcon renders on every page without any pack fetch.
             await ThemeService.InitializeAsync();
             _darkMode = ThemeService.IsDark;
             ThemeService.OnThemeChanged += OnThemeServiceChanged;

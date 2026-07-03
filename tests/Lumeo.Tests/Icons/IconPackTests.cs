@@ -290,4 +290,88 @@ public class IconPackTests : IAsyncLifetime
         Assert.Equal("1.5", svg.GetAttribute("stroke-width"));
         Assert.NotEmpty(svg.InnerHtml);
     }
+
+    // --- Material Symbols STANDARD CUT: outlined / rounded / sharp, each a base + *Filled class ---
+    // Weight-400 only; all fill-rendered; the native 0 -960 960 960 viewBox is preserved (SvgGlyph
+    // scales via viewBox). Material's heart icon is `favorite`. Each style ships 3,892 icons per class
+    // (@material-symbols/svg-400 v0.45.5) — the design-spec's >=3000 floor is set just under the actual.
+
+    [Fact]
+    public void MaterialSymbols_Samples_Are_Fill_And_NonEmpty()
+    {
+        AssertSample(MaterialSymbols.Home, L.IconRenderStyle.Fill);
+        AssertSample(MaterialSymbols.Check, L.IconRenderStyle.Fill);
+        AssertSample(MaterialSymbols.Favorite, L.IconRenderStyle.Fill);
+        AssertSample(MaterialSymbolsFilled.Home, L.IconRenderStyle.Fill);
+        AssertSample(MaterialSymbolsRounded.Home, L.IconRenderStyle.Fill);
+        AssertSample(MaterialSymbolsRoundedFilled.Favorite, L.IconRenderStyle.Fill);
+        AssertSample(MaterialSymbolsSharp.Check, L.IconRenderStyle.Fill);
+        AssertSample(MaterialSymbolsSharpFilled.Home, L.IconRenderStyle.Fill);
+    }
+
+    [Fact]
+    // Material's native viewBox is 0 -960 960 960 (NOT 0 0 24 24) — it must survive parse/emit verbatim.
+    public void MaterialSymbols_Preserve_Native_ViewBox()
+    {
+        Assert.Equal("0 -960 960 960", MaterialSymbols.Home.ViewBox);
+        Assert.Equal("0 -960 960 960", MaterialSymbolsFilled.Home.ViewBox);
+        Assert.Equal("0 -960 960 960", MaterialSymbolsRounded.Home.ViewBox);
+        Assert.Equal("0 -960 960 960", MaterialSymbolsSharp.Home.ViewBox);
+    }
+
+    [Theory]
+    [InlineData(typeof(MaterialSymbols))]
+    [InlineData(typeof(MaterialSymbolsFilled))]
+    [InlineData(typeof(MaterialSymbolsRounded))]
+    [InlineData(typeof(MaterialSymbolsRoundedFilled))]
+    [InlineData(typeof(MaterialSymbolsSharp))]
+    [InlineData(typeof(MaterialSymbolsSharpFilled))]
+    // Actual: 3,892 per class (weight 400, v0.45.5). Floor set just below.
+    public void MaterialSymbols_Each_Class_Has_The_Full_Set(Type cls) => Assert.True(IconCount(cls) >= 3800);
+
+    [Fact]
+    public void MaterialSymbols_Home_Renders_As_Filled_Svg_With_Native_ViewBox()
+    {
+        var cut = _ctx.Render<L.SvgGlyph>(p => p.Add(g => g.Svg, MaterialSymbols.Home));
+        var svg = cut.Find("svg");
+        Assert.Equal("0 -960 960 960", svg.GetAttribute("viewBox"));
+        Assert.Equal("currentColor", svg.GetAttribute("fill"));
+        Assert.Null(svg.GetAttribute("stroke"));
+        Assert.NotEmpty(svg.InnerHtml);
+    }
+
+    // --- Fluent STANDARD CUT: 24px regular (Fluent) + filled (FluentFilled), ONE package ---
+    // Fill-rendered, native 24x24 viewBox. Fluent's check icon is `checkmark`. @fluentui/svg-icons
+    // v1.1.331 ships 2,449 regular + 2,485 filled at 24px — the design-spec's >=2000 floor sits under both.
+
+    [Fact]
+    public void Fluent_Samples_Are_Fill_And_NonEmpty()
+    {
+        AssertSample(Fluent.Home, L.IconRenderStyle.Fill);
+        AssertSample(Fluent.Heart, L.IconRenderStyle.Fill);
+        AssertSample(Fluent.Checkmark, L.IconRenderStyle.Fill);
+        AssertSample(FluentFilled.Home, L.IconRenderStyle.Fill);
+        AssertSample(FluentFilled.Heart, L.IconRenderStyle.Fill);
+        AssertSample(FluentFilled.Checkmark, L.IconRenderStyle.Fill);
+    }
+
+    [Fact]
+    public void Fluent_ViewBox_Is_24() => Assert.Equal("0 0 24 24", Fluent.Home.ViewBox);
+
+    [Fact]
+    public void Fluent_Has_The_Full_Set() => Assert.True(IconCount(typeof(Fluent)) >= 2400);
+
+    [Fact]
+    public void Fluent_Filled_Has_A_Full_Set() => Assert.True(IconCount(typeof(FluentFilled)) >= 2400);
+
+    [Fact]
+    public void Fluent_Home_Renders_As_Filled_Svg_With_24_ViewBox()
+    {
+        var cut = _ctx.Render<L.SvgGlyph>(p => p.Add(g => g.Svg, Fluent.Home));
+        var svg = cut.Find("svg");
+        Assert.Equal("0 0 24 24", svg.GetAttribute("viewBox"));
+        Assert.Equal("currentColor", svg.GetAttribute("fill"));
+        Assert.Null(svg.GetAttribute("stroke"));
+        Assert.NotEmpty(svg.InnerHtml);
+    }
 }

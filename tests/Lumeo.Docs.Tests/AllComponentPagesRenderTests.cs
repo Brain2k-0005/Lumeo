@@ -58,6 +58,7 @@ public class AllComponentPagesRenderTests
                 // Mirror the real docs WASM app DI (docs/Lumeo.Docs/Program.cs):
                 ctx.Services.AddLumeo();
                 ctx.Services.AddSingleton<IconService>();
+                ctx.Services.AddSingleton<DynamicIconResolver>();
                 ctx.Services.AddSingleton<PatternFilterService>();
                 ctx.Services.AddSingleton<NavConfigService>();
                 ctx.Services.AddSingleton(new HttpClient(new EmptyRegistryHandler()) { BaseAddress = new Uri("https://test/") });

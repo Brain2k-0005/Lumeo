@@ -16,6 +16,10 @@ public static class PackCatalog
     private const string RemixVersion = "4.9.1";
     private const string BootstrapVersion = "1.13.1";
     private const string IconoirVersion = "7.11.1";
+    // Material Symbols / Fluent ship no GitHub release zip we want to clone (the google/microsoft
+    // repos are multi-GB); the version is the npm mirror package version, whose tarball we vendor.
+    private const string MaterialSymbolsVersion = "0.45.5"; // npm @material-symbols/svg-400 dist-tags.latest
+    private const string FluentVersion = "1.1.331";         // npm @fluentui/svg-icons dist-tags.latest
 
     private const string LucideZipUrl =
         "https://github.com/lucide-icons/lucide/releases/download/1.23.0/lucide-icons-1.23.0.zip";
@@ -45,6 +49,18 @@ public static class PackCatalog
         "https://github.com/iconoir-icons/iconoir/archive/refs/tags/v7.11.1.zip";
     private const string IconoirZipName = "iconoir-7.11.1.zip";
 
+    // npm mirror tarballs (.tgz = gzip'd tar; ForEachSvg handles them like the GitHub .zips). Material
+    // Symbols: @material-symbols/svg-400 lays SVGs flat under outlined/ rounded/ sharp/ with
+    // "<name>.svg" (fill=0) + "<name>-fill.svg" (fill=1). Fluent: @fluentui/svg-icons ships all sizes
+    // under icons/ as "<name>_<size>_<regular|filled>.svg"; the 24px cut is selected below.
+    private const string MaterialSymbolsZipUrl =
+        "https://registry.npmjs.org/@material-symbols/svg-400/-/svg-400-0.45.5.tgz";
+    private const string MaterialSymbolsZipName = "material-symbols-svg-400-0.45.5.tgz";
+
+    private const string FluentZipUrl =
+        "https://registry.npmjs.org/@fluentui/svg-icons/-/svg-icons-1.1.331.tgz";
+    private const string FluentZipName = "fluentui-svg-icons-1.1.331.tgz";
+
     /// <summary>All pack mode names (excludes the Phase 0 <c>lumeo-icons</c> mode and <c>all</c>).</summary>
     public static readonly IReadOnlyList<string> AllModes = new[]
     {
@@ -52,6 +68,8 @@ public static class PackCatalog
         "phosphor", "phosphor-bold", "phosphor-fill",
         "phosphor-duotone", "phosphor-light", "phosphor-thin",
         "heroicons", "remix", "bootstrap", "iconoir",
+        "material-symbols", "material-symbols-rounded", "material-symbols-sharp",
+        "fluent",
     };
 
     /// <summary>
@@ -73,6 +91,10 @@ public static class PackCatalog
         "remix" => new[] { RemixVariant2(repoRoot, "Remix", "line"), RemixVariant2(repoRoot, "RemixFilled", "fill") },
         "bootstrap" => new[] { Bootstrap(repoRoot) },
         "iconoir" => new[] { Iconoir(repoRoot) },
+        "material-symbols" => MaterialStyle(repoRoot, "outlined", "MaterialSymbols", "Lumeo.Icons.MaterialSymbols"),
+        "material-symbols-rounded" => MaterialStyle(repoRoot, "rounded", "MaterialSymbolsRounded", "Lumeo.Icons.MaterialSymbols.Rounded"),
+        "material-symbols-sharp" => MaterialStyle(repoRoot, "sharp", "MaterialSymbolsSharp", "Lumeo.Icons.MaterialSymbols.Sharp"),
+        "fluent" => new[] { FluentVariant(repoRoot, "Fluent", "regular"), FluentVariant(repoRoot, "FluentFilled", "filled") },
         "all" => AllModes.SelectMany(m => Resolve(m, repoRoot)).ToArray(),
         _ => throw new ArgumentException($"Unknown pack mode '{mode}'. Known: {string.Join(", ", AllModes)}, all."),
     };
@@ -115,6 +137,36 @@ public static class PackCatalog
         if (!n.EndsWith("-" + variant + ".svg", StringComparison.OrdinalIgnoreCase)) return false;
         var parts = n.Split('/');
         return parts.Length == 4 && parts[1].Equals("icons", StringComparison.OrdinalIgnoreCase);
+    };
+
+    // Selects one Material Symbols style + fill from an npm tarball: files
+    // "package/<styleDir>/<name>.svg" (fill=0) or "package/<styleDir>/<name>-fill.svg" (fill=1),
+    // exactly three path segments (rejects any nested sibling). <paramref name="filled"/> picks the
+    // "-fill.svg" set; false picks the plain (non-fill) set — the two share base names across the
+    // MaterialSymbols* / MaterialSymbols*Filled classes.
+    private static Func<string, bool> MaterialFilter(string styleDir, bool filled) => entry =>
+    {
+        var n = entry.Replace('\\', '/');
+        if (!n.EndsWith(".svg", StringComparison.OrdinalIgnoreCase)) return false;
+        var parts = n.Split('/');
+        if (parts.Length != 3) return false;
+        if (!parts[0].Equals("package", StringComparison.OrdinalIgnoreCase)) return false;
+        if (!parts[1].Equals(styleDir, StringComparison.OrdinalIgnoreCase)) return false;
+        var isFill = n.EndsWith("-fill.svg", StringComparison.OrdinalIgnoreCase);
+        return filled ? isFill : !isFill;
+    };
+
+    // Selects one Fluent size+style from an npm tarball: top-level files
+    // "package/icons/<name>_24_<regular|filled>.svg" (exactly three segments — the locale subfolders
+    // package/icons/<locale>/… are four segments and thus rejected). Only the 24px cut is vendored.
+    private static Func<string, bool> FluentFilter(string variant) => entry =>
+    {
+        var n = entry.Replace('\\', '/');
+        var parts = n.Split('/');
+        if (parts.Length != 3) return false;
+        if (!parts[0].Equals("package", StringComparison.OrdinalIgnoreCase)) return false;
+        if (!parts[1].Equals("icons", StringComparison.OrdinalIgnoreCase)) return false;
+        return parts[2].EndsWith("_24_" + variant + ".svg", StringComparison.OrdinalIgnoreCase);
     };
 
     private static PackConfig Lucide(string repoRoot) => new()
@@ -281,5 +333,54 @@ public static class PackCatalog
         OutputBaseName = "Iconoir",
         LicenseHeader = Licenses.IconoirMit,
         ChunkSize = 500,
+    };
+
+    // Material Symbols STANDARD CUT — weight 400 only. Each style (outlined/rounded/sharp) is its own
+    // package holding two fill-rendered classes: the base "<name>.svg" set (fill=0) and the
+    // "<name>-fill.svg" set (fill=1, "-fill" stripped so both share the base member name). The native
+    // viewBox (0 -960 960 960) is preserved per-file by the parser; SvgGlyph scales via viewBox. Names
+    // are snake_case (account_circle) — ToPascal splits on '_'. Apache-2.0 upstream.
+    private static IReadOnlyList<PackConfig> MaterialStyle(string repoRoot, string styleDir, string className, string project)
+    {
+        PackConfig Variant(string cls, bool filled) => new()
+        {
+            PackName = "Material Symbols",
+            Version = MaterialSymbolsVersion,
+            ZipUrl = MaterialSymbolsZipUrl,
+            ZipCacheName = MaterialSymbolsZipName,
+            EntryFilter = MaterialFilter(styleDir, filled),
+            Style = GenRenderStyle.Fill,
+            Namespace = "Lumeo.Icons",
+            ClassName = cls,
+            OutputDir = IconsDir(repoRoot, project),
+            OutputBaseName = cls,
+            LicenseHeader = Licenses.MaterialSymbolsApache2,
+            ChunkSize = 500,
+            // Filled files carry a "-fill" suffix; strip it so House ↔ HouseFilled share the base name.
+            UpstreamNameTransform = filled ? name => NameTransform.StripSuffix(name, "fill") : null,
+        };
+
+        return new[] { Variant(className, false), Variant(className + "Filled", true) };
+    }
+
+    // Fluent (Fluent UI System Icons) STANDARD CUT — 24px only. One package, two fill-rendered classes:
+    // Fluent (regular) + FluentFilled (filled). The "_24_regular" / "_24_filled" size+style marker is
+    // stripped so access_time_24_regular and access_time_24_filled both yield member AccessTime on the
+    // respective class. Native 24x24 viewBox. MIT upstream.
+    private static PackConfig FluentVariant(string repoRoot, string className, string variant) => new()
+    {
+        PackName = "Fluent",
+        Version = FluentVersion,
+        ZipUrl = FluentZipUrl,
+        ZipCacheName = FluentZipName,
+        EntryFilter = FluentFilter(variant),
+        Style = GenRenderStyle.Fill,
+        Namespace = "Lumeo.Icons",
+        ClassName = className,
+        OutputDir = IconsDir(repoRoot, "Lumeo.Icons.Fluent"),
+        OutputBaseName = className,
+        LicenseHeader = Licenses.FluentMit,
+        ChunkSize = 500,
+        UpstreamNameTransform = name => NameTransform.StripExact(name, "_24_" + variant),
     };
 }

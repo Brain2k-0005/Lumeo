@@ -8,17 +8,24 @@ namespace Lumeo.IconGen;
 /// </summary>
 public static class NameTransform
 {
+    // Segment separators recognised when PascalCasing an upstream name. Hyphen covers Lucide/Tabler/
+    // Phosphor/… kebab-case; underscore covers Material Symbols (<c>account_circle</c>) and Fluent
+    // (<c>access_time</c>). No existing hyphen pack carries underscores, so adding it is additive.
+    private static readonly char[] Separators = { '-', '_' };
+
     /// <summary>
-    /// Turns an upstream kebab-case icon name (e.g. Lucide <c>trash-2</c>, Tabler <c>brand-github</c>)
-    /// into a Blazicons-compatible PascalCase identifier (<c>Trash2</c>, <c>BrandGithub</c>): split on
-    /// <c>-</c>, upper-case the first letter of each segment, concatenate (digits append directly, so
+    /// Turns an upstream kebab-/snake-case icon name (e.g. Lucide <c>trash-2</c>, Tabler
+    /// <c>brand-github</c>, Material <c>account_circle</c>) into a Blazicons-compatible PascalCase
+    /// identifier (<c>Trash2</c>, <c>BrandGithub</c>, <c>AccountCircle</c>): split on <c>-</c>/<c>_</c>,
+    /// upper-case the first letter of each segment, concatenate (digits append directly, so
     /// <c>trash-2</c> → <c>Trash2</c> exactly as Blazicons produced). A result that would start with a
-    /// digit (e.g. Tabler <c>123</c>) is prefixed with <c>_</c> to stay a valid C# identifier.
+    /// digit (e.g. Tabler <c>123</c>, Material <c>3d_rotation</c>) is prefixed with <c>_</c> to stay a
+    /// valid C# identifier.
     /// </summary>
     public static string ToPascal(string kebab)
     {
         var sb = new StringBuilder(kebab.Length);
-        foreach (var part in kebab.Split('-', StringSplitOptions.RemoveEmptyEntries))
+        foreach (var part in kebab.Split(Separators, StringSplitOptions.RemoveEmptyEntries))
         {
             sb.Append(char.ToUpperInvariant(part[0]));
             if (part.Length > 1) sb.Append(part.AsSpan(1));
@@ -41,6 +48,16 @@ public static class NameTransform
         var tail = "-" + suffix;
         return name.EndsWith(tail, StringComparison.Ordinal) ? name[..^tail.Length] : name;
     }
+
+    /// <summary>
+    /// Strips a literal trailing <paramref name="suffix"/> from an upstream file name (no hyphen is
+    /// implied, unlike <see cref="StripSuffix"/>). Used for Fluent's size/style marker, where the
+    /// 24px cut is selected and the whole <c>_24_regular</c> / <c>_24_filled</c> tail is removed so
+    /// <c>access_time_24_regular</c> and <c>access_time_24_filled</c> both yield base <c>access_time</c>
+    /// on the <c>Fluent</c> / <c>FluentFilled</c> classes. Non-matching names pass through unchanged.
+    /// </summary>
+    public static string StripExact(string name, string suffix)
+        => name.EndsWith(suffix, StringComparison.Ordinal) ? name[..^suffix.Length] : name;
 
     // Values that are already renderer-neutral and must NOT be rewritten to currentColor.
     private static readonly HashSet<string> NeutralColors = new(StringComparer.OrdinalIgnoreCase)

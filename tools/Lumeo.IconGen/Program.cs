@@ -1,3 +1,4 @@
+using System.Formats.Tar;
 using System.IO.Compression;
 using System.Text.RegularExpressions;
 using Lumeo.IconGen;
@@ -166,33 +167,59 @@ static HashSet<string> ScanUnion(string srcRoot)
 }
 
 // PascalName -> (upstream kebab name, parsed icon). Upstream SVGs first, then overrides win.
-static Dictionary<string, (string Upstream, ParsedIcon Icon)> LoadPack(string zipPath, PackConfig config)
+static Dictionary<string, (string Upstream, ParsedIcon Icon)> LoadPack(string archivePath, PackConfig config)
 {
     var result = new Dictionary<string, (string, ParsedIcon)>(StringComparer.Ordinal);
 
-    using (var zip = ZipFile.OpenRead(zipPath))
+    ForEachSvg(archivePath, config.EntryFilter, (name, svgText) =>
     {
-        foreach (var entry in zip.Entries)
-        {
-            var name = entry.FullName.Replace('\\', '/');
-            if (!config.EntryFilter(name)) continue;
+        var raw = Path.GetFileNameWithoutExtension(name);
+        var upstream = config.UpstreamNameTransform?.Invoke(raw) ?? raw;
+        var pascal = NameTransform.ToPascal(upstream);
+        var parsed = SvgParser.Parse(svgText);
 
-            var raw = Path.GetFileNameWithoutExtension(name);
-            var upstream = config.UpstreamNameTransform?.Invoke(raw) ?? raw;
-            var pascal = NameTransform.ToPascal(upstream);
-            using var reader = new StreamReader(entry.Open());
-            var parsed = SvgParser.Parse(reader.ReadToEnd());
-
-            if (!result.TryAdd(pascal, (upstream, parsed)))
-                Console.Error.WriteLine($"[warn] name collision on '{pascal}' ({upstream}) — keeping first.");
-        }
-    }
+        if (!result.TryAdd(pascal, (upstream, parsed)))
+            Console.Error.WriteLine($"[warn] name collision on '{pascal}' ({upstream}) — keeping first.");
+    });
 
     if (config.Overrides is not null)
         foreach (var (pascal, svg) in config.Overrides)
             result[pascal] = (pascal.ToLowerInvariant(), SvgParser.Parse(svg));
 
     return result;
+}
+
+// Enumerates the SVG entries of an upstream archive, invoking <paramref name="onEntry"/> with each
+// entry's forward-slash path and full text. GitHub release archives are .zip; the npm mirror
+// tarballs used for Material Symbols / Fluent are gzip'd tar (.tgz) — both are handled transparently
+// so a pack config need only point ZipUrl/ZipCacheName at whichever the upstream ships.
+static void ForEachSvg(string archivePath, Func<string, bool> filter, Action<string, string> onEntry)
+{
+    var lower = archivePath.ToLowerInvariant();
+    if (lower.EndsWith(".tgz") || lower.EndsWith(".tar.gz"))
+    {
+        using var fs = File.OpenRead(archivePath);
+        using var gz = new GZipStream(fs, CompressionMode.Decompress);
+        using var tar = new TarReader(gz);
+        while (tar.GetNextEntry() is { } entry)
+        {
+            if (entry.EntryType is not (TarEntryType.RegularFile or TarEntryType.V7RegularFile)) continue;
+            var name = entry.Name.Replace('\\', '/');
+            if (!filter(name) || entry.DataStream is null) continue;
+            using var reader = new StreamReader(entry.DataStream);
+            onEntry(name, reader.ReadToEnd());
+        }
+        return;
+    }
+
+    using var zip = ZipFile.OpenRead(archivePath);
+    foreach (var entry in zip.Entries)
+    {
+        var name = entry.FullName.Replace('\\', '/');
+        if (!filter(name)) continue;
+        using var reader = new StreamReader(entry.Open());
+        onEntry(name, reader.ReadToEnd());
+    }
 }
 
 // Writes the pack's upstream license text as THIRD-PARTY-NOTICES.txt at the project root (parent of

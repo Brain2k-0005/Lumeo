@@ -64,11 +64,17 @@
                             <SelectItem Value="remix">Remix</SelectItem>
                             <SelectItem Value="bootstrap">Bootstrap</SelectItem>
                             <SelectItem Value="iconoir">Iconoir</SelectItem>
+                            <SelectItem Value="material-symbols">Material Symbols</SelectItem>
+                            <SelectItem Value="material-symbols-filled">Material Symbols Filled</SelectItem>
+                            <SelectItem Value="material-symbols-rounded">Material Symbols Rounded</SelectItem>
+                            <SelectItem Value="material-symbols-rounded-filled">Mat. Symbols Rounded Filled</SelectItem>
+                            <SelectItem Value="material-symbols-sharp">Material Symbols Sharp</SelectItem>
+                            <SelectItem Value="material-symbols-sharp-filled">Mat. Symbols Sharp Filled</SelectItem>
+                            <SelectItem Value="fluent">Fluent</SelectItem>
+                            <SelectItem Value="fluent-filled">Fluent Filled</SelectItem>
                         </SelectGroup>
                         <SelectGroup>
                             <SelectLabel>Third-party interop (Blazicons)</SelectLabel>
-                            <SelectItem Value="fluentui">Fluent UI</SelectItem>
-                            <SelectItem Value="google-material">Google Material</SelectItem>
                             <SelectItem Value="font-awesome">Font Awesome</SelectItem>
                             <SelectItem Value="ionicons">Ionicons</SelectItem>
                             <SelectItem Value="material-design">Material Design</SelectItem>
@@ -444,17 +450,28 @@
         ["remix"]     = ("Lumeo.Icons.Remix.dll",      "Lumeo.Icons.Remix",     "Lumeo.Icons.Remix",     "Remix"),
         ["bootstrap"] = ("Lumeo.Icons.Bootstrap.dll",  "Lumeo.Icons.Bootstrap", "Lumeo.Icons.Bootstrap", "Bootstrap"),
         ["iconoir"]   = ("Lumeo.Icons.Iconoir.dll",    "Lumeo.Icons.Iconoir",   "Lumeo.Icons.Iconoir",   "Iconoir"),
+        // Wave-2b: Material Symbols (3 assemblies × 2 classes each) + Fluent (1 assembly × 2 classes).
+        // Multi-class packs share one DLL; WASM lazy loading is idempotent, so loading the same
+        // DLL for a second variant is a no-op.
+        ["material-symbols"]               = ("Lumeo.Icons.MaterialSymbols.dll",         "Lumeo.Icons.MaterialSymbols",              "Lumeo.Icons.MaterialSymbols",         "MaterialSymbols"),
+        ["material-symbols-filled"]        = ("Lumeo.Icons.MaterialSymbols.dll",         "Lumeo.Icons.MaterialSymbolsFilled",        "Lumeo.Icons.MaterialSymbols",         "MaterialSymbolsFilled"),
+        ["material-symbols-rounded"]       = ("Lumeo.Icons.MaterialSymbols.Rounded.dll", "Lumeo.Icons.MaterialSymbolsRounded",       "Lumeo.Icons.MaterialSymbols.Rounded", "MaterialSymbolsRounded"),
+        ["material-symbols-rounded-filled"]= ("Lumeo.Icons.MaterialSymbols.Rounded.dll", "Lumeo.Icons.MaterialSymbolsRoundedFilled", "Lumeo.Icons.MaterialSymbols.Rounded", "MaterialSymbolsRoundedFilled"),
+        ["material-symbols-sharp"]         = ("Lumeo.Icons.MaterialSymbols.Sharp.dll",   "Lumeo.Icons.MaterialSymbolsSharp",         "Lumeo.Icons.MaterialSymbols.Sharp",   "MaterialSymbolsSharp"),
+        ["material-symbols-sharp-filled"]  = ("Lumeo.Icons.MaterialSymbols.Sharp.dll",   "Lumeo.Icons.MaterialSymbolsSharpFilled",   "Lumeo.Icons.MaterialSymbols.Sharp",   "MaterialSymbolsSharpFilled"),
+        ["fluent"]                         = ("Lumeo.Icons.Fluent.dll",                  "Lumeo.Icons.Fluent",                       "Lumeo.Icons.Fluent",                  "Fluent"),
+        ["fluent-filled"]                  = ("Lumeo.Icons.Fluent.dll",                  "Lumeo.Icons.FluentFilled",                 "Lumeo.Icons.Fluent",                  "FluentFilled"),
     };
 
     private static bool IsFirstPartyLib(string key) => _firstPartyLibs.ContainsKey(key);
 
     // library key -> (lazy-loaded DLL file, fully-qualified Blazicons container type). These
-    // are the THIRD-PARTY INTEROP packs with no first-party Lumeo.Icons equivalent; they
-    // still render via <Blazicon> (SvgIcon). Bootstrap moved to _firstPartyLibs above.
+    // are the remaining THIRD-PARTY INTEROP packs; they render via <Blazicon> (SvgIcon).
+    // Bootstrap moved to _firstPartyLibs above. FluentUI + GoogleMaterialDesign were dropped:
+    // replaced by the first-party Lumeo.Icons.Fluent / Lumeo.Icons.MaterialSymbols* packs
+    // (wave-2b), which now live in _firstPartyLibs and render via <SvgGlyph>.
     private static readonly Dictionary<string, (string Dll, string TypeName)> _lazyLibs = new()
     {
-        ["fluentui"]        = ("Blazicons.FluentUI.dll", "Blazicons.FluentUiIcon"),
-        ["google-material"] = ("Blazicons.GoogleMaterialDesign.dll", "Blazicons.GoogleMaterialOutlinedIcon"),
         ["font-awesome"]    = ("Blazicons.FontAwesome.dll", "Blazicons.FontAwesomeSolidIcon"),
         ["ionicons"]        = ("Blazicons.Ionicons.dll", "Blazicons.Ionicon"),
         ["material-design"] = ("Blazicons.MaterialDesignIcons.dll", "Blazicons.MdiIcon"),
@@ -583,8 +600,6 @@
             return IconService.ActiveLibrary switch
             {
                 // Third-party Blazicons interop packs use the plain-name SvgIcon form.
-                "fluentui"        => $"<Icon Svg=\"FluentUiIcon.{n}\"{sizeAttr} />",
-                "google-material" => $"<Icon Svg=\"GoogleMaterialOutlinedIcon.{n}\"{sizeAttr} />",
                 "font-awesome"    => $"<Icon Svg=\"FontAwesomeSolidIcon.{n}\"{sizeAttr} />",
                 "ionicons"        => $"<Icon Svg=\"Ionicon.{n}\"{sizeAttr} />",
                 "material-design" => $"<Icon Svg=\"MdiIcon.{n}\"{sizeAttr} />",
@@ -595,18 +610,24 @@
 
     private static string LibraryDisplayName(string key) => key switch
     {
-        "lucide"          => "Lucide",
-        "tabler"          => "Tabler",
-        "phosphor"        => "Phosphor",
-        "heroicons"       => "Heroicons",
-        "remix"           => "Remix",
-        "bootstrap"       => "Bootstrap",
-        "iconoir"         => "Iconoir",
-        "fluentui"        => "Fluent UI",
-        "google-material" => "Google Material",
-        "font-awesome"    => "Font Awesome",
-        "ionicons"        => "Ionicons",
-        "material-design" => "Material Design",
+        "lucide"                        => "Lucide",
+        "tabler"                        => "Tabler",
+        "phosphor"                      => "Phosphor",
+        "heroicons"                     => "Heroicons",
+        "remix"                         => "Remix",
+        "bootstrap"                     => "Bootstrap",
+        "iconoir"                       => "Iconoir",
+        "material-symbols"              => "Material Symbols",
+        "material-symbols-filled"       => "Material Symbols Filled",
+        "material-symbols-rounded"      => "Material Symbols Rounded",
+        "material-symbols-rounded-filled" => "Material Symbols Rounded Filled",
+        "material-symbols-sharp"        => "Material Symbols Sharp",
+        "material-symbols-sharp-filled" => "Material Symbols Sharp Filled",
+        "fluent"                        => "Fluent",
+        "fluent-filled"                 => "Fluent Filled",
+        "font-awesome"                  => "Font Awesome",
+        "ionicons"                      => "Ionicons",
+        "material-design"               => "Material Design",
         _ => key,
     };
 
