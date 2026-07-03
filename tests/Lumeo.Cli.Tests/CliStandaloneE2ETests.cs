@@ -60,13 +60,14 @@ public sealed class CliStandaloneE2ETests : IDisposable
         return "dotnet"; // on PATH (CI)
     }
 
-    // A NuGet-free Razor class library: framework + the external icon package only. Blazicons is
-    // pre-referenced so the CLI never shells out to `dotnet add package` (which needs an SDK on PATH).
+    // A NuGet-free Razor class library: the framework reference only. Icons are first-party (the
+    // vendored runtime carries SvgGlyph + LumeoIcons), so standalone needs no external icon package
+    // and the CLI never shells out to `dotnet add package` for one.
     private static string MinimalCsproj() =>
         "<Project Sdk=\"Microsoft.NET.Sdk.Razor\"><PropertyGroup><TargetFramework>net10.0</TargetFramework>"
       + "<Nullable>enable</Nullable><ImplicitUsings>enable</ImplicitUsings></PropertyGroup>"
       + "<ItemGroup><PackageReference Include=\"Microsoft.AspNetCore.Components.Web\" Version=\"10.0.6\" />"
-      + "<PackageReference Include=\"Blazicons.Lucide\" Version=\"2.1.3\" /></ItemGroup></Project>";
+      + "</ItemGroup></Project>";
 
     private (int Exit, string Stdout, string Stderr) Run(string program, string[] args, int timeoutMs, bool prefixDll)
     {
@@ -186,12 +187,12 @@ public sealed class CliStandaloneE2ETests : IDisposable
     [Fact]
     public void Eject_Converts_A_Normal_Project_To_Standalone()
     {
-        // A NORMAL (non-standalone) project that references the Lumeo package + the external icon dep.
+        // A NORMAL (non-standalone) project that references the Lumeo package + an unrelated external dep.
         File.WriteAllText(Path.Combine(_proj, "App.csproj"),
             "<Project Sdk=\"Microsoft.NET.Sdk.Razor\"><PropertyGroup><TargetFramework>net10.0</TargetFramework>"
           + "<ImplicitUsings>enable</ImplicitUsings></PropertyGroup><ItemGroup>"
           + "<PackageReference Include=\"Microsoft.AspNetCore.Components.Web\" Version=\"10.0.6\" />"
-          + "<PackageReference Include=\"Blazicons.Lucide\" Version=\"2.1.3\" />"
+          + "<PackageReference Include=\"Mammoth\" Version=\"1.11.0\" />"
           + "<PackageReference Include=\"Lumeo\" Version=\"4.0.0\" /></ItemGroup></Project>");
 
         Assert.Equal(0, RunCli("init", "--yes", "--namespace", "Acme.Ui", "--path", "Components/Ui", "--no-assets").Exit);
@@ -206,7 +207,7 @@ public sealed class CliStandaloneE2ETests : IDisposable
 
         var csproj = File.ReadAllText(Path.Combine(_proj, "App.csproj"));
         Assert.DoesNotContain("Include=\"Lumeo\"", csproj);            // the Lumeo package was stripped
-        Assert.Contains("Include=\"Blazicons.Lucide\"", csproj);        // external deps are left intact
+        Assert.Contains("Include=\"Mammoth\"", csproj);                // external (non-Lumeo) deps are left intact
     }
 
     [Fact]
@@ -223,7 +224,7 @@ public sealed class CliStandaloneE2ETests : IDisposable
             "<Project Sdk=\"Microsoft.NET.Sdk.Razor\"><PropertyGroup><TargetFramework>net10.0</TargetFramework>"
           + "<ImplicitUsings>enable</ImplicitUsings></PropertyGroup><ItemGroup>"
           + "<PackageReference Include=\"Microsoft.AspNetCore.Components.Web\" Version=\"10.0.6\" />"
-          + "<PackageReference Include=\"Blazicons.Lucide\" Version=\"2.1.3\" />"
+          + "<PackageReference Include=\"Mammoth\" Version=\"1.11.0\" />"
           + "<PackageReference Include=\"Lumeo\" Version=\"4.0.0\" />"
           + "<PackageReference Include=\"Lumeo.Motion\" Version=\"4.0.0\" /></ItemGroup></Project>");
 
@@ -268,7 +269,6 @@ public sealed class CliStandaloneE2ETests : IDisposable
             "<Project Sdk=\"Microsoft.NET.Sdk.Razor\"><PropertyGroup><TargetFramework>net10.0</TargetFramework>"
           + "<Nullable>enable</Nullable><ImplicitUsings>enable</ImplicitUsings></PropertyGroup><ItemGroup>"
           + "<PackageReference Include=\"Microsoft.AspNetCore.Components.Web\" Version=\"10.0.6\" />"
-          + "<PackageReference Include=\"Blazicons.Lucide\" Version=\"2.1.3\" />"
           + "<PackageReference Include=\"Mammoth\" Version=\"1.11.0\" /></ItemGroup></Project>");
         Assert.Equal(0, RunCli("init", "--yes", "--standalone", "--namespace", "Acme.Ui", "--path", "Components/Ui", "--no-assets").Exit);
         Assert.Equal(0, RunCli("add", "rich-text-editor", "--local", "--yes", "--force").Exit);

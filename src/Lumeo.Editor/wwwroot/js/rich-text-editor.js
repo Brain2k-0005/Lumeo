@@ -388,7 +388,7 @@ function escapeHtml(s) {
     }[c]));
 }
 
-// Tiny inline SVG fallback for suggestion icons. Real toolbars use Blazicons;
+// Tiny inline SVG fallback for suggestion icons. Real toolbars use SvgGlyph/LumeoIcons;
 // this is only for the floating dropdown which is fully JS-rendered.
 function iconSvg(name) {
     const paths = {

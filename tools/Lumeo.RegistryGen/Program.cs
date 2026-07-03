@@ -393,7 +393,7 @@ var descriptions = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCa
     ["Grid"] = "CSS grid wrapper with columns + gap as props.",
     ["Heading"] = "Semantic h1-h6 heading with Lumeo typographic scale.",
     ["HoverCard"] = "Popover that opens on hover for rich previews.",
-    ["Icon"] = "Icon wrapper — renders Lucide icons via Blazicons.",
+    ["Icon"] = "Icon wrapper — renders the built-in LumeoIcons set (Lucide-derived) or any IconSource natively.",
     ["Image"] = "Image with lazy-loading, loading skeleton, and error fallback.",
     ["ImageCompare"] = "Before/after slider comparison for two images.",
     ["InplaceEditor"] = "Click-to-edit text/number field that swaps in an input.",
@@ -817,9 +817,6 @@ foreach (var dir in componentDirs)
         // radius
         if (Regex.IsMatch(content, @"\brounded(-(none|sm|md|lg|xl|2xl|3xl|full))?\b"))
             cssVars.Add("--radius");
-        // Package dependencies: detect <Blazicon usage → Blazicons.Lucide
-        if (content.Contains("<Blazicon ", StringComparison.Ordinal))
-            packageDeps.Add("Blazicons.Lucide");
         // Satellite external package actually referenced by THIS file's vendored source (precise:
         // an export-only lib a component never touches isn't pulled in).
         foreach (var satPkg in satExtPackages)

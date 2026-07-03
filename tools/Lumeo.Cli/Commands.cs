@@ -165,10 +165,10 @@ internal static class Commands
         Console.WriteLine($"Next: {Ansi.Cyan("lumeo add button")}");
     }
 
-    // Ensures the PROJECT-ROOT _Imports.razor carries every framework / Blazicons / Lumeo using the
+    // Ensures the PROJECT-ROOT _Imports.razor carries every framework / Lumeo using the
     // standalone-vendored .razor components (and the app pages that use them) rely on. Appends only the
     // lines actually MISSING — matched WHOLE-LINE, so an existing `@using Lumeo.Components` does not mask
-    // the still-required `@using Lumeo`, `@using Blazicons`, `@using Lumeo.Services`, … Idempotent; shared
+    // the still-required `@using Lumeo`, `@using Lumeo.Services`, … Idempotent; shared
     // by `init --standalone` and `eject`.
     private static async Task EnsureStandaloneImportsAsync()
     {
@@ -179,7 +179,6 @@ internal static class Commands
             "@using Microsoft.AspNetCore.Components.Web",
             "@using Microsoft.AspNetCore.Components.Web.Virtualization",
             "@using Microsoft.JSInterop",
-            "@using Blazicons",
             "@using Lumeo",
             "@using Lumeo.Internal",
             "@using Lumeo.Services",
@@ -323,11 +322,11 @@ internal static class Commands
 
     /// <summary>Ensure a NuGet package is referenced by the consumer project, running
     /// <c>dotnet add package</c> (with a prompt unless --yes/--force) if it isn't.
-    /// Used both for satellite packages and for a component's packageDependencies
-    /// (e.g. Blazicons.Lucide) — without the latter, vendored .razor won't compile.
+    /// Used for satellite packages and for a component's external packageDependencies —
+    /// without the latter, vendored .razor won't compile.
     /// Returns <c>false</c> ONLY when an install was attempted and the <c>dotnet add package</c>
-    /// process failed — so a caller for whom the package is mandatory (the standalone runtime's
-    /// Blazicons) can abort before mutating anything. Already-present / dry-run / no-project /
+    /// process failed — so a caller for whom the package is mandatory can abort before
+    /// mutating anything. Already-present / dry-run / no-project /
     /// user-skipped all return <c>true</c> (no install failure to abort on).</summary>
     private static async Task<bool> EnsureNuGetPackageAsync(string pkg, string reason, AddOptions opts)
     {
@@ -501,25 +500,10 @@ internal static class Commands
             }
         }
 
-        // The standalone _Imports.razor adds `@using Blazicons` UNCONDITIONALLY, and the component library
-        // renders icons via <Blazicon Svg="Lucide.…"> — but Blazicons.Lucide is a RUNTIME-WIDE dependency,
-        // not declared by every component's packageDependencies. A first standalone `add` of an icon-free
-        // component (separator, center, text) would otherwise leave Blazicons uninstalled, so `@using Blazicons`
-        // (and any later icon-using component) fails Razor compilation (Codex P2). Ensure it here whenever the
-        // runtime is vendored — before the imports are written. Idempotent (skips if already referenced);
-        // Blazicons.Lucide pulls in the base Blazicons package transitively, so the using resolves.
-        // Blazicons.Lucide is MANDATORY for standalone (the _Imports `@using Blazicons` + every icon-using
-        // component need it). Treat an install FAILURE like the core-asset failure above: abort the vendor so
-        // a caller — crucially `eject` — does NOT then flip standalone and strip the Lumeo PackageReferences,
-        // which would leave the project with `@using Blazicons` but no Blazicons package and no NuGet
-        // fallback (Codex P2). Already-present / no-project / skipped do NOT abort (they return true).
-        if (!await EnsureNuGetPackageAsync("Blazicons.Lucide",
-            "The vendored Lumeo runtime + standalone imports use the Blazicons.Lucide package for icons.", opts))
-        {
-            Console.Error.WriteLine(Ansi.Red(
-                "  Could not install the required Blazicons.Lucide package — leaving the project unchanged."));
-            return false;
-        }
+        // Icons are first-party now: the vendored runtime carries SvgGlyph + LumeoIcons
+        // (UI/Icon/SvgGlyph.razor + Icons/*.g.cs, part of the runtime manifest) and the
+        // standalone _Imports no longer references any icon package. Standalone therefore
+        // needs ZERO external icon NuGet dependency — nothing to install here.
 
         return true;
     }
@@ -639,8 +623,8 @@ internal static class Commands
     // Removes <PackageReference Include="Lumeo[.Satellite]" …> entries from the consumer .csproj —
     // BOTH the self-closing form (`… />`) and the expanded form (`…><Version>4.0.0</Version></PackageReference>`).
     // Removes ONLY packages in `vendoredPackages` (those whose source we actually vendored); any other Lumeo.*
-    // reference is left intact and returned in `kept` so the caller can warn. External deps (Blazicons.Lucide,
-    // etc.) are never touched.
+    // reference is left intact and returned in `kept` so the caller can warn. Non-Lumeo deps a consumer
+    // added are never touched. (Icons are first-party — the vendored runtime is fully NuGet-free.)
     private static (List<string> removed, List<string> kept) StripLumeoPackageReferences(HashSet<string> vendoredPackages)
     {
         var removed = new List<string>();
@@ -1259,8 +1243,8 @@ internal static class Commands
             }
         }
 
-        // Install the external NuGet packages the VENDORED source references (e.g.
-        // Blazicons.Lucide for icons). NuGet-routed satellites (no --vendor) get theirs
+        // Install any external NuGet packages the VENDORED source references via its
+        // packageDependencies. NuGet-routed satellites (no --vendor) get theirs
         // transitively, so only consider items whose source was actually copied.
         var vendoredItems = toInstall.Where(i =>
         {

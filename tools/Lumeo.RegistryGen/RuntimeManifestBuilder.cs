@@ -10,8 +10,9 @@ public static class RuntimeManifestBuilder
 {
     // Whole non-UI folders whose .cs/.razor are the shared substrate every component compiles against
     // (Cx/LumeoIds, the injected services + their interfaces, the AddLumeo DI extension, attributes,
-    // theme token C#).
-    private static readonly string[] SubstrateDirs = { "Internal", "Services", "Extensions", "Attributes", "Theming" };
+    // theme token C#, and the first-party LumeoIcons pack that every icon-using component renders —
+    // so standalone vendors icons with ZERO external NuGet dependency).
+    private static readonly string[] SubstrateDirs = { "Internal", "Services", "Extensions", "Attributes", "Theming", "Icons" };
 
     /// <summary>
     /// Enumerates the runtime closure under <paramref name="coreSrcRoot"/> (= the <c>src/Lumeo</c>
@@ -43,6 +44,13 @@ public static class RuntimeManifestBuilder
         // OnBeforeClose), not the overlay host — include just that one file.
         if (File.Exists(Path.Combine(coreSrcRoot, "UI", "Overlay", "DismissEventArgs.cs")))
             files.Add("UI/Overlay/DismissEventArgs.cs");
+
+        // SvgGlyph is the shared SVG primitive every icon-using component renders through (the 1:1
+        // Blazicon replacement). It lives under UI/Icon/ but is runtime substrate, not a standalone
+        // component (Icon.razor is the component) — include just that one file so vendored .razor
+        // resolves <SvgGlyph> against IconSource + LumeoIcons with no external icon package.
+        if (File.Exists(Path.Combine(coreSrcRoot, "UI", "Icon", "SvgGlyph.razor")))
+            files.Add("UI/Icon/SvgGlyph.razor");
 
         // The runtime is the pure C# substrate (plus DismissEventArgs) — NO UI components. The
         // service layer is decoupled from UI components (e.g. SignaturePadInit is generic, not typed

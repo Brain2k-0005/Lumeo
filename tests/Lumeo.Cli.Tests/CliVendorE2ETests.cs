@@ -125,9 +125,9 @@ public sealed class CliVendorE2ETests : IDisposable
         var upstream = Path.Combine(_repoRoot, "src", "Lumeo.Charts", "wwwroot", "js", "echarts-interop.js");
         Assert.Equal(File.ReadAllText(upstream), File.ReadAllText(asset));
 
-        // 4) The component's NuGet packageDependencies (Blazicons.Lucide for icons) are
-        //    surfaced — vendored .razor references Lucide and won't compile without it.
-        Assert.Contains("Blazicons", add.Stdout + add.Stderr, StringComparison.OrdinalIgnoreCase);
+        // 4) Icons are first-party now — vendoring chart surfaces NO external icon package
+        //    (Chart.razor renders via SvgGlyph/LumeoIcons from the vendored runtime).
+        Assert.DoesNotContain("Blazicons", add.Stdout + add.Stderr, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -178,9 +178,9 @@ public sealed class CliVendorE2ETests : IDisposable
         var init = RunCli("init", "--yes", "--namespace", "Acme.Ui", "--path", "Components/Ui", "--no-assets");
         Assert.True(init.Exit == 0, $"init failed (exit {init.Exit}). stderr: {init.Stderr}\nstdout: {init.Stdout}");
 
-        // `chart` references Blazicons.Lucide as a packageDependency (asserted by
-        // Add_Vendor_Copies_Satellite_Source_And_Its_Wwwroot_Asset above).
-        var add = RunCli("add", "chart", "--local", "--yes", "--force", "--vendor");
+        // `rich-text-editor` references the external Mammoth package as a packageDependency, so
+        // --vendor shells out to `dotnet add package` — which fails against the broken csproj.
+        var add = RunCli("add", "rich-text-editor", "--local", "--yes", "--force", "--vendor");
 
         Assert.NotEqual(0, add.Exit);
         Assert.DoesNotContain("OK Added", add.Stdout);

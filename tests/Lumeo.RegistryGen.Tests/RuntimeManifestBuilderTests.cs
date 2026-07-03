@@ -25,13 +25,20 @@ public class RuntimeManifestBuilderTests
         Assert.Contains("Side.cs", files);
         Assert.Contains("Orientation.cs", files);
 
-        // Shared event-args (Dialog/Sheet/Drawer OnBeforeClose) — the one UI/ file the runtime needs.
+        // Shared event-args (Dialog/Sheet/Drawer OnBeforeClose) — plus the icon substrate:
+        // since the Blazicons decoupling, SvgGlyph + the vendored LumeoIcons ARE the runtime
+        // icon story, so standalone vendoring must carry them.
         Assert.Contains("UI/Overlay/DismissEventArgs.cs", files);
+        Assert.Contains("UI/Icon/SvgGlyph.razor", files);
+        Assert.Contains("IconSource.cs", files);
+        Assert.Contains("Icons/LumeoIcons.g.cs", files);
 
-        // No UI components: the service layer is decoupled (SignaturePadInit is generic), so the
-        // runtime drags in no overlay host and no compile-closure components — only DismissEventArgs.
+        // No UI components beyond the two substrate files: the service layer is decoupled
+        // (SignaturePadInit is generic), so the runtime drags in no overlay host and no
+        // compile-closure components.
         Assert.Empty(components);
-        Assert.DoesNotContain(files, f => f.StartsWith("UI/", StringComparison.Ordinal) && f != "UI/Overlay/DismissEventArgs.cs");
+        var allowedUi = new[] { "UI/Overlay/DismissEventArgs.cs", "UI/Icon/SvgGlyph.razor" };
+        Assert.DoesNotContain(files, f => f.StartsWith("UI/", StringComparison.Ordinal) && !allowedUi.Contains(f));
 
         // Paths are forward-slashed and sorted.
         Assert.All(files, f => Assert.DoesNotContain('\\', f));

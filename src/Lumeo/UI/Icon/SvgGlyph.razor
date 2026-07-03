@@ -1,0 +1,44 @@
+@namespace Lumeo
+@using System.Globalization
+
+<svg xmlns="http://www.w3.org/2000/svg"
+     viewBox="@Svg.ViewBox"
+     fill="@(Stroke ? "none" : "currentColor")"
+     stroke="@(Stroke ? "currentColor" : null)"
+     stroke-width="@(Stroke ? StrokeWidthEff : null)"
+     stroke-linecap="@(Stroke ? "round" : null)"
+     stroke-linejoin="@(Stroke ? "round" : null)"
+     @attributes="AdditionalAttributes">@((MarkupString)Svg.Content)</svg>
+
+@code {
+    /// <summary>
+    /// The icon to render. Its <see cref="IconSource.Content"/> becomes the inner markup and its
+    /// <see cref="IconSource.ViewBox"/>/<see cref="IconSource.RenderStyle"/>/
+    /// <see cref="IconSource.StrokeWidth"/> style the root <c>&lt;svg&gt;</c>.
+    /// </summary>
+    [Parameter, EditorRequired] public IconSource Svg { get; set; } = default!;
+
+    /// <summary>
+    /// Optional root <c>stroke-width</c> override for <see cref="IconRenderStyle.Stroke"/> icons.
+    /// When <c>null</c> (default) the icon's own <see cref="IconSource.StrokeWidth"/> is used;
+    /// ignored for <see cref="IconRenderStyle.Fill"/> icons.
+    /// </summary>
+    [Parameter] public double? StrokeWidth { get; set; }
+
+    /// <summary>
+    /// Arbitrary attributes (<c>class</c>, <c>aria-*</c>, <c>role</c>, <c>title</c>, …) splatted
+    /// onto the root <c>&lt;svg&gt;</c>. Sizing is done here via classes (e.g. <c>h-4 w-4</c>),
+    /// exactly like the icon component it replaces. A consumer-supplied attribute that collides
+    /// with one this component sets (e.g. <c>fill</c>) wins, because the splat is applied last.
+    /// </summary>
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    /// <summary>True when the icon is painted as a stroked outline rather than a solid fill.</summary>
+    private bool Stroke => Svg.RenderStyle == IconRenderStyle.Stroke;
+
+    /// <summary>
+    /// The effective stroke width as an invariant-culture string (override wins over the icon's
+    /// own value) so decimal widths never localize to a comma in the emitted attribute.
+    /// </summary>
+    private string StrokeWidthEff => (StrokeWidth ?? Svg.StrokeWidth).ToString(CultureInfo.InvariantCulture);
+}

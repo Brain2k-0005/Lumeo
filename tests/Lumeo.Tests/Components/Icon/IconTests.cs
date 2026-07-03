@@ -101,4 +101,62 @@ public class IconTests : IAsyncLifetime
         Assert.Contains("h-5", cls);
         Assert.Contains("w-5", cls);
     }
+
+    // --- IconSource rendering (Blazicons-decoupled) ---
+
+    [Fact]
+    public void Svg_IconSource_Renders_Through_SvgGlyph()
+    {
+        var source = L.IconSource.Stroke("<path d=\"M3 6h18\" />");
+        var cut = _ctx.Render<L.Icon>(p => p.Add(i => i.Svg, source));
+        var svg = cut.Find("svg");
+
+        // Icon delegates rendering to SvgGlyph: outline root + the exact inner markup.
+        Assert.Equal("none", svg.GetAttribute("fill"));
+        Assert.Equal("currentColor", svg.GetAttribute("stroke"));
+        Assert.Single(svg.QuerySelectorAll("path"));
+    }
+
+    [Fact]
+    public void Svg_Takes_Precedence_Over_Name()
+    {
+        var source = L.IconSource.Stroke("<path d=\"M3 6h18\" />");
+        var viaSvg = _ctx.Render<L.Icon>(p => p
+            .Add(i => i.Name, "Trash2")   // ignored — Svg wins
+            .Add(i => i.Svg, source)).Find("svg").InnerHtml;
+        var direct = _ctx.Render<L.SvgGlyph>(p => p.Add(g => g.Svg, source)).Find("svg").InnerHtml;
+        Assert.Equal(direct, viaSvg);
+    }
+
+    [Theory]
+    [InlineData("Search")]
+    [InlineData("ChevronDown")]
+    [InlineData("TrendingUp")]
+    public void Name_Vocabulary_Resolves_To_LumeoIcons(string name)
+    {
+        // The name maps to the matching LumeoIcons glyph; comparing inner markup keeps the test
+        // decoupled from Lucide's exact path data (only that the mapping targets the right icon).
+        var expected = name switch
+        {
+            "Search" => L.LumeoIcons.Search,
+            "ChevronDown" => L.LumeoIcons.ChevronDown,
+            "TrendingUp" => L.LumeoIcons.TrendingUp,
+            _ => throw new ArgumentOutOfRangeException(nameof(name)),
+        };
+
+        var viaName = _ctx.Render<L.Icon>(p => p.Add(i => i.Name, name)).Find("svg").InnerHtml;
+        var viaSource = _ctx.Render<L.SvgGlyph>(p => p.Add(g => g.Svg, expected)).Find("svg").InnerHtml;
+        Assert.Equal(viaSource, viaName);
+        Assert.NotEqual(string.Empty, viaName);
+    }
+
+    [Fact]
+    public void Unknown_Name_Falls_Back_To_Circle()
+    {
+        var viaName = _ctx.Render<L.Icon>(p => p.Add(i => i.Name, "NotARealIconName"))
+            .Find("svg").InnerHtml;
+        var circle = _ctx.Render<L.SvgGlyph>(p => p.Add(g => g.Svg, L.LumeoIcons.Circle))
+            .Find("svg").InnerHtml;
+        Assert.Equal(circle, viaName);
+    }
 }
