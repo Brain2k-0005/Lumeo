@@ -1,0 +1,167 @@
+@page "/docs/guides/customize-a-component"
+@namespace Lumeo.Docs.Pages.Docs
+
+<PageTitle>Customize a vendored component — Lumeo</PageTitle>
+
+<Container MaxWidth="3xl" Padding="0" Center="false">
+<Stack Gap="10">
+
+    <Stack Gap="4">
+        <Heading Level="1" Size="3xl">Customize a vendored component</Heading>
+        <Lumeo.Text Size="base" Color="muted" Leading="relaxed">
+            Vendoring is only worth it if you actually change the source. Once a component lives in your project it is a plain
+            <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">.razor</code> file — edit it like any other. This guide edits a vendored
+            <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">Button</code>, shows how <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">lumeo diff</code> surfaces the drift,
+            and how to pull upstream changes <em class="text-foreground not-italic font-medium">without silently clobbering your edits</em>.
+        </Lumeo.Text>
+        <Lumeo.Text Size="sm" Color="muted" Leading="relaxed">
+            Picking up from <a class="text-primary hover:underline" href="docs/guides/vendor-a-component">Vendor a component</a>: you have
+            <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">Components/Ui/Button/Button.razor</code> and a clean
+            <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">lumeo diff button</code>.
+        </Lumeo.Text>
+    </Stack>
+
+    <Separator Class="my-4" />
+
+    <Stack Gap="4">
+        <Heading Level="2">Step 1 — Edit the source</Heading>
+        <Lumeo.Text Size="base" Color="muted" Leading="relaxed">
+            Say your design language calls for pill-shaped, heavier-weight buttons. Open
+            <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">Button.razor</code> and change the base classes — swap
+            <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">rounded-md</code> for
+            <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">rounded-full</code> and
+            <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">font-medium</code> for
+            <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">font-semibold</code>:
+        </Lumeo.Text>
+        <pre class="code-block rounded-lg border border-border/40 bg-muted px-4 py-3 font-mono text-xs text-foreground whitespace-pre overflow-x-auto">@_edit</pre>
+        <Lumeo.Text Size="sm" Color="muted" Leading="relaxed">
+            That is it. No re-registration, no build step, no fork to maintain — the file is yours. It compiles against the Lumeo package's runtime exactly as before.
+        </Lumeo.Text>
+    </Stack>
+
+    <Separator Class="my-4" />
+
+    <Stack Gap="4">
+        <Heading Level="2">Step 2 — See the drift</Heading>
+        <Lumeo.Text Size="base" Color="muted" Leading="relaxed">
+            <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">lumeo diff button</code> compares every file of the component against the registry version and
+            summarizes what moved. Your edited file now reports as <span class="text-foreground font-medium">drifted</span>:
+        </Lumeo.Text>
+        <pre class="code-block rounded-lg border border-border/40 bg-muted px-4 py-3 font-mono text-xs text-foreground whitespace-pre overflow-x-auto">@_diffDrift</pre>
+        <Lumeo.Text Size="base" Color="muted" Leading="relaxed">
+            To see the drift line-by-line, run <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">lumeo add button --diff</code>. It prints a unified diff and writes nothing —
+            <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">-</code> is your local file, <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">+</code> is the registry version:
+        </Lumeo.Text>
+        <pre class="code-block rounded-lg border border-border/40 bg-muted px-4 py-3 font-mono text-xs text-foreground whitespace-pre overflow-x-auto">@_addDiff</pre>
+    </Stack>
+
+    <Separator Class="my-4" />
+
+    <Stack Gap="4">
+        <Heading Level="2">Step 3 — Update without losing changes</Heading>
+        <Lumeo.Text Size="base" Color="muted" Leading="relaxed">
+            When Lumeo ships a Button fix upstream, you decide whether and how to take it. Nothing is ever overwritten silently.
+        </Lumeo.Text>
+
+        <Stack Gap="3">
+            <Heading Level="3">Check for drift in CI</Heading>
+            <Lumeo.Text Size="sm" Color="muted" Leading="relaxed">
+                <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">lumeo update button --check</code> reports drift and <em class="not-italic font-medium text-foreground">exits 1</em> if any file differs — perfect for a pipeline gate.
+            </Lumeo.Text>
+            <pre class="code-block rounded-lg border border-border/40 bg-muted px-4 py-3 font-mono text-xs text-foreground whitespace-pre overflow-x-auto">@_check</pre>
+        </Stack>
+
+        <Stack Gap="3">
+            <Heading Level="3">Take upstream interactively</Heading>
+            <Lumeo.Text Size="sm" Color="muted" Leading="relaxed">
+                <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">lumeo update button</code> stops on every drifted file and asks what to do — so your edit is never lost by default:
+            </Lumeo.Text>
+            <pre class="code-block rounded-lg border border-border/40 bg-muted px-4 py-3 font-mono text-xs text-foreground whitespace-pre overflow-x-auto">@_updatePrompt</pre>
+            <ul class="space-y-2 text-sm text-muted-foreground list-disc list-inside">
+                <li><code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">[d]iff</code> — review the change first, then choose.</li>
+                <li><code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">[s]kip</code> — keep <em class="not-italic font-medium text-foreground">your</em> file untouched (the safe default for a customized component).</li>
+                <li><code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">[o]verwrite</code> — take the upstream version, discarding your edit.</li>
+            </ul>
+        </Stack>
+
+        <Stack Gap="3">
+            <Heading Level="3">The reconcile workflow</Heading>
+            <Lumeo.Text Size="sm" Color="muted" Leading="relaxed">
+                There is no auto-merge — you own the file, so you own the merge. The dependable pattern for a component you have customized:
+            </Lumeo.Text>
+            <ol class="space-y-2 text-sm text-muted-foreground list-decimal list-inside">
+                <li>Run <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">lumeo add button --diff</code> to read exactly what upstream changed.</li>
+                <li>With your edit committed to git, <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">[o]verwrite</code> to land the upstream version, then let <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">git diff</code> replay your customization on top — or re-apply the one or two lines by hand.</li>
+                <li>Or, if your change and theirs do not overlap, <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">[s]kip</code> and cherry-pick their hunk manually.</li>
+            </ol>
+            <Lumeo.Text Size="sm" Color="muted" Leading="relaxed">
+                To throw your edits away and snap back to the pristine registry version, use
+                <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">lumeo update button --force-reset</code> (or
+                <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">lumeo add button --force</code>). Both replace your file wholesale — reach for them only when you want the reset.
+            </Lumeo.Text>
+        </Stack>
+    </Stack>
+
+    <Separator Class="my-4" />
+
+    <Stack Gap="4">
+        <Heading Level="2">Rules of thumb</Heading>
+        <ul class="space-y-2 text-sm text-muted-foreground list-disc list-inside">
+            <li>Commit the vendored files to git <em class="not-italic font-medium text-foreground">before</em> editing — your version history is the real safety net.</li>
+            <li>Keep customizations small and localized; the smaller your diff, the cleaner every future <code class="text-xs font-mono">update</code>.</li>
+            <li>Run <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">lumeo update --check</code> in CI to get told when upstream moves, on your schedule.</li>
+        </ul>
+    </Stack>
+
+    <Separator Class="my-4" />
+
+    <Stack Gap="4">
+        <Heading Level="2">See also</Heading>
+        <ul class="space-y-2 text-sm">
+            <li><a class="text-primary hover:underline" href="docs/guides/vendor-a-component">Vendor a component</a> — the starting point for this guide.</li>
+            <li><a class="text-primary hover:underline" href="docs/guides/go-standalone">Go fully standalone (eject)</a> — own the runtime too, zero NuGet.</li>
+            <li><a class="text-primary hover:underline" href="docs/cli">CLI reference</a> — <code class="text-xs font-mono">diff</code>, <code class="text-xs font-mono">update</code>, and every flag.</li>
+        </ul>
+    </Stack>
+
+</Stack>
+</Container>
+
+@code {
+    private const string _edit = @"// Components/Ui/Button/Button.razor
+- private const string BaseClasses = ""inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium ..."";
++ private const string BaseClasses = ""inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-full text-sm font-semibold ..."";";
+
+    private const string _diffDrift = @"$ lumeo diff button
+  drift   Components\Ui\Button\Button.razor
+
+Button: 0 in sync, 1 drifted, 0 missing.
+Run lumeo update button to pull upstream, or lumeo add button --force to reset.";
+
+    private const string _addDiff = @"$ lumeo add button --diff
+  diff    Components\Ui\Button\Button.razor
+  ...
+      private string LinkCssClass => Cx.Merge(CssClass, Cx.When(IsLoading || Disabled, ""pointer-events-none opacity-50""));
+
+-     private const string BaseClasses = ""inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-full text-sm font-semibold transition-colors ..."";
++     private const string BaseClasses = ""inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-colors ..."";
+
+      private string? PressEffectClass => PressEffect switch
+  ...
+  ok      Components\Ui\Spinner\Spinner.razor
+
+PREVIEW Added Button (+1 dep) - 0 files written to Components/Ui/";
+
+    private const string _check = @"$ lumeo update button --check
+Button
+  drift   Components\Ui\Button\Button.razor
+
+Drift: 1 file(s) differ from registry.
+# exit code 1";
+
+    private const string _updatePrompt = @"$ lumeo update button
+Button
+
+Components\Ui\Button\Button.razor has upstream changes.
+  [o]verwrite  [s]kip  [d]iff:";
+}

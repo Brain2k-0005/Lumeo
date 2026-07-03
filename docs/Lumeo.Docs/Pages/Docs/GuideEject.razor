@@ -1,0 +1,219 @@
+@page "/docs/guides/go-standalone"
+@namespace Lumeo.Docs.Pages.Docs
+
+<PageTitle>Go fully standalone (eject) — Lumeo</PageTitle>
+
+<Container MaxWidth="3xl" Padding="0" Center="false">
+<Stack Gap="10">
+
+    <Stack Gap="4">
+        <Heading Level="1" Size="3xl">Go fully standalone (eject)</Heading>
+        <Lumeo.Text Size="base" Color="muted" Leading="relaxed">
+            Vendoring a component still leaves one thread to the package: the shared <em class="text-foreground not-italic font-medium">runtime</em> —
+            the services, the <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">Cx</code> class-merge helper, the theming types, and the icon system your components
+            inject and reference. Going <em class="text-foreground not-italic font-medium">standalone</em> cuts that thread too: the CLI vendors the runtime as source into
+            <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">_LumeoRuntime/</code> and strips the
+            <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">Lumeo</code> package reference. End state: <span class="text-foreground font-medium">zero Lumeo NuGet</span>, a project that builds entirely from source you own.
+        </Lumeo.Text>
+        <Lumeo.Text Size="sm" Color="muted" Leading="relaxed">
+            Two ways in: start standalone with <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">lumeo init --standalone</code>, or convert an existing
+            package-based project with <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">lumeo eject</code>.
+        </Lumeo.Text>
+    </Stack>
+
+    <Separator Class="my-4" />
+
+    <Stack Gap="4">
+        <Heading Level="2">Path A — Start standalone</Heading>
+        <Lumeo.Text Size="base" Color="muted" Leading="relaxed">
+            In a fresh Blazor project with <em class="not-italic font-medium text-foreground">no</em> Lumeo package, run <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">lumeo init --standalone</code>. Since there is no package to
+            supply CSS/JS, <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">init</code> also sets up assets (option 1 copies Lumeo's pre-built CSS/JS into
+            <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">wwwroot/</code>). The config records <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">"standalone": true</code>.
+        </Lumeo.Text>
+        <pre class="code-block rounded-lg border border-border/40 bg-muted px-4 py-3 font-mono text-xs text-foreground whitespace-pre overflow-x-auto">@_init</pre>
+        <Lumeo.Text Size="base" Color="muted" Leading="relaxed">
+            The first <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">lumeo add</code> now does more than copy one component. It vendors the entire runtime closure into
+            <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">_LumeoRuntime/</code> (kept in the <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">Lumeo</code> namespace, verbatim), mirrors the core
+            JS/CSS under <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">wwwroot/_content/Lumeo/</code>, then writes the component itself:
+        </Lumeo.Text>
+        <pre class="code-block rounded-lg border border-border/40 bg-muted px-4 py-3 font-mono text-xs text-foreground whitespace-pre overflow-x-auto">@_add</pre>
+    </Stack>
+
+    <Separator Class="my-4" />
+
+    <Stack Gap="4">
+        <Heading Level="2">What the runtime contains</Heading>
+        <Lumeo.Text Size="base" Color="muted" Leading="relaxed">
+            <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">_LumeoRuntime/</code> is the shared closure every component leans on — services, extensions, theming, and the primitive enums
+            (<code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">Size</code>, <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">Side</code>,
+            <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">Density</code>, …). Critically, the <span class="text-foreground font-medium">icon system ejects too</span>:
+            <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">Icons/LumeoIcons.g.cs</code> and
+            <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">UI/Icon/SvgGlyph.razor</code> are first-party, so a standalone project needs
+            <em class="not-italic font-medium text-foreground">no external icon NuGet at all</em>.
+        </Lumeo.Text>
+        <pre class="code-block rounded-lg border border-border/40 bg-muted px-4 py-3 font-mono text-xs text-foreground whitespace-pre overflow-x-auto">@_tree</pre>
+        <Lumeo.Text Size="sm" Color="muted" Leading="relaxed">
+            The vendored runtime keeps the <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">Lumeo</code> namespace on purpose — inter-component references all bind under it —
+            so <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">init --standalone</code> / <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">eject</code> append the bridging
+            <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">@@using Lumeo</code>, <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">@@using Lumeo.Services</code>, … to your
+            root <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">_Imports.razor</code> so <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">&lt;Button&gt;</code> and friends keep resolving.
+        </Lumeo.Text>
+    </Stack>
+
+    <Separator Class="my-4" />
+
+    <Stack Gap="4">
+        <Heading Level="2">Path B — Eject an existing project</Heading>
+        <Lumeo.Text Size="base" Color="muted" Leading="relaxed">
+            Already using the <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">Lumeo</code> package with a few components vendored? Run
+            <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">lumeo eject</code>. In one shot it vendors the runtime, <em class="not-italic font-medium text-foreground">re-vendors every already-installed
+            component as source</em> (keeping the Lumeo namespace this time), then removes the <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">&lt;PackageReference Include="Lumeo" /&gt;</code>
+            from your <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">.csproj</code>:
+        </Lumeo.Text>
+        <pre class="code-block rounded-lg border border-border/40 bg-muted px-4 py-3 font-mono text-xs text-foreground whitespace-pre overflow-x-auto">@_eject</pre>
+        <Lumeo.Text Size="sm" Color="muted" Leading="relaxed">
+            Eject is careful: it vendors the runtime <em class="not-italic font-medium text-foreground">first</em> and only strips the package once that succeeds — so a failure never leaves you half-ejected.
+            If you used a satellite package (Charts, DataGrid, …) via the default NuGet flow, eject keeps that reference and tells you to run
+            <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">lumeo add &lt;component&gt; --vendor</code> then
+            <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">lumeo eject</code> again to finish.
+        </Lumeo.Text>
+    </Stack>
+
+    <Separator Class="my-4" />
+
+    <Stack Gap="4">
+        <Heading Level="2">Verify: zero Lumeo, clean build</Heading>
+        <Lumeo.Text Size="base" Color="muted" Leading="relaxed">
+            The proof is a build with no Lumeo package on the graph. Confirm the reference is gone, then compile:
+        </Lumeo.Text>
+        <pre class="code-block rounded-lg border border-border/40 bg-muted px-4 py-3 font-mono text-xs text-foreground whitespace-pre overflow-x-auto">@_verify</pre>
+        <Lumeo.Text Size="sm" Color="muted" Leading="relaxed">
+            The <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">.csproj</code> now references only the framework Blazor packages — every Lumeo type resolves from
+            <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">_LumeoRuntime/</code>. You own the whole stack.
+        </Lumeo.Text>
+    </Stack>
+
+    <Separator Class="my-4" />
+
+    <Stack Gap="4">
+        <Heading Level="2">Trade-offs</Heading>
+        <div class="overflow-x-auto rounded-lg border border-border/40">
+            <Table>
+                <TableHeader>
+                    <TableRow>
+                        <TableHead Class="w-40">Concern</TableHead>
+                        <TableHead>Package mode</TableHead>
+                        <TableHead>Standalone</TableHead>
+                    </TableRow>
+                </TableHeader>
+                <TableBody>
+                    <TableRow>
+                        <TableCell Class="font-medium">Updates</TableCell>
+                        <TableCell>Bump the version, get everything.</TableCell>
+                        <TableCell>Per component via <code class="text-xs font-mono">lumeo update</code>; runtime refreshes on registry bumps.</TableCell>
+                    </TableRow>
+                    <TableRow>
+                        <TableCell Class="font-medium">Ownership</TableCell>
+                        <TableCell>Components vendored; runtime in the package.</TableCell>
+                        <TableCell>Everything is source in your repo.</TableCell>
+                    </TableRow>
+                    <TableRow>
+                        <TableCell Class="font-medium">Dependencies</TableCell>
+                        <TableCell><code class="text-xs font-mono">Lumeo</code> (+ any satellites).</TableCell>
+                        <TableCell>Framework Blazor packages only.</TableCell>
+                    </TableRow>
+                    <TableRow>
+                        <TableCell Class="font-medium">Repo size</TableCell>
+                        <TableCell>Small — a package reference.</TableCell>
+                        <TableCell>Larger — the runtime lives in your tree.</TableCell>
+                    </TableRow>
+                </TableBody>
+            </Table>
+        </div>
+        <Lumeo.Text Size="sm" Color="muted" Leading="relaxed">
+            Standalone is the maximum-ownership, air-gap-friendly end of the spectrum. Most projects never need it — but when you must vendor everything (strict supply-chain review, a
+            long-lived fork), one command gets you there and the build proves it.
+        </Lumeo.Text>
+    </Stack>
+
+    <Separator Class="my-4" />
+
+    <Stack Gap="4">
+        <Heading Level="2">See also</Heading>
+        <ul class="space-y-2 text-sm">
+            <li><a class="text-primary hover:underline" href="docs/guides/vendor-a-component">Vendor a component</a> — the single-component starting point.</li>
+            <li><a class="text-primary hover:underline" href="docs/guides/customize-a-component">Customize a vendored component</a> — edit source and manage drift.</li>
+            <li><a class="text-primary hover:underline" href="docs/cli">CLI reference</a> — <code class="text-xs font-mono">init</code>, <code class="text-xs font-mono">eject</code>, and every flag.</li>
+        </ul>
+    </Stack>
+
+</Stack>
+</Container>
+
+@code {
+    private const string _init = @"$ lumeo init --standalone
+Lumeo NuGet was not detected in any nearby .csproj.
+...
+ Option 1: Copy pre-built CSS/JS into wwwroot/
+  +   wwwroot/css/lumeo.css
+  +   wwwroot/css/lumeo-utilities.css
+  +   wwwroot/js/theme.js
+  +   wwwroot/js/components.js
+
+OK Wrote lumeo.json
+  namespace       StandaloneDemo.Components
+  componentsPath  Components/Ui
+  registry        https://lumeo.nativ.sh/registry.json
+  assets.mode     prebuilt
+
+Next: lumeo add button";
+
+    private const string _add = @"$ lumeo add button
+  +   _LumeoRuntime/ (75 Lumeo runtime files)
+  +   wwwroot/_content/Lumeo/js/components.js
+  +   wwwroot/_content/Lumeo/js/theme.js
+  +   wwwroot/_content/Lumeo/js/signature-pad.js
+  +   wwwroot/_content/Lumeo/js/toolbar.js
+  +   wwwroot/_content/Lumeo/css/lumeo.css
+  +   wwwroot/_content/Lumeo/css/lumeo-utilities.css
+  +   Components\Ui\Button\Button.razor
+  +   Components\Ui\Spinner\Spinner.razor
+
+OK Added Button (+1 dep) - 2 files written to Components/Ui/";
+
+    private const string _tree = @"Components/Ui/_LumeoRuntime/
+├─ Icons/
+│  └─ LumeoIcons.g.cs      # the icon set ejects too — no icon NuGet
+├─ UI/
+│  └─ Icon/SvgGlyph.razor  # the SVG glyph renderer
+├─ Services/               # ComponentInterop, Theme, Toast, …
+├─ Theming/
+├─ Internal/               # Cx class-merge helper, etc.
+├─ Extensions/
+├─ Attributes/
+├─ Size.cs  Side.cs  Density.cs  Orientation.cs  …
+├─ IconSource.cs
+└─ _Imports.razor";
+
+    private const string _eject = @"$ lumeo eject
+  +   _LumeoRuntime/ (75 Lumeo runtime files)
+  +   wwwroot/_content/Lumeo/css/lumeo.css
+  ...
+  +   Components\Ui\Button\Button.razor
+  +   Components\Ui\Spinner\Spinner.razor
+
+OK Ejected - vendored components now build with no Lumeo NuGet reference.
+  Removed PackageReference: Lumeo
+  Runtime vendored to Components/Ui/_LumeoRuntime/";
+
+    private const string _verify = @"$ grep -c 'Include=\""Lumeo\""' StandaloneDemo.csproj
+0
+
+$ dotnet build -c Release
+  StandaloneDemo -> bin/Release/net10.0/StandaloneDemo.dll
+  StandaloneDemo (Blazor output) -> bin/Release/net10.0/wwwroot
+
+Build succeeded.
+    0 Warning(s)
+    0 Error(s)";
+}
