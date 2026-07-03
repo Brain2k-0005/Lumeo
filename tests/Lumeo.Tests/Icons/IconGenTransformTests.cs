@@ -84,4 +84,20 @@ public class IconGenTransformTests
         Assert.DoesNotContain("class=", content, StringComparison.Ordinal);
         Assert.DoesNotContain("xmlns", content, StringComparison.Ordinal);
     }
+
+    [Fact]
+    public void Parse_Preserves_FillRule_And_ClipRule_EvenOdd_On_Solid_Sets()
+    {
+        // Heroicons solid / mini / micro and other fill packs paint with the even-odd rule; the
+        // parser must keep fill-rule/clip-rule verbatim (they are not the plain `fill` color attr,
+        // so the currentColor scrub must not touch them).
+        const string svg =
+            "<svg viewBox=\"0 0 20 20\" fill=\"currentColor\">" +
+            "<path fill-rule=\"evenodd\" clip-rule=\"evenodd\" d=\"M9 1Z\"/></svg>";
+
+        var content = SvgParser.Parse(svg).Content;
+
+        Assert.Contains("fill-rule=\"evenodd\"", content, StringComparison.Ordinal);
+        Assert.Contains("clip-rule=\"evenodd\"", content, StringComparison.Ordinal);
+    }
 }

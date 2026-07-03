@@ -32,6 +32,14 @@ public static class IconEmitter
         Directory.CreateDirectory(config.OutputDir);
         var written = new List<string>();
 
+        // A member cannot share its enclosing type's name (CS0542) — a pack that vendors its own
+        // brand mark (Remix `remix`, Bootstrap `bootstrap`, Iconoir `iconoir`) trips this. Escape
+        // exactly that one member with a leading underscore (same convention as digit-leading
+        // names), so the manifest and the emitted property agree; every other icon is untouched.
+        icons = icons
+            .Select(i => i.Name == config.ClassName ? i with { Name = "_" + i.Name } : i)
+            .ToList();
+
         var chunks = icons
             .Select((icon, i) => (icon, i))
             .GroupBy(x => x.i / config.ChunkSize, x => x.icon)

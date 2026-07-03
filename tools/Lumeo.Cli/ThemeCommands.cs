@@ -284,10 +284,17 @@ public static class ThemeCommands
 
     // Maps the customizer's icon library id to the corresponding Blazicons NuGet id.
     // Keep in sync with LumeoPresetOptions.IconLibraries + the docs customizer.
+    // First-party Lumeo.Icons packs where they exist; Blazicons only for sets Lumeo
+    // doesn't (yet) vendor (third-party interop). Extend as new Lumeo.Icons packs ship.
     private static readonly Dictionary<string, string> IconLibraryPackages = new(StringComparer.OrdinalIgnoreCase)
     {
-        ["lucide"] = "Blazicons.Lucide",
-        ["bootstrap"] = "Blazicons.Bootstrap",
+        ["lucide"] = "Lumeo.Icons.Lucide",
+        ["bootstrap"] = "Lumeo.Icons.Bootstrap",
+        ["tabler"] = "Lumeo.Icons.Tabler",
+        ["phosphor"] = "Lumeo.Icons.Phosphor",
+        ["heroicons"] = "Lumeo.Icons.Heroicons",
+        ["remix"] = "Lumeo.Icons.Remix",
+        ["iconoir"] = "Lumeo.Icons.Iconoir",
         ["fluentui"] = "Blazicons.FluentUI",
         ["font-awesome"] = "Blazicons.FontAwesome",
         ["google-material"] = "Blazicons.GoogleMaterialDesign",

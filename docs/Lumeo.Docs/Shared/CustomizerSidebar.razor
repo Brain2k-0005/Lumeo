@@ -123,7 +123,35 @@
                         break;
 
                     case "icons":
-                        @foreach (var lib in _iconLibraries)
+                        <Lumeo.Text As="div" Class="px-2 pt-0.5 pb-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Lumeo.Icons — first-party</Lumeo.Text>
+                        @foreach (var lib in _iconLibraries.Where(l => l.FirstParty))
+                        {
+                            <button class="w-full rounded-md px-2 py-2 text-left hover:bg-accent/50 transition-colors @(lib.Value == _activeIconLibrary ? "bg-accent/30" : "")"
+                                    @onclick="() => SetIconLibrary(lib.Value)">
+                                <Flex Class="items-center justify-between mb-1.5">
+                                    <div class="min-w-0">
+                                        <Lumeo.Text As="span" Class="text-[13px] font-medium text-foreground">@lib.Name</Lumeo.Text>
+                                        <Lumeo.Text As="span" Class="text-[10px] text-muted-foreground ml-1.5">@lib.Package</Lumeo.Text>
+                                    </div>
+                                    @if (lib.Value == _activeIconLibrary)
+                                    {
+                                        <SvgGlyph Svg="@(Lucide.Check)" class="h-3.5 w-3.5 shrink-0 text-foreground" />
+                                    }
+                                </Flex>
+                                <IconPreview Library="@lib.Value" Count="12" />
+                            </button>
+                        }
+
+                        <a href="icons"
+                           class="block rounded-md px-2 py-2 mt-0.5 hover:bg-accent/50 transition-colors"
+                           @onclick='() => _expandedSection = ""'>
+                            <Lumeo.Text As="span" Class="text-[11px] text-muted-foreground leading-snug">
+                                Also first-party: <span class="text-foreground font-medium">@string.Join(" · ", _galleryOnlyFirstParty)</span> — browse the full family in the icon gallery →
+                            </Lumeo.Text>
+                        </a>
+
+                        <Lumeo.Text As="div" Class="px-2 pt-2 pb-1 mt-1 border-t border-border/60 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Third-party interop (Blazicons)</Lumeo.Text>
+                        @foreach (var lib in _iconLibraries.Where(l => !l.FirstParty))
                         {
                             <button class="w-full rounded-md px-2 py-2 text-left hover:bg-accent/50 transition-colors @(lib.Value == _activeIconLibrary ? "bg-accent/30" : "")"
                                     @onclick="() => SetIconLibrary(lib.Value)">
@@ -411,7 +439,7 @@
     private record BaseColorOption(string Name, string Value, string Preview);
     private record RadiusOption(string Name, string Value);
     private record FontOption(string Name, string Value, string Family, string Label);
-    private record IconLibraryOption(string Name, string Value, string Package);
+    private record IconLibraryOption(string Name, string Value, string Package, bool FirstParty = false);
     private record MenuColorOption(string Name, string Value);
     private record MenuAccentOption(string Name, string Value, string Description);
     private record PresetOption(string Name, string ThemeValue, string StyleValue, string BaseColorValue, string RadiusValue, string FontValue, string MenuColorValue, string MenuAccentValue, string Preview, string Description);
@@ -463,10 +491,16 @@
         new("Fira Code", "fira-code", "'Fira Code', monospace", "mono"),
     ];
 
+    // First-party (Lumeo.Icons) libraries drive the docs' site-wide icon re-skin via
+    // DynamicIcon. Lucide + Bootstrap have full canonical-name maps, so they are the
+    // selectable first-party entries here; the rest of the first-party family (Tabler,
+    // Phosphor, Heroicons, Remix, Iconoir) is featured via a gallery callout below the
+    // list. The remaining entries are Blazicons THIRD-PARTY INTEROP examples (no first-party
+    // equivalent) and are labelled as such in the picker.
     private readonly IconLibraryOption[] _iconLibraries =
     [
-        new("Lucide", "lucide", "Lumeo.Icons.Lucide"),
-        new("Bootstrap", "bootstrap", "Blazicons.Bootstrap"),
+        new("Lucide", "lucide", "Lumeo.Icons.Lucide", FirstParty: true),
+        new("Bootstrap", "bootstrap", "Lumeo.Icons.Bootstrap", FirstParty: true),
         new("Fluent UI", "fluentui", "Blazicons.FluentUI"),
         new("Font Awesome", "font-awesome", "Blazicons.FontAwesome"),
         new("Google Material", "google-material", "Blazicons.GoogleMaterialDesign"),
@@ -475,6 +509,11 @@
         new("Devicon", "devicon", "Blazicons.Devicon"),
         new("Flag Icons", "flag-icons", "Blazicons.FlagIcons"),
     ];
+
+    // First-party packs with a docs gallery page but no site-wide DynamicIcon map — featured
+    // as a "browse in the gallery" callout in the icon-library picker.
+    private static readonly string[] _galleryOnlyFirstParty =
+        { "Tabler", "Phosphor", "Heroicons", "Remix", "Iconoir" };
 
     private readonly MenuColorOption[] _menuColors =
     [
@@ -619,7 +658,10 @@
 
     private static readonly string[] _iconPackDlls =
     {
-        "Blazicons.Bootstrap.dll",
+        // First-party Bootstrap pack — replaces the dropped Blazicons.Bootstrap. It is lazy
+        // (excluded from the boot manifest) but preloaded here so the customizer preview and
+        // DynamicIcon's site-wide Bootstrap re-skin resolve on any docs page.
+        "Lumeo.Icons.Bootstrap.dll",
         "Blazicons.Devicon.dll",
         "Blazicons.FlagIcons.dll",
         "Blazicons.FluentUI.dll",

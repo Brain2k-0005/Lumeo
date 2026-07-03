@@ -54,14 +54,25 @@
                     <SelectTrigger Class="h-9" Style="width: 200px">
                         <span class="text-sm whitespace-nowrap">@LibraryDisplayName(IconService.ActiveLibrary)</span>
                     </SelectTrigger>
-                    <SelectContent Class="whitespace-nowrap" Style="min-width: 200px">
-                        <SelectItem Value="lucide">Lucide</SelectItem>
-                        <SelectItem Value="bootstrap">Bootstrap Icons</SelectItem>
-                        <SelectItem Value="fluentui">Fluent UI</SelectItem>
-                        <SelectItem Value="google-material">Google Material</SelectItem>
-                        <SelectItem Value="font-awesome">Font Awesome</SelectItem>
-                        <SelectItem Value="ionicons">Ionicons</SelectItem>
-                        <SelectItem Value="material-design">Material Design</SelectItem>
+                    <SelectContent Class="whitespace-nowrap" Style="min-width: 220px">
+                        <SelectGroup>
+                            <SelectLabel>Lumeo.Icons — first-party</SelectLabel>
+                            <SelectItem Value="lucide">Lucide</SelectItem>
+                            <SelectItem Value="tabler">Tabler</SelectItem>
+                            <SelectItem Value="phosphor">Phosphor</SelectItem>
+                            <SelectItem Value="heroicons">Heroicons</SelectItem>
+                            <SelectItem Value="remix">Remix</SelectItem>
+                            <SelectItem Value="bootstrap">Bootstrap</SelectItem>
+                            <SelectItem Value="iconoir">Iconoir</SelectItem>
+                        </SelectGroup>
+                        <SelectGroup>
+                            <SelectLabel>Third-party interop (Blazicons)</SelectLabel>
+                            <SelectItem Value="fluentui">Fluent UI</SelectItem>
+                            <SelectItem Value="google-material">Google Material</SelectItem>
+                            <SelectItem Value="font-awesome">Font Awesome</SelectItem>
+                            <SelectItem Value="ionicons">Ionicons</SelectItem>
+                            <SelectItem Value="material-design">Material Design</SelectItem>
+                        </SelectGroup>
                     </SelectContent>
                 </Select>
                 <Select Value="@_previewSize" ValueChanged="@((string v) => _previewSize = v)">
@@ -79,9 +90,13 @@
             </Flex>
             <div class="mt-2 flex items-center justify-between text-xs text-muted-foreground">
                 <span><span class="font-medium text-foreground">@Filtered.Count</span> of @ActiveCatalog.Count @LibraryDisplayName(IconService.ActiveLibrary) icons</span>
-                @if (IconService.ActiveLibrary != "lucide")
+                @if (IsFirstPartyLib(IconService.ActiveLibrary))
                 {
-                    <span>Non-Lucide icons use <code class="font-mono text-[11px] px-1 rounded bg-muted">Svg=</code></span>
+                    <span>First-party <code class="font-mono text-[11px] px-1 rounded bg-muted">Lumeo.Icons</code> pack</span>
+                }
+                else
+                {
+                    <span>Third-party interop (Blazicons) — <code class="font-mono text-[11px] px-1 rounded bg-muted">Svg=</code></span>
                 }
             </div>
         </div>
@@ -416,10 +431,28 @@
     private readonly Dictionary<string, IReadOnlyList<IconEntry>> _catalogs = new();
     private readonly HashSet<string> _loadingLibs = new();
 
-    // library key -> (lazy-loaded DLL file, fully-qualified Blazicons container type)
+    // First-party Lumeo.Icons packs — properties return Lumeo.IconSource (→ <SvgGlyph>).
+    // Lucide is eager (built in OnInitialized, Dll=null); the rest are lazy-loaded on demand
+    // when selected, then reflected once (same pattern as the /icons gallery). UsageClass is
+    // the flat pack class used in the copy-paste snippet (e.g. `Tabler`, `Bootstrap`).
+    private static readonly Dictionary<string, (string? Dll, string TypeName, string AssemblyName, string UsageClass)> _firstPartyLibs = new()
+    {
+        ["lucide"]    = (null,                         "Lumeo.Icons.Lucide",    "Lumeo.Icons.Lucide",    "Lucide"),
+        ["tabler"]    = ("Lumeo.Icons.Tabler.dll",     "Lumeo.Icons.Tabler",    "Lumeo.Icons.Tabler",    "Tabler"),
+        ["phosphor"]  = ("Lumeo.Icons.Phosphor.dll",   "Lumeo.Icons.Phosphor",  "Lumeo.Icons.Phosphor",  "Phosphor"),
+        ["heroicons"] = ("Lumeo.Icons.Heroicons.dll",  "Lumeo.Icons.Heroicons", "Lumeo.Icons.Heroicons", "Heroicons"),
+        ["remix"]     = ("Lumeo.Icons.Remix.dll",      "Lumeo.Icons.Remix",     "Lumeo.Icons.Remix",     "Remix"),
+        ["bootstrap"] = ("Lumeo.Icons.Bootstrap.dll",  "Lumeo.Icons.Bootstrap", "Lumeo.Icons.Bootstrap", "Bootstrap"),
+        ["iconoir"]   = ("Lumeo.Icons.Iconoir.dll",    "Lumeo.Icons.Iconoir",   "Lumeo.Icons.Iconoir",   "Iconoir"),
+    };
+
+    private static bool IsFirstPartyLib(string key) => _firstPartyLibs.ContainsKey(key);
+
+    // library key -> (lazy-loaded DLL file, fully-qualified Blazicons container type). These
+    // are the THIRD-PARTY INTEROP packs with no first-party Lumeo.Icons equivalent; they
+    // still render via <Blazicon> (SvgIcon). Bootstrap moved to _firstPartyLibs above.
     private static readonly Dictionary<string, (string Dll, string TypeName)> _lazyLibs = new()
     {
-        ["bootstrap"]       = ("Blazicons.Bootstrap.dll", "Blazicons.BootstrapIcon"),
         ["fluentui"]        = ("Blazicons.FluentUI.dll", "Blazicons.FluentUiIcon"),
         ["google-material"] = ("Blazicons.GoogleMaterialDesign.dll", "Blazicons.GoogleMaterialOutlinedIcon"),
         ["font-awesome"]    = ("Blazicons.FontAwesome.dll", "Blazicons.FontAwesomeSolidIcon"),
@@ -451,19 +484,33 @@
         : ActiveCatalog.Where(e => e.Name.Contains(_query, StringComparison.OrdinalIgnoreCase)).ToList();
 
     // Loads the active library's lazy assembly (no-op if already loaded — e.g.
-    // CustomizerSidebar preloaded it) and only then reflects over its icon type.
+    // CustomizerSidebar preloaded it) and only then reflects over its icon type. Handles both
+    // first-party Lumeo.Icons packs (IconSource → <SvgGlyph>) and the Blazicons interop packs
+    // (SvgIcon → <Blazicon>).
     private async Task EnsureCatalogAsync(string lib)
     {
         if (_catalogs.ContainsKey(lib)) return;
-        if (!_lazyLibs.TryGetValue(lib, out var meta)) return; // unknown key → Lucide fallback
-        if (!_loadingLibs.Add(lib)) return;                    // de-dupe concurrent loads of this pack
+        var isFirstParty = _firstPartyLibs.TryGetValue(lib, out var fp);
+        var isBlaz = _lazyLibs.TryGetValue(lib, out var meta);
+        if (!isFirstParty && !isBlaz) return;   // unknown key → Lucide fallback
+        if (!_loadingLibs.Add(lib)) return;      // de-dupe concurrent loads of this pack
         try
         {
-            await LazyLoader.LoadAssembliesAsync(new[] { meta.Dll });
-            var asmName = System.IO.Path.GetFileNameWithoutExtension(meta.Dll);
-            var type = Type.GetType($"{meta.TypeName}, {asmName}");
-            if (type is not null)
-                _catalogs[lib] = EnumerateIcons(type);
+            if (isFirstParty)
+            {
+                if (fp.Dll is { } dll) await LazyLoader.LoadAssembliesAsync(new[] { dll });
+                var type = Type.GetType($"{fp.TypeName}, {fp.AssemblyName}");
+                if (type is not null)
+                    _catalogs[lib] = EnumerateGlyphPack(type);
+            }
+            else
+            {
+                await LazyLoader.LoadAssembliesAsync(new[] { meta.Dll });
+                var asmName = System.IO.Path.GetFileNameWithoutExtension(meta.Dll);
+                var type = Type.GetType($"{meta.TypeName}, {asmName}");
+                if (type is not null)
+                    _catalogs[lib] = EnumerateIcons(type);
+            }
         }
         catch (Microsoft.JSInterop.JSDisconnectedException) { }
         finally
@@ -472,11 +519,11 @@
         }
     }
 
-    // First-party Lucide pack (Lumeo.Icons.Lucide) — its properties return Lumeo.IconSource,
-    // rendered via <SvgGlyph>. Eager (in the boot manifest), so it is safe to reflect up front.
-    private static IReadOnlyList<IconEntry> EnumerateLucide()
+    // First-party Lumeo.Icons pack (Lucide/Tabler/Phosphor/Heroicons/Remix/Bootstrap/Iconoir)
+    // — properties return Lumeo.IconSource, rendered via <SvgGlyph>.
+    private static IReadOnlyList<IconEntry> EnumerateGlyphPack(Type packClass)
     {
-        return typeof(Lucide)
+        return packClass
             .GetProperties(BindingFlags.Public | BindingFlags.Static)
             .Where(p => p.PropertyType == typeof(Lumeo.IconSource))
             .Select(p => new IconEntry(p.Name, (Lumeo.IconSource)p.GetValue(null)!, null))
@@ -528,14 +575,14 @@
             if (_selected is null) return "";
             var n = _selected.Name;
             var sizeAttr = _previewSize == "md" ? "" : $" Size=\"Lumeo.Size.{char.ToUpper(_previewSize[0])}{_previewSize[1..]}\"";
+            // First-party Lumeo.Icons packs use the `@(Class.Name)` expression form — the
+            // universal path that resolves every icon in the pack. (The short Name= form only
+            // works for the ~100 icons that Icon.razor's MapName hardcodes.)
+            if (_firstPartyLibs.TryGetValue(IconService.ActiveLibrary, out var fp))
+                return $"<Icon Svg=\"@({fp.UsageClass}.{n})\"{sizeAttr} />";
             return IconService.ActiveLibrary switch
             {
-                // For Lucide, always use the Svg= form — it's the universal
-                // path that resolves every one of the 1000+ Lucide icons.
-                // (The short Name= form only works for the ~100 icons that
-                // Icon.razor's MapName hardcodes.)
-                "lucide"          => $"<Icon Svg=\"@(Lucide.{n})\"{sizeAttr} />",
-                "bootstrap"       => $"<Icon Svg=\"BootstrapIcon.{n}\"{sizeAttr} />",
+                // Third-party Blazicons interop packs use the plain-name SvgIcon form.
                 "fluentui"        => $"<Icon Svg=\"FluentUiIcon.{n}\"{sizeAttr} />",
                 "google-material" => $"<Icon Svg=\"GoogleMaterialOutlinedIcon.{n}\"{sizeAttr} />",
                 "font-awesome"    => $"<Icon Svg=\"FontAwesomeSolidIcon.{n}\"{sizeAttr} />",
@@ -549,7 +596,12 @@
     private static string LibraryDisplayName(string key) => key switch
     {
         "lucide"          => "Lucide",
-        "bootstrap"       => "Bootstrap Icons",
+        "tabler"          => "Tabler",
+        "phosphor"        => "Phosphor",
+        "heroicons"       => "Heroicons",
+        "remix"           => "Remix",
+        "bootstrap"       => "Bootstrap",
+        "iconoir"         => "Iconoir",
         "fluentui"        => "Fluent UI",
         "google-material" => "Google Material",
         "font-awesome"    => "Font Awesome",
@@ -573,7 +625,7 @@
     {
         IconService.OnChange += OnLibChanged;
         // Lucide is eager (boot manifest) — safe to reflect immediately.
-        _catalogs["lucide"] = EnumerateLucide();
+        _catalogs["lucide"] = EnumerateGlyphPack(typeof(Lucide));
     }
 
     // Covers the initial render and direct navigation: ensure the (possibly

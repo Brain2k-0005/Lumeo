@@ -124,4 +124,170 @@ public class IconPackTests : IAsyncLifetime
         Assert.Null(svg.GetAttribute("stroke"));
         Assert.NotEmpty(svg.InnerHtml);
     }
+
+    // --- Heroicons: outline (stroke 1.5) + solid / mini (20px) / micro (16px) fills, ONE package ---
+
+    [Fact]
+    public void Heroicons_Outline_Samples_Are_Stroke_And_NonEmpty()
+    {
+        AssertSample(Heroicons.Home, L.IconRenderStyle.Stroke);
+        AssertSample(Heroicons.Heart, L.IconRenderStyle.Stroke);
+        AssertSample(Heroicons.Check, L.IconRenderStyle.Stroke);
+    }
+
+    [Fact]
+    // Heroicons outline strokes at 1.5, not the Lucide/Tabler default of 2.
+    public void Heroicons_Outline_Strokes_At_1_5() => Assert.Equal(1.5, Heroicons.Home.StrokeWidth);
+
+    [Fact]
+    public void Heroicons_Solid_Variants_Are_Fill_And_NonEmpty()
+    {
+        AssertSample(HeroiconsSolid.Home, L.IconRenderStyle.Fill);
+        AssertSample(HeroiconsMini.Heart, L.IconRenderStyle.Fill);
+        AssertSample(HeroiconsMicro.Check, L.IconRenderStyle.Fill);
+    }
+
+    [Fact]
+    public void Heroicons_Mini_And_Micro_Carry_Native_ViewBoxes()
+    {
+        Assert.Equal("0 0 24 24", HeroiconsSolid.Home.ViewBox);
+        Assert.Equal("0 0 20 20", HeroiconsMini.Home.ViewBox);
+        Assert.Equal("0 0 16 16", HeroiconsMicro.Home.ViewBox);
+    }
+
+    [Fact]
+    // The solid sets rely on fill-rule/clip-rule="evenodd"; the SVG parser must preserve them.
+    public void Heroicons_Solid_Preserves_FillRule_EvenOdd() =>
+        Assert.Contains("fill-rule=\"evenodd\"", HeroiconsMini.Home.Content, StringComparison.Ordinal);
+
+    [Theory]
+    [InlineData(typeof(Heroicons))]
+    [InlineData(typeof(HeroiconsSolid))]
+    [InlineData(typeof(HeroiconsMini))]
+    [InlineData(typeof(HeroiconsMicro))]
+    public void Heroicons_Each_Variant_Has_The_Full_Set(Type variant) => Assert.True(IconCount(variant) >= 300);
+
+    // --- RemixIcon: '-line' → Remix and '-fill' → RemixFilled, both fill-rendered, ONE package ---
+
+    [Fact]
+    public void Remix_Line_Samples_Are_Fill_And_NonEmpty()
+    {
+        AssertSample(Remix.Home, L.IconRenderStyle.Fill);
+        AssertSample(Remix.Heart, L.IconRenderStyle.Fill);
+        AssertSample(Remix.Check, L.IconRenderStyle.Fill);
+    }
+
+    [Fact]
+    public void RemixFilled_Samples_Are_Fill_And_NonEmpty()
+    {
+        AssertSample(RemixFilled.Home, L.IconRenderStyle.Fill);
+        AssertSample(RemixFilled.Heart, L.IconRenderStyle.Fill);
+        AssertSample(RemixFilled.Check, L.IconRenderStyle.Fill);
+    }
+
+    // RemixIcon v4.9.1 ships 1,539 designs per style (line + fill). The design-spec's ">=2900 per
+    // style" floor predates the pinned release — that figure is the combined ~3,000 total, not a
+    // per-style count; assert against the real per-style floor.
+    [Fact]
+    public void Remix_Line_Has_The_Full_Set() => Assert.True(IconCount(typeof(Remix)) >= 1500);
+
+    [Fact]
+    public void Remix_Fill_Has_The_Full_Set() => Assert.True(IconCount(typeof(RemixFilled)) >= 1500);
+
+    // --- Bootstrap Icons: flat 16px fill set; the '-fill' suffix is kept as part of the name ---
+
+    [Fact]
+    public void Bootstrap_Samples_Are_Fill_And_NonEmpty()
+    {
+        AssertSample(Bootstrap.Bell, L.IconRenderStyle.Fill);
+        AssertSample(Bootstrap.Heart, L.IconRenderStyle.Fill);
+        AssertSample(Bootstrap.Check, L.IconRenderStyle.Fill);
+    }
+
+    [Fact]
+    // Bootstrap's '-fill' marks a DISTINCT icon (bell vs bell-fill), so the suffix stays on the member.
+    public void Bootstrap_Keeps_Fill_Suffix_In_Member_Name()
+    {
+        AssertSample(Bootstrap.BellFill, L.IconRenderStyle.Fill);
+        AssertSample(Bootstrap.HeartFill, L.IconRenderStyle.Fill);
+    }
+
+    [Fact]
+    public void Bootstrap_ViewBox_Is_16() => Assert.Equal("0 0 16 16", Bootstrap.Bell.ViewBox);
+
+    [Fact]
+    public void Bootstrap_Has_The_Full_Set() => Assert.True(IconCount(typeof(Bootstrap)) >= 1900);
+
+    // --- Iconoir: stroke set, 24px, stroke width 1.5 ---
+
+    [Fact]
+    public void Iconoir_Samples_Are_Stroke_And_NonEmpty()
+    {
+        AssertSample(Iconoir.Home, L.IconRenderStyle.Stroke);
+        AssertSample(Iconoir.Heart, L.IconRenderStyle.Stroke);
+        AssertSample(Iconoir.Check, L.IconRenderStyle.Stroke);
+    }
+
+    [Fact]
+    public void Iconoir_Strokes_At_1_5() => Assert.Equal(1.5, Iconoir.Home.StrokeWidth);
+
+    [Fact]
+    public void Iconoir_Has_The_Full_Set() => Assert.True(IconCount(typeof(Iconoir)) >= 1300);
+
+    // --- bUnit render through the first-party SvgGlyph (one per new pack) ---
+
+    [Fact]
+    public void Heroicons_Outline_Renders_As_Stroked_Svg_At_1_5()
+    {
+        var cut = _ctx.Render<L.SvgGlyph>(p => p.Add(g => g.Svg, Heroicons.Home));
+        var svg = cut.Find("svg");
+        Assert.Equal("0 0 24 24", svg.GetAttribute("viewBox"));
+        Assert.Equal("none", svg.GetAttribute("fill"));
+        Assert.Equal("currentColor", svg.GetAttribute("stroke"));
+        Assert.Equal("1.5", svg.GetAttribute("stroke-width"));
+        Assert.NotEmpty(svg.InnerHtml);
+    }
+
+    [Fact]
+    public void HeroiconsMini_Renders_As_Filled_Svg_With_20_ViewBox()
+    {
+        var cut = _ctx.Render<L.SvgGlyph>(p => p.Add(g => g.Svg, HeroiconsMini.Home));
+        var svg = cut.Find("svg");
+        Assert.Equal("0 0 20 20", svg.GetAttribute("viewBox"));
+        Assert.Equal("currentColor", svg.GetAttribute("fill"));
+        Assert.Null(svg.GetAttribute("stroke"));
+        Assert.NotEmpty(svg.InnerHtml);
+    }
+
+    [Fact]
+    public void Remix_Home_Renders_As_Filled_Svg()
+    {
+        var cut = _ctx.Render<L.SvgGlyph>(p => p.Add(g => g.Svg, Remix.Home));
+        var svg = cut.Find("svg");
+        Assert.Equal("0 0 24 24", svg.GetAttribute("viewBox"));
+        Assert.Equal("currentColor", svg.GetAttribute("fill"));
+        Assert.NotEmpty(svg.InnerHtml);
+    }
+
+    [Fact]
+    public void Bootstrap_Bell_Renders_As_Filled_Svg_With_16_ViewBox()
+    {
+        var cut = _ctx.Render<L.SvgGlyph>(p => p.Add(g => g.Svg, Bootstrap.Bell));
+        var svg = cut.Find("svg");
+        Assert.Equal("0 0 16 16", svg.GetAttribute("viewBox"));
+        Assert.Equal("currentColor", svg.GetAttribute("fill"));
+        Assert.NotEmpty(svg.InnerHtml);
+    }
+
+    [Fact]
+    public void Iconoir_Home_Renders_As_Stroked_Svg_At_1_5()
+    {
+        var cut = _ctx.Render<L.SvgGlyph>(p => p.Add(g => g.Svg, Iconoir.Home));
+        var svg = cut.Find("svg");
+        Assert.Equal("0 0 24 24", svg.GetAttribute("viewBox"));
+        Assert.Equal("none", svg.GetAttribute("fill"));
+        Assert.Equal("currentColor", svg.GetAttribute("stroke"));
+        Assert.Equal("1.5", svg.GetAttribute("stroke-width"));
+        Assert.NotEmpty(svg.InnerHtml);
+    }
 }
