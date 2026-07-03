@@ -1,0 +1,169 @@
+@using Lumeo.Docs.Shared
+
+@* Audit log — a filterable Timeline driven by a faceted-filter rail composed from
+   Lumeo primitives (search Input + Checkbox facets with live counts). Category and
+   severity facets intersect with the free-text query. *@
+
+<div class="flex h-full min-h-0 flex-col gap-3 p-3 sm:p-4">
+    <header class="shrink-0">
+        <h1 class="text-lg font-semibold tracking-tight">Audit log</h1>
+        <p class="text-sm text-muted-foreground">Immutable record of operator and system actions. Showing @_filtered.Count of @MeridianData.Audit.Count events.</p>
+    </header>
+
+    <div class="grid min-h-0 flex-1 gap-3 lg:grid-cols-[240px_1fr]">
+
+        <!-- Facet rail -->
+        <aside class="flex min-h-0 flex-col gap-4 overflow-y-auto rounded-lg border border-border/60 bg-card p-3">
+            <div>
+                <Input Variant="Input.InputVariant.Search" Placeholder="Search actions…"
+                       Value="@_search" ValueChanged="OnSearch" />
+            </div>
+
+            <div>
+                <div class="mb-2 flex items-center justify-between">
+                    <span class="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Category</span>
+                </div>
+                <div class="space-y-1.5">
+                    @foreach (var c in MeridianData.AuditCategories)
+                    {
+                        <label class="flex cursor-pointer items-center gap-2 rounded-md px-1.5 py-1 text-sm hover:bg-accent/40">
+                            <Checkbox Checked="@_cats.Contains(c)" CheckedChanged="@(v => Toggle(_cats, c, v))" />
+                            <span class="flex-1">@c</span>
+                            <span class="rounded bg-muted px-1.5 text-[11px] tabular-nums text-muted-foreground">@_catCounts[c]</span>
+                        </label>
+                    }
+                </div>
+            </div>
+
+            <div>
+                <div class="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Severity</div>
+                <div class="space-y-1.5">
+                    @foreach (var s in MeridianData.AuditSeverities)
+                    {
+                        <label class="flex cursor-pointer items-center gap-2 rounded-md px-1.5 py-1 text-sm hover:bg-accent/40">
+                            <Checkbox Checked="@_sevs.Contains(s)" CheckedChanged="@(v => Toggle(_sevs, s, v))" />
+                            <Badge Variant="@SeverityVariant(s)" Class="px-1.5 py-0">@s</Badge>
+                            <span class="flex-1"></span>
+                            <span class="rounded bg-muted px-1.5 text-[11px] tabular-nums text-muted-foreground">@_sevCounts[s]</span>
+                        </label>
+                    }
+                </div>
+            </div>
+
+            @if (HasFilters)
+            {
+                <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Sm" OnClick="ClearAll" Class="justify-start">
+                    <DynamicIcon Name="FilterX" Class="mr-1.5 h-3.5 w-3.5" /> Clear filters
+                </Button>
+            }
+        </aside>
+
+        <!-- Timeline -->
+        <div class="min-h-0 overflow-y-auto rounded-lg border border-border/60 bg-card p-4">
+            @if (_filtered.Count == 0)
+            {
+                <div class="flex h-full flex-col items-center justify-center gap-2 py-16 text-center">
+                    <DynamicIcon Name="SearchX" Class="h-8 w-8 text-muted-foreground/50" />
+                    <p class="text-sm text-muted-foreground">No events match the current filters.</p>
+                </div>
+            }
+            else
+            {
+                <Timeline>
+                    @foreach (var e in _filtered)
+                    {
+                        <TimelineItem Title="@($"{e.Action}")" Time="@e.Timestamp.ToString("MMM d · HH:mm")">
+                            <IconContent>
+                                <DynamicIcon Name="@CategoryIcon(e.Category)" Class="@($"h-4 w-4 {SeverityColor(e.Severity)}")" />
+                            </IconContent>
+                            <ChildContent>
+                                <div class="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs">
+                                    <Badge Variant="@SeverityVariant(e.Severity)" Class="px-1.5 py-0">@e.Severity</Badge>
+                                    <span class="font-mono text-muted-foreground">@e.Actor</span>
+                                    <span class="text-muted-foreground">·</span>
+                                    <span class="text-muted-foreground">@e.Target</span>
+                                </div>
+                                <p class="mt-1 text-sm text-muted-foreground">@e.Detail</p>
+                            </ChildContent>
+                        </TimelineItem>
+                    }
+                </Timeline>
+            }
+        </div>
+    </div>
+</div>
+
+@code {
+    private string _search = string.Empty;
+    private readonly HashSet<string> _cats = new();
+    private readonly HashSet<string> _sevs = new();
+
+    private readonly Dictionary<string, int> _catCounts =
+        MeridianData.AuditCategories.ToDictionary(c => c, c => MeridianData.Audit.Count(e => e.Category == c));
+    private readonly Dictionary<string, int> _sevCounts =
+        MeridianData.AuditSeverities.ToDictionary(s => s, s => MeridianData.Audit.Count(e => e.Severity == s));
+
+    private bool HasFilters => _search.Length > 0 || _cats.Count > 0 || _sevs.Count > 0;
+
+    private List<AuditEntry> _filtered = MeridianData.Audit.ToList();
+
+    private void OnSearch(string? v)
+    {
+        _search = v ?? string.Empty;
+        Recompute();
+    }
+
+    private void Toggle(HashSet<string> set, string key, bool on)
+    {
+        if (on) set.Add(key); else set.Remove(key);
+        Recompute();
+    }
+
+    private void ClearAll()
+    {
+        _search = string.Empty;
+        _cats.Clear();
+        _sevs.Clear();
+        Recompute();
+    }
+
+    private void Recompute()
+    {
+        var q = _search.Trim();
+        _filtered = MeridianData.Audit.Where(e =>
+                (_cats.Count == 0 || _cats.Contains(e.Category)) &&
+                (_sevs.Count == 0 || _sevs.Contains(e.Severity)) &&
+                (q.Length == 0
+                 || e.Action.Contains(q, StringComparison.OrdinalIgnoreCase)
+                 || e.Actor.Contains(q, StringComparison.OrdinalIgnoreCase)
+                 || e.Target.Contains(q, StringComparison.OrdinalIgnoreCase)
+                 || e.Detail.Contains(q, StringComparison.OrdinalIgnoreCase)))
+            .ToList();
+    }
+
+    private static string CategoryIcon(string c) => c switch
+    {
+        "Auth" => "ShieldCheck",
+        "Data" => "Database",
+        "Config" => "Settings",
+        "Shipment" => "Truck",
+        "Billing" => "Receipt",
+        _ => "Dot",
+    };
+
+    private static Badge.BadgeVariant SeverityVariant(string s) => s switch
+    {
+        "Critical" => Badge.BadgeVariant.Destructive,
+        "Warning" => Badge.BadgeVariant.Warning,
+        "Notice" => Badge.BadgeVariant.Secondary,
+        _ => Badge.BadgeVariant.Outline,
+    };
+
+    private static string SeverityColor(string s) => s switch
+    {
+        "Critical" => "text-destructive",
+        "Warning" => "text-warning-text",
+        "Notice" => "text-primary",
+        _ => "text-muted-foreground",
+    };
+}

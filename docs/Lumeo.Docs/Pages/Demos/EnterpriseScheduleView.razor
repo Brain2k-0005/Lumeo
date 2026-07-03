@@ -1,0 +1,61 @@
+@using Microsoft.AspNetCore.Components.WebAssembly.Services
+@using Lumeo.Docs.Shared
+@inject LazyAssemblyLoader Loader
+
+@* Berth & dispatch schedule. The Gantt lives in the Lumeo.Gantt satellite, which the
+   docs only auto-load on its own /components/gantt route. This demo route isn't in that
+   map, so we pull the assembly on demand here (LazyAssemblyLoader) and render the chart
+   only once it has arrived — no App.razor / csproj changes required. *@
+
+<div class="flex h-full flex-col gap-3 p-3 sm:p-4">
+
+    <header class="flex flex-wrap items-end justify-between gap-2">
+        <div>
+            <h1 class="text-lg font-semibold tracking-tight">Terminal schedule</h1>
+            <p class="text-sm text-muted-foreground">Berth allocation, crane gangs and onward dispatch across the next operating week.</p>
+        </div>
+        <div class="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
+            <Badge Variant="Badge.BadgeVariant.Outline" Class="gap-1"><span class="h-1.5 w-1.5 rounded-full bg-primary"></span>Scheduled</Badge>
+            <Badge Variant="Badge.BadgeVariant.Outline" Class="gap-1"><span class="h-1.5 w-1.5 rounded-full bg-success-text"></span>On track</Badge>
+            <Badge Variant="Badge.BadgeVariant.Outline" Class="gap-1"><DynamicIcon Name="Diamond" Class="h-3 w-3" />Milestone</Badge>
+        </div>
+    </header>
+
+    <div class="min-h-0 flex-1">
+        @if (_error)
+        {
+            <Alert Variant="Alert.AlertVariant.Destructive" Title="Schedule unavailable"
+                   Description="The scheduling module could not be loaded. Please retry from the docs." />
+        }
+        else if (!_ready)
+        {
+            <div class="flex h-full flex-col items-center justify-center gap-3 rounded-md border border-border/60 bg-card">
+                <Spinner Size="Lumeo.Size.Lg" />
+                <p class="text-sm text-muted-foreground">Loading scheduling module…</p>
+            </div>
+        }
+        else
+        {
+            <EnterpriseGanttPanel />
+        }
+    </div>
+</div>
+
+@code {
+    private bool _ready;
+    private bool _error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            await Loader.LoadAssembliesAsync(new[] { "Lumeo.Gantt.dll" });
+            _ready = true;
+        }
+        catch (Exception ex)
+        {
+            _error = true;
+            Console.WriteLine($"[MeridianOps] gantt load failed: {ex.Message}");
+        }
+    }
+}

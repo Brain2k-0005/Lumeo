@@ -1,0 +1,180 @@
+@using Lumeo.Docs.Shared
+@inject Lumeo.Services.IToastService Toast
+
+@* Dense, virtualized shipments grid — the data-density showcase. 640 rows, sticky
+   header, per-column filters, multi-select with a contextual bulk bar, CSV/Excel
+   export, footer aggregates and status badges that keep the table breathing. *@
+
+<div class="flex h-full flex-col gap-3 p-3 sm:p-4">
+
+    <!-- KPI strip -->
+    <div class="grid shrink-0 grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-4">
+        @foreach (var k in _kpis)
+        {
+            <div class="flex items-center gap-3 rounded-lg border border-border/60 bg-card px-3 py-2.5">
+                <div class="@($"flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-muted {k.Accent}")">
+                    <DynamicIcon Name="@k.Icon" Class="h-4 w-4" />
+                </div>
+                <div class="min-w-0 leading-tight">
+                    <div class="truncate text-[11px] font-medium uppercase tracking-wide text-muted-foreground">@k.Label</div>
+                    <div class="text-lg font-semibold tabular-nums">@k.Value</div>
+                </div>
+            </div>
+        }
+    </div>
+
+    <!-- Bulk action bar (contextual) -->
+    @if (_selected is { Count: > 0 })
+    {
+        <div class="flex shrink-0 flex-wrap items-center gap-2 rounded-lg border border-primary/40 bg-primary/5 px-3 py-2">
+            <Badge Variant="Badge.BadgeVariant.Default" Class="tabular-nums">@_selected.Count selected</Badge>
+            <Separator Orientation="Lumeo.Orientation.Vertical" Class="hidden h-5 sm:block" />
+            <Button Variant="Button.ButtonVariant.Outline" Size="Button.ButtonSize.Sm" OnClick="AssignCarrier">
+                <DynamicIcon Name="UserCheck" Class="mr-1.5 h-3.5 w-3.5" /> Assign carrier
+            </Button>
+            <Button Variant="Button.ButtonVariant.Outline" Size="Button.ButtonSize.Sm" OnClick="ExportSelected">
+                <DynamicIcon Name="Download" Class="mr-1.5 h-3.5 w-3.5" /> Export selection
+            </Button>
+            <ConfirmButton Variant="Button.ButtonVariant.Destructive" Size="Button.ButtonSize.Sm"
+                           Title="@($"Place {_selected.Count} shipment(s) on hold?")"
+                           Description="Holds pause carrier dispatch until an operator releases them. Customers are not notified automatically."
+                           ConfirmText="Place on hold" CancelText="Keep active" IsDestructive="true"
+                           OnConfirm="HoldSelected">
+                <DynamicIcon Name="PauseCircle" Class="mr-1.5 h-3.5 w-3.5" /> Hold
+            </ConfirmButton>
+            <div class="flex-1"></div>
+            <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Sm" OnClick="ClearSelection">Clear</Button>
+        </div>
+    }
+
+    <!-- The grid -->
+    <div class="min-h-0 flex-1">
+        <DataGrid TItem="Shipment" Items="@MeridianData.Shipments"
+                  ShowToolbar="true" ShowPagination="false" ShowColumnChooser="true"
+                  ShowExport="true" ExportFormats="DataGridExportFormat.Csv | DataGridExportFormat.Excel"
+                  SelectionMode="DataGridSelectionMode.Multiple" @bind-SelectedItems="_selected"
+                  Striped="true" Compact="true" Bordered="true"
+                  Height="calc(100dvh - 19rem)"
+                  VirtualizeThreshold="200" VirtualItemSize="42">
+
+            <DataGridColumnDef TItem="Shipment" Title="Reference" Field="Reference" Sortable="true" Filterable="true" />
+            <DataGridColumnDef TItem="Shipment" Title="Lane" Field="Lane" Sortable="true" Filterable="true" />
+            <DataGridColumnDef TItem="Shipment" Title="Carrier" Field="Carrier" Sortable="true"
+                               Filterable="true" FilterType="DataGridFilterType.Select" />
+
+            <DataGridColumnDef TItem="Shipment" Title="Mode" Field="Mode" Sortable="true"
+                               Filterable="true" FilterType="DataGridFilterType.Select">
+                <CellTemplate>
+                    <Badge Variant="Badge.BadgeVariant.Outline" Class="gap-1">
+                        <DynamicIcon Name="@ModeIcon(context.Mode)" Class="h-3 w-3" />@context.Mode
+                    </Badge>
+                </CellTemplate>
+            </DataGridColumnDef>
+
+            <DataGridColumnDef TItem="Shipment" Title="Priority" Field="Priority" Sortable="true"
+                               Filterable="true" FilterType="DataGridFilterType.Select">
+                <CellTemplate>
+                    <Badge Variant="@PriorityVariant(context.Priority)">@context.Priority</Badge>
+                </CellTemplate>
+            </DataGridColumnDef>
+
+            <DataGridColumnDef TItem="Shipment" Title="Status" Field="Status" Sortable="true"
+                               Filterable="true" FilterType="DataGridFilterType.Select">
+                <CellTemplate>
+                    <Badge Variant="@StatusVariant(context.Status)" Class="gap-1">
+                        <span class="h-1.5 w-1.5 rounded-full bg-current opacity-70"></span>@context.Status
+                    </Badge>
+                </CellTemplate>
+            </DataGridColumnDef>
+
+            <DataGridColumnDef TItem="Shipment" Title="Region" Field="Region" Sortable="true"
+                               Filterable="true" FilterType="DataGridFilterType.Select" />
+
+            <DataGridColumnDef TItem="Shipment" Title="Weight (kg)" Field="Weight" Sortable="true"
+                               Filterable="true" FilterType="DataGridFilterType.Number" Format="N0"
+                               Aggregate="AggregateType.Sum" FooterFormat="N0" />
+
+            <DataGridColumnDef TItem="Shipment" Title="Value (€)" Field="Value" Sortable="true"
+                               Filterable="true" FilterType="DataGridFilterType.Number" Format="N0"
+                               Aggregate="AggregateType.Sum" FooterFormat="N0" />
+
+            <DataGridColumnDef TItem="Shipment" Title="ETA" Field="Eta" Sortable="true"
+                               Filterable="true" FilterType="DataGridFilterType.Date" Format="MMM d" />
+
+            <DataGridColumnDef TItem="Shipment" Title="Progress" Field="ProgressPct" Sortable="true">
+                <CellTemplate>
+                    <div class="flex items-center gap-2">
+                        <div class="h-1.5 w-16 overflow-hidden rounded-full bg-muted">
+                            <div class="h-full rounded-full @ProgressColor(context.Status)" style="width:@(context.ProgressPct)%"></div>
+                        </div>
+                        <span class="w-8 text-right text-xs tabular-nums text-muted-foreground">@context.ProgressPct%</span>
+                    </div>
+                </CellTemplate>
+            </DataGridColumnDef>
+        </DataGrid>
+    </div>
+</div>
+
+@code {
+    private IReadOnlyList<Shipment>? _selected;
+
+    private sealed record Kpi(string Label, string Value, string Icon, string Accent);
+    private Kpi[] _kpis = System.Array.Empty<Kpi>();
+
+    protected override void OnInitialized()
+    {
+        var s = MeridianData.Shipments;
+        var inTransit = s.Count(x => x.Status == "In Transit");
+        var attention = s.Count(x => x.Status is "Delayed" or "Exception" or "Customs");
+        var value = s.Sum(x => x.Value);
+        _kpis = new[]
+        {
+            new Kpi("Active shipments", s.Count.ToString("N0"), "Truck", "text-muted-foreground"),
+            new Kpi("In transit", inTransit.ToString("N0"), "Navigation", "text-primary"),
+            new Kpi("Needs attention", attention.ToString("N0"), "TriangleAlert", "text-warning-text"),
+            new Kpi("Cargo value", $"€{value / 1_000_000m:N1}M", "Wallet", "text-muted-foreground"),
+        };
+    }
+
+    private void AssignCarrier() => Toast.Info("Carrier assignment", $"Routing {_selected?.Count ?? 0} shipment(s) to the assignment queue.");
+    private void ExportSelected() => Toast.Success("Export queued", $"{_selected?.Count ?? 0} row(s) will download as CSV.");
+
+    private void HoldSelected()
+    {
+        var n = _selected?.Count ?? 0;
+        Toast.Warning("Shipments held", $"{n} shipment(s) paused. Release from the shipment detail view.");
+        ClearSelection();
+    }
+
+    private void ClearSelection() => _selected = System.Array.Empty<Shipment>();
+
+    private static string ModeIcon(string mode) => mode switch
+    {
+        "Air" => "Plane", "Rail" => "TrainFront", "Sea" => "Ship", _ => "Truck",
+    };
+
+    private static Badge.BadgeVariant PriorityVariant(string p) => p switch
+    {
+        "Critical" => Badge.BadgeVariant.Destructive,
+        "Expedited" => Badge.BadgeVariant.Warning,
+        _ => Badge.BadgeVariant.Secondary,
+    };
+
+    private static Badge.BadgeVariant StatusVariant(string s) => s switch
+    {
+        "Delivered" => Badge.BadgeVariant.Success,
+        "Exception" => Badge.BadgeVariant.Destructive,
+        "Delayed" => Badge.BadgeVariant.Warning,
+        "Customs" => Badge.BadgeVariant.Warning,
+        "In Transit" => Badge.BadgeVariant.Default,
+        _ => Badge.BadgeVariant.Secondary,
+    };
+
+    private static string ProgressColor(string status) => status switch
+    {
+        "Exception" => "bg-destructive",
+        "Delayed" or "Customs" => "bg-warning-text",
+        "Delivered" => "bg-success-text",
+        _ => "bg-primary",
+    };
+}

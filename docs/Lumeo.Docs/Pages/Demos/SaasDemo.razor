@@ -1,0 +1,811 @@
+@page "/demos/saas"
+@layout SaasDemoLayout
+@namespace Lumeo.Docs.Pages.Demos
+@using Lumeo
+@using Lumeo.Docs.Shared
+@using Microsoft.AspNetCore.Components.Web
+@implements IAsyncDisposable
+@inject Lumeo.Services.ToastService Toast
+@inject Lumeo.Services.KeyboardShortcutService Shortcuts
+@inject Lumeo.Services.IResponsiveService Responsive
+
+<PageTitle>Northlight — Lumeo SaaS demo</PageTitle>
+
+<SidebarProvider @bind-IsCollapsed="_navCollapsed"
+                 Variant="SidebarProvider.SidebarVariant.Icon"
+                 ToggleShortcut="ctrl+b"
+                 MobileSheet="true"
+                 Class="bg-background">
+
+    <SidebarComponent>
+        <SidebarHeader>
+            <Flex Align="center" Gap="2" Class="min-w-0">
+                <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+                    <DynamicIcon Name="Compass" Class="h-4 w-4" />
+                </span>
+                @if (!_navCollapsed)
+                {
+                    <Stack Gap="0" Class="min-w-0">
+                        <Lumeo.Text As="span" Size="sm" Weight="semibold" Class="truncate leading-tight">Northlight</Lumeo.Text>
+                        <Lumeo.Text As="span" Size="xs" Color="muted" Class="truncate leading-tight">Product analytics</Lumeo.Text>
+                    </Stack>
+                }
+            </Flex>
+        </SidebarHeader>
+
+        <SidebarContent>
+            <SidebarGroup>
+                @if (!_navCollapsed)
+                {
+                    <SidebarGroupLabel>Workspace</SidebarGroupLabel>
+                }
+                <SidebarMenu>
+                    @foreach (var item in NorthlightData.PrimaryNav)
+                    {
+                        <SidebarMenuItem>
+                            <button type="button" class="@NavBtnClass(item.Key)" @onclick="() => SetView(item.Key)"
+                                    title="@(_navCollapsed ? item.Label : null)" aria-current="@(_view == item.Key ? "page" : null)">
+                                <span class="inline-flex shrink-0 items-center justify-center"><DynamicIcon Name="@item.Icon" Class="h-4 w-4" /></span>
+                                @if (!_navCollapsed)
+                                {
+                                    <span class="flex-1 truncate text-left">@item.Label</span>
+                                    @if (item.Key == "customers")
+                                    {
+                                        <Badge Variant="Badge.BadgeVariant.Secondary" Class="h-5 px-1.5 text-[10px]">@_customers.Count</Badge>
+                                    }
+                                }
+                            </button>
+                        </SidebarMenuItem>
+                    }
+                </SidebarMenu>
+            </SidebarGroup>
+
+            <SidebarSeparator />
+
+            <SidebarGroup>
+                @if (!_navCollapsed)
+                {
+                    <SidebarGroupLabel>Account</SidebarGroupLabel>
+                }
+                <SidebarMenu>
+                    @foreach (var item in NorthlightData.SecondaryNav)
+                    {
+                        <SidebarMenuItem>
+                            <button type="button" class="@NavBtnClass(item.Key)" @onclick="() => SetView(item.Key)"
+                                    title="@(_navCollapsed ? item.Label : null)" aria-current="@(_view == item.Key ? "page" : null)">
+                                <span class="inline-flex shrink-0 items-center justify-center"><DynamicIcon Name="@item.Icon" Class="h-4 w-4" /></span>
+                                @if (!_navCollapsed)
+                                {
+                                    <span class="flex-1 truncate text-left">@item.Label</span>
+                                }
+                            </button>
+                        </SidebarMenuItem>
+                    }
+                </SidebarMenu>
+            </SidebarGroup>
+        </SidebarContent>
+
+        <SidebarFooter>
+            <Flex Align="center" Gap="2" Class="min-w-0">
+                <Avatar Size="Lumeo.Size.Sm" Class="shrink-0">
+                    <AvatarFallback>AC</AvatarFallback>
+                </Avatar>
+                @if (!_navCollapsed)
+                {
+                    <Stack Gap="0" Class="min-w-0 flex-1">
+                        <Lumeo.Text As="span" Size="xs" Weight="medium" Class="truncate leading-tight">Ava Chen</Lumeo.Text>
+                        <Lumeo.Text As="span" Size="xs" Color="muted" Class="truncate leading-tight">Admin</Lumeo.Text>
+                    </Stack>
+                    <span class="inline-flex h-2 w-2 shrink-0 rounded-full bg-primary" title="Online"></span>
+                }
+            </Flex>
+        </SidebarFooter>
+    </SidebarComponent>
+
+    <!-- App column: topbar + scrollable view -->
+    <div class="flex min-w-0 flex-1 flex-col">
+
+        <header class="flex h-14 shrink-0 items-center gap-2 border-b border-border/50 px-3 sm:px-4">
+            <SidebarTrigger />
+            <div class="min-w-0">
+                <Heading Level="1" Class="truncate text-base font-semibold leading-none tracking-tight">@CurrentTitle</Heading>
+                <Lumeo.Text Size="xs" Color="muted" Class="hidden truncate sm:block">@CurrentSubtitle</Lumeo.Text>
+            </div>
+
+            <div class="flex-1"></div>
+
+            <!-- Command palette trigger -->
+            <button type="button" @onclick="OpenPalette"
+                    class="hidden w-56 items-center gap-2 rounded-md border border-border bg-muted/50 px-3 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground lg:flex">
+                <DynamicIcon Name="Search" Class="h-3.5 w-3.5 shrink-0" />
+                <span class="flex-1 text-left">Search…</span>
+                <kbd class="pointer-events-none inline-flex rounded border bg-background px-1.5 py-0.5 text-[10px] font-medium">⌘K</kbd>
+            </button>
+            <button type="button" @onclick="OpenPalette" aria-label="Search"
+                    class="inline-flex h-9 w-9 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground lg:hidden">
+                <DynamicIcon Name="Search" Class="h-4 w-4" />
+            </button>
+
+            <!-- Notifications -->
+            <DropdownMenu>
+                <DropdownMenuTrigger>
+                    <span class="relative inline-flex h-9 w-9 cursor-pointer items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground">
+                        <DynamicIcon Name="Bell" Class="h-4 w-4" />
+                        @if (_unread > 0)
+                        {
+                            <span class="absolute right-1 top-1 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-semibold leading-none text-primary-foreground">@_unread</span>
+                        }
+                    </span>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent Align="Lumeo.Align.End" Class="w-80">
+                    <DropdownMenuLabel>Notifications</DropdownMenuLabel>
+                    <DropdownMenuSeparator />
+                    @foreach (var n in _notifications)
+                    {
+                        <DropdownMenuItem>
+                            <Flex Gap="2" Align="start" Class="w-full">
+                                <span class="mt-1 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-accent/60 text-primary">
+                                    <DynamicIcon Name="@n.Icon" Class="h-3.5 w-3.5" />
+                                </span>
+                                <Stack Gap="0" Class="min-w-0 flex-1">
+                                    <Lumeo.Text Size="sm" Class="leading-snug"><Lumeo.Text As="span" Weight="medium">@n.Actor</Lumeo.Text> @n.Action <Lumeo.Text As="span" Color="muted">@n.Target</Lumeo.Text></Lumeo.Text>
+                                    <Lumeo.Text Size="xs" Color="muted">@n.When</Lumeo.Text>
+                                </Stack>
+                            </Flex>
+                        </DropdownMenuItem>
+                    }
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem OnClick="MarkAllRead">
+                        <Flex Align="center" Gap="2"><DynamicIcon Name="CheckCheck" Class="h-3.5 w-3.5" /> Mark all as read</Flex>
+                    </DropdownMenuItem>
+                </DropdownMenuContent>
+            </DropdownMenu>
+
+            <!-- Profile -->
+            <DropdownMenu>
+                <DropdownMenuTrigger>
+                    <span class="inline-flex cursor-pointer rounded-full outline-none ring-ring focus-visible:ring-2">
+                        <Avatar Size="Lumeo.Size.Sm"><AvatarFallback>AC</AvatarFallback></Avatar>
+                    </span>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent Align="Lumeo.Align.End" Class="w-56">
+                    <DropdownMenuLabel>
+                        <Stack Gap="0">
+                            <Lumeo.Text Size="sm" Weight="medium">Ava Chen</Lumeo.Text>
+                            <Lumeo.Text Size="xs" Color="muted">ava@northlight.app</Lumeo.Text>
+                        </Stack>
+                    </DropdownMenuLabel>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem OnClick="@(() => SetView("settings"))">
+                        <Flex Align="center" Gap="2"><DynamicIcon Name="User" Class="h-3.5 w-3.5" /> Profile settings</Flex>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem OnClick="@(() => OpenBilling())">
+                        <Flex Align="center" Gap="2"><DynamicIcon Name="CreditCard" Class="h-3.5 w-3.5" /> Billing</Flex>
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem OnClick="LogOut">
+                        <Flex Align="center" Gap="2"><DynamicIcon Name="LogOut" Class="h-3.5 w-3.5" /> Log out</Flex>
+                    </DropdownMenuItem>
+                </DropdownMenuContent>
+            </DropdownMenu>
+        </header>
+
+        <main class="min-h-0 flex-1 overflow-y-auto">
+            <div class="mx-auto w-full max-w-[1400px] px-3 py-5 sm:px-6 sm:py-6">
+
+                @if (_view == "dashboard")
+                {
+                    <div @key="'d'">
+                        <!-- KPI row -->
+                        <BlurFade DelayMs="0">
+                            <Flex Align="center" Justify="between" Class="mb-4">
+                                <Lumeo.Text Size="sm" Color="muted">Last 30 days · all workspaces</Lumeo.Text>
+                                <Button Variant="Button.ButtonVariant.Outline" Size="Button.ButtonSize.Sm" OnClick="RefreshDashboard" Disabled="_refreshing">
+                                    @if (_refreshing)
+                                    {
+                                        <Spinner Size="Lumeo.Size.Sm" Class="mr-2" />
+                                        <span>Refreshing…</span>
+                                    }
+                                    else
+                                    {
+                                        <DynamicIcon Name="RefreshCw" Class="mr-2 h-3.5 w-3.5" />
+                                        <span>Refresh</span>
+                                    }
+                                </Button>
+                            </Flex>
+                        </BlurFade>
+
+                        <BlurFade DelayMs="60">
+                            <div class="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
+                                @foreach (var k in _kpis)
+                                {
+                                    <div class="rounded-xl border border-border/50 bg-card p-4">
+                                        <Flex Align="center" Justify="between" Class="mb-1">
+                                            <Lumeo.Text Size="xs" Color="muted">@k.Label</Lumeo.Text>
+                                            <DynamicIcon Name="@k.Icon" Class="h-3.5 w-3.5 text-primary" />
+                                        </Flex>
+                                        <div class="text-2xl font-bold tracking-tight text-foreground">
+                                            @if (_refreshing)
+                                            {
+                                                <Skeleton Class="h-7 w-24 rounded-md" />
+                                            }
+                                            else
+                                            {
+                                                <span>@k.Prefix</span><NumberTicker Value="@k.Value" DurationMs="1400" /><span>@k.Suffix</span>
+                                            }
+                                        </div>
+                                        <Flex Align="center" Gap="1" Class="mt-1">
+                                            <DynamicIcon Name="TrendingUp" Class="h-3 w-3 text-primary" />
+                                            <Lumeo.Text Size="xs" Color="muted">@k.Trend</Lumeo.Text>
+                                        </Flex>
+                                    </div>
+                                }
+                            </div>
+                        </BlurFade>
+
+                        <!-- Charts -->
+                        <BlurFade DelayMs="120">
+                            <div class="mb-4 grid grid-cols-1 gap-3 lg:grid-cols-5">
+                                <div class="rounded-xl border border-border/50 bg-card overflow-hidden lg:col-span-3">
+                                    <Flex Align="center" Justify="between" Class="px-4 pt-4 pb-1">
+                                        <Stack Gap="0">
+                                            <Lumeo.Text Size="sm" Weight="semibold">Monthly recurring revenue</Lumeo.Text>
+                                            <Lumeo.Text Size="xs" Color="muted">Trailing 12 months</Lumeo.Text>
+                                        </Stack>
+                                        <Badge Variant="Badge.BadgeVariant.Success" Class="text-[10px] h-5">+38% YoY</Badge>
+                                    </Flex>
+                                    <div class="h-64 px-2 pb-2">
+                                        <AreaChart Categories="_trendMonths" Series="_trendSeries" Smooth="true" Gradient="true" ShowLegend="false" Height="100%" />
+                                    </div>
+                                </div>
+                                <div class="rounded-xl border border-border/50 bg-card overflow-hidden lg:col-span-2">
+                                    <Flex Align="center" Justify="between" Class="px-4 pt-4 pb-1">
+                                        <Stack Gap="0">
+                                            <Lumeo.Text Size="sm" Weight="semibold">New signups by plan</Lumeo.Text>
+                                            <Lumeo.Text Size="xs" Color="muted">By quarter</Lumeo.Text>
+                                        </Stack>
+                                    </Flex>
+                                    <div class="h-64 px-2 pb-2">
+                                        <BarChart Categories="_planQuarters" Series="_planSeries" Stacked="true" Height="100%" />
+                                    </div>
+                                </div>
+                            </div>
+                        </BlurFade>
+
+                        <!-- Activity -->
+                        <BlurFade DelayMs="180">
+                            <div class="rounded-xl border border-border/50 bg-card">
+                                <Flex Align="center" Justify="between" Class="border-b border-border/40 px-4 py-3">
+                                    <Lumeo.Text Size="sm" Weight="semibold">Recent activity</Lumeo.Text>
+                                    <Lumeo.Text Size="xs" Color="muted">Live feed</Lumeo.Text>
+                                </Flex>
+                                <Stack Gap="0" Class="divide-y divide-border/40">
+                                    @foreach (var a in NorthlightData.Activity)
+                                    {
+                                        <Flex Align="center" Gap="3" Class="px-4 py-3">
+                                            <span class="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-accent/50 text-primary">
+                                                <DynamicIcon Name="@a.Icon" Class="h-4 w-4" />
+                                            </span>
+                                            <Lumeo.Text Size="sm" Class="min-w-0 flex-1">
+                                                <Lumeo.Text As="span" Weight="medium">@a.Actor</Lumeo.Text>
+                                                <Lumeo.Text As="span" Color="muted"> @a.Action </Lumeo.Text>
+                                                <Lumeo.Text As="span">@a.Target</Lumeo.Text>
+                                            </Lumeo.Text>
+                                            <Lumeo.Text Size="xs" Color="muted" Class="shrink-0">@a.When</Lumeo.Text>
+                                        </Flex>
+                                    }
+                                </Stack>
+                            </div>
+                        </BlurFade>
+                    </div>
+                }
+                else if (_view == "board")
+                {
+                    <div @key="'b'">
+                        <BlurFade DelayMs="0">
+                            <Flex Align="center" Justify="between" Wrap="true" Gap="2" Class="mb-4">
+                                <Lumeo.Text Size="sm" Color="muted">Drag cards between columns · Q3 delivery sprint</Lumeo.Text>
+                                <Button Variant="Button.ButtonVariant.Outline" Size="Button.ButtonSize.Sm" OnClick="@(() => Toast.Info("New card", "This is a demo — cards are seeded in-memory."))">
+                                    <DynamicIcon Name="Plus" Class="mr-2 h-3.5 w-3.5" /> New card
+                                </Button>
+                            </Flex>
+                        </BlurFade>
+                        <BlurFade DelayMs="80">
+                            <div class="overflow-x-auto pb-2">
+                                <Kanban Class="!p-0 !gap-3 min-w-[900px]">
+                                    @BoardColumn("To do", _todo)
+                                    @BoardColumn("In progress", _doing)
+                                    @BoardColumn("In review", _review)
+                                    @BoardColumn("Done", _done)
+                                    <KanbanColumn Title="Archived" Badge="_archived.Count"
+                                                  Class="flex flex-1 min-w-0 flex-col rounded-lg border border-border/40 bg-background min-h-[130px]"
+                                                  OnDrop="@(_ => MoveCard(_archived, "Archived"))">
+                                        @if (_archived.Count == 0)
+                                        {
+                                            <EmptyState Title="Nothing archived" Description="Drag a finished card here to archive it." Class="py-8">
+                                                <IconContent><DynamicIcon Name="Archive" Class="h-8 w-8" /></IconContent>
+                                            </EmptyState>
+                                        }
+                                        else
+                                        {
+                                            @foreach (var card in _archived)
+                                            {
+                                                @DraggableCard(card)
+                                            }
+                                        }
+                                    </KanbanColumn>
+                                </Kanban>
+                            </div>
+                        </BlurFade>
+                    </div>
+                }
+                else if (_view == "customers")
+                {
+                    <div @key="'c'">
+                        <BlurFade DelayMs="0">
+                            <Lumeo.Text Size="sm" Color="muted" Class="mb-3 block">@_customers.Count customers · search, sort, filter and re-order columns. Rows virtualize for scroll performance.</Lumeo.Text>
+                        </BlurFade>
+                        <BlurFade DelayMs="60">
+                            <div class="rounded-xl border border-border/50 bg-card p-2 sm:p-3">
+                                <DataGrid TItem="NorthlightCustomer" Items="_customers"
+                                          ShowPagination="false" Height="calc(100dvh - 260px)"
+                                          ShowToolbar="true" ShowSearch="true" ShowColumnChooser="true" ShowExport="false"
+                                          Striped="true" Hoverable="true" Compact="true" Reorderable="true"
+                                          VirtualizeThreshold="200">
+                                    <DataGridColumnDef TItem="NorthlightCustomer" Title="Company" Field="Company" Sortable="true" Filterable="true" />
+                                    <DataGridColumnDef TItem="NorthlightCustomer" Title="Plan" Field="Plan" Sortable="true" Filterable="true">
+                                        <CellTemplate Context="c">
+                                            <Badge Variant="@PlanVariant(c.Plan)">@c.Plan</Badge>
+                                        </CellTemplate>
+                                    </DataGridColumnDef>
+                                    <DataGridColumnDef TItem="NorthlightCustomer" Title="Status" Field="Status" Sortable="true" Filterable="true">
+                                        <CellTemplate Context="c">
+                                            <Badge Variant="@StatusVariant(c.Status)">@c.Status</Badge>
+                                        </CellTemplate>
+                                    </DataGridColumnDef>
+                                    <DataGridColumnDef TItem="NorthlightCustomer" Title="Seats" Field="Seats" Sortable="true" Format="N0" />
+                                    <DataGridColumnDef TItem="NorthlightCustomer" Title="MRR ($/mo)" Field="Mrr" Sortable="true" Format="N0" Aggregate="AggregateType.Sum" />
+                                    <DataGridColumnDef TItem="NorthlightCustomer" Title="Owner" Field="Owner" Sortable="true" Filterable="true" />
+                                    <DataGridColumnDef TItem="NorthlightCustomer" Title="Signed up" Field="Signup" Sortable="true" Format="MMM d, yyyy" />
+                                </DataGrid>
+                            </div>
+                        </BlurFade>
+                    </div>
+                }
+                else if (_view == "settings")
+                {
+                    <div @key="'s'" class="max-w-3xl">
+                        <BlurFade DelayMs="0">
+                            <Tabs @bind-ActiveValue="_settingsTab">
+                                <TabsList>
+                                    <TabsTrigger Value="profile">Profile</TabsTrigger>
+                                    <TabsTrigger Value="notifications">Notifications</TabsTrigger>
+                                    <TabsTrigger Value="billing">Billing</TabsTrigger>
+                                </TabsList>
+
+                                <TabsContent Value="profile">
+                                    <Card>
+                                        <CardHeader>
+                                            <CardTitle>Profile</CardTitle>
+                                            <CardDescription>Update how you appear across the Northlight workspace.</CardDescription>
+                                        </CardHeader>
+                                        <CardContent>
+                                            <Stack Gap="4">
+                                                <FormField Label="Full name" Required="true" Error="@_nameError">
+                                                    <Input @bind-Value="_name" Placeholder="Your name" />
+                                                </FormField>
+                                                <FormField Label="Email">
+                                                    <Input @bind-Value="_email" type="email" />
+                                                </FormField>
+                                                <FormField Label="Role">
+                                                    <Select @bind-Value="_role" Placeholder="Select a role">
+                                                        <SelectTrigger><span>@(_role ?? "Select a role")</span></SelectTrigger>
+                                                        <SelectContent>
+                                                            <SelectItem Value="admin">Admin</SelectItem>
+                                                            <SelectItem Value="editor">Editor</SelectItem>
+                                                            <SelectItem Value="analyst">Analyst</SelectItem>
+                                                            <SelectItem Value="viewer">Viewer</SelectItem>
+                                                        </SelectContent>
+                                                    </Select>
+                                                </FormField>
+                                                <FormField Label="Timezone">
+                                                    <Select @bind-Value="_timezone" Searchable="true" Placeholder="Search timezones…">
+                                                        <SelectTrigger><span>@(_timezone ?? "Search timezones…")</span></SelectTrigger>
+                                                        <SelectContent>
+                                                            <SelectGroup>
+                                                                <SelectLabel>Americas</SelectLabel>
+                                                                <SelectItem Value="pst">Pacific (PST)</SelectItem>
+                                                                <SelectItem Value="est">Eastern (EST)</SelectItem>
+                                                            </SelectGroup>
+                                                            <SelectGroup>
+                                                                <SelectLabel>Europe</SelectLabel>
+                                                                <SelectItem Value="gmt">London (GMT)</SelectItem>
+                                                                <SelectItem Value="cet">Berlin (CET)</SelectItem>
+                                                            </SelectGroup>
+                                                        </SelectContent>
+                                                    </Select>
+                                                </FormField>
+                                            </Stack>
+                                        </CardContent>
+                                        <CardFooter>
+                                            <Flex Gap="2">
+                                                <Button OnClick="SaveProfile">Save changes</Button>
+                                                <Button Variant="Button.ButtonVariant.Ghost" OnClick="@(() => Toast.Info("Discarded", "No changes were saved."))">Cancel</Button>
+                                            </Flex>
+                                        </CardFooter>
+                                    </Card>
+                                </TabsContent>
+
+                                <TabsContent Value="notifications">
+                                    <Card>
+                                        <CardHeader>
+                                            <CardTitle>Notifications</CardTitle>
+                                            <CardDescription>Choose what Northlight emails you about.</CardDescription>
+                                        </CardHeader>
+                                        <CardContent>
+                                            <Stack Gap="1" Class="divide-y divide-border/40">
+                                                @foreach (var pref in _prefs)
+                                                {
+                                                    <Flex Align="center" Justify="between" Gap="4" Class="py-3">
+                                                        <Stack Gap="0" Class="min-w-0">
+                                                            <Lumeo.Text Size="sm" Weight="medium" Class="leading-none">@pref.Title</Lumeo.Text>
+                                                            <Lumeo.Text Size="sm" Color="muted">@pref.Description</Lumeo.Text>
+                                                        </Stack>
+                                                        <Switch @bind-Checked="pref.Enabled" />
+                                                    </Flex>
+                                                }
+                                            </Stack>
+                                        </CardContent>
+                                        <CardFooter>
+                                            <Button OnClick="SaveNotifications">Save preferences</Button>
+                                        </CardFooter>
+                                    </Card>
+                                </TabsContent>
+
+                                <TabsContent Value="billing">
+                                    <Card>
+                                        <CardHeader>
+                                            <CardTitle>Billing</CardTitle>
+                                            <CardDescription>You are on the <Lumeo.Text As="span" Weight="medium" Color="foreground">Pro</Lumeo.Text> plan.</CardDescription>
+                                        </CardHeader>
+                                        <CardContent>
+                                            <Stack Gap="5">
+                                                <Stack Gap="1.5">
+                                                    <Flex Align="center" Justify="between">
+                                                        <Lumeo.Text Size="sm" Weight="medium">Seats</Lumeo.Text>
+                                                        <Lumeo.Text Size="sm" Color="muted">24 of 30 used</Lumeo.Text>
+                                                    </Flex>
+                                                    <Progress Value="80" />
+                                                </Stack>
+                                                <Stack Gap="1.5">
+                                                    <Flex Align="center" Justify="between">
+                                                        <Lumeo.Text Size="sm" Weight="medium">Storage</Lumeo.Text>
+                                                        <Lumeo.Text Size="sm" Color="muted">62 GB of 100 GB</Lumeo.Text>
+                                                    </Flex>
+                                                    <Progress Value="62" />
+                                                </Stack>
+                                                <FormField Label="Change plan">
+                                                    <Select @bind-Value="_billingPlan">
+                                                        <SelectTrigger><span>@PlanLabel(_billingPlan)</span></SelectTrigger>
+                                                        <SelectContent>
+                                                            <SelectItem Value="starter">Starter — $12 / seat</SelectItem>
+                                                            <SelectItem Value="pro">Pro — $18 / seat</SelectItem>
+                                                            <SelectItem Value="enterprise">Enterprise — $26 / seat</SelectItem>
+                                                        </SelectContent>
+                                                    </Select>
+                                                </FormField>
+                                            </Stack>
+                                        </CardContent>
+                                        <CardFooter>
+                                            <Button OnClick="UpdatePlan">Update plan</Button>
+                                        </CardFooter>
+                                    </Card>
+                                </TabsContent>
+                            </Tabs>
+                        </BlurFade>
+                    </div>
+                }
+            </div>
+        </main>
+    </div>
+</SidebarProvider>
+
+<!-- Command palette -->
+@if (_paletteOpen)
+{
+    <div class="fixed inset-0 z-[100] flex items-start justify-center pt-[15vh]" role="dialog" aria-label="Command palette" @onkeydown="PaletteKeyDown">
+        <div class="absolute inset-0 bg-background/80" @onclick="ClosePalette"></div>
+        <div class="relative mx-4 w-full max-w-[480px] overflow-hidden rounded-[var(--radius-xl)] border border-border/40 bg-popover shadow-2xl" @onclick:stopPropagation>
+            <Lumeo.Command>
+                <CommandInput Placeholder="Search views and actions…" />
+                <CommandList>
+                    <CommandEmpty>No results found.</CommandEmpty>
+                    <CommandGroup Heading="Views">
+                        <CommandItem OnSelect="@(() => SelectFromPalette("dashboard"))" FilterValue="Dashboard">
+                            <DynamicIcon Name="LayoutDashboard" Class="mr-2 h-4 w-4" /> <span>Dashboard</span>
+                        </CommandItem>
+                        <CommandItem OnSelect="@(() => SelectFromPalette("board"))" FilterValue="Board">
+                            <DynamicIcon Name="Columns3" Class="mr-2 h-4 w-4" /> <span>Board</span>
+                        </CommandItem>
+                        <CommandItem OnSelect="@(() => SelectFromPalette("customers"))" FilterValue="Customers">
+                            <DynamicIcon Name="Users" Class="mr-2 h-4 w-4" /> <span>Customers</span>
+                        </CommandItem>
+                        <CommandItem OnSelect="@(() => SelectFromPalette("settings"))" FilterValue="Settings">
+                            <DynamicIcon Name="Settings" Class="mr-2 h-4 w-4" /> <span>Settings</span>
+                        </CommandItem>
+                    </CommandGroup>
+                    <CommandSeparator />
+                    <CommandGroup Heading="Actions">
+                        <CommandItem OnSelect="PaletteRefresh" FilterValue="Refresh data">
+                            <DynamicIcon Name="RefreshCw" Class="mr-2 h-4 w-4" /> <span>Refresh dashboard data</span>
+                        </CommandItem>
+                        <CommandItem OnSelect="@(() => { ClosePalette(); Toast.Success("Invite sent", "We emailed an invite to the new teammate."); })" FilterValue="Invite teammate">
+                            <DynamicIcon Name="UserPlus" Class="mr-2 h-4 w-4" /> <span>Invite teammate</span>
+                        </CommandItem>
+                    </CommandGroup>
+                </CommandList>
+            </Lumeo.Command>
+        </div>
+    </div>
+}
+
+@code {
+    private sealed record Kpi(string Label, string Icon, string Prefix, int Value, string Suffix, string Trend);
+    private sealed class NotifPref { public required string Title { get; init; } public required string Description { get; init; } public bool Enabled { get; set; } }
+
+    private string _view = "dashboard";
+    private bool _navCollapsed;
+    private bool _paletteOpen;
+    private bool _refreshing;
+    private string _settingsTab = "profile";
+
+    // Notifications
+    private int _unread = 3;
+    private IReadOnlyList<NorthlightActivity> _notifications = NorthlightData.Activity;
+
+    // Customers
+    private readonly IReadOnlyList<NorthlightCustomer> _customers = NorthlightData.Customers;
+
+    // Board columns (mutable — dragged between)
+    private List<BoardCard> _todo = default!, _doing = default!, _review = default!, _done = default!;
+    private readonly List<BoardCard> _archived = new();
+    private BoardCard? _dragCard;
+
+    // Settings form state
+    private string? _name = "Ava Chen";
+    private string? _email = "ava@northlight.app";
+    private string? _role = "admin";
+    private string? _timezone = "pst";
+    private string? _nameError;
+    private string _billingPlan = "pro";
+    private readonly List<NotifPref> _prefs = new()
+    {
+        new() { Title = "Weekly summary", Description = "A Monday digest of key metrics.", Enabled = true },
+        new() { Title = "Product updates", Description = "New features and changelog highlights.", Enabled = true },
+        new() { Title = "Mention alerts", Description = "When a teammate mentions you.", Enabled = false },
+        new() { Title = "Billing receipts", Description = "Invoices and payment confirmations.", Enabled = true },
+    };
+
+    private readonly List<IAsyncDisposable> _shortcuts = new();
+    private System.Threading.Timer? _refreshTimer;
+
+    // KPIs
+    private readonly Kpi[] _kpis =
+    {
+        new("MRR", "DollarSign", "$", 48231, "", "+8.2% MoM"),
+        new("Active projects", "LayoutDashboard", "", 128, "", "+11 this week"),
+        new("Weekly active users", "Users", "", 9318, "", "+4.6% WoW"),
+        new("Net revenue retention", "TrendingUp", "", 112, "%", "+3 pts QoQ"),
+    };
+
+    // Charts
+    private readonly List<string> _trendMonths = new() { "Jul", "Aug", "Sep", "Oct", "Nov", "Dec", "Jan", "Feb", "Mar", "Apr", "May", "Jun" };
+    private readonly List<AreaChart.ChartSeriesData> _trendSeries = new()
+    {
+        new() { Name = "MRR", Values = new() { 31200, 33100, 34800, 36900, 38400, 39800, 41200, 43100, 44500, 45900, 47100, 48231 } },
+    };
+    private readonly List<string> _planQuarters = new() { "Q1", "Q2", "Q3", "Q4" };
+    private readonly List<BarChart.ChartSeriesData> _planSeries = new()
+    {
+        new() { Name = "Starter",    Values = new() { 42, 55, 61, 74 } },
+        new() { Name = "Pro",        Values = new() { 28, 33, 41, 52 } },
+        new() { Name = "Enterprise", Values = new() { 6, 9, 11, 15 } },
+    };
+
+    protected override void OnInitialized()
+    {
+        (_todo, _doing, _review, _done) = NorthlightData.Board();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        try
+        {
+            // Start collapsed on phones so the icon rail (or the mobile sheet) doesn't
+            // eat the viewport; expanded on desktop.
+            await Responsive.EnsureInitialisedAsync();
+            if (Responsive.IsMobile && !_navCollapsed)
+            {
+                _navCollapsed = true;
+                StateHasChanged();
+            }
+
+            _shortcuts.Add(await Shortcuts.RegisterAsync("ctrl+k", OpenPaletteAsync));
+            _shortcuts.Add(await Shortcuts.RegisterAsync("meta+k", OpenPaletteAsync));
+        }
+        catch (Microsoft.JSInterop.JSDisconnectedException) { }
+        catch (InvalidOperationException) { /* JS unavailable during prerender */ }
+    }
+
+    private string CurrentTitle => _view switch
+    {
+        "board" => "Board",
+        "customers" => "Customers",
+        "settings" => "Settings",
+        _ => "Dashboard",
+    };
+
+    private string CurrentSubtitle => _view switch
+    {
+        "board" => "Track delivery work across the sprint.",
+        "customers" => "Every account, searchable and sortable.",
+        "settings" => "Manage your profile, alerts and plan.",
+        _ => "Your product's health at a glance.",
+    };
+
+    private string NavBtnClass(string key)
+    {
+        var active = _view == key;
+        var layout = _navCollapsed ? "justify-center px-2" : "gap-3 px-3";
+        var state = active
+            ? "bg-sidebar-accent text-sidebar-accent-foreground font-medium"
+            : "text-muted-foreground hover:bg-sidebar-accent hover:text-foreground";
+        return $"flex w-full items-center overflow-hidden rounded-lg py-2 text-sm transition-colors focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring {layout} {state}";
+    }
+
+    private void SetView(string key)
+    {
+        _view = key;
+        _nameError = null;
+        ClosePalette();
+        StateHasChanged();
+    }
+
+    private void OpenBilling()
+    {
+        _settingsTab = "billing";
+        SetView("settings");
+    }
+
+    private void LogOut() => Toast.Info("Signed out", "This is a demo — you weren't really logged in.");
+
+    private void MarkAllRead()
+    {
+        _unread = 0;
+        Toast.Success("All caught up", "Every notification is marked as read.");
+    }
+
+    // ---- Command palette ----
+    private void OpenPalette() { _paletteOpen = true; StateHasChanged(); }
+    private Task OpenPaletteAsync() { _paletteOpen = true; return InvokeAsync(StateHasChanged); }
+    private void ClosePalette() { _paletteOpen = false; StateHasChanged(); }
+    private void PaletteKeyDown(KeyboardEventArgs e) { if (e.Key == "Escape") ClosePalette(); }
+    private void SelectFromPalette(string view) { ClosePalette(); SetView(view); }
+    private void PaletteRefresh() { ClosePalette(); SetView("dashboard"); RefreshDashboard(); }
+
+    // ---- Dashboard refresh (loading state) ----
+    private void RefreshDashboard()
+    {
+        if (_refreshing) return;
+        _refreshing = true;
+        StateHasChanged();
+        _refreshTimer?.Dispose();
+        _refreshTimer = new System.Threading.Timer(_ => InvokeAsync(() =>
+        {
+            _refreshing = false;
+            Toast.Success("Dashboard refreshed", "Metrics are current as of just now.");
+            StateHasChanged();
+        }), null, 750, System.Threading.Timeout.Infinite);
+    }
+
+    // ---- Board drag & drop ----
+    private void OnDragStart(BoardCard c) => _dragCard = c;
+
+    private void MoveCard(List<BoardCard> target, string columnName)
+    {
+        if (_dragCard is null) return;
+        var moved = _todo.Remove(_dragCard) || _doing.Remove(_dragCard)
+                 || _review.Remove(_dragCard) || _done.Remove(_dragCard) || _archived.Remove(_dragCard);
+        if (moved && !target.Contains(_dragCard))
+        {
+            target.Add(_dragCard);
+            if (columnName == "Done")
+                Toast.Success("Marked as done", $"{_dragCard.Id} · {_dragCard.Title}");
+        }
+        _dragCard = null;
+        StateHasChanged();
+    }
+
+    private RenderFragment BoardColumn(string title, List<BoardCard> cards) =>
+        @<KanbanColumn Title="@title" Badge="cards.Count"
+                       Class="flex flex-1 min-w-0 flex-col rounded-lg border border-border/40 bg-background min-h-[130px]"
+                       OnDrop="@(_ => MoveCard(cards, title))">
+            @foreach (var card in cards)
+            {
+                @DraggableCard(card)
+            }
+        </KanbanColumn>;
+
+    private RenderFragment DraggableCard(BoardCard card) =>
+        @<div draggable="true" @ondragstart="@(() => OnDragStart(card))" @key="card"
+              class="mb-2 cursor-grab rounded-md border border-border/50 bg-card p-2.5 transition-colors hover:border-primary/40 active:cursor-grabbing">
+            <Flex Align="center" Justify="between" Class="mb-1.5">
+                <Badge Variant="Badge.BadgeVariant.Outline" Class="text-[10px] h-5">@card.Tag</Badge>
+                <Lumeo.Text Size="xs" Color="muted" Class="font-mono">@card.Id</Lumeo.Text>
+            </Flex>
+            <Lumeo.Text Size="sm" Weight="medium" Class="leading-snug">@card.Title</Lumeo.Text>
+            @if (!string.IsNullOrEmpty(card.Description))
+            {
+                <Lumeo.Text Size="xs" Color="muted" Class="mt-1 block leading-snug">@card.Description</Lumeo.Text>
+            }
+            <Flex Align="center" Justify="end" Class="mt-2">
+                <span class="inline-flex h-6 w-6 items-center justify-center rounded-full bg-accent/60 text-[10px] font-semibold text-foreground">@card.Assignee</span>
+            </Flex>
+        </div>;
+
+    // ---- Settings actions ----
+    private void SaveProfile()
+    {
+        if (string.IsNullOrWhiteSpace(_name))
+        {
+            _nameError = "Name is required.";
+            Toast.Error("Couldn't save", "Please enter your name.");
+            return;
+        }
+        _nameError = null;
+        Toast.Success("Profile saved", "Your changes are live across the workspace.");
+    }
+
+    private void SaveNotifications()
+    {
+        var on = _prefs.Count(p => p.Enabled);
+        Toast.Success("Preferences saved", $"{on} of {_prefs.Count} notification types enabled.");
+    }
+
+    private void UpdatePlan() => Toast.Success("Plan updated", $"You're now on the {PlanLabel(_billingPlan)} plan.");
+
+    private static string PlanLabel(string plan) => plan switch
+    {
+        "starter" => "Starter",
+        "enterprise" => "Enterprise",
+        _ => "Pro",
+    };
+
+    // ---- Badge variant mapping ----
+    private static Badge.BadgeVariant PlanVariant(string plan) => plan switch
+    {
+        "Enterprise" => Badge.BadgeVariant.Success,
+        "Pro" => Badge.BadgeVariant.Default,
+        "Starter" => Badge.BadgeVariant.Secondary,
+        _ => Badge.BadgeVariant.Outline,
+    };
+
+    private static Badge.BadgeVariant StatusVariant(string status) => status switch
+    {
+        "Active" => Badge.BadgeVariant.Success,
+        "Trial" => Badge.BadgeVariant.Default,
+        "Paused" => Badge.BadgeVariant.Warning,
+        _ => Badge.BadgeVariant.Destructive,
+    };
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_refreshTimer is not null) await _refreshTimer.DisposeAsync();
+        foreach (var s in _shortcuts)
+        {
+            try { await s.DisposeAsync(); }
+            catch (Microsoft.JSInterop.JSDisconnectedException) { }
+        }
+    }
+}

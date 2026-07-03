@@ -1,0 +1,36 @@
+@using Lumeo
+@inject Lumeo.Services.IToastService Toast
+
+@* Isolated Gantt host. This component is only ever *instantiated* after its parent
+   (EnterpriseScheduleView) has lazy-loaded Lumeo.Gantt.dll, so it may reference
+   Lumeo.Gantt value-types (GanttTask / GanttViewMode) freely — they resolve fine
+   because the assembly is present by the time the CLR constructs this component. *@
+
+<Gantt Tasks="_tasks"
+       ViewMode="GanttViewMode.Day"
+       Height="calc(100dvh - 16rem)"
+       Readonly="true"
+       TodayHighlight="true"
+       OnTaskClick="HandleTaskClick" />
+
+@code {
+    private List<GanttTask> _tasks = new();
+
+    protected override void OnInitialized()
+    {
+        var a = MeridianData.Anchor;
+        _tasks = MeridianData.Schedule.Select(b => new GanttTask(
+            Id: b.Id,
+            Name: b.Name,
+            Start: a.AddDays(b.StartOffsetDays),
+            End: a.AddDays(b.StartOffsetDays + Math.Max(b.DurationDays, b.IsMilestone ? 0 : 1)),
+            Progress: b.Progress,
+            Dependencies: b.Dependencies,
+            IsMilestone: b.IsMilestone,
+            GroupLabel: b.Lane
+        )).ToList();
+    }
+
+    private void HandleTaskClick(GanttTask t) =>
+        Toast.Info(t.Name, t.IsMilestone ? "Milestone" : $"{t.Progress}% complete · starts {t.Start:MMM d}");
+}

@@ -1,0 +1,166 @@
+@using Lumeo.Docs.Shared
+@inject Lumeo.Services.IToastService Toast
+
+@* Approvals / workflow desk — master list + detail. The detail combines a Steps
+   progress tracker, a Timeline of the request history, a controlled Dialog for the
+   full record and ConfirmButton guards on the approve / reject actions. *@
+
+<div class="flex h-full min-h-0 flex-col gap-3 p-3 sm:p-4">
+    <header class="shrink-0">
+        <h1 class="text-lg font-semibold tracking-tight">Approvals</h1>
+        <p class="text-sm text-muted-foreground">@_pending pending across procurement, labour, vendor and capital requests.</p>
+    </header>
+
+    <div class="grid min-h-0 flex-1 gap-3 lg:grid-cols-[320px_1fr]">
+
+        <!-- Master list -->
+        <div class="flex min-h-0 flex-col gap-2 overflow-y-auto lg:pr-1">
+            @foreach (var a in MeridianData.Approvals)
+            {
+                var active = a.Id == _selected.Id;
+                <button type="button" @onclick="() => Select(a)"
+                        class="@CardClass(active)">
+                    <div class="flex items-center justify-between gap-2">
+                        <span class="font-mono text-[11px] text-muted-foreground">@a.Id</span>
+                        <Badge Variant="@CategoryVariant(a.Category)">@a.Category</Badge>
+                    </div>
+                    <div class="mt-1 line-clamp-2 text-sm font-medium">@a.Title</div>
+                    <div class="mt-1.5 flex items-center justify-between text-xs text-muted-foreground">
+                        <span>@a.Requester</span>
+                        <span class="tabular-nums">@(a.Amount > 0 ? $"€{a.Amount:N0}" : "—")</span>
+                    </div>
+                </button>
+            }
+        </div>
+
+        <!-- Detail -->
+        <div class="flex min-h-0 flex-col overflow-y-auto rounded-lg border border-border/60 bg-card">
+            <div class="flex flex-wrap items-start justify-between gap-3 border-b border-border/60 p-4">
+                <div class="min-w-0">
+                    <div class="flex items-center gap-2">
+                        <Badge Variant="@CategoryVariant(_selected.Category)">@_selected.Category</Badge>
+                        <span class="font-mono text-xs text-muted-foreground">@_selected.Id</span>
+                    </div>
+                    <h2 class="mt-1.5 text-base font-semibold">@_selected.Title</h2>
+                    <p class="text-sm text-muted-foreground">@_selected.Requester · @_selected.RequesterRole · submitted @_selected.Submitted</p>
+                </div>
+                <div class="text-right">
+                    <div class="text-[11px] uppercase tracking-wide text-muted-foreground">Amount</div>
+                    <div class="text-lg font-semibold tabular-nums">@(_selected.Amount > 0 ? $"€{_selected.Amount:N0}" : "—")</div>
+                </div>
+            </div>
+
+            <div class="flex flex-col gap-6 p-4">
+                <!-- Workflow -->
+                <section>
+                    <h3 class="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Workflow</h3>
+                    <Steps CurrentStep="@_currentStep">
+                        @foreach (var s in _selected.Steps)
+                        {
+                            <StepsItem Title="@s.Title" Description="@s.Description" />
+                        }
+                    </Steps>
+                </section>
+
+                <!-- History -->
+                <section>
+                    <h3 class="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">History</h3>
+                    <Timeline>
+                        @foreach (var e in _selected.History)
+                        {
+                            <TimelineItem Title="@e.Title" Description="@e.Description" Time="@e.Time" />
+                        }
+                    </Timeline>
+                </section>
+            </div>
+
+            <!-- Actions -->
+            <div class="mt-auto flex flex-wrap items-center gap-2 border-t border-border/60 p-4">
+                <ConfirmButton Title="Approve this request?"
+                               Description="@($"Advances {_selected.Id} to the next stage of its workflow.")"
+                               ConfirmText="Approve" CancelText="Not yet"
+                               OnConfirm="Approve">
+                    <DynamicIcon Name="Check" Class="mr-1.5 h-4 w-4" /> Approve
+                </ConfirmButton>
+                <ConfirmButton Variant="Button.ButtonVariant.Destructive"
+                               Title="Reject this request?"
+                               Description="@($"{_selected.Id} will be returned to {_selected.Requester} with your note.")"
+                               ConfirmText="Reject" CancelText="Cancel" IsDestructive="true"
+                               OnConfirm="Reject">
+                    <DynamicIcon Name="X" Class="mr-1.5 h-4 w-4" /> Reject
+                </ConfirmButton>
+                <div class="flex-1"></div>
+                <Button Variant="Button.ButtonVariant.Outline" OnClick="@(() => _dialogOpen = true)">
+                    <DynamicIcon Name="FileText" Class="mr-1.5 h-4 w-4" /> View request
+                </Button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Full-record dialog (controlled) -->
+<Dialog @bind-Open="_dialogOpen">
+    <DialogContent>
+        <DialogHeader>
+            <DialogTitle>@_selected.Title</DialogTitle>
+            <DialogDescription>@_selected.Id · @_selected.Category · @_selected.Requester</DialogDescription>
+        </DialogHeader>
+        <div class="space-y-4 py-2 text-sm">
+            <p class="text-muted-foreground">@_selected.Summary</p>
+            <div class="grid grid-cols-2 gap-3">
+                <div class="rounded-md border border-border/60 p-3">
+                    <div class="text-[11px] uppercase tracking-wide text-muted-foreground">Requested by</div>
+                    <div class="font-medium">@_selected.Requester</div>
+                    <div class="text-xs text-muted-foreground">@_selected.RequesterRole</div>
+                </div>
+                <div class="rounded-md border border-border/60 p-3">
+                    <div class="text-[11px] uppercase tracking-wide text-muted-foreground">Amount</div>
+                    <div class="font-medium tabular-nums">@(_selected.Amount > 0 ? $"€{_selected.Amount:N0}" : "No cost")</div>
+                    <div class="text-xs text-muted-foreground">Stage @(_currentStep + 1) of @_selected.Steps.Count</div>
+                </div>
+            </div>
+        </div>
+        <DialogFooter>
+            <DialogClose>
+                <Button Variant="Button.ButtonVariant.Outline">Close</Button>
+            </DialogClose>
+        </DialogFooter>
+    </DialogContent>
+</Dialog>
+
+@code {
+    private ApprovalRequest _selected = MeridianData.Approvals[0];
+    private int _currentStep = MeridianData.Approvals[0].CurrentStep;
+    private bool _dialogOpen;
+
+    private int _pending = MeridianData.Approvals.Count;
+
+    private void Select(ApprovalRequest a)
+    {
+        _selected = a;
+        _currentStep = a.CurrentStep;
+    }
+
+    private void Approve()
+    {
+        if (_currentStep < _selected.Steps.Count - 1) _currentStep++;
+        Toast.Success("Request approved", $"{_selected.Id} advanced to “{_selected.Steps[_currentStep].Title}”.");
+    }
+
+    private void Reject() => Toast.Error("Request rejected", $"{_selected.Id} returned to {_selected.Requester}.");
+
+    private static string CardClass(bool active) =>
+        "w-full rounded-lg border p-3 text-left transition-colors " +
+        (active
+            ? "border-primary/50 bg-primary/5 ring-1 ring-primary/20"
+            : "border-border/60 bg-card hover:border-border hover:bg-accent/40");
+
+    private static Badge.BadgeVariant CategoryVariant(string c) => c switch
+    {
+        "CapEx" => Badge.BadgeVariant.Warning,
+        "Rate Card" => Badge.BadgeVariant.Default,
+        "Vendor" => Badge.BadgeVariant.Secondary,
+        "Labour" => Badge.BadgeVariant.Outline,
+        _ => Badge.BadgeVariant.Secondary,
+    };
+}

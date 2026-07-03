@@ -1,0 +1,82 @@
+@namespace Lumeo.Docs.Pages.Demos
+@inherits LayoutComponentBase
+@using Lumeo
+@using Lumeo.Docs.Shared
+@inject Lumeo.Services.ThemeService ThemeService
+
+@* -----------------------------------------------------------------------------
+   Full-bleed layout for the Northlight SaaS demo. It deliberately bypasses the
+   docs MainLayout (the page sets @layout to this) so the route renders as a real
+   product experience, not a docs page. All that sits above the app is a slim
+   strip that links back into the docs. Toast + overlay providers are mounted
+   here because MainLayout's copies never render on this route.
+----------------------------------------------------------------------------- *@
+
+<div class="flex h-screen flex-col overflow-hidden bg-background text-foreground">
+
+    <!-- Slim "you're in a Lumeo demo" strip -->
+    <div class="flex h-9 shrink-0 items-center justify-between gap-3 border-b border-border/50 bg-muted/40 px-3 sm:px-4">
+        <Flex Align="center" Gap="2" Class="min-w-0">
+            <span class="inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-primary animate-pulse"></span>
+            <Lumeo.Text As="span" Size="xs" Color="muted" Class="truncate">
+                <Lumeo.Text As="span" Class="font-medium text-foreground">Northlight</Lumeo.Text>
+                <Lumeo.Text As="span" Class="hidden sm:inline"> — a fictional analytics SaaS, built entirely with Lumeo</Lumeo.Text>
+            </Lumeo.Text>
+        </Flex>
+        <Flex Align="center" Gap="1" Class="shrink-0">
+            <a href="/" class="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium text-muted-foreground no-underline transition-colors hover:bg-accent hover:text-foreground">
+                <DynamicIcon Name="ArrowLeft" Class="h-3.5 w-3.5" />
+                <span class="hidden sm:inline">Back to docs</span>
+            </a>
+            <a href="/components" class="hidden items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium text-muted-foreground no-underline transition-colors hover:bg-accent hover:text-foreground sm:inline-flex">
+                <DynamicIcon Name="LayoutGrid" Class="h-3.5 w-3.5" />
+                Components
+            </a>
+            <button type="button"
+                    class="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                    @onclick="ToggleDarkMode"
+                    aria-label="@(_dark ? "Switch to light mode" : "Switch to dark mode")"
+                    title="Toggle dark mode">
+                @if (_dark)
+                {
+                    <DynamicIcon Name="Sun" Class="h-3.5 w-3.5" />
+                }
+                else
+                {
+                    <DynamicIcon Name="Moon" Class="h-3.5 w-3.5" />
+                }
+            </button>
+        </Flex>
+    </div>
+
+    <!-- The app owns the rest of the viewport -->
+    <div class="min-h-0 flex-1">
+        @Body
+    </div>
+</div>
+
+<OverlayProvider />
+<ToastProvider Position="ToastViewport.ToastPosition.BottomRight" />
+
+@code {
+    private bool _dark;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        try
+        {
+            await ThemeService.InitializeAsync();
+            _dark = ThemeService.IsDark;
+            StateHasChanged();
+        }
+        catch (Microsoft.JSInterop.JSException) { /* prerender — themeManager not ready */ }
+        catch (Microsoft.JSInterop.JSDisconnectedException) { }
+    }
+
+    private async Task ToggleDarkMode()
+    {
+        await ThemeService.ToggleModeAsync();
+        _dark = ThemeService.IsDark;
+    }
+}

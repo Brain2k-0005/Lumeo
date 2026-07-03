@@ -1,0 +1,123 @@
+@page "/demos/enterprise"
+@layout EnterpriseDemoLayout
+@using Lumeo.Docs.Shared
+@inject Lumeo.Services.ThemeService ThemeService
+
+<PageTitle>Meridian Ops — Enterprise Console (Lumeo demo)</PageTitle>
+
+@* ====================================================================================
+   Meridian Ops — a fictional logistics/operations console built entirely from Lumeo
+   components on deterministic in-memory data. Full-page app shell: a slim top strip,
+   a left view-rail (horizontal tabs on small screens) and a scrollable work surface.
+==================================================================================== *@
+
+<div class="flex h-[100dvh] flex-col overflow-hidden">
+
+    <!-- Slim top strip -->
+    <header class="flex h-12 shrink-0 items-center gap-3 border-b border-border/60 bg-card/60 px-3 backdrop-blur supports-[backdrop-filter]:bg-card/40 sm:px-4">
+        <div class="flex items-center gap-2">
+            <div class="flex h-7 w-7 items-center justify-center rounded-md bg-primary text-primary-foreground shadow-sm">
+                <DynamicIcon Name="Boxes" Class="h-4 w-4" />
+            </div>
+            <div class="leading-none">
+                <div class="flex items-center gap-2">
+                    <span class="text-sm font-semibold tracking-tight">Meridian Ops</span>
+                    <Badge Variant="Badge.BadgeVariant.Success" Class="hidden gap-1 sm:inline-flex">
+                        <span class="h-1.5 w-1.5 animate-pulse rounded-full bg-current"></span>Live
+                    </Badge>
+                </div>
+                <span class="hidden text-[11px] text-muted-foreground sm:block">Global freight control tower</span>
+            </div>
+        </div>
+
+        <div class="flex-1"></div>
+
+        <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Icon" Class="h-8 w-8"
+                OnClick="ToggleDark" title="Toggle dark mode"
+                aria-label="@(_dark ? "Switch to light mode" : "Switch to dark mode")">
+            @if (_dark)
+            {
+                <DynamicIcon Name="Sun" Class="h-4 w-4" />
+            }
+            else
+            {
+                <DynamicIcon Name="Moon" Class="h-4 w-4" />
+            }
+        </Button>
+        <Lumeo.Link Href="/components/data-grid"
+                    Class="inline-flex h-8 items-center gap-1.5 rounded-md border border-border bg-background px-2.5 text-xs font-medium text-muted-foreground no-underline transition-colors hover:bg-accent hover:text-foreground">
+            <DynamicIcon Name="ArrowLeft" Class="h-3.5 w-3.5" />
+            <span class="hidden sm:inline">Back to docs</span>
+        </Lumeo.Link>
+    </header>
+
+    <!-- Body: rail + work surface -->
+    <div class="flex min-h-0 flex-1 overflow-hidden">
+
+        <!-- View rail (vertical on lg, horizontal scroller below) -->
+        <nav class="flex shrink-0 gap-1 overflow-x-auto border-b border-border/60 bg-card/30 p-2 lg:w-56 lg:flex-col lg:overflow-x-visible lg:border-b-0 lg:border-r"
+             aria-label="Console sections">
+            @foreach (var item in _views)
+            {
+                var active = item.View == _view;
+                <button type="button" @onclick="() => _view = item.View"
+                        aria-current="@(active ? "page" : null)"
+                        class="@RailClass(active)">
+                    <DynamicIcon Name="@item.Icon" Class="h-4 w-4 shrink-0" />
+                    <span class="whitespace-nowrap">@item.Label</span>
+                    @if (item.Count is { } c)
+                    {
+                        <span class="ml-auto hidden rounded-full bg-muted px-1.5 text-[10px] font-medium tabular-nums text-muted-foreground lg:inline">@c</span>
+                    }
+                </button>
+            }
+            <div class="mt-auto hidden px-2 pb-1 pt-4 text-[11px] leading-relaxed text-muted-foreground lg:block">
+                Built with Lumeo — DataGrid, Gantt, Steps, Timeline, Dialog &amp; Forms on in-memory demo data.
+            </div>
+        </nav>
+
+        <!-- Work surface -->
+        <main class="min-w-0 flex-1 overflow-y-auto">
+            @switch (_view)
+            {
+                case ConsoleView.Shipments: <EnterpriseShipmentsView />; break;
+                case ConsoleView.Schedule:  <EnterpriseScheduleView />;  break;
+                case ConsoleView.Approvals: <EnterpriseApprovalsView />; break;
+                case ConsoleView.Audit:     <EnterpriseAuditView />;     break;
+                case ConsoleView.Editor:    <EnterpriseRecordEditorView />; break;
+            }
+        </main>
+    </div>
+</div>
+
+@code {
+    public enum ConsoleView { Shipments, Schedule, Approvals, Audit, Editor }
+
+    private ConsoleView _view = ConsoleView.Shipments;
+    private bool _dark;
+
+    private sealed record RailItem(ConsoleView View, string Label, string Icon, int? Count);
+
+    private readonly RailItem[] _views =
+    {
+        new(ConsoleView.Shipments, "Shipments", "Truck", MeridianData.Shipments.Count),
+        new(ConsoleView.Schedule,  "Schedule",  "CalendarClock", null),
+        new(ConsoleView.Approvals, "Approvals", "ClipboardCheck", MeridianData.Approvals.Count),
+        new(ConsoleView.Audit,     "Audit log", "ScrollText", MeridianData.Audit.Count),
+        new(ConsoleView.Editor,    "New record", "SquarePen", null),
+    };
+
+    protected override void OnInitialized() => _dark = ThemeService.IsDark;
+
+    private async Task ToggleDark()
+    {
+        await ThemeService.ToggleModeAsync();
+        _dark = ThemeService.IsDark;
+    }
+
+    private static string RailClass(bool active) =>
+        "flex items-center gap-2 rounded-md px-2.5 py-2 text-sm font-medium transition-colors " +
+        (active
+            ? "bg-accent text-accent-foreground"
+            : "text-muted-foreground hover:bg-accent/60 hover:text-foreground");
+}

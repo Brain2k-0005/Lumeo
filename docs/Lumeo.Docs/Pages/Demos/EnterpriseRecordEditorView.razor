@@ -1,0 +1,191 @@
+@using Lumeo.Docs.Shared
+@inject Lumeo.Services.IToastService Toast
+
+@* Form-heavy record editor — booking a new shipment. Exercises FormField validation,
+   a hierarchical Cascader (region → port), Select, Segmented, DatePicker, numeric
+   Inputs, a Textarea and a Switch, with client-side validation on submit. *@
+
+<div class="mx-auto flex h-full min-h-0 w-full max-w-3xl flex-col gap-3 p-3 sm:p-4">
+    <header class="shrink-0">
+        <h1 class="text-lg font-semibold tracking-tight">New shipment booking</h1>
+        <p class="text-sm text-muted-foreground">Draft reference <span class="font-mono text-foreground">@_reference</span> · fields marked * are required.</p>
+    </header>
+
+    <div class="min-h-0 flex-1 overflow-y-auto">
+        <div class="rounded-lg border border-border/60 bg-card p-4 sm:p-6">
+            <div class="grid gap-5 sm:grid-cols-2">
+
+                <FormField Name="lane" Label="Destination hub *" Error="@_laneErr"
+                           HelpText="Region, then discharge port." Class="sm:col-span-2">
+                    <Cascader Options="_laneOptions" @bind-Value="_lane"
+                              Placeholder="Select region → port" Clearable="true" ShowSearch="true"
+                              Invalid="@(_laneErr is not null)" />
+                </FormField>
+
+                <FormField Name="carrier" Label="Carrier *" Error="@_carrierErr">
+                    <Select @bind-Value="_carrier">
+                        <SelectTrigger>
+                            <Lumeo.Text As="span" Class="@(_carrier is null ? "text-muted-foreground" : "")">@(_carrier ?? "Select carrier")</Lumeo.Text>
+                        </SelectTrigger>
+                        <SelectContent>
+                            @foreach (var c in _carriers)
+                            {
+                                <SelectItem Value="@c">@c</SelectItem>
+                            }
+                        </SelectContent>
+                    </Select>
+                </FormField>
+
+                <FormField Name="mode" Label="Mode *" Error="@_modeErr">
+                    <Select @bind-Value="_mode">
+                        <SelectTrigger>
+                            <Lumeo.Text As="span" Class="@(_mode is null ? "text-muted-foreground" : "")">@(_mode ?? "Select mode")</Lumeo.Text>
+                        </SelectTrigger>
+                        <SelectContent>
+                            @foreach (var m in _modes)
+                            {
+                                <SelectItem Value="@m">@m</SelectItem>
+                            }
+                        </SelectContent>
+                    </Select>
+                </FormField>
+
+                <FormField Name="priority" Label="Priority" Class="sm:col-span-2">
+                    <Segmented @bind-Value="_priority">
+                        <SegmentedItem Value="Standard">Standard</SegmentedItem>
+                        <SegmentedItem Value="Expedited">Expedited</SegmentedItem>
+                        <SegmentedItem Value="Critical">Critical</SegmentedItem>
+                    </Segmented>
+                </FormField>
+
+                <FormField Name="pickup" Label="Requested pickup *" Error="@_pickupErr">
+                    <DatePicker @bind-Value="_pickup" MinDate="_minPickup" Placeholder="Pick a date" />
+                </FormField>
+
+                <FormField Name="value" Label="Declared value (€) *" Error="@_valueErr">
+                    <Input Type="number" @bind-Value="_value" Placeholder="0" />
+                </FormField>
+
+                <FormField Name="weight" Label="Gross weight (kg)" HelpText="Optional at draft stage.">
+                    <Input Type="number" @bind-Value="_weight" Placeholder="0" />
+                </FormField>
+
+                <FormField Name="hazmat" Label="Dangerous goods">
+                    <div class="flex items-center gap-2">
+                        <Switch @bind-Checked="_hazmat" />
+                        <Lumeo.Text As="span" Size="sm" Color="muted">Requires ADR/IMDG documentation</Lumeo.Text>
+                    </div>
+                </FormField>
+
+                <FormField Name="notes" Label="Handling notes" Class="sm:col-span-2">
+                    <Textarea @bind-Value="_notes" Placeholder="Temperature range, stacking limits, special handling…" />
+                </FormField>
+            </div>
+
+            <Separator Class="my-5" />
+
+            <div class="flex flex-wrap items-center gap-2">
+                <Button OnClick="Submit">
+                    <DynamicIcon Name="Check" Class="mr-1.5 h-4 w-4" /> Create booking
+                </Button>
+                <Button Variant="Button.ButtonVariant.Outline" OnClick="Reset">Reset</Button>
+                <div class="flex-1"></div>
+                @if (_submitted)
+                {
+                    <span class="inline-flex items-center gap-1.5 text-sm text-success-text">
+                        <DynamicIcon Name="CircleCheck" Class="h-4 w-4" /> Booking created
+                    </span>
+                }
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    private readonly string _reference = "MRD-DRAFT-0641";
+    private readonly DateOnly _minPickup = DateOnly.FromDateTime(MeridianData.Anchor);
+
+    private readonly string[] _carriers =
+        { "NordFreight", "Vanguard Cargo", "Meridian Direct", "AlpineHaul", "IberLine", "BalticBridge", "CentroLog", "SkyReach Air", "BlueWave Sea" };
+    private readonly string[] _modes = { "Road", "Rail", "Air", "Sea" };
+
+    private readonly List<Cascader.CascaderOption> _laneOptions = new()
+    {
+        new() { Label = "North", Value = "North", Children = new()
+        {
+            new() { Label = "Rotterdam (RTM)", Value = "RTM" },
+            new() { Label = "Hamburg (HAM)", Value = "HAM" },
+            new() { Label = "Bremerhaven (BRV)", Value = "BRV" },
+            new() { Label = "Gothenburg (GOT)", Value = "GOT" },
+        } },
+        new() { Label = "West", Value = "West", Children = new()
+        {
+            new() { Label = "Antwerp (ANR)", Value = "ANR" },
+            new() { Label = "Felixstowe (FXT)", Value = "FXT" },
+            new() { Label = "Le Havre (LEH)", Value = "LEH" },
+        } },
+        new() { Label = "South", Value = "South", Children = new()
+        {
+            new() { Label = "Barcelona (BCN)", Value = "BCN" },
+            new() { Label = "Genoa (GOA)", Value = "GOA" },
+            new() { Label = "Piraeus (PIR)", Value = "PIR" },
+            new() { Label = "Valencia (VLC)", Value = "VLC" },
+        } },
+        new() { Label = "East", Value = "East", Children = new()
+        {
+            new() { Label = "Gdansk (GDN)", Value = "GDN" },
+        } },
+    };
+
+    // Working state
+    private List<string>? _lane;
+    private string? _carrier;
+    private string? _mode;
+    private string _priority = "Standard";
+    private DateOnly? _pickup;
+    private string? _value;
+    private string? _weight;
+    private bool _hazmat;
+    private string? _notes;
+    private bool _submitted;
+
+    // Errors
+    private string? _laneErr, _carrierErr, _modeErr, _pickupErr, _valueErr;
+
+    private void Submit()
+    {
+        _submitted = false;
+        _laneErr = _lane is { Count: > 0 } ? null : "Select a destination hub.";
+        _carrierErr = _carrier is null ? "Choose a carrier." : null;
+        _modeErr = _mode is null ? "Choose a transport mode." : null;
+        _pickupErr = _pickup is null ? "Pick a requested pickup date." : null;
+
+        if (string.IsNullOrWhiteSpace(_value))
+            _valueErr = "Enter the declared value.";
+        else if (!decimal.TryParse(_value, out var v) || v <= 0)
+            _valueErr = "Value must be a positive number.";
+        else
+            _valueErr = null;
+
+        if (_laneErr is null && _carrierErr is null && _modeErr is null && _pickupErr is null && _valueErr is null)
+        {
+            _submitted = true;
+            Toast.Success("Booking created", $"{_reference} queued via {_carrier} ({_mode}).");
+        }
+        else
+        {
+            Toast.Error("Check the form", "Some required fields need your attention.");
+        }
+    }
+
+    private void Reset()
+    {
+        _lane = null;
+        _carrier = _mode = _value = _weight = _notes = null;
+        _priority = "Standard";
+        _pickup = null;
+        _hazmat = false;
+        _submitted = false;
+        _laneErr = _carrierErr = _modeErr = _pickupErr = _valueErr = null;
+    }
+}

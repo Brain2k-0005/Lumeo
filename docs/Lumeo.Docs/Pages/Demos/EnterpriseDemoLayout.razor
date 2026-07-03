@@ -1,0 +1,30 @@
+@inherits LayoutComponentBase
+@inject Lumeo.Services.ThemeService ThemeService
+
+@* ------------------------------------------------------------------------------------
+   Full-bleed layout for the Meridian Ops demo.
+
+   The docs MainLayout wraps every non-home route in the docs navbar + sidebar. This
+   demo is a standalone product experience, so the page opts out with `@layout
+   EnterpriseDemoLayout` and this layout supplies only what a full app needs: the
+   theme-token surface, the overlay host (Dialog / ConfirmButton) and the toast host.
+   It deliberately renders NO docs chrome — the page draws its own slim top strip.
+------------------------------------------------------------------------------------ *@
+
+<div class="min-h-[100dvh] bg-background text-foreground antialiased">
+    @Body
+</div>
+
+<OverlayProvider />
+<ToastProvider Position="ToastViewport.ToastPosition.BottomRight" />
+
+@code {
+    // Apply the visitor's persisted theme + dark-mode choice (set in the docs
+    // customizer) so the demo honours it instead of resetting to light.
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        try { await ThemeService.InitializeAsync(); }
+        catch (Exception ex) { Console.WriteLine($"[MeridianOps] theme init: {ex.Message}"); }
+    }
+}
