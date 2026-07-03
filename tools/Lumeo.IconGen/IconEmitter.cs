@@ -17,6 +17,15 @@ public static class IconEmitter
 {
     private const string DefaultViewBox = "0 0 24 24";
 
+    // Icon names that collide with an inherited System.Object member (e.g. Phosphor's `equals`
+    // icon → `Equals`). A same-named static property hides the inherited member, which -warnaserror
+    // turns into a fatal CS0108; the `new` modifier declares the hiding intentional and silences it
+    // while keeping the member name identical to upstream.
+    private static readonly HashSet<string> ObjectMembers = new(StringComparer.Ordinal)
+    {
+        "Equals", "GetHashCode", "GetType", "ToString", "ReferenceEquals", "MemberwiseClone", "Finalize",
+    };
+
     /// <summary>Emits every file for <paramref name="config"/>; returns the written file paths.</summary>
     public static IReadOnlyList<string> Emit(PackConfig config, IReadOnlyList<EmitIcon> icons)
     {
@@ -70,8 +79,9 @@ public static class IconEmitter
         {
             sb.Append("    /// <summary>").Append(config.PackName).Append(" <c>")
               .Append(icon.Upstream).Append("</c>.</summary>\n");
-            sb.Append("    public static global::Lumeo.IconSource ").Append(icon.Name)
-              .Append(" => ").Append(RenderFactory(config, icon.Parsed)).Append(";\n");
+            var newModifier = ObjectMembers.Contains(icon.Name) ? "new " : "";
+            sb.Append("    public static ").Append(newModifier).Append("global::Lumeo.IconSource ")
+              .Append(icon.Name).Append(" => ").Append(RenderFactory(config, icon.Parsed)).Append(";\n");
         }
 
         sb.Append("}\n");

@@ -67,6 +67,14 @@ public sealed record PackConfig
     public Func<string, bool>? NameFilter { get; init; }
 
     /// <summary>
+    /// Optional transform applied to the raw upstream file name (without extension) BEFORE
+    /// PascalCasing. Phosphor weights encode the weight in the file name (e.g.
+    /// <c>house-duotone.svg</c>); the weight lives in the class (<c>PhosphorDuotone</c>), not the
+    /// member, so the suffix is stripped here to yield <c>House</c>. <c>null</c> is identity.
+    /// </summary>
+    public Func<string, string>? UpstreamNameTransform { get; init; }
+
+    /// <summary>
     /// Overrides / additions keyed by PascalCase name, merged over the upstream SVGs. Used to vendor
     /// icons that upstream dropped (e.g. Lucide removed brand marks like <c>github</c> from core).
     /// Value is a raw <c>&lt;svg&gt;</c> document parsed the same way as an upstream file.

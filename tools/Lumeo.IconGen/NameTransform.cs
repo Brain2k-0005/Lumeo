@@ -29,6 +29,19 @@ public static class NameTransform
         return char.IsDigit(id[0]) ? "_" + id : id;
     }
 
+    /// <summary>
+    /// Strips a trailing <c>-{suffix}</c> weight marker from an upstream Phosphor file name so the
+    /// generated member carries only the base name (the weight lives in the class). For example
+    /// <c>StripSuffix("house-duotone", "duotone")</c> → <c>house</c>. The suffix is removed only when
+    /// it appears as a whole trailing hyphen-delimited segment; names that merely end in the letters
+    /// (there are none in Phosphor, but the guard keeps it safe) are returned unchanged.
+    /// </summary>
+    public static string StripSuffix(string name, string suffix)
+    {
+        var tail = "-" + suffix;
+        return name.EndsWith(tail, StringComparison.Ordinal) ? name[..^tail.Length] : name;
+    }
+
     // Values that are already renderer-neutral and must NOT be rewritten to currentColor.
     private static readonly HashSet<string> NeutralColors = new(StringComparer.OrdinalIgnoreCase)
     {

@@ -6,23 +6,54 @@ using Lumeo.IconGen;
 //
 // Phase 0 mode ("lumeo-icons", the default): vendor the exact set of Lucide icons that Lumeo's own
 // source references into src/Lumeo/Icons/LumeoIcons.g.cs, decoupling the core from Blazicons.
-//
-//   lumeo-icon-gen [lumeo-icons] [--repo <root>] [--zip <cachedZip>]
-//
 // The union is derived from truth (a regex scan of src/**/*.{cs,razor}), so it never drifts.
+//
+// Phase 1 pack modes: emit the FULL upstream set of a pack into a dedicated src/Lumeo.Icons.*
+// project (Lucide, Tabler[+TablerFilled], Phosphor + 5 weights). "all" generates every pack.
+//
+//   lumeo-icon-gen [lumeo-icons | lucide | tabler | phosphor[-bold|-fill|-duotone|-light|-thin] | all]
+//                  [--repo <root>] [--zip <cachedZip>]
 
 var mode = args.FirstOrDefault(a => !a.StartsWith('-')) ?? "lumeo-icons";
 var repoRoot = OptionValue("--repo") ?? FindRepoRoot();
 var zipOverride = OptionValue("--zip");
 
-if (mode != "lumeo-icons")
-{
-    Console.Error.WriteLine($"Unknown mode '{mode}'. Phase 0 supports only 'lumeo-icons'.");
-    return 2;
-}
-
 var cacheDir = Path.Combine(repoRoot, "tools", "Lumeo.IconGen", ".cache");
 Directory.CreateDirectory(cacheDir);
+
+// Phase 1: pack modes emit a full upstream set per pack project.
+if (mode != "lumeo-icons")
+{
+    IReadOnlyList<PackConfig> configs;
+    try { configs = PackCatalog.Resolve(mode, repoRoot); }
+    catch (ArgumentException ex) { Console.Error.WriteLine(ex.Message); return 2; }
+
+    foreach (var cfg in configs)
+    {
+        var zip = zipOverride ?? Path.Combine(cacheDir, cfg.ZipCacheName);
+        if (!File.Exists(zip))
+        {
+            Console.WriteLine($"[fetch] downloading {cfg.ZipUrl}");
+            await Download(cfg.ZipUrl, zip);
+        }
+
+        var loaded = LoadPack(zip, cfg);
+        var icons = loaded
+            .Select(kv => new EmitIcon(kv.Key, kv.Value.Upstream, kv.Value.Icon))
+            .OrderBy(i => i.Name, StringComparer.Ordinal)
+            .ToList();
+
+        var emitted = IconEmitter.Emit(cfg, icons);
+        WriteNotices(cfg);
+
+        var csFiles = emitted.Where(f => f.EndsWith(".g.cs", StringComparison.OrdinalIgnoreCase)).ToList();
+        var csSize = csFiles.Sum(f => new FileInfo(f).Length);
+        Console.WriteLine(
+            $"[done]  {cfg.ClassName}: {icons.Count} icons, {cfg.PackName} v{cfg.Version}, " +
+            $"{csFiles.Count} .g.cs file(s), {csSize / 1024.0:F1} KiB.");
+    }
+    return 0;
+}
 
 var config = new PackConfig
 {
@@ -146,7 +177,8 @@ static Dictionary<string, (string Upstream, ParsedIcon Icon)> LoadPack(string zi
             var name = entry.FullName.Replace('\\', '/');
             if (!config.EntryFilter(name)) continue;
 
-            var upstream = Path.GetFileNameWithoutExtension(name);
+            var raw = Path.GetFileNameWithoutExtension(name);
+            var upstream = config.UpstreamNameTransform?.Invoke(raw) ?? raw;
             var pascal = NameTransform.ToPascal(upstream);
             using var reader = new StreamReader(entry.Open());
             var parsed = SvgParser.Parse(reader.ReadToEnd());
@@ -161,6 +193,17 @@ static Dictionary<string, (string Upstream, ParsedIcon Icon)> LoadPack(string zi
             result[pascal] = (pascal.ToLowerInvariant(), SvgParser.Parse(svg));
 
     return result;
+}
+
+// Writes the pack's upstream license text as THIRD-PARTY-NOTICES.txt at the project root (parent of
+// the Icons/ output dir) so the csproj can pack it into the .nupkg alongside the compiled icons.
+static void WriteNotices(PackConfig config)
+{
+    var projectDir = Path.GetDirectoryName(config.OutputDir);
+    if (projectDir is null) return;
+    var path = Path.Combine(projectDir, "THIRD-PARTY-NOTICES.txt");
+    var text = config.LicenseHeader.Replace("\r\n", "\n").TrimEnd() + "\n";
+    File.WriteAllText(path, text, new System.Text.UTF8Encoding(false));
 }
 
 static async Task Download(string url, string dest)
