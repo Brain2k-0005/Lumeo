@@ -60,10 +60,10 @@
             <DataGridColumnDef TItem="Shipment" Title="Reference" Field="Reference" Sortable="true" Filterable="true" />
             <DataGridColumnDef TItem="Shipment" Title="Lane" Field="Lane" Sortable="true" Filterable="true" />
             <DataGridColumnDef TItem="Shipment" Title="Carrier" Field="Carrier" Sortable="true"
-                               Filterable="true" FilterType="DataGridFilterType.Select" />
+                               Filterable="true" FilterType="DataGridFilterType.Select" FilterOptions="_carrierOpts" />
 
             <DataGridColumnDef TItem="Shipment" Title="Mode" Field="Mode" Sortable="true"
-                               Filterable="true" FilterType="DataGridFilterType.Select">
+                               Filterable="true" FilterType="DataGridFilterType.Select" FilterOptions="_modeOpts">
                 <CellTemplate>
                     <Badge Variant="Badge.BadgeVariant.Outline" Class="gap-1">
                         <DynamicIcon Name="@ModeIcon(context.Mode)" Class="h-3 w-3" />@context.Mode
@@ -72,14 +72,14 @@
             </DataGridColumnDef>
 
             <DataGridColumnDef TItem="Shipment" Title="Priority" Field="Priority" Sortable="true"
-                               Filterable="true" FilterType="DataGridFilterType.Select">
+                               Filterable="true" FilterType="DataGridFilterType.Select" FilterOptions="_priorityOpts">
                 <CellTemplate>
                     <Badge Variant="@PriorityVariant(context.Priority)">@context.Priority</Badge>
                 </CellTemplate>
             </DataGridColumnDef>
 
             <DataGridColumnDef TItem="Shipment" Title="Status" Field="Status" Sortable="true"
-                               Filterable="true" FilterType="DataGridFilterType.Select">
+                               Filterable="true" FilterType="DataGridFilterType.Select" FilterOptions="_statusOpts">
                 <CellTemplate>
                     <Badge Variant="@StatusVariant(context.Status)" Class="gap-1">
                         <span class="h-1.5 w-1.5 rounded-full bg-current opacity-70"></span>@context.Status
@@ -88,7 +88,7 @@
             </DataGridColumnDef>
 
             <DataGridColumnDef TItem="Shipment" Title="Region" Field="Region" Sortable="true"
-                               Filterable="true" FilterType="DataGridFilterType.Select" />
+                               Filterable="true" FilterType="DataGridFilterType.Select" FilterOptions="_regionOpts" />
 
             <DataGridColumnDef TItem="Shipment" Title="Weight (kg)" Field="Weight" Sortable="true"
                                Filterable="true" FilterType="DataGridFilterType.Number" Format="N0"
@@ -117,6 +117,20 @@
 
 @code {
     private IReadOnlyList<Shipment>? _selected;
+
+    // Faceted (multi-select checkbox) filter options for the enum-like columns.
+    // Without FilterOptions a Select-filter popover renders only the operator + Apply
+    // and NO value control — deriving them from the live data guarantees every
+    // filterable value is offered exactly once.
+    private static List<FilterOption> Opts(IEnumerable<string> values) =>
+        values.Distinct().OrderBy(v => v, StringComparer.Ordinal)
+              .Select(v => new FilterOption(v, v)).ToList();
+
+    private static readonly List<FilterOption> _carrierOpts  = Opts(MeridianData.Shipments.Select(s => s.Carrier));
+    private static readonly List<FilterOption> _modeOpts     = Opts(MeridianData.Shipments.Select(s => s.Mode));
+    private static readonly List<FilterOption> _priorityOpts = Opts(MeridianData.Shipments.Select(s => s.Priority));
+    private static readonly List<FilterOption> _statusOpts   = Opts(MeridianData.Shipments.Select(s => s.Status));
+    private static readonly List<FilterOption> _regionOpts   = Opts(MeridianData.Shipments.Select(s => s.Region));
 
     private sealed record Kpi(string Label, string Value, string Icon, string Accent);
     private Kpi[] _kpis = System.Array.Empty<Kpi>();

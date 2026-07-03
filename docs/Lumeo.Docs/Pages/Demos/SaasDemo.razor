@@ -8,12 +8,12 @@
 @inject Lumeo.Services.ToastService Toast
 @inject Lumeo.Services.KeyboardShortcutService Shortcuts
 @inject Lumeo.Services.IResponsiveService Responsive
+@inject Lumeo.Services.ComponentInteropService Interop
 
 <PageTitle>Northlight — Lumeo SaaS demo</PageTitle>
 
 <SidebarProvider @bind-IsCollapsed="_navCollapsed"
                  Variant="SidebarProvider.SidebarVariant.Icon"
-                 ToggleShortcut="ctrl+b"
                  MobileSheet="true"
                  Class="bg-background">
 
@@ -128,14 +128,18 @@
 
             <!-- Notifications -->
             <DropdownMenu>
-                <DropdownMenuTrigger>
-                    <span class="relative inline-flex h-9 w-9 cursor-pointer items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground">
-                        <DynamicIcon Name="Bell" Class="h-4 w-4" />
-                        @if (_unread > 0)
-                        {
-                            <span class="absolute right-1 top-1 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-semibold leading-none text-primary-foreground">@_unread</span>
-                        }
-                    </span>
+                <DropdownMenuTrigger AsChild>
+                    <ChildContentSlot Context="slot">
+                        <button type="button" id="@slot.Id" aria-label="@($"Notifications, {_unread} unread")"
+                                @attributes="slot.Attributes" @onclick="slot.OnClick"
+                                class="relative inline-flex h-9 w-9 cursor-pointer items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                            <DynamicIcon Name="Bell" Class="h-4 w-4" />
+                            @if (_unread > 0)
+                            {
+                                <span class="absolute right-1 top-1 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-semibold leading-none text-primary-foreground">@_unread</span>
+                            }
+                        </button>
+                    </ChildContentSlot>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent Align="Lumeo.Align.End" Class="w-80">
                     <DropdownMenuLabel>Notifications</DropdownMenuLabel>
@@ -163,10 +167,14 @@
 
             <!-- Profile -->
             <DropdownMenu>
-                <DropdownMenuTrigger>
-                    <span class="inline-flex cursor-pointer rounded-full outline-none ring-ring focus-visible:ring-2">
-                        <Avatar Size="Lumeo.Size.Sm"><AvatarFallback>AC</AvatarFallback></Avatar>
-                    </span>
+                <DropdownMenuTrigger AsChild>
+                    <ChildContentSlot Context="slot">
+                        <button type="button" id="@slot.Id" aria-label="Account menu — Ava Chen"
+                                @attributes="slot.Attributes" @onclick="slot.OnClick"
+                                class="inline-flex cursor-pointer rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                            <Avatar Size="Lumeo.Size.Sm"><AvatarFallback>AC</AvatarFallback></Avatar>
+                        </button>
+                    </ChildContentSlot>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent Align="Lumeo.Align.End" Class="w-56">
                     <DropdownMenuLabel>
@@ -255,7 +263,10 @@
                                         <Badge Variant="Badge.BadgeVariant.Success" Class="text-[10px] h-5">+38% YoY</Badge>
                                     </Flex>
                                     <div class="h-64 px-2 pb-2">
-                                        <AreaChart Categories="_trendMonths" Series="_trendSeries" Smooth="true" Gradient="true" ShowLegend="false" Height="100%" />
+                                        <AreaChart Categories="_trendMonths" Series="_trendSeries" Smooth="true" Gradient="true"
+                                                   Colors="_mrrColors" ShowDots="false" ShowLegend="false" Height="100%"
+                                                   IsLoading="_chartsLoading" ShowLoadingLabel="false"
+                                                   SkeletonStyle="ChartSkeletonStyle.Silhouette" AriaLabel="Monthly recurring revenue, trailing 12 months" />
                                     </div>
                                 </div>
                                 <div class="rounded-xl border border-border/50 bg-card overflow-hidden lg:col-span-2">
@@ -266,7 +277,9 @@
                                         </Stack>
                                     </Flex>
                                     <div class="h-64 px-2 pb-2">
-                                        <BarChart Categories="_planQuarters" Series="_planSeries" Stacked="true" Height="100%" />
+                                        <BarChart Categories="_planQuarters" Series="_planSeries" Stacked="true" Height="100%"
+                                                  IsLoading="_chartsLoading" ShowLoadingLabel="false"
+                                                  SkeletonStyle="ChartSkeletonStyle.Silhouette" AriaLabel="New signups by plan, by quarter" />
                                     </div>
                                 </div>
                             </div>
@@ -374,8 +387,10 @@
                 }
                 else if (_view == "settings")
                 {
-                    <div @key="'s'" class="max-w-3xl">
+                    <div @key="'s'" class="mx-auto max-w-5xl">
                         <BlurFade DelayMs="0">
+                            <div class="grid grid-cols-1 gap-5 lg:grid-cols-3 lg:items-start">
+                            <div class="min-w-0 lg:col-span-2">
                             <Tabs @bind-ActiveValue="_settingsTab">
                                 <TabsList>
                                     <TabsTrigger Value="profile">Profile</TabsTrigger>
@@ -394,8 +409,8 @@
                                                 <FormField Label="Full name" Required="true" Error="@_nameError">
                                                     <Input @bind-Value="_name" Placeholder="Your name" />
                                                 </FormField>
-                                                <FormField Label="Email">
-                                                    <Input @bind-Value="_email" type="email" />
+                                                <FormField Label="Email" Required="true" Error="@_emailError">
+                                                    <Input @bind-Value="_email" type="email" Placeholder="you@company.com" />
                                                 </FormField>
                                                 <FormField Label="Role">
                                                     <Select @bind-Value="_role" Placeholder="Select a role">
@@ -502,6 +517,54 @@
                                     </Card>
                                 </TabsContent>
                             </Tabs>
+                            </div>
+
+                            <aside class="lg:col-span-1">
+                                <Card Class="lg:sticky lg:top-4">
+                                    <CardHeader>
+                                        <Flex Align="center" Gap="3" Class="min-w-0">
+                                            <Avatar Size="Lumeo.Size.Lg" Class="shrink-0"><AvatarFallback>AC</AvatarFallback></Avatar>
+                                            <Stack Gap="0" Class="min-w-0">
+                                                <Lumeo.Text Size="sm" Weight="semibold" Class="truncate leading-tight">Ava Chen</Lumeo.Text>
+                                                <Lumeo.Text Size="xs" Color="muted" Class="truncate leading-tight">@_email</Lumeo.Text>
+                                            </Stack>
+                                        </Flex>
+                                    </CardHeader>
+                                    <CardContent>
+                                        <Stack Gap="4">
+                                            <Flex Align="center" Justify="between">
+                                                <Lumeo.Text Size="sm" Color="muted">Plan</Lumeo.Text>
+                                                <Badge Variant="Badge.BadgeVariant.Success">Pro</Badge>
+                                            </Flex>
+                                            <Flex Align="center" Justify="between">
+                                                <Lumeo.Text Size="sm" Color="muted">Role</Lumeo.Text>
+                                                <Lumeo.Text Size="sm" Weight="medium">@PlanRoleLabel(_role)</Lumeo.Text>
+                                            </Flex>
+                                            <Separator />
+                                            <Stack Gap="1.5">
+                                                <Flex Align="center" Justify="between">
+                                                    <Lumeo.Text Size="sm" Weight="medium">Seats</Lumeo.Text>
+                                                    <Lumeo.Text Size="xs" Color="muted">24 / 30</Lumeo.Text>
+                                                </Flex>
+                                                <Progress Value="80" />
+                                            </Stack>
+                                            <Stack Gap="1.5">
+                                                <Flex Align="center" Justify="between">
+                                                    <Lumeo.Text Size="sm" Weight="medium">Storage</Lumeo.Text>
+                                                    <Lumeo.Text Size="xs" Color="muted">62 / 100 GB</Lumeo.Text>
+                                                </Flex>
+                                                <Progress Value="62" />
+                                            </Stack>
+                                            <Separator />
+                                            <Flex Align="center" Gap="2">
+                                                <DynamicIcon Name="Calendar" Class="h-3.5 w-3.5 text-muted-foreground" />
+                                                <Lumeo.Text Size="xs" Color="muted">Member since Jan 2023</Lumeo.Text>
+                                            </Flex>
+                                        </Stack>
+                                    </CardContent>
+                                </Card>
+                            </aside>
+                            </div>
                         </BlurFade>
                     </div>
                 }
@@ -517,7 +580,7 @@
         <div class="absolute inset-0 bg-background/80" @onclick="ClosePalette"></div>
         <div class="relative mx-4 w-full max-w-[480px] overflow-hidden rounded-[var(--radius-xl)] border border-border/40 bg-popover shadow-2xl" @onclick:stopPropagation>
             <Lumeo.Command>
-                <CommandInput Placeholder="Search views and actions…" />
+                <CommandInput Placeholder="Search views and actions…" id="@PaletteInputId" />
                 <CommandList>
                     <CommandEmpty>No results found.</CommandEmpty>
                     <CommandGroup Heading="Views">
@@ -559,6 +622,23 @@
     private bool _refreshing;
     private string _settingsTab = "profile";
 
+    // Command palette input focus (Lumeo's CommandInput has no autofocus API — we focus
+    // it via JS interop after the palette renders). See _focusPaletteInput handling in
+    // OnAfterRenderAsync.
+    private const string PaletteInputId = "saas-command-input";
+    private bool _focusPaletteInput;
+
+    // Charts show a skeleton silhouette until ECharts has cold-loaded + painted (~1s),
+    // replacing the blank-white flash on first load.
+    private bool _chartsLoading = true;
+    private System.Threading.Timer? _chartsTimer;
+
+    // MRR area chart: brand accent line + subtle translucent fill (was a flat heavy
+    // gray because the palette's first slot — like the primary token — is near-black).
+    // chart-2 is the teal brand hue the bar chart already uses; resolved to a hex by the
+    // ECharts interop's CSS-var resolver.
+    private readonly List<string> _mrrColors = new() { "var(--color-chart-2)" };
+
     // Notifications
     private int _unread = 3;
     private IReadOnlyList<NorthlightActivity> _notifications = NorthlightData.Activity;
@@ -577,6 +657,7 @@
     private string? _role = "admin";
     private string? _timezone = "pst";
     private string? _nameError;
+    private string? _emailError;
     private string _billingPlan = "pro";
     private readonly List<NotifPref> _prefs = new()
     {
@@ -619,6 +700,18 @@
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
+        // Autofocus the palette search input once its DOM exists. CommandInput exposes no
+        // AutoFocus parameter, so we drive focus() through the interop service after the
+        // open render committed. Runs on every render; the flag makes it fire exactly once
+        // per open.
+        if (_focusPaletteInput && _paletteOpen)
+        {
+            _focusPaletteInput = false;
+            try { await Interop.FocusElement(PaletteInputId); }
+            catch (Microsoft.JSInterop.JSDisconnectedException) { }
+            catch (InvalidOperationException) { }
+        }
+
         if (!firstRender) return;
         try
         {
@@ -633,6 +726,18 @@
 
             _shortcuts.Add(await Shortcuts.RegisterAsync("ctrl+k", OpenPaletteAsync));
             _shortcuts.Add(await Shortcuts.RegisterAsync("meta+k", OpenPaletteAsync));
+            // Sidebar toggle — wired here (like ⌘K) rather than via SidebarProvider's
+            // ToggleShortcut, which didn't fire in this layout.
+            _shortcuts.Add(await Shortcuts.RegisterAsync("ctrl+b", ToggleSidebarAsync));
+            _shortcuts.Add(await Shortcuts.RegisterAsync("meta+b", ToggleSidebarAsync));
+
+            // Reveal the charts once ECharts has had time to cold-load + paint, so the
+            // skeleton silhouette covers the blank-white flash instead of the chart host.
+            _chartsTimer = new System.Threading.Timer(_ => InvokeAsync(() =>
+            {
+                _chartsLoading = false;
+                StateHasChanged();
+            }), null, 900, System.Threading.Timeout.Infinite);
         }
         catch (Microsoft.JSInterop.JSDisconnectedException) { }
         catch (InvalidOperationException) { /* JS unavailable during prerender */ }
@@ -668,8 +773,18 @@
     {
         _view = key;
         _nameError = null;
+        _emailError = null;
+        // Close the off-canvas mobile drawer after a nav selection (on desktop the icon
+        // rail should stay put).
+        if (Responsive.IsMobile) _navCollapsed = true;
         ClosePalette();
         StateHasChanged();
+    }
+
+    private Task ToggleSidebarAsync()
+    {
+        _navCollapsed = !_navCollapsed;
+        return InvokeAsync(StateHasChanged);
     }
 
     private void OpenBilling()
@@ -687,8 +802,8 @@
     }
 
     // ---- Command palette ----
-    private void OpenPalette() { _paletteOpen = true; StateHasChanged(); }
-    private Task OpenPaletteAsync() { _paletteOpen = true; return InvokeAsync(StateHasChanged); }
+    private void OpenPalette() { _paletteOpen = true; _focusPaletteInput = true; StateHasChanged(); }
+    private Task OpenPaletteAsync() { _paletteOpen = true; _focusPaletteInput = true; return InvokeAsync(StateHasChanged); }
     private void ClosePalette() { _paletteOpen = false; StateHasChanged(); }
     private void PaletteKeyDown(KeyboardEventArgs e) { if (e.Key == "Escape") ClosePalette(); }
     private void SelectFromPalette(string view) { ClosePalette(); SetView(view); }
@@ -757,15 +872,27 @@
     // ---- Settings actions ----
     private void SaveProfile()
     {
-        if (string.IsNullOrWhiteSpace(_name))
+        _nameError = string.IsNullOrWhiteSpace(_name) ? "Name is required." : null;
+        _emailError = IsValidEmail(_email) ? null : "Enter a valid email address.";
+        if (_nameError is not null || _emailError is not null)
         {
-            _nameError = "Name is required.";
-            Toast.Error("Couldn't save", "Please enter your name.");
+            Toast.Error("Couldn't save", "Please fix the highlighted fields.");
             return;
         }
-        _nameError = null;
         Toast.Success("Profile saved", "Your changes are live across the workspace.");
     }
+
+    private static bool IsValidEmail(string? email) =>
+        !string.IsNullOrWhiteSpace(email)
+        && System.Text.RegularExpressions.Regex.IsMatch(email, @"^[^@\s]+@[^@\s]+\.[^@\s]+$");
+
+    private static string PlanRoleLabel(string? role) => role switch
+    {
+        "editor" => "Editor",
+        "analyst" => "Analyst",
+        "viewer" => "Viewer",
+        _ => "Admin",
+    };
 
     private void SaveNotifications()
     {
@@ -802,6 +929,7 @@
     public async ValueTask DisposeAsync()
     {
         if (_refreshTimer is not null) await _refreshTimer.DisposeAsync();
+        if (_chartsTimer is not null) await _chartsTimer.DisposeAsync();
         foreach (var s in _shortcuts)
         {
             try { await s.DisposeAsync(); }

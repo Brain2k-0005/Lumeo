@@ -129,11 +129,19 @@
 </Dialog>
 
 @code {
+    /// <summary>Raised when a request is approved or rejected so the parent shell can
+    /// keep its Approvals rail badge in lock-step with this view's pending header.</summary>
+    [Parameter] public EventCallback OnResolved { get; set; }
+
     private ApprovalRequest _selected = MeridianData.Approvals[0];
     private int _currentStep = MeridianData.Approvals[0].CurrentStep;
     private bool _dialogOpen;
 
     private int _pending = MeridianData.Approvals.Count;
+
+    // Requests already counted as resolved, so approving then rejecting (or repeatedly
+    // approving) the same request decrements the pending badge exactly once.
+    private readonly HashSet<string> _resolved = new();
 
     private void Select(ApprovalRequest a)
     {
@@ -141,13 +149,28 @@
         _currentStep = a.CurrentStep;
     }
 
-    private void Approve()
+    private async Task Approve()
     {
         if (_currentStep < _selected.Steps.Count - 1) _currentStep++;
         Toast.Success("Request approved", $"{_selected.Id} advanced to “{_selected.Steps[_currentStep].Title}”.");
+        await ResolveOne();
     }
 
-    private void Reject() => Toast.Error("Request rejected", $"{_selected.Id} returned to {_selected.Requester}.");
+    private async Task Reject()
+    {
+        Toast.Error("Request rejected", $"{_selected.Id} returned to {_selected.Requester}.");
+        await ResolveOne();
+    }
+
+    // Decrement the pending header + notify the shell, once per distinct request.
+    private async Task ResolveOne()
+    {
+        if (_resolved.Add(_selected.Id) && _pending > 0)
+        {
+            _pending--;
+            await OnResolved.InvokeAsync();
+        }
+    }
 
     private static string CardClass(bool active) =>
         "w-full rounded-lg border p-3 text-left transition-colors " +

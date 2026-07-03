@@ -162,22 +162,27 @@ public static class MeridianData
         return list;
     }
 
-    /// <summary>Berth / route schedule for the Gantt view (offsets from Anchor).</summary>
+    /// <summary>Terminal &amp; corridor programme for the Gantt view (day offsets from
+    /// Anchor). Spans ~5 weeks of multi-day phases: wide enough that Day/Week/Month all
+    /// render legible bars with their labels INSIDE the bar (not colliding with the
+    /// today-line), yet compact enough that the chart width stays modest — the Gantt
+    /// preserves raw scrollLeft across zoom switches, so a very wide chart would open
+    /// Month/Year scrolled past the data. Anchor (today) sits ~30% in.</summary>
     public static IReadOnlyList<ScheduleBar> Schedule { get; } = new List<ScheduleBar>
     {
-        new("berth-a",   "Berth A · MSC Aurelia",     "Quay 1 — Deep Sea", -1, 3, 70),
-        new("berth-b",   "Berth B · Nordic Trader",   "Quay 1 — Deep Sea",  2, 2, 20, new[] { "berth-a" }),
-        new("berth-c",   "Berth C · Adriatic Star",   "Quay 2 — Short Sea",  0, 2, 45),
-        new("berth-d",   "Berth D · Baltic Runner",   "Quay 2 — Short Sea",  3, 3, 0,  new[] { "berth-c" }),
-        new("crane-1",   "Crane gang — discharge",    "Yard Operations",     0, 2, 60),
-        new("crane-2",   "Crane gang — load out",     "Yard Operations",     2, 3, 10, new[] { "crane-1" }),
-        new("rail-1",    "Rail block 7841 → Munich",  "Rail Dispatch",       1, 2, 55),
-        new("rail-2",    "Rail block 7902 → Prague",  "Rail Dispatch",       3, 2, 0,  new[] { "rail-1" }),
-        new("road-1",    "Road convoy — Antwerp hub", "Road Dispatch",       0, 4, 40),
-        new("road-2",    "Road convoy — Lyon relay",  "Road Dispatch",       4, 3, 0,  new[] { "road-1" }),
-        new("cust-1",    "Customs window — Bloc EU",  "Customs & Docs",      1, 1, 90),
-        new("ms-launch", "Cut-off · manifest lock",   "Customs & Docs",      5, 0, 0,  new[] { "cust-1" }, IsMilestone: true),
-        new("maint-1",   "Reefer bay maintenance",    "Maintenance",         2, 2, 30),
+        new("berth-a",   "Berth A · MSC Aurelia",       "Quay 1 — Deep Sea",  -10, 6, 80),
+        new("berth-b",   "Berth B · Nordic Trader",     "Quay 1 — Deep Sea",   -2, 6, 40, new[] { "berth-a" }),
+        new("berth-c",   "Berth C · Adriatic Star",     "Quay 2 — Short Sea",  -7, 5, 62),
+        new("berth-d",   "Berth D · Baltic Runner",     "Quay 2 — Short Sea",   2, 7, 15, new[] { "berth-c" }),
+        new("crane-1",   "Crane gang — discharge cycle","Yard Operations",     -9, 7, 66),
+        new("crane-2",   "Crane gang — load-out cycle", "Yard Operations",      1, 8, 20, new[] { "crane-1" }),
+        new("rail-1",    "Rail corridor 7841 → Munich", "Rail Dispatch",       -5, 8, 55),
+        new("rail-2",    "Rail corridor 7902 → Prague", "Rail Dispatch",        6, 8,  0, new[] { "rail-1" }),
+        new("road-1",    "Road network — Antwerp hub",  "Road Dispatch",       -8, 10, 44),
+        new("road-2",    "Road network — Lyon relay",   "Road Dispatch",        9, 9,  0, new[] { "road-1" }),
+        new("cust-1",    "Customs window — Bloc EU",    "Customs & Docs",      -6, 12, 72),
+        new("ms-launch", "Cut-off · manifest lock",     "Customs & Docs",      24, 0,  0, new[] { "cust-1" }, IsMilestone: true),
+        new("maint-1",   "Reefer bay maintenance",      "Maintenance",          0, 8, 34),
     };
 
     public static IReadOnlyList<ApprovalRequest> Approvals { get; } = BuildApprovals();

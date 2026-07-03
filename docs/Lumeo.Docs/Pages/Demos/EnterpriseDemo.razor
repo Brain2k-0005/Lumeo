@@ -51,8 +51,9 @@
         </Lumeo.Link>
     </header>
 
-    <!-- Body: rail + work surface -->
-    <div class="flex min-h-0 flex-1 overflow-hidden">
+    <!-- Body: rail + work surface. Stacks vertically on phone/tablet (nav becomes a
+         horizontal scrollable tab bar on top); switches to the side-rail layout at lg. -->
+    <div class="flex min-h-0 flex-1 flex-col overflow-hidden lg:flex-row">
 
         <!-- View rail (vertical on lg, horizontal scroller below) -->
         <nav class="flex shrink-0 gap-1 overflow-x-auto border-b border-border/60 bg-card/30 p-2 lg:w-56 lg:flex-col lg:overflow-x-visible lg:border-b-0 lg:border-r"
@@ -77,12 +78,12 @@
         </nav>
 
         <!-- Work surface -->
-        <main class="min-w-0 flex-1 overflow-y-auto">
+        <main class="min-h-0 min-w-0 flex-1 overflow-y-auto">
             @switch (_view)
             {
                 case ConsoleView.Shipments: <EnterpriseShipmentsView />; break;
                 case ConsoleView.Schedule:  <EnterpriseScheduleView />;  break;
-                case ConsoleView.Approvals: <EnterpriseApprovalsView />; break;
+                case ConsoleView.Approvals: <EnterpriseApprovalsView OnResolved="DecrementApprovals" />; break;
                 case ConsoleView.Audit:     <EnterpriseAuditView />;     break;
                 case ConsoleView.Editor:    <EnterpriseRecordEditorView />; break;
             }
@@ -98,14 +99,25 @@
 
     private sealed record RailItem(ConsoleView View, string Label, string Icon, int? Count);
 
-    private readonly RailItem[] _views =
+    // Live pending count for the Approvals rail badge — decremented as the Approvals
+    // view resolves requests (see DecrementApprovals). Rebuilt into _views each render.
+    private int _approvalsPending = MeridianData.Approvals.Count;
+
+    private RailItem[] _views => new[]
     {
-        new(ConsoleView.Shipments, "Shipments", "Truck", MeridianData.Shipments.Count),
-        new(ConsoleView.Schedule,  "Schedule",  "CalendarClock", null),
-        new(ConsoleView.Approvals, "Approvals", "ClipboardCheck", MeridianData.Approvals.Count),
-        new(ConsoleView.Audit,     "Audit log", "ScrollText", MeridianData.Audit.Count),
-        new(ConsoleView.Editor,    "New record", "SquarePen", null),
+        new RailItem(ConsoleView.Shipments, "Shipments", "Truck", MeridianData.Shipments.Count),
+        new RailItem(ConsoleView.Schedule,  "Schedule",  "CalendarClock", null),
+        new RailItem(ConsoleView.Approvals, "Approvals", "ClipboardCheck", _approvalsPending),
+        new RailItem(ConsoleView.Audit,     "Audit log", "ScrollText", MeridianData.Audit.Count),
+        new RailItem(ConsoleView.Editor,    "New record", "SquarePen", null),
     };
+
+    // Fired by the Approvals view when a request is approved/rejected so the rail
+    // badge tracks the same pending count as the view's own header.
+    private void DecrementApprovals()
+    {
+        if (_approvalsPending > 0) _approvalsPending--;
+    }
 
     protected override void OnInitialized() => _dark = ThemeService.IsDark;
 
