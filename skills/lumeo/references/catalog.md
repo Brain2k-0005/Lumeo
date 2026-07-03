@@ -197,7 +197,7 @@ Satellite packages: a component tagged **[Charts]** needs `Lumeo.Charts`, **[Dat
 - **DensityScope** — Density Scope component.
 - **DirectionProvider** — Direction Provider component.
 - **DropdownButton** — Dropdown Button component.
-- **Icon** — Icon wrapper — renders Lucide icons via Blazicons.
+- **Icon** — Icon wrapper — renders the built-in LumeoIcons set (Lucide-derived) or any IconSource natively. _(sub-components: SvgGlyph)_
 - **Kbd** — Keyboard shortcut glyph — renders <kbd> with styling.
 - **Label** — Form label that links to a control via for/id.
 - **PullToRefresh** — Pull To Refresh component.
