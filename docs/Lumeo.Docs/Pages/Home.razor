@@ -153,11 +153,13 @@
                     </Badge>
                 </Flex>
                 <div class="h-56 sm:h-64 lg:h-80 px-2 pb-3">
-                    @* IdleMount keeps ECharts' CDN fetch + init off the first-paint critical
-                       path: a cheap CSS stacked-bar placeholder (built from the same data, so
-                       it matches the real chart's shape) shows immediately, then the live
-                       BarChart swaps in once the browser is idle. *@
-                    <IdleMount>
+                    @* LazyRender gates ECharts' fetch + init behind the viewport: a cheap CSS
+                       stacked-bar placeholder (built from the same data, so it matches the real
+                       chart's shape) shows immediately, and the live BarChart — plus the ~334 KB
+                       ECharts payload — only mounts when the card scrolls near view. On phones the
+                       card is far below the fold, so ECharts never loads on first paint, cutting
+                       TBT and transfer size. *@
+                    <LazyRender Height="100%" RootMarginPx="150">
                         <Placeholder>
                             <div class="flex h-full items-end gap-1.5 sm:gap-2" aria-hidden="true">
                                 @for (var i = 0; i < _barCategories.Count; i++)
@@ -179,7 +181,7 @@
                         <ChildContent>
                             <BarChart Categories="_barCategories" Series="_barSeries" Stacked="true" Height="100%" ShowLoadingSkeleton="false" />
                         </ChildContent>
-                    </IdleMount>
+                    </LazyRender>
                 </div>
             </div>
 
