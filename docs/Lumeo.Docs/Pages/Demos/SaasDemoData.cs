@@ -9,7 +9,7 @@ namespace Lumeo.Docs.Pages.Demos;
 // so the page prerenders identically on every build and stays cheap in WASM.
 // ---------------------------------------------------------------------------
 
-/// <summary>A customer row rendered in the virtualized DataGrid.</summary>
+/// <summary>A customer row rendered in the virtualized DataGrid CRM view.</summary>
 public sealed record NorthlightCustomer(
     int Id,
     string Company,
@@ -18,7 +18,14 @@ public sealed record NorthlightCustomer(
     int Seats,
     int Mrr,
     DateOnly Signup,
-    string Owner);
+    string Owner,
+    string Region,
+    int MrrDelta,        // MoM % change in MRR (signed; -100 = fully churned)
+    int Health,          // 0–100 account-health score
+    int LastSeenDays,    // days since the account was last active
+    string ContactName,
+    string ContactEmail,
+    string Notes);
 
 /// <summary>An entry in the dashboard "Recent activity" feed.</summary>
 public sealed record NorthlightActivity(string Icon, string Actor, string Action, string Target, string When);
@@ -64,6 +71,47 @@ public static class NorthlightData
     private static readonly int[] PlanSeatBase = { 2, 6, 24, 120 };   // Free, Starter, Pro, Enterprise
     private static readonly int[] PlanSeatPrice = { 0, 12, 18, 26 };  // $/seat/mo
 
+    private static readonly string[] Regions = { "AMER", "EMEA", "APAC" };
+    private static readonly string[] FirstNames =
+    {
+        "Ava", "Noah", "Mia", "Liam", "Zoe", "Ethan", "Lena", "Omar", "Ivy", "Rhys",
+        "Nina", "Theo", "Cara", "Milo", "Sana", "Kai",
+    };
+    private static readonly string[] LastNames =
+    {
+        "Chen", "Okoye", "Rao", "Weber", "Bianchi", "Ramirez", "Nowak", "Haddad",
+        "Lindqvist", "Osei", "Delacroix", "Tanaka",
+    };
+
+    // Status-appropriate CRM notes so the detail row reads like a real account log.
+    private static readonly string[][] NotesByStatus =
+    {
+        new[] // Active
+        {
+            "Expansion call booked — evaluating an extra 20 seats for Q3.",
+            "Champion promoted to VP; strong exec sponsorship in place.",
+            "Rolled out to a second department; usage up week over week.",
+        },
+        new[] // Trial
+        {
+            "Day-7 of trial — activated SSO, exploring the analytics tab.",
+            "POC scoped with the data team; decision expected next week.",
+            "Trial extended once; needs a security review before signing.",
+        },
+        new[] // Paused
+        {
+            "Downgraded after a reorg; budget frozen until next quarter.",
+            "Seats reduced — awaiting new admin to re-onboard the team.",
+            "Renewal at risk; scheduled a save call with the sponsor.",
+        },
+        new[] // Churned
+        {
+            "Churned to an in-house build; open door for a win-back in 6mo.",
+            "Lost the internal champion; no active users for 60+ days.",
+            "Cancelled over pricing; flagged for the win-back campaign.",
+        },
+    };
+
     public static IReadOnlyList<NorthlightCustomer> Customers { get; } = BuildCustomers();
 
     private static IReadOnlyList<NorthlightCustomer> BuildCustomers()
@@ -91,7 +139,43 @@ public static class NorthlightData
                 var signup = baseDate.AddDays((i * 13) % 900);
                 var owner = Owners[i % Owners.Length];
 
-                list.Add(new NorthlightCustomer(id, company, Plans[planIdx], Statuses[statusIdx], seats, mrr, signup, owner));
+                // Region — AMER-heavy spread (~50% AMER, 30% EMEA, 20% APAC).
+                var rRoll = (i * 4) % 10;
+                var region = rRoll < 5 ? Regions[0] : rRoll < 8 ? Regions[1] : Regions[2];
+
+                // MoM MRR momentum, keyed to lifecycle: trials growing, paused slipping,
+                // churned collapsed, active mixed-but-mostly-up.
+                var mrrDelta = statusIdx switch
+                {
+                    3 => -100,
+                    2 => -((i % 12) + 1),        // paused: -1..-12%
+                    1 => (i % 9) + 1,            // trial:  +1..+9%
+                    _ => ((i * 5) % 40) - 10,    // active: -10..+29%
+                };
+
+                // Health score biased by lifecycle stage, with deterministic jitter.
+                var healthBase = statusIdx switch { 0 => 82, 1 => 63, 2 => 44, _ => 20 };
+                var health = Math.Clamp(healthBase + ((i * 6) % 19) - 9, 4, 99);
+
+                // Last-seen recency, again lifecycle-shaped.
+                var lastSeen = statusIdx switch
+                {
+                    0 => i % 7,                  // active:  0–6d
+                    1 => i % 11,                 // trial:   0–10d
+                    2 => 12 + (i % 34),          // paused:  12–45d
+                    _ => 34 + (i % 88),          // churned: 34–121d
+                };
+
+                var contactFirst = FirstNames[i % FirstNames.Length];
+                var contactLast = LastNames[(i / 3) % LastNames.Length];
+                var contactName = $"{contactFirst} {contactLast}";
+                var contactEmail = $"{contactFirst.ToLowerInvariant()}.{contactLast.ToLowerInvariant()}@{Bases[b].ToLowerInvariant()}.com";
+
+                var notes = NotesByStatus[statusIdx][i % NotesByStatus[statusIdx].Length];
+
+                list.Add(new NorthlightCustomer(
+                    id, company, Plans[planIdx], Statuses[statusIdx], seats, mrr, signup, owner,
+                    region, mrrDelta, health, lastSeen, contactName, contactEmail, notes));
                 id++;
             }
         }

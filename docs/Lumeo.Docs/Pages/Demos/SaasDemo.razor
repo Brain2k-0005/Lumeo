@@ -356,29 +356,133 @@
                 {
                     <div @key="'c'">
                         <BlurFade DelayMs="0">
-                            <Lumeo.Text Size="sm" Color="muted" Class="mb-3 block">@_customers.Count customers · search, sort, filter and re-order columns. Rows virtualize for scroll performance.</Lumeo.Text>
+                            <Lumeo.Text Size="sm" Color="muted" Class="mb-3 block">@FilteredCustomers.Count of @_customers.Count accounts · group, pin, filter and expand a row for the full profile. Ungrouped rows virtualize for scroll performance.</Lumeo.Text>
                         </BlurFade>
+
+                        <!-- CRM controls: lifecycle quick-filter chips + group-by + density.
+                             NOT wrapped in BlurFade: its transform would trap the group-by
+                             Select popover in a stacking context the grid paints over. The
+                             `relative z-30` lifts the controls (and the fixed popover) above
+                             the grid's own stacking context. -->
+                        <div class="relative z-30 mb-3">
+                            <Flex Align="center" Justify="between" Wrap="true" Gap="3">
+                                <div class="flex flex-wrap items-center gap-1.5" role="group" aria-label="Filter by lifecycle stage">
+                                    @foreach (var chip in _statusChips)
+                                    {
+                                        var active = _statusFilter == chip.Key;
+                                        <button type="button" @onclick="() => SetStatusFilter(chip.Key)" aria-pressed="@active"
+                                                class="@ChipClass(active)">
+                                            @if (chip.Key != "all")
+                                            {
+                                                <span class="h-1.5 w-1.5 shrink-0 rounded-full @chip.Dot"></span>
+                                            }
+                                            <span>@chip.Label</span>
+                                            <span class="tabular-nums opacity-60">@StatusCount(chip.Key)</span>
+                                        </button>
+                                    }
+                                </div>
+
+                                <Flex Align="center" Gap="2" Class="shrink-0">
+                                    <Flex Align="center" Gap="1.5">
+                                        <DynamicIcon Name="Layers" Class="h-3.5 w-3.5 text-muted-foreground" />
+                                        <div class="w-40">
+                                            <Select @bind-Value="_groupBy">
+                                                <SelectTrigger><span>@GroupByLabel(_groupBy)</span></SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem Value="none">No grouping</SelectItem>
+                                                    <SelectItem Value="Plan">Group by plan</SelectItem>
+                                                    <SelectItem Value="Status">Group by status</SelectItem>
+                                                    <SelectItem Value="Region">Group by region</SelectItem>
+                                                    <SelectItem Value="Owner">Group by owner</SelectItem>
+                                                </SelectContent>
+                                            </Select>
+                                        </div>
+                                    </Flex>
+                                    <Button Variant="Button.ButtonVariant.Outline" Size="Button.ButtonSize.Sm" OnClick="ToggleDensity"
+                                            title="Toggle row density">
+                                        <DynamicIcon Name="@(_gridCompact ? "List" : "LayoutList")" Class="mr-2 h-3.5 w-3.5" />
+                                        <span>@(_gridCompact ? "Compact" : "Comfortable")</span>
+                                    </Button>
+                                </Flex>
+                            </Flex>
+                        </div>
+
                         <BlurFade DelayMs="60">
                             <div class="rounded-xl border border-border/50 bg-card p-2 sm:p-3">
-                                <DataGrid TItem="NorthlightCustomer" Items="_customers"
-                                          ShowPagination="false" Height="calc(100dvh - 260px)"
+                                <DataGrid TItem="NorthlightCustomer" Items="FilteredCustomers"
+                                          GroupByFields="_groupByFields" GroupsExpandedByDefault="false"
+                                          ShowPagination="false" Height="calc(100dvh - 320px)"
                                           ShowToolbar="true" ShowSearch="true" ShowColumnChooser="true" ShowExport="false"
-                                          Striped="true" Hoverable="true" Compact="true" Reorderable="true"
-                                          VirtualizeThreshold="200">
-                                    <DataGridColumnDef TItem="NorthlightCustomer" Title="Company" Field="Company" Sortable="true" Filterable="true" />
-                                    <DataGridColumnDef TItem="NorthlightCustomer" Title="Plan" Field="Plan" Sortable="true" Filterable="true">
+                                          Striped="true" Hoverable="true" Compact="_gridCompact" Reorderable="true"
+                                          VirtualizeThreshold="200"
+                                          DetailTemplate="CustomerDetail">
+                                    <DataGridColumnDef TItem="NorthlightCustomer" Title="Company" Field="Company" Sortable="true" Filterable="true"
+                                                       Pin="PinDirection.Left" Pinnable="true" MinWidth="240">
+                                        <CellTemplate Context="c">
+                                            <Flex Align="center" Gap="2" Class="min-w-0">
+                                                <Avatar Size="Lumeo.Size.Sm" Class="shrink-0">
+                                                    <AvatarFallback>@Monogram(c.Company)</AvatarFallback>
+                                                </Avatar>
+                                                <Stack Gap="0" Class="min-w-0">
+                                                    <Lumeo.Text Size="sm" Weight="medium" Class="truncate leading-tight">@c.Company</Lumeo.Text>
+                                                    <Lumeo.Text As="span" Size="xs" Color="muted" Class="truncate leading-tight">@c.ContactEmail</Lumeo.Text>
+                                                </Stack>
+                                            </Flex>
+                                        </CellTemplate>
+                                    </DataGridColumnDef>
+                                    <DataGridColumnDef TItem="NorthlightCustomer" Title="Plan" Field="Plan" Sortable="true" Filterable="true"
+                                                       FilterType="DataGridFilterType.Select" FilterOptions="_planOptions" Groupable="true">
                                         <CellTemplate Context="c">
                                             <Badge Variant="@PlanVariant(c.Plan)">@c.Plan</Badge>
                                         </CellTemplate>
                                     </DataGridColumnDef>
-                                    <DataGridColumnDef TItem="NorthlightCustomer" Title="Status" Field="Status" Sortable="true" Filterable="true">
+                                    <DataGridColumnDef TItem="NorthlightCustomer" Title="Status" Field="Status" Sortable="true" Filterable="true"
+                                                       FilterType="DataGridFilterType.Select" FilterOptions="_statusOptions" Groupable="true">
                                         <CellTemplate Context="c">
                                             <Badge Variant="@StatusVariant(c.Status)">@c.Status</Badge>
                                         </CellTemplate>
                                     </DataGridColumnDef>
-                                    <DataGridColumnDef TItem="NorthlightCustomer" Title="Seats" Field="Seats" Sortable="true" Format="N0" />
-                                    <DataGridColumnDef TItem="NorthlightCustomer" Title="MRR ($/mo)" Field="Mrr" Sortable="true" Format="N0" Aggregate="AggregateType.Sum" />
-                                    <DataGridColumnDef TItem="NorthlightCustomer" Title="Owner" Field="Owner" Sortable="true" Filterable="true" />
+                                    <DataGridColumnDef TItem="NorthlightCustomer" Title="Health" Field="Health" Sortable="true">
+                                        <CellTemplate Context="c">
+                                            <span class="@HealthClass(c.Health)">
+                                                <span class="h-1.5 w-1.5 rounded-full @HealthDot(c.Health)"></span>
+                                                @HealthLabel(c.Health)
+                                                <span class="tabular-nums opacity-70">@c.Health</span>
+                                            </span>
+                                        </CellTemplate>
+                                    </DataGridColumnDef>
+                                    <DataGridColumnDef TItem="NorthlightCustomer" Title="MRR ($/mo)" Field="Mrr" Sortable="true"
+                                                       Format="N0" Aggregate="AggregateType.Sum" FooterFormat="N0" MinWidth="140">
+                                        <CellTemplate Context="c">
+                                            <Flex Align="center" Gap="2" Justify="end" Class="tabular-nums">
+                                                <span class="font-medium">@c.Mrr.ToString("N0")</span>
+                                                @if (c.Mrr > 0)
+                                                {
+                                                    <span class="@DeltaClass(c.MrrDelta)">
+                                                        <DynamicIcon Name="@(c.MrrDelta >= 0 ? "TrendingUp" : "TrendingDown")" Class="h-3 w-3" />
+                                                        @Math.Abs(c.MrrDelta)%
+                                                    </span>
+                                                }
+                                            </Flex>
+                                        </CellTemplate>
+                                    </DataGridColumnDef>
+                                    <DataGridColumnDef TItem="NorthlightCustomer" Title="Seats" Field="Seats" Sortable="true" Format="N0" Aggregate="AggregateType.Sum" />
+                                    <DataGridColumnDef TItem="NorthlightCustomer" Title="Region" Field="Region" Sortable="true" Filterable="true"
+                                                       FilterType="DataGridFilterType.Select" FilterOptions="_regionOptions" Groupable="true" />
+                                    <DataGridColumnDef TItem="NorthlightCustomer" Title="Owner" Field="Owner" Sortable="true" Filterable="true"
+                                                       FilterType="DataGridFilterType.Select" FilterOptions="_ownerOptions" Groupable="true">
+                                        <CellTemplate Context="c">
+                                            <Flex Align="center" Gap="2" Class="min-w-0">
+                                                <span class="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-accent/60 text-[10px] font-semibold text-foreground">@Initials(c.Owner)</span>
+                                                <Lumeo.Text Size="sm" Class="truncate">@c.Owner</Lumeo.Text>
+                                            </Flex>
+                                        </CellTemplate>
+                                    </DataGridColumnDef>
+                                    <DataGridColumnDef TItem="NorthlightCustomer" Title="Last seen" Field="LastSeenDays" Sortable="true">
+                                        <CellTemplate Context="c">
+                                            <span class="@LastSeenClass(c.LastSeenDays)">@LastSeenLabel(c.LastSeenDays)</span>
+                                        </CellTemplate>
+                                    </DataGridColumnDef>
                                     <DataGridColumnDef TItem="NorthlightCustomer" Title="Signed up" Field="Signup" Sortable="true" Format="MMM d, yyyy" />
                                 </DataGrid>
                             </div>
@@ -643,8 +747,126 @@
     private int _unread = 3;
     private IReadOnlyList<NorthlightActivity> _notifications = NorthlightData.Activity;
 
-    // Customers
+    // Customers (CRM view)
     private readonly IReadOnlyList<NorthlightCustomer> _customers = NorthlightData.Customers;
+
+    // Lifecycle quick-filter chips (demo-side custom filter driving the grid's Items).
+    private sealed record StatusChip(string Key, string Label, string Dot);
+    private static readonly StatusChip[] _statusChips =
+    {
+        new("all",     "All",     ""),
+        new("Active",  "Active",  "bg-emerald-500"),
+        new("Trial",   "Trial",   "bg-sky-500"),
+        new("Paused",  "Paused",  "bg-amber-500"),
+        new("Churned", "Churned", "bg-rose-500"),
+    };
+    private string _statusFilter = "all";
+    private string _groupBy = "none";
+    private bool _gridCompact = true;
+
+    private IReadOnlyList<NorthlightCustomer> FilteredCustomers =>
+        _statusFilter == "all"
+            ? _customers
+            : _customers.Where(c => c.Status == _statusFilter).ToList();
+
+    // Derived each render from the group-by Select. A fresh 1-element array is cheap and the
+    // grid re-seeds by joined-field-name content (not reference), so identity churn is a no-op.
+    private IReadOnlyList<string>? _groupByFields => _groupBy == "none" ? null : new[] { _groupBy };
+
+    // Select-filter option lists (drive the per-column Select filter popovers).
+    private readonly List<FilterOption> _planOptions = new()
+    {
+        new("Free", "Free"), new("Starter", "Starter"), new("Pro", "Pro"), new("Enterprise", "Enterprise"),
+    };
+    private readonly List<FilterOption> _statusOptions = new()
+    {
+        new("Active", "Active"), new("Trial", "Trial"), new("Paused", "Paused"), new("Churned", "Churned"),
+    };
+    private readonly List<FilterOption> _regionOptions = new()
+    {
+        new("AMER", "AMER"), new("EMEA", "EMEA"), new("APAC", "APAC"),
+    };
+    private readonly List<FilterOption> _ownerOptions = new()
+    {
+        new("Ava Chen", "Ava Chen"), new("Marcus Okoye", "Marcus Okoye"), new("Priya Rao", "Priya Rao"),
+        new("Jonas Weber", "Jonas Weber"), new("Sofia Bianchi", "Sofia Bianchi"), new("Leo Ramirez", "Leo Ramirez"),
+    };
+
+    private void SetStatusFilter(string key)
+    {
+        _statusFilter = key;
+        StateHasChanged();
+    }
+
+    private void ToggleDensity()
+    {
+        _gridCompact = !_gridCompact;
+        StateHasChanged();
+    }
+
+    private int StatusCount(string key) =>
+        key == "all" ? _customers.Count : _customers.Count(c => c.Status == key);
+
+    private static string ChipClass(bool active) =>
+        "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring "
+        + (active
+            ? "border-primary bg-primary text-primary-foreground"
+            : "border-border bg-background text-muted-foreground hover:bg-accent hover:text-foreground");
+
+    private static string GroupByLabel(string key) => key switch
+    {
+        "Plan" => "Group by plan",
+        "Status" => "Group by status",
+        "Region" => "Group by region",
+        "Owner" => "Group by owner",
+        _ => "No grouping",
+    };
+
+    // Detail row: a mini account profile revealed when a row is expanded.
+    private RenderFragment<NorthlightCustomer> CustomerDetail => c =>
+        @<div class="grid gap-4 sm:grid-cols-3">
+            <Stack Gap="1.5">
+                <Lumeo.Text Size="xs" Weight="semibold" Color="muted" Class="uppercase tracking-wide">Primary contact</Lumeo.Text>
+                <Flex Align="center" Gap="2" Class="min-w-0">
+                    <Avatar Size="Lumeo.Size.Sm" Class="shrink-0"><AvatarFallback>@Initials(c.ContactName)</AvatarFallback></Avatar>
+                    <Stack Gap="0" Class="min-w-0">
+                        <Lumeo.Text Size="sm" Weight="medium" Class="truncate leading-tight">@c.ContactName</Lumeo.Text>
+                        <Lumeo.Text As="span" Size="xs" Color="muted" Class="truncate leading-tight">@c.ContactEmail</Lumeo.Text>
+                    </Stack>
+                </Flex>
+                <Flex Gap="2" Class="mt-1">
+                    <Button Size="Button.ButtonSize.Sm" Variant="Button.ButtonVariant.Outline" OnClick="@(() => Toast.Info("Compose", $"Draft an email to {c.ContactName}."))">
+                        <DynamicIcon Name="Mail" Class="mr-2 h-3.5 w-3.5" /> Email
+                    </Button>
+                    <Button Size="Button.ButtonSize.Sm" Variant="Button.ButtonVariant.Ghost" OnClick="@(() => Toast.Info("Open account", $"{c.Company} — full profile is a demo stub."))">
+                        <DynamicIcon Name="ArrowUpRight" Class="mr-2 h-3.5 w-3.5" /> View
+                    </Button>
+                </Flex>
+            </Stack>
+
+            <Stack Gap="1.5">
+                <Lumeo.Text Size="xs" Weight="semibold" Color="muted" Class="uppercase tracking-wide">Account</Lumeo.Text>
+                <Flex Align="center" Justify="between"><Lumeo.Text Size="sm" Color="muted">Owner</Lumeo.Text><Lumeo.Text Size="sm" Weight="medium">@c.Owner</Lumeo.Text></Flex>
+                <Flex Align="center" Justify="between"><Lumeo.Text Size="sm" Color="muted">Region</Lumeo.Text><Lumeo.Text Size="sm" Weight="medium">@c.Region</Lumeo.Text></Flex>
+                <Flex Align="center" Justify="between"><Lumeo.Text Size="sm" Color="muted">Seats</Lumeo.Text><Lumeo.Text Size="sm" Weight="medium">@c.Seats.ToString("N0")</Lumeo.Text></Flex>
+                <Flex Align="center" Justify="between"><Lumeo.Text Size="sm" Color="muted">Customer since</Lumeo.Text><Lumeo.Text Size="sm" Weight="medium">@c.Signup.ToString("MMM yyyy")</Lumeo.Text></Flex>
+                <Flex Align="center" Justify="between" Class="pt-0.5">
+                    <Lumeo.Text Size="sm" Color="muted">Health</Lumeo.Text>
+                    <Badge Variant="@HealthVariant(c.Health)">@HealthLabel(c.Health) · @c.Health</Badge>
+                </Flex>
+            </Stack>
+
+            <Stack Gap="1.5">
+                <Lumeo.Text Size="xs" Weight="semibold" Color="muted" Class="uppercase tracking-wide">Latest note</Lumeo.Text>
+                <div class="rounded-lg border border-border/50 bg-muted/30 p-3">
+                    <Flex Align="center" Gap="2" Class="mb-1.5">
+                        <Badge Variant="@StatusVariant(c.Status)" Class="text-[10px] h-5">@c.Status</Badge>
+                        <Lumeo.Text Size="xs" Color="muted">Last seen @LastSeenLabel(c.LastSeenDays)</Lumeo.Text>
+                    </Flex>
+                    <Lumeo.Text Size="sm" Class="leading-snug">@c.Notes</Lumeo.Text>
+                </div>
+            </Stack>
+        </div>;
 
     // Board columns (mutable — dragged between)
     private List<BoardCard> _todo = default!, _doing = default!, _review = default!, _done = default!;
@@ -925,6 +1147,86 @@
         "Paused" => Badge.BadgeVariant.Warning,
         _ => Badge.BadgeVariant.Destructive,
     };
+
+    // ---- CRM cell helpers ----
+    private static string Monogram(string company)
+    {
+        var parts = company.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length == 0) return "?";
+        return parts.Length == 1
+            ? parts[0][..Math.Min(2, parts[0].Length)].ToUpperInvariant()
+            : $"{char.ToUpperInvariant(parts[0][0])}{char.ToUpperInvariant(parts[1][0])}";
+    }
+
+    private static string Initials(string name)
+    {
+        var parts = name.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length == 0) return "?";
+        return parts.Length == 1
+            ? parts[0][..Math.Min(2, parts[0].Length)].ToUpperInvariant()
+            : $"{char.ToUpperInvariant(parts[0][0])}{char.ToUpperInvariant(parts[^1][0])}";
+    }
+
+    private static string HealthLabel(int score) => score switch
+    {
+        >= 70 => "Healthy",
+        >= 40 => "At risk",
+        _ => "Critical",
+    };
+
+    private static Badge.BadgeVariant HealthVariant(int score) => score switch
+    {
+        >= 70 => Badge.BadgeVariant.Success,
+        >= 40 => Badge.BadgeVariant.Warning,
+        _ => Badge.BadgeVariant.Destructive,
+    };
+
+    private static string HealthDot(int score) => score switch
+    {
+        >= 70 => "bg-emerald-500",
+        >= 40 => "bg-amber-500",
+        _ => "bg-rose-500",
+    };
+
+    private static string HealthClass(int score)
+    {
+        var tone = score switch
+        {
+            >= 70 => "text-emerald-600 dark:text-emerald-400",
+            >= 40 => "text-amber-600 dark:text-amber-400",
+            _ => "text-rose-600 dark:text-rose-400",
+        };
+        return $"inline-flex items-center gap-1.5 text-xs font-medium {tone}";
+    }
+
+    private static string DeltaClass(int delta)
+    {
+        var tone = delta >= 0
+            ? "text-emerald-600 dark:text-emerald-400"
+            : "text-rose-600 dark:text-rose-400";
+        return $"inline-flex items-center gap-0.5 text-[11px] font-medium {tone}";
+    }
+
+    private static string LastSeenLabel(int days) => days switch
+    {
+        0 => "today",
+        1 => "yesterday",
+        < 7 => $"{days}d ago",
+        < 30 => $"{days / 7}w ago",
+        < 365 => $"{days / 30}mo ago",
+        _ => "over a year",
+    };
+
+    private static string LastSeenClass(int days)
+    {
+        var tone = days switch
+        {
+            < 7 => "text-foreground",
+            < 30 => "text-muted-foreground",
+            _ => "text-amber-600 dark:text-amber-400",
+        };
+        return $"text-xs {tone}";
+    }
 
     public async ValueTask DisposeAsync()
     {

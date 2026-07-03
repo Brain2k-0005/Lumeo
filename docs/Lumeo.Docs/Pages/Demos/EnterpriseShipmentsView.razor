@@ -1,9 +1,11 @@
 @using Lumeo.Docs.Shared
 @inject Lumeo.Services.IToastService Toast
 
-@* Dense, virtualized shipments grid — the data-density showcase. 640 rows, sticky
-   header, per-column filters, multi-select with a contextual bulk bar, CSV/Excel
-   export, footer aggregates and status badges that keep the table breathing. *@
+@* Dense, virtualized shipments grid — the data-density showcase, upgraded into an ops
+   console: saved-view segments drive the row set, a drag-to-group panel produces per-group
+   count/weight/value rollups, Critical rows are tinted + Exception rows carry a left accent,
+   the pinned Reference stays visible on horizontal scroll, and every row expands into a
+   shipment-journey timeline. Bulk bar, facet filters, footer aggregates and export unchanged. *@
 
 <div class="flex h-full flex-col gap-3 p-3 sm:p-4">
 
@@ -21,6 +23,27 @@
                 </div>
             </div>
         }
+    </div>
+
+    <!-- Saved views (segment switcher) — drives the grid's row set -->
+    <div class="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-2">
+        <div role="tablist" aria-label="Saved views"
+             class="flex flex-wrap items-center gap-1 rounded-lg border border-border/60 bg-muted/40 p-1">
+            @foreach (var seg in _segDefs)
+            {
+                var active = seg.Id == _segment;
+                <button type="button" role="tab" aria-selected="@active"
+                        @onclick="() => ApplySegment(seg.Id)" class="@SegBtnClass(active)">
+                    <DynamicIcon Name="@seg.Icon" Class="h-3.5 w-3.5" />
+                    <span>@seg.Label</span>
+                    <span class="@SegCountClass(active)">@(_segCounts.TryGetValue(seg.Id, out var c) ? c : 0)</span>
+                </button>
+            }
+        </div>
+        <div class="hidden text-xs text-muted-foreground sm:block">
+            Showing <span class="font-medium tabular-nums text-foreground">@_visible.Count.ToString("N0")</span>
+            of @MeridianData.Shipments.Count.ToString("N0") shipments
+        </div>
     </div>
 
     <!-- Bulk action bar (contextual) -->
@@ -49,20 +72,33 @@
 
     <!-- The grid -->
     <div class="min-h-0 flex-1">
-        <DataGrid TItem="Shipment" Items="@MeridianData.Shipments"
+        <DataGrid TItem="Shipment" Items="@_visible"
                   ShowToolbar="true" ShowPagination="false" ShowColumnChooser="true"
+                  ShowGroupPanel="true" GroupsExpandedByDefault="false"
+                  GroupPanelText="Drag a column here — or use Add group level — to roll shipments up by Region, Status, Carrier…"
                   ShowExport="true" ExportFormats="DataGridExportFormat.Csv | DataGridExportFormat.Excel"
                   SelectionMode="DataGridSelectionMode.Multiple" @bind-SelectedItems="_selected"
                   Striped="true" Compact="true" Bordered="true"
-                  Height="calc(100dvh - 19rem)"
-                  VirtualizeThreshold="200" VirtualItemSize="42">
+                  Height="calc(100dvh - 22rem)"
+                  VirtualizeThreshold="200" VirtualItemSize="42"
+                  RowStyle="RowEmphasis">
 
-            <DataGridColumnDef TItem="Shipment" Title="Reference" Field="Reference" Sortable="true" Filterable="true" />
+          <ChildContent>
+            <DataGridColumnDef TItem="Shipment" Title="Reference" Field="Reference" Sortable="true"
+                               Filterable="true" Pin="PinDirection.Left" MinWidth="150">
+                <CellTemplate>
+                    <div class="flex items-center gap-2">
+                        <span class="@($"h-6 w-1 shrink-0 rounded-full {RefAccent(context)}")"></span>
+                        <span class="font-medium tabular-nums">@context.Reference</span>
+                    </div>
+                </CellTemplate>
+            </DataGridColumnDef>
+
             <DataGridColumnDef TItem="Shipment" Title="Lane" Field="Lane" Sortable="true" Filterable="true" />
-            <DataGridColumnDef TItem="Shipment" Title="Carrier" Field="Carrier" Sortable="true"
+            <DataGridColumnDef TItem="Shipment" Title="Carrier" Field="Carrier" Sortable="true" Groupable="true"
                                Filterable="true" FilterType="DataGridFilterType.Select" FilterOptions="_carrierOpts" />
 
-            <DataGridColumnDef TItem="Shipment" Title="Mode" Field="Mode" Sortable="true"
+            <DataGridColumnDef TItem="Shipment" Title="Mode" Field="Mode" Sortable="true" Groupable="true"
                                Filterable="true" FilterType="DataGridFilterType.Select" FilterOptions="_modeOpts">
                 <CellTemplate>
                     <Badge Variant="Badge.BadgeVariant.Outline" Class="gap-1">
@@ -71,14 +107,14 @@
                 </CellTemplate>
             </DataGridColumnDef>
 
-            <DataGridColumnDef TItem="Shipment" Title="Priority" Field="Priority" Sortable="true"
+            <DataGridColumnDef TItem="Shipment" Title="Priority" Field="Priority" Sortable="true" Groupable="true"
                                Filterable="true" FilterType="DataGridFilterType.Select" FilterOptions="_priorityOpts">
                 <CellTemplate>
                     <Badge Variant="@PriorityVariant(context.Priority)">@context.Priority</Badge>
                 </CellTemplate>
             </DataGridColumnDef>
 
-            <DataGridColumnDef TItem="Shipment" Title="Status" Field="Status" Sortable="true"
+            <DataGridColumnDef TItem="Shipment" Title="Status" Field="Status" Sortable="true" Groupable="true"
                                Filterable="true" FilterType="DataGridFilterType.Select" FilterOptions="_statusOpts">
                 <CellTemplate>
                     <Badge Variant="@StatusVariant(context.Status)" Class="gap-1">
@@ -87,7 +123,7 @@
                 </CellTemplate>
             </DataGridColumnDef>
 
-            <DataGridColumnDef TItem="Shipment" Title="Region" Field="Region" Sortable="true"
+            <DataGridColumnDef TItem="Shipment" Title="Region" Field="Region" Sortable="true" Groupable="true"
                                Filterable="true" FilterType="DataGridFilterType.Select" FilterOptions="_regionOpts" />
 
             <DataGridColumnDef TItem="Shipment" Title="Weight (kg)" Field="Weight" Sortable="true"
@@ -111,6 +147,90 @@
                     </div>
                 </CellTemplate>
             </DataGridColumnDef>
+          </ChildContent>
+
+            <DetailTemplate>
+                @{
+                    var s = context;
+                    var active = ActiveStage(s);
+                    var stages = Stages(s);
+                }
+                @* The detail <td> spans the full (scrollable) table width, so an inner
+                   sticky-left + capped-width wrapper keeps the panel glued to the viewport's
+                   left edge and fully visible without horizontal scrolling. *@
+                <div class="border-y border-border/40 bg-muted/20">
+                    <div class="sticky left-0 max-w-4xl px-4 py-4">
+                    <div class="grid gap-5 sm:grid-cols-[minmax(0,1fr)_17rem]">
+
+                        <!-- Journey timeline -->
+                        <div class="min-w-0">
+                            <div class="mb-3 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                                <DynamicIcon Name="Route" Class="h-3.5 w-3.5" /> Shipment journey
+                            </div>
+                            <Timeline ActiveIndex="@active">
+                                @for (var i = 0; i < stages.Length; i++)
+                                {
+                                    var st = stages[i];
+                                    <TimelineItem Title="@st.Title" Description="@st.Desc" Time="@st.Time">
+                                        <IconContent>
+                                            <DynamicIcon Name="@st.Icon" Class="h-4 w-4" />
+                                        </IconContent>
+                                    </TimelineItem>
+                                }
+                            </Timeline>
+                        </div>
+
+                        <!-- Facts card -->
+                        <div class="rounded-lg border border-border/60 bg-card p-3">
+                            <div class="mb-3 flex items-center justify-between gap-2">
+                                <span class="text-sm font-semibold tabular-nums">@s.Reference</span>
+                                <Badge Variant="@StatusVariant(s.Status)" Class="gap-1">
+                                    <span class="h-1.5 w-1.5 rounded-full bg-current opacity-70"></span>@s.Status
+                                </Badge>
+                            </div>
+                            <dl class="grid grid-cols-2 gap-x-4 gap-y-2.5 text-xs">
+                                <div class="col-span-2">
+                                    <dt class="text-muted-foreground">Lane</dt>
+                                    <dd class="font-medium">@s.Lane</dd>
+                                </div>
+                                <div>
+                                    <dt class="text-muted-foreground">Carrier</dt>
+                                    <dd class="font-medium">@s.Carrier</dd>
+                                </div>
+                                <div>
+                                    <dt class="text-muted-foreground">Mode</dt>
+                                    <dd class="font-medium">@s.Mode</dd>
+                                </div>
+                                <div>
+                                    <dt class="text-muted-foreground">Weight</dt>
+                                    <dd class="font-medium tabular-nums">@s.Weight.ToString("N0") kg</dd>
+                                </div>
+                                <div>
+                                    <dt class="text-muted-foreground">Value</dt>
+                                    <dd class="font-medium tabular-nums">€@s.Value.ToString("N0")</dd>
+                                </div>
+                                <div>
+                                    <dt class="text-muted-foreground">ETA</dt>
+                                    <dd class="font-medium tabular-nums">@s.Eta.ToString("MMM d")</dd>
+                                </div>
+                                <div>
+                                    <dt class="text-muted-foreground">Priority</dt>
+                                    <dd><Badge Variant="@PriorityVariant(s.Priority)">@s.Priority</Badge></dd>
+                                </div>
+                            </dl>
+                            <div class="mt-3 border-t border-border/40 pt-3">
+                                <div class="mb-1 flex items-center justify-between text-[11px] text-muted-foreground">
+                                    <span>Progress</span><span class="tabular-nums">@s.ProgressPct%</span>
+                                </div>
+                                <div class="h-1.5 w-full overflow-hidden rounded-full bg-muted">
+                                    <div class="h-full rounded-full @ProgressColor(s.Status)" style="width:@(s.ProgressPct)%"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    </div>
+                </div>
+            </DetailTemplate>
         </DataGrid>
     </div>
 </div>
@@ -118,10 +238,44 @@
 @code {
     private IReadOnlyList<Shipment>? _selected;
 
-    // Faceted (multi-select checkbox) filter options for the enum-like columns.
-    // Without FilterOptions a Select-filter popover renders only the operator + Apply
-    // and NO value control — deriving them from the live data guarantees every
-    // filterable value is offered exactly once.
+    // ---- Saved-view segments (demo-side UI that drives the grid's row set) ----
+    private enum Seg { All, Exceptions, Late, HighValue }
+    private const decimal HighValueFloor = 180_000m;
+
+    private sealed record SegDef(Seg Id, string Label, string Icon, Func<Shipment, bool> Match);
+
+    private static readonly SegDef[] _segDefs =
+    {
+        new(Seg.All,        "All",         "Boxes",         _ => true),
+        new(Seg.Exceptions, "Exceptions",  "TriangleAlert", s => s.Status == "Exception"),
+        new(Seg.Late,       "Late",        "Clock",         s => s.Status == "Delayed"),
+        new(Seg.HighValue,  "High value",  "Wallet",        s => s.Value >= HighValueFloor),
+    };
+
+    private Seg _segment = Seg.All;
+    private IReadOnlyList<Shipment> _visible = MeridianData.Shipments;
+    private Dictionary<Seg, int> _segCounts = new();
+
+    private void ApplySegment(Seg id)
+    {
+        _segment = id;
+        var match = _segDefs.First(d => d.Id == id).Match;
+        _visible = id == Seg.All ? MeridianData.Shipments : MeridianData.Shipments.Where(match).ToList();
+        // Selection is scoped to a view — clear it so the bulk bar can't act on hidden rows.
+        ClearSelection();
+    }
+
+    private static string SegBtnClass(bool active) =>
+        "inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring " +
+        (active
+            ? "bg-card text-foreground shadow-sm ring-1 ring-border/60"
+            : "text-muted-foreground hover:bg-card/60 hover:text-foreground");
+
+    private static string SegCountClass(bool active) =>
+        "rounded px-1.5 py-0.5 text-[10px] font-semibold tabular-nums " +
+        (active ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground");
+
+    // ---- Faceted (multi-select checkbox) filter options for the enum-like columns ----
     private static List<FilterOption> Opts(IEnumerable<string> values) =>
         values.Distinct().OrderBy(v => v, StringComparer.Ordinal)
               .Select(v => new FilterOption(v, v)).ToList();
@@ -148,6 +302,8 @@
             new Kpi("Needs attention", attention.ToString("N0"), "TriangleAlert", "text-warning-text"),
             new Kpi("Cargo value", $"€{value / 1_000_000m:N1}M", "Wallet", "text-muted-foreground"),
         };
+
+        _segCounts = _segDefs.ToDictionary(d => d.Id, d => s.Count(d.Match));
     }
 
     private void AssignCarrier() => Toast.Info("Carrier assignment", $"Routing {_selected?.Count ?? 0} shipment(s) to the assignment queue.");
@@ -161,6 +317,58 @@
     }
 
     private void ClearSelection() => _selected = System.Array.Empty<Shipment>();
+
+    // ---- Conditional row emphasis ----------------------------------------------------
+    // Critical priority → inline background tint (inline style wins over the striped/hover
+    // classes, which a Tailwind utility class could not). Exception status → left accent
+    // bar rendered inside the pinned Reference cell (a border there would lose to the
+    // Bordered variant's [&_td]:border, and a row box-shadow would sit under the opaque
+    // pinned cell — the in-cell bar is the robust cue).
+    private static string? RowEmphasis(Shipment s) => s.Priority == "Critical"
+        ? "background-color: color-mix(in srgb, var(--color-warning) 14%, transparent);"
+        : null;
+
+    private static string RefAccent(Shipment s) => s.Status switch
+    {
+        "Exception" => "bg-destructive",
+        "Delayed" or "Customs" => "bg-warning-text",
+        _ => "bg-transparent",
+    };
+
+    // ---- Row-detail journey timeline -------------------------------------------------
+    private sealed record Stage(string Icon, string Title, string Desc, string Time);
+
+    // Where the shipment currently sits on the 5-stage pipeline (drives Timeline.ActiveIndex).
+    private static int ActiveStage(Shipment s) => s.Status switch
+    {
+        "Booked" => 0,
+        "In Transit" or "Delayed" or "Exception" => 2,
+        "Customs" or "At Hub" => 3,
+        "Delivered" => 4,
+        _ => 1,
+    };
+
+    private static Stage[] Stages(Shipment s)
+    {
+        var active = ActiveStage(s);
+        // Deterministic dated pipeline anchored on the ETA: earlier legs back-dated in 2-day
+        // steps, so completed stages read as past and pending stages as estimates.
+        string When(int i)
+        {
+            var d = s.Eta.AddDays(-(4 - i) * 2);
+            return i <= active ? d.ToString("MMM d") : $"Est. {d:MMM d}";
+        }
+        return new[]
+        {
+            new Stage("ClipboardCheck", "Booked",     $"Order confirmed · {s.Origin}",                 When(0)),
+            new Stage("PackageCheck",   "Dispatched", $"{s.Carrier} collected the cargo",              When(1)),
+            new Stage(ModeIcon(s.Mode), "In transit", $"En route to {s.Destination} · {s.Mode}",       When(2)),
+            new Stage(s.Status == "Customs" ? "ShieldCheck" : "Warehouse",
+                                        s.Status == "Customs" ? "Customs" : "At hub",
+                                        s.Status == "Customs" ? "Clearing customs at destination" : $"Arrived {s.Destination} hub", When(3)),
+            new Stage("CircleCheck",    "Delivered",  $"Final handover · {s.Destination}",             When(4)),
+        };
+    }
 
     private static string ModeIcon(string mode) => mode switch
     {
