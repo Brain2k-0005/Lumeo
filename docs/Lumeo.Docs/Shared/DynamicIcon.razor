@@ -4,7 +4,14 @@
 @inject IconService _iconService
 @implements IDisposable
 
-<Blazicon Svg="@GetIcon()" class="@Class" />
+@if (IsBlazionsPack)
+{
+    <Blazicon Svg="@GetPackIcon()" class="@Class" />
+}
+else
+{
+    <SvgGlyph Svg="@GetLucideIcon()" class="@Class" />
+}
 
 @code {
     [Parameter] public string Name { get; set; } = "Circle";
@@ -26,7 +33,13 @@
         _iconService.OnChange -= OnIconLibraryChanged;
     }
 
-    private SvgIcon GetIcon()
+    // The six Blazicons comparison packs still render through <Blazicon> (SvgIcon).
+    // Everything else — Lucide (default), plus Devicon/FlagIcons which have no UI-icon
+    // equivalents — renders the first-party Lumeo.Icons.Lucide pack via <SvgGlyph>.
+    private bool IsBlazionsPack => _iconService.ActiveLibrary is
+        "bootstrap" or "fluentui" or "font-awesome" or "google-material" or "ionicons" or "material-design";
+
+    private SvgIcon GetPackIcon()
     {
         return _iconService.ActiveLibrary switch
         {
@@ -36,13 +49,12 @@
             "google-material" => GetGoogleMaterialIcon(),
             "ionicons" => GetIonicon(),
             "material-design" => GetMdiIcon(),
-            // Devicon and FlagIcons don't have UI icons (they're brand logos and country flags),
-            // so fall back to Lucide icons for those libraries.
-            _ => GetLucideIcon()
+            _ => GetBootstrapIcon(),
         };
     }
 
-    private SvgIcon GetLucideIcon() => Name switch
+    // Returns a first-party Lumeo.Icons.Lucide IconSource (no longer a Blazicons.SvgIcon).
+    private Lumeo.IconSource GetLucideIcon() => Name switch
     {
         "Accessibility" => Lucide.Accessibility,
         "Activity" => Lucide.Activity,

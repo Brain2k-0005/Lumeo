@@ -132,7 +132,19 @@ const guideItems = guides.map(g => ({
     url: `/${g.href}`,
 }));
 
-const allItems = [...componentItems, ...patternItems, ...blockItems, ...guideItems];
+// --- Icon gallery (the /icons pack browser) ---
+const iconGalleryItems = [
+    {
+        id: 'icons:gallery',
+        type: 'icons',
+        title: 'Icon Packs',
+        summary: 'Browse and copy Lucide, Tabler and Phosphor icons',
+        category: 'Icons',
+        url: '/icons',
+    },
+];
+
+const allItems = [...componentItems, ...patternItems, ...blockItems, ...guideItems, ...iconGalleryItems];
 
 // --- Dead-link sanity check: every emitted URL must match a real @page route ---
 const realRoutes = collectAllRoutes(join(repoRoot, 'docs', 'Lumeo.Docs', 'Pages'));
@@ -144,7 +156,7 @@ if (dead.length > 0) {
 }
 
 writeFileSync(outPath, JSON.stringify(allItems));
-console.log(`Wrote ${allItems.length} items to ${outPath} (${componentItems.length} components, ${patternItems.length} patterns, ${blockItems.length} blocks, ${guideItems.length} guides) — all routes verified live.`);
+console.log(`Wrote ${allItems.length} items to ${outPath} (${componentItems.length} components, ${patternItems.length} patterns, ${blockItems.length} blocks, ${guideItems.length} guides, ${iconGalleryItems.length} icons) — all routes verified live.`);
 
 // --- Helpers ---
 function toPascalCase(slug) {

@@ -134,7 +134,14 @@
                                     @onclick="@(() => _selected = e)"
                                     title="@e.Name"
                                     class="@($"flex flex-col items-center justify-center gap-2 h-20 rounded-md border text-center transition-colors {(isActive ? "border-primary bg-primary/10 text-foreground" : "border-transparent hover:border-border/60 hover:bg-accent/50 text-muted-foreground hover:text-foreground")}")">
-                                <Blazicon Svg="@e.Svg" class="shrink-0" style="@PreviewIconStyle" />
+                                @if (e.Glyph is {} tileGlyph)
+                                {
+                                    <SvgGlyph Svg="@tileGlyph" class="shrink-0" style="@PreviewIconStyle" />
+                                }
+                                else if (e.Blaz is {} tileBlaz)
+                                {
+                                    <Blazicon Svg="@tileBlaz" class="shrink-0" style="@PreviewIconStyle" />
+                                }
                                 <span class="text-[10px] leading-tight truncate w-full px-1">@e.Name</span>
                             </button>
                         }
@@ -167,7 +174,14 @@
 
                     @* Big preview — uses the selected size from the toolbar picker *@
                     <div class="flex items-center justify-center h-32 rounded-md border border-border/40 bg-background mb-4">
-                        <Blazicon Svg="@_selected.Svg" class="@BigPreviewClass" />
+                        @if (_selected.Glyph is {} bigGlyph)
+                        {
+                            <SvgGlyph Svg="@bigGlyph" class="@BigPreviewClass" />
+                        }
+                        else if (_selected.Blaz is {} bigBlaz)
+                        {
+                            <Blazicon Svg="@bigBlaz" class="@BigPreviewClass" />
+                        }
                     </div>
 
                     @* Name + library *@
@@ -180,11 +194,17 @@
                     <div class="mb-4">
                         <Lumeo.Text Size="xs" Color="muted" Class="mb-2 block">All sizes</Lumeo.Text>
                         <div class="flex items-center justify-around rounded-md border border-border/40 bg-background px-3 py-3">
-                            <Blazicon Svg="@_selected.Svg" class="h-3 w-3" />
-                            <Blazicon Svg="@_selected.Svg" class="h-3.5 w-3.5" />
-                            <Blazicon Svg="@_selected.Svg" class="h-4 w-4" />
-                            <Blazicon Svg="@_selected.Svg" class="h-5 w-5" />
-                            <Blazicon Svg="@_selected.Svg" class="h-6 w-6" />
+                            @foreach (var sz in new[] { "h-3 w-3", "h-3.5 w-3.5", "h-4 w-4", "h-5 w-5", "h-6 w-6" })
+                            {
+                                @if (_selected.Glyph is {} sizeGlyph)
+                                {
+                                    <SvgGlyph Svg="@sizeGlyph" class="@sz" />
+                                }
+                                else if (_selected.Blaz is {} sizeBlaz)
+                                {
+                                    <Blazicon Svg="@sizeBlaz" class="@sz" />
+                                }
+                            }
                         </div>
                     </div>
 
@@ -293,14 +313,26 @@
         </TabsContent>
 
         <TabsContent Value="svg">
-            <div class="rounded-md border border-border/40 p-6 bg-muted/20">
-                <Flex Gap="5" Align="center">
-                    <Icon Svg="@(LumeoIcons.Search)" />
-                    <Icon Svg="@(LumeoIcons.CalendarDays)" />
-                    <Icon Svg="@(LumeoIcons.TriangleAlert)" />
-                    <Icon Svg="@(LumeoIcons.Star)" />
-                    <Icon Svg="@(LumeoIcons.Download)" />
-                </Flex>
+            <div class="rounded-md border border-border/40 p-6 bg-muted/20 space-y-5">
+                <div>
+                    <Lumeo.Text Size="xs" Color="muted" Class="mb-2 block">Built in — the ~220 <code class="font-mono text-[11px]">LumeoIcons</code> ship with the core</Lumeo.Text>
+                    <Flex Gap="5" Align="center">
+                        <Icon Svg="@(LumeoIcons.Search)" />
+                        <Icon Svg="@(LumeoIcons.CalendarDays)" />
+                        <Icon Svg="@(LumeoIcons.TriangleAlert)" />
+                        <Icon Svg="@(LumeoIcons.Star)" />
+                        <Icon Svg="@(LumeoIcons.Download)" />
+                    </Flex>
+                </div>
+                <div>
+                    <Lumeo.Text Size="xs" Color="muted" Class="mb-2 block">From an icon pack — each is a separate NuGet (<code class="font-mono text-[11px]">Lumeo.Icons.Lucide</code>, <code class="font-mono text-[11px]">…Tabler</code>, <code class="font-mono text-[11px]">…Phosphor.Duotone</code>, …)</Lumeo.Text>
+                    <Flex Gap="5" Align="center">
+                        <Icon Svg="@(Lucide.House)" />
+                        <Icon Svg="@(Lucide.Star)" />
+                        <Icon Svg="@(Lucide.Download)" />
+                    </Flex>
+                    <Lumeo.Text Size="xs" Color="muted" Class="mt-2 block">Browse Lucide, Tabler and Phosphor in the <a href="icons" class="text-primary hover:underline">icon gallery</a>.</Lumeo.Text>
+                </div>
             </div>
             <pre class="mt-3 rounded-md border border-border/40 bg-background p-3 text-xs font-mono overflow-x-auto">@_svgCode</pre>
         </TabsContent>
@@ -331,9 +363,9 @@
                 </tr>
                 <tr>
                     <td class="p-3 font-mono text-xs text-primary">Svg</td>
-                    <td class="p-3 font-mono text-xs text-muted-foreground">SvgIcon?</td>
+                    <td class="p-3 font-mono text-xs text-muted-foreground">IconSource?</td>
                     <td class="p-3 font-mono text-xs text-muted-foreground">null</td>
-                    <td class="p-3 text-muted-foreground">Direct Blazicons icon. Takes precedence over <code class="font-mono text-xs">Name</code>.</td>
+                    <td class="p-3 text-muted-foreground">Direct <code class="font-mono text-xs">Lumeo.IconSource</code> — a built-in <code class="font-mono text-xs">LumeoIcons</code> or any <code class="font-mono text-xs">Lumeo.Icons.*</code> pack icon. Takes precedence over <code class="font-mono text-xs">Name</code>.</td>
                 </tr>
                 <tr>
                     <td class="p-3 font-mono text-xs text-primary">Size</td>
@@ -366,9 +398,11 @@
     private readonly string _gridId = $"icon-grid-{Guid.NewGuid():N}";
     private string _lastGridKey = "";
 
-    // An icon entry the grid can render and the snippet can target.
-    // Name is the Blazicons property name (e.g. "Search", "ChevronDown").
-    private record IconEntry(string Name, SvgIcon Svg);
+    // An icon entry the grid can render and the snippet can target. Name is the pack
+    // property name (e.g. "Search", "ChevronDown"). Exactly one of Glyph (first-party
+    // Lumeo.Icons IconSource → <SvgGlyph>) or Blaz (a Blazicons comparison-pack SvgIcon
+    // → <Blazicon>) is populated, depending on the active library.
+    private record IconEntry(string Name, Lumeo.IconSource? Glyph, SvgIcon? Blaz);
 
     // Per-library catalogs, built ON DEMAND. The non-Lucide Blazicons packs are
     // <BlazorWebAssemblyLazyLoad> assemblies. Reflecting over their types
@@ -438,12 +472,25 @@
         }
     }
 
+    // First-party Lucide pack (Lumeo.Icons.Lucide) — its properties return Lumeo.IconSource,
+    // rendered via <SvgGlyph>. Eager (in the boot manifest), so it is safe to reflect up front.
+    private static IReadOnlyList<IconEntry> EnumerateLucide()
+    {
+        return typeof(Lucide)
+            .GetProperties(BindingFlags.Public | BindingFlags.Static)
+            .Where(p => p.PropertyType == typeof(Lumeo.IconSource))
+            .Select(p => new IconEntry(p.Name, (Lumeo.IconSource)p.GetValue(null)!, null))
+            .OrderBy(e => e.Name, StringComparer.Ordinal)
+            .ToList();
+    }
+
+    // Blazicons comparison packs — properties return Blazicons.SvgIcon, rendered via <Blazicon>.
     private static IReadOnlyList<IconEntry> EnumerateIcons(Type svgIconContainer)
     {
         return svgIconContainer
             .GetProperties(BindingFlags.Public | BindingFlags.Static)
             .Where(p => p.PropertyType == typeof(SvgIcon))
-            .Select(p => new IconEntry(p.Name, (SvgIcon)p.GetValue(null)!))
+            .Select(p => new IconEntry(p.Name, null, (SvgIcon)p.GetValue(null)!))
             .OrderBy(e => e.Name, StringComparer.Ordinal)
             .ToList();
     }
@@ -487,14 +534,14 @@
                 // path that resolves every one of the 1000+ Lucide icons.
                 // (The short Name= form only works for the ~100 icons that
                 // Icon.razor's MapName hardcodes.)
-                "lucide"          => $"<Icon Svg=\"LumeoIcons.{n}\"{sizeAttr} />",
+                "lucide"          => $"<Icon Svg=\"@(Lucide.{n})\"{sizeAttr} />",
                 "bootstrap"       => $"<Icon Svg=\"BootstrapIcon.{n}\"{sizeAttr} />",
                 "fluentui"        => $"<Icon Svg=\"FluentUiIcon.{n}\"{sizeAttr} />",
                 "google-material" => $"<Icon Svg=\"GoogleMaterialOutlinedIcon.{n}\"{sizeAttr} />",
                 "font-awesome"    => $"<Icon Svg=\"FontAwesomeSolidIcon.{n}\"{sizeAttr} />",
                 "ionicons"        => $"<Icon Svg=\"Ionicon.{n}\"{sizeAttr} />",
                 "material-design" => $"<Icon Svg=\"MdiIcon.{n}\"{sizeAttr} />",
-                _ => $"<Icon Svg=\"LumeoIcons.{n}\"{sizeAttr} />",
+                _ => $"<Icon Svg=\"@(Lucide.{n})\"{sizeAttr} />",
             };
         }
     }
@@ -526,7 +573,7 @@
     {
         IconService.OnChange += OnLibChanged;
         // Lucide is eager (boot manifest) — safe to reflect immediately.
-        _catalogs["lucide"] = EnumerateIcons(typeof(Lucide));
+        _catalogs["lucide"] = EnumerateLucide();
     }
 
     // Covers the initial render and direct navigation: ensure the (possibly
@@ -796,11 +843,16 @@
     <Icon Name=""Settings"" />
 </Button>";
 
-    private const string _svgCode = @"@* Any IconSource works: the ~220 built-in LumeoIcons ship with the core,
-   and the Lumeo.Icons.* packs (Lucide, Tabler, Phosphor, ...) add full sets. *@
+    private const string _svgCode = @"@* Built in: the ~220 LumeoIcons ship with the core — no extra package. *@
 <Icon Svg=""@(LumeoIcons.Search)"" />
-<Icon Svg=""@(LumeoIcons.CalendarDays)"" />
-<Icon Svg=""@(LumeoIcons.TriangleAlert)"" />
 <Icon Svg=""@(LumeoIcons.Star)"" />
-<Icon Svg=""@(LumeoIcons.Download)"" />";
+
+@* Icon packs are SEPARATE NuGets — install only the ones you use:
+     dotnet add package Lumeo.Icons.Lucide
+     dotnet add package Lumeo.Icons.Tabler
+     dotnet add package Lumeo.Icons.Phosphor.Duotone *@
+@using Lumeo.Icons
+<Icon Svg=""@(Lucide.House)"" />
+<Icon Svg=""@(Tabler.Home)"" />
+<Icon Svg=""@(PhosphorDuotone.Heart)"" />";
 }

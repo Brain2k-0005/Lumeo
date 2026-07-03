@@ -47,6 +47,12 @@ public static class IconEmitter
             written.Add(path);
         }
 
+        // manifest.json = the pack's name list (schema: pack/class/namespace/version/style/
+        // count/icons[]). Consumed by the docs icon gallery (/icons) and MCP search.
+        // REGEN NOTE: the docs (docs/Lumeo.Docs) copy these manifests into
+        // wwwroot/icons/<pack>.json on every build (see the CopyIconManifests MSBuild target),
+        // so re-running Lumeo.IconGen — which overwrites this file — is all that's needed to
+        // refresh the gallery; the next docs build picks up the new names automatically.
         var manifestPath = Path.Combine(config.OutputDir, $"{config.OutputBaseName}.manifest.json");
         File.WriteAllText(manifestPath, RenderManifest(config, icons), new UTF8Encoding(false));
         written.Add(manifestPath);

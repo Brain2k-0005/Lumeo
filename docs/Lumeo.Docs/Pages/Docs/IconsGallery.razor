@@ -1,0 +1,241 @@
+@page "/icons"
+@namespace Lumeo.Docs.Pages.Docs
+@inject IJSRuntime JS
+@inject HttpClient Http
+@inject Microsoft.AspNetCore.Components.WebAssembly.Services.LazyAssemblyLoader LazyLoader
+@using System.Reflection
+@using System.Text.Json.Serialization
+
+<PageTitle>Icon Packs — Lumeo</PageTitle>
+
+@* ────────────────────────────────────────────────────────────────────── *@
+@* Intro                                                                   *@
+@* ────────────────────────────────────────────────────────────────────── *@
+<div class="mb-6">
+    <Heading Id="top" Level="1" Size="3xl" Class="tracking-tight">Icon packs</Heading>
+    <Lumeo.Text Size="base" Color="muted" Class="mt-2 max-w-2xl">
+        First-party <code class="font-mono text-[13px]">Lumeo.Icons.*</code> NuGet packages expose thousands of
+        tree-shakeable <code class="font-mono text-[13px]">IconSource</code> properties. Install only the packs you use,
+        then render any icon with <code class="font-mono text-[13px]">&lt;Icon Svg="@("@(Tabler.Home)")" /&gt;</code>.
+        Search a pack below and click an icon to copy its usage.
+    </Lumeo.Text>
+</div>
+
+<section id="browse" data-toc-entry data-toc-title="Browse packs" class="scroll-mt-24">
+    <div class="rounded-[var(--radius-xl)] border border-border/40 bg-card overflow-hidden">
+
+        @* Toolbar: pack picker + search *@
+        <div class="border-b border-border/40 bg-card px-4 py-3 space-y-3">
+            <div class="inline-flex flex-wrap rounded-lg border border-border/40 bg-background p-1 gap-1">
+                @foreach (var p in _packs)
+                {
+                    var active = p.Key == _pack;
+                    <button type="button"
+                            @onclick="@(() => SelectPackAsync(p.Key))"
+                            class="@($"px-3 py-1.5 rounded-md text-sm font-medium transition-colors {(active ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground hover:bg-accent/50")}")">
+                        @p.Display
+                    </button>
+                }
+            </div>
+
+            <Flex Gap="2" Align="center" Class="flex-wrap">
+                <div class="flex-1 min-w-[240px] relative">
+                    <div class="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none text-muted-foreground">
+                        <SvgGlyph Svg="@(Lucide.Search)" class="h-4 w-4" />
+                    </div>
+                    <Input Value="@_query"
+                           ValueChanged="@((string v) => { _query = v; _selected = null; })"
+                           Placeholder="Search — home, arrow, chart, user…"
+                           Class="pl-9" />
+                </div>
+                <div class="text-xs text-muted-foreground whitespace-nowrap">
+                    <span class="font-mono text-foreground">@Current.UsageClass</span>
+                    · <span class="font-medium text-foreground">@AllNames.Length</span> icons · @Current.Style
+                </div>
+            </Flex>
+        </div>
+
+        @* Copied confirmation *@
+        @if (_copied && _selected is not null)
+        {
+            <div class="flex items-center gap-2 border-b border-border/40 bg-success/10 px-4 py-2 text-xs text-success">
+                <SvgGlyph Svg="@(Lucide.Check)" class="h-3.5 w-3.5" />
+                <span>Copied</span>
+                <code class="font-mono text-foreground/80">@Snippet</code>
+            </div>
+        }
+
+        @* Grid *@
+        <div class="p-3 overflow-y-auto" style="max-height: 620px">
+            @{
+                var matches = Filtered.ToList();
+                var shown = matches.Take(_cap).ToList();
+            }
+            @if (!Ready)
+            {
+                <div class="flex flex-col items-center gap-2 py-16 text-muted-foreground">
+                    <SvgGlyph Svg="@(Lucide.LoaderCircle)" class="h-8 w-8 animate-spin text-muted-foreground/40" />
+                    <Lumeo.Text Size="sm">Loading @Current.Display icons…</Lumeo.Text>
+                </div>
+            }
+            else if (matches.Count == 0)
+            {
+                    <div class="flex flex-col items-center gap-2 py-16 text-muted-foreground">
+                        <SvgGlyph Svg="@(Lucide.SearchX)" class="h-10 w-10 text-muted-foreground/40" />
+                        <Lumeo.Text Size="sm">No @Current.Display icons match "<span class="text-foreground">@_query</span>"</Lumeo.Text>
+                    </div>
+                }
+                else
+                {
+                    <div class="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-2">
+                        @foreach (var name in shown)
+                        {
+                            var n = name;
+                            @if (Resolve(n) is {} src)
+                            {
+                                var isActive = _selected == n;
+                                <button type="button"
+                                        @onclick="@(() => CopyIconAsync(n))"
+                                        title="@n"
+                                        class="@($"flex flex-col items-center justify-center gap-2 h-20 rounded-md border text-center transition-colors {(isActive ? "border-primary bg-primary/10 text-foreground" : "border-transparent hover:border-border/60 hover:bg-accent/50 text-muted-foreground hover:text-foreground")}")">
+                                    <SvgGlyph Svg="@src" class="h-6 w-6 shrink-0" />
+                                    <span class="text-[10px] leading-tight truncate w-full px-1">@n</span>
+                                </button>
+                            }
+                        }
+                    </div>
+                    @if (matches.Count > _cap)
+                    {
+                        <div class="mt-4 text-center text-xs text-muted-foreground">
+                            Showing the first <span class="font-medium text-foreground">@_cap</span> of
+                            <span class="font-medium text-foreground">@matches.Count</span> matches — refine your search to narrow the list.
+                        </div>
+                    }
+                }
+        </div>
+    </div>
+
+    <Lumeo.Text Size="xs" Color="muted" Class="mt-3 block">
+        Each pack is a separate NuGet — e.g. <code class="font-mono text-[11px]">dotnet add package @Current.AssemblyName</code>,
+        then <code class="font-mono text-[11px]">@("@using Lumeo.Icons")</code>. Icons are expression-bodied properties, so a
+        WASM trimmer keeps only the ones you reference.
+    </Lumeo.Text>
+</section>
+
+@code {
+    private string _pack = "lucide";
+    private string _query = "";
+    private string? _selected;
+    private bool _copied;
+    private const int _cap = 200;
+
+    // pack key -> manifest name list (fetched from wwwroot/icons/<pack>.json).
+    private readonly Dictionary<string, string[]> _manifests = new();
+    // pack key -> name -> IconSource (reflected ONCE over the pack class).
+    private readonly Dictionary<string, Dictionary<string, Lumeo.IconSource>> _dicts = new();
+    private readonly HashSet<string> _loading = new();
+
+    // Reflection here in the DOCS app is fine — the packs themselves never reflect.
+    // Tabler/Phosphor/PhosphorDuotone are lazy-loaded (their assemblies are excluded from
+    // the boot manifest and trimmer-rooted whole — see Lumeo.Docs.csproj); we load the DLL
+    // on demand before reflecting. Lucide is eager (used across the docs).
+    private record PackInfo(string Key, string Display, string TypeName, string AssemblyName,
+                            string ManifestUrl, string? LazyDll, string UsageClass, string Style);
+
+    private static readonly PackInfo[] _packs =
+    {
+        new("lucide",           "Lucide",          "Lumeo.Icons.Lucide",         "Lumeo.Icons.Lucide",          "icons/lucide.json",          null,                                "Lucide",         "Stroke"),
+        new("tabler",           "Tabler",          "Lumeo.Icons.Tabler",         "Lumeo.Icons.Tabler",          "icons/tabler.json",          "Lumeo.Icons.Tabler.dll",            "Tabler",         "Stroke"),
+        new("phosphor",         "Phosphor",        "Lumeo.Icons.Phosphor",       "Lumeo.Icons.Phosphor",        "icons/phosphor.json",        "Lumeo.Icons.Phosphor.dll",          "Phosphor",       "Fill"),
+        new("phosphor-duotone", "Phosphor Duotone","Lumeo.Icons.PhosphorDuotone","Lumeo.Icons.Phosphor.Duotone","icons/phosphor-duotone.json","Lumeo.Icons.Phosphor.Duotone.dll",  "PhosphorDuotone","Duotone"),
+    };
+
+    private PackInfo Current => _packs.First(p => p.Key == _pack);
+    private bool Ready => _manifests.ContainsKey(_pack) && _dicts.ContainsKey(_pack);
+    private string[] AllNames => _manifests.TryGetValue(_pack, out var n) ? n : Array.Empty<string>();
+
+    private IEnumerable<string> Filtered => string.IsNullOrWhiteSpace(_query)
+        ? AllNames
+        : AllNames.Where(x => x.Contains(_query, StringComparison.OrdinalIgnoreCase));
+
+    private Lumeo.IconSource? Resolve(string name) =>
+        _dicts.TryGetValue(_pack, out var d) && d.TryGetValue(name, out var s) ? s : null;
+
+    private string Snippet => _selected is null ? "" : $"<Icon Svg=\"@({Current.UsageClass}.{_selected})\" />";
+
+    protected override async Task OnInitializedAsync() => await EnsurePackAsync(_pack);
+
+    private async Task SelectPackAsync(string key)
+    {
+        if (_pack == key) return;
+        _pack = key;
+        _selected = null;
+        await EnsurePackAsync(key);
+    }
+
+    private async Task EnsurePackAsync(string key)
+    {
+        var info = _packs.First(p => p.Key == key);
+
+        // 1. Manifest (name list) — a static wwwroot asset, no icon assembly needed.
+        if (!_manifests.ContainsKey(key))
+        {
+            try
+            {
+                var manifest = await Http.GetFromJsonAsync<IconManifest>(info.ManifestUrl);
+                _manifests[key] = manifest?.Icons ?? Array.Empty<string>();
+            }
+            catch (Exception)
+            {
+                _manifests[key] = Array.Empty<string>();
+            }
+        }
+
+        // 2. name -> IconSource dictionary (reflected once). Load the lazy assembly first.
+        if (!_dicts.ContainsKey(key))
+        {
+            if (!_loading.Add(key)) return;
+            try
+            {
+                if (info.LazyDll is { } dll)
+                    await LazyLoader.LoadAssembliesAsync(new[] { dll });
+
+                var type = Type.GetType($"{info.TypeName}, {info.AssemblyName}");
+                if (type is not null)
+                    _dicts[key] = BuildDict(type);
+            }
+            catch (Microsoft.JSInterop.JSDisconnectedException) { }
+            finally
+            {
+                _loading.Remove(key);
+            }
+        }
+
+        StateHasChanged();
+    }
+
+    private static Dictionary<string, Lumeo.IconSource> BuildDict(Type packClass) =>
+        packClass.GetProperties(BindingFlags.Public | BindingFlags.Static)
+            .Where(p => p.PropertyType == typeof(Lumeo.IconSource))
+            .ToDictionary(p => p.Name, p => (Lumeo.IconSource)p.GetValue(null)!);
+
+    private async Task CopyIconAsync(string name)
+    {
+        _selected = name;
+        try { await JS.InvokeVoidAsync("navigator.clipboard.writeText", Snippet); } catch { }
+        _copied = true;
+        StateHasChanged();
+        await Task.Delay(1400);
+        _copied = false;
+        StateHasChanged();
+    }
+
+    // Mirrors tools/Lumeo.IconGen's manifest schema — only the name list is needed here.
+    private sealed class IconManifest
+    {
+        [JsonPropertyName("pack")] public string? Pack { get; set; }
+        [JsonPropertyName("count")] public int Count { get; set; }
+        [JsonPropertyName("style")] public string? Style { get; set; }
+        [JsonPropertyName("icons")] public string[]? Icons { get; set; }
+    }
+}
