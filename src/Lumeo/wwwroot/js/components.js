@@ -556,26 +556,43 @@ export function positionFixed(contentId, referenceId, align, matchWidth, side, o
         // ancestor offset and subtracted it AGAIN, landing the box at exactly
         // `intended − ancestorOrigin` whenever the flip/clamp branches did NOT
         // rewrite that axis (the common no-flip case; empirically proven with a
-        // Chromium harness against the shipped 4.0.4 assets). foldedTop/foldedLeft
-        // remember the value THIS pass last wrote for each axis, so an axis is
-        // re-folded only when flip/clamp actually replaced it with a fresh
-        // viewport-space value. (Number→string→number round-trips exactly in JS,
-        // so the equality check against the re-parsed style value is safe.)
-        let foldedTop = null, foldedLeft = null;
+        // Chromium harness against the shipped 4.0.4 assets).
+        //
+        // IDEMPOTENCE is keyed on the SERIALIZED value we last wrote, NOT the
+        // parsed float. The prior implementation compared `parseFloat(style.left)
+        // !== foldedLeft` (a number stored in JS) — but the CSSOM can re-serialize
+        // a written length at a slightly different precision, so reading the value
+        // back parsed to a number that no longer `===` the in-memory `foldedLeft`.
+        // The guard then treated the ALREADY-FOLDED value as a fresh viewport
+        // intent and folded it a SECOND time within the same update(), landing the
+        // box at exactly `intended − ancestorOrigin`. That surfaced as a popover
+        // opening one containing-block-offset to the LEFT of its trigger whenever
+        // it lived inside a `will-change: transform` / transformed / filtered
+        // ancestor (e.g. a blur-fade-wrapped page region). Comparing the
+        // browser-normalised string of what we last wrote is exact, so an axis is
+        // re-folded ONLY when the flip/clamp logic below actually replaced it with
+        // a new viewport-space value (which needs the same fold-back).
+        let foldedTopStr = null, foldedLeftStr = null;
         function compensateContainingBlock() {
             void content.offsetHeight;
-            const curTop = parseFloat(content.style.top);
-            const curLeft = parseFloat(content.style.left);
             const settled = content.getBoundingClientRect();
-            if (Number.isFinite(curTop) && curTop !== foldedTop) {
-                const offY = settled.top - curTop;
-                foldedTop = Math.abs(offY) > 0.5 ? curTop - offY : curTop;
-                if (foldedTop !== curTop) content.style.top = `${foldedTop}px`;
+            if (content.style.top !== foldedTopStr) {
+                const curTop = parseFloat(content.style.top);
+                if (Number.isFinite(curTop)) {
+                    const offY = settled.top - curTop;
+                    const folded = Math.abs(offY) > 0.5 ? curTop - offY : curTop;
+                    if (folded !== curTop) content.style.top = `${folded}px`;
+                    foldedTopStr = content.style.top;
+                }
             }
-            if (Number.isFinite(curLeft) && curLeft !== foldedLeft) {
-                const offX = settled.left - curLeft;
-                foldedLeft = Math.abs(offX) > 0.5 ? curLeft - offX : curLeft;
-                if (foldedLeft !== curLeft) content.style.left = `${foldedLeft}px`;
+            if (content.style.left !== foldedLeftStr) {
+                const curLeft = parseFloat(content.style.left);
+                if (Number.isFinite(curLeft)) {
+                    const offX = settled.left - curLeft;
+                    const folded = Math.abs(offX) > 0.5 ? curLeft - offX : curLeft;
+                    if (folded !== curLeft) content.style.left = `${folded}px`;
+                    foldedLeftStr = content.style.left;
+                }
             }
         }
         compensateContainingBlock();

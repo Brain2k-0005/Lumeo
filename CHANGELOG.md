@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.1.0-preview.7] - 2026-07-04
+
+### Fixed
+- **Fixed-position popovers opened offset inside transformed ancestors**
+  (consumer report: the DataGrid group-panel "Add group level" menu and the
+  Columns popover opened ~a sidebar-width away from their trigger). Root
+  cause: `positionFixed`'s containing-block compensation guarded idempotence
+  by comparing a parsed float against the CSSOM-reserialized value; the
+  precision difference made an already-folded position read as fresh, so the
+  offset was folded twice within one update. The guard now compares the
+  exact serialized string it wrote. Affects every fixed popover rendered
+  under `transform`/`filter`/`will-change` ancestors — anchoring is now
+  exact (measured 0px trigger offset, stable across re-opens). Covered by a
+  real-browser E2E anchor test and a new chooser reorder regression test.
+
 ## [4.1.0-preview.6] - 2026-07-04
 
 Ten component fixes surfaced by battle-testing the library through the new
