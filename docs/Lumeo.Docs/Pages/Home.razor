@@ -1,35 +1,13 @@
 @page "/"
-@using Lumeo.Services
-@using System.Net.Http.Json
-@implements IAsyncDisposable
-@inject IJSRuntime JS
-@inject HttpClient Http
-@inject NavigationManager Nav
 
 <PageTitle>Lumeo - The Blazor component library you would actually want to ship</PageTitle>
 
-@* Off-screen animation pause: PauseWhenHidden toggles this class on decorative
-   clusters (marquee, sparkles, border-beam, shimmer) when they scroll out of
-   view, so their perpetual CSS keyframes stop waking the compositor. Paused
-   animations resume from where they stopped — no visual jump. *@
-<style>
-    .lumeo-motion-paused,
-    .lumeo-motion-paused *,
-    .lumeo-motion-paused::before,
-    .lumeo-motion-paused::after,
-    .lumeo-motion-paused *::before,
-    .lumeo-motion-paused *::after { animation-play-state: paused !important; }
-
-    /* Reduced motion: the perpetual CSS primitives (Marquee, Sparkles, BorderBeam,
-       Shimmer) are already stopped in lumeo.css; also freeze the small looping
-       "live" status pulses so these users get a genuinely still page. */
-    @@media (prefers-reduced-motion: reduce) {
-        .animate-pulse { animation: none !important; }
-    }
-</style>
-
-<!-- ======================= LIVE ADMIN-APP ======================= -->
-<section class="relative min-h-screen overflow-hidden border-b border-border/40">
+<!-- ======================= HERO ======================= -->
+@* Minimal, shadcn-scale landing. The hero below is the ONLY interactive-motion
+   surface (BlurFade one-shot entrance + the CSS-only ShimmerButton sweep). Every
+   section under it is static, prerender-identical content — nothing heavy mounts
+   after hydration. Live demos live at /demos/saas and /demos/enterprise. *@
+<section class="relative overflow-hidden border-b border-border/40">
     <div class="absolute inset-0 bg-[linear-gradient(to_right,hsl(var(--border))_1px,transparent_1px),linear-gradient(to_bottom,hsl(var(--border))_1px,transparent_1px)] bg-[size:4rem_4rem] [mask-image:radial-gradient(ellipse_80%_60%_at_50%_0%,#000_60%,transparent_110%)] pointer-events-none opacity-30"></div>
 
     <Container MaxWidth="[1400px]" Class="relative px-4 pt-8 pb-6">
@@ -91,254 +69,100 @@
                 </Flex>
             </BlurFade>
         </div>
-
-        @* Below-hero blocks are NOT wrapped in scroll-reveal BlurFade: this docs layout
-           scrolls inside a container (window scroll is a no-op), so an IntersectionObserver
-           reveal can leave sections blank on a fast scroll. They paint immediately instead. *@
-
-        <!-- Live-demo transition caption -->
-        <Flex Align="center" Justify="center" Gap="2" Class="mb-4">
-            <span class="inline-block h-1.5 w-1.5 rounded-full bg-primary animate-pulse"></span>
-            <Lumeo.Text Size="xs" Color="muted">Live proof &mdash; this entire admin app is Lumeo. Interact with it, or open the full demo apps: <Lumeo.Link Href="demos/saas" Class="text-primary hover:underline">Northlight</Lumeo.Link> &middot; <Lumeo.Link Href="demos/enterprise" Class="text-primary hover:underline">Meridian Ops</Lumeo.Link> &middot; <Lumeo.Link Href="showcase" Class="text-primary hover:underline">Showcase</Lumeo.Link></Lumeo.Text>
-        </Flex>
-
-        <!-- KPI strip -->
-        <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
-            <div class="rounded-xl border border-border/50 bg-card/80 backdrop-blur-sm p-4">
-                <Flex Align="center" Justify="between" Class="mb-1">
-                    <Lumeo.Text Size="xs" Color="muted">Revenue</Lumeo.Text>
-                    <DynamicIcon Name="DollarSign" Class="h-3.5 w-3.5 text-primary" />
-                </Flex>
-                <div class="text-2xl font-bold tracking-tight text-foreground">
-                    $<NumberTicker Value="1214" DurationMs="1600" />K
-                </div>
-                <Flex Align="center" Gap="1" Class="mt-1">
-                    <DynamicIcon Name="TrendingUp" Class="h-3 w-3 text-primary" />
-                    <Lumeo.Text Size="xs" Color="muted">+12.4% vs last Q</Lumeo.Text>
-                </Flex>
-            </div>
-            <div class="rounded-xl border border-border/50 bg-card/80 backdrop-blur-sm p-4">
-                <Flex Align="center" Justify="between" Class="mb-1">
-                    <Lumeo.Text Size="xs" Color="muted">Active users</Lumeo.Text>
-                    <DynamicIcon Name="Users" Class="h-3.5 w-3.5 text-primary" />
-                </Flex>
-                <div class="text-2xl font-bold tracking-tight text-foreground">
-                    <NumberTicker Value="8421" DurationMs="1800" />
-                </div>
-                <Flex Align="center" Gap="1" Class="mt-1">
-                    <DynamicIcon Name="TrendingUp" Class="h-3 w-3 text-primary" />
-                    <Lumeo.Text Size="xs" Color="muted">+841 this week</Lumeo.Text>
-                </Flex>
-            </div>
-            <div class="rounded-xl border border-border/50 bg-card/80 backdrop-blur-sm p-4">
-                <Flex Align="center" Justify="between" Class="mb-1">
-                    <Lumeo.Text Size="xs" Color="muted">Conversion</Lumeo.Text>
-                    <DynamicIcon Name="Percent" Class="h-3.5 w-3.5 text-primary" />
-                </Flex>
-                <div class="text-2xl font-bold tracking-tight text-foreground">
-                    <NumberTicker Value="12" DurationMs="1400" />.<NumberTicker Value="4" DurationMs="1400" />%
-                </div>
-                <Flex Align="center" Gap="1" Class="mt-1">
-                    <DynamicIcon Name="TrendingDown" Class="h-3 w-3 text-muted-foreground" />
-                    <Lumeo.Text Size="xs" Color="muted">-0.3% vs last Q</Lumeo.Text>
-                </Flex>
-            </div>
-            <div class="rounded-xl border border-border/50 bg-card/80 backdrop-blur-sm p-4">
-                <Flex Align="center" Justify="between" Class="mb-1">
-                    <Lumeo.Text Size="xs" Color="muted">Open tickets</Lumeo.Text>
-                    <DynamicIcon Name="Ticket" Class="h-3.5 w-3.5 text-primary" />
-                </Flex>
-                <div class="text-2xl font-bold tracking-tight text-foreground">
-                    <NumberTicker Value="47" DurationMs="1200" />
-                </div>
-                <Flex Align="center" Gap="1" Class="mt-1">
-                    <DynamicIcon Name="Clock" Class="h-3 w-3 text-muted-foreground" />
-                    <Lumeo.Text Size="xs" Color="muted">6 critical priority</Lumeo.Text>
-                </Flex>
-            </div>
-        </div>
-        <!-- Chart (60%) + Map (40%, desktop-only to keep the phone page short) -->
-        <div class="grid grid-cols-1 lg:grid-cols-2 gap-3 mb-4">
-
-            <div @ref="_chartCard" class="rounded-xl border border-border/50 bg-card/80 backdrop-blur-sm overflow-hidden"
-                 @onmouseenter="@(() => _chartHovered = true)" @onmouseleave="@(() => _chartHovered = false)">
-                <Flex Align="center" Justify="between" Class="px-4 pt-4 pb-2">
-                    <Stack Gap="0">
-                        <Lumeo.Text Size="sm" Weight="semibold">Revenue by package</Lumeo.Text>
-                        <Lumeo.Text Size="xs" Color="muted">Quarterly, last 6 periods</Lumeo.Text>
-                    </Stack>
-                    <Badge Variant="Badge.BadgeVariant.Outline" Class="text-[10px] h-5">
-                        <span class="inline-block h-1.5 w-1.5 rounded-full bg-primary mr-1 animate-pulse"></span>
-                        Live
-                    </Badge>
-                </Flex>
-                <div class="h-56 sm:h-64 lg:h-80 px-2 pb-3">
-                    @* LazyRender gates ECharts' fetch + init behind the viewport: a cheap CSS
-                       stacked-bar placeholder (built from the same data, so it matches the real
-                       chart's shape) shows immediately, and the live BarChart — plus the ~334 KB
-                       ECharts payload — only mounts when the card scrolls near view. On phones the
-                       card is far below the fold, so ECharts never loads on first paint, cutting
-                       TBT and transfer size. *@
-                    <LazyRender Height="100%" RootMarginPx="150">
-                        <Placeholder>
-                            <div class="flex h-full items-end gap-1.5 sm:gap-2" aria-hidden="true">
-                                @for (var i = 0; i < _barCategories.Count; i++)
-                                {
-                                    var total = _barSeries.Sum(s => s.Values[i]);
-                                    var barPct = _chartMaxTotal > 0 ? total / _chartMaxTotal * 100 : 0;
-                                    <div class="flex-1 flex flex-col-reverse rounded-t-sm overflow-hidden"
-                                         style="height:@barPct.ToString("0.#", System.Globalization.CultureInfo.InvariantCulture)%">
-                                        @for (var s = 0; s < _barSeries.Count; s++)
-                                        {
-                                            var segPct = total > 0 ? _barSeries[s].Values[i] / total * 100 : 0;
-                                            var op = (0.85 - s * 0.28).ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
-                                            <div style="height:@segPct.ToString("0.#", System.Globalization.CultureInfo.InvariantCulture)%;background:hsl(var(--primary) / @op)"></div>
-                                        }
-                                    </div>
-                                }
-                            </div>
-                        </Placeholder>
-                        <ChildContent>
-                            <BarChart Categories="_barCategories" Series="_barSeries" Stacked="true" Height="100%" ShowLoadingSkeleton="false" />
-                        </ChildContent>
-                    </LazyRender>
-                </div>
-            </div>
-
-            <div class="hidden lg:block rounded-xl border border-border/50 bg-card/80 backdrop-blur-sm overflow-hidden">
-                <Flex Align="center" Justify="between" Class="px-4 pt-4 pb-2">
-                    <Stack Gap="0">
-                        <Lumeo.Text Size="sm" Weight="semibold">Global reach</Lumeo.Text>
-                        <Lumeo.Text Size="xs" Color="muted">5 cities, animated arcs</Lumeo.Text>
-                    </Stack>
-                    <Badge Variant="Badge.BadgeVariant.Outline" Class="text-[10px] h-5">MapLibre</Badge>
-                </Flex>
-                <div class="h-56 sm:h-64 lg:h-80 overflow-hidden">
-                    <LazyRender Height="100%">
-                        <Map @bind-Center="_mapCenter" @bind-Zoom="_mapZoom" Height="100%" TileLayer="DarkMatter" Projection="globe">
-                            <ChildContent>
-                                <MapMarker Lat="51.5074"  Lon="-0.1278"   Title="London"    Variant="Dot" Color="teal" Label="London" />
-                                <MapMarker Lat="40.7128"  Lon="-74.0060"  Title="New York"  Variant="Dot" Color="teal" Label="New York" />
-                                <MapMarker Lat="35.6762"  Lon="139.6503"  Title="Tokyo"     Variant="Dot" Color="teal" Label="Tokyo" />
-                                <MapMarker Lat="-33.8688" Lon="151.2093"  Title="Sydney"    Variant="Dot" Color="teal" Label="Sydney" />
-                                <MapMarker Lat="-23.5505" Lon="-46.6333"  Title="Sao Paulo" Variant="Dot" Color="teal" Label="Sao Paulo" />
-                                <MapArc From="(51.5074, -0.1278)"  To="(40.7128, -74.0060)"  Color="#60a5fa" Dashed="true" Weight="2" Opacity="0.85" Animate="true" />
-                                <MapArc From="(51.5074, -0.1278)"  To="(35.6762, 139.6503)"  Color="#60a5fa" Dashed="true" Weight="2" Opacity="0.85" Animate="true" />
-                                <MapArc From="(40.7128, -74.0060)" To="(-23.5505, -46.6333)" Color="#60a5fa" Dashed="true" Weight="2" Opacity="0.85" Animate="true" />
-                            </ChildContent>
-                        </Map>
-                    </LazyRender>
-                </div>
-            </div>
-        </div>
-
-        <!-- DataGrid + Kanban -->
-        <div class="grid grid-cols-1 lg:grid-cols-5 gap-3">
-
-            <div class="lg:col-span-3 rounded-xl border border-border/50 bg-card/80 backdrop-blur-sm overflow-hidden">
-                <Flex Align="center" Justify="between" Class="px-4 pt-4 pb-2">
-                    <Stack Gap="0">
-                        <Lumeo.Text Size="sm" Weight="semibold">Team roster</Lumeo.Text>
-                        <Lumeo.Text Size="xs" Color="muted">Grouped by department, salary aggregated</Lumeo.Text>
-                    </Stack>
-                    <Lumeo.Link Href="components/data-grid" Class="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 no-underline">
-                        Docs <DynamicIcon Name="ArrowRight" Class="h-3 w-3" />
-                    </Lumeo.Link>
-                </Flex>
-                <div class="px-3 pb-3">
-                    @* RootMarginPx=0 so we only mount when the placeholder actually enters the viewport.
-                       The default 200px margin would mount during prerender (1280x800) because this block
-                       sits ~100px below the fold on the home layout — defeating the TBT deferral. *@
-                    <LazyRender Height="420px" RootMarginPx="0">
-                        <DataGrid TItem="Employee" Items="@_employees" PageSize="10" ShowPagination="false"
-                                  GroupBy="Department" GroupsExpandedByDefault="true">
-                            @* Grouping binds to a column's Field — without a Department
-                               column the grid rendered flat (and 3.13+ logs a console
-                               warning) while the caption claimed otherwise. *@
-                            <DataGridColumnDef TItem="Employee" Title="Department" Field="Department" />
-                            <DataGridColumnDef TItem="Employee" Title="Name"   Field="Name"   Sortable="true" />
-                            <DataGridColumnDef TItem="Employee" Title="Role"   Field="Role" />
-                            @* Explicit "$#,##0" instead of the "C0" standard specifier: C0 uses
-                               CurrentCulture's currency symbol, which on the invariant docs culture
-                               renders the generic "¤" glyph. A literal $ with a #,##0 pattern is
-                               culture-invariant and matches the $ revenue KPI above. *@
-                            <DataGridColumnDef TItem="Employee" Title="Salary" Field="Salary" Format="$#,##0" Sortable="true" Aggregate="AggregateType.Sum" />
-                        </DataGrid>
-                    </LazyRender>
-                </div>
-            </div>
-
-            <div class="lg:col-span-2 rounded-xl border border-border/50 bg-card/80 backdrop-blur-sm overflow-hidden">
-                <Flex Align="center" Justify="between" Class="px-4 pt-4 pb-2">
-                    <Stack Gap="0">
-                        <Lumeo.Text Size="sm" Weight="semibold">Sprint board</Lumeo.Text>
-                        <Lumeo.Text Size="xs" Color="muted">Drag cards between columns</Lumeo.Text>
-                    </Stack>
-                    <Lumeo.Link Href="components/kanban" Class="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 no-underline">
-                        Docs <DynamicIcon Name="ArrowRight" Class="h-3 w-3" />
-                    </Lumeo.Link>
-                </Flex>
-                <div class="px-3 pb-3 overflow-x-auto">
-                    @* 200px matches the actual rendered Kanban: 3 columns (min-h-[130px]) + the row header
-                       with a few compact cards. On lg the row height is driven by the taller DataGrid cell
-                       in the same grid row, so the lower placeholder doesn't shorten the row.
-                       RootMarginPx=0 keeps it deferred during prerender — see DataGrid note above. *@
-                    <LazyRender Height="200px" RootMarginPx="0">
-                        <Kanban Class="!p-0 !gap-2 min-w-[360px]">
-                        <KanbanColumn Title="To do" Badge="@_kanbanTodo.Count"
-                                      Class="flex flex-col flex-1 min-w-0 rounded-lg border border-border/40 bg-background min-h-[130px]"
-                                      OnDrop="@(_ => MoveDraggingCard(_kanbanTodo))">
-                            @foreach (var card in _kanbanTodo)
-                            {
-                                <div draggable="true" @ondragstart="@(() => _draggingCard = card)" @key="card">
-                                    <KanbanCard Title="@card.Title" Description="@card.Description" Draggable="false"
-                                                Class="rounded-md border border-border/40 bg-card p-2 cursor-grab active:cursor-grabbing hover:border-primary/40 transition-colors" />
-                                </div>
-                            }
-                        </KanbanColumn>
-                        <KanbanColumn Title="Doing" Badge="@_kanbanDoing.Count"
-                                      Class="flex flex-col flex-1 min-w-0 rounded-lg border border-border/40 bg-background min-h-[130px]"
-                                      OnDrop="@(_ => MoveDraggingCard(_kanbanDoing))">
-                            @foreach (var card in _kanbanDoing)
-                            {
-                                <div draggable="true" @ondragstart="@(() => _draggingCard = card)" @key="card">
-                                    <KanbanCard Title="@card.Title" Description="@card.Description" Draggable="false"
-                                                Class="rounded-md border border-primary/40 bg-card p-2 ring-1 ring-primary/20 cursor-grab active:cursor-grabbing transition-colors" />
-                                </div>
-                            }
-                        </KanbanColumn>
-                        <KanbanColumn Title="Done" Badge="@_kanbanDone.Count"
-                                      Class="flex flex-col flex-1 min-w-0 rounded-lg border border-border/40 bg-background min-h-[130px]"
-                                      OnDrop="@(_ => MoveDraggingCard(_kanbanDone))">
-                            @foreach (var card in _kanbanDone)
-                            {
-                                <div draggable="true" @ondragstart="@(() => _draggingCard = card)" @key="card">
-                                    <KanbanCard Title="@card.Title" Description="@card.Description" Draggable="false"
-                                                Class="rounded-md border border-border/40 bg-card/60 p-2 opacity-70 cursor-grab active:cursor-grabbing transition-colors" />
-                                </div>
-                            }
-                        </KanbanColumn>
-                    </Kanban>
-                    </LazyRender>
-                </div>
-            </div>
-        </div>
-
-        <!-- Attribution -->
-        <Flex Align="center" Justify="center" Gap="3" Class="mt-5 pt-4 border-t border-border/30">
-            <div class="flex items-center gap-1.5">
-                <span class="inline-block h-1.5 w-1.5 rounded-full bg-primary animate-pulse"></span>
-                <Lumeo.Text Size="xs" Color="muted">Live data on a timer, real drag-and-drop, virtualized grid &mdash; every pixel MIT licensed.</Lumeo.Text>
-            </div>
-            <Lumeo.Link Href="https://github.com/Brain2k-0005/Lumeo" Class="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 no-underline">
-                View source <DynamicIcon Name="ExternalLink" Class="h-3 w-3" />
-            </Lumeo.Link>
-        </Flex>
-
     </Container>
 </section>
 
-<!-- ======================= BROWSE ALL (slim band, replaces constellation) ======================= -->
+<!-- ======================= SEE IT LIVE ======================= -->
+@* Two rich link-cards to the full demo apps + a slim showcase card. Static content
+   only — no live components mount here; each card just links out. *@
+<section class="py-16 sm:py-20 border-b border-border/40">
+    <Container MaxWidth="[1400px]" Class="px-4">
+        <Stack Gap="3" Class="text-center mb-10 sm:mb-12">
+            <Badge Variant="Badge.BadgeVariant.Outline" Class="mx-auto w-fit">See it live</Badge>
+            <Heading Level="2" Class="text-3xl sm:text-4xl font-bold tracking-tight">Real apps, built entirely with Lumeo.</Heading>
+            <Lumeo.Text Color="muted" Class="max-w-xl mx-auto">
+                Two full applications on deterministic in-memory data &mdash; every pixel is Lumeo. Open one, interact with it, then read the source.
+            </Lumeo.Text>
+        </Stack>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <!-- Northlight -->
+            <Lumeo.Link Href="demos/saas" Class="group block h-full no-underline">
+                <Stack Gap="4" Class="h-full rounded-xl border border-border/40 bg-card p-6 hover:border-primary/50 hover:-translate-y-0.5 hover:shadow-sm transition-all duration-200">
+                    <Flex Align="center" Justify="between">
+                        <Flex Align="center" Gap="3" Class="min-w-0">
+                            <Flex Align="center" Justify="center" Class="h-10 w-10 rounded-lg bg-accent/40 text-primary shrink-0 group-hover:bg-primary/15 transition-colors">
+                                <DynamicIcon Name="LayoutDashboard" Class="h-5 w-5" />
+                            </Flex>
+                            <Stack Gap="0" Class="min-w-0">
+                                <Heading Level="3" Class="text-lg font-semibold tracking-tight">Northlight</Heading>
+                                <Lumeo.Text Size="xs" Color="muted">Product analytics SaaS</Lumeo.Text>
+                            </Stack>
+                        </Flex>
+                        <DynamicIcon Name="ArrowUpRight" Class="h-4 w-4 text-muted-foreground shrink-0 group-hover:text-foreground group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-all" />
+                    </Flex>
+                    <Lumeo.Text Size="sm" Color="muted" Class="leading-relaxed flex-1">
+                        A full SaaS admin &mdash; collapsible sidebar, command palette, dashboards with MRR and signup charts, notifications and toasts.
+                    </Lumeo.Text>
+                    <Flex Wrap="true" Gap="1">
+                        @foreach (var chip in new[] { "SidebarProvider", "Command", "Charts", "DataGrid", "Toast" })
+                        {
+                            <span class="inline-flex items-center rounded-md bg-muted/60 px-2 py-0.5 text-xs font-mono text-muted-foreground ring-1 ring-border/40">@chip</span>
+                        }
+                    </Flex>
+                </Stack>
+            </Lumeo.Link>
+
+            <!-- Meridian Ops -->
+            <Lumeo.Link Href="demos/enterprise" Class="group block h-full no-underline">
+                <Stack Gap="4" Class="h-full rounded-xl border border-border/40 bg-card p-6 hover:border-primary/50 hover:-translate-y-0.5 hover:shadow-sm transition-all duration-200">
+                    <Flex Align="center" Justify="between">
+                        <Flex Align="center" Gap="3" Class="min-w-0">
+                            <Flex Align="center" Justify="center" Class="h-10 w-10 rounded-lg bg-accent/40 text-primary shrink-0 group-hover:bg-primary/15 transition-colors">
+                                <DynamicIcon Name="Boxes" Class="h-5 w-5" />
+                            </Flex>
+                            <Stack Gap="0" Class="min-w-0">
+                                <Heading Level="3" Class="text-lg font-semibold tracking-tight">Meridian Ops</Heading>
+                                <Lumeo.Text Size="xs" Color="muted">Enterprise operations console</Lumeo.Text>
+                            </Stack>
+                        </Flex>
+                        <DynamicIcon Name="ArrowUpRight" Class="h-4 w-4 text-muted-foreground shrink-0 group-hover:text-foreground group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-all" />
+                    </Flex>
+                    <Lumeo.Text Size="sm" Color="muted" Class="leading-relaxed flex-1">
+                        A freight control tower &mdash; schedule board, shipment grid, approvals queue, audit trail, a Gantt panel and a record editor.
+                    </Lumeo.Text>
+                    <Flex Wrap="true" Gap="1">
+                        @foreach (var chip in new[] { "Scheduler", "Gantt", "DataGrid", "Tabs", "Kanban" })
+                        {
+                            <span class="inline-flex items-center rounded-md bg-muted/60 px-2 py-0.5 text-xs font-mono text-muted-foreground ring-1 ring-border/40">@chip</span>
+                        }
+                    </Flex>
+                </Stack>
+            </Lumeo.Link>
+        </div>
+
+        <!-- Showcase (slim) -->
+        <Lumeo.Link Href="showcase" Class="group block no-underline mt-4">
+            <Flex Align="center" Justify="between" Gap="3" Class="rounded-xl border border-border/40 bg-card px-6 py-4 hover:border-primary/50 hover:shadow-sm transition-all duration-200">
+                <Flex Align="center" Gap="3" Class="min-w-0">
+                    <Flex Align="center" Justify="center" Class="h-9 w-9 rounded-lg bg-accent/40 text-primary shrink-0 group-hover:bg-primary/15 transition-colors">
+                        <DynamicIcon Name="Star" Class="h-4 w-4" />
+                    </Flex>
+                    <Stack Gap="0" Class="min-w-0">
+                        <Lumeo.Text Weight="semibold" Class="text-sm">Showcase</Lumeo.Text>
+                        <Lumeo.Text Size="xs" Color="muted" Class="truncate">Real, maintained projects built with Lumeo.</Lumeo.Text>
+                    </Stack>
+                </Flex>
+                <Flex Align="center" Gap="1" Class="shrink-0 text-xs font-medium text-muted-foreground group-hover:text-foreground transition-colors">
+                    View
+                    <DynamicIcon Name="ArrowRight" Class="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
+                </Flex>
+            </Flex>
+        </Lumeo.Link>
+    </Container>
+</section>
+
+<!-- ======================= BROWSE ALL (slim band) ======================= -->
 <section class="border-b border-border/40 bg-muted/[0.03]">
     <Container MaxWidth="[1400px]" Class="px-4 py-6">
         <Flex Align="center" Justify="between" Wrap="true" Gap="4">
@@ -412,11 +236,7 @@
                         </div>
                         <Stack Gap="0" Class="min-w-0 flex-1">
                             <Lumeo.Text Size="xs" Color="muted">Tests</Lumeo.Text>
-                            <div class="text-2xl font-semibold tracking-tight text-foreground leading-none">
-                                @* ThousandsSeparator="," pins the rest state to exactly "5,331" regardless of the
-                                   docs server culture (invariant would otherwise group, de-DE would show "5.331"). *@
-                                <NumberTicker Value="5331" DurationMs="1800" ThousandsSeparator="," />
-                            </div>
+                            <div class="text-2xl font-semibold tracking-tight text-foreground leading-none">5,331</div>
                             <Lumeo.Text Size="xs" Color="muted" Class="truncate">CI green, every commit.</Lumeo.Text>
                         </Stack>
                     </Flex>
@@ -428,9 +248,7 @@
                         </div>
                         <Stack Gap="0" Class="min-w-0 flex-1">
                             <Lumeo.Text Size="xs" Color="muted">Locales</Lumeo.Text>
-                            <div class="text-2xl font-semibold tracking-tight text-foreground leading-none">
-                                <NumberTicker Value="14" DurationMs="1600" />
-                            </div>
+                            <div class="text-2xl font-semibold tracking-tight text-foreground leading-none">14</div>
                             <Lumeo.Text Size="xs" Color="muted" Class="truncate">Bundled ILumeoLocalizer.</Lumeo.Text>
                         </Stack>
                     </Flex>
@@ -442,9 +260,7 @@
                         </div>
                         <Stack Gap="0" Class="min-w-0 flex-1">
                             <Lumeo.Text Size="xs" Color="muted">Themes</Lumeo.Text>
-                            <div class="text-2xl font-semibold tracking-tight text-foreground leading-none">
-                                <NumberTicker Value="8" DurationMs="1400" />
-                            </div>
+                            <div class="text-2xl font-semibold tracking-tight text-foreground leading-none">8</div>
                             <Lumeo.Text Size="xs" Color="muted" Class="truncate">CSS-variable presets.</Lumeo.Text>
                         </Stack>
                     </Flex>
@@ -639,89 +455,15 @@ builder.Services.<span style="color: #a78bfa;">AddLumeo</span>();</pre>
     </Container>
 </section>
 
-<!-- ======================= CAPABILITIES MARQUEE (desktop-only) ======================= -->
-<section class="hidden lg:block py-14 border-y border-border/40 bg-gradient-to-b from-muted/30 via-muted/10 to-muted/30 overflow-hidden relative">
-    <div class="pointer-events-none absolute inset-y-0 left-0 w-24 bg-gradient-to-r from-background to-transparent z-10"></div>
-    <div class="pointer-events-none absolute inset-y-0 right-0 w-24 bg-gradient-to-l from-background to-transparent z-10"></div>
-    @* The two marquees scroll forever via CSS. PauseWhenHidden stops them ticking
-       the compositor whenever the band is off-screen (which is most of the time on
-       this long page) and resumes on scroll-in. *@
-    <PauseWhenHidden>
-    <Stack Gap="4">
-        <Marquee Speed="Marquee.MarqueeSpeed.Slow" PauseOnHover="true" Class="[--gap:1rem]">
-            @foreach (var p in _marqueeRowA)
-            {
-                <span class="mx-2 inline-flex items-center gap-2 rounded-lg border border-border/40 bg-card px-4 py-2 text-sm font-medium text-foreground whitespace-nowrap shadow-sm hover:border-primary/40 hover:shadow-md transition-all">
-                    <DynamicIcon Name="@p.Icon" Class="h-4 w-4 text-primary shrink-0" />
-                    @p.Label
-                </span>
-            }
-        </Marquee>
-        <Marquee Speed="Marquee.MarqueeSpeed.Slow" PauseOnHover="true" Reverse="true" Class="[--gap:1rem]">
-            @foreach (var p in _marqueeRowB)
-            {
-                <span class="mx-2 inline-flex items-center gap-2 rounded-lg bg-primary/10 text-primary px-4 py-2 text-sm font-semibold whitespace-nowrap hover:bg-primary/15 transition-colors">
-                    <DynamicIcon Name="@p.Icon" Class="h-4 w-4 shrink-0" />
-                    @p.Label
-                </span>
-            }
-        </Marquee>
-    </Stack>
-    </PauseWhenHidden>
-</section>
-
-<!-- ======================= MOTION STRIP (two-column: line + live primitive) ======================= -->
-<section class="py-16 border-b border-border/40">
-    <Container MaxWidth="[1400px]" Class="px-4">
-        <div class="grid gap-8 lg:grid-cols-2 items-center">
-            <Stack Gap="4">
-                <Badge Variant="Badge.BadgeVariant.Outline" Class="w-fit">Motion</Badge>
-                <TextReveal Text="Move pixels, not layouts."
-                            Stagger="60"
-                            Class="text-3xl sm:text-4xl font-bold tracking-tight text-foreground leading-tight block" />
-                <Lumeo.Text Color="muted" Class="max-w-lg text-base leading-relaxed">
-                    Motion primitives that scale from a 4 KB BlurFade to a 30 KB animated chart &mdash; GPU-friendly, reduced-motion aware, and you pay only for the motion you use.
-                </Lumeo.Text>
-                <Lumeo.Link Href="components/border-beam" Class="inline-flex h-9 w-fit items-center gap-2 justify-center rounded-lg border border-border/60 bg-background px-4 text-sm font-semibold text-foreground hover:bg-accent hover:text-accent-foreground transition-colors no-underline">
-                    Explore the motion library
-                    <DynamicIcon Name="ArrowRight" Class="h-3.5 w-3.5" />
-                </Lumeo.Link>
-            </Stack>
-            <PauseWhenHidden>
-            <div class="relative flex items-center justify-center rounded-2xl border border-border/40 bg-card/40 p-8 min-h-[220px] overflow-hidden">
-                <Sparkles Count="14" Class="absolute inset-0 pointer-events-none">
-                    <span></span>
-                </Sparkles>
-                <BorderBeam DurationMs="6000" Class="relative z-10 border border-border/60 bg-background px-6 py-5">
-                    <Flex Align="center" Gap="3">
-                        <div class="flex h-11 w-11 items-center justify-center rounded-lg bg-primary/10 text-primary shrink-0">
-                            <DynamicIcon Name="Sparkles" Class="h-5 w-5" />
-                        </div>
-                        <Stack Gap="0">
-                            <Lumeo.Text Weight="semibold">BorderBeam &middot; live</Lumeo.Text>
-                            <Lumeo.Text Size="xs" Color="muted">One of the motion primitives, running right now.</Lumeo.Text>
-                        </Stack>
-                    </Flex>
-                </BorderBeam>
-            </div>
-            </PauseWhenHidden>
-        </div>
-    </Container>
-</section>
-
-<!-- ======================= FINAL CTA ======================= -->
+<!-- ======================= FINAL CTA (static) ======================= -->
 <section class="py-24">
     <Container MaxWidth="4xl" Class="px-4">
-        <PauseWhenHidden>
         <div class="relative overflow-hidden rounded-2xl border border-primary/20 p-10 sm:p-16"
              style="background: linear-gradient(135deg, hsl(var(--card)) 0%, hsl(var(--primary) / 0.06) 50%, hsl(var(--card)) 100%);">
             <div class="pointer-events-none absolute inset-0 flex items-center justify-center">
                 <div class="h-[350px] w-[600px] rounded-full opacity-[0.08]"
                      style="background: radial-gradient(ellipse at center, hsl(var(--primary)) 0%, transparent 70%);"></div>
             </div>
-            <Sparkles Count="18" Class="absolute inset-0 pointer-events-none">
-                <span></span>
-            </Sparkles>
             <div class="relative z-10">
                 <Stack Gap="5" Class="text-center items-center">
                     <div class="flex items-center gap-3">
@@ -753,7 +495,6 @@ builder.Services.<span style="color: #a78bfa;">AddLumeo</span>();</pre>
                 </Stack>
             </div>
         </div>
-        </PauseWhenHidden>
     </Container>
 </section>
 
@@ -843,37 +584,11 @@ builder.Services.<span style="color: #a78bfa;">AddLumeo</span>();</pre>
         </Flex>
     </Container>
 </footer>
+
 @code {
-    // Map
-    private (double Lat, double Lon) _mapCenter = (20.0, 10.0);
-    private int _mapZoom = 1;
-
-    // Kanban
-    private record KanbanItem(string Title, string? Description);
-    private KanbanItem? _draggingCard;
-    private readonly List<KanbanItem> _kanbanTodo = new()
-    {
-        new("Design audit", "Review spacing scale"),
-        new("Write docs", null),
-        new("Triage issues", "Inbox cleanup"),
-    };
-    private readonly List<KanbanItem> _kanbanDoing = new()
-    {
-        new("DataGrid export", "CSV + Excel"),
-        new("Submenu polish", "Hover open delay"),
-    };
-    private readonly List<KanbanItem> _kanbanDone = new()
-    {
-        new("Theme presets", "8 palettes shipped"),
-        new("BlurFade", null),
-        new("BorderBeam", "Motion satellite"),
-    };
-
-    // Records
     private record FeatureItem(string Icon, string Title, string Body);
     private record UseCaseItem(string Icon, string Title, string Body, string[] Components);
     private record SizeRow(string Name, string Components, string Size, double Percent, bool IsCore);
-    private record Employee(string Name, string Department, string Role, double Salary);
 
     // Size rows
     private readonly SizeRow[] _sizeRows =
@@ -885,45 +600,6 @@ builder.Services.<span style="color: #a78bfa;">AddLumeo</span>();</pre>
         new("Lumeo.Motion",    "10 components", "18 KB",     4.5, false),
         new("Lumeo.Scheduler", "1 component",   "16 KB",     4.0, false),
         new("Lumeo.Gantt",     "1 component",   "12 KB",     3.0, false),
-    };
-
-    // Marquee
-    private record MarqueePill(string Icon, string Label);
-    private readonly MarqueePill[] _marqueeRowA =
-    {
-        new("Zap",             "AI primitives"),
-        new("Sparkles",        "Motion primitives"),
-        new("Table2",          "DataGrid"),
-        new("BarChart3",       "Charts"),
-        new("Calendar",        "Scheduler"),
-        new("LayoutList",      "Gantt"),
-        new("Columns3",        "Kanban"),
-        new("Layers",          "Blocks"),
-        new("ClipboardList",   "Forms"),
-        new("CalendarDays",    "DatePicker"),
-        new("PenLine",         "RichText Editor"),
-        new("TrendingUp",      "Sparklines"),
-        new("LayoutDashboard", "Dashboard tiles"),
-        new("MessageCircle",   "Chat primitives"),
-        new("Send",            "Streaming"),
-    };
-    private readonly MarqueePill[] _marqueeRowB =
-    {
-        new("Moon",             "Dark mode"),
-        new("Languages",        "RTL support"),
-        new("Globe",            "14 locales"),
-        new("Rocket",           "MCP server"),
-        new("TerminalSquare",   "CLI"),
-        new("FolderPlus",       "dotnet new templates"),
-        new("Code2",            "Source generators"),
-        new("Palette",          "Tailwind v4 ready"),
-        new("Package",          "~627 KB core + opt-in satellites"),
-        new("ShieldCheck",      "WCAG AA"),
-        new("TestTube",         "5,331 tests"),
-        new("Shield",           "MIT licensed"),
-        new("Monitor",          "WASM + Server"),
-        new("Github",           "Source-available"),
-        new("Lightbulb",        "shadcn-style vendoring"),
     };
 
     // Everything included — merged, deduped value props (features + principles).
@@ -953,162 +629,4 @@ builder.Services.<span style="color: #a78bfa;">AddLumeo</span>();</pre>
             "Hero blocks, pricing tables, motion primitives and Tailwind v4 theming.",
             new[] { "BlurFade", "PricingTable", "BorderBeam" }),
     };
-
-    // Employees
-    private readonly Employee[] _employees =
-    {
-        new("Ava Chen",       "Engineering", "Staff Eng.",       198000),
-        new("Jonas Weber",    "Engineering", "Sr. Eng.",         172000),
-        new("Leo Ramirez",    "Engineering", "Eng.",             134000),
-        new("Marcus Okoye",   "Design",      "Lead Designer",    162000),
-        new("Hana Yusuf",     "Design",      "Product Designer", 138000),
-        new("Priya Rao",      "Product",     "Sr. PM",           148000),
-        new("Kai Anderson",   "Product",     "PM",               132000),
-        new("Sofia Bianchi",  "Product",     "Assoc. PM",        108000),
-    };
-
-    // Charts
-    private List<string> _barCategories = new() { "Q1", "Q2", "Q3", "Q4", "Q1 '26", "Q2 '26" };
-    private List<BarChart.ChartSeriesData> _barSeries = new()
-    {
-        new() { Name = "Core",     Values = new() { 28400, 31200, 36800, 42100, 48700, 55300 } },
-        new() { Name = "Charts",   Values = new() {  8700, 10400, 13100, 15800, 19200, 22700 } },
-        new() { Name = "DataGrid", Values = new() {  4100,  6800,  9200, 11400, 14600, 18100 } },
-    };
-    // Largest per-category stacked total — scales the static IdleMount placeholder bars.
-    private double _chartMaxTotal => Enumerable.Range(0, _barCategories.Count)
-        .Select(i => _barSeries.Sum(s => s.Values[i])).DefaultIfEmpty(0).Max();
-    private int _chartSnapshot;
-    private bool _chartHovered;
-    private static readonly List<double>[][] _chartSnapshots =
-    {
-        new[] { new List<double> { 28400, 31200, 36800, 42100, 48700, 55300 }, new List<double> { 8700, 10400, 13100, 15800, 19200, 22700 }, new List<double> { 4100, 6800, 9200, 11400, 14600, 18100 } },
-        new[] { new List<double> { 32100, 29800, 41200, 38400, 52600, 47900 }, new List<double> { 12400, 15600, 11800, 18900, 14700, 21300 }, new List<double> { 6200, 8900, 5400, 12100, 9800, 15600 } },
-        new[] { new List<double> { 41200, 47800, 38400, 55600, 49100, 62300 }, new List<double> { 18400, 14200, 22600, 17800, 26400, 21900 }, new List<double> { 9100, 14600, 10800, 17400, 13200, 19800 } },
-        new[] { new List<double> { 24800, 35400, 31200, 44600, 39800, 51400 }, new List<double> { 10200, 16800, 13400, 21700, 18200, 24600 }, new List<double> { 5400, 11200, 8600, 14800, 12400, 17900 } },
-    };
-
-    // Timers / visibility.
-    //
-    // The revenue chart shows "live" data by reshuffling on a timer, but a
-    // premium landing page must feel SMOOTH first — a perpetual re-render that
-    // wakes Blazor + ECharts every few seconds is the top runtime-jank source.
-    // So the liveness is bounded by four gates and then retires:
-    //   • pause while the tab is hidden          (_pageVisible)
-    //   • pause while the card is off-screen      (_chartInView, IntersectionObserver)
-    //   • pause while the user is inspecting it   (_chartHovered)
-    //   • run at most LiveCycles times, then dispose the timer ("settled").
-    // prefers-reduced-motion disables the liveness entirely (static hero).
-    private const int LiveCycles = 3;
-
-    private bool _pageVisible = true;
-    private bool _chartInView = true;   // assume visible until the observer reports
-    private bool _reducedMotion;
-    private int _liveCyclesLeft = LiveCycles;
-
-    private ElementReference _chartCard;
-    private IJSObjectReference? _visibilityHandle;
-    private IJSObjectReference? _chartInViewObserver;
-    private DotNetObjectReference<Home>? _selfRef;
-    private readonly List<System.Threading.Timer> _timers = new();
-
-    [JSInvokable]
-    public void SetPageVisibility(bool visible) => _pageVisible = visible;
-
-    [JSInvokable]
-    public void SetChartInView(bool visible) => _chartInView = visible;
-
-    protected override Task OnInitializedAsync()
-    {
-        _timers.Add(new System.Threading.Timer(_ => ChartTick(), null, 5000, 5000));
-        return Task.CompletedTask;
-    }
-
-    // Fired by the reshuffle timer. Returns cheaply while any gate is closed,
-    // applies one data snapshot while visible, and disposes the timer once the
-    // demo has shown enough life — after that the chart rests with zero
-    // recurring CPU (no timer wakeup, no StateHasChanged, no ECharts setOption).
-    private void ChartTick()
-    {
-        if (_reducedMotion || _chartHovered || !_pageVisible || !_chartInView || _liveCyclesLeft <= 0)
-            return;
-
-        _chartSnapshot = (_chartSnapshot + 1) % _chartSnapshots.Length;
-        var snap = _chartSnapshots[_chartSnapshot];
-        if (--_liveCyclesLeft <= 0) StopLiveTimer();
-
-        _ = InvokeAsync(() =>
-        {
-            for (int i = 0; i < _barSeries.Count && i < snap.Length; i++)
-                _barSeries[i].Values = new List<double>(snap[i]);
-            StateHasChanged();
-        });
-    }
-
-    // Safe to call from the timer callback itself (Timer.Dispose is re-entrant).
-    private void StopLiveTimer()
-    {
-        foreach (var t in _timers) t.Dispose();
-        _timers.Clear();
-    }
-
-    protected override async Task OnAfterRenderAsync(bool firstRender)
-    {
-        if (!firstRender) return;
-        try
-        {
-            _selfRef = DotNetObjectReference.Create(this);
-
-            // Honour prefers-reduced-motion: retire the live timer immediately so
-            // these users get a completely static (but fully populated) hero.
-            try { _reducedMotion = await JS.InvokeAsync<bool>("lumeo.prefersReducedMotion"); }
-            catch { _reducedMotion = false; }
-            if (_reducedMotion) StopLiveTimer();
-
-            _visibilityHandle = await JS.InvokeAsync<IJSObjectReference>(
-                "lumeo.onPageVisibility", _selfRef, nameof(SetPageVisibility));
-
-            // Pause the reshuffle whenever the chart card scrolls off-screen.
-            _chartInViewObserver = await JS.InvokeAsync<IJSObjectReference?>(
-                "lumeo.observeInViewport", _chartCard, _selfRef, nameof(SetChartInView), 150);
-        }
-        catch (JSException) { /* SSR / prerender */ }
-        catch (JSDisconnectedException) { }
-    }
-
-    private void MoveDraggingCard(List<KanbanItem> target)
-    {
-        if (_draggingCard is null) return;
-        if (_kanbanTodo.Remove(_draggingCard)
-            || _kanbanDoing.Remove(_draggingCard)
-            || _kanbanDone.Remove(_draggingCard))
-        {
-            if (!target.Contains(_draggingCard))
-                target.Add(_draggingCard);
-        }
-        _draggingCard = null;
-        StateHasChanged();
-    }
-
-    public async ValueTask DisposeAsync()
-    {
-        foreach (var t in _timers) t.Dispose();
-        _timers.Clear();
-        try
-        {
-            if (_visibilityHandle is not null)
-            {
-                await _visibilityHandle.InvokeVoidAsync("dispose");
-                await _visibilityHandle.DisposeAsync();
-            }
-            if (_chartInViewObserver is not null)
-            {
-                await JS.InvokeVoidAsync("lumeo.disconnectObserver", _chartInViewObserver);
-                await _chartInViewObserver.DisposeAsync();
-            }
-        }
-        catch (JSDisconnectedException) { }
-        catch { }
-        _selfRef?.Dispose();
-    }
 }
