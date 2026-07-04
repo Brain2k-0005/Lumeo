@@ -1,128 +1,179 @@
 @using Lumeo.Docs.Shared
 @inject Lumeo.Services.IToastService Toast
 
-@* Form-heavy record editor — booking a new shipment. Exercises FormField validation,
-   a hierarchical Cascader (region → port), Select, Segmented, DatePicker, numeric
-   Inputs, a Textarea and a Switch, with client-side validation on submit. *@
+@* Form-heavy record editor — booking a new shipment, rebuilt as a STEPPER WIZARD.
+   The interactive Stepper (not display-only Steps) drives navigation: its header shows
+   progress, gates forward movement, and (AllowStepClick + Linear) lets the user click
+   BACK to completed steps but never jump forward past validation. ActiveStep is fully
+   CONTROLLED here so a Next/forward attempt runs the per-step validation and surfaces
+   field errors on the step being left — a disabled Next could never show them. Back and
+   header-back are always accepted with all field state preserved (values live in these
+   C# fields, so panels re-render unchanged). Step 1 Route · Step 2 Cargo · Step 3 Review.
+   Keeps DatePicker (AllowKeyboardInput=false), full-width controls and the section
+   quality from the recent redesign. *@
 
 <div class="mx-auto flex h-full min-h-0 w-full max-w-3xl flex-col gap-3 p-3 sm:p-4">
-    <header class="shrink-0">
-        <h1 class="text-lg font-semibold tracking-tight">New shipment booking</h1>
-        <p class="text-sm text-muted-foreground">Draft reference <span class="font-mono text-foreground">@_reference</span> · fields marked * are required.</p>
+    <header class="flex shrink-0 items-start justify-between gap-3">
+        <div class="min-w-0">
+            <h1 class="text-lg font-semibold tracking-tight">New shipment booking</h1>
+            <p class="text-sm text-muted-foreground">Draft reference <span class="font-mono text-foreground">@_reference</span> · fields marked * are required.</p>
+            @if (_submitted)
+            {
+                <span class="mt-1.5 inline-flex items-center gap-1.5 text-sm text-success-text">
+                    <DynamicIcon Name="CircleCheck" Class="h-4 w-4" /> Booking created
+                </span>
+            }
+        </div>
+        <Button Variant="Button.ButtonVariant.Ghost" OnClick="Reset" Class="shrink-0">Reset</Button>
     </header>
 
     <div class="min-h-0 flex-1 overflow-y-auto">
         <div class="rounded-lg border border-border/60 bg-card p-4 sm:p-6">
 
-            @* ── Route ─────────────────────────────────────────────────────────────
-               One 2-col grid (single column below lg). EVERY control is full-width
-               within its cell — Cascader (Class="w-full" flips its inline-block
-               container to 100%), the two Selects (full-width by default) and the
-               DatePicker (FullWidth) — so labels and controls share one aligned rhythm. *@
-            <h2 class="mb-4 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Route</h2>
-            <div class="grid grid-cols-1 gap-x-6 gap-y-5 lg:grid-cols-2">
+            @* Controlled ActiveStep: OnActiveStepChanged intercepts every navigation so a
+               forward move is gated by ValidateStep(currentStep). AllowStepClick lets the
+               header act as a back-nav; Linear keeps it from skipping forward. *@
+            <Stepper ActiveStep="_activeStep" ActiveStepChanged="OnActiveStepChanged"
+                     Linear="true" AllowStepClick="true"
+                     OnFinish="CreateBooking" FinishLabel="Create booking">
 
-                <FormField Name="lane" Label="Destination hub *" Error="@_laneErr"
-                           HelpText="Region, then discharge port." Class="lg:col-span-2">
-                    <Cascader Options="_laneOptions" @bind-Value="_lane" Class="w-full"
-                              Placeholder="Select region → port" Clearable="true" ShowSearch="true"
-                              Invalid="@(_laneErr is not null)" />
-                </FormField>
+                @* ── Step 1 · Route ──────────────────────────────────────────────────
+                   One 2-col grid (single column below lg). EVERY control is full-width
+                   within its cell — Cascader (Class="w-full"), both Selects (full-width by
+                   default) and the DatePicker (FullWidth) — so labels and controls share
+                   one aligned rhythm. *@
+                <StepperStep Title="Route">
+                    <div class="grid grid-cols-1 gap-x-6 gap-y-5 lg:grid-cols-2">
 
-                <FormField Name="carrier" Label="Carrier *" Error="@_carrierErr">
-                    <Select @bind-Value="_carrier">
-                        <SelectTrigger Class="w-full">
-                            <Lumeo.Text As="span" Class="@(_carrier is null ? "text-muted-foreground" : "")">@(_carrier ?? "Select carrier")</Lumeo.Text>
-                        </SelectTrigger>
-                        <SelectContent Class="min-w-[13rem]">
-                            @foreach (var c in _carriers)
-                            {
-                                <SelectItem Value="@c">@c</SelectItem>
-                            }
-                        </SelectContent>
-                    </Select>
-                </FormField>
+                        <FormField Name="lane" Label="Destination hub *" Error="@_laneErr"
+                                   HelpText="Region, then discharge port." Class="lg:col-span-2">
+                            <Cascader Options="_laneOptions" @bind-Value="_lane" Class="w-full"
+                                      Placeholder="Select region → port" Clearable="true" ShowSearch="true"
+                                      Invalid="@(_laneErr is not null)" />
+                        </FormField>
 
-                <FormField Name="mode" Label="Mode *" Error="@_modeErr">
-                    <Select @bind-Value="_mode">
-                        <SelectTrigger Class="w-full">
-                            <Lumeo.Text As="span" Class="@(_mode is null ? "text-muted-foreground" : "")">@(_mode ?? "Select mode")</Lumeo.Text>
-                        </SelectTrigger>
-                        <SelectContent Class="min-w-[13rem]">
-                            @foreach (var m in _modes)
-                            {
-                                <SelectItem Value="@m">@m</SelectItem>
-                            }
-                        </SelectContent>
-                    </Select>
-                </FormField>
+                        <FormField Name="carrier" Label="Carrier *" Error="@_carrierErr">
+                            <Select @bind-Value="_carrier">
+                                <SelectTrigger Class="w-full">
+                                    <Lumeo.Text As="span" Class="@(_carrier is null ? "text-muted-foreground" : "")">@(_carrier ?? "Select carrier")</Lumeo.Text>
+                                </SelectTrigger>
+                                <SelectContent Class="min-w-[13rem]">
+                                    @foreach (var c in _carriers)
+                                    {
+                                        <SelectItem Value="@c">@c</SelectItem>
+                                    }
+                                </SelectContent>
+                            </Select>
+                        </FormField>
 
-                <FormField Name="pickup" Label="Requested pickup *" Error="@_pickupErr">
-                    @* AllowKeyboardInput=false renders the button trigger whose whole
-                       surface opens the calendar on click/tap. The default typeable-input
-                       trigger only opens from its ~16px trailing icon, so tapping the field
-                       body (the natural target, esp. on touch) did nothing. *@
-                    <DatePicker @bind-Value="_pickup" MinDate="_minPickup" Placeholder="Pick a date"
-                                AllowKeyboardInput="false" FullWidth="true" />
-                </FormField>
+                        <FormField Name="mode" Label="Mode *" Error="@_modeErr">
+                            <Select @bind-Value="_mode">
+                                <SelectTrigger Class="w-full">
+                                    <Lumeo.Text As="span" Class="@(_mode is null ? "text-muted-foreground" : "")">@(_mode ?? "Select mode")</Lumeo.Text>
+                                </SelectTrigger>
+                                <SelectContent Class="min-w-[13rem]">
+                                    @foreach (var m in _modes)
+                                    {
+                                        <SelectItem Value="@m">@m</SelectItem>
+                                    }
+                                </SelectContent>
+                            </Select>
+                        </FormField>
 
-                <FormField Name="priority" Label="Priority">
-                    @* Block=true stretches the segmented track to the cell width so it
-                       aligns to the grid instead of floating at its natural width. *@
-                    <Segmented @bind-Value="_priority" Block="true">
-                        <SegmentedItem Value="Standard">Standard</SegmentedItem>
-                        <SegmentedItem Value="Expedited">Expedited</SegmentedItem>
-                        <SegmentedItem Value="Critical">Critical</SegmentedItem>
-                    </Segmented>
-                </FormField>
-            </div>
+                        <FormField Name="pickup" Label="Requested pickup *" Error="@_pickupErr">
+                            @* AllowKeyboardInput=false renders the button trigger whose whole
+                               surface opens the calendar on click/tap. The default typeable-input
+                               trigger only opens from its ~16px trailing icon, so tapping the field
+                               body (the natural target, esp. on touch) did nothing. *@
+                            <DatePicker @bind-Value="_pickup" MinDate="_minPickup" Placeholder="Pick a date"
+                                        AllowKeyboardInput="false" FullWidth="true" />
+                        </FormField>
 
-            <Separator Class="my-6" />
-
-            @* ── Cargo ─────────────────────────────────────────────────────────────── *@
-            <h2 class="mb-4 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Cargo</h2>
-            <div class="grid grid-cols-1 gap-x-6 gap-y-5 lg:grid-cols-2">
-
-                <FormField Name="value" Label="Declared value (€) *" Error="@_valueErr">
-                    <Input Type="number" @bind-Value="_value" Placeholder="0" />
-                </FormField>
-
-                <FormField Name="weight" Label="Gross weight (kg)" HelpText="Optional at draft stage.">
-                    <Input Type="number" @bind-Value="_weight" Placeholder="0" />
-                </FormField>
-
-                @* Dangerous-goods toggle row: label + helper on the left, switch on the
-                   right, vertically centered — a self-contained control spanning the grid. *@
-                <div class="flex items-center justify-between gap-4 rounded-lg border border-border/60 px-3.5 py-3 lg:col-span-2">
-                    <div class="space-y-0.5">
-                        <Lumeo.Text As="div" Size="sm" Weight="medium">Dangerous goods</Lumeo.Text>
-                        <Lumeo.Text As="div" Size="xs" Color="muted">Requires ADR/IMDG documentation for hazardous cargo.</Lumeo.Text>
+                        <FormField Name="priority" Label="Priority" Class="lg:col-span-2">
+                            @* Block=true stretches the segmented track to the cell width so it
+                               aligns to the grid instead of floating at its natural width. *@
+                            <Segmented @bind-Value="_priority" Block="true">
+                                <SegmentedItem Value="Standard">Standard</SegmentedItem>
+                                <SegmentedItem Value="Expedited">Expedited</SegmentedItem>
+                                <SegmentedItem Value="Critical">Critical</SegmentedItem>
+                            </Segmented>
+                        </FormField>
                     </div>
-                    <Switch @bind-Checked="_hazmat" AriaLabel="Dangerous goods" />
-                </div>
+                </StepperStep>
 
-                <FormField Name="notes" Label="Handling notes" Class="lg:col-span-2"
-                           HelpText="Temperature range, stacking limits, or other carrier instructions.">
-                    <Textarea @bind-Value="_notes" Class="min-h-28"
-                              Placeholder="Temperature range, stacking limits, special handling…" />
-                </FormField>
-            </div>
+                @* ── Step 2 · Cargo ──────────────────────────────────────────────────── *@
+                <StepperStep Title="Cargo">
+                    <div class="grid grid-cols-1 gap-x-6 gap-y-5 lg:grid-cols-2">
 
-            <Separator Class="my-6" />
+                        <FormField Name="value" Label="Declared value (€) *" Error="@_valueErr">
+                            <Input Type="number" @bind-Value="_value" Placeholder="0" />
+                        </FormField>
 
-            <div class="flex flex-wrap items-center gap-2">
-                <Button OnClick="Submit">
-                    <DynamicIcon Name="Check" Class="mr-1.5 h-4 w-4" /> Create booking
-                </Button>
-                <Button Variant="Button.ButtonVariant.Ghost" OnClick="Reset">Reset</Button>
-                <div class="flex-1"></div>
-                @if (_submitted)
-                {
-                    <span class="inline-flex items-center gap-1.5 text-sm text-success-text">
-                        <DynamicIcon Name="CircleCheck" Class="h-4 w-4" /> Booking created
-                    </span>
-                }
-            </div>
+                        <FormField Name="weight" Label="Gross weight (kg)" HelpText="Optional at draft stage.">
+                            <Input Type="number" @bind-Value="_weight" Placeholder="0" />
+                        </FormField>
+
+                        @* Dangerous-goods toggle row: label + helper on the left, switch on the
+                           right, vertically centered — a self-contained control spanning the grid. *@
+                        <div class="flex items-center justify-between gap-4 rounded-lg border border-border/60 px-3.5 py-3 lg:col-span-2">
+                            <div class="space-y-0.5">
+                                <Lumeo.Text As="div" Size="sm" Weight="medium">Dangerous goods</Lumeo.Text>
+                                <Lumeo.Text As="div" Size="xs" Color="muted">Requires ADR/IMDG documentation for hazardous cargo.</Lumeo.Text>
+                            </div>
+                            <Switch @bind-Checked="_hazmat" AriaLabel="Dangerous goods" />
+                        </div>
+
+                        <FormField Name="notes" Label="Handling notes" Class="lg:col-span-2"
+                                   HelpText="Temperature range, stacking limits, or other carrier instructions.">
+                            <Textarea @bind-Value="_notes" Class="min-h-28"
+                                      Placeholder="Temperature range, stacking limits, special handling…" />
+                        </FormField>
+                    </div>
+                </StepperStep>
+
+                @* ── Step 3 · Review & create ────────────────────────────────────────
+                   Read-only summary as clean dl grids. Each section has an Edit link that
+                   jumps BACK to its step (always allowed, state preserved). The footer's
+                   Finish button (labelled "Create booking") runs the create flow. *@
+                <StepperStep Title="Review">
+                    <div class="space-y-6">
+                        <div>
+                            <div class="mb-3 flex items-center justify-between gap-3">
+                                <h3 class="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Route</h3>
+                                <button type="button" @onclick="() => GoToStep(0)"
+                                        class="inline-flex items-center gap-1 rounded text-xs font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                                    <DynamicIcon Name="SquarePen" Class="h-3.5 w-3.5" /> Edit
+                                </button>
+                            </div>
+                            <dl class="grid grid-cols-1 gap-x-6 gap-y-3 sm:grid-cols-2">
+                                @Row("Destination hub", LaneLabel())
+                                @Row("Carrier", _carrier ?? "—")
+                                @Row("Mode", _mode ?? "—")
+                                @Row("Priority", _priority)
+                                @Row("Requested pickup", _pickup?.ToString("dd MMM yyyy") ?? "—")
+                            </dl>
+                        </div>
+
+                        <Separator />
+
+                        <div>
+                            <div class="mb-3 flex items-center justify-between gap-3">
+                                <h3 class="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Cargo</h3>
+                                <button type="button" @onclick="() => GoToStep(1)"
+                                        class="inline-flex items-center gap-1 rounded text-xs font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                                    <DynamicIcon Name="SquarePen" Class="h-3.5 w-3.5" /> Edit
+                                </button>
+                            </div>
+                            <dl class="grid grid-cols-1 gap-x-6 gap-y-3 sm:grid-cols-2">
+                                @Row("Declared value", string.IsNullOrWhiteSpace(_value) ? "—" : $"€ {_value}")
+                                @Row("Gross weight", string.IsNullOrWhiteSpace(_weight) ? "—" : $"{_weight} kg")
+                                @Row("Dangerous goods", _hazmat ? "Yes" : "No")
+                                @Row("Handling notes", string.IsNullOrWhiteSpace(_notes) ? "—" : _notes!)
+                            </dl>
+                        </div>
+                    </div>
+                </StepperStep>
+            </Stepper>
         </div>
     </div>
 </div>
@@ -163,6 +214,10 @@
         } },
     };
 
+    // Wizard position (0 Route · 1 Cargo · 2 Review). Controlled, not @bind, so
+    // OnActiveStepChanged can veto a forward move that fails validation.
+    private int _activeStep;
+
     // Working state
     private List<string>? _lane;
     private string? _carrier;
@@ -178,40 +233,105 @@
     // Errors
     private string? _laneErr, _carrierErr, _modeErr, _pickupErr, _valueErr;
 
-    private void Submit()
+    // Per-step validation. Sets the field errors for the step and returns whether it
+    // may be left. Step 2 (Review) has no inputs, so it always passes.
+    private bool ValidateStep(int step)
     {
-        _submitted = false;
-        _laneErr = _lane is { Count: > 0 } ? null : "Select a destination hub.";
-        _carrierErr = _carrier is null ? "Choose a carrier." : null;
-        _modeErr = _mode is null ? "Choose a transport mode." : null;
-        _pickupErr = _pickup is null ? "Pick a requested pickup date." : null;
-
-        if (string.IsNullOrWhiteSpace(_value))
-            _valueErr = "Enter the declared value.";
-        else if (!decimal.TryParse(_value, out var v) || v <= 0)
-            _valueErr = "Value must be a positive number.";
-        else
-            _valueErr = null;
-
-        if (_laneErr is null && _carrierErr is null && _modeErr is null && _pickupErr is null && _valueErr is null)
+        switch (step)
         {
-            _submitted = true;
-            Toast.Success("Booking created", $"{_reference} queued via {_carrier} ({_mode}).");
-        }
-        else
-        {
-            Toast.Error("Check the form", "Some required fields need your attention.");
+            case 0:
+                _laneErr = _lane is { Count: > 0 } ? null : "Select a destination hub.";
+                _carrierErr = _carrier is null ? "Choose a carrier." : null;
+                _modeErr = _mode is null ? "Choose a transport mode." : null;
+                _pickupErr = _pickup is null ? "Pick a requested pickup date." : null;
+                return _laneErr is null && _carrierErr is null && _modeErr is null && _pickupErr is null;
+            case 1:
+                if (string.IsNullOrWhiteSpace(_value))
+                    _valueErr = "Enter the declared value.";
+                else if (!decimal.TryParse(_value, out var v) || v <= 0)
+                    _valueErr = "Value must be a positive number.";
+                else
+                    _valueErr = null;
+                return _valueErr is null;
+            default:
+                return true;
         }
     }
 
+    // Intercepts every navigation the Stepper requests. Backward (Back button or a
+    // header click to a completed step) is always accepted and preserves all field
+    // state. Forward is gated on the step being left; on failure we DON'T advance —
+    // ValidateStep has populated the field errors and the EventCallback's implicit
+    // re-render surfaces them on the current step.
+    private void OnActiveStepChanged(int requested)
+    {
+        if (requested <= _activeStep)
+        {
+            _activeStep = requested;
+            return;
+        }
+
+        if (ValidateStep(_activeStep))
+        {
+            _submitted = false;
+            _activeStep = requested;
+        }
+    }
+
+    // Edit links in the review summary jump straight back to a step (always backward
+    // from Review, so no validation needed) with state intact.
+    private void GoToStep(int step) => _activeStep = step;
+
+    // Finish → existing create flow: toast, then reset to a fresh draft on step 1.
+    // Navigation already gated steps 0/1, but re-validate defensively and bounce back
+    // to the first offending step if something is off.
+    private void CreateBooking()
+    {
+        if (!ValidateStep(0)) { _activeStep = 0; Toast.Error("Check the form", "Some required fields need your attention."); return; }
+        if (!ValidateStep(1)) { _activeStep = 1; Toast.Error("Check the form", "Some required fields need your attention."); return; }
+
+        Toast.Success("Booking created", $"{_reference} queued via {_carrier} ({_mode}).");
+        ResetFields();
+        _activeStep = 0;
+        _submitted = true;
+    }
+
     private void Reset()
+    {
+        ResetFields();
+        _submitted = false;
+        _activeStep = 0;
+    }
+
+    private void ResetFields()
     {
         _lane = null;
         _carrier = _mode = _value = _weight = _notes = null;
         _priority = "Standard";
         _pickup = null;
         _hazmat = false;
-        _submitted = false;
         _laneErr = _carrierErr = _modeErr = _pickupErr = _valueErr = null;
     }
+
+    // Human-readable "Region → Port" path from the Cascader's selected value chain.
+    private string LaneLabel()
+    {
+        if (_lane is not { Count: > 0 }) return "—";
+        var parts = new List<string>();
+        List<Cascader.CascaderOption>? level = _laneOptions;
+        foreach (var val in _lane)
+        {
+            var match = level?.FirstOrDefault(o => o.Value == val);
+            if (match is null) { parts.Add(val); break; }
+            parts.Add(match.Label);
+            level = match.Children;
+        }
+        return string.Join(" → ", parts);
+    }
+
+    // One read-only definition row for the review grid.
+    private RenderFragment Row(string term, string value) =>@<div>
+        <dt class="text-xs text-muted-foreground">@term</dt>
+        <dd class="text-sm font-medium text-foreground break-words">@value</dd>
+    </div>;
 }
