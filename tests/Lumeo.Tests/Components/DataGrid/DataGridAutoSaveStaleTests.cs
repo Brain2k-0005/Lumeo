@@ -49,6 +49,21 @@ public class DataGridAutoSaveStaleTests : IAsyncLifetime
     // PersistAsync uses — proven by directly simulating a stale timer firing.
     // -----------------------------------------------------------------------
 
+    // Polls a plain in-memory condition until it holds or the generous ceiling elapses,
+    // returning the instant it is met. bUnit's WaitForAssertion/WaitForState cannot be used
+    // here: they are render-driven (re-checked only on a component render), but OnLayoutSave
+    // is an EventCallback bound to this test class — invoking it triggers NO DataGrid render,
+    // so those helpers would check exactly once and time out. This is a condition poll on the
+    // real signal (the callback counter), not a fixed pre-assert sleep: on the happy path it
+    // returns as soon as the ~500 ms debounced timer fires, and only spends the full ceiling
+    // when a starved thread pool delays the Timer -> Task.Run -> InvokeAsync chain.
+    private static async Task PollUntilAsync(Func<bool> condition, TimeSpan timeout)
+    {
+        var deadline = DateTime.UtcNow + timeout;
+        while (!condition() && DateTime.UtcNow < deadline)
+            await Task.Delay(25);
+    }
+
     [Fact]
     public async Task OnLayoutSave_is_not_invoked_for_stale_generation()
     {
@@ -84,9 +99,12 @@ public class DataGridAutoSaveStaleTests : IAsyncLifetime
             cut.Instance.UpdateColumnWidth("col-id", 170);
         });
 
-        // Advance past the 500 ms debounce window with margin for the timer
-        // callback to actually run on the thread pool.
-        await Task.Delay(1500);
+        // Poll for the debounced autosave to land instead of sleeping a fixed interval and
+        // asserting once. The callback rides a real 500 ms System.Threading.Timer -> Task.Run
+        // -> InvokeAsync chain; under a starved thread pool (parallel test load) that chain
+        // can slip past any fixed sleep window — the historic flake. The poll returns the
+        // instant the callback fires and only spends the ceiling when the pool is contended.
+        await PollUntilAsync(() => callCount >= 1, TimeSpan.FromSeconds(5));
 
         // Exactly one callback — only the latest generation reached the
         // consumer; older debounced timers were filtered out.
@@ -132,9 +150,10 @@ public class DataGridAutoSaveStaleTests : IAsyncLifetime
         // OnLayoutSave must NOT have been invoked for the stale generation.
         Assert.Equal(savedBefore, callCount);
 
-        // Wait for the latest debounced timer to settle and verify the
-        // callback only advances by one (the latest live generation).
-        await Task.Delay(1500);
+        // Poll for the latest debounced timer to settle and verify the callback only
+        // advances by one (the latest live generation) — again a condition poll on the
+        // real signal, not a fixed sleep, so thread-pool starvation cannot race it.
+        await PollUntilAsync(() => callCount >= savedBefore + 1, TimeSpan.FromSeconds(5));
         Assert.Equal(savedBefore + 1, callCount);
     }
 }

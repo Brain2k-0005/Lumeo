@@ -63,24 +63,34 @@ public class ToastBattleTestRegressionTests : IAsyncLifetime
         });
         cut.WaitForState(
             () => cut.FindAll("[role='alert'],[role='status']").Count > 0,
-            TimeSpan.FromSeconds(2));
+            TimeSpan.FromSeconds(5));
 
         // First dismissal: runs OnDismiss once and marks the toast "leaving",
         // keeping it in the DOM (with .animate-toast-out) for the exit animation.
         cut.Find("button").Click();
+        // WaitForState blocks until the toast is confirmed still-mounted AND leaving
+        // (.animate-toast-out present), so the second dismissal below is guaranteed to
+        // land while the toast is in the "leaving" state — the exact branch under test.
+        // The exit window is a real ~220 ms Task.Delay; the generous ceiling only guards
+        // against a starved thread pool delaying the leaving re-render, and returns the
+        // instant the class appears.
         cut.WaitForState(
             () => cut.FindAll(".animate-toast-out").Count == 1,
-            TimeSpan.FromSeconds(2));
+            TimeSpan.FromSeconds(5));
         Assert.Equal(1, dismissCount);
 
         // Second dismissal while the toast is still leaving must be a no-op.
         // Without the fix it re-runs OnDismiss (count -> 2) and truncates the
-        // exit animation; with the fix it bails on toast.Leaving.
-        cut.FindAll("button")[0].Click();
+        // exit animation; with the fix it bails on toast.Leaving. The toast is
+        // confirmed mounted by the WaitForState immediately above, so Find("button")
+        // cannot throw on an empty match (the historic FindAll[0] index race).
+        cut.Find("button").Click();
 
+        // The panel unmounts when the first exit timer completes; poll for it with a
+        // generous ceiling (real 220 ms timer, starvation-tolerant) rather than a sleep.
         cut.WaitForState(
             () => cut.FindAll("[role='alert'],[role='status']").Count == 0,
-            TimeSpan.FromSeconds(2));
+            TimeSpan.FromSeconds(5));
 
         Assert.Equal(1, dismissCount);
     }

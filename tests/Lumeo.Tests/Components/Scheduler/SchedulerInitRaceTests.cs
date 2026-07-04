@@ -86,10 +86,21 @@ public class SchedulerInitRaceTests : IAsyncLifetime
         // SetResult InvokeAsync, so poll for it rather than asserting synchronously.
         await cut.InvokeAsync(() => initHandler.SetResult(InstanceId));
 
-        cut.WaitForAssertion(() => Assert.True(
-            SetEventsCount(_module) > 0,
-            "An Events refresh that arrives while the calendar is still initializing must " +
-            "be pushed via scheduler.setEvents once init completes, not silently dropped."));
+        // The reconciliation push AND the trailing scheduler.getTitle read both run in
+        // the OnAfterRenderAsync continuation that resumes AFTER init's await — SetResult's
+        // InvokeAsync does not await it. getTitle is that continuation's FINAL interop call
+        // (it fires strictly after the setEvents push), so waiting for it guarantees the push
+        // has already been recorded AND that nothing else is still mutating the (non-thread-
+        // safe) invocation dictionary before we enumerate it below. Reading Invocations under
+        // WaitForAssertion also retries past any transient concurrent enumeration.
+        cut.WaitForAssertion(() =>
+        {
+            Assert.Contains(_module.Invocations, i => i.Identifier == "scheduler.getTitle");
+            Assert.True(
+                SetEventsCount(_module) > 0,
+                "An Events refresh that arrives while the calendar is still initializing must " +
+                "be pushed via scheduler.setEvents once init completes, not silently dropped.");
+        });
 
         // The pushed payload must carry the REFRESHED list (2 events), not the stale one.
         var setEvents = _module.Invocations.Last(i => i.Identifier == "scheduler.setEvents");
@@ -111,6 +122,19 @@ public class SchedulerInitRaceTests : IAsyncLifetime
         // Complete init without any intervening param change.
         await cut.InvokeAsync(() => initHandler.SetResult(InstanceId));
 
-        Assert.Equal(0, SetEventsCount(_module));
+        // Post-init reconciliation + the scheduler.getTitle read run in the
+        // OnAfterRenderAsync continuation that resumes AFTER init's await; SetResult's
+        // InvokeAsync does not await it. Asserting SetEventsCount synchronously here
+        // enumerates bUnit's non-thread-safe invocation dictionary WHILE that continuation
+        // is still recording getTitle — the source of the historic "Collection was modified"
+        // flake. Wait for the continuation to finish (getTitle is its final interop call, and
+        // it fires whether or not a redundant push happened) before asserting no setEvents
+        // was pushed; read under WaitForAssertion so any transient concurrent enumeration is
+        // retried rather than surfacing as an exception.
+        cut.WaitForAssertion(() =>
+        {
+            Assert.Contains(_module.Invocations, i => i.Identifier == "scheduler.getTitle");
+            Assert.Equal(0, SetEventsCount(_module));
+        });
     }
 }

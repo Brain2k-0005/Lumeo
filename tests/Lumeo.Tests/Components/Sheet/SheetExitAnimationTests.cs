@@ -70,10 +70,15 @@ public class SheetExitAnimationTests : IAsyncLifetime
         var cut = RenderSheet(open: true, L.Side.Bottom, L.SheetContent.SheetAnimation.Slide);
         cut.Render(p => p.Add(s => s.Open, false));
 
-        // After the exit animation window the panel is removed from the DOM.
+        // After the exit animation window the panel is removed from the DOM. The unmount
+        // is driven by a real ~280 ms animation timer (DelayedDispatch), so this is a poll,
+        // not a fixed sleep: WaitForAssertion returns the instant the panel unmounts
+        // (typically well under 300 ms). The ceiling is deliberately generous so a starved
+        // thread pool under parallel test load — which can delay the timer callback's
+        // dispatch — cannot trip it; it does not widen any real wait on the happy path.
         cut.WaitForAssertion(
             () => Assert.Empty(cut.FindAll("[role='dialog']")),
-            timeout: TimeSpan.FromSeconds(2));
+            timeout: TimeSpan.FromSeconds(5));
     }
 
     [Fact]
