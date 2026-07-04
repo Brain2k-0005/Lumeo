@@ -7,8 +7,16 @@ window.lumeo = window.lumeo || {};
 window.lumeo.signalBlazorReady = function () {
     document.documentElement.dataset.blazorReady = 'true';
 
-    // Reveal the app. On prerendered pages a full-screen boot splash is injected
-    // into the static HTML (see scripts/prerender/prerender.mjs); it stays up
+    // Landing (deferred hydration): the '/' snapshot has no full-screen splash,
+    // it is readable marketing content. Drop the tiny "Starting…" boot pill and
+    // the pending state that neutralised the static header's not-yet-live
+    // <button> controls — the app has now re-rendered #app and is interactive.
+    document.documentElement.classList.remove('lumeo-landing-pending');
+    var pill = document.querySelector('.lumeo-boot-pill');
+    if (pill) pill.remove();
+
+    // Other routes: reveal the app. A full-screen boot splash is injected into
+    // the prerendered HTML (see scripts/prerender/prerender.mjs); it stays up
     // while the WASM runtime downloads, boots and re-renders #app from scratch,
     // so users never see the dead pre-hydration DOM (empty data, flashing
     // consent banner) or the hydration re-render. We drop it here — the exact

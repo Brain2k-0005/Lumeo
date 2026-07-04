@@ -74,6 +74,33 @@
         @keyframes splash-name-in { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: translateY(0); } }
         .lumeo-splash-tagline { font-family: system-ui, -apple-system, sans-serif; font-size: 0.68rem; letter-spacing: 0.18em; text-transform: uppercase; animation: splash-tagline-in 1s cubic-bezier(0.16, 1, 0.3, 1) 1.3s both; }
         @keyframes splash-tagline-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 0.35; transform: translateY(0); } }
+
+        /* Deferred-hydration boot indicator (landing only). The '/' snapshot has
+           NO full-screen splash — it is readable marketing content — so when a
+           user gesture triggers the WASM boot we show a tiny, unobtrusive corner
+           pill for feedback. Removed by js/docs.js signalBlazorReady the moment
+           the app is interactive. */
+        .lumeo-boot-pill {
+            position: fixed; bottom: 1rem; right: 1rem; z-index: 9998;
+            display: inline-flex; align-items: center; gap: 0.5rem;
+            padding: 0.4rem 0.75rem;
+            font-family: system-ui, -apple-system, sans-serif; font-size: 0.75rem; font-weight: 500;
+            color: hsl(240 4% 34%);
+            background: rgba(255, 255, 255, 0.9); border: 1px solid rgba(0, 0, 0, 0.08);
+            border-radius: 9999px; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+            -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+            animation: lumeo-boot-pill-in 0.25s ease both;
+        }
+        html.dark .lumeo-boot-pill { color: hsl(0 0% 80%); background: rgba(23, 23, 23, 0.9); border-color: rgba(255, 255, 255, 0.1); }
+        .lumeo-boot-pill-dot { width: 0.5rem; height: 0.5rem; border-radius: 50%; background: currentColor; animation: lumeo-boot-pill-pulse 1s ease-in-out infinite; }
+        @keyframes lumeo-boot-pill-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes lumeo-boot-pill-pulse { 0%, 100% { opacity: 0.4; } 50% { opacity: 1; } }
+        /* While the landing is prerendered-but-not-yet-hydrated, neutralise the
+           not-yet-live <button> controls in the static header (real <a> CTAs keep
+           working — they navigate without JS). A pointerdown still bubbles to the
+           document listener and boots, so a click both starts hydration and, once
+           live, does the right thing. Cleared with the class on signalBlazorReady. */
+        html.lumeo-landing-pending #app button { pointer-events: none; }
     </style>
 
     <!-- Pre-built Tailwind CSS (compiled from Styles/tailwind.css via @tailwindcss/cli).
@@ -202,15 +229,96 @@
     <script src="js/nav-scroll.js" defer></script>
     <script src="js/algolia-search.js" defer></script>
     <script src="js/constellation.js" defer></script>
-    <script src="_framework/blazor.webassembly#[.{fingerprint}].js"></script>
+    <!-- Manual start (autostart=false): the WASM runtime boot — the dominant
+         Total-Blocking-Time source in a Lighthouse trace — is deferred behind a
+         route-aware trigger policy (see the controller below) instead of running
+         on the critical path. The blazor.webassembly.js loader still downloads
+         eagerly (preloaded in <head>) so Blazor.start() is instant when triggered. -->
+    <script src="_framework/blazor.webassembly#[.{fingerprint}].js" autostart="false"></script>
     <script>
-        // Safety net: the splash is normally removed by js/docs.js the moment the
-        // WASM app signals interactivity (signalBlazorReady). If the runtime never
-        // boots (network / boot failure), still reveal the page after a timeout so
-        // users aren't stranded on the splash with the error UI hidden beneath it.
+        // ============================ DEFERRED HYDRATION ============================
+        // Trigger policy:
+        //   • Any route other than '/'  → boot immediately (docs/component pages need
+        //     interactivity fast; a full-screen splash injected into the prerendered
+        //     snapshot covers the dead DOM until the app signals interactive).
+        //   • '/' (the landing)         → boot on FIRST real user intent. pointerdown /
+        //     keydown / touchstart fire instantly; pointermove / wheel / scroll require
+        //     ~150ms of *sustained* movement so Lighthouse's synthetic, near-instant
+        //     quiet trace never trips it. A hard 10s fallback boots anyway so the page
+        //     always comes alive even with zero interaction.
+        //   • During prerender (window.__LUMEO_PRERENDER__, set by the crawler before
+        //     any page script runs) → boot immediately on every route, '/' included, so
+        //     the crawler snapshots the hydrated DOM without waiting on the fallback.
+        (function () {
+            var path = (location.pathname || '/').replace(/\/+$/, '') || '/';
+            var isLanding = path === '/';
+            var prerender = !!window.__LUMEO_PRERENDER__;
+            var booted = false;
+            var fallback = 0;
+            var opts = { passive: true, capture: true };
+            var instant = ['pointerdown', 'keydown', 'touchstart'];
+            var moved = ['pointermove', 'wheel', 'scroll'];
+            var moveStart = 0;
+
+            function showPill() {
+                if (document.querySelector('.lumeo-boot-pill')) return;
+                var pill = document.createElement('div');
+                pill.className = 'lumeo-boot-pill';
+                pill.setAttribute('role', 'status');
+                pill.setAttribute('aria-live', 'polite');
+                pill.innerHTML = '<span class="lumeo-boot-pill-dot"></span>Starting…';
+                (document.body || document.documentElement).appendChild(pill);
+                // Defensive self-clear; docs.js signalBlazorReady normally removes it.
+                setTimeout(function () { if (pill && pill.parentNode) pill.remove(); }, 20000);
+            }
+
+            function teardown() {
+                clearTimeout(fallback);
+                instant.forEach(function (t) { window.removeEventListener(t, onInstant, opts); });
+                moved.forEach(function (t) { window.removeEventListener(t, onMove, opts); });
+            }
+
+            function start() {
+                if (booted) return;
+                booted = true;
+                teardown();
+                if (isLanding && !prerender) showPill();
+                try {
+                    var p = window.Blazor && window.Blazor.start ? window.Blazor.start() : null;
+                    if (p && typeof p.catch === 'function') p.catch(function () {});
+                } catch (e) { /* boot failure surfaces via #blazor-error-ui */ }
+            }
+
+            function onInstant() { start(); }
+            function onMove() {
+                var now = Date.now();
+                // Restart the window if movement paused — a lone synthetic event
+                // won't be followed ~150ms later by a second one in the same stream.
+                if (!moveStart || now - moveStart > 500) { moveStart = now; return; }
+                if (now - moveStart >= 150) start();
+            }
+
+            // Immediate paths: prerender crawl, or any non-landing route.
+            if (prerender || !isLanding) { start(); return; }
+
+            // Landing: defer until real intent. Mark pending so CSS can neutralise
+            // the static header's not-yet-live <button> controls.
+            document.documentElement.classList.add('lumeo-landing-pending');
+            instant.forEach(function (t) { window.addEventListener(t, onInstant, opts); });
+            moved.forEach(function (t) { window.addEventListener(t, onMove, opts); });
+            fallback = setTimeout(start, 10000);
+        })();
+
+        // Safety net: the splash / pill / pending state is normally cleared by
+        // js/docs.js signalBlazorReady the moment the app is interactive. If the
+        // runtime never boots (network / boot failure), still reveal the page after
+        // a timeout so users aren't stranded with the error UI hidden beneath.
         setTimeout(function () {
             var s = document.querySelector('.lumeo-splash');
             if (s) { s.classList.add('lumeo-splash--hide'); setTimeout(function () { s.remove(); }, 450); }
+            var pill = document.querySelector('.lumeo-boot-pill');
+            if (pill) pill.remove();
+            document.documentElement.classList.remove('lumeo-landing-pending');
         }, 15000);
     </script>
 </body>

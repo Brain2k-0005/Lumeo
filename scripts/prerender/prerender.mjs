@@ -130,10 +130,20 @@ try {
                 // displayed literally in the browser tab. Safe to remove — the
                 // WASM app re-renders from scratch on hydration and doesn't rely
                 // on these markers.
-                let html = await page.evaluate(() => {
+                // Landing splash policy: '/' ships NO full-screen splash (deferred
+                // hydration — its snapshot must paint instantly as readable marketing
+                // content), so strip the consent banner from the captured DOM. Left in,
+                // it would sit dead and non-interactive over the page until WASM boots;
+                // Blazor re-renders a live one after hydration. Every other route keeps
+                // its splash (injected below), which hides the banner anyway.
+                const isLanding = route === '/';
+                let html = await page.evaluate((stripConsent) => {
+                    if (stripConsent) {
+                        document.querySelectorAll('.lumeo-consent-banner').forEach((e) => e.remove());
+                    }
                     const raw = '<!DOCTYPE html>\n' + document.documentElement.outerHTML;
                     return raw.replace(/<!--!-->/g, '');
-                });
+                }, isLanding);
 
                 // Inline the registry into the catalog so hydration is skeleton-free.
                 if (route === '/components' && registryInlineScript) {
@@ -141,8 +151,14 @@ try {
                 }
 
                 // Re-inject the boot splash overlay so the static page hides the
-                // dead pre-hydration DOM until the WASM app is interactive.
-                html = html.replace(/(<body[^>]*>)/i, `$1${SPLASH_HTML}`);
+                // dead pre-hydration DOM until the WASM app is interactive — EXCEPT
+                // on the landing '/', which uses deferred hydration: no splash, the
+                // prerendered marketing content is shown immediately and a tiny boot
+                // pill (added by the inline controller only while a triggered boot is
+                // in flight) provides the only feedback.
+                if (!isLanding) {
+                    html = html.replace(/(<body[^>]*>)/i, `$1${SPLASH_HTML}`);
+                }
 
                 // Root "/" writes to wwwroot/index.html (overwrite the stock
                 // shell); everything else writes to wwwroot/<path>/index.html.
