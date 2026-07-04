@@ -93,6 +93,37 @@ window.lumeo.disconnectObserver = function (io) {
     if (io && typeof io.disconnect === 'function') io.disconnect();
 };
 
+// PauseWhenHidden — PERSISTENT IntersectionObserver (unlike observeVisibility,
+// which fires once and disconnects). Calls dotNetRef.SetVisible(bool) on every
+// enter/leave so the caller can pause perpetual work (live timers, chart
+// updates, CSS animations) while the element is off-screen and resume it when
+// it scrolls back. Returns the observer so Blazor can disconnect on dispose.
+window.lumeo.observeInViewport = function (el, dotNetRef, methodName, rootMarginPx) {
+    var method = methodName || 'SetVisible';
+    if (!el || typeof IntersectionObserver === 'undefined') {
+        // No observer support (SSR / bUnit): treat as always visible so nothing
+        // that depends on visibility is starved.
+        try { dotNetRef.invokeMethodAsync(method, true); } catch (_) {}
+        return null;
+    }
+    var io = new IntersectionObserver(function (entries) {
+        var visible = entries[entries.length - 1].isIntersecting;
+        try { dotNetRef.invokeMethodAsync(method, visible); } catch (_) {}
+    }, { rootMargin: (rootMarginPx || 0) + 'px' });
+    io.observe(el);
+    return io;
+};
+
+// prefers-reduced-motion query for the C# side. The landing page uses it to
+// suppress its perpetual liveness (chart reshuffle timer) entirely for users
+// who asked the OS to reduce motion — CSS-only animations are already gated in
+// lumeo.css, this covers the JS/timer-driven ones.
+window.lumeo.prefersReducedMotion = function () {
+    return typeof window !== 'undefined'
+        && typeof window.matchMedia === 'function'
+        && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+};
+
 // Idle-mount hook for IdleMount.razor. Keeps a heavy above-the-fold component
 // (e.g. the hero ECharts BarChart) out of the first-paint critical path: we
 // show a cheap static placeholder immediately, then swap in the real component

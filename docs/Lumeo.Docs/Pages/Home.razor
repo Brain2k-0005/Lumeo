@@ -8,6 +8,26 @@
 
 <PageTitle>Lumeo - The Blazor component library you would actually want to ship</PageTitle>
 
+@* Off-screen animation pause: PauseWhenHidden toggles this class on decorative
+   clusters (marquee, sparkles, border-beam, shimmer) when they scroll out of
+   view, so their perpetual CSS keyframes stop waking the compositor. Paused
+   animations resume from where they stopped — no visual jump. *@
+<style>
+    .lumeo-motion-paused,
+    .lumeo-motion-paused *,
+    .lumeo-motion-paused::before,
+    .lumeo-motion-paused::after,
+    .lumeo-motion-paused *::before,
+    .lumeo-motion-paused *::after { animation-play-state: paused !important; }
+
+    /* Reduced motion: the perpetual CSS primitives (Marquee, Sparkles, BorderBeam,
+       Shimmer) are already stopped in lumeo.css; also freeze the small looping
+       "live" status pulses so these users get a genuinely still page. */
+    @@media (prefers-reduced-motion: reduce) {
+        .animate-pulse { animation: none !important; }
+    }
+</style>
+
 <!-- ======================= LIVE ADMIN-APP ======================= -->
 <section class="relative min-h-screen overflow-hidden border-b border-border/40">
     <div class="absolute inset-0 bg-[linear-gradient(to_right,hsl(var(--border))_1px,transparent_1px),linear-gradient(to_bottom,hsl(var(--border))_1px,transparent_1px)] bg-[size:4rem_4rem] [mask-image:radial-gradient(ellipse_80%_60%_at_50%_0%,#000_60%,transparent_110%)] pointer-events-none opacity-30"></div>
@@ -140,7 +160,7 @@
         <!-- Chart (60%) + Map (40%, desktop-only to keep the phone page short) -->
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-3 mb-4">
 
-            <div class="rounded-xl border border-border/50 bg-card/80 backdrop-blur-sm overflow-hidden"
+            <div @ref="_chartCard" class="rounded-xl border border-border/50 bg-card/80 backdrop-blur-sm overflow-hidden"
                  @onmouseenter="@(() => _chartHovered = true)" @onmouseleave="@(() => _chartHovered = false)">
                 <Flex Align="center" Justify="between" Class="px-4 pt-4 pb-2">
                     <Stack Gap="0">
@@ -623,6 +643,10 @@ builder.Services.<span style="color: #a78bfa;">AddLumeo</span>();</pre>
 <section class="hidden lg:block py-14 border-y border-border/40 bg-gradient-to-b from-muted/30 via-muted/10 to-muted/30 overflow-hidden relative">
     <div class="pointer-events-none absolute inset-y-0 left-0 w-24 bg-gradient-to-r from-background to-transparent z-10"></div>
     <div class="pointer-events-none absolute inset-y-0 right-0 w-24 bg-gradient-to-l from-background to-transparent z-10"></div>
+    @* The two marquees scroll forever via CSS. PauseWhenHidden stops them ticking
+       the compositor whenever the band is off-screen (which is most of the time on
+       this long page) and resumes on scroll-in. *@
+    <PauseWhenHidden>
     <Stack Gap="4">
         <Marquee Speed="Marquee.MarqueeSpeed.Slow" PauseOnHover="true" Class="[--gap:1rem]">
             @foreach (var p in _marqueeRowA)
@@ -643,6 +667,7 @@ builder.Services.<span style="color: #a78bfa;">AddLumeo</span>();</pre>
             }
         </Marquee>
     </Stack>
+    </PauseWhenHidden>
 </section>
 
 <!-- ======================= MOTION STRIP (two-column: line + live primitive) ======================= -->
@@ -662,6 +687,7 @@ builder.Services.<span style="color: #a78bfa;">AddLumeo</span>();</pre>
                     <DynamicIcon Name="ArrowRight" Class="h-3.5 w-3.5" />
                 </Lumeo.Link>
             </Stack>
+            <PauseWhenHidden>
             <div class="relative flex items-center justify-center rounded-2xl border border-border/40 bg-card/40 p-8 min-h-[220px] overflow-hidden">
                 <Sparkles Count="14" Class="absolute inset-0 pointer-events-none">
                     <span></span>
@@ -678,6 +704,7 @@ builder.Services.<span style="color: #a78bfa;">AddLumeo</span>();</pre>
                     </Flex>
                 </BorderBeam>
             </div>
+            </PauseWhenHidden>
         </div>
     </Container>
 </section>
@@ -685,6 +712,7 @@ builder.Services.<span style="color: #a78bfa;">AddLumeo</span>();</pre>
 <!-- ======================= FINAL CTA ======================= -->
 <section class="py-24">
     <Container MaxWidth="4xl" Class="px-4">
+        <PauseWhenHidden>
         <div class="relative overflow-hidden rounded-2xl border border-primary/20 p-10 sm:p-16"
              style="background: linear-gradient(135deg, hsl(var(--card)) 0%, hsl(var(--primary) / 0.06) 50%, hsl(var(--card)) 100%);">
             <div class="pointer-events-none absolute inset-0 flex items-center justify-center">
@@ -725,6 +753,7 @@ builder.Services.<span style="color: #a78bfa;">AddLumeo</span>();</pre>
                 </Stack>
             </div>
         </div>
+        </PauseWhenHidden>
     </Container>
 </section>
 
@@ -959,46 +988,92 @@ builder.Services.<span style="color: #a78bfa;">AddLumeo</span>();</pre>
         new[] { new List<double> { 24800, 35400, 31200, 44600, 39800, 51400 }, new List<double> { 10200, 16800, 13400, 21700, 18200, 24600 }, new List<double> { 5400, 11200, 8600, 14800, 12400, 17900 } },
     };
 
-    // Timers / visibility
+    // Timers / visibility.
+    //
+    // The revenue chart shows "live" data by reshuffling on a timer, but a
+    // premium landing page must feel SMOOTH first — a perpetual re-render that
+    // wakes Blazor + ECharts every few seconds is the top runtime-jank source.
+    // So the liveness is bounded by four gates and then retires:
+    //   • pause while the tab is hidden          (_pageVisible)
+    //   • pause while the card is off-screen      (_chartInView, IntersectionObserver)
+    //   • pause while the user is inspecting it   (_chartHovered)
+    //   • run at most LiveCycles times, then dispose the timer ("settled").
+    // prefers-reduced-motion disables the liveness entirely (static hero).
+    private const int LiveCycles = 3;
+
     private bool _pageVisible = true;
+    private bool _chartInView = true;   // assume visible until the observer reports
+    private bool _reducedMotion;
+    private int _liveCyclesLeft = LiveCycles;
+
+    private ElementReference _chartCard;
     private IJSObjectReference? _visibilityHandle;
+    private IJSObjectReference? _chartInViewObserver;
     private DotNetObjectReference<Home>? _selfRef;
     private readonly List<System.Threading.Timer> _timers = new();
 
     [JSInvokable]
     public void SetPageVisibility(bool visible) => _pageVisible = visible;
 
+    [JSInvokable]
+    public void SetChartInView(bool visible) => _chartInView = visible;
+
     protected override Task OnInitializedAsync()
     {
-        _timers.Add(new System.Threading.Timer(_ =>
-        {
-            if (_chartHovered || !_pageVisible) return;
-            _chartSnapshot = (_chartSnapshot + 1) % _chartSnapshots.Length;
-            var snap = _chartSnapshots[_chartSnapshot];
-            InvokeAsync(() =>
-            {
-                for (int i = 0; i < _barSeries.Count && i < snap.Length; i++)
-                    _barSeries[i].Values = new List<double>(snap[i]);
-                StateHasChanged();
-            });
-        }, null, 5000, 5000));
-
+        _timers.Add(new System.Threading.Timer(_ => ChartTick(), null, 5000, 5000));
         return Task.CompletedTask;
+    }
+
+    // Fired by the reshuffle timer. Returns cheaply while any gate is closed,
+    // applies one data snapshot while visible, and disposes the timer once the
+    // demo has shown enough life — after that the chart rests with zero
+    // recurring CPU (no timer wakeup, no StateHasChanged, no ECharts setOption).
+    private void ChartTick()
+    {
+        if (_reducedMotion || _chartHovered || !_pageVisible || !_chartInView || _liveCyclesLeft <= 0)
+            return;
+
+        _chartSnapshot = (_chartSnapshot + 1) % _chartSnapshots.Length;
+        var snap = _chartSnapshots[_chartSnapshot];
+        if (--_liveCyclesLeft <= 0) StopLiveTimer();
+
+        _ = InvokeAsync(() =>
+        {
+            for (int i = 0; i < _barSeries.Count && i < snap.Length; i++)
+                _barSeries[i].Values = new List<double>(snap[i]);
+            StateHasChanged();
+        });
+    }
+
+    // Safe to call from the timer callback itself (Timer.Dispose is re-entrant).
+    private void StopLiveTimer()
+    {
+        foreach (var t in _timers) t.Dispose();
+        _timers.Clear();
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (firstRender)
+        if (!firstRender) return;
+        try
         {
-            try
-            {
-                _selfRef = DotNetObjectReference.Create(this);
-                _visibilityHandle = await JS.InvokeAsync<IJSObjectReference>(
-                    "lumeo.onPageVisibility", _selfRef, nameof(SetPageVisibility));
-            }
-            catch (JSException) { /* SSR / prerender */ }
-            catch (JSDisconnectedException) { }
+            _selfRef = DotNetObjectReference.Create(this);
+
+            // Honour prefers-reduced-motion: retire the live timer immediately so
+            // these users get a completely static (but fully populated) hero.
+            try { _reducedMotion = await JS.InvokeAsync<bool>("lumeo.prefersReducedMotion"); }
+            catch { _reducedMotion = false; }
+            if (_reducedMotion) StopLiveTimer();
+
+            _visibilityHandle = await JS.InvokeAsync<IJSObjectReference>(
+                "lumeo.onPageVisibility", _selfRef, nameof(SetPageVisibility));
+
+            // Pause the reshuffle whenever the chart card scrolls off-screen.
+            _chartInViewObserver = await JS.InvokeAsync<IJSObjectReference?>(
+                "lumeo.observeInViewport", _chartCard, _selfRef, nameof(SetChartInView), 150);
         }
+        catch (JSException) { /* SSR / prerender */ }
+        catch (JSDisconnectedException) { }
     }
 
     private void MoveDraggingCard(List<KanbanItem> target)
@@ -1025,6 +1100,11 @@ builder.Services.<span style="color: #a78bfa;">AddLumeo</span>();</pre>
             {
                 await _visibilityHandle.InvokeVoidAsync("dispose");
                 await _visibilityHandle.DisposeAsync();
+            }
+            if (_chartInViewObserver is not null)
+            {
+                await JS.InvokeVoidAsync("lumeo.disconnectObserver", _chartInViewObserver);
+                await _chartInViewObserver.DisposeAsync();
             }
         }
         catch (JSDisconnectedException) { }

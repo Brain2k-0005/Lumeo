@@ -1,0 +1,93 @@
+@*
+    PauseWhenHidden — keeps perpetual animation OFF the CPU while off-screen.
+
+    Complements LazyRender (which *mounts once* on scroll-in and never looks
+    back). PauseWhenHidden keeps its children mounted but attaches a PERSISTENT
+    IntersectionObserver and, whenever the wrapper leaves the viewport, adds the
+    `lumeo-motion-paused` class — a page-level rule (see Home.razor) sets
+    `animation-play-state: paused` on the subtree, so perpetual CSS animations
+    (Marquee, Sparkles, BorderBeam, ShimmerButton) stop ticking the compositor
+    until the section scrolls back. Animations resume from where they paused, so
+    there is no visual jump.
+
+    It also raises OnVisibilityChanged so a parent can gate JS/timer work (the
+    home page uses it to pause the live-chart reshuffle while the chart card is
+    off-screen).
+
+    Falls back to "always visible / never paused" when IntersectionObserver is
+    unavailable (SSR / prerender / bUnit).
+*@
+
+@inject IJSRuntime JS
+@implements IAsyncDisposable
+
+<div @ref="_el" class="@CssClass" style="@Style">
+    @ChildContent
+</div>
+
+@code {
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    /// <summary>Classes applied to the wrapper in addition to the paused marker.</summary>
+    [Parameter] public string? Class { get; set; }
+
+    [Parameter] public string? Style { get; set; }
+
+    /// <summary>How far outside the viewport (px) the section may travel before it
+    /// is considered hidden. A small positive margin resumes animation slightly
+    /// before it scrolls into view so it is already running when seen.</summary>
+    [Parameter] public int RootMarginPx { get; set; } = 120;
+
+    /// <summary>When true (default) toggle the <c>lumeo-motion-paused</c> class so
+    /// descendant CSS animations pause while off-screen.</summary>
+    [Parameter] public bool PauseAnimations { get; set; } = true;
+
+    /// <summary>Raised on every viewport enter/leave (true = visible). Lets a
+    /// parent pause its own JS/timer work.</summary>
+    [Parameter] public EventCallback<bool> OnVisibilityChanged { get; set; }
+
+    private ElementReference _el;
+    private IJSObjectReference? _observer;
+    private DotNetObjectReference<PauseWhenHidden>? _selfRef;
+    private bool _visible = true;
+
+    private string CssClass => string.Join(" ",
+        new[] { Class, PauseAnimations && !_visible ? "lumeo-motion-paused" : null }
+            .Where(s => !string.IsNullOrWhiteSpace(s)));
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        try
+        {
+            _selfRef = DotNetObjectReference.Create(this);
+            _observer = await JS.InvokeAsync<IJSObjectReference?>(
+                "lumeo.observeInViewport", _el, _selfRef, "SetVisible", RootMarginPx);
+        }
+        catch
+        {
+            // Observer unavailable — stay visible/unpaused.
+        }
+    }
+
+    [JSInvokable]
+    public async Task SetVisible(bool visible)
+    {
+        if (visible == _visible) return;
+        _visible = visible;
+        if (OnVisibilityChanged.HasDelegate)
+            await OnVisibilityChanged.InvokeAsync(visible);
+        StateHasChanged();
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        try
+        {
+            if (_observer is not null)
+                await JS.InvokeVoidAsync("lumeo.disconnectObserver", _observer);
+        }
+        catch { /* teardown — ignore */ }
+        _selfRef?.Dispose();
+    }
+}
