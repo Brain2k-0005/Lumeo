@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.1.0-preview.8] - 2026-07-04
+
+### Fixed
+- **DataGrid column pinning actually moves columns now** (consumer report:
+  Pin right / Unpin always appeared to land left). The grid set the correct
+  sticky offsets but never reordered pinned columns in DOM order — and
+  `position: sticky` can only anchor a cell to an edge, not move it across
+  siblings, so a right-pinned column stayed wherever it was declared. Columns
+  are now stable-partitioned (left-pinned → unpinned → right-pinned) at the
+  single render chokepoint, making every pin path correct: chooser submenu,
+  header control, declared `Pin=` parameters and restored layouts; multiple
+  right pins stack from the right edge, mixed left+right coexist, unpin
+  restores normal flow — all verified through full horizontal scroll.
+
+### Added
+- **Header-level pin control**: `Pinnable` columns now show a keyboard-
+  accessible pin button in the column header (reveals on hover/focus, lit
+  while pinned) with a Pin left / Pin right / Unpin menu — no more detour
+  through the Columns popover.
+
 ## [4.1.0-preview.7] - 2026-07-04
 
 ### Fixed

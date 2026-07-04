@@ -84,6 +84,28 @@
                 <SvgGlyph Svg="@(LumeoIcons.ListFilter)" class="h-3 w-3" />
             </button>
         }
+
+        @* Header-level pin control: a discoverable, keyboard-accessible affordance
+           so a column can be pinned/unpinned directly from its header — pinning was
+           previously reachable only via the Columns popover. Rendered for Pinnable
+           columns; always visible while the column is pinned, otherwise revealed on
+           hover/focus like the filter button. Opens a small menu (Pin left / Pin
+           right / Unpin) that raises the exact same pin change as the column
+           chooser through ParentGrid.ApplyColumnPin, so both entry points share one
+           state transition (partition + sticky offsets). *@
+        @if (Column.Pinnable)
+        {
+            <button type="button"
+                    id="@_pinTriggerId"
+                    class="inline-flex items-center justify-center h-5 w-5 rounded hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-1 @(Column.Pin != PinDirection.None ? "text-primary" : "text-muted-foreground opacity-0 group-hover/th:opacity-100 focus-visible:opacity-100")"
+                    aria-label="@L["DataGrid.PinColumn"]"
+                    aria-haspopup="menu"
+                    aria-expanded="@(_pinMenuOpen ? "true" : "false")"
+                    @onclick="TogglePinMenu"
+                    @onclick:stopPropagation="true">
+                <SvgGlyph Svg="@(LumeoIcons.Pin)" class="@(Column.Pin != PinDirection.None ? "h-3 w-3 rotate-45" : "h-3 w-3")" />
+            </button>
+        }
     </div>
 
     @if (IsFilterOpen && Column.Filterable)
@@ -102,6 +124,42 @@
                                   FilterOptions="Column.FilterOptions"
                                   CurrentFilter="@CurrentFilter"
                                   OnApply="HandleFilterApply" />
+        </div>
+    }
+
+    @if (_pinMenuOpen && Column.Pinnable)
+    {
+        @* Positioned with position:fixed and pinned to the trigger via
+           Interop.PositionFixed (same Floating-UI-style approach as the filter
+           popover) so the menu never extends the grid's horizontal scrollWidth
+           on the rightmost columns. Aligned to the trigger's end edge. *@
+        <div id="@_pinMenuId" role="menu" style="position: fixed; z-index: 50;"
+             class="min-w-[150px] rounded-md border border-border/40 bg-popover text-popover-foreground shadow-md p-1"
+             @onkeydown="HandlePinMenuKeyDown">
+            <button type="button" role="menuitem"
+                    class="w-full flex items-center gap-2 px-2 py-1.5 rounded text-sm text-start hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:bg-accent disabled:opacity-50 disabled:cursor-not-allowed"
+                    disabled="@(Column.Pin == PinDirection.Left)"
+                    @onclick="@(() => PinFromHeader(PinDirection.Left))"
+                    @onclick:stopPropagation="true">
+                <SvgGlyph Svg="@(LumeoIcons.ChevronsLeft)" class="h-3.5 w-3.5" />
+                <span>@L["DataGrid.PinLeft"]</span>
+            </button>
+            <button type="button" role="menuitem"
+                    class="w-full flex items-center gap-2 px-2 py-1.5 rounded text-sm text-start hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:bg-accent disabled:opacity-50 disabled:cursor-not-allowed"
+                    disabled="@(Column.Pin == PinDirection.Right)"
+                    @onclick="@(() => PinFromHeader(PinDirection.Right))"
+                    @onclick:stopPropagation="true">
+                <SvgGlyph Svg="@(LumeoIcons.ChevronsRight)" class="h-3.5 w-3.5" />
+                <span>@L["DataGrid.PinRight"]</span>
+            </button>
+            <button type="button" role="menuitem"
+                    class="w-full flex items-center gap-2 px-2 py-1.5 rounded text-sm text-start hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:bg-accent disabled:opacity-50 disabled:cursor-not-allowed"
+                    disabled="@(Column.Pin == PinDirection.None)"
+                    @onclick="@(() => PinFromHeader(PinDirection.None))"
+                    @onclick:stopPropagation="true">
+                <SvgGlyph Svg="@(LumeoIcons.X)" class="h-3.5 w-3.5" />
+                <span>@L["DataGrid.Unpin"]</span>
+            </button>
         </div>
     }
 
@@ -212,6 +270,14 @@
     private readonly string _filterContentId = $"dg-filter-content-{Guid.NewGuid():N}";
     private bool _filterPositionRegistered;
 
+    // Header-level pin menu (mirrors the filter popover's fixed-position +
+    // click-outside plumbing). Stable ids let the JS positioner find the trigger
+    // and let click-outside exclude the trigger from its dismiss targets.
+    private readonly string _pinTriggerId = $"dg-pin-trigger-{Guid.NewGuid():N}";
+    private readonly string _pinMenuId = $"dg-pin-menu-{Guid.NewGuid():N}";
+    private bool _pinMenuOpen;
+    private bool _pinPositionRegistered;
+
     /// <summary>
     /// Drag-reorder is only active when both the grid-level <c>Reorderable</c>
     /// flag and the per-column <c>Reorderable</c> flag are true.
@@ -303,6 +369,27 @@
         await OnFilterToggle.InvokeAsync();
     }
 
+    private void TogglePinMenu()
+    {
+        _pinMenuOpen = !_pinMenuOpen;
+        // Registration / teardown of the fixed positioner + click-outside runs
+        // in OnAfterRenderAsync once the menu element is (or is no longer) in the DOM.
+    }
+
+    private void HandlePinMenuKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape") _pinMenuOpen = false;
+    }
+
+    /// <summary>Raises a pin change from the header control. Routes through the
+    /// owning grid's <see cref="DataGrid{TItem}.ApplyColumnPin"/> so it shares the
+    /// exact partition + sticky-offset path the column chooser uses.</summary>
+    private void PinFromHeader(PinDirection direction)
+    {
+        _pinMenuOpen = false;
+        ParentGrid?.ApplyColumnPin(Column.Id, direction);
+    }
+
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         // Resize: register the JS pointer listeners ON the resize handle the
@@ -338,6 +425,28 @@
             _resizeRegistered = false;
         }
 
+        // Header pin menu: pin the fixed-position menu to its trigger and register
+        // click-outside dismissal. Handled BEFORE the non-filterable early-return
+        // below so pinnable-but-not-filterable columns still get their menu wired.
+        if (Column.Pinnable)
+        {
+            if (_pinMenuOpen && !_pinPositionRegistered)
+            {
+                await Interop.PositionFixed(_pinMenuId, _pinTriggerId, align: "end", matchWidth: false, side: "bottom");
+                await Interop.RegisterClickOutside(_pinMenuId, _pinTriggerId, async () =>
+                {
+                    _pinMenuOpen = false;
+                    await CleanupPinMenu();
+                    await InvokeAsync(StateHasChanged);
+                });
+                _pinPositionRegistered = true;
+            }
+            else if (!_pinMenuOpen && _pinPositionRegistered)
+            {
+                await CleanupPinMenu();
+            }
+        }
+
         if (!Column.Filterable) return;
 
         if (IsFilterOpen && !_filterPositionRegistered)
@@ -370,6 +479,13 @@
         try { await Interop.UnpositionFixed(_filterContentId); } catch (JSDisconnectedException) { }
         try { await Interop.UnregisterClickOutside(_filterContentId); } catch (JSDisconnectedException) { }
         _filterPositionRegistered = false;
+    }
+
+    private async Task CleanupPinMenu()
+    {
+        try { await Interop.UnpositionFixed(_pinMenuId); } catch (JSDisconnectedException) { }
+        try { await Interop.UnregisterClickOutside(_pinMenuId); } catch (JSDisconnectedException) { }
+        _pinPositionRegistered = false;
     }
 
     private async Task HandleFilterApply(FilterDescriptor? descriptor)
@@ -497,6 +613,10 @@
         if (_filterPositionRegistered)
         {
             await CleanupFilterPosition();
+        }
+        if (_pinPositionRegistered)
+        {
+            await CleanupPinMenu();
         }
     }
 }

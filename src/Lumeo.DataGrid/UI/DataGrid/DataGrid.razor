@@ -935,6 +935,23 @@
 
     private void RefreshVisibleColumns()
     {
+        // Pinned columns must be PHYSICALLY partitioned in the render/DOM order —
+        // left-pinned first, unpinned in the middle, right-pinned last — because
+        // `position: sticky` can only anchor a cell to a scroll-container edge; it
+        // cannot relocate the cell across its siblings. A right-pinned column left
+        // in its declared position (e.g. the leading column) would keep rendering
+        // on the LEFT while carrying a `right:` offset that never visually engages —
+        // the exact "pin right ends up on the left" defect. LINQ OrderBy is a stable
+        // sort, so each pin group keeps its relative order; partitioning here — the
+        // single chokepoint every pin path funnels through (column chooser, header
+        // pin control, restored layouts, declared pins, drag-reorder) — makes the
+        // DOM order match the sticky edge everywhere at once. Idempotent: an
+        // already-partitioned order sorts to itself, so the frequent parameter-set
+        // refreshes cost only a stable sort over the (small) column list.
+        _orderedColumns = _orderedColumns
+            .OrderBy(c => c.Pin switch { PinDirection.Left => 0, PinDirection.Right => 2, _ => 1 })
+            .ToList();
+
         IEnumerable<DataGridColumn<TItem>> q = _orderedColumns.Where(c => c.Visible);
         // Simplified column virtualization (rc.36): cap the rendered-column
         // count to keep wide grids cheap. Pinned columns always make the cut;
@@ -2975,12 +2992,24 @@
     // is purely visual layout (no data reprocessing required); we still refresh
     // the visible-columns cache so the header re-orders left/right pinned
     // columns on the next render, and trigger an autosave so layouts persist.
-    private void HandleColumnPin(ColumnPinEventArgs args)
+    private void HandleColumnPin(ColumnPinEventArgs args) => ApplyColumnPin(args.ColumnId, args.Direction);
+
+    /// <summary>
+    /// Applies a pin change to a column and re-lays out the grid. Shared by the
+    /// column-chooser pin submenu (<see cref="HandleColumnPin"/>) and the header
+    /// cell's inline pin control so both raise the exact same state transition.
+    /// <see cref="RefreshVisibleColumns"/> re-partitions the columns so a
+    /// right-pin physically moves to the right edge (sticky can't relocate a cell
+    /// across siblings) and an unpin drops the column back into normal flow.
+    /// </summary>
+    /// <param name="columnId">The <see cref="DataGridColumn{TItem}.Id"/> to pin.</param>
+    /// <param name="direction">Left, Right, or None (unpin).</param>
+    internal void ApplyColumnPin(string columnId, PinDirection direction)
     {
-        var column = EffectiveColumns.FirstOrDefault(c => c.Id == args.ColumnId);
+        var column = EffectiveColumns.FirstOrDefault(c => c.Id == columnId);
         if (column is null || !column.Pinnable) return;
 
-        column.Pin = args.Direction;
+        column.Pin = direction;
         RefreshVisibleColumns();
         ScheduleAutoSave();
         StateHasChanged();
