@@ -1,0 +1,78 @@
+@page "/form"
+@inject ToastService Toast
+
+<PageTitle>Form — MyApp</PageTitle>
+
+<Stack Gap="6">
+    <Stack Gap="1">
+        <Heading Level="1" Size="2xl">Contact</Heading>
+        <Lumeo.Text Color="muted">
+            A validated form using Lumeo's <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">&lt;Form&gt;</code> +
+            <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">&lt;FormField&gt;</code>. Submit empty to see errors.
+        </Lumeo.Text>
+    </Stack>
+
+    <Container MaxWidth="lg" Padding="0" Center="false">
+        <Card>
+            <CardContent Class="pt-6">
+                <Form TModel="ContactModel"
+                      Model="_model"
+                      Validator="_validator"
+                      OnValidSubmit="HandleValidSubmit"
+                      OnInvalidSubmit="HandleInvalidSubmit">
+                    <Stack Gap="4">
+                        <FormField Name="Name" Label="Name" Required="true">
+                            <Input @bind-Value="_model.Name" Placeholder="Jane Doe" />
+                        </FormField>
+
+                        <FormField Name="Email" Label="Email" Required="true"
+                                   HelpText="We'll never share your address.">
+                            <Input @bind-Value="_model.Email" type="email" Placeholder="jane@example.com" />
+                        </FormField>
+
+                        <FormField Name="Message" Label="Message"
+                                   HelpText="Optional — up to 500 characters.">
+                            <Textarea @bind-Value="_model.Message" Rows="4" Placeholder="How can we help?" />
+                        </FormField>
+
+                        <Flex Justify="end" Gap="2">
+                            <Button Type="Button.ButtonType.Reset" Variant="Button.ButtonVariant.Outline"
+                                    OnClick="HandleReset">
+                                Reset
+                            </Button>
+                            <Button Type="Button.ButtonType.Submit">Submit</Button>
+                        </Flex>
+                    </Stack>
+                </Form>
+            </CardContent>
+        </Card>
+    </Container>
+</Stack>
+
+@code {
+    private ContactModel _model = new();
+    private readonly DataAnnotationsFormValidator _validator = new();
+
+    private void HandleValidSubmit(ContactModel model)
+    {
+        Toast.Show(new ToastOptions
+        {
+            Title = "Message sent",
+            Description = $"Thanks, {model.Name}!",
+            Variant = ToastVariant.Success,
+        });
+        _model = new();
+    }
+
+    private void HandleInvalidSubmit(ContactModel model)
+    {
+        Toast.Show(new ToastOptions
+        {
+            Title = "Please fix the errors",
+            Description = "Some fields need your attention.",
+            Variant = ToastVariant.Destructive,
+        });
+    }
+
+    private void HandleReset() => _model = new();
+}

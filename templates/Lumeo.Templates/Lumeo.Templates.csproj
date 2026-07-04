@@ -7,7 +7,7 @@
          version via /p:Version anyway; inheriting keeps local packs correct too. -->
     <Title>Lumeo item templates</Title>
     <Authors>nativ.sh</Authors>
-    <Description>Scaffolding templates for Lumeo Blazor projects: pages, forms, and reusable components. Templates follow Lumeo 4.0 conventions (Class + AdditionalAttributes contract, FormField validation pattern, theme tokens, no raw colors).</Description>
+    <Description>dotnet new templates for Lumeo Blazor projects. Includes a full Blazor WebAssembly app starter (lumeo-app) that boots styled and dark-mode-ready with zero setup, plus item templates for pages (lumeo-page), validated forms (lumeo-form, [LumeoForm] generator), and reusable components (lumeo-component). Templates follow current Lumeo conventions: the Class + AdditionalAttributes contract, the Form/FormField validation pattern, LumeoIcons + SvgGlyph, and theme tokens (no raw colors).</Description>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <RepositoryUrl>https://github.com/Brain2k-0005/Lumeo</RepositoryUrl>
     <PackageProjectUrl>https://github.com/Brain2k-0005/Lumeo</PackageProjectUrl>
@@ -24,4 +24,23 @@
     <Content Include="templates\**\*" Exclude="templates\**\bin\**;templates\**\obj\**" />
     <Compile Remove="**\*" />
   </ItemGroup>
+
+  <!-- Stamp the lockstep Lumeo version (from /Directory.Build.props → $(Version)) into the
+       lumeo-app project template's Lumeo + Lumeo.DataGrid PackageReferences at pack time.
+       The committed csproj carries the placeholder __LUMEO_VERSION__; the regex is scoped to
+       the two Lumeo includes (so it never touches the Microsoft.AspNetCore.* pins) and is
+       idempotent — it re-stamps whether the current value is the placeholder or a previously
+       stamped version. Runs before build AND before the pack file-collection so the packed
+       .nupkg always carries the exact version this repo builds. -->
+  <Target Name="StampLumeoAppTemplateVersion" BeforeTargets="BeforeBuild;_GetPackageFiles;GenerateNuspec">
+    <PropertyGroup>
+      <_LumeoAppCsproj>$(MSBuildProjectDirectory)\templates\lumeo-app\MyApp.csproj</_LumeoAppCsproj>
+      <_LumeoAppCsprojRaw>$([System.IO.File]::ReadAllText('$(_LumeoAppCsproj)'))</_LumeoAppCsprojRaw>
+      <_LumeoAppCsprojStamped>$([System.Text.RegularExpressions.Regex]::Replace('$(_LumeoAppCsprojRaw)', '(Include="Lumeo(?:\.DataGrid)?" Version=")[^"]*(")', '${1}$(Version)${2}'))</_LumeoAppCsprojStamped>
+    </PropertyGroup>
+    <WriteLinesToFile File="$(_LumeoAppCsproj)"
+                      Lines="$(_LumeoAppCsprojStamped)"
+                      Overwrite="true"
+                      WriteOnlyWhenDifferent="true" />
+  </Target>
 </Project>

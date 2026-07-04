@@ -1,0 +1,84 @@
+@page "/settings"
+@inject ToastService Toast
+
+<PageTitle>Settings — MyApp</PageTitle>
+
+<Stack Gap="6">
+    <Stack Gap="1">
+        <Heading Level="1" Size="2xl">Settings</Heading>
+        <Lumeo.Text Color="muted">Manage your workspace preferences.</Lumeo.Text>
+    </Stack>
+
+    <Tabs @bind-ActiveValue="_tab">
+        <TabsList>
+            <TabsTrigger Value="general">General</TabsTrigger>
+            <TabsTrigger Value="notifications">Notifications</TabsTrigger>
+        </TabsList>
+
+        <TabsContent Value="general" Class="pt-4">
+            <Card>
+                <CardContent Class="pt-6">
+                    <Stack Gap="4">
+                        <FormField Label="Display name">
+                            <Input @bind-Value="_displayName" />
+                        </FormField>
+                        <FormField Label="Email">
+                            <Input @bind-Value="_email" type="email" />
+                        </FormField>
+                        <FormField Label="Timezone">
+                            <Select @bind-Value="_timezone">
+                                <SelectTrigger>
+                                    <Lumeo.Text As="span" Class="@(_timezone is null ? "text-muted-foreground" : "")">
+                                        @(_timezone ?? "Select a timezone")
+                                    </Lumeo.Text>
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem Value="utc">UTC</SelectItem>
+                                    <SelectItem Value="est">Eastern (EST)</SelectItem>
+                                    <SelectItem Value="cet">Central European (CET)</SelectItem>
+                                    <SelectItem Value="pst">Pacific (PST)</SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </FormField>
+                        <Flex Justify="end">
+                            <Button OnClick="Save">Save changes</Button>
+                        </Flex>
+                    </Stack>
+                </CardContent>
+            </Card>
+        </TabsContent>
+
+        <TabsContent Value="notifications" Class="pt-4">
+            <Card>
+                <CardContent Class="pt-6">
+                    <Stack Gap="4">
+                        <Checkbox @bind-Checked="_emailNotifications" Label="Email notifications" />
+                        <Checkbox @bind-Checked="_pushNotifications" Label="Push notifications" />
+                        <Checkbox @bind-Checked="_weeklyDigest" Label="Weekly digest" />
+                        <Flex Justify="end">
+                            <Button OnClick="Save">Save changes</Button>
+                        </Flex>
+                    </Stack>
+                </CardContent>
+            </Card>
+        </TabsContent>
+    </Tabs>
+</Stack>
+
+@code {
+    private string _tab = "general";
+
+    private string _displayName = "Jane Doe";
+    private string _email = "jane@example.com";
+    private string? _timezone = "utc";
+
+    private bool _emailNotifications = true;
+    private bool _pushNotifications;
+    private bool _weeklyDigest = true;
+
+    private void Save() => Toast.Show(new ToastOptions
+    {
+        Title = "Settings saved",
+        Variant = ToastVariant.Success,
+    });
+}

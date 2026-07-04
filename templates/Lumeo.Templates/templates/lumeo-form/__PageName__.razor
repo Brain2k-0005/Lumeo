@@ -1,94 +1,57 @@
 @page "/__PageRoute__"
 
-@using Microsoft.AspNetCore.Components.Forms
-
 <PageTitle>__ModelName__</PageTitle>
 
 @*
     Lumeo form scaffold.
-    Uses the canonical FormField wrapper pattern — each input is wrapped in
-    <FormField> which owns Label, HelpText, Required marker, and Error display.
-    Inputs themselves stay clean and focused.
 
-    Validation uses System.ComponentModel.DataAnnotations + DataAnnotationsValidator
-    inside an EditForm. The Form component provides the surrounding chrome.
+    The form below is generated at build time from __ModelName__Model by the
+    [LumeoForm] source generator: RenderForm() returns a ready-to-use
+    RenderFragment that renders a Lumeo <Form> wired to the built-in
+    DataAnnotationsFormValidator. Submitting with invalid input shows the
+    DataAnnotations errors under each field automatically; OnValidSubmit only
+    fires once every field passes. No hand-written FormField markup required.
+
+    Prefer to lay the fields out yourself? Delete the model's [LumeoForm]
+    attribute and compose <Form> + <FormField Name="..."> by hand — see
+    https://lumeo.nativ.sh/docs/form-validation.
 *@
 
 <Container MaxWidth="lg">
     <Stack Gap="6" Class="py-8">
-        <PageHeader Title="__ModelName__"
-                    Description="A starter form scaffolded with Lumeo's FormField pattern." />
+        <Stack Gap="2">
+            <Heading Level="1" Size="3xl">__ModelName__</Heading>
+            <Lumeo.Text Size="base" Color="muted" Leading="relaxed">
+                A starter form scaffolded with Lumeo's [LumeoForm] generator. Submit
+                with empty fields to see live validation.
+            </Lumeo.Text>
+        </Stack>
 
         <Card>
             <CardContent Class="pt-6">
-                <EditForm Model="_model" OnValidSubmit="OnValidSubmit">
-                    <DataAnnotationsValidator />
+                @__ModelName__Model.RenderForm(
+                    _model,
+                    EventCallback.Factory.Create<__ModelName__Model>(this, OnValidSubmit))
 
-                    <Stack Gap="4">
-                        <FormField Label="Name" Required="true"
-                                   Error="@_validation.GetFieldError(nameof(_model.Name))">
-                            <Input @bind-Value="_model.Name" Placeholder="Jane Doe" />
-                        </FormField>
-
-                        <FormField Label="Email" Required="true"
-                                   HelpText="We'll never share your address."
-                                   Error="@_validation.GetFieldError(nameof(_model.Email))">
-                            <Input @bind-Value="_model.Email" Type="email" Placeholder="jane@example.com" />
-                        </FormField>
-
-                        <FormField Label="Message"
-                                   Error="@_validation.GetFieldError(nameof(_model.Message))">
-                            <Textarea @bind-Value="_model.Message" Rows="4"
-                                      Placeholder="Tell us what's on your mind." />
-                        </FormField>
-
-                        <Flex Justify="end" Gap="2">
-                            <Button Variant="Button.ButtonVariant.Outline" Type="Button.ButtonType.Reset"
-                                    OnClick="ResetForm">
-                                Reset
-                            </Button>
-                            <Button Variant="Button.ButtonVariant.Default" Type="Button.ButtonType.Submit"
-                                    IsLoading="_submitting">
-                                Submit
-                            </Button>
-                        </Flex>
-                    </Stack>
-                </EditForm>
+                @if (_submitted)
+                {
+                    <Alert Variant="Alert.AlertVariant.Success" Class="mt-4">
+                        Thanks, @_model.Name — your __ModelName__ was submitted.
+                    </Alert>
+                }
             </CardContent>
         </Card>
     </Stack>
 </Container>
 
 @code {
-    private __ModelName__Model _model = new();
-    private bool _submitting;
-    private FormValidationState _validation = new();
+    private readonly __ModelName__Model _model = new();
+    private bool _submitted;
 
-    private async Task OnValidSubmit()
+    private void OnValidSubmit(__ModelName__Model model)
     {
-        _submitting = true;
-        try
-        {
-            // TODO: send _model to your API / service.
-            await Task.Delay(500); // demo only — remove
-        }
-        finally
-        {
-            _submitting = false;
-        }
-    }
-
-    private void ResetForm()
-    {
-        _model = new __ModelName__Model();
-        _validation = new FormValidationState();
-    }
-
-    // Tiny helper that pretends to track per-field errors. In a real form,
-    // wire this from EditContext.OnValidationStateChanged or a custom
-    // Lumeo IFormValidator implementation.
-    private sealed class FormValidationState
-    {
-        public string? GetFieldError(string fieldName) => null;
+        // TODO: send `model` to your API / service. It's already validated here.
+        _submitted = true;
+        StateHasChanged();
     }
 }

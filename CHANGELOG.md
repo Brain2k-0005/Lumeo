@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.1.0-preview.9] - 2026-07-04
+
+The templates release: `dotnet new` is a real getting-started path now.
+
+### Added
+- **`dotnet new lumeo-app`** — a full Blazor WASM starter that boots styled
+  with zero manual steps: `AddLumeo()` wired, prebuilt CSS + OKLCH default
+  theme + `theme.js`/`components.js` linked, collapsible Sidebar shell with a
+  dark-mode toggle, three example pages (Dashboard with KPI cards and a
+  DataGrid, a validated Form, Settings with Tabs), icons via the built-in
+  LumeoIcons, and a README covering the three ownership paths (NuGet /
+  vendor via CLI / eject). Lumeo package versions are stamped from the
+  lockstep version at pack time.
+
+### Fixed
+- **Item templates were stale and partly broken**: they emitted the removed
+  `PageHeader` component (titles silently rendered as nothing), taught the
+  removed Blazicons pattern, and the form scaffold's validation never
+  displayed. Now: current heading pattern, LumeoIcons/SvgGlyph guidance, and
+  the form scaffold uses `[LumeoForm]` with working validation (verified at
+  runtime).
+- **Documented template commands actually work**: `--ModelName` /
+  `--ComponentName` are real symbols now (previously only `-n` worked and
+  two of three documented commands failed); the templates docs page and pack
+  README were rewritten to match what ships, including the previously
+  undocumented `AddLumeo()` + CSS setup.
+
 ## [4.1.0-preview.8] - 2026-07-04
 
 ### Fixed

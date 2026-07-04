@@ -1,0 +1,92 @@
+@namespace MyApp.Layout
+@inherits LayoutComponentBase
+@implements IDisposable
+@inject NavigationManager Nav
+
+<SidebarProvider Variant="SidebarProvider.SidebarVariant.Icon" ToggleShortcut="ctrl+b" Class="h-screen">
+    <SidebarComponent>
+        <SidebarHeader Bordered="false">
+            <div class="flex items-center gap-2.5 overflow-hidden">
+                <span class="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+                    <SvgGlyph Svg="@(LumeoIcons.Sparkles)" class="h-4 w-4" />
+                </span>
+                <span class="truncate font-semibold text-sidebar-foreground">MyApp</span>
+            </div>
+        </SidebarHeader>
+
+        <SidebarContent>
+            <SidebarMenu>
+                <SidebarMenuItem>
+                    <SidebarMenuButton Href="" Tooltip="Dashboard" IsActive="@IsActive("")">
+                        <IconContent><SvgGlyph Svg="@(LumeoIcons.LayoutDashboard)" class="h-5 w-5" /></IconContent>
+                        <LabelContent>Dashboard</LabelContent>
+                    </SidebarMenuButton>
+                </SidebarMenuItem>
+                <SidebarMenuItem>
+                    <SidebarMenuButton Href="form" Tooltip="Form" IsActive="@IsActive("form")">
+                        <IconContent><SvgGlyph Svg="@(LumeoIcons.FileText)" class="h-5 w-5" /></IconContent>
+                        <LabelContent>Form</LabelContent>
+                    </SidebarMenuButton>
+                </SidebarMenuItem>
+                <SidebarMenuItem>
+                    <SidebarMenuButton Href="settings" Tooltip="Settings" IsActive="@IsActive("settings")">
+                        <IconContent><SvgGlyph Svg="@(LumeoIcons.Settings)" class="h-5 w-5" /></IconContent>
+                        <LabelContent>Settings</LabelContent>
+                    </SidebarMenuButton>
+                </SidebarMenuItem>
+            </SidebarMenu>
+        </SidebarContent>
+
+        <SidebarFooter Bordered="true">
+            <div class="flex items-center gap-2.5 overflow-hidden">
+                <span class="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground">
+                    <SvgGlyph Svg="@(LumeoIcons.User)" class="h-4 w-4" />
+                </span>
+                <div class="min-w-0">
+                    <div class="truncate text-sm font-medium text-sidebar-foreground">Jane Doe</div>
+                    <div class="truncate text-xs text-muted-foreground">jane@example.com</div>
+                </div>
+            </div>
+        </SidebarFooter>
+    </SidebarComponent>
+
+    <div class="flex min-w-0 flex-1 flex-col">
+        <header class="flex h-14 shrink-0 items-center gap-3 border-b border-border/60 bg-background/95 px-4 backdrop-blur">
+            <SidebarTrigger />
+            <Heading Level="2" Size="sm" Class="font-medium text-muted-foreground">@CurrentTitle</Heading>
+            <div class="flex-1"></div>
+            <ThemeToggle />
+        </header>
+
+        <main class="flex-1 overflow-auto">
+            <div class="mx-auto w-full max-w-6xl p-4 sm:p-6 lg:p-8">
+                @Body
+            </div>
+        </main>
+    </div>
+</SidebarProvider>
+
+<OverlayProvider />
+<ToastProvider Position="ToastViewport.ToastPosition.BottomRight" />
+
+@code {
+    protected override void OnInitialized() => Nav.LocationChanged += OnLocationChanged;
+
+    private void OnLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e)
+        => StateHasChanged();
+
+    private string RelativePath => Nav.ToBaseRelativePath(Nav.Uri).Split('?', '#')[0].TrimEnd('/');
+
+    private bool IsActive(string path)
+        => string.Equals(RelativePath, path, StringComparison.OrdinalIgnoreCase);
+
+    private string CurrentTitle => RelativePath switch
+    {
+        "" => "Dashboard",
+        "form" => "Form",
+        "settings" => "Settings",
+        _ => "MyApp",
+    };
+
+    public void Dispose() => Nav.LocationChanged -= OnLocationChanged;
+}

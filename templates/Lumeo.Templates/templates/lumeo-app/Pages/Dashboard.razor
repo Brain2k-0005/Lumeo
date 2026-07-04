@@ -1,0 +1,73 @@
+@page "/"
+
+<PageTitle>Dashboard — MyApp</PageTitle>
+
+<Stack Gap="6">
+    <Stack Gap="1">
+        <Heading Level="1" Size="2xl">Dashboard</Heading>
+        <Lumeo.Text Color="muted">A quick snapshot of your workspace.</Lumeo.Text>
+    </Stack>
+
+    <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        @foreach (var kpi in _kpis)
+        {
+            <Card>
+                <CardContent Class="p-5">
+                    <Flex Class="items-center justify-between">
+                        <Lumeo.Text Size="sm" Color="muted">@kpi.Label</Lumeo.Text>
+                        <span class="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-muted text-muted-foreground">
+                            <SvgGlyph Svg="@kpi.Icon" class="h-4 w-4" />
+                        </span>
+                    </Flex>
+                    <div class="mt-3 text-2xl font-semibold tracking-tight text-foreground">@kpi.Value</div>
+                    <div class="mt-1 text-xs @(kpi.Up ? "text-green-600 dark:text-green-500" : "text-destructive")">
+                        @(kpi.Up ? "▲" : "▼") @kpi.Delta vs last month
+                    </div>
+                </CardContent>
+            </Card>
+        }
+    </div>
+
+    <Card>
+        <CardHeader>
+            <Stack Gap="1">
+                <Heading Level="3" Size="lg">Recent orders</Heading>
+                <Lumeo.Text Size="sm" Color="muted">Sortable, paginated — powered by Lumeo.DataGrid.</Lumeo.Text>
+            </Stack>
+        </CardHeader>
+        <CardContent>
+            <DataGrid TItem="Order" Items="_orders" PageSize="5" ShowPagination="true">
+                <DataGridColumnDef TItem="Order" Title="Order" Field="Id" Sortable="true" />
+                <DataGridColumnDef TItem="Order" Title="Customer" Field="Customer" Sortable="true" />
+                <DataGridColumnDef TItem="Order" Title="Total" Field="Total" Sortable="true" Format="C0" />
+                <DataGridColumnDef TItem="Order" Title="Status" Field="Status" Sortable="true" />
+                <DataGridColumnDef TItem="Order" Title="Date" Field="Date" Sortable="true" Format="yyyy-MM-dd" />
+            </DataGrid>
+        </CardContent>
+    </Card>
+</Stack>
+
+@code {
+    private record Kpi(string Label, string Value, string Delta, bool Up, IconSource Icon);
+
+    private readonly Kpi[] _kpis =
+    [
+        new("Revenue", "$48.2k", "12.5%", true, LumeoIcons.CreditCard),
+        new("Orders", "1,204", "3.1%", true, LumeoIcons.Package),
+        new("Customers", "832", "1.4%", false, LumeoIcons.Users),
+        new("Growth", "18.9%", "4.7%", true, LumeoIcons.TrendingUp),
+    ];
+
+    private record Order(int Id, string Customer, double Total, string Status, DateTime Date);
+
+    private readonly List<Order> _orders =
+    [
+        new(1042, "Acme Corp", 1299, "Paid", new DateTime(2026, 6, 28)),
+        new(1041, "Globex", 480, "Pending", new DateTime(2026, 6, 27)),
+        new(1040, "Initech", 2150, "Paid", new DateTime(2026, 6, 25)),
+        new(1039, "Umbrella", 90, "Refunded", new DateTime(2026, 6, 24)),
+        new(1038, "Hooli", 760, "Paid", new DateTime(2026, 6, 22)),
+        new(1037, "Stark Industries", 3400, "Paid", new DateTime(2026, 6, 21)),
+        new(1036, "Wayne Enterprises", 220, "Pending", new DateTime(2026, 6, 20)),
+    ];
+}
