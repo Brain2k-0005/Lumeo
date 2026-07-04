@@ -29,6 +29,16 @@
 @code {
     [CascadingParameter] public Command.CommandContext? Context { get; set; }
     [Parameter] public string? Placeholder { get; set; }
+    /// <summary>
+    /// Focuses the search input on first render via the existing focus interop.
+    /// Mirrors cmdk, where a bare <c>Command.Input</c> does NOT autofocus but a
+    /// dialog-hosted command palette does — so this is opt-in (default <c>false</c>):
+    /// set <c>AutoFocus="true"</c> when hosting the palette in a Dialog/Popover so the
+    /// user can type immediately on open. The HTML <c>autofocus</c> attribute is a
+    /// no-op in Blazor WASM, hence the post-render <c>FocusElement</c> hop (see
+    /// <c>Input.AutoFocus</c>).
+    /// </summary>
+    [Parameter] public bool AutoFocus { get; set; }
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
@@ -58,6 +68,12 @@
                 new PreventDefaultKeyRule("Enter", RequireNoModifiers: true, SkipComposing: true),
             });
             _pdRegistered = true;
+
+            // Opt-in autofocus on first render (dialog-hosted palettes). Uses the same
+            // effective id RegisterPreventDefaultKeys targeted, so a consumer-splatted id
+            // is honoured. The HTML autofocus attribute doesn't work in Blazor WASM.
+            if (AutoFocus)
+                await Interop.FocusElement(_registeredId);
         }
         catch (JSDisconnectedException) { }
         catch (ObjectDisposedException) { }

@@ -37,9 +37,43 @@
     [Parameter] public List<FilterOperator>? Operators { get; set; }
     [Parameter] public RenderFragment<DataGridFilterTemplateContext>? FilterTemplate { get; set; }
     [Parameter] public string? Class { get; set; }
+
+    /// <summary>
+    /// Two-way bindable column visibility. Seeds the registered column's initial
+    /// visibility and lets a consumer show/hide the column programmatically via
+    /// <c>@bind-Visible</c>. When the user toggles the column through the built-in
+    /// column-chooser, <see cref="VisibleChanged"/> fires so the bound value follows.
+    /// Default <c>true</c>.
+    /// </summary>
+    [Parameter] public bool Visible { get; set; } = true;
+
+    /// <summary>Fires when the column's visibility changes through the built-in UI —
+    /// the callback half of <see cref="Visible"/>'s two-way binding.</summary>
+    [Parameter] public EventCallback<bool> VisibleChanged { get; set; }
+
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
+    // Stable key of the column this def registered (Field when set, else the
+    // generated column Id) plus the last Visible value we pushed to the grid — used
+    // to detect consumer-driven @bind-Visible changes without re-registering.
+    private string? _registeredKey;
+    private bool _lastVisibleParam;
+
     protected override void OnInitialized() => Register();
+
+    protected override void OnParametersSet()
+    {
+        // Consumer-driven visibility: when the bound Visible parameter changes after
+        // registration, push it straight into the already-registered column. We do
+        // NOT re-register (that bumped the layout-autosave generation on every
+        // cascading-context refresh — see the note above Register) and we do NOT
+        // fire VisibleChanged (this direction is already the source of truth).
+        if (_registeredKey is not null && Visible != _lastVisibleParam)
+        {
+            _lastVisibleParam = Visible;
+            ParentGrid?.SetColumnVisibility(_registeredKey, Visible);
+        }
+    }
 
     // NOTE: OnParametersSet was briefly wired to call Register() so per-column
     // flags (Sortable / Filterable / Pinnable) updated reactively when bound
@@ -51,7 +85,7 @@
 
     private void Register()
     {
-        ParentGrid?.AddColumnDef(new DataGridColumn<TItem>
+        var column = new DataGridColumn<TItem>
         {
             Title = Title,
             Field = Field,
@@ -80,7 +114,17 @@
             CellClass = CellClass,
             HeaderCssClass = HeaderCssClass,
             CustomSort = CustomSort,
-            CssClass = Class
-        });
+            CssClass = Class,
+            Visible = Visible,
+            VisibleChanged = VisibleChanged
+        };
+
+        // Capture the stable key + seed the change-tracking baseline BEFORE handing
+        // the column to the grid, so OnParametersSet can diff future @bind-Visible
+        // changes against it. Field-less columns key on the generated Id.
+        _registeredKey = !string.IsNullOrWhiteSpace(Field) ? Field : column.Id;
+        _lastVisibleParam = Visible;
+
+        ParentGrid?.AddColumnDef(column);
     }
 }

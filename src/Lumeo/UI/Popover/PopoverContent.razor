@@ -20,6 +20,15 @@
     [Parameter] public Lumeo.Align Align { get; set; } = Lumeo.Align.Center;
     [Parameter] public Lumeo.Side Side { get; set; } = Lumeo.Side.Bottom;
     [Parameter] public bool ShowArrow { get; set; }
+    /// <summary>
+    /// When <c>true</c> (default), focus moves into the popover surface on open so its
+    /// <c>@onkeydown</c> handler receives Escape and keyboard users land inside the dialog
+    /// (the Radix <c>onOpenAutoFocus</c> default). Set to <c>false</c> when the trigger is a
+    /// typeable control that must KEEP focus while the popover opens (e.g. DatePicker's
+    /// keyboard-input trigger) — the surface still positions, registers click-outside and
+    /// saves/restores focus, it just doesn't steal focus from the trigger on open.
+    /// </summary>
+    [Parameter] public bool FocusOnOpen { get; set; } = true;
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
@@ -95,7 +104,12 @@
             // Move focus into the dialog content on open. Without this, focus
             // stays on the trigger and the content's @onkeydown handler never
             // receives Escape (Radix-equivalent dialog popovers manage focus).
-            try { await Interop.FocusElement(_contentId); } catch (JSDisconnectedException) { }
+            // Skipped when FocusOnOpen is false so a typeable trigger (DatePicker's
+            // keyboard input) keeps focus and stays typeable while the popover opens.
+            if (FocusOnOpen)
+            {
+                try { await Interop.FocusElement(_contentId); } catch (JSDisconnectedException) { }
+            }
         }
         else if (Context.IsOpen && _registered && _appliedAnchor != (SideStr, AlignStr))
         {

@@ -8,18 +8,9 @@
 @inject Lumeo.Services.ToastService Toast
 @inject Lumeo.Services.KeyboardShortcutService Shortcuts
 @inject Lumeo.Services.IResponsiveService Responsive
-@inject Lumeo.Services.ComponentInteropService Interop
 
 <PageTitle>Northlight — Lumeo SaaS demo</PageTitle>
 
-@* Row-density override. The DataGrid's Compact parameter only swaps the root
-   font-size (text-sm) and never reaches the body cells, whose padding is
-   hard-coded px-3 py-2 — so toggling Compact does NOT change row height. Since
-   this demo can only touch its own files, we drive density from a wrapper class
-   and override the cell block-padding here (higher specificity than Tailwind's
-   .py-2, so no !important needed). Emitted as raw markup so Razor doesn't try to
-   parse the CSS braces. *@
-@((MarkupString)DensityStyles)
 
 <SidebarProvider @bind-IsCollapsed="_navCollapsed"
                  Variant="SidebarProvider.SidebarVariant.Icon"
@@ -249,7 +240,7 @@
                                         <Badge Variant="Badge.BadgeVariant.Success" Class="text-[10px] h-5">+38% YoY</Badge>
                                     </Flex>
                                     <div class="h-64 px-2 pb-2">
-                                        <AreaChart Categories="_trendMonths" Series="_trendSeries" Smooth="true" Gradient="true"
+                                        <AreaChart Categories="_trendMonths" Series="_trendSeries" Smooth="true" GradientFill="true"
                                                    Colors="_mrrColors" ShowDots="false" ShowLegend="false" Height="100%"
                                                    IsLoading="_chartsLoading" ShowLoadingLabel="false"
                                                    SkeletonStyle="ChartSkeletonStyle.Silhouette" AriaLabel="Monthly recurring revenue, trailing 12 months" />
@@ -377,7 +368,7 @@
                         </div>
 
                         <BlurFade DelayMs="60">
-                            <div class="@_densityWrapClass rounded-xl border border-border/50 bg-card p-2 sm:p-3">
+                            <div class="rounded-xl border border-border/50 bg-card p-2 sm:p-3">
                                 <DataGrid TItem="NorthlightCustomer" Items="FilteredCustomers"
                                           GroupsExpandedByDefault="false"
                                           ShowGroupPanel="true"
@@ -385,7 +376,7 @@
                                           ShowPagination="false" Height="calc(100dvh - 320px)"
                                           ShowToolbar="true" ShowSearch="true" ShowColumnChooser="true" ShowExport="false"
                                           Striped="true" Hoverable="true" Compact="_gridCompact" Reorderable="true"
-                                          VirtualizeThreshold="200" VirtualItemSize="@(_gridCompact ? 40f : 52f)"
+                                          VirtualizeThreshold="200"
                                           DetailTemplate="CustomerDetail">
                                     <DataGridColumnDef TItem="NorthlightCustomer" Title="Company" Field="Company" Sortable="true" Filterable="true"
                                                        Pin="PinDirection.Left" Pinnable="true" MinWidth="240">
@@ -655,7 +646,7 @@
         <div class="absolute inset-0 bg-background/80" @onclick="ClosePalette"></div>
         <div class="relative mx-4 w-full max-w-[480px] overflow-hidden rounded-[var(--radius-xl)] border border-border/40 bg-popover shadow-2xl" @onclick:stopPropagation>
             <Lumeo.Command>
-                <CommandInput Placeholder="Search views and actions…" id="@PaletteInputId" />
+                <CommandInput Placeholder="Search views and actions…" AutoFocus="true" />
                 <CommandList>
                     <CommandEmpty>No results found.</CommandEmpty>
                     <CommandGroup Heading="Views">
@@ -697,19 +688,12 @@
     private bool _refreshing;
     private string _settingsTab = "profile";
 
-    // Command palette input focus (Lumeo's CommandInput has no autofocus API — we focus
-    // it via JS interop after the palette renders). See _focusPaletteInput handling in
-    // OnAfterRenderAsync.
-    private const string PaletteInputId = "saas-command-input";
-    private bool _focusPaletteInput;
-
     // Charts show a skeleton silhouette until ECharts has cold-loaded + painted (~1s),
     // replacing the blank-white flash on first load.
     private bool _chartsLoading = true;
     private System.Threading.Timer? _chartsTimer;
 
-    // MRR area chart: brand accent line + subtle translucent fill (was a flat heavy
-    // gray because the palette's first slot — like the primary token — is near-black).
+    // MRR area chart: brand teal line + true vertical gradient fill (brand colour → transparent).
     // chart-2 is the teal brand hue the bar chart already uses; resolved to a hex by the
     // ECharts interop's CSS-var resolver.
     private readonly List<string> _mrrColors = new() { "var(--color-chart-2)" };
@@ -738,21 +722,6 @@
         _statusFilter == "all"
             ? _customers
             : _customers.Where(c => c.Status == _statusFilter).ToList();
-
-    // Row-density workaround (see the <style> at the top of the page): the wrapper
-    // class the CSS override keys off. Toggling _gridCompact swaps the class, and the
-    // scoped rule changes the body cells' block padding — the only path to a visible
-    // row-height change, because the DataGrid's own Compact parameter never reaches
-    // the cells.
-    private string _densityWrapClass => _gridCompact ? "nl-dense-compact" : "nl-dense-comfortable";
-
-    // Raw <style> emitted via MarkupString so Razor doesn't parse the CSS braces.
-    private const string DensityStyles = """
-        <style>
-            .nl-dense-comfortable [data-slot="datagrid-cell"] { padding-top: 0.625rem; padding-bottom: 0.625rem; }
-            .nl-dense-compact [data-slot="datagrid-cell"] { padding-top: 0.25rem; padding-bottom: 0.25rem; }
-        </style>
-        """;
 
     // Sidebar surface: an explicit sidebar-border divider (the default rule is nearly
     // invisible against the dark rail) + a widened 4rem icon rail when collapsed so the
@@ -936,18 +905,6 @@
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        // Autofocus the palette search input once its DOM exists. CommandInput exposes no
-        // AutoFocus parameter, so we drive focus() through the interop service after the
-        // open render committed. Runs on every render; the flag makes it fire exactly once
-        // per open.
-        if (_focusPaletteInput && _paletteOpen)
-        {
-            _focusPaletteInput = false;
-            try { await Interop.FocusElement(PaletteInputId); }
-            catch (Microsoft.JSInterop.JSDisconnectedException) { }
-            catch (InvalidOperationException) { }
-        }
-
         if (!firstRender) return;
         try
         {
@@ -1039,8 +996,8 @@
     }
 
     // ---- Command palette ----
-    private void OpenPalette() { _paletteOpen = true; _focusPaletteInput = true; StateHasChanged(); }
-    private Task OpenPaletteAsync() { _paletteOpen = true; _focusPaletteInput = true; return InvokeAsync(StateHasChanged); }
+    private void OpenPalette() { _paletteOpen = true; StateHasChanged(); }
+    private Task OpenPaletteAsync() { _paletteOpen = true; return InvokeAsync(StateHasChanged); }
     private void ClosePalette() { _paletteOpen = false; StateHasChanged(); }
     private void PaletteKeyDown(KeyboardEventArgs e) { if (e.Key == "Escape") ClosePalette(); }
     private void SelectFromPalette(string view) { ClosePalette(); SetView(view); }

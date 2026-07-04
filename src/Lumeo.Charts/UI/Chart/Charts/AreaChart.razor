@@ -8,7 +8,20 @@
     [Parameter] public bool Smooth { get; set; }
     [Parameter] public bool ShowDots { get; set; } = true;
     [Parameter] public bool Stacked { get; set; }
+    /// <summary>When true (default) the fill uses a lighter opacity than a solid area.
+    /// This is the legacy opacity-only behaviour and is unaffected by
+    /// <see cref="GradientFill"/>.</summary>
     [Parameter] public bool Gradient { get; set; } = true;
+    /// <summary>Opt into a <em>real</em> vertical gradient fill: each series' area fades
+    /// from its own (brand/theme) colour at the top to transparent at the bottom, the
+    /// look used by modern dashboards. Off by default so existing charts are unchanged.
+    /// Override the stops with <see cref="GradientStops"/>.</summary>
+    [Parameter] public bool GradientFill { get; set; }
+    /// <summary>Explicit gradient colour-stops applied to every series' area fill when
+    /// set (implies <see cref="GradientFill"/>). Offsets run 0 (top) → 1 (bottom);
+    /// colours accept theme tokens like <c>var(--color-primary)</c>. When null and
+    /// <see cref="GradientFill"/> is true, a per-series colour → transparent fade is used.</summary>
+    [Parameter] public List<EChartGradientColorStop>? GradientStops { get; set; }
     [Parameter] public bool ShowLegend { get; set; } = true;
     [Parameter] public bool ShowTooltip { get; set; } = true;
     [Parameter] public List<string>? Colors { get; set; }
@@ -60,8 +73,9 @@
     protected override void OnParametersSet()
     {
         var areaOpacity = Gradient ? 0.3 : 0.7;
+        var useRealGradient = GradientFill || GradientStops is { Count: > 0 };
 
-        var seriesList = Series.Select(s => new EChartSeries
+        var seriesList = Series.Select((s, i) => new EChartSeries
         {
             Name = s.Name,
             Type = "line",
@@ -70,7 +84,9 @@
             ShowSymbol = ShowDots ? null : false,
             SymbolSize = ShowDots ? 6 : null,
             Stack = Stacked ? "total" : null,
-            AreaStyle = new EChartAreaStyle { Opacity = areaOpacity }
+            AreaStyle = useRealGradient
+                ? new EChartAreaStyle { Gradient = BuildGradient(i) }
+                : new EChartAreaStyle { Opacity = areaOpacity }
         }).ToList();
 
         if (ShowDataLabels)
@@ -121,6 +137,33 @@
         if (!string.IsNullOrEmpty(AnimationEasing)) _option.AnimationEasing = AnimationEasing;
 
         ChartHelper.ApplyOptionOverride(_option, OptionOverride);
+    }
+
+    // Build the per-series linear-gradient fill. When GradientStops is supplied it is
+    // used verbatim for every series (the single-metric brand case); otherwise each
+    // series fades from its own resolved palette colour (top) to transparent (bottom).
+    private EChartLinearGradient BuildGradient(int seriesIndex)
+    {
+        var stops = GradientStops is { Count: > 0 } custom
+            ? custom
+            : new List<EChartGradientColorStop>
+            {
+                new(0, SeriesColorAt(seriesIndex)),
+                new(1, "transparent"),
+            };
+        return new EChartLinearGradient { ColorStops = stops };
+    }
+
+    // Resolve the colour ECharts assigns to a series by index: an explicit palette
+    // entry when provided, else the theme chart-N token (var(--color-chart-1..5)),
+    // which the chart interop resolves to a concrete colour at render time. Keeping
+    // this in lock-step with the line colour makes the gradient read as a brand fade.
+    private string SeriesColorAt(int seriesIndex)
+    {
+        var palette = ColorPalette ?? Colors;
+        if (palette is { Count: > 0 })
+            return palette[seriesIndex % palette.Count];
+        return $"var(--color-chart-{(seriesIndex % 5) + 1})";
     }
 
     public class ChartSeriesData

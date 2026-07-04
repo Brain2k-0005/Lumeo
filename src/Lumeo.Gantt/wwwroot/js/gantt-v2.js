@@ -328,11 +328,23 @@ function render(inst) {
     const todayX = dateToX(today);
     const todayInRange = todayX >= 0 && todayX <= totalWidth;
     if (inst.todayHighlight !== false && todayInRange) {
+        // The today marker is drawn HERE — before the task bars below — so it always
+        // paints BEHIND the bars and their labels (SVG paint order = document order).
+        // It's a thin, low-opacity guide (not a hard 2px bar) so it never appears to
+        // slice through task-bar labels; the prominent affordance is the header dot.
+        // Both carry classes so consumers can restyle them via lumeo-gantt.css instead
+        // of the old fragile `line[stroke-width="2"]` attribute selector.
         el('line', {
+            class: 'lumeo-gantt-today-line',
             x1: todayX, y1: HEADER_HEIGHT - 4, x2: todayX, y2: totalHeight,
-            stroke: tokens.primary, 'stroke-width': '2', opacity: '0.8',
+            stroke: tokens.primary, 'stroke-width': '1.5', opacity: '0.35',
+            'pointer-events': 'none',
         }, svg);
-        el('circle', { cx: todayX, cy: HEADER_HEIGHT - 4, r: 4, fill: tokens.primary }, svg);
+        el('circle', {
+            class: 'lumeo-gantt-today-dot',
+            cx: todayX, cy: HEADER_HEIGHT - 4, r: 4, fill: tokens.primary,
+            'pointer-events': 'none',
+        }, svg);
     }
 
     // Header labels (per-column)

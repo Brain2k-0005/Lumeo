@@ -26,6 +26,29 @@
                 <span>@(Column?.Title ?? "Value")</span>
             </label>
         }
+        else if (Column?.FilterType == DataGridFilterType.Select)
+        {
+            @* Faceted (multi-select) mode. A checkbox facet has no notion of an
+               operator, so we deliberately DON'T render the operator <Select> here,
+               and there is exactly ONE Apply/Clear row (the shared one below). The
+               previous layout showed a redundant operator dropdown AND a Select-all
+               / Clear helper row that read as a duplicate Apply/Clear (user report).
+               This mirrors the shadcn faceted-filter: just the list + a single
+               Apply/Clear. *@
+            <div class="max-h-40 overflow-auto space-y-1">
+                @if (FilterOptions is not null)
+                {
+                    @foreach (var option in FilterOptions)
+                    {
+                        <label class="flex items-center gap-2 text-sm py-0.5">
+                            <Checkbox Checked="@(_selectedOptions.Contains(option.Value?.ToString() ?? ""))"
+                                      CheckedChanged="@(v => ToggleOption(option.Value?.ToString() ?? "", v))" />
+                            <span>@option.Label</span>
+                        </label>
+                    }
+                }
+            </div>
+        }
         else
         {
             <Select Value="@_selectedOperator.ToString()" ValueChanged="@OnOperatorSelected">
@@ -84,29 +107,6 @@
                            @oninput="OnValueToInput"
                            @onkeydown:stopPropagation="true" />
                 }
-            }
-            else if (Column?.FilterType == DataGridFilterType.Select)
-            {
-                @if (FilterOptions is not null && FilterOptions.Count > 1)
-                {
-                    <div class="flex items-center justify-between mb-1">
-                        <button type="button" class="text-xs text-primary hover:underline focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-2 rounded" @onclick="SelectAll">@L["Filter.SelectAll"]</button>
-                        <button type="button" class="text-xs text-muted-foreground hover:underline focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-2 rounded" @onclick="ClearAll">@L["Filter.Clear"]</button>
-                    </div>
-                }
-                <div class="max-h-40 overflow-auto space-y-1">
-                    @if (FilterOptions is not null)
-                    {
-                        @foreach (var option in FilterOptions)
-                        {
-                            <label class="flex items-center gap-2 text-sm py-0.5">
-                                <Checkbox Checked="@(_selectedOptions.Contains(option.Value?.ToString() ?? ""))"
-                                          CheckedChanged="@(v => ToggleOption(option.Value?.ToString() ?? "", v))" />
-                                <span>@option.Label</span>
-                            </label>
-                        }
-                    }
-                </div>
             }
             else
             {
@@ -250,17 +250,6 @@
             _selectedOptions.Add(value);
         else
             _selectedOptions.Remove(value);
-    }
-
-    private void SelectAll()
-    {
-        if (FilterOptions is null) return;
-        _selectedOptions = new HashSet<string>(FilterOptions.Select(o => o.Value?.ToString() ?? ""));
-    }
-
-    private void ClearAll()
-    {
-        _selectedOptions.Clear();
     }
 
     private async Task Apply()

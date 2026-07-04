@@ -20,6 +20,17 @@ public class DataGridColumn<TItem>
     public bool Pinnable { get; set; }
     public bool Resizable { get; set; } = true;
     public bool Visible { get; set; } = true;
+
+    /// <summary>
+    /// Raised by the grid when this column's <see cref="Visible"/> state is changed
+    /// through the built-in UI (the column-chooser toggle). Wired up from a
+    /// <see cref="DataGridColumnDef{TItem}"/>'s <c>VisibleChanged</c> so a consumer's
+    /// <c>@bind-Visible</c> stays in sync with user toggles. Not raised for
+    /// consumer-driven changes (that direction is already the source of truth), which
+    /// prevents a feedback loop. Internal: consumers bind via the column-def component.
+    /// </summary>
+    internal EventCallback<bool> VisibleChanged { get; set; }
+
     public bool Groupable { get; set; }
     /// <summary>
     /// Whether this column can be reordered via header drag-and-drop or the

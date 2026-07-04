@@ -138,5 +138,27 @@ public record DataGridContext<TItem>(
     /// <summary>The registered <c>DataGridColumnGroup</c>s. <see cref="DataGridHeader{TItem}"/>
     /// reads this to render a second <c>tr</c> above the data-column row with one <c>th</c>
     /// per group spanning its members via colspan. Empty when no groups are declared.</summary>
-    IReadOnlyList<DataGridColumnGroupInfo> ColumnGroups
-);
+    IReadOnlyList<DataGridColumnGroupInfo> ColumnGroups,
+
+    // --- Density (rc.42) ---
+    /// <summary>True when the grid has <c>Compact="true"</c>. Descendant header/data/structural
+    /// cells read this (via <see cref="CellPaddingClass"/> / <see cref="HeaderPaddingClass"/>) to
+    /// render tighter padding so the effective row height genuinely shrinks — not just the font.
+    /// Rebuilt into the cascading context on every grid render, so toggling <c>Compact</c> after
+    /// first render flows straight through to the cells.</summary>
+    bool Compact
+)
+{
+    /// <summary>Padding utilities for a body data cell, tightened under <see cref="Compact"/>.
+    /// Kept here (rather than duplicated per cell) so the compact/normal values can't drift
+    /// between <see cref="DataGridCell{TItem}"/> and the row's structural cells.</summary>
+    internal string CellPaddingClass => Compact ? "px-2 py-1" : "px-3 py-2";
+
+    /// <summary>Padding utilities for a header cell, tightened under <see cref="Compact"/>.</summary>
+    internal string HeaderPaddingClass => Compact ? "px-2 py-1" : "px-3 py-2";
+
+    /// <summary>Vertical padding utility only — used by the fixed-width structural cells
+    /// (drag handle, selection checkbox, detail chevron) whose horizontal padding differs
+    /// from a data cell but whose height must still collapse under <see cref="Compact"/>.</summary>
+    internal string CellPaddingY => Compact ? "py-1" : "py-2";
+}

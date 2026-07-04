@@ -89,7 +89,8 @@
         Striped: Striped,
         HasPinnedLeft: _orderedColumns.Any(c => c.Visible && c.Pin == PinDirection.Left),
         Hoverable: Hoverable,
-        ColumnGroups: _columnGroups
+        ColumnGroups: _columnGroups,
+        Compact: Compact
     );
 }
 
@@ -200,7 +201,6 @@
                _dragState.SourceColumnId (set by HeaderCell.HandleDragStart). *@
             <div data-slot="datagrid-group-panel"
                  class="@($"flex flex-wrap items-center gap-2 px-3 py-2 border-b border-dashed text-xs transition-colors {(_isGroupPanelDragOver ? "border-primary bg-primary/10" : "border-border/40 bg-muted/30")}")"
-                 @ondragover="HandleGroupPanelDragOver"
                  @ondragover:preventDefault="true"
                  @ondragenter="HandleGroupPanelDragEnter"
                  @ondragleave="HandleGroupPanelDragLeave"
@@ -331,7 +331,7 @@
                               DetailTemplate="DetailTemplate"
                               EmptyContent="EmptyContent"
                               UseVirtualization="@UseVirtualization"
-                              VirtualItemSize="@VirtualItemSize"
+                              VirtualItemSize="@EffectiveVirtualItemSize"
                               VirtualOverscanCount="@VirtualOverscanCount"
                               ServerVirtualizationProvider="@(_useServerVirtualization ? ServerVirtualizationProviderImpl : null)"
                               HasDetailTemplate="@(DetailTemplate is not null)"
@@ -421,6 +421,16 @@
     // --- Appearance ---
     [Parameter] public bool Striped { get; set; }
     [Parameter] public bool Bordered { get; set; }
+    /// <summary>
+    /// Dense layout: header and body cells drop from <c>px-3 py-2</c> to
+    /// <c>px-2 py-1</c> (and the root text shrinks to <c>text-sm</c>), so the
+    /// effective row height genuinely decreases — not just the font size. The
+    /// flag flows to every cell through <see cref="DataGridContext{TItem}"/>, so
+    /// toggling it after first render re-pads the grid live. When virtualization
+    /// is active (see <see cref="VirtualItemSize"/>) the default row-height
+    /// estimate is auto-tightened under Compact unless you pass an explicit
+    /// <see cref="VirtualItemSize"/>. Default <c>false</c>.
+    /// </summary>
     [Parameter] public bool Compact { get; set; }
     [Parameter] public bool Hoverable { get; set; } = true;
     [Parameter] public string? Height { get; set; }
@@ -464,8 +474,37 @@
     [Parameter] public int VirtualizeThreshold { get; set; } = 500;
     /// <summary>Estimated row height in CSS pixels — used by
     /// <c>&lt;Virtualize&gt;</c> to size the scroll spacers. Tune if your
-    /// rows are taller (dense badges, two-line cells). Default 41px.</summary>
+    /// rows are taller (dense badges, two-line cells). Default 41px. When
+    /// <see cref="Compact"/> is on and this parameter is left at its default,
+    /// the estimate auto-tightens to <see cref="CompactVirtualItemSize"/>px so
+    /// the scroll spacers match the shorter compact rows; pass an explicit value
+    /// to override either way.</summary>
     [Parameter] public float VirtualItemSize { get; set; } = 41f;
+
+    /// <summary>Row-height estimate used for virtualization when <see cref="Compact"/>
+    /// is on and <see cref="VirtualItemSize"/> was not set explicitly. Matches the
+    /// compact <c>py-1</c> cell padding.</summary>
+    private const float CompactVirtualItemSize = 33f;
+
+    // Tracks whether the consumer passed VirtualItemSize explicitly. Only then do
+    // we keep it verbatim under Compact; otherwise Compact swaps in the tighter
+    // default so the Virtualize scroll spacers don't overshoot the real rows.
+    private bool _virtualItemSizeExplicit;
+
+    /// <summary>The row-height estimate actually handed to <c>&lt;Virtualize&gt;</c>:
+    /// the consumer's value when set, else the density-appropriate default.</summary>
+    private float EffectiveVirtualItemSize =>
+        _virtualItemSizeExplicit ? VirtualItemSize
+        : (Compact ? CompactVirtualItemSize : VirtualItemSize);
+
+    public override Task SetParametersAsync(ParameterView parameters)
+    {
+        // Detect an explicit VirtualItemSize BEFORE the values are applied so the
+        // Compact auto-tighten only kicks in when the consumer left it defaulted.
+        if (parameters.TryGetValue<float>(nameof(VirtualItemSize), out _))
+            _virtualItemSizeExplicit = true;
+        return base.SetParametersAsync(parameters);
+    }
     /// <summary>Extra rows rendered above and below the viewport to
     /// hide pop-in during fast scrolling. Default 3.</summary>
     [Parameter] public int VirtualOverscanCount { get; set; } = 3;
@@ -1141,6 +1180,9 @@
             existing.HeaderCssClass = column.HeaderCssClass;
             existing.CustomSort = column.CustomSort;
             existing.CssClass = column.CssClass;
+            // Keep the two-way @bind-Visible callback fresh on the live column so a
+            // re-declared column def still routes user toggles back to the consumer.
+            existing.VisibleChanged = column.VisibleChanged;
             // Only apply width/pin from the redeclared column if the user has
             // not customised them at runtime (e.g. via resize/toggle).
             if (!existing.Visible && column.Visible) { /* keep user hidden */ }
@@ -1886,13 +1928,13 @@
     // back to the column field to add a grouping level.
     private bool _isGroupPanelDragOver;
 
-    private void HandleGroupPanelDragOver(DragEventArgs e)
-    {
-        // No-op — :preventDefault is the only thing the browser needs to accept
-        // the drop. We track over/enter/leave via the dedicated events below
-        // because dragover fires continuously and would over-render.
-    }
-
+    // Perf: there is deliberately no HandleGroupPanelDragOver. This panel lives on
+    // the DataGrid root, so a bound @ondragover re-rendered the WHOLE grid on every
+    // dragover tick (~60/s) — measured at ~198ms per render on a 640-row grid,
+    // freezing the main thread while dragging a header over the panel. dragover is
+    // left as a native :preventDefault-only directive in the markup so the browser
+    // still accepts the drop without any .NET round-trip. The accept-highlight is
+    // toggled by the enter/leave handlers below (boundary events, a few per drag).
     private void HandleGroupPanelDragEnter(DragEventArgs e)
     {
         // Only show the drop-accept highlight when the dragged column is
@@ -2897,8 +2939,32 @@
         }
     }
 
-    private void HandleColumnVisibilityChanged(DataGridColumn<TItem> column)
+    private async Task HandleColumnVisibilityChanged(DataGridColumn<TItem> column)
     {
+        RefreshVisibleColumns();
+        if (!ServerMode) ProcessClientData();
+        ScheduleAutoSave();
+        // Propagate the user toggle back to a consumer's @bind-Visible (no-op when
+        // the column def isn't bound). The column-chooser already flipped
+        // column.Visible, so we just surface the new value.
+        if (column.VisibleChanged.HasDelegate)
+            await column.VisibleChanged.InvokeAsync(column.Visible);
+        StateHasChanged();
+    }
+
+    /// <summary>
+    /// Applies a consumer-driven (<c>@bind-Visible</c>) visibility change from a
+    /// <see cref="DataGridColumnDef{TItem}"/> to the live column identified by
+    /// <paramref name="columnKey"/> (Field when set, else the column Id). Refreshes
+    /// the visible-columns cache and reprocesses client data, but deliberately does
+    /// NOT raise <see cref="DataGridColumn{TItem}.VisibleChanged"/> — the consumer is
+    /// already the source of this change, so echoing it back would loop.
+    /// </summary>
+    public void SetColumnVisibility(string columnKey, bool visible)
+    {
+        var column = _columnDefs.FirstOrDefault(c => ColumnKey(c) == columnKey);
+        if (column is null || column.Visible == visible) return;
+        column.Visible = visible;
         RefreshVisibleColumns();
         if (!ServerMode) ProcessClientData();
         ScheduleAutoSave();

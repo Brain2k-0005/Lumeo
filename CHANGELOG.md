@@ -7,6 +7,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.1.0-preview.6] - 2026-07-04
+
+Ten component fixes surfaced by battle-testing the library through the new
+full-page demo apps — every fix consumer-verified by removing the demos'
+workarounds and adopting the real API.
+
+### Fixed
+- **DataGrid drag lag (MEASURED)**: `@ondragover` was bound to .NET on the
+  header cells and the grid root, re-rendering the whole grid up to 60x/s
+  while dragging — the group-panel path cost ~198 ms PER EVENT on a 640-row
+  grid (main thread ~99% frozen). The drag hot-path no longer round-trips to
+  .NET (preventDefault stays native; indicators driven by dragenter/leave):
+  ~0.02 ms per event, zero long tasks, all drag semantics preserved.
+- **DataGrid.Compact was dead**: cells hard-coded their padding, so the
+  parameter only shrank the font. Density now flows through the context
+  (live-toggleable), rows genuinely tighten, and `VirtualItemSize` auto-adjusts
+  under Compact unless explicitly set.
+- **DataGrid facet filters**: Select-type filter popovers showed a redundant
+  operator dropdown and doubled Apply/Clear buttons — facet mode is now a
+  clean checkbox list with a single Apply/Clear row.
+- **DataGrid column chooser**: rows wrapped the checkbox in a label that
+  cannot activate a button — the whole row is now the toggle.
+- **Select/Textarea width collapse**: both shrink-wrapped by default (an
+  items-start wrapper), so `w-full` on the trigger/inner did nothing. They now
+  behave like block-level form controls (consumer width classes still win).
+- **DatePicker**: with keyboard input enabled, clicking the input body now
+  opens the calendar (previously only the small trailing icon did) — typing,
+  Esc and blur-commit unchanged.
+- **Gantt today-line** rendered over task-bar labels; now a subtle guide
+  behind the bars with stable CSS override hooks.
+
+### Added
+- `DataGridColumnDef.Visible`/`VisibleChanged` (programmatic column
+  visibility) and `DataGrid.SetColumnVisibility`.
+- `CommandInput.AutoFocus` — focus the palette input on open.
+- `AreaChart.GradientFill`/`GradientStops` + `EChartLinearGradient` — real
+  gradient area fills (default rendering unchanged).
+- `Gantt.ZoomLevels`/`DefaultZoom` — configure which zoom levels the toolbar
+  offers.
+- `PopoverContent.FocusOnOpen` (default true) — opt out of focus capture,
+  used by the typeable DatePicker.
+
 ## [4.1.0-preview.5] - 2026-07-03
 
 The icons release: Lumeo owns its icon story end to end.

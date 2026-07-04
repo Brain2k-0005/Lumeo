@@ -1,10 +1,10 @@
 {
   "$schema": "https://lumeo.nativ.sh/components-api-schema.json",
-  "version": "4.1.0-preview.5",
-  "generated": "2026-07-03T21:11:40.2337903Z",
+  "version": "4.1.0-preview.6",
+  "generated": "2026-07-04T07:04:07.4341022Z",
   "stats": {
     "componentCount": 164,
-    "totalParameters": 4170,
+    "totalParameters": 4178,
     "totalEnums": 74,
     "totalRecords": 72,
     "serviceCount": 33,
@@ -10513,7 +10513,25 @@
               "name": "Gradient",
               "type": "bool",
               "default": "true",
-              "description": null,
+              "description": "When true (default) the fill uses a lighter opacity than a solid area. This is the legacy opacity-only behaviour and is unaffected by GradientFill.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "GradientFill",
+              "type": "bool",
+              "default": null,
+              "description": "Opt into a real vertical gradient fill: each series' area fades from its own (brand/theme) colour at the top to transparent at the bottom, the look used by modern dashboards. Off by default so existing charts are unchanged. Override the stops with GradientStops.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "GradientStops",
+              "type": "List<EChartGradientColorStop>?",
+              "default": null,
+              "description": "Explicit gradient colour-stops applied to every series' area fill when set (implies GradientFill). Offsets run 0 (top) → 1 (bottom); colours accept theme tokens like var(--color-primary). When null and GradientFill is true, a per-series colour → transparent fade is used.",
               "isCascading": false,
               "captureUnmatched": false,
               "isEditorRequired": false
@@ -21404,6 +21422,15 @@
               "isEditorRequired": false
             },
             {
+              "name": "AutoFocus",
+              "type": "bool",
+              "default": null,
+              "description": "Focuses the search input on first render via the existing focus interop. Mirrors cmdk, where a bare Command.Input does NOT autofocus but a dialog-hosted command palette does — so this is opt-in (default false): set AutoFocus=\"true\" when hosting the palette in a Dialog/Popover so the user can type immediately on open. The HTML autofocus attribute is a no-op in Blazor WASM, hence the post-render FocusElement hop (see Input.AutoFocus).",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
               "name": "Class",
               "type": "string?",
               "default": null,
@@ -21641,7 +21668,7 @@
           "Home"
         ],
         "keyboardInteractive": true,
-        "focusManaged": false
+        "focusManaged": true
       },
       "parseFailed": false,
       "parseError": null
@@ -23300,7 +23327,7 @@
           "name": "Compact",
           "type": "bool",
           "default": null,
-          "description": null,
+          "description": "Dense layout: header and body cells drop from px-3 py-2 to px-2 py-1 (and the root text shrinks to text-sm), so the effective row height genuinely decreases — not just the font size. The flag flows to every cell through DataGridContext{TItem}, so toggling it after first render re-pads the grid live. When virtualization is active (see VirtualItemSize) the default row-height estimate is auto-tightened under Compact unless you pass an explicit VirtualItemSize. Default false.",
           "isCascading": false,
           "captureUnmatched": false,
           "isEditorRequired": false
@@ -23426,7 +23453,7 @@
           "name": "VirtualItemSize",
           "type": "float",
           "default": "41f",
-          "description": "Estimated row height in CSS pixels — used by &lt;Virtualize&gt; to size the scroll spacers. Tune if your rows are taller (dense badges, two-line cells). Default 41px.",
+          "description": "Estimated row height in CSS pixels — used by &lt;Virtualize&gt; to size the scroll spacers. Tune if your rows are taller (dense badges, two-line cells). Default 41px. When Compact is on and this parameter is left at its default, the estimate auto-tightens to CompactVirtualItemSizepx so the scroll spacers match the shorter compact rows; pass an explicit value to override either way.",
           "isCascading": false,
           "captureUnmatched": false,
           "isEditorRequired": false
@@ -24554,6 +24581,24 @@
               "isEditorRequired": false
             },
             {
+              "name": "Visible",
+              "type": "bool",
+              "default": "true",
+              "description": "Two-way bindable column visibility. Seeds the registered column's initial visibility and lets a consumer show/hide the column programmatically via @bind-Visible. When the user toggles the column through the built-in column-chooser, VisibleChanged fires so the bound value follows. Default true.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "VisibleChanged",
+              "type": "EventCallback<bool>",
+              "default": null,
+              "description": "Fires when the column's visibility changes through the built-in UI — the callback half of Visible's two-way binding.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
               "name": "AdditionalAttributes",
               "type": "Dictionary<string, object>?",
               "default": null,
@@ -24563,7 +24608,13 @@
               "isEditorRequired": false
             }
           ],
-          "events": [],
+          "events": [
+            {
+              "name": "VisibleChanged",
+              "type": "EventCallback<bool>",
+              "description": "Fires when the column's visibility changes through the built-in UI — the callback half of Visible's two-way binding."
+            }
+          ],
           "enums": [],
           "records": [],
           "gotchas": [],
@@ -26024,6 +26075,7 @@
       },
       "a11y": {
         "roles": [
+          "checkbox",
           "columnheader",
           "dialog",
           "gridcell",
@@ -26031,6 +26083,7 @@
           "status"
         ],
         "ariaAttributes": [
+          "aria-checked",
           "aria-colcount",
           "aria-colindex",
           "aria-expanded",
@@ -32568,6 +32621,24 @@
           "type": "EventCallback<GanttViewMode>",
           "default": null,
           "description": "Raised when the user picks a new zoom level from the toolbar. Bind it (@bind-ViewMode) to keep the parent's ViewMode in lock-step with the toolbar; without a binding the component still tracks the toolbar selection on its own (uncontrolled usage).",
+          "isCascading": false,
+          "captureUnmatched": false,
+          "isEditorRequired": false
+        },
+        {
+          "name": "ZoomLevels",
+          "type": "IReadOnlyList<GanttViewMode>?",
+          "default": null,
+          "description": "Restricts which zoom buttons the toolbar renders, in the given order. When null or empty the full default set (Day, Week, Month, Year) is shown — matching the previous hardcoded toolbar. Only toolbar-representable levels are drawn: QuarterDay / HalfDay have no toolbar button and are silently skipped here (still settable via ViewMode). Example: ZoomLevels=\"new[]{ GanttViewMode.Day, GanttViewMode.Week, GanttViewMode.Month }\".",
+          "isCascading": false,
+          "captureUnmatched": false,
+          "isEditorRequired": false
+        },
+        {
+          "name": "DefaultZoom",
+          "type": "GanttViewMode?",
+          "default": null,
+          "description": "The zoom level selected on first render. When set it seeds the initial toolbar selection (and the level the timeline mounts at), overriding ViewMode's default — handy for uncontrolled usage, e.g. ZoomLevels=\"…\" DefaultZoom=\"GanttViewMode.Week\". After mount, ViewMode / @bind-ViewMode govern as before. Null falls back to ViewMode (the existing behaviour).",
           "isCascading": false,
           "captureUnmatched": false,
           "isEditorRequired": false
@@ -42257,6 +42328,15 @@
               "type": "bool",
               "default": null,
               "description": null,
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "FocusOnOpen",
+              "type": "bool",
+              "default": "true",
+              "description": "When true (default), focus moves into the popover surface on open so its @onkeydown handler receives Escape and keyboard users land inside the dialog (the Radix onOpenAutoFocus default). Set to false when the trigger is a typeable control that must KEEP focus while the popover opens (e.g. DatePicker's keyboard-input trigger) — the surface still positions, registers click-outside and saves/restores focus, it just doesn't steal focus from the trigger on open.",
               "isCascading": false,
               "captureUnmatched": false,
               "isEditorRequired": false

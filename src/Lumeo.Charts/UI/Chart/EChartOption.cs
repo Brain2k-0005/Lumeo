@@ -542,8 +542,79 @@ public class EChartAreaStyle
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public double? Opacity { get; set; }
 
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    /// <summary>Solid fill colour for the area. When <see cref="Gradient"/> is
+    /// also set the gradient takes precedence and this is not emitted.</summary>
+    [JsonIgnore]
     public string? Color { get; set; }
+
+    /// <summary>Linear-gradient fill for the area. Serialises into ECharts'
+    /// <c>areaStyle.color</c> object (a real gradient, not just an opacity fade)
+    /// and takes precedence over <see cref="Color"/>.</summary>
+    [JsonIgnore]
+    public EChartLinearGradient? Gradient { get; set; }
+
+    // ECharts' `areaStyle.color` accepts EITHER a plain colour string OR a gradient
+    // object. We expose both strongly-typed and pick the right one at serialization
+    // time (mirrors the Radius/Center string-or-array pattern). Without the explicit
+    // [JsonPropertyName] the gradient would serialize under "gradient" and ECharts
+    // would ignore it, silently falling back to a flat fill.
+    [JsonPropertyName("color")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public object? ColorSerialized => (object?)Gradient ?? Color;
+}
+
+/// <summary>
+/// An ECharts linear-gradient colour object. Serialises to
+/// <c>{ type:"linear", x, y, x2, y2, colorStops:[…] }</c>. The default coordinates
+/// (x=0,y=0 → x2=0,y2=1) run top→bottom, producing the vertical fade used for
+/// area-chart brand fills. Colour-stop values may be any CSS colour the chart
+/// interop understands, including <c>var(--color-…)</c> theme tokens.
+/// </summary>
+public class EChartLinearGradient
+{
+    [JsonPropertyName("type")]
+    public string Type { get; set; } = "linear";
+
+    [JsonPropertyName("x")]
+    public double X { get; set; }
+
+    [JsonPropertyName("y")]
+    public double Y { get; set; }
+
+    [JsonPropertyName("x2")]
+    public double X2 { get; set; }
+
+    [JsonPropertyName("y2")]
+    public double Y2 { get; set; } = 1;
+
+    [JsonPropertyName("colorStops")]
+    public List<EChartGradientColorStop> ColorStops { get; set; } = new();
+
+    /// <summary>When true, gradient coordinates are absolute (pixels) rather than
+    /// relative (0–1) to the bounding box. Left null for the common relative case.</summary>
+    [JsonPropertyName("global")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public bool? Global { get; set; }
+}
+
+/// <summary>A single stop in an <see cref="EChartLinearGradient"/>.</summary>
+public class EChartGradientColorStop
+{
+    public EChartGradientColorStop() { }
+
+    /// <summary>Convenience constructor. <paramref name="offset"/> is 0–1 along the
+    /// gradient axis; <paramref name="color"/> is any CSS colour (incl. theme tokens).</summary>
+    public EChartGradientColorStop(double offset, string color)
+    {
+        Offset = offset;
+        Color = color;
+    }
+
+    [JsonPropertyName("offset")]
+    public double Offset { get; set; }
+
+    [JsonPropertyName("color")]
+    public string Color { get; set; } = "";
 }
 
 public class EChartItemStyle

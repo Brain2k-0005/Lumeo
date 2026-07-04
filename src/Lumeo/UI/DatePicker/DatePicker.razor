@@ -182,13 +182,20 @@ else
 {
     <Popover @bind-Open="_isOpen" Class="@(FullWidth ? "w-full" : null)">
         <PopoverTrigger Class="@(FullWidth ? "w-full" : null)">
-            @if (AllowKeyboardInput && Mode != DatePickerMode.Range && Mode != DatePickerMode.Multiple && TriggerContent == null)
+            @if (UsesTypeableInput)
             {
                 @* No leading LumeoIcons.Calendar here — the trailing CalendarDays
                    button (below) already provides the visual + click target.
                    Rendering both produced a double calendar-icon affordance,
                    most visible on narrow mobile widths where the input shrinks. *@
-                <div class="@CssClass" @onclick:stopPropagation="true" @attributes="AdditionalAttributes">
+                @* Clicking anywhere on the input BODY (the padded wrapper or the field
+                   itself) opens the calendar — previously only the ~16px trailing icon
+                   did (HandleInputClick). Both carry @onclick:stopPropagation so the open
+                   never bubbles on to PopoverTrigger.Toggle (which would immediately close
+                   it); the handler on each is required because the input's own
+                   stopPropagation would otherwise keep a click on the field from reaching
+                   the wrapper handler. *@
+                <div class="@CssClass" @onclick="HandleInputClick" @onclick:stopPropagation="true" @attributes="AdditionalAttributes">
                     <input id="@EffectiveTriggerId"
                            type="text"
                            name="@Name"
@@ -203,6 +210,7 @@ else
                            @oninput="HandleInputChanged"
                            @onblur="HandleInputBlur"
                            @onkeydown="HandleInputKeyDown"
+                           @onclick="HandleInputClick"
                            @onclick:stopPropagation="true" />
                     <button type="button"
                             class="ms-1 text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-1 rounded shrink-0"
@@ -305,7 +313,10 @@ else
             </button>
             }
         </PopoverTrigger>
-        <PopoverContent Align="Lumeo.Align.Start" Class="w-auto p-0">
+        @* FocusOnOpen=false only for the typeable-input trigger so opening the calendar
+           doesn't yank focus off the field mid-typing; the button trigger keeps the
+           default focus-into-surface behaviour (Escape/keyboard land inside the dialog). *@
+        <PopoverContent Align="Lumeo.Align.Start" Class="w-auto p-0" FocusOnOpen="@(!UsesTypeableInput)">
             @if (Mode == DatePickerMode.Multiple)
             {
                 <Calendar IsMultiple="true" Values="@Values" ValuesChanged="HandleValuesSelected" MinDate="@MinDate" MaxDate="@MaxDate" IsDateDisabled="@IsDateDisabled" DateClass="@DateClass" DateTooltip="@DateTooltip" DateBadge="@DateBadge" NumberOfMonths="@EffectiveNumberOfMonths" FirstDayOfWeek="@FirstDayOfWeek" ShowWeekNumbers="@ShowWeekNumbers" />
@@ -812,6 +823,23 @@ else
     {
         if (Disabled) return;
         _isOpen = !_isOpen;
+    }
+
+    // True exactly when the trigger renders as the typeable <input> (single/month/year,
+    // keyboard input on, no custom TriggerContent). Drives both which branch renders and
+    // PopoverContent.FocusOnOpen so the two never drift apart. The Wheel/Inline variants
+    // are handled by earlier branches, so this is only consulted in the popover branch.
+    private bool UsesTypeableInput =>
+        AllowKeyboardInput && Mode != DatePickerMode.Range && Mode != DatePickerMode.Multiple && TriggerContent == null;
+
+    // Body click on the typeable input trigger OPENS the calendar (idempotent — clicking
+    // again while open must not close it, so the caret can be repositioned mid-edit). Kept
+    // separate from the trailing icon's ToggleOpen, and paired with FocusOnOpen=false on the
+    // popover surface so the input keeps focus and stays typeable while the calendar shows.
+    private void HandleInputClick()
+    {
+        if (Disabled) return;
+        if (!_isOpen) _isOpen = true;
     }
 
     private int EffectiveNumberOfMonths => NumberOfMonths > 1 ? NumberOfMonths : (Mode == DatePickerMode.Range ? 2 : 1);

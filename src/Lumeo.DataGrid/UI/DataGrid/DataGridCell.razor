@@ -127,7 +127,11 @@
             var selected = IsRowSelected;
             var striped = Context?.Striped == true;
             var hoverable = Context?.Hoverable == true;
-            var key = (pin, dirty, selected, striped, hoverable, RowIndex % 2, Column.CssClass, cellClass, Class);
+            var compact = Context?.Compact == true;
+            // `compact` is part of the memo key so toggling Compact AFTER first
+            // render invalidates the cached css and the cell re-pads (px-2 py-1
+            // vs px-3 py-2) instead of latching to the first-render density.
+            var key = (pin, dirty, selected, striped, hoverable, compact, RowIndex % 2, Column.CssClass, cellClass, Class);
             if (_cssCache is { } c && c.Key.Equals(key)) return c.Css;
 
             // Pinned cells need an opaque background so the scrolling
@@ -154,7 +158,9 @@
             };
             var css = string.Join(" ", new[]
             {
-                "px-3 py-2 text-sm",
+                // Compact tightens padding (px-2 py-1) so the row height genuinely
+                // shrinks; the default stays px-3 py-2. text-sm is kept in both.
+                $"{(compact ? "px-2 py-1" : "px-3 py-2")} text-sm",
                 "outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
                 pinClass,
                 // Batch-edit dirty marker: subtle left border accent + warning

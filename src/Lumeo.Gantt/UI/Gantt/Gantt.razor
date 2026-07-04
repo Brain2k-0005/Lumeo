@@ -21,10 +21,10 @@ else
                          Size="Lumeo.Size.Sm"
                          Value="@_toolbarViewValue"
                          ValueChanged="OnViewModeChangedAsync">
-                <ToggleGroupItem Value="Day">@L["Gantt.Day"]</ToggleGroupItem>
-                <ToggleGroupItem Value="Week">@L["Gantt.Week"]</ToggleGroupItem>
-                <ToggleGroupItem Value="Month">@L["Gantt.Month"]</ToggleGroupItem>
-                <ToggleGroupItem Value="Year">@L["Gantt.Year"]</ToggleGroupItem>
+                @foreach (var level in ResolvedZoomLevels)
+                {
+                    <ToggleGroupItem Value="@level.ToString()">@L[ZoomLabelKey(level)]</ToggleGroupItem>
+                }
             </ToggleGroup>
             @if (TrailingContent is not null)
             {
@@ -58,6 +58,24 @@ else
     /// the toolbar selection on its own (uncontrolled usage).
     /// </summary>
     [Parameter] public EventCallback<GanttViewMode> ViewModeChanged { get; set; }
+    /// <summary>
+    /// Restricts which zoom buttons the toolbar renders, in the given order. When null
+    /// or empty the full default set (<c>Day, Week, Month, Year</c>) is shown — matching
+    /// the previous hardcoded toolbar. Only toolbar-representable levels are drawn:
+    /// <see cref="GanttViewMode.QuarterDay"/> / <see cref="GanttViewMode.HalfDay"/> have
+    /// no toolbar button and are silently skipped here (still settable via
+    /// <see cref="ViewMode"/>). Example: <c>ZoomLevels="new[]{ GanttViewMode.Day,
+    /// GanttViewMode.Week, GanttViewMode.Month }"</c>.
+    /// </summary>
+    [Parameter] public IReadOnlyList<GanttViewMode>? ZoomLevels { get; set; }
+    /// <summary>
+    /// The zoom level selected on first render. When set it seeds the initial toolbar
+    /// selection (and the level the timeline mounts at), overriding <see cref="ViewMode"/>'s
+    /// default — handy for uncontrolled usage, e.g. <c>ZoomLevels="…" DefaultZoom="GanttViewMode.Week"</c>.
+    /// After mount, <see cref="ViewMode"/> / <c>@bind-ViewMode</c> govern as before. Null
+    /// falls back to <see cref="ViewMode"/> (the existing behaviour).
+    /// </summary>
+    [Parameter] public GanttViewMode? DefaultZoom { get; set; }
     [Parameter] public EventCallback<GanttTask> OnTaskClick { get; set; }
     [Parameter] public EventCallback<GanttTask> OnDateChange { get; set; }
     [Parameter] public EventCallback<GanttTask> OnProgressChange { get; set; }
@@ -130,7 +148,8 @@ else
     private List<GanttTask> _tasks = new();
 
     // The toolbar only exposes Day/Week/Month/Year. When the caller passes a
-    // QuarterDay / HalfDay view mode, we keep the toggle group unselected.
+    // QuarterDay / HalfDay view mode (or a ZoomLevels subset that excludes the
+    // current level), we keep the toggle group unselected.
     private string? _toolbarViewValue => _currentViewMode switch
     {
         GanttViewMode.Day => "Day",
@@ -140,9 +159,37 @@ else
         _ => null,
     };
 
+    // The toolbar-representable levels, in canonical order. QuarterDay / HalfDay are
+    // deliberately excluded — they have no localized toolbar label and were never
+    // rendered as buttons (they remain settable through the ViewMode parameter).
+    private static readonly GanttViewMode[] _defaultZoomLevels =
+    {
+        GanttViewMode.Day, GanttViewMode.Week, GanttViewMode.Month, GanttViewMode.Year,
+    };
+
+    // Levels to render as toolbar buttons: the caller's ZoomLevels subset (order
+    // preserved, non-toolbar levels filtered out), else the full default set.
+    private IReadOnlyList<GanttViewMode> ResolvedZoomLevels =>
+        ZoomLevels is { Count: > 0 }
+            ? ZoomLevels.Where(l => Array.IndexOf(_defaultZoomLevels, l) >= 0).ToList()
+            : _defaultZoomLevels;
+
+    private static string ZoomLabelKey(GanttViewMode level) => level switch
+    {
+        GanttViewMode.Day => "Gantt.Day",
+        GanttViewMode.Week => "Gantt.Week",
+        GanttViewMode.Month => "Gantt.Month",
+        GanttViewMode.Year => "Gantt.Year",
+        _ => "Gantt.Day",
+    };
+
     protected override void OnInitialized()
     {
-        _currentViewMode = ViewMode;
+        // DefaultZoom (when set) seeds the initial toolbar selection + the level the
+        // timeline mounts at, overriding ViewMode's default. The *-SeenViewMode /
+        // -PushedViewMode discriminators still track the ViewMode PARAMETER so the
+        // controlled/uncontrolled change-detection in OnParametersSetAsync is unchanged.
+        _currentViewMode = DefaultZoom ?? ViewMode;
         _lastSeenViewMode = ViewMode;
         _lastPushedViewMode = ViewMode;
         _tasks = SortedTasks(Tasks?.ToList() ?? new List<GanttTask>());
@@ -284,7 +331,8 @@ else
         var options = new
         {
             tasks = _tasks.Select(ToJsTask).ToArray(),
-            viewMode = ViewMode.ToString(),
+            // Mount at the effective current level so DefaultZoom is honoured on first paint.
+            viewMode = _currentViewMode.ToString(),
             @readonly = Readonly,
             todayHighlight = TodayHighlight,
             barHeight = BarHeight,
