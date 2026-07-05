@@ -1,0 +1,147 @@
+@page "/register"
+@layout AuthLayout
+@attribute [AllowAnonymous]
+@inject ApiAuthenticationStateProvider Auth
+@inject HttpClient Http
+@inject ToastService Toast
+
+<PageTitle>Create your account — MyApp</PageTitle>
+
+<Card Class="w-full max-w-md border-border/60 shadow-lg">
+    <CardContent Class="px-8 pt-10 pb-8">
+        @if (!_registered)
+        {
+            <Stack Gap="6">
+                <Stack Gap="4" Class="items-center text-center">
+                    <Flex Class="h-12 w-12 items-center justify-center rounded-[var(--radius-lg)] bg-primary text-primary-foreground shadow-sm">
+                        <SvgGlyph Svg="@(LumeoIcons.Sparkles)" class="h-6 w-6" />
+                    </Flex>
+                    <Stack Gap="1.5">
+                        <Heading Level="1" Class="text-2xl font-bold tracking-tight">Create your account</Heading>
+                        <Lumeo.Text Color="muted" Size="sm">Start your 14-day free trial — no credit card required</Lumeo.Text>
+                    </Stack>
+                </Stack>
+
+                @if (_error is not null)
+                {
+                    <Alert Variant="Alert.AlertVariant.Destructive">
+                        <Flex Align="center" Gap="2">
+                            <SvgGlyph Svg="@(LumeoIcons.CircleAlert)" class="h-4 w-4 shrink-0" />
+                            <Lumeo.Text Size="sm">@_error</Lumeo.Text>
+                        </Flex>
+                    </Alert>
+                }
+
+                <EditForm Model="this" OnValidSubmit="HandleRegister">
+                    <Stack Gap="4">
+                        <Stack Gap="2">
+                            <Label for="reg-email">Work email</Label>
+                            <Lumeo.Input id="reg-email" type="email" placeholder="you@company.com" @bind-Value="_email">
+                                <Prefix><SvgGlyph Svg="@(LumeoIcons.Mail)" class="h-4 w-4 text-muted-foreground" /></Prefix>
+                            </Lumeo.Input>
+                        </Stack>
+
+                        <Stack Gap="2">
+                            <Label for="reg-pass">Password</Label>
+                            <PasswordInput @bind-Value="_password" Placeholder="At least 8 characters" ShowStrength="true" />
+                        </Stack>
+
+                        <Flex Align="start" Gap="2">
+                            <Checkbox @bind-Checked="_terms" Class="mt-0.5" />
+                            <Lumeo.Text Size="sm" Color="muted">
+                                I agree to the
+                                <Lumeo.Link Href="#" Class="text-primary hover:underline">Terms of Service</Lumeo.Link>
+                                and
+                                <Lumeo.Link Href="#" Class="text-primary hover:underline">Privacy Policy</Lumeo.Link>.
+                            </Lumeo.Text>
+                        </Flex>
+
+                        <Button Type="Button.ButtonType.Submit" Class="w-full" IsLoading="@_loading" Disabled="@(!_terms)">
+                            @if (!_loading)
+                            {
+                                <SvgGlyph Svg="@(LumeoIcons.UserPlus)" class="h-4 w-4" />
+                            }
+                            Create account
+                        </Button>
+                    </Stack>
+                </EditForm>
+
+                <Lumeo.Text Size="sm" Color="muted" Align="center">
+                    Already have an account?
+                    <Lumeo.Link Href="login" Class="text-primary hover:underline font-medium ml-1">Sign in</Lumeo.Link>
+                </Lumeo.Text>
+            </Stack>
+        }
+        else
+        {
+            <Stack Gap="6">
+                <Stack Gap="4" Class="items-center text-center">
+                    <Flex Class="h-12 w-12 items-center justify-center rounded-[var(--radius-lg)] bg-emerald-500/15">
+                        <SvgGlyph Svg="@(LumeoIcons.Mail)" class="h-6 w-6 text-emerald-600" />
+                    </Flex>
+                    <Stack Gap="1.5">
+                        <Heading Level="1" Class="text-2xl font-bold tracking-tight">Check your inbox</Heading>
+                        <Lumeo.Text Color="muted" Size="sm" Class="max-w-xs">
+                            We sent a confirmation link to
+                            <Lumeo.Text As="span" Weight="medium" Color="foreground">@_email</Lumeo.Text>.
+                            Click it to activate your account, then sign in.
+                        </Lumeo.Text>
+                    </Stack>
+                </Stack>
+
+                <Flex Class="rounded-[var(--radius-lg)] bg-muted/50 border border-border/40 px-4 py-3 gap-3" Align="start">
+                    <SvgGlyph Svg="@(LumeoIcons.Info)" class="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
+                    <Lumeo.Text Size="sm" Color="muted" Class="leading-relaxed">
+                        In development, mail is captured by MailHog — open its web UI (see the README) to click the link.
+                    </Lumeo.Text>
+                </Flex>
+
+                <Stack Gap="3">
+                    <Button Class="w-full" OnClick="@(() => Nav.NavigateTo("login"))">
+                        <SvgGlyph Svg="@(LumeoIcons.LogIn)" class="h-4 w-4" />
+                        Go to sign in
+                    </Button>
+                    <Button Variant="Button.ButtonVariant.Outline" Class="w-full" IsLoading="@_loading" OnClick="Resend">
+                        <SvgGlyph Svg="@(LumeoIcons.RefreshCw)" class="h-4 w-4" />
+                        Resend confirmation email
+                    </Button>
+                </Stack>
+            </Stack>
+        }
+    </CardContent>
+</Card>
+
+@code {
+    [Inject] private NavigationManager Nav { get; set; } = default!;
+
+    private string _email = string.Empty;
+    private string _password = string.Empty;
+    private bool _terms;
+    private bool _loading;
+    private bool _registered;
+    private string? _error;
+
+    private async Task HandleRegister()
+    {
+        _error = null;
+        _loading = true;
+        var result = await Auth.RegisterAsync(_email, _password);
+        _loading = false;
+
+        if (!result.Succeeded)
+        {
+            _error = result.Error;
+            return;
+        }
+
+        _registered = true;
+    }
+
+    private async Task Resend()
+    {
+        _loading = true;
+        await Http.PostAsJsonAsync("api/auth/resendConfirmationEmail", new { email = _email });
+        _loading = false;
+        Toast.Success("Email sent", "We've resent the confirmation link.");
+    }
+}

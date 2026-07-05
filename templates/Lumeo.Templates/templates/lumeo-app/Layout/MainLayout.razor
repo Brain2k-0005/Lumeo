@@ -2,64 +2,134 @@
 @inherits LayoutComponentBase
 @implements IDisposable
 @inject NavigationManager Nav
+@inject Lumeo.Services.IResponsiveService Responsive
+@*#if (AuthDemo)
+@inject MyApp.Auth.DemoAuthenticationStateProvider AuthProvider
+##endif*@
 
-<SidebarProvider Variant="SidebarProvider.SidebarVariant.Icon" ToggleShortcut="ctrl+b" Class="h-screen">
-    <SidebarComponent>
-        <SidebarHeader Bordered="false">
-            <div class="flex items-center gap-2.5 overflow-hidden">
-                <span class="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+@* ---------------------------------------------------------------------------
+   App shell. A collapsible Lumeo Sidebar (Icon variant) + a topbar.
+
+   Collapsed, the rail is a 64px (w-16) icon strip. The geometry is deliberate:
+   the rail is w-16, SidebarContent adds px-3 (12px each side) and each nav pill
+   adds px-3 (12px) — so 12 + 12 + half of a 16px icon = 32px = exactly half the
+   rail. That anchors every icon (brand, nav, avatar) on the same vertical
+   centre line with NO justify/padding swaps between states — the label column
+   stays mounted and is simply clipped by the rail's 200ms width animation.
+--------------------------------------------------------------------------- *@
+
+<SidebarProvider @bind-IsCollapsed="_collapsed"
+                 Variant="SidebarProvider.SidebarVariant.Icon"
+                 MobileSheet="true"
+                 ToggleShortcut="ctrl+b"
+                 Class="h-screen bg-background">
+
+    @* border-sidebar-border makes the rail↔content divider visible in dark mode
+       (the default border is nearly invisible there). w-16 widens the collapsed
+       rail from the 48px default so the pills have room to breathe. *@
+    <SidebarComponent Class="@RailClass" style="overflow-y: hidden">
+        <SidebarHeader Class="h-14 shrink-0 flex-row items-center gap-0 border-b border-sidebar-border px-4 py-0">
+            <div class="flex min-w-0 items-center gap-2">
+                <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground shadow-sm">
                     <SvgGlyph Svg="@(LumeoIcons.Sparkles)" class="h-4 w-4" />
                 </span>
-                <span class="truncate font-semibold text-sidebar-foreground">MyApp</span>
+                <div class="flex min-w-0 flex-1 flex-col">
+                    <span class="truncate text-sm font-semibold leading-tight text-sidebar-foreground">MyApp</span>
+                    <span class="truncate text-xs leading-tight text-muted-foreground">Blazor + Lumeo</span>
+                </div>
             </div>
         </SidebarHeader>
 
-        <SidebarContent>
-            <SidebarMenu>
-                <SidebarMenuItem>
-                    <SidebarMenuButton Href="" Tooltip="Dashboard" IsActive="@IsActive("")">
-                        <IconContent><SvgGlyph Svg="@(LumeoIcons.LayoutDashboard)" class="h-5 w-5" /></IconContent>
-                        <LabelContent>Dashboard</LabelContent>
-                    </SidebarMenuButton>
-                </SidebarMenuItem>
-                <SidebarMenuItem>
-                    <SidebarMenuButton Href="form" Tooltip="Form" IsActive="@IsActive("form")">
-                        <IconContent><SvgGlyph Svg="@(LumeoIcons.FileText)" class="h-5 w-5" /></IconContent>
-                        <LabelContent>Form</LabelContent>
-                    </SidebarMenuButton>
-                </SidebarMenuItem>
-                <SidebarMenuItem>
-                    <SidebarMenuButton Href="settings" Tooltip="Settings" IsActive="@IsActive("settings")">
-                        <IconContent><SvgGlyph Svg="@(LumeoIcons.Settings)" class="h-5 w-5" /></IconContent>
-                        <LabelContent>Settings</LabelContent>
-                    </SidebarMenuButton>
-                </SidebarMenuItem>
-            </SidebarMenu>
+        <SidebarContent Class="min-h-0 flex-1 overflow-y-auto px-3">
+            <SidebarGroup>
+                <SidebarGroupLabel>Navigation</SidebarGroupLabel>
+                <SidebarMenu>
+                    @foreach (var item in _nav)
+                    {
+                        @NavLink(item)
+                    }
+                </SidebarMenu>
+            </SidebarGroup>
         </SidebarContent>
 
-        <SidebarFooter Bordered="true">
-            <div class="flex items-center gap-2.5 overflow-hidden">
-                <span class="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground">
-                    <SvgGlyph Svg="@(LumeoIcons.User)" class="h-4 w-4" />
-                </span>
-                <div class="min-w-0">
-                    <div class="truncate text-sm font-medium text-sidebar-foreground">Jane Doe</div>
-                    <div class="truncate text-xs text-muted-foreground">jane@example.com</div>
+        <SidebarFooter Class="p-4">
+            @*#if (AuthEnabled)
+            <AuthorizeView>
+                <Authorized Context="auth">
+                    <DropdownMenu>
+                        <DropdownMenuTrigger AsChild>
+                            <ChildContentSlot Context="slot">
+                                <button type="button" id="@slot.Id" @attributes="slot.Attributes" @onclick="slot.OnClick"
+                                        aria-label="Account menu"
+                                        class="flex w-full min-w-0 items-center gap-2 rounded-lg p-1 text-left transition-colors hover:bg-sidebar-accent focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring">
+                                    <Avatar Size="Lumeo.Size.Sm" Class="shrink-0"><AvatarFallback>@Initials(auth.User.Identity?.Name)</AvatarFallback></Avatar>
+                                    <div class="flex min-w-0 flex-1 flex-col">
+                                        <span class="truncate text-xs font-medium leading-tight text-sidebar-foreground">@(auth.User.Identity?.Name ?? "Account")</span>
+                                        <span class="truncate text-xs leading-tight text-muted-foreground">@UserEmail(auth.User)</span>
+                                    </div>
+                                    <SvgGlyph Svg="@(LumeoIcons.ChevronsUpDown)" class="h-4 w-4 shrink-0 text-muted-foreground" />
+                                </button>
+                            </ChildContentSlot>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent Align="Lumeo.Align.End" Class="w-56">
+                            <DropdownMenuLabel>
+                                <Stack Gap="0">
+                                    <Lumeo.Text Size="sm" Weight="medium">@(auth.User.Identity?.Name ?? "Account")</Lumeo.Text>
+                                    <Lumeo.Text Size="xs" Color="muted">@UserEmail(auth.User)</Lumeo.Text>
+                                </Stack>
+                            </DropdownMenuLabel>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem OnClick="@(() => Nav.NavigateTo("settings"))">
+                                <Flex Align="center" Gap="2"><SvgGlyph Svg="@(LumeoIcons.Settings)" class="h-3.5 w-3.5" /> Profile</Flex>
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem OnClick="SignOut">
+                                <Flex Align="center" Gap="2"><SvgGlyph Svg="@(LumeoIcons.LogOut)" class="h-3.5 w-3.5" /> Sign out</Flex>
+                            </DropdownMenuItem>
+                        </DropdownMenuContent>
+                    </DropdownMenu>
+                </Authorized>
+                <NotAuthorized>
+                    <a href="login" class="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-muted-foreground no-underline transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground">
+                        <SvgGlyph Svg="@(LumeoIcons.LogIn)" class="h-4 w-4 shrink-0" />
+                        <span class="truncate">Sign in</span>
+                    </a>
+                </NotAuthorized>
+            </AuthorizeView>
+            ##else
+            <div class="flex min-w-0 items-center gap-2">
+                <Avatar Size="Lumeo.Size.Sm" Class="shrink-0"><AvatarFallback>JD</AvatarFallback></Avatar>
+                <div class="flex min-w-0 flex-1 flex-col">
+                    <span class="truncate text-xs font-medium leading-tight text-sidebar-foreground">Jane Doe</span>
+                    <span class="truncate text-xs leading-tight text-muted-foreground">jane@example.com</span>
                 </div>
+                <span class="inline-flex h-2 w-2 shrink-0 rounded-full bg-emerald-500" title="Online"></span>
             </div>
+            ##endif*@
         </SidebarFooter>
     </SidebarComponent>
 
     <div class="flex min-w-0 flex-1 flex-col">
-        <header class="flex h-14 shrink-0 items-center gap-3 border-b border-border/60 bg-background/95 px-4 backdrop-blur">
+        <header class="flex h-14 shrink-0 items-center gap-1 border-b border-border/50 px-3 sm:px-4">
             <SidebarTrigger />
-            <Heading Level="2" Size="sm" Class="font-medium text-muted-foreground">@CurrentTitle</Heading>
+            <div class="mx-1 h-4 w-px bg-border/60"></div>
+            <Breadcrumb>
+                <BreadcrumbList>
+                    <BreadcrumbItem Class="hidden sm:inline-flex">
+                        <BreadcrumbLink Href="">MyApp</BreadcrumbLink>
+                    </BreadcrumbItem>
+                    <BreadcrumbSeparator Class="hidden sm:inline-flex" />
+                    <BreadcrumbItem>
+                        <Lumeo.BreadcrumbPage>@CurrentTitle</Lumeo.BreadcrumbPage>
+                    </BreadcrumbItem>
+                </BreadcrumbList>
+            </Breadcrumb>
             <div class="flex-1"></div>
-            <ThemeToggle />
+            <ThemeToggle IncludeSystem="false" />
         </header>
 
-        <main class="flex-1 overflow-auto">
-            <div class="mx-auto w-full max-w-6xl p-4 sm:p-6 lg:p-8">
+        <main class="min-h-0 flex-1 overflow-y-auto">
+            <div class="mx-auto w-full max-w-6xl px-4 py-6 sm:px-6 sm:py-8">
                 @Body
             </div>
         </main>
@@ -70,23 +140,137 @@
 <ToastProvider Position="ToastViewport.ToastPosition.BottomRight" />
 
 @code {
+    private sealed record NavItem(string Path, string Label, IconSource Icon);
+
+    private readonly NavItem[] _nav =
+    [
+        new("", "Home", LumeoIcons.LayoutDashboard),
+        new("counter", "Counter", LumeoIcons.Plus),
+        new("weather", "Weather", LumeoIcons.Cloud),
+        new("form", "Form", LumeoIcons.FileText),
+        new("settings", "Settings", LumeoIcons.Settings),
+    ];
+
+    private bool _collapsed;
+
+    // Collapsed → widen the rail to 64px and colour the divider; expanded → keep the
+    // colour, the provider owns the 256px width. The width class wins over the Icon
+    // variant's default via Cx.Merge (last wins).
+    private string RailClass => _collapsed ? "w-16 border-sidebar-border bg-background" : "border-sidebar-border bg-background";
+
+    // One nav entry. Collapsed → an icon-only pill whose label lives in a right-anchored
+    // Lumeo Tooltip; expanded → icon + label. Both states use px-3 (no swap) so the icon
+    // never shifts — see the geometry note above.
+    private RenderFragment<NavItem> NavLink => item =>
+        @<SidebarMenuItem>
+            @if (_collapsed)
+            {
+                <Tooltip>
+                    <TooltipTrigger AsChild>
+                        <ChildContentSlot Context="slot">
+                            <a href="@item.Path" class="@NavClass(item.Path)"
+                               aria-label="@item.Label" aria-current="@(IsActive(item.Path) ? "page" : null)"
+                               @attributes="slot.Attributes">
+                                <span class="inline-flex shrink-0 items-center justify-center"><SvgGlyph Svg="@item.Icon" class="h-4 w-4" /></span>
+                            </a>
+                        </ChildContentSlot>
+                    </TooltipTrigger>
+                    <TooltipContent Side="Lumeo.Side.Right">@item.Label</TooltipContent>
+                </Tooltip>
+            }
+            else
+            {
+                <a href="@item.Path" class="@NavClass(item.Path)" aria-current="@(IsActive(item.Path) ? "page" : null)">
+                    <span class="inline-flex shrink-0 items-center justify-center"><SvgGlyph Svg="@item.Icon" class="h-4 w-4" /></span>
+                    <span class="flex-1 truncate text-left">@item.Label</span>
+                </a>
+            }
+        </SidebarMenuItem>;
+
+    private string NavClass(string path)
+    {
+        var active = IsActive(path);
+        var layout = _collapsed ? "h-9 px-3" : "gap-3 px-3 py-2";
+        var state = active
+            ? "bg-sidebar-accent text-sidebar-accent-foreground font-medium"
+            : "text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground";
+        return $"flex w-full items-center overflow-hidden rounded-lg text-sm no-underline transition-colors focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-1 {layout} {state}";
+    }
+
     protected override void OnInitialized() => Nav.LocationChanged += OnLocationChanged;
 
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        try
+        {
+            // Start collapsed on phones so the rail (mobile sheet) doesn't cover content.
+            await Responsive.EnsureInitialisedAsync();
+            if (Responsive.IsMobile && !_collapsed)
+            {
+                _collapsed = true;
+                StateHasChanged();
+            }
+        }
+        catch (Microsoft.JSInterop.JSDisconnectedException) { }
+        catch (InvalidOperationException) { /* JS unavailable during prerender */ }
+    }
+
     private void OnLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e)
-        => StateHasChanged();
+    {
+        // Close the off-canvas sheet after a nav selection on mobile.
+        if (Responsive.IsMobile) _collapsed = true;
+        StateHasChanged();
+    }
 
     private string RelativePath => Nav.ToBaseRelativePath(Nav.Uri).Split('?', '#')[0].TrimEnd('/');
 
-    private bool IsActive(string path)
-        => string.Equals(RelativePath, path, StringComparison.OrdinalIgnoreCase);
+    private bool IsActive(string path) => string.Equals(RelativePath, path, StringComparison.OrdinalIgnoreCase);
 
     private string CurrentTitle => RelativePath switch
     {
-        "" => "Dashboard",
+        "counter" => "Counter",
+        "weather" => "Weather",
         "form" => "Form",
         "settings" => "Settings",
-        _ => "MyApp",
+        _ => "Home",
     };
+
+    private string CurrentSubtitle => RelativePath switch
+    {
+        "counter" => "The classic counter, rebuilt with Lumeo.",
+        "weather" => "A sortable forecast with a loading state.",
+        "form" => "A validated form with per-field errors.",
+        "settings" => "Manage your workspace preferences.",
+        _ => "Your workspace at a glance.",
+    };
+
+@*#if (AuthEnabled)
+    private static string Initials(string? name)
+    {
+        if (string.IsNullOrWhiteSpace(name)) return "U";
+        var parts = name.Split(new[] { ' ', '.', '_', '-' }, StringSplitOptions.RemoveEmptyEntries);
+        return parts.Length switch
+        {
+            0 => "U",
+            1 => parts[0][..1].ToUpperInvariant(),
+            _ => (parts[0][..1] + parts[^1][..1]).ToUpperInvariant(),
+        };
+    }
+
+    private static string UserEmail(System.Security.Claims.ClaimsPrincipal user)
+        => user.FindFirst(System.Security.Claims.ClaimTypes.Email)?.Value ?? user.Identity?.Name ?? "";
+##endif*@
+@*#if (AuthDemo)
+    private async Task SignOut()
+    {
+        await AuthProvider.SignOutAsync();
+        Nav.NavigateTo("login");
+    }
+##endif*@
+@*#if (AuthOidc)
+    private void SignOut() => Nav.NavigateToLogout("authentication/logout");
+##endif*@
 
     public void Dispose() => Nav.LocationChanged -= OnLocationChanged;
 }

@@ -7,7 +7,7 @@
          version via /p:Version anyway; inheriting keeps local packs correct too. -->
     <Title>Lumeo item templates</Title>
     <Authors>nativ.sh</Authors>
-    <Description>dotnet new templates for Lumeo Blazor projects. Includes a full Blazor WebAssembly app starter (lumeo-app) that boots styled and dark-mode-ready with zero setup, plus item templates for pages (lumeo-page), validated forms (lumeo-form, [LumeoForm] generator), and reusable components (lumeo-component). Templates follow current Lumeo conventions: the Class + AdditionalAttributes contract, the Form/FormField validation pattern, LumeoIcons + SvgGlyph, and theme tokens (no raw colors).</Description>
+    <Description>dotnet new templates for Lumeo Blazor projects. Includes a full Blazor WebAssembly app starter (lumeo-app) that boots styled and dark-mode-ready with zero setup, a batteries-included full-stack starter (lumeo-fullstack) pairing that client with a real ASP.NET Core Identity API (MapIdentityApi + EF Core/PostgreSQL + SMTP email confirmation + Scalar OpenAPI, wired together with docker-compose), plus item templates for pages (lumeo-page), validated forms (lumeo-form, [LumeoForm] generator), and reusable components (lumeo-component). Templates follow current Lumeo conventions: the Class + AdditionalAttributes contract, the Form/FormField validation pattern, LumeoIcons + SvgGlyph, and theme tokens (no raw colors).</Description>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <RepositoryUrl>https://github.com/Brain2k-0005/Lumeo</RepositoryUrl>
     <PackageProjectUrl>https://github.com/Brain2k-0005/Lumeo</PackageProjectUrl>
@@ -19,9 +19,13 @@
     <ContentTargetFolders>content</ContentTargetFolders>
     <NoWarn>NU5128</NoWarn>
     <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <!-- Templates legitimately ship dotfiles (lumeo-fullstack's .env, .gitignore,
+         .dockerignore). dotnet pack drops files whose name starts with '.' by default,
+         so opt out — the Content Exclude below still keeps build/IDE junk out. -->
+    <NoDefaultExcludes>true</NoDefaultExcludes>
   </PropertyGroup>
   <ItemGroup>
-    <Content Include="templates\**\*" Exclude="templates\**\bin\**;templates\**\obj\**" />
+    <Content Include="templates\**\*" Exclude="templates\**\bin\**;templates\**\obj\**;templates\**\.vs\**;templates\**\.idea\**;templates\**\.git\**" />
     <Compile Remove="**\*" />
   </ItemGroup>
 
@@ -40,6 +44,17 @@
     </PropertyGroup>
     <WriteLinesToFile File="$(_LumeoAppCsproj)"
                       Lines="$(_LumeoAppCsprojStamped)"
+                      Overwrite="true"
+                      WriteOnlyWhenDifferent="true" />
+
+    <!-- Same idempotent stamp for the lumeo-fullstack client project. -->
+    <PropertyGroup>
+      <_LumeoFsCsproj>$(MSBuildProjectDirectory)\templates\lumeo-fullstack\src\MyApp.Client\MyApp.Client.csproj</_LumeoFsCsproj>
+      <_LumeoFsCsprojRaw>$([System.IO.File]::ReadAllText('$(_LumeoFsCsproj)'))</_LumeoFsCsprojRaw>
+      <_LumeoFsCsprojStamped>$([System.Text.RegularExpressions.Regex]::Replace('$(_LumeoFsCsprojRaw)', '(Include="Lumeo(?:\.DataGrid)?" Version=")[^"]*(")', '${1}$(Version)${2}'))</_LumeoFsCsprojStamped>
+    </PropertyGroup>
+    <WriteLinesToFile File="$(_LumeoFsCsproj)"
+                      Lines="$(_LumeoFsCsprojStamped)"
                       Overwrite="true"
                       WriteOnlyWhenDifferent="true" />
   </Target>

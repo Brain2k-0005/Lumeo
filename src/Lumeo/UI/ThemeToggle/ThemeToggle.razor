@@ -29,6 +29,15 @@
 
 @code {
     [Parameter] public string? Class { get; set; }
+
+    /// <summary>
+    /// When <c>true</c> (default) the toggle walks the full three-way mode cycle
+    /// (System → Dark → Light). Set to <c>false</c> for a binary Light ↔ Dark
+    /// toggle: every click visibly changes the theme — the System step is skipped
+    /// (useful in app shells where an "invisible" System→Dark click reads as a
+    /// broken button when the OS is already dark).
+    /// </summary>
+    [Parameter] public bool IncludeSystem { get; set; } = true;
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     private bool _isDark;
@@ -78,7 +87,16 @@
         // OnThemeChanged (raised synchronously at the end of ToggleModeAsync once
         // IsDark is re-read) is the single source of truth and updates the icon
         // exactly once to the resolved state.
-        await Theme.ToggleModeAsync();
+        if (IncludeSystem)
+        {
+            await Theme.ToggleModeAsync();
+        }
+        else
+        {
+            // Binary mode: jump straight to the opposite resolved appearance so a
+            // single click always produces a visible change.
+            await Theme.SetModeAsync(_isDark ? ThemeMode.Light : ThemeMode.Dark);
+        }
     }
 
     private void OnThemeChanged()

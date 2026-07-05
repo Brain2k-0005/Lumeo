@@ -1,0 +1,92 @@
+@page "/login"
+@layout AuthLayout
+@attribute [AllowAnonymous]
+@inject ApiAuthenticationStateProvider Auth
+@inject NavigationManager Nav
+@inject ToastService Toast
+
+<PageTitle>Sign in — MyApp</PageTitle>
+
+<Card Class="w-full max-w-md border-border/60 shadow-lg">
+    <CardContent Class="px-8 pt-10 pb-8">
+        <Stack Gap="6">
+            <Stack Gap="4" Class="items-center text-center">
+                <Flex Class="h-12 w-12 items-center justify-center rounded-[var(--radius-lg)] bg-primary text-primary-foreground shadow-sm">
+                    <SvgGlyph Svg="@(LumeoIcons.Sparkles)" class="h-6 w-6" />
+                </Flex>
+                <Stack Gap="1.5">
+                    <Heading Level="1" Class="text-2xl font-bold tracking-tight">Welcome back</Heading>
+                    <Lumeo.Text Color="muted" Size="sm">Sign in to your account to continue</Lumeo.Text>
+                </Stack>
+            </Stack>
+
+            @if (_error is not null)
+            {
+                <Alert Variant="Alert.AlertVariant.Destructive">
+                    <Flex Align="center" Gap="2">
+                        <SvgGlyph Svg="@(LumeoIcons.CircleAlert)" class="h-4 w-4 shrink-0" />
+                        <Lumeo.Text Size="sm">@_error</Lumeo.Text>
+                    </Flex>
+                </Alert>
+            }
+
+            <EditForm Model="this" OnValidSubmit="HandleSignIn">
+                <Stack Gap="4">
+                    <Stack Gap="2">
+                        <Label for="login-email">Email</Label>
+                        <Lumeo.Input id="login-email" type="email" placeholder="you@example.com" @bind-Value="_email">
+                            <Prefix><SvgGlyph Svg="@(LumeoIcons.Mail)" class="h-4 w-4 text-muted-foreground" /></Prefix>
+                        </Lumeo.Input>
+                    </Stack>
+
+                    <Stack Gap="2">
+                        <Flex Align="center" Justify="between">
+                            <Label for="login-password">Password</Label>
+                            <Lumeo.Link Href="forgot-password" Class="text-xs text-primary hover:underline">Forgot password?</Lumeo.Link>
+                        </Flex>
+                        <PasswordInput @bind-Value="_password" Placeholder="Your password" />
+                    </Stack>
+
+                    <Button Type="Button.ButtonType.Submit" Class="w-full" IsLoading="@_loading">
+                        @if (!_loading)
+                        {
+                            <SvgGlyph Svg="@(LumeoIcons.LogIn)" class="h-4 w-4" />
+                        }
+                        Sign in
+                    </Button>
+                </Stack>
+            </EditForm>
+
+            <Lumeo.Text Size="sm" Color="muted" Align="center">
+                Don't have an account?
+                <Lumeo.Link Href="register" Class="text-primary hover:underline font-medium ml-1">Sign up</Lumeo.Link>
+            </Lumeo.Text>
+        </Stack>
+    </CardContent>
+</Card>
+
+@code {
+    [SupplyParameterFromQuery] private string? ReturnUrl { get; set; }
+
+    private string _email = string.Empty;
+    private string _password = string.Empty;
+    private bool _loading;
+    private string? _error;
+
+    private async Task HandleSignIn()
+    {
+        _error = null;
+        _loading = true;
+        var result = await Auth.LoginAsync(_email, _password);
+        _loading = false;
+
+        if (!result.Succeeded)
+        {
+            _error = result.Error;
+            return;
+        }
+
+        Toast.Success("Signed in", "Welcome back!");
+        Nav.NavigateTo(string.IsNullOrWhiteSpace(ReturnUrl) ? "" : ReturnUrl);
+    }
+}

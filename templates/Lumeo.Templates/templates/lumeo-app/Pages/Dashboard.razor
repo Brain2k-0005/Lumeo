@@ -1,6 +1,6 @@
 @page "/"
 
-<PageTitle>Dashboard — MyApp</PageTitle>
+<PageTitle>Home — MyApp</PageTitle>
 
 <Stack Gap="6">
     <Stack Gap="1">
@@ -8,39 +8,41 @@
         <Lumeo.Text Color="muted">A quick snapshot of your workspace.</Lumeo.Text>
     </Stack>
 
-    <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+    <div class="grid grid-cols-2 gap-3 lg:grid-cols-4">
         @foreach (var kpi in _kpis)
         {
-            <Card>
-                <CardContent Class="p-5">
-                    <Flex Class="items-center justify-between">
-                        <Lumeo.Text Size="sm" Color="muted">@kpi.Label</Lumeo.Text>
-                        <span class="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-muted text-muted-foreground">
-                            <SvgGlyph Svg="@kpi.Icon" class="h-4 w-4" />
-                        </span>
-                    </Flex>
-                    <div class="mt-3 text-2xl font-semibold tracking-tight text-foreground">@kpi.Value</div>
-                    <div class="mt-1 text-xs @(kpi.Up ? "text-green-600 dark:text-green-500" : "text-destructive")">
-                        @(kpi.Up ? "▲" : "▼") @kpi.Delta vs last month
-                    </div>
-                </CardContent>
-            </Card>
+            <div class="rounded-xl border border-border/50 bg-card p-4">
+                <Flex Align="center" Justify="between" Class="mb-1">
+                    <Lumeo.Text Size="xs" Color="muted">@kpi.Label</Lumeo.Text>
+                    <SvgGlyph Svg="@kpi.Icon" class="h-3.5 w-3.5 text-primary" />
+                </Flex>
+                <div class="text-2xl font-bold tracking-tight text-foreground">@kpi.Value</div>
+                <Flex Align="center" Gap="1" Class="mt-1">
+                    <SvgGlyph Svg="@(kpi.Up ? LumeoIcons.TrendingUp : LumeoIcons.TrendingDown)"
+                              class="@($"h-3 w-3 {(kpi.Up ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400")}")" />
+                    <Lumeo.Text Size="xs" Color="muted">@kpi.Delta vs last month</Lumeo.Text>
+                </Flex>
+            </div>
         }
     </div>
 
     <Card>
         <CardHeader>
             <Stack Gap="1">
-                <Heading Level="3" Size="lg">Recent orders</Heading>
+                <Heading Level="2" Size="lg">Recent orders</Heading>
                 <Lumeo.Text Size="sm" Color="muted">Sortable, paginated — powered by Lumeo.DataGrid.</Lumeo.Text>
             </Stack>
         </CardHeader>
         <CardContent>
-            <DataGrid TItem="Order" Items="_orders" PageSize="5" ShowPagination="true">
+            <DataGrid TItem="Order" Items="_orders" PageSize="5" ShowPagination="true" Striped="true" Hoverable="true">
                 <DataGridColumnDef TItem="Order" Title="Order" Field="Id" Sortable="true" />
                 <DataGridColumnDef TItem="Order" Title="Customer" Field="Customer" Sortable="true" />
                 <DataGridColumnDef TItem="Order" Title="Total" Field="Total" Sortable="true" Format="C0" />
-                <DataGridColumnDef TItem="Order" Title="Status" Field="Status" Sortable="true" />
+                <DataGridColumnDef TItem="Order" Title="Status" Field="Status" Sortable="true">
+                    <CellTemplate Context="o">
+                        <Badge Variant="@StatusVariant(o.Status)">@o.Status</Badge>
+                    </CellTemplate>
+                </DataGridColumnDef>
                 <DataGridColumnDef TItem="Order" Title="Date" Field="Date" Sortable="true" Format="yyyy-MM-dd" />
             </DataGrid>
         </CardContent>
@@ -57,6 +59,14 @@
         new("Customers", "832", "1.4%", false, LumeoIcons.Users),
         new("Growth", "18.9%", "4.7%", true, LumeoIcons.TrendingUp),
     ];
+
+    private static Badge.BadgeVariant StatusVariant(string status) => status switch
+    {
+        "Paid" => Badge.BadgeVariant.Success,
+        "Pending" => Badge.BadgeVariant.Warning,
+        "Refunded" => Badge.BadgeVariant.Destructive,
+        _ => Badge.BadgeVariant.Secondary,
+    };
 
     private record Order(int Id, string Customer, double Total, string Status, DateTime Date);
 

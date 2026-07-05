@@ -1,0 +1,117 @@
+@page "/"
+@inject HttpClient Http
+
+<PageTitle>Home — MyApp</PageTitle>
+
+<Stack Gap="6">
+    <Stack Gap="1">
+        <Heading Level="1" Size="2xl">Dashboard</Heading>
+        <Lumeo.Text Color="muted">Live data from the MyApp API — <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">GET /api/orders</code>.</Lumeo.Text>
+    </Stack>
+
+    <div class="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        @foreach (var kpi in Kpis())
+        {
+            <div class="rounded-xl border border-border/50 bg-card p-4">
+                <Flex Align="center" Justify="between" Class="mb-1">
+                    <Lumeo.Text Size="xs" Color="muted">@kpi.Label</Lumeo.Text>
+                    <SvgGlyph Svg="@kpi.Icon" class="h-3.5 w-3.5 text-primary" />
+                </Flex>
+                <div class="text-2xl font-bold tracking-tight text-foreground tabular-nums">@kpi.Value</div>
+            </div>
+        }
+    </div>
+
+    <Card>
+        <CardHeader>
+            <Stack Gap="1">
+                <Heading Level="2" Size="lg">Recent orders</Heading>
+                <Lumeo.Text Size="sm" Color="muted">Seeded in PostgreSQL, served by the API, rendered with Lumeo.DataGrid.</Lumeo.Text>
+            </Stack>
+        </CardHeader>
+        <CardContent>
+            @if (_error is not null)
+            {
+                <Alert Variant="Alert.AlertVariant.Destructive">
+                    <Flex Align="center" Gap="2">
+                        <SvgGlyph Svg="@(LumeoIcons.CircleAlert)" class="h-4 w-4 shrink-0" />
+                        <Stack Gap="0">
+                            <Lumeo.Text Size="sm" Weight="medium">Couldn't load orders</Lumeo.Text>
+                            <Lumeo.Text Size="sm">@_error</Lumeo.Text>
+                        </Stack>
+                    </Flex>
+                </Alert>
+            }
+            else
+            {
+                <DataGrid TItem="OrderDto" Items="_orders ?? []" IsLoading="_loading"
+                          PageSize="6" ShowPagination="true" Striped="true" Hoverable="true">
+                    <DataGridColumnDef TItem="OrderDto" Title="Order" Field="Id" Sortable="true" />
+                    <DataGridColumnDef TItem="OrderDto" Title="Customer" Field="Customer" Sortable="true" />
+                    <DataGridColumnDef TItem="OrderDto" Title="Total" Field="Total" Sortable="true" Format="C0" />
+                    <DataGridColumnDef TItem="OrderDto" Title="Status" Field="Status" Sortable="true">
+                        <CellTemplate Context="o">
+                            <Badge Variant="@StatusVariant(o.Status)">@o.Status</Badge>
+                        </CellTemplate>
+                    </DataGridColumnDef>
+                    <DataGridColumnDef TItem="OrderDto" Title="Date" Field="Date" Sortable="true" Format="yyyy-MM-dd" />
+                </DataGrid>
+            }
+        </CardContent>
+    </Card>
+</Stack>
+
+@code {
+    private OrderDto[]? _orders;
+    private bool _loading = true;
+    private string? _error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            _orders = await Http.GetFromJsonAsync<OrderDto[]>("api/orders");
+        }
+        catch (Exception)
+        {
+            _error = "The request failed. Make sure the API is running and you're signed in.";
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private record Kpi(string Label, string Value, IconSource Icon);
+
+    private Kpi[] Kpis()
+    {
+        if (_orders is null)
+            return
+            [
+                new("Revenue", "—", LumeoIcons.CreditCard),
+                new("Orders", "—", LumeoIcons.Package),
+                new("Customers", "—", LumeoIcons.Users),
+                new("Paid", "—", LumeoIcons.TrendingUp),
+            ];
+
+        var revenue = _orders.Sum(o => o.Total);
+        var customers = _orders.Select(o => o.Customer).Distinct().Count();
+        var paid = _orders.Count(o => o.Status == "Paid");
+        return
+        [
+            new("Revenue", revenue.ToString("C0"), LumeoIcons.CreditCard),
+            new("Orders", _orders.Length.ToString(), LumeoIcons.Package),
+            new("Customers", customers.ToString(), LumeoIcons.Users),
+            new("Paid", $"{paid}/{_orders.Length}", LumeoIcons.TrendingUp),
+        ];
+    }
+
+    private static Badge.BadgeVariant StatusVariant(string status) => status switch
+    {
+        "Paid" => Badge.BadgeVariant.Success,
+        "Pending" => Badge.BadgeVariant.Warning,
+        "Refunded" => Badge.BadgeVariant.Destructive,
+        _ => Badge.BadgeVariant.Secondary,
+    };
+}

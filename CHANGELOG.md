@@ -7,6 +7,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.1.0-preview.10] - 2026-07-05
+
+Templates, round two: the app starter grew up and got a full-stack sibling.
+
+### Added
+- **`dotnet new lumeo-fullstack`** — the batteries-included starter: a Blazor
+  WASM client plus an ASP.NET Core API with Identity (`MapIdentityApi`, real
+  e-mail confirmation), EF Core + PostgreSQL (auto-migrate + seed in dev),
+  Scalar OpenAPI UI at `/scalar`, SMTP wired to MailHog in dev, CORS/nginx
+  proxy, `/health`, a seeded sample endpoint feeding the dashboard grid,
+  docker-compose (postgres + mailhog + api + client) with `.env` ports and a
+  documented hybrid dev mode. The full journey is template-test-verified:
+  register -> confirmation mail in MailHog -> confirm -> login -> live grid.
+- **`lumeo-app --auth <demo|none|oidc>`** (default `demo`) — Microsoft-style
+  auth option: full login/register/forgot-password pages built from Lumeo's
+  auth blocks, CascadingAuthenticationState + redirect-to-login guards and a
+  signed-in user card with sign-out; `demo` uses a swappable localStorage
+  provider (the seam is documented), `oidc` wires
+  Microsoft.AspNetCore.Components.WebAssembly.Authentication with placeholder
+  config.
+- **`ThemeToggle.IncludeSystem`** — opt out of the three-way System cycle for
+  a binary Light/Dark toggle (an invisible System->Dark first click read as
+  a broken button in app shells).
+
+### Fixed
+- `lumeo-app` shell polish from hands-on review: sidebar ported to the
+  demo-grade rail (centered icon anchors, tooltips, clip animation), topbar
+  is a breadcrumb instead of duplicating the page title, brand row content
+  vertically centered (the SidebarHeader default is a column flex — the
+  centering axis was wrong), header lines align across rail and topbar, one
+  continuous background tone, the rail can no longer grow a scrollbar under
+  browser zoom/display scaling (overflow moved to the nav region only), and
+  the FocusOnNavigate heading outline is gone for good.
+
 ## [4.1.0-preview.9] - 2026-07-04
 
 The templates release: `dotnet new` is a real getting-started path now.

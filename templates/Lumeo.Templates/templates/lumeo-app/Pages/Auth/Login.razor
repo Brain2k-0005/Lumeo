@@ -1,0 +1,119 @@
+@page "/login"
+@layout AuthLayout
+@attribute [AllowAnonymous]
+@inject DemoAuthenticationStateProvider Auth
+@inject NavigationManager Nav
+@inject ToastService Toast
+
+<PageTitle>Sign in — MyApp</PageTitle>
+
+<Card Class="w-full max-w-md border-border/60 shadow-lg">
+    <CardContent Class="px-8 pt-10 pb-8">
+        <Stack Gap="6">
+            <Stack Gap="4" Class="items-center text-center">
+                <Flex Class="h-12 w-12 items-center justify-center rounded-[var(--radius-lg)] bg-primary text-primary-foreground shadow-sm">
+                    <SvgGlyph Svg="@(LumeoIcons.Sparkles)" class="h-6 w-6" />
+                </Flex>
+                <Stack Gap="1.5">
+                    <Heading Level="1" Class="text-2xl font-bold tracking-tight">Welcome back</Heading>
+                    <Lumeo.Text Color="muted" Size="sm">Sign in to your account to continue</Lumeo.Text>
+                </Stack>
+            </Stack>
+
+            @if (_error is not null)
+            {
+                <Alert Variant="Alert.AlertVariant.Destructive">
+                    <Flex Align="center" Gap="2">
+                        <SvgGlyph Svg="@(LumeoIcons.CircleAlert)" class="h-4 w-4 shrink-0" />
+                        <Lumeo.Text Size="sm">@_error</Lumeo.Text>
+                    </Flex>
+                </Alert>
+            }
+
+            <Stack Gap="4">
+                <Stack Gap="2">
+                    <Label for="login-email">Email</Label>
+                    <Lumeo.Input id="login-email" type="email" placeholder="you@example.com" @bind-Value="_email">
+                        <Prefix><SvgGlyph Svg="@(LumeoIcons.Mail)" class="h-4 w-4 text-muted-foreground" /></Prefix>
+                    </Lumeo.Input>
+                </Stack>
+
+                <Stack Gap="2">
+                    <Flex Align="center" Justify="between">
+                        <Label for="login-password">Password</Label>
+                        <Lumeo.Link Href="forgot-password" Class="text-xs text-primary hover:underline">Forgot password?</Lumeo.Link>
+                    </Flex>
+                    <PasswordInput @bind-Value="_password" Placeholder="At least 6 characters" />
+                </Stack>
+
+                <Flex Align="center" Gap="2">
+                    <Checkbox @bind-Checked="_remember" />
+                    <Label Class="text-sm font-normal cursor-pointer">Remember me for 30 days</Label>
+                </Flex>
+
+                <Button Class="w-full" IsLoading="@_loading" OnClick="HandleSignIn">
+                    @if (!_loading)
+                    {
+                        <SvgGlyph Svg="@(LumeoIcons.LogIn)" class="h-4 w-4" />
+                    }
+                    Sign in
+                </Button>
+            </Stack>
+
+            <div class="relative">
+                <div class="absolute inset-0 flex items-center"><Separator /></div>
+                <div class="relative flex justify-center text-xs uppercase">
+                    <Lumeo.Text As="span" Class="bg-card px-2 text-muted-foreground tracking-wider">Or continue with</Lumeo.Text>
+                </div>
+            </div>
+
+            <Grid Class="grid-cols-2 gap-3">
+                <Button Variant="Button.ButtonVariant.Outline" Class="w-full gap-2" OnClick="@(() => SocialDemo("Google"))">
+                    <SvgGlyph Svg="@(LumeoIcons.Globe)" class="h-4 w-4" />
+                    Google
+                </Button>
+                <Button Variant="Button.ButtonVariant.Outline" Class="w-full gap-2" OnClick="@(() => SocialDemo("GitHub"))">
+                    <SvgGlyph Svg="@(LumeoIcons.Github)" class="h-4 w-4" />
+                    GitHub
+                </Button>
+            </Grid>
+
+            <Lumeo.Text Size="sm" Color="muted" Align="center">
+                Don't have an account?
+                <Lumeo.Link Href="register" Class="text-primary hover:underline font-medium ml-1">Sign up</Lumeo.Link>
+            </Lumeo.Text>
+        </Stack>
+    </CardContent>
+</Card>
+
+@code {
+    [SupplyParameterFromQuery] private string? ReturnUrl { get; set; }
+
+    private string _email = string.Empty;
+    private string _password = string.Empty;
+    private bool _remember;
+    private bool _loading;
+    private string? _error;
+
+    private async Task HandleSignIn()
+    {
+        _error = null;
+        _loading = true;
+        // Small delay so the loading state is visible — swap for a real network call.
+        await Task.Delay(600);
+        var ok = await Auth.SignInAsync(_email, _password);
+        _loading = false;
+
+        if (!ok)
+        {
+            _error = "Enter any email and a password with at least 6 characters.";
+            return;
+        }
+
+        Toast.Success("Signed in", "Welcome back!");
+        Nav.NavigateTo(string.IsNullOrWhiteSpace(ReturnUrl) ? "" : ReturnUrl);
+    }
+
+    private void SocialDemo(string provider) =>
+        Toast.Info($"{provider} sign-in", "Social providers aren't wired in the demo — use email + password.");
+}

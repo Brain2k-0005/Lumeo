@@ -1,7 +1,8 @@
 # Lumeo.Templates
 
-`dotnet new` templates for [Lumeo](https://lumeo.nativ.sh) Blazor projects — one full app
-starter plus item scaffolds for pages, forms, and components.
+`dotnet new` templates for [Lumeo](https://lumeo.nativ.sh) Blazor projects — two app
+starters (a WASM client, and a batteries-included full stack) plus item scaffolds for pages,
+forms, and components.
 
 ## Install
 
@@ -9,12 +10,13 @@ starter plus item scaffolds for pages, forms, and components.
 dotnet new install Lumeo.Templates
 ```
 
-After install, `dotnet new list lumeo` lists all four templates. Remove them with
+After install, `dotnet new list lumeo` lists all five templates. Remove them with
 `dotnet new uninstall Lumeo.Templates`.
 
 | Template | Short name | Kind | What you get |
 |---|---|---|---|
 | Lumeo Blazor WASM App | `lumeo-app` | project | A styled, dark-mode-ready Blazor WebAssembly app |
+| Lumeo Full-Stack App | `lumeo-fullstack` | project | The WASM client + a real API (Identity + Postgres + email) |
 | Lumeo Page | `lumeo-page` | item | A `.razor` page with the standard layout |
 | Lumeo Form | `lumeo-form` | item | A validated form via the `[LumeoForm]` generator |
 | Lumeo Component | `lumeo-component` | item | A reusable component following the Lumeo contract |
@@ -30,6 +32,43 @@ dotnet run
 That's the whole setup. The app boots **styled and dark-mode-ready with zero manual steps** —
 `AddLumeo()` is wired, the prebuilt CSS/JS are linked from the NuGet package, and it ships a
 collapsible sidebar shell plus Dashboard, Form, and Settings example pages.
+
+### Authentication (`--auth`)
+
+Like the Microsoft "Individual Accounts" templates, `lumeo-app` scaffolds an auth story via a
+choice option — `dotnet new lumeo-app -n MyApp --auth <value>`:
+
+| `--auth` | What you get |
+|---|---|
+| `demo` *(default)* | A full auth UI — `/login`, `/register`, `/forgot-password` built from Lumeo's auth blocks in a full-screen auth layout — backed by an in-browser **localStorage** `AuthenticationStateProvider`. No backend: any email + any password ≥ 6 chars signs in. The whole app is protected (`[Authorize]` + `AuthorizeRouteView` + `RedirectToLogin`) and the sidebar footer shows the signed-in user with a Profile / Sign-out dropdown. |
+| `none` | No authentication — the original starter with public pages and a static sidebar user card. |
+| `oidc` | Real OIDC/OAuth wiring: `Microsoft.AspNetCore.Components.WebAssembly.Authentication` + `AddOidcAuthentication` + a `RemoteAuthenticatorView` route styled inside the same Lumeo auth layout. Configure your authority in `wwwroot/appsettings.json`. |
+
+The demo variant is the showcase path, and its one **swap seam** — the
+`AuthenticationStateProvider` — is documented in the generated project's `README.md` ("Demo
+auth — swap the provider"), with pointers to OIDC, an ASP.NET Core Identity API, and hosted
+providers (Auth0 / Entra).
+
+## Full-stack starter (`lumeo-fullstack`)
+
+Where `lumeo-app --auth demo` is a client with a **fake** backend, `lumeo-fullstack` is the
+**real thing** — the same polished Lumeo shell plus an actual API, database, and email:
+
+```bash
+dotnet new lumeo-fullstack -n MyApp
+cd MyApp
+docker compose up -d --build      # app :8081 · API/Scalar :8080 · MailHog :8025
+```
+
+| | |
+|---|---|
+| **API** (`src/MyApp.Api`) | ASP.NET Core Identity via **`MapIdentityApi`** (register / login / refresh / confirm-email / 2FA), **EF Core + PostgreSQL** (Npgsql, auto-migrated on startup in Development), a **Scalar** OpenAPI reference at `/scalar`, an `IEmailSender` sending real SMTP to **MailHog**, CORS, `/health`, and a seeded `/api/orders` endpoint. Email confirmation is **required**, so sign-up is real end to end. |
+| **Client** (`src/MyApp.Client`) | The `lumeo-app` shell, but auth talks to the **real** Identity endpoints (bearer token + silent refresh), register triggers a confirmation email + a "check your inbox" state, login is blocked until confirmed, and the dashboard grid loads **live** `/api/orders`. |
+| **Ops** | `docker-compose.yml` (Postgres + MailHog + API + nginx-served client) and a `.env` for all ports/credentials. Ships a **hybrid** dev loop too: `docker compose up -d postgres mailhog` then `dotnet run` both apps. |
+
+Design picks (all documented in the generated `README.md`): **bearer tokens** over cookies
+for the cleanest cross-origin WASM flow, **nginx proxy** (same-origin) in Docker vs **CORS**
+in hybrid, and the same single-`AuthenticationStateProvider` swap seam as `lumeo-app`.
 
 ## Item templates
 
