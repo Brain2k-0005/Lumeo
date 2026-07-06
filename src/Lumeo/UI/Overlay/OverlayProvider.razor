@@ -143,10 +143,12 @@
     // Every service-opened overlay now plays an exit animation on close: the
     // provider keeps the instance mounted (Open=false, which drives the hosted
     // content's `_exiting` latch) for the exit window, then unmounts it. Each
-    // window mirrors the corresponding content's longest exit keyframe plus a
-    // small buffer so the animation + the final unmount don't race:
-    //   Sheet  — slide-out 280ms   Drawer — slide-out 280ms
-    //   Dialog — zoom-out 200ms    AlertDialog — zoom-out 200ms
+    // window covers the LONGEST exit keyframe for that type (panel or backdrop,
+    // whichever is slower) plus a small buffer so the animation and the final
+    // unmount don't race:
+    //   Sheet/Drawer  — slide-out 300ms (+ 20ms buffer → 320ms)
+    //   Dialog/AlertDialog — zoom-out 150ms (+ 90ms buffer → 240ms; backdrop
+    //     also 150ms after fade-out was made symmetric with fade-in)
     // (SheetContent already animated its exit before this; Dialog/Drawer/
     // AlertDialogContent gained the same opt-in via PlayExitAnimation.)
     private static int ExitWindowMs(OverlayType type) => type switch

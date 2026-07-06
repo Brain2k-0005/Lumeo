@@ -28,7 +28,7 @@ else if (Context.IsOpen || _exiting)
         @* Backdrop — theme-aware --color-overlay-backdrop token (was a hardcoded
            bg-black/80 that ignored the token, unlike Sheet/Dialog). #218. Fades
            out alongside the panel while exiting (service-opened only). *@
-        <div class="@BackdropClass" style="background-color:var(--color-overlay-backdrop);z-index:@BackdropZ" @onclick="HandleBackdropClick"></div>
+        <div class="@BackdropClass" style="@BackdropStyle" @onclick="HandleBackdropClick"></div>
         @* @onkeydown:stopPropagation — keys handled inside this modal must not
            bubble into ancestor overlays (an Escape would cascade-close them).
            See DialogContent for the full rationale. aria-modal drops to false
@@ -102,16 +102,27 @@ else if (Context.IsOpen || _exiting)
     private bool _exiting;
     private readonly DelayedDispatch _exitDispatch = new();
 
-    // Slide-out matches the 0.25s slide-in with a small buffer; fade-out is the
-    // 0.2s tween. 0 when no exit animation applies (declarative default, snap
-    // mode, or Animation=None) → immediate unmount on close.
+    // Slide-out is 0.3s (mirrors slide-in 0.3s); fade-out is 0.15s (mirrors
+    // fade-in 0.15s) — enter/exit pairs are now symmetric. Values include a
+    // small buffer over the CSS duration so the timer and the keyframe don't
+    // race on a loaded thread pool. 0 when no exit animation applies
+    // (declarative default, snap mode, or Animation=None) → immediate unmount.
     private int ExitDurationMs => (PlayExitAnimation && !UsesSnapPoints)
-        ? (Animation switch { DrawerAnimation.Slide => 280, DrawerAnimation.Fade => 220, _ => 0 })
+        ? (Animation switch { DrawerAnimation.Slide => 320, DrawerAnimation.Fade => 170, _ => 0 })
         : 0;
 
     private string BackdropClass => _exiting
         ? "fixed inset-0 animate-fade-out pointer-events-auto"
         : "fixed inset-0 animate-fade-in pointer-events-auto";
+
+    // Couple the backdrop exit duration to the panel's slide duration (300ms)
+    // when the Slide animation is active — identical rationale to SheetContent.
+    // Snap mode is excluded (the JS gesture owns the panel transform; no CSS
+    // slide-out plays, so the backdrop uses its default 0.15s fade-out).
+    private string BackdropStyle => (_exiting && Animation == DrawerAnimation.Slide && !UsesSnapPoints)
+        ? $"background-color:var(--color-overlay-backdrop);z-index:{BackdropZ};animation-duration:300ms"
+        : $"background-color:var(--color-overlay-backdrop);z-index:{BackdropZ}";
+
     // Slide-animation transform trap is fixed via JS interop:
     // Interop.AttachOverlaySlideEnd registers a native animationend listener
     // that filters strictly on slide-in-from-* AND on event.target === this

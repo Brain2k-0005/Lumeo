@@ -90,4 +90,42 @@ public class SheetExitAnimationTests : IAsyncLifetime
         // No exit phase for Animation=None — the panel is gone on the next render.
         Assert.Empty(cut.FindAll("[role='dialog']"));
     }
+
+    /// <summary>
+    /// Slide exit: backdrop must carry animation-duration:300ms so it finishes
+    /// in sync with the 0.3s slide-out panel. A future CSS duration drift will
+    /// fail here before it reaches the browser.
+    /// </summary>
+    [Fact]
+    public void Slide_Exit_Backdrop_Carries_300ms_Duration()
+    {
+        var cut = RenderSheet(open: true, L.Side.Right, L.SheetContent.SheetAnimation.Slide);
+        cut.Render(p => p.Add(s => s.Open, false));
+
+        cut.WaitForAssertion(() =>
+        {
+            // The backdrop is the sibling div with animate-fade-out.
+            var backdrop = cut.Find(".animate-fade-out");
+            var style = backdrop.GetAttribute("style") ?? "";
+            Assert.Contains("animation-duration:300ms", style);
+        });
+    }
+
+    /// <summary>
+    /// Fade exit: backdrop uses animate-fade-out (0.15s) to match the panel's
+    /// own animate-fade-out — no inline duration override needed.
+    /// </summary>
+    [Fact]
+    public void Fade_Exit_Backdrop_Has_No_Duration_Override()
+    {
+        var cut = RenderSheet(open: true, L.Side.Right, L.SheetContent.SheetAnimation.Fade);
+        cut.Render(p => p.Add(s => s.Open, false));
+
+        cut.WaitForAssertion(() =>
+        {
+            var backdrop = cut.Find(".animate-fade-out");
+            var style = backdrop.GetAttribute("style") ?? "";
+            Assert.DoesNotContain("animation-duration", style);
+        });
+    }
 }

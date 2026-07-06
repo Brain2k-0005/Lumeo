@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.1.0-preview.14] - 2026-07-06
+
+### Fixed
+- **Overlay exit: backdrop and panel now finish in sync** (consumer retest of
+  preview.13: "the backdrop is gone before the sheet"). The exit keyframe
+  durations were mismatched (fade-out 0.2s vs slide-out 0.25s vs zoom-out
+  0.15s), so the backdrop hit opacity 0 while a sheet was still sliding.
+  Durations are now unified to mirror their enter counterparts (fade 0.15s,
+  slide 0.3s, zoom 0.15s) and the slide-type backdrop carries a matching
+  300ms override — every overlay type closes with backdrop and panel ending
+  within the same frame (0ms gap by construction). Component exit timers and
+  the provider's removal windows were re-buffered accordingly; eight new
+  regression tests pin the per-type duration coupling so future drift fails.
+
 ## [4.1.0-preview.13] - 2026-07-06
 
 ### Fixed

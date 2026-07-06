@@ -20,7 +20,7 @@ else if (Context.IsOpen || _exiting)
     <div class="fixed inset-0 pointer-events-none" style="z-index:@BackdropZ">
         @* Backdrop — theme-aware --color-overlay-backdrop token via inline style
            (see DialogContent). Fades out alongside the panel while exiting. *@
-        <div class="@BackdropClass" style="background-color:var(--color-overlay-backdrop);z-index:@BackdropZ" @onclick="HandleBackdropClick"></div>
+        <div class="@BackdropClass" style="@BackdropStyle" @onclick="HandleBackdropClick"></div>
         @* @onkeydown:stopPropagation — keys handled inside this modal must not
            bubble into ancestor overlays (an Escape would cascade-close them).
            See DialogContent for the full rationale. *@
@@ -126,12 +126,14 @@ else if (Context.IsOpen || _exiting)
     // every service-opened Sheet (no description child) hits.
     private string? DescribedBy => Context.DescriptionRegistry.HasDescription ? Context.DescriptionId : null;
 
-    // Slide-out matches the slide-in 0.3s window with a little buffer; fade-out
-    // is the 0.2s opacity tween. None unmounts immediately (no exit phase).
+    // Slide-out is 0.3s (mirrors slide-in 0.3s); fade-out is 0.15s (mirrors
+    // fade-in 0.15s). Both are symmetric enter/exit pairs. None unmounts
+    // immediately (no exit phase). Values include a small buffer over the CSS
+    // duration so the timer and the keyframe don't race on a loaded thread pool.
     private int ExitDurationMs => Animation switch
     {
-        SheetAnimation.Slide => 280,
-        SheetAnimation.Fade => 220,
+        SheetAnimation.Slide => 320,
+        SheetAnimation.Fade => 170,
         _ => 0,
     };
 
@@ -236,6 +238,16 @@ else if (Context.IsOpen || _exiting)
     private string BackdropClass => _exiting
         ? "fixed inset-0 animate-fade-out pointer-events-auto"
         : "fixed inset-0 animate-fade-in pointer-events-auto";
+
+    // When exiting with a slide animation the backdrop must fade for the same
+    // 300ms that the panel slides, so neither finishes early and leaves the
+    // other running solo. animate-fade-out is 0.15s by default (matching
+    // fade-in), so we override animation-duration inline for this one case.
+    // Fade and None modes don't need an override: Fade uses animate-fade-out
+    // directly (same 0.15s for both), None has no exit phase.
+    private string BackdropStyle => _exiting && Animation == SheetAnimation.Slide
+        ? $"background-color:var(--color-overlay-backdrop);z-index:{BackdropZ};animation-duration:300ms"
+        : $"background-color:var(--color-overlay-backdrop);z-index:{BackdropZ}";
 
     // Kept for backward-compat with tests / consumers that read SideClasses.
     private string SideClasses => $"{PositionClasses} {EnterAnimationClass}".Trim();
