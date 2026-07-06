@@ -8,7 +8,7 @@
     {
         case OverlayType.Dialog:
             <Dialog @key="overlay.Id" Open="@IsOverlayOpen(overlay.Id)" OpenChanged="(bool val) => OnOverlayClosed(val, overlay.Id)">
-                <DialogContent ZIndex="@overlay.ZIndex" Size="@EffectiveDialogSize(overlay.Options)" PreventClose="@overlay.Options.PreventClose" ShowCloseButton="@overlay.Options.ShowCloseButton" Class="@EffectiveClass(overlay.Options)">
+                <DialogContent ZIndex="@overlay.ZIndex" Size="@EffectiveDialogSize(overlay.Options)" PreventClose="@overlay.Options.PreventClose" ShowCloseButton="@overlay.Options.ShowCloseButton" PlayExitAnimation="true" Class="@EffectiveClass(overlay.Options)">
                     @if (overlay.Title is not null)
                     {
                         <DialogHeader>
@@ -65,7 +65,7 @@
 
         case OverlayType.Drawer:
             <Drawer @key="overlay.Id" Open="@IsOverlayOpen(overlay.Id)" OpenChanged="(bool val) => OnOverlayClosed(val, overlay.Id)">
-                <DrawerContent ZIndex="@overlay.ZIndex" PreventClose="@overlay.Options.PreventClose" Class="@EffectiveClass(overlay.Options)">
+                <DrawerContent ZIndex="@overlay.ZIndex" PreventClose="@overlay.Options.PreventClose" PlayExitAnimation="true" Class="@EffectiveClass(overlay.Options)">
                     @if (overlay.Title is not null)
                     {
                         <DrawerHeader>
@@ -86,8 +86,8 @@
                OverlayService.Cancel so ShowAlertDialogAsync resolves. Without
                it, the AlertDialog flips its local Open=false but the awaiting
                caller (e.g. ConfirmButton) blocks forever. *@
-            <AlertDialog @key="overlay.Id" Open="true" OpenChanged="(bool val) => OnOverlayClosed(val, overlay.Id)">
-                <AlertDialogContent ZIndex="@overlay.ZIndex">
+            <AlertDialog @key="overlay.Id" Open="@IsOverlayOpen(overlay.Id)" OpenChanged="(bool val) => OnOverlayClosed(val, overlay.Id)">
+                <AlertDialogContent ZIndex="@overlay.ZIndex" PlayExitAnimation="true">
                     <AlertDialogHeader>
                         <AlertDialogTitle>@(overlay.AlertOptions?.Title ?? "Are you sure?")</AlertDialogTitle>
                         @if (overlay.AlertOptions?.Description is not null)
@@ -119,11 +119,12 @@
     private readonly List<OverlayInstance> _overlays = new();
     private readonly Dictionary<string, OverlayReference> _referenceCache = new();
 
-    // Ids whose overlay is currently playing its slide-out animation. While an id
-    // is in this set the cascaded `Open` renders false (true→false), which is what
-    // SheetContent's `_exiting` machinery latches on to run the slide-out instead
-    // of vanishing. The instance stays in `_overlays` until the exit window
-    // elapses, then `FinishClose` drops it. (Battle #82.)
+    // Ids whose overlay is currently playing its exit animation. While an id is in
+    // this set the cascaded `Open` renders false (true→false), which is what the
+    // hosted content's `_exiting` machinery (SheetContent, and now Dialog/Drawer/
+    // AlertDialogContent via PlayExitAnimation) latches on to run the slide/zoom
+    // out instead of vanishing. The instance stays in `_overlays` until the exit
+    // window elapses, then `FinishClose` drops it. (Battle #82, extended.)
     private readonly HashSet<string> _closing = new();
 
     // Per-id deferred-removal timers for the exit-animation window. Keyed by id so
@@ -139,11 +140,23 @@
     // close-dispatched as both Ok and Cancel. (Battle #180.)
     private readonly HashSet<string> _terminated = new();
 
-    // Sheet is the only overlay type whose content runs an exit (slide-out)
-    // animation, so it is the only one we keep mounted (Open=false) for the exit
-    // window before unmounting. Mirrors SheetContent's longest exit (Slide=280ms)
-    // with a small buffer so the keyframe + the final unmount don't race.
-    private const int SheetExitDurationMs = 320;
+    // Every service-opened overlay now plays an exit animation on close: the
+    // provider keeps the instance mounted (Open=false, which drives the hosted
+    // content's `_exiting` latch) for the exit window, then unmounts it. Each
+    // window mirrors the corresponding content's longest exit keyframe plus a
+    // small buffer so the animation + the final unmount don't race:
+    //   Sheet  — slide-out 280ms   Drawer — slide-out 280ms
+    //   Dialog — zoom-out 200ms    AlertDialog — zoom-out 200ms
+    // (SheetContent already animated its exit before this; Dialog/Drawer/
+    // AlertDialogContent gained the same opt-in via PlayExitAnimation.)
+    private static int ExitWindowMs(OverlayType type) => type switch
+    {
+        OverlayType.Sheet => 320,
+        OverlayType.Drawer => 320,
+        OverlayType.Dialog => 240,
+        OverlayType.AlertDialog => 240,
+        _ => 0,
+    };
 
     private bool _disposed;
 
@@ -279,18 +292,20 @@
         else
             overlay.Tcs.TrySetResult(OverlayResult.Ok(result));
 
-        // Sheets play a slide-out: flip the cascaded Open to false (true→false so
-        // SheetContent._exiting runs) and unmount only after the exit window.
-        // Every other overlay type has no exit animation, so unmount at once —
-        // preserving the previous behaviour exactly. (#82.)
-        if (overlay.Type == OverlayType.Sheet && SheetExitDurationMs > 0)
+        // Every overlay type now plays an exit animation: flip the cascaded Open
+        // to false (true→false drives the hosted content's `_exiting` latch) and
+        // unmount only after the exit window. A missed animationend can never leak
+        // a zombie entry — the DelayedDispatch fires FinishClose unconditionally
+        // when the window elapses (safety-timeout fallback). (#82, extended.)
+        var exitMs = ExitWindowMs(overlay.Type);
+        if (exitMs > 0)
         {
             _closing.Add(id);
             StateHasChanged();
 
             var dispatch = new DelayedDispatch();
             _exitDispatchers[id] = dispatch;
-            dispatch.Schedule(SheetExitDurationMs, () => InvokeAsync(() => FinishClose(id)));
+            dispatch.Schedule(exitMs, () => InvokeAsync(() => FinishClose(id)));
         }
         else
         {

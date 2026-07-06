@@ -17,7 +17,7 @@
        Pass children through to avoid a second backdrop + panel + swipe handler. *@
     @ChildContent
 }
-else if (Context.IsOpen)
+else if (Context.IsOpen || _exiting)
 {
     @* pointer-events-none wrapper + -auto on backdrop/panel: the full-viewport
        wrapper must never be a hit-target itself. A drawer panel that wedges
@@ -26,12 +26,14 @@ else if (Context.IsOpen)
        first can no longer be closed" failure shape (B4 hardening). *@
     <div class="fixed inset-0 pointer-events-none" style="z-index:@BackdropZ">
         @* Backdrop — theme-aware --color-overlay-backdrop token (was a hardcoded
-           bg-black/80 that ignored the token, unlike Sheet/Dialog). #218 *@
-        <div class="fixed inset-0 animate-fade-in pointer-events-auto" style="background-color:var(--color-overlay-backdrop);z-index:@BackdropZ" @onclick="HandleBackdropClick"></div>
+           bg-black/80 that ignored the token, unlike Sheet/Dialog). #218. Fades
+           out alongside the panel while exiting (service-opened only). *@
+        <div class="@BackdropClass" style="background-color:var(--color-overlay-backdrop);z-index:@BackdropZ" @onclick="HandleBackdropClick"></div>
         @* @onkeydown:stopPropagation — keys handled inside this modal must not
            bubble into ancestor overlays (an Escape would cascade-close them).
-           See DialogContent for the full rationale. *@
-        <div id="@_contentId" class="@CssClass" style="z-index:@ContentZ" role="dialog" aria-modal="true" aria-labelledby="@Context.TitleId" aria-describedby="@DescribedBy" @onkeydown="HandleKeyDown" @onkeydown:stopPropagation tabindex="-1" @attributes="AdditionalAttributes">
+           See DialogContent for the full rationale. aria-modal drops to false
+           while exiting (affordances already torn down — mirrors SheetContent #185). *@
+        <div id="@_contentId" class="@CssClass" style="z-index:@ContentZ" role="dialog" aria-modal="@(Context.IsOpen ? "true" : "false")" aria-labelledby="@Context.TitleId" aria-describedby="@DescribedBy" @onkeydown="HandleKeyDown" @onkeydown:stopPropagation tabindex="-1" @attributes="AdditionalAttributes">
             @if (ShowDragHandle)
             {
                 <div class="mx-auto mt-4 h-2 w-[100px] rounded-full bg-muted"></div>
@@ -72,6 +74,12 @@ else if (Context.IsOpen)
     [Parameter] public EventCallback<int> ActiveSnapPointChanged { get; set; }
 
     [Parameter] public string? Class { get; set; }
+    /// <summary>When <c>true</c>, closing keeps the panel mounted for a slide/fade
+    /// out before unmounting instead of vanishing instantly. Set by
+    /// <see cref="OverlayProvider"/> for service-opened drawers. Defaults to
+    /// <c>false</c> so declarative usage is unchanged. Ignored in snap-point mode
+    /// (the JS gesture owns the transform).</summary>
+    [Parameter] public bool PlayExitAnimation { get; set; }
     /// <summary>Backdrop z-index. Content sits at <c>ZIndex + 1</c>. Defaults
     /// to <see cref="OverlayService.BaseZIndex"/>; <see cref="OverlayProvider"/>
     /// supplies an incrementing value per nested overlay.</summary>
@@ -80,6 +88,21 @@ else if (Context.IsOpen)
 
     private readonly string _contentId = LumeoIds.New("drawer");
     private bool _wasOpen;
+    // Exit-animation state — see DialogContent / SheetContent. Only set when
+    // PlayExitAnimation is true (service-opened drawers) and not in snap mode.
+    private bool _exiting;
+    private readonly DelayedDispatch _exitDispatch = new();
+
+    // Slide-out matches the 0.25s slide-in with a small buffer; fade-out is the
+    // 0.2s tween. 0 when no exit animation applies (declarative default, snap
+    // mode, or Animation=None) → immediate unmount on close.
+    private int ExitDurationMs => (PlayExitAnimation && !UsesSnapPoints)
+        ? (Animation switch { DrawerAnimation.Slide => 280, DrawerAnimation.Fade => 220, _ => 0 })
+        : 0;
+
+    private string BackdropClass => _exiting
+        ? "fixed inset-0 animate-fade-out pointer-events-auto"
+        : "fixed inset-0 animate-fade-in pointer-events-auto";
     // Slide-animation transform trap is fixed via JS interop:
     // Interop.AttachOverlaySlideEnd registers a native animationend listener
     // that filters strictly on slide-in-from-* AND on event.target === this
@@ -138,8 +161,11 @@ else if (Context.IsOpen)
     };
 
     // Snap mode: the JS gesture owns the transform (slide-in + resting offset),
-    // so the CSS slide-in keyframe is suppressed to avoid fighting it.
-    private string AnimationClass => UsesSnapPoints ? "" : Animation switch
+    // so the CSS slide keyframe is suppressed to avoid fighting it. While exiting
+    // (service-opened close) the panel slides/fades back out toward its edge.
+    private string AnimationClass => UsesSnapPoints ? "" : (_exiting ? ExitAnimationClass : EnterAnimationClass);
+
+    private string EnterAnimationClass => Animation switch
     {
         DrawerAnimation.None => "",
         DrawerAnimation.Fade => "animate-fade-in",
@@ -150,6 +176,21 @@ else if (Context.IsOpen)
             Lumeo.Side.Bottom => "animate-slide-in-from-bottom",
             Lumeo.Side.Left => "animate-slide-in-from-left",
             _ => "animate-slide-in-from-bottom"
+        },
+        _ => ""
+    };
+
+    private string ExitAnimationClass => Animation switch
+    {
+        DrawerAnimation.None => "",
+        DrawerAnimation.Fade => "animate-fade-out",
+        DrawerAnimation.Slide => Side switch
+        {
+            Lumeo.Side.Top => "animate-slide-out-to-top",
+            Lumeo.Side.Right => "animate-slide-out-to-right",
+            Lumeo.Side.Bottom => "animate-slide-out-to-bottom",
+            Lumeo.Side.Left => "animate-slide-out-to-left",
+            _ => "animate-slide-out-to-bottom"
         },
         _ => ""
     };
@@ -192,6 +233,12 @@ else if (Context.IsOpen)
 
         if (Context.IsOpen && !_wasOpen)
         {
+            // Re-opened mid-exit: cancel the pending unmount so the panel stays.
+            if (_exiting)
+            {
+                _exitDispatch.Cancel();
+                _exiting = false;
+            }
             await Interop.LockScroll();
             await Interop.SetupFocusTrap(_contentId);
             // Same animationend cleanup as SheetContent — bypasses Blazor
@@ -206,12 +253,26 @@ else if (Context.IsOpen)
         }
         else if (!Context.IsOpen && _wasOpen)
         {
+            // Close: tear down scroll-lock / focus-trap / gesture immediately, but
+            // keep the panel mounted for the slide/fade-out when an exit animation
+            // was requested, then unmount when it finishes.
             await Cleanup();
             _wasOpen = false;
+
+            if (ExitDurationMs > 0)
+            {
+                _exitDispatch.Schedule(ExitDurationMs, () => InvokeAsync(() =>
+                {
+                    _exiting = false;
+                    StateHasChanged();
+                }));
+            }
         }
     }
 
-    private Task HandleBackdropClick() => PreventClose ? Task.CompletedTask : Dismiss("outside");
+    // Inert during the exit phase (Context.IsOpen == false, panel only kept
+    // mounted for the animation): a stray backdrop click must not re-enter dismiss.
+    private Task HandleBackdropClick() => !Context.IsOpen || PreventClose ? Task.CompletedTask : Dismiss("outside");
 
     private Task HandleSwipe() => Dismiss("swipe");
 
@@ -277,7 +338,23 @@ else if (Context.IsOpen)
 
     protected override async Task OnParametersSetAsync()
     {
-        if (!_wasOpen) return;
+        // Flip _exiting before the close render commits (mirrors DialogContent /
+        // SheetContent) so the mount gate keeps the panel for the slide/fade-out.
+        if (!Context.IsOpen && _wasOpen && ExitDurationMs > 0)
+            _exiting = true;
+
+        // Re-opened mid-exit: clear the latch so the enter class paints again.
+        if (Context.IsOpen && _exiting)
+        {
+            _exitDispatch.Cancel();
+            _exiting = false;
+        }
+
+        // Below is gesture reconciliation, which only applies while the drawer is
+        // actually open; skip it during the exit phase (Context.IsOpen == false,
+        // panel only kept mounted for the animation — Cleanup already unwired the
+        // gesture in the close branch of OnAfterRenderAsync).
+        if (!_wasOpen || !Context.IsOpen) return;
 
         // SnapPoints/Side changed while open → the gesture mode flipped (e.g.
         // empty→populated SnapPoints); re-register so the right JS is attached.
@@ -313,7 +390,7 @@ else if (Context.IsOpen)
 
     private async Task HandleKeyDown(KeyboardEventArgs e)
     {
-        if (e.Key == "Escape" && !PreventClose) await Dismiss("escape");
+        if (e.Key == "Escape" && Context.IsOpen && !PreventClose) await Dismiss("escape");
     }
 
     private Task Dismiss(string reason) => Context.TryDismiss(reason);
@@ -331,6 +408,7 @@ else if (Context.IsOpen)
 
     public async ValueTask DisposeAsync()
     {
+        _exitDispatch.Dispose();
         if (_wasOpen) await Cleanup();
     }
 

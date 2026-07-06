@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.1.0-preview.12] - 2026-07-06
+
+### Fixed
+- **Service-opened Dialog, Drawer and AlertDialog had no exit animation
+  (B11)**: closing one (X button, backdrop click, Escape, or a programmatic
+  `Close`/`Cancel`) removed the backdrop and panel in the same DOM mutation
+  ~35–50 ms after the click — they vanished instantly while a declarative
+  Sheet already slid out. `OverlayProvider` now defers every overlay's
+  unmount through the same mechanism it already used for Sheets: on close it
+  flips the hosted content's `Open` to `false`, the content plays its exit
+  (panel zoom-out/slide-out + backdrop fade-out, in parallel), and the entry
+  is removed only after the exit window (a `DelayedDispatch` safety-timeout, so
+  a missed `animationend` can never leak a zombie overlay). `DialogContent`,
+  `DrawerContent` and `AlertDialogContent` gained an opt-in `PlayExitAnimation`
+  parameter (set by the provider) mirroring `SheetContent`'s exit machinery;
+  declarative usage is unchanged (default `false` → immediate unmount).
+  Browser-verified: exit classes now apply and DOM removal lands ~240–330 ms
+  after the click (was ~35–50 ms with no class), backdrop fades while the panel
+  leaves, and a rapid open→close→reopen leaves no zombie backdrop or double
+  panel. The awaiting `Show*Async` task still resolves immediately on
+  close-intent — the exit is purely visual.
+
+### Added
+- **`DialogContent.PlayExitAnimation` / `DrawerContent.PlayExitAnimation` /
+  `AlertDialogContent.PlayExitAnimation`** (default `false`) — when `true`, the
+  panel stays mounted for a zoom-out / slide-out (with the backdrop fading in
+  parallel) before unmounting, instead of vanishing instantly. Set
+  automatically by `OverlayService`-driven overlays; declarative consumers can
+  opt in for the same dismissal animation. Backed by a new `animate-zoom-out`
+  keyframe (the close counterpart to `animate-zoom-in`, reduced-motion aware).
+
 ## [4.1.0-preview.11] - 2026-07-06
 
 Device-testing feedback wave.

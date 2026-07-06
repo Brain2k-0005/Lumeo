@@ -8,7 +8,7 @@
        Pass children through to avoid a second backdrop + panel. *@
     @ChildContent
 }
-else if (Context.IsOpen)
+else if (Context.IsOpen || _exiting)
 {
     @* pointer-events-none on the full-viewport wrapper + pointer-events-auto on
        backdrop/panel: the wrapper itself must never be a hit-target. If a panel
@@ -21,8 +21,10 @@ else if (Context.IsOpen)
            CSS variable (defined + light/dark-swapped in lumeo.css) directly via
            inline style rather than a Tailwind utility, so it resolves for every
            consumer of the pre-built bundle without depending on the token class
-           being safelisted (same approach as Tour's SVG scrim). *@
-        <div class="fixed inset-0 animate-fade-in pointer-events-auto" style="background-color:var(--color-overlay-backdrop);z-index:@BackdropZ" @onclick="HandleBackdropClick"></div>
+           being safelisted (same approach as Tour's SVG scrim). Fades out
+           alongside the panel while exiting (service-opened dialogs only —
+           see PlayExitAnimation). *@
+        <div class="@BackdropClass" style="background-color:var(--color-overlay-backdrop);z-index:@BackdropZ" @onclick="HandleBackdropClick"></div>
         <!-- Content -->
         @* @onkeydown:stopPropagation — a modal surface owns the keys pressed
            inside it. Nested overlays render INSIDE this div, so their keydown
@@ -33,7 +35,11 @@ else if (Context.IsOpen)
            boundary), which is safe for a modal: descendants still receive
            their events first — propagation is only cut once it reaches this
            div — and nothing outside an open modal should react to its keys. *@
-        <div id="@_contentId" class="@CssClass" style="z-index:@ContentZ" role="dialog" aria-modal="true" aria-labelledby="@Context.TitleId" aria-describedby="@DescribedBy" @onkeydown="HandleKeyDown" @onkeydown:stopPropagation tabindex="-1" @attributes="AdditionalAttributes">
+        @* While exiting (Context.IsOpen == false, panel kept mounted for the
+           zoom-out), the focus trap + scroll lock are already torn down, so the
+           panel is no longer modal — advertise aria-modal="false" so ARIA matches
+           the live behaviour (mirrors SheetContent #185). *@
+        <div id="@_contentId" class="@CssClass" style="z-index:@ContentZ" role="dialog" aria-modal="@(Context.IsOpen ? "true" : "false")" aria-labelledby="@Context.TitleId" aria-describedby="@DescribedBy" @onkeydown="HandleKeyDown" @onkeydown:stopPropagation tabindex="-1" @attributes="AdditionalAttributes">
             @if (Scrollable)
             {
                 @* overflow-x-hidden: a child with the -mx-1 focus-ring gutter
@@ -80,6 +86,13 @@ else if (Context.IsOpen)
     [Parameter] public bool? ShowCloseButton { get; set; }
     [Parameter] public DialogSize Size { get; set; } = DialogSize.Default;
     [Parameter] public bool Scrollable { get; set; }
+    /// <summary>When <c>true</c>, closing the dialog keeps the panel mounted for a
+    /// brief zoom-out (and backdrop fade-out) before unmounting, instead of
+    /// vanishing instantly. Set by <see cref="OverlayProvider"/> for
+    /// service-opened dialogs so a programmatic close animates out the same way a
+    /// declarative Sheet already does. Defaults to <c>false</c> so declarative
+    /// <c>&lt;DialogContent&gt;</c> usage is unchanged (immediate unmount on close).</summary>
+    [Parameter] public bool PlayExitAnimation { get; set; }
     [Parameter] public string? Class { get; set; }
     /// <summary>
     /// Backdrop z-index. Content sits at <c>ZIndex + 1</c>. Defaults to
@@ -92,9 +105,29 @@ else if (Context.IsOpen)
 
     private readonly string _contentId = LumeoIds.New("dialog");
     private bool _wasOpen;
+    // Exit-animation state: true between the close request and the moment the
+    // zoom-out finishes, keeping the panel mounted so the user sees it leave
+    // instead of vanishing. Only ever set when PlayExitAnimation is true
+    // (service-opened dialogs). Driven by _exitDispatch.
+    private bool _exiting;
+    private readonly Lumeo.Services.DelayedDispatch _exitDispatch = new();
+
+    // Zoom-out matches the 0.15s zoom-in with a small buffer so the keyframe and
+    // the final unmount don't race. 0 when no exit animation is requested — the
+    // dialog then unmounts immediately on close (declarative default).
+    private int ExitDurationMs => PlayExitAnimation ? 200 : 0;
 
     private int BackdropZ => ZIndex;
     private int ContentZ => ZIndex + 1;
+
+    // Backdrop fades in on open, fades out while the panel exits.
+    private string BackdropClass => _exiting
+        ? "fixed inset-0 animate-fade-out pointer-events-auto"
+        : "fixed inset-0 animate-fade-in pointer-events-auto";
+
+    // Enter counterpart is animate-zoom-in (baked into CssClass); on exit the
+    // panel zooms back out toward its dismissed state.
+    private string AnimationClass => _exiting ? "animate-zoom-out" : "animate-zoom-in";
 
     // Only reference the description id when a <DialogDescription> was actually
     // rendered; otherwise aria-describedby would dangle to a missing element
@@ -112,7 +145,28 @@ else if (Context.IsOpen)
         _ => "max-w-lg"
     };
 
-    private string CssClass => Cx.Merge("relative grid w-full pointer-events-auto", SizeClass, "gap-4 bg-background p-6 shadow-lg animate-zoom-in sm:rounded-lg", Class);
+    private string CssClass => Cx.Merge("relative grid w-full pointer-events-auto", SizeClass, "gap-4 bg-background p-6 shadow-lg sm:rounded-lg", AnimationClass, Class);
+
+    protected override void OnParametersSet()
+    {
+        if (Shell is not null) return;
+        // Flip _exiting BEFORE the close render commits (mirrors SheetContent):
+        // the mount gate (Context.IsOpen || _exiting) is evaluated during render,
+        // so the flag must already be true on the close pass or the panel is
+        // dropped before it can animate out. OnAfterRenderAsync still owns the
+        // teardown + scheduling the final unmount.
+        if (!Context.IsOpen && _wasOpen && ExitDurationMs > 0)
+            _exiting = true;
+
+        // Re-opened mid-exit: clear the exit latch before this render commits so
+        // AnimationClass picks the enter class again instead of painting a frame
+        // of the zoom-OUT while re-entering.
+        if (Context.IsOpen && _exiting)
+        {
+            _exitDispatch.Cancel();
+            _exiting = false;
+        }
+    }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -121,6 +175,12 @@ else if (Context.IsOpen)
 
         if (Context.IsOpen && !_wasOpen)
         {
+            // Re-opened mid-exit: cancel the pending unmount so the panel stays.
+            if (_exiting)
+            {
+                _exitDispatch.Cancel();
+                _exiting = false;
+            }
             // Guard the open-branch interop against a circuit teardown that
             // races with this render (e.g. the user navigates away while the
             // dialog is opening). Mirrors Cleanup()'s JSDisconnectedException
@@ -146,18 +206,37 @@ else if (Context.IsOpen)
         }
         else if (!Context.IsOpen && _wasOpen)
         {
+            // Close: tear down scroll-lock / focus-trap immediately (focus returns
+            // to the trigger now), but keep the panel mounted for the zoom-out when
+            // an exit animation was requested, then unmount when it finishes.
             await Cleanup();
             _wasOpen = false;
+
+            if (ExitDurationMs > 0)
+            {
+                // _exiting was already flipped in OnParametersSet (before the close
+                // render) so the panel stayed mounted and zoomed out; here we only
+                // schedule the unmount for when the animation finishes.
+                _exitDispatch.Schedule(ExitDurationMs, () => InvokeAsync(() =>
+                {
+                    _exiting = false;
+                    StateHasChanged();
+                }));
+            }
         }
     }
 
-    private Task HandleBackdropClick() => PreventClose ? Task.CompletedTask : Dismiss("outside");
+    // The backdrop / Escape / close paths are inert during the exit phase
+    // (Context.IsOpen == false, panel only kept mounted for the zoom-out): its
+    // modal affordances were already torn down by Cleanup(), so a stray click /
+    // Escape must not re-enter the dismiss flow on an already-closing panel.
+    private Task HandleBackdropClick() => !Context.IsOpen || PreventClose ? Task.CompletedTask : Dismiss("outside");
 
-    private Task HandleCloseButton() => Dismiss("close");
+    private Task HandleCloseButton() => Context.IsOpen ? Dismiss("close") : Task.CompletedTask;
 
     private async Task HandleKeyDown(KeyboardEventArgs e)
     {
-        if (e.Key == "Escape" && !PreventClose)
+        if (e.Key == "Escape" && Context.IsOpen && !PreventClose)
         {
             await Dismiss("escape");
         }
@@ -177,6 +256,7 @@ else if (Context.IsOpen)
 
     public async ValueTask DisposeAsync()
     {
+        _exitDispatch.Dispose();
         if (_wasOpen)
         {
             await Cleanup();

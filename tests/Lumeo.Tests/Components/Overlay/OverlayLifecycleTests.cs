@@ -90,6 +90,122 @@ public class OverlayLifecycleTests : IAsyncLifetime
         Assert.True(sheetResult.Cancelled);
     }
 
+    // --- B11: exit animation now plays for EVERY service overlay kind -------
+    // SheetContent already animated its exit (#82 above). Dialog/Drawer/
+    // AlertDialogContent gained the same opt-in via PlayExitAnimation, and the
+    // provider defers their unmount identically: on close it flips the cascaded
+    // Open=false (driving the content's `_exiting` latch → an animate-*-out
+    // class) and removes the instance only after the exit window elapses. A
+    // missed animationend can never leak a zombie entry — removal is driven
+    // purely by the provider's DelayedDispatch (there is no real animationend in
+    // bUnit, so the eventual-unmount assertions below exercise exactly that
+    // safety-timeout fallback). The awaiting caller still resolves immediately
+    // (design choice — see the Sheet immediate-resolve test above); only the
+    // visual teardown is deferred.
+
+    [Fact]
+    public async Task Closing_A_Service_Dialog_Plays_The_Zoom_Out_Instead_Of_Vanishing()
+    {
+        OverlayInstance? shown = null;
+        _overlay.OnShow += i => shown = i;
+
+        var cut = _ctx.Render<Lumeo.OverlayProvider>();
+
+        _ = _overlay.ShowDialogAsync<Body>(title: "Zoom dialog");
+        cut.WaitForState(() => cut.Markup.Contains("BODY"));
+
+        await cut.InvokeAsync(() => _overlay.Cancel(shown!.Id));
+
+        // Without the fix the provider removed the Dialog from its list on close,
+        // unmounting it immediately (no exit class ever rendered). With the fix
+        // the provider keeps it mounted with Open=false, DialogContent latches
+        // _exiting, and the panel zooms out while the backdrop fades — in parallel.
+        cut.WaitForAssertion(() => Assert.Contains("animate-zoom-out", cut.Markup));
+        Assert.Contains("animate-fade-out", cut.Markup);
+        // The body is still in the DOM during the exit window (not vanished) — so
+        // the entry was NOT removed synchronously.
+        Assert.Contains("BODY", cut.Markup);
+    }
+
+    [Fact]
+    public async Task Closing_A_Service_Drawer_Plays_The_Slide_Out_Instead_Of_Vanishing()
+    {
+        OverlayInstance? shown = null;
+        _overlay.OnShow += i => shown = i;
+
+        var cut = _ctx.Render<Lumeo.OverlayProvider>();
+
+        _ = _overlay.ShowDrawerAsync<Body>(title: "Slide drawer");
+        cut.WaitForState(() => cut.Markup.Contains("BODY"));
+
+        await cut.InvokeAsync(() => _overlay.Cancel(shown!.Id));
+
+        // Bottom drawer (the ShowDrawerAsync default) slides out to the bottom.
+        cut.WaitForAssertion(() => Assert.Contains("animate-slide-out-to-bottom", cut.Markup));
+        Assert.Contains("BODY", cut.Markup);
+    }
+
+    [Fact]
+    public async Task Closing_A_Service_AlertDialog_Plays_The_Zoom_Out_Instead_Of_Vanishing()
+    {
+        OverlayInstance? shown = null;
+        _overlay.OnShow += i => shown = i;
+
+        var cut = _ctx.Render<Lumeo.OverlayProvider>();
+
+        _ = _overlay.ShowAlertDialogAsync(new AlertDialogOptions { Title = "Zoom alert" });
+        cut.WaitForState(() => cut.Markup.Contains("Zoom alert"));
+
+        await cut.InvokeAsync(() => _overlay.Cancel(shown!.Id));
+
+        cut.WaitForAssertion(() => Assert.Contains("animate-zoom-out", cut.Markup));
+        Assert.Contains("Zoom alert", cut.Markup);
+    }
+
+    [Fact]
+    public async Task Service_Overlays_Are_Removed_After_The_Exit_Window_Not_Synchronously()
+    {
+        OverlayInstance? shown = null;
+        _overlay.OnShow += i => shown = i;
+
+        var cut = _ctx.Render<Lumeo.OverlayProvider>();
+
+        _ = _overlay.ShowDialogAsync<Body>(title: "Zoom dialog");
+        cut.WaitForState(() => cut.Markup.Contains("BODY"));
+
+        await cut.InvokeAsync(() => _overlay.Cancel(shown!.Id));
+
+        // Still mounted right after the close (exit is playing)...
+        Assert.Contains("BODY", cut.Markup);
+        // ...then removed once the provider's exit-window timer (the safety-timeout
+        // fallback) fires. Generous ceiling so a starved thread pool under parallel
+        // test load can't trip it; it does not widen the happy-path wait.
+        cut.WaitForAssertion(
+            () => Assert.DoesNotContain("BODY", cut.Markup),
+            timeout: TimeSpan.FromSeconds(5));
+    }
+
+    [Fact]
+    public async Task Closing_A_Service_Dialog_Resolves_The_Awaiting_Task_Immediately()
+    {
+        OverlayInstance? shown = null;
+        _overlay.OnShow += i => shown = i;
+
+        var cut = _ctx.Render<Lumeo.OverlayProvider>();
+
+        var task = _overlay.ShowDialogAsync<Body>(title: "Zoom dialog");
+        cut.WaitForState(() => cut.Markup.Contains("BODY"));
+
+        await cut.InvokeAsync(() => _overlay.Cancel(shown!.Id));
+
+        // The result must NOT wait on the exit animation: deferring the unmount is
+        // purely visual. The caller's task completes right away with a cancelled
+        // result (same contract the Sheet already honours).
+        cut.WaitForAssertion(() => Assert.True(task.IsCompleted));
+        var dialogResult = await task;
+        Assert.True(dialogResult.Cancelled);
+    }
+
     // --- #180: destructive AlertDialog confirm closes exactly once ----------
 
     [Fact]

@@ -2,18 +2,20 @@
 @using Lumeo.Services
 @implements IAsyncDisposable
 
-@if (Context.IsOpen)
+@if (Context.IsOpen || _exiting)
 {
     @* pointer-events-none wrapper + -auto on backdrop/panel — see DialogContent
        (B4 hardening: the full-viewport wrapper must never be a hit-target). *@
     <div class="fixed inset-0 flex items-center justify-center pointer-events-none" style="z-index:@BackdropZ">
         @* Backdrop — theme-aware --color-overlay-backdrop token via inline style
-           (see DialogContent for why inline style not a Tailwind utility). *@
-        <div class="fixed inset-0 animate-fade-in pointer-events-auto" style="background-color:var(--color-overlay-backdrop);z-index:@BackdropZ"></div>
+           (see DialogContent for why inline style not a Tailwind utility). Fades
+           out alongside the panel while exiting (service-opened only). *@
+        <div class="@BackdropClass" style="background-color:var(--color-overlay-backdrop);z-index:@BackdropZ"></div>
         @* @onkeydown:stopPropagation — keys handled inside this modal must not
            bubble into ancestor overlays (an Escape would cascade-close them).
-           See DialogContent for the full rationale. *@
-        <div id="@_contentId" class="@CssClass" style="z-index:@ContentZ" role="alertdialog" aria-modal="true" aria-labelledby="@Context.TitleId" aria-describedby="@DescribedBy" @onkeydown="HandleKeyDown" @onkeydown:stopPropagation tabindex="-1" @attributes="AdditionalAttributes">
+           See DialogContent for the full rationale. aria-modal drops to false
+           while exiting (affordances already torn down — mirrors SheetContent #185). *@
+        <div id="@_contentId" class="@CssClass" style="z-index:@ContentZ" role="alertdialog" aria-modal="@(Context.IsOpen ? "true" : "false")" aria-labelledby="@Context.TitleId" aria-describedby="@DescribedBy" @onkeydown="HandleKeyDown" @onkeydown:stopPropagation tabindex="-1" @attributes="AdditionalAttributes">
             @ChildContent
         </div>
     </div>
@@ -25,6 +27,11 @@
     [CascadingParameter] public AlertDialog.AlertDialogContext Context { get; set; } = default!;
     [Parameter] public RenderFragment? ChildContent { get; set; }
     [Parameter] public string? Class { get; set; }
+    /// <summary>When <c>true</c>, closing keeps the panel mounted for a brief
+    /// zoom-out (and backdrop fade-out) before unmounting instead of vanishing
+    /// instantly. Set by <see cref="OverlayProvider"/> for service-opened alert
+    /// dialogs. Defaults to <c>false</c> so declarative usage is unchanged.</summary>
+    [Parameter] public bool PlayExitAnimation { get; set; }
     /// <summary>Backdrop z-index. Content sits at <c>ZIndex + 1</c>. Defaults
     /// to <see cref="OverlayService.BaseZIndex"/>; <see cref="OverlayProvider"/>
     /// supplies an incrementing value per nested overlay.</summary>
@@ -33,21 +40,52 @@
 
     private readonly string _contentId = LumeoIds.New("alertdialog");
     private bool _wasOpen;
+    // Exit-animation state — see DialogContent. Only set when PlayExitAnimation
+    // is true (service-opened alert dialogs).
+    private bool _exiting;
+    private readonly Lumeo.Services.DelayedDispatch _exitDispatch = new();
+
+    private int ExitDurationMs => PlayExitAnimation ? 200 : 0;
 
     private int BackdropZ => ZIndex;
     private int ContentZ => ZIndex + 1;
+
+    private string BackdropClass => _exiting
+        ? "fixed inset-0 animate-fade-out pointer-events-auto"
+        : "fixed inset-0 animate-fade-in pointer-events-auto";
+
+    private string AnimationClass => _exiting ? "animate-zoom-out" : "animate-zoom-in";
 
     // Only reference the description id when an <AlertDialogDescription> was
     // actually rendered; otherwise aria-describedby would dangle to a missing
     // element (returning null makes Blazor omit the attribute entirely).
     private string? DescribedBy => Context.DescriptionRegistry.HasDescription ? Context.DescriptionId : null;
 
-    private string CssClass => Cx.Merge("relative grid w-full max-w-lg gap-4 bg-background p-6 shadow-lg animate-zoom-in sm:rounded-lg pointer-events-auto", Class);
+    private string CssClass => Cx.Merge("relative grid w-full max-w-lg gap-4 bg-background p-6 shadow-lg sm:rounded-lg pointer-events-auto", AnimationClass, Class);
+
+    protected override void OnParametersSet()
+    {
+        // Flip _exiting before the close render commits (mirrors DialogContent /
+        // SheetContent) so the mount gate keeps the panel for the zoom-out.
+        if (!Context.IsOpen && _wasOpen && ExitDurationMs > 0)
+            _exiting = true;
+
+        if (Context.IsOpen && _exiting)
+        {
+            _exitDispatch.Cancel();
+            _exiting = false;
+        }
+    }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (Context.IsOpen && !_wasOpen)
         {
+            if (_exiting)
+            {
+                _exitDispatch.Cancel();
+                _exiting = false;
+            }
             await Interop.LockScroll();
             // Initial focus goes to the least destructive action — the Cancel
             // button carries the data-lumeo-initial-focus marker (WAI-ARIA
@@ -64,12 +102,22 @@
         {
             await Cleanup();
             _wasOpen = false;
+
+            if (ExitDurationMs > 0)
+            {
+                _exitDispatch.Schedule(ExitDurationMs, () => InvokeAsync(() =>
+                {
+                    _exiting = false;
+                    StateHasChanged();
+                }));
+            }
         }
     }
 
     private async Task HandleKeyDown(KeyboardEventArgs e)
     {
-        if (e.Key == "Escape")
+        // Inert during the exit phase — the dialog is already closing.
+        if (e.Key == "Escape" && Context.IsOpen)
         {
             await Context.TryDismiss("escape");
         }
@@ -87,6 +135,7 @@
 
     public async ValueTask DisposeAsync()
     {
+        _exitDispatch.Dispose();
         if (_wasOpen)
         {
             await Cleanup();
