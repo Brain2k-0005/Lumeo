@@ -27,7 +27,7 @@
         <label class="@ButtonLabelCssClass">
             <SvgGlyph Svg="@(LumeoIcons.Upload)" class="h-4 w-4" />
             <span>@(Label ?? L["FileUpload.ChooseFile"])</span>
-            <InputFile id="@FormFieldControlId" aria-describedby="@FormFieldDescribedBy" class="sr-only" OnChange="HandleFileSelected" multiple="@Multiple" accept="@Accept" />
+            <InputFile @key="_inputFileKey" id="@FormFieldControlId" aria-describedby="@FormFieldDescribedBy" class="sr-only" OnChange="HandleFileSelected" multiple="@Multiple" accept="@Accept" />
         </label>
         @if (!AutoUpload && _uploadItems.Any(i => i.Status == FileUploadStatus.Pending))
         {
@@ -41,7 +41,7 @@
         {
             <p class="text-xs text-destructive">@_globalErrorMessage</p>
         }
-        @if (_uploadItems.Count > 0)
+        @if (ShowFileList && _uploadItems.Count > 0)
         {
             <div class="flex flex-col gap-1">
                 @foreach (var item in _uploadItems)
@@ -87,7 +87,7 @@ else if (Variant == FileUploadVariant.Avatar)
             {
                 <SvgGlyph Svg="@(LumeoIcons.User)" class="h-8 w-8 text-muted-foreground" />
             }
-            <InputFile id="@FormFieldControlId" aria-describedby="@FormFieldDescribedBy" class="sr-only" OnChange="HandleFileSelected" multiple="false" accept="@(Accept ?? "image/*")" />
+            <InputFile @key="_inputFileKey" id="@FormFieldControlId" aria-describedby="@FormFieldDescribedBy" class="sr-only" OnChange="HandleFileSelected" multiple="false" accept="@(Accept ?? "image/*")" />
         </label>
         @if (_globalErrorMessage is not null)
         {
@@ -138,7 +138,7 @@ else
             @* Stretched invisibly over the whole dropzone: native drag&drop onto a
                file input adds the dropped files and fires OnChange (no JS needed),
                and clicking anywhere in the zone opens the browse dialog. *@
-            <InputFile id="@FormFieldControlId" aria-describedby="@FormFieldDescribedBy" class="absolute inset-0 h-full w-full cursor-pointer opacity-0" OnChange="HandleFileSelected" multiple="@Multiple" accept="@Accept" />
+            <InputFile @key="_inputFileKey" id="@FormFieldControlId" aria-describedby="@FormFieldDescribedBy" class="absolute inset-0 h-full w-full cursor-pointer opacity-0" OnChange="HandleFileSelected" multiple="@Multiple" accept="@Accept" />
         </label>
         @if (_globalErrorMessage is not null)
         {
@@ -160,7 +160,7 @@ else
                 Upload @(_uploadItems.Count(i => i.Status == FileUploadStatus.Pending)) file@(_uploadItems.Count(i => i.Status == FileUploadStatus.Pending) != 1 ? "s" : "")
             </button>
         }
-        @if (_uploadItems.Count > 0)
+        @if (ShowFileList && _uploadItems.Count > 0)
         {
             <div class="flex flex-col gap-2">
                 @foreach (var item in _uploadItems)
@@ -218,6 +218,18 @@ else
     [Parameter] public int MaxFiles { get; set; } = 10;
     [Parameter] public bool ShowThumbnails { get; set; }
     [Parameter] public RenderFragment<IBrowserFile>? FileTemplate { get; set; }
+
+    /// <summary>
+    /// When <c>true</c> (default), renders the internal file card list after selection.
+    /// Set to <c>false</c> for immediate-upload flows where the app renders its own file
+    /// list — the internal card with the remove-X will no longer linger after the upload
+    /// completes. Selection and upload events (<see cref="OnFilesSelected"/>,
+    /// <see cref="OnUpload"/>, <see cref="OnFileUploaded"/>) still fire normally regardless
+    /// of this setting. Pair with <see cref="Reset"/> via <c>@@ref</c> to clear state and
+    /// allow the same file to be re-picked.
+    /// </summary>
+    [Parameter] public bool ShowFileList { get; set; } = true;
+
     [Parameter] public FileUploadVariant Variant { get; set; } = FileUploadVariant.Dropzone;
 
     /// <summary>
@@ -326,6 +338,10 @@ else
     private string? _thumbnailUrl;
     private List<FileUploadItem> _uploadItems = new();
     private Dictionary<string, string> _thumbnailUrls = new();
+    // Incremented by Reset() to force each <InputFile> element to remount with a fresh
+    // DOM node — the only cross-browser way to clear the browser's file selection so the
+    // same file can be re-picked after an immediate upload.
+    private int _inputFileKey;
     private readonly Dictionary<string, CancellationTokenSource> _cancellations = new();
     private SemaphoreSlim? _concurrencySemaphore;
     // The MaxConcurrentUploads value the live _concurrencySemaphore was built with.
@@ -582,6 +598,36 @@ else
         var pending = _uploadItems.Where(i => i.Status == FileUploadStatus.Pending).ToList();
         if (pending.Count == 0) return;
         await RunUploadsAsync(pending);
+    }
+
+    /// <summary>
+    /// Clears the internal file selection and upload state, returning the component to its
+    /// initial empty state. Increments an internal key to force the native file input to
+    /// remount — the only cross-browser way to clear the browser's file selection so the
+    /// same file can be re-picked (browsers suppress <c>onChange</c> when the same path is
+    /// selected a second time without a DOM reset).
+    /// In-flight uploads are cancelled before clearing.
+    /// Does NOT fire <see cref="OnFilesSelected"/> or any upload callback.
+    /// <para>
+    /// Typical use: call via <c>@@ref</c> after processing a file in an immediate-upload
+    /// flow where <see cref="ShowFileList"/> is <c>false</c> and the app renders its own
+    /// list.
+    /// </para>
+    /// </summary>
+    public async Task Reset()
+    {
+        foreach (var cts in _cancellations.Values.ToList())
+        {
+            try { cts.Cancel(); } catch (ObjectDisposedException) { }
+        }
+        _cancellations.Clear();
+        _uploadItems.Clear();
+        _thumbnailUrls.Clear();
+        _thumbnailUrl = null;
+        _globalErrorMessage = null;
+        _allUploadedFired = false;
+        _inputFileKey++;
+        await InvokeAsync(StateHasChanged);
     }
 
     // ── Retry a single failed item ───────────────────────────────────────────

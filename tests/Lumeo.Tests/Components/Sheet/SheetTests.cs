@@ -214,6 +214,27 @@ public class SheetTests : IAsyncLifetime
         Assert.True(hasBackdrop, "Backdrop should be present when sheet is open");
     }
 
+    [Fact]
+    public void Backdrop_Carries_PointerEventsAuto_So_ClickOutside_Is_A_HitTarget()
+    {
+        // B10 regression: the full-viewport wrapper is pointer-events-none (so it
+        // never blocks the page — the toast/overlay host stays click-through when
+        // idle), and every hit-target child must re-enable pointer events. The
+        // Sheet backdrop drove its class through BackdropClass, which omitted
+        // pointer-events-auto (Dialog/Drawer/AlertDialog hardcode it), so the
+        // backdrop inherited none and swallowed no clicks — click-outside-to-close
+        // was dead for every service-opened sheet. Assert the backdrop element
+        // itself carries pointer-events-auto.
+        var cut = RenderSheet(isOpen: true);
+        var backdrop = cut.FindAll("div").First(d =>
+        {
+            var style = d.GetAttribute("style") ?? "";
+            var cls = d.GetAttribute("class") ?? "";
+            return style.Contains("--color-overlay-backdrop") && cls.Contains("inset-0");
+        });
+        Assert.Contains("pointer-events-auto", backdrop.GetAttribute("class") ?? "");
+    }
+
     // --- Trigger ---
 
     [Fact]

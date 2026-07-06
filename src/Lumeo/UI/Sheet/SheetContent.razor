@@ -215,7 +215,16 @@ else if (Context.IsOpen || _exiting)
     };
 
     // Backdrop fades in on open, fades out while the panel exits.
-    private string BackdropClass => _exiting ? "fixed inset-0 animate-fade-out" : "fixed inset-0 animate-fade-in";
+    // pointer-events-auto is REQUIRED: the full-viewport wrapper (line ~20) is
+    // pointer-events-none so it never blocks the page, and every hit-target child
+    // must re-enable pointer events explicitly (same as DialogContent /
+    // DrawerContent / AlertDialogContent, whose backdrops hardcode it). Without it
+    // the backdrop inherits none and swallows nothing — click-outside-to-close
+    // silently dies for every Sheet (most visible via service-opened sheets, whose
+    // only dismiss affordances are the backdrop + Escape). (B10.)
+    private string BackdropClass => _exiting
+        ? "fixed inset-0 animate-fade-out pointer-events-auto"
+        : "fixed inset-0 animate-fade-in pointer-events-auto";
 
     // Kept for backward-compat with tests / consumers that read SideClasses.
     private string SideClasses => $"{PositionClasses} {EnterAnimationClass}".Trim();

@@ -7,6 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.1.0-preview.11] - 2026-07-06
+
+Device-testing feedback wave.
+
+### Fixed
+- **Service-opened Sheet backdrop caught no clicks (B10)**: every overlay
+  backdrop lives inside an intentionally `pointer-events-none` host (so idle
+  overlays never block the page) and must re-enable its own pointer events —
+  Dialog/Drawer/AlertDialog hardcode `pointer-events-auto` on their backdrops,
+  but SheetContent drove its backdrop through `BackdropClass`, which omitted
+  the class. The page behind a service-opened Sheet stayed fully interactive
+  and click-outside-to-close was dead. Fixed in both the live and exiting
+  branches; browser-verified (backdrop is the hit-target and closes the
+  sheet); consumers can drop their CSS workaround.
+
+### Added
+- **`Chip.IconContent`** — a leading slot (TabsTrigger/SegmentedItem pattern)
+  that keeps sized content intact (`shrink-0` wrapper): color dots stay dots,
+  icons sit beside the label instead of stacking. ChildContent-only chips
+  render byte-for-byte as before (asserted); priority stays Avatar > Icon >
+  IconContent.
+- **`FileUpload.ShowFileList`** (default `true`) and **`FileUpload.Reset()`**
+  for immediate-upload flows: hide the internal file card while all events
+  keep firing, and programmatically clear the selection so the same file can
+  be re-picked (fresh input via keyed remount — no more consumer-side `@key`
+  hacks).
+
+### Notes
+- The mobile overlay-from-drawer report (B4) could not be reproduced this
+  round and stays on the watch list — a device/browser + step sequence would
+  help pin it down.
+
 ## [4.1.0-preview.10] - 2026-07-05
 
 Templates, round two: the app starter grew up and got a full-stack sibling.

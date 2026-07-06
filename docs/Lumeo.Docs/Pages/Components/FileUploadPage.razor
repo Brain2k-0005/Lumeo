@@ -73,6 +73,32 @@
         </Container>
     </ComponentDemo>
 
+    <ComponentDemo Title="Immediate upload (ShowFileList=false + Reset)" Code="@_immediateUploadCode">
+        <Container MaxWidth="md" Center="false" Padding="">
+            <Stack Gap="3">
+                <FileUpload @ref="_immediateUpload"
+                            Label="Pick a file — it uploads immediately, no card shown"
+                            ShowFileList="false"
+                            OnUpload="@ImmediateUpload"
+                            OnFileUploaded="@OnImmediateFileUploaded" />
+                @if (_immediateFiles.Count > 0)
+                {
+                    <ul class="space-y-1">
+                        @foreach (var name in _immediateFiles)
+                        {
+                            <li class="flex items-center gap-2 text-sm">
+                                <span class="text-success">&#10003;</span>
+                                <span>@name</span>
+                            </li>
+                        }
+                    </ul>
+                    <Button Variant="Button.ButtonVariant.Outline" Size="Button.ButtonSize.Sm"
+                            @onclick="ClearImmediateList">Clear list</Button>
+                }
+            </Stack>
+        </Container>
+    </ComponentDemo>
+
     <ComponentDemo Title="With Progress (legacy)" Code="@_progressCode">
         <Stack Gap="4" Class="w-full max-w-md">
             <FileUpload ShowProgress="true" Progress="@_uploadProgress" OnFilesSelected="@HandleFileUpload" Accept="image/*" Multiple="true"
@@ -129,6 +155,7 @@
                 <TableRow><TableCell Class="font-mono text-xs">MaxFiles</TableCell><TableCell Class="font-mono text-xs">int</TableCell><TableCell Class="font-mono text-xs">10</TableCell><TableCell>Maximum number of files when Multiple is true.</TableCell></TableRow>
                 <TableRow><TableCell Class="font-mono text-xs">ShowThumbnails</TableCell><TableCell Class="font-mono text-xs">bool</TableCell><TableCell Class="font-mono text-xs">false</TableCell><TableCell>Shows image thumbnails for uploaded image files.</TableCell></TableRow>
                 <TableRow><TableCell Class="font-mono text-xs">FileTemplate</TableCell><TableCell Class="font-mono text-xs">RenderFragment&lt;IBrowserFile&gt;?</TableCell><TableCell Class="font-mono text-xs">null</TableCell><TableCell>Custom template for rendering each selected file row (overrides default per-file UI).</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">ShowFileList</TableCell><TableCell Class="font-mono text-xs">bool</TableCell><TableCell Class="font-mono text-xs">true</TableCell><TableCell>When <code>false</code>, hides the internal file card list. All events still fire. Use in immediate-upload flows where the app renders its own list and the built-in remove-X card would be misleading.</TableCell></TableRow>
                 <TableRow><TableCell Class="font-mono text-xs">Variant</TableCell><TableCell Class="font-mono text-xs">FileUpload.FileUploadVariant</TableCell><TableCell Class="font-mono text-xs">Dropzone</TableCell><TableCell>Upload style variant. Values: <code>Dropzone</code>, <code>Button</code>, <code>Avatar</code>.</TableCell></TableRow>
                 <TableRow><TableCell Class="font-mono text-xs">Size</TableCell><TableCell Class="font-mono text-xs">Lumeo.Size</TableCell><TableCell Class="font-mono text-xs">Default</TableCell><TableCell>Button size for <code>Variant=Button</code>. Values: <code>Sm</code>, <code>Default</code>, <code>Lg</code>.</TableCell></TableRow>
                 <TableRow><TableCell Class="font-mono text-xs">OnFilesSelected</TableCell><TableCell Class="font-mono text-xs">EventCallback&lt;InputFileChangeEventArgs&gt;</TableCell><TableCell Class="font-mono text-xs">—</TableCell><TableCell>Fires when files are selected (raw args, kept for back-compat).</TableCell></TableRow>
@@ -154,6 +181,23 @@
                 <TableRow><TableCell Class="font-mono text-xs">HelperText</TableCell><TableCell Class="font-mono text-xs">string?</TableCell><TableCell Class="font-mono text-xs">null</TableCell><TableCell>Help text shown below when there is no error (standalone).</TableCell></TableRow>
                 <TableRow><TableCell Class="font-mono text-xs">Name</TableCell><TableCell Class="font-mono text-xs">string?</TableCell><TableCell Class="font-mono text-xs">null</TableCell><TableCell>HTML name attribute for form identification.</TableCell></TableRow>
                 <TableRow><TableCell Class="font-mono text-xs">FormField</TableCell><TableCell Class="font-mono text-xs">FormFieldContext?</TableCell><TableCell Class="font-mono text-xs">null</TableCell><TableCell>Cascaded context from a parent FormField; drives validation state automatically.</TableCell></TableRow>
+            </TableBody>
+        </Table>
+    </div>
+
+    <Heading Id="fileupload-methods" Level="3" Class="mt-8 scroll-mt-20">FileUpload — Public Methods</Heading>
+    <div class="overflow-x-auto mt-4">
+        <Table>
+            <TableHeader>
+                <TableRow>
+                    <TableHead Class="w-[200px]">Method</TableHead>
+                    <TableHead Class="w-[120px]">Returns</TableHead>
+                    <TableHead>Description</TableHead>
+                </TableRow>
+            </TableHeader>
+            <TableBody>
+                <TableRow><TableCell Class="font-mono text-xs">Reset()</TableCell><TableCell Class="font-mono text-xs">Task</TableCell><TableCell>Clears internal file selection and upload state. Cancels any in-flight uploads. Remounts the native file input so the same file can be re-picked without a DOM workaround. Does not fire any events.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">StartUploadAsync()</TableCell><TableCell Class="font-mono text-xs">Task</TableCell><TableCell>Starts uploads for all pending items when <code>AutoUpload=false</code>.</TableCell></TableRow>
             </TableBody>
         </Table>
     </div>
@@ -196,6 +240,8 @@
 @code {
     private string? _fileName;
     private string? _imageName;
+    private FileUpload? _immediateUpload;
+    private List<string> _immediateFiles = new();
     private string _previewVariant = "Dropzone";
     private string? _previewFileName;
     private FileUpload.FileUploadVariant _fuVariantEnum =>
@@ -217,6 +263,29 @@
     private bool _isUploading;
     private int _uploadedCount;
     private string? _allDoneMsg;
+
+    private async Task<string?> ImmediateUpload(
+        FileUpload.FileUploadItem item,
+        IProgress<int> progress,
+        CancellationToken ct)
+    {
+        for (int pct = 0; pct <= 100; pct += 20)
+        {
+            ct.ThrowIfCancellationRequested();
+            progress.Report(pct);
+            await Task.Delay(50, ct);
+        }
+        return $"https://cdn.example.com/{item.Name}";
+    }
+
+    private async Task OnImmediateFileUploaded(FileUpload.FileUploadItem item)
+    {
+        _immediateFiles.Add(item.Name);
+        if (_immediateUpload is not null)
+            await _immediateUpload.Reset();
+    }
+
+    private void ClearImmediateList() => _immediateFiles.Clear();
 
     private void HandleFiles(InputFileChangeEventArgs e)
     {
@@ -304,6 +373,33 @@
     AutoUpload=""false""
     Label=""Choose files, then click Upload""
     OnUpload=""@SimulateUpload"" />";
+
+    private string _immediateUploadCode = @"<FileUpload @ref=""_upload""
+    Label=""Pick a file — uploads immediately, no card shown""
+    ShowFileList=""false""
+    OnUpload=""@HandleUpload""
+    OnFileUploaded=""@OnFileUploaded"" />
+
+@code {
+    private FileUpload? _upload;
+    private List<string> _uploadedFiles = new();
+
+    private async Task<string?> HandleUpload(
+        FileUpload.FileUploadItem item,
+        IProgress<int> progress,
+        CancellationToken ct)
+    {
+        // ... your real upload logic ...
+        return $""https://cdn.example.com/{item.Name}"";
+    }
+
+    private async Task OnFileUploaded(FileUpload.FileUploadItem item)
+    {
+        _uploadedFiles.Add(item.Name);   // app renders its own list
+        if (_upload is not null)
+            await _upload.Reset();       // clear internal state + remount input
+    }
+}";
 
     private string _progressCode = @"<FileUpload
     ShowProgress=""true""
