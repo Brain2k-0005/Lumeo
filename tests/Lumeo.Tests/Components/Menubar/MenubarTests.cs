@@ -109,9 +109,10 @@ public class MenubarTests : IAsyncLifetime
         cut.Find("button").Click();
         Assert.Contains("New File", cut.Markup);
 
-        // Close
+        // Close — content stays mounted through its zoom-out exit window (B11 parity),
+        // so poll for the unmount rather than asserting instant removal.
         cut.Find("button").Click();
-        Assert.DoesNotContain("New File", cut.Markup);
+        cut.WaitForAssertion(() => Assert.DoesNotContain("New File", cut.Markup), timeout: TimeSpan.FromSeconds(5));
     }
 
     [Fact]

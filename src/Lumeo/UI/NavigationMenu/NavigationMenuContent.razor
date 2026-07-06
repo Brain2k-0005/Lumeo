@@ -1,9 +1,10 @@
 @namespace Lumeo
 @implements IAsyncDisposable
+@implements IOverlayExitCallback
 
-@if (Context.ActiveItemId == ItemContext.ItemId)
+@if (_exit.Present(IsOpen))
 {
-    <div id="@_contentId" role="menu" aria-labelledby="@ItemContext.TriggerId" class="@CssClass" @onkeydown="HandleKeyDown" tabindex="-1" @attributes="AdditionalAttributes">
+    <div id="@_contentId" role="menu" aria-labelledby="@ItemContext.TriggerId" data-state="@(IsOpen ? "open" : "closed")" class="@CssClass" @onkeydown="HandleKeyDown" tabindex="-1" @attributes="AdditionalAttributes">
         <div class="@InnerCssClass">
             @ChildContent
         </div>
@@ -24,9 +25,21 @@
     private string _contentId => ItemContext.ContentId;
     private bool _registered;
 
-    private string CssClass => Cx.Merge("fixed z-50 animate-fade-in", Class);
+    // B11 exit latch (shared infra). Enter keeps fade-in; the submenu panel is wide,
+    // so exit mirrors it with a symmetric fade-out rather than a zoom.
+    private readonly OverlayExitAnimator _exit = new();
+    private DotNetObjectReference<NavigationMenuContent>? _selfRef;
+    private const int ExitDurationMs = 250;
+
+    private bool IsOpen => Context.ActiveItemId == ItemContext.ItemId;
+    private string AnimationClass => _exit.Exiting ? "animate-fade-out" : "animate-fade-in";
+
+    private string CssClass => Cx.Merge("fixed z-50", AnimationClass, Class);
 
     private string InnerCssClass => "mt-1.5 min-w-[12rem] overflow-hidden rounded-md border border-border/40 bg-popover p-4 text-popover-foreground shadow-lg";
+
+    protected override void OnParametersSet()
+        => _exit.OnParameters(IsOpen, ExitDurationMs, () => InvokeAsync(FinishExit));
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -52,8 +65,25 @@
         }
         else if (Context.ActiveItemId != ItemContext.ItemId && _registered)
         {
+            // Cleanup runs immediately on close (stops the reposition rAF, leaves the
+            // inline top/left so the box freezes while the fade-out plays).
             await Cleanup();
         }
+
+        await _exit.WireExitAsync(async () =>
+        {
+            _selfRef ??= DotNetObjectReference.Create(this);
+            try { await Interop.AttachOverlayExitEnd(_contentId, _selfRef); }
+            catch (JSDisconnectedException) { }
+        });
+    }
+
+    [JSInvokable]
+    public Task OnExitAnimationEnd() => InvokeAsync(FinishExit);
+
+    private void FinishExit()
+    {
+        if (_exit.Finish()) StateHasChanged();
     }
 
     private async Task HandleKeyDown(KeyboardEventArgs e)
@@ -75,6 +105,8 @@
 
     public async ValueTask DisposeAsync()
     {
+        _exit.Dispose();
+        _selfRef?.Dispose();
         if (_registered) await Cleanup();
     }
 }

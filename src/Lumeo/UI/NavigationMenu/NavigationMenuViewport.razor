@@ -1,9 +1,12 @@
 @namespace Lumeo
+@implements IAsyncDisposable
+@implements IOverlayExitCallback
+@inject IComponentInteropService Interop
 
-@if (Context.ActiveItemId is not null)
+@if (_exit.Present(IsOpen))
 {
-    <div class="@CssClass" @attributes="AdditionalAttributes">
-        <div class="@InnerCssClass">
+    <div class="@CssClass" data-state="@(IsOpen ? "open" : "closed")" @attributes="AdditionalAttributes">
+        <div id="@_viewportId" class="@InnerCssClass">
             @ChildContent
         </div>
     </div>
@@ -15,7 +18,49 @@
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
+    private readonly string _viewportId = LumeoIds.New("nav-viewport");
+
+    // B11 exit latch (shared infra). The viewport fades its content in on open, so
+    // the exit mirrors it with a symmetric fade-out kept mounted through the window.
+    private readonly OverlayExitAnimator _exit = new();
+    private DotNetObjectReference<NavigationMenuViewport>? _selfRef;
+    private const int ExitDurationMs = 250;
+
+    private bool IsOpen => Context.ActiveItemId is not null;
+
     private string CssClass => Cx.Merge("absolute start-0 top-full flex justify-center", Class);
 
-    private string InnerCssClass => "origin-top-center relative mt-1.5 h-[var(--radix-navigation-menu-viewport-height)] w-full overflow-hidden rounded-md border border-border/40 bg-popover text-popover-foreground shadow-lg animate-fade-in";
+    // The animate-* class lives on the inner (id'd) element so attachOverlayExitEnd
+    // samples the right node.
+    private string AnimationClass => _exit.Exiting ? "animate-fade-out" : "animate-fade-in";
+
+    private string InnerCssClass => Cx.Merge("origin-top-center relative mt-1.5 h-[var(--radix-navigation-menu-viewport-height)] w-full overflow-hidden rounded-md border border-border/40 bg-popover text-popover-foreground shadow-lg", AnimationClass);
+
+    protected override void OnParametersSet()
+        => _exit.OnParameters(IsOpen, ExitDurationMs, () => InvokeAsync(FinishExit));
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        await _exit.WireExitAsync(async () =>
+        {
+            _selfRef ??= DotNetObjectReference.Create(this);
+            try { await Interop.AttachOverlayExitEnd(_viewportId, _selfRef); }
+            catch (JSDisconnectedException) { }
+        });
+    }
+
+    [JSInvokable]
+    public Task OnExitAnimationEnd() => InvokeAsync(FinishExit);
+
+    private void FinishExit()
+    {
+        if (_exit.Finish()) StateHasChanged();
+    }
+
+    public ValueTask DisposeAsync()
+    {
+        _exit.Dispose();
+        _selfRef?.Dispose();
+        return ValueTask.CompletedTask;
+    }
 }

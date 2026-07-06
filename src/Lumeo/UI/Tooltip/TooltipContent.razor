@@ -1,5 +1,6 @@
 @namespace Lumeo
 @implements IAsyncDisposable
+@implements IOverlayExitCallback
 
 @*  rc.45 — fixed-position rendering + collision flip.
     Previously the tooltip was an absolutely positioned child of the trigger
@@ -9,9 +10,9 @@
     placement off to `ComponentInteropService.PositionFixed` (floating-ui
     under the hood), which auto-flips to the opposite side when collision
     space is tight. Side is still consumer-controlled as a preference. *@
-@if (IsOpen)
+@if (_exit.Present(IsOpen))
 {
-    <div id="@_contentId" role="tooltip" data-side="@EffectiveSide" data-align="@AlignStr" class="@CssClass" @attributes="AdditionalAttributes">
+    <div id="@_contentId" role="tooltip" data-state="@(IsOpen ? "open" : "closed")" data-side="@EffectiveSide" data-align="@AlignStr" class="@CssClass" @attributes="AdditionalAttributes">
         @ChildContent
         @if (ShowArrow)
         {
@@ -38,6 +39,13 @@
     private string _contentId => Context?.ContentId ?? string.Empty;
     private bool _registered;
 
+    // B11 exit latch (shared infra). Enter keeps fade-in; exit uses zoom-out
+    // (scale-down + fade) to match shadcn/Radix tooltip's
+    // data-[state=closed]:zoom-out-95 + fade-out.
+    private readonly OverlayExitAnimator _exit = new();
+    private DotNetObjectReference<TooltipContent>? _selfRef;
+    private const int ExitDurationMs = 250;
+
     // Last placement values actually handed to PositionFixed. A live Side/Offset/Align
     // change while the tooltip is open must re-run PositionFixed so the box moves;
     // storing the applied values stops a same-value re-render from thrashing JS.
@@ -58,7 +66,7 @@
 
     private string AnimationClasses => IsOpen
         ? "opacity-100 visible animate-fade-in"
-        : "opacity-0 invisible";
+        : (_exit.Exiting ? "opacity-100 visible animate-zoom-out" : "opacity-0 invisible");
 
     private string SideStr => Side switch
     {
@@ -110,6 +118,9 @@
         _ => "left: var(--lumeo-arrow-x, 50%)"
     };
 
+    protected override void OnParametersSet()
+        => _exit.OnParameters(IsOpen, ExitDurationMs, () => InvokeAsync(FinishExit));
+
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         // Re-position when first opening OR when Side/Offset changed while already
@@ -138,8 +149,27 @@
         }
         else if (!IsOpen && _registered)
         {
+            // Cleanup (unpositionFixed) runs immediately on close: it stops the
+            // reposition rAF and leaves the inline top/left so the box freezes in
+            // place while the zoom-out plays. The element stays mounted for the exit
+            // via the _exit.Present gate.
             await Cleanup();
         }
+
+        await _exit.WireExitAsync(async () =>
+        {
+            _selfRef ??= DotNetObjectReference.Create(this);
+            try { await Interop.AttachOverlayExitEnd(_contentId, _selfRef); }
+            catch (Microsoft.JSInterop.JSDisconnectedException) { }
+        });
+    }
+
+    [JSInvokable]
+    public Task OnExitAnimationEnd() => InvokeAsync(FinishExit);
+
+    private void FinishExit()
+    {
+        if (_exit.Finish()) StateHasChanged();
     }
 
     private Task OnLiveSideChanged(string side)
@@ -163,6 +193,8 @@
 
     public async ValueTask DisposeAsync()
     {
+        _exit.Dispose();
+        _selfRef?.Dispose();
         if (_registered) await Cleanup();
     }
 

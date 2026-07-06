@@ -1,11 +1,13 @@
 @namespace Lumeo
 @implements IAsyncDisposable
+@implements IOverlayExitCallback
 
-@if (SubContext.IsOpen)
+@if (_exit.Present(SubContext.IsOpen))
 {
     <div id="@SubContext.ContentId"
          role="menu"
          aria-orientation="vertical"
+         data-state="@(SubContext.IsOpen ? "open" : "closed")"
          class="@CssClass"
          tabindex="-1"
          @onkeydown="HandleKeyDown"
@@ -28,8 +30,16 @@
 
     private bool _positioned;
     private int _focusedIndex = -1;
+    private readonly OverlayExitAnimator _exit = new();
+    private DotNetObjectReference<DropdownMenuSubContent>? _selfRef;
+    private const int ExitDurationMs = 250;
 
-    private string CssClass => Cx.Merge("fixed z-50 min-w-[8rem] overflow-hidden rounded-md border border-border/60 bg-popover p-1 text-popover-foreground shadow-lg animate-fade-in", Class);
+    private string AnimationClass => _exit.Exiting ? "animate-zoom-out" : "animate-fade-in";
+
+    private string CssClass => Cx.Merge("fixed z-50 min-w-[8rem] overflow-hidden rounded-md border border-border/60 bg-popover p-1 text-popover-foreground shadow-lg", AnimationClass, Class);
+
+    protected override void OnParametersSet()
+        => _exit.OnParameters(SubContext.IsOpen, ExitDurationMs, () => InvokeAsync(FinishExit));
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -50,8 +60,26 @@
         }
         else if (!SubContext.IsOpen && _positioned)
         {
+            // Cleanup (unpositionFixed) runs immediately on close: it stops the
+            // reposition rAF and leaves the inline top/left, so the box freezes in
+            // place while the zoom-out plays instead of being re-measured mid-scale.
             await Cleanup();
         }
+
+        await _exit.WireExitAsync(async () =>
+        {
+            _selfRef ??= DotNetObjectReference.Create(this);
+            try { await Interop.AttachOverlayExitEnd(SubContext.ContentId, _selfRef); }
+            catch (JSDisconnectedException) { }
+        });
+    }
+
+    [JSInvokable]
+    public Task OnExitAnimationEnd() => InvokeAsync(FinishExit);
+
+    private void FinishExit()
+    {
+        if (_exit.Finish()) StateHasChanged();
     }
 
     private async Task PositionWithFlip()
@@ -146,6 +174,8 @@
 
     public async ValueTask DisposeAsync()
     {
+        _exit.Dispose();
+        _selfRef?.Dispose();
         if (_positioned) await Cleanup();
     }
 }

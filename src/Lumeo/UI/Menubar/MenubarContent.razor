@@ -1,9 +1,10 @@
 @namespace Lumeo
 @implements IAsyncDisposable
+@implements IOverlayExitCallback
 
-@if (Context.OpenMenuId == MenuContext.MenuId)
+@if (_exit.Present(IsOpen))
 {
-    <div id="@_contentId" role="menu" aria-orientation="vertical" class="@CssClass" @onkeydown="HandleKeyDown" tabindex="-1" @attributes="AdditionalAttributes">
+    <div id="@_contentId" role="menu" aria-orientation="vertical" data-state="@(IsOpen ? "open" : "closed")" class="@CssClass" @onkeydown="HandleKeyDown" tabindex="-1" @attributes="AdditionalAttributes">
         <CascadingValue Value="_keyNavGuard" IsFixed="true">
             @ChildContent
         </CascadingValue>
@@ -25,7 +26,19 @@
     private bool _registered;
     private int _focusedIndex = -1;
 
-    private string CssClass => Cx.Merge("fixed z-50 min-w-[12rem] overflow-hidden rounded-md border border-border/40 bg-popover p-1 text-popover-foreground shadow-lg animate-fade-in", Class);
+    // B11 exit latch (shared infra). Enter keeps fade-in; exit uses zoom-out (the
+    // shadcn/Radix menu dismiss: data-[state=closed]:zoom-out-95 + fade-out).
+    private readonly OverlayExitAnimator _exit = new();
+    private DotNetObjectReference<MenubarContent>? _selfRef;
+    private const int ExitDurationMs = 250;
+
+    private bool IsOpen => Context.OpenMenuId == MenuContext.MenuId;
+    private string AnimationClass => _exit.Exiting ? "animate-zoom-out" : "animate-fade-in";
+
+    private string CssClass => Cx.Merge("fixed z-50 min-w-[12rem] overflow-hidden rounded-md border border-border/40 bg-popover p-1 text-popover-foreground shadow-lg", AnimationClass, Class);
+
+    protected override void OnParametersSet()
+        => _exit.OnParameters(IsOpen, ExitDurationMs, () => InvokeAsync(FinishExit));
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -83,8 +96,26 @@
         }
         else if (Context.OpenMenuId != MenuContext.MenuId && _registered)
         {
+            // Cleanup runs immediately on close (stops the reposition rAF, leaves the
+            // inline top/left so the box freezes while the zoom-out plays). The
+            // element stays mounted for the exit via the _exit.Present gate.
             await Cleanup();
         }
+
+        await _exit.WireExitAsync(async () =>
+        {
+            _selfRef ??= DotNetObjectReference.Create(this);
+            try { await Interop.AttachOverlayExitEnd(_contentId, _selfRef); }
+            catch (JSDisconnectedException) { }
+        });
+    }
+
+    [JSInvokable]
+    public Task OnExitAnimationEnd() => InvokeAsync(FinishExit);
+
+    private void FinishExit()
+    {
+        if (_exit.Finish()) StateHasChanged();
     }
 
     private async Task HandleKeyDown(KeyboardEventArgs e)
@@ -182,6 +213,8 @@
 
     public async ValueTask DisposeAsync()
     {
+        _exit.Dispose();
+        _selfRef?.Dispose();
         if (_registered) await Cleanup();
     }
 

@@ -92,7 +92,9 @@ public class TooltipClickDismissAndArrowAnchorTests : IAsyncLifetime
         cut.Find("div").TriggerEvent("onpointerdown", Pointer("mouse"));
         cut.Find("div").Click();
 
-        Assert.Empty(cut.FindAll("[role='tooltip']"));
+        // The content stays mounted through its zoom-out exit window (B11 parity), so
+        // poll for the unmount rather than asserting instant removal.
+        cut.WaitForAssertion(() => Assert.Empty(cut.FindAll("[role='tooltip']")), timeout: TimeSpan.FromSeconds(5));
     }
 
     [Fact]
@@ -102,7 +104,9 @@ public class TooltipClickDismissAndArrowAnchorTests : IAsyncLifetime
         cut.Find("div").MouseEnter(new Microsoft.AspNetCore.Components.Web.MouseEventArgs());
         cut.Find("div").TriggerEvent("onpointerdown", Pointer("mouse"));
         cut.Find("div").Click();
-        Assert.Empty(cut.FindAll("[role='tooltip']"));
+        // Wait out the zoom-out exit window so the dismissal is fully settled before
+        // testing the re-enter path.
+        cut.WaitForAssertion(() => Assert.Empty(cut.FindAll("[role='tooltip']")), timeout: TimeSpan.FromSeconds(5));
 
         // Cursor resting on the trigger: no new mouseenter fires, so nothing reopens it.
         // Only an actual leave + re-enter shows the hint again (hover still works).
@@ -136,7 +140,7 @@ public class TooltipClickDismissAndArrowAnchorTests : IAsyncLifetime
 
         cut.Find("div").TriggerEvent("onpointerdown", Pointer("touch"));
         cut.Find("div").Click();
-        Assert.Empty(cut.FindAll("[role='tooltip']"));
+        cut.WaitForAssertion(() => Assert.Empty(cut.FindAll("[role='tooltip']")), timeout: TimeSpan.FromSeconds(5));
     }
 
     [Fact]
@@ -149,7 +153,7 @@ public class TooltipClickDismissAndArrowAnchorTests : IAsyncLifetime
         // Enter/Space on a focused button fires click with NO preceding pointerdown —
         // that's the keyboard-activation signature. Radix parity: activation dismisses.
         cut.Find("div").Click();
-        Assert.Empty(cut.FindAll("[role='tooltip']"));
+        cut.WaitForAssertion(() => Assert.Empty(cut.FindAll("[role='tooltip']")), timeout: TimeSpan.FromSeconds(5));
     }
 
     // ---- 2. Arrow anchor ---------------------------------------------------------------
