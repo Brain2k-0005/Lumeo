@@ -27,15 +27,18 @@ public sealed class TrackingKeyboardShortcutService : IKeyboardShortcutService
         return true;
     }
 
-    public ValueTask<IAsyncDisposable> RegisterAsync(string keyCombo, Func<Task> handler, bool preventDefault = true, bool allowInEditable = false)
+    // Implements only the ORIGINAL 3-parameter interface members — the additive
+    // allowInEditable overloads are default interface members, so a test double written
+    // against the pre-wave shape keeps compiling and routes through here (flag dropped).
+    public ValueTask<IAsyncDisposable> RegisterAsync(string keyCombo, Func<Task> handler, bool preventDefault = true)
     {
         var id = Guid.NewGuid().ToString("N");
         _byId[id] = (keyCombo, handler);
         return ValueTask.FromResult<IAsyncDisposable>(new Handle(this, id));
     }
 
-    public ValueTask<IAsyncDisposable> RegisterAsync(string keyCombo, Action handler, bool preventDefault = true, bool allowInEditable = false)
-        => RegisterAsync(keyCombo, () => { handler(); return Task.CompletedTask; }, preventDefault, allowInEditable);
+    public ValueTask<IAsyncDisposable> RegisterAsync(string keyCombo, Action handler, bool preventDefault = true)
+        => RegisterAsync(keyCombo, () => { handler(); return Task.CompletedTask; }, preventDefault);
 
     public ValueTask UnregisterAsync(string id)
     {

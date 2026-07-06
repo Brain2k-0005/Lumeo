@@ -42,14 +42,16 @@
     @* Bubble input (Radix pattern): visually-hidden, non-focusable native checkbox
        that mirrors the switch state and carries Name/Value so the switch submits in a
        plain <form> POST (a <button name> posts nothing). aria-hidden + tabindex=-1
-       keep it out of the a11y tree and tab order. Rendered only when a Name is set.
+       keep it out of the a11y tree and tab order. Rendered when a Name is set directly OR
+       inherited from a composing <FormField Name="..."> (EffectiveName), so a switch
+       composed via FormField still posts its value.
        disabled mirrors the visible button's gate (Disabled || Loading): while Loading
        the button is disabled, so the bubble input must be too or the switch could still
        submit its value in a native form POST mid-load (P2). *@
-    @if (!string.IsNullOrEmpty(Name))
+    @if (!string.IsNullOrEmpty(EffectiveName))
     {
         <input type="checkbox" aria-hidden="true" tabindex="-1"
-               name="@Name" value="@EffectiveValue"
+               name="@EffectiveName" value="@EffectiveValue"
                checked="@_checked"
                disabled="@(Disabled || Loading)" required="@Required"
                class="pointer-events-none absolute -translate-x-full opacity-0"
@@ -92,6 +94,11 @@
     [Parameter] public string? Value { get; set; }
 
     private string EffectiveValue => Value ?? "on";
+
+    // Field name for the bubble input: a direct Name wins, else the name cascaded by a
+    // composing <FormField Name="...">. Lets `<FormField Name="x"><Switch/></FormField>`
+    // post the switch value without repeating the name on the Switch (Codex round-3 P2).
+    private string? EffectiveName => string.IsNullOrEmpty(Name) ? FormField?.Name : Name;
 
     // shadcn/Radix data-state styling hook: consumers can target
     // data-[state=checked] / data-[state=unchecked] in CSS.

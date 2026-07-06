@@ -1,4 +1,5 @@
 using Bunit;
+using Microsoft.AspNetCore.Components;
 using Xunit;
 using Lumeo;
 using Lumeo.Tests.Helpers;
@@ -83,6 +84,49 @@ public class CheckboxDataStateFormTests : IAsyncLifetime
         var input = cut.Find("input[type=checkbox]");
         Assert.Equal("pro", input.GetAttribute("value"));
         Assert.False(input.HasAttribute("checked"));          // unchecked posts nothing
+    }
+
+    [Fact]
+    public void Bubble_Input_Uses_Cascaded_FormField_Name_Without_Direct_Name()
+    {
+        // Round-3 P2: a Checkbox composed via <FormField Name="..."> — with no direct Name —
+        // must still emit the bubble input so it posts in a native <form>. Pre-fix the
+        // bubble input rendered only when the Checkbox's OWN Name was set.
+        var cut = _ctx.Render(builder =>
+        {
+            builder.OpenComponent<FormField>(0);
+            builder.AddAttribute(1, "Name", "terms");
+            builder.AddAttribute(2, "ChildContent", (RenderFragment)(b =>
+            {
+                b.OpenComponent<Lumeo.Checkbox>(0);
+                b.AddAttribute(1, "Checked", true);
+                b.CloseComponent();
+            }));
+            builder.CloseComponent();
+        });
+
+        var input = cut.Find("input[type=checkbox]");
+        Assert.Equal("terms", input.GetAttribute("name"));
+        Assert.True(input.HasAttribute("checked"));
+    }
+
+    [Fact]
+    public void Direct_Name_Wins_Over_Cascaded_FormField_Name()
+    {
+        var cut = _ctx.Render(builder =>
+        {
+            builder.OpenComponent<FormField>(0);
+            builder.AddAttribute(1, "Name", "field-name");
+            builder.AddAttribute(2, "ChildContent", (RenderFragment)(b =>
+            {
+                b.OpenComponent<Lumeo.Checkbox>(0);
+                b.AddAttribute(1, "Name", "box-name");
+                b.CloseComponent();
+            }));
+            builder.CloseComponent();
+        });
+
+        Assert.Equal("box-name", cut.Find("input[type=checkbox]").GetAttribute("name"));
     }
 
     [Fact]

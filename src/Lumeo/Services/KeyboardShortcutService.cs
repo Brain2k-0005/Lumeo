@@ -45,9 +45,30 @@ public sealed class KeyboardShortcutService : IKeyboardShortcutService
         _initialized = true;
     }
 
+    // The 3-parameter members implement the original abstract interface contract. They
+    // deliberately carry NO default on preventDefault: the 4-parameter overloads below own
+    // the defaults, so a bare 2-argument call routes unambiguously to the 4-parameter real
+    // implementation (identical behavior: preventDefault=true, allowInEditable=false),
+    // while a 3-argument call still prefers these (all arguments supplied beats a
+    // default-substituted 4-parameter candidate). This avoids CS0121 between the two arities.
+
     /// <summary>
     /// Register a keyboard shortcut. Key combo format: "ctrl+k", "ctrl+shift+p", "escape", "alt+n"
     /// Modifiers: ctrl, shift, alt, meta. Separate with +. Key names use KeyboardEvent.key values.
+    /// </summary>
+    public ValueTask<IAsyncDisposable> RegisterAsync(string keyCombo, Func<Task> handler, bool preventDefault)
+        => RegisterAsync(keyCombo, handler, preventDefault, allowInEditable: false);
+
+    /// <summary>
+    /// Register a keyboard shortcut with a synchronous handler.
+    /// </summary>
+    public ValueTask<IAsyncDisposable> RegisterAsync(string keyCombo, Action handler, bool preventDefault)
+        => RegisterAsync(keyCombo, handler, preventDefault, allowInEditable: false);
+
+    /// <summary>
+    /// Register a keyboard shortcut, optionally allowing it to fire while focus is inside
+    /// an editable element (see <see cref="IKeyboardShortcutService"/>). This is the real
+    /// implementation of the interface's additive <c>allowInEditable</c> overloads.
     /// </summary>
     public async ValueTask<IAsyncDisposable> RegisterAsync(string keyCombo, Func<Task> handler, bool preventDefault = true, bool allowInEditable = false)
     {
@@ -63,7 +84,8 @@ public sealed class KeyboardShortcutService : IKeyboardShortcutService
     }
 
     /// <summary>
-    /// Register a keyboard shortcut with a synchronous handler.
+    /// Register a keyboard shortcut with a synchronous handler that can opt in to firing
+    /// while focus is inside an editable element.
     /// </summary>
     public async ValueTask<IAsyncDisposable> RegisterAsync(string keyCombo, Action handler, bool preventDefault = true, bool allowInEditable = false)
     {

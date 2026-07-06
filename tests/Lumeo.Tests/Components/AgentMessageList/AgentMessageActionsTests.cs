@@ -148,4 +148,39 @@ public class AgentMessageActionsTests : IAsyncLifetime
 
         Assert.Equal(2, captured);
     }
+
+    [Fact]
+    public void BranchNav_Previous_Clamps_Stale_High_Index_Before_Stepping()
+    {
+        // Round-3 P2: with a stale bound Index above the range (Count=3, Index=4) the
+        // display clamps to "3 of 3", but Previous stepped from the RAW 4 → emitted 3,
+        // an out-of-range index (the nav would appear stuck on the last page). Previous
+        // must clamp to the last valid index (2) first, then step to 1.
+        var captured = -99;
+        var cut = _ctx.Render<Lumeo.AgentMessageBranchNav>(p => p
+            .Add(x => x.Index, 4)
+            .Add(x => x.Count, 3)
+            .Add(x => x.IndexChanged, (int i) => captured = i));
+
+        cut.Find("[aria-label='Previous response']").Click();
+
+        Assert.Equal(1, captured);   // clamp(4→2) − 1, NOT the raw 4 − 1 = 3
+    }
+
+    [Fact]
+    public void BranchNav_Next_Clamps_Stale_Negative_Index_Before_Stepping()
+    {
+        // Symmetric lower edge: a stale NEGATIVE Index (Count=3, Index=-2). Next stepped
+        // from the raw -2 → emitted -1 (still negative / out of range). It must clamp to
+        // 0 first, then step to 1.
+        var captured = -99;
+        var cut = _ctx.Render<Lumeo.AgentMessageBranchNav>(p => p
+            .Add(x => x.Index, -2)
+            .Add(x => x.Count, 3)
+            .Add(x => x.IndexChanged, (int i) => captured = i));
+
+        cut.Find("[aria-label='Next response']").Click();
+
+        Assert.Equal(1, captured);   // clamp(-2→0) + 1, NOT the raw -2 + 1 = -1
+    }
 }

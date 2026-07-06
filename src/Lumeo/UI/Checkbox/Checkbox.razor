@@ -48,13 +48,14 @@ else
 
 @* Bubble input (Radix pattern): a visually-hidden, non-focusable native checkbox
    that mirrors the checked state and carries Name/Value so the control participates
-   in a plain <form> POST. Rendered only when a Name is set. Indeterminate posts as
-   unchecked (native semantics). aria-hidden + tabindex=-1 keep it out of the a11y
-   tree and tab order — the role="checkbox" <button> above owns interaction. *@
-@if (!string.IsNullOrEmpty(Name))
+   in a plain <form> POST. Rendered when a Name is set directly OR inherited from a
+   composing <FormField Name="..."> (EffectiveName). Indeterminate posts as unchecked
+   (native semantics). aria-hidden + tabindex=-1 keep it out of the a11y tree and tab
+   order — the role="checkbox" <button> above owns interaction. *@
+@if (!string.IsNullOrEmpty(EffectiveName))
 {
     <input type="checkbox" aria-hidden="true" tabindex="-1"
-           name="@Name" value="@EffectiveValue"
+           name="@EffectiveName" value="@EffectiveValue"
            checked="@(Checked && !IsIndeterminate)"
            disabled="@Disabled" required="@Required"
            class="pointer-events-none absolute h-4 w-4 -translate-x-full opacity-0"
@@ -140,6 +141,11 @@ else
     [Parameter] public string? Value { get; set; }
 
     private string EffectiveValue => Value ?? "on";
+
+    // Field name for the bubble input: a direct Name wins, else the name cascaded by a
+    // composing <FormField Name="...">. Lets `<FormField Name="x"><Checkbox/></FormField>`
+    // post the checkbox value without repeating the name on the Checkbox (Codex round-3 P2).
+    private string? EffectiveName => string.IsNullOrEmpty(Name) ? FormField?.Name : Name;
 
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }

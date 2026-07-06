@@ -106,6 +106,51 @@ public class NavigationMenuControlledValueTests : IAsyncLifetime
     }
 
     [Fact]
+    public void Item_Value_Change_While_Mounted_Propagates_Through_The_Cascade()
+    {
+        // Round-3 P2: NavigationMenuItem provided its item context via a FIXED cascade,
+        // yet the context's ItemId derives from the mutable Value parameter. When Value
+        // changed while the item stayed mounted, the Trigger kept the STALE ItemId and
+        // matched it against the menu's ActiveItemId incorrectly. The cascade is now
+        // non-fixed (like the parent NavigationMenuContext), so a changed Value flows down.
+        RenderFragment OneItem(string itemValue) => list =>
+        {
+            list.OpenComponent<L.NavigationMenuItem>(0);
+            list.AddAttribute(1, "Value", itemValue);
+            list.AddAttribute(2, "ChildContent", (RenderFragment)(item =>
+            {
+                item.OpenComponent<L.NavigationMenuTrigger>(0);
+                item.AddAttribute(1, "ChildContent", (RenderFragment)(t => t.AddContent(0, "Alpha")));
+                item.CloseComponent();
+            }));
+            list.CloseComponent();
+        };
+
+        void Configure(ComponentParameterCollectionBuilder<L.NavigationMenu> p, string value)
+        {
+            p.Add(m => m.Value, value);
+            p.Add(m => m.ValueChanged, EventCallback.Factory.Create<string?>(this, _ => { }));
+            p.Add(m => m.ChildContent, (RenderFragment)(b =>
+            {
+                b.OpenComponent<L.NavigationMenuList>(0);
+                b.AddAttribute(1, "ChildContent", OneItem(value));
+                b.CloseComponent();
+            }));
+        }
+
+        // Controlled: menu Value == item Value ("a") → the item is open.
+        var cut = _ctx.Render<L.NavigationMenu>(p => Configure(p, "a"));
+        Assert.Equal("open", State(cut, "Alpha"));
+
+        // Change BOTH the menu's controlled Value and the item's Value to "b" in place.
+        cut.Render(p => Configure(p, "b"));
+
+        // The trigger must still read open: its ItemContext.ItemId followed "a"→"b".
+        // Pre-fix (fixed cascade) it kept "a", so ActiveItemId "b" != "a" → wrongly closed.
+        Assert.Equal("open", State(cut, "Alpha"));
+    }
+
+    [Fact]
     public void Controlled_Parent_Veto_Rolls_The_Optimistic_Open_Back()
     {
         // Parent is controlled but pins Value="a" and ignores the change — a veto.

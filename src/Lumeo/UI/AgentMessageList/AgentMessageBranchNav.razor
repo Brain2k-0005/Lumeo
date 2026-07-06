@@ -43,16 +43,22 @@
     private string RootClass => Cx.Merge("inline-flex items-center gap-0.5 text-muted-foreground", Class);
 
     // 1-based, clamped for display so a stray out-of-range Index never shows "0 of 3".
-    private int DisplayIndex => Count == 0 ? 0 : Math.Clamp(Index, 0, Count - 1) + 1;
+    private int DisplayIndex => Count == 0 ? 0 : ClampedIndex + 1;
     private string PageLabel => L["AgentMessage.BranchXofY", DisplayIndex, Count];
 
     private bool PrevDisabled => Count <= 1 || (!Loop && Index <= 0);
     private bool NextDisabled => Count <= 1 || (!Loop && Index >= Count - 1);
 
+    // Clamp a possibly-stale bound Index into range BEFORE stepping so we never emit an
+    // out-of-range value. With Count==3 and a stale Index==4 the display already clamps to
+    // "3 of 3", so Previous must step from the last valid index (2 → 1), not the raw 4
+    // (which would emit 3). Symmetric for a stale negative Index on the Next side.
+    private int ClampedIndex => Count == 0 ? 0 : Math.Clamp(Index, 0, Count - 1);
+
     private async Task PreviousAsync()
     {
         if (Count <= 1) return;
-        var next = Index - 1;
+        var next = ClampedIndex - 1;
         if (next < 0)
         {
             if (!Loop) return;
@@ -66,7 +72,7 @@
     private async Task NextAsync()
     {
         if (Count <= 1) return;
-        var next = Index + 1;
+        var next = ClampedIndex + 1;
         if (next >= Count)
         {
             if (!Loop) return;
