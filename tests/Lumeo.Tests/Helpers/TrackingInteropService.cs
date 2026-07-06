@@ -157,6 +157,21 @@ public class TrackingInteropService : IComponentInteropService
         return ValueTask.CompletedTask;
     }
     public ValueTask AttachOverlaySlideEnd(string elementId) => ValueTask.CompletedTask;
+
+    // Overlay EXIT wiring capture (B11 Radix-Presence parity). Records each
+    // wire-up and the last captured callback so a test can SIMULATE the JS
+    // animationend by invoking OnExitAnimationEnd — driving the content's
+    // animationend-based unmount without a real browser. Does NOT auto-fire, so
+    // tests that don't invoke it exercise the fallback-timer path instead.
+    private readonly List<string> _overlayExitEndWirings = new();
+    public IReadOnlyList<string> OverlayExitEndWirings => _overlayExitEndWirings;
+    public global::Lumeo.IOverlayExitCallback? LastOverlayExitCallback { get; private set; }
+    public virtual ValueTask AttachOverlayExitEnd<T>(string elementId, DotNetObjectReference<T> dotNetRef) where T : class
+    {
+        _overlayExitEndWirings.Add(elementId);
+        LastOverlayExitCallback = dotNetRef.Value as global::Lumeo.IOverlayExitCallback;
+        return ValueTask.CompletedTask;
+    }
     public ValueTask RegisterSvDrag(string elementId, Func<double, double, Task> handler) => ValueTask.CompletedTask;
     public ValueTask UnregisterSvDrag(string elementId) => ValueTask.CompletedTask;
     public ValueTask RegisterPinchZoom(string elementId, Func<double, Task> handler) => ValueTask.CompletedTask;

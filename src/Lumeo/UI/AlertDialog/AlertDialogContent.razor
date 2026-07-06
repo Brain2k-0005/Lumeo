@@ -1,6 +1,7 @@
 @namespace Lumeo
 @using Lumeo.Services
 @implements IAsyncDisposable
+@implements IOverlayExitCallback
 
 @if (Context.IsOpen || _exiting)
 {
@@ -53,8 +54,17 @@
     // is true (service-opened alert dialogs).
     private bool _exiting;
     private readonly Lumeo.Services.DelayedDispatch _exitDispatch = new();
+    // Radix-Presence parity: the real unmount is driven by the panel's own
+    // animationend (attachOverlayExitEnd), which also clears the open-time inline
+    // animation:none guard so the zoom-out can run. _exitDispatch is the fallback.
+    private DotNetObjectReference<AlertDialogContent>? _selfRef;
+    private bool _exitWired;
 
-    private int ExitDurationMs => PlayExitAnimation ? 200 : 0;
+    // FALLBACK window only — the real unmount is the panel's animationend
+    // (OnExitAnimationEnd). Sits above the 0.15s zoom-out so the timer never
+    // preempts a slightly-late animationend; covers only the JS-dead / lost-event
+    // case. 0 when no exit animation is requested (declarative) → immediate unmount.
+    private int ExitDurationMs => PlayExitAnimation ? 280 : 0;
 
     private int BackdropZ => ZIndex;
     private int ContentZ => ZIndex + 1;
@@ -88,6 +98,7 @@
             {
                 _exitDispatch.Cancel();
                 _exiting = false;
+                _exitWired = false;
             }
             _shownOpen = true;
         }
@@ -97,11 +108,8 @@
             if (ExitDurationMs > 0)
             {
                 _exiting = true;
-                _exitDispatch.Schedule(ExitDurationMs, () => InvokeAsync(() =>
-                {
-                    _exiting = false;
-                    StateHasChanged();
-                }));
+                _exitWired = false;
+                _exitDispatch.Schedule(ExitDurationMs, () => InvokeAsync(FinishExit));
             }
         }
     }
@@ -146,6 +154,35 @@
             await Cleanup();
             _interopReady = false;
         }
+
+        // Radix-Presence parity: hand the unmount to the panel's OWN exit
+        // animationend. attachOverlayExitEnd first strips the open-time inline
+        // animation:none/transform:none guard (otherwise it overrides the
+        // animate-zoom-out class and the panel can't move — the B11 root cause),
+        // then notifies OnExitAnimationEnd once the zoom-out finishes so the
+        // backdrop + panel drop together. _exitDispatch stays armed as a fallback.
+        if (_exiting && !_exitWired)
+        {
+            _exitWired = true;
+            _selfRef ??= DotNetObjectReference.Create(this);
+            try { await Interop.AttachOverlayExitEnd(_contentId, _selfRef); }
+            catch (JSDisconnectedException) { }
+        }
+    }
+
+    // Invoked from JS (attachOverlayExitEnd) when the panel's exit animation ends.
+    [JSInvokable]
+    public Task OnExitAnimationEnd() => InvokeAsync(FinishExit);
+
+    // Ends the exit phase: cancel the fallback timer and drop backdrop + panel in
+    // the same render commit. Idempotent with the fallback timer.
+    private void FinishExit()
+    {
+        if (!_exiting) return;
+        _exitDispatch.Cancel();
+        _exiting = false;
+        _exitWired = false;
+        StateHasChanged();
     }
 
     private async Task HandleKeyDown(KeyboardEventArgs e)
@@ -170,6 +207,7 @@
     public async ValueTask DisposeAsync()
     {
         _exitDispatch.Dispose();
+        _selfRef?.Dispose();
         if (_interopReady)
         {
             await Cleanup();

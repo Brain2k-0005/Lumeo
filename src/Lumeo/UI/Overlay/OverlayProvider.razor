@@ -140,23 +140,23 @@
     // close-dispatched as both Ok and Cancel. (Battle #180.)
     private readonly HashSet<string> _terminated = new();
 
-    // Every service-opened overlay now plays an exit animation on close: the
-    // provider keeps the instance mounted (Open=false, which drives the hosted
-    // content's `_exiting` latch) for the exit window, then unmounts it. Each
-    // window covers the LONGEST exit keyframe for that type (panel or backdrop,
-    // whichever is slower) plus a small buffer so the animation and the final
-    // unmount don't race:
-    //   Sheet/Drawer  — slide-out 300ms (+ 20ms buffer → 320ms)
-    //   Dialog/AlertDialog — zoom-out 150ms (+ 90ms buffer → 240ms; backdrop
-    //     also 150ms after fade-out was made symmetric with fade-in)
-    // (SheetContent already animated its exit before this; Dialog/Drawer/
-    // AlertDialogContent gained the same opt-in via PlayExitAnimation.)
+    // Every service-opened overlay plays an exit animation on close: the provider
+    // keeps the instance mounted (Open=false, which drives the hosted content's
+    // `_exiting` latch) for this window, then unmounts it. The VISIBLE unmount is
+    // now driven by the content's own animationend (attachOverlayExitEnd drops the
+    // backdrop + panel together on the real animation end) — this provider window
+    // is a strict OUTER fallback that removes the by-then-empty instance. It must
+    // sit at/above the content's own fallback window so it never preempts the
+    // animation on the JS-dead path (content fallbacks: Sheet/Drawer 450ms,
+    // Dialog/AlertDialog 280ms):
+    //   Sheet/Drawer      — slide-out 300ms → 500ms
+    //   Dialog/AlertDialog — zoom-out 150ms → 320ms
     private static int ExitWindowMs(OverlayType type) => type switch
     {
-        OverlayType.Sheet => 320,
-        OverlayType.Drawer => 320,
-        OverlayType.Dialog => 240,
-        OverlayType.AlertDialog => 240,
+        OverlayType.Sheet => 500,
+        OverlayType.Drawer => 500,
+        OverlayType.Dialog => 320,
+        OverlayType.AlertDialog => 320,
         _ => 0,
     };
 

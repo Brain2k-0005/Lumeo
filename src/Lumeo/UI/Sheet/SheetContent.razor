@@ -1,6 +1,7 @@
 @namespace Lumeo
 @using Lumeo.Services
 @implements IAsyncDisposable
+@implements IOverlayExitCallback
 
 @* <gotcha>No inner scroll container by default — the panel is a flex-col, so a long body overflows the viewport. Wrap the scrollable region in flex-1 overflow-y-auto, or use OverlayForm which bakes that in.</gotcha> *@
 
@@ -104,6 +105,14 @@ else if (Context.IsOpen || _exiting)
     // user sees it leave instead of vanishing. Driven by _exitDispatch.
     private bool _exiting;
     private readonly DelayedDispatch _exitDispatch = new();
+    // Radix-Presence parity: once the exit render commits, hand the unmount to the
+    // panel's OWN animationend (via attachOverlayExitEnd), which ALSO clears the
+    // open-time inline animation:none guard so the slide-out can actually run. The
+    // _exitDispatch above is now a strict FALLBACK (fires only if that JS callback
+    // never arrives — circuit gone / event lost). _exitWired guards single wiring
+    // per exit; reset whenever a new exit starts or the panel re-opens.
+    private DotNetObjectReference<SheetContent>? _selfRef;
+    private bool _exitWired;
 
     // Whether the swipe-to-dismiss gesture is currently wired in JS, plus the
     // direction it was registered with. Tracked so a PreventClose / SwipeToClose
@@ -130,10 +139,15 @@ else if (Context.IsOpen || _exiting)
     // fade-in 0.15s). Both are symmetric enter/exit pairs. None unmounts
     // immediately (no exit phase). Values include a small buffer over the CSS
     // duration so the timer and the keyframe don't race on a loaded thread pool.
+    // FALLBACK window only — the real unmount is driven by the panel's
+    // animationend (OnExitAnimationEnd). These sit comfortably above the CSS
+    // duration (slide 300ms, fade 150ms) so the timer never preempts a slightly
+    // late animationend on the happy path; it exists solely for the JS-dead /
+    // lost-event case. None has no exit phase (immediate unmount).
     private int ExitDurationMs => Animation switch
     {
-        SheetAnimation.Slide => 320,
-        SheetAnimation.Fade => 170,
+        SheetAnimation.Slide => 450,
+        SheetAnimation.Fade => 260,
         _ => 0,
     };
 
@@ -302,22 +316,21 @@ else if (Context.IsOpen || _exiting)
             {
                 _exitDispatch.Cancel();
                 _exiting = false;
+                _exitWired = false;
             }
             _shownOpen = true;
         }
         else if (_shownOpen)
         {
             // First render of the close: latch the slide-out (kept mounted via the
-            // Context.IsOpen || _exiting gate) and schedule the final unmount.
+            // Context.IsOpen || _exiting gate). OnAfterRenderAsync then wires the
+            // animationend-driven unmount; this timer is the fallback.
             _shownOpen = false;
             if (ExitDurationMs > 0)
             {
                 _exiting = true;
-                _exitDispatch.Schedule(ExitDurationMs, () => InvokeAsync(() =>
-                {
-                    _exiting = false;
-                    StateHasChanged();
-                }));
+                _exitWired = false;
+                _exitDispatch.Schedule(ExitDurationMs, () => InvokeAsync(FinishExit));
             }
         }
 
@@ -423,8 +436,39 @@ else if (Context.IsOpen || _exiting)
             await Cleanup();
             _interopReady = false;
         }
+
+        // Radix-Presence parity: hand the unmount to the panel's OWN exit
+        // animationend. attachOverlayExitEnd first strips the open-time inline
+        // animation:none/transform:none guard (otherwise it OVERRIDES the
+        // animate-slide-out-* class and the panel can't move — the B11 root cause),
+        // then notifies OnExitAnimationEnd once the slide/fade-out finishes so the
+        // backdrop + panel drop together. The _exitDispatch timer stays armed as a
+        // fallback. Runs after the exit render has committed the exit class.
+        if (_exiting && !_exitWired)
+        {
+            _exitWired = true;
+            _selfRef ??= DotNetObjectReference.Create(this);
+            try { await Interop.AttachOverlayExitEnd(_contentId, _selfRef); }
+            catch (JSDisconnectedException) { }
+        }
     }
 
+    // Invoked from JS (attachOverlayExitEnd) when the panel's exit animation ends.
+    // Idempotent with the fallback timer — whichever lands first wins, the other
+    // no-ops via the _exiting guard in FinishExit.
+    [JSInvokable]
+    public Task OnExitAnimationEnd() => InvokeAsync(FinishExit);
+
+    // Ends the exit phase: cancel the fallback timer and drop backdrop + panel in
+    // the same render commit (both gated on Context.IsOpen || _exiting).
+    private void FinishExit()
+    {
+        if (!_exiting) return;
+        _exitDispatch.Cancel();
+        _exiting = false;
+        _exitWired = false;
+        StateHasChanged();
+    }
 
     // The backdrop / Escape / close paths are inert during the exit phase
     // (Context.IsOpen == false, panel only kept mounted for the slide-out): its
@@ -459,6 +503,7 @@ else if (Context.IsOpen || _exiting)
     public async ValueTask DisposeAsync()
     {
         _exitDispatch.Dispose();
+        _selfRef?.Dispose();
         if (_interopReady) await Cleanup();
     }
 

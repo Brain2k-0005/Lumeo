@@ -367,6 +367,13 @@ export async function attachOverlaySlideEnd(elementId) {
     const el = document.getElementById(elementId);
     if (!el) return;
 
+    // Fresh open — clear any exit latch left over from a previous close that was
+    // interrupted by a re-open (rapid close/reopen). The latch below makes this
+    // enter-helper skip its `animation:none` stamp while an exit is in flight, so
+    // it must be reset on every open or a reopened overlay would never regain the
+    // containing-block guard.
+    el.removeAttribute('data-lumeo-exit');
+
     // Web Animations API: returns running + already-finished animations
     // (fill-mode keeps finished ones alive in this list).
     // 'zoom-in' is included alongside the sheet/drawer slide-ins: the Dialog/
@@ -384,9 +391,12 @@ export async function attachOverlaySlideEnd(elementId) {
 
     if (slideAnimations.length === 0) {
         // No slide animation found — defensive: clear both transform AND
-        // animation (in case a partial state somehow remains).
-        el.style.setProperty('transform', 'none', 'important');
-        el.style.setProperty('animation', 'none', 'important');
+        // animation (in case a partial state somehow remains). Skip if an exit
+        // has already begun (see the data-lumeo-exit guard below).
+        if (!el.getAttribute('data-lumeo-exit')) {
+            el.style.setProperty('transform', 'none', 'important');
+            el.style.setProperty('animation', 'none', 'important');
+        }
         return;
     }
 
@@ -394,6 +404,14 @@ export async function attachOverlaySlideEnd(elementId) {
         try { await anim.finished; }
         catch { /* playState 'cancelled' or 'idle' — ignore */ }
     }));
+
+    // Rapid close/reopen race: if the close landed WHILE we were awaiting the
+    // enter animation above, attachOverlayExitEnd has already cleared the inline
+    // guard and started the slide/zoom-OUT keyframe. Stamping animation:none now
+    // would freeze that exit mid-flight (the pre-fix B11 shape, in reverse). The
+    // exit helper set data-lumeo-exit before we resumed — bail so it owns the
+    // element's animation from here.
+    if (el.getAttribute('data-lumeo-exit')) return;
 
     // CRITICAL: clear BOTH transform AND animation. Empirically verified
     // (Chrome 131): clearing only transform is insufficient. Even with
@@ -409,6 +427,57 @@ export async function attachOverlaySlideEnd(elementId) {
     // popover snaps back to viewport-relative positioning.
     el.style.setProperty('animation', 'none', 'important');
     el.style.setProperty('transform', 'none', 'important');
+}
+
+// Drives the overlay EXIT the way Radix's Presence does: keep the panel mounted,
+// let its own exit keyframe run to completion, and unmount on the real animation
+// end rather than a blind timer. Two jobs:
+//   1. Remove the open-time containing-block guard (the inline `animation:none` /
+//      `transform:none` that attachOverlaySlideEnd stamped once the enter animation
+//      settled). While that inline `!important` is present it OVERRIDES the
+//      `animate-slide-out-*` / `animate-zoom-out` class the component just applied,
+//      so the panel cannot animate out at all — it sits frozen until a timer yanks
+//      it, while only the backdrop (never stamped) fades. That is the exact B11
+//      "backdrop animates but the panel doesn't move with it" report, and it is
+//      structural, not a timing race — no duration/latch tweak can fix it.
+//   2. Await the panel's exit animation .finished, then notify .NET ONCE so the
+//      component drops backdrop + panel together in the same render commit.
+// data-lumeo-exit latches the exit so a still-pending attachOverlaySlideEnd (rapid
+// close during the enter animation) won't re-stamp animation:none and freeze us.
+export async function attachOverlayExitEnd(elementId, dotnetRef) {
+    const notify = () => { try { dotnetRef?.invokeMethodAsync('OnExitAnimationEnd'); } catch { /* circuit gone */ } };
+    const el = document.getElementById(elementId);
+    if (!el) { notify(); return; }
+
+    el.setAttribute('data-lumeo-exit', '1');
+    // Drop the inline guard so the exit keyframe governs. removeProperty is a
+    // no-op when nothing was stamped (Fade/None, or a close before slide-in
+    // settled) — harmless.
+    el.style.removeProperty('animation');
+    el.style.removeProperty('transform');
+
+    // Collect the exit animations the class now applies on THIS element (not
+    // descendants — a Calendar zoom-in etc. inside the panel must not gate us).
+    // getAnimations() forces a style flush, so the freshly-applicable slide/zoom/
+    // fade-out shows up here immediately after the inline override was removed.
+    const exit = el.getAnimations({ subtree: false })
+        .filter(a => typeof a.animationName === 'string'
+                  && (a.animationName.startsWith('slide-out-to-')
+                      || a.animationName === 'zoom-out'
+                      || a.animationName === 'fade-out'));
+
+    if (exit.length === 0) {
+        // No exit animation (Animation=None, or reduced-motion already elapsed the
+        // 1ms keyframe) — unmount immediately, both elements together.
+        notify();
+        return;
+    }
+
+    await Promise.all(exit.map(async (anim) => {
+        try { await anim.finished; }
+        catch { /* cancelled by a re-open — the reopen path will re-render */ }
+    }));
+    notify();
 }
 
 // --- Floating Position ---

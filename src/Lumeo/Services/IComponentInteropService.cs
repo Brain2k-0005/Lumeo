@@ -84,6 +84,21 @@ public interface IComponentInteropService : IAsyncDisposable, IDisposable
     /// descendants (Select / DatePicker / Combobox popovers).</summary>
     ValueTask AttachOverlaySlideEnd(string elementId);
 
+    /// <summary>
+    /// Radix-Presence-style overlay EXIT: clears the open-time containing-block
+    /// guard (the inline <c>animation:none</c>/<c>transform:none</c> that
+    /// <see cref="AttachOverlaySlideEnd"/> stamped) so the panel's
+    /// <c>animate-slide-out-*</c>/<c>animate-zoom-out</c> class can actually run,
+    /// then invokes <c>OnExitAnimationEnd</c> on <paramref name="dotNetRef"/> once
+    /// the panel's own exit animation finishes. Lets the overlay content drop
+    /// backdrop + panel together on the REAL animation end instead of a blind
+    /// timer (which slips late under main-thread load). The component keeps its
+    /// timer strictly as a fallback. Default no-op so test doubles / prerender
+    /// fall back to that timer.
+    /// </summary>
+    ValueTask AttachOverlayExitEnd<T>(string elementId, DotNetObjectReference<T> dotNetRef) where T : class
+        => ValueTask.CompletedTask;
+
     // ColorPicker SV Drag
     ValueTask RegisterSvDrag(string elementId, Func<double, double, Task> handler);
     ValueTask UnregisterSvDrag(string elementId);

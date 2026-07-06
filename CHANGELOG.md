@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.1.0-preview.15] - 2026-07-06
+
+### Fixed
+- **B11, the structural fix — the exiting panel was FROZEN, not mistimed**:
+  frame-sampling finally revealed the real culprit behind "the backdrop is
+  gone before the sheet". After the slide-in, the containing-block guard
+  stamped inline `animation:none !important; transform:none !important` onto
+  the panel — which then overrode the exit animation class on close. The
+  panel never moved (computed animationName stayed `none`) while the
+  never-stamped backdrop faded out; both then popped in the same unmount.
+  Four timing patches (preview.12-.14) could not touch this by design.
+  The overlay exit is now ported to the Radix/shadcn Presence pattern: on
+  close the guard is stripped so the exit keyframe actually runs, a JS
+  helper awaits the panel's own exit animation `finished` promise and
+  notifies .NET once, and backdrop + panel are dropped together in one
+  commit — the timers remain only as an outer safety net. A `data-lumeo-exit`
+  latch prevents a still-pending open-helper from re-freezing an in-flight
+  exit on rapid close; reduced-motion unmounts both together immediately.
+  Verified by rAF frame-sampling (independent double-check): panel animates
+  `slide-out-to-right` with live transform for the full 300ms and panel +
+  backdrop leave the DOM in the same frame after the animation — across all
+  four overlay types, every close path, normal and 6x CPU-throttled; nine
+  new regression tests lock the pattern in.
+
 ## [4.1.0-preview.14] - 2026-07-06
 
 ### Fixed
