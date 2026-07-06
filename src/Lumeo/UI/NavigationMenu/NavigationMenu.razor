@@ -56,6 +56,11 @@
     private string? _lastValueParam;
     private string? _lastPushed;   // the last value WE emitted via ValueChanged
 
+    // Placed into _lastPushed when the active item is torn down so the echo guard
+    // can never equal any real Value (including null), forcing OnParametersSet to
+    // re-adopt the controlled Value on the next render.
+    private const string EchoGuardSentinel = "\0lumeo-nav-removed";
+
     protected override void OnParametersSet()
     {
         if (!_seeded)
@@ -147,6 +152,13 @@
         if (_activeItemId == itemId)
         {
             _activeItemId = null;
+            // Invalidate the echo guard so that the next OnParametersSet re-adopts
+            // the controlled Value regardless of what it is (including the same id
+            // when the item is re-added). Without this, Value == _lastPushed would
+            // be mistaken for our own echo and the item would stay closed (P2 r4).
+            // Only the controlled path reads _lastPushed, so the uncontrolled path
+            // and the null-close semantics from round 2 are not affected.
+            _lastPushed = EchoGuardSentinel;
             StateHasChanged();
         }
     }

@@ -151,6 +151,45 @@ public class NavigationMenuControlledValueTests : IAsyncLifetime
     }
 
     [Fact]
+    public void Controlled_Item_Reopens_After_Being_Removed_And_Readded()
+    {
+        // Regression for round-4 P2: active item torn down → NotifyItemRemoved clears
+        // _activeItemId but left _lastPushed == "a". Re-adding the item while Value
+        // is still "a" hit the echo guard (Value == _lastPushed → no re-adopt) and
+        // rendered the item closed. Fix: sentinel _lastPushed on removal.
+        RenderFragment ItemsWithFlag(bool includeA) => list =>
+        {
+            if (includeA) AddItem(list, 0, "a", "Alpha");
+            AddItem(list, 10, "b", "Bravo");
+        };
+
+        void Configure(ComponentParameterCollectionBuilder<L.NavigationMenu> p, bool includeA)
+        {
+            p.Add(m => m.Value, "a");
+            p.Add(m => m.ValueChanged, EventCallback.Factory.Create<string?>(this, _ => { }));
+            p.Add(m => m.ChildContent, (RenderFragment)(b =>
+            {
+                b.OpenComponent<L.NavigationMenuList>(0);
+                b.AddAttribute(1, "ChildContent", ItemsWithFlag(includeA));
+                b.CloseComponent();
+            }));
+        }
+
+        // Step 1: item "a" present and open.
+        var cut = _ctx.Render<L.NavigationMenu>(p => Configure(p, includeA: true));
+        Assert.Equal("open", State(cut, "Alpha"));
+
+        // Step 2: conditionally remove item "a" (simulates conditional rendering).
+        cut.Render(p => Configure(p, includeA: false));
+
+        // Step 3: re-add item "a" — parent's Value is still "a".
+        cut.Render(p => Configure(p, includeA: true));
+
+        // Must be open again; pre-fix the echo guard blocked re-adoption → "closed".
+        Assert.Equal("open", State(cut, "Alpha"));
+    }
+
+    [Fact]
     public void Controlled_Parent_Veto_Rolls_The_Optimistic_Open_Back()
     {
         // Parent is controlled but pins Value="a" and ignores the change — a veto.
