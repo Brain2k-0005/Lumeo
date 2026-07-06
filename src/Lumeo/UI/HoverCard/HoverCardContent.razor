@@ -4,7 +4,7 @@
 
 @if (_exit.Present(Context.IsOpen))
 {
-    <div id="@_contentId" data-state="@(Context.IsOpen ? "open" : "closed")" class="@CssClass" @onmouseenter="HandleMouseEnter" @onmouseleave="HandleMouseLeave" @attributes="AdditionalAttributes">
+    <div id="@_contentId" data-state="@(Context.IsOpen ? "open" : "closed")" class="@CssClass" inert="@ExitInert" @onmouseenter="HandleMouseEnter" @onmouseleave="HandleMouseLeave" @attributes="AdditionalAttributes">
         @ChildContent
         @if (ShowArrow)
         {
@@ -40,6 +40,11 @@
     // pointer-events-none during the exit window makes the fading card inert so a
     // mouseenter on it can't cancel/reopen the close while it animates out (P2).
     private string AnimationClass => _exit.Exiting ? "animate-zoom-out pointer-events-none" : "animate-fade-in";
+
+    // `inert` (exit window only) also drops any focusable content (links/buttons a
+    // consumer put in the card) from the tab order so keyboard users can't Tab into the
+    // closing card (round-2 P2).
+    private string? ExitInert => _exit.Exiting ? "true" : null;
 
     // Gate the hover-open/close handlers so an EXITING card never schedules an open
     // or close: even if a stray mouseenter/leave reaches the fading surface (before

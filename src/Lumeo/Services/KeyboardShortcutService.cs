@@ -49,15 +49,15 @@ public sealed class KeyboardShortcutService : IKeyboardShortcutService
     /// Register a keyboard shortcut. Key combo format: "ctrl+k", "ctrl+shift+p", "escape", "alt+n"
     /// Modifiers: ctrl, shift, alt, meta. Separate with +. Key names use KeyboardEvent.key values.
     /// </summary>
-    public async ValueTask<IAsyncDisposable> RegisterAsync(string keyCombo, Func<Task> handler, bool preventDefault = true)
+    public async ValueTask<IAsyncDisposable> RegisterAsync(string keyCombo, Func<Task> handler, bool preventDefault = true, bool allowInEditable = false)
     {
         await EnsureInitializedAsync();
         var id = Guid.NewGuid().ToString("N");
         var normalized = NormalizeCombo(keyCombo);
-        _shortcuts[id] = new ShortcutRegistration(normalized, handler, preventDefault);
+        _shortcuts[id] = new ShortcutRegistration(normalized, handler, preventDefault, allowInEditable);
 
         var module = await GetModuleAsync();
-        await module.InvokeVoidAsync("addShortcut", id, normalized, preventDefault);
+        await module.InvokeVoidAsync("addShortcut", id, normalized, preventDefault, allowInEditable);
 
         return new ShortcutHandle(this, id);
     }
@@ -65,9 +65,9 @@ public sealed class KeyboardShortcutService : IKeyboardShortcutService
     /// <summary>
     /// Register a keyboard shortcut with a synchronous handler.
     /// </summary>
-    public async ValueTask<IAsyncDisposable> RegisterAsync(string keyCombo, Action handler, bool preventDefault = true)
+    public async ValueTask<IAsyncDisposable> RegisterAsync(string keyCombo, Action handler, bool preventDefault = true, bool allowInEditable = false)
     {
-        return await RegisterAsync(keyCombo, () => { handler(); return Task.CompletedTask; }, preventDefault);
+        return await RegisterAsync(keyCombo, () => { handler(); return Task.CompletedTask; }, preventDefault, allowInEditable);
     }
 
     public async ValueTask UnregisterAsync(string id)
@@ -125,7 +125,7 @@ public sealed class KeyboardShortcutService : IKeyboardShortcutService
         _shortcuts.Clear();
     }
 
-    private record ShortcutRegistration(string NormalizedCombo, Func<Task> Handler, bool PreventDefault);
+    private record ShortcutRegistration(string NormalizedCombo, Func<Task> Handler, bool PreventDefault, bool AllowInEditable);
 
     private sealed class ShortcutHandle(KeyboardShortcutService service, string id) : IAsyncDisposable
     {

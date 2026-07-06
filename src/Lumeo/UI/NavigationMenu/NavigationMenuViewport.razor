@@ -5,7 +5,7 @@
 
 @if (_exit.Present(IsOpen))
 {
-    <div class="@CssClass" data-state="@(IsOpen ? "open" : "closed")" @attributes="AdditionalAttributes">
+    <div class="@CssClass" data-state="@(IsOpen ? "open" : "closed")" inert="@ExitInert" @attributes="AdditionalAttributes">
         <div id="@_viewportId" class="@InnerCssClass">
             @ChildContent
         </div>
@@ -31,8 +31,11 @@
     private string CssClass => Cx.Merge("absolute start-0 top-full flex justify-center", Class);
 
     // The animate-* class lives on the inner (id'd) element so attachOverlayExitEnd
-    // samples the right node.
-    private string AnimationClass => _exit.Exiting ? "animate-fade-out" : "animate-fade-in";
+    // samples the right node. pointer-events-none keeps the fading panel from taking
+    // clicks; `inert` on the outer wrapper (exit window only) also drops its focusable
+    // content from the tab order so keyboard users can't Tab into a closing panel (P2).
+    private string AnimationClass => _exit.Exiting ? "animate-fade-out pointer-events-none" : "animate-fade-in";
+    private string? ExitInert => _exit.Exiting ? "true" : null;
 
     // Height is content-driven (h-auto). Radix's Viewport sizes with
     // h-[var(--radix-navigation-menu-viewport-height)], a var its JS sets by

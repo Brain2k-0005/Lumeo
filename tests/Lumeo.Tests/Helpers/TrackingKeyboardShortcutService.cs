@@ -27,15 +27,15 @@ public sealed class TrackingKeyboardShortcutService : IKeyboardShortcutService
         return true;
     }
 
-    public ValueTask<IAsyncDisposable> RegisterAsync(string keyCombo, Func<Task> handler, bool preventDefault = true)
+    public ValueTask<IAsyncDisposable> RegisterAsync(string keyCombo, Func<Task> handler, bool preventDefault = true, bool allowInEditable = false)
     {
         var id = Guid.NewGuid().ToString("N");
         _byId[id] = (keyCombo, handler);
         return ValueTask.FromResult<IAsyncDisposable>(new Handle(this, id));
     }
 
-    public ValueTask<IAsyncDisposable> RegisterAsync(string keyCombo, Action handler, bool preventDefault = true)
-        => RegisterAsync(keyCombo, () => { handler(); return Task.CompletedTask; }, preventDefault);
+    public ValueTask<IAsyncDisposable> RegisterAsync(string keyCombo, Action handler, bool preventDefault = true, bool allowInEditable = false)
+        => RegisterAsync(keyCombo, () => { handler(); return Task.CompletedTask; }, preventDefault, allowInEditable);
 
     public ValueTask UnregisterAsync(string id)
     {

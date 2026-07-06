@@ -64,6 +64,27 @@ public class NavigationMenuExitAnimationTests : IAsyncLifetime
     }
 
     [Fact]
+    public void Exiting_Content_Is_PointerEventsNone_And_Inert()
+    {
+        // Round-2 P2: round 1 missed NavigationMenuContent when it added the exit-window
+        // pointer-events-none to the other overlays, and never gave it keyboard inertness.
+        // The fading panel must be both pointer-inert (pointer-events-none) AND keyboard-
+        // inert (`inert`), so its native links/buttons leave the tab order while it fades.
+        var cut = RenderNav();
+        cut.Find("button").Click();
+        var open = cut.Find("[role='menu']");
+        Assert.DoesNotContain("pointer-events-none", open.GetAttribute("class") ?? "");
+        Assert.False(open.HasAttribute("inert"));
+
+        cut.Find("button").Click(); // close → exit window
+
+        var menu = cut.Find("[role='menu']");
+        Assert.Equal("closed", menu.GetAttribute("data-state"));
+        Assert.Contains("pointer-events-none", menu.GetAttribute("class") ?? "");
+        Assert.True(menu.HasAttribute("inert"));
+    }
+
+    [Fact]
     public void Exit_Eventually_Unmounts_The_Content()
     {
         var cut = RenderNav();

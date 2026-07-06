@@ -86,4 +86,21 @@ public class ContextMenuExitAnimationTests : IAsyncLifetime
         Assert.Equal("closed", menu.GetAttribute("data-state"));
         Assert.Contains("pointer-events-none", menu.GetAttribute("class") ?? "");
     }
+
+    [Fact]
+    public void Exiting_Surface_Gets_The_Inert_Attribute_For_Keyboard_Inertness()
+    {
+        // Round-2 P2: pointer-events-none only blocks the pointer — the menu items are
+        // native <button>s, so keyboard users could still Tab INTO the visually-closed
+        // menu during the exit window. The exiting surface must carry `inert` (absent
+        // while open) so the whole subtree leaves the tab order + a11y tree.
+        var cut = RenderMenu(open: true);
+        Assert.False(cut.Find("[role='menu']").HasAttribute("inert"));
+
+        cut.Render(p => p.Add(m => m.Open, false).Add(m => m.ChildContent, _child));
+
+        var menu = cut.Find("[role='menu']");
+        Assert.Equal("closed", menu.GetAttribute("data-state"));
+        Assert.True(menu.HasAttribute("inert"));
+    }
 }

@@ -84,4 +84,21 @@ public class SwitchDataStateFormTests : IAsyncLifetime
         var cut = _ctx.Render<Lumeo.Switch>(p => p.Add(s => s.Name, "toggle"));
         Assert.Equal("on", cut.Find("input[type=checkbox]").GetAttribute("value"));
     }
+
+    [Fact]
+    public void Bubble_Input_Is_Disabled_While_Loading()
+    {
+        // Round-2 P2: the visible button is disabled by Loading, but the hidden bubble
+        // input previously stayed enabled — so the switch could still submit its value in
+        // a native form POST mid-load. The bubble input must mirror Disabled || Loading.
+        var notLoading = _ctx.Render<Lumeo.Switch>(p => p
+            .Add(s => s.Name, "toggle").Add(s => s.Checked, true));
+        Assert.False(notLoading.Find("input[type=checkbox]").HasAttribute("disabled"));
+
+        var loading = _ctx.Render<Lumeo.Switch>(p => p
+            .Add(s => s.Name, "toggle").Add(s => s.Checked, true).Add(s => s.Loading, true));
+        Assert.True(loading.Find("input[type=checkbox]").HasAttribute("disabled"));
+        // The visible switch button is disabled too — the two now agree.
+        Assert.True(loading.Find("button[role=switch]").HasAttribute("disabled"));
+    }
 }

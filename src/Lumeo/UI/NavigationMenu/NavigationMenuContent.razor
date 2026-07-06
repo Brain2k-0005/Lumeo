@@ -4,7 +4,7 @@
 
 @if (_exit.Present(IsOpen))
 {
-    <div id="@_contentId" role="menu" aria-labelledby="@ItemContext.TriggerId" data-state="@(IsOpen ? "open" : "closed")" class="@CssClass" @onkeydown="HandleKeyDown" tabindex="-1" @attributes="AdditionalAttributes">
+    <div id="@_contentId" role="menu" aria-labelledby="@ItemContext.TriggerId" data-state="@(IsOpen ? "open" : "closed")" class="@CssClass" @onkeydown="HandleKeyDown" tabindex="-1" inert="@ExitInert" @attributes="AdditionalAttributes">
         <div class="@InnerCssClass">
             @ChildContent
         </div>
@@ -32,7 +32,14 @@
     private const int ExitDurationMs = 250;
 
     private bool IsOpen => Context.ActiveItemId == ItemContext.ItemId;
-    private string AnimationClass => _exit.Exiting ? "animate-fade-out" : "animate-fade-in";
+
+    // pointer-events-none blocks the pointer on the fading panel; `inert` (rendered
+    // only during the exit window) additionally removes its native links/buttons from
+    // the tab order + a11y tree so keyboard users can't Tab into a visually-closed
+    // submenu while it animates out (round-1 added neither here — P2). Focus already
+    // left on close (Escape returns it to the trigger), so inert traps nothing.
+    private string AnimationClass => _exit.Exiting ? "animate-fade-out pointer-events-none" : "animate-fade-in";
+    private string? ExitInert => _exit.Exiting ? "true" : null;
 
     private string CssClass => Cx.Merge("fixed z-50", AnimationClass, Class);
 

@@ -60,7 +60,14 @@
     {
         if (!_seeded)
         {
-            _activeItemId = Value ?? DefaultValue;
+            // DefaultValue seeds the open item ONLY when uncontrolled. When controlled
+            // (ValueChanged bound or a non-null Value supplied), honor Value verbatim —
+            // including Value == null meaning "closed" — and ignore DefaultValue (Radix
+            // semantics). Previously DefaultValue opened the menu while _lastPushed stayed
+            // null, so a later controlled render with Value == null was mistaken for the
+            // echo of our own push and the parent could never force the menu closed (P2 r2).
+            var controlled = ValueChanged.HasDelegate || Value is not null;
+            _activeItemId = controlled ? Value : DefaultValue;
             _lastValueParam = Value;
             _lastPushed = Value;
             _seeded = true;

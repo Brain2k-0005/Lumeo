@@ -75,6 +75,23 @@ public class NavigationMenuControlledValueTests : IAsyncLifetime
     }
 
     [Fact]
+    public void Controlled_Menu_Ignores_DefaultValue_And_Honors_Null_As_Closed()
+    {
+        // Round-2 P2: a controlled menu (ValueChanged bound) with Value == null must open
+        // NOTHING — DefaultValue is an uncontrolled-only seed. Pre-fix the seed opened
+        // DefaultValue ("a") while _lastPushed stayed null, so the parent's null could
+        // never force-close it (mistaken for the echo of our own push).
+        var cut = RenderNav(p =>
+        {
+            p.Add(m => m.DefaultValue, "a");
+            p.Add(m => m.ValueChanged, EventCallback.Factory.Create<string?>(this, _ => { }));
+        });
+
+        Assert.Equal("closed", State(cut, "Alpha"));
+        Assert.Equal("closed", State(cut, "Bravo"));
+    }
+
+    [Fact]
     public void Clicking_A_Trigger_Emits_ValueChanged_With_The_Item_Value()
     {
         string? emitted = null;

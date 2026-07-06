@@ -1952,12 +1952,14 @@ export function registerKeyboardShortcuts(dotnetRef) {
         window.__lumeoKbdListener = (e) => {
             const tag = (e.target?.tagName || '').toUpperCase();
             const isEditable = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || e.target?.isContentEditable;
-            for (const [id, { combo, preventDefault }] of shortcuts) {
-                // Skip modifier-less shortcuts when focus is inside an editable element
-                if (isEditable) {
-                    const hasModifier = combo.includes('ctrl') || combo.includes('alt') || combo.includes('meta');
-                    if (!hasModifier) continue;
-                }
+            for (const [id, { combo, preventDefault, allowInEditable }] of shortcuts) {
+                // Inside an editable element, skip EVERY shortcut that has not explicitly
+                // opted in via allowInEditable. Previously only modifier-LESS shortcuts were
+                // skipped, so a modifier combo like Ctrl/Cmd+B toggled a registered handler
+                // (e.g. the sidebar) AND preventDefault'd the browser's native bold while the
+                // user was typing. Global shortcuts that must fire everywhere (a Ctrl/Cmd+K
+                // command palette) register with allowInEditable:true and are exempt here.
+                if (isEditable && !allowInEditable) continue;
                 if (matchesCombo(e, combo)) {
                     if (preventDefault) e.preventDefault();
                     shortcutDotnetRef?.invokeMethodAsync('OnShortcutTriggered', id);
@@ -1978,8 +1980,8 @@ export function unregisterKeyboardShortcuts() {
     shortcutDotnetRef = null;
 }
 
-export function addShortcut(id, combo, preventDefault) {
-    shortcuts.set(id, { combo, preventDefault });
+export function addShortcut(id, combo, preventDefault, allowInEditable) {
+    shortcuts.set(id, { combo, preventDefault, allowInEditable: !!allowInEditable });
 }
 
 export function removeShortcut(id) {

@@ -17,6 +17,7 @@
          style="@PositionStyle"
          @onkeydown="HandleKeyDown"
          tabindex="-1"
+         inert="@ExitInert"
          @attributes="AdditionalAttributes">
         @ChildContent
     </div>
@@ -46,6 +47,13 @@
     // pointer-events-none during the exit window makes the fading surface inert so a
     // double-click / second tap can't re-invoke a menu item while it animates out (P2).
     private string AnimationClass => _exit.Exiting ? "animate-zoom-out pointer-events-none" : "animate-fade-in";
+
+    // pointer-events-none only stops the pointer — the menu items are native <button>s,
+    // so keyboard users could still Tab INTO the visually-closed menu during the exit
+    // window. `inert` (rendered only while exiting) removes the whole subtree from the
+    // tab order + a11y tree. Focus was already restored to the trigger on close
+    // (Cleanup → RestoreFocus), so inert never traps focus inside the surface. (P2 r2)
+    private string? ExitInert => _exit.Exiting ? "true" : null;
 
     private string CssClass => Cx.Merge("fixed z-50 min-w-[8rem] overflow-hidden rounded-md border border-border/40 bg-popover p-1 text-popover-foreground shadow-lg", AnimationClass, Class);
 

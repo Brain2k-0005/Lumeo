@@ -12,7 +12,7 @@
     space is tight. Side is still consumer-controlled as a preference. *@
 @if (_exit.Present(IsOpen))
 {
-    <div id="@_contentId" role="tooltip" data-state="@(IsOpen ? "open" : "closed")" data-side="@EffectiveSide" data-align="@AlignStr" class="@CssClass" @attributes="AdditionalAttributes">
+    <div id="@_contentId" role="tooltip" data-state="@(IsOpen ? "open" : "closed")" data-side="@EffectiveSide" data-align="@AlignStr" class="@CssClass" inert="@ExitInert" @attributes="AdditionalAttributes">
         @ChildContent
         @if (ShowArrow)
         {
@@ -70,6 +70,11 @@
     private string AnimationClasses => IsOpen
         ? "opacity-100 visible animate-fade-in"
         : (_exit.Exiting ? "opacity-100 visible animate-zoom-out pointer-events-none" : "opacity-0 invisible");
+
+    // `inert` during the exit window keeps the closing tooltip out of the tab order +
+    // a11y tree — parity with the menu/nav surfaces (round-2 P2). A tooltip should hold
+    // no focusable content per WAI-ARIA, so this is defence-in-depth.
+    private string? ExitInert => _exit.Exiting ? "true" : null;
 
     private string SideStr => Side switch
     {

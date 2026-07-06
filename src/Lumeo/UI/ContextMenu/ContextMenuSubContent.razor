@@ -4,13 +4,19 @@
 
 @if (_exit.Present(SubContext.IsOpen))
 {
+    @* Keydown is scoped to this submenu via stopPropagation (mirrors MenubarSubContent):
+       a printable key handled by the sub typeahead must not bubble to the root menu,
+       whose typeahead would steal focus back to a root item. Escape/ArrowLeft close via
+       the sub context directly, so nothing depends on keydown reaching the root. *@
     <div id="@SubContext.ContentId"
          role="menu"
          aria-orientation="vertical"
          data-state="@(SubContext.IsOpen ? "open" : "closed")"
          class="@CssClass"
          tabindex="-1"
+         inert="@ExitInert"
          @onkeydown="HandleKeyDown"
+         @onkeydown:stopPropagation="true"
          @onmouseenter="HandleMouseEnter"
          @onmouseleave="HandleMouseLeave"
          @onmousedown:stopPropagation="true"
@@ -42,6 +48,10 @@
     // pointer-events-none during the exit window makes the fading submenu inert so a
     // double-click / second tap can't re-invoke an item while it animates out (P2).
     private string AnimationClass => _exit.Exiting ? "animate-zoom-out pointer-events-none" : "animate-fade-in";
+
+    // `inert` (exit window only) also drops the submenu's native <button> items from the
+    // tab order so keyboard users can't Tab into the closing panel (round-2 P2).
+    private string? ExitInert => _exit.Exiting ? "true" : null;
 
     private string CssClass => Cx.Merge("fixed z-50 min-w-[8rem] overflow-hidden rounded-md border border-border/40 bg-popover p-1 text-popover-foreground shadow-lg", AnimationClass, Class);
 
