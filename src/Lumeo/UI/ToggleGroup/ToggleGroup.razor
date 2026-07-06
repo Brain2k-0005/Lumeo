@@ -10,10 +10,10 @@
     // sequence (see RegisterItem), so the registry tracks DOM/declaration order
     // instead of a bare !Contains-append-to-tail. #69.
     _generation++;
-    var context = new ToggleGroupContext(Type, _selectedItems, Variant, Size, EventCallback.Factory.Create<string>(this, ToggleItem), GetTabIndex, _itemValues, _itemIds, _itemDisabled, RegisterItem, UnregisterItem, SetFocusValue, _generation, _id);
+    var context = new ToggleGroupContext(Type, _selectedItems, Variant, Size, EventCallback.Factory.Create<string>(this, ToggleItem), GetTabIndex, _itemValues, _itemIds, _itemDisabled, RegisterItem, UnregisterItem, SetFocusValue, _generation, _id, OrientationData);
 }
 
-<div id="@_id" role="group" class="@CssClass" @onkeydown="HandleKeyDown" @attributes="AdditionalAttributes">
+<div id="@_id" role="group" aria-orientation="@OrientationData" data-orientation="@OrientationData" class="@CssClass" @onkeydown="HandleKeyDown" @attributes="AdditionalAttributes">
     <CascadingValue Value="context" IsFixed="false">
         @ChildContent
     </CascadingValue>
@@ -24,6 +24,16 @@
     [Parameter] public ToggleGroupType Type { get; set; } = ToggleGroupType.Single;
     [Parameter] public ToggleGroupVariant Variant { get; set; } = ToggleGroupVariant.Default;
     [Parameter] public Lumeo.Size Size { get; set; } = Lumeo.Size.Md;
+
+    /// <summary>
+    /// Group layout axis. Sets <c>aria-orientation</c> + <c>data-orientation</c> on the
+    /// group and cascades <c>data-orientation</c> to each item (shadcn/Radix parity).
+    /// Default <see cref="Lumeo.Orientation.Horizontal"/>. Roving arrow-key navigation
+    /// already accepts both axes.
+    /// </summary>
+    [Parameter] public Lumeo.Orientation Orientation { get; set; } = Lumeo.Orientation.Horizontal;
+
+    private string OrientationData => Orientation == Lumeo.Orientation.Vertical ? "vertical" : "horizontal";
     [Parameter] public string? Value { get; set; }
     [Parameter] public EventCallback<string?> ValueChanged { get; set; }
     [Parameter] public IEnumerable<string>? SelectedValues { get; set; }
@@ -440,7 +450,9 @@
         // The role=group element id — the anchor for the DOM-order roving-nav probe
         // (Interop.GetOrderedDescendantIds) so arrow-key order tracks the live DOM
         // after a keyed reorder. Always present (LumeoIds.New on the root div).
-        string ContainerId)
+        string ContainerId,
+        // "horizontal" | "vertical" — cascaded so each item emits data-orientation.
+        string Orientation = "horizontal")
     {
         public bool IsSelected(string value) => SelectedItems.Contains(value);
     }

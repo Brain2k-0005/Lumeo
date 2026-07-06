@@ -3289,6 +3289,7 @@ export function unregisterSortableTouch(containerId) {
 /* ===== AI primitives ===== */
 
 const aiListObservers = new Map();
+const aiScrollButtonObservers = new Map();
 
 export const ai = {
     /* ---------- PromptInput auto-size ---------- */
@@ -3355,6 +3356,53 @@ export const ai = {
         const el = document.getElementById(elementId);
         if (!el) return;
         el.scrollTop = el.scrollHeight;
+    },
+
+    /* ---------- ConversationScrollButton visibility ----------
+       Reports (via .NET) whether the list is scrolled AWAY from the bottom, so a
+       floating "scroll to latest" button can appear only when it's useful. Fires
+       on scroll, on resize, and whenever content mutates (streaming grows the
+       list), and only invokes .NET when the boolean actually flips — no per-event
+       chatter. Mirrors observeAutoScroll's teardown discipline. */
+    observeScrollButton(elementId, dotNetRef) {
+        const el = document.getElementById(elementId);
+        if (!el) return;
+
+        const prev = aiScrollButtonObservers.get(elementId);
+        if (prev) prev.dispose();
+
+        // 8px slack so a list resting exactly at the bottom never shows the button.
+        const isAway = () => (el.scrollHeight - el.scrollTop - el.clientHeight) > 8;
+        let away = null;
+        const evaluate = () => {
+            const next = isAway();
+            if (next === away) return;
+            away = next;
+            try { dotNetRef.invokeMethodAsync('OnScrollAwayChanged', next); } catch { /* circuit gone */ }
+        };
+
+        el.addEventListener('scroll', evaluate, { passive: true });
+        const observer = new MutationObserver(evaluate);
+        observer.observe(el, { childList: true, subtree: true, characterData: true });
+        const ro = (typeof ResizeObserver !== 'undefined') ? new ResizeObserver(evaluate) : null;
+        if (ro) ro.observe(el);
+
+        evaluate();
+
+        aiScrollButtonObservers.set(elementId, {
+            dispose() {
+                el.removeEventListener('scroll', evaluate);
+                observer.disconnect();
+                if (ro) ro.disconnect();
+            }
+        });
+    },
+
+    disposeScrollButton(elementId) {
+        const entry = aiScrollButtonObservers.get(elementId);
+        if (!entry) return;
+        entry.dispose();
+        aiScrollButtonObservers.delete(elementId);
     }
 };
 

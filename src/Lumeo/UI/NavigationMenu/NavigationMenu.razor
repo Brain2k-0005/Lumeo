@@ -2,7 +2,7 @@
 @inject IComponentInteropService Interop
 
 @{
-    var context = new NavigationMenuContext(_activeItemId, EventCallback.Factory.Create<string?>(this, SetActiveItemId), this);
+    var context = new NavigationMenuContext(_activeItemId, EventCallback.Factory.Create<string?>(this, SetActiveItemId), this, DelayDuration);
 }
 
 @* aria-label names the navigation landmark so AT users can distinguish it from
@@ -18,10 +18,70 @@
 
     /// <summary>Accessible name for the &lt;nav&gt; landmark. Defaults to "Main".</summary>
     [Parameter] public string Label { get; set; } = "Main";
+
+    /// <summary>
+    /// Controlled value of the currently-open item. Bind with
+    /// <c>@bind-Value</c>/<see cref="ValueChanged"/>. The value matches the open
+    /// <see cref="NavigationMenuItem.Value"/> (or its auto id when none is set);
+    /// <c>null</c> means no submenu is open. Leave unset for uncontrolled use.
+    /// </summary>
+    [Parameter] public string? Value { get; set; }
+
+    /// <summary>Raised when the open item changes (user hover/click/keyboard, or an
+    /// item close). Carries the new open item's value, or <c>null</c> when closed.</summary>
+    [Parameter] public EventCallback<string?> ValueChanged { get; set; }
+
+    /// <summary>Initial open item for uncontrolled use (ignored once <see cref="Value"/>
+    /// is bound). <c>null</c> (default) opens nothing.</summary>
+    [Parameter] public string? DefaultValue { get; set; }
+
+    /// <summary>
+    /// Grace window in milliseconds before a hovered submenu closes after the
+    /// pointer leaves it. Radix's forgiveness delay: moving between adjacent
+    /// triggers, or briefly slipping off the panel, does not immediately dismiss.
+    /// Defaults to 150ms.
+    /// </summary>
+    [Parameter] public int DelayDuration { get; set; } = 150;
+
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     private string? _activeItemId;
+
+    // Controlled/uncontrolled disambiguation, mirroring the menu RadioGroups. The
+    // open item lives in a private field so an uncontrolled menu's optimistic
+    // open/close survives an unrelated parent re-render, and a controlled parent
+    // can veto (re-render with the old Value) to roll the state back.
+    private bool _seeded;
+    private string? _lastValueParam;
+    private string? _lastPushed;   // the last value WE emitted via ValueChanged
+
+    protected override void OnParametersSet()
+    {
+        if (!_seeded)
+        {
+            _activeItemId = Value ?? DefaultValue;
+            _lastValueParam = Value;
+            _lastPushed = Value;
+            _seeded = true;
+            return;
+        }
+
+        if (ValueChanged.HasDelegate)
+        {
+            // Controlled: adopt any incoming Value that isn't the echo of our own change.
+            if (!Equals(Value, _lastPushed))
+            {
+                _activeItemId = Value;
+                _lastPushed = Value;
+            }
+        }
+        else if (!Equals(Value, _lastValueParam))   // Uncontrolled: adopt only on a genuine param change
+        {
+            _activeItemId = Value;
+            _lastValueParam = Value;
+        }
+    }
 
     // Ordered list of top-level trigger element ids, registered by each
     // NavigationMenuItem so the menu can move focus between them with the arrow
@@ -40,11 +100,12 @@
 
     private string CssClass => Cx.Merge("relative z-10 flex max-w-max flex-1 items-center justify-center", Class);
 
-    private Task SetActiveItemId(string? value)
+    private async Task SetActiveItemId(string? value)
     {
         _activeItemId = value;
+        _lastPushed = value;   // record what we push so a synchronous controlled veto is detectable
+        await ValueChanged.InvokeAsync(value);
         StateHasChanged();
-        return Task.CompletedTask;
     }
 
     // Called by a trigger when it opens its submenu via the keyboard. The focus
@@ -101,5 +162,5 @@
         catch (JSDisconnectedException) { }
     }
 
-    public record NavigationMenuContext(string? ActiveItemId, EventCallback<string?> SetActiveItemId, NavigationMenu Owner);
+    public record NavigationMenuContext(string? ActiveItemId, EventCallback<string?> SetActiveItemId, NavigationMenu Owner, int CloseDelayMs);
 }

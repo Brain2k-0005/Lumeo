@@ -36,8 +36,39 @@ else
 {
     <div class="@RootCssClass" style="@RootStyleStr" @attributes="AdditionalAttributes">
         <div id="@_chartId" class="lumeo-chart-host w-full h-full"
-             role="@(string.IsNullOrEmpty(AriaLabel) ? null : "img")" aria-label="@AriaLabel"
+             role="@(string.IsNullOrEmpty(HostAriaLabel) ? null : "img")" aria-label="@HostAriaLabel"
+             tabindex="@HostTabIndex"
              style="@HostStyle"></div>
+        @if (AccessibilityLayer && _a11yTable is { } _table)
+        {
+            @* Screen-reader accessibility layer (shadcn `accessibilityLayer` parity for
+               canvas). ECharts paints to <canvas>, which is opaque to assistive tech, so
+               we project the series data into a visually-hidden but SR-navigable table.
+               The focusable host above carries the summary as its aria-label. *@
+            <table class="sr-only" aria-label="@_table.Summary">
+                <caption>@_table.Summary</caption>
+                <thead>
+                    <tr>
+                        @foreach (var header in _table.ColumnHeaders)
+                        {
+                            <th scope="col">@header</th>
+                        }
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var row in _table.Rows)
+                    {
+                        <tr>
+                            <th scope="row">@row.Header</th>
+                            @foreach (var cell in row.Cells)
+                            {
+                                <td>@cell</td>
+                            }
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
         @if (ShouldShowSkeleton && SkeletonStyle == ChartSkeletonStyle.Silhouette)
         {
             @* Silhouette mode (legacy SVG skeleton overlay). Phantom mode renders the real
@@ -83,6 +114,13 @@ else
     /// canvas host is exposed as <c>role="img"</c> with this <c>aria-label</c> so screen
     /// readers announce a summary instead of an empty graphic. Strongly recommended.</summary>
     [Parameter] public string? AriaLabel { get; set; }
+    /// <summary>When <c>true</c> (default, matching shadcn's <c>accessibilityLayer</c>),
+    /// the chart renders a visually-hidden data table built from the series data and
+    /// makes the canvas host keyboard-focusable with a summarising <c>aria-label</c>, so
+    /// screen-reader and keyboard users can reach the otherwise opaque <c>&lt;canvas&gt;</c>
+    /// data. When <see cref="AriaLabel"/> is not set, a generated summary of the data is
+    /// used as the label. Set to <c>false</c> to opt out entirely.</summary>
+    [Parameter] public bool AccessibilityLayer { get; set; } = true;
     [Parameter] public string Width { get; set; } = "100%";
     [Parameter] public string Height { get; set; } = "350px";
     [Parameter] public EventCallback<ChartEventArgs> OnClick { get; set; }
@@ -190,6 +228,24 @@ else
     private string RootCssClass => $"relative {Class}".Trim();
     private string RootStyleStr => $"position: relative; {StyleStr}";
 
+    // Screen-reader data table projected from the REAL option (never the phantom
+    // placeholder), rebuilt in OnParametersSet whenever the option changes. Null when
+    // there is no usable series data or the accessibility layer is disabled.
+    private ChartAccessibility.ChartDataTable? _a11yTable;
+
+    // The host's aria-label: the consumer-supplied AriaLabel wins; otherwise, when the
+    // accessibility layer is on, fall back to the generated data summary so a chart with
+    // no explicit label is still announced.
+    private string? HostAriaLabel =>
+        !string.IsNullOrEmpty(AriaLabel) ? AriaLabel
+        : AccessibilityLayer ? _a11yTable?.Summary
+        : null;
+
+    // Make the canvas host reachable by keyboard (Tab) only when it actually announces
+    // something — avoids adding an empty focus stop to charts with no label/data.
+    private string? HostTabIndex =>
+        AccessibilityLayer && !string.IsNullOrEmpty(HostAriaLabel) ? "0" : null;
+
     /// <summary>True when we should be showing a loading state. Keyed strictly on
     /// <c>IsLoading</c> — we do NOT show phantom/silhouette on initial mount, because
     /// ECharts initializes synchronously and a ready chart should render its real data
@@ -261,6 +317,10 @@ else
 
     protected override void OnParametersSet()
     {
+        // Rebuild the screen-reader table from the real (non-phantom) option. Cheap
+        // JSON parse; only runs when parameters change, not on the phantom render loop.
+        _a11yTable = AccessibilityLayer ? BuildAccessibilityTable() : null;
+
         // Recovery after an init failure: the error branch tore down the #_chartId host
         // and left _initialized=false, so neither OnAfterRenderAsync branch ever runs
         // again. When the consumer changes an init-relevant input (Option/OptionJson,
@@ -550,6 +610,11 @@ else
     // or no series to attach to (e.g. an empty placeholder option).
     private string MergeAnnotations(string baseJson)
         => ChartAnnotationMerger.Merge(baseJson, _annotations.Thresholds, _annotations.Zones);
+
+    // Projects the REAL merged option (not the phantom placeholder) into the SR table.
+    // Uses GetOptionsJson so the OptionJson and typed-Option paths are handled uniformly.
+    private ChartAccessibility.ChartDataTable? BuildAccessibilityTable()
+        => ChartAccessibility.Build(GetOptionsJson());
 
     [JSInvokable]
     public async Task OnChartEvent(string eventName, string dataJson)

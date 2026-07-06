@@ -6,6 +6,11 @@
 }
 <aside class="@CssClass"
        aria-expanded="@(EffectivelyExpanded ? "true" : "false")"
+       data-slot="sidebar"
+       data-state="@DataState"
+       data-collapsible="@DataCollapsible"
+       data-variant="@DataVariant"
+       data-side="@DataSide"
        @onmouseenter="OnHoverEnter" @onmouseleave="OnHoverLeave"
        @onfocusin="OnHoverEnter" @onfocusout="OnHoverLeave"
        @attributes="AdditionalAttributes">
@@ -39,6 +44,27 @@
     private bool EffectiveCollapsed => State?.EffectiveCollapsed ?? IsCollapsed;
     private bool EffectivelyExpanded => !EffectiveCollapsed;
 
+    // shadcn Sidebar data-* styling hooks (parity with its `group peer` element):
+    //  data-state       expanded | collapsed
+    //  data-collapsible  "" when expanded; when collapsed the collapse mode —
+    //                    "offcanvas" for Push/Overlay/mobile-sheet (slides fully away),
+    //                    "icon" for Icon/MiniRail (narrow rail remains).
+    //  data-variant      the Lumeo variant (push|overlay|icon|minirail), lower-cased.
+    //  data-side         left | right
+    // These unblock consumer selectors like group-data-[collapsible=icon]:justify-center.
+    private string DataState => EffectivelyExpanded ? "expanded" : "collapsed";
+
+    private string DataCollapsible => EffectiveCollapsed
+        ? (IsMobileSheet
+            || Variant == SidebarProvider.SidebarVariant.Push
+            || Variant == SidebarProvider.SidebarVariant.Overlay
+            ? "offcanvas" : "icon")
+        : "";
+
+    private string DataVariant => Variant.ToString().ToLowerInvariant();
+
+    private string DataSide => Side == Lumeo.Side.Right ? "right" : "left";
+
     private string CssClass
     {
         get
@@ -49,7 +75,12 @@
             // at exactly 200ms LINEAR. The previous transition-all duration-300 (with
             // Tailwind's default eased curve) was the single biggest felt difference:
             // slower + eased vs shadcn's snappy linear clip.
-            var baseCss = "flex h-full flex-col border-e bg-sidebar text-sidebar-foreground overflow-y-auto overflow-x-hidden transition-[width,translate] duration-200 ease-linear";
+            // `group` (unnamed, matching shadcn's `group peer` sidebar element) makes the
+            // data-collapsible / data-side / data-state attributes below reachable by
+            // descendants via group-data-[collapsible=icon]: / group-data-[side=right]: —
+            // the shadcn Sidebar styling convention. Additive: Lumeo's own descendants read
+            // EffectiveCollapsed from the cascade, so nothing existing relies on this group.
+            var baseCss = "group flex h-full flex-col border-e bg-sidebar text-sidebar-foreground overflow-y-auto overflow-x-hidden transition-[width,translate] duration-200 ease-linear";
 
             // Mobile sheet: a slide-in panel anchored to the edge, above content,
             // collapsed = translated fully off-canvas. Same treatment as Overlay

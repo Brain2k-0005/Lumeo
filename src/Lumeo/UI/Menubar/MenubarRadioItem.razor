@@ -1,0 +1,33 @@
+@namespace Lumeo
+
+@* One option inside a MenubarRadioGroup (shadcn MenubarRadioItem). Mirrors
+   DropdownMenuRadioItem: selected state is derived from the cascaded group Value,
+   and the filled dot lives in the ps-8 gutter. *@
+<button type="button" role="menuitemradio" aria-checked="@IsSelected.ToString().ToLower()" tabindex="-1" class="@CssClass" @onclick="Select" disabled="@Disabled" @attributes="AdditionalAttributes">
+    <span class="flex h-3.5 w-3.5 items-center justify-center">
+        @if (IsSelected)
+        {
+            <SvgGlyph Svg="@(LumeoIcons.Circle)" class="h-2 w-2 fill-current" />
+        }
+    </span>
+    @ChildContent
+</button>
+
+@code {
+    [CascadingParameter] public MenubarRadioGroup.MenubarRadioGroupContext Context { get; set; } = default!;
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter, EditorRequired] public string Value { get; set; } = "";
+    [Parameter] public bool Disabled { get; set; }
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private bool IsSelected => Context.Value == Value;
+
+    private string CssClass => Cx.Merge("relative flex w-full cursor-default select-none items-center gap-2 rounded-sm ps-8 pe-2 py-1.5 text-sm outline-none transition-colors hover:bg-accent hover:text-accent-foreground focus:bg-accent focus:text-accent-foreground disabled:pointer-events-none disabled:opacity-50 disabled:cursor-not-allowed", Class);
+
+    private async Task Select()
+    {
+        if (Disabled) return;
+        await Context.OnSelect.InvokeAsync(Value);
+    }
+}

@@ -1,10 +1,13 @@
 @namespace Lumeo
 
 @{
-    var context = new CollapsibleContext(EffectiveOpen, EventCallback.Factory.Create(this, Toggle), _triggerId, _contentId);
+    var context = new CollapsibleContext(EffectiveOpen, EventCallback.Factory.Create(this, Toggle), _triggerId, _contentId, Disabled);
 }
 
-<div class="@CssClass" @attributes="AdditionalAttributes">
+<div class="@CssClass"
+     data-state="@(EffectiveOpen ? "open" : "closed")"
+     data-disabled="@(Disabled ? string.Empty : null)"
+     @attributes="AdditionalAttributes">
     <CascadingValue Value="context" IsFixed="false">
         @ChildContent
     </CascadingValue>
@@ -14,6 +17,13 @@
     [Parameter] public RenderFragment? ChildContent { get; set; }
     [Parameter] public bool Open { get; set; }
     [Parameter] public EventCallback<bool> OpenChanged { get; set; }
+
+    /// <summary>
+    /// When true the collapsible cannot be toggled: the trigger no-ops and every
+    /// part (root/trigger/content) emits <c>data-disabled</c> so consumers can
+    /// style the disabled state with a <c>data-[disabled]</c> selector (Radix parity).
+    /// </summary>
+    [Parameter] public bool Disabled { get; set; }
 
     [Obsolete("Use Open instead. IsOpen will be removed in a future release.")]
     [Parameter] public bool IsOpen { get => Open; set => Open = value; }
@@ -70,6 +80,7 @@
 
     private async Task Toggle()
     {
+        if (Disabled) return;
         var next = !EffectiveOpen;
         // Controlled (Open is bound via OpenChanged): let the parent own state —
         // fire the callback and render from the parent's next value instead of
@@ -108,5 +119,5 @@
         }
     }
 
-    public record CollapsibleContext(bool IsOpen, EventCallback Toggle, string TriggerId, string ContentId);
+    public record CollapsibleContext(bool IsOpen, EventCallback Toggle, string TriggerId, string ContentId, bool Disabled = false);
 }

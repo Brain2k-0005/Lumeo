@@ -23,12 +23,13 @@
             aria-invalid="@EffectiveInvalid.ToString().ToLower()"
             aria-busy="@Loading.ToString().ToLower()"
             aria-describedby="@FormFieldDescribedBy"
-            name="@Name"
+            data-state="@DataState"
+            data-disabled="@(Disabled ? string.Empty : null)"
             class="@CssClass"
             @onclick="Toggle"
             disabled="@(Disabled || Loading)"
             @attributes="EffectiveAttributes">
-        <span class="@ThumbClasses">
+        <span class="@ThumbClasses" data-state="@DataState">
             @if (Loading)
             {
                 @* aria-hidden so the spinner's own role=status / aria-label="Loading"
@@ -38,6 +39,19 @@
             }
         </span>
     </button>
+    @* Bubble input (Radix pattern): visually-hidden, non-focusable native checkbox
+       that mirrors the switch state and carries Name/Value so the switch submits in a
+       plain <form> POST (a <button name> posts nothing). aria-hidden + tabindex=-1
+       keep it out of the a11y tree and tab order. Rendered only when a Name is set. *@
+    @if (!string.IsNullOrEmpty(Name))
+    {
+        <input type="checkbox" aria-hidden="true" tabindex="-1"
+               name="@Name" value="@EffectiveValue"
+               checked="@_checked"
+               disabled="@Disabled" required="@Required"
+               class="pointer-events-none absolute -translate-x-full opacity-0"
+               style="clip: rect(0 0 0 0); clip-path: inset(50%); overflow: hidden; white-space: nowrap;" />
+    }
     @if (HasOnOffLabel)
     {
         <span class="text-xs text-muted-foreground ms-2">@CurrentOnOffLabel</span>
@@ -66,6 +80,19 @@
     [Parameter] public string? HelperText { get; set; }
     [Parameter] public string? Label { get; set; }
     [Parameter] public string? Name { get; set; }
+
+    /// <summary>
+    /// Value submitted for this switch in a native <c>&lt;form&gt;</c> POST when
+    /// <see cref="Name"/> is set and the switch is on. Mirrors the native checkbox
+    /// default of <c>"on"</c>.
+    /// </summary>
+    [Parameter] public string? Value { get; set; }
+
+    private string EffectiveValue => Value ?? "on";
+
+    // shadcn/Radix data-state styling hook: consumers can target
+    // data-[state=checked] / data-[state=unchecked] in CSS.
+    private string DataState => _checked ? "checked" : "unchecked";
 
     private bool EffectiveInvalid => Invalid || FormField?.HasError == true;
     private bool InsideFormField => FormField is not null;

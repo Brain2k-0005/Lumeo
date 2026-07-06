@@ -2,7 +2,7 @@
 @implements IDisposable
 
 @{
-    var itemContext = new NavigationMenuItemContext(_itemId, _triggerId, _contentId);
+    var itemContext = new NavigationMenuItemContext(ItemIdentity, _triggerId, _contentId);
 }
 
 <CascadingValue Value="itemContext" IsFixed="true">
@@ -17,6 +17,14 @@
 @code {
     [CascadingParameter] public NavigationMenu.NavigationMenuContext Context { get; set; } = default!;
     [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    /// <summary>
+    /// Stable identity for this item, used by the controlled
+    /// <see cref="NavigationMenu.Value"/> binding to say which item is open. When
+    /// unset an auto id is used, so uncontrolled menus keep working unchanged.
+    /// </summary>
+    [Parameter] public string? Value { get; set; }
+
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
@@ -26,7 +34,10 @@
     // (focus-into target).
     private readonly string _contentId = LumeoIds.New("nav-content");
     private readonly DelayedDispatch _dispatch = new();
-    private const int CloseDelay = 150;
+
+    // Consumer-supplied Value takes precedence so a controlled NavigationMenu can
+    // address this item; otherwise fall back to the auto id.
+    private string ItemIdentity => Value ?? _itemId;
 
     private string CssClass => Cx.Merge("relative", Class);
 
@@ -48,11 +59,14 @@
     private void HandlePointerLeave(PointerEventArgs e)
     {
         if (e.PointerType != "mouse") return;
-        if (Context.ActiveItemId == _itemId)
+        if (Context.ActiveItemId == ItemIdentity)
         {
-            _dispatch.Schedule(CloseDelay, () => InvokeAsync(async () =>
+            // Grace window (Context.CloseDelayMs): moving to an adjacent trigger
+            // re-opens on that trigger's pointerenter before this fires, and this
+            // scheduled close then no-ops because ActiveItemId no longer matches.
+            _dispatch.Schedule(Context.CloseDelayMs, () => InvokeAsync(async () =>
             {
-                if (Context.ActiveItemId == _itemId)
+                if (Context.ActiveItemId == ItemIdentity)
                 {
                     await Context.SetActiveItemId.InvokeAsync(null);
                     StateHasChanged();
@@ -67,7 +81,7 @@
         Context.Owner.UnregisterTrigger(_triggerId);
         // If this item's submenu is the one currently open, clear it so the
         // Viewport/Indicator close instead of staying stuck open on a removed item.
-        Context.Owner.NotifyItemRemoved(_itemId);
+        Context.Owner.NotifyItemRemoved(ItemIdentity);
     }
 
     public record NavigationMenuItemContext(string ItemId, string TriggerId, string ContentId);

@@ -34,7 +34,16 @@
     // samples the right node.
     private string AnimationClass => _exit.Exiting ? "animate-fade-out" : "animate-fade-in";
 
-    private string InnerCssClass => Cx.Merge("origin-top-center relative mt-1.5 h-[var(--radix-navigation-menu-viewport-height)] w-full overflow-hidden rounded-md border border-border/40 bg-popover text-popover-foreground shadow-lg", AnimationClass);
+    // Height is content-driven (h-auto). Radix's Viewport sizes with
+    // h-[var(--radix-navigation-menu-viewport-height)], a var its JS sets by
+    // measuring the active portaled panel to drive the height-resize animation.
+    // This library positions each NavigationMenuContent as its own fixed panel
+    // (no shared viewport portal), so nothing ever set that var — the height then
+    // resolved to `auto` only by the invalid-var fallback (verified in-browser:
+    // the box did NOT collapse to 0, it took content height). Depending on that
+    // accident was fragile and advertised a resize animation that never ran, so
+    // the dead var is dropped and the panel sizes to its content explicitly.
+    private string InnerCssClass => Cx.Merge("origin-top-center relative mt-1.5 h-auto w-full overflow-hidden rounded-md border border-border/40 bg-popover text-popover-foreground shadow-lg", AnimationClass);
 
     protected override void OnParametersSet()
         => _exit.OnParameters(IsOpen, ExitDurationMs, () => InvokeAsync(FinishExit));

@@ -1,0 +1,62 @@
+@inherits Bunit.BunitContext
+
+@code {
+    // shadcn-parity Wave 2: data-state (open|closed), data-disabled and
+    // data-orientation on the Accordion root/item/trigger/content — mirroring
+    // Radix's attribute placement so data-[state=open]:/data-disabled: selectors fire.
+    public AccordionDataStateTests() { this.AddLumeoServices(); }
+
+    private Bunit.IRenderedComponent<Microsoft.AspNetCore.Components.IComponent> RenderOne(bool disabled = false)
+        => Render(@<Accordion>
+            <AccordionItem Value="item1" Disabled="disabled">
+                <AccordionTrigger>Item 1</AccordionTrigger>
+                <AccordionContent>Content 1</AccordionContent>
+            </AccordionItem>
+        </Accordion>);
+
+    [Fact]
+    public void Root_Has_DataOrientation_Vertical()
+    {
+        var cut = RenderOne();
+        Assert.Equal("vertical", cut.Find("div").GetAttribute("data-orientation"));
+    }
+
+    [Fact]
+    public void Trigger_And_Content_DataState_Closed_By_Default()
+    {
+        var cut = RenderOne();
+        Assert.Equal("closed", cut.Find("button").GetAttribute("data-state"));
+        Assert.Equal("closed", cut.Find("[role='region']").GetAttribute("data-state"));
+    }
+
+    [Fact]
+    public void Trigger_And_Content_DataState_Open_After_Click()
+    {
+        var cut = RenderOne();
+        cut.Find("button").Click();
+        Assert.Equal("open", cut.Find("button").GetAttribute("data-state"));
+        Assert.Equal("open", cut.Find("[role='region']").GetAttribute("data-state"));
+    }
+
+    [Fact]
+    public void Trigger_Has_DataOrientation_Vertical()
+    {
+        var cut = RenderOne();
+        Assert.Equal("vertical", cut.Find("button").GetAttribute("data-orientation"));
+    }
+
+    [Fact]
+    public void Disabled_Item_Emits_DataDisabled_On_Trigger_And_Content()
+    {
+        var cut = RenderOne(disabled: true);
+        Assert.True(cut.Find("button").HasAttribute("data-disabled"));
+        Assert.True(cut.Find("[role='region']").HasAttribute("data-disabled"));
+    }
+
+    [Fact]
+    public void Enabled_Item_Omits_DataDisabled()
+    {
+        var cut = RenderOne();
+        Assert.False(cut.Find("button").HasAttribute("data-disabled"));
+    }
+}

@@ -1,0 +1,70 @@
+@inherits Bunit.BunitContext
+
+@code {
+    // shadcn-parity Wave 2: data-state (open|closed) + data-disabled on the
+    // Collapsible root/trigger/content, plus a new Disabled prop that no-ops the toggle.
+    public CollapsibleDataStateTests() { this.AddLumeoServices(); }
+
+    private Bunit.IRenderedComponent<Lumeo.Collapsible> RenderOne(bool open = false, bool disabled = false)
+        => Render<Lumeo.Collapsible>(p =>
+        {
+            p.Add(c => c.Open, open);
+            p.Add(c => c.Disabled, disabled);
+            p.Add(c => c.ChildContent, (Microsoft.AspNetCore.Components.RenderFragment)(b =>
+            {
+                b.OpenComponent<Lumeo.CollapsibleTrigger>(0);
+                b.AddAttribute(1, "ChildContent",
+                    (Microsoft.AspNetCore.Components.RenderFragment)(t => t.AddContent(0, "Trigger")));
+                b.CloseComponent();
+                b.OpenComponent<Lumeo.CollapsibleContent>(2);
+                b.AddAttribute(3, "ChildContent",
+                    (Microsoft.AspNetCore.Components.RenderFragment)(c => c.AddContent(0, "Body")));
+                b.CloseComponent();
+            }));
+        });
+
+    [Fact]
+    public void DataState_Closed_By_Default()
+    {
+        var cut = RenderOne(open: false);
+        Assert.Equal("closed", cut.Find("[role='button']").GetAttribute("data-state"));
+        Assert.Equal("closed", cut.Find("[role='region']").GetAttribute("data-state"));
+    }
+
+    [Fact]
+    public void DataState_Open_When_Open()
+    {
+        var cut = RenderOne(open: true);
+        Assert.Equal("open", cut.Find("[role='button']").GetAttribute("data-state"));
+        Assert.Equal("open", cut.Find("[role='region']").GetAttribute("data-state"));
+    }
+
+    [Fact]
+    public void DataState_Flips_On_Trigger_Click()
+    {
+        var cut = RenderOne(open: false);
+        cut.Find("[role='button']").Click();
+        Assert.Equal("open", cut.Find("[role='button']").GetAttribute("data-state"));
+    }
+
+    [Fact]
+    public void Disabled_Emits_DataDisabled_And_NoOps_Toggle()
+    {
+        var cut = RenderOne(open: false, disabled: true);
+        var trigger = cut.Find("[role='button']");
+        Assert.True(trigger.HasAttribute("data-disabled"));
+        Assert.Equal("true", trigger.GetAttribute("aria-disabled"));
+
+        // A disabled collapsible must not open on click.
+        trigger.Click();
+        Assert.Equal("closed", cut.Find("[role='button']").GetAttribute("data-state"));
+        Assert.Equal("false", cut.Find("[role='button']").GetAttribute("aria-expanded"));
+    }
+
+    [Fact]
+    public void Enabled_Omits_DataDisabled()
+    {
+        var cut = RenderOne();
+        Assert.False(cut.Find("[role='button']").HasAttribute("data-disabled"));
+    }
+}

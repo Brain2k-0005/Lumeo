@@ -1,0 +1,56 @@
+@inherits Bunit.BunitContext
+
+@code {
+    // shadcn-parity Wave 2: data-state="on|off" + data-disabled + data-orientation
+    // on ToggleGroup items, and aria-orientation/data-orientation on the group.
+    public ToggleGroupDataStateTests() { this.AddLumeoServices(); }
+
+    private Bunit.IRenderedComponent<Microsoft.AspNetCore.Components.IComponent> RenderGroup(
+        Lumeo.Orientation orientation = Lumeo.Orientation.Horizontal, bool secondDisabled = false)
+        => Render(@<ToggleGroup Type="ToggleGroup.ToggleGroupType.Single" Value="a" Orientation="orientation">
+            <ToggleGroupItem Value="a">A</ToggleGroupItem>
+            <ToggleGroupItem Value="b" Disabled="secondDisabled">B</ToggleGroupItem>
+        </ToggleGroup>);
+
+    [Fact]
+    public void Group_Has_DataOrientation_And_AriaOrientation()
+    {
+        var cut = RenderGroup();
+        var group = cut.Find("[role='group']");
+        Assert.Equal("horizontal", group.GetAttribute("data-orientation"));
+        Assert.Equal("horizontal", group.GetAttribute("aria-orientation"));
+    }
+
+    [Fact]
+    public void Group_Vertical_Orientation_Reflected()
+    {
+        var cut = RenderGroup(Lumeo.Orientation.Vertical);
+        Assert.Equal("vertical", cut.Find("[role='group']").GetAttribute("data-orientation"));
+    }
+
+    [Fact]
+    public void Selected_Item_Is_On_Others_Off()
+    {
+        var cut = RenderGroup();
+        var buttons = cut.FindAll("button");
+        Assert.Equal("on", buttons[0].GetAttribute("data-state"));   // value "a" selected
+        Assert.Equal("off", buttons[1].GetAttribute("data-state"));
+    }
+
+    [Fact]
+    public void Items_Inherit_Group_DataOrientation()
+    {
+        var cut = RenderGroup(Lumeo.Orientation.Vertical);
+        Assert.All(cut.FindAll("button"),
+            b => Assert.Equal("vertical", b.GetAttribute("data-orientation")));
+    }
+
+    [Fact]
+    public void Disabled_Item_Emits_DataDisabled()
+    {
+        var cut = RenderGroup(secondDisabled: true);
+        var buttons = cut.FindAll("button");
+        Assert.False(buttons[0].HasAttribute("data-disabled"));
+        Assert.True(buttons[1].HasAttribute("data-disabled"));
+    }
+}

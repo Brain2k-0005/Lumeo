@@ -1,12 +1,12 @@
 {
   "$schema": "https://lumeo.nativ.sh/components-api-schema.json",
   "version": "4.1.0-preview.15",
-  "generated": "2026-07-06T13:55:06.0274663Z",
+  "generated": "2026-07-06T16:54:56.4932055Z",
   "stats": {
     "componentCount": 164,
-    "totalParameters": 4184,
+    "totalParameters": 4257,
     "totalEnums": 74,
-    "totalRecords": 72,
+    "totalRecords": 73,
     "serviceCount": 33,
     "thinFallbacks": []
   },
@@ -1522,6 +1522,18 @@
           "summary": null
         },
         {
+          "name": "AiObserveScrollButton",
+          "returnType": "ValueTask",
+          "signature": "AiObserveScrollButton<T>(string elementId, DotNetObjectReference<T> dotNetRef)",
+          "summary": null
+        },
+        {
+          "name": "AiDisposeScrollButton",
+          "returnType": "ValueTask",
+          "signature": "AiDisposeScrollButton(string elementId)",
+          "summary": null
+        },
+        {
           "name": "ImportModuleAsync",
           "returnType": "ValueTask<IJSObjectReference>",
           "signature": "ImportModuleAsync(string moduleUrl)",
@@ -2758,6 +2770,18 @@
           "returnType": "ValueTask",
           "signature": "AiScrollToBottom(string elementId)",
           "summary": null
+        },
+        {
+          "name": "AiObserveScrollButton",
+          "returnType": "ValueTask",
+          "signature": "AiObserveScrollButton<T>(string elementId, Microsoft.JSInterop.DotNetObjectReference<T> dotNetRef)",
+          "summary": "Observes a message list's scroll position and reports (via 's OnScrollAwayChanged(bool)) whether it is scrolled away from the bottom, driving the visibility of AgentMessageList's floating scroll-to-latest button. Generic in the .NET reference type so this core interop interface stays decoupled from the UI component. Default no-op so existing implementers / test doubles keep compiling (they can drive the callback directly instead of via real JS)."
+        },
+        {
+          "name": "AiDisposeScrollButton",
+          "returnType": "ValueTask",
+          "signature": "AiDisposeScrollButton(string elementId)",
+          "summary": "Tears down the scroll-button observer registered by AiObserveScrollButton{T}. Default no-op."
         },
         {
           "name": "SchedulerInitAsync",
@@ -4401,6 +4425,15 @@
               "isCascading": false,
               "captureUnmatched": true,
               "isEditorRequired": false
+            },
+            {
+              "name": "AccordionCtx",
+              "type": "Accordion.AccordionContext?",
+              "default": null,
+              "description": null,
+              "isCascading": true,
+              "captureUnmatched": false,
+              "isEditorRequired": false
             }
           ],
           "events": [],
@@ -4633,6 +4666,10 @@
       "nugetPackage": "Lumeo",
       "files": [
         "UI/AgentMessageList/AgentMessage.razor",
+        "UI/AgentMessageList/AgentMessageAction.razor",
+        "UI/AgentMessageList/AgentMessageActions.razor",
+        "UI/AgentMessageList/AgentMessageBranchNav.razor",
+        "UI/AgentMessageList/AgentMessageList.Export.cs",
         "UI/AgentMessageList/AgentMessageList.razor"
       ],
       "namespace": "Lumeo",
@@ -4696,6 +4733,33 @@
           "isEditorRequired": false
         },
         {
+          "name": "ShowScrollButton",
+          "type": "bool",
+          "default": "true",
+          "description": "When true (default), shows a floating scroll-to-latest button that appears whenever the list is scrolled away from the bottom and, when clicked, jumps back to the newest message. Screen-reader labelled. Set false to hide it (e.g. lists that are never longer than the viewport).",
+          "isCascading": false,
+          "captureUnmatched": false,
+          "isEditorRequired": false
+        },
+        {
+          "name": "EmptyState",
+          "type": "RenderFragment?",
+          "default": null,
+          "description": "Renders in place of the messages when IsEmpty is true (shadcn ConversationEmptyState parity). When null, a localized default title + description is shown instead.",
+          "isCascading": false,
+          "captureUnmatched": false,
+          "isEditorRequired": false
+        },
+        {
+          "name": "IsEmpty",
+          "type": "bool",
+          "default": null,
+          "description": "When true, the EmptyState slot (or the built-in default) is rendered instead of the message content. The consumer drives this since the list can't introspect an arbitrary ChildContent.",
+          "isCascading": false,
+          "captureUnmatched": false,
+          "isEditorRequired": false
+        },
+        {
           "name": "Class",
           "type": "string?",
           "default": null,
@@ -4719,11 +4783,15 @@
       "records": [],
       "gotchas": [],
       "cssVars": [
+        "--color-accent",
+        "--color-background",
+        "--color-border",
         "--color-foreground",
         "--color-muted",
         "--color-muted-foreground",
         "--color-primary",
         "--color-primary-foreground",
+        "--color-ring",
         "--radius"
       ],
       "examples": [],
@@ -4817,6 +4885,15 @@
               "isEditorRequired": false
             },
             {
+              "name": "Actions",
+              "type": "RenderFragment?",
+              "default": null,
+              "description": "Optional actions toolbar rendered beneath the message body — typically an AgentMessageActions (copy / regenerate / retry) and/or an AgentMessageBranchNav. Only shown for User and Assistant turns.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
               "name": "Class",
               "type": "string?",
               "default": null,
@@ -4852,13 +4929,308 @@
           "gotchas": [],
           "parseFailed": false,
           "parseError": null
+        },
+        "AgentMessageAction": {
+          "componentName": "AgentMessageAction",
+          "fileName": "AgentMessageAction.razor",
+          "namespace": "Lumeo",
+          "inheritsFrom": null,
+          "implements": [],
+          "parameters": [
+            {
+              "name": "Label",
+              "type": "string?",
+              "default": null,
+              "description": "Accessible name for the button — used for aria-label, the visually-hidden label, and the tooltip fallback. Required for a11y.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "Icon",
+              "type": "IconSource?",
+              "default": null,
+              "description": "Icon to render (e.g. LumeoIcons.Copy). Ignored when ChildContent is supplied.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "Tooltip",
+              "type": "string?",
+              "default": null,
+              "description": "Native title tooltip; defaults to Label when unset.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "OnClick",
+              "type": "EventCallback",
+              "default": null,
+              "description": null,
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "Disabled",
+              "type": "bool",
+              "default": null,
+              "description": null,
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "ChildContent",
+              "type": "RenderFragment?",
+              "default": null,
+              "description": "Custom button content (overrides Icon).",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "Class",
+              "type": "string?",
+              "default": null,
+              "description": null,
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "AdditionalAttributes",
+              "type": "Dictionary<string, object>?",
+              "default": null,
+              "description": null,
+              "isCascading": false,
+              "captureUnmatched": true,
+              "isEditorRequired": false
+            }
+          ],
+          "events": [
+            {
+              "name": "OnClick",
+              "type": "EventCallback",
+              "description": null
+            }
+          ],
+          "enums": [],
+          "records": [],
+          "gotchas": [],
+          "parseFailed": false,
+          "parseError": null
+        },
+        "AgentMessageActions": {
+          "componentName": "AgentMessageActions",
+          "fileName": "AgentMessageActions.razor",
+          "namespace": "Lumeo",
+          "inheritsFrom": null,
+          "implements": [
+            "IDisposable"
+          ],
+          "parameters": [
+            {
+              "name": "CopyText",
+              "type": "string?",
+              "default": null,
+              "description": "Text copied to the clipboard by the built-in Copy action. When null, no Copy button is rendered.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "OnCopy",
+              "type": "EventCallback<string>",
+              "default": null,
+              "description": "Invoked after a successful copy (receives the copied text).",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "OnRegenerate",
+              "type": "EventCallback",
+              "default": null,
+              "description": "When set, renders a Regenerate action invoking this callback.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "OnRetry",
+              "type": "EventCallback",
+              "default": null,
+              "description": "When set, renders a Retry action invoking this callback.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "ChildContent",
+              "type": "RenderFragment?",
+              "default": null,
+              "description": "Additional custom actions appended after the built-ins.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "Class",
+              "type": "string?",
+              "default": null,
+              "description": null,
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "AdditionalAttributes",
+              "type": "Dictionary<string, object>?",
+              "default": null,
+              "description": null,
+              "isCascading": false,
+              "captureUnmatched": true,
+              "isEditorRequired": false
+            }
+          ],
+          "events": [
+            {
+              "name": "OnCopy",
+              "type": "EventCallback<string>",
+              "description": "Invoked after a successful copy (receives the copied text)."
+            },
+            {
+              "name": "OnRegenerate",
+              "type": "EventCallback",
+              "description": "When set, renders a Regenerate action invoking this callback."
+            },
+            {
+              "name": "OnRetry",
+              "type": "EventCallback",
+              "description": "When set, renders a Retry action invoking this callback."
+            }
+          ],
+          "enums": [],
+          "records": [],
+          "gotchas": [],
+          "parseFailed": false,
+          "parseError": null
+        },
+        "AgentMessageBranchNav": {
+          "componentName": "AgentMessageBranchNav",
+          "fileName": "AgentMessageBranchNav.razor",
+          "namespace": "Lumeo",
+          "inheritsFrom": null,
+          "implements": [],
+          "parameters": [
+            {
+              "name": "Index",
+              "type": "int",
+              "default": null,
+              "description": "Current branch, 0-based. Two-way bindable via @bind-Index.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "IndexChanged",
+              "type": "EventCallback<int>",
+              "default": null,
+              "description": null,
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "Count",
+              "type": "int",
+              "default": null,
+              "description": "Total number of branches.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "Loop",
+              "type": "bool",
+              "default": null,
+              "description": "When true, previous/next wrap around the ends instead of disabling at the first/last branch.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "OnPrevious",
+              "type": "EventCallback",
+              "default": null,
+              "description": "Invoked (after IndexChanged) when moving to the previous branch.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "OnNext",
+              "type": "EventCallback",
+              "default": null,
+              "description": "Invoked (after IndexChanged) when moving to the next branch.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "Class",
+              "type": "string?",
+              "default": null,
+              "description": null,
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "AdditionalAttributes",
+              "type": "Dictionary<string, object>?",
+              "default": null,
+              "description": null,
+              "isCascading": false,
+              "captureUnmatched": true,
+              "isEditorRequired": false
+            }
+          ],
+          "events": [
+            {
+              "name": "IndexChanged",
+              "type": "EventCallback<int>",
+              "description": null
+            },
+            {
+              "name": "OnPrevious",
+              "type": "EventCallback",
+              "description": "Invoked (after IndexChanged) when moving to the previous branch."
+            },
+            {
+              "name": "OnNext",
+              "type": "EventCallback",
+              "description": "Invoked (after IndexChanged) when moving to the next branch."
+            }
+          ],
+          "enums": [],
+          "records": [],
+          "gotchas": [],
+          "parseFailed": false,
+          "parseError": null
         }
       },
       "a11y": {
         "roles": [
+          "group",
           "log"
         ],
         "ariaAttributes": [
+          "aria-hidden",
+          "aria-label",
           "aria-live",
           "aria-relevant"
         ],
@@ -10141,6 +10513,7 @@
       "nugetPackage": "Lumeo.Charts",
       "files": [
         "UI/Chart/Chart.razor",
+        "UI/Chart/ChartAccessibility.cs",
         "UI/Chart/ChartAnnotations.cs",
         "UI/Chart/ChartHelper.cs",
         "UI/Chart/ChartLabelHelper.cs",
@@ -10240,6 +10613,15 @@
           "type": "string?",
           "default": null,
           "description": "Accessible text alternative for the chart (WCAG 1.1.1). When set, the canvas host is exposed as role=\"img\" with this aria-label so screen readers announce a summary instead of an empty graphic. Strongly recommended.",
+          "isCascading": false,
+          "captureUnmatched": false,
+          "isEditorRequired": false
+        },
+        {
+          "name": "AccessibilityLayer",
+          "type": "bool",
+          "default": "true",
+          "description": "When true (default, matching shadcn's accessibilityLayer), the chart renders a visually-hidden data table built from the series data and makes the canvas host keyboard-focusable with a summarising aria-label, so screen-reader and keyboard users can reach the otherwise opaque &lt;canvas&gt; data. When AriaLabel is not set, a generated summary of the data is used as the label. Set to false to opt out entirely.",
           "isCascading": false,
           "captureUnmatched": false,
           "isEditorRequired": false
@@ -18926,7 +19308,7 @@
         ],
         "keys": [],
         "keyboardInteractive": false,
-        "focusManaged": false
+        "focusManaged": true
       },
       "parseFailed": false,
       "parseError": null
@@ -19098,6 +19480,15 @@
           "isEditorRequired": false
         },
         {
+          "name": "Value",
+          "type": "string?",
+          "default": null,
+          "description": "Value submitted for this checkbox in a native &lt;form&gt; POST when Name is set and the box is checked. Mirrors the native checkbox default of \"on\".",
+          "isCascading": false,
+          "captureUnmatched": false,
+          "isEditorRequired": false
+        },
+        {
           "name": "Class",
           "type": "string?",
           "default": null,
@@ -19168,6 +19559,7 @@
         "ariaAttributes": [
           "aria-checked",
           "aria-describedby",
+          "aria-hidden",
           "aria-invalid",
           "aria-label",
           "aria-live",
@@ -19175,7 +19567,7 @@
         ],
         "keys": [],
         "keyboardInteractive": false,
-        "focusManaged": false
+        "focusManaged": true
       },
       "parseFailed": false,
       "parseError": null
@@ -19825,6 +20217,15 @@
           "isEditorRequired": false
         },
         {
+          "name": "Disabled",
+          "type": "bool",
+          "default": null,
+          "description": "When true the collapsible cannot be toggled: the trigger no-ops and every part (root/trigger/content) emits data-disabled so consumers can style the disabled state with a data-[disabled] selector (Radix parity).",
+          "isCascading": false,
+          "captureUnmatched": false,
+          "isEditorRequired": false
+        },
+        {
           "name": "IsOpen",
           "type": "bool",
           "default": null,
@@ -19877,7 +20278,7 @@
       "records": [
         {
           "name": "CollapsibleContext",
-          "signature": "CollapsibleContext(bool IsOpen, EventCallback Toggle, string TriggerId, string ContentId)",
+          "signature": "CollapsibleContext(bool IsOpen, EventCallback Toggle, string TriggerId, string ContentId, bool Disabled = false)",
           "description": null
         }
       ],
@@ -20022,6 +20423,7 @@
         ],
         "ariaAttributes": [
           "aria-controls",
+          "aria-disabled",
           "aria-expanded",
           "aria-hidden",
           "aria-labelledby"
@@ -22326,6 +22728,7 @@
         "UI/ContextMenu/ContextMenuRadioGroup.razor",
         "UI/ContextMenu/ContextMenuRadioItem.razor",
         "UI/ContextMenu/ContextMenuSeparator.razor",
+        "UI/ContextMenu/ContextMenuShortcut.razor",
         "UI/ContextMenu/ContextMenuSub.razor",
         "UI/ContextMenu/ContextMenuSubContent.razor",
         "UI/ContextMenu/ContextMenuSubTrigger.razor",
@@ -22415,6 +22818,9 @@
         "--color-accent",
         "--color-accent-foreground",
         "--color-border",
+        "--color-destructive",
+        "--color-muted",
+        "--color-muted-foreground",
         "--color-popover",
         "--color-popover-foreground",
         "--radius"
@@ -22519,7 +22925,8 @@
           "namespace": "Lumeo",
           "inheritsFrom": null,
           "implements": [
-            "IAsyncDisposable"
+            "IAsyncDisposable",
+            "IOverlayExitCallback"
           ],
           "parameters": [
             {
@@ -22652,6 +23059,24 @@
               "isEditorRequired": false
             },
             {
+              "name": "Inset",
+              "type": "bool",
+              "default": null,
+              "description": "Indents the item by a label's width so it lines up with checkbox/radio items (shadcn inset). Adds ps-8 and emits data-inset.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "Variant",
+              "type": "MenuItemVariant",
+              "default": "MenuItemVariant.Default",
+              "description": "Visual variant. Destructive renders the item in the destructive color and emits data-variant=\"destructive\".",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
               "name": "Class",
               "type": "string?",
               "default": null,
@@ -22695,6 +23120,15 @@
               "type": "RenderFragment?",
               "default": null,
               "description": null,
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "Inset",
+              "type": "bool",
+              "default": null,
+              "description": "Indents the label to align with inset items (shadcn inset).",
               "isCascading": false,
               "captureUnmatched": false,
               "isEditorRequired": false
@@ -22890,6 +23324,48 @@
           "parseFailed": false,
           "parseError": null
         },
+        "ContextMenuShortcut": {
+          "componentName": "ContextMenuShortcut",
+          "fileName": "ContextMenuShortcut.razor",
+          "namespace": "Lumeo",
+          "inheritsFrom": null,
+          "implements": [],
+          "parameters": [
+            {
+              "name": "ChildContent",
+              "type": "RenderFragment?",
+              "default": null,
+              "description": null,
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "Class",
+              "type": "string?",
+              "default": null,
+              "description": null,
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "AdditionalAttributes",
+              "type": "Dictionary<string, object>?",
+              "default": null,
+              "description": null,
+              "isCascading": false,
+              "captureUnmatched": true,
+              "isEditorRequired": false
+            }
+          ],
+          "events": [],
+          "enums": [],
+          "records": [],
+          "gotchas": [],
+          "parseFailed": false,
+          "parseError": null
+        },
         "ContextMenuSub": {
           "componentName": "ContextMenuSub",
           "fileName": "ContextMenuSub.razor",
@@ -22955,7 +23431,8 @@
           "namespace": "Lumeo",
           "inheritsFrom": null,
           "implements": [
-            "IAsyncDisposable"
+            "IAsyncDisposable",
+            "IOverlayExitCallback"
           ],
           "parameters": [
             {
@@ -29632,6 +30109,7 @@
         "UI/DropdownMenu/DropdownMenuRadioGroup.razor",
         "UI/DropdownMenu/DropdownMenuRadioItem.razor",
         "UI/DropdownMenu/DropdownMenuSeparator.razor",
+        "UI/DropdownMenu/DropdownMenuShortcut.razor",
         "UI/DropdownMenu/DropdownMenuSub.razor",
         "UI/DropdownMenu/DropdownMenuSubContent.razor",
         "UI/DropdownMenu/DropdownMenuSubTrigger.razor",
@@ -29721,6 +30199,9 @@
         "--color-accent",
         "--color-accent-foreground",
         "--color-border",
+        "--color-destructive",
+        "--color-muted",
+        "--color-muted-foreground",
         "--color-popover",
         "--color-popover-foreground",
         "--radius"
@@ -29825,7 +30306,8 @@
           "namespace": "Lumeo",
           "inheritsFrom": null,
           "implements": [
-            "IAsyncDisposable"
+            "IAsyncDisposable",
+            "IOverlayExitCallback"
           ],
           "parameters": [
             {
@@ -30003,6 +30485,24 @@
               "isEditorRequired": false
             },
             {
+              "name": "Inset",
+              "type": "bool",
+              "default": null,
+              "description": "Indents the item by a label's width so it lines up with checkbox/radio items in the same menu (shadcn inset). Adds ps-8 and emits data-inset.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "Variant",
+              "type": "MenuItemVariant",
+              "default": "MenuItemVariant.Default",
+              "description": "Visual variant. Destructive renders the item in the destructive color and emits data-variant=\"destructive\".",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
               "name": "Class",
               "type": "string?",
               "default": null,
@@ -30046,6 +30546,15 @@
               "type": "RenderFragment?",
               "default": null,
               "description": null,
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "Inset",
+              "type": "bool",
+              "default": null,
+              "description": "Indents the label to align with inset items (shadcn inset).",
               "isCascading": false,
               "captureUnmatched": false,
               "isEditorRequired": false
@@ -30241,6 +30750,48 @@
           "parseFailed": false,
           "parseError": null
         },
+        "DropdownMenuShortcut": {
+          "componentName": "DropdownMenuShortcut",
+          "fileName": "DropdownMenuShortcut.razor",
+          "namespace": "Lumeo",
+          "inheritsFrom": null,
+          "implements": [],
+          "parameters": [
+            {
+              "name": "ChildContent",
+              "type": "RenderFragment?",
+              "default": null,
+              "description": null,
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "Class",
+              "type": "string?",
+              "default": null,
+              "description": null,
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "AdditionalAttributes",
+              "type": "Dictionary<string, object>?",
+              "default": null,
+              "description": null,
+              "isCascading": false,
+              "captureUnmatched": true,
+              "isEditorRequired": false
+            }
+          ],
+          "events": [],
+          "enums": [],
+          "records": [],
+          "gotchas": [],
+          "parseFailed": false,
+          "parseError": null
+        },
         "DropdownMenuSub": {
           "componentName": "DropdownMenuSub",
           "fileName": "DropdownMenuSub.razor",
@@ -30306,7 +30857,8 @@
           "namespace": "Lumeo",
           "inheritsFrom": null,
           "implements": [
-            "IAsyncDisposable"
+            "IAsyncDisposable",
+            "IOverlayExitCallback"
           ],
           "parameters": [
             {
@@ -33791,7 +34343,8 @@
           "namespace": "Lumeo",
           "inheritsFrom": null,
           "implements": [
-            "IAsyncDisposable"
+            "IAsyncDisposable",
+            "IOverlayExitCallback"
           ],
           "parameters": [
             {
@@ -38480,10 +39033,14 @@
       "nugetPackage": "Lumeo",
       "files": [
         "UI/Menubar/Menubar.razor",
+        "UI/Menubar/MenubarCheckboxItem.razor",
         "UI/Menubar/MenubarContent.razor",
+        "UI/Menubar/MenubarGroup.razor",
         "UI/Menubar/MenubarItem.razor",
         "UI/Menubar/MenubarLabel.razor",
         "UI/Menubar/MenubarMenu.razor",
+        "UI/Menubar/MenubarRadioGroup.razor",
+        "UI/Menubar/MenubarRadioItem.razor",
         "UI/Menubar/MenubarSeparator.razor",
         "UI/Menubar/MenubarShortcut.razor",
         "UI/Menubar/MenubarSub.razor",
@@ -38538,6 +39095,7 @@
         "--color-accent-foreground",
         "--color-background",
         "--color-border",
+        "--color-destructive",
         "--color-muted",
         "--color-muted-foreground",
         "--color-popover",
@@ -38563,13 +39121,89 @@
         }
       ],
       "subComponents": {
+        "MenubarCheckboxItem": {
+          "componentName": "MenubarCheckboxItem",
+          "fileName": "MenubarCheckboxItem.razor",
+          "namespace": "Lumeo",
+          "inheritsFrom": null,
+          "implements": [],
+          "parameters": [
+            {
+              "name": "ChildContent",
+              "type": "RenderFragment?",
+              "default": null,
+              "description": null,
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "Checked",
+              "type": "bool",
+              "default": null,
+              "description": null,
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "CheckedChanged",
+              "type": "EventCallback<bool>",
+              "default": null,
+              "description": null,
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "Disabled",
+              "type": "bool",
+              "default": null,
+              "description": null,
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "Class",
+              "type": "string?",
+              "default": null,
+              "description": null,
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "AdditionalAttributes",
+              "type": "Dictionary<string, object>?",
+              "default": null,
+              "description": null,
+              "isCascading": false,
+              "captureUnmatched": true,
+              "isEditorRequired": false
+            }
+          ],
+          "events": [
+            {
+              "name": "CheckedChanged",
+              "type": "EventCallback<bool>",
+              "description": null
+            }
+          ],
+          "enums": [],
+          "records": [],
+          "gotchas": [],
+          "parseFailed": false,
+          "parseError": null
+        },
         "MenubarContent": {
           "componentName": "MenubarContent",
           "fileName": "MenubarContent.razor",
           "namespace": "Lumeo",
           "inheritsFrom": null,
           "implements": [
-            "IAsyncDisposable"
+            "IAsyncDisposable",
+            "IOverlayExitCallback"
           ],
           "parameters": [
             {
@@ -38593,6 +39227,57 @@
             {
               "name": "ChildContent",
               "type": "RenderFragment?",
+              "default": null,
+              "description": null,
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "Class",
+              "type": "string?",
+              "default": null,
+              "description": null,
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "AdditionalAttributes",
+              "type": "Dictionary<string, object>?",
+              "default": null,
+              "description": null,
+              "isCascading": false,
+              "captureUnmatched": true,
+              "isEditorRequired": false
+            }
+          ],
+          "events": [],
+          "enums": [],
+          "records": [],
+          "gotchas": [],
+          "parseFailed": false,
+          "parseError": null
+        },
+        "MenubarGroup": {
+          "componentName": "MenubarGroup",
+          "fileName": "MenubarGroup.razor",
+          "namespace": "Lumeo",
+          "inheritsFrom": null,
+          "implements": [],
+          "parameters": [
+            {
+              "name": "ChildContent",
+              "type": "RenderFragment?",
+              "default": null,
+              "description": null,
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "AriaLabel",
+              "type": "string?",
               "default": null,
               "description": null,
               "isCascading": false,
@@ -38669,6 +39354,24 @@
               "isEditorRequired": false
             },
             {
+              "name": "Inset",
+              "type": "bool",
+              "default": null,
+              "description": "Indents the item by a label's width so it lines up with checkbox/radio items (shadcn inset). Adds ps-8 and emits data-inset.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "Variant",
+              "type": "MenuItemVariant",
+              "default": "MenuItemVariant.Default",
+              "description": "Visual variant. Destructive renders the item in the destructive color and emits data-variant=\"destructive\".",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
               "name": "Class",
               "type": "string?",
               "default": null,
@@ -38712,6 +39415,15 @@
               "type": "RenderFragment?",
               "default": null,
               "description": null,
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "Inset",
+              "type": "bool",
+              "default": null,
+              "description": "Indents the label to align with inset items (shadcn inset).",
               "isCascading": false,
               "captureUnmatched": false,
               "isEditorRequired": false
@@ -38797,6 +39509,138 @@
               "description": null
             }
           ],
+          "gotchas": [],
+          "parseFailed": false,
+          "parseError": null
+        },
+        "MenubarRadioGroup": {
+          "componentName": "MenubarRadioGroup",
+          "fileName": "MenubarRadioGroup.razor",
+          "namespace": "Lumeo",
+          "inheritsFrom": null,
+          "implements": [],
+          "parameters": [
+            {
+              "name": "ChildContent",
+              "type": "RenderFragment?",
+              "default": null,
+              "description": null,
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "Value",
+              "type": "string?",
+              "default": null,
+              "description": null,
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "ValueChanged",
+              "type": "EventCallback<string>",
+              "default": null,
+              "description": null,
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "AdditionalAttributes",
+              "type": "Dictionary<string, object>?",
+              "default": null,
+              "description": null,
+              "isCascading": false,
+              "captureUnmatched": true,
+              "isEditorRequired": false
+            }
+          ],
+          "events": [
+            {
+              "name": "ValueChanged",
+              "type": "EventCallback<string>",
+              "description": null
+            }
+          ],
+          "enums": [],
+          "records": [
+            {
+              "name": "MenubarRadioGroupContext",
+              "signature": "MenubarRadioGroupContext(string? Value, EventCallback<string> OnSelect)",
+              "description": null
+            }
+          ],
+          "gotchas": [],
+          "parseFailed": false,
+          "parseError": null
+        },
+        "MenubarRadioItem": {
+          "componentName": "MenubarRadioItem",
+          "fileName": "MenubarRadioItem.razor",
+          "namespace": "Lumeo",
+          "inheritsFrom": null,
+          "implements": [],
+          "parameters": [
+            {
+              "name": "Context",
+              "type": "MenubarRadioGroup.MenubarRadioGroupContext",
+              "default": "default!",
+              "description": null,
+              "isCascading": true,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "ChildContent",
+              "type": "RenderFragment?",
+              "default": null,
+              "description": null,
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "Value",
+              "type": "string",
+              "default": "\"\"",
+              "description": null,
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": true
+            },
+            {
+              "name": "Disabled",
+              "type": "bool",
+              "default": null,
+              "description": null,
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "Class",
+              "type": "string?",
+              "default": null,
+              "description": null,
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "AdditionalAttributes",
+              "type": "Dictionary<string, object>?",
+              "default": null,
+              "description": null,
+              "isCascading": false,
+              "captureUnmatched": true,
+              "isEditorRequired": false
+            }
+          ],
+          "events": [],
+          "enums": [],
+          "records": [],
           "gotchas": [],
           "parseFailed": false,
           "parseError": null
@@ -38941,7 +39785,8 @@
           "namespace": "Lumeo",
           "inheritsFrom": null,
           "implements": [
-            "IAsyncDisposable"
+            "IAsyncDisposable",
+            "IOverlayExitCallback"
           ],
           "parameters": [
             {
@@ -39120,15 +39965,20 @@
       },
       "a11y": {
         "roles": [
+          "group",
           "menu",
           "menubar",
           "menuitem",
+          "menuitemcheckbox",
+          "menuitemradio",
           "none"
         ],
         "ariaAttributes": [
+          "aria-checked",
           "aria-controls",
           "aria-expanded",
           "aria-haspopup",
+          "aria-label",
           "aria-orientation"
         ],
         "keys": [
@@ -39187,6 +40037,42 @@
           "isEditorRequired": false
         },
         {
+          "name": "Value",
+          "type": "string?",
+          "default": null,
+          "description": "Controlled value of the currently-open item. Bind with @bind-Value/ValueChanged. The value matches the open Value (or its auto id when none is set); null means no submenu is open. Leave unset for uncontrolled use.",
+          "isCascading": false,
+          "captureUnmatched": false,
+          "isEditorRequired": false
+        },
+        {
+          "name": "ValueChanged",
+          "type": "EventCallback<string?>",
+          "default": null,
+          "description": "Raised when the open item changes (user hover/click/keyboard, or an item close). Carries the new open item's value, or null when closed.",
+          "isCascading": false,
+          "captureUnmatched": false,
+          "isEditorRequired": false
+        },
+        {
+          "name": "DefaultValue",
+          "type": "string?",
+          "default": null,
+          "description": "Initial open item for uncontrolled use (ignored once Value is bound). null (default) opens nothing.",
+          "isCascading": false,
+          "captureUnmatched": false,
+          "isEditorRequired": false
+        },
+        {
+          "name": "DelayDuration",
+          "type": "int",
+          "default": "150",
+          "description": "Grace window in milliseconds before a hovered submenu closes after the pointer leaves it. Radix's forgiveness delay: moving between adjacent triggers, or briefly slipping off the panel, does not immediately dismiss. Defaults to 150ms.",
+          "isCascading": false,
+          "captureUnmatched": false,
+          "isEditorRequired": false
+        },
+        {
           "name": "Class",
           "type": "string?",
           "default": null,
@@ -39205,12 +40091,18 @@
           "isEditorRequired": false
         }
       ],
-      "events": [],
+      "events": [
+        {
+          "name": "ValueChanged",
+          "type": "EventCallback<string?>",
+          "description": "Raised when the open item changes (user hover/click/keyboard, or an item close). Carries the new open item's value, or null when closed."
+        }
+      ],
       "enums": [],
       "records": [
         {
           "name": "NavigationMenuContext",
-          "signature": "NavigationMenuContext(string? ActiveItemId, EventCallback<string?> SetActiveItemId, NavigationMenu Owner)",
+          "signature": "NavigationMenuContext(string? ActiveItemId, EventCallback<string?> SetActiveItemId, NavigationMenu Owner, int CloseDelayMs)",
           "description": null
         }
       ],
@@ -39246,7 +40138,8 @@
           "namespace": "Lumeo",
           "inheritsFrom": null,
           "implements": [
-            "IAsyncDisposable"
+            "IAsyncDisposable",
+            "IOverlayExitCallback"
           ],
           "parameters": [
             {
@@ -39456,6 +40349,15 @@
               "type": "RenderFragment?",
               "default": null,
               "description": null,
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "Value",
+              "type": "string?",
+              "default": null,
+              "description": "Stable identity for this item, used by the controlled Value binding to say which item is open. When unset an auto id is used, so uncontrolled menus keep working unchanged.",
               "isCascading": false,
               "captureUnmatched": false,
               "isEditorRequired": false
@@ -39757,7 +40659,10 @@
           "fileName": "NavigationMenuViewport.razor",
           "namespace": "Lumeo",
           "inheritsFrom": null,
-          "implements": [],
+          "implements": [
+            "IAsyncDisposable",
+            "IOverlayExitCallback"
+          ],
           "parameters": [
             {
               "name": "Context",
@@ -49097,8 +50002,8 @@
             {
               "name": "ToggleShortcut",
               "type": "string?",
-              "default": null,
-              "description": "Optional keyboard shortcut that toggles the sidebar, in the IKeyboardShortcutService combo format (e.g. \"ctrl+b\", \"meta+b\"). Registered on first render and released on dispose. Null disables the shortcut. (#241)",
+              "default": "\"ctrl+b\"",
+              "description": "Keyboard shortcut that toggles the sidebar, in the IKeyboardShortcutService combo format (e.g. \"ctrl+b\", \"meta+b\"). Registered on first render and released on dispose. Defaults to \"ctrl+b\" which — matching shadcn's (metaKey || ctrlKey) &amp;&amp; key === \"b\" — fires on both Ctrl+B and Cmd+B. Override with a different combo, or set to null/empty to disable the shortcut entirely.",
               "isCascading": false,
               "captureUnmatched": false,
               "isEditorRequired": false
@@ -52718,6 +53623,15 @@
           "isEditorRequired": false
         },
         {
+          "name": "Value",
+          "type": "string?",
+          "default": null,
+          "description": "Value submitted for this switch in a native &lt;form&gt; POST when Name is set and the switch is on. Mirrors the native checkbox default of \"on\".",
+          "isCascading": false,
+          "captureUnmatched": false,
+          "isEditorRequired": false
+        },
+        {
           "name": "Checked",
           "type": "bool",
           "default": null,
@@ -52882,7 +53796,7 @@
         ],
         "keys": [],
         "keyboardInteractive": false,
-        "focusManaged": false
+        "focusManaged": true
       },
       "parseFailed": false,
       "parseError": null
@@ -56381,6 +57295,15 @@
           "isEditorRequired": false
         },
         {
+          "name": "Orientation",
+          "type": "Lumeo.Orientation",
+          "default": "Lumeo.Orientation.Horizontal",
+          "description": "Group layout axis. Sets aria-orientation + data-orientation on the group and cascades data-orientation to each item (shadcn/Radix parity). Default Horizontal. Roving arrow-key navigation already accepts both axes.",
+          "isCascading": false,
+          "captureUnmatched": false,
+          "isEditorRequired": false
+        },
+        {
           "name": "Value",
           "type": "string?",
           "default": null,
@@ -56468,7 +57391,7 @@
       "records": [
         {
           "name": "ToggleGroupContext",
-          "signature": "ToggleGroupContext(\n        ToggleGroupType Type,\n        HashSet<string> SelectedItems,\n        ToggleGroupVariant Variant,\n        Lumeo.Size Size,\n        EventCallback<string> Toggle,\n        Func<string, bool, string> GetTabIndex,\n        List<string> ItemValues,\n        Dictionary<string, string> ItemIds,\n        Dictionary<string, bool> ItemDisabled,\n        // #69: stable-id registration (item id, value, disabled, render generation)\n        // so the parent rebuilds ItemValues in DOM order each pass.\n        Action<string, string, bool, int> RegisterItem,\n        Action<string, string> UnregisterItem,\n        // #169: focus-anchor sync — item reports the value it was focused on.\n        Action<string> SetFocusValue,\n        int Generation,\n        // The role=group element id — the anchor for the DOM-order roving-nav probe\n        // (Interop.GetOrderedDescendantIds) so arrow-key order tracks the live DOM\n        // after a keyed reorder. Always present (LumeoIds.New on the root div).\n        string ContainerId)",
+          "signature": "ToggleGroupContext(\n        ToggleGroupType Type,\n        HashSet<string> SelectedItems,\n        ToggleGroupVariant Variant,\n        Lumeo.Size Size,\n        EventCallback<string> Toggle,\n        Func<string, bool, string> GetTabIndex,\n        List<string> ItemValues,\n        Dictionary<string, string> ItemIds,\n        Dictionary<string, bool> ItemDisabled,\n        // #69: stable-id registration (item id, value, disabled, render generation)\n        // so the parent rebuilds ItemValues in DOM order each pass.\n        Action<string, string, bool, int> RegisterItem,\n        Action<string, string> UnregisterItem,\n        // #169: focus-anchor sync — item reports the value it was focused on.\n        Action<string> SetFocusValue,\n        int Generation,\n        // The role=group element id — the anchor for the DOM-order roving-nav probe\n        // (Interop.GetOrderedDescendantIds) so arrow-key order tracks the live DOM\n        // after a keyed reorder. Always present (LumeoIds.New on the root div).\n        string ContainerId,\n        // \"horizontal\" | \"vertical\" — cascaded so each item emits data-orientation.\n        string Orientation = \"horizontal\")",
           "description": null
         }
       ],
@@ -56587,6 +57510,7 @@
           "group"
         ],
         "ariaAttributes": [
+          "aria-orientation",
           "aria-pressed"
         ],
         "keys": [
@@ -57114,7 +58038,8 @@
           "namespace": "Lumeo",
           "inheritsFrom": null,
           "implements": [
-            "IAsyncDisposable"
+            "IAsyncDisposable",
+            "IOverlayExitCallback"
           ],
           "parameters": [
             {

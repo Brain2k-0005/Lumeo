@@ -1,0 +1,92 @@
+@namespace Lumeo
+@inject Services.IComponentInteropService Interop
+@inject Services.Localization.ILumeoLocalizer L
+@implements IDisposable
+
+@* Prebuilt message actions toolbar (shadcn Actions parity): a Copy button wired to
+   the clipboard out of the box, plus optional Regenerate / Retry actions that render
+   only when their callback is supplied. Drop extra <AgentMessageAction> children in
+   via ChildContent. Intended for the AgentMessage `Actions` slot. *@
+<div role="group" class="@GroupClass" aria-label="@L["AgentMessage.Actions"]" @attributes="AdditionalAttributes">
+    @if (CopyText is not null)
+    {
+        <AgentMessageAction Icon="@(_copied ? LumeoIcons.Check : LumeoIcons.Copy)"
+                            Label="@(_copied ? L["AgentMessage.Copied"] : L["AgentMessage.Copy"])"
+                            OnClick="CopyAsync" />
+    }
+    @if (OnRegenerate.HasDelegate)
+    {
+        <AgentMessageAction Icon="@(LumeoIcons.RefreshCw)"
+                            Label="@L["AgentMessage.Regenerate"]"
+                            OnClick="OnRegenerate" />
+    }
+    @if (OnRetry.HasDelegate)
+    {
+        <AgentMessageAction Icon="@(LumeoIcons.RotateCcw)"
+                            Label="@L["AgentMessage.Retry"]"
+                            OnClick="OnRetry" />
+    }
+    @ChildContent
+</div>
+
+@code {
+    /// <summary>Text copied to the clipboard by the built-in Copy action. When
+    /// <c>null</c>, no Copy button is rendered.</summary>
+    [Parameter] public string? CopyText { get; set; }
+
+    /// <summary>Invoked after a successful copy (receives the copied text).</summary>
+    [Parameter] public EventCallback<string> OnCopy { get; set; }
+
+    /// <summary>When set, renders a Regenerate action invoking this callback.</summary>
+    [Parameter] public EventCallback OnRegenerate { get; set; }
+
+    /// <summary>When set, renders a Retry action invoking this callback.</summary>
+    [Parameter] public EventCallback OnRetry { get; set; }
+
+    /// <summary>Additional custom actions appended after the built-ins.</summary>
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private bool _copied;
+    private CancellationTokenSource? _resetCts;
+
+    private string GroupClass => Cx.Merge("flex items-center gap-0.5", Class);
+
+    private async Task CopyAsync()
+    {
+        if (CopyText is null) return;
+        try { await Interop.CopyToClipboard(CopyText); }
+        catch (JSDisconnectedException) { }
+        catch (ObjectDisposedException) { }
+
+        _copied = true;
+        StateHasChanged();
+
+        if (OnCopy.HasDelegate)
+            await OnCopy.InvokeAsync(CopyText);
+
+        // Revert the "Copied" affordance after a moment. Cancel any in-flight revert
+        // so rapid re-copies keep showing the confirmation.
+        _resetCts?.Cancel();
+        _resetCts?.Dispose();
+        _resetCts = new CancellationTokenSource();
+        _ = ResetCopiedAsync(_resetCts.Token);
+    }
+
+    private async Task ResetCopiedAsync(CancellationToken token)
+    {
+        try { await Task.Delay(2000, token); }
+        catch (TaskCanceledException) { return; }
+        if (token.IsCancellationRequested) return;
+        _copied = false;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    public void Dispose()
+    {
+        _resetCts?.Cancel();
+        _resetCts?.Dispose();
+    }
+}

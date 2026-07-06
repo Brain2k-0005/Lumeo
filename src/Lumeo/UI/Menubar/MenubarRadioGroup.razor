@@ -1,0 +1,57 @@
+@namespace Lumeo
+
+@* Single-select group inside a menubar menu (shadcn MenubarRadioGroup). Mirrors
+   DropdownMenuRadioGroup: the selected value is cascaded to the MenubarRadioItems
+   which compare their own Value against it. *@
+@{
+    var context = new MenubarRadioGroupContext(_value, EventCallback.Factory.Create<string>(this, OnValueSelected));
+}
+
+<CascadingValue Value="context" IsFixed="false">
+    <div role="group" @attributes="AdditionalAttributes">
+        @ChildContent
+    </div>
+</CascadingValue>
+
+@code {
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public string? Value { get; set; }
+    [Parameter] public EventCallback<string> ValueChanged { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    // Selected value lives in a private backing field, not the [Parameter], so an
+    // uncontrolled group's optimistic selection survives a parent re-render that
+    // pushes the same (stale) Value. Seeded from Value only on a genuine change —
+    // mirrors DropdownMenuRadioGroup.
+    private string? _value;
+    private string? _lastValueParam;
+    private string? _lastPushed;   // the last value WE emitted via ValueChanged
+
+    protected override void OnParametersSet()
+    {
+        if (ValueChanged.HasDelegate)
+        {
+            // Controlled: adopt any incoming Value that isn't the echo of our own selection — a parent
+            // veto (re-render with the OLD value) rolls the visible state back; an echo is a no-op.
+            if (!Equals(Value, _lastPushed))
+            {
+                _value = Value;
+                _lastPushed = Value;
+            }
+        }
+        else if (!Equals(Value, _lastValueParam))   // Uncontrolled: adopt only on a genuine param change
+        {
+            _value = Value;
+            _lastValueParam = Value;
+        }
+    }
+
+    private async Task OnValueSelected(string value)
+    {
+        _value = value;
+        _lastPushed = value;   // record what we're about to push so a synchronous parent veto is detectable
+        await ValueChanged.InvokeAsync(value);
+    }
+
+    public record MenubarRadioGroupContext(string? Value, EventCallback<string> OnSelect);
+}

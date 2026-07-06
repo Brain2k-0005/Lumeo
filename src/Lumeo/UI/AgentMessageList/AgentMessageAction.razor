@@ -1,0 +1,51 @@
+@namespace Lumeo
+
+@* A single icon action button for a message toolbar (shadcn `Action` parity).
+   The Label is both the accessible name (aria-label + sr-only text) and, unless a
+   separate Tooltip is given, the native title tooltip. *@
+<button type="button"
+        class="@ButtonClass"
+        disabled="@Disabled"
+        aria-label="@Label"
+        title="@(Tooltip ?? Label)"
+        @onclick="OnClick"
+        @attributes="AdditionalAttributes">
+    @if (ChildContent is not null)
+    {
+        @ChildContent
+    }
+    else if (Icon is not null)
+    {
+        <SvgGlyph Svg="@Icon" class="h-3.5 w-3.5" />
+    }
+    @if (!string.IsNullOrEmpty(Label))
+    {
+        <span class="sr-only">@Label</span>
+    }
+</button>
+
+@code {
+    /// <summary>Accessible name for the button — used for <c>aria-label</c>, the
+    /// visually-hidden label, and the tooltip fallback. Required for a11y.</summary>
+    [Parameter] public string? Label { get; set; }
+
+    /// <summary>Icon to render (e.g. <c>LumeoIcons.Copy</c>). Ignored when
+    /// <see cref="ChildContent"/> is supplied.</summary>
+    [Parameter] public IconSource? Icon { get; set; }
+
+    /// <summary>Native title tooltip; defaults to <see cref="Label"/> when unset.</summary>
+    [Parameter] public string? Tooltip { get; set; }
+
+    [Parameter] public EventCallback OnClick { get; set; }
+    [Parameter] public bool Disabled { get; set; }
+
+    /// <summary>Custom button content (overrides <see cref="Icon"/>).</summary>
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private string ButtonClass => Cx.Merge(
+        "inline-flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50",
+        Class);
+}

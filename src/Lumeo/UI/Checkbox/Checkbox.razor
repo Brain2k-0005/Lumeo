@@ -15,6 +15,7 @@
                 aria-required="@Required.ToString().ToLowerInvariant()"
                 aria-invalid="@EffectiveInvalid.ToString().ToLowerInvariant()"
                 aria-describedby="@DescribedBy"
+                data-state="@DataState" data-disabled="@(Disabled ? string.Empty : null)"
                 class="@CssClass" @onclick="Toggle" disabled="@Disabled" @attributes="EffectiveAttributes">
             @RenderIcon()
         </button>
@@ -39,9 +40,25 @@ else
             aria-required="@Required.ToString().ToLowerInvariant()"
             aria-invalid="@EffectiveInvalid.ToString().ToLowerInvariant()"
             aria-describedby="@DescribedBy"
+            data-state="@DataState" data-disabled="@(Disabled ? string.Empty : null)"
             class="@CssClass" @onclick="Toggle" disabled="@Disabled" @attributes="EffectiveAttributes">
         @RenderIcon()
     </button>
+}
+
+@* Bubble input (Radix pattern): a visually-hidden, non-focusable native checkbox
+   that mirrors the checked state and carries Name/Value so the control participates
+   in a plain <form> POST. Rendered only when a Name is set. Indeterminate posts as
+   unchecked (native semantics). aria-hidden + tabindex=-1 keep it out of the a11y
+   tree and tab order — the role="checkbox" <button> above owns interaction. *@
+@if (!string.IsNullOrEmpty(Name))
+{
+    <input type="checkbox" aria-hidden="true" tabindex="-1"
+           name="@Name" value="@EffectiveValue"
+           checked="@(Checked && !IsIndeterminate)"
+           disabled="@Disabled" required="@Required"
+           class="pointer-events-none absolute h-4 w-4 -translate-x-full opacity-0"
+           style="clip: rect(0 0 0 0); clip-path: inset(50%); overflow: hidden; white-space: nowrap;" />
 }
 
 @if (!InsideFormField)
@@ -114,6 +131,16 @@ else
     [Parameter] public string? ErrorText { get; set; }
     [Parameter] public string? HelperText { get; set; }
     [Parameter] public string? Name { get; set; }
+
+    /// <summary>
+    /// Value submitted for this checkbox in a native <c>&lt;form&gt;</c> POST when
+    /// <see cref="Name"/> is set and the box is checked. Mirrors the native
+    /// checkbox default of <c>"on"</c>.
+    /// </summary>
+    [Parameter] public string? Value { get; set; }
+
+    private string EffectiveValue => Value ?? "on";
+
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
@@ -167,6 +194,10 @@ else
     }
 
     private string AriaChecked => IsIndeterminate ? "mixed" : Checked.ToString().ToLower();
+
+    // shadcn/Radix data-state styling hook: consumers can target
+    // data-[state=checked] / data-[state=indeterminate] in CSS.
+    private string DataState => IsIndeterminate ? "indeterminate" : (Checked ? "checked" : "unchecked");
 
     private string CssClass => Cx.Merge(
         "peer inline-flex items-center justify-center h-4 w-4 shrink-0 cursor-pointer rounded transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50",

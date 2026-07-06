@@ -334,6 +334,19 @@ internal static partial class LumeoDefaultStrings
         // ── Chart ───────────────────────────────────────────────────
         ["Chart.Loading"] = "Loading…",
 
+        // ── AgentMessageList / AgentMessage ─────────────────────────
+        ["AgentMessageList.ScrollToLatest"] = "Scroll to latest",
+        ["AgentMessageList.EmptyTitle"] = "No messages yet",
+        ["AgentMessageList.EmptyDescription"] = "Start a conversation to see messages here.",
+        ["AgentMessage.Actions"] = "Message actions",
+        ["AgentMessage.Copy"] = "Copy",
+        ["AgentMessage.Copied"] = "Copied",
+        ["AgentMessage.Regenerate"] = "Regenerate",
+        ["AgentMessage.Retry"] = "Retry",
+        ["AgentMessage.PreviousBranch"] = "Previous response",
+        ["AgentMessage.NextBranch"] = "Next response",
+        ["AgentMessage.BranchXofY"] = "{0} of {1}",
+
         // ── BottomNav ───────────────────────────────────────────────
         ["BottomNav.Label"] = "Bottom navigation",
         ["BottomNav.PrimaryAction"] = "Primary action",
@@ -833,6 +846,19 @@ internal static partial class LumeoDefaultStrings
 
         // ── Chart ───────────────────────────────────────────────────
         ["Chart.Loading"] = "Wird geladen…",
+
+        // ── AgentMessageList / AgentMessage ─────────────────────────
+        ["AgentMessageList.ScrollToLatest"] = "Zu den neuesten springen",
+        ["AgentMessageList.EmptyTitle"] = "Noch keine Nachrichten",
+        ["AgentMessageList.EmptyDescription"] = "Beginne eine Unterhaltung, um hier Nachrichten zu sehen.",
+        ["AgentMessage.Actions"] = "Nachrichtenaktionen",
+        ["AgentMessage.Copy"] = "Kopieren",
+        ["AgentMessage.Copied"] = "Kopiert",
+        ["AgentMessage.Regenerate"] = "Neu generieren",
+        ["AgentMessage.Retry"] = "Erneut versuchen",
+        ["AgentMessage.PreviousBranch"] = "Vorherige Antwort",
+        ["AgentMessage.NextBranch"] = "Nächste Antwort",
+        ["AgentMessage.BranchXofY"] = "{0} von {1}",
 
         // ── BottomNav ───────────────────────────────────────────────
         ["BottomNav.Label"] = "Untere Navigation",
