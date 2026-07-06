@@ -87,7 +87,16 @@ else if (Context.IsOpen || _exiting)
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     private readonly string _contentId = LumeoIds.New("drawer");
-    private bool _wasOpen;
+    // True once we've rendered open and not yet processed the close. Drives the
+    // exit animation INDEPENDENTLY of whether the open-interop finished — a dismiss
+    // during the Blazor Server interop round-trip window still slides out instead of
+    // vanishing (the B11 "no exit animation on real apps" regression). See
+    // SheetContent for the full write-up.
+    private bool _shownOpen;
+    // True once the open-interop chain (scroll lock + focus trap + slide-end +
+    // gesture) has run and needs tearing down on close. On Server the panel is
+    // visible and dismissable before this flips true.
+    private bool _interopReady;
     // Exit-animation state — see DialogContent / SheetContent. Only set when
     // PlayExitAnimation is true (service-opened drawers) and not in snap mode.
     private bool _exiting;
@@ -231,42 +240,44 @@ else if (Context.IsOpen || _exiting)
         // Passthrough mode — host DrawerContent owns scroll lock, focus trap, swipe.
         if (Shell is not null) return;
 
-        if (Context.IsOpen && !_wasOpen)
+        if (Context.IsOpen && !_interopReady)
         {
-            // Re-opened mid-exit: cancel the pending unmount so the panel stays.
-            if (_exiting)
+            // Mark BEFORE the awaits so a dismiss Server-dispatched between the
+            // interop round-trips hits the undo-check below exactly once.
+            _interopReady = true;
+            try
             {
-                _exitDispatch.Cancel();
-                _exiting = false;
-            }
-            await Interop.LockScroll();
-            await Interop.SetupFocusTrap(_contentId);
-            // Same animationend cleanup as SheetContent — bypasses Blazor
-            // event roundtrip + filters strictly on slide-in-from-* names.
-            // Skipped in snap mode: the JS snap gesture owns the transform.
-            if (!UsesSnapPoints && Animation == DrawerAnimation.Slide)
-            {
-                await Interop.AttachOverlaySlideEnd(_contentId);
-            }
-            await RegisterGestureAsync();
-            _wasOpen = true;
-        }
-        else if (!Context.IsOpen && _wasOpen)
-        {
-            // Close: tear down scroll-lock / focus-trap / gesture immediately, but
-            // keep the panel mounted for the slide/fade-out when an exit animation
-            // was requested, then unmount when it finishes.
-            await Cleanup();
-            _wasOpen = false;
-
-            if (ExitDurationMs > 0)
-            {
-                _exitDispatch.Schedule(ExitDurationMs, () => InvokeAsync(() =>
+                await Interop.LockScroll();
+                await Interop.SetupFocusTrap(_contentId);
+                // Same animationend cleanup as SheetContent — bypasses Blazor
+                // event roundtrip + filters strictly on slide-in-from-* names.
+                // Skipped in snap mode: the JS snap gesture owns the transform.
+                if (!UsesSnapPoints && Animation == DrawerAnimation.Slide)
                 {
-                    _exiting = false;
-                    StateHasChanged();
-                }));
+                    await Interop.AttachOverlaySlideEnd(_contentId);
+                }
+                await RegisterGestureAsync();
             }
+            catch (JSDisconnectedException) { }
+
+            // Dismissed while the open interop was still in flight (the Server
+            // round-trip window that used to swallow the slide-out): tear the
+            // just-registered handlers back down. The slide-out itself is owned by
+            // OnParametersSetAsync, so it plays regardless.
+            if (!Context.IsOpen)
+            {
+                await Cleanup();
+                _interopReady = false;
+            }
+        }
+        else if (!Context.IsOpen && _interopReady)
+        {
+            // Close: tear down scroll-lock / focus-trap / gesture (focus returns to
+            // the trigger now). The slide-out + deferred unmount are already
+            // scheduled by OnParametersSetAsync — this branch is interop teardown
+            // only.
+            await Cleanup();
+            _interopReady = false;
         }
     }
 
@@ -338,23 +349,46 @@ else if (Context.IsOpen || _exiting)
 
     protected override async Task OnParametersSetAsync()
     {
-        // Flip _exiting before the close render commits (mirrors DialogContent /
-        // SheetContent) so the mount gate keeps the panel for the slide/fade-out.
-        if (!Context.IsOpen && _wasOpen && ExitDurationMs > 0)
-            _exiting = true;
+        // Passthrough mode — the host DrawerContent owns the shell, exit animation
+        // and gesture; this nested instance is a no-op for lifecycle effects.
+        if (Shell is not null) return;
 
-        // Re-opened mid-exit: clear the latch so the enter class paints again.
-        if (Context.IsOpen && _exiting)
+        // The exit animation is driven ENTIRELY here, from the open->closed render
+        // transition, decoupled from the open-interop completion (the old `_wasOpen`
+        // gate). On Blazor Server the open interop is a chain of round-trips; keying
+        // the slide/fade-out off `_shownOpen` (flipped true the instant we first
+        // render open) makes it play whenever the dismiss lands, and scheduling the
+        // unmount here means the panel is never stranded mounted. Snap mode +
+        // declarative drawers keep ExitDurationMs == 0 → immediate unmount as
+        // before. (B11.)
+        if (Context.IsOpen)
         {
-            _exitDispatch.Cancel();
-            _exiting = false;
+            if (_exiting)
+            {
+                _exitDispatch.Cancel();
+                _exiting = false;
+            }
+            _shownOpen = true;
+        }
+        else if (_shownOpen)
+        {
+            _shownOpen = false;
+            if (ExitDurationMs > 0)
+            {
+                _exiting = true;
+                _exitDispatch.Schedule(ExitDurationMs, () => InvokeAsync(() =>
+                {
+                    _exiting = false;
+                    StateHasChanged();
+                }));
+            }
         }
 
         // Below is gesture reconciliation, which only applies while the drawer is
         // actually open; skip it during the exit phase (Context.IsOpen == false,
         // panel only kept mounted for the animation — Cleanup already unwired the
         // gesture in the close branch of OnAfterRenderAsync).
-        if (!_wasOpen || !Context.IsOpen) return;
+        if (!_interopReady || !Context.IsOpen) return;
 
         // SnapPoints/Side changed while open → the gesture mode flipped (e.g.
         // empty→populated SnapPoints); re-register so the right JS is attached.
@@ -409,7 +443,7 @@ else if (Context.IsOpen || _exiting)
     public async ValueTask DisposeAsync()
     {
         _exitDispatch.Dispose();
-        if (_wasOpen) await Cleanup();
+        if (_interopReady) await Cleanup();
     }
 
     public enum DrawerAnimation { Slide, Fade, None }

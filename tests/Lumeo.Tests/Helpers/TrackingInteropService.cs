@@ -10,7 +10,10 @@ namespace Lumeo.Tests.Helpers;
 /// FocusElement() and the focus-trap pair (SetupFocusTrap/RemoveFocusTrap),
 /// which record each call so tests can assert lifecycle behaviour.
 /// </summary>
-public sealed class TrackingInteropService : IComponentInteropService
+// Not sealed: OverlayExitAnimationRaceTests derives a variant whose open-interop
+// chain blocks (LockScroll/UnlockScroll are virtual) to reproduce the Server
+// "dismiss during open interop" race deterministically.
+public class TrackingInteropService : IComponentInteropService
 {
     private readonly List<int> _vibrateArgs = new();
     private readonly List<string> _focusedElementIds = new();
@@ -116,8 +119,13 @@ public sealed class TrackingInteropService : IComponentInteropService
         _typeaheadCalls.Add((containerId, query, currentIndex));
         return ValueTask.FromResult(TypeaheadMatchIndex);
     }
-    public ValueTask LockScroll() => ValueTask.CompletedTask;
-    public ValueTask UnlockScroll() => ValueTask.CompletedTask;
+    // virtual so a test subclass can make the open-interop chain block (return an
+    // incomplete task) to reproduce the Blazor-Server "dismiss lands while the open
+    // interop is still in flight" race deterministically — see
+    // OverlayExitAnimationRaceTests (B11: exit animation must not depend on the open
+    // interop having completed).
+    public virtual ValueTask LockScroll() => ValueTask.CompletedTask;
+    public virtual ValueTask UnlockScroll() => ValueTask.CompletedTask;
 
     // Records (className, active) for each SetHtmlClass call so tests can assert
     // html-class lifecycle (e.g. fullscreen-active added on enter / removed on

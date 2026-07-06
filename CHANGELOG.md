@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.1.0-preview.13] - 2026-07-06
+
+### Fixed
+- **B11, the real fix — service overlays could still hard-close without their
+  exit animation**: the exit latch was set only AFTER the open-interop chain
+  completed in `OnAfterRenderAsync` (scroll lock -> focus trap -> slide-end ->
+  swipe). On WASM docs that chain resolves in ~1ms (which is why our previous
+  verifications passed); in real apps a dismiss landing inside that window —
+  SignalR round-trips or slow devices make it wide — hit `_wasOpen == false`,
+  the exiting state never latched, and backdrop + panel unmounted in the same
+  mutation batch (~15ms, no exit class), on every close path. All four content
+  components now latch the exit synchronously in `OnParametersSet`
+  (independent of interop timing); a dismissed-mid-setup undo ensures a focus
+  trap/scroll lock is never left bound to a closing panel (previously leaked),
+  and the open-interop calls gained JSDisconnected guards. Reproduced and
+  regression-locked deterministically (six tests that block the scroll-lock
+  interop to force the race); the before/after matrix covers every
+  ShowSheet/Dialog/Drawer/AlertDialog variant x every close path (~205-290ms
+  animated removals, previously 2-8ms in the race window).
+
 ## [4.1.0-preview.12] - 2026-07-06
 
 ### Fixed

@@ -87,7 +87,18 @@ else if (Context.IsOpen || _exiting)
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     private readonly string _contentId = LumeoIds.New("sheet");
-    private bool _wasOpen;
+    // True once we've rendered in the open state and not yet processed the close.
+    // Drives the exit animation INDEPENDENTLY of whether the open-interop finished
+    // (see OnParametersSetAsync). On Blazor Server the open interop chain (scroll
+    // lock + focus trap + slide-end + swipe) is a sequence of round-trips; a user
+    // can dismiss the panel WHILE they're still in flight. Gating the slide-out on
+    // interop completion (the old `_wasOpen`) made those dismissals vanish with no
+    // exit class — the B11 "service sheets don't animate out on real apps" report.
+    private bool _shownOpen;
+    // True once the open-interop chain has run and therefore needs tearing down on
+    // close. Distinct from _shownOpen: on Server the panel is visible and
+    // dismissable before this flips true.
+    private bool _interopReady;
     // Exit-animation state: stays true between the close request and the moment
     // the slide/fade-out animation finishes, keeping the panel mounted so the
     // user sees it leave instead of vanishing. Driven by _exitDispatch.
@@ -261,24 +272,41 @@ else if (Context.IsOpen || _exiting)
     protected override async Task OnParametersSetAsync()
     {
         if (Shell is not null) return;
-        // The mount gate (Context.IsOpen || _exiting) is evaluated during render,
-        // but _exiting used to be set only afterwards in OnAfterRenderAsync — so the
-        // close render dropped the panel before the flag flipped and OnAfterRender
-        // then re-added it: a flicker that also reset child component state and
-        // skipped the slide-out. Flip _exiting here, before the close render, so the
-        // panel stays mounted and animates out. OnAfterRenderAsync still owns the
-        // teardown and scheduling the final unmount.
-        if (!Context.IsOpen && _wasOpen && ExitDurationMs > 0)
-            _exiting = true;
 
-        // Re-opened mid-exit: clear the exit latch BEFORE this render commits so
-        // AnimationClass picks EnterAnimationClass on the first re-open render —
-        // otherwise the panel paints one frame of the slide-OUT class while it is
-        // actually re-entering. OnAfterRenderAsync's cancel stays as a backstop. #184
-        if (Context.IsOpen && _exiting)
+        // The exit animation is driven ENTIRELY here, from the open->closed render
+        // transition — NOT from OnAfterRenderAsync (which only runs its close branch
+        // once the open-interop has completed). On Blazor Server the open interop
+        // is a chain of round-trips, so a dismiss can land while `_interopReady` is
+        // still false; keying the slide-out off `_shownOpen` (flipped true the
+        // instant we first render open) makes the panel animate out no matter when
+        // the dismiss arrives. Scheduling the unmount here too means the panel can
+        // never get stranded mounted with no timer to remove it. (B11.)
+        if (Context.IsOpen)
         {
-            _exitDispatch.Cancel();
-            _exiting = false;
+            // Re-opened mid-exit: clear the latch + pending unmount BEFORE this
+            // render commits so AnimationClass picks EnterAnimationClass on the
+            // first re-open render instead of painting a frame of the slide-OUT. #184
+            if (_exiting)
+            {
+                _exitDispatch.Cancel();
+                _exiting = false;
+            }
+            _shownOpen = true;
+        }
+        else if (_shownOpen)
+        {
+            // First render of the close: latch the slide-out (kept mounted via the
+            // Context.IsOpen || _exiting gate) and schedule the final unmount.
+            _shownOpen = false;
+            if (ExitDurationMs > 0)
+            {
+                _exiting = true;
+                _exitDispatch.Schedule(ExitDurationMs, () => InvokeAsync(() =>
+                {
+                    _exiting = false;
+                    StateHasChanged();
+                }));
+            }
         }
 
         // While the sheet stays open, re-evaluate swipe eligibility against the
@@ -286,7 +314,7 @@ else if (Context.IsOpen || _exiting)
         // a toggle of those parameters is ignored until a full close+reopen — the
         // gesture stays registered (or absent) with stale settings. Mirrors
         // DrawerContent.OnParametersSetAsync. #89
-        if (_wasOpen && Context.IsOpen)
+        if (_interopReady && Context.IsOpen)
             await ReconcileSwipeAsync();
     }
 
@@ -328,59 +356,60 @@ else if (Context.IsOpen || _exiting)
         // + focus trap; this nested instance is a no-op for lifecycle effects.
         if (Shell is not null) return;
 
-        if (Context.IsOpen && !_wasOpen)
+        if (Context.IsOpen && !_interopReady)
         {
-            // Re-opened mid-exit: cancel the pending unmount so the panel stays.
-            if (_exiting)
+            // Mark BEFORE the awaits so a re-entrant close (Server can dispatch the
+            // dismiss click between these round-trips) sees interop as "in progress"
+            // and the undo-check below fires exactly once.
+            _interopReady = true;
+            try
             {
-                _exitDispatch.Cancel();
-                _exiting = false;
-            }
-            await Interop.LockScroll();
-            await Interop.SetupFocusTrap(_contentId);
-            // Native animationend listener sets inline transform:none after
-            // the slide animation completes (filtered on slide-in-from-* so
-            // descendant zoom-in / fade-in events don't trigger us). Inline
-            // style beats the keyframe fill-mode forwarding — guarantees no
-            // containing-block trap for popovers.
-            if (Animation == SheetAnimation.Slide)
-            {
-                await Interop.AttachOverlaySlideEnd(_contentId);
-            }
-            // Touch swipe-to-dismiss (WCAG 2.5.1 / mobile UX parity with Drawer).
-            // Reuses the Drawer JS helper as-is — it already handles all four
-            // directions and matches the Sheet's Side parameter 1:1.
-            // Gated on SwipeToClose (default false) because Sheets commonly
-            // contain scrollable content, and a downward scroll on a Bottom
-            // sheet would otherwise be misread as a dismiss gesture.
-            // Routed through RegisterSwipeAsync so _swipeRegistered tracks the
-            // wiring and OnParametersSetAsync can reconcile a later toggle. #89
-            if (SwipeEligible)
-            {
-                await RegisterSwipeAsync(SwipeDirection);
-            }
-            _wasOpen = true;
-        }
-        else if (!Context.IsOpen && _wasOpen)
-        {
-            // Close: tear down scroll-lock / focus-trap / swipe immediately
-            // (focus returns to the trigger now), but keep the panel mounted for
-            // the exit animation, then unmount when it finishes. Animation=None
-            // unmounts straight away.
-            await Cleanup();
-            _wasOpen = false;
-
-            if (ExitDurationMs > 0)
-            {
-                // _exiting was already flipped in OnParametersSet (before the close
-                // render) so the panel stayed mounted and slid out; here we only
-                // schedule the unmount for when the animation finishes.
-                _exitDispatch.Schedule(ExitDurationMs, () => InvokeAsync(() =>
+                await Interop.LockScroll();
+                await Interop.SetupFocusTrap(_contentId);
+                // Native animationend listener sets inline transform:none after
+                // the slide animation completes (filtered on slide-in-from-* so
+                // descendant zoom-in / fade-in events don't trigger us). Inline
+                // style beats the keyframe fill-mode forwarding — guarantees no
+                // containing-block trap for popovers.
+                if (Animation == SheetAnimation.Slide)
                 {
-                    _exiting = false;
-                    StateHasChanged();
-                }));
+                    await Interop.AttachOverlaySlideEnd(_contentId);
+                }
+                // Touch swipe-to-dismiss (WCAG 2.5.1 / mobile UX parity with Drawer).
+                // Reuses the Drawer JS helper as-is — it already handles all four
+                // directions and matches the Sheet's Side parameter 1:1.
+                // Gated on SwipeToClose (default false) because Sheets commonly
+                // contain scrollable content, and a downward scroll on a Bottom
+                // sheet would otherwise be misread as a dismiss gesture.
+                // Routed through RegisterSwipeAsync so _swipeRegistered tracks the
+                // wiring and OnParametersSetAsync can reconcile a later toggle. #89
+                if (SwipeEligible)
+                {
+                    await RegisterSwipeAsync(SwipeDirection);
+                }
             }
+            catch (JSDisconnectedException) { }
+
+            // Dismissed while the open interop was still in flight (the Server
+            // round-trip window that used to swallow the slide-out): tear the
+            // just-registered handlers back down so a focus trap / scroll lock /
+            // swipe gesture isn't left bound to a panel that's already sliding out.
+            // The slide-out itself is owned by OnParametersSetAsync, so it plays
+            // regardless of this.
+            if (!Context.IsOpen)
+            {
+                await Cleanup();
+                _interopReady = false;
+            }
+        }
+        else if (!Context.IsOpen && _interopReady)
+        {
+            // Close: tear down scroll-lock / focus-trap / swipe (focus returns to
+            // the trigger now). The slide-out + deferred unmount are already
+            // scheduled by OnParametersSetAsync — this branch is interop teardown
+            // only.
+            await Cleanup();
+            _interopReady = false;
         }
     }
 
@@ -418,7 +447,7 @@ else if (Context.IsOpen || _exiting)
     public async ValueTask DisposeAsync()
     {
         _exitDispatch.Dispose();
-        if (_wasOpen) await Cleanup();
+        if (_interopReady) await Cleanup();
     }
 
     /// <summary>Sheet sizes. <c>Full</c> is layout-intent (entire viewport),

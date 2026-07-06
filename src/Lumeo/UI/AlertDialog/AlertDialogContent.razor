@@ -39,7 +39,16 @@
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     private readonly string _contentId = LumeoIds.New("alertdialog");
-    private bool _wasOpen;
+    // True once we've rendered open and not yet processed the close. Drives the
+    // exit animation INDEPENDENTLY of whether the open-interop finished — a dismiss
+    // during the Blazor Server interop round-trip window still zooms out instead of
+    // vanishing (the B11 "no exit animation on real apps" regression). See
+    // SheetContent for the full write-up.
+    private bool _shownOpen;
+    // True once the open-interop chain (scroll lock + focus trap + slide-end) has
+    // run and needs tearing down on close. On Server the panel is visible and
+    // dismissable before this flips true.
+    private bool _interopReady;
     // Exit-animation state — see DialogContent. Only set when PlayExitAnimation
     // is true (service-opened alert dialogs).
     private bool _exiting;
@@ -65,52 +74,77 @@
 
     protected override void OnParametersSet()
     {
-        // Flip _exiting before the close render commits (mirrors DialogContent /
-        // SheetContent) so the mount gate keeps the panel for the zoom-out.
-        if (!Context.IsOpen && _wasOpen && ExitDurationMs > 0)
-            _exiting = true;
-
-        if (Context.IsOpen && _exiting)
-        {
-            _exitDispatch.Cancel();
-            _exiting = false;
-        }
-    }
-
-    protected override async Task OnAfterRenderAsync(bool firstRender)
-    {
-        if (Context.IsOpen && !_wasOpen)
+        // The exit animation is driven ENTIRELY here, from the open->closed render
+        // transition, decoupled from the open-interop completion (the old `_wasOpen`
+        // gate). On Blazor Server the open interop is a chain of round-trips; keying
+        // the zoom-out off `_shownOpen` (flipped true the instant we first render
+        // open) makes it play whenever the dismiss lands, and scheduling the unmount
+        // here means the panel is never stranded mounted. Declarative alert dialogs
+        // keep ExitDurationMs == 0 (PlayExitAnimation false) → immediate unmount as
+        // before. (B11.)
+        if (Context.IsOpen)
         {
             if (_exiting)
             {
                 _exitDispatch.Cancel();
                 _exiting = false;
             }
-            await Interop.LockScroll();
-            // Initial focus goes to the least destructive action — the Cancel
-            // button carries the data-lumeo-initial-focus marker (WAI-ARIA
-            // alertdialog pattern). Falls back to the first focusable element
-            // when no AlertDialogCancel is present.
-            await Interop.SetupFocusTrap(_contentId, "[data-lumeo-initial-focus]");
-            // Neutralize animate-zoom-in after it finishes so the settled panel
-            // stops being a containing block for position:fixed descendants —
-            // see DialogContent for the full rationale (B1).
-            await Interop.AttachOverlaySlideEnd(_contentId);
-            _wasOpen = true;
+            _shownOpen = true;
         }
-        else if (!Context.IsOpen && _wasOpen)
+        else if (_shownOpen)
         {
-            await Cleanup();
-            _wasOpen = false;
-
+            _shownOpen = false;
             if (ExitDurationMs > 0)
             {
+                _exiting = true;
                 _exitDispatch.Schedule(ExitDurationMs, () => InvokeAsync(() =>
                 {
                     _exiting = false;
                     StateHasChanged();
                 }));
             }
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (Context.IsOpen && !_interopReady)
+        {
+            // Mark BEFORE the awaits so a dismiss Server-dispatched between the
+            // interop round-trips hits the undo-check below exactly once.
+            _interopReady = true;
+            try
+            {
+                await Interop.LockScroll();
+                // Initial focus goes to the least destructive action — the Cancel
+                // button carries the data-lumeo-initial-focus marker (WAI-ARIA
+                // alertdialog pattern). Falls back to the first focusable element
+                // when no AlertDialogCancel is present.
+                await Interop.SetupFocusTrap(_contentId, "[data-lumeo-initial-focus]");
+                // Neutralize animate-zoom-in after it finishes so the settled panel
+                // stops being a containing block for position:fixed descendants —
+                // see DialogContent for the full rationale (B1).
+                await Interop.AttachOverlaySlideEnd(_contentId);
+            }
+            catch (JSDisconnectedException) { }
+
+            // Dismissed while the open interop was still in flight (the Server
+            // round-trip window that used to swallow the zoom-out): tear the
+            // scroll lock / focus trap back down. The zoom-out itself is owned by
+            // OnParametersSet, so it plays regardless.
+            if (!Context.IsOpen)
+            {
+                await Cleanup();
+                _interopReady = false;
+            }
+        }
+        else if (!Context.IsOpen && _interopReady)
+        {
+            // Close: tear down scroll-lock / focus-trap. The zoom-out + deferred
+            // unmount are already scheduled by OnParametersSet — this branch is
+            // interop teardown only.
+            await Cleanup();
+            _interopReady = false;
         }
     }
 
@@ -136,7 +170,7 @@
     public async ValueTask DisposeAsync()
     {
         _exitDispatch.Dispose();
-        if (_wasOpen)
+        if (_interopReady)
         {
             await Cleanup();
         }

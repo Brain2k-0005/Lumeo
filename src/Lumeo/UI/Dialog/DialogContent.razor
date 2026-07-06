@@ -104,7 +104,16 @@ else if (Context.IsOpen || _exiting)
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     private readonly string _contentId = LumeoIds.New("dialog");
-    private bool _wasOpen;
+    // True once we've rendered open and not yet processed the close. Drives the
+    // exit animation INDEPENDENTLY of whether the open-interop finished — a dismiss
+    // during the Blazor Server interop round-trip window still zooms out instead of
+    // vanishing (the B11 "no exit animation on real apps" regression). See
+    // SheetContent for the full write-up.
+    private bool _shownOpen;
+    // True once the open-interop chain (scroll lock + focus trap + slide-end) has
+    // run and needs tearing down on close. On Server the panel is visible and
+    // dismissable before this flips true.
+    private bool _interopReady;
     // Exit-animation state: true between the close request and the moment the
     // zoom-out finishes, keeping the panel mounted so the user sees it leave
     // instead of vanishing. Only ever set when PlayExitAnimation is true
@@ -150,21 +159,37 @@ else if (Context.IsOpen || _exiting)
     protected override void OnParametersSet()
     {
         if (Shell is not null) return;
-        // Flip _exiting BEFORE the close render commits (mirrors SheetContent):
-        // the mount gate (Context.IsOpen || _exiting) is evaluated during render,
-        // so the flag must already be true on the close pass or the panel is
-        // dropped before it can animate out. OnAfterRenderAsync still owns the
-        // teardown + scheduling the final unmount.
-        if (!Context.IsOpen && _wasOpen && ExitDurationMs > 0)
-            _exiting = true;
 
-        // Re-opened mid-exit: clear the exit latch before this render commits so
-        // AnimationClass picks the enter class again instead of painting a frame
-        // of the zoom-OUT while re-entering.
-        if (Context.IsOpen && _exiting)
+        // The exit animation is driven ENTIRELY here, from the open->closed render
+        // transition, so it no longer depends on the open-interop having finished
+        // (the old `_wasOpen` gate). On Blazor Server the open interop is a chain of
+        // round-trips; a dismiss can land while it's still in flight — keying the
+        // zoom-out off `_shownOpen` (flipped true the instant we first render open)
+        // makes it play whenever the dismiss arrives, and scheduling the unmount
+        // here means the panel is never stranded mounted. Declarative dialogs keep
+        // ExitDurationMs == 0 (PlayExitAnimation false) → immediate unmount as
+        // before. (B11.)
+        if (Context.IsOpen)
         {
-            _exitDispatch.Cancel();
-            _exiting = false;
+            if (_exiting)
+            {
+                _exitDispatch.Cancel();
+                _exiting = false;
+            }
+            _shownOpen = true;
+        }
+        else if (_shownOpen)
+        {
+            _shownOpen = false;
+            if (ExitDurationMs > 0)
+            {
+                _exiting = true;
+                _exitDispatch.Schedule(ExitDurationMs, () => InvokeAsync(() =>
+                {
+                    _exiting = false;
+                    StateHasChanged();
+                }));
+            }
         }
     }
 
@@ -173,14 +198,11 @@ else if (Context.IsOpen || _exiting)
         // Passthrough mode — host DialogContent owns lifecycle effects.
         if (Shell is not null) return;
 
-        if (Context.IsOpen && !_wasOpen)
+        if (Context.IsOpen && !_interopReady)
         {
-            // Re-opened mid-exit: cancel the pending unmount so the panel stays.
-            if (_exiting)
-            {
-                _exitDispatch.Cancel();
-                _exiting = false;
-            }
+            // Mark BEFORE the awaits so a dismiss that Server dispatches between the
+            // interop round-trips still hits the undo-check below exactly once.
+            _interopReady = true;
             // Guard the open-branch interop against a circuit teardown that
             // races with this render (e.g. the user navigates away while the
             // dialog is opening). Mirrors Cleanup()'s JSDisconnectedException
@@ -200,29 +222,27 @@ else if (Context.IsOpen || _exiting)
                 // its fixed coordinates against the panel instead of the viewport
                 // (the B1 mispositioning report's second ingredient).
                 await Interop.AttachOverlaySlideEnd(_contentId);
-                _wasOpen = true;
             }
             catch (JSDisconnectedException) { }
-        }
-        else if (!Context.IsOpen && _wasOpen)
-        {
-            // Close: tear down scroll-lock / focus-trap immediately (focus returns
-            // to the trigger now), but keep the panel mounted for the zoom-out when
-            // an exit animation was requested, then unmount when it finishes.
-            await Cleanup();
-            _wasOpen = false;
 
-            if (ExitDurationMs > 0)
+            // Dismissed while the open interop was still in flight (the Server
+            // round-trip window that used to swallow the zoom-out): tear the
+            // scroll lock / focus trap back down so they aren't left bound to a
+            // panel that's already zooming out. The zoom-out itself is owned by
+            // OnParametersSet, so it plays regardless.
+            if (!Context.IsOpen)
             {
-                // _exiting was already flipped in OnParametersSet (before the close
-                // render) so the panel stayed mounted and zoomed out; here we only
-                // schedule the unmount for when the animation finishes.
-                _exitDispatch.Schedule(ExitDurationMs, () => InvokeAsync(() =>
-                {
-                    _exiting = false;
-                    StateHasChanged();
-                }));
+                await Cleanup();
+                _interopReady = false;
             }
+        }
+        else if (!Context.IsOpen && _interopReady)
+        {
+            // Close: tear down scroll-lock / focus-trap (focus returns to the
+            // trigger now). The zoom-out + deferred unmount are already scheduled
+            // by OnParametersSet — this branch is interop teardown only.
+            await Cleanup();
+            _interopReady = false;
         }
     }
 
@@ -257,7 +277,7 @@ else if (Context.IsOpen || _exiting)
     public async ValueTask DisposeAsync()
     {
         _exitDispatch.Dispose();
-        if (_wasOpen)
+        if (_interopReady)
         {
             await Cleanup();
         }
