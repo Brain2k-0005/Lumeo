@@ -40,6 +40,23 @@
     // race-free, replacing a fixed Task.Delay that guessed when the content existed.
     private bool _openByKeyboard;
 
+    // Submenu teardown on ancestor exit (Codex/CodeRabbit P2): when the root menu (or
+    // an enclosing submenu) closes while this submenu is open, its own _open stayed
+    // true — leaving the submenu mounted with data-state="open" under a data-state=
+    // "closed" parent until the whole tree unmounted. Observe the ancestor's open flag
+    // (cascaded, IsFixed=false) and reset our state so the submenu exits/unmounts in
+    // sync with the tree. The cascade re-renders this component whenever the root's
+    // Open flips, so OnParametersSet is the right place to catch the edge.
+    protected override void OnParametersSet()
+    {
+        var ancestorClosed = RootContext is { IsOpen: false } || ParentSubContext is { IsOpen: false };
+        if (ancestorClosed && _open)
+        {
+            CancelClose();
+            _open = false;
+        }
+    }
+
     private async Task SetOpen(bool value)
     {
         if (_open == value) return;

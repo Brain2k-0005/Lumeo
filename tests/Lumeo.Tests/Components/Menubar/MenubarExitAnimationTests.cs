@@ -70,4 +70,21 @@ public class MenubarExitAnimationTests : IAsyncLifetime
             () => Assert.Empty(cut.FindAll("[role='menu']")),
             timeout: TimeSpan.FromSeconds(5));
     }
+
+    [Fact]
+    public void Exiting_Surface_Is_Inert_PointerEventsNone()
+    {
+        // P2 (exit-window inertness): the fading (data-state=closed, still-mounted)
+        // surface must be inert so a double-click / second tap can't re-invoke a menu
+        // item mid-exit.
+        var cut = RenderMenubar();
+        cut.Find("button").Click();
+        Assert.DoesNotContain("pointer-events-none", cut.Find("[role='menu']").GetAttribute("class") ?? "");
+
+        cut.Find("button").Click();
+
+        var menu = cut.Find("[role='menu']");
+        Assert.Equal("closed", menu.GetAttribute("data-state"));
+        Assert.Contains("pointer-events-none", menu.GetAttribute("class") ?? "");
+    }
 }

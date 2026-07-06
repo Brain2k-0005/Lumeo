@@ -40,6 +40,20 @@
     // replacing a fixed Task.Delay that guessed when the content existed.
     private bool _openByKeyboard;
 
+    // Submenu teardown on ancestor exit (Codex/CodeRabbit P2): when the root menu (or
+    // an enclosing submenu) closes while this submenu is open, reset our own state so
+    // the submenu exits/unmounts with the tree instead of being stranded mounted with
+    // data-state="open" under a data-state="closed" parent. See DropdownMenuSub.
+    protected override void OnParametersSet()
+    {
+        var ancestorClosed = RootContext is { IsOpen: false } || ParentSubContext is { IsOpen: false };
+        if (ancestorClosed && _open)
+        {
+            CancelClose();
+            _open = false;
+        }
+    }
+
     private async Task SetOpen(bool value)
     {
         if (_open == value) return;

@@ -80,4 +80,21 @@ public class TooltipExitAnimationTests : IAsyncLifetime
             () => Assert.Empty(cut.FindAll("[role='tooltip']")),
             timeout: TimeSpan.FromSeconds(5));
     }
+
+    [Fact]
+    public void Exiting_Surface_Is_Inert_PointerEventsNone()
+    {
+        // P2 (exit-window inertness): the fading tooltip must be pointer-events-none so
+        // a mouseenter on the exiting box can't influence state — parity with the menu
+        // surfaces and the Radix pointer-events-none tooltip contract.
+        var cut = RenderTooltip();
+        cut.Find("div").MouseEnter(Mouse);
+        Assert.DoesNotContain("pointer-events-none", cut.Find("[role='tooltip']").GetAttribute("class") ?? "");
+
+        cut.Find("div").MouseLeave(Mouse);
+
+        var tip = cut.Find("[role='tooltip']");
+        Assert.Equal("closed", tip.GetAttribute("data-state"));
+        Assert.Contains("pointer-events-none", tip.GetAttribute("class") ?? "");
+    }
 }

@@ -72,4 +72,54 @@ public class HoverCardExitAnimationTests : IAsyncLifetime
             () => Assert.DoesNotContain("Card body", cut.Markup),
             timeout: TimeSpan.FromSeconds(5));
     }
+
+    [Fact]
+    public void Exiting_Surface_Is_Inert_PointerEventsNone()
+    {
+        // P2 (exit-window inertness): the fading card must be pointer-events-none so a
+        // mouseenter can't cancel/reopen the close while it animates out.
+        var cut = RenderCard(open: true);
+        Assert.DoesNotContain("pointer-events-none", Content(cut).GetAttribute("class") ?? "");
+
+        cut.Render(p => p.Add(c => c.Open, false).Add(c => c.ChildContent, _child));
+
+        var content = Content(cut);
+        Assert.Equal("closed", content.GetAttribute("data-state"));
+        Assert.Contains("pointer-events-none", content.GetAttribute("class") ?? "");
+    }
+
+    [Fact]
+    public void Mouseenter_On_Exiting_Card_Does_Not_Reopen_It()
+    {
+        // P2: hovering the fading card must NOT resurrect it. The handler is gated on
+        // the exit latch, so even a mouseenter that reaches the exiting surface (bUnit
+        // ignores pointer-events, so it always does) is a no-op and the card completes
+        // its exit + unmounts. Pre-fix the inline @onmouseenter called RequestOpen,
+        // which cancelled the exit and re-opened the card (stranded open forever).
+        //
+        // OpenDelay=0 makes the (pre-fix) reopen fire near-immediately — well inside the
+        // ~250ms exit window — so a regressed gate deterministically reopens the card and
+        // this test's WaitForAssertion(unmount) times out. With the gate it never schedules.
+        var cut = _ctx.Render<L.HoverCard>(p => p
+            .Add(c => c.Open, true)
+            .Add(c => c.OpenDelay, 0)
+            .Add(c => c.CloseDelay, 0)
+            .Add(c => c.ChildContent, _child));
+        cut.Render(p => p
+            .Add(c => c.Open, false)
+            .Add(c => c.OpenDelay, 0)
+            .Add(c => c.CloseDelay, 0)
+            .Add(c => c.ChildContent, _child));
+
+        var content = Content(cut);
+        Assert.Equal("closed", content.GetAttribute("data-state"));
+        // Fire mouseenter on the exiting card.
+        content.MouseEnter(new Microsoft.AspNetCore.Components.Web.MouseEventArgs());
+
+        // The hover did not reopen it: the card completes its exit and unmounts. (A
+        // regressed gate would reopen within ~0ms and this would time out.)
+        cut.WaitForAssertion(
+            () => Assert.DoesNotContain("Card body", cut.Markup),
+            timeout: TimeSpan.FromSeconds(5));
+    }
 }

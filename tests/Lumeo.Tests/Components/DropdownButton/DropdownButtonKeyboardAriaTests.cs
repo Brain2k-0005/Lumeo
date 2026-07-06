@@ -145,9 +145,13 @@ public class DropdownButtonKeyboardAriaTests : IAsyncLifetime
         // Space toggles, so it closes an already-open menu.
         cut.Find("[role='button']").KeyDown(new KeyboardEventArgs { Key = " " });
 
-        // Menu plays its zoom-out exit before unmounting (B11 parity) — poll for removal.
-        cut.WaitForAssertion(() => Assert.Empty(cut.FindAll("[role='menu']")), timeout: TimeSpan.FromSeconds(5));
+        // aria-expanded flips SYNCHRONOUSLY on the trigger the moment the menu closes —
+        // the exit animation only delays the menu's DOM removal, not the trigger state.
+        // Assert it before polling for the (animation-delayed) unmount.
         Assert.Equal("false", cut.Find("[role='button']").GetAttribute("aria-expanded"));
+
+        // Menu then plays its zoom-out exit before unmounting (B11 parity) — poll for removal.
+        cut.WaitForAssertion(() => Assert.Empty(cut.FindAll("[role='menu']")), timeout: TimeSpan.FromSeconds(5));
     }
 
     [Fact]

@@ -4,7 +4,7 @@
 
 @if (_exit.Present(Context.IsOpen))
 {
-    <div id="@_contentId" data-state="@(Context.IsOpen ? "open" : "closed")" class="@CssClass" @onmouseenter="() => Context.RequestOpen.InvokeAsync()" @onmouseleave="() => Context.RequestClose.InvokeAsync()" @attributes="AdditionalAttributes">
+    <div id="@_contentId" data-state="@(Context.IsOpen ? "open" : "closed")" class="@CssClass" @onmouseenter="HandleMouseEnter" @onmouseleave="HandleMouseLeave" @attributes="AdditionalAttributes">
         @ChildContent
         @if (ShowArrow)
         {
@@ -37,7 +37,16 @@
     private DotNetObjectReference<HoverCardContent>? _selfRef;
     private const int ExitDurationMs = 250;
 
-    private string AnimationClass => _exit.Exiting ? "animate-zoom-out" : "animate-fade-in";
+    // pointer-events-none during the exit window makes the fading card inert so a
+    // mouseenter on it can't cancel/reopen the close while it animates out (P2).
+    private string AnimationClass => _exit.Exiting ? "animate-zoom-out pointer-events-none" : "animate-fade-in";
+
+    // Gate the hover-open/close handlers so an EXITING card never schedules an open
+    // or close: even if a stray mouseenter/leave reaches the fading surface (before
+    // pointer-events-none takes hold, or in a non-CSS host), it is ignored rather
+    // than resurrecting the card mid-exit (Codex/CodeRabbit P2).
+    private Task HandleMouseEnter() => _exit.Exiting ? Task.CompletedTask : Context.RequestOpen.InvokeAsync();
+    private Task HandleMouseLeave() => _exit.Exiting ? Task.CompletedTask : Context.RequestClose.InvokeAsync();
 
     private string CssClass => Cx.Merge(
         "fixed z-50 w-64 rounded-md border border-border/60 bg-popover p-4 text-popover-foreground shadow-lg outline-none",

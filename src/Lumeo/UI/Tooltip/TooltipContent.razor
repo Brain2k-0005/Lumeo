@@ -64,9 +64,12 @@
         AnimationClasses,
         Class);
 
+    // pointer-events-none during the exit window keeps the fading tooltip inert
+    // (mouseenter on the exiting box can't affect state) — parity with the menu
+    // surfaces and the Radix pointer-events-none tooltip contract (P2).
     private string AnimationClasses => IsOpen
         ? "opacity-100 visible animate-fade-in"
-        : (_exit.Exiting ? "opacity-100 visible animate-zoom-out" : "opacity-0 invisible");
+        : (_exit.Exiting ? "opacity-100 visible animate-zoom-out pointer-events-none" : "opacity-0 invisible");
 
     private string SideStr => Side switch
     {
@@ -169,7 +172,16 @@
 
     private void FinishExit()
     {
-        if (_exit.Finish()) StateHasChanged();
+        if (_exit.Finish())
+        {
+            // Exit is over and the box unmounts now: drop the resolved side AFTER the
+            // exit window (not in Cleanup) so a fresh open re-derives it from scratch.
+            // Retaining it through the exit kept the frozen box's arrow + data-side on
+            // the collision-flipped edge instead of snapping back to the unflipped
+            // requested Side mid-fade (minor desync, Codex/CodeRabbit).
+            _resolvedSide = null;
+            StateHasChanged();
+        }
     }
 
     private Task OnLiveSideChanged(string side)
@@ -188,7 +200,11 @@
         _appliedSide = null;
         _appliedOffset = null;
         _appliedAlign = null;
-        _resolvedSide = null;
+        // NOTE: _resolvedSide is intentionally NOT cleared here. Cleanup runs
+        // immediately on close, but the box stays mounted (frozen) for the exit
+        // window — keeping the resolved (possibly collision-flipped) side means the
+        // arrow + data-side stay put through the fade. It is cleared in FinishExit
+        // once the box actually unmounts.
     }
 
     public async ValueTask DisposeAsync()

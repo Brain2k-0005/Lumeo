@@ -101,10 +101,14 @@ public class DropdownButtonBehaviorTests : IAsyncLifetime
         // Escape is handled by the menu container's @onkeydown.
         cut.Find("[role='menu']").KeyDown(new KeyboardEventArgs { Key = "Escape" });
 
-        // The menu now plays a zoom-out exit before unmounting (B11 parity), so poll
-        // for its removal; aria-expanded flips synchronously on the trigger.
-        cut.WaitForAssertion(() => Assert.Empty(cut.FindAll("[role='menu']")), timeout: TimeSpan.FromSeconds(5));
+        // aria-expanded flips SYNCHRONOUSLY on the trigger the moment the menu closes —
+        // the exit animation only delays the menu's DOM removal, not the trigger state.
+        // Assert it directly (before polling) so the contract is that the trigger state
+        // is correct immediately, independent of the animation.
         Assert.Equal("false", cut.Find("[role='button']").GetAttribute("aria-expanded"));
+
+        // The menu then plays a zoom-out exit before unmounting (B11 parity) — poll for removal.
+        cut.WaitForAssertion(() => Assert.Empty(cut.FindAll("[role='menu']")), timeout: TimeSpan.FromSeconds(5));
     }
 
     [Fact]

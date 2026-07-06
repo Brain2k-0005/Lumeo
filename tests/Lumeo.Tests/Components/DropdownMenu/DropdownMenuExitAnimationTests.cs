@@ -78,6 +78,22 @@ public class DropdownMenuExitAnimationTests : IAsyncLifetime
     }
 
     [Fact]
+    public void Exiting_Surface_Is_Inert_PointerEventsNone()
+    {
+        // P2 (exit-window inertness): the open surface must be hit-testable, but the
+        // fading (data-state=closed, still-mounted) surface must be inert so a
+        // double-click / second tap can't re-invoke a menu item mid-exit.
+        var cut = RenderMenu(open: true);
+        Assert.DoesNotContain("pointer-events-none", cut.Find("[role='menu']").GetAttribute("class") ?? "");
+
+        cut.Render(p => p.Add(m => m.Open, false).Add(m => m.ChildContent, _child));
+
+        var menu = cut.Find("[role='menu']");
+        Assert.Equal("closed", menu.GetAttribute("data-state"));
+        Assert.Contains("pointer-events-none", menu.GetAttribute("class") ?? "");
+    }
+
+    [Fact]
     public void Reopen_During_Exit_Cancels_It_And_Restores_Enter_Class()
     {
         var cut = RenderMenu(open: true);
