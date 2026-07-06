@@ -44,11 +44,30 @@
     // address this item; otherwise fall back to the auto id.
     private string ItemIdentity => Value ?? _itemId;
 
+    // The identity currently registered with the menu; tracked so a Value change
+    // while the item stays mounted swaps the registration (old id out, new id in)
+    // rather than leaking a stale entry.
+    private string? _registeredIdentity;
+
     private string CssClass => Cx.Merge("relative", Class);
 
     // Register this item's trigger id with the menu so arrow-key roving can move
     // focus between top-level triggers in DOM order.
     protected override void OnInitialized() => Context.Owner.RegisterTrigger(_triggerId);
+
+    // Register this item's identity so the menu can gate its intended-open id
+    // (NavigationMenu._open) to only ids with a live item — the viewport never
+    // opens a blank panel for an unmounted/removed id, and a controlled Value
+    // pointing here re-opens the moment this registers. Re-runs on every parameter
+    // set; a changed Value swaps the registration.
+    protected override void OnParametersSet()
+    {
+        var identity = ItemIdentity;
+        if (_registeredIdentity == identity) return;
+        if (_registeredIdentity is not null) Context.Owner.UnregisterItem(_registeredIdentity);
+        Context.Owner.RegisterItem(identity);
+        _registeredIdentity = identity;
+    }
 
     // rc.44 — Approach B: pointer events with PointerType filter. On touch
     // devices the browser emulates `mouseenter` on tap and `mouseleave` when
@@ -84,9 +103,11 @@
     {
         _dispatch.Dispose();
         Context.Owner.UnregisterTrigger(_triggerId);
-        // If this item's submenu is the one currently open, clear it so the
-        // Viewport/Indicator close instead of staying stuck open on a removed item.
-        Context.Owner.NotifyItemRemoved(ItemIdentity);
+        // Drop this item's identity registration. If it was the intended-open id,
+        // the menu's visible state falls to null so the Viewport/Indicator close
+        // instead of staying stuck open on a removed item — while a controlled
+        // Value still pointing here re-opens automatically if the item re-mounts.
+        if (_registeredIdentity is not null) Context.Owner.UnregisterItem(_registeredIdentity);
     }
 
     public record NavigationMenuItemContext(string ItemId, string TriggerId, string ContentId);

@@ -219,4 +219,143 @@ public class NavigationMenuControlledValueTests : IAsyncLifetime
         Assert.Equal("open", State(cut, "Alpha"));
         Assert.Equal("closed", State(cut, "Bravo"));
     }
+
+    // ── Round-5 state-machine matrix ───────────────────────────────────────────
+    // (controlled+handler, one-way controlled, uncontrolled+DefaultValue)
+    //   × (interaction, parent push incl. null, active-item removed w/o re-add
+    //      ⇒ no blank viewport, removal + re-add ⇒ reopens)
+
+    // List-only nav; `value`/`bindHandler` select the control mode.
+    private void ConfigureList(
+        ComponentParameterCollectionBuilder<L.NavigationMenu> p, string? value, bool bindHandler)
+    {
+        p.Add(m => m.Value, value);
+        if (bindHandler) p.Add(m => m.ValueChanged, EventCallback.Factory.Create<string?>(this, _ => { }));
+        p.Add(m => m.ChildContent, (RenderFragment)(b =>
+        {
+            b.OpenComponent<L.NavigationMenuList>(0);
+            b.AddAttribute(1, "ChildContent", TwoItems());
+            b.CloseComponent();
+        }));
+    }
+
+    // Nav with a NavigationMenuViewport (gated purely on ActiveItemId is not null),
+    // so a "blank panel" for an unregistered id is observable via the marker.
+    private void ConfigureWithViewport(
+        ComponentParameterCollectionBuilder<L.NavigationMenu> p,
+        string? value, bool bindHandler, bool includeA)
+    {
+        p.Add(m => m.Value, value);
+        if (bindHandler) p.Add(m => m.ValueChanged, EventCallback.Factory.Create<string?>(this, _ => { }));
+        p.Add(m => m.ChildContent, (RenderFragment)(b =>
+        {
+            b.OpenComponent<L.NavigationMenuList>(0);
+            b.AddAttribute(1, "ChildContent", (RenderFragment)(list =>
+            {
+                if (includeA) AddItem(list, 0, "a", "Alpha");
+                AddItem(list, 10, "b", "Bravo");
+            }));
+            b.CloseComponent();
+            b.OpenComponent<L.NavigationMenuViewport>(2);
+            b.AddAttribute(3, "ChildContent",
+                (RenderFragment)(v => v.AddMarkupContent(0, "<span>viewport-open</span>")));
+            b.CloseComponent();
+        }));
+    }
+
+    // ROUND-5 (a) — controlled+handler: a Value pointing at a REMOVED, not-re-added
+    // item must NOT re-adopt into a blank open viewport.
+    [Fact]
+    public void Controlled_Value_At_Removed_Item_Does_Not_Open_A_Blank_Viewport()
+    {
+        var cut = _ctx.Render<L.NavigationMenu>(p => ConfigureWithViewport(p, "a", bindHandler: true, includeA: true));
+        Assert.Contains("viewport-open", cut.Markup);   // "a" open → viewport open
+
+        // Remove item "a" and never re-add it; the controlled Value stays "a".
+        cut.Render(p => ConfigureWithViewport(p, "a", bindHandler: true, includeA: false));
+
+        // Pre-fix the echo-guard sentinel forced re-adoption of the removed "a", so
+        // the viewport reopened on a non-existent item (blank panel). Now the visible
+        // id is gated on registration → closed. (Viewport lingers through its exit
+        // window, so poll.)
+        cut.WaitForAssertion(() => Assert.DoesNotContain("viewport-open", cut.Markup));
+        Assert.Equal("closed", State(cut, "Bravo"));
+    }
+
+    // ROUND-5 (a) — controlled+handler: removal drops the viewport, and re-adding
+    // the item while Value still points at it reopens automatically.
+    [Fact]
+    public void Controlled_Value_Reopens_The_Viewport_When_The_Item_Is_Readded()
+    {
+        var cut = _ctx.Render<L.NavigationMenu>(p => ConfigureWithViewport(p, "a", bindHandler: true, includeA: true));
+        Assert.Contains("viewport-open", cut.Markup);
+
+        cut.Render(p => ConfigureWithViewport(p, "a", bindHandler: true, includeA: false)); // remove
+        cut.Render(p => ConfigureWithViewport(p, "a", bindHandler: true, includeA: true));  // re-add
+
+        // The controlled Value stayed authoritative and re-applied on registration.
+        Assert.Contains("viewport-open", cut.Markup);
+        Assert.Equal("open", State(cut, "Alpha"));
+    }
+
+    // ROUND-5 (b) — one-way controlled (Value supplied, NO ValueChanged): user
+    // interaction must not change the effective open item (Radix: a `value` prop
+    // without `onValueChange` is fully controlled).
+    [Fact]
+    public void OneWay_Controlled_Value_Ignores_User_Interaction()
+    {
+        var cut = RenderNav(p => p.Add(m => m.Value, "a"));   // Value only, no handler
+        Assert.Equal("open", State(cut, "Alpha"));
+        Assert.Equal("closed", State(cut, "Bravo"));
+
+        // Click Bravo: with no handler the interaction is inert — it cannot open "b"
+        // nor close "a". Pre-fix the one-way Value was seeded controlled but then
+        // treated uncontrolled, so this click mutated the open item.
+        cut.FindAll("button").First(x => x.TextContent.Contains("Bravo")).Click();
+
+        Assert.Equal("open", State(cut, "Alpha"));
+        Assert.Equal("closed", State(cut, "Bravo"));
+    }
+
+    // ONE-WAY controlled still follows the parent pushing Value (including null=closed).
+    [Fact]
+    public void OneWay_Controlled_Value_Follows_Parent_Push_Including_Null()
+    {
+        var cut = _ctx.Render<L.NavigationMenu>(p => ConfigureList(p, "a", bindHandler: false));
+        Assert.Equal("open", State(cut, "Alpha"));
+
+        cut.Render(p => ConfigureList(p, "b", bindHandler: false));
+        Assert.Equal("closed", State(cut, "Alpha"));
+        Assert.Equal("open", State(cut, "Bravo"));
+
+        cut.Render(p => ConfigureList(p, null, bindHandler: false));
+        Assert.Equal("closed", State(cut, "Alpha"));
+        Assert.Equal("closed", State(cut, "Bravo"));
+    }
+
+    // CONTROLLED+handler follows the parent pushing Value, including null=closed.
+    [Fact]
+    public void Controlled_Handler_Follows_Parent_Push_To_Null()
+    {
+        var cut = _ctx.Render<L.NavigationMenu>(p => ConfigureList(p, "a", bindHandler: true));
+        Assert.Equal("open", State(cut, "Alpha"));
+
+        cut.Render(p => ConfigureList(p, null, bindHandler: true));
+        Assert.Equal("closed", State(cut, "Alpha"));
+        Assert.Equal("closed", State(cut, "Bravo"));
+    }
+
+    // UNCONTROLLED (DefaultValue seed): interaction mutates the open item freely,
+    // since no parent owns the value.
+    [Fact]
+    public void Uncontrolled_DefaultValue_Interaction_Changes_The_Open_Item()
+    {
+        var cut = RenderNav(p => p.Add(m => m.DefaultValue, "a"));
+        Assert.Equal("open", State(cut, "Alpha"));
+
+        cut.FindAll("button").First(x => x.TextContent.Contains("Bravo")).Click();
+
+        Assert.Equal("closed", State(cut, "Alpha"));
+        Assert.Equal("open", State(cut, "Bravo"));
+    }
 }

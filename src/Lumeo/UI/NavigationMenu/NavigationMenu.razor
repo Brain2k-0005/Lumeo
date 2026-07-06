@@ -2,7 +2,13 @@
 @inject IComponentInteropService Interop
 
 @{
-    var context = new NavigationMenuContext(_activeItemId, EventCallback.Factory.Create<string?>(this, SetActiveItemId), this, DelayDuration);
+    // Visible open item = the intended-open id, but ONLY once a matching item has
+    // actually registered. An intent that points at an unregistered id (not yet
+    // mounted, or removed) renders as "nothing open" so the Viewport/Indicator
+    // never open a blank panel for a non-existent item (round-5 a). It flips back
+    // to open automatically when the item (re-)registers.
+    var visibleActiveId = _open is not null && _registeredItems.Contains(_open) ? _open : null;
+    var context = new NavigationMenuContext(visibleActiveId, EventCallback.Factory.Create<string?>(this, SetActiveItemId), this, DelayDuration);
 }
 
 @* aria-label names the navigation landmark so AT users can distinguish it from
@@ -46,53 +52,82 @@
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
-    private string? _activeItemId;
+    // ────────────────────────────────────────────────────────────────────────
+    // Controlled-value state machine (one coherent design; supersedes the round
+    // 2-4 echo-guard / sentinel / _lastValueParam patches).
+    //
+    // CONTROLLED vs UNCONTROLLED — single definition (`IsControlled`):
+    //   controlled  ⇔  ValueChanged.HasDelegate  OR  a non-null Value was EVER
+    //                  supplied (_valueEverNonNull latch).
+    //   Blazor cannot tell an unset parameter from an explicit null, so a lone
+    //   null Value is ambiguous. Convention: treat the menu as controlled the
+    //   moment EITHER a change handler is bound (@bind-Value / a listener) OR a
+    //   non-null Value is seen — and, once seen, stay controlled (the latch),
+    //   mirroring React where `value !== undefined` makes the component
+    //   controlled for its whole life. A menu with neither is uncontrolled.
+    //
+    // INTENT vs VISIBLE:
+    //   `_open` is the intended-open id (the state machine's single source of
+    //   truth). The VISIBLE open id (exposed on the context, read by Viewport/
+    //   Trigger/Indicator/Content) is `_open` gated through `_registeredItems`:
+    //   an id with no mounted item shows as closed (computed in the razor block).
+    //
+    // ADOPTION (parent → machine, in OnParametersSet):
+    //   • Seed once: controlled ⇒ _open = Value (verbatim, incl. null = closed;
+    //     DefaultValue ignored — Radix). Uncontrolled ⇒ _open = DefaultValue.
+    //   • Thereafter, controlled ⇒ adopt Value VERBATIM every parameter set (the
+    //     parent is authoritative; there is no echo to guard because interactions
+    //     no longer mutate _open in controlled mode). Uncontrolled ⇒ the parent's
+    //     Value is not authoritative; _open is owned by interaction.
+    //
+    // INTERACTION (user → machine, in SetActiveItemId):
+    //   • Uncontrolled: mutate _open freely and re-render (optimistic).
+    //   • Controlled + handler: emit ValueChanged only; do NOT mutate _open —
+    //     render solely what the parent pushes back (a veto = re-render with the
+    //     old Value, so nothing to roll back).
+    //   • One-way controlled (Value supplied, NO handler): ValueChanged is a
+    //     no-op delegate, so the same "emit, don't mutate" path makes interaction
+    //     inert — the effective open item cannot change (round-5 b, Radix: a
+    //     `value` prop without `onValueChange` is fully controlled).
+    //
+    // REMOVAL / RE-ADD (item lifecycle → machine):
+    //   Registration is (un)registered by NavigationMenuItem. Removing the active
+    //   item drops it from _registeredItems, so the VISIBLE id falls to null and
+    //   the Viewport closes — but the controlled Value stays authoritative in
+    //   _open, so re-registering the item re-opens it automatically. No sentinel.
+    // ────────────────────────────────────────────────────────────────────────
 
-    // Controlled/uncontrolled disambiguation, mirroring the menu RadioGroups. The
-    // open item lives in a private field so an uncontrolled menu's optimistic
-    // open/close survives an unrelated parent re-render, and a controlled parent
-    // can veto (re-render with the old Value) to roll the state back.
+    // The intended-open item id (source of truth). The visible id is this gated
+    // through _registeredItems in the razor block above.
+    private string? _open;
+
+    // Latches true once any non-null Value is supplied, making the menu controlled
+    // for the rest of its life (see IsControlled).
+    private bool _valueEverNonNull;
     private bool _seeded;
-    private string? _lastValueParam;
-    private string? _lastPushed;   // the last value WE emitted via ValueChanged
 
-    // Placed into _lastPushed when the active item is torn down so the echo guard
-    // can never equal any real Value (including null), forcing OnParametersSet to
-    // re-adopt the controlled Value on the next render.
-    private const string EchoGuardSentinel = "\0lumeo-nav-removed";
+    // Currently-mounted item identities (NavigationMenuItem.Value ?? auto id),
+    // registered/unregistered by each item. Gates _open → visible so the viewport
+    // never opens for an id with no live item.
+    private readonly HashSet<string> _registeredItems = new();
+
+    private bool IsControlled => ValueChanged.HasDelegate || _valueEverNonNull;
 
     protected override void OnParametersSet()
     {
+        if (Value is not null) _valueEverNonNull = true;
+
         if (!_seeded)
         {
-            // DefaultValue seeds the open item ONLY when uncontrolled. When controlled
-            // (ValueChanged bound or a non-null Value supplied), honor Value verbatim —
-            // including Value == null meaning "closed" — and ignore DefaultValue (Radix
-            // semantics). Previously DefaultValue opened the menu while _lastPushed stayed
-            // null, so a later controlled render with Value == null was mistaken for the
-            // echo of our own push and the parent could never force the menu closed (P2 r2).
-            var controlled = ValueChanged.HasDelegate || Value is not null;
-            _activeItemId = controlled ? Value : DefaultValue;
-            _lastValueParam = Value;
-            _lastPushed = Value;
+            _open = IsControlled ? Value : DefaultValue;
             _seeded = true;
             return;
         }
 
-        if (ValueChanged.HasDelegate)
-        {
-            // Controlled: adopt any incoming Value that isn't the echo of our own change.
-            if (!Equals(Value, _lastPushed))
-            {
-                _activeItemId = Value;
-                _lastPushed = Value;
-            }
-        }
-        else if (!Equals(Value, _lastValueParam))   // Uncontrolled: adopt only on a genuine param change
-        {
-            _activeItemId = Value;
-            _lastValueParam = Value;
-        }
+        // Controlled: the parent owns the open item — adopt Value verbatim each
+        // parameter set (including null = closed). Uncontrolled: _open is owned by
+        // interaction, so the parent's Value is not consulted here.
+        if (IsControlled) _open = Value;
     }
 
     // Ordered list of top-level trigger element ids, registered by each
@@ -114,10 +149,20 @@
 
     private async Task SetActiveItemId(string? value)
     {
-        _activeItemId = value;
-        _lastPushed = value;   // record what we push so a synchronous controlled veto is detectable
-        await ValueChanged.InvokeAsync(value);
-        StateHasChanged();
+        if (IsControlled)
+        {
+            // Controlled: report intent and let the parent decide by pushing Value
+            // back. Do NOT touch _open — the render reflects only what the parent
+            // adopts. With a one-way Value (no ValueChanged delegate) the invoke is
+            // a no-op, so interaction is inert (fully controlled — round-5 b).
+            await ValueChanged.InvokeAsync(value);
+        }
+        else
+        {
+            // Uncontrolled: we own the open item — mutate optimistically and render.
+            _open = value;
+            StateHasChanged();
+        }
     }
 
     // Called by a trigger when it opens its submenu via the keyboard. The focus
@@ -141,26 +186,21 @@
 
     internal void UnregisterTrigger(string id) => _triggerIds.Remove(id);
 
-    // Reconcile open submenu state when an item is torn down. If the removed
-    // item is the one whose submenu is currently open, clear _activeItemId so the
-    // Viewport/Indicator (which gate purely on ActiveItemId is not null) don't
-    // stay stuck open referencing a no-longer-rendered item. Compared against the
-    // live field — not the cascaded snapshot — and scoped to the specific removed
-    // id so a momentary list churn elsewhere can't disturb an unrelated open item.
-    internal void NotifyItemRemoved(string itemId)
+    // Item-identity registration (NavigationMenuItem.Value ?? auto id), tracked
+    // separately from the trigger-id roving list. Gates _open → visible so the
+    // Viewport/Indicator never open for an id with no mounted item. When the
+    // (un)registered id is the intended-open one, the visible state changes, so we
+    // re-render: registering re-opens a pending/re-added active item, unregistering
+    // closes the viewport on the torn-down active item — while _open (the
+    // controlled intent) stays authoritative and re-applies on the next register.
+    internal void RegisterItem(string id)
     {
-        if (_activeItemId == itemId)
-        {
-            _activeItemId = null;
-            // Invalidate the echo guard so that the next OnParametersSet re-adopts
-            // the controlled Value regardless of what it is (including the same id
-            // when the item is re-added). Without this, Value == _lastPushed would
-            // be mistaken for our own echo and the item would stay closed (P2 r4).
-            // Only the controlled path reads _lastPushed, so the uncontrolled path
-            // and the null-close semantics from round 2 are not affected.
-            _lastPushed = EchoGuardSentinel;
-            StateHasChanged();
-        }
+        if (_registeredItems.Add(id) && id == _open) StateHasChanged();
+    }
+
+    internal void UnregisterItem(string id)
+    {
+        if (_registeredItems.Remove(id) && id == _open) StateHasChanged();
     }
 
     // Move focus to the trigger `delta` positions from `currentId` (wrapping).
