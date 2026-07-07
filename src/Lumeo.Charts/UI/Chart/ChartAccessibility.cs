@@ -69,11 +69,21 @@ public static class ChartAccessibility
     private static List<SeriesInfo> ReadSeries(JsonObject obj)
     {
         var result = new List<SeriesInfo>();
-        if (obj["series"] is not JsonArray arr)
-            return result;
+
+        // ECharts accepts "series" as EITHER an array OR a single object
+        // ("series": { "type": "pie", "data": [...] }). Treat the object form as a
+        // one-element sequence so the SR table + caption are built for it too —
+        // previously the object shape yielded nothing and the a11y layer silently
+        // vanished (round-9 finding).
+        IEnumerable<JsonNode?> nodes = obj["series"] switch
+        {
+            JsonArray arr => arr,
+            JsonObject single => new JsonNode?[] { single },
+            _ => Array.Empty<JsonNode?>(),
+        };
 
         var index = 0;
-        foreach (var node in arr)
+        foreach (var node in nodes)
         {
             index++;
             if (node is not JsonObject s)

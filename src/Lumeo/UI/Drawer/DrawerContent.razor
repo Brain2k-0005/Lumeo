@@ -34,7 +34,7 @@ else if (Context.IsOpen || _exiting)
            bubble into ancestor overlays (an Escape would cascade-close them).
            See DialogContent for the full rationale. aria-modal drops to false
            while exiting (affordances already torn down — mirrors SheetContent #185). *@
-        <div id="@_contentId" class="@CssClass" style="z-index:@ContentZ" role="dialog" aria-modal="@(Context.IsOpen ? "true" : "false")" aria-labelledby="@Context.TitleId" aria-describedby="@DescribedBy" @onkeydown="HandleKeyDown" @onkeydown:stopPropagation tabindex="-1" @attributes="AdditionalAttributes">
+        <div id="@_contentId" class="@CssClass" style="z-index:@ContentZ" role="dialog" aria-modal="@(Context.IsOpen ? "true" : "false")" aria-labelledby="@Context.TitleId" aria-describedby="@DescribedBy" @onkeydown="HandleKeyDown" @onkeydown:stopPropagation tabindex="-1" inert="@ExitInert" @attributes="AdditionalAttributes">
             @if (ShowDragHandle)
             {
                 <div class="mx-auto mt-4 h-2 w-[100px] rounded-full bg-muted"></div>
@@ -119,8 +119,18 @@ else if (Context.IsOpen || _exiting)
         : 0;
 
     private string BackdropClass => _exiting
-        ? "fixed inset-0 animate-fade-out pointer-events-auto"
+        ? "fixed inset-0 animate-fade-out pointer-events-none"
         : "fixed inset-0 animate-fade-in pointer-events-auto";
+
+    // Exit-window inertness (mirrors DropdownMenuContent). While the panel is kept
+    // mounted for the slide/fade-out (Context.IsOpen == false, _exiting == true) its
+    // focus trap + scroll lock + gesture are already torn down, so make the leaving
+    // panel pointer-events-none + inert: no stray tap / Tab hits a closing drawer.
+    // Focus was restored to the trigger by RemoveFocusTrap at close time, independent
+    // of this. _exiting is never set in snap mode (ExitDurationMs == 0), so a snap-mode
+    // dismiss keeps pointer-events-auto and unmounts immediately — unaffected.
+    private string PointerClass => _exiting ? "pointer-events-none" : "pointer-events-auto";
+    private string? ExitInert => _exiting ? "true" : null;
 
     // Couple the backdrop exit duration to the panel's slide duration (300ms)
     // when the Slide animation is active — identical rationale to SheetContent.
@@ -223,7 +233,7 @@ else if (Context.IsOpen || _exiting)
     };
 
     private string CssClass =>
-        Cx.Merge("fixed mt-24 flex h-auto flex-col bg-background shadow-lg pointer-events-auto", PositionClasses, AnimationClass, Class);
+        Cx.Merge("fixed mt-24 flex h-auto flex-col bg-background shadow-lg", PositionClasses, AnimationClass, PointerClass, Class);
 
     // A scoped <DirectionProvider> wins over the global ThemeService, so a subtree
     // can be RTL even if the app is LTR. Null when no provider wraps this drawer.

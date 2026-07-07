@@ -104,4 +104,58 @@ public class DialogExitAnimationTests : IAsyncLifetime
             Assert.Contains("animate-zoom-out", panel.GetAttribute("class") ?? "");
         });
     }
+
+    /// <summary>
+    /// Round-9 finding-2: while OPEN the panel is hit-testable — pointer-events-auto,
+    /// no <c>inert</c>. This is the contrast baseline for the exit assertion below.
+    /// </summary>
+    [Fact]
+    public void Open_Panel_Is_HitTestable_Not_Inert()
+    {
+        var cut = RenderDialog(isOpen: true);
+        var panel = cut.Find("[role='dialog']");
+        Assert.Null(panel.GetAttribute("inert"));
+        Assert.Contains("pointer-events-auto", panel.GetAttribute("class") ?? "");
+        Assert.DoesNotContain("pointer-events-none", panel.GetAttribute("class") ?? "");
+    }
+
+    /// <summary>
+    /// Round-9 finding-2: during the exit window the still-mounted panel (kept for
+    /// the zoom-out) had its focus trap + scroll lock already torn down, leaving a
+    /// clickable/tabbable ghost. It must now carry pointer-events-none + inert, and
+    /// the fading scrim drops to pointer-events-none too, so nothing can be
+    /// clicked/Tabbed on a closing dialog. Mirrors the DropdownMenuContent pattern.
+    /// </summary>
+    [Fact]
+    public void Exiting_Panel_Is_Inert_And_PointerEventsNone()
+    {
+        var cut = RenderDialog(isOpen: true);
+        cut.Render(p => p.Add(d => d.Open, false));
+
+        cut.WaitForAssertion(() =>
+        {
+            var panel = cut.Find("[role='dialog']");
+            // sanity: we are in the exit window (panel kept mounted, zooming out).
+            Assert.Contains("animate-zoom-out", panel.GetAttribute("class") ?? "");
+            Assert.Contains("pointer-events-none", panel.GetAttribute("class") ?? "");
+            Assert.DoesNotContain("pointer-events-auto", panel.GetAttribute("class") ?? "");
+            Assert.Equal("true", panel.GetAttribute("inert"));
+            // The fading scrim (animate-fade-out) no longer eats page clicks.
+            Assert.Contains("pointer-events-none", cut.Find(".animate-fade-out").GetAttribute("class") ?? "");
+        });
+    }
+
+    /// <summary>
+    /// The opt-out is unaffected: PlayExitAnimation=false unmounts on close, so
+    /// there is no lingering inert / pointer-events-none ghost at all.
+    /// </summary>
+    [Fact]
+    public void Exit_Optout_Produces_No_Inert_Ghost()
+    {
+        var cut = RenderDialog(isOpen: true, playExit: false);
+        cut.Render(p => p.Add(d => d.Open, false));
+
+        Assert.Empty(cut.FindAll("[role='dialog']"));
+        Assert.Empty(cut.FindAll("[inert]"));
+    }
 }

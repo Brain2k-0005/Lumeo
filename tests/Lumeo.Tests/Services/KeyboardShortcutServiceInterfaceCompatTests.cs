@@ -62,7 +62,31 @@ public class KeyboardShortcutServiceInterfaceCompatTests
         await svc.RegisterAsync("ctrl+b", () => Task.CompletedTask, preventDefault: true, allowInEditable: false);
         await svc.RegisterAsync("ctrl+p", () => { }, preventDefault: true, allowInEditable: true);
 
-        // All four calls landed on the two 3-parameter members via the DIM delegation.
-        Assert.Equal(4, legacy.Registrations);
+        // Round-9 ergonomics: preventDefault now carries a default on the DIM, so the
+        // command-palette call shape — allowInEditable supplied by name, preventDefault
+        // omitted — compiles against the INTERFACE (not just the concrete service). If
+        // preventDefault were still required-before-allowInEditable this would not build.
+        await svc.RegisterAsync("ctrl+k", () => Task.CompletedTask, allowInEditable: true);
+        await svc.RegisterAsync("ctrl+j", () => { }, allowInEditable: true);
+
+        // All six calls landed on the two 3-parameter members via the DIM delegation.
+        Assert.Equal(6, legacy.Registrations);
+    }
+
+    [Fact]
+    public async Task Ergonomic_AllowInEditable_Call_Shape_Compiles_Against_The_Interface()
+    {
+        // Non-tautological: exercises the EXACT shape the round-9 finding flagged as
+        // non-compiling. `svc` is typed as the INTERFACE, so this pins that the DIM's
+        // optional preventDefault (not the concrete service's overloads) is what makes
+        // `RegisterAsync(combo, handler, allowInEditable: true)` bind.
+        IKeyboardShortcutService svc = new LegacyThreeParamImpl();
+
+        var async = await svc.RegisterAsync("ctrl+k", () => Task.CompletedTask, allowInEditable: true);
+        var sync = await svc.RegisterAsync("escape", () => { }, allowInEditable: true);
+
+        Assert.Equal(2, ((LegacyThreeParamImpl)svc).Registrations);
+        await async.DisposeAsync();
+        await sync.DisposeAsync();
     }
 }

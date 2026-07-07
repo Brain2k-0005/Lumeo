@@ -101,4 +101,54 @@ public class AlertDialogExitAnimationTests : IAsyncLifetime
             Assert.Contains("animate-zoom-out", panel.GetAttribute("class") ?? "");
         });
     }
+
+    /// <summary>
+    /// Round-9 finding-2 baseline: while OPEN the panel is hit-testable —
+    /// pointer-events-auto, no <c>inert</c>.
+    /// </summary>
+    [Fact]
+    public void Open_Panel_Is_HitTestable_Not_Inert()
+    {
+        var cut = RenderAlertDialog(isOpen: true);
+        var panel = cut.Find("[role='alertdialog']");
+        Assert.Null(panel.GetAttribute("inert"));
+        Assert.Contains("pointer-events-auto", panel.GetAttribute("class") ?? "");
+        Assert.DoesNotContain("pointer-events-none", panel.GetAttribute("class") ?? "");
+    }
+
+    /// <summary>
+    /// Round-9 finding-2: the exiting panel (kept mounted for the zoom-out, focus
+    /// trap + scroll lock already gone) carries pointer-events-none + inert, and the
+    /// fading scrim drops to pointer-events-none — no click/Tab hits a closing alert.
+    /// </summary>
+    [Fact]
+    public void Exiting_Panel_Is_Inert_And_PointerEventsNone()
+    {
+        var cut = RenderAlertDialog(isOpen: true);
+        cut.Render(p => p.Add(a => a.Open, false));
+
+        cut.WaitForAssertion(() =>
+        {
+            var panel = cut.Find("[role='alertdialog']");
+            Assert.Contains("animate-zoom-out", panel.GetAttribute("class") ?? "");
+            Assert.Contains("pointer-events-none", panel.GetAttribute("class") ?? "");
+            Assert.DoesNotContain("pointer-events-auto", panel.GetAttribute("class") ?? "");
+            Assert.Equal("true", panel.GetAttribute("inert"));
+            Assert.Contains("pointer-events-none", cut.Find(".animate-fade-out").GetAttribute("class") ?? "");
+        });
+    }
+
+    /// <summary>
+    /// Opt-out unaffected: PlayExitAnimation=false unmounts on close, leaving no
+    /// inert / pointer-events-none ghost.
+    /// </summary>
+    [Fact]
+    public void Exit_Optout_Produces_No_Inert_Ghost()
+    {
+        var cut = RenderAlertDialog(isOpen: true, playExit: false);
+        cut.Render(p => p.Add(a => a.Open, false));
+
+        Assert.Empty(cut.FindAll("[role='alertdialog']"));
+        Assert.Empty(cut.FindAll("[inert]"));
+    }
 }

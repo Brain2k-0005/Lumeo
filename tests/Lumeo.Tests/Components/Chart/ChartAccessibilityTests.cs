@@ -39,6 +39,15 @@ public class ChartAccessibilityTests : IAsyncLifetime
     private const string Pie =
         "{\"series\":[{\"type\":\"pie\",\"data\":[{\"name\":\"A\",\"value\":30},{\"name\":\"B\",\"value\":70}]}]}";
 
+    // ECharts allows a single-series option to be written as an OBJECT rather than a
+    // one-element array: "series": { ... } (round-9 finding).
+    private const string SingleObjectPie =
+        "{\"series\":{\"type\":\"pie\",\"data\":[{\"name\":\"A\",\"value\":30},{\"name\":\"B\",\"value\":70}]}}";
+
+    private const string SingleObjectBar =
+        "{\"xAxis\":{\"type\":\"category\",\"data\":[\"Jan\",\"Feb\"]}," +
+        "\"series\":{\"name\":\"Revenue\",\"type\":\"bar\",\"data\":[10,20]}}";
+
     // ── Pure projection ──────────────────────────────────────────────────────
 
     [Fact]
@@ -80,6 +89,53 @@ public class ChartAccessibilityTests : IAsyncLifetime
     public void Build_Returns_Null_When_No_Usable_Data(string? json)
     {
         Assert.Null(L.ChartAccessibility.Build(json));
+    }
+
+    [Fact]
+    public void Build_SingleObject_Pie_Series_Produces_Table_And_Caption()
+    {
+        // Round-9: the object form of "series" must project the same table as the
+        // one-element-array form (previously it yielded null → no SR table/label).
+        var t = L.ChartAccessibility.Build(SingleObjectPie);
+
+        Assert.NotNull(t);
+        Assert.Equal(new[] { "Name", "Value" }, t!.ColumnHeaders);
+        Assert.Equal("A", t.Rows[0].Header);
+        Assert.Equal(new[] { "30" }, t.Rows[0].Cells);
+        Assert.Equal("B", t.Rows[1].Header);
+        Assert.Equal(new[] { "70" }, t.Rows[1].Cells);
+        // The caption/summary is non-empty and describes the pie — proves the
+        // single-object series was picked up, not silently dropped.
+        Assert.Contains("Pie chart", t.Summary);
+        Assert.Contains("2 data points", t.Summary);
+    }
+
+    [Fact]
+    public void Build_SingleObject_Bar_Series_Projects_Cartesian_Rows()
+    {
+        // Object-form series combined with an object-form axis (also single, not an
+        // array) must still yield the cartesian category rows.
+        var t = L.ChartAccessibility.Build(SingleObjectBar);
+
+        Assert.NotNull(t);
+        Assert.Equal(new[] { "Category", "Revenue" }, t!.ColumnHeaders);
+        Assert.Equal("Jan", t.Rows[0].Header);
+        Assert.Equal(new[] { "10" }, t.Rows[0].Cells);
+        Assert.Equal("Feb", t.Rows[1].Header);
+        Assert.Equal(new[] { "20" }, t.Rows[1].Cells);
+    }
+
+    [Fact]
+    public void Chart_Renders_Hidden_Table_For_SingleObject_Series()
+    {
+        // End-to-end: the rendered Chart must expose the SR table for the object form
+        // too, not just the array form.
+        var cut = _ctx.Render<L.Chart>(p => p
+            .Add(x => x.OptionJson, SingleObjectPie)
+            .Add(x => x.ShowLoadingSkeleton, false));
+
+        Assert.NotNull(cut.Find("table.sr-only"));
+        Assert.Contains(cut.FindAll("th"), th => th.TextContent == "A");
     }
 
     // ── Rendered accessibility layer ─────────────────────────────────────────

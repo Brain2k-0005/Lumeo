@@ -40,7 +40,7 @@ else if (Context.IsOpen || _exiting)
            zoom-out), the focus trap + scroll lock are already torn down, so the
            panel is no longer modal — advertise aria-modal="false" so ARIA matches
            the live behaviour (mirrors SheetContent #185). *@
-        <div id="@_contentId" class="@CssClass" style="z-index:@ContentZ" role="dialog" aria-modal="@(Context.IsOpen ? "true" : "false")" aria-labelledby="@Context.TitleId" aria-describedby="@DescribedBy" @onkeydown="HandleKeyDown" @onkeydown:stopPropagation tabindex="-1" @attributes="AdditionalAttributes">
+        <div id="@_contentId" class="@CssClass" style="z-index:@ContentZ" role="dialog" aria-modal="@(Context.IsOpen ? "true" : "false")" aria-labelledby="@Context.TitleId" aria-describedby="@DescribedBy" @onkeydown="HandleKeyDown" @onkeydown:stopPropagation tabindex="-1" inert="@ExitInert" @attributes="AdditionalAttributes">
             @if (Scrollable)
             {
                 @* overflow-x-hidden: a child with the -mx-1 focus-ring gutter
@@ -138,14 +138,27 @@ else if (Context.IsOpen || _exiting)
     private int BackdropZ => ZIndex;
     private int ContentZ => ZIndex + 1;
 
-    // Backdrop fades in on open, fades out while the panel exits.
+    // Backdrop fades in on open, fades out while the panel exits. pointer-events
+    // drops to none while exiting so the fading scrim can't swallow a click meant
+    // for the page it's uncovering (the panel's own affordances are already gone).
     private string BackdropClass => _exiting
-        ? "fixed inset-0 animate-fade-out pointer-events-auto"
+        ? "fixed inset-0 animate-fade-out pointer-events-none"
         : "fixed inset-0 animate-fade-in pointer-events-auto";
 
     // Enter counterpart is animate-zoom-in (baked into CssClass); on exit the
     // panel zooms back out toward its dismissed state.
     private string AnimationClass => _exiting ? "animate-zoom-out" : "animate-zoom-in";
+
+    // Exit-window inertness (mirrors DropdownMenuContent). While the panel is kept
+    // mounted for the zoom-out (Context.IsOpen == false, _exiting == true) its focus
+    // trap + scroll lock are already torn down by Cleanup(), so the still-painted
+    // panel is a clickable/tabbable ghost. pointer-events-none + inert make it inert
+    // for the fade: a stray click or Tab can't re-enter a closing dialog. Focus was
+    // restored to the trigger by RemoveFocusTrap at close time (before/independent of
+    // this), so inert here traps nothing. The wrapper is pointer-events-none, so the
+    // OPEN panel must re-enable pointer-events-auto explicitly — hence the toggle.
+    private string PointerClass => _exiting ? "pointer-events-none" : "pointer-events-auto";
+    private string? ExitInert => _exiting ? "true" : null;
 
     // Only reference the description id when a <DialogDescription> was actually
     // rendered; otherwise aria-describedby would dangle to a missing element
@@ -163,7 +176,7 @@ else if (Context.IsOpen || _exiting)
         _ => "max-w-lg"
     };
 
-    private string CssClass => Cx.Merge("relative grid w-full pointer-events-auto", SizeClass, "gap-4 bg-background p-6 shadow-lg sm:rounded-lg", AnimationClass, Class);
+    private string CssClass => Cx.Merge("relative grid w-full", SizeClass, "gap-4 bg-background p-6 shadow-lg sm:rounded-lg", AnimationClass, PointerClass, Class);
 
     protected override void OnParametersSet()
     {
