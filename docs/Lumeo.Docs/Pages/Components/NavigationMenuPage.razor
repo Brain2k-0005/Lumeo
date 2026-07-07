@@ -192,6 +192,43 @@
             </NavigationMenuList>
         </NavigationMenu>
     </ComponentDemo>
+
+    <ComponentDemo Title="Controlled (open a panel programmatically)" Code="@_controlledCode" Description="Bind Value (matching each NavigationMenuItem's Value) to drive which panel is open from outside. DelayDuration tunes the hover-forgiveness window in milliseconds; DefaultValue opens one panel on first render in uncontrolled mode.">
+        <Stack Gap="3">
+            <Flex Gap="2">
+                <Button Size="Button.ButtonSize.Sm" Variant="Button.ButtonVariant.Outline" OnClick="@(() => _navValue = "products")">Open Products</Button>
+                <Button Size="Button.ButtonSize.Sm" Variant="Button.ButtonVariant.Outline" OnClick="@(() => _navValue = "resources")">Open Resources</Button>
+                <Button Size="Button.ButtonSize.Sm" Variant="Button.ButtonVariant.Ghost" OnClick="@(() => _navValue = null)">Close</Button>
+            </Flex>
+            <NavigationMenu @bind-Value="_navValue" DelayDuration="100">
+                <NavigationMenuList>
+                    <NavigationMenuItem Value="products">
+                        <NavigationMenuTrigger>Products</NavigationMenuTrigger>
+                        <NavigationMenuContent>
+                            <Grid Class="gap-3 w-[360px] p-2">
+                                <NavigationMenuLink Href="#">
+                                    <Lumeo.Text Size="sm" Weight="medium" Class="leading-none">Analytics</Lumeo.Text>
+                                    <Lumeo.Text Size="sm" Color="muted" Class="leading-snug mt-1">Real-time dashboards and insights.</Lumeo.Text>
+                                </NavigationMenuLink>
+                            </Grid>
+                        </NavigationMenuContent>
+                    </NavigationMenuItem>
+                    <NavigationMenuItem Value="resources">
+                        <NavigationMenuTrigger>Resources</NavigationMenuTrigger>
+                        <NavigationMenuContent>
+                            <Grid Class="gap-3 w-[360px] p-2">
+                                <NavigationMenuLink Href="#">
+                                    <Lumeo.Text Size="sm" Weight="medium" Class="leading-none">Documentation</Lumeo.Text>
+                                    <Lumeo.Text Size="sm" Color="muted" Class="leading-snug mt-1">Guides and full API reference.</Lumeo.Text>
+                                </NavigationMenuLink>
+                            </Grid>
+                        </NavigationMenuContent>
+                    </NavigationMenuItem>
+                </NavigationMenuList>
+            </NavigationMenu>
+            <Lumeo.Text Size="sm" Color="muted">Open panel: @(_navValue ?? "none")</Lumeo.Text>
+        </Stack>
+    </ComponentDemo>
 </Stack>
 
 <div class="mt-16">
@@ -210,6 +247,10 @@
             </TableHeader>
             <TableBody>
                 <TableRow><TableCell Class="font-mono text-xs">ChildContent</TableCell><TableCell Class="font-mono text-xs">RenderFragment?</TableCell><TableCell Class="font-mono text-xs">null</TableCell><TableCell>The navigation menu content.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">Value</TableCell><TableCell Class="font-mono text-xs">string?</TableCell><TableCell Class="font-mono text-xs">null</TableCell><TableCell>Controlled value of the currently-open item (matches the open <code class="font-mono text-xs">NavigationMenuItem.Value</code>). <code class="font-mono text-xs">null</code> = closed. Use with @@bind-Value.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">ValueChanged</TableCell><TableCell Class="font-mono text-xs">EventCallback&lt;string?&gt;</TableCell><TableCell Class="font-mono text-xs">—</TableCell><TableCell>Raised when the open item changes via hover, click, keyboard, or close.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">DefaultValue</TableCell><TableCell Class="font-mono text-xs">string?</TableCell><TableCell Class="font-mono text-xs">null</TableCell><TableCell>Initial open item for uncontrolled use (ignored once <code class="font-mono text-xs">Value</code> is bound).</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">DelayDuration</TableCell><TableCell Class="font-mono text-xs">int</TableCell><TableCell Class="font-mono text-xs">150</TableCell><TableCell>Hover-forgiveness window (ms) before an open panel closes after the pointer leaves, so moving between adjacent triggers doesn't dismiss it.</TableCell></TableRow>
                 <TableRow><TableCell Class="font-mono text-xs">Class</TableCell><TableCell Class="font-mono text-xs">string?</TableCell><TableCell Class="font-mono text-xs">null</TableCell><TableCell>Additional CSS classes.</TableCell></TableRow>
                 <TableRow><TableCell Class="font-mono text-xs">AdditionalAttributes</TableCell><TableCell Class="font-mono text-xs">Dictionary&lt;string, object&gt;?</TableCell><TableCell Class="font-mono text-xs">null</TableCell><TableCell>Additional HTML attributes.</TableCell></TableRow>
             </TableBody>
@@ -248,6 +289,7 @@
             </TableHeader>
             <TableBody>
                 <TableRow><TableCell Class="font-mono text-xs">ChildContent</TableCell><TableCell Class="font-mono text-xs">RenderFragment?</TableCell><TableCell Class="font-mono text-xs">null</TableCell><TableCell>The item content (trigger and/or content).</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">Value</TableCell><TableCell Class="font-mono text-xs">string?</TableCell><TableCell Class="font-mono text-xs">null</TableCell><TableCell>Stable identifier for this item, matched against <code class="font-mono text-xs">NavigationMenu.Value</code> for controlled open state. Auto-generated when omitted.</TableCell></TableRow>
                 <TableRow><TableCell Class="font-mono text-xs">Class</TableCell><TableCell Class="font-mono text-xs">string?</TableCell><TableCell Class="font-mono text-xs">null</TableCell><TableCell>Additional CSS classes.</TableCell></TableRow>
                 <TableRow><TableCell Class="font-mono text-xs">AdditionalAttributes</TableCell><TableCell Class="font-mono text-xs">Dictionary&lt;string, object&gt;?</TableCell><TableCell Class="font-mono text-xs">null</TableCell><TableCell>Additional HTML attributes.</TableCell></TableRow>
             </TableBody>
@@ -403,6 +445,28 @@
 
 @code {
     private bool _mobileOpen;
+    private string? _navValue;
+
+    private string _controlledCode = @"<Flex Gap=""2"">
+    <Button Size=""Button.ButtonSize.Sm"" OnClick=""@(() => _navValue = ""products"")"">Open Products</Button>
+    <Button Size=""Button.ButtonSize.Sm"" OnClick=""@(() => _navValue = null)"">Close</Button>
+</Flex>
+<NavigationMenu @bind-Value=""_navValue"" DelayDuration=""100"">
+    <NavigationMenuList>
+        <NavigationMenuItem Value=""products"">
+            <NavigationMenuTrigger>Products</NavigationMenuTrigger>
+            <NavigationMenuContent>...</NavigationMenuContent>
+        </NavigationMenuItem>
+        <NavigationMenuItem Value=""resources"">
+            <NavigationMenuTrigger>Resources</NavigationMenuTrigger>
+            <NavigationMenuContent>...</NavigationMenuContent>
+        </NavigationMenuItem>
+    </NavigationMenuList>
+</NavigationMenu>
+
+@code {
+    private string? _navValue;
+}";
 
     private string _linksCode = @"<NavigationMenu>
     <NavigationMenuList>

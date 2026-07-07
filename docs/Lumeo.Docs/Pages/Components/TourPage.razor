@@ -71,6 +71,26 @@
               OnComplete="@(() => _placementsOpen = false)"
               OnSkip="@(() => _placementsOpen = false)" />
     </ComponentDemo>
+
+    <ComponentDemo Title="Controlled step + callbacks" Code="@_controlledCode" Description="Bind CurrentStep to drive the tour from your own Prev/Next controls, and use OnComplete / OnSkip to record how the tour ended.">
+        <Stack Gap="4">
+            <Flex Class="gap-3 flex-wrap">
+                <Button id="ctl-step-1" Variant="Button.ButtonVariant.Outline"><DynamicIcon Name="Search" Class="h-4 w-4 mr-2" />Search</Button>
+                <Button id="ctl-step-2" Variant="Button.ButtonVariant.Outline"><DynamicIcon Name="Bell" Class="h-4 w-4 mr-2" />Alerts</Button>
+                <Button id="ctl-step-3" Variant="Button.ButtonVariant.Outline"><DynamicIcon Name="User" Class="h-4 w-4 mr-2" />Profile</Button>
+            </Flex>
+            <Flex Class="gap-2 items-center flex-wrap">
+                <Button OnClick="@(() => { _ctlStep = 0; _ctlOpen = true; _ctlStatus = "running"; })"><DynamicIcon Name="Play" Class="h-4 w-4 mr-2" />Start</Button>
+                <Button Variant="Button.ButtonVariant.Outline" Disabled="@(!_ctlOpen || _ctlStep == 0)" OnClick="@(() => _ctlStep--)">Prev</Button>
+                <Button Variant="Button.ButtonVariant.Outline" Disabled="@(!_ctlOpen || _ctlStep >= _ctlSteps.Count - 1)" OnClick="@(() => _ctlStep++)">Next</Button>
+                <Lumeo.Text Size="sm" Color="muted">Step @(_ctlStep + 1) / @_ctlSteps.Count · @_ctlStatus</Lumeo.Text>
+            </Flex>
+        </Stack>
+
+        <Tour @bind-Open="_ctlOpen" @bind-CurrentStep="_ctlStep" Steps="@_ctlSteps"
+              OnComplete="@(() => _ctlStatus = "completed")"
+              OnSkip="@(() => _ctlStatus = "skipped")" />
+    </ComponentDemo>
 </Stack>
 
 <!-- API Reference -->
@@ -226,6 +246,39 @@
     {
         _tourOpen = false;
     }
+
+    private bool _ctlOpen;
+    private int _ctlStep;
+    private string _ctlStatus = "idle";
+    private List<Tour.TourStepConfig> _ctlSteps = new()
+    {
+        new("#ctl-step-1", "Search", "Find anything across your workspace.", Lumeo.Side.Bottom),
+        new("#ctl-step-2", "Alerts", "Stay on top of important notifications.", Lumeo.Side.Bottom),
+        new("#ctl-step-3", "Profile", "Manage your account and preferences.", Lumeo.Side.Bottom),
+    };
+
+    private string _controlledCode = @"<Flex Class=""gap-2 items-center"">
+    <Button OnClick=""@(() => { _step = 0; _open = true; })"">Start</Button>
+    <Button Disabled=""@(!_open || _step == 0)"" OnClick=""@(() => _step--)"">Prev</Button>
+    <Button Disabled=""@(!_open || _step >= _steps.Count - 1)"" OnClick=""@(() => _step++)"">Next</Button>
+    <Lumeo.Text Size=""sm"" Color=""muted"">Step @(_step + 1) / @_steps.Count · @_status</Lumeo.Text>
+</Flex>
+
+<Tour @bind-Open=""_open"" @bind-CurrentStep=""_step"" Steps=""@_steps""
+      OnComplete=""@(() => _status = ""completed"")""
+      OnSkip=""@(() => _status = ""skipped"")"" />
+
+@code {
+    private bool _open;
+    private int _step;
+    private string _status = ""idle"";
+    private List<Tour.TourStepConfig> _steps = new()
+    {
+        new(""#ctl-step-1"", ""Search"", ""Find anything across your workspace."", Lumeo.Side.Bottom),
+        new(""#ctl-step-2"", ""Alerts"", ""Stay on top of notifications."", Lumeo.Side.Bottom),
+        new(""#ctl-step-3"", ""Profile"", ""Manage your account."", Lumeo.Side.Bottom),
+    };
+}";
 
     private string _basicCode = @"<Flex Class=""gap-3 flex-wrap"">
     <Button id=""tour-feature-1"" Variant=""Button.ButtonVariant.Outline"">Dashboard</Button>

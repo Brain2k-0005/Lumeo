@@ -140,7 +140,38 @@
             </Flex>
         </Stack>
     </ComponentDemo>
+
+    <ComponentDemo Title="Form Participation (Name / Value)" Code="@_formCode" Description="A switch renders as a <button>, which posts nothing on its own. Set Name and a hidden bubble input is added so the switch's checked state submits in a native form; Value is the string sent when on.">
+        <form @onsubmit="HandleFormSubmit" @onsubmit:preventDefault="true">
+            <Stack Gap="3" Class="max-w-sm">
+                <Flex Align="center" Justify="between">
+                    <Label>Email notifications</Label>
+                    <Switch @bind-Checked="_emailForm" Name="email" Value="on" />
+                </Flex>
+                <Flex Align="center" Justify="between">
+                    <Label>Two-factor auth</Label>
+                    <Switch @bind-Checked="_twoFactorForm" Name="2fa" Value="on" />
+                </Flex>
+                <Button Type="Button.ButtonType.Submit" Class="w-fit">Save settings</Button>
+                @if (_formResult != null)
+                {
+                    <Lumeo.Text Size="sm" Color="muted">Form data: <code class="font-mono text-xs">@_formResult</code></Lumeo.Text>
+                }
+            </Stack>
+        </form>
+    </ComponentDemo>
 </Stack>
+
+<div class="mt-12 space-y-3">
+    <Heading Id="styling-hooks" Level="2" Class="scroll-mt-20">Styling hooks (data-state)</Heading>
+    <Lumeo.Text Size="base" Color="muted" Leading="relaxed">
+        Both the track and thumb expose a <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">data-state</code>
+        attribute of <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">checked</code> or
+        <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">unchecked</code>, so you can drive custom CSS
+        (e.g. <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">data-[state=checked]:bg-primary</code>)
+        without watching the C# state.
+    </Lumeo.Text>
+</div>
 
 <div class="mt-12">
     <Heading Id="keyboard-interactions" Level="2" Class="scroll-mt-20">Keyboard Interactions</Heading>
@@ -290,7 +321,19 @@
                             <td class="p-3 font-mono text-xs text-primary">Name</td>
                             <td class="p-3 font-mono text-xs text-muted-foreground">string?</td>
                             <td class="p-3 font-mono text-xs text-muted-foreground">null</td>
-                            <td class="p-3 text-muted-foreground">Form field name submitted with the switch's checked state.</td>
+                            <td class="p-3 text-muted-foreground">Form field name submitted with the switch's checked state. When set (or inherited from a composing FormField), a visually-hidden bubble input is rendered so the switch participates in a native &lt;form&gt; POST.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">Value</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">string?</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">null</td>
+                            <td class="p-3 text-muted-foreground">Value submitted for the bubble input when the switch is on (defaults to <code class="font-mono text-xs">"on"</code>). An off switch posts nothing.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">FormField</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">FormFieldContext?</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">null</td>
+                            <td class="p-3 text-muted-foreground">Cascaded context from a parent <code class="font-mono text-xs">FormField</code>; supplies the effective name and drives validation state automatically.</td>
                         </tr>
                         <tr>
                             <td class="p-3 font-mono text-xs text-primary">AriaLabel</td>
@@ -321,6 +364,27 @@
     private bool _emailNotif = true;
     private bool _marketingNotif;
     private bool _securityNotif = true;
+
+    private bool _emailForm = true;
+    private bool _twoFactorForm;
+    private string? _formResult;
+    private void HandleFormSubmit()
+    {
+        var parts = new List<string>();
+        if (_emailForm) parts.Add("email=on");
+        if (_twoFactorForm) parts.Add("2fa=on");
+        _formResult = parts.Count > 0 ? string.Join("&", parts) : "(nothing submitted)";
+    }
+    private string _formCode = @"<form method=""post"">
+    <Switch @bind-Checked=""_email"" Name=""email"" Value=""on"" />
+    <Switch @bind-Checked=""_twoFactor"" Name=""2fa"" Value=""on"" />
+    <Button Type=""Button.ButtonType.Submit"">Save settings</Button>
+</form>
+
+@code {
+    private bool _email = true;
+    private bool _twoFactor;
+}";
 
     private string _defaultCode = @"<Flex Gap=""2"" Align=""center"">
     <Switch @bind-Checked=""_checked"" />
