@@ -36,6 +36,7 @@
 
     private bool _positioned;
     private int _focusedIndex = -1;
+    private readonly Lumeo.Services.MenuTypeahead _typeahead = new();
     private readonly OverlayExitAnimator _exit = new();
     private DotNetObjectReference<DropdownMenuSubContent>? _selfRef;
     private const int ExitDurationMs = 250;
@@ -175,12 +176,26 @@
                     }
                     break;
                 }
+            default:
+                // Scoped submenu typeahead (parity with ContextMenuSubContent / the root
+                // DropdownMenuContent — Radix type-to-focus). Our round-2 keydown
+                // stopPropagation stops printable keys bubbling to the root menu, so
+                // without this local branch type-to-focus was dead inside dropdown
+                // submenus. Modifier combos fall through so Tab/Enter/Space stay native.
+                if (!e.CtrlKey && !e.AltKey && !e.MetaKey && Lumeo.Services.MenuTypeahead.IsTypeaheadKey(e.Key))
+                {
+                    var query = _typeahead.Push(e.Key);
+                    var matched = await Interop.FocusMenuItemByTypeahead(SubContext.ContentId, query, _focusedIndex);
+                    if (matched >= 0) _focusedIndex = matched;
+                }
+                break;
         }
     }
 
     private async Task Cleanup()
     {
         try { await Interop.UnpositionFixed(SubContext.ContentId); } catch (JSDisconnectedException) { }
+        _typeahead.Reset();
         _positioned = false;
     }
 

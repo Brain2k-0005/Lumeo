@@ -156,6 +156,16 @@
             // adopts. With a one-way Value (no ValueChanged delegate) the invoke is
             // a no-op, so interaction is inert (fully controlled — round-5 b).
             await ValueChanged.InvokeAsync(value);
+
+            // The open is adopted only if the parent pushed `value` back into _open
+            // (verbatim, in OnParametersSet). If it did NOT adopt — a one-way Value
+            // with no handler, or a handler that vetoes — a keyboard ArrowDown has
+            // already latched _focusContentOnOpenItemId for this item via the
+            // trigger. Drop that stale intent now so a LATER parent-initiated open of
+            // the same item can't inherit it and steal focus into the content
+            // (round-6/7). Adopting keyboard opens keep the intent (_open == value).
+            if (_open != value && _focusContentOnOpenItemId == value)
+                _focusContentOnOpenItemId = null;
         }
         else
         {
@@ -200,6 +210,10 @@
 
     internal void UnregisterItem(string id)
     {
+        // Safety: an item being torn down can never legitimately receive a deferred
+        // focus-into-content request, so drop any intent latched for it to avoid a
+        // stale request outliving the item and firing on a later re-add.
+        if (_focusContentOnOpenItemId == id) _focusContentOnOpenItemId = null;
         if (_registeredItems.Remove(id) && id == _open) StateHasChanged();
     }
 

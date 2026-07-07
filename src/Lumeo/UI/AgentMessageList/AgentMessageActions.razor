@@ -57,9 +57,14 @@
     private async Task CopyAsync()
     {
         if (CopyText is null) return;
+        // If the clipboard write fails (e.g. a disconnected Server circuit, or a
+        // disposed interop during teardown) we must NOT show the "Copied"
+        // confirmation or fire OnCopy — nothing was copied. Bail out silently: the
+        // label stays "Copy" so the user can retry. Surfacing a visible error state
+        // is left to consumers via OnCopy-less flows (no extra parameter added).
         try { await Interop.CopyToClipboard(CopyText); }
-        catch (JSDisconnectedException) { }
-        catch (ObjectDisposedException) { }
+        catch (JSDisconnectedException) { return; }
+        catch (ObjectDisposedException) { return; }
 
         _copied = true;
         StateHasChanged();
