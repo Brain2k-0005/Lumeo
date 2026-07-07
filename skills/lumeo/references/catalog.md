@@ -8,7 +8,7 @@ Satellite packages: a component tagged **[Charts]** needs `Lumeo.Charts`, **[Dat
 
 ## AI
 
-- **AgentMessageList** — Chat message stream for AI agents with role-based styling. _(sub-components: AgentMessage)_
+- **AgentMessageList** — Chat message stream for AI agents with role-based styling. _(sub-components: AgentMessage, AgentMessageAction, AgentMessageActions, AgentMessageBranchNav)_
 - **PromptInput** — Multiline AI prompt textarea with submit + keyboard shortcuts.
 - **ReasoningDisplay** — Collapsible chain-of-thought block for AI reasoning traces.
 - **StreamingText** — Token-by-token streaming text renderer for AI responses.
@@ -153,7 +153,7 @@ Satellite packages: a component tagged **[Charts]** needs `Lumeo.Charts`, **[Dat
 - **Carousel** — Slide-based content rotator with autoplay and keyboard nav. _(sub-components: CarouselContent, CarouselItem, CarouselNext, CarouselPrevious)_
 - **Collapsible** — Single expandable region with animated height transition. _(sub-components: CollapsibleContent, CollapsibleTrigger)_
 - **MegaMenu** — Full-width dropdown for site-wide navigation with columns. _(sub-components: MegaMenuGroup, MegaMenuItem, MegaMenuLink, MegaMenuPanel)_
-- **Menubar** — Horizontal menubar with File/Edit-style dropdowns. _(sub-components: MenubarContent, MenubarItem, MenubarLabel, MenubarMenu, MenubarSeparator, MenubarShortcut, MenubarSub, MenubarSubContent, MenubarSubTrigger, MenubarTrigger)_
+- **Menubar** — Horizontal menubar with File/Edit-style dropdowns. _(sub-components: MenubarCheckboxItem, MenubarContent, MenubarGroup, MenubarItem, MenubarLabel, MenubarMenu, MenubarRadioGroup, MenubarRadioItem, MenubarSeparator, MenubarShortcut, MenubarSub, MenubarSubContent, MenubarSubTrigger, MenubarTrigger)_
 - **NavigationMenu** — Top-level site nav with animated dropdown panels. _(sub-components: NavigationMenuContent, NavigationMenuHamburger, NavigationMenuIndicator, NavigationMenuItem, NavigationMenuLink, NavigationMenuList, NavigationMenuMobile, NavigationMenuTrigger, NavigationMenuViewport)_
 - **Pagination** — Page number bar with prev/next and configurable ranges. _(sub-components: PaginationContent, PaginationEllipsis, PaginationItem, PaginationNext, PaginationPrevious)_
 - **Scrollspy** — Highlights the nav item matching the current scroll section. _(sub-components: ScrollspyLink, ScrollspySection)_
@@ -168,10 +168,10 @@ Satellite packages: a component tagged **[Charts]** needs `Lumeo.Charts`, **[Dat
 
 - **AlertDialog** — Modal confirmation dialog that interrupts the user for destructive actions. _(sub-components: AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger)_
 - **Command** — Command palette — keyboard-driven finder for actions. _(sub-components: CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList, CommandSeparator)_
-- **ContextMenu** — Right-click menu tied to a container element. _(sub-components: ContextMenuCheckboxItem, ContextMenuContent, ContextMenuGroup, ContextMenuItem, ContextMenuLabel, ContextMenuRadioGroup, ContextMenuRadioItem, ContextMenuSeparator, ContextMenuSub, ContextMenuSubContent, ContextMenuSubTrigger, ContextMenuTrigger)_
+- **ContextMenu** — Right-click menu tied to a container element. _(sub-components: ContextMenuCheckboxItem, ContextMenuContent, ContextMenuGroup, ContextMenuItem, ContextMenuLabel, ContextMenuRadioGroup, ContextMenuRadioItem, ContextMenuSeparator, ContextMenuShortcut, ContextMenuSub, ContextMenuSubContent, ContextMenuSubTrigger, ContextMenuTrigger)_
 - **Dialog** — Modal dialog with header, content, footer, and focus trap. _(sub-components: DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger)_
 - **Drawer** — Slide-up sheet for mobile-first contextual content. _(sub-components: DrawerClose, DrawerContent, DrawerDescription, DrawerFooter, DrawerHeader, DrawerTitle, DrawerTrigger)_
-- **DropdownMenu** — Menu button with items, separators, submenus, and checkboxes. _(sub-components: DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuLabel, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuSeparator, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger, DropdownMenuTrigger)_
+- **DropdownMenu** — Menu button with items, separators, submenus, and checkboxes. _(sub-components: DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuLabel, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuSeparator, DropdownMenuShortcut, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger, DropdownMenuTrigger)_
 - **HoverCard** — Popover that opens on hover for rich previews. _(sub-components: HoverCardContent, HoverCardTrigger)_
 - **Overlay** — Low-level backdrop primitive for custom popovers and modals.
 - **PopConfirm** — Inline 'are you sure?' popover attached to a trigger.
