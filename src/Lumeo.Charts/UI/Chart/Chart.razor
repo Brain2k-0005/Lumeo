@@ -66,6 +66,15 @@ else
                             }
                         </tr>
                     }
+                    @* Overflow marker when the row cap truncated a big series — one
+                       spanning row announcing the omitted count. The caption above
+                       still carries the true total. *@
+                    @if (_table.TruncationNote is { } truncationNote)
+                    {
+                        <tr>
+                            <td colspan="@_table.ColumnHeaders.Count">@truncationNote</td>
+                        </tr>
+                    }
                 </tbody>
             </table>
         }
@@ -121,6 +130,15 @@ else
     /// data. When <see cref="AriaLabel"/> is not set, a generated summary of the data is
     /// used as the label. Set to <c>false</c> to opt out entirely.</summary>
     [Parameter] public bool AccessibilityLayer { get; set; } = true;
+    /// <summary>Upper bound on the number of data rows the hidden screen-reader table
+    /// materialises (default <see cref="ChartAccessibility.DefaultMaxAccessibilityRows"/>).
+    /// A big series would otherwise emit one hidden <c>&lt;tr&gt;</c> per data point —
+    /// thousands of rows of DOM bloat that no assistive tech can usefully navigate.
+    /// Above the cap the table keeps the first N rows plus a single "… and N more data
+    /// points" row; the host's summarising <c>aria-label</c> is built from the FULL data
+    /// so its totals stay accurate. Set to <c>0</c> (or negative) to disable the cap and
+    /// render every row.</summary>
+    [Parameter] public int MaxAccessibilityRows { get; set; } = ChartAccessibility.DefaultMaxAccessibilityRows;
     [Parameter] public string Width { get; set; } = "100%";
     [Parameter] public string Height { get; set; } = "350px";
     [Parameter] public EventCallback<ChartEventArgs> OnClick { get; set; }
@@ -614,7 +632,7 @@ else
     // Projects the REAL merged option (not the phantom placeholder) into the SR table.
     // Uses GetOptionsJson so the OptionJson and typed-Option paths are handled uniformly.
     private ChartAccessibility.ChartDataTable? BuildAccessibilityTable()
-        => ChartAccessibility.Build(GetOptionsJson());
+        => ChartAccessibility.Build(GetOptionsJson(), MaxAccessibilityRows);
 
     [JSInvokable]
     public async Task OnChartEvent(string eventName, string dataJson)

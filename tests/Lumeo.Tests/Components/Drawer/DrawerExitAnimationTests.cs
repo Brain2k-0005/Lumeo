@@ -125,10 +125,13 @@ public class DrawerExitAnimationTests : IAsyncLifetime
     /// <summary>
     /// Round-9 finding-2: the exiting drawer panel (kept mounted for the slide-out,
     /// focus trap + scroll lock + gesture already torn down) carries
-    /// pointer-events-none + inert, and the fading scrim drops to pointer-events-none.
+    /// pointer-events-none + inert. The BACKDROP, however, KEEPS pointer-events-auto
+    /// so it goes on shielding the page beneath until it unmounts (Radix keeps a modal
+    /// overlay blocking until close completes); its dismiss handler is already a no-op
+    /// while exiting (gates on Context.IsOpen), so it swallows the click harmlessly.
     /// </summary>
     [Fact]
-    public void Exiting_Panel_Is_Inert_And_PointerEventsNone()
+    public void Exiting_Panel_Is_Inert_And_Backdrop_Keeps_Blocking()
     {
         var cut = RenderDrawer(isOpen: true, L.DrawerContent.DrawerAnimation.Slide, L.Side.Bottom);
         cut.Render(p => p.Add(d => d.Open, false));
@@ -140,8 +143,31 @@ public class DrawerExitAnimationTests : IAsyncLifetime
             Assert.Contains("pointer-events-none", panel.GetAttribute("class") ?? "");
             Assert.DoesNotContain("pointer-events-auto", panel.GetAttribute("class") ?? "");
             Assert.Equal("true", panel.GetAttribute("inert"));
-            Assert.Contains("pointer-events-none", cut.Find(".animate-fade-out").GetAttribute("class") ?? "");
+            var backdrop = cut.Find(".animate-fade-out");
+            Assert.Contains("pointer-events-auto", backdrop.GetAttribute("class") ?? "");
+            Assert.DoesNotContain("pointer-events-none", backdrop.GetAttribute("class") ?? "");
         });
+    }
+
+    /// <summary>
+    /// Round-Codex P2: clicking the still-blocking backdrop during the slide-out
+    /// neither throws nor re-invokes dismiss/reopen — HandleBackdropClick gates on
+    /// Context.IsOpen (already false), so the scrim swallows the click as a no-op and
+    /// the panel stays mid-slide-out.
+    /// </summary>
+    [Fact]
+    public void Clicking_Exiting_Backdrop_Is_A_NoOp_Not_A_Reopen()
+    {
+        var cut = RenderDrawer(isOpen: true, L.DrawerContent.DrawerAnimation.Slide, L.Side.Bottom);
+        cut.Render(p => p.Add(d => d.Open, false));
+
+        cut.WaitForAssertion(() =>
+            Assert.Contains("animate-slide-out-to-bottom", cut.Find("[role='dialog']").GetAttribute("class") ?? ""));
+
+        cut.Find(".animate-fade-out").Click();
+        var panel = cut.Find("[role='dialog']");
+        Assert.Equal("false", panel.GetAttribute("aria-modal"));
+        Assert.Contains("animate-slide-out-to-bottom", panel.GetAttribute("class") ?? "");
     }
 
     /// <summary>

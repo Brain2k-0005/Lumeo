@@ -37,6 +37,26 @@ public static class ComponentsApiEmitter
 
         var roots = uiRoots.ToArray();
 
+        // Service-layer types are scanned up-front (not just for the `services`
+        // section below) so their enum names form the "already globally exposed"
+        // set — we don't want to duplicate Size/Side/Align/… into every component
+        // that merely takes one as a parameter; those are discoverable via
+        // api.services. Empty when we don't know the repo root.
+        var serviceTypes = repoRoot is not null
+            ? ScanServices(repoRoot, logger)
+            : (IReadOnlyList<ServiceApiScanner.ServiceType>)Array.Empty<ServiceApiScanner.ServiceType>();
+        var globallyExposedEnums = new HashSet<string>(
+            serviceTypes.Where(t => t.Kind == "enum").Select(t => t.Name), StringComparer.Ordinal);
+
+        // Project-wide index of every PUBLIC enum declared in a standalone .cs file
+        // across the scanned package src roots. The per-component enum discovery in
+        // RazorParameterScanner only sees enums declared INSIDE a component's own
+        // @code block; an enum a component references via a [Parameter] but whose
+        // declaration lives in a separate root-level file (e.g. MenuItemVariant.cs at
+        // the src/Lumeo root, shared by DropdownMenu/ContextMenu/Menubar) was
+        // therefore invisible in api.enums. This index lets us resolve those.
+        var enumIndex = BuildEnumIndex(roots, logger);
+
         foreach (var dir in componentDirs)
         {
             var name = Path.GetFileName(dir);
@@ -82,6 +102,12 @@ public static class ComponentsApiEmitter
 
             var rootDict = root is null ? null : SerializeSchema(root);
 
+            // Enums this component REFERENCES via a [Parameter] but does not declare
+            // in any of its own @code blocks — resolved from the project-wide index
+            // of standalone enum files (e.g. MenuItemVariant). Globally-exposed enums
+            // (Size/Side/…) are skipped: they already live in api.services.
+            var resolvedEnums = ResolveReferencedEnums(perFile, enumIndex, globallyExposedEnums);
+
             // Aggregate counts
             if (root is not null)
             {
@@ -89,6 +115,7 @@ public static class ComponentsApiEmitter
                 totalEnums += root.Enums.Length;
                 totalRecords += root.Records.Length;
             }
+            totalEnums += resolvedEnums.Count;
             foreach (var s in subEntries.Values.OfType<Dictionary<string, object?>>())
             {
                 if (s.TryGetValue("parameters", out var pp) && pp is Array pArr) totalParams += pArr.Length;
@@ -117,7 +144,8 @@ public static class ComponentsApiEmitter
                 ["implements"] = root?.Implements ?? Array.Empty<string>(),
                 ["parameters"] = root?.Parameters.Select(SerializeParam).ToArray() ?? Array.Empty<object>(),
                 ["events"] = root?.Events.Select(SerializeEvent).ToArray() ?? Array.Empty<object>(),
-                ["enums"] = root?.Enums.Select(SerializeEnum).ToArray() ?? Array.Empty<object>(),
+                ["enums"] = (root?.Enums ?? Array.Empty<RazorParameterScanner.EnumInfo>())
+                    .Concat(resolvedEnums).Select(SerializeEnum).ToArray(),
                 ["records"] = root?.Records.Select(SerializeRecord).ToArray() ?? Array.Empty<object>(),
                 ["gotchas"] = root?.Gotchas ?? Array.Empty<string>(),
                 ["cssVars"] = meta.CssVars,
@@ -135,14 +163,8 @@ public static class ComponentsApiEmitter
         // plain C# (OverlayService, ThemeBuilder, IResponsiveService, global
         // enums, …). Indexed so AI agents can discover it the same way they
         // discover .razor components. Only when we know where the repo is.
-        object[] services = Array.Empty<object>();
-        int serviceCount = 0;
-        if (repoRoot is not null)
-        {
-            var serviceTypes = ScanServices(repoRoot, logger);
-            serviceCount = serviceTypes.Count;
-            services = serviceTypes.Select(SerializeService).ToArray();
-        }
+        object[] services = serviceTypes.Select(SerializeService).ToArray();
+        int serviceCount = serviceTypes.Count;
 
         // Theme tokens + patterns — only when we know where the repo is.
         object[] themeTokens = Array.Empty<object>();
@@ -257,6 +279,113 @@ public static class ComponentsApiEmitter
         };
 
         return ServiceApiScanner.ScanFiles(sources, logger);
+    }
+
+    /// <summary>
+    /// Indexes every PUBLIC enum declared in a standalone <c>.cs</c> file across the
+    /// scanned package src roots (the parent of each UI root, e.g. <c>src/Lumeo</c>),
+    /// keyed by simple type name. First declaration wins. Skips <c>bin/</c>,
+    /// <c>obj/</c> and generated <c>.g.cs</c> files, and cheaply pre-filters to files
+    /// that actually contain an <c>enum</c> declaration so the Roslyn parse only runs
+    /// where it can find something. Fail-soft: an unreadable file is skipped.
+    /// </summary>
+    private static Dictionary<string, ServiceApiScanner.ServiceType> BuildEnumIndex(
+        IEnumerable<string> uiRoots, TextWriter logger)
+    {
+        var index = new Dictionary<string, ServiceApiScanner.ServiceType>(StringComparer.Ordinal);
+        var srcRoots = uiRoots
+            .Select(Path.GetDirectoryName)
+            .Where(d => !string.IsNullOrEmpty(d))
+            .Select(d => d!)
+            .Distinct(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var srcRoot in srcRoots)
+        {
+            if (!Directory.Exists(srcRoot)) continue;
+            foreach (var cs in Directory.EnumerateFiles(srcRoot, "*.cs", SearchOption.AllDirectories))
+            {
+                var norm = cs.Replace('\\', '/');
+                if (norm.Contains("/obj/", StringComparison.Ordinal)
+                    || norm.Contains("/bin/", StringComparison.Ordinal)
+                    || norm.EndsWith(".g.cs", StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                string text;
+                try { text = File.ReadAllText(cs); }
+                catch { continue; }
+                if (!text.Contains("enum ", StringComparison.Ordinal)) continue;
+
+                foreach (var t in ServiceApiScanner.Scan(cs, logger))
+                {
+                    if (t.Kind != "enum") continue;
+                    index.TryAdd(t.Name, t); // first declaration wins; deterministic by enumeration order
+                }
+            }
+        }
+        return index;
+    }
+
+    /// <summary>
+    /// Resolves the enums a component references through a <c>[Parameter]</c> (across
+    /// its root + every sub-component) but does NOT declare in any of its own @code
+    /// blocks — the gap that hid <c>MenuItemVariant</c> from the menu components'
+    /// <c>api.enums</c>. Enums the component already declares nested, and enums
+    /// already surfaced globally via <c>api.services</c> (Size/Side/Align/…), are
+    /// skipped. Returns them sorted by name for a stable, byte-reproducible registry.
+    /// </summary>
+    private static List<RazorParameterScanner.EnumInfo> ResolveReferencedEnums(
+        IReadOnlyDictionary<string, RazorParameterScanner.RazorFileSchema> perFile,
+        IReadOnlyDictionary<string, ServiceApiScanner.ServiceType> enumIndex,
+        IReadOnlySet<string> globallyExposed)
+    {
+        if (enumIndex.Count == 0 || perFile.Count == 0)
+            return new List<RazorParameterScanner.EnumInfo>();
+
+        // Enum names already declared nested in any of this component's files.
+        var declared = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var schema in perFile.Values)
+            foreach (var en in schema.Enums)
+                declared.Add(en.Name);
+
+        var referenced = new SortedSet<string>(StringComparer.Ordinal);
+        foreach (var schema in perFile.Values)
+            foreach (var p in schema.Parameters)
+            {
+                var name = SimpleTypeName(p.Type);
+                if (name is null
+                    || declared.Contains(name)
+                    || globallyExposed.Contains(name)
+                    || !enumIndex.ContainsKey(name))
+                    continue;
+                referenced.Add(name);
+            }
+
+        var result = new List<RazorParameterScanner.EnumInfo>(referenced.Count);
+        foreach (var name in referenced)
+        {
+            var st = enumIndex[name];
+            result.Add(new RazorParameterScanner.EnumInfo(
+                st.Name,
+                st.EnumValues.Select(v => v.Name).ToArray(),
+                st.Summary));
+        }
+        return result;
+    }
+
+    /// <summary>
+    /// Reduces a parameter type string to a bare (optionally namespace-qualified)
+    /// identifier — stripping a trailing nullable <c>?</c> and any namespace prefix.
+    /// Returns null for anything that is not a plain identifier (generics, arrays,
+    /// tuples, …), since an enum-typed parameter is never one of those.
+    /// </summary>
+    private static string? SimpleTypeName(string? type)
+    {
+        if (string.IsNullOrWhiteSpace(type)) return null;
+        var t = type.Trim();
+        if (t.EndsWith("?", StringComparison.Ordinal)) t = t[..^1];
+        var lastDot = t.LastIndexOf('.');
+        if (lastDot >= 0) t = t[(lastDot + 1)..];
+        return Regex.IsMatch(t, "^[A-Za-z_][A-Za-z0-9_]*$") ? t : null;
     }
 
     private static Dictionary<string, object?> SerializeService(ServiceApiScanner.ServiceType s)

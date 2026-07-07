@@ -72,8 +72,14 @@
     private int BackdropZ => ZIndex;
     private int ContentZ => ZIndex + 1;
 
+    // The exiting backdrop KEEPS pointer-events-auto so it goes on shielding the
+    // page beneath until it unmounts — a modal backdrop must block the page until
+    // it is gone (Radix keeps the overlay blocking until close completes).
+    // AlertDialog's backdrop has NO click-to-dismiss handler at all, so there is
+    // nothing to re-trigger; it simply swallows stray clicks during the fade. The
+    // PANEL stays pointer-events-none + inert (PointerClass / ExitInert).
     private string BackdropClass => _exiting
-        ? "fixed inset-0 animate-fade-out pointer-events-none"
+        ? "fixed inset-0 animate-fade-out pointer-events-auto"
         : "fixed inset-0 animate-fade-in pointer-events-auto";
 
     private string AnimationClass => _exiting ? "animate-zoom-out" : "animate-zoom-in";

@@ -118,8 +118,15 @@ else if (Context.IsOpen || _exiting)
         ? (Animation switch { DrawerAnimation.Slide => 450, DrawerAnimation.Fade => 260, _ => 0 })
         : 0;
 
+    // The exiting backdrop KEEPS pointer-events-auto so it goes on shielding the
+    // page beneath until it unmounts — a modal backdrop must block the page until
+    // it is gone (Radix keeps the overlay blocking until close completes), so a
+    // fast double-click during the fade lands on the scrim, not on the page below.
+    // HandleBackdropClick is already a no-op while exiting (it gates on
+    // Context.IsOpen), so swallowing that click can't re-trigger a dismiss/reopen.
+    // The PANEL stays pointer-events-none + inert (PointerClass / ExitInert).
     private string BackdropClass => _exiting
-        ? "fixed inset-0 animate-fade-out pointer-events-none"
+        ? "fixed inset-0 animate-fade-out pointer-events-auto"
         : "fixed inset-0 animate-fade-in pointer-events-auto";
 
     // Exit-window inertness (mirrors DropdownMenuContent). While the panel is kept

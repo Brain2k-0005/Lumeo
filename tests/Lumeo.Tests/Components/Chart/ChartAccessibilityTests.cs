@@ -1,3 +1,4 @@
+using System.Linq;
 using System.Reflection;
 using Bunit;
 using Xunit;
@@ -189,5 +190,84 @@ public class ChartAccessibilityTests : IAsyncLifetime
 
         Assert.Empty(cut.FindAll("table.sr-only"));
         Assert.Null(cut.Find(".lumeo-chart-host").GetAttribute("tabindex"));
+    }
+
+    // ── Row cap for big series (Codex P2 — unbounded a11y table) ──────────────
+
+    // A cartesian bar with `count` categories on a single series → `count` rows.
+    private static string BigCartesian(int count)
+    {
+        var cats = string.Join(",", Enumerable.Range(0, count).Select(i => $"\"C{i}\""));
+        var data = string.Join(",", Enumerable.Range(0, count));
+        return "{\"xAxis\":[{\"type\":\"category\",\"data\":[" + cats + "]}],"
+             + "\"series\":[{\"name\":\"Revenue\",\"type\":\"bar\",\"data\":[" + data + "]}]}";
+    }
+
+    [Fact]
+    public void Build_Caps_Big_Series_Rows_And_Notes_The_Remainder()
+    {
+        const int total = 120;
+        var t = L.ChartAccessibility.Build(BigCartesian(total));
+
+        Assert.NotNull(t);
+        // Rows are capped to the default; the overflow is announced in TruncationNote.
+        Assert.Equal(L.ChartAccessibility.DefaultMaxAccessibilityRows, t!.Rows.Count);
+        var omitted = total - L.ChartAccessibility.DefaultMaxAccessibilityRows;
+        Assert.NotNull(t.TruncationNote);
+        Assert.Contains($"{omitted} more data points", t.TruncationNote!);
+        // Kept rows are the FIRST N (deterministic head), not an arbitrary slice.
+        Assert.Equal("C0", t.Rows[0].Header);
+        Assert.Equal("C49", t.Rows[^1].Header);
+        // The caption/summary keeps the REAL total, never the capped count.
+        Assert.Contains($"{total} categories", t.Summary);
+    }
+
+    [Fact]
+    public void Build_Small_Series_Is_Not_Truncated()
+    {
+        var t = L.ChartAccessibility.Build(BigCartesian(10));
+
+        Assert.NotNull(t);
+        Assert.Equal(10, t!.Rows.Count);
+        Assert.Null(t.TruncationNote);
+    }
+
+    [Fact]
+    public void Build_MaxRows_Zero_Disables_The_Cap()
+    {
+        var t = L.ChartAccessibility.Build(BigCartesian(120), maxRows: 0);
+
+        Assert.NotNull(t);
+        Assert.Equal(120, t!.Rows.Count);
+        Assert.Null(t.TruncationNote);
+    }
+
+    [Fact]
+    public void Chart_Renders_Capped_Table_With_Overflow_Row()
+    {
+        var cut = _ctx.Render<L.Chart>(p => p
+            .Add(x => x.OptionJson, BigCartesian(120))
+            .Add(x => x.ShowLoadingSkeleton, false));
+
+        // Default cap → 50 data rows + 1 overflow row.
+        var bodyRows = cut.FindAll("tbody tr");
+        Assert.Equal(L.ChartAccessibility.DefaultMaxAccessibilityRows + 1, bodyRows.Count);
+        Assert.Contains("more data points", bodyRows[^1].TextContent);
+        // aria-label / caption still reflect the full 120 categories.
+        Assert.Contains("120 categories", cut.Find("caption").TextContent);
+        Assert.Contains("120 categories", cut.Find(".lumeo-chart-host").GetAttribute("aria-label") ?? "");
+    }
+
+    [Fact]
+    public void Chart_MaxAccessibilityRows_Zero_Renders_Every_Row()
+    {
+        var cut = _ctx.Render<L.Chart>(p => p
+            .Add(x => x.OptionJson, BigCartesian(120))
+            .Add(x => x.MaxAccessibilityRows, 0)
+            .Add(x => x.ShowLoadingSkeleton, false));
+
+        // No cap → 120 data rows, no overflow marker.
+        Assert.Equal(120, cut.FindAll("tbody tr").Count);
+        Assert.DoesNotContain("more data points", cut.Find("table.sr-only").TextContent);
     }
 }

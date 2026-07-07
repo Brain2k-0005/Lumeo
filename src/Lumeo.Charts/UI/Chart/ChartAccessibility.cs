@@ -21,15 +21,31 @@ namespace Lumeo;
 /// </summary>
 public static class ChartAccessibility
 {
+    /// <summary>
+    /// Default upper bound on the number of data rows the screen-reader table
+    /// materialises. A big series (thousands of points) would otherwise emit one
+    /// hidden <c>&lt;tr&gt;</c> per point — heavy DOM bloat that helps no assistive
+    /// tech (a SR user cannot meaningfully tab through 5000 rows). Above the cap the
+    /// table keeps the first <see cref="DefaultMaxAccessibilityRows"/> rows plus a
+    /// single "… and N more data points" summary row; the caption / aria-label
+    /// summary is computed from the FULL data so its totals stay accurate.
+    /// </summary>
+    public const int DefaultMaxAccessibilityRows = 50;
+
     /// <summary>A screen-reader data table projected from an ECharts option.</summary>
     /// <param name="Summary">One-line description used as the chart's <c>aria-label</c>.</param>
     /// <param name="ColumnHeaders">Header cells for the table's <c>&lt;thead&gt;</c>.
     /// The first entry labels the row-header column.</param>
-    /// <param name="Rows">One row per category (cartesian) or data point.</param>
+    /// <param name="Rows">One row per category (cartesian) or data point, capped at
+    /// the requested row limit.</param>
+    /// <param name="TruncationNote">Non-null when <see cref="Rows"/> was capped: a
+    /// human-readable "… and N more data points" note the host renders as a final
+    /// spanning row. Null when the full data fit under the cap.</param>
     public sealed record ChartDataTable(
         string Summary,
         IReadOnlyList<string> ColumnHeaders,
-        IReadOnlyList<ChartDataRow> Rows);
+        IReadOnlyList<ChartDataRow> Rows,
+        string? TruncationNote = null);
 
     /// <summary>A single table row: a row-header cell plus its value cells.</summary>
     public sealed record ChartDataRow(string Header, IReadOnlyList<string> Cells);
@@ -40,7 +56,14 @@ public static class ChartAccessibility
     /// the chart renders no accessibility table). Never throws — malformed JSON
     /// yields <c>null</c>.
     /// </summary>
-    public static ChartDataTable? Build(string? optionJson)
+    /// <param name="optionJson">The ECharts option JSON.</param>
+    /// <param name="maxRows">Upper bound on materialised data rows (default
+    /// <see cref="DefaultMaxAccessibilityRows"/>). <c>0</c> or negative means
+    /// unlimited. When the projected data exceeds the cap the table keeps the first
+    /// <paramref name="maxRows"/> rows and sets
+    /// <see cref="ChartDataTable.TruncationNote"/>; the caption/summary totals are
+    /// always computed from the complete data, so they remain accurate.</param>
+    public static ChartDataTable? Build(string? optionJson, int maxRows = DefaultMaxAccessibilityRows)
     {
         if (string.IsNullOrWhiteSpace(optionJson))
             return null;
@@ -59,9 +82,26 @@ public static class ChartAccessibility
         var categories = ReadCategories(obj);
         var typeLabel = ChartTypeLabel(series[0].Type);
 
-        return categories.Count > 0
+        var table = categories.Count > 0
             ? BuildCartesian(typeLabel, categories, series)
             : BuildCategorical(typeLabel, series);
+
+        return CapRows(table, maxRows);
+    }
+
+    // Caps the row list so a huge series doesn't emit thousands of hidden <tr>s.
+    // The Summary was built from the FULL data (category / point counts), so it is
+    // untouched — only the materialised Rows shrink, with the overflow announced by
+    // a single TruncationNote row. maxRows <= 0 disables the cap entirely.
+    private static ChartDataTable CapRows(ChartDataTable table, int maxRows)
+    {
+        if (maxRows <= 0 || table.Rows.Count <= maxRows)
+            return table;
+
+        var omitted = table.Rows.Count - maxRows;
+        var kept = table.Rows.Take(maxRows).ToList();
+        var note = $"… and {omitted} more data point{(omitted == 1 ? "" : "s")}";
+        return table with { Rows = kept, TruncationNote = note };
     }
 
     private readonly record struct SeriesInfo(string Name, string? Type, IReadOnlyList<JsonNode?> Data);

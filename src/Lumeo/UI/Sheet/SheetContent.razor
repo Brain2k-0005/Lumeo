@@ -260,10 +260,14 @@ else if (Context.IsOpen || _exiting)
     // the backdrop inherits none and swallows nothing — click-outside-to-close
     // silently dies for every Sheet (most visible via service-opened sheets, whose
     // only dismiss affordances are the backdrop + Escape). (B10.) While EXITING the
-    // dismiss affordances are already gone, so the scrim drops to pointer-events-none
-    // and can't eat a click meant for the page it is uncovering.
+    // scrim KEEPS pointer-events-auto so it goes on shielding the page beneath until
+    // it unmounts — a modal backdrop must block the page until it is gone (Radix
+    // keeps the overlay blocking until close completes), so a fast double-click
+    // during the fade lands on the scrim, not the page below. HandleBackdropClick is
+    // already a no-op while exiting (it gates on Context.IsOpen), so swallowing that
+    // click can't re-trigger a dismiss/reopen. The PANEL stays pointer-events-none.
     private string BackdropClass => _exiting
-        ? "fixed inset-0 animate-fade-out pointer-events-none"
+        ? "fixed inset-0 animate-fade-out pointer-events-auto"
         : "fixed inset-0 animate-fade-in pointer-events-auto";
 
     // When exiting with a slide animation the backdrop must fade for the same

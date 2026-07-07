@@ -138,11 +138,16 @@ else if (Context.IsOpen || _exiting)
     private int BackdropZ => ZIndex;
     private int ContentZ => ZIndex + 1;
 
-    // Backdrop fades in on open, fades out while the panel exits. pointer-events
-    // drops to none while exiting so the fading scrim can't swallow a click meant
-    // for the page it's uncovering (the panel's own affordances are already gone).
+    // Backdrop fades in on open, fades out while the panel exits. It KEEPS
+    // pointer-events-auto through the exit so it goes on shielding the page beneath
+    // until it unmounts — a modal backdrop's job is to block the page until it is
+    // gone (Radix keeps the overlay blocking until close completes), so a fast
+    // double-click during the fade lands on the scrim, not on the page below.
+    // HandleBackdropClick is already a no-op while exiting (it gates on
+    // Context.IsOpen), so swallowing that click can't re-trigger a dismiss/reopen.
+    // The PANEL, by contrast, stays pointer-events-none + inert (PointerClass).
     private string BackdropClass => _exiting
-        ? "fixed inset-0 animate-fade-out pointer-events-none"
+        ? "fixed inset-0 animate-fade-out pointer-events-auto"
         : "fixed inset-0 animate-fade-in pointer-events-auto";
 
     // Enter counterpart is animate-zoom-in (baked into CssClass); on exit the

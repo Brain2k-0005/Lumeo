@@ -118,11 +118,14 @@ public class AlertDialogExitAnimationTests : IAsyncLifetime
 
     /// <summary>
     /// Round-9 finding-2: the exiting panel (kept mounted for the zoom-out, focus
-    /// trap + scroll lock already gone) carries pointer-events-none + inert, and the
-    /// fading scrim drops to pointer-events-none — no click/Tab hits a closing alert.
+    /// trap + scroll lock already gone) carries pointer-events-none + inert. The
+    /// BACKDROP, however, KEEPS pointer-events-auto so it goes on shielding the page
+    /// beneath until it unmounts (Radix keeps a modal overlay blocking until close
+    /// completes). AlertDialog's backdrop has no click-to-dismiss handler, so it
+    /// simply swallows any stray click during the fade — nothing to re-trigger.
     /// </summary>
     [Fact]
-    public void Exiting_Panel_Is_Inert_And_PointerEventsNone()
+    public void Exiting_Panel_Is_Inert_And_Backdrop_Keeps_Blocking()
     {
         var cut = RenderAlertDialog(isOpen: true);
         cut.Render(p => p.Add(a => a.Open, false));
@@ -134,8 +137,33 @@ public class AlertDialogExitAnimationTests : IAsyncLifetime
             Assert.Contains("pointer-events-none", panel.GetAttribute("class") ?? "");
             Assert.DoesNotContain("pointer-events-auto", panel.GetAttribute("class") ?? "");
             Assert.Equal("true", panel.GetAttribute("inert"));
-            Assert.Contains("pointer-events-none", cut.Find(".animate-fade-out").GetAttribute("class") ?? "");
+            var backdrop = cut.Find(".animate-fade-out");
+            Assert.Contains("pointer-events-auto", backdrop.GetAttribute("class") ?? "");
+            Assert.DoesNotContain("pointer-events-none", backdrop.GetAttribute("class") ?? "");
         });
+    }
+
+    /// <summary>
+    /// Round-Codex P2: the alertdialog backdrop carries NO click-to-dismiss handler
+    /// at all (an alert must be answered explicitly), so there is nothing a stray
+    /// click during the exit window could re-invoke — dispatching a click at it
+    /// raises bUnit's missing-handler guard, which is exactly the proof that the
+    /// backdrop cannot reopen or re-dismiss the panel while it fades.
+    /// </summary>
+    [Fact]
+    public void Exiting_Backdrop_Has_No_Dismiss_Handler_To_ReInvoke()
+    {
+        var cut = RenderAlertDialog(isOpen: true);
+        cut.Render(p => p.Add(a => a.Open, false));
+
+        cut.WaitForAssertion(() =>
+            Assert.Contains("animate-zoom-out", cut.Find("[role='alertdialog']").GetAttribute("class") ?? ""));
+
+        // No @onclick is wired on the scrim → bUnit refuses to dispatch one.
+        var backdrop = cut.Find(".animate-fade-out");
+        Assert.Throws<Bunit.MissingEventHandlerException>(() => backdrop.Click());
+        // And it is still the blocking scrim (shields the page until unmount).
+        Assert.Contains("pointer-events-auto", backdrop.GetAttribute("class") ?? "");
     }
 
     /// <summary>

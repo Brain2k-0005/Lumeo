@@ -11,9 +11,12 @@ namespace Lumeo.Tests.Components.Sheet;
 /// panel stays mounted (via the <c>_exiting</c> latch) so the animation can play, but
 /// its focus trap + scroll lock + swipe gesture were already torn down by Cleanup().
 /// The still-painted panel must therefore be made inert: pointer-events-none + the
-/// <c>inert</c> attribute, with the fading scrim dropped to pointer-events-none too —
-/// otherwise a stray click / second tap / Tab lands on a closing sheet. Mirrors the
-/// proven DropdownMenuContent exit pattern and sits alongside the #185 aria-modal drop.
+/// <c>inert</c> attribute — otherwise a stray click / second tap / Tab lands on a
+/// closing sheet. The BACKDROP, by contrast, KEEPS pointer-events-auto so it goes on
+/// shielding the page underneath until it unmounts (Radix keeps a modal overlay
+/// blocking until close completes); its dismiss handler is already a no-op while
+/// exiting (gates on Context.IsOpen). Mirrors the proven DropdownMenuContent exit
+/// pattern on the panel and sits alongside the #185 aria-modal drop.
 /// </summary>
 public class SheetExitInertnessTests : IAsyncLifetime
 {
@@ -51,7 +54,7 @@ public class SheetExitInertnessTests : IAsyncLifetime
     }
 
     [Fact]
-    public void Exiting_Panel_Is_Inert_And_PointerEventsNone()
+    public void Exiting_Panel_Is_Inert_And_Backdrop_Keeps_Blocking()
     {
         var cut = RenderSheet(open: true);
         cut.Render(p => p.Add(s => s.Open, false));
@@ -64,9 +67,32 @@ public class SheetExitInertnessTests : IAsyncLifetime
             Assert.Contains("pointer-events-none", panel.GetAttribute("class") ?? "");
             Assert.DoesNotContain("pointer-events-auto", panel.GetAttribute("class") ?? "");
             Assert.Equal("true", panel.GetAttribute("inert"));
-            // The fading scrim no longer eats a click meant for the page below.
-            Assert.Contains("pointer-events-none", cut.Find(".animate-fade-out").GetAttribute("class") ?? "");
+            // The fading scrim keeps blocking — it shields the page until unmount.
+            var backdrop = cut.Find(".animate-fade-out");
+            Assert.Contains("pointer-events-auto", backdrop.GetAttribute("class") ?? "");
+            Assert.DoesNotContain("pointer-events-none", backdrop.GetAttribute("class") ?? "");
         });
+    }
+
+    /// <summary>
+    /// Round-Codex P2: clicking the still-blocking backdrop during the slide-out
+    /// neither throws nor re-invokes dismiss/reopen — HandleBackdropClick gates on
+    /// Context.IsOpen (already false), so the scrim swallows the click as a no-op and
+    /// the panel stays mid-slide-out.
+    /// </summary>
+    [Fact]
+    public void Clicking_Exiting_Backdrop_Is_A_NoOp_Not_A_Reopen()
+    {
+        var cut = RenderSheet(open: true);
+        cut.Render(p => p.Add(s => s.Open, false));
+
+        cut.WaitForAssertion(() =>
+            Assert.Contains("animate-slide-out-to-right", cut.Find("[role='dialog']").GetAttribute("class") ?? ""));
+
+        cut.Find(".animate-fade-out").Click();
+        var panel = cut.Find("[role='dialog']");
+        Assert.Equal("false", panel.GetAttribute("aria-modal"));
+        Assert.Contains("animate-slide-out-to-right", panel.GetAttribute("class") ?? "");
     }
 
     [Fact]

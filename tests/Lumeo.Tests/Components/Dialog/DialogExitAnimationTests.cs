@@ -122,12 +122,14 @@ public class DialogExitAnimationTests : IAsyncLifetime
     /// <summary>
     /// Round-9 finding-2: during the exit window the still-mounted panel (kept for
     /// the zoom-out) had its focus trap + scroll lock already torn down, leaving a
-    /// clickable/tabbable ghost. It must now carry pointer-events-none + inert, and
-    /// the fading scrim drops to pointer-events-none too, so nothing can be
-    /// clicked/Tabbed on a closing dialog. Mirrors the DropdownMenuContent pattern.
+    /// clickable/tabbable ghost. It must carry pointer-events-none + inert. The
+    /// BACKDROP, however, KEEPS pointer-events-auto: a modal scrim goes on shielding
+    /// the page underneath until it unmounts (Radix keeps the overlay blocking until
+    /// close completes), so a fast double-click during the fade lands on the scrim,
+    /// not the page below. Mirrors the DropdownMenuContent inertness on the panel.
     /// </summary>
     [Fact]
-    public void Exiting_Panel_Is_Inert_And_PointerEventsNone()
+    public void Exiting_Panel_Is_Inert_And_Backdrop_Keeps_Blocking()
     {
         var cut = RenderDialog(isOpen: true);
         cut.Render(p => p.Add(d => d.Open, false));
@@ -140,9 +142,35 @@ public class DialogExitAnimationTests : IAsyncLifetime
             Assert.Contains("pointer-events-none", panel.GetAttribute("class") ?? "");
             Assert.DoesNotContain("pointer-events-auto", panel.GetAttribute("class") ?? "");
             Assert.Equal("true", panel.GetAttribute("inert"));
-            // The fading scrim (animate-fade-out) no longer eats page clicks.
-            Assert.Contains("pointer-events-none", cut.Find(".animate-fade-out").GetAttribute("class") ?? "");
+            // The fading scrim still swallows clicks (shields the page until unmount).
+            var backdrop = cut.Find(".animate-fade-out");
+            Assert.Contains("pointer-events-auto", backdrop.GetAttribute("class") ?? "");
+            Assert.DoesNotContain("pointer-events-none", backdrop.GetAttribute("class") ?? "");
         });
+    }
+
+    /// <summary>
+    /// Round-Codex P2: clicking the still-blocking backdrop DURING the exit window
+    /// neither throws nor re-invokes the dismiss/reopen path — HandleBackdropClick
+    /// gates on Context.IsOpen (already false), so the scrim swallows the click as a
+    /// no-op. The panel stays mounted for the zoom-out (no reopen), then the exit
+    /// completes as normal.
+    /// </summary>
+    [Fact]
+    public void Clicking_Exiting_Backdrop_Is_A_NoOp_Not_A_Reopen()
+    {
+        var cut = RenderDialog(isOpen: true);
+        cut.Render(p => p.Add(d => d.Open, false));
+
+        cut.WaitForAssertion(() =>
+            Assert.Contains("animate-zoom-out", cut.Find("[role='dialog']").GetAttribute("class") ?? ""));
+
+        var backdrop = cut.Find(".animate-fade-out");
+        // No throw, and aria-modal stays false (not re-promoted to an open modal).
+        backdrop.Click();
+        var panel = cut.Find("[role='dialog']");
+        Assert.Equal("false", panel.GetAttribute("aria-modal"));
+        Assert.Contains("animate-zoom-out", panel.GetAttribute("class") ?? "");
     }
 
     /// <summary>
