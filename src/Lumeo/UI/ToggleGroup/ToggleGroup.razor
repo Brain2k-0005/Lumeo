@@ -152,7 +152,16 @@
     private string? _lastPushedValue;
     private IEnumerable<string>? _lastPushedSelectedValues;
 
-    private string CssClass => Cx.Merge("flex items-center gap-1", Class);
+    // Vertical orientation must actually stack the items — emitting
+    // aria-orientation/data-orientation=vertical while the root stays a horizontal
+    // `flex items-center` row renders horizontally yet CLAIMS vertical (shadcn/Radix
+    // parity: a vertical toggle-group is a column). The consumer's Class still wins
+    // via Cx.Merge (tailwind-merge collapses a later flex-row / flex-col override).
+    private string CssClass => Cx.Merge(
+        Orientation == Lumeo.Orientation.Vertical
+            ? "flex flex-col items-center gap-1"
+            : "flex items-center gap-1",
+        Class);
 
     // Roving tabindex: the first selected item is the tab stop; if nothing is
     // selected, the first ENABLED item holds it. Arrow keys then move focus among

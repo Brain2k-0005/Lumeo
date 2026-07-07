@@ -558,9 +558,17 @@ public class TrackingInteropService : IComponentInteropService
     /// <summary>When true, <see cref="CopyToClipboard"/> throws
     /// <see cref="JSDisconnectedException"/> to simulate a disconnected circuit.</summary>
     public bool ThrowOnCopyToClipboard { get; set; }
+    /// <summary>When set, <see cref="CopyToClipboard"/> throws this exception
+    /// (checked before <see cref="ThrowOnCopyToClipboard"/>). Lets a test simulate
+    /// the browser REJECTING the clipboard write — an insecure origin or a denied
+    /// permission surfaces from the JS interop as a plain <see cref="JSException"/>,
+    /// distinct from a circuit disconnect.</summary>
+    public Exception? CopyToClipboardException { get; set; }
     public ValueTask CopyToClipboard(string text)
     {
         _copyToClipboardCalls.Add(text);
+        if (CopyToClipboardException is not null)
+            throw CopyToClipboardException;
         if (ThrowOnCopyToClipboard)
             throw new JSDisconnectedException("circuit disconnected");
         return ValueTask.CompletedTask;

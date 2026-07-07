@@ -57,7 +57,10 @@ public class DrawerFocusManagementTests : IAsyncLifetime
 
         Assert.False(cut.Instance.InnerOpen);          // drawer handled Escape and closed
         Assert.True(cut.Instance.OuterOpen);           // outer dialog was never asked to close
-        Assert.Single(cut.FindAll("[role='dialog']")); // only the outer dialog remains
+        // The inner drawer now plays a slide-out before unmounting (the declarative
+        // close animates by default), so it lingers in the DOM briefly. Wait for it
+        // to leave; only the outer dialog should remain.
+        cut.WaitForAssertion(() => Assert.Single(cut.FindAll("[role='dialog']")));
     }
 
     [Fact]

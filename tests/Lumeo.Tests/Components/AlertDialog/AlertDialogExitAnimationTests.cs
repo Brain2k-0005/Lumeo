@@ -19,18 +19,52 @@ public class AlertDialogExitAnimationTests : IAsyncLifetime
     public Task InitializeAsync() => Task.CompletedTask;
     public async Task DisposeAsync() => await _ctx.DisposeAsync();
 
-    private IRenderedComponent<L.AlertDialog> RenderAlertDialog(bool isOpen)
+    // playExit: null → omit the attribute (exercises the COMPONENT default, now
+    // true); true/false → set it explicitly.
+    private IRenderedComponent<L.AlertDialog> RenderAlertDialog(bool isOpen, bool? playExit = true)
     {
         return _ctx.Render<L.AlertDialog>(p => p
             .Add(a => a.Open, isOpen)
             .Add(a => a.ChildContent, (RenderFragment)(b =>
             {
                 b.OpenComponent<L.AlertDialogContent>(0);
-                b.AddAttribute(1, "PlayExitAnimation", true);
+                if (playExit is bool pe) b.AddAttribute(1, "PlayExitAnimation", pe);
                 b.AddAttribute(2, "ChildContent",
                     (RenderFragment)(inner => inner.AddContent(0, "Alert body")));
                 b.CloseComponent();
             })));
+    }
+
+    /// <summary>
+    /// Parity fix: a declarative AlertDialog that does NOT set PlayExitAnimation
+    /// now animates its close by default (the param defaults to true) — the panel
+    /// stays mounted carrying animate-zoom-out instead of vanishing instantly.
+    /// </summary>
+    [Fact]
+    public void Declarative_Close_Animates_By_Default()
+    {
+        var cut = RenderAlertDialog(isOpen: true, playExit: null);
+        cut.Render(p => p.Add(a => a.Open, false));
+
+        cut.WaitForAssertion(() =>
+        {
+            var panel = cut.Find("[role='alertdialog']");
+            Assert.Contains("animate-zoom-out", panel.GetAttribute("class") ?? "");
+        });
+        Assert.Contains("Alert body", cut.Markup);
+    }
+
+    /// <summary>
+    /// The param remains an opt-OUT: PlayExitAnimation=false unmounts immediately
+    /// on close (no exit phase).
+    /// </summary>
+    [Fact]
+    public void PlayExitAnimation_False_Unmounts_Immediately()
+    {
+        var cut = RenderAlertDialog(isOpen: true, playExit: false);
+        cut.Render(p => p.Add(a => a.Open, false));
+
+        Assert.Empty(cut.FindAll("[role='alertdialog']"));
     }
 
     /// <summary>

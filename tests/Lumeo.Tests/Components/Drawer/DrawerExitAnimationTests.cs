@@ -18,8 +18,11 @@ public class DrawerExitAnimationTests : IAsyncLifetime
     public Task InitializeAsync() => Task.CompletedTask;
     public async Task DisposeAsync() => await _ctx.DisposeAsync();
 
+    // playExit: null → omit the attribute (exercises the COMPONENT default, now
+    // true); true/false → set it explicitly.
     private IRenderedComponent<L.Drawer> RenderDrawer(
-        bool isOpen, L.DrawerContent.DrawerAnimation anim, L.Side side = L.Side.Bottom)
+        bool isOpen, L.DrawerContent.DrawerAnimation anim, L.Side side = L.Side.Bottom,
+        bool? playExit = true)
     {
         return _ctx.Render<L.Drawer>(p => p
             .Add(d => d.Open, isOpen)
@@ -28,11 +31,45 @@ public class DrawerExitAnimationTests : IAsyncLifetime
                 b.OpenComponent<L.DrawerContent>(0);
                 b.AddAttribute(1, "Side", side);
                 b.AddAttribute(2, "Animation", anim);
-                b.AddAttribute(3, "PlayExitAnimation", true);
+                if (playExit is bool pe) b.AddAttribute(3, "PlayExitAnimation", pe);
                 b.AddAttribute(4, "ChildContent",
                     (RenderFragment)(inner => inner.AddContent(0, "Drawer body")));
                 b.CloseComponent();
             })));
+    }
+
+    /// <summary>
+    /// Parity fix: a declarative Drawer that does NOT set PlayExitAnimation now
+    /// slides out on close by default (the param defaults to true) — the panel
+    /// stays mounted carrying animate-slide-out-to-bottom instead of vanishing.
+    /// </summary>
+    [Fact]
+    public void Declarative_Close_Animates_By_Default()
+    {
+        var cut = RenderDrawer(isOpen: true, L.DrawerContent.DrawerAnimation.Slide,
+            L.Side.Bottom, playExit: null);
+        cut.Render(p => p.Add(d => d.Open, false));
+
+        cut.WaitForAssertion(() =>
+        {
+            var panel = cut.Find("[role='dialog']");
+            Assert.Contains("animate-slide-out-to-bottom", panel.GetAttribute("class") ?? "");
+        });
+        Assert.Contains("Drawer body", cut.Markup);
+    }
+
+    /// <summary>
+    /// The param remains an opt-OUT: PlayExitAnimation=false unmounts immediately
+    /// on close (no exit phase).
+    /// </summary>
+    [Fact]
+    public void PlayExitAnimation_False_Unmounts_Immediately()
+    {
+        var cut = RenderDrawer(isOpen: true, L.DrawerContent.DrawerAnimation.Slide,
+            L.Side.Bottom, playExit: false);
+        cut.Render(p => p.Add(d => d.Open, false));
+
+        Assert.Empty(cut.FindAll("[role='dialog']"));
     }
 
     /// <summary>

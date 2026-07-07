@@ -28,11 +28,13 @@
     [CascadingParameter] public AlertDialog.AlertDialogContext Context { get; set; } = default!;
     [Parameter] public RenderFragment? ChildContent { get; set; }
     [Parameter] public string? Class { get; set; }
-    /// <summary>When <c>true</c>, closing keeps the panel mounted for a brief
-    /// zoom-out (and backdrop fade-out) before unmounting instead of vanishing
-    /// instantly. Set by <see cref="OverlayProvider"/> for service-opened alert
-    /// dialogs. Defaults to <c>false</c> so declarative usage is unchanged.</summary>
-    [Parameter] public bool PlayExitAnimation { get; set; }
+    /// <summary>When <c>true</c> (the default), closing keeps the panel mounted for
+    /// a brief zoom-out (and backdrop fade-out) before unmounting instead of
+    /// vanishing instantly — so a declarative alert dialog animates its close the
+    /// same way <see cref="OverlayProvider"/> already animates service-opened ones.
+    /// Set to <c>false</c> to opt OUT (immediate unmount) for tests or consumers
+    /// who want an instant dismiss.</summary>
+    [Parameter] public bool PlayExitAnimation { get; set; } = true;
     /// <summary>Backdrop z-index. Content sits at <c>ZIndex + 1</c>. Defaults
     /// to <see cref="OverlayService.BaseZIndex"/>; <see cref="OverlayProvider"/>
     /// supplies an incrementing value per nested overlay.</summary>
@@ -63,7 +65,8 @@
     // FALLBACK window only — the real unmount is the panel's animationend
     // (OnExitAnimationEnd). Sits above the 0.15s zoom-out so the timer never
     // preempts a slightly-late animationend; covers only the JS-dead / lost-event
-    // case. 0 when no exit animation is requested (declarative) → immediate unmount.
+    // case. 0 only when the exit is opted OUT (PlayExitAnimation=false) → immediate
+    // unmount.
     private int ExitDurationMs => PlayExitAnimation ? 280 : 0;
 
     private int BackdropZ => ZIndex;
@@ -89,9 +92,9 @@
         // gate). On Blazor Server the open interop is a chain of round-trips; keying
         // the zoom-out off `_shownOpen` (flipped true the instant we first render
         // open) makes it play whenever the dismiss lands, and scheduling the unmount
-        // here means the panel is never stranded mounted. Declarative alert dialogs
-        // keep ExitDurationMs == 0 (PlayExitAnimation false) → immediate unmount as
-        // before. (B11.)
+        // here means the panel is never stranded mounted. Opting the exit OUT
+        // (PlayExitAnimation=false) keeps ExitDurationMs == 0 → immediate unmount.
+        // (B11.)
         if (Context.IsOpen)
         {
             if (_exiting)

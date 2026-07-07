@@ -95,6 +95,30 @@
     //   item drops it from _registeredItems, so the VISIBLE id falls to null and
     //   the Viewport closes — but the controlled Value stays authoritative in
     //   _open, so re-registering the item re-opens it automatically. No sentinel.
+    //
+    // KEYBOARD FOCUS INTENT (_focusContentOnOpenItemId lifecycle):
+    //   A trigger's ArrowDown LATCHES this one-shot intent for its item, then emits
+    //   the open. Only a KEYBOARD open moves focus INTO the content (Radix); a
+    //   programmatic / hover open must not. The intent is resolved where the state
+    //   actually settles:
+    //     • SET   — trigger.RequestContentFocusOnOpen (ArrowDown), before emitting.
+    //     • CONSUME (focus fires) — NavigationMenuContent.OnAfterRenderAsync once the
+    //       content for that item has rendered (TryConsumeContentFocusRequest).
+    //     • RESOLVE post-render (OnAfterRender), NOT right after
+    //       ValueChanged.InvokeAsync. At that earlier point _open still holds the OLD
+    //       value (the parent pushes the new Value back through a LATER parameter
+    //       set), so an accept could not yet be distinguished from a veto — clearing
+    //       there dropped the intent even on an ACCEPTED open and lost the focus
+    //       (round-8). It is also NOT sufficient to resolve only in OnParametersSet:
+    //       a controlled VETO re-renders the menu with no parameter change (the emit
+    //       StateHasChanges this component as the SetActiveItemId receiver), so
+    //       OnParametersSet never runs to see it. Once a render settles, _open is
+    //       authoritative: intent == _open ⇒ the open was accepted, keep it (the
+    //       content will consume it and focus); intent != _open ⇒ veto / one-way /
+    //       unrelated render, so drop the stale intent before a LATER parent-
+    //       initiated open of that same item can inherit it and steal focus.
+    //     • CLEAR on unregistration — a torn-down item can't legitimately receive a
+    //       deferred focus (safety; UnregisterItem).
     // ────────────────────────────────────────────────────────────────────────
 
     // The intended-open item id (source of truth). The visible id is this gated
@@ -130,6 +154,24 @@
         if (IsControlled) _open = Value;
     }
 
+    // Resolve any latched keyboard focus intent AFTER the render settles (see the
+    // KEYBOARD FOCUS INTENT block above). This runs post-render rather than in
+    // OnParametersSet because a VETO in controlled mode re-renders the menu WITHOUT
+    // a parameter change (the emit's StateHasChanged fires on this component as the
+    // SetActiveItemId callback receiver, but Value never moves), so OnParametersSet
+    // is never entered to observe it. By the time a render completes, _open reflects
+    // the settled state: on an ACCEPTED open the adopting OnParametersSet has set
+    // _open to the latched item (== intent → keep it; NavigationMenuContent focuses
+    // once it renders); on a VETO/one-way/unrelated render _open is still something
+    // else (!= intent → drop the stale intent so a LATER parent-initiated open of
+    // that same item can't inherit it and steal focus). Clearing a field here does
+    // not itself request a re-render, so this cannot loop.
+    protected override void OnAfterRender(bool firstRender)
+    {
+        if (_focusContentOnOpenItemId is not null && _focusContentOnOpenItemId != _open)
+            _focusContentOnOpenItemId = null;
+    }
+
     // Ordered list of top-level trigger element ids, registered by each
     // NavigationMenuItem so the menu can move focus between them with the arrow
     // keys (roving — APG navigation pattern). Registration follows DOM order
@@ -155,17 +197,14 @@
             // back. Do NOT touch _open — the render reflects only what the parent
             // adopts. With a one-way Value (no ValueChanged delegate) the invoke is
             // a no-op, so interaction is inert (fully controlled — round-5 b).
+            //
+            // Do NOT resolve the keyboard focus intent here: _open still holds the
+            // OLD value at this point (the parent pushes the accepted Value back
+            // through a LATER OnParametersSet), so `_open != value` is true even on
+            // an ACCEPTED open — clearing here dropped the intent and lost the focus
+            // (round-8). The intent is resolved at ADOPTION time in OnParametersSet
+            // instead, where an accept and a veto are actually distinguishable.
             await ValueChanged.InvokeAsync(value);
-
-            // The open is adopted only if the parent pushed `value` back into _open
-            // (verbatim, in OnParametersSet). If it did NOT adopt — a one-way Value
-            // with no handler, or a handler that vetoes — a keyboard ArrowDown has
-            // already latched _focusContentOnOpenItemId for this item via the
-            // trigger. Drop that stale intent now so a LATER parent-initiated open of
-            // the same item can't inherit it and steal focus into the content
-            // (round-6/7). Adopting keyboard opens keep the intent (_open == value).
-            if (_open != value && _focusContentOnOpenItemId == value)
-                _focusContentOnOpenItemId = null;
         }
         else
         {

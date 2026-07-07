@@ -20,18 +20,54 @@ public class DialogExitAnimationTests : IAsyncLifetime
     public Task InitializeAsync() => Task.CompletedTask;
     public async Task DisposeAsync() => await _ctx.DisposeAsync();
 
-    private IRenderedComponent<L.Dialog> RenderDialog(bool isOpen)
+    // playExit: null → omit the attribute entirely (exercises the COMPONENT
+    // default, which is now true); true/false → set it explicitly.
+    private IRenderedComponent<L.Dialog> RenderDialog(bool isOpen, bool? playExit = true)
     {
         return _ctx.Render<L.Dialog>(p => p
             .Add(d => d.Open, isOpen)
             .Add(d => d.ChildContent, (RenderFragment)(b =>
             {
                 b.OpenComponent<L.DialogContent>(0);
-                b.AddAttribute(1, "PlayExitAnimation", true);
+                if (playExit is bool pe) b.AddAttribute(1, "PlayExitAnimation", pe);
                 b.AddAttribute(2, "ChildContent",
                     (RenderFragment)(inner => inner.AddContent(0, "Body")));
                 b.CloseComponent();
             })));
+    }
+
+    /// <summary>
+    /// Parity fix: a declarative Dialog that does NOT set PlayExitAnimation now
+    /// animates its close by default (the param defaults to true) — the panel
+    /// stays mounted carrying animate-zoom-out instead of vanishing instantly,
+    /// matching the declarative Sheet and the shadcn close choreography.
+    /// </summary>
+    [Fact]
+    public void Declarative_Close_Animates_By_Default()
+    {
+        var cut = RenderDialog(isOpen: true, playExit: null);
+        cut.Render(p => p.Add(d => d.Open, false));
+
+        cut.WaitForAssertion(() =>
+        {
+            var panel = cut.Find("[role='dialog']");
+            Assert.Contains("animate-zoom-out", panel.GetAttribute("class") ?? "");
+        });
+        // Still mounted during the exit window (not vanished).
+        Assert.Contains("Body", cut.Markup);
+    }
+
+    /// <summary>
+    /// The param remains an opt-OUT: PlayExitAnimation=false unmounts the panel
+    /// immediately on close (no exit phase) — for tests/consumers wanting instant.
+    /// </summary>
+    [Fact]
+    public void PlayExitAnimation_False_Unmounts_Immediately()
+    {
+        var cut = RenderDialog(isOpen: true, playExit: false);
+        cut.Render(p => p.Add(d => d.Open, false));
+
+        Assert.Empty(cut.FindAll("[role='dialog']"));
     }
 
     /// <summary>

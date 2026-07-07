@@ -87,13 +87,14 @@ else if (Context.IsOpen || _exiting)
     [Parameter] public bool? ShowCloseButton { get; set; }
     [Parameter] public DialogSize Size { get; set; } = DialogSize.Default;
     [Parameter] public bool Scrollable { get; set; }
-    /// <summary>When <c>true</c>, closing the dialog keeps the panel mounted for a
-    /// brief zoom-out (and backdrop fade-out) before unmounting, instead of
-    /// vanishing instantly. Set by <see cref="OverlayProvider"/> for
-    /// service-opened dialogs so a programmatic close animates out the same way a
-    /// declarative Sheet already does. Defaults to <c>false</c> so declarative
-    /// <c>&lt;DialogContent&gt;</c> usage is unchanged (immediate unmount on close).</summary>
-    [Parameter] public bool PlayExitAnimation { get; set; }
+    /// <summary>When <c>true</c> (the default), closing the dialog keeps the panel
+    /// mounted for a brief zoom-out (and backdrop fade-out) before unmounting,
+    /// instead of vanishing instantly — so a declarative <c>&lt;DialogContent&gt;</c>
+    /// animates its close the same way a declarative Sheet already does, and the
+    /// same way <see cref="OverlayProvider"/> already animates service-opened
+    /// dialogs. Set to <c>false</c> to opt OUT (immediate unmount on close) for
+    /// tests or consumers who want an instant dismiss.</summary>
+    [Parameter] public bool PlayExitAnimation { get; set; } = true;
     [Parameter] public string? Class { get; set; }
     /// <summary>
     /// Backdrop z-index. Content sits at <c>ZIndex + 1</c>. Defaults to
@@ -130,8 +131,8 @@ else if (Context.IsOpen || _exiting)
     // FALLBACK window only — the real unmount is the panel's animationend
     // (OnExitAnimationEnd). Sits above the 0.15s zoom-out so the timer never
     // preempts a slightly-late animationend; it covers only the JS-dead /
-    // lost-event case. 0 when no exit animation is requested (declarative default)
-    // → immediate unmount.
+    // lost-event case. 0 only when the exit animation is opted OUT
+    // (PlayExitAnimation=false) → immediate unmount.
     private int ExitDurationMs => PlayExitAnimation ? 280 : 0;
 
     private int BackdropZ => ZIndex;
@@ -174,9 +175,9 @@ else if (Context.IsOpen || _exiting)
         // round-trips; a dismiss can land while it's still in flight — keying the
         // zoom-out off `_shownOpen` (flipped true the instant we first render open)
         // makes it play whenever the dismiss arrives, and scheduling the unmount
-        // here means the panel is never stranded mounted. Declarative dialogs keep
-        // ExitDurationMs == 0 (PlayExitAnimation false) → immediate unmount as
-        // before. (B11.)
+        // here means the panel is never stranded mounted. Opting the exit OUT
+        // (PlayExitAnimation=false) keeps ExitDurationMs == 0 → immediate unmount.
+        // (B11.)
         if (Context.IsOpen)
         {
             if (_exiting)

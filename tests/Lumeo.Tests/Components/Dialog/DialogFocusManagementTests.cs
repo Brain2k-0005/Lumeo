@@ -83,7 +83,10 @@ public class DialogFocusManagementTests : IAsyncLifetime
 
         Assert.False(cut.Instance.InnerOpen);          // inner handled Escape and closed
         Assert.True(cut.Instance.OuterOpen);           // outer was never asked to close
-        Assert.Single(cut.FindAll("[role='dialog']")); // only the outer dialog remains
+        // The inner dialog now plays an exit animation before unmounting (the
+        // declarative close animates by default), so it lingers in the DOM briefly.
+        // Wait for it to leave; only the outer dialog should remain.
+        cut.WaitForAssertion(() => Assert.Single(cut.FindAll("[role='dialog']")));
     }
 
     // --- Focus trap lifecycle: close path 1 (Open flipped false externally) ---

@@ -113,6 +113,13 @@ public class DialogControlledRollbackTests : IAsyncLifetime
 
         cut.Render(p => p.Add(d => d.Open, false));
 
-        Assert.Empty(cut.FindAll("[role='dialog']"));
+        // Declarative close now animates by default (PlayExitAnimation defaults to
+        // true): the panel stays mounted for the zoom-out window, then unmounts on
+        // the fallback timer. Poll for the eventual unmount instead of asserting it
+        // synchronously. (Generous ceiling so a starved thread pool under parallel
+        // load can't trip the ~280 ms fallback.)
+        cut.WaitForAssertion(
+            () => Assert.Empty(cut.FindAll("[role='dialog']")),
+            timeout: TimeSpan.FromSeconds(5));
     }
 }

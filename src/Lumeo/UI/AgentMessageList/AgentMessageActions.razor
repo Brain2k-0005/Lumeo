@@ -57,14 +57,22 @@
     private async Task CopyAsync()
     {
         if (CopyText is null) return;
-        // If the clipboard write fails (e.g. a disconnected Server circuit, or a
-        // disposed interop during teardown) we must NOT show the "Copied"
-        // confirmation or fire OnCopy — nothing was copied. Bail out silently: the
-        // label stays "Copy" so the user can retry. Surfacing a visible error state
-        // is left to consumers via OnCopy-less flows (no extra parameter added).
+        // If the clipboard write fails we must NOT show the "Copied" confirmation
+        // or fire OnCopy — nothing was copied. Bail out silently: the label stays
+        // "Copy" so the user can retry. The failure modes we swallow:
+        //   • JSDisconnectedException — dead Server circuit.
+        //   • ObjectDisposedException — interop disposed during teardown.
+        //   • JSException — the browser REJECTED the clipboard write itself: an
+        //     insecure (non-HTTPS) origin has no navigator.clipboard, or the user
+        //     denied the clipboard permission. This surfaces from the JS interop as
+        //     a plain JSException (NOT a disconnect), so without this catch the Copy
+        //     button would THROW instead of taking the silent no-op path.
+        // Surfacing a visible error state is left to consumers via OnCopy-less flows
+        // (no extra parameter added).
         try { await Interop.CopyToClipboard(CopyText); }
         catch (JSDisconnectedException) { return; }
         catch (ObjectDisposedException) { return; }
+        catch (JSException) { return; }
 
         _copied = true;
         StateHasChanged();

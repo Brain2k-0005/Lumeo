@@ -48,6 +48,22 @@ public class ProgressDataStateTests : IAsyncLifetime
     }
 
     [Fact]
+    public void NoLabel_Linear_Indicator_Carries_Data_Hooks()
+    {
+        // Round-8 (Codex): the ShowLabel=true branch put data-state/value/max on BOTH
+        // the progressbar root and its fill indicator, but the default (no-label)
+        // linear branch put them only on the root — the indicator div was bare.
+        // Fix mirrors the label branch: the indicator carries all three too.
+        var cut = _ctx.Render<Lumeo.Progress>(p => p.Add(x => x.Value, 40));
+        // Default: ShowLabel=false, Shape=Linear → root is the progressbar, its only
+        // child div is the fill indicator.
+        var indicator = cut.Find("[role=progressbar] > div");
+        Assert.Equal("loading", indicator.GetAttribute("data-state"));
+        Assert.Equal("40", indicator.GetAttribute("data-value"));
+        Assert.Equal("100", indicator.GetAttribute("data-max"));
+    }
+
+    [Fact]
     public void Custom_Max_Reflected_In_DataMax()
     {
         var cut = _ctx.Render<Lumeo.Progress>(p => p

@@ -2,6 +2,7 @@ using Bunit;
 using Lumeo.Services;
 using Lumeo.Tests.Helpers;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.JSInterop;
 using Xunit;
 
 namespace Lumeo.Tests.Components.AgentMessageList;
@@ -43,6 +44,32 @@ public class AgentMessageActionsCopyFailureTests : IAsyncLifetime
         // The clipboard write was attempted...
         Assert.Contains("hello world", _interop.CopyToClipboardCalls);
         // ...but it failed, so NO "Copied" confirmation and OnCopy never fired.
+        Assert.DoesNotContain("Copied", cut.Markup);
+        Assert.NotEmpty(cut.FindAll("[aria-label='Copy']")); // label stayed "Copy"
+        Assert.Equal(0, copied);
+    }
+
+    [Fact]
+    public void Copy_Browser_Denial_JSException_Is_Silent_No_Op_Not_A_Throw()
+    {
+        // Round-8 (Codex): a browser clipboard REJECTION — an insecure (non-HTTPS)
+        // origin has no navigator.clipboard, or the user denied the permission —
+        // surfaces from the interop as a plain JSException, NOT a disconnect. The
+        // pre-fix catches (JSDisconnectedException / ObjectDisposedException) missed
+        // it, so clicking Copy THREW instead of taking the silent-no-op path.
+        _interop.CopyToClipboardException = new JSException("permission denied");
+        var copied = 0;
+
+        var cut = _ctx.Render<Lumeo.AgentMessageActions>(p => p
+            .Add(x => x.CopyText, "hello world")
+            .Add(x => x.OnCopy, _ => copied++));
+
+        // Must NOT throw...
+        var ex = Record.Exception(() => cut.Find("[aria-label='Copy']").Click());
+        Assert.Null(ex);
+
+        // ...the write was attempted, but failed → no confirmation, OnCopy skipped.
+        Assert.Contains("hello world", _interop.CopyToClipboardCalls);
         Assert.DoesNotContain("Copied", cut.Markup);
         Assert.NotEmpty(cut.FindAll("[aria-label='Copy']")); // label stayed "Copy"
         Assert.Equal(0, copied);

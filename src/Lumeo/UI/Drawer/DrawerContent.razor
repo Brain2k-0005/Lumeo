@@ -75,12 +75,13 @@ else if (Context.IsOpen || _exiting)
     [Parameter] public EventCallback<int> ActiveSnapPointChanged { get; set; }
 
     [Parameter] public string? Class { get; set; }
-    /// <summary>When <c>true</c>, closing keeps the panel mounted for a slide/fade
-    /// out before unmounting instead of vanishing instantly. Set by
-    /// <see cref="OverlayProvider"/> for service-opened drawers. Defaults to
-    /// <c>false</c> so declarative usage is unchanged. Ignored in snap-point mode
-    /// (the JS gesture owns the transform).</summary>
-    [Parameter] public bool PlayExitAnimation { get; set; }
+    /// <summary>When <c>true</c> (the default), closing keeps the panel mounted for
+    /// a slide/fade out before unmounting instead of vanishing instantly — so a
+    /// declarative drawer animates its close the same way <see cref="OverlayProvider"/>
+    /// already animates service-opened ones. Set to <c>false</c> to opt OUT
+    /// (immediate unmount) for tests or consumers who want an instant dismiss.
+    /// Ignored in snap-point mode (the JS gesture owns the transform).</summary>
+    [Parameter] public bool PlayExitAnimation { get; set; } = true;
     /// <summary>Backdrop z-index. Content sits at <c>ZIndex + 1</c>. Defaults
     /// to <see cref="OverlayService.BaseZIndex"/>; <see cref="OverlayProvider"/>
     /// supplies an incrementing value per nested overlay.</summary>
@@ -111,8 +112,8 @@ else if (Context.IsOpen || _exiting)
     // FALLBACK window only — the real unmount is the panel's animationend
     // (OnExitAnimationEnd). Sits above the CSS duration (slide 300ms, fade 150ms)
     // so the timer never preempts a slightly-late animationend; it covers only the
-    // JS-dead / lost-event case. 0 when no exit animation applies (declarative
-    // default, snap mode, or Animation=None) → immediate unmount.
+    // JS-dead / lost-event case. 0 when no exit animation applies (exit opted out
+    // via PlayExitAnimation=false, snap mode, or Animation=None) → immediate unmount.
     private int ExitDurationMs => (PlayExitAnimation && !UsesSnapPoints)
         ? (Animation switch { DrawerAnimation.Slide => 450, DrawerAnimation.Fade => 260, _ => 0 })
         : 0;
@@ -404,9 +405,9 @@ else if (Context.IsOpen || _exiting)
         // gate). On Blazor Server the open interop is a chain of round-trips; keying
         // the slide/fade-out off `_shownOpen` (flipped true the instant we first
         // render open) makes it play whenever the dismiss lands, and scheduling the
-        // unmount here means the panel is never stranded mounted. Snap mode +
-        // declarative drawers keep ExitDurationMs == 0 → immediate unmount as
-        // before. (B11.)
+        // unmount here means the panel is never stranded mounted. Snap mode + an
+        // opted-out exit (PlayExitAnimation=false) keep ExitDurationMs == 0 →
+        // immediate unmount. (B11.)
         if (Context.IsOpen)
         {
             if (_exiting)
