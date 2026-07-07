@@ -1,0 +1,61 @@
+@namespace Lumeo
+
+@* Toggle item inside a menubar menu (shadcn MenubarCheckboxItem). Mirrors
+   DropdownMenuCheckboxItem 1:1 — the check indicator lives in the ps-8 gutter and
+   toggling emits CheckedChanged without closing the menu, so several toggles can
+   be flipped in one open. *@
+<button type="button" role="menuitemcheckbox" aria-checked="@_checked.ToString().ToLower()" tabindex="-1" class="@CssClass" @onclick="Toggle" disabled="@Disabled" @attributes="AdditionalAttributes">
+    <span class="flex h-3.5 w-3.5 items-center justify-center">
+        @if (_checked)
+        {
+            <SvgGlyph Svg="@(LumeoIcons.Check)" class="h-3.5 w-3.5" />
+        }
+    </span>
+    @ChildContent
+</button>
+
+@code {
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public bool Checked { get; set; }
+    [Parameter] public EventCallback<bool> CheckedChanged { get; set; }
+    [Parameter] public bool Disabled { get; set; }
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    // Checked state lives in a private backing field, not the [Parameter], so an
+    // uncontrolled item's optimistic toggle survives a parent re-render that
+    // pushes the same (stale) Checked value. Seeded from Checked only on a genuine
+    // change — mirrors DropdownMenuCheckboxItem.
+    private bool _checked;
+    private bool _lastCheckedParam;
+    private bool _lastPushed;   // the last value WE emitted via CheckedChanged
+
+    protected override void OnParametersSet()
+    {
+        if (CheckedChanged.HasDelegate)
+        {
+            // Controlled: adopt any incoming Checked that isn't the echo of our own toggle — a parent
+            // veto (re-render with the OLD value) rolls the visible state back; an echo is a no-op.
+            if (Checked != _lastPushed)
+            {
+                _checked = Checked;
+                _lastPushed = Checked;
+            }
+        }
+        else if (Checked != _lastCheckedParam)   // Uncontrolled: adopt only on a genuine param change
+        {
+            _checked = Checked;
+            _lastCheckedParam = Checked;
+        }
+    }
+
+    private string CssClass => Cx.Merge("relative flex w-full cursor-default select-none items-center gap-2 rounded-sm ps-8 pe-2 py-1.5 text-sm outline-none transition-colors hover:bg-accent hover:text-accent-foreground focus:bg-accent focus:text-accent-foreground disabled:pointer-events-none disabled:opacity-50 disabled:cursor-not-allowed", Class);
+
+    private async Task Toggle()
+    {
+        if (Disabled) return;
+        _checked = !_checked;
+        _lastPushed = _checked;   // record what we're about to push so a synchronous parent veto is detectable
+        await CheckedChanged.InvokeAsync(_checked);
+    }
+}

@@ -1,14 +1,21 @@
 @namespace Lumeo
 @implements IAsyncDisposable
+@implements IOverlayExitCallback
 
-@if (Context.IsOpen)
+@if (_exit.Present(Context.IsOpen))
 {
+    @* Kept mounted through the exit window (Context.IsOpen == false but _exit.Exiting)
+       so the zoom/fade-out keyframe plays — Radix-Presence parity via the shared B11
+       attachOverlayExitEnd infra. data-state mirrors Radix so consumers can drive
+       data-[state=closed]:… CSS; the existing animate-* class stays additive. *@
     <div id="@Context.ContentId"
          role="menu"
          aria-orientation="vertical"
+         data-state="@(Context.IsOpen ? "open" : "closed")"
          class="@CssClass"
          @onkeydown="HandleKeyDown"
          tabindex="-1"
+         inert="@ExitInert"
          @attributes="AdditionalAttributes">
         @ChildContent
         @if (ShowArrow)
@@ -33,8 +40,29 @@
     private int _focusedIndex = -1;
     private readonly Lumeo.Services.MenuTypeahead _typeahead = new();
 
+    // B11 exit latch (shared infra). zoom-out fallback window sits above the 0.15s
+    // CSS keyframe so the timer never preempts a slightly-late animationend on the
+    // happy path (the real unmount is the panel's own animationend via
+    // attachOverlayExitEnd); it only covers the JS-dead / lost-event case.
+    private readonly OverlayExitAnimator _exit = new();
+    private DotNetObjectReference<DropdownMenuContent>? _selfRef;
+    private const int ExitDurationMs = 250;
+
+    // Enter keeps the existing fade-in; exit uses zoom-out (scale-down + fade) —
+    // the shadcn/Radix menu dismiss (data-[state=closed]:zoom-out-95 + fade-out).
+    // pointer-events-none during the exit window (data-state=closed but still
+    // mounted) makes the fading surface inert: a double-click / second tap can no
+    // longer re-invoke a menu item while it animates out (Codex/CodeRabbit P2).
+    private string AnimationClass => _exit.Exiting ? "animate-zoom-out pointer-events-none" : "animate-fade-in";
+
+    // `inert` (exit window only) removes the menu's native <button> items from the tab
+    // order so keyboard users can't Tab into the visually-closed menu mid-exit (round-2
+    // P2). Focus was restored to the trigger on close, so inert traps nothing.
+    private string? ExitInert => _exit.Exiting ? "true" : null;
+
     private string CssClass => Cx.Merge(
-        "fixed z-50 min-w-[8rem] rounded-md border border-border/60 bg-popover p-1 text-popover-foreground shadow-lg animate-fade-in",
+        "fixed z-50 min-w-[8rem] rounded-md border border-border/60 bg-popover p-1 text-popover-foreground shadow-lg",
+        AnimationClass,
         ShowArrow ? "overflow-visible" : "overflow-hidden",
         Class);
 
@@ -62,6 +90,13 @@
         Lumeo.Side.Right => "right",
         _ => "bottom"
     };
+
+    // Latch the exit on the open->closed transition so the panel stays mounted for
+    // the zoom-out. Cleanup (focus restore / click-outside / unposition) still runs
+    // immediately on close in OnAfterRenderAsync — unpositionFixed leaves the inline
+    // top/left, so the box stays pinned while it animates out.
+    protected override void OnParametersSet()
+        => _exit.OnParameters(Context.IsOpen, ExitDurationMs, () => InvokeAsync(FinishExit));
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -91,6 +126,25 @@
         {
             await Cleanup();
         }
+
+        // Once the exit render has committed the zoom-out class, hand the unmount to
+        // the panel's own animationend (attachOverlayExitEnd). The fallback timer
+        // stays armed for the JS-dead case. Wires once per exit.
+        await _exit.WireExitAsync(async () =>
+        {
+            _selfRef ??= DotNetObjectReference.Create(this);
+            try { await Interop.AttachOverlayExitEnd(Context.ContentId, _selfRef); }
+            catch (JSDisconnectedException) { }
+        });
+    }
+
+    // Invoked from JS once the zoom-out finishes; idempotent with the fallback timer.
+    [JSInvokable]
+    public Task OnExitAnimationEnd() => InvokeAsync(FinishExit);
+
+    private void FinishExit()
+    {
+        if (_exit.Finish()) StateHasChanged();
     }
 
     private async Task HandleKeyDown(KeyboardEventArgs e)
@@ -168,6 +222,8 @@
 
     public async ValueTask DisposeAsync()
     {
+        _exit.Dispose();
+        _selfRef?.Dispose();
         if (_registered) await Cleanup();
     }
 

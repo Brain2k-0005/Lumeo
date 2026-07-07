@@ -110,8 +110,13 @@ public class SplitButtonBehaviorTests : IAsyncLifetime
         // Re-find: the trigger element is re-rendered on open.
         Trigger(cut).Click();
 
-        Assert.Empty(cut.FindAll("[role='menu']"));
+        // aria-expanded flips SYNCHRONOUSLY on the trigger the moment the menu closes —
+        // the exit animation only delays the menu's DOM removal, not the trigger state.
+        // Assert it before polling for the (animation-delayed) unmount.
         Assert.Equal("false", Trigger(cut).GetAttribute("aria-expanded"));
+
+        // Menu then plays its zoom-out exit before unmounting (B11 parity) — poll for removal.
+        cut.WaitForAssertion(() => Assert.Empty(cut.FindAll("[role='menu']")), timeout: TimeSpan.FromSeconds(5));
     }
 
     [Fact]

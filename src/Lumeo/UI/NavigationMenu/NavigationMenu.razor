@@ -2,7 +2,13 @@
 @inject IComponentInteropService Interop
 
 @{
-    var context = new NavigationMenuContext(_activeItemId, EventCallback.Factory.Create<string?>(this, SetActiveItemId), this);
+    // Visible open item = the intended-open id, but ONLY once a matching item has
+    // actually registered. An intent that points at an unregistered id (not yet
+    // mounted, or removed) renders as "nothing open" so the Viewport/Indicator
+    // never open a blank panel for a non-existent item (round-5 a). It flips back
+    // to open automatically when the item (re-)registers.
+    var visibleActiveId = _open is not null && _registeredItems.Contains(_open) ? _open : null;
+    var context = new NavigationMenuContext(visibleActiveId, EventCallback.Factory.Create<string?>(this, SetActiveItemId), this, DelayDuration);
 }
 
 @* aria-label names the navigation landmark so AT users can distinguish it from
@@ -18,10 +24,153 @@
 
     /// <summary>Accessible name for the &lt;nav&gt; landmark. Defaults to "Main".</summary>
     [Parameter] public string Label { get; set; } = "Main";
+
+    /// <summary>
+    /// Controlled value of the currently-open item. Bind with
+    /// <c>@bind-Value</c>/<see cref="ValueChanged"/>. The value matches the open
+    /// <see cref="NavigationMenuItem.Value"/> (or its auto id when none is set);
+    /// <c>null</c> means no submenu is open. Leave unset for uncontrolled use.
+    /// </summary>
+    [Parameter] public string? Value { get; set; }
+
+    /// <summary>Raised when the open item changes (user hover/click/keyboard, or an
+    /// item close). Carries the new open item's value, or <c>null</c> when closed.</summary>
+    [Parameter] public EventCallback<string?> ValueChanged { get; set; }
+
+    /// <summary>Initial open item for uncontrolled use (ignored once <see cref="Value"/>
+    /// is bound). <c>null</c> (default) opens nothing.</summary>
+    [Parameter] public string? DefaultValue { get; set; }
+
+    /// <summary>
+    /// Grace window in milliseconds before a hovered submenu closes after the
+    /// pointer leaves it. Radix's forgiveness delay: moving between adjacent
+    /// triggers, or briefly slipping off the panel, does not immediately dismiss.
+    /// Defaults to 150ms.
+    /// </summary>
+    [Parameter] public int DelayDuration { get; set; } = 150;
+
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
-    private string? _activeItemId;
+    // ────────────────────────────────────────────────────────────────────────
+    // Controlled-value state machine (one coherent design; supersedes the round
+    // 2-4 echo-guard / sentinel / _lastValueParam patches).
+    //
+    // CONTROLLED vs UNCONTROLLED — single definition (`IsControlled`):
+    //   controlled  ⇔  ValueChanged.HasDelegate  OR  a non-null Value was EVER
+    //                  supplied (_valueEverNonNull latch).
+    //   Blazor cannot tell an unset parameter from an explicit null, so a lone
+    //   null Value is ambiguous. Convention: treat the menu as controlled the
+    //   moment EITHER a change handler is bound (@bind-Value / a listener) OR a
+    //   non-null Value is seen — and, once seen, stay controlled (the latch),
+    //   mirroring React where `value !== undefined` makes the component
+    //   controlled for its whole life. A menu with neither is uncontrolled.
+    //
+    // INTENT vs VISIBLE:
+    //   `_open` is the intended-open id (the state machine's single source of
+    //   truth). The VISIBLE open id (exposed on the context, read by Viewport/
+    //   Trigger/Indicator/Content) is `_open` gated through `_registeredItems`:
+    //   an id with no mounted item shows as closed (computed in the razor block).
+    //
+    // ADOPTION (parent → machine, in OnParametersSet):
+    //   • Seed once: controlled ⇒ _open = Value (verbatim, incl. null = closed;
+    //     DefaultValue ignored — Radix). Uncontrolled ⇒ _open = DefaultValue.
+    //   • Thereafter, controlled ⇒ adopt Value VERBATIM every parameter set (the
+    //     parent is authoritative; there is no echo to guard because interactions
+    //     no longer mutate _open in controlled mode). Uncontrolled ⇒ the parent's
+    //     Value is not authoritative; _open is owned by interaction.
+    //
+    // INTERACTION (user → machine, in SetActiveItemId):
+    //   • Uncontrolled: mutate _open freely and re-render (optimistic).
+    //   • Controlled + handler: emit ValueChanged only; do NOT mutate _open —
+    //     render solely what the parent pushes back (a veto = re-render with the
+    //     old Value, so nothing to roll back).
+    //   • One-way controlled (Value supplied, NO handler): ValueChanged is a
+    //     no-op delegate, so the same "emit, don't mutate" path makes interaction
+    //     inert — the effective open item cannot change (round-5 b, Radix: a
+    //     `value` prop without `onValueChange` is fully controlled).
+    //
+    // REMOVAL / RE-ADD (item lifecycle → machine):
+    //   Registration is (un)registered by NavigationMenuItem. Removing the active
+    //   item drops it from _registeredItems, so the VISIBLE id falls to null and
+    //   the Viewport closes — but the controlled Value stays authoritative in
+    //   _open, so re-registering the item re-opens it automatically. No sentinel.
+    //
+    // KEYBOARD FOCUS INTENT (_focusContentOnOpenItemId lifecycle):
+    //   A trigger's ArrowDown LATCHES this one-shot intent for its item, then emits
+    //   the open. Only a KEYBOARD open moves focus INTO the content (Radix); a
+    //   programmatic / hover open must not. The intent is resolved where the state
+    //   actually settles:
+    //     • SET   — trigger.RequestContentFocusOnOpen (ArrowDown), before emitting.
+    //     • CONSUME (focus fires) — NavigationMenuContent.OnAfterRenderAsync once the
+    //       content for that item has rendered (TryConsumeContentFocusRequest).
+    //     • RESOLVE post-render (OnAfterRender), NOT right after
+    //       ValueChanged.InvokeAsync. At that earlier point _open still holds the OLD
+    //       value (the parent pushes the new Value back through a LATER parameter
+    //       set), so an accept could not yet be distinguished from a veto — clearing
+    //       there dropped the intent even on an ACCEPTED open and lost the focus
+    //       (round-8). It is also NOT sufficient to resolve only in OnParametersSet:
+    //       a controlled VETO re-renders the menu with no parameter change (the emit
+    //       StateHasChanges this component as the SetActiveItemId receiver), so
+    //       OnParametersSet never runs to see it. Once a render settles, _open is
+    //       authoritative: intent == _open ⇒ the open was accepted, keep it (the
+    //       content will consume it and focus); intent != _open ⇒ veto / one-way /
+    //       unrelated render, so drop the stale intent before a LATER parent-
+    //       initiated open of that same item can inherit it and steal focus.
+    //     • CLEAR on unregistration — a torn-down item can't legitimately receive a
+    //       deferred focus (safety; UnregisterItem).
+    // ────────────────────────────────────────────────────────────────────────
+
+    // The intended-open item id (source of truth). The visible id is this gated
+    // through _registeredItems in the razor block above.
+    private string? _open;
+
+    // Latches true once any non-null Value is supplied, making the menu controlled
+    // for the rest of its life (see IsControlled).
+    private bool _valueEverNonNull;
+    private bool _seeded;
+
+    // Currently-mounted item identities (NavigationMenuItem.Value ?? auto id),
+    // registered/unregistered by each item. Gates _open → visible so the viewport
+    // never opens for an id with no live item.
+    private readonly HashSet<string> _registeredItems = new();
+
+    private bool IsControlled => ValueChanged.HasDelegate || _valueEverNonNull;
+
+    protected override void OnParametersSet()
+    {
+        if (Value is not null) _valueEverNonNull = true;
+
+        if (!_seeded)
+        {
+            _open = IsControlled ? Value : DefaultValue;
+            _seeded = true;
+            return;
+        }
+
+        // Controlled: the parent owns the open item — adopt Value verbatim each
+        // parameter set (including null = closed). Uncontrolled: _open is owned by
+        // interaction, so the parent's Value is not consulted here.
+        if (IsControlled) _open = Value;
+    }
+
+    // Resolve any latched keyboard focus intent AFTER the render settles (see the
+    // KEYBOARD FOCUS INTENT block above). This runs post-render rather than in
+    // OnParametersSet because a VETO in controlled mode re-renders the menu WITHOUT
+    // a parameter change (the emit's StateHasChanged fires on this component as the
+    // SetActiveItemId callback receiver, but Value never moves), so OnParametersSet
+    // is never entered to observe it. By the time a render completes, _open reflects
+    // the settled state: on an ACCEPTED open the adopting OnParametersSet has set
+    // _open to the latched item (== intent → keep it; NavigationMenuContent focuses
+    // once it renders); on a VETO/one-way/unrelated render _open is still something
+    // else (!= intent → drop the stale intent so a LATER parent-initiated open of
+    // that same item can't inherit it and steal focus). Clearing a field here does
+    // not itself request a re-render, so this cannot loop.
+    protected override void OnAfterRender(bool firstRender)
+    {
+        if (_focusContentOnOpenItemId is not null && _focusContentOnOpenItemId != _open)
+            _focusContentOnOpenItemId = null;
+    }
 
     // Ordered list of top-level trigger element ids, registered by each
     // NavigationMenuItem so the menu can move focus between them with the arrow
@@ -40,11 +189,29 @@
 
     private string CssClass => Cx.Merge("relative z-10 flex max-w-max flex-1 items-center justify-center", Class);
 
-    private Task SetActiveItemId(string? value)
+    private async Task SetActiveItemId(string? value)
     {
-        _activeItemId = value;
-        StateHasChanged();
-        return Task.CompletedTask;
+        if (IsControlled)
+        {
+            // Controlled: report intent and let the parent decide by pushing Value
+            // back. Do NOT touch _open — the render reflects only what the parent
+            // adopts. With a one-way Value (no ValueChanged delegate) the invoke is
+            // a no-op, so interaction is inert (fully controlled — round-5 b).
+            //
+            // Do NOT resolve the keyboard focus intent here: _open still holds the
+            // OLD value at this point (the parent pushes the accepted Value back
+            // through a LATER OnParametersSet), so `_open != value` is true even on
+            // an ACCEPTED open — clearing here dropped the intent and lost the focus
+            // (round-8). The intent is resolved at ADOPTION time in OnParametersSet
+            // instead, where an accept and a veto are actually distinguishable.
+            await ValueChanged.InvokeAsync(value);
+        }
+        else
+        {
+            // Uncontrolled: we own the open item — mutate optimistically and render.
+            _open = value;
+            StateHasChanged();
+        }
     }
 
     // Called by a trigger when it opens its submenu via the keyboard. The focus
@@ -68,19 +235,25 @@
 
     internal void UnregisterTrigger(string id) => _triggerIds.Remove(id);
 
-    // Reconcile open submenu state when an item is torn down. If the removed
-    // item is the one whose submenu is currently open, clear _activeItemId so the
-    // Viewport/Indicator (which gate purely on ActiveItemId is not null) don't
-    // stay stuck open referencing a no-longer-rendered item. Compared against the
-    // live field — not the cascaded snapshot — and scoped to the specific removed
-    // id so a momentary list churn elsewhere can't disturb an unrelated open item.
-    internal void NotifyItemRemoved(string itemId)
+    // Item-identity registration (NavigationMenuItem.Value ?? auto id), tracked
+    // separately from the trigger-id roving list. Gates _open → visible so the
+    // Viewport/Indicator never open for an id with no mounted item. When the
+    // (un)registered id is the intended-open one, the visible state changes, so we
+    // re-render: registering re-opens a pending/re-added active item, unregistering
+    // closes the viewport on the torn-down active item — while _open (the
+    // controlled intent) stays authoritative and re-applies on the next register.
+    internal void RegisterItem(string id)
     {
-        if (_activeItemId == itemId)
-        {
-            _activeItemId = null;
-            StateHasChanged();
-        }
+        if (_registeredItems.Add(id) && id == _open) StateHasChanged();
+    }
+
+    internal void UnregisterItem(string id)
+    {
+        // Safety: an item being torn down can never legitimately receive a deferred
+        // focus-into-content request, so drop any intent latched for it to avoid a
+        // stale request outliving the item and firing on a later re-add.
+        if (_focusContentOnOpenItemId == id) _focusContentOnOpenItemId = null;
+        if (_registeredItems.Remove(id) && id == _open) StateHasChanged();
     }
 
     // Move focus to the trigger `delta` positions from `currentId` (wrapping).
@@ -101,5 +274,5 @@
         catch (JSDisconnectedException) { }
     }
 
-    public record NavigationMenuContext(string? ActiveItemId, EventCallback<string?> SetActiveItemId, NavigationMenu Owner);
+    public record NavigationMenuContext(string? ActiveItemId, EventCallback<string?> SetActiveItemId, NavigationMenu Owner, int CloseDelayMs);
 }

@@ -119,7 +119,7 @@ public class HoverCardControlledRollbackTests : IAsyncLifetime
 
         Trigger(cut).MouseLeave();
 
-        cut.WaitForAssertion(() => Assert.DoesNotContain("Card body", cut.Markup));
+        cut.WaitForAssertion(() => Assert.DoesNotContain("Card body", cut.Markup), timeout: TimeSpan.FromSeconds(5));
     }
 
     // --- Controlled: programmatic parent reset is still adopted ---
@@ -146,6 +146,8 @@ public class HoverCardControlledRollbackTests : IAsyncLifetime
             .Add(c => c.CloseDelay, 0)
             .Add(c => c.ChildContent, Body));
 
-        Assert.DoesNotContain("Card body", cut.Markup);
+        // Content stays mounted through its zoom-out exit window (B11 parity) — poll
+        // for the unmount rather than asserting instant removal.
+        cut.WaitForAssertion(() => Assert.DoesNotContain("Card body", cut.Markup), timeout: TimeSpan.FromSeconds(5));
     }
 }

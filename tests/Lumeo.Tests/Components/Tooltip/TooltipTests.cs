@@ -284,7 +284,9 @@ public class TooltipTests : IAsyncLifetime
         Assert.NotEmpty(cut.FindAll("[role='tooltip']"));
 
         cut.Find("div").TriggerEvent("onfocusout", new Microsoft.AspNetCore.Components.Web.FocusEventArgs());
-        Assert.Empty(cut.FindAll("[role='tooltip']"));
+        // Content stays mounted through its zoom-out exit window (B11 parity) — poll
+        // for the unmount rather than asserting instant removal.
+        cut.WaitForAssertion(() => Assert.Empty(cut.FindAll("[role='tooltip']")), timeout: TimeSpan.FromSeconds(5));
     }
 
     [Fact]
@@ -295,7 +297,7 @@ public class TooltipTests : IAsyncLifetime
         Assert.NotEmpty(cut.FindAll("[role='tooltip']"));
 
         cut.Find("div").KeyDown(new Microsoft.AspNetCore.Components.Web.KeyboardEventArgs { Key = "Escape" });
-        Assert.Empty(cut.FindAll("[role='tooltip']"));
+        cut.WaitForAssertion(() => Assert.Empty(cut.FindAll("[role='tooltip']")), timeout: TimeSpan.FromSeconds(5));
     }
 
     // ---------------------------------------------------------------------------

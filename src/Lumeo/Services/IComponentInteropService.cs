@@ -484,6 +484,21 @@ public interface IComponentInteropService : IAsyncDisposable, IDisposable
     ValueTask AiDisposeAutoScroll(string elementId);
     ValueTask AiScrollToBottom(string elementId);
 
+    /// <summary>
+    /// Observes a message list's scroll position and reports (via
+    /// <paramref name="dotNetRef"/>'s <c>OnScrollAwayChanged(bool)</c>) whether it is
+    /// scrolled away from the bottom, driving the visibility of AgentMessageList's
+    /// floating scroll-to-latest button. Generic in the .NET reference type so this
+    /// core interop interface stays decoupled from the UI component. Default no-op so
+    /// existing implementers / test doubles keep compiling (they can drive the callback
+    /// directly instead of via real JS).
+    /// </summary>
+    ValueTask AiObserveScrollButton<T>(string elementId, Microsoft.JSInterop.DotNetObjectReference<T> dotNetRef) where T : class
+        => ValueTask.CompletedTask;
+    /// <summary>Tears down the scroll-button observer registered by
+    /// <see cref="AiObserveScrollButton{T}"/>. Default no-op.</summary>
+    ValueTask AiDisposeScrollButton(string elementId) => ValueTask.CompletedTask;
+
     // Scheduler (FullCalendar wrapper)
     Task<string> SchedulerInitAsync(Microsoft.AspNetCore.Components.ElementReference el, object dotNetRef, object options);
     Task SchedulerSetEventsAsync(string id, IEnumerable<object> events);

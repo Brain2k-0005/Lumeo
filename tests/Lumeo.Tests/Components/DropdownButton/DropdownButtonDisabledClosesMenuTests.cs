@@ -65,8 +65,12 @@ public class DropdownButtonDisabledClosesMenuTests : IAsyncLifetime
         // close the menu would be stranded open.
         cut.Render(p => p.Add(b => b.Disabled, true));
 
-        Assert.Empty(cut.FindAll("[role='menu']"));
+        // aria-expanded flips SYNCHRONOUSLY on the disable edge — the exit animation only
+        // delays the menu's DOM removal, not the trigger state. Assert it before polling.
         Assert.Equal("false", cut.Find("[role='button']").GetAttribute("aria-expanded"));
+
+        // Menu then plays its zoom-out exit before unmounting (B11 parity) — poll for removal.
+        cut.WaitForAssertion(() => Assert.Empty(cut.FindAll("[role='menu']")), timeout: TimeSpan.FromSeconds(5));
     }
 
     [Fact]
@@ -77,7 +81,8 @@ public class DropdownButtonDisabledClosesMenuTests : IAsyncLifetime
         Assert.NotEmpty(cut.FindAll("[role='menu']"));
 
         cut.Render(p => p.Add(b => b.Disabled, true));
-        Assert.Empty(cut.FindAll("[role='menu']"));
+        // Poll past the zoom-out exit window so the menu is fully unmounted.
+        cut.WaitForAssertion(() => Assert.Empty(cut.FindAll("[role='menu']")), timeout: TimeSpan.FromSeconds(5));
 
         // Re-enabling must NOT resurrect the previously-open menu — the close was
         // a real state change, not a transient suppression.

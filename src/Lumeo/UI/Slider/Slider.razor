@@ -18,7 +18,7 @@
 
 @if (Orientation == "Vertical")
 {
-    <div class="@VerticalCssClass" @attributes="AdditionalAttributes">
+    <div class="@VerticalCssClass" data-orientation="@OrientationData" data-disabled="@DisabledData" @attributes="AdditionalAttributes">
         <div class="relative flex h-full flex-col items-center">
             @if (Marks is not null || ShowTicks)
             {
@@ -30,14 +30,15 @@
                     }
                 </div>
             }
-            <div class="relative h-full w-2 rounded-[var(--radius)] @(EffectiveInvalid ? "bg-destructive/20" : "bg-primary/20")">
-                <div class="absolute bottom-0 w-full rounded-[var(--radius)] @(EffectiveInvalid ? "bg-destructive" : "bg-primary")" style="height: @(GetPercent(Value))%"></div>
+            <div class="relative h-full w-2 rounded-[var(--radius)] @(EffectiveInvalid ? "bg-destructive/20" : "bg-primary/20")" data-orientation="@OrientationData" data-disabled="@DisabledData">
+                <div class="absolute bottom-0 w-full rounded-[var(--radius)] @(EffectiveInvalid ? "bg-destructive" : "bg-primary")" style="height: @(GetPercent(Value))%" data-orientation="@OrientationData" data-disabled="@DisabledData"></div>
                 <input type="range" min="@Min" max="@Max" step="@Step" value="@Value" disabled="@Disabled"
                        name="@Name"
                        aria-label="@AriaLabel" aria-valuemin="@Min" aria-valuemax="@Max" aria-valuenow="@Value" aria-valuetext="@ValueText(Value)"
                        aria-required="@Required.ToString().ToLower()"
                        aria-invalid="@EffectiveInvalid.ToString().ToLower()"
                        id="@FormFieldControlId" aria-describedby="@FormFieldDescribedBy"
+                       data-orientation="@OrientationData" data-disabled="@DisabledData"
                        class="@VerticalInputClasses"
                        @oninput="OnInput"
                        @onpointerenter="() => _showTooltipThumb = true"
@@ -57,13 +58,13 @@
 }
 else if (IsRange)
 {
-    <div class="@CssClass" @attributes="AdditionalAttributes">
+    <div class="@CssClass" data-orientation="@OrientationData" data-disabled="@DisabledData" @attributes="AdditionalAttributes">
         <div class="relative w-full">
             <div class="absolute inset-0 flex items-center">
-                <div class="h-2 w-full rounded-[var(--radius)] @(EffectiveInvalid ? "bg-destructive/20" : "bg-primary/20")"></div>
+                <div class="h-2 w-full rounded-[var(--radius)] @(EffectiveInvalid ? "bg-destructive/20" : "bg-primary/20")" data-orientation="@OrientationData" data-disabled="@DisabledData"></div>
             </div>
             <div class="absolute inset-0 flex items-center" style="pointer-events: none;">
-                <div class="h-2 rounded-[var(--radius)] @(EffectiveInvalid ? "bg-destructive" : "bg-primary")" style="margin-left: @(StartPercent)%; width: @(RangePercent)%;"></div>
+                <div class="h-2 rounded-[var(--radius)] @(EffectiveInvalid ? "bg-destructive" : "bg-primary")" style="margin-left: @(StartPercent)%; width: @(RangePercent)%;" data-orientation="@OrientationData" data-disabled="@DisabledData"></div>
             </div>
             <div class="relative flex items-center" style="pointer-events: none;">
                 @* Both inputs overlay the full track, so hit-testing must live on
@@ -76,6 +77,7 @@ else if (IsRange)
                        aria-required="@Required.ToString().ToLower()"
                        aria-invalid="@EffectiveInvalid.ToString().ToLower()"
                        id="@FormFieldControlId" aria-describedby="@FormFieldDescribedBy"
+                       data-orientation="@OrientationData" data-disabled="@DisabledData"
                        class="@RangeInputClasses"
                        @oninput="OnStartInput" />
                 <input type="range" min="@EndThumbMin" max="@Max" step="@Step" value="@ValueEnd" disabled="@Disabled"
@@ -83,6 +85,7 @@ else if (IsRange)
                        aria-required="@Required.ToString().ToLower()"
                        aria-invalid="@EffectiveInvalid.ToString().ToLower()"
                        aria-describedby="@FormFieldDescribedBy"
+                       data-orientation="@OrientationData" data-disabled="@DisabledData"
                        class="@RangeInputClasses"
                        style="position: absolute; left: 0; width: 100%;"
                        @oninput="OnEndInput" />
@@ -108,7 +111,7 @@ else if (IsRange)
 }
 else
 {
-    <div class="@CssClass" @attributes="AdditionalAttributes">
+    <div class="@CssClass" data-orientation="@OrientationData" data-disabled="@DisabledData" @attributes="AdditionalAttributes">
         <div class="relative w-full">
             <div class="relative">
                 <input type="range" min="@Min" max="@Max" step="@Step" value="@Value" disabled="@Disabled"
@@ -117,6 +120,7 @@ else
                        aria-required="@Required.ToString().ToLower()"
                        aria-invalid="@EffectiveInvalid.ToString().ToLower()"
                        id="@FormFieldControlId" aria-describedby="@FormFieldDescribedBy"
+                       data-orientation="@OrientationData" data-disabled="@DisabledData"
                        class="@InputClasses"
                        @oninput="OnInput"
                        @onpointerenter="() => _showTooltipThumb = true"
@@ -226,6 +230,13 @@ else
     [Parameter] public System.Globalization.CultureInfo? Culture { get; set; }
 
     private System.Globalization.CultureInfo EffectiveCulture => Culture ?? System.Globalization.CultureInfo.CurrentCulture;
+
+    // shadcn/Radix styling hooks: data-orientation ("horizontal"|"vertical") and
+    // data-disabled (present when Disabled) on the root/track/range/thumb so consumers
+    // can drive visuals with data-[orientation=vertical] / data-[disabled] selectors.
+    private string OrientationData => string.Equals(Orientation, "Vertical", StringComparison.OrdinalIgnoreCase) ? "vertical" : "horizontal";
+    private string? DisabledData => Disabled ? string.Empty : null;
+
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 

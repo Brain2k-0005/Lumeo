@@ -1285,6 +1285,26 @@ public sealed class ComponentInteropService : IComponentInteropService
         catch (JSDisconnectedException) { }
     }
 
+    public async ValueTask AiObserveScrollButton<T>(string elementId, DotNetObjectReference<T> dotNetRef) where T : class
+    {
+        try
+        {
+            var module = await GetModuleAsync();
+            await module.InvokeVoidAsync("ai.observeScrollButton", elementId, dotNetRef);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
+    public async ValueTask AiDisposeScrollButton(string elementId)
+    {
+        try
+        {
+            var module = await GetModuleAsync();
+            await module.InvokeVoidAsync("ai.disposeScrollButton", elementId);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
     // --- Generic module import ---
     // Allows components that manage their own heavy JS modules (e.g. Chart with
     // echarts-interop.js) to import via the service rather than injecting IJSRuntime

@@ -16,7 +16,7 @@
            bubble into ancestor overlays (an Escape would cascade-close them).
            See DialogContent for the full rationale. aria-modal drops to false
            while exiting (affordances already torn down — mirrors SheetContent #185). *@
-        <div id="@_contentId" class="@CssClass" style="z-index:@ContentZ" role="alertdialog" aria-modal="@(Context.IsOpen ? "true" : "false")" aria-labelledby="@Context.TitleId" aria-describedby="@DescribedBy" @onkeydown="HandleKeyDown" @onkeydown:stopPropagation tabindex="-1" @attributes="AdditionalAttributes">
+        <div id="@_contentId" class="@CssClass" style="z-index:@ContentZ" role="alertdialog" aria-modal="@(Context.IsOpen ? "true" : "false")" aria-labelledby="@Context.TitleId" aria-describedby="@DescribedBy" @onkeydown="HandleKeyDown" @onkeydown:stopPropagation tabindex="-1" inert="@ExitInert" @attributes="AdditionalAttributes">
             @ChildContent
         </div>
     </div>
@@ -28,11 +28,13 @@
     [CascadingParameter] public AlertDialog.AlertDialogContext Context { get; set; } = default!;
     [Parameter] public RenderFragment? ChildContent { get; set; }
     [Parameter] public string? Class { get; set; }
-    /// <summary>When <c>true</c>, closing keeps the panel mounted for a brief
-    /// zoom-out (and backdrop fade-out) before unmounting instead of vanishing
-    /// instantly. Set by <see cref="OverlayProvider"/> for service-opened alert
-    /// dialogs. Defaults to <c>false</c> so declarative usage is unchanged.</summary>
-    [Parameter] public bool PlayExitAnimation { get; set; }
+    /// <summary>When <c>true</c> (the default), closing keeps the panel mounted for
+    /// a brief zoom-out (and backdrop fade-out) before unmounting instead of
+    /// vanishing instantly — so a declarative alert dialog animates its close the
+    /// same way <see cref="OverlayProvider"/> already animates service-opened ones.
+    /// Set to <c>false</c> to opt OUT (immediate unmount) for tests or consumers
+    /// who want an instant dismiss.</summary>
+    [Parameter] public bool PlayExitAnimation { get; set; } = true;
     /// <summary>Backdrop z-index. Content sits at <c>ZIndex + 1</c>. Defaults
     /// to <see cref="OverlayService.BaseZIndex"/>; <see cref="OverlayProvider"/>
     /// supplies an incrementing value per nested overlay.</summary>
@@ -63,24 +65,39 @@
     // FALLBACK window only — the real unmount is the panel's animationend
     // (OnExitAnimationEnd). Sits above the 0.15s zoom-out so the timer never
     // preempts a slightly-late animationend; covers only the JS-dead / lost-event
-    // case. 0 when no exit animation is requested (declarative) → immediate unmount.
+    // case. 0 only when the exit is opted OUT (PlayExitAnimation=false) → immediate
+    // unmount.
     private int ExitDurationMs => PlayExitAnimation ? 280 : 0;
 
     private int BackdropZ => ZIndex;
     private int ContentZ => ZIndex + 1;
 
+    // The exiting backdrop KEEPS pointer-events-auto so it goes on shielding the
+    // page beneath until it unmounts — a modal backdrop must block the page until
+    // it is gone (Radix keeps the overlay blocking until close completes).
+    // AlertDialog's backdrop has NO click-to-dismiss handler at all, so there is
+    // nothing to re-trigger; it simply swallows stray clicks during the fade. The
+    // PANEL stays pointer-events-none + inert (PointerClass / ExitInert).
     private string BackdropClass => _exiting
         ? "fixed inset-0 animate-fade-out pointer-events-auto"
         : "fixed inset-0 animate-fade-in pointer-events-auto";
 
     private string AnimationClass => _exiting ? "animate-zoom-out" : "animate-zoom-in";
 
+    // Exit-window inertness (mirrors DropdownMenuContent / DialogContent). While the
+    // panel is kept mounted for the zoom-out (Context.IsOpen == false) its focus trap
+    // + scroll lock are already torn down, so make the fading panel pointer-events-none
+    // + inert: no stray click / Tab can re-enter a closing alert dialog. Focus was
+    // restored to the trigger by RemoveFocusTrap at close time, independent of this.
+    private string PointerClass => _exiting ? "pointer-events-none" : "pointer-events-auto";
+    private string? ExitInert => _exiting ? "true" : null;
+
     // Only reference the description id when an <AlertDialogDescription> was
     // actually rendered; otherwise aria-describedby would dangle to a missing
     // element (returning null makes Blazor omit the attribute entirely).
     private string? DescribedBy => Context.DescriptionRegistry.HasDescription ? Context.DescriptionId : null;
 
-    private string CssClass => Cx.Merge("relative grid w-full max-w-lg gap-4 bg-background p-6 shadow-lg sm:rounded-lg pointer-events-auto", AnimationClass, Class);
+    private string CssClass => Cx.Merge("relative grid w-full max-w-lg gap-4 bg-background p-6 shadow-lg sm:rounded-lg", AnimationClass, PointerClass, Class);
 
     protected override void OnParametersSet()
     {
@@ -89,9 +106,9 @@
         // gate). On Blazor Server the open interop is a chain of round-trips; keying
         // the zoom-out off `_shownOpen` (flipped true the instant we first render
         // open) makes it play whenever the dismiss lands, and scheduling the unmount
-        // here means the panel is never stranded mounted. Declarative alert dialogs
-        // keep ExitDurationMs == 0 (PlayExitAnimation false) → immediate unmount as
-        // before. (B11.)
+        // here means the panel is never stranded mounted. Opting the exit OUT
+        // (PlayExitAnimation=false) keeps ExitDurationMs == 0 → immediate unmount.
+        // (B11.)
         if (Context.IsOpen)
         {
             if (_exiting)

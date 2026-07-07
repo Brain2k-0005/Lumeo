@@ -98,7 +98,10 @@ public class AlertDialogFocusManagementTests : IAsyncLifetime
 
         Assert.False(cut.Instance.InnerOpen);                // alert dialog handled Escape and closed
         Assert.True(cut.Instance.OuterOpen);                 // outer dialog was never asked to close
-        Assert.Empty(cut.FindAll("[role='alertdialog']"));   // alert dialog gone from markup
+        // The inner alert dialog now plays a zoom-out before unmounting (the
+        // declarative close animates by default), so it lingers in the DOM briefly.
+        // Wait for it to leave, then the outer dialog is the sole survivor.
+        cut.WaitForAssertion(() => Assert.Empty(cut.FindAll("[role='alertdialog']"))); // alert dialog gone from markup
         Assert.Single(cut.FindAll("[role='dialog']"));       // outer dialog survives
     }
 

@@ -135,9 +135,10 @@ public class NavigationMenuTests : IAsyncLifetime
         cut.Find("button").Click();
         Assert.Contains("Products content", cut.Markup);
 
-        // Close
+        // Close — content stays mounted through its fade-out exit window (B11 parity),
+        // so poll for the unmount rather than asserting instant removal.
         cut.Find("button").Click();
-        Assert.DoesNotContain("Products content", cut.Markup);
+        cut.WaitForAssertion(() => Assert.DoesNotContain("Products content", cut.Markup), timeout: TimeSpan.FromSeconds(5));
     }
 
     [Fact]

@@ -1,9 +1,10 @@
 @namespace Lumeo
 @implements IAsyncDisposable
+@implements IOverlayExitCallback
 
-@if (Context.IsOpen)
+@if (_exit.Present(Context.IsOpen))
 {
-    <div id="@_contentId" class="@CssClass" @onmouseenter="() => Context.RequestOpen.InvokeAsync()" @onmouseleave="() => Context.RequestClose.InvokeAsync()" @attributes="AdditionalAttributes">
+    <div id="@_contentId" data-state="@(Context.IsOpen ? "open" : "closed")" class="@CssClass" inert="@ExitInert" @onmouseenter="HandleMouseEnter" @onmouseleave="HandleMouseLeave" @attributes="AdditionalAttributes">
         @ChildContent
         @if (ShowArrow)
         {
@@ -30,10 +31,32 @@
     // card to its first-open placement forever. null == not currently positioned.
     private (string Side, string Align)? _appliedAnchor;
 
+    // B11 exit latch (shared infra). Enter keeps fade-in; exit uses zoom-out to
+    // match shadcn/Radix hover-card's data-[state=closed]:zoom-out-95 + fade-out.
+    private readonly OverlayExitAnimator _exit = new();
+    private DotNetObjectReference<HoverCardContent>? _selfRef;
+    private const int ExitDurationMs = 250;
+
+    // pointer-events-none during the exit window makes the fading card inert so a
+    // mouseenter on it can't cancel/reopen the close while it animates out (P2).
+    private string AnimationClass => _exit.Exiting ? "animate-zoom-out pointer-events-none" : "animate-fade-in";
+
+    // `inert` (exit window only) also drops any focusable content (links/buttons a
+    // consumer put in the card) from the tab order so keyboard users can't Tab into the
+    // closing card (round-2 P2).
+    private string? ExitInert => _exit.Exiting ? "true" : null;
+
+    // Gate the hover-open/close handlers so an EXITING card never schedules an open
+    // or close: even if a stray mouseenter/leave reaches the fading surface (before
+    // pointer-events-none takes hold, or in a non-CSS host), it is ignored rather
+    // than resurrecting the card mid-exit (Codex/CodeRabbit P2).
+    private Task HandleMouseEnter() => _exit.Exiting ? Task.CompletedTask : Context.RequestOpen.InvokeAsync();
+    private Task HandleMouseLeave() => _exit.Exiting ? Task.CompletedTask : Context.RequestClose.InvokeAsync();
+
     private string CssClass => Cx.Merge(
         "fixed z-50 w-64 rounded-md border border-border/60 bg-popover p-4 text-popover-foreground shadow-lg outline-none",
         ShowArrow ? "overflow-visible" : "",
-        "animate-fade-in",
+        AnimationClass,
         Class);
 
     private string ArrowClasses => Side switch
@@ -62,6 +85,9 @@
         _ => "bottom"
     };
 
+    protected override void OnParametersSet()
+        => _exit.OnParameters(Context.IsOpen, ExitDurationMs, () => InvokeAsync(FinishExit));
+
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (Context.IsOpen)
@@ -79,13 +105,33 @@
         }
         else if (_appliedAnchor is not null)
         {
+            // Unposition immediately on close: stops the reposition rAF and leaves the
+            // inline top/left so the box freezes in place while the zoom-out plays.
+            // The element stays mounted for the exit via the _exit.Present gate.
             try { await Interop.UnpositionFixed(_contentId); } catch (JSDisconnectedException) { }
             _appliedAnchor = null;
         }
+
+        await _exit.WireExitAsync(async () =>
+        {
+            _selfRef ??= DotNetObjectReference.Create(this);
+            try { await Interop.AttachOverlayExitEnd(_contentId, _selfRef); }
+            catch (JSDisconnectedException) { }
+        });
+    }
+
+    [JSInvokable]
+    public Task OnExitAnimationEnd() => InvokeAsync(FinishExit);
+
+    private void FinishExit()
+    {
+        if (_exit.Finish()) StateHasChanged();
     }
 
     public async ValueTask DisposeAsync()
     {
+        _exit.Dispose();
+        _selfRef?.Dispose();
         if (_appliedAnchor is not null)
         {
             try { await Interop.UnpositionFixed(_contentId); } catch (JSDisconnectedException) { }

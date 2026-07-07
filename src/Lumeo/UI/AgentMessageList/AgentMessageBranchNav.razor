@@ -1,0 +1,92 @@
+@namespace Lumeo
+@inject Services.Localization.ILumeoLocalizer L
+
+@* Branch navigation for messages that have alternate versions (shadcn
+   MessageBranch* parity): previous / next buttons around an "N of M" page
+   indicator. The nav is presentational — it emits the new 0-based index via
+   IndexChanged and the consumer swaps in the matching branch content. *@
+<div class="@RootClass" role="group" aria-label="@PageLabel" @attributes="AdditionalAttributes">
+    <AgentMessageAction Icon="@(LumeoIcons.ChevronLeft)"
+                        Label="@L["AgentMessage.PreviousBranch"]"
+                        Disabled="@PrevDisabled"
+                        OnClick="PreviousAsync"
+                        Class="size-6" />
+    <span class="px-1 text-xs tabular-nums text-muted-foreground" aria-hidden="true">@PageLabel</span>
+    <AgentMessageAction Icon="@(LumeoIcons.ChevronRight)"
+                        Label="@L["AgentMessage.NextBranch"]"
+                        Disabled="@NextDisabled"
+                        OnClick="NextAsync"
+                        Class="size-6" />
+</div>
+
+@code {
+    /// <summary>Current branch, 0-based. Two-way bindable via <c>@bind-Index</c>.</summary>
+    [Parameter] public int Index { get; set; }
+    [Parameter] public EventCallback<int> IndexChanged { get; set; }
+
+    /// <summary>Total number of branches.</summary>
+    [Parameter] public int Count { get; set; }
+
+    /// <summary>When <c>true</c>, previous/next wrap around the ends instead of
+    /// disabling at the first/last branch.</summary>
+    [Parameter] public bool Loop { get; set; }
+
+    /// <summary>Invoked (after <see cref="IndexChanged"/>) when moving to the previous branch.</summary>
+    [Parameter] public EventCallback OnPrevious { get; set; }
+
+    /// <summary>Invoked (after <see cref="IndexChanged"/>) when moving to the next branch.</summary>
+    [Parameter] public EventCallback OnNext { get; set; }
+
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private string RootClass => Cx.Merge("inline-flex items-center gap-0.5 text-muted-foreground", Class);
+
+    // 1-based, clamped for display so a stray out-of-range Index never shows "0 of 3".
+    private int DisplayIndex => Count == 0 ? 0 : ClampedIndex + 1;
+    private string PageLabel => L["AgentMessage.BranchXofY", DisplayIndex, Count];
+
+    private bool PrevDisabled => Count <= 1 || (!Loop && Index <= 0);
+    private bool NextDisabled => Count <= 1 || (!Loop && Index >= Count - 1);
+
+    // Clamp a possibly-stale bound Index into range BEFORE stepping so we never emit an
+    // out-of-range value. With Count==3 and a stale Index==4 the display already clamps to
+    // "3 of 3", so Previous must step from the last valid index (2 → 1), not the raw 4
+    // (which would emit 3). Symmetric for a stale negative Index on the Next side.
+    private int ClampedIndex => Count == 0 ? 0 : Math.Clamp(Index, 0, Count - 1);
+
+    private async Task PreviousAsync()
+    {
+        if (Count <= 1) return;
+        var next = ClampedIndex - 1;
+        if (next < 0)
+        {
+            if (!Loop) return;
+            next = Count - 1;
+        }
+        await SetIndexAsync(next);
+        if (OnPrevious.HasDelegate)
+            await OnPrevious.InvokeAsync();
+    }
+
+    private async Task NextAsync()
+    {
+        if (Count <= 1) return;
+        var next = ClampedIndex + 1;
+        if (next >= Count)
+        {
+            if (!Loop) return;
+            next = 0;
+        }
+        await SetIndexAsync(next);
+        if (OnNext.HasDelegate)
+            await OnNext.InvokeAsync();
+    }
+
+    private async Task SetIndexAsync(int next)
+    {
+        Index = next;
+        if (IndexChanged.HasDelegate)
+            await IndexChanged.InvokeAsync(next);
+    }
+}

@@ -47,6 +47,20 @@
             </PullToRefresh>
         </div>
     </ComponentDemo>
+
+    <ComponentDemo Title="Async data refresh" Code="@_asyncCode" Description="OnRefresh awaits real work — the spinner stays visible until the Task completes. Each pull prepends a freshly-loaded row to the top of the feed.">
+        <div class="h-64 rounded-lg border border-border/40 overflow-hidden">
+            <PullToRefresh OnRefresh="LoadNewer">
+                <Stack Gap="2" Class="p-4">
+                    <Lumeo.Text Size="sm" Color="muted">Pull down to load newer items</Lumeo.Text>
+                    @foreach (var item in _feed)
+                    {
+                        <div class="rounded-md border border-border/40 bg-muted/20 px-4 py-3 text-sm text-foreground">@item</div>
+                    }
+                </Stack>
+            </PullToRefresh>
+        </div>
+    </ComponentDemo>
 </Stack>
 
 <!-- API Reference -->
@@ -127,6 +141,34 @@
         await Task.Delay(800);
         _refreshCount2++;
     }
+
+    private int _feedSeq = 3;
+    private List<string> _feed = new() { "Update #3", "Update #2", "Update #1" };
+    private async Task LoadNewer()
+    {
+        await Task.Delay(900);
+        _feedSeq++;
+        _feed.Insert(0, $"Update #{_feedSeq}");
+    }
+
+    private string _asyncCode = @"<PullToRefresh OnRefresh=""LoadNewer"">
+    <Stack Gap=""2"" Class=""p-4"">
+        @foreach (var item in _feed)
+        {
+            <div class=""rounded-md border px-4 py-3 text-sm"">@item</div>
+        }
+    </Stack>
+</PullToRefresh>
+
+@code {
+    private int _seq = 3;
+    private List<string> _feed = new() { ""Update #3"", ""Update #2"", ""Update #1"" };
+    private async Task LoadNewer()
+    {
+        await Task.Delay(900);
+        _feed.Insert(0, $""Update #{++_seq}"");
+    }
+}";
 
     private string _basicCode = @"<div class=""h-64 rounded-lg border border-border/40 overflow-hidden"">
     <PullToRefresh OnRefresh=""HandleRefresh"">

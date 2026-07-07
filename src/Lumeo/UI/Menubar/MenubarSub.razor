@@ -21,6 +21,9 @@
 
 @code {
     [CascadingParameter] public Menubar.MenubarContext? RootContext { get; set; }
+    // The owning menu (IsFixed cascade from MenubarMenu). Comparing its MenuId to the
+    // menubar's OpenMenuId tells us when THIS menu is no longer the open one.
+    [CascadingParameter] public MenubarMenu.MenubarMenuContext? MenuContext { get; set; }
     [CascadingParameter] public MenubarSubContext? ParentSubContext { get; set; }
     [Parameter] public RenderFragment? ChildContent { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
@@ -31,6 +34,24 @@
     internal readonly string _contentId = LumeoIds.New("menubar-sub-content");
 
     private CancellationTokenSource? _closeCts;
+
+    // Submenu teardown on ancestor exit (Codex/CodeRabbit P2): when this menu stops
+    // being the menubar's open menu (switched to another menu or the whole menubar
+    // closed), or an enclosing submenu closes, its own _open stayed true — leaving the
+    // submenu mounted with data-state="open" under a parent that is already exiting.
+    // Reset our state so the submenu exits/unmounts with the tree. The MenubarContext
+    // cascade (IsFixed=false) re-renders this component when OpenMenuId flips.
+    protected override void OnParametersSet()
+    {
+        var menuClosed = RootContext is not null && MenuContext is not null
+            && RootContext.OpenMenuId != MenuContext.MenuId;
+        var ancestorClosed = menuClosed || ParentSubContext is { IsOpen: false };
+        if (ancestorClosed && _open)
+        {
+            CancelClose();
+            _open = false;
+        }
+    }
 
     private async Task SetOpen(bool value)
     {

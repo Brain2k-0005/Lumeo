@@ -29,7 +29,7 @@ else if (Context.IsOpen || _exiting)
            slide-out), its focus trap + scroll lock were already torn down by Cleanup(),
            so it is no longer a modal — advertise aria-modal="false" so the ARIA state
            matches the live behaviour instead of trapping AT on a non-trapping panel. #185 *@
-        <div id="@_contentId" class="@CssClass" style="z-index:@ContentZ" role="dialog" aria-modal="@(Context.IsOpen ? "true" : "false")" aria-labelledby="@Context.TitleId" aria-describedby="@DescribedBy" @onkeydown="HandleKeyDown" @onkeydown:stopPropagation tabindex="-1" @attributes="AdditionalAttributes">
+        <div id="@_contentId" class="@CssClass" style="z-index:@ContentZ" role="dialog" aria-modal="@(Context.IsOpen ? "true" : "false")" aria-labelledby="@Context.TitleId" aria-describedby="@DescribedBy" @onkeydown="HandleKeyDown" @onkeydown:stopPropagation tabindex="-1" inert="@ExitInert" @attributes="AdditionalAttributes">
             @ChildContent
             @* lumeo-sheet-close: stable consumer hook; z-10 keeps the X above
                full-bleed positioned children (see DialogContent). *@
@@ -158,7 +158,18 @@ else if (Context.IsOpen || _exiting)
     // don't trigger us), then sets inline `transform: none`. Inline style
     // beats the keyframe fill-mode forwarding — guarantees no containing
     // block trap for popovers (Select / DatePicker / Combobox).
-    private string CssClass => Cx.Merge("fixed flex flex-col gap-4 bg-background p-6 shadow-lg pointer-events-auto", PositionClasses, AnimationClass, Class);
+    private string CssClass => Cx.Merge("fixed flex flex-col gap-4 bg-background p-6 shadow-lg", PositionClasses, AnimationClass, PointerClass, Class);
+
+    // Exit-window inertness (mirrors DropdownMenuContent). While the panel is kept
+    // mounted for the slide/fade-out (Context.IsOpen == false, _exiting == true) its
+    // focus trap + scroll lock + swipe are already torn down by Cleanup(), so the
+    // still-painted panel is a clickable/tabbable ghost. pointer-events-none + inert
+    // make it inert for the leave: no stray click / Tab re-enters a closing sheet.
+    // Focus was restored to the trigger by RemoveFocusTrap at close time, independent
+    // of this. The wrapper is pointer-events-none, so the OPEN panel must re-enable
+    // pointer-events-auto explicitly — hence the toggle rather than a plain override.
+    private string PointerClass => _exiting ? "pointer-events-none" : "pointer-events-auto";
+    private string? ExitInert => _exiting ? "true" : null;
 
     private SheetSize EffectiveSize => SizePreset switch
     {
@@ -242,13 +253,19 @@ else if (Context.IsOpen || _exiting)
     };
 
     // Backdrop fades in on open, fades out while the panel exits.
-    // pointer-events-auto is REQUIRED: the full-viewport wrapper (line ~20) is
-    // pointer-events-none so it never blocks the page, and every hit-target child
-    // must re-enable pointer events explicitly (same as DialogContent /
+    // While OPEN, pointer-events-auto is REQUIRED: the full-viewport wrapper (line
+    // ~20) is pointer-events-none so it never blocks the page, and every hit-target
+    // child must re-enable pointer events explicitly (same as DialogContent /
     // DrawerContent / AlertDialogContent, whose backdrops hardcode it). Without it
     // the backdrop inherits none and swallows nothing — click-outside-to-close
     // silently dies for every Sheet (most visible via service-opened sheets, whose
-    // only dismiss affordances are the backdrop + Escape). (B10.)
+    // only dismiss affordances are the backdrop + Escape). (B10.) While EXITING the
+    // scrim KEEPS pointer-events-auto so it goes on shielding the page beneath until
+    // it unmounts — a modal backdrop must block the page until it is gone (Radix
+    // keeps the overlay blocking until close completes), so a fast double-click
+    // during the fade lands on the scrim, not the page below. HandleBackdropClick is
+    // already a no-op while exiting (it gates on Context.IsOpen), so swallowing that
+    // click can't re-trigger a dismiss/reopen. The PANEL stays pointer-events-none.
     private string BackdropClass => _exiting
         ? "fixed inset-0 animate-fade-out pointer-events-auto"
         : "fixed inset-0 animate-fade-in pointer-events-auto";

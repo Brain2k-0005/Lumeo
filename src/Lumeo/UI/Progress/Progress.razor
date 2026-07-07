@@ -63,7 +63,7 @@
     @if (ShowLabel)
     {
         <div class="flex items-center gap-2">
-            <div class="@CircularWrapperClass" role="progressbar" aria-valuenow="@(Indeterminate ? null : (int?)AriaValue)" aria-valuemin="0" aria-valuemax="@Max" aria-busy="@Indeterminate.ToString().ToLowerInvariant()" @attributes="AdditionalAttributes">
+            <div class="@CircularWrapperClass" role="progressbar" aria-valuenow="@(Indeterminate ? null : (int?)AriaValue)" aria-valuemin="0" aria-valuemax="@Max" aria-busy="@Indeterminate.ToString().ToLowerInvariant()" data-state="@ProgressDataState" data-value="@(Indeterminate ? null : (int?)AriaValue)" data-max="@Max" @attributes="AdditionalAttributes">
                 <svg viewBox="0 0 36 36" class="@CircularSvgClass" style="@CircularSizeStyle">
                     <circle cx="18" cy="18" r="@CircularRadius" fill="none" stroke="currentColor" class="text-primary/20" stroke-width="@StrokeWidth" />
                     <circle cx="18" cy="18" r="@CircularRadius" fill="none" stroke="currentColor" class="@CircularStrokeColor"
@@ -87,7 +87,7 @@
     }
     else
     {
-        <div class="@CircularWrapperClass" role="progressbar" aria-valuenow="@(Indeterminate ? null : (int?)AriaValue)" aria-valuemin="0" aria-valuemax="@Max" aria-busy="@Indeterminate.ToString().ToLowerInvariant()" @attributes="AdditionalAttributes">
+        <div class="@CircularWrapperClass" role="progressbar" aria-valuenow="@(Indeterminate ? null : (int?)AriaValue)" aria-valuemin="0" aria-valuemax="@Max" aria-busy="@Indeterminate.ToString().ToLowerInvariant()" data-state="@ProgressDataState" data-value="@(Indeterminate ? null : (int?)AriaValue)" data-max="@Max" @attributes="AdditionalAttributes">
             <svg viewBox="0 0 36 36" class="@CircularSvgClass" style="@CircularSizeStyle">
                 <circle cx="18" cy="18" r="@CircularRadius" fill="none" stroke="currentColor" class="text-primary/20" stroke-width="@StrokeWidth" />
                 <circle cx="18" cy="18" r="@CircularRadius" fill="none" stroke="currentColor" class="@CircularStrokeColor"
@@ -110,14 +110,14 @@ else
     @if (ShowLabel)
     {
         <div class="flex items-center gap-2">
-            <div class="@CssClass" role="progressbar" aria-valuenow="@(Indeterminate ? null : (int?)AriaValue)" aria-valuemin="0" aria-valuemax="@Max" aria-busy="@Indeterminate.ToString().ToLowerInvariant()" @attributes="AdditionalAttributes">
+            <div class="@CssClass" role="progressbar" aria-valuenow="@(Indeterminate ? null : (int?)AriaValue)" aria-valuemin="0" aria-valuemax="@Max" aria-busy="@Indeterminate.ToString().ToLowerInvariant()" data-state="@ProgressDataState" data-value="@(Indeterminate ? null : (int?)AriaValue)" data-max="@Max" @attributes="AdditionalAttributes">
                 @if (IsIndeterminate)
                 {
                     <div class="@($"animate-progress-indeterminate rounded-[var(--radius)] {VariantClasses}")"></div>
                 }
                 else
                 {
-                    <div class="@IndicatorClasses" style="@IndicatorStyle"></div>
+                    <div class="@IndicatorClasses" style="@IndicatorStyle" data-state="@ProgressDataState" data-value="@(Indeterminate ? null : (int?)AriaValue)" data-max="@Max"></div>
                 }
             </div>
             <span class="text-sm text-muted-foreground whitespace-nowrap">@(Label ?? $"{Percentage}%")</span>
@@ -125,14 +125,14 @@ else
     }
     else
     {
-        <div class="@CssClass" role="progressbar" aria-valuenow="@(Indeterminate ? null : (int?)AriaValue)" aria-valuemin="0" aria-valuemax="@Max" aria-busy="@Indeterminate.ToString().ToLowerInvariant()" @attributes="AdditionalAttributes">
+        <div class="@CssClass" role="progressbar" aria-valuenow="@(Indeterminate ? null : (int?)AriaValue)" aria-valuemin="0" aria-valuemax="@Max" aria-busy="@Indeterminate.ToString().ToLowerInvariant()" data-state="@ProgressDataState" data-value="@(Indeterminate ? null : (int?)AriaValue)" data-max="@Max" @attributes="AdditionalAttributes">
             @if (IsIndeterminate)
             {
                 <div class="@($"animate-progress-indeterminate rounded-[var(--radius)] {VariantClasses}")"></div>
             }
             else
             {
-                <div class="@IndicatorClasses" style="@IndicatorStyle"></div>
+                <div class="@IndicatorClasses" style="@IndicatorStyle" data-state="@ProgressDataState" data-value="@(Indeterminate ? null : (int?)AriaValue)" data-max="@Max"></div>
             }
         </div>
     }
@@ -176,6 +176,11 @@ else
     // Announce the CLAMPED value so a screen reader matches the visually clamped
     // bar — a raw out-of-range Value would otherwise contradict the rendered fill.
     private int AriaValue => Max > 0 ? Math.Clamp(Value, 0, Max) : 0;
+
+    // shadcn/Radix data-state styling hook (mirrors Radix Progress): "indeterminate"
+    // when the value is unknown, "complete" when it has reached Max, else "loading".
+    // Pairs with data-value / data-max so consumers can drive CSS from the progress.
+    private string ProgressDataState => Indeterminate ? "indeterminate" : (AriaValue >= Max ? "complete" : "loading");
 
     // --- Linear progress ---
     private string SizeClass => Size switch

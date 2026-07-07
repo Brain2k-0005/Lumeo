@@ -27,6 +27,9 @@ public sealed class TrackingKeyboardShortcutService : IKeyboardShortcutService
         return true;
     }
 
+    // Implements only the ORIGINAL 3-parameter interface members — the additive
+    // allowInEditable overloads are default interface members, so a test double written
+    // against the pre-wave shape keeps compiling and routes through here (flag dropped).
     public ValueTask<IAsyncDisposable> RegisterAsync(string keyCombo, Func<Task> handler, bool preventDefault = true)
     {
         var id = Guid.NewGuid().ToString("N");

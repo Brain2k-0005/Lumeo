@@ -78,6 +78,36 @@
             <Lumeo.Text Class="text-sm text-muted-foreground mt-3">@_validationResult</Lumeo.Text>
         }
     </ComponentDemo>
+
+    <ComponentDemo Title="Prefilled edit + async save" Code="@_editCode" OverflowVisible="true" Description="Assign an existing record to Model to prefill the fields; OnValidSubmit can await a service call while the submit Button shows its loading state.">
+        <div class="h-[320px] rounded-lg border border-border/40 p-4">
+            <OverlayForm Model="@_editModel" OnValidSubmit="HandleAsyncSave">
+                <Header>
+                    <Heading Level="3" Class="text-base font-semibold">Edit contact</Heading>
+                </Header>
+                <Body>
+                    <Stack Gap="4">
+                        <Stack Gap="1.5">
+                            <Label>Name</Label>
+                            <Input @bind-Value="_editModel.Name" />
+                        </Stack>
+                        <Stack Gap="1.5">
+                            <Label>Email</Label>
+                            <Input @bind-Value="_editModel.Email" />
+                        </Stack>
+                    </Stack>
+                </Body>
+                <Footer>
+                    <Button Variant="Button.ButtonVariant.Outline" Type="Button.ButtonType.Button">Cancel</Button>
+                    <Button Type="Button.ButtonType.Submit" IsLoading="_saving">@(_saving ? "Saving…" : "Save")</Button>
+                </Footer>
+            </OverlayForm>
+        </div>
+        @if (!string.IsNullOrEmpty(_editResult))
+        {
+            <Lumeo.Text Class="text-sm text-muted-foreground mt-3">@_editResult</Lumeo.Text>
+        }
+    </ComponentDemo>
 </Stack>
 
 <div class="mt-12 space-y-3">
@@ -197,6 +227,41 @@
 
     private void HandleValidSubmit(EditContext ctx) => _validationResult = "Valid — submitted!";
     private void HandleInvalidSubmit(EditContext ctx) => _validationResult = "Invalid — OnInvalidSubmit fired.";
+
+    private readonly ContactModel _editModel = new() { Name = "Ada Lovelace", Email = "ada@example.com" };
+    private bool _saving;
+    private string _editResult = "";
+    private async Task HandleAsyncSave(EditContext ctx)
+    {
+        _saving = true;
+        await Task.Delay(1200);
+        _saving = false;
+        _editResult = $"Saved changes to {_editModel.Name}.";
+    }
+
+    private string _editCode = @"<OverlayForm Model=""@_editModel"" OnValidSubmit=""HandleAsyncSave"">
+    <Body>
+        <Label>Name</Label>
+        <Input @bind-Value=""_editModel.Name"" />
+        <Label>Email</Label>
+        <Input @bind-Value=""_editModel.Email"" />
+    </Body>
+    <Footer>
+        <Button Type=""Button.ButtonType.Submit"" IsLoading=""_saving"">@(_saving ? ""Saving…"" : ""Save"")</Button>
+    </Footer>
+</OverlayForm>
+
+@code {
+    // Prefill from an existing record:
+    private ContactModel _editModel = new() { Name = ""Ada Lovelace"", Email = ""ada@example.com"" };
+    private bool _saving;
+    private async Task HandleAsyncSave(EditContext ctx)
+    {
+        _saving = true;
+        await SaveAsync(_editModel);   // await your service
+        _saving = false;
+    }
+}";
 
     private string _basicCode = @"<OverlayForm Model=""@_model"" OnValidSubmit=""HandleSave"">
     <Header>

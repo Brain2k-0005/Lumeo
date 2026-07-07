@@ -547,7 +547,32 @@ public class TrackingInteropService : IComponentInteropService
     public ValueTask UnregisterBackToTop(string id) => ValueTask.CompletedTask;
     public ValueTask ScrollToTop() => ValueTask.CompletedTask;
     public ValueTask DownloadFile(string fileName, string contentBase64, string mimeType = "application/octet-stream") => ValueTask.CompletedTask;
-    public ValueTask CopyToClipboard(string text) => ValueTask.CompletedTask;
+
+    // Clipboard tracking (#AgentMessageActions copy confirmation). Records each
+    // copied text so the success path can be asserted; when
+    // ThrowOnCopyToClipboard is set the call throws JSDisconnectedException
+    // (simulating a dead Server circuit) so the "copy failed → no confirmation"
+    // path is exercised.
+    private readonly List<string> _copyToClipboardCalls = new();
+    public IReadOnlyList<string> CopyToClipboardCalls => _copyToClipboardCalls;
+    /// <summary>When true, <see cref="CopyToClipboard"/> throws
+    /// <see cref="JSDisconnectedException"/> to simulate a disconnected circuit.</summary>
+    public bool ThrowOnCopyToClipboard { get; set; }
+    /// <summary>When set, <see cref="CopyToClipboard"/> throws this exception
+    /// (checked before <see cref="ThrowOnCopyToClipboard"/>). Lets a test simulate
+    /// the browser REJECTING the clipboard write — an insecure origin or a denied
+    /// permission surfaces from the JS interop as a plain <see cref="JSException"/>,
+    /// distinct from a circuit disconnect.</summary>
+    public Exception? CopyToClipboardException { get; set; }
+    public ValueTask CopyToClipboard(string text)
+    {
+        _copyToClipboardCalls.Add(text);
+        if (CopyToClipboardException is not null)
+            throw CopyToClipboardException;
+        if (ThrowOnCopyToClipboard)
+            throw new JSDisconnectedException("circuit disconnected");
+        return ValueTask.CompletedTask;
+    }
     // Ripple press-effect tracking (Button/Card/Chip/...). The JS pointerdown
     // listener attach/detach is the testable seam for the PressEffect
     // state-on-data-change reconciliation: a runtime None->Ripple flip must

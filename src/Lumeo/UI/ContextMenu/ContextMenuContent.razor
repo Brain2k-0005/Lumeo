@@ -1,9 +1,24 @@
 @namespace Lumeo
 @implements IAsyncDisposable
+@implements IOverlayExitCallback
 
-@if (Context.IsOpen)
+@if (_exit.Present(Context.IsOpen))
 {
-    <div id="@_contentId" role="menu" aria-orientation="vertical" class="@CssClass" style="@PositionStyle" @onkeydown="HandleKeyDown" tabindex="-1" @attributes="AdditionalAttributes">
+    @* Kept mounted through the exit window (Context.IsOpen == false but
+       _exit.Exiting) so the zoom-out keyframe plays — B11 Radix-Presence parity
+       via the shared attachOverlayExitEnd infra, matching DropdownMenu. The menu
+       positions through the inline style + JS PositionAtPoint clamp; neither is
+       stripped on close, so the box stays pinned while it animates out. *@
+    <div id="@_contentId"
+         role="menu"
+         aria-orientation="vertical"
+         data-state="@(Context.IsOpen ? "open" : "closed")"
+         class="@CssClass"
+         style="@PositionStyle"
+         @onkeydown="HandleKeyDown"
+         tabindex="-1"
+         inert="@ExitInert"
+         @attributes="AdditionalAttributes">
         @ChildContent
     </div>
 }
@@ -17,17 +32,40 @@
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     private readonly string _contentId = LumeoIds.New("context-menu-content");
+    private readonly Lumeo.Services.MenuTypeahead _typeahead = new();
     private bool _registered;
     private int _focusedIndex = -1;
     private double _positionedX = double.NaN;
     private double _positionedY = double.NaN;
 
-    private string CssClass => Cx.Merge("fixed z-50 min-w-[8rem] overflow-hidden rounded-md border border-border/40 bg-popover p-1 text-popover-foreground shadow-lg animate-fade-in", Class);
+    // B11 exit latch (shared infra). Enter keeps the fade-in; exit uses zoom-out
+    // (the shadcn/Radix menu dismiss: data-[state=closed]:zoom-out-95 + fade-out).
+    private readonly OverlayExitAnimator _exit = new();
+    private DotNetObjectReference<ContextMenuContent>? _selfRef;
+    private const int ExitDurationMs = 250;
+
+    // pointer-events-none during the exit window makes the fading surface inert so a
+    // double-click / second tap can't re-invoke a menu item while it animates out (P2).
+    private string AnimationClass => _exit.Exiting ? "animate-zoom-out pointer-events-none" : "animate-fade-in";
+
+    // pointer-events-none only stops the pointer — the menu items are native <button>s,
+    // so keyboard users could still Tab INTO the visually-closed menu during the exit
+    // window. `inert` (rendered only while exiting) removes the whole subtree from the
+    // tab order + a11y tree. Focus was already restored to the trigger on close
+    // (Cleanup → RestoreFocus), so inert never traps focus inside the surface. (P2 r2)
+    private string? ExitInert => _exit.Exiting ? "true" : null;
+
+    private string CssClass => Cx.Merge("fixed z-50 min-w-[8rem] overflow-hidden rounded-md border border-border/40 bg-popover p-1 text-popover-foreground shadow-lg", AnimationClass, Class);
 
     // Initial inline placement at the raw click point; OnAfterRenderAsync then
     // clamps the menu inside the viewport. The root menu previously rendered
     // partly off-screen near the bottom/right edges (submenus already flip).
     private string PositionStyle => string.Create(System.Globalization.CultureInfo.InvariantCulture, $"position: fixed; left: {Context.X}px; top: {Context.Y}px");
+
+    // Latch the exit on the open->closed transition so the panel stays mounted for
+    // the zoom-out. The click-outside/focus cleanup still runs immediately on close.
+    protected override void OnParametersSet()
+        => _exit.OnParameters(Context.IsOpen, ExitDurationMs, () => InvokeAsync(FinishExit));
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -58,6 +96,24 @@
         {
             await Cleanup();
         }
+
+        // Once the exit render has committed the zoom-out class, hand the unmount
+        // to the panel's own animationend (attachOverlayExitEnd); the fallback
+        // timer covers the JS-dead case. Wires once per exit.
+        await _exit.WireExitAsync(async () =>
+        {
+            _selfRef ??= DotNetObjectReference.Create(this);
+            try { await Interop.AttachOverlayExitEnd(_contentId, _selfRef); }
+            catch (JSDisconnectedException) { }
+        });
+    }
+
+    [JSInvokable]
+    public Task OnExitAnimationEnd() => InvokeAsync(FinishExit);
+
+    private void FinishExit()
+    {
+        if (_exit.Finish()) StateHasChanged();
     }
 
     private async Task ClampToViewport()
@@ -115,6 +171,18 @@
                     }
                     break;
                 }
+            default:
+                // Typeahead parity with DropdownMenu (Radix type-to-focus). Printable
+                // single chars (not modifier combos) accumulate a query that jumps
+                // focus to the first matching item; everything else falls through so
+                // Tab/Enter/Space keep native behaviour.
+                if (!e.CtrlKey && !e.AltKey && !e.MetaKey && Lumeo.Services.MenuTypeahead.IsTypeaheadKey(e.Key))
+                {
+                    var query = _typeahead.Push(e.Key);
+                    var matched = await Interop.FocusMenuItemByTypeahead(_contentId, query, _focusedIndex);
+                    if (matched >= 0) _focusedIndex = matched;
+                }
+                break;
         }
     }
 
@@ -127,6 +195,7 @@
         catch (JSDisconnectedException) { }
         // Return focus to where it was before the menu opened (WCAG 2.4.3).
         try { await Interop.RestoreFocus(_contentId); } catch (JSDisconnectedException) { }
+        _typeahead.Reset();
         _registered = false;
         _positionedX = double.NaN;
         _positionedY = double.NaN;
@@ -134,6 +203,8 @@
 
     public async ValueTask DisposeAsync()
     {
+        _exit.Dispose();
+        _selfRef?.Dispose();
         if (_registered) await Cleanup();
     }
 }

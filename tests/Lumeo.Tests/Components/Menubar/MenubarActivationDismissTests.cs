@@ -197,7 +197,7 @@ public class MenubarActivationDismissTests : IAsyncLifetime
         var reg = _interop.ClickOutsideRegistrations[0];
         await cut.InvokeAsync(() => reg.Handler());
 
-        cut.WaitForAssertion(() => Assert.DoesNotContain("New File", cut.Markup));
+        cut.WaitForAssertion(() => Assert.DoesNotContain("New File", cut.Markup), timeout: TimeSpan.FromSeconds(5));
     }
 
     [Fact]
@@ -220,7 +220,9 @@ public class MenubarActivationDismissTests : IAsyncLifetime
 
         cut.Find("[role='menu']").KeyDown(new KeyboardEventArgs { Key = "Escape" });
 
-        Assert.DoesNotContain("New File", cut.Markup);
+        // Content stays mounted through its zoom-out exit window (B11 parity) — poll
+        // for the unmount rather than asserting instant removal.
+        cut.WaitForAssertion(() => Assert.DoesNotContain("New File", cut.Markup), timeout: TimeSpan.FromSeconds(5));
     }
 
     // --- Item navigation (Up/Down/Home/End) ---

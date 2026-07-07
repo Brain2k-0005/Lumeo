@@ -1,5 +1,6 @@
 @page "/components/agent-message-list"
 @implements IDisposable
+@inject Lumeo.Services.IComponentInteropService Interop
 
 <PageTitle>AgentMessageList — Lumeo</PageTitle>
 
@@ -111,6 +112,44 @@
             </AgentMessageList>
         </div>
     </ComponentDemo>
+
+    <ComponentDemo Title="Actions, Branches & Markdown Export"
+                   Description="Assistant turns can carry a copy/regenerate/retry toolbar and branch navigation between alternate responses. Export the whole thread to Markdown."
+                   Code="@_actionsCode">
+        <div class="w-full max-w-xl space-y-3">
+            <AgentMessageList Class="h-[220px]">
+                <AgentMessage Role="AgentMessage.AgentMessageRole.User" Name="You">
+                    Give me a tagline for a productivity app.
+                </AgentMessage>
+                <AgentMessage Role="AgentMessage.AgentMessageRole.Assistant" Name="Copilot">
+                    <ChildContent>
+                        @_branches[_branchIndex]
+                    </ChildContent>
+                    <Actions>
+                        <AgentMessageBranchNav @bind-Index="_branchIndex" Count="_branches.Length" />
+                        <AgentMessageActions CopyText="@_branches[_branchIndex]"
+                                             OnRegenerate="Regenerate" />
+                    </Actions>
+                </AgentMessage>
+            </AgentMessageList>
+            <button type="button" @onclick="ExportMarkdown"
+                    class="inline-flex h-9 items-center gap-2 rounded-md border border-border bg-background px-3 text-sm font-medium hover:bg-accent">
+                <Icon Name="Download" Size="Lumeo.Size.Sm" /> Export transcript (.md)
+            </button>
+        </div>
+    </ComponentDemo>
+
+    <ComponentDemo Title="Empty State" Description="Set IsEmpty to show a placeholder while there are no messages — a localized default, or your own EmptyState slot." Code="@_emptyCode">
+        <div class="w-full max-w-xl h-[220px] rounded-lg border border-border/60">
+            <AgentMessageList IsEmpty="true">
+                <EmptyState>
+                    <Icon Name="MessageCircle" Size="Lumeo.Size.Lg" Class="text-muted-foreground" />
+                    <p class="text-sm font-medium text-foreground">No messages yet</p>
+                    <p class="text-sm text-muted-foreground">Ask a question to get started.</p>
+                </EmptyState>
+            </AgentMessageList>
+        </div>
+    </ComponentDemo>
 </Stack>
 
 <!-- API Reference -->
@@ -142,6 +181,30 @@
                             <td class="p-3 font-mono text-xs text-muted-foreground">bool</td>
                             <td class="p-3 font-mono text-xs text-muted-foreground">true</td>
                             <td class="p-3 text-muted-foreground">Keeps the list scrolled to the bottom when new content arrives via a MutationObserver.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">ShowScrollButton</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">bool</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">true</td>
+                            <td class="p-3 text-muted-foreground">Shows a floating scroll-to-latest button when the list is scrolled away from the bottom.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">IsEmpty</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">bool</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">false</td>
+                            <td class="p-3 text-muted-foreground">Renders the <code class="text-xs">EmptyState</code> slot (or a localized default) instead of the messages.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">EmptyState</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">RenderFragment?</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">—</td>
+                            <td class="p-3 text-muted-foreground">Custom placeholder shown when <code class="text-xs">IsEmpty</code> is true.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">ToMarkdown(…)</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">static string</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">—</td>
+                            <td class="p-3 text-muted-foreground">Serializes <code class="text-xs">AgentMessageMarkdown</code> turns to a Markdown transcript (pair with <code class="text-xs">DownloadFile</code>).</td>
                         </tr>
                         <tr>
                             <td class="p-3 font-mono text-xs text-primary">Class</td>
@@ -196,6 +259,12 @@
                             <td class="p-3 font-mono text-xs text-muted-foreground">RenderFragment?</td>
                             <td class="p-3 font-mono text-xs text-muted-foreground">—</td>
                             <td class="p-3 text-muted-foreground">Optional avatar rendered alongside the bubble.</td>
+                        </tr>
+                        <tr>
+                            <td class="p-3 font-mono text-xs text-primary">Actions</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">RenderFragment?</td>
+                            <td class="p-3 font-mono text-xs text-muted-foreground">—</td>
+                            <td class="p-3 text-muted-foreground">Toolbar under the body — typically <code class="text-xs">&lt;AgentMessageActions&gt;</code> (copy/regenerate/retry) and/or <code class="text-xs">&lt;AgentMessageBranchNav&gt;</code>.</td>
                         </tr>
                         <tr>
                             <td class="p-3 font-mono text-xs text-primary">ChildContent</td>
@@ -281,6 +350,59 @@
         _isStreaming = true;
         _timer?.Change(0, 600);
     }
+
+    // ── Actions / branches / export demo state ──────────────────────────────
+    private int _branchIndex;
+    private readonly string[] _branches =
+    {
+        "\"Do more, faster.\"",
+        "\"Your day, organized.\"",
+        "\"Focus on what matters.\"",
+    };
+
+    private void Regenerate() =>
+        _branchIndex = (_branchIndex + 1) % _branches.Length;
+
+    private async Task ExportMarkdown()
+    {
+        var md = AgentMessageList.ToMarkdown(new[]
+        {
+            new AgentMessageList.AgentMessageMarkdown(
+                AgentMessage.AgentMessageRole.User, "Give me a tagline for a productivity app.", Name: "You"),
+            new AgentMessageList.AgentMessageMarkdown(
+                AgentMessage.AgentMessageRole.Assistant, _branches[_branchIndex], Name: "Copilot"),
+        }, title: "Conversation");
+
+        var base64 = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(md));
+        await Interop.DownloadFile("conversation.md", base64, "text/markdown");
+    }
+
+    private const string _actionsCode = """
+<AgentMessage Role="AgentMessage.AgentMessageRole.Assistant" Name="Copilot">
+    <ChildContent>@_branches[_branchIndex]</ChildContent>
+    <Actions>
+        <AgentMessageBranchNav @bind-Index="_branchIndex" Count="_branches.Length" />
+        <AgentMessageActions CopyText="@_branches[_branchIndex]" OnRegenerate="Regenerate" />
+    </Actions>
+</AgentMessage>
+
+@code {
+    // Export the thread to Markdown, then hand the bytes to the download helper.
+    var md = AgentMessageList.ToMarkdown(messages, title: "Conversation");
+    await Interop.DownloadFile("conversation.md",
+        Convert.ToBase64String(Encoding.UTF8.GetBytes(md)), "text/markdown");
+}
+""";
+
+    private const string _emptyCode = """
+<AgentMessageList IsEmpty="@(_messages.Count == 0)">
+    <EmptyState>
+        <Icon Name="MessageCircle" Size="Lumeo.Size.Lg" Class="text-muted-foreground" />
+        <p class="text-sm font-medium">No messages yet</p>
+        <p class="text-sm text-muted-foreground">Ask a question to get started.</p>
+    </EmptyState>
+</AgentMessageList>
+""";
 
     public void Dispose() => _timer?.Dispose();
 

@@ -1,9 +1,27 @@
 @namespace Lumeo
 @inject Services.IComponentInteropService Interop
+@inject Services.Localization.ILumeoLocalizer L
 @implements IAsyncDisposable
 
 <div id="@_listId" class="@RootClass" role="log" aria-live="polite" aria-relevant="additions" @attributes="AdditionalAttributes">
-    @if (Virtualize && Items is not null)
+    @if (IsEmpty)
+    {
+        @* Empty state (shadcn ConversationEmptyState parity): the EmptyState slot
+           when supplied, otherwise a sensible localized default. Centred in the
+           scroll viewport. *@
+        <div class="flex min-h-full flex-1 flex-col items-center justify-center gap-1 px-6 py-10 text-center">
+            @if (EmptyState is not null)
+            {
+                @EmptyState
+            }
+            else
+            {
+                <p class="text-sm font-medium text-foreground">@L["AgentMessageList.EmptyTitle"]</p>
+                <p class="text-sm text-muted-foreground">@L["AgentMessageList.EmptyDescription"]</p>
+            }
+        </div>
+    }
+    else if (Virtualize && Items is not null)
     {
         @* Virtualized path: <Virtualize> must sit directly inside the scroll
            container so its spacer elements measure correctly, so the flex-gap
@@ -19,6 +37,26 @@
     {
         <div class="flex flex-col gap-4">
             @ChildContent
+        </div>
+    }
+
+    @if (ShowScrollButton)
+    {
+        @* Floating scroll-to-latest button. A zero-height sticky wrapper keeps the
+           button pinned to the bottom edge of the scroll viewport without reserving
+           any layout space or clipping. It only becomes interactive once the JS
+           observer reports the list is scrolled away from the bottom. *@
+        <div class="pointer-events-none sticky bottom-0 z-20 flex justify-center" style="height:0;">
+            @if (_scrolledAway)
+            {
+                <button type="button" @onclick="ScrollToLatestAsync"
+                        data-testid="agent-scroll-button"
+                        class="pointer-events-auto -translate-y-3 inline-flex size-8 items-center justify-center rounded-[calc(var(--radius)*3)] border border-border/60 bg-background/90 text-muted-foreground shadow-md backdrop-blur transition hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-1"
+                        aria-label="@L["AgentMessageList.ScrollToLatest"]">
+                    <SvgGlyph Svg="@(LumeoIcons.ArrowDown)" class="h-4 w-4" />
+                    <span class="sr-only">@L["AgentMessageList.ScrollToLatest"]</span>
+                </button>
+            }
         </div>
     }
 </div>
@@ -49,11 +87,36 @@
     /// <summary>Extra rows to render above/below the viewport to smooth scrolling (default 4).</summary>
     [Parameter] public int OverscanCount { get; set; } = 4;
 
+    /// <summary>
+    /// When <c>true</c> (default), shows a floating scroll-to-latest button that
+    /// appears whenever the list is scrolled away from the bottom and, when clicked,
+    /// jumps back to the newest message. Screen-reader labelled. Set <c>false</c> to
+    /// hide it (e.g. lists that are never longer than the viewport).
+    /// </summary>
+    [Parameter] public bool ShowScrollButton { get; set; } = true;
+
+    /// <summary>
+    /// Renders in place of the messages when <see cref="IsEmpty"/> is <c>true</c>
+    /// (shadcn <c>ConversationEmptyState</c> parity). When <c>null</c>, a localized
+    /// default title + description is shown instead.
+    /// </summary>
+    [Parameter] public RenderFragment? EmptyState { get; set; }
+
+    /// <summary>
+    /// When <c>true</c>, the <see cref="EmptyState"/> slot (or the built-in default)
+    /// is rendered instead of the message content. The consumer drives this since the
+    /// list can't introspect an arbitrary <see cref="ChildContent"/>.
+    /// </summary>
+    [Parameter] public bool IsEmpty { get; set; }
+
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     private readonly string _listId = LumeoIds.New("agent-message-list");
     private bool _observerRegistered;
+    private bool _scrollButtonRegistered;
+    private bool _scrolledAway;
+    private DotNetObjectReference<AgentMessageList>? _selfRef;
 
     // Virtualize<TItem>.Items wants an ICollection<TItem>. Materialize it only
     // when the bound Items reference changes — recomputing (and copying, when
@@ -104,7 +167,44 @@
                 _observerRegistered = false;
                 await Interop.AiDisposeAutoScroll(_listId);
             }
+
+            // Reconcile the scroll-button observer against the live ShowScrollButton
+            // state on every render (same rationale as the auto-scroll observer above).
+            if (ShowScrollButton && !_scrollButtonRegistered)
+            {
+                _scrollButtonRegistered = true;
+                _selfRef ??= DotNetObjectReference.Create(this);
+                await Interop.AiObserveScrollButton(_listId, _selfRef);
+            }
+            else if (!ShowScrollButton && _scrollButtonRegistered)
+            {
+                _scrollButtonRegistered = false;
+                _scrolledAway = false;
+                await Interop.AiDisposeScrollButton(_listId);
+            }
         }
+        catch (JSDisconnectedException) { }
+        catch (ObjectDisposedException) { }
+    }
+
+    /// <summary>
+    /// Invoked from JS whenever the list crosses the "scrolled away from bottom"
+    /// threshold, toggling the scroll-to-latest button's visibility.
+    /// </summary>
+    [JSInvokable]
+    public void OnScrollAwayChanged(bool away)
+    {
+        if (_scrolledAway == away) return;
+        _scrolledAway = away;
+        StateHasChanged();
+    }
+
+    private async Task ScrollToLatestAsync()
+    {
+        // Optimistically hide the button; the JS observer will re-show it if the user
+        // scrolls back up after the jump.
+        _scrolledAway = false;
+        try { await Interop.AiScrollToBottom(_listId); }
         catch (JSDisconnectedException) { }
         catch (ObjectDisposedException) { }
     }
@@ -119,5 +219,14 @@
             }
             catch (JSDisconnectedException) { /* ignore — circuit already gone */ }
         }
+        if (_scrollButtonRegistered)
+        {
+            try
+            {
+                await Interop.AiDisposeScrollButton(_listId);
+            }
+            catch (JSDisconnectedException) { /* ignore — circuit already gone */ }
+        }
+        _selfRef?.Dispose();
     }
 }
