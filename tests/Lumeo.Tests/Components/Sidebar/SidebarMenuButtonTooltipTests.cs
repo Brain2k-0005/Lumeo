@@ -64,9 +64,11 @@ public class SidebarMenuButtonTooltipTests : IAsyncLifetime
         // so poll until the role=tooltip content mounts.
         cut.Find("a").ParentElement!.TriggerEvent("onmouseenter", new MouseEventArgs());
 
+        // No explicit ceiling: the 200ms reveal timer can starve under CI parallel
+        // load, and a tight cap is exactly the flake class the 2026-07-04 deflake
+        // removed — rely on the module-wide 10s default instead.
         await Task.Run(() => cut.WaitForAssertion(
-            () => Assert.Contains("Dashboard", cut.Find("[role='tooltip']").TextContent),
-            TimeSpan.FromSeconds(2)));
+            () => Assert.Contains("Dashboard", cut.Find("[role='tooltip']").TextContent)));
     }
 
     [Fact]
