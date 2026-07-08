@@ -58,6 +58,12 @@ public sealed class ConsentService
     private DateTimeOffset? _decidedAtUtc;
     private string? _storedVersion;
 
+    // True once a persisted entry (record OR legacy bare map) has been hydrated.
+    // Distinguishes "nothing stored yet, banner should show" from "a decision
+    // exists whose validity depends on the policy version" — only the latter is
+    // re-evaluated when PolicyVersion changes (see the property setter).
+    private bool _hasStoredRecord;
+
     public ConsentService(IJSRuntime js)
     {
         _js = js;
@@ -79,8 +85,27 @@ public sealed class ConsentService
     /// choices prefill the dialog. Set from <c>&lt;ConsentBanner PolicyVersion="…"/&gt;</c>
     /// (or assign directly). Defaults to <c>"1"</c>; a versionless legacy record never
     /// forces a re-prompt on its own.
+    ///
+    /// Assigning this AFTER a decision has been hydrated re-evaluates that decision's
+    /// validity immediately: if the stored version no longer matches, the banner
+    /// re-prompts (and the pre-boot FOUC guard is cleared so the banner is visible).
     /// </summary>
-    public string PolicyVersion { get; set; } = "1";
+    public string PolicyVersion
+    {
+        get => _policyVersion;
+        set
+        {
+            // Idempotent: an unchanged assignment (the common re-render case) is a no-op.
+            if (string.Equals(_policyVersion, value, StringComparison.Ordinal)) return;
+            _policyVersion = value;
+            // Before hydration there is no decision to revalidate — LoadFromJson will
+            // read the latest _policyVersion when it runs. Once a decision is loaded,
+            // a version change here must recompute validity now; otherwise stale
+            // consent stays valid against the wrong (superseded) policy version.
+            if (_loaded) ReevaluateDecision();
+        }
+    }
+    private string _policyVersion = "1";
 
     /// <summary>
     /// True once the user has answered the banner (accepted, rejected, or
@@ -126,6 +151,14 @@ public sealed class ConsentService
             var json = await _js.InvokeAsync<string?>("localStorage.getItem", StorageKey);
             if (string.IsNullOrWhiteSpace(json)) return;
             LoadFromJson(json);
+
+            // A hydrated decision whose stored version no longer matches PolicyVersion
+            // must re-prompt — but the pre-boot FOUC guard already added
+            // html.lumeo-consent-decided off the mere presence of the stored entry,
+            // and CSS force-hides the banner. Clear the class so the re-prompt is
+            // actually visible. (Decided/valid records keep the class → no FOUC.)
+            if (_hasStoredRecord && !_decided)
+                await SyncFoucGuardAsync();
         }
         catch (JSException) { /* localStorage blocked (cookies disabled) — treat as no decision yet */ }
         catch (JsonException) { /* corrupt entry — ignore */ }
@@ -138,6 +171,9 @@ public sealed class ConsentService
     private void LoadFromJson(string json)
     {
         if (JsonNode.Parse(json) is not JsonObject root) return;
+        // A parseable entry existed — a decision (in either shape) is now hydrated,
+        // so PolicyVersion changes from here on re-evaluate its validity.
+        _hasStoredRecord = true;
 
         // New format is uniquely identified by a "categories" object — a legacy
         // map only ever holds string→bool pairs, so it can never have an OBJECT
@@ -166,6 +202,38 @@ public sealed class ConsentService
             _decidedAtUtc = null;
             _decided = true;
         }
+    }
+
+    // Recompute whether the currently-hydrated decision still counts under the
+    // active PolicyVersion. Only meaningful once a stored decision has been loaded
+    // (with nothing stored there is no decision to revalidate — the banner shows).
+    // Mirrors LoadFromJson's decision rule exactly. Idempotent: a no-op unless
+    // _decided actually flips; when it flips we notify subscribers and re-sync the
+    // pre-boot FOUC guard so a freshly-invalidated decision re-shows the (CSS-hidden)
+    // banner — and a re-validated one hides it again without a flash.
+    private void ReevaluateDecision()
+    {
+        if (!_hasStoredRecord) return;
+        var versionMatches = _storedVersion is null
+            || string.Equals(_storedVersion, _policyVersion, StringComparison.Ordinal);
+        if (versionMatches == _decided) return;
+        _decided = versionMatches;
+        _ = SyncFoucGuardAsync();
+        OnChange?.Invoke();
+    }
+
+    // Keep the html.lumeo-consent-decided class (set synchronously by index.html's
+    // pre-boot guard for ANY stored entry; CSS force-hides .lumeo-consent-banner
+    // while present) in sync with the live decision state. Fire-and-forget safe:
+    // no-ops during prerender / when cookies are blocked.
+    private async Task SyncFoucGuardAsync()
+    {
+        try
+        {
+            await _js.InvokeVoidAsync(_decided ? "lumeoConsent.markDecided" : "lumeoConsent.markUndecided");
+        }
+        catch (JSException) { }
+        catch (InvalidOperationException) { }
     }
 
     private static Dictionary<string, bool> ReadBoolMap(JsonObject obj)
@@ -212,6 +280,9 @@ public sealed class ConsentService
         // (e.g. every category is Required), so HasDecided flips and the
         // banner dismisses for good.
         _decided = true;
+        // A decision now exists (stamped with the current version by PersistAsync),
+        // so a later PolicyVersion change re-evaluates it like a loaded one would.
+        _hasStoredRecord = true;
         await PersistAsync();
         OnChange?.Invoke();
     }
@@ -223,6 +294,9 @@ public sealed class ConsentService
         _decided = false;
         _decidedAtUtc = null;
         _storedVersion = null;
+        // No stored decision remains — a later PolicyVersion change must not
+        // re-derive a phantom "decided" from the cleared version fields.
+        _hasStoredRecord = false;
         try
         {
             await _js.InvokeVoidAsync("localStorage.removeItem", StorageKey);

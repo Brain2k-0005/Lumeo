@@ -81,6 +81,12 @@
     // The public SelectedValues contract is preserved: values are derived from the
     // selected nodes on the way OUT, and mapped back to nodes on the way IN.
     private HashSet<TreeViewItem<T>> _selectedNodes = new(ReferenceEqualityComparer.Instance);
+    // Values named by SelectedValues that had no materialized node at resolution time
+    // (a lazy child whose branch wasn't loaded yet). Held so TryResolvePendingSelection
+    // can adopt the node once its branch loads via LoadChildren — otherwise a controlled
+    // / seed SelectedValues for a lazy child would never take visible effect, because
+    // ResolveSelectedNodes only runs on a parameter set.
+    private List<T>? _pendingSelectValues;
     private TreeViewContext? _context;
 
     // Search filtering renders the ORIGINAL item instances; visibility and
@@ -150,6 +156,9 @@
 
         bool itemsChanged = !ReferenceEquals(Items, _previousItems);
         bool expandAllChanged = ExpandAll != _previousExpandAll;
+        // Capture the OUTGOING tree before overwriting it — ReanchorSelection needs it
+        // to compute each selected node's structural path in the tree it came from.
+        var previousItems = _previousItems;
         _previousItems = Items;
         _previousExpandAll = ExpandAll;
         _flatVisible = null;
@@ -158,9 +167,9 @@
         {
             // A same-content refresh hands us new (reference-distinct) instances, which
             // would drop the identity-tracked selection. Re-anchor to the new instances
-            // by stable Value identity — the same approach EnsureFlatVisible uses for the
-            // roving focus (#13) — so an async reload keeps the selected row highlighted.
-            ReanchorSelection(Items ?? []);
+            // by structural PATH (so duplicate / null Values don't mis-anchor), with a
+            // unique-value fallback — so an async reload keeps the selected row highlighted.
+            ReanchorSelection(Items ?? [], previousItems);
             if (ExpandAll)
             {
                 ApplyExpandAll(Items ?? [], true);
@@ -261,6 +270,9 @@
                     // resurrect a tree they just collapsed (finally resets IsLoading).
                     if (gen != _expandGeneration) return;
                     item.ChildrenLoaded = true;
+                    // Bind any pending controlled/seed selection naming one of the
+                    // just-loaded nodes (same as the per-node expand path).
+                    TryResolvePendingSelection(item.Children);
                     // Mirror the per-node lazy-load cascade (rc.42): a fully-checked
                     // parent propagates its check to freshly-loaded children.
                     if (item.IsChecked && !item.IsIndeterminate && item.Children is { Count: > 0 })
@@ -305,6 +317,11 @@
         // A manual collapse overrides any search-forced expansion.
         if (!item.IsExpanded)
             _autoExpanded.Remove(item);
+        else
+            // Expanding may have just lazy-loaded this node's children (TreeViewNode
+            // assigns Item.Children before raising this). Bind any pending controlled/
+            // seed selection that named one of those now-materialized nodes.
+            TryResolvePendingSelection(item.Children);
         _flatVisible = null;
         StateHasChanged();
         return Task.CompletedTask;
@@ -534,10 +551,38 @@
     private HashSet<TreeViewItem<T>> ResolveSelectedNodes(List<T>? values)
     {
         var set = new HashSet<TreeViewItem<T>>(ReferenceEqualityComparer.Instance);
-        if (values is not { Count: > 0 }) return set;
+        if (values is not { Count: > 0 })
+        {
+            _pendingSelectValues = null;
+            return set;
+        }
         var wanted = new HashSet<T>(values);
         CollectMatching(Items ?? [], wanted, set);
+        // Remember the values that named a not-yet-materialized (lazy) node so they can
+        // be resolved when that branch loads. A value that matched at least one node is
+        // considered satisfied.
+        var matched = new HashSet<T>(set.Select(n => n.Value!));
+        var pending = values.Where(v => !matched.Contains(v)).ToList();
+        _pendingSelectValues = pending.Count > 0 ? pending : null;
         return set;
+    }
+
+    /// <summary>After a lazy branch materializes, adopt any freshly-loaded node whose
+    /// <c>Value</c> was named by <see cref="SelectedValues"/> but had no node to bind to
+    /// at parameter-set time. Additive — it never clears an existing selection — so it is
+    /// safe in both controlled and seed/uncontrolled modes and never pushes
+    /// <see cref="SelectedValuesChanged"/> (the value is already in the parent's list).</summary>
+    private void TryResolvePendingSelection(List<TreeViewItem<T>>? loaded)
+    {
+        if (_pendingSelectValues is not { Count: > 0 } || loaded is not { Count: > 0 }) return;
+        var wanted = new HashSet<T>(_pendingSelectValues);
+        var found = new HashSet<TreeViewItem<T>>(ReferenceEqualityComparer.Instance);
+        CollectMatching(loaded, wanted, found);
+        if (found.Count == 0) return;
+        foreach (var n in found) _selectedNodes.Add(n);
+        var resolvedValues = new HashSet<T>(found.Select(n => n.Value!));
+        var remaining = _pendingSelectValues.Where(v => !resolvedValues.Contains(v)).ToList();
+        _pendingSelectValues = remaining.Count > 0 ? remaining : null;
     }
 
     private static void CollectMatching(List<TreeViewItem<T>> items, HashSet<T> wanted, HashSet<TreeViewItem<T>> into)
@@ -552,9 +597,13 @@
 
     /// <summary>Re-anchors the identity-tracked selection onto a freshly-supplied
     /// <see cref="Items"/> tree. A node still present by reference is kept; a node that
-    /// was replaced by an equal-content instance is re-matched by stable <c>Value</c>
-    /// identity so a same-content async reload doesn't silently clear the selection.</summary>
-    private void ReanchorSelection(List<TreeViewItem<T>> newItems)
+    /// was replaced by an equal-content instance is re-matched by its structural PATH
+    /// (the child-index chain it held in <paramref name="oldItems"/>, value-verified),
+    /// with a UNIQUE-value fallback. A first-match-by-value shortcut would jump to the
+    /// wrong node when Values are duplicated or null (GH #350's containers routinely
+    /// are); nodes whose path and value both fail to resolve unambiguously drop out
+    /// rather than mis-select.</summary>
+    private void ReanchorSelection(List<TreeViewItem<T>> newItems, List<TreeViewItem<T>>? oldItems)
     {
         if (_selectedNodes.Count == 0) return;
         var flat = new List<TreeViewItem<T>>();
@@ -563,15 +612,67 @@
         var rebuilt = new HashSet<TreeViewItem<T>>(ReferenceEqualityComparer.Instance);
         foreach (var sel in _selectedNodes)
         {
+            // Still the same instance (a partial refresh / untouched branch) — keep it.
             if (present.Contains(sel))
             {
                 rebuilt.Add(sel);
                 continue;
             }
-            var match = flat.FirstOrDefault(n => EqualityComparer<T>.Default.Equals(n.Value, sel.Value));
+            // Primary: the node at the SAME structural position in the new tree. A
+            // same-content async reload preserves positions and Values, so this resolves
+            // the correct node even when siblings share a (duplicate/null) Value.
+            var match = ResolveByPath(sel, oldItems, newItems);
+            if (match is null)
+            {
+                // Fallback: the structure changed (node moved / path invalid). Follow the
+                // node by Value ONLY when that value maps to exactly one node — otherwise
+                // an ambiguous (duplicate/null) value would mis-select, so drop instead.
+                var byValue = flat.Where(n => EqualityComparer<T>.Default.Equals(n.Value, sel.Value)).ToList();
+                if (byValue.Count == 1) match = byValue[0];
+            }
             if (match is not null) rebuilt.Add(match);
         }
         _selectedNodes = rebuilt;
+    }
+
+    /// <summary>Resolves the node occupying the same root→node child-index path that
+    /// <paramref name="target"/> held in <paramref name="oldItems"/>, then confirms the
+    /// resolved node carries the same <c>Value</c>. Returns null when the old tree is
+    /// unavailable, the path can't be walked in the new tree, or the position now holds
+    /// a differently-valued node (a reorder/mutation) — so the caller falls back to a
+    /// unique-value match instead of mis-anchoring.</summary>
+    private static TreeViewItem<T>? ResolveByPath(TreeViewItem<T> target, List<TreeViewItem<T>>? oldItems, List<TreeViewItem<T>> newItems)
+    {
+        if (oldItems is null) return null;
+        var path = new List<int>();
+        if (!BuildIndexPath(oldItems, target, path)) return null;
+
+        IReadOnlyList<TreeViewItem<T>> level = newItems;
+        TreeViewItem<T>? node = null;
+        foreach (var idx in path)
+        {
+            if (idx < 0 || idx >= level.Count) return null;
+            node = level[idx];
+            level = node.Children ?? (IReadOnlyList<TreeViewItem<T>>)[];
+        }
+        if (node is null) return null;
+        return EqualityComparer<T>.Default.Equals(node.Value, target.Value) ? node : null;
+    }
+
+    /// <summary>DFS that records the child-index chain from the roots down to
+    /// <paramref name="target"/> (matched by reference). Returns false when the target
+    /// isn't in the tree.</summary>
+    private static bool BuildIndexPath(IReadOnlyList<TreeViewItem<T>> items, TreeViewItem<T> target, List<int> path)
+    {
+        for (int i = 0; i < items.Count; i++)
+        {
+            var item = items[i];
+            path.Add(i);
+            if (ReferenceEquals(item, target)) return true;
+            if (item.Children is { Count: > 0 } && BuildIndexPath(item.Children, target, path)) return true;
+            path.RemoveAt(path.Count - 1);
+        }
+        return false;
     }
 
     private static void FlattenAll(List<TreeViewItem<T>> items, List<TreeViewItem<T>> into)

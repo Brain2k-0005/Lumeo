@@ -665,14 +665,21 @@ export function dispatchAction(elementId, actionJson) {
     chart.dispatchAction(action);
 }
 
-export async function loadExtension(url) {
-    if (document.querySelector(`script[src="${url}"]`)) return;
+export async function loadExtension(url, overrideKey) {
+    // A host can redirect a plugin to a self-hosted copy (GDPR: no pre-consent CDN
+    // hit) by setting window.lumeoCdn[overrideKey] — same mechanism loadECharts()
+    // uses for `echarts`. Falls back to the caller's default (CDN) URL otherwise.
+    const override = (overrideKey && typeof window !== 'undefined'
+        && window.lumeoCdn && window.lumeoCdn[overrideKey]) || null;
+    const resolved = override || url;
+    if (!resolved) return;
+    if (document.querySelector(`script[src="${resolved}"]`)) return;
     await loadECharts(); // ensure echarts is loaded first
     return new Promise((resolve, reject) => {
         const script = document.createElement('script');
-        script.src = url;
+        script.src = resolved;
         script.onload = resolve;
-        script.onerror = () => reject(new Error(`Failed to load extension: ${url}`));
+        script.onerror = () => reject(new Error(`Failed to load extension: ${resolved}`));
         document.head.appendChild(script);
     });
 }
