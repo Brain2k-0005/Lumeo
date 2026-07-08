@@ -18,7 +18,8 @@
      @onkeydown:stopPropagation="true"
      @attributes="AdditionalAttributes">
 
-    <div class="@NodeClass" style="padding-left: @(Level * 16)px" @onclick="HandleClick">
+    @* Indentation uses the logical inline-start so nesting mirrors correctly under RTL. *@
+    <div class="@NodeClass" style="padding-inline-start: @(Level * 16)px" @onclick="HandleClick">
 
         @* Expand chevron / loading spinner / leaf spacer *@
         @if (Item.IsLoading)
@@ -85,7 +86,7 @@
                               Expandable="Expandable"
                               CascadeCheck="CascadeCheck"
                               MultiSelect="MultiSelect"
-                              SelectedValues="SelectedValues"
+                              SelectedNodes="SelectedNodes"
                               NodeTemplate="NodeTemplate"
                               LoadChildren="LoadChildren"
                               OnItemClick="OnItemClick"
@@ -111,7 +112,10 @@
 
     [Parameter] public bool CascadeCheck { get; set; }
     [Parameter] public bool MultiSelect { get; set; }
-    [Parameter] public HashSet<T>? SelectedValues { get; set; }
+    // The set of currently-selected NODE instances (reference-identity comparer, owned by
+    // the parent TreeView). Selection is by identity, not Value, so a container node with a
+    // null/duplicate Value highlights only itself — see TreeView._selectedNodes (GH #350).
+    [Parameter] public HashSet<TreeView<T>.TreeViewItem<T>>? SelectedNodes { get; set; }
     [Parameter] public RenderFragment<TreeView<T>.TreeViewItem<T>>? NodeTemplate { get; set; }
     [Parameter] public Func<TreeView<T>.TreeViewItem<T>, Task<List<TreeView<T>.TreeViewItem<T>>>>? LoadChildren { get; set; }
     [Parameter] public EventCallback<TreeView<T>.TreeViewItem<T>> OnExpandChanged { get; set; }
@@ -154,7 +158,9 @@
         HasLoadedChildren ||
         (LoadChildren is not null && !Item.IsLeaf && !Item.ChildrenLoaded);
 
-    private bool IsSelected => SelectedValues?.Contains(Item.Value!) == true;
+    // Identity match: SelectedNodes uses a reference-equality comparer, so this is true
+    // only for the exact clicked node — never for a sibling that shares Item.Value.
+    private bool IsSelected => SelectedNodes?.Contains(Item) == true;
 
     private string? AriaExpanded => ShowExpandChevron
         ? EffectiveExpanded.ToString().ToLowerInvariant()
@@ -249,6 +255,11 @@
         await OnExpandChanged.InvokeAsync(Item);
     }
 
+    // Click semantic (documented): clicking the label ROW selects the node (and raises
+    // OnItemClick). It never toggles expansion — the chevron button owns expand/collapse
+    // (and stops propagation), matching the WAI-ARIA tree pattern where selection and
+    // expansion are independent. So a parent can be selected while staying collapsed, and
+    // expanding a parent does not change what is selected.
     private async Task HandleClick()
     {
         if (Item.IsDisabled) return;

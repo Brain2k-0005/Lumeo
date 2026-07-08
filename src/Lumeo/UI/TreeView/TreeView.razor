@@ -27,7 +27,7 @@
                               Expandable="Expandable"
                               CascadeCheck="CascadeCheck"
                               MultiSelect="MultiSelect"
-                              SelectedValues="_selectedValues"
+                              SelectedNodes="_selectedNodes"
                               NodeTemplate="NodeTemplate"
                               LoadChildren="LoadChildren"
                               OnItemClick="HandleItemClick"
@@ -72,7 +72,15 @@
     private List<T>? _lastPushedSelectedValues;
     private bool _previousExpandAll;
     private List<TreeViewItem<T>> _displayItems = [];
-    private HashSet<T> _selectedValues = [];
+    // Selection is tracked by NODE IDENTITY (reference equality), NOT by Value.
+    // Container/parent nodes routinely share a Value (commonly null, or a duplicate
+    // across branches); keying selection by Value made a single click light up EVERY
+    // node sharing that value (GH #350 — clicking one folder highlighted all
+    // value-less folders, incl. a nested one that read as a stray bar among its
+    // siblings' children). Reference identity selects exactly the clicked node.
+    // The public SelectedValues contract is preserved: values are derived from the
+    // selected nodes on the way OUT, and mapped back to nodes on the way IN.
+    private HashSet<TreeViewItem<T>> _selectedNodes = new(ReferenceEqualityComparer.Instance);
     private TreeViewContext? _context;
 
     // Search filtering renders the ORIGINAL item instances; visibility and
@@ -122,7 +130,7 @@
             var isUnchangedFromBeforeInteraction = ReferenceEquals(SelectedValues, _previousSelectedValues);
             if (!isEcho && !isUnchangedFromBeforeInteraction)
             {
-                _selectedValues = SelectedValues is not null ? [..SelectedValues] : [];
+                _selectedNodes = ResolveSelectedNodes(SelectedValues);
                 _lastPushedSelectedValues = SelectedValues;
             }
             // else: echo of our own selection, or unchanged from before — keep the in-flight selection.
@@ -136,7 +144,7 @@
             // unrelated re-render, breaking the two-way-binding contract used
             // elsewhere.
             if (SelectedValues is not null)
-                _selectedValues = [..SelectedValues];
+                _selectedNodes = ResolveSelectedNodes(SelectedValues);
             _previousSelectedValues = SelectedValues;
         }
 
@@ -148,6 +156,11 @@
 
         if (itemsChanged)
         {
+            // A same-content refresh hands us new (reference-distinct) instances, which
+            // would drop the identity-tracked selection. Re-anchor to the new instances
+            // by stable Value identity — the same approach EnsureFlatVisible uses for the
+            // roving focus (#13) — so an async reload keeps the selected row highlighted.
+            ReanchorSelection(Items ?? []);
             if (ExpandAll)
             {
                 ApplyExpandAll(Items ?? [], true);
@@ -299,28 +312,34 @@
 
     private async Task HandleSelectionChanged(TreeViewItem<T> item)
     {
+        // Selection is by node identity, so clicking a container node with a null or
+        // duplicate Value selects ONLY that node — never every node that happens to
+        // share its value. Selection is independent of expansion: this never toggles
+        // the node's IsExpanded (the chevron / Left-Right keys own expansion), so a
+        // parent can be selected while staying collapsed and vice-versa.
         bool changed;
         if (MultiSelect)
         {
-            // Toggle membership.
-            if (!_selectedValues.Add(item.Value!))
-                _selectedValues.Remove(item.Value!);
+            // Toggle membership (reference identity).
+            if (!_selectedNodes.Add(item))
+                _selectedNodes.Remove(item);
             changed = true;
         }
         else
         {
-            // Replace the selection; re-clicking the selected node is a no-op.
-            changed = _selectedValues.Count != 1 || !_selectedValues.Contains(item.Value!);
+            // Replace the selection; re-clicking the same node instance is a no-op.
+            changed = _selectedNodes.Count != 1 || !_selectedNodes.Contains(item);
             if (changed)
             {
-                _selectedValues.Clear();
-                _selectedValues.Add(item.Value!);
+                _selectedNodes.Clear();
+                _selectedNodes.Add(item);
             }
         }
 
         if (changed && SelectedValuesChanged.HasDelegate)
         {
-            List<T> outgoing = [.._selectedValues];
+            // Public contract stays value-based: project the selected nodes to values.
+            List<T> outgoing = [.._selectedNodes.Select(n => n.Value!)];
             // Record _lastPushedSelectedValues BEFORE invoking SelectedValuesChanged:
             // a controlled parent re-renders synchronously inside InvokeAsync, so
             // OnParametersSet must already see this exact list reference as "the
@@ -505,6 +524,64 @@
             if (found is not null) return found;
         }
         return null;
+    }
+
+    /// <summary>Maps an incoming (controlled/seed) <see cref="SelectedValues"/> list to
+    /// the concrete node instances that carry those values. Value-based on the way IN by
+    /// design — a controlled consumer speaks in values; if it supplies an ambiguous value
+    /// (null or a duplicate) every matching node is selected, which is the value contract.
+    /// Interactive clicks never round-trip through here, so they stay identity-exact.</summary>
+    private HashSet<TreeViewItem<T>> ResolveSelectedNodes(List<T>? values)
+    {
+        var set = new HashSet<TreeViewItem<T>>(ReferenceEqualityComparer.Instance);
+        if (values is not { Count: > 0 }) return set;
+        var wanted = new HashSet<T>(values);
+        CollectMatching(Items ?? [], wanted, set);
+        return set;
+    }
+
+    private static void CollectMatching(List<TreeViewItem<T>> items, HashSet<T> wanted, HashSet<TreeViewItem<T>> into)
+    {
+        foreach (var item in items)
+        {
+            if (wanted.Contains(item.Value!)) into.Add(item);
+            if (item.Children is { Count: > 0 })
+                CollectMatching(item.Children, wanted, into);
+        }
+    }
+
+    /// <summary>Re-anchors the identity-tracked selection onto a freshly-supplied
+    /// <see cref="Items"/> tree. A node still present by reference is kept; a node that
+    /// was replaced by an equal-content instance is re-matched by stable <c>Value</c>
+    /// identity so a same-content async reload doesn't silently clear the selection.</summary>
+    private void ReanchorSelection(List<TreeViewItem<T>> newItems)
+    {
+        if (_selectedNodes.Count == 0) return;
+        var flat = new List<TreeViewItem<T>>();
+        FlattenAll(newItems, flat);
+        var present = new HashSet<TreeViewItem<T>>(flat, ReferenceEqualityComparer.Instance);
+        var rebuilt = new HashSet<TreeViewItem<T>>(ReferenceEqualityComparer.Instance);
+        foreach (var sel in _selectedNodes)
+        {
+            if (present.Contains(sel))
+            {
+                rebuilt.Add(sel);
+                continue;
+            }
+            var match = flat.FirstOrDefault(n => EqualityComparer<T>.Default.Equals(n.Value, sel.Value));
+            if (match is not null) rebuilt.Add(match);
+        }
+        _selectedNodes = rebuilt;
+    }
+
+    private static void FlattenAll(List<TreeViewItem<T>> items, List<TreeViewItem<T>> into)
+    {
+        foreach (var item in items)
+        {
+            into.Add(item);
+            if (item.Children is { Count: > 0 })
+                FlattenAll(item.Children, into);
+        }
     }
 
     private static void SetChildrenChecked(List<TreeViewItem<T>>? children, bool value)
