@@ -64,6 +64,12 @@ public sealed class ConsentService
     // re-evaluated when PolicyVersion changes (see the property setter).
     private bool _hasStoredRecord;
 
+    // A stored entry existed but was MALFORMED (a legacy bare map with a non-boolean
+    // property — the pre-4.1.1 deserializer rejected these). We hydrated it far enough
+    // to clear the pre-boot FOUC guard and re-prompt, but it is NOT a decision: a later
+    // PolicyVersion change must never resurrect it as "decided" (only a fresh write can).
+    private bool _decisionRejected;
+
     public ConsentService(IJSRuntime js)
     {
         _js = js;
@@ -192,16 +198,44 @@ public sealed class ConsentService
                 || string.Equals(_storedVersion, PolicyVersion, StringComparison.Ordinal);
             _decided = versionMatches;
         }
-        else
+        else if (IsAllBoolean(root))
         {
             // Legacy bare map: a persisted decision existed, so the user HAS decided.
             // The format change alone must never re-prompt. Upgraded to the record
             // shape on the next PersistAsync. No version/timestamp is known.
+            // Gate: EVERY property must be a boolean — a bare map is only a legit
+            // pre-4.1.1 decision when it is a pure category→bool map (an empty {} counts,
+            // vacuously). Anything else falls through to the fail-closed branch below.
             _state = ReadBoolMap(root);
             _storedVersion = null;
             _decidedAtUtc = null;
             _decided = true;
         }
+        else
+        {
+            // Fail CLOSED: a malformed legacy object ({"analytics":"true"}, {"foo":"bar"})
+            // has a non-boolean property. The pre-4.1.1 deserializer rejected such entries,
+            // so treating them as a completed decision would silently grant/deny consent off
+            // garbage. Re-prompt instead: not decided, no attributable version. _hasStoredRecord
+            // stays true so EnsureLoadedAsync clears the pre-boot FOUC guard and the banner
+            // reappears; _decisionRejected keeps a later version change from resurrecting it.
+            _state = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
+            _storedVersion = null;
+            _decidedAtUtc = null;
+            _decided = false;
+            _decisionRejected = true;
+        }
+    }
+
+    // A legacy bare map is a valid decision only if every property is a JSON boolean.
+    // A non-boolean value (string "true", number, nested object/array) marks the record
+    // malformed → fail closed. Vacuously true for an empty object.
+    private static bool IsAllBoolean(JsonObject obj)
+    {
+        foreach (var (_, value) in obj)
+            if (value is not JsonValue jv || !jv.TryGetValue<bool>(out _))
+                return false;
+        return true;
     }
 
     // Recompute whether the currently-hydrated decision still counts under the
@@ -213,7 +247,9 @@ public sealed class ConsentService
     // banner — and a re-validated one hides it again without a flash.
     private void ReevaluateDecision()
     {
-        if (!_hasStoredRecord) return;
+        // A rejected (malformed) record is never a decision — a version change must not
+        // flip it to "decided" (its null _storedVersion would otherwise read as a match).
+        if (!_hasStoredRecord || _decisionRejected) return;
         var versionMatches = _storedVersion is null
             || string.Equals(_storedVersion, _policyVersion, StringComparison.Ordinal);
         if (versionMatches == _decided) return;
@@ -283,6 +319,8 @@ public sealed class ConsentService
         // A decision now exists (stamped with the current version by PersistAsync),
         // so a later PolicyVersion change re-evaluates it like a loaded one would.
         _hasStoredRecord = true;
+        // A fresh write supersedes any rejected/malformed entry we hydrated over.
+        _decisionRejected = false;
         await PersistAsync();
         OnChange?.Invoke();
     }
@@ -297,6 +335,7 @@ public sealed class ConsentService
         // No stored decision remains — a later PolicyVersion change must not
         // re-derive a phantom "decided" from the cleared version fields.
         _hasStoredRecord = false;
+        _decisionRejected = false;
         try
         {
             await _js.InvokeVoidAsync("localStorage.removeItem", StorageKey);

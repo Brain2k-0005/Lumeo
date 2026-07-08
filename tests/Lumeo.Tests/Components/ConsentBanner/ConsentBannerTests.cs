@@ -112,6 +112,27 @@ public class ConsentBannerTests : IAsyncLifetime
         Assert.True(second.HasDecided);
     }
 
+    // ── PR #351 round-2, finding (e): PolicyVersion must reach the service on EVERY
+    // parameter set, not just once in OnInitialized ──────────────────────────────
+
+    [Fact]
+    public void PolicyVersion_supplied_after_first_render_reaches_the_service()
+    {
+        // Capture the exact ConsentService the banner injects (registered last → wins over
+        // the ctor's scoped registration) so we can read the version it actually received.
+        var svc = new ConsentService(new InMemoryJsRuntime());
+        _ctx.Services.AddSingleton(svc);
+
+        var cut = _ctx.Render<L.ConsentBanner>(p => p.Add(c => c.PolicyVersion, "2024-05"));
+        Assert.Equal("2024-05", svc.PolicyVersion); // first render pushed it via OnParametersSet
+
+        // A LATER parameter value (async-resolved, or changed by the parent after mount) must
+        // also reach the service. The round-1 bug set PolicyVersion only in OnInitialized, so a
+        // post-mount change never propagated — this re-render would leave the service on "2024-05".
+        cut.Render(p => p.Add(c => c.PolicyVersion, "2024-11"));
+        Assert.Equal("2024-11", svc.PolicyVersion);
+    }
+
     // Minimal IJSRuntime that emulates the localStorage get/set/remove calls
     // ConsentService makes, so the persistence round-trip can be exercised
     // without a browser. Everything else returns default.

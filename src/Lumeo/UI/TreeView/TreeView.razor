@@ -83,6 +83,41 @@
     private List<T>? _lastPushedSelectedValues;
     private bool _previousExpandAll;
     private List<TreeViewItem<T>> _displayItems = [];
+    // ── SELECTION LIFECYCLE ──────────────────────────────────────────────────
+    // One coherent model, four states, driven by Items refreshes and clicks — NOT by
+    // SelectedValues list-reference identity (that check only gates whether we RE-SEED
+    // from the parameter; resolution/carry below run on every Items change regardless):
+    //
+    //   seed        a value the consumer supplied via SelectedValues (the durable
+    //               source of truth for a controlled/seeded selection).
+    //   pending     a wanted value with NO materialized node in the current tree
+    //               (async/empty first render, or a lazy child not yet loaded). Held in
+    //               _pendingSelectValues; awaits a tree that contains a matching node.
+    //   resolved    a wanted (or interactively-chosen) value bound to a concrete node
+    //               INSTANCE. Held in _selectedNodes by reference identity.
+    //   superseded  a seed/pending value voided by an authoritative later assertion.
+    //
+    // Transitions (each names what it consumes / clears):
+    //   seed → pending|resolved   ResolveSelectedNodes(new SelectedValues): matched
+    //                             values → resolved; unmatched → pending.
+    //   pending → resolved        TryResolvePendingSelection(tree): a pending value whose
+    //                             node has now materialized binds. Runs on ANY Items
+    //                             refresh AND on lazy-load. Additive; never pushes up.
+    //   resolved → resolved′      ReanchorSelection on Items change: a resolved node
+    //                             replaced by an equal instance re-anchors by path/value.
+    //   resolved → pending        ReanchorSelection when a resolved node VANISHES from the
+    //                             new tree (empty/null reload, or a lazy branch collapsed
+    //                             back to unloaded): its VALUE is carried forward as
+    //                             pending — never dropped — so it re-binds when the node
+    //                             reappears. (This, plus the always-run TryResolvePending,
+    //                             is why the lifecycle survives a same-reference reload.)
+    //   pending/resolved → superseded   HandleSelectionChanged (interactive): single-select
+    //                             — the click owns the whole selection, so ALL pending is
+    //                             cleared (a stale seed can't resurrect + co-select once its
+    //                             branch loads). multi-select — only the toggled value is
+    //                             dropped from pending; the seed's other values stay wanted.
+    //   any → reset               ResolveSelectedNodes(null/empty): clears both sets.
+    //
     // Selection is tracked by NODE IDENTITY (reference equality), NOT by Value.
     // Container/parent nodes routinely share a Value (commonly null, or a duplicate
     // across branches); keying selection by Value made a single click light up EVERY
@@ -92,11 +127,10 @@
     // The public SelectedValues contract is preserved: values are derived from the
     // selected nodes on the way OUT, and mapped back to nodes on the way IN.
     private HashSet<TreeViewItem<T>> _selectedNodes = new(ReferenceEqualityComparer.Instance);
-    // Values named by SelectedValues that had no materialized node at resolution time
-    // (a lazy child whose branch wasn't loaded yet). Held so TryResolvePendingSelection
-    // can adopt the node once its branch loads via LoadChildren — otherwise a controlled
-    // / seed SelectedValues for a lazy child would never take visible effect, because
-    // ResolveSelectedNodes only runs on a parameter set.
+    // The pending bucket (see lifecycle above): wanted values with no node bound yet —
+    // a lazy child not loaded, an async/empty first render, or a resolved node carried
+    // back here after it vanished from a tree refresh. TryResolvePendingSelection drains
+    // it against every new/loaded subtree; it is value-based by the SelectedValues contract.
     private List<T>? _pendingSelectValues;
     private TreeViewContext? _context;
 
@@ -180,7 +214,12 @@
             // would drop the identity-tracked selection. Re-anchor to the new instances
             // by structural PATH (so duplicate / null Values don't mis-anchor), with a
             // unique-value fallback — so an async reload keeps the selected row highlighted.
+            // Vanished nodes are carried back to _pendingSelectValues (not dropped).
             ReanchorSelection(Items ?? [], previousItems);
+            // pending → resolved on ANY Items refresh (not only lazy-load): a seed value
+            // for a node that only just materialized — an async/empty first render, or a
+            // value carried forward when its node vanished — binds against the fresh tree.
+            TryResolvePendingSelection(Items);
             if (ExpandAll)
             {
                 ApplyExpandAll(Items ?? [], true);
@@ -354,6 +393,10 @@
             if (!_selectedNodes.Add(item))
                 _selectedNodes.Remove(item);
             changed = true;
+            // Supersede (multi-select): an explicit user action on THIS value wins over a
+            // deferred seed for the same value, but the seed's OTHER pending values stay
+            // wanted — a multi-select seed is a set the user is editing, not replacing.
+            RemovePending(item.Value);
         }
         else
         {
@@ -364,6 +407,11 @@
                 _selectedNodes.Clear();
                 _selectedNodes.Add(item);
             }
+            // Supersede (single-select): the click now owns the entire selection, so a
+            // pending lazy seed (which represented the intended sole selection) is void —
+            // clear it unconditionally so it can't resurrect and co-select once its branch
+            // loads. Unconditional: even a no-op re-click asserts sole ownership.
+            _pendingSelectValues = null;
         }
 
         if (changed && SelectedValuesChanged.HasDelegate)
@@ -623,6 +671,7 @@
         FlattenAll(newItems, flat);
         var present = new HashSet<TreeViewItem<T>>(flat, ReferenceEqualityComparer.Instance);
         var rebuilt = new HashSet<TreeViewItem<T>>(ReferenceEqualityComparer.Instance);
+        List<T>? carried = null; // values of resolved nodes that vanished — carry as pending
         foreach (var sel in _selectedNodes)
         {
             // Still the same instance (a partial refresh / untouched branch) — keep it.
@@ -639,13 +688,44 @@
             {
                 // Fallback: the structure changed (node moved / path invalid). Follow the
                 // node by Value ONLY when that value maps to exactly one node — otherwise
-                // an ambiguous (duplicate/null) value would mis-select, so drop instead.
+                // an ambiguous (duplicate/null) value would mis-select.
                 var byValue = flat.Where(n => EqualityComparer<T>.Default.Equals(n.Value, sel.Value)).ToList();
                 if (byValue.Count == 1) match = byValue[0];
             }
             if (match is not null) rebuilt.Add(match);
+            // resolved → pending: the node is gone from the new tree (an empty/null reload,
+            // or a lazy branch collapsed back to unloaded). Don't drop it — carry its value
+            // forward so it re-binds via TryResolvePendingSelection when a tree containing it
+            // arrives. This is what stops an empty reload (or a same-SelectedValues-reference
+            // reload that unloads the branch) from wiping the selection permanently.
+            else (carried ??= []).Add(sel.Value!);
         }
         _selectedNodes = rebuilt;
+        if (carried is { Count: > 0 })
+            MergePending(carried);
+    }
+
+    /// <summary>Adds values to the pending bucket without duplicating what's already
+    /// queued. Used when a resolved node vanishes on an Items refresh — its value is
+    /// carried forward so it re-binds when a matching node reappears.</summary>
+    private void MergePending(IEnumerable<T> values)
+    {
+        var merged = _pendingSelectValues is { Count: > 0 } ? [.._pendingSelectValues] : new List<T>();
+        var seen = new HashSet<T>(merged);
+        foreach (var v in values)
+            if (seen.Add(v)) merged.Add(v);
+        _pendingSelectValues = merged.Count > 0 ? merged : null;
+    }
+
+    /// <summary>Drops a single value from the pending bucket (multi-select supersede:
+    /// an explicit interactive selection of a value wins over its deferred seed).</summary>
+    private void RemovePending(T? value)
+    {
+        if (_pendingSelectValues is null) return;
+        _pendingSelectValues = _pendingSelectValues
+            .Where(v => !EqualityComparer<T>.Default.Equals(v, value))
+            .ToList();
+        if (_pendingSelectValues.Count == 0) _pendingSelectValues = null;
     }
 
     /// <summary>Resolves the node occupying the same root→node child-index path that

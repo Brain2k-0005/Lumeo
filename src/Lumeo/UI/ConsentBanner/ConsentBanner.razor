@@ -188,12 +188,20 @@
 
     protected override void OnInitialized()
     {
-        // Push the configured policy version into the service BEFORE it hydrates
-        // (EnsureLoadedAsync runs later, in OnAfterRenderAsync) so a version mismatch
-        // is detected on load and the banner re-prompts.
-        Consent.PolicyVersion = PolicyVersion;
         Consent.OnChange += HandleConsentChange;
         Consent.OnRequestOpenPreferences += HandleReopenRequest;
+    }
+
+    protected override void OnParametersSet()
+    {
+        // Push the configured policy version into the service on EVERY parameter set, not
+        // just once in OnInitialized: a PolicyVersion supplied later — resolved async, or
+        // changed by the parent after first render — must still reach the service. The
+        // setter is idempotent (an unchanged value is a no-op) and re-evaluates a
+        // hydrated decision's validity when the version actually changes, so pushing it
+        // here is safe on the first render (runs before EnsureLoadedAsync in
+        // OnAfterRenderAsync, so a mismatch is still detected on load) and on every later one.
+        Consent.PolicyVersion = PolicyVersion;
     }
 
     private void HandleReopenRequest() => InvokeAsync(() =>

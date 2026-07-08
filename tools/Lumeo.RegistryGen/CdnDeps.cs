@@ -28,8 +28,23 @@ public static class CdnDeps
         new("pdfJsWorker",             "pdfjs-dist",               "4.0.379", "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.0.379/build/pdf.worker.mjs", "Lumeo.PdfViewer"),
 
         // ── Lumeo.Charts ────────────────────────────────────────────────────────
-        // echarts-interop.js: window.lumeoCdn.echarts
-        new("echarts",                 "echarts",                  "5",       "https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js",           "Lumeo.Charts"),
+        // echarts-interop.js: window.lumeoCdn.echarts (loadECharts) and the two plugin
+        // override keys read by loadExtension(url, overrideKey) — LiquidFillChart and
+        // WordCloudChart pass these so a host can self-host the plugin (GDPR: no pre-consent
+        // CDN hit). Without them in the manifest, `lumeo deps install --write-bootstrap`
+        // could vendor echarts but silently miss the plugins, so the bootstrap left them on
+        // the public CDN. Versions match the component defaults (liquidfill@3, wordcloud@2.1.0).
+        new("echarts",                 "echarts",                  "5",       "https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js",                       "Lumeo.Charts"),
+        new("echartsLiquidfill",       "echarts-liquidfill",       "3",       "https://cdn.jsdelivr.net/npm/echarts-liquidfill@3/dist/echarts-liquidfill.min.js", "Lumeo.Charts"),
+        new("echartsWordcloud",        "echarts-wordcloud",        "2.1.0",   "https://cdn.jsdelivr.net/npm/echarts-wordcloud@2.1.0/dist/echarts-wordcloud.min.js", "Lumeo.Charts"),
+        // NOT in the manifest by design: the world-map GeoJSON (echarts-map-world@4.9.0/
+        // world.json). The manifest maps window.lumeoCdn[key] → a vendored script that the
+        // interop auto-loads; the map JSON is neither. No interop reads a world-map key off
+        // window.lumeoCdn — GeoMapChart takes the GeoJSON as its MapJson STRING parameter,
+        // which the CONSUMER fetches from a URL of their own choosing and passes in. It is a
+        // consumer-owned data asset, not a runtime-autoloaded dependency, so it has no
+        // override key to vendor. (The docs site self-hosts its own copy under
+        // wwwroot/lib/lumeo-vendor/ for its demo; that is a docs concern, not a CLI one.)
 
         // ── Lumeo.Scheduler ─────────────────────────────────────────────────────
         // scheduler.js: _cdn('fullCalendarCore' | 'fullCalendarDaygrid' | ...)
