@@ -86,6 +86,7 @@
                               Expandable="Expandable"
                               CascadeCheck="CascadeCheck"
                               MultiSelect="MultiSelect"
+                              ExpandOnRowClick="ExpandOnRowClick"
                               SelectedNodes="SelectedNodes"
                               NodeTemplate="NodeTemplate"
                               LoadChildren="LoadChildren"
@@ -112,6 +113,10 @@
 
     [Parameter] public bool CascadeCheck { get; set; }
     [Parameter] public bool MultiSelect { get; set; }
+    // When true (the tree default), clicking anywhere on a PARENT row toggles its
+    // expansion in addition to selecting it; false keeps the chevron as the sole
+    // expand trigger. Threaded down so every level shares the tree's mode.
+    [Parameter] public bool ExpandOnRowClick { get; set; } = true;
     // The set of currently-selected NODE instances (reference-identity comparer, owned by
     // the parent TreeView). Selection is by identity, not Value, so a container node with a
     // null/duplicate Value highlights only itself — see TreeView._selectedNodes (GH #350).
@@ -255,17 +260,31 @@
         await OnExpandChanged.InvokeAsync(Item);
     }
 
-    // Click semantic (documented): clicking the label ROW selects the node (and raises
-    // OnItemClick). It never toggles expansion — the chevron button owns expand/collapse
-    // (and stops propagation), matching the WAI-ARIA tree pattern where selection and
-    // expansion are independent. So a parent can be selected while staying collapsed, and
-    // expanding a parent does not change what is selected.
-    private async Task HandleClick()
+    // Click semantic (documented): clicking the label ROW always SELECTS the node (and raises
+    // OnItemClick). By DEFAULT (ExpandOnRowClick=true) a click on a PARENT row — one that has,
+    // or can lazily load, children — ALSO toggles its expansion, so the whole row is the
+    // expand/collapse target (larger hit area / touch target; the VS Code file-tree pattern).
+    // Leaf rows only select. A lazy parent loads its children on row click exactly like the
+    // chevron does (via ToggleExpand). Set ExpandOnRowClick=false to opt back into chevron-only
+    // expansion: the row then selects but never expands. The chevron button remains an
+    // expand/collapse trigger in BOTH modes and stops propagation, so it toggles without
+    // selecting; keyboard expansion (ArrowRight/Left) is unchanged. A selection-modifier click
+    // (Ctrl/Meta/Shift — used to build a multi-selection) only mutates selection, never
+    // expansion, so folders don't flap open while the user is range/toggle-selecting.
+    private async Task HandleClick(MouseEventArgs e)
     {
         if (Item.IsDisabled) return;
         await OnItemClick.InvokeAsync(Item);
         await OnSelectionChanged.InvokeAsync(Item);
+
+        if (ExpandOnRowClick && Expandable && ShowExpandChevron && !IsSelectionModifier(e))
+            await ToggleExpand();
     }
+
+    // A modifier held during the click is a selection gesture (extend/toggle a multi-selection),
+    // not a navigation intent, so row-click expansion is suppressed for it.
+    private static bool IsSelectionModifier(MouseEventArgs e)
+        => e.CtrlKey || e.MetaKey || e.ShiftKey;
 
     private async Task HandleCheck(bool value)
     {

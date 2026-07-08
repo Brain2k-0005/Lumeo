@@ -27,6 +27,7 @@
                               Expandable="Expandable"
                               CascadeCheck="CascadeCheck"
                               MultiSelect="MultiSelect"
+                              ExpandOnRowClick="ExpandOnRowClick"
                               SelectedNodes="_selectedNodes"
                               NodeTemplate="NodeTemplate"
                               LoadChildren="LoadChildren"
@@ -43,6 +44,16 @@
     [Parameter] public List<TreeViewItem<T>>? Items { get; set; }
     [Parameter] public bool ShowCheckboxes { get; set; }
     [Parameter] public bool Expandable { get; set; } = true;
+    /// <summary>
+    /// When <c>true</c> (the default), clicking anywhere on a parent row — a node that has, or
+    /// can lazily load, children — both selects it AND toggles its expansion (the whole row is
+    /// the expand/collapse target, giving a large hit/touch area; the VS Code file-tree pattern).
+    /// Leaf rows always just select. Set to <c>false</c> to keep the chevron as the sole expand
+    /// trigger, so a row click only selects. The chevron and keyboard (ArrowRight/Left) expand in
+    /// both modes; a Ctrl/Meta/Shift (multi-select modifier) click only selects, never expands.
+    /// Has no effect when <see cref="Expandable"/> is <c>false</c>.
+    /// </summary>
+    [Parameter] public bool ExpandOnRowClick { get; set; } = true;
     [Parameter] public EventCallback<TreeViewItem<T>> OnItemClick { get; set; }
     [Parameter] public EventCallback<TreeViewItem<T>> OnItemCheck { get; set; }
     [Parameter] public bool ShowSearch { get; set; }
@@ -331,9 +342,11 @@
     {
         // Selection is by node identity, so clicking a container node with a null or
         // duplicate Value selects ONLY that node — never every node that happens to
-        // share its value. Selection is independent of expansion: this never toggles
-        // the node's IsExpanded (the chevron / Left-Right keys own expansion), so a
-        // parent can be selected while staying collapsed and vice-versa.
+        // share its value. This selection path never touches IsExpanded: expansion is
+        // owned by the chevron, the Left/Right keys, and (when ExpandOnRowClick is on)
+        // the separate ToggleExpand call in TreeViewNode.HandleClick — so selecting a
+        // node and expanding it stay decoupled here (a parent can be selected while
+        // collapsed and vice-versa).
         bool changed;
         if (MultiSelect)
         {

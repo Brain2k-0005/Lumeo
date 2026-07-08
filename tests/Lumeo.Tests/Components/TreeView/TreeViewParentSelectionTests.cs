@@ -74,7 +74,12 @@ public class TreeViewParentSelectionTests : IAsyncLifetime
     [Fact]
     public async Task Selected_parent_background_not_inherited_by_children()
     {
-        var cut = _ctx.Render<L.TreeView<string>>(p => p.Add(c => c.Items, ValuelessTree()));
+        // Opt out of row-click expansion (default) so the pre-expanded parent stays open and its
+        // children remain rendered — the bleed-through this asserts is a styling concern
+        // independent of the expand-on-click behavior.
+        var cut = _ctx.Render<L.TreeView<string>>(p => p
+            .Add(c => c.Items, ValuelessTree())
+            .Add(c => c.ExpandOnRowClick, false));
 
         await cut.InvokeAsync(() => Row(cut, "PhotosFolder").Click());
 
@@ -111,8 +116,10 @@ public class TreeViewParentSelectionTests : IAsyncLifetime
         Assert.Equal("false", TreeItem(cut, "Beta").GetAttribute("aria-selected"));
     }
 
-    // (c) Selection and expansion are independent: selecting a collapsed parent does not
-    // expand it, and toggling expansion (via the chevron) does not disturb the selection.
+    // (c) In chevron-only mode (ExpandOnRowClick=false) selection and expansion are fully
+    // independent: selecting a collapsed parent does not expand it, and toggling expansion (via
+    // the chevron) does not disturb the selection. (The DEFAULT row-click-also-expands behavior
+    // is covered in TreeViewRowClickExpandTests.)
     [Fact]
     public async Task Selection_and_expansion_are_independent()
     {
@@ -124,7 +131,9 @@ public class TreeViewParentSelectionTests : IAsyncLifetime
                 Children = [new() { Text = "file", Value = "file" }]
             }
         };
-        var cut = _ctx.Render<L.TreeView<string>>(p => p.Add(c => c.Items, tree));
+        var cut = _ctx.Render<L.TreeView<string>>(p => p
+            .Add(c => c.Items, tree)
+            .Add(c => c.ExpandOnRowClick, false));
 
         // Clicking the label row selects the parent but leaves it collapsed.
         await cut.InvokeAsync(() => Row(cut, "Docs").Click());
