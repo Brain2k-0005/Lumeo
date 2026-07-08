@@ -1,5 +1,8 @@
 using Microsoft.JSInterop;
+using System.Globalization;
 using System.Text.Json;
+using System.Text.Json.Nodes;
+using System.Text.Json.Serialization;
 
 namespace Lumeo.Services;
 
@@ -8,13 +11,21 @@ namespace Lumeo.Services;
 /// in <c>localStorage</c> so the banner doesn't re-appear on every page load,
 /// and exposes a reactive API so consumers can gate scripts / analytics on it.
 ///
+/// The persisted entry is a proof-of-consent record —
+/// <c>{ "categories": { … }, "timestamp": "&lt;UTC ISO 8601&gt;", "version": "&lt;policy&gt;" }</c>
+/// — so you can demonstrate <em>when</em> consent was given and <em>which</em>
+/// privacy-policy version it covered (GDPR Art. 7(1) accountability). Records
+/// written by older Lumeo versions (a bare <c>{ "analytics": true }</c> map) are
+/// read transparently and upgraded to the record shape on the next write — no
+/// re-prompt is triggered by the format change alone.
+///
 /// Typical wiring:
 /// <code>
 /// // Program.cs
 /// builder.Services.AddLumeo();           // includes ConsentService
 ///
 /// // MainLayout.razor
-/// &lt;ConsentBanner PrivacyPolicyUrl="/privacy" /&gt;
+/// &lt;ConsentBanner PrivacyPolicyUrl="/privacy" PolicyVersion="2024-05" /&gt;
 ///
 /// // Anywhere you load a tracker
 /// @inject ConsentService Consent
@@ -39,6 +50,14 @@ public sealed class ConsentService
     // present storage entry restores it on load; ResetAsync clears it.
     private bool _decided;
 
+    // Proof-of-consent metadata mirrored from the persisted record. Timestamp is
+    // the moment of the last write (UTC); version is the policy version that was
+    // in effect. Both are null until a decision is loaded or made. On a legacy
+    // (versionless) record the version stays null — we can't attribute a policy
+    // version to a decision made before versioning existed.
+    private DateTimeOffset? _decidedAtUtc;
+    private string? _storedVersion;
+
     public ConsentService(IJSRuntime js)
     {
         _js = js;
@@ -54,21 +73,42 @@ public sealed class ConsentService
     public void RequestOpenPreferences() => OnRequestOpenPreferences?.Invoke();
 
     /// <summary>
+    /// The privacy-policy version this app is currently asking consent for. When a
+    /// stored decision carries a <em>different</em> (explicit) version, the user is
+    /// re-prompted so consent is re-confirmed against the new policy — their previous
+    /// choices prefill the dialog. Set from <c>&lt;ConsentBanner PolicyVersion="…"/&gt;</c>
+    /// (or assign directly). Defaults to <c>"1"</c>; a versionless legacy record never
+    /// forces a re-prompt on its own.
+    /// </summary>
+    public string PolicyVersion { get; set; } = "1";
+
+    /// <summary>
     /// True once the user has answered the banner (accepted, rejected, or
-    /// customized). While false, the banner should be visible.
+    /// customized) <em>for the current <see cref="PolicyVersion"/></em>. While false,
+    /// the banner should be visible.
     /// </summary>
     public bool HasDecided => _decided;
 
+    /// <summary>UTC timestamp of the last recorded decision, or null if none is stored yet.</summary>
+    public DateTimeOffset? DecidedAtUtc => _decidedAtUtc;
+
+    /// <summary>Policy version the last recorded decision was given against. Null for a
+    /// versionless legacy record or before any decision.</summary>
+    public string? DecisionPolicyVersion => _storedVersion;
+
     /// <summary>
     /// Has the user granted consent for this category? Unknown categories
-    /// return false (fail-closed). "necessary" always returns true.
+    /// return false (fail-closed). "necessary" always returns true. Returns false
+    /// while a decision is pending (banner showing) — including a version-mismatch
+    /// re-prompt — so stale consent from a superseded policy version never keeps a
+    /// tracker running before the user re-confirms.
     /// </summary>
     public bool HasConsent(string category)
     {
         if (string.Equals(category, "necessary", StringComparison.OrdinalIgnoreCase))
             return true;
 
-        return _state.TryGetValue(category, out var v) && v;
+        return _decided && _state.TryGetValue(category, out var v) && v;
     }
 
     /// <summary>
@@ -85,19 +125,70 @@ public sealed class ConsentService
         {
             var json = await _js.InvokeAsync<string?>("localStorage.getItem", StorageKey);
             if (string.IsNullOrWhiteSpace(json)) return;
-
-            var parsed = JsonSerializer.Deserialize<Dictionary<string, bool>>(json);
-            if (parsed is not null)
-            {
-                _state = new Dictionary<string, bool>(parsed, StringComparer.OrdinalIgnoreCase);
-                // A persisted entry — even an empty map for an all-Required
-                // configuration — means the user already decided.
-                _decided = true;
-            }
+            LoadFromJson(json);
         }
         catch (JSException) { /* localStorage blocked (cookies disabled) — treat as no decision yet */ }
         catch (JsonException) { /* corrupt entry — ignore */ }
         catch (InvalidOperationException) { /* prerendering, IJSRuntime not ready yet */ }
+    }
+
+    // Parses either the current proof-of-consent record shape or the legacy bare
+    // category map. Populates _state (always, so a version-mismatch re-prompt can
+    // prefill the dialog) and decides whether the stored decision still counts.
+    private void LoadFromJson(string json)
+    {
+        if (JsonNode.Parse(json) is not JsonObject root) return;
+
+        // New format is uniquely identified by a "categories" object — a legacy
+        // map only ever holds string→bool pairs, so it can never have an OBJECT
+        // under that key even if a category were literally named "categories".
+        if (root["categories"] is JsonObject categories)
+        {
+            _state = ReadBoolMap(categories);
+            _storedVersion = ReadString(root["version"]);
+            _decidedAtUtc = ParseTimestamp(root["timestamp"]);
+
+            // A versioned record whose version no longer matches the configured
+            // PolicyVersion means the policy changed since consent was given: keep
+            // the old choices (for prefill) but require re-confirmation. A record
+            // with no explicit version can't be a mismatch — it predates versioning.
+            var versionMatches = _storedVersion is null
+                || string.Equals(_storedVersion, PolicyVersion, StringComparison.Ordinal);
+            _decided = versionMatches;
+        }
+        else
+        {
+            // Legacy bare map: a persisted decision existed, so the user HAS decided.
+            // The format change alone must never re-prompt. Upgraded to the record
+            // shape on the next PersistAsync. No version/timestamp is known.
+            _state = ReadBoolMap(root);
+            _storedVersion = null;
+            _decidedAtUtc = null;
+            _decided = true;
+        }
+    }
+
+    private static Dictionary<string, bool> ReadBoolMap(JsonObject obj)
+    {
+        var map = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
+        foreach (var (key, value) in obj)
+        {
+            if (value is JsonValue jv && jv.TryGetValue<bool>(out var b))
+                map[key] = b;
+        }
+        return map;
+    }
+
+    private static string? ReadString(JsonNode? node)
+        => node is JsonValue v && v.TryGetValue<string>(out var s) ? s : null;
+
+    private static DateTimeOffset? ParseTimestamp(JsonNode? node)
+    {
+        if (node is JsonValue v && v.TryGetValue<string>(out var s)
+            && DateTimeOffset.TryParse(s, CultureInfo.InvariantCulture,
+                DateTimeStyles.RoundtripKind, out var dto))
+            return dto;
+        return null;
     }
 
     /// <summary>Grant consent for every non-necessary category the consumer supplies, and persist.</summary>
@@ -130,6 +221,8 @@ public sealed class ConsentService
     {
         _state.Clear();
         _decided = false;
+        _decidedAtUtc = null;
+        _storedVersion = null;
         try
         {
             await _js.InvokeVoidAsync("localStorage.removeItem", StorageKey);
@@ -148,13 +241,32 @@ public sealed class ConsentService
     {
         try
         {
-            var json = JsonSerializer.Serialize(_state);
+            // Stamp the proof-of-consent metadata as of this write and upgrade any
+            // legacy record to the current record shape + configured policy version.
+            _decidedAtUtc = DateTimeOffset.UtcNow;
+            _storedVersion = PolicyVersion;
+
+            var record = new ConsentRecord
+            {
+                Categories = _state,
+                Timestamp = _decidedAtUtc.Value.ToString("O", CultureInfo.InvariantCulture),
+                Version = PolicyVersion,
+            };
+            var json = JsonSerializer.Serialize(record);
             await _js.InvokeVoidAsync("localStorage.setItem", StorageKey, json);
             // Mirror the FOUC-guard class so a subsequent runtime change keeps it accurate.
             await _js.InvokeVoidAsync("lumeoConsent.markDecided");
         }
         catch (JSException) { }
         catch (InvalidOperationException) { }
+    }
+
+    // Persisted proof-of-consent record. Serialized to localStorage under StorageKey.
+    private sealed class ConsentRecord
+    {
+        [JsonPropertyName("categories")] public Dictionary<string, bool> Categories { get; set; } = new();
+        [JsonPropertyName("timestamp")] public string Timestamp { get; set; } = "";
+        [JsonPropertyName("version")] public string Version { get; set; } = "";
     }
 }
 

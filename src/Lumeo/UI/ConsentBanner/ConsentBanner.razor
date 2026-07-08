@@ -37,13 +37,18 @@
                             @CustomizeLabel
                         </button>
                     }
+                    @* Reject and Accept carry EQUAL visual weight by default (identical
+                       classes, same size/variant) so the banner never nudges toward
+                       accepting — GDPR / EDPB guidance requires the reject action to be
+                       no less prominent than accept. Restyle both via CSS if you want a
+                       primary accent, but keep them symmetric. *@
                     <button type="button"
-                            class="inline-flex items-center justify-center rounded-md text-xs font-medium w-full sm:w-auto h-8 px-3 border border-border/60 bg-background hover:bg-accent transition-colors focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-2"
+                            class="@Layer1ActionClass"
                             @onclick="RejectAll">
                         @RejectLabel
                     </button>
                     <button type="button"
-                            class="inline-flex items-center justify-center rounded-md text-xs font-medium w-full sm:w-auto h-8 px-3 bg-primary text-primary-foreground hover:bg-primary/90 transition-colors focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-2"
+                            class="@Layer1ActionClass"
                             @onclick="AcceptAll">
                         @AcceptLabel
                     </button>
@@ -131,6 +136,19 @@
     /// <summary>URL to your privacy policy page. If null, the link is hidden.</summary>
     [Parameter] public string? PrivacyPolicyUrl { get; set; }
 
+    /// <summary>
+    /// Privacy-policy version this banner asks consent for. When a stored decision was
+    /// recorded against a different version, the banner re-prompts (previous choices
+    /// prefill the preferences dialog, but the user must re-confirm). Bump this whenever
+    /// your policy materially changes. Defaults to <c>"1"</c>.
+    /// </summary>
+    [Parameter] public string PolicyVersion { get; set; } = "1";
+
+    // Shared class for the layer-1 Reject/Accept buttons. Referenced by BOTH so they
+    // are guaranteed identical — equal visual weight, no accept-nudge (see markup note).
+    private const string Layer1ActionClass =
+        "inline-flex items-center justify-center rounded-md text-xs font-medium w-full sm:w-auto h-8 px-3 border border-border/60 bg-background hover:bg-accent transition-colors focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-2";
+
     // ---------- Copy — every string is overridable for i18n / tone. ----------
     [Parameter] public string Title { get; set; } = "Cookies & consent";
     [Parameter] public string Description { get; set; } = "We use a minimal set of cookies to run the site and optionally measure anonymous usage to improve it. You choose what's on.";
@@ -170,6 +188,10 @@
 
     protected override void OnInitialized()
     {
+        // Push the configured policy version into the service BEFORE it hydrates
+        // (EnsureLoadedAsync runs later, in OnAfterRenderAsync) so a version mismatch
+        // is detected on load and the banner re-prompts.
+        Consent.PolicyVersion = PolicyVersion;
         Consent.OnChange += HandleConsentChange;
         Consent.OnRequestOpenPreferences += HandleReopenRequest;
     }
@@ -259,9 +281,13 @@
             // sharing a Key (case-insensitively, since the dictionary is
             // OrdinalIgnoreCase) would make ToDictionary throw and tear down the
             // circuit. Last-wins keeps the dialog openable for misconfigured inputs.
+            // Seed from the STORED snapshot rather than HasConsent: during a
+            // version-mismatch re-prompt HasConsent reports false (consent pending),
+            // but the dialog must still prefill the user's previous choices.
+            var snap = Consent.Snapshot();
             var draft = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
             foreach (var c in EffectiveCategories)
-                draft[c.Key] = c.Required || Consent.HasConsent(c.Key);
+                draft[c.Key] = c.Required || (snap.TryGetValue(c.Key, out var v) && v);
             _draft = draft;
         }
         _preferencesOpen = true;
