@@ -138,9 +138,13 @@
     //                  interleaved rebuild (finding 2); a lazy completion re-asserting is not needed.
     //       CHILDREN / CHILDRENLOADED : consumer AUTHORITATIVE children  >  consumer RESET  >  store
     //                  (in-flight / materialized lazy children)  >  load completion.
-    //                  (A) Consumer supplies children (incomingLoaded, and the loaded-flag or list ref
-    //                      changed): adopt them, and LoadToken++ so an in-flight load's completion is
-    //                      DISCARDED — consumer data supersedes the stale loader (finding 3).
+    //                  (A) Consumer supplies children (incomingLoaded, AND either the loaded-flag changed
+    //                      OR a NEW non-null list reference — INCLUDING an empty list, a genuine 'this
+    //                      branch is now empty' replacement, round-16 f1): adopt them, LoadToken++ so an
+    //                      in-flight load's completion is DISCARDED (consumer data supersedes the stale
+    //                      loader — finding 3), and ADVANCE the loaded-seed so a later fresh reset is
+    //                      diffed against a true basis and honored, not misread as domain-pure (round-16
+    //                      f3). loaded=true with a NULL Children carries no authoritative list (not (A)).
     //                  (B) Consumer RESET (incomingLoaded regressed true→false vs the basis while the
     //                      store still holds children): clear the tree children, LoadToken++ (discard any
     //                      in-flight load), and COLLAPSE to the pristine unloaded lazy state — an
@@ -149,7 +153,12 @@
     //                  (C) Otherwise the tree keeps what it owns: a lazy branch (loaded OR in-flight)
     //                      survives every unrelated / domain-pure rebuild — the normal lazy flow.
     //                  A load completion is the LOWEST precedence: it applies only if its LoadToken still
-    //                  matches (neither dropped nor superseded by (A)/(B)).
+    //                  matches (neither dropped nor superseded by (A)/(B)). A superseded/dropped loader
+    //                  that later FAILS is discarded as silently as a superseded SUCCESS — it neither
+    //                  rolls back nor surfaces an error on a branch it no longer owns (round-16 f2).
+    //                  Expand-all likewise adopts only a matching-token load, but on a supersession still
+    //                  DESCENDS into the consumer's now-authoritative children to keep expanding them
+    //                  (round-16 f4).
     //
     // (4) OPERATION SEMANTICS. A row/chevron/keyboard toggle flips the entry SYNCHRONOUSLY (before any
     //     await) and returns a DEFERRED tail; the row click runs the tail only AFTER its selection
@@ -527,12 +536,18 @@
             // instance (so a domain-pure rebuild of a lazy node is NOT mistaken for a reset).
             bool loadedBasis = sameInstance ? state.ChildrenLoaded : state.SeededChildrenLoaded;
             bool consumerLoadedChange = incomingLoaded != loadedBasis;
-            bool newChildrenRef = node.Children is { Count: > 0 } && !ReferenceEquals(node.Children, state.Children);
+            // A non-null list (EMPTY or not) that differs by reference is a NEW authoritative children
+            // set — an empty loaded list means 'this branch is now empty', a genuine replacement, not a
+            // no-op (round-16 f1). Only a NULL Children (with loaded=false) is an unloaded/reset signal,
+            // handled by (B); loaded=true + a null Children carries no authoritative list.
+            bool newChildrenRef = node.Children is not null && !ReferenceEquals(node.Children, state.Children);
+            bool adoptChildren = incomingLoaded && (consumerLoadedChange || newChildrenRef);
 
-            if (incomingLoaded && (consumerLoadedChange || newChildrenRef))
+            if (adoptChildren)
             {
-                // (A) AUTHORITATIVE CHILDREN — consumer supplies them; adopt and discard any in-flight
-                // load (its completion must NOT overwrite consumer data — finding 3).
+                // (A) AUTHORITATIVE CHILDREN — consumer supplies them (any list, incl. an empty one);
+                // adopt and discard any in-flight load (its completion must NOT overwrite consumer
+                // data — finding 3).
                 state.Children = node.Children;
                 state.ChildrenLoaded = true;
                 state.Loading = false;
@@ -554,7 +569,14 @@
             // else: no consumer children action → the tree keeps what it owns (an in-flight/loaded lazy
             // branch survives every unrelated rebuild).
 
-            if (!sameInstance || consumerLoadedChange) state.SeededChildrenLoaded = incomingLoaded;
+            // Advance the last-seen consumer loaded-seed on GENUINE consumer input: a fresh instance
+            // always carries one; a reference match only when the consumer actually acted — a loaded-flag
+            // change OR adopting a new/empty authoritative list. Without the adopt clause a live child
+            // replacement that leaves the flag unchanged would strand the seed, so a later fresh reset is
+            // misread as domain-pure and the prior children are wrongly reattached (round-16 f3). Never
+            // our own mirror (the self-trigger rule).
+            if (!sameInstance || consumerLoadedChange || adoptChildren)
+                state.SeededChildrenLoaded = incomingLoaded;
         }
 
         state.Current = node;
@@ -762,16 +784,19 @@
         }
         catch
         {
-            // A supersession (token bump) means the consumer took over this branch — don't roll THEIR
-            // state back to collapsed on our stale loader's failure.
-            if (!state.Dropped && token == state.LoadToken)
-            {
-                state.Loading = false;
-                state.Expanded = false;
-                MirrorState(state);
-                _flatVisible = null;
-                StateHasChanged();
-            }
+            // A supersession (token bump) or a DROPPED entry means this loader is dead — the consumer
+            // took over the branch (authoritative children / reset), or the node vanished. Discard the
+            // failure as SILENTLY as the early return discards a superseded SUCCESS: surfacing (or
+            // rolling back on) a dead operation's error would break a branch it no longer owns
+            // (round-16 f2). Only the LIVE loader rolls back to collapsed (retryable, ChildrenLoaded
+            // stays false) and rethrows so the consumer sees the failure.
+            if (state.Dropped || token != state.LoadToken)
+                return;
+            state.Loading = false;
+            state.Expanded = false;
+            MirrorState(state);
+            _flatVisible = null;
+            StateHasChanged();
             throw;
         }
     }
@@ -854,22 +879,29 @@
                 {
                     var loaded = await LoadChildren(state.Current ?? item);
                     if (gen != _expandGeneration) return;
-                    // A consumer supersession (authoritative children / branch reset) bumped the token —
-                    // its data is authoritative; discard this stale loader result (finding 3).
-                    if (state.Dropped || token != state.LoadToken) continue;
-                    state.Children = loaded;
-                    state.ChildrenLoaded = true;
-                    state.Loading = false;
-                    RegisterSubtree(loaded);
-                    var target = state.Current;
-                    if (target is not null)
+                    // The node vanished (unprovable identity): discard the result AND skip its subtree.
+                    if (state.Dropped) continue;
+                    // A consumer supersession (authoritative children / branch reset) bumped the token:
+                    // its data is authoritative, so DON'T adopt this stale loader result (finding 3) —
+                    // but the expand-all pass is still live, so fall through to DESCEND into whatever the
+                    // consumer now owns and keep expanding those children (round-16 f4). Only a matching
+                    // token adopts the loaded result.
+                    if (token == state.LoadToken)
                     {
-                        target.Children = loaded;
-                        target.ChildrenLoaded = true;
-                        MirrorState(state);
-                        TryResolvePendingSelection(loaded);
-                        if (target.IsChecked && !target.IsIndeterminate && loaded is { Count: > 0 })
-                            SetChildrenChecked(loaded, true);
+                        state.Children = loaded;
+                        state.ChildrenLoaded = true;
+                        state.Loading = false;
+                        RegisterSubtree(loaded);
+                        var target = state.Current;
+                        if (target is not null)
+                        {
+                            target.Children = loaded;
+                            target.ChildrenLoaded = true;
+                            MirrorState(state);
+                            TryResolvePendingSelection(loaded);
+                            if (target.IsChecked && !target.IsIndeterminate && loaded is { Count: > 0 })
+                                SetChildrenChecked(loaded, true);
+                        }
                     }
                 }
                 finally
