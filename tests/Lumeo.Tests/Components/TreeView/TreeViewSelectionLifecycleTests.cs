@@ -164,18 +164,31 @@ public class TreeViewSelectionLifecycleTests : IAsyncLifetime
         Assert.Equal(3, cut.FindAll("[role='treeitem'][aria-selected='true']").Count);
     }
 
-    // ---- (d) same-reference reload that unloads the branch repopulates pending ----
+    // ---- (d) same-reference RESET to unloaded repopulates pending ----
 
     [Fact]
-    public async Task Lazy_branch_reloaded_to_unloaded_with_same_reference_repopulates_pending()
+    public async Task Lazy_branch_reset_to_unloaded_with_same_reference_repopulates_pending()
     {
         // ONE SelectedValues instance reused across every render, so OnParametersSet's
-        // reference check skips ResolveSelectedNodes on the reload — the lifecycle must not
+        // reference check skips ResolveSelectedNodes on the reset — the lifecycle must not
         // depend on that check to keep the seed alive.
+        //
+        // REWRITTEN (Codex round-15, seed-precedence fix): the prior form triggered the unload with a
+        // FRESH unloaded lazy rebuild and asserted the branch collapsed. That collapse was the
+        // finding-2 ARTIFACT — a domain-pure rebuild's pristine IsExpanded=false was mis-read as a
+        // consumer collapse. Under the corrected seed model a domain-pure rebuild PRESERVES tree-owned
+        // expansion + lazy children (the normal lazy flow; see TreeViewSeedPrecedenceTests), so that
+        // vehicle no longer unloads. The genuine unload channel is now the finding-1 RESET: the consumer
+        // presents the SAME node identity as unloaded (Children cleared, ChildrenLoaded=false). This
+        // still pins the original intent — pending repopulation is not gated on the SelectedValues
+        // reference.
         var seed = new List<string> { "a" };
 
+        var lazy = new L.TreeView<string>.TreeViewItem<string> { Text = "Lazy", Value = "lazy", IsLeaf = false };
+        var items = new List<L.TreeView<string>.TreeViewItem<string>> { lazy };
+
         var cut = _ctx.Render<L.TreeView<string>>(p => p
-            .Add(c => c.Items, LazyRoot())
+            .Add(c => c.Items, items)
             .Add(c => c.LoadChildren, Loader())
             .Add(c => c.SelectedValues, seed));
 
@@ -183,10 +196,12 @@ public class TreeViewSelectionLifecycleTests : IAsyncLifetime
         await cut.InvokeAsync(() => cut.Find("button[aria-label='Expand']").Click());
         Assert.Equal("true", TreeItem(cut, "Child-A").GetAttribute("aria-selected"));
 
-        // Reload to a fresh, UNLOADED lazy tree with the SAME SelectedValues reference.
-        // Child-A vanishes; its value must be carried back to pending, not dropped.
+        // RESET the SAME identity back to unloaded (finding 1) with the SAME SelectedValues reference:
+        // the branch collapses + unloads, Child-A vanishes, its value carries back to pending.
+        lazy.Children = null;
+        lazy.ChildrenLoaded = false;
         cut.Render(p => p
-            .Add(c => c.Items, LazyRoot())
+            .Add(c => c.Items, items)
             .Add(c => c.LoadChildren, Loader())
             .Add(c => c.SelectedValues, seed));
         Assert.Empty(cut.FindAll("[role='treeitem'][aria-selected='true']"));

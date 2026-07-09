@@ -113,13 +113,43 @@
     //     the same ambiguity-DROP convention selection uses).
     //
     // (3) SEEDS / MIRROR CONTRACT. The record's public flags stay the CONSUMER interface. They are
-    //     read as SEEDS (the initial value, and a later value the consumer changes between renders —
-    //     detected by diffing the record against the entry's last-seen seed; the consumer wins) and
+    //     read as SEEDS (the initial value, and a later value the consumer changes between renders) and
     //     WRITTEN BACK (mirrored) after every state change, so a consumer that reads
     //     item.IsExpanded / item.IsLoading / item.Children keeps working and can carry state forward
     //     when it rebuilds. IsLoading is tree-OWNED: mirrored OUT but never read as a seed (a stray
     //     record flag can't strand a spinner). Lazy Children live in the entry AND mirror onto
     //     item.Children; a rebuild that drops them re-attaches from the entry.
+    //
+    //     COMPARISON BASIS — the ONLY sound way to tell a consumer change from our own write-back:
+    //       • REFERENCE match (BindState sees the very instance we last mirrored onto): its flags carry
+    //         OUR write-back, so the only consumer signal is a divergence from the STORE (the mirror
+    //         keeps record ≡ store, so record ≠ store ⟹ the consumer mutated the live instance).
+    //       • FRESH instance (first bind, or a path/value re-match after a controlled/domain-pure
+    //         rebuild): its flags are the consumer's OWN values, so diff them against the last INCOMING
+    //         consumer SEED (Seeded* on the entry) — NEVER against the store or our mirror. A domain
+    //         rebuild that reverts IsExpanded to a pristine false must read as 'consumer never set it',
+    //         not 'consumer collapsed it'. The seeds advance ONLY from genuine consumer input (a fresh
+    //         value, or a live-instance mutation); MirrorState must NOT touch them, or the write-back
+    //         self-triggers as a phantom consumer change next resolution.
+    //
+    //     PER-FIELD PRECEDENCE (highest wins; tie-breakers in order):
+    //       EXPANDED : consumer seed CHANGE  >  store (tree operation)  >  pristine seed default.
+    //                  Fresh false == last seed ⟹ NO change ⟹ a pending/tree expand survives an
+    //                  interleaved rebuild (finding 2); a lazy completion re-asserting is not needed.
+    //       CHILDREN / CHILDRENLOADED : consumer AUTHORITATIVE children  >  consumer RESET  >  store
+    //                  (in-flight / materialized lazy children)  >  load completion.
+    //                  (A) Consumer supplies children (incomingLoaded, and the loaded-flag or list ref
+    //                      changed): adopt them, and LoadToken++ so an in-flight load's completion is
+    //                      DISCARDED — consumer data supersedes the stale loader (finding 3).
+    //                  (B) Consumer RESET (incomingLoaded regressed true→false vs the basis while the
+    //                      store still holds children): clear the tree children, LoadToken++ (discard any
+    //                      in-flight load), and COLLAPSE to the pristine unloaded lazy state — an
+    //                      expanded-yet-unloaded node has no defined content (no auto-load on render), so
+    //                      the reset supersedes tree-owned expansion for that node (finding 1).
+    //                  (C) Otherwise the tree keeps what it owns: a lazy branch (loaded OR in-flight)
+    //                      survives every unrelated / domain-pure rebuild — the normal lazy flow.
+    //                  A load completion is the LOWEST precedence: it applies only if its LoadToken still
+    //                  matches (neither dropped nor superseded by (A)/(B)).
     //
     // (4) OPERATION SEMANTICS. A row/chevron/keyboard toggle flips the entry SYNCHRONOUSLY (before any
     //     await) and returns a DEFERRED tail; the row click runs the tail only AFTER its selection
@@ -158,13 +188,19 @@
         public bool Loading;
         public bool ChildrenLoaded;
         public List<TreeViewItem<T>>? Children;      // materialized lazy children (tree-owned)
+        // Bumped every time a lazy load STARTS; a completion carrying a stale token (a consumer
+        // supersession — authoritative children or a branch reset — bumped it) discards its result.
+        public long LoadToken;
         // A user collapse of a search-force-expanded node: the filter must not re-open it on a
         // later same-reference rebuild (RebuildDisplay recomputes _autoExpanded from scratch).
         public bool SearchCollapse;
-        // Seed bookkeeping: the record flag values as of the last resolution, so the next parameter
-        // set can tell a CONSUMER change apart from our own mirror.
-        public bool SeenExpanded;
-        public bool SeenChildrenLoaded;
+        // Seed bookkeeping: the LAST INCOMING CONSUMER-SOURCE flag values (NOT our mirror). The next
+        // parameter set diffs a FRESH instance against these to tell 'consumer changed it' from
+        // 'consumer never set it' (a domain-pure rebuild); MirrorState must never write them, or our
+        // own write-back would masquerade as a consumer change. Advanced ONLY from genuine consumer
+        // input in BindState (see the SEEDS/MIRROR precedence table in the model doc block).
+        public bool SeededExpanded;
+        public bool SeededChildrenLoaded;
         // Transients used only inside ResolveIdentities.
         public bool Claimed;
         // Set when the once-per-rebuild identity pass could not match this entry to any incoming
@@ -452,30 +488,73 @@
         return n;
     }
 
-    /// <summary>Reconciles consumer seeds into <paramref name="state"/> (consumer change wins) and
-    /// mirrors the tree-owned state back onto <paramref name="node"/>.</summary>
+    /// <summary>Reconciles consumer seeds into <paramref name="state"/> (an incoming-seed CHANGE wins
+    /// over the store, which wins over an in-flight load completion) and mirrors the tree-owned state
+    /// back onto <paramref name="node"/>. See the SEEDS/MIRROR precedence table in the model doc block
+    /// for the per-field tie-breakers this implements.</summary>
     private void BindState(NodeState state, TreeViewItem<T> node, NodePath path, bool isNew)
     {
+        // A REFERENCE match means <paramref name="node"/> is the very instance we last mirrored onto,
+        // so its flags carry OUR write-back — a divergence from the STORE is the only consumer signal.
+        // A FRESH instance (first bind, or a path/value match after a controlled rebuild) carries the
+        // consumer's OWN values — diff it against the last consumer SEED, never against our mirror.
+        bool sameInstance = ReferenceEquals(node, state.Current);
+        bool incomingLoaded = node.ChildrenLoaded || node.Children is { Count: > 0 };
+
         if (isNew)
         {
             state.Expanded = node.IsExpanded;
             state.Loading = false;
-            state.ChildrenLoaded = node.ChildrenLoaded || node.Children is { Count: > 0 };
+            state.ChildrenLoaded = incomingLoaded;
             state.Children = node.Children;
+            state.SeededExpanded = node.IsExpanded;
+            state.SeededChildrenLoaded = incomingLoaded;
         }
         else
         {
-            // Expansion: a record value differing from the last-seen seed is a consumer change.
-            if (node.IsExpanded != state.SeenExpanded) state.Expanded = node.IsExpanded;
-            // Children: the consumer OWNS children they supply; the tree owns lazy-loaded children.
-            bool consumerSupplied = node.Children is { Count: > 0 } || node.ChildrenLoaded;
-            if (consumerSupplied
-                && (node.ChildrenLoaded != state.SeenChildrenLoaded
-                    || (node.Children is { Count: > 0 } && !ReferenceEquals(node.Children, state.Children))))
+            // ── EXPANSION ── an incoming-seed change wins; our own mirror never counts as a change.
+            bool expandBasis = sameInstance ? state.Expanded : state.SeededExpanded;
+            bool consumerExpandChange = node.IsExpanded != expandBasis;
+            if (consumerExpandChange) state.Expanded = node.IsExpanded;
+            // The seed advances from consumer input only: a fresh instance always carries one; a
+            // reference match only when the consumer actually mutated it (else the value is our mirror,
+            // and recording it would strand a later pristine rebuild as a phantom collapse — finding 2).
+            if (!sameInstance || consumerExpandChange) state.SeededExpanded = node.IsExpanded;
+
+            // ── CHILDREN / LOADED ── highest precedence: a consumer action supersedes both the store
+            // and any in-flight load (LoadToken++ discards the stale completion). The load-basis is the
+            // store on a reference match (mirror keeps them synced) or the last consumer seed on a fresh
+            // instance (so a domain-pure rebuild of a lazy node is NOT mistaken for a reset).
+            bool loadedBasis = sameInstance ? state.ChildrenLoaded : state.SeededChildrenLoaded;
+            bool consumerLoadedChange = incomingLoaded != loadedBasis;
+            bool newChildrenRef = node.Children is { Count: > 0 } && !ReferenceEquals(node.Children, state.Children);
+
+            if (incomingLoaded && (consumerLoadedChange || newChildrenRef))
             {
+                // (A) AUTHORITATIVE CHILDREN — consumer supplies them; adopt and discard any in-flight
+                // load (its completion must NOT overwrite consumer data — finding 3).
                 state.Children = node.Children;
-                state.ChildrenLoaded = node.ChildrenLoaded || node.Children is { Count: > 0 };
+                state.ChildrenLoaded = true;
+                state.Loading = false;
+                state.LoadToken++;
             }
+            else if (!incomingLoaded && loadedBasis && state.ChildrenLoaded)
+            {
+                // (B) LAZY-BRANCH RESET — the branch regressed loaded → unloaded (finding 1): clear the
+                // tree-owned children, discard any in-flight load, and COLLAPSE back to the pristine
+                // unloaded lazy state (an expanded-yet-unloaded node has no defined content — the tree
+                // never auto-loads on render; documented decision).
+                state.Children = null;
+                state.ChildrenLoaded = false;
+                state.Loading = false;
+                state.LoadToken++;
+                state.Expanded = false;
+                state.SeededExpanded = false;
+            }
+            // else: no consumer children action → the tree keeps what it owns (an in-flight/loaded lazy
+            // branch survives every unrelated rebuild).
+
+            if (!sameInstance || consumerLoadedChange) state.SeededChildrenLoaded = incomingLoaded;
         }
 
         state.Current = node;
@@ -486,8 +565,10 @@
     }
 
     /// <summary>Writes tree-owned UI state onto the entry's current record (the seeds/mirror
-    /// contract) and refreshes the seen-seed bookkeeping so the next parameter set can tell a
-    /// consumer change from our own mirror.</summary>
+    /// contract). It deliberately does NOT touch the Seeded* bookkeeping: those track the last INCOMING
+    /// consumer value, and letting our own write-back advance them would make the mirror masquerade as
+    /// a consumer change on the next resolution (the self-trigger regression). Only BindState advances
+    /// the seeds, and only from genuine consumer input.</summary>
     private void MirrorState(NodeState state)
     {
         var it = state.Current;
@@ -501,8 +582,6 @@
                 && it.Children is not { Count: > 0 })
                 it.Children = state.Children;   // re-attach tree-owned lazy children onto a fresh record
         }
-        state.SeenExpanded = it.IsExpanded;
-        state.SeenChildrenLoaded = it.ChildrenLoaded;
     }
 
     /// <summary>The state entry for <paramref name="item"/>, minting one (seeded from the record)
@@ -519,8 +598,8 @@
             Expanded = item.IsExpanded,
             ChildrenLoaded = item.ChildrenLoaded || item.Children is { Count: > 0 },
             Children = item.Children,
-            SeenExpanded = item.IsExpanded,
-            SeenChildrenLoaded = item.ChildrenLoaded || item.Children is { Count: > 0 },
+            SeededExpanded = item.IsExpanded,
+            SeededChildrenLoaded = item.ChildrenLoaded || item.Children is { Count: > 0 },
         };
         _states.Add(s);
         _stateByItem[item] = s;
@@ -589,10 +668,11 @@
                 return () => Task.CompletedTask;
             }
             state.Loading = true;
+            var token = ++state.LoadToken;   // this load's generation; a consumer supersession bumps it
             MirrorState(state);
             _flatVisible = null;
             StateHasChanged();
-            return () => LoadChildrenAsync(state, item);
+            return () => LoadChildrenAsync(state, item, token);
         }
 
         MirrorState(state);
@@ -644,13 +724,16 @@
     /// when a collapse during the load left the branch closed. A loader failure rolls the entry back
     /// to collapsed (retryable, ChildrenLoaded stays false) and re-throws; the entry being dropped
     /// mid-load discards the result (the node vanished / its identity is unprovable).</summary>
-    private async Task LoadChildrenAsync(NodeState state, TreeViewItem<T> loadArg)
+    private async Task LoadChildrenAsync(NodeState state, TreeViewItem<T> loadArg, long token)
     {
         try
         {
             var loaded = await LoadChildren!(state.Current ?? loadArg);
 
-            if (state.Dropped) return;   // node vanished / unprovable identity → discard the load
+            // Discard when the node vanished (unprovable identity) OR a consumer supersession — an
+            // authoritative-children bind or a branch reset in BindState — bumped the load token
+            // (consumer data is authoritative; this stale loader result must not overwrite it, finding 3).
+            if (state.Dropped || token != state.LoadToken) return;
 
             state.Children = loaded;
             state.ChildrenLoaded = true;
@@ -679,7 +762,9 @@
         }
         catch
         {
-            if (!state.Dropped)
+            // A supersession (token bump) means the consumer took over this branch — don't roll THEIR
+            // state back to collapsed on our stale loader's failure.
+            if (!state.Dropped && token == state.LoadToken)
             {
                 state.Loading = false;
                 state.Expanded = false;
@@ -761,6 +846,7 @@
                 && !state.Loading)
             {
                 state.Loading = true;
+                var token = ++state.LoadToken;   // this load's generation (consumer supersession bumps it)
                 MirrorState(state);
                 _flatVisible = null;
                 StateHasChanged();
@@ -768,7 +854,9 @@
                 {
                     var loaded = await LoadChildren(state.Current ?? item);
                     if (gen != _expandGeneration) return;
-                    if (state.Dropped) continue;
+                    // A consumer supersession (authoritative children / branch reset) bumped the token —
+                    // its data is authoritative; discard this stale loader result (finding 3).
+                    if (state.Dropped || token != state.LoadToken) continue;
                     state.Children = loaded;
                     state.ChildrenLoaded = true;
                     state.Loading = false;
@@ -786,7 +874,7 @@
                 }
                 finally
                 {
-                    if (!state.Dropped)
+                    if (!state.Dropped && token == state.LoadToken)
                     {
                         state.Loading = false;
                         MirrorState(state);
