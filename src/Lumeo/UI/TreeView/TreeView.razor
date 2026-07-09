@@ -99,10 +99,17 @@
     //
     // Transitions (each names what it consumes / clears):
     //   seed → pending|resolved   ResolveSelectedNodes(new SelectedValues): matched
-    //                             values → resolved; unmatched → pending.
+    //                             values → resolved; unmatched → pending. While the tree still
+    //                             has UNLOADED lazy branches EVERY requested value — matched
+    //                             included — also stays pending, so a same-valued node that later
+    //                             materializes behind LoadChildren is still selected (the value
+    //                             contract binds every match, not just the first visible one).
     //   pending → resolved        TryResolvePendingSelection(tree): a pending value whose
     //                             node has now materialized binds. Runs on ANY Items
-    //                             refresh AND on lazy-load. Additive; never pushes up.
+    //                             refresh AND on lazy-load. Additive; never pushes up. A resolved
+    //                             value is only PRUNED from pending once the tree is fully
+    //                             materialized (no lazy branch left that could hold a duplicate);
+    //                             until then it re-applies to each newly-loaded subtree.
     //   resolved → resolved′      ReanchorSelection on Items change: a resolved node
     //                             replaced by an equal instance re-anchors by path/value.
     //   resolved → pending        ReanchorSelection when a resolved node VANISHES from the
@@ -646,11 +653,18 @@
         }
         var wanted = new HashSet<T>(values);
         CollectMatching(Items ?? [], wanted, set);
-        // Remember the values that named a not-yet-materialized (lazy) node so they can
-        // be resolved when that branch loads. A value that matched at least one node is
-        // considered satisfied.
+        // Remember the values that named a not-yet-materialized (lazy) node so they can be resolved
+        // when that branch loads. A value that matched at least one visible node is normally
+        // satisfied — BUT while the tree still has UNLOADED lazy branches a same-valued node may yet
+        // materialize behind LoadChildren, and the public value contract selects EVERY node carrying
+        // a requested value (not just the first). So until the tree is fully materialized we hold
+        // ALL requested values pending — matched ones included — and re-apply them additively to each
+        // subtree as it loads (TryResolvePendingSelection). Only once no lazy branch remains does a
+        // matched value drop out of pending (Codex round-7 finding 2).
         var matched = new HashSet<T>(set.Select(n => n.Value!));
-        var pending = values.Where(v => !matched.Contains(v)).ToList();
+        var pending = HasUnloadedLazyBranches(Items ?? [])
+            ? values.Distinct().ToList()
+            : values.Where(v => !matched.Contains(v)).ToList();
         _pendingSelectValues = pending.Count > 0 ? pending : null;
         return set;
     }
@@ -675,9 +689,34 @@
         CollectMatching(loaded, wanted, found);
         if (found.Count == 0) return;
         foreach (var n in found) _selectedNodes.Add(n);
+        // A resolved value only leaves the pending bucket once the tree is FULLY materialized: while
+        // any lazy branch is still unloaded a same-valued node may yet appear there, and the value
+        // contract selects every match. So keep resolved values pending (they re-apply additively as
+        // each branch loads) until no lazy branch remains — otherwise a duplicate behind LoadChildren
+        // would never bind (Codex round-7 finding 2).
+        if (HasUnloadedLazyBranches(Items ?? [])) return;
         var resolvedValues = new HashSet<T>(found.Select(n => n.Value!));
         var remaining = _pendingSelectValues.Where(v => !resolvedValues.Contains(v)).ToList();
         _pendingSelectValues = remaining.Count > 0 ? remaining : null;
+    }
+
+    /// <summary>True while the tree still holds at least one lazy, not-yet-loaded branch — a
+    /// non-leaf node with a configured <see cref="LoadChildren"/> whose children haven't been
+    /// fetched yet. A value seed can't be treated as fully satisfied while such a branch might
+    /// still materialize another node carrying that value (the value contract binds EVERY match),
+    /// so pending values are held until the whole tree is materialized. Cheap: bails immediately
+    /// when no loader is configured, and returns on the first unloaded branch found.</summary>
+    private bool HasUnloadedLazyBranches(List<TreeViewItem<T>> items)
+    {
+        if (LoadChildren is null) return false;
+        foreach (var item in items)
+        {
+            if (!item.IsLeaf && !item.ChildrenLoaded && item.Children is not { Count: > 0 })
+                return true;
+            if (item.Children is { Count: > 0 } && HasUnloadedLazyBranches(item.Children))
+                return true;
+        }
+        return false;
     }
 
     /// <summary>Re-binds carried node identities (resolved nodes that vanished on an Items

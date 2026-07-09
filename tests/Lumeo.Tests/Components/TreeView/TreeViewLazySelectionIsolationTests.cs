@@ -100,4 +100,79 @@ public class TreeViewLazySelectionIsolationTests : IAsyncLifetime
 
         Assert.Equal("true", TreeItem(cut, "Lazy").GetAttribute("aria-selected"));
     }
+
+    /// <summary>
+    /// PR #351 round-7, finding 1: when a row click both selects AND lazily expands, but the loader
+    /// FAILS, the expansion must roll back. The round-5 split flips IsExpanded synchronously; before
+    /// this change a failed load left the row aria-expanded=true with a down chevron over an empty
+    /// branch, and the next click COLLAPSED it instead of retrying. Now the failure rolls the
+    /// expansion back to collapsed (selection intact) and — because ChildrenLoaded stayed false — a
+    /// second click retries the loader and the branch fills in.
+    /// </summary>
+    [Fact]
+    public async Task Failed_row_click_load_rolls_expansion_back_keeps_selection_and_allows_retry()
+    {
+        var attempts = 0;
+        Func<Item, Task<List<Item>>> loader = _ =>
+        {
+            attempts++;
+            if (attempts == 1)
+                throw new InvalidOperationException("loader boom"); // first attempt fails
+            return Task.FromResult(new List<Item>
+            {
+                new() { Text = "Child-A", Value = "a", IsLeaf = true }
+            });
+        };
+
+        var cut = _ctx.Render<L.TreeView<string>>(p => p
+            .Add(c => c.Items, LazyRoot())
+            .Add(c => c.LoadChildren, loader));
+
+        // First click: selects, tries to load, loader throws — the click must not surface it.
+        await cut.InvokeAsync(() => Row(cut, "Lazy").Click());
+
+        // Selection survived the failure (round-5) AND the expansion rolled back (round-7): the row
+        // is collapsed again, not stranded aria-expanded=true over an empty branch.
+        Assert.Equal("true", TreeItem(cut, "Lazy").GetAttribute("aria-selected"));
+        Assert.Equal("false", TreeItem(cut, "Lazy").GetAttribute("aria-expanded"));
+        Assert.DoesNotContain("Child-A", cut.Markup);
+
+        // Retry: because ChildrenLoaded stayed false, a second click re-runs the loader (which now
+        // succeeds) rather than merely toggling a phantom expanded-but-empty state.
+        await cut.InvokeAsync(() => Row(cut, "Lazy").Click());
+
+        Assert.Equal(2, attempts);
+        Assert.Contains("Child-A", cut.Markup);
+        Assert.Equal("true", TreeItem(cut, "Lazy").GetAttribute("aria-expanded"));
+        Assert.Equal("true", TreeItem(cut, "Lazy").GetAttribute("aria-selected"));
+    }
+
+    /// <summary>
+    /// The finding's "slow-then-fail" variant: the loader hangs (selection lands first, round-5),
+    /// then FAILS. The eventual failure must still roll the expansion back to collapsed without
+    /// disturbing the already-applied selection.
+    /// </summary>
+    [Fact]
+    public async Task Slow_then_failing_loader_rolls_expansion_back_after_the_selection_landed()
+    {
+        var gate = new TaskCompletionSource<List<Item>>();
+        Func<Item, Task<List<Item>>> loader = _ => gate.Task;
+
+        var cut = _ctx.Render<L.TreeView<string>>(p => p
+            .Add(c => c.Items, LazyRoot())
+            .Add(c => c.LoadChildren, loader));
+
+        await cut.InvokeAsync(() => Row(cut, "Lazy").Click());
+
+        // Selection is applied while the loader still hangs; the row is optimistically expanded.
+        Assert.Equal("true", TreeItem(cut, "Lazy").GetAttribute("aria-selected"));
+        Assert.Equal("true", TreeItem(cut, "Lazy").GetAttribute("aria-expanded"));
+
+        // The loader now fails — the row-click drains it isolated, and the expansion rolls back.
+        await cut.InvokeAsync(() => gate.SetException(new InvalidOperationException("loader boom")));
+
+        Assert.Equal("false", TreeItem(cut, "Lazy").GetAttribute("aria-expanded"));
+        Assert.DoesNotContain("Child-A", cut.Markup);
+        Assert.Equal("true", TreeItem(cut, "Lazy").GetAttribute("aria-selected")); // selection intact
+    }
 }

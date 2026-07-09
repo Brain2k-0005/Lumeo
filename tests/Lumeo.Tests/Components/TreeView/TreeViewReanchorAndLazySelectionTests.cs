@@ -392,4 +392,47 @@ public class TreeViewReanchorAndLazySelectionTests : IAsyncLifetime
         Assert.Equal("true", TreeItem(cut, "Child-B").GetAttribute("aria-selected"));
         Assert.Equal("false", TreeItem(cut, "Child-A").GetAttribute("aria-selected"));
     }
+
+    // ---- Round-7 finding 2: a value seed that matches a VISIBLE node AND a lazy DUPLICATE ----
+    // The public value contract selects EVERY node carrying a requested value. When a seed value
+    // matches one already-visible node while another same-valued node is still behind LoadChildren,
+    // the seed must stay pending until that branch loads — otherwise the lazy duplicate never binds.
+
+    // "Visible" (a root leaf) carries "dup" and matches immediately; "Branch" is a lazy parent whose
+    // child ALSO carries "dup" but only materializes when the branch is expanded.
+    private static List<L.TreeView<string>.TreeViewItem<string>> DuplicateAcrossLazyTree() =>
+    [
+        new() { Text = "Visible", Value = "dup", IsLeaf = true },
+        new() { Text = "Branch",  Value = "branch", IsLeaf = false }
+    ];
+
+    private static Func<L.TreeView<string>.TreeViewItem<string>, Task<List<L.TreeView<string>.TreeViewItem<string>>>>
+        DupChildLoader() => _ => Task.FromResult(new List<L.TreeView<string>.TreeViewItem<string>>
+    {
+        new() { Text = "Lazy-Dup", Value = "dup", IsLeaf = true }
+    });
+
+    [Fact]
+    public async Task Value_seed_matching_a_visible_node_still_binds_a_lazy_duplicate_when_it_loads()
+    {
+        var cut = _ctx.Render<L.TreeView<string>>(p => p
+            .Add(c => c.Items, DuplicateAcrossLazyTree())
+            .Add(c => c.LoadChildren, DupChildLoader())
+            .Add(c => c.SelectedValues, new List<string> { "dup" }));
+
+        // The visible "dup" node is selected immediately; the lazy duplicate doesn't exist yet, so
+        // it's the only selected row so far — and (the bug this guards) the seed must NOT be treated
+        // as fully satisfied while a lazy branch could still hold another "dup".
+        Assert.Equal("true", TreeItem(cut, "Visible").GetAttribute("aria-selected"));
+        Assert.Single(cut.FindAll("[role='treeitem'][aria-selected='true']"));
+
+        // Expand the lazy branch — its "dup"-valued child materializes.
+        await cut.InvokeAsync(() => cut.Find("button[aria-label='Expand']").Click());
+
+        // The value contract holds: BOTH the visible node and the freshly-loaded duplicate are now
+        // selected (pre-fix, the seed had been cleared and the lazy duplicate stayed unselected).
+        Assert.Equal("true", TreeItem(cut, "Visible").GetAttribute("aria-selected"));
+        Assert.Equal("true", TreeItem(cut, "Lazy-Dup").GetAttribute("aria-selected"));
+        Assert.Equal(2, cut.FindAll("[role='treeitem'][aria-selected='true']").Count);
+    }
 }

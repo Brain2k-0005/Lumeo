@@ -241,9 +241,14 @@
 
     // The awaited tail of a lazy expansion: fetch the children, mirror a fully-checked parent's
     // state onto them (rc.42), then raise OnExpandChanged. IsLoading is always cleared (finally) so
-    // a slow OR throwing loader never leaves the node stuck spinning. A loader exception propagates
-    // from here exactly as before — the chevron/keyboard path lets it surface; the row click drains
-    // it isolated (HandleClick) so it can't break the already-applied selection.
+    // a slow OR throwing loader never leaves the node stuck spinning. On loader FAILURE the just-
+    // applied expansion is rolled back to collapsed (round-7) before the exception propagates — the
+    // children never materialized, so leaving IsExpanded=true would strand the row aria-expanded=true
+    // with a down chevron over an empty branch (and the next click would COLLAPSE it instead of
+    // retrying the load). ChildrenLoaded stays false, so the row remains retryable. The exception
+    // still propagates exactly as before — the chevron/keyboard path lets it surface; the row click
+    // drains it isolated (HandleClick) AFTER the rollback, so the collapse survives either path and
+    // the already-applied selection (round-5) is untouched.
     private async Task LoadChildrenThenNotifyAsync()
     {
         StateHasChanged();
@@ -274,6 +279,19 @@
                     Item.IsChecked = false;
                 }
             }
+        }
+        catch
+        {
+            // Lazy load failed: ToggleExpand already flipped IsExpanded=true synchronously (the
+            // round-4 guarantee) but no children arrived. Roll the expansion back to collapsed so
+            // the row returns to a retryable state (ChildrenLoaded is still false, so a later click
+            // re-runs the loader) instead of showing aria-expanded=true / a down chevron over an
+            // empty branch. Re-render this node so the chevron + aria reflect the collapse; then
+            // re-throw so the error still surfaces on the chevron/keyboard path and is drained
+            // isolated on the row-click path. Selection stays intact (applied by the caller).
+            Item.IsExpanded = false;
+            StateHasChanged();
+            throw;
         }
         finally
         {
