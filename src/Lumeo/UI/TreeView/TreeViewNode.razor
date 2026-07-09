@@ -99,7 +99,6 @@
                               LoadChildren="LoadChildren"
                               OnItemClick="OnItemClick"
                               OnItemCheck="OnItemCheck"
-                              OnExpandChanged="OnExpandChanged"
                               OnSelectionChanged="OnSelectionChanged" />
             }
         </div>
@@ -130,7 +129,6 @@
     [Parameter] public HashSet<TreeView<T>.TreeViewItem<T>>? SelectedNodes { get; set; }
     [Parameter] public RenderFragment<TreeView<T>.TreeViewItem<T>>? NodeTemplate { get; set; }
     [Parameter] public Func<TreeView<T>.TreeViewItem<T>, Task<List<TreeView<T>.TreeViewItem<T>>>>? LoadChildren { get; set; }
-    [Parameter] public EventCallback<TreeView<T>.TreeViewItem<T>> OnExpandChanged { get; set; }
     [Parameter] public EventCallback<TreeView<T>.TreeViewItem<T>> OnSelectionChanged { get; set; }
 
     [Parameter] public string? Class { get; set; }
@@ -155,8 +153,8 @@
 
     private bool HasLoadedChildren => Item.Children is { Count: > 0 };
 
-    // Expansion as rendered: the item's own state, plus any search-forced
-    // expansion tracked by the parent tree while a filter is active.
+    // Expansion as rendered: the item's own state (mirrored from the tree's state store), plus any
+    // search-forced expansion tracked by the parent tree while a filter is active.
     private bool EffectiveExpanded => Context?.Tree.IsEffectivelyExpanded(Item) ?? Item.IsExpanded;
 
     // Children as rendered: when a search filter is active only the visible
@@ -217,266 +215,39 @@
         _isFocused = false;
     }
 
-    // Expansion has TWO parts that a row click must keep decoupled (see HandleClick):
-    //   1. the state flip on THIS node instance — done SYNCHRONOUSLY, before any await, so a
-    //      selection-driven rebuild (a controlled/immutable tree, @key'd by instance) snapshots the
-    //      new IsExpanded off the LIVE node instead of a stale/disposed one (the round-4 guarantee).
-    //   2. the lazy child-load — an await that may be slow or throw. It is returned as the tail Task
-    //      so the caller chooses to await it inline (the chevron / keyboard, whose only job is to
-    //      expand) or drain it isolated from selection (the row click).
-    // Children only render once actually loaded (the HasLoadedChildren gate), so flipping IsExpanded
-    // ahead of the load never paints an empty expanded branch.
-    private Task ToggleExpand() => BeginToggleExpand()();
-
-    // The SYNCHRONOUS half of a toggle: flips IsExpanded on the LIVE instance now (and, for a lazy
-    // expand, marks loading + snapshots the structural path) — all before any await, so a selection-
-    // driven controlled/immutable rebuild snapshots the new state off THIS instance (round-4/8).
-    // Returns a delegate for the DEFERRED half — START the lazy child-load, or raise OnExpandChanged
-    // for a collapse / already-loaded expand — so the CALLER chooses WHEN to run it relative to
-    // selection. The chevron/keyboard run it immediately (ToggleExpand above, no selection to order
-    // against). The row click (HandleClick) runs it only AFTER the selection callbacks, so a lazy load
-    // that completes SYNCHRONOUSLY (cached children via Task.FromResult) doesn't attach its children
-    // to THIS instance before a selection-driven rebuild replaces it — the load instead starts post-
-    // rebuild and ResolveExpansionTarget attaches to the fresh @key'd node (round-10 finding 1).
-    // Children only render once actually loaded (the HasLoadedChildren gate), so flipping IsExpanded
-    // ahead of the load never paints an empty expanded branch.
-    private Func<Task> BeginToggleExpand()
-    {
-        if (EffectiveExpanded)
-        {
-            Item.IsExpanded = false;
-            // Snapshot the path NOW — synchronously, before the row-click selection callbacks can
-            // rebuild Items — so the DEFERRED collapse tail can re-resolve the CURRENT instance and
-            // clear its expansion + search-auto-expansion, rather than a stale reference RebuildDisplay
-            // already replaced in _autoExpanded (round-11 c).
-            var pathAtCollapse = Context?.Tree.GetNodePath(Item);
-            // If a lazy load is still in flight for THIS node (the user is collapsing mid-spinner), mark it
-            // SUPERSEDED so the load's success completion attaches children but does NOT re-expand — honoring
-            // this collapse instead of the optimistic IsExpanded=true set before the await (round-13 f3).
-            Context?.Tree.SupersedeInFlightExpansion(Item, pathAtCollapse);
-            return () => NotifyCollapseAsync(pathAtCollapse);
-        }
-
-        // Mark expanded NOW (synchronous state mutation on the live instance) — the (possibly slow
-        // or throwing) child-load below must not gate this, or a selection-driven rebuild would
-        // snapshot the still-collapsed node.
-        Item.IsExpanded = true;
-
-        if (LoadChildren is not null && !Item.ChildrenLoaded && !Item.IsLeaf && !HasLoadedChildren)
-        {
-            Item.IsLoading = true;
-            // Snapshot this node's structural path NOW — synchronously, before the row-click
-            // selection callbacks can rebuild Items — so a load FAILURE can collapse the CURRENT
-            // rendered instance even after a controlled/immutable rebuild replaced THIS one
-            // (round-8: the rollback must reach the fresh @key'd node, not just the stale instance).
-            var pathAtExpand = Context?.Tree.GetNodePath(Item);
-            // Register IN-FLIGHT OWNERSHIP now (path+value+siblings): while the load runs, a rebuild that
-            // copies this optimistic spinner onto a fresh @key'd instance is recognised as OWNED, so the
-            // sweep won't reap it prematurely; the load's finally deregisters + sweeps (round-12 pillar 5).
-            Context?.Tree.RegisterInFlightExpansion(Item, pathAtExpand);
-            return () => LoadChildrenThenNotifyAsync(pathAtExpand);
-        }
-
-        // Already-loaded (or non-lazy) expand: snapshot the path NOW so the DEFERRED tail can re-resolve
-        // the CURRENT instance if the row-click selection callbacks rebuilt Items — otherwise the flip
-        // lands only on the pre-callback instance and the fresh @key'd node stays collapsed (round-12
-        // finding 3). Same re-resolution contract as the lazy success path.
-        var expandPath = Context?.Tree.GetNodePath(Item);
-        return () => NotifyExpandReanchoredAsync(expandPath);
-    }
-
-    // The DEFERRED tail of a NON-lazy (already-loaded) expand: re-resolve the node that currently occupies
-    // this one's identity — a controlled/immutable rebuild during the row-click selection callbacks may
-    // have disposed the pre-callback instance and produced a fresh @key'd node that did NOT copy the
-    // optimistic IsExpanded — and flip IsExpanded on THAT instance before notifying (round-12 finding 3).
-    // Mirrors LoadChildrenThenNotifyAsync's success reanchor. When identity is unprovable the resolver
-    // returns null: notify the stale instance (no structural change applied), the same ambiguity-DROP the
-    // lazy path uses. A standalone node (no tree context) can't be rebuilt out from under us.
-    private Task NotifyExpandReanchoredAsync(TreeView<T>.NodePath? pathAtExpand)
+    // Expand / collapse is owned by the TREE's state store (TreeView.BeginToggle). The node asks the
+    // tree to flip this node's expansion SYNCHRONOUSLY (before any await) and hands back the DEFERRED
+    // tail — start the lazy child-load, or notify an already-loaded expand/collapse. The chevron and
+    // keyboard run the tail immediately (no selection to order against); the row click runs it only
+    // AFTER the selection callbacks. No path snapshots, no post-await re-resolution: the tail mutates
+    // a stable state handle that whatever instance now maps to that identity renders (PR #351 rebuild).
+    private Task ToggleExpand()
     {
         if (Context is not null)
-        {
-            var target = Context.Tree.ResolveExpansionTarget(Item, pathAtExpand);
-            if (target is null)
-                return OnExpandChanged.InvokeAsync(Item);
-            target.IsExpanded = true;
-            return OnExpandChanged.InvokeAsync(target);
-        }
-        return OnExpandChanged.InvokeAsync(Item);
-    }
-
-    // Collapse notification, re-resolved through the tree's CANONICAL resolver so a controlled/immutable
-    // rebuild during the row-click selection callbacks — which also re-registers a search-auto-expanded
-    // ancestor in _autoExpanded via RebuildDisplay — collapses the FRESH rendered node, not the stale
-    // reference (round-11 c). The chevron/keyboard path runs this immediately with no rebuild in between,
-    // so it resolves to the SAME instance and behaves exactly as the old direct OnExpandChanged collapse.
-    // A standalone node (no tree context) can't be rebuilt out from under us, so it uses the plain notify.
-    private Task NotifyCollapseAsync(TreeView<T>.NodePath? pathAtCollapse)
-    {
-        if (Context is not null)
-        {
-            Context.Tree.CollapseReanchored(Item, pathAtCollapse);
-            return Task.CompletedTask;
-        }
-        return OnExpandChanged.InvokeAsync(Item);
-    }
-
-    // The awaited tail of a lazy expansion: fetch the children, mirror a fully-checked parent's
-    // state onto them (rc.42), then raise OnExpandChanged. IsLoading is always cleared (finally) so
-    // a slow OR throwing loader never leaves the node stuck spinning. On loader FAILURE the just-
-    // applied expansion is rolled back to collapsed (round-7) before the exception propagates — the
-    // children never materialized, so leaving IsExpanded=true would strand the row aria-expanded=true
-    // with a down chevron over an empty branch (and the next click would COLLAPSE it instead of
-    // retrying the load). ChildrenLoaded stays false, so the row remains retryable. The exception
-    // still propagates exactly as before — the chevron/keyboard path lets it surface; the row click
-    // drains it isolated (HandleClick) AFTER the rollback, so the collapse survives either path and
-    // the already-applied selection (round-5) is untouched.
-    private async Task LoadChildrenThenNotifyAsync(TreeView<T>.NodePath? pathAtExpand)
-    {
+            return Context.Tree.BeginToggle(Item)();
+        // Standalone (no tree context): a plain local flip — no lazy-load / identity survival.
+        Item.IsExpanded = !Item.IsExpanded;
         StateHasChanged();
-        // The node the loaded children attach to. Defaults to THIS instance; re-resolved to the
-        // currently-rendered node below if a controlled/immutable rebuild replaced it mid-load.
-        var target = Item;
-        try
-        {
-            var loaded = await LoadChildren!(Item);
-
-            // Attach to the CURRENTLY rendered node (the SUCCESS mirror of the failure rollback): a
-            // row click on a lazy parent starts THIS load BEFORE its selection callbacks run; a
-            // controlled/immutable parent can rebuild Items inside SelectedValuesChanged while the
-            // loader is still pending, disposing this @key'd node and re-creating it around a FRESH
-            // instance. Assigning the children to the STALE Item would leave the visible fresh node
-            // expanded-but-empty, so re-resolve through the tree's canonical resolver and attach to
-            // THAT. When identity is UNPROVABLE (a rebuild replaced the clicked instance among
-            // duplicate/null-valued siblings, possibly reordering them) the resolver returns null:
-            // DISCARD the loaded children rather than graft them onto a guessed same-valued sibling —
-            // duplicate container values don't guarantee equivalent children (round-11 b). The branch
-            // stays ChildrenLoaded=false and reloads on the next expand (re-fetchable beats mis-attach;
-            // the finally clears the stale spinner). Standalone nodes (no tree context) can't be
-            // rebuilt out from under us, so the local instance is the target.
-            if (Context is not null)
-            {
-                var resolved = Context.Tree.ResolveExpansionTarget(Item, pathAtExpand);
-                if (resolved is null)
-                    return; // ambiguous identity → drop the load; finally clears Item.IsLoading
-                target = resolved;
-            }
-            target.Children = loaded;
-            target.ChildrenLoaded = true;
-            // Re-expand ONLY if the user did not collapse this node WHILE the load was pending. A collapse
-            // during the load (second row click / ArrowLeft) marks the in-flight op SUPERSEDED (round-13
-            // finding 3); honor it — attach the children but leave the branch collapsed rather than forcing
-            // it back open. Otherwise assert IsExpanded=true so a controlled rebuild that DROPPED the
-            // optimistic flag still reveals the just-loaded children on the one click (a fresh @key'd node
-            // may not have copied it). A standalone node (no tree context) keeps the unconditional assert.
-            if (Context is null || !Context.Tree.IsInFlightSuperseded(pathAtExpand, Item.Value))
-                target.IsExpanded = true;
-            // Clear the spinner on the RESOLVED node too (a rebuild may have copied IsLoading=true
-            // onto the fresh instance); the finally below only clears the stale Item.
-            target.IsLoading = false;
-
-            // rc.42: if the parent was fully checked before lazy-load, cascade
-            // that state to the freshly-loaded children. Without this, a
-            // checked parent would expand to reveal unchecked children — a
-            // visibly broken tri-state. Indeterminate parents leave loaded
-            // children at their default (unchecked) state, then we
-            // recompute the parent to reflect actual loaded counts.
-            if (target.IsChecked && !target.IsIndeterminate)
-            {
-                CascadeChecked(target.Children, true);
-            }
-            else if (target.IsIndeterminate)
-            {
-                // All loaded children default to unchecked → parent is no
-                // longer indeterminate if nothing is checked. Recompute.
-                var anyChecked = target.Children.Any(c => c.IsChecked || c.IsIndeterminate);
-                if (!anyChecked)
-                {
-                    target.IsIndeterminate = false;
-                    target.IsChecked = false;
-                }
-            }
-        }
-        catch
-        {
-            // Lazy load failed: ToggleExpand already flipped IsExpanded=true synchronously (the
-            // round-4 guarantee) but no children arrived. Roll the expansion back to collapsed so
-            // the row returns to a retryable state (ChildrenLoaded is still false, so a later click
-            // re-runs the loader) instead of showing aria-expanded=true / a down chevron over an
-            // empty branch. Re-render this node so the chevron + aria reflect the collapse; then
-            // re-throw so the error still surfaces on the chevron/keyboard path and is drained
-            // isolated on the row-click path. Selection stays intact (applied by the caller).
-            Item.IsExpanded = false;
-            // The line above collapses only THIS (possibly stale) instance. If a controlled/
-            // immutable parent rebuilt Items inside the selection callbacks while the loader was
-            // in flight, this instance was replaced by a fresh @key'd one that still carries the
-            // optimistic IsExpanded=true; route the rollback through the tree so it re-resolves and
-            // collapses the CURRENT rendered node too (round-8). A standalone node with no tree
-            // context keeps the local collapse above.
-            if (Context is not null)
-                Context.Tree.RollbackFailedExpansion(Item, pathAtExpand);
-            StateHasChanged();
-            throw;
-        }
-        finally
-        {
-            Item.IsLoading = false;
-            // Deregister this in-flight op and SWEEP (round-12 pillar 5). Critical on the ambiguous-DROP
-            // path (resolved == null above): the fresh @key'd instance a controlled rebuild produced still
-            // carries the copied optimistic IsLoading/IsExpanded that the line above only cleared on the
-            // STALE Item — with the entry now gone, the sweep reaps the orphaned spinner off the fresh row
-            // so the advertised "drop and re-fetch on next expand" is actually reachable (finding 1).
-            if (Context is not null)
-                Context.Tree.CompleteInFlightExpansion(pathAtExpand, Item.Value);
-        }
-
-        // Notify for the RESOLVED node so HandleExpandChanged binds pending selections / derives
-        // tri-state against the instance that actually holds the freshly-loaded children (this may
-        // be the fresh @key'd node after a controlled rebuild, not the stale Item).
-        await OnExpandChanged.InvokeAsync(target);
+        return Task.CompletedTask;
     }
 
     // Click semantic (documented): clicking the label ROW always SELECTS the node (and raises
-    // OnItemClick). By DEFAULT (ExpandOnRowClick=true) a click on a PARENT row — one that has,
-    // or can lazily load, children — ALSO toggles its expansion, so the whole row is the
-    // expand/collapse target (larger hit area / touch target; the VS Code file-tree pattern).
-    // Leaf rows only select. A lazy parent loads its children on row click exactly like the
-    // chevron does (via ToggleExpand). Set ExpandOnRowClick=false to opt back into chevron-only
-    // expansion: the row then selects but never expands. The chevron button remains an
-    // expand/collapse trigger in BOTH modes and stops propagation, so it toggles without
-    // selecting; keyboard expansion (ArrowRight/Left) is unchanged. A selection-modifier click
-    // (Ctrl/Meta/Shift — used to build a multi-selection) only mutates selection, never
-    // expansion, so folders don't flap open while the user is range/toggle-selecting.
+    // OnItemClick). By DEFAULT (ExpandOnRowClick=true) a click on a PARENT row also toggles its
+    // expansion (larger hit/touch target; the VS Code file-tree pattern). Leaf rows only select.
+    // The chevron button remains an expand/collapse trigger in BOTH modes and stops propagation.
+    // A selection-modifier click (Ctrl/Meta/Shift) only mutates selection, never expansion.
     private async Task HandleClick(MouseEventArgs e)
     {
         if (Item.IsDisabled) return;
 
-        // Flip expansion on the LIVE node instance SYNCHRONOUSLY — before the selection callbacks —
-        // but do NOT gate the selection on the lazy child-load.
-        //
-        // Round-4 (stale instance): the selection callbacks can rebuild Items (a controlled/
-        // immutable tree); because every node is @key'd by its instance, that rebuild DISPOSES this
-        // component and re-creates it around a fresh node. ToggleExpand mutates Item.IsExpanded
-        // SYNCHRONOUSLY before it returns its tail Task, so the rebuild snapshots the new expansion
-        // off THIS instance and carries it onto the fresh one (a toggle deferred until AFTER the
-        // awaits would land on the stale/disposed instance).
-        //
-        // Round-5 (selection vs loader): that tail may await LoadChildren, which can be slow or
-        // throw. Awaiting it HERE (as the previous reorder did) would delay the selection behind a
-        // slow loader and KILL it outright on a throwing one — the exception would escape before
-        // OnItemClick/OnSelectionChanged ever ran. So the selection callbacks fire NEXT, ungated by
-        // the load, and the tail is drained isolated afterwards — mirroring the chevron, whose load
-        // lives in its own handler and never gates a selection.
-        //
-        // Round-10 (cached load ordering): only the SYNCHRONOUS flip runs now; the tail — which
-        // STARTS the load — is DEFERRED until after selection. If it started here, a LoadChildren that
-        // returns an already-completed task would attach its children to THIS instance synchronously,
-        // before the selection callbacks; a controlled/immutable rebuild inside SelectedValuesChanged
-        // would then replace that instance and discard the children, stranding the fresh node expanded-
-        // but-empty. Starting the load AFTER selection lets ResolveExpansionTarget attach to the
-        // rebuilt node instead (the round-9 success reanchor already handles the slow-load ordering).
-        var deferredExpand = ExpandOnRowClick && Expandable && ShowExpandChevron && !IsSelectionModifier(e)
-            ? BeginToggleExpand()
+        // Flip expansion SYNCHRONOUSLY now (in the tree's state store) — before the selection
+        // callbacks — so a selection-driven controlled rebuild re-maps the fresh instance to this
+        // same state entry and shows it expanded. The lazy child-load is DEFERRED to run isolated
+        // AFTER selection, so a slow/throwing loader can neither delay nor kill the selection, and a
+        // cached load can't attach ahead of the selection rebuild.
+        var deferredExpand = ExpandOnRowClick && Expandable && ShowExpandChevron
+            && !IsSelectionModifier(e) && Context is not null
+            ? Context.Tree.BeginToggle(Item)
             : null;
 
         await OnItemClick.InvokeAsync(Item);
@@ -488,8 +259,8 @@
 
     // Drain the lazy-expansion tail AFTER the selection has been applied, absorbing a loader failure
     // so it can neither roll back the (already-committed) selection nor surface as an unhandled
-    // circuit exception. ToggleExpand's own finally has already cleared IsLoading, so the node never
-    // sticks spinning; the row's contract is to SELECT — surfacing a background branch-load failure
+    // circuit exception. The tree's state store has already cleared the spinner and collapsed the
+    // branch on failure; the row's contract is to SELECT — surfacing a background branch-load failure
     // is the chevron/keyboard path's job, not the click's.
     private static async Task DrainExpansionIsolated(Task expandTail)
     {
@@ -511,15 +282,11 @@
         await OnItemCheck.InvokeAsync(Item);
     }
 
-    // WAI-ARIA tree keyboard pattern. Expand/collapse mutations stay here (the
-    // node owns its item); pure focus movement is delegated to the parent tree,
-    // which knows the flattened visible order.
+    // WAI-ARIA tree keyboard pattern. Expand/collapse route through the tree's state store
+    // (ToggleExpand); pure focus movement is delegated to the parent tree, which knows the
+    // flattened visible order.
     private async Task HandleKeyDown(KeyboardEventArgs e)
     {
-        // Page-scroll for the focus-moving keys is suppressed synchronously in
-        // JS (see OnAfterRenderAsync) — the former render-time _preventKey flag
-        // lagged one event, so the first ArrowDown/Up/Home/End still scrolled
-        // the page while focus also moved (Codex P2).
         switch (e.Key)
         {
             case "ArrowDown":
@@ -539,19 +306,9 @@
 
             case "ArrowLeft":
                 if (EffectiveExpanded)
-                {
-                    Item.IsExpanded = false;
-                    // A collapse WHILE a lazy load is pending supersedes it so the load's completion won't
-                    // re-expand the branch the user just collapsed (round-13 finding 3); no-op when nothing
-                    // is loading for this node (collapsing an already-loaded branch).
-                    if (Context is not null)
-                        Context.Tree.SupersedeInFlightExpansion(Item, Context.Tree.GetNodePath(Item));
-                    await OnExpandChanged.InvokeAsync(Item);
-                }
+                    await ToggleExpand(); // collapse via the state store (honors an in-flight load)
                 else if (Context is not null)
-                {
                     await Context.Tree.HandleNavigationKeyAsync(Item, e.Key); // move to parent
-                }
                 break;
 
             case "Enter":
@@ -578,22 +335,6 @@
                     }
                 }
                 break;
-        }
-    }
-
-    /// <summary>Cascades a check state to a freshly-loaded subtree (rc.42).
-    /// Used after <see cref="LoadChildren"/> resolves so children inherit a
-    /// fully-checked parent's state instead of staying unchecked.</summary>
-    private static void CascadeChecked(List<TreeView<T>.TreeViewItem<T>> items, bool value)
-    {
-        foreach (var item in items)
-        {
-            item.IsChecked = value;
-            item.IsIndeterminate = false;
-            if (item.Children is { Count: > 0 })
-            {
-                CascadeChecked(item.Children, value);
-            }
         }
     }
 

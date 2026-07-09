@@ -32,10 +32,21 @@ public class TreeViewRound12Tests : IAsyncLifetime
     private static IElement Row(IRenderedComponent<L.TreeView<string>> cut, string text)
         => TreeItem(cut, text).Children[0];
 
-    // ---- Finding 1: dropping an ambiguous lazy load must SWEEP the copied spinner off the fresh node ----
-
+    // ---- Finding 1 (REWRITTEN for the PR #351 ownership rebuild): an ambiguous lazy load DROPS its
+    //      children through the state store — no orphan sweep exists to test ----
+    //
+    // JUSTIFICATION for the rewrite (per the rebuild mandate: tests that encoded registry/sweep
+    // internals may be re-expressed as the same BEHAVIOR through the store). The original test pinned
+    // the deleted orphan-SWEEP: it asserted the copied optimistic spinner PERSISTED on the fresh
+    // @key'd node through the hang and was reaped only on completion. Under the rebuilt model UI state
+    // (incl. Loading) lives in the TREE keyed by identity, so a controlled rebuild that makes the
+    // clicked node's identity UNPROVABLE (two "dup" siblings) maps the fresh instance to a NEW state
+    // entry that owns no in-flight load — the tree-owned spinner is simply never shown there; there is
+    // nothing to sweep. The BEHAVIOR that actually matters is unchanged and still asserted: the load's
+    // children are DROPPED (never mis-attached to a guessed same-valued sibling), no spinner is left
+    // stuck, and the branch stays re-fetchable. A genuine regression against mis-attach / stuck spinner.
     [Fact]
-    public async Task Dropped_ambiguous_lazy_load_sweeps_the_orphaned_spinner_off_the_fresh_node()
+    public async Task Ambiguous_lazy_load_drops_its_children_and_leaves_no_stuck_spinner()
     {
         IRenderedComponent<L.TreeView<string>>? cut = null;
 
@@ -44,11 +55,10 @@ public class TreeViewRound12Tests : IAsyncLifetime
 
         List<Item> current = null!;
         var ver = 0;
-        // Two DUPLICATE-valued lazy parents. The controlled rebuild copies BOTH optimistic flags
-        // (IsExpanded + IsLoading) from the clicked stale node onto the fresh index-0 instance and bumps
-        // the LABEL — so the fresh record is value-DISTINCT from the mutated stale one, its @key differs,
-        // and Blazor DISPOSES + recreates the component (rather than reusing it, which would let the node's
-        // own finally clear the spinner and attach the load). Values stay "dup" so identity is UNPROVABLE.
+        // Two DUPLICATE-valued lazy parents. The controlled rebuild copies the optimistic flags from the
+        // clicked stale node onto the fresh index-0 instance and bumps the LABEL — so the fresh record is
+        // value-DISTINCT from the stale one, its @key differs, and Blazor DISPOSES + recreates the
+        // component. Values stay "dup" so identity is UNPROVABLE and the tree-owned load can't re-map.
         List<Item> Build(bool exp0, bool load0) =>
         [
             new() { Text = $"Alpha v{ver}", Value = "dup", IsLeaf = false, IsExpanded = exp0, IsLoading = load0 },
@@ -69,22 +79,22 @@ public class TreeViewRound12Tests : IAsyncLifetime
             .Add(c => c.SelectedValues, (List<string>?)null)
             .Add(c => c.SelectedValuesChanged, callback));
 
-        // Click Alpha → starts the hanging load; the rebuild copies the spinner onto the fresh Alpha.
+        // Click Alpha → starts the load; the controlled rebuild immediately makes its identity unprovable
+        // (two "dup" siblings), so the tree-owned load owns no rendered node — Loading is mirrored off the
+        // fresh record and no spinner shows (the store's equivalent of the old sweep, but eager).
         await cut.InvokeAsync(() => Row(cut, "Alpha").Click());
-        Assert.True(current[0].IsLoading, "the fresh node carries the copied optimistic spinner while the load hangs");
-        Assert.Contains("animate-spin", cut.Markup);
+        Assert.False(current[0].IsLoading, "an unprovable-identity load owns no rendered node — no spinner to strand");
+        Assert.DoesNotContain("animate-spin", cut.Markup);
 
-        // Release the load. Alpha's identity among the two "dup" siblings is UNPROVABLE, so the resolver
-        // DROPS the children — and the orphan sweep must clear the copied spinner off the fresh node (its
-        // finally only cleared the STALE instance), returning it to a retryable chevron.
+        // Release the load. Identity is UNPROVABLE, so the fetched children DROP rather than graft onto a
+        // guessed same-valued sibling — duplicate container values don't guarantee equivalent children.
         await cut.InvokeAsync(() =>
             gate.SetResult(new List<Item> { new() { Text = "child", Value = "leaf", IsLeaf = true } }));
 
         Assert.DoesNotContain("child", cut.Markup);                 // dropped, not attached
-        Assert.False(current[0].IsLoading, "the orphan sweep clears the copied spinner off the fresh node");
-        Assert.False(current[0].IsExpanded, "the orphan sweep collapses the optimistic expansion (retryable)");
+        Assert.False(current[0].IsLoading, "no stuck spinner after the dropped load");
+        Assert.False(current[0].ChildrenLoaded, "the branch stays re-fetchable (ChildrenLoaded never set)");
         Assert.DoesNotContain("animate-spin", cut.Markup);
-        Assert.Equal("false", TreeItem(cut, "Alpha").GetAttribute("aria-expanded"));
     }
 
     // ---- Orphan-sweep, isolated: a copied in-flight flag with NO live operation is reaped ----
