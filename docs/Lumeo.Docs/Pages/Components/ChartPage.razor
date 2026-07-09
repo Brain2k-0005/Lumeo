@@ -23,7 +23,10 @@
         <code class="text-xs bg-muted px-1 py-0.5 rounded">cdn.jsdelivr.net</code> &mdash; a third-party request that
         discloses the visitor's IP to the CDN, independent of any cookie consent. Under GDPR that is a data
         transfer you should disclose or avoid. To keep charts on your own origin, self-host ECharts and point the
-        library's documented override at it &mdash; any one of:
+        library's documented overrides at it. The global <code class="text-xs bg-muted px-1 py-0.5 rounded">window.lumeoCdn</code>
+        map (options 1&ndash;2) is the complete fix &mdash; it redirects core ECharts <em>and</em> both plugin
+        extensions; a per-chart <code class="text-xs bg-muted px-1 py-0.5 rounded">EChartsSource</code> (option 3)
+        redirects only that chart's core ECharts:
         <ul class="list-disc list-inside mt-2 space-y-1">
             <li>Run <code class="text-xs bg-muted px-1 py-0.5 rounded">lumeo deps install</code> to vendor every
                 CDN dependency into <code class="text-xs bg-muted px-1 py-0.5 rounded">wwwroot/lib/lumeo-vendor/</code>
@@ -33,7 +36,14 @@
                 The plugin charts (liquid fill, word cloud) pull their own scripts, so include the
                 <code class="text-xs bg-muted px-1 py-0.5 rounded">echartsLiquidfill</code> and
                 <code class="text-xs bg-muted px-1 py-0.5 rounded">echartsWordcloud</code> keys too, or those charts silently fall back to jsDelivr.</li>
-            <li>Per chart: <code class="text-xs bg-muted px-1 py-0.5 rounded">&lt;Chart EChartsSource="/lib/echarts.min.js" … /&gt;</code>.</li>
+            <li>Per chart, redirect the <em>core</em> ECharts source:
+                <code class="text-xs bg-muted px-1 py-0.5 rounded">&lt;Chart EChartsSource="/lib/echarts.min.js" … /&gt;</code>.
+                This covers core ECharts for that chart only &mdash; the plugin charts (liquid fill, word cloud) load
+                their <em>extension</em> scripts solely through the global
+                <code class="text-xs bg-muted px-1 py-0.5 rounded">echartsLiquidfill</code> /
+                <code class="text-xs bg-muted px-1 py-0.5 rounded">echartsWordcloud</code> keys above (or the
+                <code class="text-xs bg-muted px-1 py-0.5 rounded">lumeo deps install</code> bootstrap), so
+                <code class="text-xs bg-muted px-1 py-0.5 rounded">EChartsSource</code> alone leaves those extensions on jsDelivr.</li>
         </ul>
         This documentation site itself self-hosts a pinned ECharts 5.6.0 from its own origin, so the charts on
         this page contact no third party.

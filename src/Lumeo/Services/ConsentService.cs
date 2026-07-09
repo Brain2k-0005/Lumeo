@@ -176,10 +176,35 @@ public sealed class ConsentService
     // prefill the dialog) and decides whether the stored decision still counts.
     private void LoadFromJson(string json)
     {
-        if (JsonNode.Parse(json) is not JsonObject root) return;
-        // A parseable entry existed — a decision (in either shape) is now hydrated,
-        // so PolicyVersion changes from here on re-evaluate its validity.
+        // A non-empty entry existed — the pre-boot guard already added html.lumeo-consent-decided
+        // (and CSS force-hid the banner) off its mere presence. Mark it stored NOW so EVERY path
+        // below — including the corrupt ones — leaves _hasStoredRecord true and EnsureLoadedAsync
+        // re-syncs the FOUC guard: a rejected/undecided entry then re-shows the banner
+        // (markUndecided) instead of staying invisible.
         _hasStoredRecord = true;
+
+        JsonObject? root;
+        try
+        {
+            root = JsonNode.Parse(json) as JsonObject;
+        }
+        catch (JsonException)
+        {
+            // Invalid JSON in storage. Not a decision, but a stored entry the pre-boot guard hid
+            // the banner for — fail CLOSED and re-prompt (RejectStoredRecord latches _decisionRejected
+            // so a later PolicyVersion change can't resurrect it). Handled here (not just in
+            // EnsureLoadedAsync's catch) so the markUndecided FOUC sync still runs.
+            RejectStoredRecord();
+            return;
+        }
+
+        // Parsed, but NOT a JSON object (null / number / string / array). Same as invalid JSON: a
+        // stored entry the guard hid the banner for, but no decision — fail closed and re-prompt.
+        if (root is null)
+        {
+            RejectStoredRecord();
+            return;
+        }
 
         // New format is uniquely identified by a "categories" object — a legacy
         // map only ever holds string→bool pairs, so it can never have an OBJECT

@@ -208,55 +208,78 @@
         _isFocused = false;
     }
 
-    private async Task ToggleExpand()
+    // Expansion has TWO parts that a row click must keep decoupled (see HandleClick):
+    //   1. the state flip on THIS node instance — done SYNCHRONOUSLY, before any await, so a
+    //      selection-driven rebuild (a controlled/immutable tree, @key'd by instance) snapshots the
+    //      new IsExpanded off the LIVE node instead of a stale/disposed one (the round-4 guarantee).
+    //   2. the lazy child-load — an await that may be slow or throw. It is returned as the tail Task
+    //      so the caller chooses to await it inline (the chevron / keyboard, whose only job is to
+    //      expand) or drain it isolated from selection (the row click).
+    // Children only render once actually loaded (the HasLoadedChildren gate), so flipping IsExpanded
+    // ahead of the load never paints an empty expanded branch.
+    private Task ToggleExpand()
     {
         if (EffectiveExpanded)
         {
             Item.IsExpanded = false;
-            await OnExpandChanged.InvokeAsync(Item);
-            return;
+            return OnExpandChanged.InvokeAsync(Item);
         }
+
+        // Mark expanded NOW (synchronous state mutation on the live instance) — the (possibly slow
+        // or throwing) child-load below must not gate this, or a selection-driven rebuild would
+        // snapshot the still-collapsed node.
+        Item.IsExpanded = true;
 
         if (LoadChildren is not null && !Item.ChildrenLoaded && !Item.IsLeaf && !HasLoadedChildren)
         {
             Item.IsLoading = true;
-            StateHasChanged();
-
-            try
-            {
-                var loaded = await LoadChildren(Item);
-                Item.Children = loaded;
-                Item.ChildrenLoaded = true;
-
-                // rc.42: if the parent was fully checked before lazy-load, cascade
-                // that state to the freshly-loaded children. Without this, a
-                // checked parent would expand to reveal unchecked children — a
-                // visibly broken tri-state. Indeterminate parents leave loaded
-                // children at their default (unchecked) state, then we
-                // recompute the parent to reflect actual loaded counts.
-                if (Item.IsChecked && !Item.IsIndeterminate)
-                {
-                    CascadeChecked(Item.Children, true);
-                }
-                else if (Item.IsIndeterminate)
-                {
-                    // All loaded children default to unchecked → parent is no
-                    // longer indeterminate if nothing is checked. Recompute.
-                    var anyChecked = Item.Children.Any(c => c.IsChecked || c.IsIndeterminate);
-                    if (!anyChecked)
-                    {
-                        Item.IsIndeterminate = false;
-                        Item.IsChecked = false;
-                    }
-                }
-            }
-            finally
-            {
-                Item.IsLoading = false;
-            }
+            return LoadChildrenThenNotifyAsync();
         }
 
-        Item.IsExpanded = true;
+        return OnExpandChanged.InvokeAsync(Item);
+    }
+
+    // The awaited tail of a lazy expansion: fetch the children, mirror a fully-checked parent's
+    // state onto them (rc.42), then raise OnExpandChanged. IsLoading is always cleared (finally) so
+    // a slow OR throwing loader never leaves the node stuck spinning. A loader exception propagates
+    // from here exactly as before — the chevron/keyboard path lets it surface; the row click drains
+    // it isolated (HandleClick) so it can't break the already-applied selection.
+    private async Task LoadChildrenThenNotifyAsync()
+    {
+        StateHasChanged();
+        try
+        {
+            var loaded = await LoadChildren!(Item);
+            Item.Children = loaded;
+            Item.ChildrenLoaded = true;
+
+            // rc.42: if the parent was fully checked before lazy-load, cascade
+            // that state to the freshly-loaded children. Without this, a
+            // checked parent would expand to reveal unchecked children — a
+            // visibly broken tri-state. Indeterminate parents leave loaded
+            // children at their default (unchecked) state, then we
+            // recompute the parent to reflect actual loaded counts.
+            if (Item.IsChecked && !Item.IsIndeterminate)
+            {
+                CascadeChecked(Item.Children, true);
+            }
+            else if (Item.IsIndeterminate)
+            {
+                // All loaded children default to unchecked → parent is no
+                // longer indeterminate if nothing is checked. Recompute.
+                var anyChecked = Item.Children.Any(c => c.IsChecked || c.IsIndeterminate);
+                if (!anyChecked)
+                {
+                    Item.IsIndeterminate = false;
+                    Item.IsChecked = false;
+                }
+            }
+        }
+        finally
+        {
+            Item.IsLoading = false;
+        }
+
         await OnExpandChanged.InvokeAsync(Item);
     }
 
@@ -275,19 +298,41 @@
     {
         if (Item.IsDisabled) return;
 
-        // Toggle expansion BEFORE yielding to the selection callbacks. Those callbacks can
-        // rebuild Items (a controlled/immutable tree); because every node is @key'd by its
-        // instance, that rebuild DISPOSES this component and re-creates it around a fresh node.
-        // A ToggleExpand() deferred until AFTER the awaits would then mutate the STALE (disposed)
-        // node instance, so the expansion would never appear on the live one. Toggling first
-        // mutates the node while it is still the rendered instance (and raises OnExpandChanged),
-        // so the parent's rebuild observes the new expansion state. ToggleExpand may itself await
-        // LoadChildren; selection semantics are unchanged — the same node still ends up selected.
-        if (ExpandOnRowClick && Expandable && ShowExpandChevron && !IsSelectionModifier(e))
-            await ToggleExpand();
+        // Flip expansion on the LIVE node instance SYNCHRONOUSLY — before the selection callbacks —
+        // but do NOT gate the selection on the lazy child-load.
+        //
+        // Round-4 (stale instance): the selection callbacks can rebuild Items (a controlled/
+        // immutable tree); because every node is @key'd by its instance, that rebuild DISPOSES this
+        // component and re-creates it around a fresh node. ToggleExpand mutates Item.IsExpanded
+        // SYNCHRONOUSLY before it returns its tail Task, so the rebuild snapshots the new expansion
+        // off THIS instance and carries it onto the fresh one (a toggle deferred until AFTER the
+        // awaits would land on the stale/disposed instance).
+        //
+        // Round-5 (selection vs loader): that tail may await LoadChildren, which can be slow or
+        // throw. Awaiting it HERE (as the previous reorder did) would delay the selection behind a
+        // slow loader and KILL it outright on a throwing one — the exception would escape before
+        // OnItemClick/OnSelectionChanged ever ran. So the selection callbacks fire NEXT, ungated by
+        // the load, and the tail is drained isolated afterwards — mirroring the chevron, whose load
+        // lives in its own handler and never gates a selection.
+        var expandTail = ExpandOnRowClick && Expandable && ShowExpandChevron && !IsSelectionModifier(e)
+            ? ToggleExpand()
+            : Task.CompletedTask;
 
         await OnItemClick.InvokeAsync(Item);
         await OnSelectionChanged.InvokeAsync(Item);
+
+        await DrainExpansionIsolated(expandTail);
+    }
+
+    // Drain the lazy-expansion tail AFTER the selection has been applied, absorbing a loader failure
+    // so it can neither roll back the (already-committed) selection nor surface as an unhandled
+    // circuit exception. ToggleExpand's own finally has already cleared IsLoading, so the node never
+    // sticks spinning; the row's contract is to SELECT — surfacing a background branch-load failure
+    // is the chevron/keyboard path's job, not the click's.
+    private static async Task DrainExpansionIsolated(Task expandTail)
+    {
+        try { await expandTail; }
+        catch (Exception) { /* a lazy-loader failure must not break the completed selection */ }
     }
 
     // A modifier held during the click is a selection gesture (extend/toggle a multi-selection),
