@@ -99,10 +99,14 @@
     //     identical for every mode:
     //        a. ReferenceEquals — the instance is still in the tree (no rebuild / untouched
     //           branch): return it.
-    //        b. VALUE-VERIFIED PATH — the node at `path` still carries `value` AND that value is
-    //           UNIQUE among its immediate siblings (WalkPath): return it. A shared/duplicate/null
-    //           value at the path is NOT a provable anchor (a silent sibling reorder is
-    //           indistinguishable from a same-content reload), so it does not resolve here.
+    //        b. VALUE-VERIFIED PATH — the node at `path` still carries `value` AND that value is UNIQUE
+    //           among its immediate siblings, VALIDATED AT EVERY SEGMENT (round-13 b): each ancestor index
+    //           must also land on a node whose recorded value is sibling-unique at that level. WalkPath now
+    //           carries a per-level value chain (NodePath), so a shared/duplicate/null value at ANY segment
+    //           — ancestor or leaf — is NOT a provable anchor (a silent sibling reorder is indistinguishable
+    //           from a same-content reload) and the whole path drops here. This closes the ancestor hole:
+    //           two duplicate/null-valued ancestor folders reordered, each holding a same-valued child,
+    //           previously let a leaf-only check walk into the WRONG subtree and pass.
     //        c. TREE-UNIQUE VALUE — exactly one node in the whole tree carries `value` (a node
     //           that merely moved): return it.
     //        d. MODE TAIL — both modes DROP (return null). There is NO positional guess:
@@ -141,6 +145,13 @@
     //     the selection onto the new instance (round-11 d). Cost: HasStaleOrPendingSelection
     //     flattens the tree O(n), but only on a SAME-reference re-render that also holds a
     //     selection/pending state; a selection-free tree or a reference swap pays nothing extra.
+    //     FILTERED DISPLAY (round-13 a): while a search filter is active _displayItems is a SEPARATE
+    //     filtered ToList() snapshot, so it goes stale on an in-place retitle/replace even when there is NO
+    //     selection to make needsResolve fire. The filtered display is therefore ALSO re-materialized
+    //     whenever a filter is active and neither the Items reference nor ExpandAll changed —
+    //     unconditionally, not gated on selection. Tradeoff: an O(n) re-filter on every OnParametersSet
+    //     while a filter is live (simpler + cheaper than a structural fingerprint; RebuildDisplay is
+    //     idempotent, so a redundant rebuild loses no state).
     //
     // (4) SETTLED SEMANTICS (unchanged, see the lifecycle notes below): seeded=VALUE contract
     //     (re-binds every match, additive across lazy loads) vs interactive=IDENTITY (carry by
@@ -165,11 +176,21 @@
     //     the copied spinner instead of stranding it forever (round-12 finding 1). Ownership uses a
     //     POSITIONAL (not identity-strict) slot match — clearing an orphaned spinner needs only "no op
     //     claims this slot", a strictly weaker question than ResolveNode's provable identity for data.
+    //     SUPERSESSION (round-13 c): BeginToggleExpand sets the optimistic IsExpanded=true BEFORE awaiting a
+    //     lazy load, so a collapse DURING the load (second row click / ArrowLeft / collapse-all) would be
+    //     overwritten by the success path's unconditional IsExpanded=true. A collapse now marks the owning
+    //     in-flight entry Superseded; the success completion still ATTACHES children (ChildrenLoaded=true)
+    //     but SKIPS the re-expand, honoring the user's latest intent. EXPAND-ALL PARITY (round-13 d):
+    //     LoadAndExpandAllAsync's lazy completion now re-resolves the target via ResolveExpansionTarget
+    //     (drop-on-ambiguity → the branch re-fetches next expand), gates IsExpanded on supersession,
+    //     descends the RESOLVED subtree, and SWEEPS in its finally — the SAME contract as the per-row
+    //     LoadChildrenThenNotifyAsync path, so a rebuild mid-expand-all no longer strands a copied spinner
+    //     on a fresh row or attaches children to a disposed instance (round-13 finding 4).
     //
     // (6) SELECTION-PATH SNAPSHOT (round-12) — ReanchorSelection reads a vanished node's OLD index path
     //     from _selectionPaths, a map snapshotted after every resolution pass, NOT from the outgoing
     //     Items list. For an IN-PLACE mutation _previousItems is the SAME object the consumer already
-    //     mutated, so the departed node is no longer walkable there and a live-list BuildIndexPath fails;
+    //     mutated, so the departed node is no longer walkable there and a live-list BuildNodePath fails;
     //     the snapshot recorded the path while the node WAS present, so a duplicate-valued node that was
     //     path-identifiable among its siblings still reanchors instead of being dropped by the
     //     unique-value fallback (round-12 finding 2). The live list stays the fallback for the first pass
@@ -284,11 +305,20 @@
     // OnItemClick handler rebuilt Items (controlled/immutable) in between (round-10 finding 4). The node
     // component awaits OnItemClick before OnSelectionChanged, so without this the selection would add
     // the now-stale (disposed) clicked instance and the fresh rendered row would show as unselected.
-    private IReadOnlyList<int>? _clickPathBeforeCallback;
-    // A vanished resolved node's carried identity: the value-verified root→node index PATH it
-    // held in the tree it left, plus its Value. The path re-binds the exact node on return; the
-    // value is the unique-or-drop fallback when the structure changed and the path no longer walks.
-    private sealed record PendingCarry(IReadOnlyList<int> Path, T? Value);
+    private NodePath? _clickPathBeforeCallback;
+    // A vanished resolved node's carried identity: the value-verified root→node PATH it held in the tree
+    // it left (index chain + per-level value, round-13 b), plus its Value. The path re-binds the exact
+    // node on return; the value is the unique-or-drop fallback when the structure changed and the path no
+    // longer walks.
+    private sealed record PendingCarry(NodePath Path, T? Value);
+
+    /// <summary>A structural node identity: the root→node child-index chain PLUS the value carried at
+    /// EACH level. Every segment is value-verified AND sibling-uniqueness-gated on the way back
+    /// (<see cref="WalkPath"/>), so a duplicate/null-valued ANCESTOR that gets reordered can no longer
+    /// silently redirect the walk into the wrong subtree while the leaf still passes its own sibling check
+    /// (round-13 finding 2). Captured only while the node is present, so <see cref="Indices"/> and
+    /// <see cref="Values"/> are always the same length and Values[d] is the node's value at depth d.</summary>
+    internal sealed record NodePath(IReadOnlyList<int> Indices, IReadOnlyList<T?> Values);
 
     // Search filtering renders the ORIGINAL item instances; visibility and
     // search-forced expansion are tracked in these side tables instead of
@@ -304,7 +334,15 @@
     // snapshot captured when a load set IsLoading; it OWNS whichever node currently occupies that slot,
     // so a rebuild-copied spinner on a fresh @key'd instance stays lit while the op runs and is reaped
     // by SweepOrphanedInFlightFlags once the entry is removed (the load resolved/dropped/failed).
-    private sealed record InFlightExpansion(IReadOnlyList<int> Path, T? Value, IReadOnlyList<T?> Siblings);
+    private sealed record InFlightExpansion(IReadOnlyList<int> Path, T? Value, IReadOnlyList<T?> Siblings)
+    {
+        /// <summary>Set when a user collapse (second row click / ArrowLeft / collapse-all) lands WHILE this
+        /// lazy load is still pending (round-13 finding 3). The load's success completion then attaches the
+        /// children (ChildrenLoaded=true) but does NOT re-expand — honoring the collapse as the latest intent
+        /// instead of the optimistic IsExpanded=true that BeginToggleExpand set before awaiting. Mutable, and
+        /// never part of any equality/lookup (matching is by {path,value}), so this is safe on the record.</summary>
+        public bool Superseded { get; set; }
+    }
     private List<InFlightExpansion>? _inFlightLoads;
 
     // ── SELECTION-PATH SNAPSHOT (round-12, canonical-model pillar 6) ─────────
@@ -312,7 +350,7 @@
     // AFTER every resolution pass. ReanchorSelection reads a vanished node's OLD path from here so an
     // IN-PLACE Items mutation (where _previousItems is the same, already-mutated object) can still
     // reanchor a duplicate-valued node by its path instead of dropping it (round-12 finding 2).
-    private Dictionary<TreeViewItem<T>, IReadOnlyList<int>> _selectionPaths = new(ReferenceEqualityComparer.Instance);
+    private Dictionary<TreeViewItem<T>, NodePath> _selectionPaths = new(ReferenceEqualityComparer.Instance);
 
     // Roving tabindex / keyboard navigation state (WAI-ARIA tree pattern).
     private readonly string _treeId = LumeoIds.New("tree");
@@ -434,13 +472,24 @@
                 _expandAllNeedsLazyLoad = true;
             RebuildDisplay();
         }
-        else if (needsResolve && !string.IsNullOrWhiteSpace(_searchText))
+        else if (!string.IsNullOrWhiteSpace(_searchText))
         {
-            // Round-12 finding 4: an IN-PLACE mutation (same Items reference) while a SEARCH FILTER is
-            // active. Unlike the unfiltered case, _displayItems is NOT the live Items — it is a filtered
-            // ToList() snapshot, so the swapped-in fresh instance would never render and the reanchored
-            // selection above would look lost (the render still walks the stale filtered list). Re-
-            // materialize the filtered display from the mutated Items so the reanchor is actually shown.
+            // Round-13 finding 1 (extends round-12 finding 4): while a SEARCH FILTER is active,
+            // _displayItems is a filtered ToList() SNAPSHOT — NOT the live Items — so an IN-PLACE mutation
+            // of the same list reference (retitling or replacing items[i]) never reaches the render until
+            // the display is re-materialized. The prior guard gated this on needsResolve, i.e. only when a
+            // SELECTION/pending binding looked stale; a filtered tree with NO selection left the stale rows
+            // on screen because nothing rebuilt _displayItems. Change detection must NOT hinge on selection
+            // state (pillar 3): whenever a filter is active and neither the Items reference nor ExpandAll
+            // changed, ALWAYS re-materialize the filtered display.
+            //
+            // Tradeoff (documented, pillar 3): detecting an in-place CONTENT edit (a retitle) with no
+            // reference change and no selection needs either a structural fingerprint of the whole tree or
+            // an unconditional re-filter. CollectVisible is already O(n) and only runs while a filter is
+            // live (a transient user state), so the unconditional re-filter is both simpler and cheaper to
+            // maintain than a fingerprint. RebuildDisplay is idempotent — it recomputes _visibleSet and
+            // _autoExpanded from scratch — so a redundant rebuild on an unrelated re-render is pure
+            // recompute with no state loss.
             RebuildDisplay();
         }
 
@@ -523,8 +572,12 @@
 
     public void CollapseAllNodes()
     {
-        _expandGeneration++; // cancel any in-flight lazy expand pass
+        _expandGeneration++; // cancel any in-flight lazy expand-all pass (LoadAndExpandAllAsync bails on gen)
         ApplyExpandAll(Items ?? [], false);
+        // Per-node lazy loads (row-click / chevron via LoadChildrenThenNotifyAsync) are NOT gated by
+        // _expandGeneration, so a collapse-all while one is pending must ALSO supersede it — otherwise its
+        // success completion re-expands the node the user just collapsed (round-13 finding 3, sweep site).
+        SupersedeAllInFlight();
         _flatVisible = null;
         StateHasChanged();
     }
@@ -541,6 +594,11 @@
             if (gen != _expandGeneration) return; // a newer collapse/expand superseded us
             item.IsExpanded = true;
 
+            // The node whose children we descend into after this level. Defaults to `item`; the lazy load
+            // below re-resolves it to the fresh @key'd instance when a controlled/immutable rebuild replaced
+            // `item` mid-load, so BOTH the attach and the recursion follow the LIVE tree (round-13 finding 4).
+            var target = item;
+
             // A lazy, not-yet-loaded, non-leaf branch: fetch it once.
             if (LoadChildren is not null && !item.ChildrenLoaded && !item.IsLeaf
                 && item.Children is not { Count: > 0 })
@@ -548,35 +606,61 @@
                 item.IsLoading = true;
                 // Register in-flight ownership (pillar 5) so a resolution-pass sweep that fires mid
                 // expand-all doesn't reap this genuine spinner — a node may carry IsLoading only while an
-                // entry owns its slot. Removed in the finally by the same {path,value}.
-                var loadPath = GetIndexPath(item) ?? [];
-                (_inFlightLoads ??= []).Add(new InFlightExpansion(loadPath, item.Value, SiblingValuesAt(loadPath)));
+                // entry owns its slot. Removed + swept in the finally.
+                var loadPath = GetNodePath(item);
+                var loadIndices = loadPath?.Indices ?? [];
+                (_inFlightLoads ??= []).Add(new InFlightExpansion(loadIndices, item.Value, SiblingValuesAt(loadIndices)));
                 _flatVisible = null;
                 StateHasChanged();
                 try
                 {
-                    item.Children = await LoadChildren(item);
+                    var loaded = await LoadChildren(item);
                     // Bail if the user collapsed / re-expanded while we awaited — don't
                     // resurrect a tree they just collapsed (finally resets IsLoading).
                     if (gen != _expandGeneration) return;
-                    item.ChildrenLoaded = true;
+                    // SUCCESS RE-RESOLUTION (round-13 finding 4): mirror the per-row lazy path
+                    // (ResolveExpansionTarget). A controlled/immutable parent can rebuild Items while the
+                    // loader is pending — disposing THIS @key'd node and copying its optimistic
+                    // IsLoading/IsExpanded onto a fresh instance. Attaching to the stale `item` would strand
+                    // that fresh row expanded-but-empty AND recurse into an orphaned subtree. Re-resolve to
+                    // the CURRENT instance; when identity is UNPROVABLE among duplicate/null-valued siblings,
+                    // DROP this branch's load — the finally clears the stale spinner and sweeps the copied one
+                    // off the fresh row (re-fetchable on the next expand beats a mis-attach, round-11 b).
+                    var resolved = ResolveExpansionTarget(item, loadPath);
+                    if (resolved is null)
+                        continue; // ambiguous identity → drop this branch's load; finally sweeps the fresh spinner
+                    target = resolved;
+                    target.Children = loaded;
+                    target.ChildrenLoaded = true;
+                    // Honor a collapse that landed mid-load (round-13 finding 3): re-expand only when the op
+                    // wasn't superseded. Otherwise leave the branch collapsed but with its children attached.
+                    if (!IsInFlightSuperseded(loadPath, item.Value))
+                        target.IsExpanded = true;
+                    // Clear the spinner on the RESOLVED node too (a rebuild may have copied IsLoading=true
+                    // onto the fresh instance); the finally below only clears the stale item.
+                    target.IsLoading = false;
                     // Bind any pending controlled/seed selection naming one of the
                     // just-loaded nodes (same as the per-node expand path).
-                    TryResolvePendingSelection(item.Children);
+                    TryResolvePendingSelection(target.Children);
                     // Mirror the per-node lazy-load cascade (rc.42): a fully-checked
                     // parent propagates its check to freshly-loaded children.
-                    if (item.IsChecked && !item.IsIndeterminate && item.Children is { Count: > 0 })
-                        SetChildrenChecked(item.Children, true);
+                    if (target.IsChecked && !target.IsIndeterminate && target.Children is { Count: > 0 })
+                        SetChildrenChecked(target.Children, true);
                 }
                 finally
                 {
                     item.IsLoading = false;
-                    RemoveInFlight(loadPath, item.Value);
+                    RemoveInFlight(loadIndices, item.Value);
+                    // Reap any optimistic spinner a controlled rebuild copied onto a fresh @key'd instance
+                    // now that this entry is gone — the expand-all mirror of CompleteInFlightExpansion's
+                    // post-removal sweep on the per-row path. Without it a dropped/rebuilt expand-all load
+                    // strands the copied spinner on the fresh row forever (round-13 finding 4).
+                    SweepOrphanedInFlightFlags();
                 }
             }
 
-            if (item.Children is { Count: > 0 })
-                await LoadAndExpandAllAsync(item.Children, gen);
+            if (target.Children is { Count: > 0 })
+                await LoadAndExpandAllAsync(target.Children, gen);
         }
     }
 
@@ -585,7 +669,7 @@
         // Snapshot the clicked node's structural path NOW — before the public OnItemClick can rebuild
         // Items — so the selection callback that fires next (HandleSelectionChanged) can re-resolve the
         // fresh @key'd instance the rebuild produced instead of adding the stale one (round-10 finding 4).
-        _clickPathBeforeCallback = GetIndexPath(item);
+        _clickPathBeforeCallback = GetNodePath(item);
         await OnItemClick.InvokeAsync(item);
     }
 
@@ -1021,7 +1105,7 @@
     /// the wrong same-valued node (now or on a later single-match refresh).</summary>
     private static (TreeViewItem<T>? Node, bool Drop) ResolveCarryNode(PendingCarry carry, List<TreeViewItem<T>> tree, List<TreeViewItem<T>> flat)
     {
-        var byPath = WalkPath(tree, carry.Path, carry.Value);
+        var byPath = WalkPath(tree, carry.Path);
         if (byPath is not null) return (byPath, false);
         var byValue = flat.Where(n => EqualityComparer<T>.Default.Equals(n.Value, carry.Value)).ToList();
         if (byValue.Count == 1) return (byValue[0], false);
@@ -1066,7 +1150,7 @@
             }
             // OLD path of the vanished node: prefer the SNAPSHOT captured after the last resolution pass
             // (pillar 6, round-12 finding 2) — for an in-place mutation oldItems is the SAME object the
-            // consumer already mutated, so `sel` is no longer walkable there and a live-list BuildIndexPath
+            // consumer already mutated, so `sel` is no longer walkable there and a live-list BuildNodePath
             // would fail. Fall back to the outgoing list for a first pass with no snapshot yet.
             var oldPath = OldPathOf(sel, oldItems);
             // Primary: the node at the SAME structural position in the new tree, but only when its Value is
@@ -1074,7 +1158,7 @@
             // the correct node for a sibling-unique Value; when two siblings SHARE a (duplicate/null) Value
             // the position can't prove identity (a reorder is indistinguishable from a same-content reload)
             // so WalkPath drops — ambiguity DROPS rather than risk re-selecting the wrong same-valued sibling.
-            var match = oldPath is { Count: > 0 } ? WalkPath(newItems, oldPath, sel.Value) : null;
+            var match = oldPath is { Indices.Count: > 0 } ? WalkPath(newItems, oldPath) : null;
             if (match is null)
             {
                 // Fallback: the structure changed (node moved / path invalid). Follow the
@@ -1108,7 +1192,7 @@
                 // first/every value match. A null path (target not locatable) leaves only the value,
                 // resolved uniquely-or-dropped. This stops an empty reload (or a same-reference reload
                 // that unloads the branch) from wiping an interactive selection permanently.
-                (carried ??= []).Add(new PendingCarry(oldPath ?? [], sel.Value));
+                (carried ??= []).Add(new PendingCarry(oldPath ?? new NodePath([], []), sel.Value));
             }
         }
         _selectedNodes = rebuilt;
@@ -1146,15 +1230,18 @@
         _pendingSelectValues = merged.Count > 0 ? merged : null;
     }
 
-    /// <summary>The root→node child-index path of <paramref name="node"/> in the CURRENT
-    /// <see cref="Items"/> tree, or null when it isn't present. A lazy node snapshots this the
-    /// moment it optimistically expands — BEFORE its row-click selection callbacks run — so a
-    /// later load FAILURE can re-resolve the current instance if a controlled/immutable rebuild
-    /// replaced this one in the meantime (see <see cref="RollbackFailedExpansion"/>).</summary>
-    internal IReadOnlyList<int>? GetIndexPath(TreeViewItem<T> node)
+    /// <summary>The value-verified structural identity (<see cref="NodePath"/>) of
+    /// <paramref name="node"/> in the CURRENT <see cref="Items"/> tree, or null when it isn't present.
+    /// Captures the child-index chain AND the value at every level, so a later <see cref="WalkPath"/>
+    /// re-resolution drops when ANY segment — ancestor or leaf — became ambiguous (round-13 finding 2).
+    /// A lazy node snapshots this the moment it optimistically expands — BEFORE its row-click selection
+    /// callbacks run — so a later load can re-resolve the current instance if a controlled/immutable
+    /// rebuild replaced this one in the meantime (see <see cref="RollbackFailedExpansion"/>).</summary>
+    internal NodePath? GetNodePath(TreeViewItem<T> node)
     {
-        var path = new List<int>();
-        return BuildIndexPath(Items ?? [], node, path) ? path : null;
+        var indices = new List<int>();
+        var values = new List<T?>();
+        return BuildNodePath(Items ?? [], node, indices, values) ? new NodePath(indices, values) : null;
     }
 
     /// <summary>How a <see cref="ResolveNode"/> caller treats an UNPROVABLE identity. Both modes share
@@ -1169,12 +1256,13 @@
     /// await during which a controlled/immutable consumer may have rebuilt <see cref="Items"/> and
     /// disposed the original <c>@key</c>'d node. Priority, identical for every <paramref name="mode"/>:
     /// (a) the instance is still present by reference; (b) the node at the value-verified
-    /// <paramref name="path"/> whose <paramref name="value"/> is UNIQUE among its immediate siblings;
-    /// (c) a value UNIQUE across the whole tree. Otherwise the identity is unprovable and this returns
-    /// null — it NEVER falls back to a positional guess, because a sibling reorder among duplicate/null
-    /// values is indistinguishable from a same-content reload (round-11 a/b). The caller then drops per
-    /// <paramref name="mode"/>: SELECTION selects nothing; EXPANSION discards the load / skips rollback.</summary>
-    private TreeViewItem<T>? ResolveNode(TreeViewItem<T> instance, IReadOnlyList<int>? path, T? value, NodeResolveMode mode)
+    /// <paramref name="path"/> — validated at EVERY segment (each ancestor + the leaf must carry its
+    /// recorded value AND be sibling-unique at that level, round-13 finding 2); (c) a value UNIQUE across
+    /// the whole tree. Otherwise the identity is unprovable and this returns null — it NEVER falls back to
+    /// a positional guess, because a sibling reorder among duplicate/null values is indistinguishable from
+    /// a same-content reload (round-11 a/b). The caller then drops per <paramref name="mode"/>: SELECTION
+    /// selects nothing; EXPANSION discards the load / skips rollback.</summary>
+    private TreeViewItem<T>? ResolveNode(TreeViewItem<T> instance, NodePath? path, T? value, NodeResolveMode mode)
     {
         _ = mode; // priority is mode-independent; mode documents the caller's null-handling contract
         var tree = Items ?? [];
@@ -1182,10 +1270,11 @@
         FlattenAll(tree, flat);
         // (a) reference — still in the tree (no rebuild / untouched branch).
         if (flat.Any(n => ReferenceEquals(n, instance))) return instance;
-        // (b) value-verified path — the node at `path` still carries `value`, sibling-unique.
-        if (path is { Count: > 0 })
+        // (b) value-verified path — EVERY segment (ancestors + leaf) still carries its recorded value and
+        // is sibling-unique at its level; a shared value at any depth drops the whole path (round-13 b).
+        if (path is { Indices.Count: > 0 })
         {
-            var byPath = WalkPath(tree, path, value);
+            var byPath = WalkPath(tree, path);
             if (byPath is not null) return byPath;
         }
         // (c) a value that is UNIQUE across the whole tree (a node that merely moved).
@@ -1201,7 +1290,7 @@
     /// <see cref="RollbackFailedExpansion"/>). Returns null when identity is unprovable — the caller then
     /// DISCARDS the load rather than graft it onto a guessed same-valued sibling (round-11 b); the branch
     /// stays <c>ChildrenLoaded=false</c> and reloads on the next expand.</summary>
-    internal TreeViewItem<T>? ResolveExpansionTarget(TreeViewItem<T> staleNode, IReadOnlyList<int>? pathAtExpand)
+    internal TreeViewItem<T>? ResolveExpansionTarget(TreeViewItem<T> staleNode, NodePath? pathAtExpand)
         => ResolveNode(staleNode, pathAtExpand, staleNode.Value, NodeResolveMode.Expansion);
 
     /// <summary>Re-resolves and collapses a node whose row-click COLLAPSE tail runs AFTER the selection
@@ -1212,7 +1301,7 @@
     /// clear IsExpanded + auto-expansion on the instance actually rendered; fall back to the stale item
     /// when unprovable (a non-controlled tree resolves to the same instance, so the plain case is
     /// unchanged).</summary>
-    internal void CollapseReanchored(TreeViewItem<T> staleItem, IReadOnlyList<int>? pathAtCollapse)
+    internal void CollapseReanchored(TreeViewItem<T> staleItem, NodePath? pathAtCollapse)
     {
         var current = ResolveNode(staleItem, pathAtCollapse, staleItem.Value, NodeResolveMode.Expansion) ?? staleItem;
         current.IsExpanded = false;
@@ -1232,7 +1321,7 @@
     /// (<see cref="ResolveNode"/> in EXPANSION mode) and collapse THAT. No-op when the node is still
     /// present by reference (the catch already collapsed it locally, so the IsExpanded guard trips),
     /// or when the identity is unprovable (nothing to roll back — the consumer's own rebuild owns it).</summary>
-    internal void RollbackFailedExpansion(TreeViewItem<T> staleNode, IReadOnlyList<int>? pathAtExpand)
+    internal void RollbackFailedExpansion(TreeViewItem<T> staleNode, NodePath? pathAtExpand)
     {
         var current = ResolveNode(staleNode, pathAtExpand, staleNode.Value, NodeResolveMode.Expansion);
         if (current is null) return;
@@ -1260,10 +1349,10 @@
     /// <c>TreeViewNode.BeginToggleExpand</c>). Snapshots the node's {index path, value, immediate-sibling
     /// values}; the entry OWNS whichever node currently occupies that slot, so a controlled rebuild that
     /// copies the optimistic spinner onto a fresh @key'd instance keeps it lit until the load resolves.</summary>
-    internal void RegisterInFlightExpansion(TreeViewItem<T> item, IReadOnlyList<int>? pathAtExpand)
+    internal void RegisterInFlightExpansion(TreeViewItem<T> item, NodePath? pathAtExpand)
     {
-        var path = pathAtExpand ?? GetIndexPath(item) ?? [];
-        (_inFlightLoads ??= []).Add(new InFlightExpansion(path, item.Value, SiblingValuesAt(path)));
+        var indices = pathAtExpand?.Indices ?? GetNodePath(item)?.Indices ?? [];
+        (_inFlightLoads ??= []).Add(new InFlightExpansion(indices, item.Value, SiblingValuesAt(indices)));
     }
 
     /// <summary>Deregisters a resolved lazy load (called from <c>TreeViewNode</c>'s finally for EVERY
@@ -1271,11 +1360,46 @@
     /// node still carrying the copied optimistic spinner has no owner, so the sweep clears it. This is
     /// what makes the ambiguous-DROP path's "re-fetch on the next expand" reachable — otherwise the drop
     /// leaves the fresh row expanded with IsLoading=true forever (round-12 finding 1).</summary>
-    internal void CompleteInFlightExpansion(IReadOnlyList<int>? pathAtExpand, T? value)
+    internal void CompleteInFlightExpansion(NodePath? pathAtExpand, T? value)
     {
-        RemoveInFlight(pathAtExpand ?? [], value);
+        RemoveInFlight(pathAtExpand?.Indices ?? [], value);
         SweepOrphanedInFlightFlags();
         StateHasChanged();
+    }
+
+    /// <summary>Marks any in-flight lazy load OWNING <paramref name="item"/>'s slot as SUPERSEDED by a user
+    /// collapse that landed WHILE the load was pending (round-13 finding 3). Called from the collapse routes
+    /// — BeginToggleExpand's collapse branch and ArrowLeft — matching the entry by {path, value} exactly as
+    /// the load registered it (no rebuild between the sync expand and the collapse, so the paths agree).
+    /// No-op when no load is in flight for the slot (the common case: collapsing an already-loaded branch).</summary>
+    internal void SupersedeInFlightExpansion(TreeViewItem<T> item, NodePath? pathAtCollapse)
+    {
+        if (_inFlightLoads is not { Count: > 0 }) return;
+        var path = pathAtCollapse?.Indices ?? GetNodePath(item)?.Indices ?? [];
+        foreach (var e in _inFlightLoads)
+            if (EqualityComparer<T>.Default.Equals(e.Value, item.Value) && PathEquals(e.Path, path))
+                e.Superseded = true;
+    }
+
+    /// <summary>Whether the in-flight load for {<paramref name="pathAtExpand"/>, <paramref name="value"/>}
+    /// was superseded by a collapse during its load (round-13 finding 3) — the lazy success paths consult
+    /// this before re-asserting IsExpanded=true, so a collapse-during-load survives the completion.</summary>
+    internal bool IsInFlightSuperseded(NodePath? pathAtExpand, T? value)
+    {
+        if (_inFlightLoads is not { Count: > 0 }) return false;
+        var path = pathAtExpand?.Indices ?? [];
+        var entry = _inFlightLoads.Find(e =>
+            EqualityComparer<T>.Default.Equals(e.Value, value) && PathEquals(e.Path, path));
+        return entry?.Superseded ?? false;
+    }
+
+    /// <summary>Marks EVERY live in-flight load superseded — used by <see cref="CollapseAllNodes"/> so a
+    /// per-node lazy load pending during a collapse-all doesn't re-expand its node on completion (the
+    /// collapse-all sets IsExpanded=false everywhere but isn't seen by the per-row load path).</summary>
+    private void SupersedeAllInFlight()
+    {
+        if (_inFlightLoads is not { Count: > 0 }) return;
+        foreach (var e in _inFlightLoads) e.Superseded = true;
     }
 
     /// <summary>Removes the one in-flight entry matching {path, value}. A node loads at most once at a
@@ -1421,12 +1545,13 @@
     /// <paramref name="oldItems"/> is the SAME list the consumer already mutated (the node is no longer
     /// walkable there). Falls back to walking <paramref name="oldItems"/> for a first pass with no
     /// snapshot yet; null when neither locates the node.</summary>
-    private IReadOnlyList<int>? OldPathOf(TreeViewItem<T> sel, List<TreeViewItem<T>>? oldItems)
+    private NodePath? OldPathOf(TreeViewItem<T> sel, List<TreeViewItem<T>>? oldItems)
     {
         if (_selectionPaths.TryGetValue(sel, out var snap)) return snap;
         if (oldItems is null) return null;
-        var p = new List<int>();
-        return BuildIndexPath(oldItems, sel, p) ? p : null;
+        var indices = new List<int>();
+        var values = new List<T?>();
+        return BuildNodePath(oldItems, sel, indices, values) ? new NodePath(indices, values) : null;
     }
 
     /// <summary>Snapshots each currently-resolved selected node's index path against the CURRENT tree
@@ -1436,75 +1561,78 @@
     /// that the unique-value fallback can't disambiguate (round-12 finding 2).</summary>
     private void SnapshotSelectionPaths()
     {
-        var next = new Dictionary<TreeViewItem<T>, IReadOnlyList<int>>(ReferenceEqualityComparer.Instance);
+        var next = new Dictionary<TreeViewItem<T>, NodePath>(ReferenceEqualityComparer.Instance);
         if (_selectedNodes.Count > 0)
         {
             var tree = Items ?? [];
             foreach (var sel in _selectedNodes)
             {
-                var p = new List<int>();
-                if (BuildIndexPath(tree, sel, p)) next[sel] = p;
+                var indices = new List<int>();
+                var values = new List<T?>();
+                if (BuildNodePath(tree, sel, indices, values)) next[sel] = new NodePath(indices, values);
             }
         }
         _selectionPaths = next;
     }
 
-    /// <summary>Walks a root→node child-index <paramref name="path"/> in
-    /// <paramref name="roots"/> and returns the node at its end ONLY when that node still
-    /// carries <paramref name="expectedValue"/> AND that value is UNIQUE among the node's
-    /// immediate siblings. Returns null when the path is empty, runs off the tree, lands on a
-    /// differently-valued node (a reorder/mutation), OR lands on a node whose value is shared by a
-    /// sibling — so callers fall back to a unique-value match rather than mis-anchor.
+    /// <summary>Walks a <see cref="NodePath"/> (root→node child-index chain + per-level value) in
+    /// <paramref name="roots"/> and returns the node at its end ONLY when EVERY segment resolves
+    /// unambiguously: at each depth the node at the recorded index must still carry the recorded value
+    /// AND that value must be UNIQUE among its immediate siblings at THAT level. Returns null when the
+    /// path is empty, runs off the tree, or ANY segment — ancestor OR leaf — is differently-valued or
+    /// shares its value with a sibling, so callers fall back to a tree-unique value match or drop.
     ///
-    /// The sibling-uniqueness gate implements the TreeView ambiguity-DROP convention: after a
-    /// sibling reorder the index path can land on a DIFFERENT sibling that happens to carry the
-    /// same (or null) Value, and returning it would re-select the WRONG node. When two siblings
-    /// share the Value the position is NOT a provable identity anchor — a same-content reload and a
-    /// silent swap of the two are indistinguishable — so identity is unrecoverable and the match is
-    /// DROPPED. A value that is unique among its siblings (even if duplicated elsewhere in the tree)
-    /// is still resolved by position, and a unique value that merely MOVED re-anchors via the
-    /// caller's unique-value fallback. This is the SINGLE strict path anchor — the former relaxed
-    /// positional variant (an EXPANSION-only fallback that attached to whatever sat at the index) was
-    /// removed as unsound (round-11 a/b): it could re-select / mis-attach to a reordered same-valued
-    /// sibling. Every caller now drops on ambiguity here and re-fetches rather than guess.</summary>
-    private static TreeViewItem<T>? WalkPath(List<TreeViewItem<T>> roots, IReadOnlyList<int> path, T? expectedValue)
+    /// Validating EVERY segment — not just the leaf (round-13 finding 2) — closes the ancestor hole:
+    /// two duplicate/null-valued ancestor folders reordered while each holds a same-valued child would
+    /// let a leaf-only check walk into the WRONG subtree and still pass. The sibling-uniqueness gate at
+    /// each level implements the TreeView ambiguity-DROP convention: when two siblings share the Value
+    /// the position is NOT a provable identity anchor — a same-content reload and a silent swap are
+    /// indistinguishable — so identity is unrecoverable and the whole path is DROPPED. A value unique
+    /// among its siblings (even if duplicated elsewhere in the tree) still resolves by position; a
+    /// unique value that merely MOVED re-anchors via the caller's tree-unique-value fallback.</summary>
+    private static TreeViewItem<T>? WalkPath(List<TreeViewItem<T>> roots, NodePath path)
     {
-        if (path.Count == 0) return null;
+        var indices = path.Indices;
+        var values = path.Values;
+        if (indices.Count == 0 || indices.Count != values.Count) return null;
         IReadOnlyList<TreeViewItem<T>> level = roots;
-        IReadOnlyList<TreeViewItem<T>> siblings = roots;
         TreeViewItem<T>? node = null;
-        foreach (var idx in path)
+        for (var d = 0; d < indices.Count; d++)
         {
+            var idx = indices[d];
             if (idx < 0 || idx >= level.Count) return null;
-            siblings = level; // the level `node` is drawn from = its immediate sibling group
             node = level[idx];
+            var expected = values[d];
+            // This segment's node must still carry the value recorded for this level…
+            if (!EqualityComparer<T>.Default.Equals(node.Value, expected)) return null;
+            // …AND that value must be UNIQUE among its immediate siblings at THIS level, or the position
+            // can't prove identity here (a reordered same-valued sibling — ancestor OR leaf — would
+            // masquerade as the target). A shared value at ANY segment drops the whole path (round-13 b).
+            var sameValued = 0;
+            foreach (var s in level)
+                if (EqualityComparer<T>.Default.Equals(s.Value, expected) && ++sameValued > 1)
+                    return null;
             level = node.Children ?? (IReadOnlyList<TreeViewItem<T>>)[];
         }
-        if (node is null) return null;
-        // The node at the path must still carry the expected value…
-        if (!EqualityComparer<T>.Default.Equals(node.Value, expectedValue)) return null;
-        // …AND that value must be UNIQUE among its immediate siblings, or the position can't prove
-        // identity (a reordered same-valued sibling would masquerade as the target). DROP on a
-        // shared value so the caller falls back to a unique-value match instead of mis-selecting.
-        var sameValued = 0;
-        foreach (var s in siblings)
-            if (EqualityComparer<T>.Default.Equals(s.Value, expectedValue) && ++sameValued > 1)
-                return null;
         return node;
     }
 
-    /// <summary>DFS that records the child-index chain from the roots down to
-    /// <paramref name="target"/> (matched by reference). Returns false when the target
-    /// isn't in the tree.</summary>
-    private static bool BuildIndexPath(IReadOnlyList<TreeViewItem<T>> items, TreeViewItem<T> target, List<int> path)
+    /// <summary>DFS that records BOTH the child-index chain AND the value at each level from the roots
+    /// down to <paramref name="target"/> (matched by reference), into the parallel <paramref name="indices"/>
+    /// and <paramref name="values"/> lists. Returns false (leaving them empty) when the target isn't in the
+    /// tree. The value chain lets <see cref="WalkPath"/> verify every ancestor segment, not just the leaf
+    /// (round-13 finding 2).</summary>
+    private static bool BuildNodePath(IReadOnlyList<TreeViewItem<T>> items, TreeViewItem<T> target, List<int> indices, List<T?> values)
     {
         for (int i = 0; i < items.Count; i++)
         {
             var item = items[i];
-            path.Add(i);
+            indices.Add(i);
+            values.Add(item.Value);
             if (ReferenceEquals(item, target)) return true;
-            if (item.Children is { Count: > 0 } && BuildIndexPath(item.Children, target, path)) return true;
-            path.RemoveAt(path.Count - 1);
+            if (item.Children is { Count: > 0 } && BuildNodePath(item.Children, target, indices, values)) return true;
+            indices.RemoveAt(indices.Count - 1);
+            values.RemoveAt(values.Count - 1);
         }
         return false;
     }
