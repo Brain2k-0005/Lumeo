@@ -386,6 +386,17 @@ public sealed class ConsentService
     /// <summary>Commit a per-category consent map (used by the preferences dialog).</summary>
     public async Task SetManyAsync(IReadOnlyDictionary<string, bool> values)
     {
+        // When the current decision is NOT valid (undecided banner) — a policy-version bump that
+        // invalidated the stored record, or a rejected/malformed record — _state still holds the
+        // OLD record's categories, loaded only for prefill. Merging over them would restamp those
+        // un-presented grants with the NEW policy version on PersistAsync, so HasConsent("oldCat")
+        // could read true even though that category was never shown under the new policy. Rebuild
+        // _state from EXACTLY the presented map instead (necessary + the configured categories the
+        // caller supplies). A normal update of an already-valid decision (_decided) keeps merge
+        // semantics, so a partial preferences edit leaves untouched categories intact.
+        if (!_decided)
+            _state = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
+
         foreach (var (k, v) in values)
         {
             if (string.Equals(k, "necessary", StringComparison.OrdinalIgnoreCase)) continue;

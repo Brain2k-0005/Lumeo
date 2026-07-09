@@ -849,6 +849,54 @@
             : carries;
     }
 
+    /// <summary>The root→node child-index path of <paramref name="node"/> in the CURRENT
+    /// <see cref="Items"/> tree, or null when it isn't present. A lazy node snapshots this the
+    /// moment it optimistically expands — BEFORE its row-click selection callbacks run — so a
+    /// later load FAILURE can re-resolve the current instance if a controlled/immutable rebuild
+    /// replaced this one in the meantime (see <see cref="RollbackFailedExpansion"/>).</summary>
+    internal IReadOnlyList<int>? GetIndexPath(TreeViewItem<T> node)
+    {
+        var path = new List<int>();
+        return BuildIndexPath(Items ?? [], node, path) ? path : null;
+    }
+
+    /// <summary>Collapses the node that currently occupies a failed-lazy-load node's structural
+    /// identity. The rollback fires on the node component, but when a controlled/immutable parent
+    /// rebuilt <see cref="Items"/> inside the row click's <c>SelectedValuesChanged</c> — while the
+    /// loader was still in flight — that node component was disposed and re-created around a FRESH
+    /// <c>@key</c>'d instance carrying the optimistic <c>IsExpanded=true</c>. Collapsing only the
+    /// stale instance would then leave the visible row <c>aria-expanded=true</c> over an empty
+    /// branch (and the next click would collapse it instead of retrying). Re-resolve the CURRENT
+    /// instance by the SAME value-verified path (then unique-value) rule
+    /// <see cref="ReanchorSelection"/> uses and collapse THAT. No-op when the node is still present
+    /// by reference (a non-controlled tree already collapsed it locally), or when the identity is
+    /// ambiguous — a duplicate/null value with no unique match — per the ambiguity-drop convention.</summary>
+    internal void RollbackFailedExpansion(TreeViewItem<T> staleNode, IReadOnlyList<int>? pathAtExpand)
+    {
+        var tree = Items ?? [];
+        var flat = new List<TreeViewItem<T>>();
+        FlattenAll(tree, flat);
+        // Still the same instance (non-controlled tree / untouched branch): the node already
+        // collapsed itself locally — nothing to re-resolve.
+        if (flat.Any(n => ReferenceEquals(n, staleNode))) return;
+        // Replaced by a fresh instance: prefer the value-verified structural path, else a UNIQUE
+        // value — identical ambiguity-drop rule as the reanchor, so a duplicate/null Value never
+        // collapses the wrong sibling.
+        TreeViewItem<T>? current = null;
+        if (pathAtExpand is { Count: > 0 })
+            current = WalkPath(tree, pathAtExpand, staleNode.Value);
+        if (current is null)
+        {
+            var byValue = flat.Where(n => EqualityComparer<T>.Default.Equals(n.Value, staleNode.Value)).ToList();
+            if (byValue.Count == 1) current = byValue[0];
+        }
+        if (current is null || !current.IsExpanded) return;
+        current.IsExpanded = false;
+        _autoExpanded.Remove(current);
+        _flatVisible = null;
+        StateHasChanged();
+    }
+
     /// <summary>Drops a single value from BOTH pending buckets (multi-select supersede: an
     /// explicit interactive selection of a value wins over any deferred seed OR carried identity
     /// for that same value, so neither resurrects to co-select a same-valued node).</summary>

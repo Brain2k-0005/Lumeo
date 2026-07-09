@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.1.1] - 2026-07-09
+
+Bug-fix roll-up hardened over ten Codex review rounds (PR #351).
+
+### Fixed
+- **TreeView parent selection (#350).** Selection is tracked by node identity, so
+  clicking a container node with a null or duplicate `Value` selects only that node
+  instead of every node sharing the value. Identity survives same-content `Items`
+  refreshes, empty/lazy reloads, and controlled rebuilds; a failed lazy row-click
+  expansion now rolls back to collapsed (selection intact) even when a controlled
+  rebuild replaced the node instance.
+- **GDPR consent hardening.** A `PolicyVersion` bump after hydration re-evaluates the
+  stored decision and re-prompts; malformed/versionless/timestampless proof records
+  fail closed; re-deciding after an invalidated record replaces the stale category
+  state instead of restamping un-presented grants with the new policy version.
+- **Charts self-hosting.** `loadExtension` now honours `window.lumeoCdn` override keys
+  and a per-chart `EChartsSource` so LiquidFill / WordCloud plugin charts can avoid a
+  pre-consent CDN request. The static `echarts-interop.js` contract change ships with a
+  package-version bump so the `?v=` module cache key busts.
+
 ## [4.1.0] - 2026-07-07
 
 The stable 4.1.0 roll-up of the `4.1.0-preview.1 … .15` line plus the merged

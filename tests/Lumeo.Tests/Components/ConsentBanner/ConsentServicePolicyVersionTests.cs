@@ -20,6 +20,53 @@ public class ConsentServicePolicyVersionTests
     private static string RecordFor(string version)
         => $"{{\"categories\":{{\"analytics\":true}},\"timestamp\":\"2024-01-01T00:00:00.0000000+00:00\",\"version\":\"{version}\"}}";
 
+    // A record carrying an EXTRA optional category ("marketing") alongside analytics.
+    private static string RecordWithMarketing(string version)
+        => $"{{\"categories\":{{\"analytics\":true,\"marketing\":true}},\"timestamp\":\"2024-01-01T00:00:00.0000000+00:00\",\"version\":\"{version}\"}}";
+
+    [Fact]
+    public async Task Restamp_after_version_bump_drops_categories_absent_from_the_new_decision()
+    {
+        // Stored under policy "1": analytics + a "marketing" category the NEW policy no longer shows.
+        var store = new RecordingJsRuntime();
+        store.Set(Key, RecordWithMarketing("1"));
+
+        var svc = new ConsentService(store) { PolicyVersion = "2" }; // policy bumped since consent
+        await svc.EnsureLoadedAsync();
+
+        // Invalidated → re-prompt; the old choices are retained only for prefill.
+        Assert.False(svc.HasDecided);
+        Assert.True(svc.Snapshot().ContainsKey("marketing"));
+
+        // The new policy presents a REDUCED set (no marketing). User reconfirms analytics only.
+        await svc.SetManyAsync(new Dictionary<string, bool> { ["analytics"] = true });
+
+        Assert.True(svc.HasDecided);
+        Assert.True(svc.HasConsent("analytics"));
+        // The stale category from the superseded record must NOT survive the restamp.
+        Assert.False(svc.HasConsent("marketing"));
+        Assert.False(svc.Snapshot().ContainsKey("marketing"));
+    }
+
+    [Fact]
+    public async Task Normal_partial_update_of_a_valid_decision_keeps_untouched_categories()
+    {
+        // Stored under policy "1" and the app still asks for "1" — the decision is VALID.
+        var store = new RecordingJsRuntime();
+        store.Set(Key, RecordWithMarketing("1"));
+
+        var svc = new ConsentService(store) { PolicyVersion = "1" };
+        await svc.EnsureLoadedAsync();
+        Assert.True(svc.HasDecided);
+
+        // A valid decision edited in preferences: flip analytics off, don't mention marketing.
+        await svc.SetManyAsync(new Dictionary<string, bool> { ["analytics"] = false });
+
+        // Merge semantics preserved: marketing's prior grant survives the partial update.
+        Assert.False(svc.HasConsent("analytics"));
+        Assert.True(svc.HasConsent("marketing"));
+    }
+
     [Fact]
     public async Task PolicyVersion_bumped_after_load_invalidates_stale_decision_and_reprompts()
     {

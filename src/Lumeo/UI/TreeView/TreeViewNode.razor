@@ -233,7 +233,12 @@
         if (LoadChildren is not null && !Item.ChildrenLoaded && !Item.IsLeaf && !HasLoadedChildren)
         {
             Item.IsLoading = true;
-            return LoadChildrenThenNotifyAsync();
+            // Snapshot this node's structural path NOW — synchronously, before the row-click
+            // selection callbacks can rebuild Items — so a load FAILURE can collapse the CURRENT
+            // rendered instance even after a controlled/immutable rebuild replaced THIS one
+            // (round-8: the rollback must reach the fresh @key'd node, not just the stale instance).
+            var pathAtExpand = Context?.Tree.GetIndexPath(Item);
+            return LoadChildrenThenNotifyAsync(pathAtExpand);
         }
 
         return OnExpandChanged.InvokeAsync(Item);
@@ -249,7 +254,7 @@
     // still propagates exactly as before — the chevron/keyboard path lets it surface; the row click
     // drains it isolated (HandleClick) AFTER the rollback, so the collapse survives either path and
     // the already-applied selection (round-5) is untouched.
-    private async Task LoadChildrenThenNotifyAsync()
+    private async Task LoadChildrenThenNotifyAsync(IReadOnlyList<int>? pathAtExpand)
     {
         StateHasChanged();
         try
@@ -290,6 +295,14 @@
             // re-throw so the error still surfaces on the chevron/keyboard path and is drained
             // isolated on the row-click path. Selection stays intact (applied by the caller).
             Item.IsExpanded = false;
+            // The line above collapses only THIS (possibly stale) instance. If a controlled/
+            // immutable parent rebuilt Items inside the selection callbacks while the loader was
+            // in flight, this instance was replaced by a fresh @key'd one that still carries the
+            // optimistic IsExpanded=true; route the rollback through the tree so it re-resolves and
+            // collapses the CURRENT rendered node too (round-8). A standalone node with no tree
+            // context keeps the local collapse above.
+            if (Context is not null)
+                Context.Tree.RollbackFailedExpansion(Item, pathAtExpand);
             StateHasChanged();
             throw;
         }
