@@ -266,10 +266,39 @@
             // rendered instance even after a controlled/immutable rebuild replaced THIS one
             // (round-8: the rollback must reach the fresh @key'd node, not just the stale instance).
             var pathAtExpand = Context?.Tree.GetIndexPath(Item);
+            // Register IN-FLIGHT OWNERSHIP now (path+value+siblings): while the load runs, a rebuild that
+            // copies this optimistic spinner onto a fresh @key'd instance is recognised as OWNED, so the
+            // sweep won't reap it prematurely; the load's finally deregisters + sweeps (round-12 pillar 5).
+            Context?.Tree.RegisterInFlightExpansion(Item, pathAtExpand);
             return () => LoadChildrenThenNotifyAsync(pathAtExpand);
         }
 
-        return () => OnExpandChanged.InvokeAsync(Item);
+        // Already-loaded (or non-lazy) expand: snapshot the path NOW so the DEFERRED tail can re-resolve
+        // the CURRENT instance if the row-click selection callbacks rebuilt Items — otherwise the flip
+        // lands only on the pre-callback instance and the fresh @key'd node stays collapsed (round-12
+        // finding 3). Same re-resolution contract as the lazy success path.
+        var expandPath = Context?.Tree.GetIndexPath(Item);
+        return () => NotifyExpandReanchoredAsync(expandPath);
+    }
+
+    // The DEFERRED tail of a NON-lazy (already-loaded) expand: re-resolve the node that currently occupies
+    // this one's identity — a controlled/immutable rebuild during the row-click selection callbacks may
+    // have disposed the pre-callback instance and produced a fresh @key'd node that did NOT copy the
+    // optimistic IsExpanded — and flip IsExpanded on THAT instance before notifying (round-12 finding 3).
+    // Mirrors LoadChildrenThenNotifyAsync's success reanchor. When identity is unprovable the resolver
+    // returns null: notify the stale instance (no structural change applied), the same ambiguity-DROP the
+    // lazy path uses. A standalone node (no tree context) can't be rebuilt out from under us.
+    private Task NotifyExpandReanchoredAsync(IReadOnlyList<int>? pathAtExpand)
+    {
+        if (Context is not null)
+        {
+            var target = Context.Tree.ResolveExpansionTarget(Item, pathAtExpand);
+            if (target is null)
+                return OnExpandChanged.InvokeAsync(Item);
+            target.IsExpanded = true;
+            return OnExpandChanged.InvokeAsync(target);
+        }
+        return OnExpandChanged.InvokeAsync(Item);
     }
 
     // Collapse notification, re-resolved through the tree's CANONICAL resolver so a controlled/immutable
@@ -383,6 +412,13 @@
         finally
         {
             Item.IsLoading = false;
+            // Deregister this in-flight op and SWEEP (round-12 pillar 5). Critical on the ambiguous-DROP
+            // path (resolved == null above): the fresh @key'd instance a controlled rebuild produced still
+            // carries the copied optimistic IsLoading/IsExpanded that the line above only cleared on the
+            // STALE Item — with the entry now gone, the sweep reaps the orphaned spinner off the fresh row
+            // so the advertised "drop and re-fetch on next expand" is actually reachable (finding 1).
+            if (Context is not null)
+                Context.Tree.CompleteInFlightExpansion(pathAtExpand, Item.Value);
         }
 
         // Notify for the RESOLVED node so HandleExpandChanged binds pending selections / derives

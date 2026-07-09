@@ -147,6 +147,33 @@
     //     value-verified path, strict ambiguity DROP); tri-state derive-on-seed gating
     //     (CascadeCheck && ShowCheckboxes); ExpandOnRowClick opt-out; chevron/keyboard expansion in
     //     both modes; loader-failure rollback that stays retryable (ChildrenLoaded=false).
+    //
+    // (5) IN-FLIGHT OWNERSHIP (round-12) — the optimistic in-flight flags (IsLoading, and the pre-load
+    //     IsExpanded a lazy expand sets before its children arrive) may persist on a node ONLY while an
+    //     operation the tree started still OWNS that node. Every lazy load REGISTERS an ownership entry
+    //     the instant it sets IsLoading — a snapshot of {index path, value, immediate-sibling values} —
+    //     and REMOVES it when the load resolves by ANY outcome (success attach / ambiguous DROP /
+    //     failure rollback), all via the finally (RegisterInFlightExpansion / CompleteInFlightExpansion;
+    //     ExpandAll registers inline). A controlled/immutable rebuild that COPIES the flags onto a fresh
+    //     @key'd instance (records copy by value) produces flags that NO code path owns once the
+    //     originating op resolves. SweepOrphanedInFlightFlags runs after ANY resolution pass (the
+    //     OnParametersSet reanchor block AND every load completion) and clears the flags of any node
+    //     whose IsLoading has NO live entry claiming its slot (path+value+siblings) — collapsing the
+    //     paired optimistic IsExpanded when nothing loaded. While the op is genuinely in flight its entry
+    //     keeps the fresh node's spinner; the sweep only reaps AFTER the entry is gone. This is what makes
+    //     the "drop the ambiguous load and re-fetch on the next expand" path reachable: the drop clears
+    //     the copied spinner instead of stranding it forever (round-12 finding 1). Ownership uses a
+    //     POSITIONAL (not identity-strict) slot match — clearing an orphaned spinner needs only "no op
+    //     claims this slot", a strictly weaker question than ResolveNode's provable identity for data.
+    //
+    // (6) SELECTION-PATH SNAPSHOT (round-12) — ReanchorSelection reads a vanished node's OLD index path
+    //     from _selectionPaths, a map snapshotted after every resolution pass, NOT from the outgoing
+    //     Items list. For an IN-PLACE mutation _previousItems is the SAME object the consumer already
+    //     mutated, so the departed node is no longer walkable there and a live-list BuildIndexPath fails;
+    //     the snapshot recorded the path while the node WAS present, so a duplicate-valued node that was
+    //     path-identifiable among its siblings still reanchors instead of being dropped by the
+    //     unique-value fallback (round-12 finding 2). The live list stays the fallback for the first pass
+    //     (no snapshot yet).
     // ══════════════════════════════════════════════════════════════════════════
     // ── SELECTION LIFECYCLE ──────────────────────────────────────────────────
     // One coherent model, four states, driven by Items refreshes and clicks — NOT by
@@ -272,6 +299,21 @@
     private HashSet<TreeViewItem<T>>? _visibleSet;
     private readonly HashSet<TreeViewItem<T>> _autoExpanded = new(ReferenceEqualityComparer.Instance);
 
+    // ── IN-FLIGHT OWNERSHIP (round-12, canonical-model pillar 5) ─────────────
+    // The live registry of lazy-load operations. Each entry is the {path, value, sibling values}
+    // snapshot captured when a load set IsLoading; it OWNS whichever node currently occupies that slot,
+    // so a rebuild-copied spinner on a fresh @key'd instance stays lit while the op runs and is reaped
+    // by SweepOrphanedInFlightFlags once the entry is removed (the load resolved/dropped/failed).
+    private sealed record InFlightExpansion(IReadOnlyList<int> Path, T? Value, IReadOnlyList<T?> Siblings);
+    private List<InFlightExpansion>? _inFlightLoads;
+
+    // ── SELECTION-PATH SNAPSHOT (round-12, canonical-model pillar 6) ─────────
+    // The structural index path of each currently-resolved selected node, snapshotted against the tree
+    // AFTER every resolution pass. ReanchorSelection reads a vanished node's OLD path from here so an
+    // IN-PLACE Items mutation (where _previousItems is the same, already-mutated object) can still
+    // reanchor a duplicate-valued node by its path instead of dropping it (round-12 finding 2).
+    private Dictionary<TreeViewItem<T>, IReadOnlyList<int>> _selectionPaths = new(ReferenceEqualityComparer.Instance);
+
     // Roving tabindex / keyboard navigation state (WAI-ARIA tree pattern).
     private readonly string _treeId = LumeoIds.New("tree");
     private readonly Dictionary<TreeViewItem<T>, string> _nodeIds = new(ReferenceEqualityComparer.Instance);
@@ -364,6 +406,10 @@
             // independent by contract, so no derivation runs.
             if (CascadeCheck && ShowCheckboxes)
                 UpdateAncestorStates(Items ?? []);
+            // Round-12 finding 1 (canonical-model pillar 5): after the reanchor/resolution pass, reap any
+            // optimistic in-flight flag a controlled rebuild copied onto a fresh @key'd instance whose
+            // originating load is no longer live — no code path owns that spinner otherwise.
+            SweepOrphanedInFlightFlags();
         }
 
         if (referenceChanged)
@@ -388,6 +434,19 @@
                 _expandAllNeedsLazyLoad = true;
             RebuildDisplay();
         }
+        else if (needsResolve && !string.IsNullOrWhiteSpace(_searchText))
+        {
+            // Round-12 finding 4: an IN-PLACE mutation (same Items reference) while a SEARCH FILTER is
+            // active. Unlike the unfiltered case, _displayItems is NOT the live Items — it is a filtered
+            // ToList() snapshot, so the swapped-in fresh instance would never render and the reanchored
+            // selection above would look lost (the render still walks the stale filtered list). Re-
+            // materialize the filtered display from the mutated Items so the reanchor is actually shown.
+            RebuildDisplay();
+        }
+
+        // Snapshot the settled selection's paths against the CURRENT tree — these become the OLD paths a
+        // later IN-PLACE mutation reanchors against (pillar 6), captured while the nodes are still present.
+        SnapshotSelectionPaths();
     }
 
     /// <summary>Whether the reanchor/pending pass should run even when the <see cref="Items"/>
@@ -487,6 +546,11 @@
                 && item.Children is not { Count: > 0 })
             {
                 item.IsLoading = true;
+                // Register in-flight ownership (pillar 5) so a resolution-pass sweep that fires mid
+                // expand-all doesn't reap this genuine spinner — a node may carry IsLoading only while an
+                // entry owns its slot. Removed in the finally by the same {path,value}.
+                var loadPath = GetIndexPath(item) ?? [];
+                (_inFlightLoads ??= []).Add(new InFlightExpansion(loadPath, item.Value, SiblingValuesAt(loadPath)));
                 _flatVisible = null;
                 StateHasChanged();
                 try
@@ -507,6 +571,7 @@
                 finally
                 {
                     item.IsLoading = false;
+                    RemoveInFlight(loadPath, item.Value);
                 }
             }
 
@@ -566,6 +631,9 @@
                 UpdateAncestorStates(Items ?? []);
         }
         _flatVisible = null;
+        // A lazy load may have just bound a pending selection onto a newly-materialized node; refresh the
+        // path snapshot so a subsequent in-place mutation reanchors it (pillar 6).
+        SnapshotSelectionPaths();
         StateHasChanged();
         return Task.CompletedTask;
     }
@@ -644,6 +712,10 @@
             _lastPushedSelectedValues = outgoing;
             await SelectedValuesChanged.InvokeAsync(outgoing);
         }
+        // Capture the clicked selection's path against the current tree so a following in-place mutation
+        // reanchors it by path (pillar 6). InvokeAsync above may have rebuilt Items via a controlled
+        // parent; SnapshotSelectionPaths reads whatever tree is current now.
+        SnapshotSelectionPaths();
         StateHasChanged();
     }
 
@@ -970,11 +1042,11 @@
     /// <summary>Re-anchors the identity-tracked selection onto a freshly-supplied
     /// <see cref="Items"/> tree. A node still present by reference is kept; a node that
     /// was replaced by an equal-content instance is re-matched by its structural PATH
-    /// (the child-index chain it held in <paramref name="oldItems"/>, value-verified),
-    /// with a UNIQUE-value fallback. A first-match-by-value shortcut would jump to the
-    /// wrong node when Values are duplicated or null (GH #350's containers routinely
-    /// are); nodes whose path and value both fail to resolve unambiguously drop out
-    /// rather than mis-select.</summary>
+    /// (its child-index chain, taken from the <see cref="_selectionPaths"/> snapshot and
+    /// falling back to <paramref name="oldItems"/>, value-verified), with a UNIQUE-value
+    /// fallback. A first-match-by-value shortcut would jump to the wrong node when Values
+    /// are duplicated or null (GH #350's containers routinely are); nodes whose path and
+    /// value both fail to resolve unambiguously drop out rather than mis-select.</summary>
     private void ReanchorSelection(List<TreeViewItem<T>> newItems, List<TreeViewItem<T>>? oldItems)
     {
         if (_selectedNodes.Count == 0) return;
@@ -992,13 +1064,17 @@
                 rebuilt.Add(sel);
                 continue;
             }
-            // Primary: the node at the SAME structural position in the new tree, but only when
-            // its Value is UNIQUE among its siblings there. A same-content async reload preserves
-            // positions, so this resolves the correct node for a sibling-unique Value; when two
-            // siblings SHARE a (duplicate/null) Value the position can't prove identity (a reorder
-            // is indistinguishable from a same-content reload) so the path match drops — ambiguity
-            // DROPS rather than risk re-selecting the wrong same-valued sibling.
-            var match = ResolveByPath(sel, oldItems, newItems);
+            // OLD path of the vanished node: prefer the SNAPSHOT captured after the last resolution pass
+            // (pillar 6, round-12 finding 2) — for an in-place mutation oldItems is the SAME object the
+            // consumer already mutated, so `sel` is no longer walkable there and a live-list BuildIndexPath
+            // would fail. Fall back to the outgoing list for a first pass with no snapshot yet.
+            var oldPath = OldPathOf(sel, oldItems);
+            // Primary: the node at the SAME structural position in the new tree, but only when its Value is
+            // UNIQUE among its siblings there. A same-content reload preserves positions, so this resolves
+            // the correct node for a sibling-unique Value; when two siblings SHARE a (duplicate/null) Value
+            // the position can't prove identity (a reorder is indistinguishable from a same-content reload)
+            // so WalkPath drops — ambiguity DROPS rather than risk re-selecting the wrong same-valued sibling.
+            var match = oldPath is { Count: > 0 } ? WalkPath(newItems, oldPath, sel.Value) : null;
             if (match is null)
             {
                 // Fallback: the structure changed (node moved / path invalid). Follow the
@@ -1026,15 +1102,13 @@
             else
             {
                 // INTERACTIVE (identity origin): carry its structural IDENTITY — the value-verified
-                // index path it held in oldItems PLUS its value. On return, TryResolvePendingSelection
-                // re-binds the SAME node by that path (falling back to a unique value, dropping on
-                // ambiguity), so a duplicate/null Value no longer re-selects the first/every value
-                // match. A null path (target not locatable in oldItems) leaves only the value,
+                // index path it held (from the snapshot, pillar 6) PLUS its value. On return,
+                // TryResolvePendingSelection re-binds the SAME node by that path (falling back to a unique
+                // value, dropping on ambiguity), so a duplicate/null Value no longer re-selects the
+                // first/every value match. A null path (target not locatable) leaves only the value,
                 // resolved uniquely-or-dropped. This stops an empty reload (or a same-reference reload
                 // that unloads the branch) from wiping an interactive selection permanently.
-                var carryPath = new List<int>();
-                var hasPath = oldItems is not null && BuildIndexPath(oldItems, sel, carryPath);
-                (carried ??= []).Add(new PendingCarry(hasPath ? carryPath : [], sel.Value));
+                (carried ??= []).Add(new PendingCarry(oldPath ?? [], sel.Value));
             }
         }
         _selectedNodes = rebuilt;
@@ -1180,6 +1254,138 @@
         StateHasChanged();
     }
 
+    // ── IN-FLIGHT OWNERSHIP registry + orphan sweep (pillar 5, round-12) ─────────────────────────────
+
+    /// <summary>Registers a lazy load's in-flight ownership the instant it sets IsLoading (called from
+    /// <c>TreeViewNode.BeginToggleExpand</c>). Snapshots the node's {index path, value, immediate-sibling
+    /// values}; the entry OWNS whichever node currently occupies that slot, so a controlled rebuild that
+    /// copies the optimistic spinner onto a fresh @key'd instance keeps it lit until the load resolves.</summary>
+    internal void RegisterInFlightExpansion(TreeViewItem<T> item, IReadOnlyList<int>? pathAtExpand)
+    {
+        var path = pathAtExpand ?? GetIndexPath(item) ?? [];
+        (_inFlightLoads ??= []).Add(new InFlightExpansion(path, item.Value, SiblingValuesAt(path)));
+    }
+
+    /// <summary>Deregisters a resolved lazy load (called from <c>TreeViewNode</c>'s finally for EVERY
+    /// outcome — success attach, ambiguous DROP, or failure) and then SWEEPS: with the entry gone, any
+    /// node still carrying the copied optimistic spinner has no owner, so the sweep clears it. This is
+    /// what makes the ambiguous-DROP path's "re-fetch on the next expand" reachable — otherwise the drop
+    /// leaves the fresh row expanded with IsLoading=true forever (round-12 finding 1).</summary>
+    internal void CompleteInFlightExpansion(IReadOnlyList<int>? pathAtExpand, T? value)
+    {
+        RemoveInFlight(pathAtExpand ?? [], value);
+        SweepOrphanedInFlightFlags();
+        StateHasChanged();
+    }
+
+    /// <summary>Removes the one in-flight entry matching {path, value}. A node loads at most once at a
+    /// time (the ChildrenLoaded / IsLoading guards), and duplicate-valued siblings differ by path, so a
+    /// single match is unambiguous.</summary>
+    private void RemoveInFlight(IReadOnlyList<int> path, T? value)
+    {
+        if (_inFlightLoads is not { Count: > 0 }) return;
+        var idx = _inFlightLoads.FindIndex(e =>
+            EqualityComparer<T>.Default.Equals(e.Value, value) && PathEquals(e.Path, path));
+        if (idx >= 0) _inFlightLoads.RemoveAt(idx);
+        if (_inFlightLoads.Count == 0) _inFlightLoads = null;
+    }
+
+    /// <summary>Clears every optimistic in-flight flag that no live operation owns (pillar 5). Walks the
+    /// tree; for each node still showing a spinner (IsLoading) with NO registry entry claiming its slot,
+    /// clears IsLoading and collapses the paired optimistic IsExpanded (nothing loaded → keep it a
+    /// retryable chevron rather than an empty expanded branch). Only IsLoading nodes are candidates, so a
+    /// legitimately-expanded node (no spinner) is never touched; ownership is a POSITIONAL slot match —
+    /// a strictly weaker test than <see cref="ResolveNode"/>'s provable identity, because reaping a
+    /// stranded spinner only needs "no op claims this slot".</summary>
+    private void SweepOrphanedInFlightFlags()
+    {
+        var tree = Items ?? [];
+        if (tree.Count == 0) return;
+        var flat = new List<TreeViewItem<T>>();
+        FlattenAll(tree, flat);
+        bool changed = false;
+        foreach (var node in flat)
+        {
+            if (!node.IsLoading) continue;                // only an in-flight spinner can be orphaned
+            if (IsOwnedByInFlight(node, tree)) continue;  // a live op still owns this slot → keep it lit
+            node.IsLoading = false;
+            if (node.IsExpanded && !node.ChildrenLoaded && node.Children is not { Count: > 0 })
+                node.IsExpanded = false;
+            changed = true;
+        }
+        if (changed) _flatVisible = null;
+    }
+
+    /// <summary>Whether any live in-flight entry OWNS <paramref name="node"/> — i.e. the node sits at an
+    /// entry's snapshot path with the entry's value AND that level's sibling composition is unchanged
+    /// (a reorder releases ownership, consistent with the ambiguity-DROP convention). A path-less entry
+    /// (the node wasn't locatable at registration) falls back to a conservative value match.</summary>
+    private bool IsOwnedByInFlight(TreeViewItem<T> node, List<TreeViewItem<T>> tree)
+    {
+        if (_inFlightLoads is not { Count: > 0 }) return false;
+        foreach (var e in _inFlightLoads)
+        {
+            if (e.Path.Count == 0)
+            {
+                if (EqualityComparer<T>.Default.Equals(node.Value, e.Value)) return true;
+                continue;
+            }
+            var at = WalkPathPositional(tree, e.Path);
+            if (!ReferenceEquals(at, node)) continue;
+            if (!EqualityComparer<T>.Default.Equals(node.Value, e.Value)) continue;
+            if (SiblingValuesEqual(SiblingValuesAt(e.Path), e.Siblings)) return true;
+        }
+        return false;
+    }
+
+    /// <summary>The immediate-sibling group's values at <paramref name="path"/> in the current tree (the
+    /// level the target node is drawn from). Captured per in-flight entry so a reorder of that level can
+    /// be detected and ownership released.</summary>
+    private IReadOnlyList<T?> SiblingValuesAt(IReadOnlyList<int> path)
+    {
+        IReadOnlyList<TreeViewItem<T>> level = Items ?? [];
+        for (var d = 0; d < path.Count - 1; d++)
+        {
+            var idx = path[d];
+            if (idx < 0 || idx >= level.Count) return [];
+            level = level[idx].Children ?? (IReadOnlyList<TreeViewItem<T>>)[];
+        }
+        return level.Select(n => n.Value).ToList();
+    }
+
+    /// <summary>Walks a root→node child-index path PURELY by position (no value/sibling gate), returning
+    /// the node at its end or null when the path runs off the tree. Used by the ownership check, whose
+    /// job — deciding whether an op still claims a slot — is a weaker question than identity resolution.</summary>
+    private static TreeViewItem<T>? WalkPathPositional(List<TreeViewItem<T>> roots, IReadOnlyList<int> path)
+    {
+        if (path.Count == 0) return null;
+        IReadOnlyList<TreeViewItem<T>> level = roots;
+        TreeViewItem<T>? node = null;
+        foreach (var idx in path)
+        {
+            if (idx < 0 || idx >= level.Count) return null;
+            node = level[idx];
+            level = node.Children ?? (IReadOnlyList<TreeViewItem<T>>)[];
+        }
+        return node;
+    }
+
+    private static bool SiblingValuesEqual(IReadOnlyList<T?> a, IReadOnlyList<T?> b)
+    {
+        if (a.Count != b.Count) return false;
+        for (var i = 0; i < a.Count; i++)
+            if (!EqualityComparer<T>.Default.Equals(a[i], b[i])) return false;
+        return true;
+    }
+
+    private static bool PathEquals(IReadOnlyList<int> a, IReadOnlyList<int> b)
+    {
+        if (a.Count != b.Count) return false;
+        for (var i = 0; i < a.Count; i++)
+            if (a[i] != b[i]) return false;
+        return true;
+    }
+
     /// <summary>Drops a single value from BOTH pending buckets AND the seed-origin set (multi-select
     /// supersede: an explicit interactive selection of a value wins over any deferred seed OR carried
     /// identity for that same value, so neither resurrects to co-select a same-valued node). Removing
@@ -1209,19 +1415,38 @@
         }
     }
 
-    /// <summary>Resolves the node occupying the same root→node child-index path that
-    /// <paramref name="target"/> held in <paramref name="oldItems"/>, then confirms the
-    /// resolved node carries the same <c>Value</c> AND that the value is unique among its
-    /// siblings there. Returns null when the old tree is unavailable, the path can't be walked in
-    /// the new tree, the position now holds a differently-valued node (a reorder/mutation), or the
-    /// value is shared by a sibling (identity not provable) — so the caller falls back to a
-    /// unique-value match instead of mis-anchoring. See <see cref="WalkPath"/> for the drop rule.</summary>
-    private static TreeViewItem<T>? ResolveByPath(TreeViewItem<T> target, List<TreeViewItem<T>>? oldItems, List<TreeViewItem<T>> newItems)
+    /// <summary>The OLD structural path of a vanished selected node (pillar 6). PREFERS the
+    /// <see cref="_selectionPaths"/> snapshot captured after the last resolution pass — it recorded the
+    /// path while the node was still present, so it survives an IN-PLACE mutation where
+    /// <paramref name="oldItems"/> is the SAME list the consumer already mutated (the node is no longer
+    /// walkable there). Falls back to walking <paramref name="oldItems"/> for a first pass with no
+    /// snapshot yet; null when neither locates the node.</summary>
+    private IReadOnlyList<int>? OldPathOf(TreeViewItem<T> sel, List<TreeViewItem<T>>? oldItems)
     {
+        if (_selectionPaths.TryGetValue(sel, out var snap)) return snap;
         if (oldItems is null) return null;
-        var path = new List<int>();
-        if (!BuildIndexPath(oldItems, target, path)) return null;
-        return WalkPath(newItems, path, target.Value);
+        var p = new List<int>();
+        return BuildIndexPath(oldItems, sel, p) ? p : null;
+    }
+
+    /// <summary>Snapshots each currently-resolved selected node's index path against the CURRENT tree
+    /// (pillar 6). Called after every pass that settles the selection, so the next IN-PLACE mutation —
+    /// which makes <c>_previousItems</c> the same, already-mutated object — can still reanchor a
+    /// vanished node by the path it held while present, rather than dropping a duplicate-valued node
+    /// that the unique-value fallback can't disambiguate (round-12 finding 2).</summary>
+    private void SnapshotSelectionPaths()
+    {
+        var next = new Dictionary<TreeViewItem<T>, IReadOnlyList<int>>(ReferenceEqualityComparer.Instance);
+        if (_selectedNodes.Count > 0)
+        {
+            var tree = Items ?? [];
+            foreach (var sel in _selectedNodes)
+            {
+                var p = new List<int>();
+                if (BuildIndexPath(tree, sel, p)) next[sel] = p;
+            }
+        }
+        _selectionPaths = next;
     }
 
     /// <summary>Walks a root→node child-index <paramref name="path"/> in
