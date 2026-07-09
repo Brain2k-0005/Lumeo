@@ -266,11 +266,32 @@
     private async Task LoadChildrenThenNotifyAsync(IReadOnlyList<int>? pathAtExpand)
     {
         StateHasChanged();
+        // The node the loaded children attach to. Defaults to THIS instance; re-resolved to the
+        // currently-rendered node below if a controlled/immutable rebuild replaced it mid-load.
+        var target = Item;
         try
         {
             var loaded = await LoadChildren!(Item);
-            Item.Children = loaded;
-            Item.ChildrenLoaded = true;
+
+            // Attach to the CURRENTLY rendered node (round-8 rollback's SUCCESS mirror, round-9
+            // finding 1): a row click on a lazy parent starts THIS load BEFORE its selection
+            // callbacks run; a controlled/immutable parent can rebuild Items inside
+            // SelectedValuesChanged while the loader is still pending, disposing this @key'd node and
+            // re-creating it around a FRESH instance (carrying the optimistic IsExpanded=true).
+            // Assigning the children to the STALE Item would then leave the visible fresh node
+            // expanded-but-empty. Re-resolve the current node by the value-verified path (the SAME
+            // mechanism RollbackFailedExpansion uses on failure) and attach to THAT. Null (node
+            // vanished / ambiguous identity) or no tree context (standalone node) → the local
+            // instance is the best target.
+            target = Context?.Tree.ResolveExpansionTarget(Item, pathAtExpand) ?? Item;
+            target.Children = loaded;
+            target.ChildrenLoaded = true;
+            // The fresh node already carries IsExpanded=true (the rebuild copied it); assert it so a
+            // rebuild that dropped the flag still reveals the just-loaded children on the one click.
+            target.IsExpanded = true;
+            // Clear the spinner on the RESOLVED node too (a rebuild may have copied IsLoading=true
+            // onto the fresh instance); the finally below only clears the stale Item.
+            target.IsLoading = false;
 
             // rc.42: if the parent was fully checked before lazy-load, cascade
             // that state to the freshly-loaded children. Without this, a
@@ -278,19 +299,19 @@
             // visibly broken tri-state. Indeterminate parents leave loaded
             // children at their default (unchecked) state, then we
             // recompute the parent to reflect actual loaded counts.
-            if (Item.IsChecked && !Item.IsIndeterminate)
+            if (target.IsChecked && !target.IsIndeterminate)
             {
-                CascadeChecked(Item.Children, true);
+                CascadeChecked(target.Children, true);
             }
-            else if (Item.IsIndeterminate)
+            else if (target.IsIndeterminate)
             {
                 // All loaded children default to unchecked → parent is no
                 // longer indeterminate if nothing is checked. Recompute.
-                var anyChecked = Item.Children.Any(c => c.IsChecked || c.IsIndeterminate);
+                var anyChecked = target.Children.Any(c => c.IsChecked || c.IsIndeterminate);
                 if (!anyChecked)
                 {
-                    Item.IsIndeterminate = false;
-                    Item.IsChecked = false;
+                    target.IsIndeterminate = false;
+                    target.IsChecked = false;
                 }
             }
         }
@@ -320,7 +341,10 @@
             Item.IsLoading = false;
         }
 
-        await OnExpandChanged.InvokeAsync(Item);
+        // Notify for the RESOLVED node so HandleExpandChanged binds pending selections / derives
+        // tri-state against the instance that actually holds the freshly-loaded children (this may
+        // be the fresh @key'd node after a controlled rebuild, not the stale Item).
+        await OnExpandChanged.InvokeAsync(target);
     }
 
     // Click semantic (documented): clicking the label ROW always SELECTS the node (and raises

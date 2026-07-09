@@ -139,4 +139,62 @@ public class TreeViewControlledRowExpandTests : IAsyncLifetime
         Assert.Contains("Child-A", cut.Markup);
         Assert.Equal("true", TreeItem(cut, "Music").GetAttribute("aria-expanded"));
     }
+
+    /// <summary>
+    /// PR #351 round-9 finding 1 (the SUCCESS mirror of the round-8 rollback above): a row click on a
+    /// LAZY parent starts <c>LoadChildren</c> BEFORE the selection callbacks run. A controlled/
+    /// immutable parent rebuilds Items inside SelectedValuesChanged — carrying the optimistic
+    /// IsExpanded onto a FRESH <c>@key</c>'d instance — while the loader is still pending. When the
+    /// load then RESOLVES, assigning the children to the STALE instance leaves the visible fresh node
+    /// expanded-but-empty (no success path re-resolved it the way the failure rollback does). The load
+    /// must re-resolve the CURRENT node by its saved path/value and attach the children to THAT, so the
+    /// rendered node fills in.
+    /// </summary>
+    [Fact]
+    public async Task Slow_lazy_row_click_attaches_children_to_the_fresh_node_after_a_controlled_rebuild()
+    {
+        IRenderedComponent<L.TreeView<string>>? cut = null;
+
+        // The load HANGS until we release the gate — well after the controlled rebuild has already
+        // replaced the clicked instance with a fresh @key'd node.
+        var gate = new TaskCompletionSource<List<Item>>();
+        Func<Item, Task<List<Item>>> loader = _ => gate.Task;
+
+        // Controlled/immutable source of truth: a single LAZY parent. Every selection change rebuilds
+        // Items with a FRESH instance, carrying IsExpanded forward from the live node.
+        List<Item> current = null!;
+        List<Item> Build(bool expanded) =>
+        [
+            new() { Text = "Music", Value = "music", IsLeaf = false, IsExpanded = expanded }
+        ];
+
+        var callback = EventCallback.Factory.Create<List<string>>(_ctx, (List<string> _) =>
+        {
+            current = Build(current[0].IsExpanded);
+            cut!.Render(p => p.Add(c => c.Items, current));
+        });
+
+        current = Build(false);
+        cut = _ctx.Render<L.TreeView<string>>(p => p
+            .Add(c => c.Items, current)
+            .Add(c => c.LoadChildren, loader)
+            .Add(c => c.SelectedValues, (List<string>?)null)
+            .Add(c => c.SelectedValuesChanged, callback));
+
+        // Row click selects (→ rebuild carries IsExpanded=true onto the fresh node) and starts the
+        // hanging load. The rebuilt node is optimistically expanded over an empty branch.
+        await cut.InvokeAsync(() => Row(cut, "Music").Click());
+        Assert.Equal("true", TreeItem(cut, "Music").GetAttribute("aria-expanded"));
+        Assert.DoesNotContain("Child-A", cut.Markup);
+
+        // The loader completes AFTER the rebuild replaced the clicked instance. The children must
+        // attach to the CURRENT rendered (fresh) node — not the stale one — so they become visible.
+        await cut.InvokeAsync(() =>
+            gate.SetResult(new List<Item> { new() { Text = "Child-A", Value = "a", IsLeaf = true } }));
+
+        Assert.Contains("Child-A", cut.Markup);
+        Assert.Equal("true", TreeItem(cut, "Music").GetAttribute("aria-expanded"));
+        // The parent (Music) is still the selected row after the whole sequence.
+        Assert.Equal("true", TreeItem(cut, "Music").GetAttribute("aria-selected"));
+    }
 }

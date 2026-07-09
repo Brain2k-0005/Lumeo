@@ -133,6 +133,25 @@
     //                             dropped from pending; the seed's other values stay wanted.
     //   any → reset               ResolveSelectedNodes(null/empty): clears both sets.
     //
+    // ── TWO ORIGIN BUCKETS (round-9) ─────────────────────────────────────────
+    // A selection is either SEEDED (it originated from a consumer SelectedValues value) or
+    // INTERACTIVE (a click chose the node instance). The two survive an Items vanish/return by
+    // DIFFERENT rules, so their origin is tracked (_seededValues) and they carry through separate
+    // buckets:
+    //   SEEDED       keeps VALUE semantics. When its node vanishes it is re-queued as a VALUE
+    //                (_pendingSelectValues) and re-binds to EVERY match on return — the value
+    //                contract — even for a duplicate/null value. Stays pending while lazy branches
+    //                are unloaded (the round-7 machinery). Voided by a new SelectedValues.
+    //   INTERACTIVE  keeps IDENTITY semantics. When its node vanishes it is carried as a structural
+    //                IDENTITY (_pendingCarries: value-verified path + value) and re-binds the SAME
+    //                node by path / UNIQUE value, DROPPING on ambiguity — it never lights up a
+    //                same-valued sibling nor every match.
+    // Transition: an interactive click on a SEEDED node converts it to interactive (single-select
+    // clears ALL seeds; multi-select drops just the toggled value from the seed set), after which
+    // that value follows the identity rules above. Without this split a value seed silently degraded
+    // into an identity carry on an empty/async reload and its ambiguity rule then DROPPED it, so a
+    // controlled duplicate/null seed lost its selection on a data refresh (round-9 finding 2).
+    //
     // Selection is tracked by NODE IDENTITY (reference equality), NOT by Value.
     // Container/parent nodes routinely share a Value (commonly null, or a duplicate
     // across branches); keying selection by Value made a single click light up EVERY
@@ -157,6 +176,16 @@
     // sibling (nor every match). Carrying only the value here lost that identity, re-selecting
     // the first/every value match on return.
     private List<PendingCarry>? _pendingCarries;
+    // _seededValues — the VALUES currently owned by a consumer SelectedValues seed (the round-9
+    // origin marker). A seeded value keeps VALUE semantics across an Items vanish/return: it re-binds
+    // to EVERY match (the value contract) instead of degrading into an identity carry that
+    // ambiguity-drops a duplicate/null-valued seed. A value LEAVES this set when the consumer changes
+    // SelectedValues, OR when the user interactively takes ownership of it (single-select click clears
+    // all; multi-select toggle drops just that value) — after which the selection follows the identity
+    // (carry + ambiguity-drop) rules. Distinct from _pendingSelectValues, which is pruned once a value
+    // binds; _seededValues persists as the durable origin, so a vanished-then-returned seed is still
+    // recognised as value-origin even after it was resolved.
+    private HashSet<T>? _seededValues;
     private TreeViewContext? _context;
     // A vanished resolved node's carried identity: the value-verified root→node index PATH it
     // held in the tree it left, plus its Value. The path re-binds the exact node on return; the
@@ -468,9 +497,12 @@
             // pending lazy seed (which represented the intended sole selection) is void —
             // clear it unconditionally so it can't resurrect and co-select once its branch
             // loads. Unconditional: even a no-op re-click asserts sole ownership. A carried
-            // identity (a vanished prior selection) is void for the same reason.
+            // identity (a vanished prior selection) is void for the same reason. The click also
+            // takes the whole selection INTERACTIVE, so every seed origin is cleared — a later
+            // vanish/return now follows identity (carry + ambiguity-drop), not value re-binding.
             _pendingSelectValues = null;
             _pendingCarries = null;
+            _seededValues = null;
         }
 
         if (changed && SelectedValuesChanged.HasDelegate)
@@ -677,8 +709,12 @@
         if (values is not { Count: > 0 })
         {
             _pendingSelectValues = null;
+            _seededValues = null;
             return set;
         }
+        // Every value in a consumer SelectedValues is a SEED (value origin). Record them so a later
+        // Items vanish/return re-binds by value (round-9), independent of _pendingSelectValues pruning.
+        _seededValues = new HashSet<T>(values);
         var wanted = new HashSet<T>(values);
         CollectMatching(Items ?? [], wanted, set);
         // Remember the values that named a not-yet-materialized (lazy) node so they can be resolved
@@ -819,7 +855,8 @@
         FlattenAll(newItems, flat);
         var present = new HashSet<TreeViewItem<T>>(flat, ReferenceEqualityComparer.Instance);
         var rebuilt = new HashSet<TreeViewItem<T>>(ReferenceEqualityComparer.Instance);
-        List<PendingCarry>? carried = null; // identities of resolved nodes that vanished
+        List<PendingCarry>? carried = null; // INTERACTIVE identities of resolved nodes that vanished
+        List<T>? carriedValues = null;      // SEEDED values of vanished nodes → re-bind by value on return
         foreach (var sel in _selectedNodes)
         {
             // Still the same instance (a partial refresh / untouched branch) — keep it.
@@ -849,21 +886,35 @@
                 continue;
             }
             // resolved → pending: the node is gone from the new tree (an empty/null reload, or a
-            // lazy branch collapsed back to unloaded). Don't drop it — carry its structural
-            // IDENTITY: the value-verified index path it held in oldItems PLUS its value. On
-            // return, TryResolvePendingSelection re-binds the SAME node by that path (falling
-            // back to a unique value, dropping on ambiguity), so a duplicate/null Value no longer
-            // re-selects the first/every value match. A null path (target not locatable in
-            // oldItems) leaves only the value, resolved uniquely-or-dropped. This is what stops
-            // an empty reload (or a same-SelectedValues-reference reload that unloads the branch)
-            // from wiping the selection permanently.
-            var carryPath = new List<int>();
-            var hasPath = oldItems is not null && BuildIndexPath(oldItems, sel, carryPath);
-            (carried ??= []).Add(new PendingCarry(hasPath ? carryPath : [], sel.Value));
+            // lazy branch collapsed back to unloaded). Don't drop it — its ORIGIN decides how it
+            // waits for a return (round-9 two-bucket model):
+            if (_seededValues is not null && _seededValues.Contains(sel.Value!))
+            {
+                // SEEDED (value origin): keep VALUE semantics. Re-queue the VALUE so
+                // TryResolvePendingSelection re-binds EVERY match when the tree returns — the value
+                // contract a consumer's SelectedValues asked for — rather than an identity carry
+                // whose ambiguity rule would DROP a duplicate/null-valued seed on return.
+                (carriedValues ??= []).Add(sel.Value!);
+            }
+            else
+            {
+                // INTERACTIVE (identity origin): carry its structural IDENTITY — the value-verified
+                // index path it held in oldItems PLUS its value. On return, TryResolvePendingSelection
+                // re-binds the SAME node by that path (falling back to a unique value, dropping on
+                // ambiguity), so a duplicate/null Value no longer re-selects the first/every value
+                // match. A null path (target not locatable in oldItems) leaves only the value,
+                // resolved uniquely-or-dropped. This stops an empty reload (or a same-reference reload
+                // that unloads the branch) from wiping an interactive selection permanently.
+                var carryPath = new List<int>();
+                var hasPath = oldItems is not null && BuildIndexPath(oldItems, sel, carryPath);
+                (carried ??= []).Add(new PendingCarry(hasPath ? carryPath : [], sel.Value));
+            }
         }
         _selectedNodes = rebuilt;
         if (carried is { Count: > 0 })
             MergeCarries(carried);
+        if (carriedValues is { Count: > 0 })
+            MergePendingValues(carriedValues);
     }
 
     /// <summary>Queues carried node identities onto the pending-carry bucket. Used when a
@@ -877,6 +928,23 @@
             : carries;
     }
 
+    /// <summary>Re-queues SEEDED values (value-origin selections whose node vanished on an Items
+    /// refresh) onto the value-pending bucket, so <see cref="TryResolvePendingSelection"/> re-binds
+    /// EVERY match when the tree returns — the value contract. Kept DISTINCT from the identity carry
+    /// bucket (<see cref="MergeCarries"/>): a duplicate/null seed value must re-select all its
+    /// matches on return, not ambiguity-drop the way an interactive identity carry does (round-9).
+    /// De-duplicates against any values already pending (a duplicate seed contributes one value).</summary>
+    private void MergePendingValues(List<T> values)
+    {
+        if (values.Count == 0) return;
+        var merged = _pendingSelectValues is { Count: > 0 }
+            ? new List<T>(_pendingSelectValues)
+            : new List<T>();
+        foreach (var v in values)
+            if (!merged.Contains(v)) merged.Add(v);
+        _pendingSelectValues = merged.Count > 0 ? merged : null;
+    }
+
     /// <summary>The root→node child-index path of <paramref name="node"/> in the CURRENT
     /// <see cref="Items"/> tree, or null when it isn't present. A lazy node snapshots this the
     /// moment it optimistically expands — BEFORE its row-click selection callbacks run — so a
@@ -888,28 +956,25 @@
         return BuildIndexPath(Items ?? [], node, path) ? path : null;
     }
 
-    /// <summary>Collapses the node that currently occupies a failed-lazy-load node's structural
-    /// identity. The rollback fires on the node component, but when a controlled/immutable parent
-    /// rebuilt <see cref="Items"/> inside the row click's <c>SelectedValuesChanged</c> — while the
-    /// loader was still in flight — that node component was disposed and re-created around a FRESH
-    /// <c>@key</c>'d instance carrying the optimistic <c>IsExpanded=true</c>. Collapsing only the
-    /// stale instance would then leave the visible row <c>aria-expanded=true</c> over an empty
-    /// branch (and the next click would collapse it instead of retrying). Re-resolve the CURRENT
-    /// instance by the SAME value-verified path (then unique-value) rule
-    /// <see cref="ReanchorSelection"/> uses and collapse THAT. No-op when the node is still present
-    /// by reference (a non-controlled tree already collapsed it locally), or when the identity is
-    /// ambiguous — a duplicate/null value with no unique match — per the ambiguity-drop convention.</summary>
-    internal void RollbackFailedExpansion(TreeViewItem<T> staleNode, IReadOnlyList<int>? pathAtExpand)
+    /// <summary>Re-resolves the node instance that CURRENTLY occupies <paramref name="staleNode"/>'s
+    /// structural identity after a lazy load. When a controlled/immutable parent rebuilt
+    /// <see cref="Items"/> inside the row click's <c>SelectedValuesChanged</c> — while the loader was
+    /// still in flight — the clicked node component was disposed and re-created around a FRESH
+    /// <c>@key</c>'d instance; a load result (children on success, a collapse on failure) applied to
+    /// the STALE instance would then be invisible on the rendered node. Returns the SAME instance
+    /// when it is still present by reference (a non-controlled tree / untouched branch), else the node
+    /// at the value-verified <paramref name="pathAtExpand"/>, else a UNIQUE-valued match, else null —
+    /// the node vanished or its identity is ambiguous (a duplicate/null value with no unique match),
+    /// per the same ambiguity-drop convention as <see cref="ReanchorSelection"/>, so a load result
+    /// never lands on the wrong same-valued sibling. Shared by the SUCCESS attach
+    /// (<see cref="ResolveExpansionTarget"/>) and FAILURE rollback (<see cref="RollbackFailedExpansion"/>)
+    /// paths.</summary>
+    private TreeViewItem<T>? ResolveReanchoredExpansionNode(TreeViewItem<T> staleNode, IReadOnlyList<int>? pathAtExpand)
     {
         var tree = Items ?? [];
         var flat = new List<TreeViewItem<T>>();
         FlattenAll(tree, flat);
-        // Still the same instance (non-controlled tree / untouched branch): the node already
-        // collapsed itself locally — nothing to re-resolve.
-        if (flat.Any(n => ReferenceEquals(n, staleNode))) return;
-        // Replaced by a fresh instance: prefer the value-verified structural path, else a UNIQUE
-        // value — identical ambiguity-drop rule as the reanchor, so a duplicate/null Value never
-        // collapses the wrong sibling.
+        if (flat.Any(n => ReferenceEquals(n, staleNode))) return staleNode;
         TreeViewItem<T>? current = null;
         if (pathAtExpand is { Count: > 0 })
             current = WalkPath(tree, pathAtExpand, staleNode.Value);
@@ -918,6 +983,31 @@
             var byValue = flat.Where(n => EqualityComparer<T>.Default.Equals(n.Value, staleNode.Value)).ToList();
             if (byValue.Count == 1) current = byValue[0];
         }
+        return current;
+    }
+
+    /// <summary>The node a completed lazy load's children must attach to: the CURRENT instance
+    /// occupying the expanding node's identity, re-resolved past a controlled/immutable rebuild that
+    /// may have replaced the clicked instance while the loader was in flight (round-9 finding 1 — the
+    /// SUCCESS mirror of <see cref="RollbackFailedExpansion"/>). Grafting the children onto the stale
+    /// instance would leave the visible fresh node expanded-but-empty, because only the failure path
+    /// used to re-resolve the current node. Returns null only when the node vanished or its identity
+    /// is ambiguous; the caller then attaches to the local instance as a last resort.</summary>
+    internal TreeViewItem<T>? ResolveExpansionTarget(TreeViewItem<T> staleNode, IReadOnlyList<int>? pathAtExpand)
+        => ResolveReanchoredExpansionNode(staleNode, pathAtExpand);
+
+    /// <summary>Collapses the node that currently occupies a failed-lazy-load node's structural
+    /// identity. When a controlled/immutable rebuild replaced the clicked instance mid-load, the
+    /// fresh <c>@key</c>'d node carries the optimistic <c>IsExpanded=true</c>; collapsing only the
+    /// stale instance would leave the visible row <c>aria-expanded=true</c> over an empty branch (and
+    /// the next click would collapse it instead of retrying). Re-resolve the CURRENT instance
+    /// (<see cref="ResolveReanchoredExpansionNode"/>) and collapse THAT. No-op when the node is still
+    /// present by reference (the catch already collapsed it locally, so the IsExpanded guard trips),
+    /// or when the identity is ambiguous.</summary>
+    internal void RollbackFailedExpansion(TreeViewItem<T> staleNode, IReadOnlyList<int>? pathAtExpand)
+    {
+        var current = ResolveReanchoredExpansionNode(staleNode, pathAtExpand);
+        // Still the same instance → the catch already set IsExpanded=false, so the guard below no-ops.
         if (current is null || !current.IsExpanded) return;
         current.IsExpanded = false;
         _autoExpanded.Remove(current);
@@ -925,9 +1015,12 @@
         StateHasChanged();
     }
 
-    /// <summary>Drops a single value from BOTH pending buckets (multi-select supersede: an
-    /// explicit interactive selection of a value wins over any deferred seed OR carried identity
-    /// for that same value, so neither resurrects to co-select a same-valued node).</summary>
+    /// <summary>Drops a single value from BOTH pending buckets AND the seed-origin set (multi-select
+    /// supersede: an explicit interactive selection of a value wins over any deferred seed OR carried
+    /// identity for that same value, so neither resurrects to co-select a same-valued node). Removing
+    /// it from <see cref="_seededValues"/> converts that value from SEEDED to INTERACTIVE — a later
+    /// vanish/return then follows the identity (carry + ambiguity-drop) rules, not value re-binding
+    /// (round-9: interacting with a seeded node converts it to interactive).</summary>
     private void RemovePending(T? value)
     {
         if (_pendingSelectValues is not null)
@@ -943,6 +1036,11 @@
                 .Where(c => !EqualityComparer<T>.Default.Equals(c.Value, value))
                 .ToList();
             if (_pendingCarries.Count == 0) _pendingCarries = null;
+        }
+        if (_seededValues is not null)
+        {
+            _seededValues.Remove(value!);
+            if (_seededValues.Count == 0) _seededValues = null;
         }
     }
 
