@@ -226,12 +226,26 @@
     //      expand) or drain it isolated from selection (the row click).
     // Children only render once actually loaded (the HasLoadedChildren gate), so flipping IsExpanded
     // ahead of the load never paints an empty expanded branch.
-    private Task ToggleExpand()
+    private Task ToggleExpand() => BeginToggleExpand()();
+
+    // The SYNCHRONOUS half of a toggle: flips IsExpanded on the LIVE instance now (and, for a lazy
+    // expand, marks loading + snapshots the structural path) — all before any await, so a selection-
+    // driven controlled/immutable rebuild snapshots the new state off THIS instance (round-4/8).
+    // Returns a delegate for the DEFERRED half — START the lazy child-load, or raise OnExpandChanged
+    // for a collapse / already-loaded expand — so the CALLER chooses WHEN to run it relative to
+    // selection. The chevron/keyboard run it immediately (ToggleExpand above, no selection to order
+    // against). The row click (HandleClick) runs it only AFTER the selection callbacks, so a lazy load
+    // that completes SYNCHRONOUSLY (cached children via Task.FromResult) doesn't attach its children
+    // to THIS instance before a selection-driven rebuild replaces it — the load instead starts post-
+    // rebuild and ResolveExpansionTarget attaches to the fresh @key'd node (round-10 finding 1).
+    // Children only render once actually loaded (the HasLoadedChildren gate), so flipping IsExpanded
+    // ahead of the load never paints an empty expanded branch.
+    private Func<Task> BeginToggleExpand()
     {
         if (EffectiveExpanded)
         {
             Item.IsExpanded = false;
-            return OnExpandChanged.InvokeAsync(Item);
+            return () => OnExpandChanged.InvokeAsync(Item);
         }
 
         // Mark expanded NOW (synchronous state mutation on the live instance) — the (possibly slow
@@ -247,10 +261,10 @@
             // rendered instance even after a controlled/immutable rebuild replaced THIS one
             // (round-8: the rollback must reach the fresh @key'd node, not just the stale instance).
             var pathAtExpand = Context?.Tree.GetIndexPath(Item);
-            return LoadChildrenThenNotifyAsync(pathAtExpand);
+            return () => LoadChildrenThenNotifyAsync(pathAtExpand);
         }
 
-        return OnExpandChanged.InvokeAsync(Item);
+        return () => OnExpandChanged.InvokeAsync(Item);
     }
 
     // The awaited tail of a lazy expansion: fetch the children, mirror a fully-checked parent's
@@ -378,14 +392,23 @@
         // OnItemClick/OnSelectionChanged ever ran. So the selection callbacks fire NEXT, ungated by
         // the load, and the tail is drained isolated afterwards — mirroring the chevron, whose load
         // lives in its own handler and never gates a selection.
-        var expandTail = ExpandOnRowClick && Expandable && ShowExpandChevron && !IsSelectionModifier(e)
-            ? ToggleExpand()
-            : Task.CompletedTask;
+        //
+        // Round-10 (cached load ordering): only the SYNCHRONOUS flip runs now; the tail — which
+        // STARTS the load — is DEFERRED until after selection. If it started here, a LoadChildren that
+        // returns an already-completed task would attach its children to THIS instance synchronously,
+        // before the selection callbacks; a controlled/immutable rebuild inside SelectedValuesChanged
+        // would then replace that instance and discard the children, stranding the fresh node expanded-
+        // but-empty. Starting the load AFTER selection lets ResolveExpansionTarget attach to the
+        // rebuilt node instead (the round-9 success reanchor already handles the slow-load ordering).
+        var deferredExpand = ExpandOnRowClick && Expandable && ShowExpandChevron && !IsSelectionModifier(e)
+            ? BeginToggleExpand()
+            : null;
 
         await OnItemClick.InvokeAsync(Item);
         await OnSelectionChanged.InvokeAsync(Item);
 
-        await DrainExpansionIsolated(expandTail);
+        if (deferredExpand is not null)
+            await DrainExpansionIsolated(deferredExpand());
     }
 
     // Drain the lazy-expansion tail AFTER the selection has been applied, absorbing a loader failure

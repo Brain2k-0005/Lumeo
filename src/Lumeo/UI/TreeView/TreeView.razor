@@ -187,6 +187,12 @@
     // recognised as value-origin even after it was resolved.
     private HashSet<T>? _seededValues;
     private TreeViewContext? _context;
+    // The clicked node's structural PATH, snapshotted in HandleItemClick BEFORE the public OnItemClick
+    // callback runs — so HandleSelectionChanged can re-resolve the CURRENT instance if a consumer's
+    // OnItemClick handler rebuilt Items (controlled/immutable) in between (round-10 finding 4). The node
+    // component awaits OnItemClick before OnSelectionChanged, so without this the selection would add
+    // the now-stale (disposed) clicked instance and the fresh rendered row would show as unselected.
+    private IReadOnlyList<int>? _clickPathBeforeCallback;
     // A vanished resolved node's carried identity: the value-verified root→node index PATH it
     // held in the tree it left, plus its Value. The path re-binds the exact node on return; the
     // value is the unique-or-drop fallback when the structure changed and the path no longer walks.
@@ -414,6 +420,10 @@
 
     private async Task HandleItemClick(TreeViewItem<T> item)
     {
+        // Snapshot the clicked node's structural path NOW — before the public OnItemClick can rebuild
+        // Items — so the selection callback that fires next (HandleSelectionChanged) can re-resolve the
+        // fresh @key'd instance the rebuild produced instead of adding the stale one (round-10 finding 4).
+        _clickPathBeforeCallback = GetIndexPath(item);
         await OnItemClick.InvokeAsync(item);
     }
 
@@ -472,6 +482,17 @@
         // the separate ToggleExpand call in TreeViewNode.HandleClick — so selecting a
         // node and expanding it stay decoupled here (a parent can be selected while
         // collapsed and vice-versa).
+        //
+        // Re-resolve the clicked instance against the CURRENT tree first (round-10 finding 4): a
+        // consumer's OnItemClick handler (awaited BEFORE this callback in TreeViewNode.HandleClick) may
+        // have rebuilt Items (controlled/immutable), disposing the clicked @key'd node. Adding the stale
+        // instance would leave the fresh rendered row unselected. ResolveReanchoredExpansionNode prefers
+        // reference-identity, then the value-verified path snapshotted in HandleItemClick, then a unique
+        // value; it returns null only when identity is genuinely unprovable (a duplicate/null value with
+        // no positional anchor), in which case we keep the original instance — selecting nothing is safer
+        // than selecting the wrong same-valued sibling, matching the ambiguity convention.
+        item = ResolveReanchoredExpansionNode(item, _clickPathBeforeCallback) ?? item;
+        _clickPathBeforeCallback = null;
         bool changed;
         if (MultiSelect)
         {
@@ -976,13 +997,31 @@
         FlattenAll(tree, flat);
         if (flat.Any(n => ReferenceEquals(n, staleNode))) return staleNode;
         TreeViewItem<T>? current = null;
+        // 1) The value-provable structural path (sibling-unique) — the same strict anchor SELECTION uses.
         if (pathAtExpand is { Count: > 0 })
             current = WalkPath(tree, pathAtExpand, staleNode.Value);
+        // 2) A value that is UNIQUE across the whole tree (a node that merely moved).
         if (current is null)
         {
             var byValue = flat.Where(n => EqualityComparer<T>.Default.Equals(n.Value, staleNode.Value)).ToList();
             if (byValue.Count == 1) current = byValue[0];
         }
+        // 3) EXPANSION-ONLY positional fallback — this DIVERGES from SELECTION's ambiguity-DROP
+        //    (round-10 finding 3). When sibling PARENTS carry null/duplicate Values, step 1's
+        //    sibling-uniqueness gate drops the path and step 2 is ambiguous, so a strict resolver
+        //    returns null — the loaded children then never attach (success) or the fresh row never
+        //    collapses (failure), stranding the visible rebuilt parent expanded-but-empty/spinning in
+        //    exactly the duplicate/null container case lazy expansion must support. Unlike selection —
+        //    where mis-highlighting a same-valued sibling is a real defect, so we DROP — expansion has
+        //    extra information: a controlled/immutable SAME-CONTENT rebuild preserves structure, so the
+        //    node STILL at pathAtExpand IS the clicked parent. Attach by POSITION, but only when that
+        //    node still carries the expected Value (WalkPath's structural-mismatch guard stays on, so we
+        //    never target a DIFFERENT-valued node). The only residual ambiguity — a simultaneous sibling
+        //    REORDER among duplicate values — lands on a value-IDENTICAL sibling, which loads equivalent
+        //    children and projects the same public value, so it is SAFE and strictly better than losing
+        //    the branch. This never runs for selection: ResolveReanchoredExpansionNode is expansion-only.
+        if (current is null && pathAtExpand is { Count: > 0 })
+            current = WalkPath(tree, pathAtExpand, staleNode.Value, requireSiblingUnique: false);
         return current;
     }
 
@@ -1007,9 +1046,20 @@
     internal void RollbackFailedExpansion(TreeViewItem<T> staleNode, IReadOnlyList<int>? pathAtExpand)
     {
         var current = ResolveReanchoredExpansionNode(staleNode, pathAtExpand);
-        // Still the same instance → the catch already set IsExpanded=false, so the guard below no-ops.
-        if (current is null || !current.IsExpanded) return;
+        if (current is null) return;
+        // Same instance the catch already collapsed → its finally clears IsLoading; nothing to do.
+        // (Detected by reference: ResolveReanchoredExpansionNode returns staleNode itself when it is
+        // still present, so the finally in TreeViewNode owns the spinner cleanup for that instance.)
+        if (ReferenceEquals(current, staleNode)) return;
+        // A FRESH @key'd node from a controlled/immutable rebuild copied BOTH optimistic flags off the
+        // stale instance (IsExpanded=true AND IsLoading=true). The node component's finally only clears
+        // IsLoading on the STALE Item, so without clearing it here the rebuilt row stays stuck showing
+        // the spinner (hiding the chevron/retry affordance) even though the load failed (round-10
+        // finding 2). Collapse AND clear the spinner on the reanchored target. Guard: if the fresh node
+        // carries neither flag there is nothing to roll back.
+        if (!current.IsExpanded && !current.IsLoading) return;
         current.IsExpanded = false;
+        current.IsLoading = false;
         _autoExpanded.Remove(current);
         _flatVisible = null;
         StateHasChanged();
@@ -1073,8 +1123,15 @@
     /// silent swap of the two are indistinguishable — so identity is unrecoverable and the match is
     /// DROPPED. A value that is unique among its siblings (even if duplicated elsewhere in the tree)
     /// is still resolved by position, and a unique value that merely MOVED re-anchors via the
-    /// caller's unique-value fallback.</summary>
-    private static TreeViewItem<T>? WalkPath(List<TreeViewItem<T>> roots, IReadOnlyList<int> path, T? expectedValue)
+    /// caller's unique-value fallback.
+    ///
+    /// <paramref name="requireSiblingUnique"/> defaults to <c>true</c> (the strict identity anchor
+    /// every SELECTION path uses). The EXPANSION reanchor passes <c>false</c> as a last-resort
+    /// positional fallback (round-10 finding 3): a controlled/immutable SAME-CONTENT rebuild preserves
+    /// structure, so the node still at the path IS the clicked parent even when siblings share its
+    /// Value; the structural-mismatch guard (value must still match at the path) stays on either way,
+    /// so a relaxed walk still never lands on a DIFFERENT-valued node.</summary>
+    private static TreeViewItem<T>? WalkPath(List<TreeViewItem<T>> roots, IReadOnlyList<int> path, T? expectedValue, bool requireSiblingUnique = true)
     {
         if (path.Count == 0) return null;
         IReadOnlyList<TreeViewItem<T>> level = roots;
@@ -1090,6 +1147,7 @@
         if (node is null) return null;
         // The node at the path must still carry the expected value…
         if (!EqualityComparer<T>.Default.Equals(node.Value, expectedValue)) return null;
+        if (!requireSiblingUnique) return node;
         // …AND that value must be UNIQUE among its immediate siblings, or the position can't prove
         // identity (a reordered same-valued sibling would masquerade as the target). DROP on a
         // shared value so the caller falls back to a unique-value match instead of mis-selecting.
