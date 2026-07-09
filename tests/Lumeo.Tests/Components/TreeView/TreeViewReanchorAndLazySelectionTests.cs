@@ -32,6 +32,8 @@ public class TreeViewReanchorAndLazySelectionTests : IAsyncLifetime
     private static IElement Row(IRenderedComponent<L.TreeView<string>> cut, string text)
         => TreeItem(cut, text).Children[0];
 
+    private static List<L.TreeView<string>.TreeViewItem<string>> Empty() => [];
+
     // ---- Finding 6: duplicate / null value re-anchor by path ----
 
     // Two sibling leaves that SHARE a Value ("same") but have distinct text, under an
@@ -92,6 +94,53 @@ public class TreeViewReanchorAndLazySelectionTests : IAsyncLifetime
 
         cut.Render(p => p.Add(c => c.Items, NullValueTree()));
 
+        var selected = cut.FindAll("[role='treeitem'][aria-selected='true']");
+        Assert.Single(selected);
+        Assert.Contains("Folder B", selected[0].Children[0].TextContent);
+    }
+
+    // ---- Round-3: a VANISHED duplicate/null-valued node carries its structural identity ----
+    // (empty reload → the node's node re-materializes) so it re-binds the SAME node, not the
+    // first value match. Carrying only the value would light up every same-valued sibling.
+
+    [Fact]
+    public async Task Duplicate_valued_node_that_vanishes_then_returns_rebinds_the_same_node_not_the_first_match()
+    {
+        var cut = _ctx.Render<L.TreeView<string>>(p => p.Add(c => c.Items, DupTree()));
+
+        // Select the SECOND of two "same"-valued siblings.
+        await cut.InvokeAsync(() => Row(cut, "Second").Click());
+        Assert.Equal("true", TreeItem(cut, "Second").GetAttribute("aria-selected"));
+
+        // The tree momentarily reloads EMPTY — the selected node vanishes into the pending
+        // carry bucket (value "same" is a duplicate, so only its structural path can identify it).
+        cut.Render(p => p.Add(c => c.Items, Empty()));
+        Assert.Empty(cut.FindAll("[role='treeitem']"));
+
+        // The real duplicate-valued tree returns with fresh instances. Carrying only the value
+        // would re-select BOTH "same" nodes; the carried path re-binds exactly "Second".
+        cut.Render(p => p.Add(c => c.Items, DupTree()));
+
+        var selected = cut.FindAll("[role='treeitem'][aria-selected='true']");
+        Assert.Single(selected);
+        Assert.Contains("Second", selected[0].Children[0].TextContent);
+    }
+
+    [Fact]
+    public async Task Null_valued_node_that_vanishes_then_returns_rebinds_the_same_node_not_the_first_match()
+    {
+        var cut = _ctx.Render<L.TreeView<string>>(p => p.Add(c => c.Items, NullValueTree()));
+
+        await cut.InvokeAsync(() => Row(cut, "Folder B").Click());
+        Assert.Equal("true", TreeItem(cut, "Folder B").GetAttribute("aria-selected"));
+
+        // Empty reload: the null-valued selection can only be re-identified by its path.
+        cut.Render(p => p.Add(c => c.Items, Empty()));
+        Assert.Empty(cut.FindAll("[role='treeitem']"));
+
+        cut.Render(p => p.Add(c => c.Items, NullValueTree()));
+
+        // A value-based re-bind would match BOTH null-valued folders; the path picks Folder B.
         var selected = cut.FindAll("[role='treeitem'][aria-selected='true']");
         Assert.Single(selected);
         Assert.Contains("Folder B", selected[0].Children[0].TextContent);

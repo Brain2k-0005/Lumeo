@@ -190,13 +190,29 @@ public sealed class ConsentService
             _storedVersion = ReadString(root["version"]);
             _decidedAtUtc = ParseTimestamp(root["timestamp"]);
 
-            // A versioned record whose version no longer matches the configured
-            // PolicyVersion means the policy changed since consent was given: keep
-            // the old choices (for prefill) but require re-confirmation. A record
-            // with no explicit version can't be a mismatch — it predates versioning.
-            var versionMatches = _storedVersion is null
-                || string.Equals(_storedVersion, PolicyVersion, StringComparison.Ordinal);
-            _decided = versionMatches;
+            // A proof-of-consent (current-format) record — identified by its "categories"
+            // wrapper — MUST carry an explicit STRING version. A missing or non-string
+            // "version" yields _storedVersion == null; that is NOT a version-agnostic pass.
+            // Treating it as one fails OPEN — it would match EVERY configured PolicyVersion
+            // off a corrupt or hand-tampered record. Fail CLOSED instead: count it as a
+            // version MISMATCH — keep the parsed choices for prefill and re-prompt, and mark
+            // the record rejected so a later PolicyVersion change can't resurrect its null
+            // version as a "match" (ReevaluateDecision skips rejected records).
+            //
+            // This is the OPPOSITE of a legacy BARE map (else-if below): that shape has no
+            // "categories" wrapper, legitimately predates versioning, and stays decided with
+            // a null version. Only the new record shape is held to the version requirement.
+            if (_storedVersion is null)
+            {
+                _decided = false;
+                _decisionRejected = true;
+            }
+            else
+            {
+                // A versioned record whose version no longer matches means the policy changed
+                // since consent was given: keep the old choices (for prefill), re-confirm.
+                _decided = string.Equals(_storedVersion, PolicyVersion, StringComparison.Ordinal);
+            }
         }
         else if (IsAllBoolean(root))
         {

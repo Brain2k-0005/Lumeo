@@ -107,9 +107,14 @@
     //                             replaced by an equal instance re-anchors by path/value.
     //   resolved → pending        ReanchorSelection when a resolved node VANISHES from the
     //                             new tree (empty/null reload, or a lazy branch collapsed
-    //                             back to unloaded): its VALUE is carried forward as
-    //                             pending — never dropped — so it re-binds when the node
-    //                             reappears. (This, plus the always-run TryResolvePending,
+    //                             back to unloaded): its structural IDENTITY — the same
+    //                             value-verified index PATH the reanchor uses, carried
+    //                             ALONGSIDE its value in _pendingCarries — is queued (never
+    //                             dropped) so the SAME node re-binds when it reappears, even
+    //                             when its Value is a duplicate or null. On return the entry
+    //                             PREFERS the path, falls back to a UNIQUE value, and DROPS on
+    //                             ambiguity — it never re-selects a same-valued sibling (nor
+    //                             every match). (This, plus the always-run TryResolvePending,
     //                             is why the lifecycle survives a same-reference reload.)
     //   pending/resolved → superseded   HandleSelectionChanged (interactive): single-select
     //                             — the click owns the whole selection, so ALL pending is
@@ -127,12 +132,26 @@
     // The public SelectedValues contract is preserved: values are derived from the
     // selected nodes on the way OUT, and mapped back to nodes on the way IN.
     private HashSet<TreeViewItem<T>> _selectedNodes = new(ReferenceEqualityComparer.Instance);
-    // The pending bucket (see lifecycle above): wanted values with no node bound yet —
-    // a lazy child not loaded, an async/empty first render, or a resolved node carried
-    // back here after it vanished from a tree refresh. TryResolvePendingSelection drains
-    // it against every new/loaded subtree; it is value-based by the SelectedValues contract.
+    // Two pending buckets (see lifecycle above), both drained by TryResolvePendingSelection.
+    //
+    // _pendingSelectValues — wanted VALUES with no node bound yet: a controlled/seed value for
+    // a lazy child not loaded, or for an async/empty first render. Value-based by the
+    // SelectedValues contract — an ambiguous (duplicate/null) value binds EVERY match, which is
+    // what a value-speaking consumer asked for.
     private List<T>? _pendingSelectValues;
+    // _pendingCarries — the structural IDENTITY of a resolved node that VANISHED on an Items
+    // refresh (its value-verified index path from the tree it left, plus its value). Kept
+    // SEPARATE from the value bucket because its resolution is identity-preserving: on the
+    // node's return it re-binds by PATH, falls back to a UNIQUE value, and drops on ambiguity —
+    // so a vanished node with a duplicate/null Value re-selects the SAME node, not a same-valued
+    // sibling (nor every match). Carrying only the value here lost that identity, re-selecting
+    // the first/every value match on return.
+    private List<PendingCarry>? _pendingCarries;
     private TreeViewContext? _context;
+    // A vanished resolved node's carried identity: the value-verified root→node index PATH it
+    // held in the tree it left, plus its Value. The path re-binds the exact node on return; the
+    // value is the unique-or-drop fallback when the structure changed and the path no longer walks.
+    private sealed record PendingCarry(IReadOnlyList<int> Path, T? Value);
 
     // Search filtering renders the ORIGINAL item instances; visibility and
     // search-forced expansion are tracked in these side tables instead of
@@ -410,8 +429,10 @@
             // Supersede (single-select): the click now owns the entire selection, so a
             // pending lazy seed (which represented the intended sole selection) is void —
             // clear it unconditionally so it can't resurrect and co-select once its branch
-            // loads. Unconditional: even a no-op re-click asserts sole ownership.
+            // loads. Unconditional: even a no-op re-click asserts sole ownership. A carried
+            // identity (a vanished prior selection) is void for the same reason.
             _pendingSelectValues = null;
+            _pendingCarries = null;
         }
 
         if (changed && SelectedValuesChanged.HasDelegate)
@@ -611,6 +632,9 @@
     /// Interactive clicks never round-trip through here, so they stay identity-exact.</summary>
     private HashSet<TreeViewItem<T>> ResolveSelectedNodes(List<T>? values)
     {
+        // A fresh authoritative SelectedValues redefines the whole selection — any carried
+        // identity queued from the PREVIOUS selection is void.
+        _pendingCarries = null;
         var set = new HashSet<TreeViewItem<T>>(ReferenceEqualityComparer.Instance);
         if (values is not { Count: > 0 })
         {
@@ -628,13 +652,20 @@
         return set;
     }
 
-    /// <summary>After a lazy branch materializes, adopt any freshly-loaded node whose
-    /// <c>Value</c> was named by <see cref="SelectedValues"/> but had no node to bind to
-    /// at parameter-set time. Additive — it never clears an existing selection — so it is
-    /// safe in both controlled and seed/uncontrolled modes and never pushes
+    /// <summary>Drains both pending buckets. Path-carried IDENTITIES (vanished resolved nodes)
+    /// re-bind first — by their value-verified path in the CURRENT full tree, falling back to a
+    /// unique value and dropping on ambiguity — so a returning node with a duplicate/null Value
+    /// re-selects the SAME node. Then any value-based seed whose <c>Value</c> was named by
+    /// <see cref="SelectedValues"/> but had no node to bind to at parameter-set time binds
+    /// against the freshly-loaded subtree. Additive — it never clears an existing selection — so
+    /// it is safe in both controlled and seed/uncontrolled modes and never pushes
     /// <see cref="SelectedValuesChanged"/> (the value is already in the parent's list).</summary>
     private void TryResolvePendingSelection(List<TreeViewItem<T>>? loaded)
     {
+        // Path-carried identities re-bind against the CURRENT full tree (their paths are
+        // root-relative), independent of the subtree handed in via `loaded`.
+        ResolveCarriedPending();
+
         if (_pendingSelectValues is not { Count: > 0 } || loaded is not { Count: > 0 }) return;
         var wanted = new HashSet<T>(_pendingSelectValues);
         var found = new HashSet<TreeViewItem<T>>(ReferenceEqualityComparer.Instance);
@@ -644,6 +675,38 @@
         var resolvedValues = new HashSet<T>(found.Select(n => n.Value!));
         var remaining = _pendingSelectValues.Where(v => !resolvedValues.Contains(v)).ToList();
         _pendingSelectValues = remaining.Count > 0 ? remaining : null;
+    }
+
+    /// <summary>Re-binds carried node identities (resolved nodes that vanished on an Items
+    /// refresh) against the current full <see cref="Items"/> tree: PREFER the value-verified
+    /// structural path, fall back to a UNIQUE value, DROP on ambiguity (never re-select a
+    /// same-valued sibling). Entries that still can't resolve stay queued for a later tree.</summary>
+    private void ResolveCarriedPending()
+    {
+        if (_pendingCarries is not { Count: > 0 }) return;
+        var tree = Items ?? [];
+        if (tree.Count == 0) return;
+        var flat = new List<TreeViewItem<T>>();
+        FlattenAll(tree, flat);
+        List<PendingCarry>? remaining = null;
+        foreach (var carry in _pendingCarries)
+        {
+            var node = ResolveCarryNode(carry, tree, flat);
+            if (node is not null) _selectedNodes.Add(node);
+            else (remaining ??= []).Add(carry);
+        }
+        _pendingCarries = remaining;
+    }
+
+    /// <summary>Resolves one carried identity: the node at its value-verified path, else the
+    /// node carrying its value when that value is UNIQUE in the tree, else null (drop on
+    /// ambiguity — a duplicate/null value must not re-select the wrong node or every match).</summary>
+    private static TreeViewItem<T>? ResolveCarryNode(PendingCarry carry, List<TreeViewItem<T>> tree, List<TreeViewItem<T>> flat)
+    {
+        var byPath = WalkPath(tree, carry.Path, carry.Value);
+        if (byPath is not null) return byPath;
+        var byValue = flat.Where(n => EqualityComparer<T>.Default.Equals(n.Value, carry.Value)).ToList();
+        return byValue.Count == 1 ? byValue[0] : null;
     }
 
     private static void CollectMatching(List<TreeViewItem<T>> items, HashSet<T> wanted, HashSet<TreeViewItem<T>> into)
@@ -671,7 +734,7 @@
         FlattenAll(newItems, flat);
         var present = new HashSet<TreeViewItem<T>>(flat, ReferenceEqualityComparer.Instance);
         var rebuilt = new HashSet<TreeViewItem<T>>(ReferenceEqualityComparer.Instance);
-        List<T>? carried = null; // values of resolved nodes that vanished — carry as pending
+        List<PendingCarry>? carried = null; // identities of resolved nodes that vanished
         foreach (var sel in _selectedNodes)
         {
             // Still the same instance (a partial refresh / untouched branch) — keep it.
@@ -692,40 +755,59 @@
                 var byValue = flat.Where(n => EqualityComparer<T>.Default.Equals(n.Value, sel.Value)).ToList();
                 if (byValue.Count == 1) match = byValue[0];
             }
-            if (match is not null) rebuilt.Add(match);
-            // resolved → pending: the node is gone from the new tree (an empty/null reload,
-            // or a lazy branch collapsed back to unloaded). Don't drop it — carry its value
-            // forward so it re-binds via TryResolvePendingSelection when a tree containing it
-            // arrives. This is what stops an empty reload (or a same-SelectedValues-reference
-            // reload that unloads the branch) from wiping the selection permanently.
-            else (carried ??= []).Add(sel.Value!);
+            if (match is not null)
+            {
+                rebuilt.Add(match);
+                continue;
+            }
+            // resolved → pending: the node is gone from the new tree (an empty/null reload, or a
+            // lazy branch collapsed back to unloaded). Don't drop it — carry its structural
+            // IDENTITY: the value-verified index path it held in oldItems PLUS its value. On
+            // return, TryResolvePendingSelection re-binds the SAME node by that path (falling
+            // back to a unique value, dropping on ambiguity), so a duplicate/null Value no longer
+            // re-selects the first/every value match. A null path (target not locatable in
+            // oldItems) leaves only the value, resolved uniquely-or-dropped. This is what stops
+            // an empty reload (or a same-SelectedValues-reference reload that unloads the branch)
+            // from wiping the selection permanently.
+            var carryPath = new List<int>();
+            var hasPath = oldItems is not null && BuildIndexPath(oldItems, sel, carryPath);
+            (carried ??= []).Add(new PendingCarry(hasPath ? carryPath : [], sel.Value));
         }
         _selectedNodes = rebuilt;
         if (carried is { Count: > 0 })
-            MergePending(carried);
+            MergeCarries(carried);
     }
 
-    /// <summary>Adds values to the pending bucket without duplicating what's already
-    /// queued. Used when a resolved node vanishes on an Items refresh — its value is
-    /// carried forward so it re-binds when a matching node reappears.</summary>
-    private void MergePending(IEnumerable<T> values)
+    /// <summary>Queues carried node identities onto the pending-carry bucket. Used when a
+    /// resolved node vanishes on an Items refresh — its value-verified path plus value is carried
+    /// forward so the SAME node re-binds when it reappears (see ReanchorSelection).</summary>
+    private void MergeCarries(List<PendingCarry> carries)
     {
-        var merged = _pendingSelectValues is { Count: > 0 } ? [.._pendingSelectValues] : new List<T>();
-        var seen = new HashSet<T>(merged);
-        foreach (var v in values)
-            if (seen.Add(v)) merged.Add(v);
-        _pendingSelectValues = merged.Count > 0 ? merged : null;
+        if (carries.Count == 0) return;
+        _pendingCarries = _pendingCarries is { Count: > 0 }
+            ? [.._pendingCarries, ..carries]
+            : carries;
     }
 
-    /// <summary>Drops a single value from the pending bucket (multi-select supersede:
-    /// an explicit interactive selection of a value wins over its deferred seed).</summary>
+    /// <summary>Drops a single value from BOTH pending buckets (multi-select supersede: an
+    /// explicit interactive selection of a value wins over any deferred seed OR carried identity
+    /// for that same value, so neither resurrects to co-select a same-valued node).</summary>
     private void RemovePending(T? value)
     {
-        if (_pendingSelectValues is null) return;
-        _pendingSelectValues = _pendingSelectValues
-            .Where(v => !EqualityComparer<T>.Default.Equals(v, value))
-            .ToList();
-        if (_pendingSelectValues.Count == 0) _pendingSelectValues = null;
+        if (_pendingSelectValues is not null)
+        {
+            _pendingSelectValues = _pendingSelectValues
+                .Where(v => !EqualityComparer<T>.Default.Equals(v, value))
+                .ToList();
+            if (_pendingSelectValues.Count == 0) _pendingSelectValues = null;
+        }
+        if (_pendingCarries is not null)
+        {
+            _pendingCarries = _pendingCarries
+                .Where(c => !EqualityComparer<T>.Default.Equals(c.Value, value))
+                .ToList();
+            if (_pendingCarries.Count == 0) _pendingCarries = null;
+        }
     }
 
     /// <summary>Resolves the node occupying the same root→node child-index path that
@@ -739,8 +821,18 @@
         if (oldItems is null) return null;
         var path = new List<int>();
         if (!BuildIndexPath(oldItems, target, path)) return null;
+        return WalkPath(newItems, path, target.Value);
+    }
 
-        IReadOnlyList<TreeViewItem<T>> level = newItems;
+    /// <summary>Walks a root→node child-index <paramref name="path"/> in
+    /// <paramref name="roots"/> and returns the node at its end ONLY when that node still
+    /// carries <paramref name="expectedValue"/>. Returns null when the path is empty, runs off
+    /// the tree, or lands on a differently-valued node (a reorder/mutation) — so callers fall
+    /// back to a unique-value match rather than mis-anchor.</summary>
+    private static TreeViewItem<T>? WalkPath(List<TreeViewItem<T>> roots, IReadOnlyList<int> path, T? expectedValue)
+    {
+        if (path.Count == 0) return null;
+        IReadOnlyList<TreeViewItem<T>> level = roots;
         TreeViewItem<T>? node = null;
         foreach (var idx in path)
         {
@@ -749,7 +841,7 @@
             level = node.Children ?? (IReadOnlyList<TreeViewItem<T>>)[];
         }
         if (node is null) return null;
-        return EqualityComparer<T>.Default.Equals(node.Value, target.Value) ? node : null;
+        return EqualityComparer<T>.Default.Equals(node.Value, expectedValue) ? node : null;
     }
 
     /// <summary>DFS that records the child-index chain from the roots down to
