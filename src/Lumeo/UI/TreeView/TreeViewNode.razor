@@ -274,11 +274,20 @@
     private async Task HandleClick(MouseEventArgs e)
     {
         if (Item.IsDisabled) return;
-        await OnItemClick.InvokeAsync(Item);
-        await OnSelectionChanged.InvokeAsync(Item);
 
+        // Toggle expansion BEFORE yielding to the selection callbacks. Those callbacks can
+        // rebuild Items (a controlled/immutable tree); because every node is @key'd by its
+        // instance, that rebuild DISPOSES this component and re-creates it around a fresh node.
+        // A ToggleExpand() deferred until AFTER the awaits would then mutate the STALE (disposed)
+        // node instance, so the expansion would never appear on the live one. Toggling first
+        // mutates the node while it is still the rendered instance (and raises OnExpandChanged),
+        // so the parent's rebuild observes the new expansion state. ToggleExpand may itself await
+        // LoadChildren; selection semantics are unchanged — the same node still ends up selected.
         if (ExpandOnRowClick && Expandable && ShowExpandChevron && !IsSelectionModifier(e))
             await ToggleExpand();
+
+        await OnItemClick.InvokeAsync(Item);
+        await OnSelectionChanged.InvokeAsync(Item);
     }
 
     // A modifier held during the click is a selection gesture (extend/toggle a multi-selection),

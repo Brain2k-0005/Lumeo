@@ -186,6 +186,74 @@ public class TreeViewReanchorAndLazySelectionTests : IAsyncLifetime
         Assert.Contains("Apple", selected[0].Children[0].TextContent);
     }
 
+    // ---- Round-4: an ambiguous carry (path fails + value duplicated) DROPS immediately ----
+    // so it can never re-bind the WRONG node when a later refresh leaves a single value match.
+
+    [Fact]
+    public async Task Ambiguous_carry_whose_path_fails_is_dropped_and_never_rebinds_a_later_single_match()
+    {
+        // Origin: two "same"-valued siblings under an expanded root; select the SECOND (path [0,1]).
+        List<L.TreeView<string>.TreeViewItem<string>> Origin() =>
+        [
+            new()
+            {
+                Text = "Root", Value = "root", IsExpanded = true,
+                Children =
+                [
+                    new() { Text = "First",  Value = "same" },
+                    new() { Text = "Second", Value = "same" }
+                ]
+            }
+        ];
+
+        // Refresh 1: the selected node vanishes; index path [0,1] now lands on a DIFFERENT value
+        // (so the carried path can't verify it) while "same" appears TWICE elsewhere — an
+        // ambiguous carry. Per the reanchor rule it must be DROPPED immediately, not left queued.
+        List<L.TreeView<string>.TreeViewItem<string>> Shuffled() =>
+        [
+            new()
+            {
+                Text = "Root", Value = "root", IsExpanded = true,
+                Children =
+                [
+                    new() { Text = "X", Value = "x" },
+                    new() { Text = "Y", Value = "x" }
+                ]
+            },
+            new() { Text = "Dup-A", Value = "same" },
+            new() { Text = "Dup-B", Value = "same" }
+        ];
+
+        // Refresh 2: path [0,1] still fails, but now only ONE "same" remains. A carry left queued
+        // by refresh 1 would re-bind it here (mis-selecting Dup-A); a dropped carry selects nothing.
+        List<L.TreeView<string>.TreeViewItem<string>> Single() =>
+        [
+            new()
+            {
+                Text = "Root", Value = "root", IsExpanded = true,
+                Children =
+                [
+                    new() { Text = "X", Value = "x" },
+                    new() { Text = "Y", Value = "x" }
+                ]
+            },
+            new() { Text = "Dup-A", Value = "same" },
+            new() { Text = "Solo",  Value = "solo" }
+        ];
+
+        var cut = _ctx.Render<L.TreeView<string>>(p => p.Add(c => c.Items, Origin()));
+        await cut.InvokeAsync(() => Row(cut, "Second").Click());
+        Assert.Equal("true", TreeItem(cut, "Second").GetAttribute("aria-selected"));
+
+        // The ambiguous carry is created AND dropped in this pass — nothing stays selected.
+        cut.Render(p => p.Add(c => c.Items, Shuffled()));
+        Assert.Empty(cut.FindAll("[role='treeitem'][aria-selected='true']"));
+
+        // The dropped carry must NOT resurrect onto the now-unique "same" node.
+        cut.Render(p => p.Add(c => c.Items, Single()));
+        Assert.Empty(cut.FindAll("[role='treeitem'][aria-selected='true']"));
+    }
+
     // ---- Finding 7: lazy-loaded child named by SelectedValues ----
 
     private static List<L.TreeView<string>.TreeViewItem<string>> LazyRoot() =>

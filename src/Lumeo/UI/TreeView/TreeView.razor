@@ -109,13 +109,16 @@
     //                             new tree (empty/null reload, or a lazy branch collapsed
     //                             back to unloaded): its structural IDENTITY — the same
     //                             value-verified index PATH the reanchor uses, carried
-    //                             ALONGSIDE its value in _pendingCarries — is queued (never
-    //                             dropped) so the SAME node re-binds when it reappears, even
-    //                             when its Value is a duplicate or null. On return the entry
-    //                             PREFERS the path, falls back to a UNIQUE value, and DROPS on
-    //                             ambiguity — it never re-selects a same-valued sibling (nor
-    //                             every match). (This, plus the always-run TryResolvePending,
-    //                             is why the lifecycle survives a same-reference reload.)
+    //                             ALONGSIDE its value in _pendingCarries — is queued so the
+    //                             SAME node re-binds when it reappears, even when its Value is a
+    //                             duplicate or null. On return the entry PREFERS the path and
+    //                             falls back to a UNIQUE value; a still-absent value stays queued
+    //                             (a lazy branch not loaded yet), but once the path fails AND the
+    //                             value is AMBIGUOUS the carry is DROPPED immediately — it never
+    //                             re-selects a same-valued sibling, nor lingers to mis-bind the
+    //                             wrong node on a later single-match refresh. (This, plus the
+    //                             always-run TryResolvePending, is why the lifecycle survives a
+    //                             same-reference reload.)
     //   pending/resolved → superseded   HandleSelectionChanged (interactive): single-select
     //                             — the click owns the whole selection, so ALL pending is
     //                             cleared (a stale seed can't resurrect + co-select once its
@@ -679,8 +682,12 @@
 
     /// <summary>Re-binds carried node identities (resolved nodes that vanished on an Items
     /// refresh) against the current full <see cref="Items"/> tree: PREFER the value-verified
-    /// structural path, fall back to a UNIQUE value, DROP on ambiguity (never re-select a
-    /// same-valued sibling). Entries that still can't resolve stay queued for a later tree.</summary>
+    /// structural path, fall back to a UNIQUE value. An entry whose value is NOT in the tree yet
+    /// (a lazy branch not loaded) stays queued for a later tree; an entry whose path fails AND
+    /// whose value is AMBIGUOUS (a duplicate/null with more than one match) is DROPPED
+    /// immediately — its identity is unrecoverable, and keeping it queued would let a later
+    /// refresh that leaves a single match re-bind the WRONG same-valued node (the reanchor rule:
+    /// never re-select a same-valued sibling).</summary>
     private void ResolveCarriedPending()
     {
         if (_pendingCarries is not { Count: > 0 }) return;
@@ -691,22 +698,33 @@
         List<PendingCarry>? remaining = null;
         foreach (var carry in _pendingCarries)
         {
-            var node = ResolveCarryNode(carry, tree, flat);
-            if (node is not null) _selectedNodes.Add(node);
-            else (remaining ??= []).Add(carry);
+            var (node, drop) = ResolveCarryNode(carry, tree, flat);
+            if (node is not null)
+                _selectedNodes.Add(node);
+            else if (!drop)
+                // The value has no node yet (a lazy branch): keep the carry for a later tree.
+                (remaining ??= []).Add(carry);
+            // drop == true → the path failed AND the value is ambiguous: the identity is
+            // unrecoverable, so drop the carry NOW rather than risk binding the wrong
+            // same-valued node on a later single-match refresh (matches the reanchor rule).
         }
         _pendingCarries = remaining;
     }
 
-    /// <summary>Resolves one carried identity: the node at its value-verified path, else the
-    /// node carrying its value when that value is UNIQUE in the tree, else null (drop on
-    /// ambiguity — a duplicate/null value must not re-select the wrong node or every match).</summary>
-    private static TreeViewItem<T>? ResolveCarryNode(PendingCarry carry, List<TreeViewItem<T>> tree, List<TreeViewItem<T>> flat)
+    /// <summary>Resolves one carried identity. Returns the node at its value-verified path, or
+    /// the node carrying its value when that value is UNIQUE in the tree. Otherwise <c>Node</c>
+    /// is null: with <c>Drop</c> = false when the value has NO match yet (a lazy branch — keep it
+    /// pending), and <c>Drop</c> = true when the path failed AND the value is AMBIGUOUS (more than
+    /// one match) — the identity can't be recovered, so the caller drops it rather than re-select
+    /// the wrong same-valued node (now or on a later single-match refresh).</summary>
+    private static (TreeViewItem<T>? Node, bool Drop) ResolveCarryNode(PendingCarry carry, List<TreeViewItem<T>> tree, List<TreeViewItem<T>> flat)
     {
         var byPath = WalkPath(tree, carry.Path, carry.Value);
-        if (byPath is not null) return byPath;
+        if (byPath is not null) return (byPath, false);
         var byValue = flat.Where(n => EqualityComparer<T>.Default.Equals(n.Value, carry.Value)).ToList();
-        return byValue.Count == 1 ? byValue[0] : null;
+        if (byValue.Count == 1) return (byValue[0], false);
+        // 0 matches → not materialized yet (lazy): keep pending. >1 → ambiguous: drop.
+        return (null, byValue.Count > 1);
     }
 
     private static void CollectMatching(List<TreeViewItem<T>> items, HashSet<T> wanted, HashSet<TreeViewItem<T>> into)

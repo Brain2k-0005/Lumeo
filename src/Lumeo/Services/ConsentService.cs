@@ -186,6 +186,20 @@ public sealed class ConsentService
         // under that key even if a category were literally named "categories".
         if (root["categories"] is JsonObject categories)
         {
+            // Fail CLOSED on a malformed category map, exactly like the legacy bare-map rule in
+            // the else branch below. A proof-of-consent record whose "categories" holds a
+            // NON-boolean value ({"categories":{"analytics":"true"}}) is corrupt: ReadBoolMap
+            // would silently drop the bad entry, and a matching "version" would then STILL count
+            // the record as decided — granting/denying consent off garbage. Reject it instead
+            // (undecided, no attributable version, rejection latch) so a later PolicyVersion
+            // change can't resurrect it. _hasStoredRecord stays true, so EnsureLoadedAsync still
+            // clears the pre-boot FOUC guard and the banner reappears.
+            if (!IsAllBoolean(categories))
+            {
+                RejectStoredRecord();
+                return;
+            }
+
             _state = ReadBoolMap(categories);
             _storedVersion = ReadString(root["version"]);
             _decidedAtUtc = ParseTimestamp(root["timestamp"]);
@@ -235,12 +249,22 @@ public sealed class ConsentService
             // garbage. Re-prompt instead: not decided, no attributable version. _hasStoredRecord
             // stays true so EnsureLoadedAsync clears the pre-boot FOUC guard and the banner
             // reappears; _decisionRejected keeps a later version change from resurrecting it.
-            _state = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
-            _storedVersion = null;
-            _decidedAtUtc = null;
-            _decided = false;
-            _decisionRejected = true;
+            RejectStoredRecord();
         }
+    }
+
+    // Fail-closed reset shared by every malformed-record branch in LoadFromJson: a corrupt stored
+    // entry is NOT a decision (undecided, no attributable version) and latches _decisionRejected
+    // so a later PolicyVersion change can't resurrect its null version as a "match"
+    // (ReevaluateDecision skips rejected records). _hasStoredRecord is intentionally left as-is —
+    // EnsureLoadedAsync still clears the pre-boot FOUC guard so the banner re-appears.
+    private void RejectStoredRecord()
+    {
+        _state = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
+        _storedVersion = null;
+        _decidedAtUtc = null;
+        _decided = false;
+        _decisionRejected = true;
     }
 
     // A legacy bare map is a valid decision only if every property is a JSON boolean.

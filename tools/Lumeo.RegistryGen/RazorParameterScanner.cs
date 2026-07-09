@@ -215,18 +215,23 @@ public static class RazorParameterScanner
                 }
             }
 
-            // Enums
+            // Enums — only PUBLIC, consumer-facing ones. Private/internal helper enums (e.g. a
+            // component's internal StepStatus/CopyTarget) are implementation detail, not API.
             foreach (var en in classDecl.DescendantNodes().OfType<EnumDeclarationSyntax>())
             {
+                if (!IsPublicType(en.Modifiers)) continue;
                 if (!seenEnums.Add(en.Identifier.Text)) continue;
                 var values = en.Members.Select(m => m.Identifier.Text).ToArray();
                 var desc = ExtractXmlSummary(en.GetLeadingTrivia());
                 enums.Add(new EnumInfo(en.Identifier.Text, values, desc));
             }
 
-            // Records (positional or block-bodied)
+            // Records (positional or block-bodied) — only PUBLIC, consumer-facing ones. Private/
+            // internal nested records (e.g. TreeView's PendingCarry lazy-load carry) are internal
+            // state and must never leak into the public API surface.
             foreach (var rec in classDecl.DescendantNodes().OfType<RecordDeclarationSyntax>())
             {
+                if (!IsPublicType(rec.Modifiers)) continue;
                 if (!seenRecords.Add(rec.Identifier.Text)) continue;
                 // Build a one-line signature: "DialogContext(string TitleId, string DescriptionId, bool IsOpen)"
                 var sig = rec.Identifier.Text;
@@ -271,6 +276,12 @@ public static class RazorParameterScanner
             Gotchas: gotchas,
             ParseFailed: true,
             ParseError: error);
+
+    // A nested type belongs to the public component API only when explicitly declared public.
+    // C# defaults a modifier-less nested type to PRIVATE, so anything without the public keyword
+    // (private / internal / protected / default) is an implementation detail we must not emit.
+    private static bool IsPublicType(SyntaxTokenList modifiers)
+        => modifiers.Any(SyntaxKind.PublicKeyword);
 
     private static bool IsAttr(AttributeSyntax a, string targetName)
     {
