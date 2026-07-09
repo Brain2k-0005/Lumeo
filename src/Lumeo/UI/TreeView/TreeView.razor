@@ -138,6 +138,11 @@
     //                  interleaved rebuild (finding 2); a lazy completion re-asserting is not needed.
     //       CHILDREN / CHILDRENLOADED : consumer AUTHORITATIVE children  >  consumer RESET  >  store
     //                  (in-flight / materialized lazy children)  >  load completion.
+    //                  LOADED-NESS BASIS (incomingLoaded): ChildrenLoaded==true OR a NON-NULL Children
+    //                  list — an empty NON-null list is authoritative ('no children, and I know it'),
+    //                  NOT unloaded (round-17 #3). ONLY Children==null WITH ChildrenLoaded==false is the
+    //                  unloaded/reset signal. A plain non-lazy LEAF defaults to Children==null, so it
+    //                  reads unloaded here and is never mistaken for an authoritative-empty branch.
     //                  (A) Consumer supplies children (incomingLoaded, AND either the loaded-flag changed
     //                      OR a NEW non-null list reference — INCLUDING an empty list, a genuine 'this
     //                      branch is now empty' replacement, round-16 f1): adopt them, LoadToken++ so an
@@ -146,19 +151,26 @@
     //                      diffed against a true basis and honored, not misread as domain-pure (round-16
     //                      f3). loaded=true with a NULL Children carries no authoritative list (not (A)).
     //                  (B) Consumer RESET (incomingLoaded regressed true→false vs the basis while the
-    //                      store still holds children): clear the tree children, LoadToken++ (discard any
-    //                      in-flight load), and COLLAPSE to the pristine unloaded lazy state — an
-    //                      expanded-yet-unloaded node has no defined content (no auto-load on render), so
-    //                      the reset supersedes tree-owned expansion for that node (finding 1).
+    //                      store still holds children — i.e. Children==null AND ChildrenLoaded==false):
+    //                      clear the tree children, LoadToken++ (discard any in-flight load), and COLLAPSE
+    //                      to the pristine unloaded lazy state — an expanded-yet-unloaded node has no
+    //                      defined content (no auto-load on render), so the reset supersedes tree-owned
+    //                      expansion for that node (finding 1).
     //                  (C) Otherwise the tree keeps what it owns: a lazy branch (loaded OR in-flight)
     //                      survives every unrelated / domain-pure rebuild — the normal lazy flow.
     //                  A load completion is the LOWEST precedence: it applies only if its LoadToken still
     //                  matches (neither dropped nor superseded by (A)/(B)). A superseded/dropped loader
     //                  that later FAILS is discarded as silently as a superseded SUCCESS — it neither
     //                  rolls back nor surfaces an error on a branch it no longer owns (round-16 f2).
-    //                  Expand-all likewise adopts only a matching-token load, but on a supersession still
-    //                  DESCENDS into the consumer's now-authoritative children to keep expanding them
-    //                  (round-16 f4).
+    //                  Expand-all obeys the SAME contract: it adopts only a matching-token load; on a
+    //                  supersession it DESCENDS into the consumer's now-authoritative children to keep
+    //                  expanding them (round-16 f4); a superseded/dropped expand-all load that FAILS is
+    //                  swallowed identically (round-17 #2), while a LIVE expand-all load failure rolls the
+    //                  entry back to collapsed and rethrows so an awaited ExpandAllNodesAsync surfaces it.
+    //                  When expand-all meets a branch ALREADY loading (a prior row/chevron expand), it
+    //                  does NOT skip it: it AWAITS that in-flight load (via the entry's LoadSettled
+    //                  signal, looping across supersessions) and then descends once the children
+    //                  materialize, so the whole subtree is realized (round-17 #1).
     //
     // (4) OPERATION SEMANTICS. A row/chevron/keyboard toggle flips the entry SYNCHRONOUSLY (before any
     //     await) and returns a DEFERRED tail; the row click runs the tail only AFTER its selection
@@ -170,7 +182,11 @@
     //     completion ALWAYS materializes — binds a pending seeded SelectedValues and recomputes
     //     checkbox tri-state — regardless of the branch ending expanded or collapsed. A loader failure
     //     rolls the entry back to collapsed (retryable, ChildrenLoaded stays false). An entry DROPPED
-    //     by the identity pass mid-load discards its result (re-fetchable beats a mis-attach).
+    //     by the identity pass mid-load discards its result (re-fetchable beats a mis-attach). Because
+    //     the row-click tail is DEFERRED past its selection callbacks, the entry can be DROPPED (the
+    //     callback removed the clicked node) or SUPERSEDED (a token bump) BEFORE the tail even starts:
+    //     the tail then skips the LoadChildren call ENTIRELY rather than fetch-then-discard — no wasted
+    //     work, no delay to a branch that no longer exists (round-17 #4).
     //
     //     EVENT CONTRACT: TreeView raises NO expand event. Expansion is observable only through the
     //     mirrored item.IsExpanded; the materialization side effects above are NOT gated on any event,
@@ -200,6 +216,12 @@
         // Bumped every time a lazy load STARTS; a completion carrying a stale token (a consumer
         // supersession — authoritative children or a branch reset — bumped it) discards its result.
         public long LoadToken;
+        // Completed when the CURRENT in-flight lazy load settles (success, drop, supersession, or
+        // failure). A concurrent ExpandAllNodesAsync that meets a branch ALREADY loading (a prior
+        // row/chevron expand) awaits THIS instead of skipping the subtree, then descends once the
+        // children materialize (round-17 #1). Non-null iff Loading is true; owned by the load that
+        // set it (a supersession that starts a fresh load installs a new signal).
+        public TaskCompletionSource? LoadSettled;
         // A user collapse of a search-force-expanded node: the filter must not re-open it on a
         // later same-reference rebuild (RebuildDisplay recomputes _autoExpanded from scratch).
         public bool SearchCollapse;
@@ -508,7 +530,14 @@
         // A FRESH instance (first bind, or a path/value match after a controlled rebuild) carries the
         // consumer's OWN values — diff it against the last consumer SEED, never against our mirror.
         bool sameInstance = ReferenceEquals(node, state.Current);
-        bool incomingLoaded = node.ChildrenLoaded || node.Children is { Count: > 0 };
+        // LOADED-NESS basis: ChildrenLoaded OR a NON-NULL Children list. A non-null list (EMPTY or
+        // not) is an authoritative children set the consumer OWNS — even an empty one means 'this
+        // branch has no children, and I know it' (round-17 #3), NOT an unloaded lazy node. Only a
+        // NULL Children with ChildrenLoaded=false is the unloaded/reset signal (see (B) below and the
+        // precedence table). A plain non-lazy LEAF carries Children=null by default, so it stays
+        // loaded=false here and is untouched — treating empty-vs-null the same would be wrong, but
+        // treating a NON-null empty list as authoritative does not disturb the null-children leaf.
+        bool incomingLoaded = node.ChildrenLoaded || node.Children is not null;
 
         if (isNew)
         {
@@ -618,10 +647,12 @@
             Current = item,
             Value = item.Value,
             Expanded = item.IsExpanded,
-            ChildrenLoaded = item.ChildrenLoaded || item.Children is { Count: > 0 },
+            // A non-null Children list (even empty) is authoritative-loaded; only null+loaded=false is
+            // an unloaded lazy node (round-17 #3 — kept consistent with BindState/MirrorState).
+            ChildrenLoaded = item.ChildrenLoaded || item.Children is not null,
             Children = item.Children,
             SeededExpanded = item.IsExpanded,
-            SeededChildrenLoaded = item.ChildrenLoaded || item.Children is { Count: > 0 },
+            SeededChildrenLoaded = item.ChildrenLoaded || item.Children is not null,
         };
         _states.Add(s);
         _stateByItem[item] = s;
@@ -691,6 +722,7 @@
             }
             state.Loading = true;
             var token = ++state.LoadToken;   // this load's generation; a consumer supersession bumps it
+            state.LoadSettled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
             MirrorState(state);
             _flatVisible = null;
             StateHasChanged();
@@ -748,6 +780,21 @@
     /// mid-load discards the result (the node vanished / its identity is unprovable).</summary>
     private async Task LoadChildrenAsync(NodeState state, TreeViewItem<T> loadArg, long token)
     {
+        // The signal BeginToggle installed for THIS load; settled on every exit so a concurrent
+        // expand-all awaiting an already-in-flight branch resumes (round-17 #1).
+        var settled = state.LoadSettled;
+        // ROW-CLICK DEFERRAL GUARD (round-17 #4): the row click runs this tail only AFTER its
+        // selection callbacks (BeginToggle already flipped expansion + started the spinner). Those
+        // callbacks can DROP the clicked node — or a consumer supersession can bump the token —
+        // BEFORE the tail starts. The post-await guard below would discard the result anyway, so skip
+        // the LoadChildren call ENTIRELY: no wasted fetch, no delayed click handler for a branch that
+        // no longer exists. Don't touch Loading (a superseding op owns it now; a dropped entry is
+        // dead) — just settle the signal, mirroring the post-await early return's contract.
+        if (state.Dropped || token != state.LoadToken)
+        {
+            FinishLoadSignal(state, settled);
+            return;
+        }
         try
         {
             var loaded = await LoadChildren!(state.Current ?? loadArg);
@@ -799,6 +846,21 @@
             StateHasChanged();
             throw;
         }
+        finally
+        {
+            FinishLoadSignal(state, settled);
+        }
+    }
+
+    /// <summary>Completes the captured in-flight load <paramref name="settled"/> signal (unblocking a
+    /// concurrent expand-all that is awaiting an already-loading branch — round-17 #1) and clears the
+    /// entry's field only when it STILL points at this signal (a supersession that started a fresh
+    /// load owns the new one, so we must neither complete nor clear it).</summary>
+    private static void FinishLoadSignal(NodeState state, TaskCompletionSource? settled)
+    {
+        if (settled is null) return;
+        if (ReferenceEquals(state.LoadSettled, settled)) state.LoadSettled = null;
+        settled.TrySetResult();
     }
 
     protected override async Task OnParametersSetAsync()
@@ -866,18 +928,42 @@
             state.Expanded = true;
             state.SearchCollapse = false;
 
-            if (LoadChildren is not null && !state.ChildrenLoaded && !item.IsLeaf
-                && item.Children is not { Count: > 0 } && state.Children is not { Count: > 0 }
-                && !state.Loading)
+            bool needsLoad = LoadChildren is not null && !state.ChildrenLoaded && !item.IsLeaf
+                && item.Children is not { Count: > 0 } && state.Children is not { Count: > 0 };
+
+            if (needsLoad && state.Loading)
+            {
+                // ALREADY LOADING (round-17 #1): a prior row/chevron expand started this branch's load.
+                // Do NOT skip it — that would leave the freshly materialized subtree collapsed after
+                // this pass returns. AWAIT the in-flight load, then fall through to DESCEND once its
+                // children exist. Loop because a supersession can install a fresh load; bail if the
+                // branch dropped or this pass was superseded (collapse-all / a newer expand-all). The
+                // other loader owns its own success/failure/rollback — a fault it already swallowed
+                // (superseded) or surfaced (its own chevron/row path) is NOT re-raised here.
+                while (state.Loading && !state.Dropped && gen == _expandGeneration)
+                {
+                    var inFlight = state.LoadSettled;
+                    if (inFlight is null) break;
+                    await inFlight.Task;
+                }
+                if (gen != _expandGeneration) return;
+                if (state.Dropped) continue; // node vanished mid-wait — nothing to descend into
+                MirrorState(state);
+                _flatVisible = null;
+                StateHasChanged();
+            }
+            else if (needsLoad)
             {
                 state.Loading = true;
                 var token = ++state.LoadToken;   // this load's generation (consumer supersession bumps it)
+                var settled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+                state.LoadSettled = settled;     // let a concurrent expand-all await this branch (round-17 #1)
                 MirrorState(state);
                 _flatVisible = null;
                 StateHasChanged();
                 try
                 {
-                    var loaded = await LoadChildren(state.Current ?? item);
+                    var loaded = await LoadChildren!(state.Current ?? item);
                     if (gen != _expandGeneration) return;
                     // The node vanished (unprovable identity): discard the result AND skip its subtree.
                     if (state.Dropped) continue;
@@ -904,6 +990,26 @@
                         }
                     }
                 }
+                catch
+                {
+                    // SUPERSEDED/DROPPED FAILURE (round-17 #2): the consumer took the branch over
+                    // (authoritative children / reset bumped the token) or the node vanished. Discard
+                    // this dead loader's REJECTION as silently as the token check discards a superseded
+                    // SUCCESS — surfacing it would fault the caller/circuit for a branch it no longer
+                    // owns (same contract as round-16 f2 / the per-node path). Swallow and fall through
+                    // to DESCEND into whatever the consumer now owns (round-16 f4). A LIVE failure rolls
+                    // the entry back to collapsed (retryable) and rethrows so an awaited
+                    // ExpandAllNodesAsync surfaces it.
+                    if (!state.Dropped && token == state.LoadToken)
+                    {
+                        state.Loading = false;
+                        state.Expanded = false;
+                        MirrorState(state);
+                        _flatVisible = null;
+                        StateHasChanged();
+                        throw;
+                    }
+                }
                 finally
                 {
                     if (!state.Dropped && token == state.LoadToken)
@@ -911,6 +1017,7 @@
                         state.Loading = false;
                         MirrorState(state);
                     }
+                    FinishLoadSignal(state, settled);
                 }
             }
             else
