@@ -665,7 +665,7 @@ export function dispatchAction(elementId, actionJson) {
     chart.dispatchAction(action);
 }
 
-export async function loadExtension(url, overrideKey) {
+export async function loadExtension(url, overrideKey, echartsSource) {
     // A host can redirect a plugin to a self-hosted copy (GDPR: no pre-consent CDN
     // hit) by setting window.lumeoCdn[overrideKey] — same mechanism loadECharts()
     // uses for `echarts`. Falls back to the caller's default (CDN) URL otherwise.
@@ -674,7 +674,13 @@ export async function loadExtension(url, overrideKey) {
     const resolved = override || url;
     if (!resolved) return;
     if (document.querySelector(`script[src="${resolved}"]`)) return;
-    await loadECharts(); // ensure echarts is loaded first
+    // Ensure ECharts core is loaded first — and honour the calling chart's own
+    // `EChartsSource`. A plugin chart (word cloud / liquid fill) loads its extension
+    // BEFORE its inner <Chart> mounts, so THIS is the first core load; without
+    // forwarding the source it would fall back to jsDelivr even when the consumer
+    // set a per-chart EChartsSource, defeating self-hosting. The extension script
+    // itself still resolves via overrideKey/global keys (documented semantics).
+    await loadECharts(echartsSource);
     return new Promise((resolve, reject) => {
         const script = document.createElement('script');
         script.src = resolved;

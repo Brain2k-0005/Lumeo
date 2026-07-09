@@ -10,8 +10,16 @@ namespace Lumeo.Tests.Components.TreeView;
 /// PR #351 TreeView selection hardening:
 ///
 /// Finding 6 — a same-content <c>Items</c> refresh re-anchors the selection by STRUCTURAL
-/// PATH, not first-match-by-value, so a selected node whose Value is duplicated (or null)
-/// stays on the same node instead of jumping to the first same-valued sibling.
+/// PATH, not first-match-by-value, so a selected node whose Value is UNIQUE among its
+/// siblings stays on the same node instead of jumping to the first same-valued sibling.
+///
+/// Round-6 tightening — a structural path only PROVES identity when the value at the path is
+/// unique among its siblings. When two siblings SHARE a (duplicate/null) Value the position is
+/// NOT a reliable anchor (a reorder is indistinguishable from a same-content reload), so per the
+/// ambiguity-DROP convention the selection DROPS rather than risk re-selecting the wrong
+/// same-valued sibling. The cases below that used to assert "survives on the same node" for a
+/// duplicate/null Value now assert the drop; sibling-UNIQUE values (even duplicated elsewhere in
+/// the tree) still re-anchor by path, and a unique value that moved follows via the value fallback.
 ///
 /// Finding 7 — a controlled/seed <c>SelectedValues</c> that names a child which only
 /// materializes later via <c>LoadChildren</c> is resolved when that branch loads, so the
@@ -34,7 +42,7 @@ public class TreeViewReanchorAndLazySelectionTests : IAsyncLifetime
 
     private static List<L.TreeView<string>.TreeViewItem<string>> Empty() => [];
 
-    // ---- Finding 6: duplicate / null value re-anchor by path ----
+    // ---- Finding 6 + round-6: sibling-unique value re-anchors by path; duplicate/null DROPS ----
 
     // Two sibling leaves that SHARE a Value ("same") but have distinct text, under an
     // expanded root. Fresh instances each call = the async-reload shape reanchor handles.
@@ -52,7 +60,7 @@ public class TreeViewReanchorAndLazySelectionTests : IAsyncLifetime
     ];
 
     [Fact]
-    public async Task Selection_of_a_duplicate_valued_node_survives_refresh_on_the_same_node()
+    public async Task Selection_of_a_duplicate_valued_node_drops_on_refresh_identity_is_unprovable()
     {
         var cut = _ctx.Render<L.TreeView<string>>(p => p.Add(c => c.Items, DupTree()));
 
@@ -61,13 +69,48 @@ public class TreeViewReanchorAndLazySelectionTests : IAsyncLifetime
         Assert.Equal("true", TreeItem(cut, "Second").GetAttribute("aria-selected"));
         Assert.Equal("false", TreeItem(cut, "First").GetAttribute("aria-selected"));
 
-        // Same-content refresh with brand-new instances. A first-match-by-value reanchor
-        // would jump the selection to "First"; path-based reanchor keeps it on "Second".
+        // Same-content refresh with brand-new instances. The two siblings share the Value "same",
+        // so the structural position can't prove which one the user picked (a silent reorder is
+        // indistinguishable from this reload). Per the ambiguity-DROP convention the selection
+        // drops rather than guess — it must NOT resurrect on "First".
         cut.Render(p => p.Add(c => c.Items, DupTree()));
+
+        Assert.Empty(cut.FindAll("[role='treeitem'][aria-selected='true']"));
+    }
+
+    // Root with ONE child valued "same", plus a SIBLING branch that ALSO holds a "same"-valued
+    // node — so "same" is duplicated across the TREE but UNIQUE among each node's own siblings.
+    private static List<L.TreeView<string>.TreeViewItem<string>> SiblingUniqueTree() =>
+    [
+        new()
+        {
+            Text = "Branch A", Value = "a", IsExpanded = true,
+            Children = [ new() { Text = "Target", Value = "same" } ]
+        },
+        new()
+        {
+            Text = "Branch B", Value = "b", IsExpanded = true,
+            Children = [ new() { Text = "Other", Value = "same" } ]
+        }
+    ];
+
+    [Fact]
+    public async Task Sibling_unique_value_still_reanchors_by_path_even_when_duplicated_elsewhere()
+    {
+        // "same" is unique among Target's siblings (Branch A has one child) though it also appears
+        // under Branch B. The path stays a provable anchor, so a same-content reload keeps Target
+        // selected — the drop rule must NOT over-reach to values that merely collide tree-wide
+        // (a pure value fallback WOULD fail here: two "same" nodes exist).
+        var cut = _ctx.Render<L.TreeView<string>>(p => p.Add(c => c.Items, SiblingUniqueTree()));
+
+        await cut.InvokeAsync(() => Row(cut, "Target").Click());
+        Assert.Equal("true", TreeItem(cut, "Target").GetAttribute("aria-selected"));
+
+        cut.Render(p => p.Add(c => c.Items, SiblingUniqueTree()));
 
         var selected = cut.FindAll("[role='treeitem'][aria-selected='true']");
         Assert.Single(selected);
-        Assert.Contains("Second", selected[0].Children[0].TextContent);
+        Assert.Contains("Target", selected[0].Children[0].TextContent);
     }
 
     // A selected node whose Value is null, with a null-valued sibling too.
@@ -85,26 +128,27 @@ public class TreeViewReanchorAndLazySelectionTests : IAsyncLifetime
     ];
 
     [Fact]
-    public async Task Selection_of_a_null_valued_node_survives_refresh_on_the_same_node()
+    public async Task Selection_of_a_null_valued_node_drops_on_refresh_identity_is_unprovable()
     {
         var cut = _ctx.Render<L.TreeView<string>>(p => p.Add(c => c.Items, NullValueTree()));
 
         await cut.InvokeAsync(() => Row(cut, "Folder B").Click());
         Assert.Equal("true", TreeItem(cut, "Folder B").GetAttribute("aria-selected"));
 
+        // Both folders carry a null Value → the position can't prove which one was selected.
+        // Ambiguity DROPS instead of re-selecting a null-valued sibling by index.
         cut.Render(p => p.Add(c => c.Items, NullValueTree()));
 
-        var selected = cut.FindAll("[role='treeitem'][aria-selected='true']");
-        Assert.Single(selected);
-        Assert.Contains("Folder B", selected[0].Children[0].TextContent);
+        Assert.Empty(cut.FindAll("[role='treeitem'][aria-selected='true']"));
     }
 
-    // ---- Round-3: a VANISHED duplicate/null-valued node carries its structural identity ----
-    // (empty reload → the node's node re-materializes) so it re-binds the SAME node, not the
-    // first value match. Carrying only the value would light up every same-valued sibling.
+    // ---- Round-6: a VANISHED duplicate/null-valued node can't be re-identified when it returns ----
+    // Both the carried path AND the value are ambiguous among same-valued siblings, so the carry
+    // DROPS rather than re-bind an unprovable identity (a same-valued sibling by index). Only a
+    // sibling-UNIQUE value survives a vanish→return (covered by the reorder-follows test below).
 
     [Fact]
-    public async Task Duplicate_valued_node_that_vanishes_then_returns_rebinds_the_same_node_not_the_first_match()
+    public async Task Duplicate_valued_node_that_vanishes_then_returns_drops_identity_is_unprovable()
     {
         var cut = _ctx.Render<L.TreeView<string>>(p => p.Add(c => c.Items, DupTree()));
 
@@ -113,37 +157,79 @@ public class TreeViewReanchorAndLazySelectionTests : IAsyncLifetime
         Assert.Equal("true", TreeItem(cut, "Second").GetAttribute("aria-selected"));
 
         // The tree momentarily reloads EMPTY — the selected node vanishes into the pending
-        // carry bucket (value "same" is a duplicate, so only its structural path can identify it).
+        // carry bucket (value "same" is a duplicate, so only a structural path could identify it).
         cut.Render(p => p.Add(c => c.Items, Empty()));
         Assert.Empty(cut.FindAll("[role='treeitem']"));
 
-        // The real duplicate-valued tree returns with fresh instances. Carrying only the value
-        // would re-select BOTH "same" nodes; the carried path re-binds exactly "Second".
+        // The duplicate-valued tree returns with fresh instances. Neither the carried path (two
+        // siblings share "same") nor the value (two matches) can prove which node was "Second",
+        // so the carry drops — nothing re-selects rather than lighting up a same-valued sibling.
         cut.Render(p => p.Add(c => c.Items, DupTree()));
 
-        var selected = cut.FindAll("[role='treeitem'][aria-selected='true']");
-        Assert.Single(selected);
-        Assert.Contains("Second", selected[0].Children[0].TextContent);
+        Assert.Empty(cut.FindAll("[role='treeitem'][aria-selected='true']"));
     }
 
     [Fact]
-    public async Task Null_valued_node_that_vanishes_then_returns_rebinds_the_same_node_not_the_first_match()
+    public async Task Null_valued_node_that_vanishes_then_returns_drops_identity_is_unprovable()
     {
         var cut = _ctx.Render<L.TreeView<string>>(p => p.Add(c => c.Items, NullValueTree()));
 
         await cut.InvokeAsync(() => Row(cut, "Folder B").Click());
         Assert.Equal("true", TreeItem(cut, "Folder B").GetAttribute("aria-selected"));
 
-        // Empty reload: the null-valued selection can only be re-identified by its path.
+        // Empty reload: the null-valued selection has no provable identity (both folders are null).
         cut.Render(p => p.Add(c => c.Items, Empty()));
         Assert.Empty(cut.FindAll("[role='treeitem']"));
 
         cut.Render(p => p.Add(c => c.Items, NullValueTree()));
 
-        // A value-based re-bind would match BOTH null-valued folders; the path picks Folder B.
-        var selected = cut.FindAll("[role='treeitem'][aria-selected='true']");
-        Assert.Single(selected);
-        Assert.Contains("Folder B", selected[0].Children[0].TextContent);
+        // Both the path and the value are ambiguous among the two null folders → the carry drops.
+        Assert.Empty(cut.FindAll("[role='treeitem'][aria-selected='true']"));
+    }
+
+    // ---- Round-6 finding: a duplicate-valued sibling REORDER must drop, not rebind the wrong one ----
+
+    [Fact]
+    public async Task Duplicate_valued_siblings_reorder_drops_and_never_rebinds_the_wrong_sibling()
+    {
+        // Two "same"-valued siblings under an expanded root; select the SECOND (path [0,1]).
+        List<L.TreeView<string>.TreeViewItem<string>> Ordered() =>
+        [
+            new()
+            {
+                Text = "Root", Value = "root", IsExpanded = true,
+                Children =
+                [
+                    new() { Text = "First",  Value = "same" },
+                    new() { Text = "Second", Value = "same" }
+                ]
+            }
+        ];
+        // A genuine reorder swaps them: the node with Text "Second" moves to [0,0] and "First"
+        // slides into [0,1]. The carried index path [0,1] now lands on the "First" row, which
+        // ALSO carries "same" — the pre-fix code returned it (re-selecting the WRONG sibling).
+        List<L.TreeView<string>.TreeViewItem<string>> Reordered() =>
+        [
+            new()
+            {
+                Text = "Root", Value = "root", IsExpanded = true,
+                Children =
+                [
+                    new() { Text = "Second", Value = "same" },
+                    new() { Text = "First",  Value = "same" }
+                ]
+            }
+        ];
+
+        var cut = _ctx.Render<L.TreeView<string>>(p => p.Add(c => c.Items, Ordered()));
+        await cut.InvokeAsync(() => Row(cut, "Second").Click());
+        Assert.Equal("true", TreeItem(cut, "Second").GetAttribute("aria-selected"));
+
+        cut.Render(p => p.Add(c => c.Items, Reordered()));
+
+        // Identity is unprovable among the two "same" siblings, so the selection DROPS — the
+        // "First" row now sitting at the old path must NOT become selected.
+        Assert.Empty(cut.FindAll("[role='treeitem'][aria-selected='true']"));
     }
 
     [Fact]

@@ -229,6 +229,21 @@ public sealed class ConsentService
             _storedVersion = ReadString(root["version"]);
             _decidedAtUtc = ParseTimestamp(root["timestamp"]);
 
+            // A proof-of-consent record MUST prove WHEN consent was given: a MISSING, non-string,
+            // or unparseable "timestamp" leaves _decidedAtUtc null, so the record can't substantiate
+            // the moment of consent (GDPR Art. 7(1) accountability). Counting it as decided off a
+            // matching version alone would honour a proof record that fails its own proof contract.
+            // Fail CLOSED exactly like a bad version/category map: reject (undecided, no attributable
+            // version, rejection latch) and re-prompt. This does NOT loop: records WE write always
+            // carry a round-trippable "O" timestamp (PersistAsync), and a legacy BARE map (no
+            // "categories" wrapper) takes the else-if branch below — it legitimately predates the
+            // timestamp field, stays decided with a null timestamp, and is stamped on the next write.
+            if (_decidedAtUtc is null)
+            {
+                RejectStoredRecord();
+                return;
+            }
+
             // A proof-of-consent (current-format) record — identified by its "categories"
             // wrapper — MUST carry an explicit STRING version. A missing or non-string
             // "version" yields _storedVersion == null; that is NOT a version-agnostic pass.

@@ -761,9 +761,12 @@
                 rebuilt.Add(sel);
                 continue;
             }
-            // Primary: the node at the SAME structural position in the new tree. A
-            // same-content async reload preserves positions and Values, so this resolves
-            // the correct node even when siblings share a (duplicate/null) Value.
+            // Primary: the node at the SAME structural position in the new tree, but only when
+            // its Value is UNIQUE among its siblings there. A same-content async reload preserves
+            // positions, so this resolves the correct node for a sibling-unique Value; when two
+            // siblings SHARE a (duplicate/null) Value the position can't prove identity (a reorder
+            // is indistinguishable from a same-content reload) so the path match drops — ambiguity
+            // DROPS rather than risk re-selecting the wrong same-valued sibling.
             var match = ResolveByPath(sel, oldItems, newItems);
             if (match is null)
             {
@@ -830,10 +833,11 @@
 
     /// <summary>Resolves the node occupying the same root→node child-index path that
     /// <paramref name="target"/> held in <paramref name="oldItems"/>, then confirms the
-    /// resolved node carries the same <c>Value</c>. Returns null when the old tree is
-    /// unavailable, the path can't be walked in the new tree, or the position now holds
-    /// a differently-valued node (a reorder/mutation) — so the caller falls back to a
-    /// unique-value match instead of mis-anchoring.</summary>
+    /// resolved node carries the same <c>Value</c> AND that the value is unique among its
+    /// siblings there. Returns null when the old tree is unavailable, the path can't be walked in
+    /// the new tree, the position now holds a differently-valued node (a reorder/mutation), or the
+    /// value is shared by a sibling (identity not provable) — so the caller falls back to a
+    /// unique-value match instead of mis-anchoring. See <see cref="WalkPath"/> for the drop rule.</summary>
     private static TreeViewItem<T>? ResolveByPath(TreeViewItem<T> target, List<TreeViewItem<T>>? oldItems, List<TreeViewItem<T>> newItems)
     {
         if (oldItems is null) return null;
@@ -844,22 +848,43 @@
 
     /// <summary>Walks a root→node child-index <paramref name="path"/> in
     /// <paramref name="roots"/> and returns the node at its end ONLY when that node still
-    /// carries <paramref name="expectedValue"/>. Returns null when the path is empty, runs off
-    /// the tree, or lands on a differently-valued node (a reorder/mutation) — so callers fall
-    /// back to a unique-value match rather than mis-anchor.</summary>
+    /// carries <paramref name="expectedValue"/> AND that value is UNIQUE among the node's
+    /// immediate siblings. Returns null when the path is empty, runs off the tree, lands on a
+    /// differently-valued node (a reorder/mutation), OR lands on a node whose value is shared by a
+    /// sibling — so callers fall back to a unique-value match rather than mis-anchor.
+    ///
+    /// The sibling-uniqueness gate implements the TreeView ambiguity-DROP convention: after a
+    /// sibling reorder the index path can land on a DIFFERENT sibling that happens to carry the
+    /// same (or null) Value, and returning it would re-select the WRONG node. When two siblings
+    /// share the Value the position is NOT a provable identity anchor — a same-content reload and a
+    /// silent swap of the two are indistinguishable — so identity is unrecoverable and the match is
+    /// DROPPED. A value that is unique among its siblings (even if duplicated elsewhere in the tree)
+    /// is still resolved by position, and a unique value that merely MOVED re-anchors via the
+    /// caller's unique-value fallback.</summary>
     private static TreeViewItem<T>? WalkPath(List<TreeViewItem<T>> roots, IReadOnlyList<int> path, T? expectedValue)
     {
         if (path.Count == 0) return null;
         IReadOnlyList<TreeViewItem<T>> level = roots;
+        IReadOnlyList<TreeViewItem<T>> siblings = roots;
         TreeViewItem<T>? node = null;
         foreach (var idx in path)
         {
             if (idx < 0 || idx >= level.Count) return null;
+            siblings = level; // the level `node` is drawn from = its immediate sibling group
             node = level[idx];
             level = node.Children ?? (IReadOnlyList<TreeViewItem<T>>)[];
         }
         if (node is null) return null;
-        return EqualityComparer<T>.Default.Equals(node.Value, expectedValue) ? node : null;
+        // The node at the path must still carry the expected value…
+        if (!EqualityComparer<T>.Default.Equals(node.Value, expectedValue)) return null;
+        // …AND that value must be UNIQUE among its immediate siblings, or the position can't prove
+        // identity (a reordered same-valued sibling would masquerade as the target). DROP on a
+        // shared value so the caller falls back to a unique-value match instead of mis-selecting.
+        var sameValued = 0;
+        foreach (var s in siblings)
+            if (EqualityComparer<T>.Default.Equals(s.Value, expectedValue) && ++sameValued > 1)
+                return null;
+        return node;
     }
 
     /// <summary>DFS that records the child-index chain from the roots down to
