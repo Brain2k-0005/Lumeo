@@ -245,7 +245,12 @@
         if (EffectiveExpanded)
         {
             Item.IsExpanded = false;
-            return () => OnExpandChanged.InvokeAsync(Item);
+            // Snapshot the path NOW — synchronously, before the row-click selection callbacks can
+            // rebuild Items — so the DEFERRED collapse tail can re-resolve the CURRENT instance and
+            // clear its expansion + search-auto-expansion, rather than a stale reference RebuildDisplay
+            // already replaced in _autoExpanded (round-11 c).
+            var pathAtCollapse = Context?.Tree.GetIndexPath(Item);
+            return () => NotifyCollapseAsync(pathAtCollapse);
         }
 
         // Mark expanded NOW (synchronous state mutation on the live instance) — the (possibly slow
@@ -265,6 +270,22 @@
         }
 
         return () => OnExpandChanged.InvokeAsync(Item);
+    }
+
+    // Collapse notification, re-resolved through the tree's CANONICAL resolver so a controlled/immutable
+    // rebuild during the row-click selection callbacks — which also re-registers a search-auto-expanded
+    // ancestor in _autoExpanded via RebuildDisplay — collapses the FRESH rendered node, not the stale
+    // reference (round-11 c). The chevron/keyboard path runs this immediately with no rebuild in between,
+    // so it resolves to the SAME instance and behaves exactly as the old direct OnExpandChanged collapse.
+    // A standalone node (no tree context) can't be rebuilt out from under us, so it uses the plain notify.
+    private Task NotifyCollapseAsync(IReadOnlyList<int>? pathAtCollapse)
+    {
+        if (Context is not null)
+        {
+            Context.Tree.CollapseReanchored(Item, pathAtCollapse);
+            return Task.CompletedTask;
+        }
+        return OnExpandChanged.InvokeAsync(Item);
     }
 
     // The awaited tail of a lazy expansion: fetch the children, mirror a fully-checked parent's
@@ -287,17 +308,26 @@
         {
             var loaded = await LoadChildren!(Item);
 
-            // Attach to the CURRENTLY rendered node (round-8 rollback's SUCCESS mirror, round-9
-            // finding 1): a row click on a lazy parent starts THIS load BEFORE its selection
-            // callbacks run; a controlled/immutable parent can rebuild Items inside
-            // SelectedValuesChanged while the loader is still pending, disposing this @key'd node and
-            // re-creating it around a FRESH instance (carrying the optimistic IsExpanded=true).
-            // Assigning the children to the STALE Item would then leave the visible fresh node
-            // expanded-but-empty. Re-resolve the current node by the value-verified path (the SAME
-            // mechanism RollbackFailedExpansion uses on failure) and attach to THAT. Null (node
-            // vanished / ambiguous identity) or no tree context (standalone node) → the local
-            // instance is the best target.
-            target = Context?.Tree.ResolveExpansionTarget(Item, pathAtExpand) ?? Item;
+            // Attach to the CURRENTLY rendered node (the SUCCESS mirror of the failure rollback): a
+            // row click on a lazy parent starts THIS load BEFORE its selection callbacks run; a
+            // controlled/immutable parent can rebuild Items inside SelectedValuesChanged while the
+            // loader is still pending, disposing this @key'd node and re-creating it around a FRESH
+            // instance. Assigning the children to the STALE Item would leave the visible fresh node
+            // expanded-but-empty, so re-resolve through the tree's canonical resolver and attach to
+            // THAT. When identity is UNPROVABLE (a rebuild replaced the clicked instance among
+            // duplicate/null-valued siblings, possibly reordering them) the resolver returns null:
+            // DISCARD the loaded children rather than graft them onto a guessed same-valued sibling —
+            // duplicate container values don't guarantee equivalent children (round-11 b). The branch
+            // stays ChildrenLoaded=false and reloads on the next expand (re-fetchable beats mis-attach;
+            // the finally clears the stale spinner). Standalone nodes (no tree context) can't be
+            // rebuilt out from under us, so the local instance is the target.
+            if (Context is not null)
+            {
+                var resolved = Context.Tree.ResolveExpansionTarget(Item, pathAtExpand);
+                if (resolved is null)
+                    return; // ambiguous identity → drop the load; finally clears Item.IsLoading
+                target = resolved;
+            }
             target.Children = loaded;
             target.ChildrenLoaded = true;
             // The fresh node already carries IsExpanded=true (the rebuild copied it); assert it so a

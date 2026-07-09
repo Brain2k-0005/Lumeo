@@ -83,6 +83,71 @@
     private List<T>? _lastPushedSelectedValues;
     private bool _previousExpandAll;
     private List<TreeViewItem<T>> _displayItems = [];
+    // ══════════════════════════════════════════════════════════════════════════
+    // CANONICAL POST-AWAIT RE-RESOLUTION MODEL (PR #351, round-11 consolidation)
+    // ══════════════════════════════════════════════════════════════════════════
+    // Every row-click / lazy-load path may run its tail AFTER an await, during which a
+    // controlled/immutable consumer can rebuild Items (disposing the @key'd instance the
+    // interaction started on). Six rounds accreted a separate resolver per tail — a relaxed
+    // positional expansion fallback, distinct rollback/success/selection resolvers, a deferred
+    // toggle, seeded-vs-interactive carry buckets — and round-11 found four more edges in the
+    // seams. This is ONE model; the special cases are gone.
+    //
+    // (1) NODE RE-RESOLUTION — exactly one function, ResolveNode(instance, path, value, mode),
+    //     used by ALL post-await paths (selection changed / click-path re-resolution, expansion
+    //     success attach, expansion failure rollback, search auto-expand collapse). Priority,
+    //     identical for every mode:
+    //        a. ReferenceEquals — the instance is still in the tree (no rebuild / untouched
+    //           branch): return it.
+    //        b. VALUE-VERIFIED PATH — the node at `path` still carries `value` AND that value is
+    //           UNIQUE among its immediate siblings (WalkPath): return it. A shared/duplicate/null
+    //           value at the path is NOT a provable anchor (a silent sibling reorder is
+    //           indistinguishable from a same-content reload), so it does not resolve here.
+    //        c. TREE-UNIQUE VALUE — exactly one node in the whole tree carries `value` (a node
+    //           that merely moved): return it.
+    //        d. MODE TAIL — both modes DROP (return null). There is NO positional guess:
+    //           • SELECTION drop  → the click selects nothing new; the identity is unprovable and
+    //             mis-selecting a same-valued sibling is a real defect (round-11 a). The prior
+    //             selection minus the vanished node stands.
+    //           • EXPANSION drop  → the loaded children are DISCARDED, not grafted onto whatever
+    //             duplicate/null-valued sibling now sits at the old index. A rebuild can REORDER
+    //             same-valued container rows while LoadChildren is in flight, and duplicate
+    //             container values do NOT guarantee equivalent children (round-11 b), so a
+    //             positional attach is unsound. Tradeoff, stated: re-fetchable children (the
+    //             branch stays ChildrenLoaded=false and reloads on the next expand) beat a silent
+    //             mis-attachment. Failure rollback likewise collapses ONLY a node it can resolve
+    //             by (a)–(c); a genuinely ambiguous node is left for the consumer's own rebuild.
+    //     The former relaxed WalkPath(requireSiblingUnique:false) fallback is DELETED.
+    //
+    // (2) DEFERRAL ORDERING CONTRACT for a row click (HandleClick):
+    //        i.   SYNCHRONOUS state flip on the LIVE instance (IsExpanded, and for a lazy expand
+    //             IsLoading + a path snapshot) — before any await, so a selection-driven rebuild
+    //             snapshots the new state off THIS instance (round-4).
+    //        ii.  selection callbacks: OnItemClick then OnSelectionChanged (may rebuild Items).
+    //        iii. the expansion TAIL, drained isolated (a loader failure cannot break the
+    //             already-committed selection). The tail STARTS the load here — never before
+    //             selection — so even a cached/completed loader task (Task.FromResult) attaches
+    //             through ResolveNode to the REBUILT node instead of the disposed one (round-10).
+    //             A collapse tail re-resolves through ResolveNode before clearing IsExpanded and
+    //             _autoExpanded (CollapseReanchored), so a search-auto-expanded ancestor collapses
+    //             the FRESH item RebuildDisplay re-registered, not the stale reference (round-11 c).
+    //             Failure rolls back via ResolveNode (round-7/8).
+    //
+    // (3) CHANGE DETECTION — re-resolution must NOT hinge on Items list-reference identity.
+    //     The reanchor/pending/tri-state pass runs when the reference changed OR
+    //     HasStaleOrPendingSelection() reports a possibly-stale binding (a _selectedNodes instance
+    //     no longer in the tree, or a non-empty pending bucket). So an IN-PLACE mutation of the
+    //     same list reference — replacing items[i] with a fresh same-valued node — still reanchors
+    //     the selection onto the new instance (round-11 d). Cost: HasStaleOrPendingSelection
+    //     flattens the tree O(n), but only on a SAME-reference re-render that also holds a
+    //     selection/pending state; a selection-free tree or a reference swap pays nothing extra.
+    //
+    // (4) SETTLED SEMANTICS (unchanged, see the lifecycle notes below): seeded=VALUE contract
+    //     (re-binds every match, additive across lazy loads) vs interactive=IDENTITY (carry by
+    //     value-verified path, strict ambiguity DROP); tri-state derive-on-seed gating
+    //     (CascadeCheck && ShowCheckboxes); ExpandOnRowClick opt-out; chevron/keyboard expansion in
+    //     both modes; loader-failure rollback that stays retryable (ChildrenLoaded=false).
+    // ══════════════════════════════════════════════════════════════════════════
     // ── SELECTION LIFECYCLE ──────────────────────────────────────────────────
     // One coherent model, four states, driven by Items refreshes and clicks — NOT by
     // SelectedValues list-reference identity (that check only gates whether we RE-SEED
@@ -263,7 +328,7 @@
             _previousSelectedValues = SelectedValues;
         }
 
-        bool itemsChanged = !ReferenceEquals(Items, _previousItems);
+        bool referenceChanged = !ReferenceEquals(Items, _previousItems);
         bool expandAllChanged = ExpandAll != _previousExpandAll;
         // Capture the OUTGOING tree before overwriting it — ReanchorSelection needs it
         // to compute each selected node's structural path in the tree it came from.
@@ -272,27 +337,37 @@
         _previousExpandAll = ExpandAll;
         _flatVisible = null;
 
-        if (itemsChanged)
+        // CHANGE DETECTION (canonical model pillar 3): re-resolution must not hinge on the Items
+        // list-reference. Run the reanchor/pending/tri-state pass when the reference changed OR a
+        // current binding could be stale — so an IN-PLACE mutation of the same list reference
+        // (items[i] replaced by a fresh same-valued node) still reanchors the selection onto the
+        // new instance instead of stranding _selectedNodes on a disposed one (round-11 d).
+        bool needsResolve = referenceChanged || HasStaleOrPendingSelection();
+
+        if (needsResolve)
         {
-            // A same-content refresh hands us new (reference-distinct) instances, which
-            // would drop the identity-tracked selection. Re-anchor to the new instances
-            // by structural PATH (so duplicate / null Values don't mis-anchor), with a
-            // unique-value fallback — so an async reload keeps the selected row highlighted.
-            // Vanished nodes are carried back to _pendingSelectValues (not dropped).
+            // A same-content refresh (new reference-distinct instances) or an in-place swap would
+            // drop the identity-tracked selection. Re-anchor to the current instances by structural
+            // PATH (so duplicate / null Values don't mis-anchor), with a unique-value fallback — so a
+            // reload keeps the selected row highlighted. Vanished nodes carry back to the pending
+            // buckets by ORIGIN (seeded=value / interactive=identity), never dropped silently.
             ReanchorSelection(Items ?? [], previousItems);
-            // pending → resolved on ANY Items refresh (not only lazy-load): a seed value
-            // for a node that only just materialized — an async/empty first render, or a
-            // value carried forward when its node vanished — binds against the fresh tree.
+            // pending → resolved on ANY refresh (not only lazy-load): a seed value for a node that
+            // only just materialized — an async/empty first render, or a value carried forward when
+            // its node vanished — binds against the current tree.
             TryResolvePendingSelection(Items);
-            // TRI-STATE DERIVE-ON-SEED: recompute every parent's checked/indeterminate
-            // state from its (seeded or freshly-assigned) children so a tree that arrives
-            // with children already IsChecked=true shows the correct parent state on the
-            // FIRST render — not just after an interactive check. Same recompute the
-            // interactive path (HandleItemCheck) uses, so both routes agree. Cascade-only:
-            // when CascadeCheck is off, parent/child checks are independent by contract, so
-            // no derivation runs (checking a node never touches its ancestors there either).
+            // TRI-STATE DERIVE-ON-SEED: recompute every parent's checked/indeterminate state from its
+            // (seeded or freshly-assigned) children so a tree that arrives with children already
+            // IsChecked=true shows the correct parent state on the FIRST render — not just after an
+            // interactive check. Same recompute the interactive path (HandleItemCheck) uses, so both
+            // routes agree. Cascade-only: when CascadeCheck is off, parent/child checks are
+            // independent by contract, so no derivation runs.
             if (CascadeCheck && ShowCheckboxes)
                 UpdateAncestorStates(Items ?? []);
+        }
+
+        if (referenceChanged)
+        {
             if (ExpandAll)
             {
                 ApplyExpandAll(Items ?? [], true);
@@ -300,6 +375,10 @@
                 if (LoadChildren is not null)
                     _expandAllNeedsLazyLoad = true;
             }
+            // Only a reference swap can move which instances the render walks; an in-place mutation
+            // keeps _displayItems pointing at the same (now-mutated) list, so the reanchored
+            // selection above is reflected on the next render without re-filtering (which would also
+            // clear search auto-expansion).
             RebuildDisplay();
         }
         else if (expandAllChanged)
@@ -309,6 +388,24 @@
                 _expandAllNeedsLazyLoad = true;
             RebuildDisplay();
         }
+    }
+
+    /// <summary>Whether the reanchor/pending pass should run even when the <see cref="Items"/>
+    /// list reference is UNCHANGED (round-11 d — an in-place mutation of the same list). True when a
+    /// pending bucket still holds an unbound value/carry, or when any selected node instance is no
+    /// longer reachable in the current tree (a fresh instance replaced it in place). O(n) in the tree
+    /// size, but only reached on a same-reference re-render that also carries selection/pending state
+    /// — a selection-free tree or a reference swap short-circuits before the flatten.</summary>
+    private bool HasStaleOrPendingSelection()
+    {
+        if (_pendingSelectValues is { Count: > 0 } || _pendingCarries is { Count: > 0 }) return true;
+        if (_selectedNodes.Count == 0) return false;
+        var flat = new List<TreeViewItem<T>>();
+        FlattenAll(Items ?? [], flat);
+        var present = new HashSet<TreeViewItem<T>>(flat, ReferenceEqualityComparer.Instance);
+        foreach (var sel in _selectedNodes)
+            if (!present.Contains(sel)) return true;
+        return false;
     }
 
     protected override async Task OnParametersSetAsync()
@@ -485,14 +582,23 @@
         //
         // Re-resolve the clicked instance against the CURRENT tree first (round-10 finding 4): a
         // consumer's OnItemClick handler (awaited BEFORE this callback in TreeViewNode.HandleClick) may
-        // have rebuilt Items (controlled/immutable), disposing the clicked @key'd node. Adding the stale
-        // instance would leave the fresh rendered row unselected. ResolveReanchoredExpansionNode prefers
-        // reference-identity, then the value-verified path snapshotted in HandleItemClick, then a unique
-        // value; it returns null only when identity is genuinely unprovable (a duplicate/null value with
-        // no positional anchor), in which case we keep the original instance — selecting nothing is safer
-        // than selecting the wrong same-valued sibling, matching the ambiguity convention.
-        item = ResolveReanchoredExpansionNode(item, _clickPathBeforeCallback) ?? item;
+        // have rebuilt Items (controlled/immutable), disposing the clicked @key'd node — adding the stale
+        // instance would leave the fresh rendered row unselected. The canonical resolver runs in STRICT
+        // SELECTION mode: reference-identity → value-verified path (snapshotted in HandleItemClick) →
+        // tree-unique value → DROP. It never positional-guesses, so a duplicate/null-valued click whose
+        // siblings were reordered during OnItemClick selects NOTHING rather than the wrong same-valued
+        // sibling (round-11 a) — the ambiguity-DROP convention. In the common (no-rebuild) case the
+        // instance is still present, so this returns it unchanged.
+        var resolvedClick = ResolveNode(item, _clickPathBeforeCallback, item.Value, NodeResolveMode.Selection);
         _clickPathBeforeCallback = null;
+        if (resolvedClick is null)
+        {
+            // Identity unprovable after a rebuild — drop this click's selection change (keep the prior
+            // selection). Re-render so the fresh rows reflect the settled selection state.
+            StateHasChanged();
+            return;
+        }
+        item = resolvedClick;
         bool changed;
         if (MultiSelect)
         {
@@ -977,79 +1083,88 @@
         return BuildIndexPath(Items ?? [], node, path) ? path : null;
     }
 
-    /// <summary>Re-resolves the node instance that CURRENTLY occupies <paramref name="staleNode"/>'s
-    /// structural identity after a lazy load. When a controlled/immutable parent rebuilt
-    /// <see cref="Items"/> inside the row click's <c>SelectedValuesChanged</c> — while the loader was
-    /// still in flight — the clicked node component was disposed and re-created around a FRESH
-    /// <c>@key</c>'d instance; a load result (children on success, a collapse on failure) applied to
-    /// the STALE instance would then be invisible on the rendered node. Returns the SAME instance
-    /// when it is still present by reference (a non-controlled tree / untouched branch), else the node
-    /// at the value-verified <paramref name="pathAtExpand"/>, else a UNIQUE-valued match, else null —
-    /// the node vanished or its identity is ambiguous (a duplicate/null value with no unique match),
-    /// per the same ambiguity-drop convention as <see cref="ReanchorSelection"/>, so a load result
-    /// never lands on the wrong same-valued sibling. Shared by the SUCCESS attach
-    /// (<see cref="ResolveExpansionTarget"/>) and FAILURE rollback (<see cref="RollbackFailedExpansion"/>)
-    /// paths.</summary>
-    private TreeViewItem<T>? ResolveReanchoredExpansionNode(TreeViewItem<T> staleNode, IReadOnlyList<int>? pathAtExpand)
+    /// <summary>How a <see cref="ResolveNode"/> caller treats an UNPROVABLE identity. Both modes share
+    /// the same priority (reference → value-verified path → tree-unique value → DROP) and both DROP
+    /// rather than positional-guess; the mode only NAMES the caller's contract for the null:
+    /// <see cref="Selection"/> selects nothing new; <see cref="Expansion"/> discards the (re-fetchable)
+    /// load or skips the rollback.</summary>
+    private enum NodeResolveMode { Selection, Expansion }
+
+    /// <summary>THE canonical post-await re-resolver (see the model doc block at the top of @code).
+    /// Re-resolves the instance that CURRENTLY occupies <paramref name="instance"/>'s identity after an
+    /// await during which a controlled/immutable consumer may have rebuilt <see cref="Items"/> and
+    /// disposed the original <c>@key</c>'d node. Priority, identical for every <paramref name="mode"/>:
+    /// (a) the instance is still present by reference; (b) the node at the value-verified
+    /// <paramref name="path"/> whose <paramref name="value"/> is UNIQUE among its immediate siblings;
+    /// (c) a value UNIQUE across the whole tree. Otherwise the identity is unprovable and this returns
+    /// null — it NEVER falls back to a positional guess, because a sibling reorder among duplicate/null
+    /// values is indistinguishable from a same-content reload (round-11 a/b). The caller then drops per
+    /// <paramref name="mode"/>: SELECTION selects nothing; EXPANSION discards the load / skips rollback.</summary>
+    private TreeViewItem<T>? ResolveNode(TreeViewItem<T> instance, IReadOnlyList<int>? path, T? value, NodeResolveMode mode)
     {
+        _ = mode; // priority is mode-independent; mode documents the caller's null-handling contract
         var tree = Items ?? [];
         var flat = new List<TreeViewItem<T>>();
         FlattenAll(tree, flat);
-        if (flat.Any(n => ReferenceEquals(n, staleNode))) return staleNode;
-        TreeViewItem<T>? current = null;
-        // 1) The value-provable structural path (sibling-unique) — the same strict anchor SELECTION uses.
-        if (pathAtExpand is { Count: > 0 })
-            current = WalkPath(tree, pathAtExpand, staleNode.Value);
-        // 2) A value that is UNIQUE across the whole tree (a node that merely moved).
-        if (current is null)
+        // (a) reference — still in the tree (no rebuild / untouched branch).
+        if (flat.Any(n => ReferenceEquals(n, instance))) return instance;
+        // (b) value-verified path — the node at `path` still carries `value`, sibling-unique.
+        if (path is { Count: > 0 })
         {
-            var byValue = flat.Where(n => EqualityComparer<T>.Default.Equals(n.Value, staleNode.Value)).ToList();
-            if (byValue.Count == 1) current = byValue[0];
+            var byPath = WalkPath(tree, path, value);
+            if (byPath is not null) return byPath;
         }
-        // 3) EXPANSION-ONLY positional fallback — this DIVERGES from SELECTION's ambiguity-DROP
-        //    (round-10 finding 3). When sibling PARENTS carry null/duplicate Values, step 1's
-        //    sibling-uniqueness gate drops the path and step 2 is ambiguous, so a strict resolver
-        //    returns null — the loaded children then never attach (success) or the fresh row never
-        //    collapses (failure), stranding the visible rebuilt parent expanded-but-empty/spinning in
-        //    exactly the duplicate/null container case lazy expansion must support. Unlike selection —
-        //    where mis-highlighting a same-valued sibling is a real defect, so we DROP — expansion has
-        //    extra information: a controlled/immutable SAME-CONTENT rebuild preserves structure, so the
-        //    node STILL at pathAtExpand IS the clicked parent. Attach by POSITION, but only when that
-        //    node still carries the expected Value (WalkPath's structural-mismatch guard stays on, so we
-        //    never target a DIFFERENT-valued node). The only residual ambiguity — a simultaneous sibling
-        //    REORDER among duplicate values — lands on a value-IDENTICAL sibling, which loads equivalent
-        //    children and projects the same public value, so it is SAFE and strictly better than losing
-        //    the branch. This never runs for selection: ResolveReanchoredExpansionNode is expansion-only.
-        if (current is null && pathAtExpand is { Count: > 0 })
-            current = WalkPath(tree, pathAtExpand, staleNode.Value, requireSiblingUnique: false);
-        return current;
+        // (c) a value that is UNIQUE across the whole tree (a node that merely moved).
+        var byValue = flat.Where(n => EqualityComparer<T>.Default.Equals(n.Value, value)).ToList();
+        if (byValue.Count == 1) return byValue[0];
+        // (d) unprovable — DROP. No positional guess (round-11 a/b).
+        return null;
     }
 
-    /// <summary>The node a completed lazy load's children must attach to: the CURRENT instance
-    /// occupying the expanding node's identity, re-resolved past a controlled/immutable rebuild that
-    /// may have replaced the clicked instance while the loader was in flight (round-9 finding 1 — the
-    /// SUCCESS mirror of <see cref="RollbackFailedExpansion"/>). Grafting the children onto the stale
-    /// instance would leave the visible fresh node expanded-but-empty, because only the failure path
-    /// used to re-resolve the current node. Returns null only when the node vanished or its identity
-    /// is ambiguous; the caller then attaches to the local instance as a last resort.</summary>
+    /// <summary>The node a completed lazy load's children must attach to: the CURRENT instance occupying
+    /// the expanding node's identity, re-resolved past a controlled/immutable rebuild that may have
+    /// replaced the clicked instance while the loader was in flight (the SUCCESS mirror of
+    /// <see cref="RollbackFailedExpansion"/>). Returns null when identity is unprovable — the caller then
+    /// DISCARDS the load rather than graft it onto a guessed same-valued sibling (round-11 b); the branch
+    /// stays <c>ChildrenLoaded=false</c> and reloads on the next expand.</summary>
     internal TreeViewItem<T>? ResolveExpansionTarget(TreeViewItem<T> staleNode, IReadOnlyList<int>? pathAtExpand)
-        => ResolveReanchoredExpansionNode(staleNode, pathAtExpand);
+        => ResolveNode(staleNode, pathAtExpand, staleNode.Value, NodeResolveMode.Expansion);
+
+    /// <summary>Re-resolves and collapses a node whose row-click COLLAPSE tail runs AFTER the selection
+    /// callbacks, which may have rebuilt Items (controlled/immutable) and — when a search filter forced
+    /// this ancestor open — re-registered the FRESH item in <see cref="_autoExpanded"/> via RebuildDisplay.
+    /// Removing only the stale reference would leave the rendered row effectively expanded and
+    /// un-collapsible by row click while filtered (round-11 c). Route through the canonical resolver and
+    /// clear IsExpanded + auto-expansion on the instance actually rendered; fall back to the stale item
+    /// when unprovable (a non-controlled tree resolves to the same instance, so the plain case is
+    /// unchanged).</summary>
+    internal void CollapseReanchored(TreeViewItem<T> staleItem, IReadOnlyList<int>? pathAtCollapse)
+    {
+        var current = ResolveNode(staleItem, pathAtCollapse, staleItem.Value, NodeResolveMode.Expansion) ?? staleItem;
+        current.IsExpanded = false;
+        _autoExpanded.Remove(current);
+        // Drop the stale reference too, in case a rebuild left it lingering in the auto-expand set.
+        if (!ReferenceEquals(current, staleItem))
+            _autoExpanded.Remove(staleItem);
+        _flatVisible = null;
+        StateHasChanged();
+    }
 
     /// <summary>Collapses the node that currently occupies a failed-lazy-load node's structural
     /// identity. When a controlled/immutable rebuild replaced the clicked instance mid-load, the
     /// fresh <c>@key</c>'d node carries the optimistic <c>IsExpanded=true</c>; collapsing only the
     /// stale instance would leave the visible row <c>aria-expanded=true</c> over an empty branch (and
     /// the next click would collapse it instead of retrying). Re-resolve the CURRENT instance
-    /// (<see cref="ResolveReanchoredExpansionNode"/>) and collapse THAT. No-op when the node is still
+    /// (<see cref="ResolveNode"/> in EXPANSION mode) and collapse THAT. No-op when the node is still
     /// present by reference (the catch already collapsed it locally, so the IsExpanded guard trips),
-    /// or when the identity is ambiguous.</summary>
+    /// or when the identity is unprovable (nothing to roll back — the consumer's own rebuild owns it).</summary>
     internal void RollbackFailedExpansion(TreeViewItem<T> staleNode, IReadOnlyList<int>? pathAtExpand)
     {
-        var current = ResolveReanchoredExpansionNode(staleNode, pathAtExpand);
+        var current = ResolveNode(staleNode, pathAtExpand, staleNode.Value, NodeResolveMode.Expansion);
         if (current is null) return;
         // Same instance the catch already collapsed → its finally clears IsLoading; nothing to do.
-        // (Detected by reference: ResolveReanchoredExpansionNode returns staleNode itself when it is
-        // still present, so the finally in TreeViewNode owns the spinner cleanup for that instance.)
+        // (Detected by reference: ResolveNode returns staleNode itself when it is still present, so the
+        // finally in TreeViewNode owns the spinner cleanup for that instance.)
         if (ReferenceEquals(current, staleNode)) return;
         // A FRESH @key'd node from a controlled/immutable rebuild copied BOTH optimistic flags off the
         // stale instance (IsExpanded=true AND IsLoading=true). The node component's finally only clears
@@ -1123,15 +1238,11 @@
     /// silent swap of the two are indistinguishable — so identity is unrecoverable and the match is
     /// DROPPED. A value that is unique among its siblings (even if duplicated elsewhere in the tree)
     /// is still resolved by position, and a unique value that merely MOVED re-anchors via the
-    /// caller's unique-value fallback.
-    ///
-    /// <paramref name="requireSiblingUnique"/> defaults to <c>true</c> (the strict identity anchor
-    /// every SELECTION path uses). The EXPANSION reanchor passes <c>false</c> as a last-resort
-    /// positional fallback (round-10 finding 3): a controlled/immutable SAME-CONTENT rebuild preserves
-    /// structure, so the node still at the path IS the clicked parent even when siblings share its
-    /// Value; the structural-mismatch guard (value must still match at the path) stays on either way,
-    /// so a relaxed walk still never lands on a DIFFERENT-valued node.</summary>
-    private static TreeViewItem<T>? WalkPath(List<TreeViewItem<T>> roots, IReadOnlyList<int> path, T? expectedValue, bool requireSiblingUnique = true)
+    /// caller's unique-value fallback. This is the SINGLE strict path anchor — the former relaxed
+    /// positional variant (an EXPANSION-only fallback that attached to whatever sat at the index) was
+    /// removed as unsound (round-11 a/b): it could re-select / mis-attach to a reordered same-valued
+    /// sibling. Every caller now drops on ambiguity here and re-fetches rather than guess.</summary>
+    private static TreeViewItem<T>? WalkPath(List<TreeViewItem<T>> roots, IReadOnlyList<int> path, T? expectedValue)
     {
         if (path.Count == 0) return null;
         IReadOnlyList<TreeViewItem<T>> level = roots;
@@ -1147,7 +1258,6 @@
         if (node is null) return null;
         // The node at the path must still carry the expected value…
         if (!EqualityComparer<T>.Default.Equals(node.Value, expectedValue)) return null;
-        if (!requireSiblingUnique) return node;
         // …AND that value must be UNIQUE among its immediate siblings, or the position can't prove
         // identity (a reordered same-valued sibling would masquerade as the target). DROP on a
         // shared value so the caller falls back to a unique-value match instead of mis-selecting.

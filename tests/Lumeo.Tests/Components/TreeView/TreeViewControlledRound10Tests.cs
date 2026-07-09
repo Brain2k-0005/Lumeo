@@ -130,17 +130,22 @@ public class TreeViewControlledRound10Tests : IAsyncLifetime
     }
 
     /// <summary>
-    /// Finding 3: two sibling PARENTS that share a Value (the null/duplicate container case #350 targets)
-    /// defeat the sibling-uniqueness gate. A strict reanchor would DROP the target and the loaded children
-    /// would never attach. Expansion diverges from selection's ambiguity-DROP: a same-content controlled
-    /// rebuild preserves structure, so the children attach to the clicked parent BY POSITION.
+    /// Finding 3, REVISED for round-11 b (canonical model): two sibling PARENTS that share a Value (the
+    /// null/duplicate container case #350 targets) defeat the sibling-uniqueness gate. The old code kept
+    /// a relaxed positional fallback that attached the completed load to whatever duplicate-valued sibling
+    /// sat at the clicked index after the rebuild — UNSOUND, because that rebuild can REORDER the two
+    /// same-valued rows while the loader is in flight, grafting the children onto the wrong parent
+    /// (duplicate container values don't guarantee equivalent children). The canonical resolver has NO
+    /// positional guess: when identity is unprovable it DROPS the load (re-fetchable on the next expand)
+    /// rather than mis-attach. So neither sibling receives the fetched children after the rebuild — the
+    /// deliberately-changed semantics of round-11 b (was: "attach by position").
     /// </summary>
     [Fact]
-    public async Task Duplicate_valued_sibling_parents_attach_lazy_children_by_position_after_a_controlled_rebuild()
+    public async Task Duplicate_valued_sibling_parents_drop_the_lazy_load_after_a_controlled_rebuild()
     {
         IRenderedComponent<L.TreeView<string>>? cut = null;
 
-        // Tag children by the clicked node's Text so we can prove the branch landed on the RIGHT parent.
+        // Tag children by the clicked node's Text so a mis-attachment onto EITHER sibling would be visible.
         Func<Item, Task<List<Item>>> loader = node =>
             Task.FromResult(new List<Item> { new() { Text = $"child-of-{node.Text}", Value = "leaf", IsLeaf = true } });
 
@@ -164,12 +169,13 @@ public class TreeViewControlledRound10Tests : IAsyncLifetime
             .Add(c => c.SelectedValues, (List<string>?)null)
             .Add(c => c.SelectedValuesChanged, callback));
 
-        // Click the SECOND same-valued parent — its children must attach to Beta (position 1), not drop.
+        // Click the SECOND same-valued parent — after the controlled rebuild its clicked instance is
+        // disposed and its identity among the two "dup" siblings is unprovable, so the load is DROPPED,
+        // not grafted onto a guessed sibling. Neither child-of-Beta nor child-of-Alpha may appear.
         await cut.InvokeAsync(() => Row(cut, "Beta").Click());
 
-        Assert.Contains("child-of-Beta", cut.Markup);
+        Assert.DoesNotContain("child-of-Beta", cut.Markup);
         Assert.DoesNotContain("child-of-Alpha", cut.Markup);
-        Assert.Equal("true", TreeItem(cut, "Beta").GetAttribute("aria-expanded"));
     }
 
     /// <summary>
