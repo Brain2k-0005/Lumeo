@@ -30,8 +30,14 @@
         }
         else if (ShowExpandChevron && Expandable)
         {
+            @* Ghost affordance: NO separate hover background — the whole ROW carries the
+               hover highlight (NodeClass' hover:bg-accent/50), so the chevron reads as an
+               integrated part of the row (VS Code / shadcn tree style) instead of a detached
+               button block. The icon gently brightens on row hover (group-hover/row). A
+               focus-visible ring stays for keyboard users; the 24px box keeps a comfortable
+               hit/touch target. Still stops propagation, so it toggles without selecting. *@
             <button type="button"
-                    class="shrink-0 p-0.5 rounded hover:bg-accent transition-colors"
+                    class="shrink-0 w-6 h-6 flex items-center justify-center rounded-sm text-muted-foreground focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring transition-colors"
                     @onclick="ToggleExpand"
                     @onclick:stopPropagation="true"
                     tabindex="-1"
@@ -41,7 +47,8 @@
         }
         else
         {
-            <span class="w-5"></span>
+            @* Leaf spacer — matches the 24px chevron/spinner box so labels align across rows. *@
+            <span class="w-6"></span>
         }
 
         @* Checkbox *@
@@ -177,7 +184,7 @@
         {
             var parts = new List<string>
             {
-                "flex items-center gap-1.5 py-1 px-2 rounded-md transition-colors text-sm group-focus-visible:ring-[1.5px] group-focus-visible:ring-ring group-focus-visible:ring-offset-1",
+                "group/row flex items-center gap-1.5 py-1 px-2 rounded-md transition-colors text-sm group-focus-visible:ring-[1.5px] group-focus-visible:ring-ring group-focus-visible:ring-offset-1",
                 Item.IsDisabled ? "opacity-50 cursor-not-allowed text-muted-foreground" : "cursor-pointer hover:bg-accent/50"
             };
             if (IsSelected && !Item.IsDisabled)
@@ -187,8 +194,10 @@
     }
 
     // Single ChevronDown that rotates -90deg when collapsed; smooth like Accordion.
+    // Brightens from muted → foreground when the label row is hovered (group-hover/row),
+    // an integrated affordance that needs no background block of its own.
     private string ChevronClass => Cx.Join(
-        "h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-200",
+        "h-4 w-4 shrink-0 text-muted-foreground group-hover/row:text-foreground transition-transform duration-200",
         Cx.When(!EffectiveExpanded, "-rotate-90"));
 
     private string IconClass =>

@@ -249,6 +249,15 @@
             // for a node that only just materialized — an async/empty first render, or a
             // value carried forward when its node vanished — binds against the fresh tree.
             TryResolvePendingSelection(Items);
+            // TRI-STATE DERIVE-ON-SEED: recompute every parent's checked/indeterminate
+            // state from its (seeded or freshly-assigned) children so a tree that arrives
+            // with children already IsChecked=true shows the correct parent state on the
+            // FIRST render — not just after an interactive check. Same recompute the
+            // interactive path (HandleItemCheck) uses, so both routes agree. Cascade-only:
+            // when CascadeCheck is off, parent/child checks are independent by contract, so
+            // no derivation runs (checking a node never touches its ancestors there either).
+            if (CascadeCheck && ShowCheckboxes)
+                UpdateAncestorStates(Items ?? []);
             if (ExpandAll)
             {
                 ApplyExpandAll(Items ?? [], true);
@@ -274,6 +283,9 @@
         var gen = ++_expandGeneration;
         await LoadAndExpandAllAsync(Items ?? [], gen);
         if (gen != _expandGeneration) return; // superseded by a collapse/expand
+        // Lazy branches just materialized — derive parents from their (possibly seeded) checks.
+        if (CascadeCheck && ShowCheckboxes)
+            UpdateAncestorStates(Items ?? []);
         _flatVisible = null;
         RebuildDisplay();
         StateHasChanged();
@@ -311,6 +323,9 @@
         if (LoadChildren is not null)
             await LoadAndExpandAllAsync(Items ?? [], gen);
         if (gen != _expandGeneration) return; // superseded by a newer expand/collapse
+        // Lazy branches just materialized — derive parents from their (possibly seeded) checks.
+        if (CascadeCheck && ShowCheckboxes)
+            UpdateAncestorStates(Items ?? []);
         _flatVisible = null;
         StateHasChanged();
     }
@@ -395,12 +410,25 @@
     {
         // A manual collapse overrides any search-forced expansion.
         if (!item.IsExpanded)
+        {
             _autoExpanded.Remove(item);
+        }
         else
+        {
             // Expanding may have just lazy-loaded this node's children (TreeViewNode
             // assigns Item.Children before raising this). Bind any pending controlled/
             // seed selection that named one of those now-materialized nodes.
             TryResolvePendingSelection(item.Children);
+            // A lazy branch can materialize with children already IsChecked=true (seeded
+            // in the loaded data), which changes this parent's — and its ancestors' —
+            // derived tri-state. Recompute the whole chain so a freshly-loaded checked
+            // subtree lifts its parents to indeterminate/checked. Cascade-only (see the
+            // derive-on-seed note in OnParametersSet). TreeViewNode's own post-load cascade
+            // only pushes a fully-checked parent DOWN onto its new children; this pass is
+            // what derives parents UP from the loaded state.
+            if (CascadeCheck && ShowCheckboxes)
+                UpdateAncestorStates(Items ?? []);
+        }
         _flatVisible = null;
         StateHasChanged();
         return Task.CompletedTask;
