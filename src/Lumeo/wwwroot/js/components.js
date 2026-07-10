@@ -2634,17 +2634,26 @@ export function registerColumnResize(handleId, dotnetRef, minWidth, maxWidth) {
     };
     const onPointerCancel = (e) => {
         if (!isDragging || e.pointerId !== activePointerId) return;
-        // A cancel (e.g. a system gesture stealing the pointer) may have already
-        // applied a live-dragged width via rAF. Since no commit follows, restore
-        // the pre-drag width so the DOM doesn't drift from the (uncommitted)
-        // grid state.
+        cancelActiveDrag();
+        // No commit on cancel — the user aborted (e.g. system gesture took over).
+    };
+    // Aborts an in-flight drag without committing — shared by pointercancel and
+    // unregisterColumnResize (unmount mid-drag: route change, column hidden,
+    // Resizable toggled off). Restores the pre-drag width so the DOM doesn't
+    // drift from the (uncommitted) grid state, and clears every piece of global
+    // state a live drag leaves behind (cursor, selection, guideline, capture) —
+    // mirrors registerColumnReorder's cancelActiveDrag.
+    const cancelActiveDrag = () => {
+        if (!isDragging) return;
         if (currentWidth !== startWidth) applyWidth(startWidth);
         currentWidth = startWidth;
         pendingWidth = startWidth;
+        const pid = activePointerId;
         endDrag();
-        try { handle.releasePointerCapture(e.pointerId); } catch (_) { }
+        if (pid !== null) {
+            try { handle.releasePointerCapture(pid); } catch (_) { }
+        }
         activePointerId = null;
-        // No commit on cancel — the user aborted (e.g. system gesture took over).
     };
     // Measures a cell's truly intrinsic content width — off-DOM, so a full-width
     // table's auto-layout extra-space distribution (which inflates a live
@@ -2692,6 +2701,7 @@ export function registerColumnResize(handleId, dotnetRef, minWidth, maxWidth) {
     columnResizeHandlers.set(handleId, {
         handle, th, min, max, dotnetRef, applyWidth, gatherBodyCells,
         onPointerDown, onPointerMove, onPointerUp, onPointerCancel, onDoubleClick,
+        cancelActiveDrag,
     });
 }
 
@@ -2720,6 +2730,11 @@ export function nudgeColumnResize(handleId, delta) {
 export function unregisterColumnResize(handleId) {
     const h = columnResizeHandlers.get(handleId);
     if (h) {
+        // Unmounting a resizable header mid-drag (route change, column hidden,
+        // Resizable toggled off) must not just drop the listeners — the active
+        // drag is aborted first so the global cursor/selection styles, pointer
+        // capture, and resize guideline never outlive the handle they belong to.
+        h.cancelActiveDrag();
         const el = h.handle || document.getElementById(handleId);
         if (el) {
             el.removeEventListener('pointerdown', h.onPointerDown);
@@ -2940,6 +2955,12 @@ export function registerColumnReorder(gridId, dotnetRef) {
         for (let i = 0; i < drag.headers.length; i++) {
             if (i === srcIdx) continue;
             const h = drag.headers[i];
+            // Locked (Reorderable=false) columns are un-displaceable — the
+            // .NET-side commit guard (ReorderColumnByIdAsync) refuses any drop
+            // whose target isn't Reorderable, so the live preview must never
+            // shift one aside either. The dragged column glides past it in
+            // place instead of pushing it.
+            if (!h.reorderable) continue;
             let tx = 0;
             if (srcIdx < targetIdx && i > srcIdx && i <= targetIdx) tx = -w;
             else if (srcIdx > targetIdx && i >= targetIdx && i < srcIdx) tx = w;
@@ -2955,14 +2976,29 @@ export function registerColumnReorder(gridId, dotnetRef) {
 
     // Same-pin header whose cached base rect contains clientX (clamped to the
     // partition ends). Returns an index into drag.headers — never reads layout,
-    // baseRect was measured once at drag start.
+    // baseRect was measured once at drag start. A locked header under the
+    // pointer is never returned directly: it's un-displaceable (see
+    // applyProjection above), so landing on one redirects to the nearest
+    // reorderable header in the direction away from the source — the dragged
+    // column "skips over" the lock instead of proposing it as a target the
+    // .NET-side guard would reject.
     const computeTargetIdx = (clientX) => {
+        let idx = -1;
         for (let i = 0; i < drag.headers.length; i++) {
             const r = drag.headers[i].baseRect;
-            if (clientX >= r.left && clientX <= r.right) return i;
+            if (clientX >= r.left && clientX <= r.right) { idx = i; break; }
         }
-        const firstR = drag.headers[0].baseRect;
-        return clientX < firstR.left ? 0 : drag.headers.length - 1;
+        if (idx < 0) {
+            const firstR = drag.headers[0].baseRect;
+            idx = clientX < firstR.left ? 0 : drag.headers.length - 1;
+        }
+        if (drag.headers[idx].reorderable) return idx;
+        const dir = idx >= drag.srcHeaderIdx ? 1 : -1;
+        let j = idx;
+        while (j >= 0 && j < drag.headers.length && !drag.headers[j].reorderable) j += dir;
+        // Nothing reorderable in that direction (e.g. every remaining column in
+        // the partition is locked) — stay put, no-op projection.
+        return (j < 0 || j >= drag.headers.length) ? drag.srcHeaderIdx : j;
     };
 
     const armDrag = () => {
@@ -3005,7 +3041,22 @@ export function registerColumnReorder(gridId, dotnetRef) {
 
         const isCommit = !!commitTargetColId;
         const shiftedCells = d.headers.filter((h) => h.appliedTx).flatMap((h) => h.cells);
-        const draggedTx = isCommit ? (d.headers[d.lastProjectedIdx].baseRect.left - d.sourceRect.left) : 0;
+        // Settle position mirrors the RemoveAt+Insert the .NET commit performs
+        // (ReorderColumnByIdAsync/HandleColumnReorder): dragging LEFT (target
+        // before source) inserts BEFORE the target, so the target's own
+        // original left edge — where it sits once shifted right out of the
+        // way — is exactly the dragged column's final left edge. Dragging
+        // RIGHT (target after source) inserts AFTER the target, so the final
+        // left edge is the target's original RIGHT edge minus the dragged
+        // column's own width (the target has already shifted left by that
+        // width to close the gap). With equal-width columns target.right - w
+        // === target.left, which is why this only visibly diverges once
+        // columns have mixed widths.
+        const target = isCommit ? d.headers[d.lastProjectedIdx] : null;
+        const targetLeft = target
+            ? (d.lastProjectedIdx > d.srcHeaderIdx ? target.baseRect.right - d.sourceRect.width : target.baseRect.left)
+            : 0;
+        const draggedTx = isCommit ? (targetLeft - d.sourceRect.left) : 0;
 
         for (const cell of d.cells) {
             cell.style.transition = `transform ${REORDER_SETTLE_MS}ms ${REORDER_EASE}`;
@@ -3121,6 +3172,11 @@ export function registerColumnReorder(gridId, dotnetRef) {
             return {
                 th: h, colId: h.dataset.colId, baseRect: h.getBoundingClientRect(),
                 cells: gatherColumnCells(h, idx, tbody), appliedTx: 0,
+                // Reorderable=false columns stay in the partition array (they
+                // still occupy screen space the projection math must account
+                // for) but are excluded as displacement/drop targets — see
+                // applyProjection / computeTargetIdx.
+                reorderable: h.dataset.reorderable === 'true',
             };
         });
         // Sort into VISUAL left-to-right order. querySelectorAll returns DOM
@@ -3298,7 +3354,17 @@ export function registerRowReorder(gridId, dotnetRef) {
         const targetIdx = d.lastProjectedIdx;
         const isCommit = commit && targetIdx !== d.srcIdx;
         const shiftedRows = d.rows.filter((r) => r.appliedTy).map((r) => r.el);
-        const draggedTy = isCommit ? (d.rows[targetIdx].baseRect.top - d.sourceRect.top) : 0;
+        // Vertical mirror of registerColumnReorder's settle fix: MoveRow does a
+        // RemoveAt+Insert, so dragging DOWN (target after source) inserts AFTER
+        // the target — final top edge is the target's original BOTTOM minus the
+        // dragged row's own height (the target already shifted up by that
+        // height). Dragging UP inserts BEFORE the target, so its original top
+        // edge is already correct. Only diverges from the old single formula
+        // once rows have mixed heights (e.g. an expanded detail row).
+        const targetTop = isCommit
+            ? (targetIdx > d.srcIdx ? d.rows[targetIdx].baseRect.bottom - d.sourceRect.height : d.rows[targetIdx].baseRect.top)
+            : 0;
+        const draggedTy = isCommit ? (targetTop - d.sourceRect.top) : 0;
 
         d.el.style.transition = `transform ${ROW_REORDER_SETTLE_MS}ms ${ROW_REORDER_EASE}`;
         d.el.style.transform = draggedTy ? `translateY(${draggedTy}px)` : '';
