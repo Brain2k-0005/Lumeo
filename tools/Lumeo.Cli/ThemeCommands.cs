@@ -218,6 +218,18 @@ public static class ThemeCommands
             Console.Error.WriteLine(Ansi.Yellow($"! Could not back up {Paths.ConfigFile}: {ex.Message}"));
         }
 
+        // Step 5b: normalize a tombstoned (empty) icon library BEFORE any merge/write.
+        // A legacy client preset can decode to "" (font-awesome, material-design,
+        // ionicons, devicon, flag-icons) — none has a first-party Lumeo.Icons.* pack.
+        // Null it out so MergeInto / WriteOrMergeThemeJson skip it entirely; otherwise
+        // `apply --only icons` on such a code would overwrite a valid first-party
+        // iconLibrary with a blank in lumeo.json / wwwroot/lumeo-theme.json.
+        if ((allowed is null || allowed.Contains("iconLibrary")) && resolved.IconLibrary == "")
+        {
+            Console.Error.WriteLine(Ansi.Yellow("! Icon library in this preset has no first-party pack; skipping icon selection."));
+            resolved.IconLibrary = null;
+        }
+
         // Step 6: merge into cfg.Theme (only the allowed keys).
         cfg.Theme ??= new LumeoThemeConfig();
         MergeInto(cfg.Theme, resolved, allowed);
@@ -242,19 +254,13 @@ public static class ThemeCommands
         // Step 8: install the icon-library NuGet package if the preset requires one
         // the consumer doesn't already have. Icon packs are compile-time — theme.js
         // can't switch them at runtime — so this is the only way to keep the CLI
-        // apply step 1:1 with the customizer's icon selection.
-        if (allowed is null || allowed.Contains("iconLibrary"))
+        // apply step 1:1 with the customizer's icon selection. Tombstoned/legacy
+        // values were already normalized to null in Step 5b, so a null here just means
+        // "no icon selection to install".
+        if ((allowed is null || allowed.Contains("iconLibrary"))
+            && !string.IsNullOrEmpty(resolved.IconLibrary))
         {
-            if (!string.IsNullOrEmpty(resolved.IconLibrary))
-            {
-                await MaybeInstallIconPackageAsync(resolved.IconLibrary, yes, silent);
-            }
-            else if (resolved.IconLibrary == "")
-            {
-                // Tombstoned legacy library (font-awesome, material-design, ionicons, devicon,
-                // flag-icons) has no first-party Lumeo.Icons.* equivalent — skip with warning.
-                Console.Error.WriteLine(Ansi.Yellow("! Icon library in this preset has no first-party pack; skipping icon install."));
-            }
+            await MaybeInstallIconPackageAsync(resolved.IconLibrary, yes, silent);
         }
 
         // Step 9: self-host the font (shadcn / next.js style) so the consumer doesn't
