@@ -114,23 +114,41 @@ public class OverlayExitAnimationEndTests : IAsyncLifetime
 
         await cut.InvokeAsync(() => _overlay.Cancel(id));
 
-        // The content wired the panel's animationend to OnExitAnimationEnd.
-        cut.WaitForAssertion(() => Assert.NotNull(_interop.LastOverlayExitCallback));
-        Assert.NotEmpty(_interop.OverlayExitEndWirings);
-        var callback = _interop.LastOverlayExitCallback!;
-
-        // Both elements are still mounted right now (exit window), BEFORE any fallback
-        // timer could have elapsed — so the unmount below is attributable to the
-        // animationend callback, not the timer.
+        // Exit window keeps BOTH elements mounted. Asserted SYNCHRONOUSLY on the
+        // just-committed close render — the exit render commits inline within the
+        // Cancel dispatch (all test interop is instant), so this runs BEFORE any
+        // wall-clock poll, when the content's 280 ms and the provider's 320 ms
+        // fallback timers provably cannot yet have fired. Latch state, not
+        // wall-clock — the canonical overlay-exit-family pattern, mirroring
+        // Backdrop_stays_mounted_alongside_panel_during_exit_window. This REPLACES
+        // the old ordering, where these two transient asserts sat AFTER a
+        // WaitForAssertion poll and so raced the fallback timers under a starved CI
+        // thread pool (flapped at 612 ms > 320 ms > 280 ms; passed locally).
         Assert.NotEmpty(cut.FindAll($"[role='{role}']"));
         Assert.NotEmpty(cut.FindAll(".animate-fade-out"));
 
-        // Simulate the browser firing animationend on the panel.
-        await cut.InvokeAsync(() => callback.OnExitAnimationEnd());
+        // The content wired the panel's animationend to OnExitAnimationEnd. That
+        // wiring lands in a follow-up OnAfterRender turn, so it must be polled — but
+        // it is a MONOTONIC latch (OverlayExitEndWirings only grows;
+        // LastOverlayExitCallback is never re-nulled), so a starved poll merely waits
+        // longer (up to the 10 s module ceiling) and can never spuriously fail, even
+        // if the fallback timers fire during it.
+        cut.WaitForAssertion(() => Assert.NotEmpty(_interop.OverlayExitEndWirings));
+        var callback = _interop.LastOverlayExitCallback!;
+        Assert.NotNull(callback);
 
-        // Backdrop AND panel are gone in the same render — removed together.
-        Assert.Empty(cut.FindAll($"[role='{role}']"));
-        Assert.Empty(cut.FindAll(".animate-fade-out"));
+        // Simulate the browser firing animationend on the panel: it drops the
+        // backdrop AND panel in the same render commit (removed together). This is
+        // idempotent with the fallback timers — FinishExit latches on `_exiting` and
+        // FinishClose/RemoveOverlay are safe once-per-id, so whichever lands first
+        // wins and the other no-ops. The empty end-state is terminal (nothing
+        // re-opens the overlay), so this poll is monotonic and cannot spuriously fail.
+        await cut.InvokeAsync(() => callback.OnExitAnimationEnd());
+        cut.WaitForAssertion(() =>
+        {
+            Assert.Empty(cut.FindAll($"[role='{role}']"));
+            Assert.Empty(cut.FindAll(".animate-fade-out"));
+        });
     }
 
     [Fact]
