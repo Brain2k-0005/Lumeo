@@ -1,7 +1,6 @@
 using Bunit;
 using Lumeo.Services;
 using Lumeo.Tests.Helpers;
-using Microsoft.AspNetCore.Components.Web;
 using Microsoft.Extensions.DependencyInjection;
 using Xunit;
 
@@ -11,10 +10,17 @@ namespace Lumeo.Tests.Components.DataGrid;
 /// Pinned-column reorder constraint: a column may only be reordered WITHIN its pin
 /// partition (left / unpinned / right). A cross-partition drop is silently undone by
 /// the pin re-partition on the next render, so the grid must reject it up front — no
-/// drop indicator, no reorder event — on BOTH entry paths:
-///   * the desktop native-DnD header drag (dragenter/drop), and
-///   * the pointer-based (touch/pen) reorder commit routed through RegisterColumnReorder.
-/// Same-partition reorders are the control and must still work.
+/// reorder event — via the single unified reorder commit path (mouse + touch + pen)
+/// routed through RegisterColumnReorder → ReorderColumnByIdAsync. Same-partition
+/// reorders are the control and must still work.
+///
+/// The native-DnD header-to-header drag/drop-indicator tests that used to live here
+/// were removed with the ReUI-parity pass: column reorder no longer uses native HTML5
+/// DnD at all (dragstart/dragenter/drop-on-header + the glow indicator are gone from
+/// DataGridHeaderCell) — every pointer type now drives the same JS pointer-based path,
+/// which enforces this exact constraint client-side before ever calling .NET. The
+/// constraint's authoritative enforcement point is (and always was) this C# boundary,
+/// which the tests below still exercise directly.
 /// </summary>
 public class DataGridReorderConstraintTests : IAsyncLifetime
 {
@@ -55,53 +61,7 @@ public class DataGridReorderConstraintTests : IAsyncLifetime
         => cut.FindAll("th[data-slot='datagrid-header-cell']")
               .Select(h => h.GetAttribute("data-col-id")).ToList();
 
-    // --- Drag path (desktop native DnD) ---
-
-    [Fact]
-    public void CrossPartition_DragEnter_Shows_No_Drop_Indicator()
-    {
-        var (a, b, c) = Cols();
-        var cut = RenderGrid(new() { a, b, c });
-
-        var headers = cut.FindAll("th[data-slot='datagrid-header-cell']");
-        // Drag the pinned column A, hover the unpinned column B.
-        headers[0].TriggerEvent("ondragstart", new DragEventArgs());
-        cut.FindAll("th[data-slot='datagrid-header-cell']")[1].TriggerEvent("ondragenter", new DragEventArgs());
-
-        Assert.Empty(cut.FindAll(".lumeo-datagrid-drop-indicator"));
-    }
-
-    [Fact]
-    public void SamePartition_DragEnter_Shows_Drop_Indicator()
-    {
-        var (a, b, c) = Cols();
-        var cut = RenderGrid(new() { a, b, c });
-
-        var headers = cut.FindAll("th[data-slot='datagrid-header-cell']");
-        // Drag unpinned B, hover unpinned C — both in the same (None) partition.
-        headers[1].TriggerEvent("ondragstart", new DragEventArgs());
-        cut.FindAll("th[data-slot='datagrid-header-cell']")[2].TriggerEvent("ondragenter", new DragEventArgs());
-
-        Assert.NotEmpty(cut.FindAll(".lumeo-datagrid-drop-indicator"));
-    }
-
-    [Fact]
-    public void CrossPartition_Drop_Is_Rejected_No_Reorder()
-    {
-        var (a, b, c) = Cols();
-        ColumnReorderEventArgs? fired = null;
-        var cut = RenderGrid(new() { a, b, c }, args => fired = args);
-        var before = HeaderOrder(cut);
-
-        var headers = cut.FindAll("th[data-slot='datagrid-header-cell']");
-        headers[0].TriggerEvent("ondragstart", new DragEventArgs());
-        cut.FindAll("th[data-slot='datagrid-header-cell']")[2].TriggerEvent("ondrop", new DragEventArgs());
-
-        Assert.Null(fired);
-        Assert.Equal(before, HeaderOrder(cut));
-    }
-
-    // --- Pointer/touch path (RegisterColumnReorder commit) ---
+    // --- Unified pointer path (RegisterColumnReorder commit — mouse/touch/pen) ---
 
     [Fact]
     public void Reorderable_Grid_Registers_Pointer_Reorder_Listener()
@@ -114,7 +74,7 @@ public class DataGridReorderConstraintTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task Touch_CrossPartition_Commit_Is_Rejected()
+    public async Task Pointer_CrossPartition_Commit_Is_Rejected()
     {
         var (a, b, c) = Cols();
         ColumnReorderEventArgs? fired = null;
@@ -130,7 +90,7 @@ public class DataGridReorderConstraintTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task Touch_SamePartition_Commit_Reorders()
+    public async Task Pointer_SamePartition_Commit_Reorders()
     {
         var (a, b, c) = Cols();
         ColumnReorderEventArgs? fired = null;
@@ -150,7 +110,7 @@ public class DataGridReorderConstraintTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task Touch_NonReorderable_Column_Commit_Is_Rejected()
+    public async Task Pointer_NonReorderable_Column_Commit_Is_Rejected()
     {
         var a = new DataGridColumn<Row> { Field = "Id", Title = "A", Reorderable = false };
         var b = new DataGridColumn<Row> { Field = "Name", Title = "B" };
@@ -174,11 +134,100 @@ public class DataGridReorderConstraintTests : IAsyncLifetime
         var (a, b, c) = Cols();
         var cut = RenderGrid(new() { a, b, c });
 
-        // Every reorderable header carries a touch drag grip.
+        // Every reorderable header carries a drag grip (mouse + touch + pen all
+        // initiate from it; mouse can ALSO initiate from the rest of the header —
+        // see the JS pointer path — but the grip is the universal affordance).
         Assert.Equal(3, cut.FindAll("[data-reorder-grip]").Count);
+        // Every reorderable header exposes the marker the JS pointer path keys off
+        // for its mouse header-wide initiation.
+        Assert.Equal(3, cut.FindAll("th[data-reorderable='true']").Count);
         // The pinned column's th advertises its partition for the JS reorder clamp.
         var pinnedHeader = cut.FindAll("th[data-slot='datagrid-header-cell']")
                               .First(h => h.GetAttribute("data-col-id") == a.Id);
         Assert.Equal("Left", pinnedHeader.GetAttribute("data-col-pin"));
+    }
+
+    // --- Native DnD removal (ReUI-parity pass) ---
+    //
+    // Column reorder no longer uses native HTML5 DnD at all — the unified JS
+    // pointer path (above) owns mouse + touch + pen. Native DnD is kept for
+    // exactly one, unrelated gesture: dragging a Groupable column into the group
+    // panel (DataGridDragOverHotPathTests / DataGridGroupPanelTests cover that).
+
+    [Fact]
+    public void Reorderable_NonGroupable_Header_Is_Not_Natively_Draggable()
+    {
+        var (a, b, c) = Cols();
+        var cut = RenderGrid(new() { a, b, c }); // no ShowGroupPanel — nothing is Groupable here
+
+        foreach (var header in cut.FindAll("th[data-slot='datagrid-header-cell']"))
+        {
+            Assert.Equal("false", header.GetAttribute("draggable"));
+        }
+    }
+
+    [Fact]
+    public void Groupable_Header_With_GroupPanel_Stays_Natively_Draggable_For_GroupDrag()
+    {
+        var cols = new List<DataGridColumn<Row>>
+        {
+            new() { Field = "Id", Title = "A" },
+            new() { Field = "Dept", Title = "B", Groupable = true },
+        };
+        var cut = _ctx.Render<Lumeo.DataGrid<Row>>(p =>
+        {
+            p.Add(g => g.Items, Data());
+            p.Add(g => g.Columns, cols);
+            p.Add(g => g.Reorderable, true);
+            p.Add(g => g.ShowGroupPanel, true);
+        });
+
+        // Groupable + ShowGroupPanel keeps native draggable="true" (drag-to-group);
+        // it also stays reorderable — the grip is that column's sole reorder
+        // initiator so the two gestures don't compete over the same pointerdown.
+        var groupableHeader = cut.FindAll("th[data-slot='datagrid-header-cell']")[1];
+        Assert.Equal("true", groupableHeader.GetAttribute("draggable"));
+        Assert.Equal("true", groupableHeader.GetAttribute("data-reorderable"));
+    }
+
+    [Fact]
+    public void No_Drop_Indicator_Markup_Rendered_Anymore()
+    {
+        var (a, b, c) = Cols();
+        var cut = RenderGrid(new() { a, b, c });
+
+        // The glow drop-indicator div (and its class) is gone entirely — live
+        // sibling-shift replaces it, driven purely in JS with no DOM marker to
+        // assert on at the bUnit level (see the Playwright evidence for that).
+        Assert.DoesNotContain("lumeo-datagrid-drop-indicator", cut.Markup);
+    }
+
+    [Fact]
+    public void Reorderable_Header_Click_Still_Sorts()
+    {
+        // Guards the click-vs-drag disambiguation at the C# boundary: the sort
+        // button's @onclick binding must still fire even though the header is
+        // ALSO wired for pointer-based reorder (grip + header-wide mouse init
+        // with a movement threshold — the threshold itself is JS-only and is
+        // exercised in the Playwright evidence, not here).
+        var cols = new List<DataGridColumn<Row>>
+        {
+            new() { Field = "Id", Title = "A", Sortable = true },
+            new() { Field = "Name", Title = "B" },
+        };
+        var cut = _ctx.Render<Lumeo.DataGrid<Row>>(p =>
+        {
+            p.Add(g => g.Items, Data());
+            p.Add(g => g.Columns, cols);
+            p.Add(g => g.Reorderable, true);
+        });
+
+        var header = cut.FindAll("th[data-slot='datagrid-header-cell']")[0];
+        Assert.Equal("none", header.GetAttribute("aria-sort"));
+
+        header.QuerySelector("button")!.Click();
+
+        header = cut.FindAll("th[data-slot='datagrid-header-cell']")[0];
+        Assert.Equal("ascending", header.GetAttribute("aria-sort"));
     }
 }

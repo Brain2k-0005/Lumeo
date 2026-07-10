@@ -2773,7 +2773,25 @@ export function captureColumnRects(gridId) {
                 cells.push(cell);
             }
         }
-        snapshot[colId] = { left: th.getBoundingClientRect().left, cells };
+        // Measure BEFORE clearing: getBoundingClientRect() reflects any inline
+        // transform still applied by the pointer-based reorder drag (JS leaves the
+        // dragged column's + live-shifted siblings' transforms in place through the
+        // commit — see registerColumnReorder's finishDrag — so this "left" is the
+        // accurate settled preview position, not a stale pre-drag one). Clearing
+        // right after the read hands the DOM back clean for the mutation this
+        // capture precedes and for AnimateColumnReorder's post-render remeasure.
+        // A no-op for columns the drag never touched (their inline styles are
+        // already empty strings).
+        const left = th.getBoundingClientRect().left;
+        for (const cell of cells) {
+            cell.style.transform = '';
+            cell.style.transition = '';
+            cell.style.opacity = '';
+            cell.style.zIndex = '';
+            cell.style.position = '';
+            cell.style.pointerEvents = '';
+        }
+        snapshot[colId] = { left, cells };
     });
     columnReorderSnapshots.set(gridId, snapshot);
 }
@@ -2832,54 +2850,52 @@ export function animateColumnReorder(gridId, durationMs) {
     }, duration + 50);
 }
 
-// --- DataGrid Column Reorder: pointer-based (touch/pen) ---
+// --- DataGrid Column Reorder: unified pointer-based (mouse + touch + pen) ---
 //
-// Native HTML5 drag-and-drop never fires on touch, so the mouse reorder path
-// (draggable <th> + dragstart/drop + FLIP) is dead on phones/tablets. This adds
-// a pointer-driven reorder that unifies touch + pen on a dedicated grip handle,
-// matching the ReUI "translate-in-place, live drop indicator" feel:
-//   * the dragged column (header + its body cells) follows the finger in X only
-//     (Y locked), at opacity 0.8 / z above siblings;
-//   * a primary drop-indicator bar marks the target seam;
-//   * movement is clamped to the same pin partition (a left-pinned column can't
-//     cross into the unpinned/right region) and to the table bounds;
-//   * Escape / pointercancel / drop-outside aborts with no commit;
-//   * release commits ONCE via OnColumnReorderCommit(gridId, srcId, tgtId).
-// Every per-move computation stays in JS — .NET only receives the single
-// discrete commit — honouring the drag hot-path performance law.
+// ReUI parity (keenthemes/reui data-grid-table-dnd.tsx): ONE drag path drives
+// every pointer type. No ghost image, no drop-indicator line — the dragged
+// column (header + its body cells) translates IN PLACE following the pointer
+// at opacity 0.8 / z above siblings, while same-pin siblings LIVE-SHIFT aside
+// (transform-only, ~220ms ease) to continuously preview the final order as the
+// pointer crosses their midpoints. Native HTML5 drag-and-drop is no longer used
+// for reorder at all (see DataGridHeaderCell.IsDraggable — it now serves only
+// the unrelated drag-to-group-panel gesture).
 //
-// Mouse is intentionally excluded (pointerType 'mouse' bails) so desktop keeps
-// the well-tested native-DnD ghost + FLIP path untouched.
+// Initiation:
+//   * the dedicated grip (touch/pen/mouse) arms the drag immediately — it has
+//     no other function, so there's nothing to disambiguate;
+//   * the header itself ALSO arms it for MOUSE ONLY, but only past a small
+//     movement threshold (REORDER_MOVE_THRESHOLD) so a plain click still
+//     reaches the sort button / other header controls — touch/pen stay
+//     grip-only (a tap must stay unambiguous with tap-to-sort);
+//   * a header that's natively draggable (Groupable + ShowGroupPanel, for the
+//     drag-to-group gesture) only arms from the grip — the rest of its surface
+//     keeps native dragstart uncontested.
+//
+// Every per-move computation (target index, sibling shift deltas) is cached at
+// drag start and only recomputed when the projected index actually changes —
+// zero .NET calls and zero layout reads in the pointermove hot loop, matching
+// the resize handle's perf law. Escape / pointercancel animates back to
+// identity and commits nothing; release settles the dragged column into its
+// projected slot then commits ONCE via OnColumnReorderCommit(gridId, srcId,
+// tgtId) — captureColumnRects (called right after, from HandleColumnReorder)
+// measures that settled preview as FLIP's "First" and clears the inline drag
+// styles itself, handing off seamlessly to the existing capture → mutate →
+// animate pipeline.
 
-const columnReorderPointerHandlers = new Map(); // gridId -> { grid, onPointerDown }
-let reorderDropIndicator = null;
+const columnReorderPointerHandlers = new Map(); // gridId -> { grid, onPointerDown, ... }
 
-function ensureReorderIndicator() {
-    if (!reorderDropIndicator) {
-        reorderDropIndicator = document.createElement('div');
-        reorderDropIndicator.setAttribute('data-slot', 'datagrid-reorder-indicator');
-        const s = reorderDropIndicator.style;
-        s.position = 'fixed';
-        s.width = '3px';
-        s.background = 'var(--color-primary, #6366f1)';
-        s.borderRadius = '2px';
-        s.pointerEvents = 'none';
-        s.zIndex = '61';
-        s.boxShadow = '0 0 8px color-mix(in oklab, var(--color-primary, #6366f1) 70%, transparent)';
-        document.body.appendChild(reorderDropIndicator);
-    }
-    return reorderDropIndicator;
-}
-function hideReorderIndicator() {
-    if (reorderDropIndicator) reorderDropIndicator.style.display = 'none';
-}
+const REORDER_MOVE_THRESHOLD = 5;  // px — mouse header-wide init must clear this to arm
+const REORDER_SETTLE_MS = 180;     // release/cancel glide duration
+const REORDER_SHIFT_MS = 220;      // sibling live-shift ease duration
+const REORDER_EASE = 'cubic-bezier(0.22, 1, 0.36, 1)';
 
 export function registerColumnReorder(gridId, dotnetRef) {
     const grid = document.querySelector(`[data-grid-id="${CSS.escape(gridId)}"]`);
     if (!grid) return;
     if (columnReorderPointerHandlers.has(gridId)) unregisterColumnReorder(gridId);
 
-    let drag = null; // active drag descriptor or null
+    let drag = null; // active/pending drag descriptor or null
 
     const gatherColumnCells = (th, colIndex, tbody) => {
         const cells = [th];
@@ -2892,131 +2908,46 @@ export function registerColumnReorder(gridId, dotnetRef) {
         return cells;
     };
 
-    const cleanup = () => {
-        if (!drag) return;
-        for (const cell of drag.cells) {
-            cell.style.transition = '';
-            cell.style.transform = '';
-            cell.style.opacity = '';
-            cell.style.zIndex = '';
-            cell.style.position = '';
-            cell.style.pointerEvents = '';
-        }
-        document.body.style.cursor = '';
-        document.documentElement.style.cursor = '';
-        document.body.style.userSelect = '';
-        hideReorderIndicator();
-        window.removeEventListener('keydown', onKeyDown, true);
-        drag = null;
-    };
-
-    const onKeyDown = (e) => {
-        if (e.key === 'Escape' && drag) {
-            e.preventDefault();
-            cleanup();
-        }
-    };
-
-    const computeTarget = (clientX) => {
-        // Insertion target = the same-pin header whose midpoint the pointer has
-        // passed. Returns { th, colId, side } or null.
-        let best = null;
-        for (const h of drag.headers) {
-            const r = h.baseRect;
-            const mid = r.left + r.width / 2;
-            if (clientX >= r.left && clientX <= r.right) {
-                best = { th: h.th, colId: h.colId, side: clientX < mid ? 'left' : 'right', rect: r };
-                break;
+    // Applies (or re-applies) the live sibling-shift preview for a projected
+    // insertion index. Guarded by drag.lastProjectedIdx so it only runs when the
+    // index actually changes (a handful of times per drag, never per move), and
+    // only writes cells whose own target transform changed.
+    const applyProjection = (targetIdx) => {
+        if (drag.lastProjectedIdx === targetIdx) return;
+        drag.lastProjectedIdx = targetIdx;
+        const srcIdx = drag.srcHeaderIdx;
+        const w = drag.sourceRect.width;
+        for (let i = 0; i < drag.headers.length; i++) {
+            if (i === srcIdx) continue;
+            const h = drag.headers[i];
+            let tx = 0;
+            if (srcIdx < targetIdx && i > srcIdx && i <= targetIdx) tx = -w;
+            else if (srcIdx > targetIdx && i >= targetIdx && i < srcIdx) tx = w;
+            if (h.appliedTx === tx) continue;
+            h.appliedTx = tx;
+            const t = tx ? `translateX(${tx}px)` : '';
+            for (const cell of h.cells) {
+                cell.style.transition = `transform ${REORDER_SHIFT_MS}ms ${REORDER_EASE}`;
+                cell.style.transform = t;
             }
         }
-        if (!best) {
-            // Past the ends → clamp to first/last same-pin header.
-            const first = drag.headers[0], last = drag.headers[drag.headers.length - 1];
-            if (clientX < first.baseRect.left) best = { th: first.th, colId: first.colId, side: 'left', rect: first.baseRect };
-            else best = { th: last.th, colId: last.colId, side: 'right', rect: last.baseRect };
+    };
+
+    // Same-pin header whose cached base rect contains clientX (clamped to the
+    // partition ends). Returns an index into drag.headers — never reads layout,
+    // baseRect was measured once at drag start.
+    const computeTargetIdx = (clientX) => {
+        for (let i = 0; i < drag.headers.length; i++) {
+            const r = drag.headers[i].baseRect;
+            if (clientX >= r.left && clientX <= r.right) return i;
         }
-        return best;
+        const firstR = drag.headers[0].baseRect;
+        return clientX < firstR.left ? 0 : drag.headers.length - 1;
     };
 
-    const onPointerMove = (e) => {
-        if (!drag || e.pointerId !== drag.pointerId) return;
-        if (e.cancelable) e.preventDefault();
-        // Translate the dragged column in X only, clamped to the partition span.
-        let tx = e.clientX - drag.startX;
-        const minTx = drag.bounds.min - drag.sourceRect.left;
-        const maxTx = drag.bounds.max - drag.sourceRect.right;
-        if (tx < minTx) tx = minTx;
-        if (tx > maxTx) tx = maxTx;
-        const translate = `translateX(${tx}px)`;
-        for (const cell of drag.cells) cell.style.transform = translate;
-
-        const target = computeTarget(e.clientX);
-        drag.target = target;
-        if (target && target.colId !== drag.sourceColId) {
-            const ind = ensureReorderIndicator();
-            const seamX = target.side === 'left' ? target.rect.left : target.rect.right;
-            ind.style.display = 'block';
-            ind.style.top = drag.tableRect.top + 'px';
-            ind.style.height = drag.tableRect.height + 'px';
-            ind.style.left = (seamX - 1.5) + 'px';
-        } else {
-            hideReorderIndicator();
-        }
-    };
-
-    const onPointerUp = (e) => {
-        if (!drag || e.pointerId !== drag.pointerId) return;
-        const target = drag.target;
-        const sourceColId = drag.sourceColId;
-        try { drag.grip.releasePointerCapture(e.pointerId); } catch (_) { }
-        const commit = target && target.colId && target.colId !== sourceColId ? target.colId : null;
-        cleanup();
-        if (commit) dotnetRef.invokeMethodAsync('OnColumnReorderCommit', gridId, sourceColId, commit);
-    };
-
-    const onPointerCancel = (e) => {
-        if (!drag || e.pointerId !== drag.pointerId) return;
-        try { drag.grip.releasePointerCapture(e.pointerId); } catch (_) { }
-        cleanup();
-    };
-
-    const onPointerDown = (e) => {
-        // Touch/pen only — mouse keeps the native HTML5 drag path.
-        if (e.pointerType === 'mouse') return;
-        const grip = e.target.closest('[data-reorder-grip]');
-        if (!grip || !grid.contains(grip)) return;
-        const th = grip.closest('th[data-col-id]');
-        if (!th) return;
-        const sourceColId = th.dataset.colId;
-        const sourcePin = th.dataset.colPin || 'None';
-
-        const headerRow = th.parentElement;
-        const table = th.closest('table');
-        const tbody = table ? table.querySelector('tbody') : null;
-        if (!headerRow || !table) return;
-
-        // Same-pin partition candidates, in visual order, with cached base rects.
-        const allTh = Array.prototype.slice.call(headerRow.querySelectorAll('th[data-col-id]'));
-        const headers = allTh
-            .filter((h) => (h.dataset.colPin || 'None') === sourcePin)
-            .map((h) => ({ th: h, colId: h.dataset.colId, baseRect: h.getBoundingClientRect() }));
-        if (headers.length < 2) return; // nothing to reorder within the partition
-
-        const colIndex = Array.prototype.indexOf.call(headerRow.children, th);
-        const cells = gatherColumnCells(th, colIndex, tbody);
-        const sourceRect = th.getBoundingClientRect();
-        const tableRect = table.getBoundingClientRect();
-        const bounds = {
-            min: headers[0].baseRect.left,
-            max: headers[headers.length - 1].baseRect.right,
-        };
-
-        drag = {
-            pointerId: e.pointerId, grip, startX: e.clientX,
-            sourceColId, cells, headers, sourceRect, tableRect, bounds, target: null,
-        };
-
-        for (const cell of cells) {
+    const armDrag = () => {
+        drag.armed = true;
+        for (const cell of drag.cells) {
             cell.style.transition = 'none';
             cell.style.opacity = '0.8';
             cell.style.position = 'relative';
@@ -3026,10 +2957,179 @@ export function registerColumnReorder(gridId, dotnetRef) {
         document.body.style.cursor = 'grabbing';
         document.documentElement.style.cursor = 'grabbing';
         document.body.style.userSelect = 'none';
-        try { grip.setPointerCapture(e.pointerId); } catch (_) { }
+        try { drag.captureTarget.setPointerCapture(drag.pointerId); } catch (_) { }
         window.addEventListener('keydown', onKeyDown, true);
-        e.preventDefault();
-        e.stopPropagation();
+    };
+
+    const onKeyDown = (e) => {
+        if (e.key === 'Escape' && drag) {
+            e.preventDefault();
+            finishDrag(null);
+        }
+    };
+
+    // Ends the drag. commitTargetColId is null for cancel (Escape / pointercancel)
+    // — everything animates back to identity, nothing is committed. For a valid
+    // drop, the dragged column glides to its projected slot (siblings are already
+    // resting at their live-shift positions — nothing more to animate for them);
+    // once that settle finishes, OnColumnReorderCommit fires exactly once.
+    const finishDrag = (commitTargetColId) => {
+        const d = drag;
+        drag = null;
+        window.removeEventListener('keydown', onKeyDown, true);
+        document.body.style.cursor = '';
+        document.documentElement.style.cursor = '';
+        document.body.style.userSelect = '';
+        if (!d.armed) return; // never engaged (plain click) — nothing to animate/commit
+        try { d.captureTarget.releasePointerCapture(d.pointerId); } catch (_) { }
+
+        const isCommit = !!commitTargetColId;
+        const shiftedCells = d.headers.filter((h) => h.appliedTx).flatMap((h) => h.cells);
+        const draggedTx = isCommit ? (d.headers[d.lastProjectedIdx].baseRect.left - d.sourceRect.left) : 0;
+
+        for (const cell of d.cells) {
+            cell.style.transition = `transform ${REORDER_SETTLE_MS}ms ${REORDER_EASE}`;
+            cell.style.transform = draggedTx ? `translateX(${draggedTx}px)` : '';
+            cell.style.opacity = '';
+            cell.style.zIndex = '';
+            cell.style.position = '';
+            cell.style.pointerEvents = '';
+        }
+        if (!isCommit) {
+            // Cancel: nothing is going to re-render the grid, so siblings must
+            // glide back to identity here too — there's no FLIP pass to hand off to.
+            for (const cell of shiftedCells) {
+                cell.style.transition = `transform ${REORDER_SETTLE_MS}ms ${REORDER_EASE}`;
+                cell.style.transform = '';
+            }
+        }
+
+        window.setTimeout(() => {
+            for (const cell of d.cells) cell.style.transition = '';
+            if (isCommit) {
+                // Leave the settled transforms in place (dragged column at its
+                // projected slot, siblings at their live-shift positions) —
+                // captureColumnRects measures this true final visual order next
+                // and clears these inline styles itself.
+                dotnetRef.invokeMethodAsync('OnColumnReorderCommit', gridId, d.sourceColId, commitTargetColId);
+            } else {
+                for (const cell of shiftedCells) {
+                    cell.style.transition = '';
+                    cell.style.transform = '';
+                    cell.style.opacity = '';
+                    cell.style.zIndex = '';
+                    cell.style.position = '';
+                    cell.style.pointerEvents = '';
+                }
+            }
+        }, REORDER_SETTLE_MS + 20);
+    };
+
+    const onPointerMove = (e) => {
+        if (!drag || e.pointerId !== drag.pointerId) return;
+        if (!drag.armed) {
+            const dx = e.clientX - drag.startX, dy = e.clientY - drag.startY;
+            if ((dx * dx + dy * dy) < REORDER_MOVE_THRESHOLD * REORDER_MOVE_THRESHOLD) return;
+            armDrag();
+        }
+        if (e.cancelable) e.preventDefault();
+        // Translate the dragged column in X only, clamped to the partition span.
+        let tx = e.clientX - drag.startX;
+        const minTx = drag.bounds.min - drag.sourceRect.left;
+        const maxTx = drag.bounds.max - drag.sourceRect.right;
+        if (tx < minTx) tx = minTx;
+        if (tx > maxTx) tx = maxTx;
+        const translate = tx ? `translateX(${tx}px)` : '';
+        for (const cell of drag.cells) cell.style.transform = translate;
+
+        applyProjection(computeTargetIdx(e.clientX));
+    };
+
+    const onPointerUp = (e) => {
+        if (!drag || e.pointerId !== drag.pointerId) return;
+        const targetHeader = drag.headers[drag.lastProjectedIdx];
+        const commitTargetColId = targetHeader.colId !== drag.sourceColId ? targetHeader.colId : null;
+        finishDrag(commitTargetColId);
+    };
+
+    const onPointerCancel = (e) => {
+        if (!drag || e.pointerId !== drag.pointerId) return;
+        finishDrag(null);
+    };
+
+    const onPointerDown = (e) => {
+        const grip = e.target.closest('[data-reorder-grip]');
+        let th, viaGrip;
+        if (grip && grid.contains(grip)) {
+            th = grip.closest('th[data-col-id]');
+            viaGrip = true;
+        } else {
+            // Header-wide initiation: mouse only. Touch/pen keep the dedicated
+            // grip — a tap on the header must stay unambiguous with tap-to-sort.
+            if (e.pointerType !== 'mouse') return;
+            const candidate = e.target.closest('th[data-col-id][data-reorderable="true"]');
+            if (!candidate || !grid.contains(candidate)) return;
+            // A header that's ALSO native-drag-enabled (Groupable + ShowGroupPanel)
+            // keeps that gesture over most of its surface — only the grip
+            // initiates reorder there, so native dragstart (drag-to-group) isn't
+            // shadowed by our own pointer capture.
+            if (candidate.getAttribute('draggable') === 'true') return;
+            // Don't hijack interactive controls living inside the header (sort
+            // button, filter/pin triggers, resize handle).
+            if (e.target.closest('button, a, input, select, textarea, [data-slot="datagrid-resize-handle"]')) return;
+            th = candidate;
+            viaGrip = false;
+        }
+        if (!th) return;
+        const sourceColId = th.dataset.colId;
+        const sourcePin = th.dataset.colPin || 'None';
+
+        const headerRow = th.parentElement;
+        const table = th.closest('table');
+        const tbody = table ? table.querySelector('tbody') : null;
+        if (!headerRow || !table) return;
+
+        // Same-pin partition candidates, in visual order, with cached base rects
+        // AND cached cell lists (header + body cells) — measured ONCE here so the
+        // live sibling-shift preview never reads layout in the pointermove loop.
+        const allTh = Array.prototype.slice.call(headerRow.querySelectorAll('th[data-col-id]'));
+        const partitionTh = allTh.filter((h) => (h.dataset.colPin || 'None') === sourcePin);
+        if (partitionTh.length < 2) return; // nothing to reorder within the partition
+
+        const headers = partitionTh.map((h) => {
+            const idx = Array.prototype.indexOf.call(headerRow.children, h);
+            return {
+                th: h, colId: h.dataset.colId, baseRect: h.getBoundingClientRect(),
+                cells: gatherColumnCells(h, idx, tbody), appliedTx: 0,
+            };
+        });
+        const srcHeaderIdx = headers.findIndex((h) => h.colId === sourceColId);
+        if (srcHeaderIdx < 0) return;
+
+        const colIndex = Array.prototype.indexOf.call(headerRow.children, th);
+        const cells = gatherColumnCells(th, colIndex, tbody);
+        const sourceRect = th.getBoundingClientRect();
+        const bounds = {
+            min: headers[0].baseRect.left,
+            max: headers[headers.length - 1].baseRect.right,
+        };
+
+        drag = {
+            pointerId: e.pointerId, captureTarget: viaGrip ? grip : th,
+            startX: e.clientX, startY: e.clientY,
+            sourceColId, cells, headers, srcHeaderIdx, sourceRect, bounds,
+            lastProjectedIdx: srcHeaderIdx, armed: false,
+        };
+
+        if (viaGrip) {
+            armDrag();
+            e.preventDefault();
+            e.stopPropagation();
+        }
+        // Header-wide mouse init stays UNARMED here — no preventDefault/capture
+        // yet, so a plain click still reaches its target if the pointer never
+        // clears the movement threshold. armDrag() runs lazily from the first
+        // pointermove that does (see onPointerMove).
     };
 
     grid.addEventListener('pointerdown', onPointerDown);

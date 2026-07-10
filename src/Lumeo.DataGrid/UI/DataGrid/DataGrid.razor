@@ -1496,11 +1496,14 @@
             }
         }
 
-        // Pointer-based (touch/pen) column reorder: register one delegated listener
-        // on the grid so touch devices can reorder columns (native HTML5 DnD, which
-        // the desktop path uses, never fires on touch). Registered whenever the grid
-        // is Reorderable; JS ignores mouse pointers so the desktop native path is
-        // untouched. Re-check each render so a runtime Reorderable flip is honoured.
+        // Unified pointer-based column reorder (mouse + touch + pen): one delegated
+        // listener on the grid drives the whole gesture in JS — grip/header
+        // pointerdown (with a movement threshold on mouse so header clicks still
+        // sort), live sibling-shift preview, Escape/pointercancel abort, single
+        // commit on release. Native HTML5 DnD is no longer used for reorder at all
+        // (it's kept for the unrelated drag-to-group-panel gesture only — see
+        // DataGridHeaderCell.IsDraggable). Re-check each render so a runtime
+        // Reorderable flip is honoured.
         if (Reorderable && !_pointerReorderRegistered)
         {
             try
@@ -2962,28 +2965,15 @@
         StateHasChanged();
     }
 
-    /// <summary>True when both columns live in the same pin partition (both left-pinned,
-    /// both unpinned, or both right-pinned). Column reordering is only permitted within a
-    /// partition — a drop across a boundary is rejected because the pin re-partition on
-    /// the next render would silently undo it. Unknown ids (either side) are treated as
-    /// "not same partition" so a stale drag can't slip through.</summary>
-    internal bool AreColumnsSamePartition(string? aId, string? bId)
-    {
-        if (aId is null || bId is null) return false;
-        var a = _orderedColumns.FirstOrDefault(c => c.Id == aId);
-        var b = _orderedColumns.FirstOrDefault(c => c.Id == bId);
-        if (a is null || b is null) return false;
-        return a.Pin == b.Pin;
-    }
-
     /// <summary>
     /// Reorders a column by id, moving <paramref name="sourceId"/> to the slot of
-    /// <paramref name="targetId"/>. Drives the pointer-based (touch/pen) reorder path
-    /// registered via <c>RegisterColumnReorder</c>: JS handles the whole drag in the DOM
-    /// and invokes this once on release. Operates on <c>_orderedColumns</c> by id (robust
-    /// to hidden columns) and routes through <see cref="HandleColumnReorder"/> so it shares
-    /// the exact FLIP animation, persistence, and OnColumnReorder callback the mouse path
-    /// uses. Cross-pin-partition and per-column non-reorderable drops are rejected.
+    /// <paramref name="targetId"/>. Drives the unified pointer-based reorder path
+    /// (mouse + touch + pen) registered via <c>RegisterColumnReorder</c>: JS handles
+    /// the whole drag in the DOM — including the live sibling-shift preview — and
+    /// invokes this once on release. Operates on <c>_orderedColumns</c> by id (robust
+    /// to hidden columns) and routes through <see cref="HandleColumnReorder"/> so it
+    /// shares the exact FLIP animation, persistence, and OnColumnReorder callback.
+    /// Cross-pin-partition and per-column non-reorderable drops are rejected.
     /// </summary>
     internal async Task ReorderColumnByIdAsync(string sourceId, string targetId)
     {

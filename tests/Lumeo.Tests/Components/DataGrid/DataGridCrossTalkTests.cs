@@ -11,6 +11,19 @@ namespace Lumeo.Tests.Components.DataGrid;
 /// drag-state holders in DataGridHeaderCell + DataGridRow with an
 /// instance-bound <see cref="DataGridDragState"/>. Two grids on the same page
 /// must not see each other's in-flight drags.
+///
+/// The column-reorder cross-talk cases that used to live here (native HTML5
+/// DnD: dragstart on grid A's header, drop on grid B's header) were removed
+/// with the ReUI-parity pass — column reorder no longer uses native DnD or
+/// DataGridDragState at all. The unified pointer path (mouse + touch + pen,
+/// registered via RegisterColumnReorder) is structurally immune to this class
+/// of cross-talk: each grid registers its own JS listener scoped to its own
+/// `[data-grid-id]` subtree and its own captured `dotnetRef`, so a drag
+/// started in grid A's DOM can never resolve headers or invoke the commit
+/// callback belonging to grid B — there is no shared/global state to leak
+/// through in the first place. DataGridDragState (and this cross-talk
+/// concern) now applies only to the drag-to-group-panel gesture and row
+/// reorder, both still native-DnD-based; the row case is covered below.
 /// </summary>
 public class DataGridCrossTalkTests : IAsyncLifetime
 {
@@ -39,74 +52,6 @@ public class DataGridCrossTalkTests : IAsyncLifetime
         new() { Field = "Name", Title = "Name" },
     };
 
-    private static List<string> GetColumnTitles(IRenderedComponent<DataGrid<TestItem>> grid)
-    {
-        // Header cells in the grid are the <th> elements that carry the
-        // "datagrid-header-cell" data-slot. Comparing by text avoids relying
-        // on the DataGridColumn ordering field directly.
-        return grid.FindAll("th[data-slot='datagrid-header-cell']")
-            .Select(th => th.TextContent.Trim())
-            .ToList();
-    }
-
-    [Fact]
-    public void Column_drop_on_other_grid_is_rejected()
-    {
-        // Two separate grids — each has its own DataGrid<TItem> instance and
-        // therefore its own DataGridDragState. A column drag started in grid A
-        // must not influence a drop on grid B.
-        var gridA = _ctx.Render<DataGrid<TestItem>>(p => p
-            .Add(x => x.Items, GetData())
-            .Add(x => x.Columns, GetColumns())
-            .Add(x => x.Reorderable, true));
-
-        var gridB = _ctx.Render<DataGrid<TestItem>>(p => p
-            .Add(x => x.Items, GetData())
-            .Add(x => x.Columns, GetColumns())
-            .Add(x => x.Reorderable, true));
-
-        var beforeA = GetColumnTitles(gridA);
-        var beforeB = GetColumnTitles(gridB);
-
-        // Start a drag on column 0 of grid A
-        gridA.FindAll("th[data-slot='datagrid-header-cell']")[0].DragStart();
-        // Drop on column 1 of grid B
-        gridB.FindAll("th[data-slot='datagrid-header-cell']")[1].Drop();
-
-        // Force re-render so any state mutation is observable
-        gridA.Render();
-        gridB.Render();
-
-        var afterA = GetColumnTitles(gridA);
-        var afterB = GetColumnTitles(gridB);
-
-        // Neither grid should have reordered
-        Assert.Equal(beforeA, afterA);
-        Assert.Equal(beforeB, afterB);
-    }
-
-    [Fact]
-    public void Column_drop_on_same_grid_still_reorders()
-    {
-        // Sanity check that instance-bound state still allows in-grid reordering.
-        var grid = _ctx.Render<DataGrid<TestItem>>(p => p
-            .Add(x => x.Items, GetData())
-            .Add(x => x.Columns, GetColumns())
-            .Add(x => x.Reorderable, true));
-
-        var before = GetColumnTitles(grid);
-        Assert.Equal(new[] { "ID", "Name" }, before);
-
-        // Drag column 0 onto column 1 in the SAME grid.
-        var headerCells = grid.FindAll("th[data-slot='datagrid-header-cell']");
-        headerCells[0].DragStart();
-        // Re-find after dragstart to avoid stale node refs
-        grid.FindAll("th[data-slot='datagrid-header-cell']")[1].Drop();
-
-        grid.Render();
-        var after = GetColumnTitles(grid);
-        Assert.Equal(new[] { "Name", "ID" }, after);
-    }
 
     [Fact]
     public void Row_drop_on_other_grid_is_rejected()
