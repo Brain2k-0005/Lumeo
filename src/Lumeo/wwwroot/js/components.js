@@ -2451,9 +2451,24 @@ const columnResizeHandlers = new Map();
 // visual affordance drawn in JS during the drag — never re-rendered by Blazor —
 // so it costs nothing on the per-move hot path beyond one style write per frame.
 let resizeGuideline = null;
-function showResizeGuideline(th, xClient) {
+// Draw the guideline on the resized column's ACTUAL edge — not the pointer.
+// The dragged edge is the column's inline-end: visual RIGHT in LTR, visual LEFT
+// in RTL (the handle + its ::before divider sit on inline-end in both). We read
+// that edge from the header cell's own getBoundingClientRect, so the line lands
+// exactly on the visible divider in every frame. Tracking the raw pointer
+// (xClient) drifted for three reasons that all vanish here: the grab point sits
+// a few px inside the 12px handle (constant offset), the pointer overruns the
+// edge once the width clamps at min/max (unbounded offset), and under
+// table-layout:auto the edge doesn't move 1:1 with the pointer. Because the
+// guideline is position:fixed (viewport frame) and getBoundingClientRect is also
+// viewport-relative, the same coordinate holds under horizontal scroll and with
+// pinned (sticky) columns with no extra math. `rtl` is passed in (captured once
+// per drag) so there's no getComputedStyle on the per-frame hot path.
+function showResizeGuideline(th, rtl) {
     const table = th.closest('table');
-    const rect = (table || th).getBoundingClientRect();
+    const tableRect = (table || th).getBoundingClientRect();
+    const thRect = th.getBoundingClientRect();
+    const edgeX = rtl ? thRect.left : thRect.right;
     if (!resizeGuideline) {
         resizeGuideline = document.createElement('div');
         resizeGuideline.setAttribute('data-slot', 'datagrid-resize-guideline');
@@ -2470,9 +2485,10 @@ function showResizeGuideline(th, xClient) {
     }
     const s = resizeGuideline.style;
     s.display = 'block';
-    s.top = rect.top + 'px';
-    s.height = rect.height + 'px';
-    s.left = (xClient - 1) + 'px';
+    s.top = tableRect.top + 'px';
+    s.height = tableRect.height + 'px';
+    // Centre the 2px line on the edge (left = edge - half-width).
+    s.left = (edgeX - 1) + 'px';
 }
 function hideResizeGuideline() {
     if (resizeGuideline) resizeGuideline.style.display = 'none';
@@ -2501,7 +2517,6 @@ export function registerColumnResize(handleId, dotnetRef, minWidth, maxWidth) {
     // refresh rate and lets the browser batch layout/paint naturally.
     let rafId = 0;
     let pendingWidth = 0;
-    let pendingClientX = 0;
 
     const min = Math.max(1, Number(minWidth) || 50);
     const max = Number(maxWidth) > 0 ? Number(maxWidth) : Number.POSITIVE_INFINITY;
@@ -2556,7 +2571,6 @@ export function registerColumnResize(handleId, dotnetRef, minWidth, maxWidth) {
         startWidth = th.getBoundingClientRect().width;
         currentWidth = startWidth;
         pendingWidth = startWidth;
-        pendingClientX = e.clientX;
         dirMultiplier = getComputedStyle(th).direction === 'rtl' ? -1 : 1;
         colBodyCells = gatherBodyCells();
         document.body.style.cursor = 'col-resize';
@@ -2566,7 +2580,7 @@ export function registerColumnResize(handleId, dotnetRef, minWidth, maxWidth) {
         // while data-resizing is set (survives the pointer straying off the
         // handle, which :active would not once capture kicks in).
         handle.dataset.resizing = 'true';
-        showResizeGuideline(th, e.clientX);
+        showResizeGuideline(th, dirMultiplier === -1);
         try { handle.setPointerCapture(e.pointerId); } catch (_) { }
         // preventDefault on pointerdown stops touch from initiating a page
         // scroll/zoom gesture before the move begins.
@@ -2578,7 +2592,7 @@ export function registerColumnResize(handleId, dotnetRef, minWidth, maxWidth) {
         if (!isDragging) return;
         currentWidth = pendingWidth;
         applyWidth(pendingWidth);
-        showResizeGuideline(th, pendingClientX);
+        showResizeGuideline(th, dirMultiplier === -1);
     };
     const onPointerMove = (e) => {
         if (!isDragging || e.pointerId !== activePointerId) return;
@@ -2586,7 +2600,6 @@ export function registerColumnResize(handleId, dotnetRef, minWidth, maxWidth) {
         let w = startWidth + delta;
         if (w < min) w = min;
         else if (w > max) w = max;
-        pendingClientX = e.clientX;
         if (w === pendingWidth) {
             if (!rafId) rafId = requestAnimationFrame(flushPendingWidth);
             if (e.cancelable) e.preventDefault();
