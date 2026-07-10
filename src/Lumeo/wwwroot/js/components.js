@@ -2764,6 +2764,33 @@ export function unregisterColumnResize(handleId) {
 const columnReorderSnapshots = new Map(); // gridId -> { colId: { left, cells: [el,...] } }
 const columnReorderInFlight = new Map();  // gridId -> Set<HTMLElement> (cells with inline FLIP styles)
 
+// A DataGrid nested inside another reorderable grid's DetailTemplate/cell
+// template sits inside the outer grid's DOM subtree too, so a plain
+// querySelectorAll from the outer `grid` root also returns the inner grid's
+// headers/rows. Every candidate collected that way must be re-checked
+// against its OWN closest grid root before being treated as belonging to
+// `grid` — shared by both the column and row reorder/FLIP engines below
+// (Codex round-4 #1/#2).
+const ownedByGrid = (nodeList, grid) =>
+    Array.prototype.filter.call(nodeList, (el) => el.closest('[data-grid-id]') === grid);
+
+// Inline style properties the column/row pointer-drag engines temporarily
+// overwrite while a drag is armed (opacity/position/zIndex/pointerEvents).
+// Captured before the overwrite and restored verbatim on cleanup instead of
+// being blanked to '' — a consumer's own ColumnStyle/RowStyle inline
+// declaration on one of these properties would otherwise be permanently
+// erased, since Blazor may not rewrite an unchanged style attribute on the
+// next render (Codex round-4 #4).
+const REORDER_DRAG_STYLE_PROPS = ['opacity', 'position', 'zIndex', 'pointerEvents'];
+const captureDragStyles = (el) => {
+    const saved = {};
+    for (const prop of REORDER_DRAG_STYLE_PROPS) saved[prop] = el.style[prop];
+    return saved;
+};
+const restoreDragStyles = (el, saved) => {
+    for (const prop of REORDER_DRAG_STYLE_PROPS) el.style[prop] = saved[prop];
+};
+
 function clearFlipStyles(cell) {
     cell.style.transition = '';
     cell.style.transform = '';
@@ -2783,7 +2810,7 @@ export function captureColumnRects(gridId) {
         for (const cell of inFlight) clearFlipStyles(cell);
         columnReorderInFlight.delete(gridId);
     }
-    const headers = grid.querySelectorAll('th[data-col-id]');
+    const headers = ownedByGrid(grid.querySelectorAll('th[data-col-id]'), grid);
     if (!headers.length) return;
     const headerRow = headers[0].parentElement;
     const tbody = grid.querySelector('table tbody');
@@ -2815,17 +2842,18 @@ export function captureColumnRects(gridId) {
         // accurate settled preview position, not a stale pre-drag one). Clearing
         // right after the read hands the DOM back clean for the mutation this
         // capture precedes and for AnimateColumnReorder's post-render remeasure.
-        // A no-op for columns the drag never touched (their inline styles are
-        // already empty strings).
+        // ONLY the FLIP engine's own properties (transform/transition/willChange)
+        // — never opacity/position/zIndex/pointerEvents. This capture pass runs
+        // for EVERY header+body cell in the grid on every reorder, including
+        // columns the drag never touched at all, so blanking those four here
+        // would permanently erase a consumer's own ColumnStyle declaration on
+        // any untouched column the first time ANY column in the grid is
+        // reordered (Blazor skips rewriting an unchanged style attribute on the
+        // next render) — the same failure mode as Codex round-4 #4, just in the
+        // FLIP-capture path instead of armDrag/finishDrag. Mirrors
+        // captureRowRects's clearRowFlipStyles(tr) below.
         const left = th.getBoundingClientRect().left;
-        for (const cell of cells) {
-            cell.style.transform = '';
-            cell.style.transition = '';
-            cell.style.opacity = '';
-            cell.style.zIndex = '';
-            cell.style.position = '';
-            cell.style.pointerEvents = '';
-        }
+        for (const cell of cells) clearFlipStyles(cell);
         snapshot[colId] = { left, cells };
     });
     columnReorderSnapshots.set(gridId, snapshot);
@@ -2839,7 +2867,7 @@ export function animateColumnReorder(gridId, durationMs) {
     if (!grid) return;
     const duration = Number(durationMs) > 0 ? Number(durationMs) : 200;
 
-    const headers = grid.querySelectorAll('th[data-col-id]');
+    const headers = ownedByGrid(grid.querySelectorAll('th[data-col-id]'), grid);
     const inFlight = new Set();
     headers.forEach((th) => {
         const colId = th.dataset.colId;
@@ -2943,6 +2971,57 @@ export function registerColumnReorder(gridId, dotnetRef) {
         return cells;
     };
 
+    // Mirrors DataGrid.ReorderColumnsPreservingLocked's two-pass algorithm:
+    // pass 1 is the plain RemoveAt(srcIdx)+Insert(targetIdx) over the FULL
+    // headers array (using the raw pre-removal targetIdx as the post-removal
+    // insert index — same "insert before vs after" trick the .NET side
+    // relies on); pass 2 splices locked (non-reorderable) headers back into
+    // their ORIGINAL absolute slots and drains the reorderable headers (in
+    // pass 1's relative order) into the remaining ones. Returns the
+    // resulting header order — same shape/length as drag.headers.
+    const projectColumnFinalOrder = (headers, srcIdx, targetIdx) => {
+        const naive = headers.slice();
+        const moving = naive[srcIdx];
+        naive.splice(srcIdx, 1);
+        naive.splice(Math.min(targetIdx, naive.length), 0, moving);
+        const reorderableInOrder = naive.filter((h) => h.reorderable);
+        const finalOrder = new Array(headers.length);
+        let next = 0;
+        for (let i = 0; i < headers.length; i++) {
+            finalOrder[i] = headers[i].reorderable ? reorderableInOrder[next++] : headers[i];
+        }
+        return finalOrder;
+    };
+
+    // Computes each header's live-shift transform (including the dragged
+    // header itself, used by finishDrag's settle) from the locked-preserving
+    // final order above, instead of a uniform ±sourceWidth shift. Locked
+    // headers are un-displaceable — the .NET-side commit guard
+    // (ReorderColumnByIdAsync) refuses any drop whose target isn't
+    // Reorderable, so they never receive a transform and anchor the walk at
+    // their OWN original rect; every reorderable header (including the one
+    // being dragged) packs left-to-right from there using its own cached
+    // width. This degrades to the old formula exactly when no locked column
+    // sits between source and target (verified: both reduce to the same
+    // ±sourceWidth shift for an all-reorderable partition), and — unlike the
+    // old formula — no longer overlaps a locked column the drag skips over
+    // (Codex round-4 #6).
+    const computeColumnLayoutShifts = (headers, srcIdx, targetIdx) => {
+        const finalOrder = projectColumnFinalOrder(headers, srcIdx, targetIdx);
+        const shifts = new Map();
+        let cursor = headers[0].baseRect.left;
+        for (const h of finalOrder) {
+            if (h.reorderable) {
+                shifts.set(h, cursor - h.baseRect.left);
+                cursor += h.baseRect.width;
+            } else {
+                shifts.set(h, 0);
+                cursor = h.baseRect.right;
+            }
+        }
+        return shifts;
+    };
+
     // Applies (or re-applies) the live sibling-shift preview for a projected
     // insertion index. Guarded by drag.lastProjectedIdx so it only runs when the
     // index actually changes (a handful of times per drag, never per move), and
@@ -2951,7 +3030,7 @@ export function registerColumnReorder(gridId, dotnetRef) {
         if (drag.lastProjectedIdx === targetIdx) return;
         drag.lastProjectedIdx = targetIdx;
         const srcIdx = drag.srcHeaderIdx;
-        const w = drag.sourceRect.width;
+        const shifts = computeColumnLayoutShifts(drag.headers, srcIdx, targetIdx);
         for (let i = 0; i < drag.headers.length; i++) {
             if (i === srcIdx) continue;
             const h = drag.headers[i];
@@ -2959,11 +3038,10 @@ export function registerColumnReorder(gridId, dotnetRef) {
             // .NET-side commit guard (ReorderColumnByIdAsync) refuses any drop
             // whose target isn't Reorderable, so the live preview must never
             // shift one aside either. The dragged column glides past it in
-            // place instead of pushing it.
+            // place instead of pushing it. (shifts.get already yields 0 for
+            // a locked header — this guard is defense-in-depth.)
             if (!h.reorderable) continue;
-            let tx = 0;
-            if (srcIdx < targetIdx && i > srcIdx && i <= targetIdx) tx = -w;
-            else if (srcIdx > targetIdx && i >= targetIdx && i < srcIdx) tx = w;
+            const tx = shifts.get(h) || 0;
             if (h.appliedTx === tx) continue;
             h.appliedTx = tx;
             const t = tx ? `translateX(${tx}px)` : '';
@@ -3003,6 +3081,10 @@ export function registerColumnReorder(gridId, dotnetRef) {
 
     const armDrag = () => {
         drag.armed = true;
+        // Saved BEFORE overwriting so finishDrag can restore whatever a
+        // consumer's own ColumnStyle inline declaration had on these four
+        // properties, instead of blanking them to '' (Codex round-4 #4).
+        drag.savedCellStyles = drag.cells.map((cell) => captureDragStyles(cell));
         for (const cell of drag.cells) {
             cell.style.transition = 'none';
             cell.style.opacity = '0.8';
@@ -3024,6 +3106,19 @@ export function registerColumnReorder(gridId, dotnetRef) {
         }
     };
 
+    // A header-wide mouse init leaves `drag` pending-unarmed with no pointer
+    // capture (see onPointerDown below), so a release OUTSIDE the grid never
+    // reaches this grid's own onPointerUp. The pointermove `buttons` check
+    // (Codex round-3 #4) only drops that stale descriptor on the NEXT move
+    // over this grid — mouse pointerId reuse means an unrelated later
+    // press-and-drag could still re-arm it before any move ever crosses the
+    // grid. A window-level pointerup clears any pending descriptor the
+    // moment its button is released anywhere, closing that window (Codex
+    // round-4 #5).
+    const onWindowPointerUp = () => {
+        if (drag && !drag.armed) drag = null;
+    };
+
     // Ends the drag. commitTargetColId is null for cancel (Escape / pointercancel)
     // — everything animates back to identity, nothing is committed. For a valid
     // drop, the dragged column glides to its projected slot (siblings are already
@@ -3041,31 +3136,22 @@ export function registerColumnReorder(gridId, dotnetRef) {
 
         const isCommit = !!commitTargetColId;
         const shiftedCells = d.headers.filter((h) => h.appliedTx).flatMap((h) => h.cells);
-        // Settle position mirrors the RemoveAt+Insert the .NET commit performs
-        // (ReorderColumnByIdAsync/HandleColumnReorder): dragging LEFT (target
-        // before source) inserts BEFORE the target, so the target's own
-        // original left edge — where it sits once shifted right out of the
-        // way — is exactly the dragged column's final left edge. Dragging
-        // RIGHT (target after source) inserts AFTER the target, so the final
-        // left edge is the target's original RIGHT edge minus the dragged
-        // column's own width (the target has already shifted left by that
-        // width to close the gap). With equal-width columns target.right - w
-        // === target.left, which is why this only visibly diverges once
-        // columns have mixed widths.
-        const target = isCommit ? d.headers[d.lastProjectedIdx] : null;
-        const targetLeft = target
-            ? (d.lastProjectedIdx > d.srcHeaderIdx ? target.baseRect.right - d.sourceRect.width : target.baseRect.left)
+        // Settle position for the dragged column itself comes from the exact
+        // same locked-preserving projection applyProjection used for its
+        // siblings (computeColumnLayoutShifts) — the dragged header's own
+        // entry in that map IS its final-order position, so this stays
+        // correct even when a locked column sits between source and target
+        // (Codex round-4 #6; previously a target-left/target-right shortcut
+        // that ignored locked columns entirely).
+        const draggedTx = isCommit
+            ? (computeColumnLayoutShifts(d.headers, d.srcHeaderIdx, d.lastProjectedIdx).get(d.headers[d.srcHeaderIdx]) || 0)
             : 0;
-        const draggedTx = isCommit ? (targetLeft - d.sourceRect.left) : 0;
 
-        for (const cell of d.cells) {
+        d.cells.forEach((cell, i) => {
             cell.style.transition = `transform ${REORDER_SETTLE_MS}ms ${REORDER_EASE}`;
             cell.style.transform = draggedTx ? `translateX(${draggedTx}px)` : '';
-            cell.style.opacity = '';
-            cell.style.zIndex = '';
-            cell.style.position = '';
-            cell.style.pointerEvents = '';
-        }
+            restoreDragStyles(cell, d.savedCellStyles[i]);
+        });
         if (!isCommit) {
             // Cancel: nothing is going to re-render the grid, so siblings must
             // glide back to identity here too — there's no FLIP pass to hand off to.
@@ -3087,10 +3173,6 @@ export function registerColumnReorder(gridId, dotnetRef) {
                 for (const cell of shiftedCells) {
                     cell.style.transition = '';
                     cell.style.transform = '';
-                    cell.style.opacity = '';
-                    cell.style.zIndex = '';
-                    cell.style.position = '';
-                    cell.style.pointerEvents = '';
                 }
             }
         }, REORDER_SETTLE_MS + 20);
@@ -3141,7 +3223,14 @@ export function registerColumnReorder(gridId, dotnetRef) {
     const onPointerDown = (e) => {
         const grip = e.target.closest('[data-reorder-grip]');
         let th, viaGrip;
-        if (grip && grid.contains(grip)) {
+        // A DataGrid nested inside another column-reorderable grid's
+        // DetailTemplate/cell template sits inside this grid's DOM subtree
+        // too, so grid.contains(grip) alone can't tell the two apart —
+        // require the grip's OWN closest grid root to be this grid, not
+        // just any ancestor of it, or the outer grid would also arm on the
+        // inner grid's grips and commit against the inner header (mirrors
+        // the row-reorder grip check; Codex round-4 #1).
+        if (grip && grip.closest('[data-grid-id]') === grid) {
             th = grip.closest('th[data-col-id]');
             viaGrip = true;
         } else {
@@ -3149,7 +3238,10 @@ export function registerColumnReorder(gridId, dotnetRef) {
             // grip — a tap on the header must stay unambiguous with tap-to-sort.
             if (e.pointerType !== 'mouse') return;
             const candidate = e.target.closest('th[data-col-id][data-reorderable="true"]');
-            if (!candidate || !grid.contains(candidate)) return;
+            // Same nested-grid ownership requirement as the grip branch above
+            // — a header-wide mouse press inside an inner grid's header must
+            // not arm the OUTER grid's drag either.
+            if (!candidate || candidate.closest('[data-grid-id]') !== grid) return;
             // A header that's ALSO native-drag-enabled (Groupable + ShowGroupPanel)
             // keeps that gesture over most of its surface — only the grip
             // initiates reorder there, so native dragstart (drag-to-group) isn't
@@ -3173,7 +3265,7 @@ export function registerColumnReorder(gridId, dotnetRef) {
         // Same-pin partition candidates, with cached base rects AND cached cell
         // lists (header + body cells) — measured ONCE here so the live
         // sibling-shift preview never reads layout in the pointermove loop.
-        const allTh = Array.prototype.slice.call(headerRow.querySelectorAll('th[data-col-id]'));
+        const allTh = ownedByGrid(headerRow.querySelectorAll('th[data-col-id]'), grid);
         const partitionTh = allTh.filter((h) => (h.dataset.colPin || 'None') === sourcePin);
         if (partitionTh.length < 2) return; // nothing to reorder within the partition
 
@@ -3238,8 +3330,9 @@ export function registerColumnReorder(gridId, dotnetRef) {
     grid.addEventListener('pointermove', onPointerMove, { passive: false });
     grid.addEventListener('pointerup', onPointerUp);
     grid.addEventListener('pointercancel', onPointerCancel);
+    window.addEventListener('pointerup', onWindowPointerUp);
     columnReorderPointerHandlers.set(gridId, {
-        grid, onPointerDown, onPointerMove, onPointerUp, onPointerCancel, cancelActiveDrag,
+        grid, onPointerDown, onPointerMove, onPointerUp, onPointerCancel, onWindowPointerUp, cancelActiveDrag,
     });
 }
 
@@ -3251,6 +3344,7 @@ export function unregisterColumnReorder(gridId) {
     h.grid.removeEventListener('pointermove', h.onPointerMove);
     h.grid.removeEventListener('pointerup', h.onPointerUp);
     h.grid.removeEventListener('pointercancel', h.onPointerCancel);
+    window.removeEventListener('pointerup', h.onWindowPointerUp);
     columnReorderPointerHandlers.delete(gridId);
 }
 
@@ -3300,7 +3394,12 @@ export function registerRowReorder(gridId, dotnetRef) {
         if (drag.lastProjectedIdx === targetIdx) return;
         drag.lastProjectedIdx = targetIdx;
         const srcIdx = drag.srcIdx;
-        const h = drag.sourceRect.height;
+        // The gap siblings close is the whole band the dragged row vacates —
+        // its own row PLUS its expanded DetailTemplate panel (if any), which
+        // moves out as one unit with it (Codex round-4 #3; previously just
+        // the parent row's own height, undershooting whenever the dragged
+        // row had a detail open).
+        const h = drag.sourceBandHeight;
         for (let i = 0; i < drag.rows.length; i++) {
             if (i === srcIdx) continue;
             const row = drag.rows[i];
@@ -3344,6 +3443,10 @@ export function registerRowReorder(gridId, dotnetRef) {
 
     const armDrag = () => {
         drag.armed = true;
+        // Saved BEFORE overwriting so finishDrag can restore whatever a
+        // consumer's own RowStyle inline declaration had on these four
+        // properties, instead of blanking them to '' (Codex round-4 #4).
+        drag.savedRowStyle = captureDragStyles(drag.el);
         drag.el.style.transition = 'none';
         drag.el.style.opacity = '0.8';
         drag.el.style.position = 'relative';
@@ -3390,19 +3493,24 @@ export function registerRowReorder(gridId, dotnetRef) {
         // the target — final top edge is the target's original BOTTOM minus the
         // dragged row's own height (the target already shifted up by that
         // height). Dragging UP inserts BEFORE the target, so its original top
-        // edge is already correct. Only diverges from the old single formula
-        // once rows have mixed heights (e.g. an expanded detail row).
+        // edge is already correct. Both the target's bottom and the dragged
+        // row's own height must be the FULL band (row + expanded DetailTemplate,
+        // if any) — the DOM move relocates that whole band as one unit, and
+        // applyProjection already shifted every sibling by d.sourceBandHeight,
+        // not just the dragged row's own height (Codex round-4 #3; previously
+        // parent-row-only rects here could settle the dragged row into the
+        // target's detail panel, or undershoot when the dragged row itself had
+        // one open).
         const targetTop = isCommit
-            ? (targetIdx > d.srcIdx ? d.rows[targetIdx].baseRect.bottom - d.sourceRect.height : d.rows[targetIdx].baseRect.top)
+            ? (targetIdx > d.srcIdx
+                ? (d.rows[targetIdx].baseRect.bottom + d.rows[targetIdx].detailHeight) - d.sourceBandHeight
+                : d.rows[targetIdx].baseRect.top)
             : 0;
         const draggedTy = isCommit ? (targetTop - d.sourceRect.top) : 0;
 
         d.el.style.transition = `transform ${ROW_REORDER_SETTLE_MS}ms ${ROW_REORDER_EASE}`;
         d.el.style.transform = draggedTy ? `translateY(${draggedTy}px)` : '';
-        d.el.style.opacity = '';
-        d.el.style.zIndex = '';
-        d.el.style.position = '';
-        d.el.style.pointerEvents = '';
+        restoreDragStyles(d.el, d.savedRowStyle);
         if (d.detail) {
             // The dragged row's own expanded detail panel rides along with it
             // through the settle glide too.
@@ -3506,13 +3614,21 @@ export function registerRowReorder(gridId, dotnetRef) {
         // RowReorderPointerActive guarantees a flat, non-virtualized body, so
         // every reorderable row is present in the DOM and this index equals its
         // _displayedItems index 1:1.
-        const allRows = Array.prototype.slice.call(tbody.querySelectorAll('tr[data-row-index]'));
+        // A row-reorderable grid nested inside THIS grid's DetailTemplate/cell
+        // template also has tr[data-row-index] rows that are descendants of
+        // this tbody — filter to rows this grid actually owns, or the inner
+        // grid's rows would be sorted into `rows` and a drag could commit
+        // against the wrong _displayedItems index (Codex round-4 #2).
+        const allRows = ownedByGrid(tbody.querySelectorAll('tr[data-row-index]'), grid);
         if (allRows.length < 2) return;
 
-        const rows = allRows.map((el) => ({
-            el, idx: Number(el.dataset.rowIndex), baseRect: el.getBoundingClientRect(), appliedTy: 0,
-            detail: detailRowFor(el),
-        }));
+        const rows = allRows.map((el) => {
+            const detail = detailRowFor(el);
+            return {
+                el, idx: Number(el.dataset.rowIndex), baseRect: el.getBoundingClientRect(), appliedTy: 0,
+                detail, detailHeight: detail ? detail.getBoundingClientRect().height : 0,
+            };
+        });
         rows.sort((a, b) => a.idx - b.idx);
         const srcIdx = rows.findIndex((r) => r.el === tr);
         if (srcIdx < 0) return;
@@ -3526,6 +3642,9 @@ export function registerRowReorder(gridId, dotnetRef) {
         drag = {
             pointerId: e.pointerId, captureTarget: grip,
             startY: e.clientY, el: tr, detail: rows[srcIdx].detail, rows, srcIdx, sourceRect, bounds,
+            // Total band height the dragged row vacates — its own row plus
+            // its own expanded detail panel, if any (Codex round-4 #3).
+            sourceBandHeight: sourceRect.height + rows[srcIdx].detailHeight,
             lastProjectedIdx: srcIdx, armed: false,
         };
 
@@ -3589,6 +3708,14 @@ function clearRowFlipStyles(tr) {
     tr.style.willChange = '';
 }
 
+// Standalone mirror of registerRowReorder's detailRowFor() closure — needed
+// here too since this capture/animate pass runs independently of that
+// closure (invoked from DataGrid's commit handler, not the pointer engine).
+const rowDetailSibling = (tr) => {
+    const next = tr.nextElementSibling;
+    return (next && next.tagName === 'TR' && !next.hasAttribute('data-row-index')) ? next : null;
+};
+
 export function captureRowRects(gridId) {
     const grid = document.querySelector(`[data-grid-id="${CSS.escape(gridId)}"]`);
     if (!grid) return;
@@ -3599,7 +3726,11 @@ export function captureRowRects(gridId) {
         for (const tr of inFlight) clearRowFlipStyles(tr);
         rowReorderInFlight.delete(gridId);
     }
-    const rows = grid.querySelectorAll('tbody tr[data-row-index]');
+    // A row-reorderable grid nested inside THIS grid's DetailTemplate/cell
+    // template also matches 'tbody tr[data-row-index]' from this grid's own
+    // root — exclude rows that actually belong to that inner grid (Codex
+    // round-4 #2).
+    const rows = ownedByGrid(grid.querySelectorAll('tbody tr[data-row-index]'), grid);
     if (!rows.length) return;
     const snapshot = new Map();
     rows.forEach((tr) => {
@@ -3610,6 +3741,13 @@ export function captureRowRects(gridId) {
         // so this "top" is the accurate settled preview position.
         const top = tr.getBoundingClientRect().top;
         clearRowFlipStyles(tr);
+        // finishDrag intentionally leaves a translateY on the dragged row's
+        // (and any shifted sibling's) expanded DetailTemplate <tr> through
+        // commit for this FLIP handoff — it carries no data-row-index of its
+        // own so the query above never visits it directly; clear it here too
+        // or the offset survives the Blazor reorder (Codex round-4 #7).
+        const detail = rowDetailSibling(tr);
+        if (detail) clearRowFlipStyles(detail);
         snapshot.set(rowKey, top);
     });
     rowReorderSnapshots.set(gridId, snapshot);
@@ -3623,7 +3761,7 @@ export function animateRowReorder(gridId, durationMs) {
     if (!grid) return;
     const duration = Number(durationMs) > 0 ? Number(durationMs) : 200;
 
-    const rows = grid.querySelectorAll('tbody tr[data-row-index]');
+    const rows = ownedByGrid(grid.querySelectorAll('tbody tr[data-row-index]'), grid);
     const inFlight = new Set();
     rows.forEach((tr) => {
         const rowKey = tr.dataset.rowKey;
@@ -3631,12 +3769,29 @@ export function animateRowReorder(gridId, durationMs) {
         if (oldTop === undefined) return;
         const newTop = tr.getBoundingClientRect().top;
         const delta = oldTop - newTop;
-        if (Math.abs(delta) < 1) return;
+        // Even when the row itself didn't move, its detail sibling (if any)
+        // may still carry a stale live-shift/settle transform of its own
+        // from before the render (Codex round-4 #7) — clear it before
+        // bailing out of this row's animation.
+        const detail = rowDetailSibling(tr);
+        if (Math.abs(delta) < 1) {
+            if (detail) clearRowFlipStyles(detail);
+            return;
+        }
 
         tr.style.transition = 'none';
         tr.style.transform = `translateY(${delta}px)`;
         tr.style.willChange = 'transform';
         inFlight.add(tr);
+        // The detail panel has no independent row-key/FLIP tracking of its
+        // own, but it must ride the identical inverse-then-release animation
+        // as its parent or it visually detaches from it (Codex round-4 #7).
+        if (detail) {
+            detail.style.transition = 'none';
+            detail.style.transform = `translateY(${delta}px)`;
+            detail.style.willChange = 'transform';
+            inFlight.add(detail);
+        }
     });
     if (inFlight.size === 0) return;
     // Force layout flush so the inverse transform is registered before the
