@@ -243,9 +243,18 @@ public static class ThemeCommands
         // the consumer doesn't already have. Icon packs are compile-time — theme.js
         // can't switch them at runtime — so this is the only way to keep the CLI
         // apply step 1:1 with the customizer's icon selection.
-        if ((allowed is null || allowed.Contains("iconLibrary")) && !string.IsNullOrEmpty(resolved.IconLibrary))
+        if (allowed is null || allowed.Contains("iconLibrary"))
         {
-            await MaybeInstallIconPackageAsync(resolved.IconLibrary, yes, silent);
+            if (!string.IsNullOrEmpty(resolved.IconLibrary))
+            {
+                await MaybeInstallIconPackageAsync(resolved.IconLibrary, yes, silent);
+            }
+            else if (resolved.IconLibrary == "")
+            {
+                // Tombstoned legacy library (font-awesome, material-design, ionicons, devicon,
+                // flag-icons) has no first-party Lumeo.Icons.* equivalent — skip with warning.
+                Console.Error.WriteLine(Ansi.Yellow("! Icon library in this preset has no first-party pack; skipping icon install."));
+            }
         }
 
         // Step 9: self-host the font (shadcn / next.js style) so the consumer doesn't
@@ -282,23 +291,32 @@ public static class ThemeCommands
         Info(Ansi.Green("OK ") + $"Applied preset {Ansi.Bold(preset)}.");
     }
 
-    // Maps the customizer's icon library id to the corresponding first-party Lumeo.Icons
-    // NuGet id. Keep in sync with LumeoPresetOptions.IconLibraries + the docs customizer.
-    // Legacy preset codes that encode an icon library with no first-party pack decode to a
-    // key that is simply absent here — MaybeInstallIconPackageAsync skips the install with a
-    // warning rather than pulling a third-party dependency. Extend as new packs ship.
+    // Maps every CLI icon-library ID to the corresponding first-party Lumeo.Icons NuGet package.
+    // Single source of truth for both `apply` (install) and server-preset compat decode.
+    // Keep in sync with LumeoPresetOptions.IconLibraries. Extend here when a new pack ships.
     private static readonly Dictionary<string, string> IconLibraryPackages = new(StringComparer.OrdinalIgnoreCase)
     {
-        ["lucide"] = "Lumeo.Icons.Lucide",
-        ["bootstrap"] = "Lumeo.Icons.Bootstrap",
-        ["tabler"] = "Lumeo.Icons.Tabler",
-        ["phosphor"] = "Lumeo.Icons.Phosphor",
-        ["heroicons"] = "Lumeo.Icons.Heroicons",
-        ["remix"] = "Lumeo.Icons.Remix",
-        ["iconoir"] = "Lumeo.Icons.Iconoir",
-        // Legacy preset keys → their first-party equivalents.
-        ["fluentui"] = "Lumeo.Icons.Fluent",
-        ["google-material"] = "Lumeo.Icons.MaterialSymbols",
+        // First-party packs — canonical CLI IDs matching LumeoPresetOptions.IconLibraries.
+        ["lucide"]                   = "Lumeo.Icons.Lucide",
+        ["bootstrap"]                = "Lumeo.Icons.Bootstrap",
+        ["fluent"]                   = "Lumeo.Icons.Fluent",
+        ["material-symbols"]         = "Lumeo.Icons.MaterialSymbols",
+        ["material-symbols-rounded"] = "Lumeo.Icons.MaterialSymbols.Rounded",
+        ["material-symbols-sharp"]   = "Lumeo.Icons.MaterialSymbols.Sharp",
+        ["tabler"]                   = "Lumeo.Icons.Tabler",
+        ["phosphor"]                 = "Lumeo.Icons.Phosphor",
+        ["phosphor-bold"]            = "Lumeo.Icons.Phosphor.Bold",
+        ["phosphor-duotone"]         = "Lumeo.Icons.Phosphor.Duotone",
+        ["phosphor-fill"]            = "Lumeo.Icons.Phosphor.Fill",
+        ["phosphor-light"]           = "Lumeo.Icons.Phosphor.Light",
+        ["phosphor-thin"]            = "Lumeo.Icons.Phosphor.Thin",
+        ["heroicons"]                = "Lumeo.Icons.Heroicons",
+        ["remix"]                    = "Lumeo.Icons.Remix",
+        ["iconoir"]                  = "Lumeo.Icons.Iconoir",
+        // Legacy keys — still valid in server-stored presets (e.g. Worker JSON: "iconLibrary": "fluentui").
+        // Client presets at those codec indices now decode to the first-party names above.
+        ["fluentui"]                 = "Lumeo.Icons.Fluent",
+        ["google-material"]          = "Lumeo.Icons.MaterialSymbols",
     };
 
     private static async Task MaybeInstallIconPackageAsync(string iconLib, bool yes, bool silent)

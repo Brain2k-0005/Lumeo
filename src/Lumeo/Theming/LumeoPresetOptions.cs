@@ -57,15 +57,22 @@ public static class LumeoPresetOptions
 
     public static readonly string[] IconLibraries =
     {
-        "lucide",           // 0
-        "bootstrap",        // 1
-        "fluentui",         // 2
-        "font-awesome",     // 3
-        "google-material",  // 4
-        "material-design",  // 5
-        "ionicons",         // 6
-        "devicon",          // 7
-        "flag-icons",       // 8
+        "lucide",                    // 0  (unchanged)
+        "bootstrap",                 // 1  (unchanged)
+        "fluent",                    // 2  (was "fluentui" — first-party name; old encoded index still decodes)
+        "",                          // 3  tombstone (was "font-awesome" — no first-party equivalent)
+        "material-symbols",          // 4  (was "google-material" — first-party name; old encoded index still decodes)
+        "",                          // 5  tombstone (was "material-design")
+        "",                          // 6  tombstone (was "ionicons")
+        "",                          // 7  tombstone (was "devicon")
+        "",                          // 8  tombstone (was "flag-icons")
+        "tabler",                    // 9  (new)
+        "phosphor",                  // 10 (new)
+        "heroicons",                 // 11 (new)
+        "remix",                     // 12 (new)
+        "iconoir",                   // 13 (new)
+        "material-symbols-rounded",  // 14 (new)
+        "material-symbols-sharp",    // 15 (new — fills the 4-bit codec max of 16 slots)
     };
 
     public static readonly string[] MenuColors =
