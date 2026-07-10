@@ -51,7 +51,7 @@ public class CheckboxTests : IAsyncLifetime
         var cut = _ctx.Render<Lumeo.Checkbox>(p => p
             .Add(b => b.Checked, true));
 
-        // When checked, a Blazicon (svg) should be rendered inside
+        // When checked, an icon (svg) should be rendered inside
         Assert.NotEmpty(cut.FindAll("svg"));
     }
 

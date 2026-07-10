@@ -187,7 +187,7 @@ public static class PackCatalog
         LicenseHeader = Licenses.LucideIsc,
         ChunkSize = 500,
         // Vendor the brand marks Lucide dropped from core (github, …) so the standalone pack is a
-        // superset of what Blazicons.Lucide consumers relied on.
+        // superset of the icons Lumeo's own source references.
         Overrides = LucideOverrides.Map,
     };
 

@@ -85,10 +85,9 @@ public sealed record PackConfig
 /// <summary>Built-in overrides for the Lucide pack.</summary>
 public static class LucideOverrides
 {
-    // Lucide removed brand icons (github, etc.) from its core set. Blazicons.Lucide 2.1.3 — the
-    // library Lumeo previously depended on — was pinned to an older Lucide that still shipped them,
-    // and Lumeo references `Lucide.Github`, so the vendored set must still cover it. This is the
-    // canonical Lucide github mark (ISC, from Lucide's last brand-icon release), 24x24 stroke.
+    // Lucide removed brand icons (github, etc.) from its core set, but Lumeo references
+    // `Lucide.Github`, so the vendored set must still cover it. This is the canonical Lucide
+    // github mark (ISC, from Lucide's last brand-icon release), 24x24 stroke.
     public static readonly IReadOnlyDictionary<string, string> Map = new Dictionary<string, string>
     {
         ["Github"] =

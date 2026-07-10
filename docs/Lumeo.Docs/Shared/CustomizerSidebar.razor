@@ -1,5 +1,4 @@
 @namespace Lumeo.Docs.Shared
-@using Blazicons
 @using Lumeo.Theming
 @inject IJSRuntime JS
 @inject IconService _iconService
@@ -134,9 +133,9 @@
                             }
                         </Flex>
                         @* Render the lists only AFTER the lazy pack assemblies finished
-                           loading: the third-party previews reference types living in
-                           lazy Blazicons DLLs, and rendering them mid-preload throws
-                           FileNotFoundException in the renderer (Blazor error bar). *@
+                           loading: each preview reflects over its pack's IconSource types,
+                           and rendering one mid-preload throws FileNotFoundException in the
+                           renderer (Blazor error bar). *@
                         @if (!_iconLibsLoading)
                         {
                         @foreach (var family in IconPackCatalog.ByFamily())
@@ -163,25 +162,6 @@
                                     <IconPreview Library="@pack.Key" Count="12" />
                                 </button>
                             }
-                        }
-
-                        <Lumeo.Text As="div" Class="px-2 pt-2 pb-1 mt-1 border-t border-border/60 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Third-party interop (Blazicons)</Lumeo.Text>
-                        @foreach (var lib in _thirdPartyLibs)
-                        {
-                            <button class="w-full rounded-md px-2 py-2 text-left hover:bg-accent/50 transition-colors @(lib.Key == _activeIconLibrary ? "bg-accent/30" : "")"
-                                    @onclick="() => SetIconLibrary(lib.Key)">
-                                <Flex Class="items-center justify-between mb-1.5">
-                                    <div class="min-w-0">
-                                        <Lumeo.Text As="span" Class="text-[13px] font-medium text-foreground">@lib.Display</Lumeo.Text>
-                                        <Lumeo.Text As="span" Class="text-[10px] text-muted-foreground ml-1.5">@lib.Package</Lumeo.Text>
-                                    </div>
-                                    @if (lib.Key == _activeIconLibrary)
-                                    {
-                                        <SvgGlyph Svg="@(Lucide.Check)" class="h-3.5 w-3.5 shrink-0 text-foreground" />
-                                    }
-                                </Flex>
-                                <IconPreview Library="@lib.Key" Count="12" />
-                            </button>
                         }
                         }
                         break;
@@ -455,7 +435,6 @@
     private record BaseColorOption(string Name, string Value, string Preview);
     private record RadiusOption(string Name, string Value);
     private record FontOption(string Name, string Value, string Family, string Label);
-    private record ThirdPartyLib(string Key, string Display, string Package);
     private record MenuColorOption(string Name, string Value);
     private record MenuAccentOption(string Name, string Value, string Description);
     private record PresetOption(string Name, string ThemeValue, string StyleValue, string BaseColorValue, string RadiusValue, string FontValue, string MenuColorValue, string MenuAccentValue, string Preview, string Description);
@@ -507,20 +486,9 @@
         new("Fira Code", "fira-code", "'Fira Code', monospace", "mono"),
     ];
 
-    // EVERY first-party Lumeo.Icons pack class is now a selectable entry, sourced from
+    // EVERY selectable icon library is a first-party Lumeo.Icons pack class, sourced from
     // IconPackCatalog and rendered grouped by family. Each drives the docs' site-wide icon
     // re-skin through the data-driven DynamicIconResolver (semantic name -> per-pack IconSource).
-    // The entries below are the remaining Blazicons THIRD-PARTY INTEROP examples with no
-    // first-party equivalent — kept for the /components/icon comparison browser.
-    private readonly ThirdPartyLib[] _thirdPartyLibs =
-    [
-        new("font-awesome", "Font Awesome", "Blazicons.FontAwesome"),
-        new("material-design", "Material Design", "Blazicons.MaterialDesignIcons"),
-        new("ionicons", "Ionicons", "Blazicons.Ionicons"),
-        new("devicon", "Devicon", "Blazicons.Devicon"),
-        new("flag-icons", "Flag Icons", "Blazicons.FlagIcons"),
-    ];
-
     private readonly MenuColorOption[] _menuColors =
     [
         new("Default", "default"),
@@ -592,13 +560,8 @@
     private string GetActiveBaseColorPreview() => _baseColors.FirstOrDefault(c => c.Value == _activeBaseColor)?.Preview ?? "hsl(215 16% 47%)";
     private string GetActiveRadiusName() => _radiiOptions.FirstOrDefault(r => r.Value == _activeRadius)?.Name ?? _activeRadius + "rem";
     private string GetActiveFontName() => _fonts.FirstOrDefault(f => f.Value == _activeFont)?.Name ?? "System";
-    private string GetActiveIconLibraryName()
-    {
-        var fp = IconPackCatalog.Find(_activeIconLibrary);
-        if (fp is not null) return fp.Display;
-        var tp = _thirdPartyLibs.FirstOrDefault(l => l.Key == _activeIconLibrary);
-        return tp?.Display ?? "Lucide";
-    }
+    private string GetActiveIconLibraryName() =>
+        IconPackCatalog.Find(_activeIconLibrary)?.Display ?? "Lucide";
 
     private void ToggleSection(string section) => _expandedSection = _expandedSection == section ? "" : section;
 
@@ -609,14 +572,7 @@
     private bool _iconLibsLoading;
     private string? _switchingTo;
 
-    private static readonly string[] _previewDlls =
-        IconPackCatalog.LazyDlls
-            .Concat(new[]
-            {
-                "Blazicons.FontAwesome.dll", "Blazicons.MaterialDesignIcons.dll",
-                "Blazicons.Ionicons.dll", "Blazicons.Devicon.dll", "Blazicons.FlagIcons.dll",
-            })
-            .ToArray();
+    private static readonly string[] _previewDlls = IconPackCatalog.LazyDlls;
 
     private async Task ToggleIconsSection()
     {

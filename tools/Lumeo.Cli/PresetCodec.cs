@@ -118,7 +118,25 @@ internal static class LumeoPresetOptions
     public static readonly string[] BaseColors = { "slate", "gray", "zinc", "neutral", "stone" };
     public static readonly string[] Radii = { "0", "0.25", "0.5", "0.75", "1" };
     public static readonly string[] Fonts = { "system", "inter", "geist", "ibm-plex-sans", "jetbrains-mono", "fira-code" };
-    public static readonly string[] IconLibraries = { "lucide", "bootstrap", "fluentui", "font-awesome", "google-material", "material-design", "ionicons", "devicon", "flag-icons" };
+    public static readonly string[] IconLibraries =
+    {
+        "lucide",                    // 0
+        "bootstrap",                 // 1
+        "fluent",                    // 2  (was "fluentui")
+        "",                          // 3  tombstone (was "font-awesome")
+        "material-symbols",          // 4  (was "google-material")
+        "",                          // 5  tombstone (was "material-design")
+        "",                          // 6  tombstone (was "ionicons")
+        "",                          // 7  tombstone (was "devicon")
+        "",                          // 8  tombstone (was "flag-icons")
+        "tabler",                    // 9
+        "phosphor",                  // 10
+        "heroicons",                 // 11
+        "remix",                     // 12
+        "iconoir",                   // 13
+        "material-symbols-rounded",  // 14
+        "material-symbols-sharp",    // 15
+    };
     public static readonly string[] MenuColors = { "default", "dark", "light" };
     public static readonly string[] MenuAccents = { "subtle", "bold", "outline" };
 

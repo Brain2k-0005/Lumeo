@@ -26,7 +26,7 @@ public class RuntimeManifestBuilderTests
         Assert.Contains("Orientation.cs", files);
 
         // Shared event-args (Dialog/Sheet/Drawer OnBeforeClose) — plus the icon substrate:
-        // since the Blazicons decoupling, SvgGlyph + the vendored LumeoIcons ARE the runtime
+        // since the icon decoupling, SvgGlyph + the vendored LumeoIcons ARE the runtime
         // icon story, so standalone vendoring must carry them.
         Assert.Contains("UI/Overlay/DismissEventArgs.cs", files);
         Assert.Contains("UI/Icon/SvgGlyph.razor", files);

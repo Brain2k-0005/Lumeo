@@ -15,10 +15,10 @@ public static class NameTransform
 
     /// <summary>
     /// Turns an upstream kebab-/snake-case icon name (e.g. Lucide <c>trash-2</c>, Tabler
-    /// <c>brand-github</c>, Material <c>account_circle</c>) into a Blazicons-compatible PascalCase
+    /// <c>brand-github</c>, Material <c>account_circle</c>) into a stable PascalCase
     /// identifier (<c>Trash2</c>, <c>BrandGithub</c>, <c>AccountCircle</c>): split on <c>-</c>/<c>_</c>,
     /// upper-case the first letter of each segment, concatenate (digits append directly, so
-    /// <c>trash-2</c> → <c>Trash2</c> exactly as Blazicons produced). A result that would start with a
+    /// <c>trash-2</c> → <c>Trash2</c>). A result that would start with a
     /// digit (e.g. Tabler <c>123</c>, Material <c>3d_rotation</c>) is prefixed with <c>_</c> to stay a
     /// valid C# identifier.
     /// </summary>

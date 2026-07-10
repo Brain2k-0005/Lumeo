@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **Docs/interop cleanup — Blazicons removed everywhere outside history.** The docs site
+  no longer references or bundles any Blazicons package: the `/components/icon` browser and
+  the customizer's icon-library picker are first-party `Lumeo.Icons.*` only, and the
+  DynamicIcon docs page now demonstrates third-party interop with a generic inline
+  `IconSource` (bring your own SVG) instead of a Blazicons pack. The `lumeo apply --preset`
+  CLI maps icon libraries to first-party packs only; the Tailwind-v4 icon-sizing shim that
+  was specific to Blazicons' `svg[blazicon]` rule was dropped. Public library API is
+  unchanged (icons already decoupled to `Lumeo.IconSource` in 4.1.0).
+
 ## [4.1.1] - 2026-07-10
 
 Bug-fix and TreeView-UX roll-up hardened over twenty-one review rounds (PR #351),

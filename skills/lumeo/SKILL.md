@@ -32,7 +32,7 @@ These are enforced project-wide. Violating them produces code that compiles but 
 
 1. **Colours are theme tokens, never raw hex/hsl.** Use Tailwind-style utilities: `bg-primary text-primary-foreground`, `bg-card`, `text-muted-foreground`, `border-border/40`, `ring-ring`. Get the full list with `lumeo_get_theme_tokens`. Radius: `rounded-[var(--radius-lg)]`.
 2. **No `dark:` Tailwind prefixes.** Dark mode is a CSS-variable swap on the `dark` class on `<html>` — the tokens above just resolve to different values. Writing `dark:bg-x` is wrong.
-3. **Icons: `<Blazicon Svg="Lucide.X" />`** from `Blazicons.Lucide`. Not inline SVG, not other icon packs.
+3. **Icons: `<SvgGlyph Svg="@(Lucide.X)" />`** from the first-party `Lumeo.Icons.Lucide` pack (`@using Lumeo.Icons`), or `<Icon Name="X" />` for the built-in app-chrome vocabulary. Not raw inline SVG.
 4. **JS interop goes through `ComponentInteropService`**, never `IJSRuntime` directly in a component.
 5. **Two-way binding** is `Property` + `PropertyChanged` `EventCallback` pairs → `@bind-Property`.
 6. **Sub-components read context via `CascadingValue`.** `<TabsContent>` must be inside `<Tabs>`, `<DialogContent>` inside `<Dialog>`, `<SelectItem>` inside `<Select>`, etc. `validate_markup` checks this.
