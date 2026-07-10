@@ -7,9 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [4.1.1] - 2026-07-09
+## [4.1.1] - 2026-07-10
 
-Bug-fix roll-up hardened over ten Codex review rounds (PR #351).
+Bug-fix and TreeView-UX roll-up hardened over twenty-one review rounds (PR #351),
+including a structural rebuild of the TreeView's internal state ownership.
+
+### Added
+- **TreeView row-click expand (VS Code pattern).** Clicking anywhere on a parent row
+  now selects it AND toggles its expansion by default; the chevron keeps working and
+  still toggles without selecting. New `ExpandOnRowClick` parameter (default `true`) —
+  set `false` to restore the strict click-selects/chevron-expands split. Modifier
+  clicks (Ctrl/Meta/Shift) only mutate selection and never toggle folders; keyboard
+  semantics are unchanged.
+- **Docs footer with a Cookie-settings control** wired to
+  `ConsentService.RequestOpenPreferences()` (works after the banner was dismissed),
+  and the docs self-host ECharts + LiquidFill/WordCloud plugins + the world map
+  (version-keyed, immutable-cached) so chart pages make no pre-consent third-party
+  requests.
+
+### Changed (behaviour)
+- **TreeView tri-state checkboxes derive from seeded state on first render** (and
+  after lazy loads) — previously parents rendered unchecked until the first click.
+- **The expand chevron is visually integrated into the row** (transparent ghost, row
+  carries the hover highlight; focus ring kept for keyboard users).
+- **TreeView UI state is tree-owned.** Expansion/loading/loaded state lives in the
+  tree keyed by a rebuild-surviving identity; the consumer record's flags act as
+  seeds and are mirrored back. Duplicate-valued sibling selections drop on ambiguous
+  reloads (identity cannot be proven) while consumer value-seeds keep binding every
+  match — both rules are documented in the component.
 
 ### Fixed
 - **TreeView parent selection (#350).** Selection is tracked by node identity, so

@@ -12,7 +12,7 @@
 [![GitHub stars](https://img.shields.io/github/stars/Brain2k-0005/Lumeo?style=flat&logo=github)](https://github.com/Brain2k-0005/Lumeo/stargazers)
 [![Sponsor](https://img.shields.io/github/sponsors/Brain2k-0005?logo=github-sponsors&color=ea4aaa)](https://github.com/sponsors/Brain2k-0005)
 
-> **Lumeo 4.1.0 is on NuGet** — a first-party **icon family** (16 trimmable packs), **`dotnet new`** app + full-stack templates, and a **shadcn-parity campaign** (overlay exit animations, `data-*` styling hooks, native form participation, menu-system + NavigationMenu parity, chart/AI a11y) on top of the 4.0 major (Radix / Base UI / shadcn parity audit + a 164-component battle-test, ~355 bugs fixed, 5,600+ tests, CLI **100% NuGet-free** eject). `dotnet add package Lumeo`. See [`CHANGELOG.md`](./CHANGELOG.md) — 4.1 is an additive, opt-in upgrade from 4.0 (a few documented behaviour changes); from 3.x see [`MIGRATION.md`](./MIGRATION.md).
+> **Lumeo 4.1.1 is on NuGet** — a first-party **icon family** (16 trimmable packs), **`dotnet new`** app + full-stack templates, and a **shadcn-parity campaign** (overlay exit animations, `data-*` styling hooks, native form participation, menu-system + NavigationMenu parity, chart/AI a11y) on top of the 4.0 major (Radix / Base UI / shadcn parity audit + a 164-component battle-test, ~355 bugs fixed, 5,600+ tests, CLI **100% NuGet-free** eject). `dotnet add package Lumeo`. See [`CHANGELOG.md`](./CHANGELOG.md) — 4.1 is an additive, opt-in upgrade from 4.0 (a few documented behaviour changes); from 3.x see [`MIGRATION.md`](./MIGRATION.md).
 
 ## What's new in 4.0
 
@@ -92,18 +92,18 @@ Or reference them in your `.csproj`. All packages share one version (lockstep) �
 
 ```xml
 <ItemGroup>
-  <PackageReference Include="Lumeo"            Version="4.1.0" />
+  <PackageReference Include="Lumeo"            Version="4.1.1" />
   <!-- add only the satellites you need: -->
-  <PackageReference Include="Lumeo.Charts"    Version="4.1.0" />
-  <PackageReference Include="Lumeo.DataGrid"  Version="4.1.0" />
-  <PackageReference Include="Lumeo.Editor"    Version="4.1.0" />
-  <PackageReference Include="Lumeo.Scheduler" Version="4.1.0" />
-  <PackageReference Include="Lumeo.Gantt"     Version="4.1.0" />
-  <PackageReference Include="Lumeo.Motion"    Version="4.1.0" />
-  <PackageReference Include="Lumeo.PdfViewer" Version="4.1.0" />
-  <PackageReference Include="Lumeo.Maps"      Version="4.1.0" />
-  <PackageReference Include="Lumeo.CodeEditor" Version="4.1.0" />
-  <PackageReference Include="Lumeo.FileViewer" Version="4.1.0" />
+  <PackageReference Include="Lumeo.Charts"    Version="4.1.1" />
+  <PackageReference Include="Lumeo.DataGrid"  Version="4.1.1" />
+  <PackageReference Include="Lumeo.Editor"    Version="4.1.1" />
+  <PackageReference Include="Lumeo.Scheduler" Version="4.1.1" />
+  <PackageReference Include="Lumeo.Gantt"     Version="4.1.1" />
+  <PackageReference Include="Lumeo.Motion"    Version="4.1.1" />
+  <PackageReference Include="Lumeo.PdfViewer" Version="4.1.1" />
+  <PackageReference Include="Lumeo.Maps"      Version="4.1.1" />
+  <PackageReference Include="Lumeo.CodeEditor" Version="4.1.1" />
+  <PackageReference Include="Lumeo.FileViewer" Version="4.1.1" />
 </ItemGroup>
 ```
 
