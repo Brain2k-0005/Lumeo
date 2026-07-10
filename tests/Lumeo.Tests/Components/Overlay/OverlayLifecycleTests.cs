@@ -63,8 +63,16 @@ public class OverlayLifecycleTests : IAsyncLifetime
         // unmounting the Sheet immediately → no exit class ever rendered. With the
         // fix the provider flips Open=false, SheetContent latches _exiting, and the
         // panel slides out while still mounted.
-        cut.WaitForAssertion(() =>
-            Assert.Contains("animate-slide-out-to-right", cut.Markup));
+        //
+        // Asserted SYNCHRONOUSLY on the just-committed close render — not via a polled
+        // WaitForAssertion. The awaited Cancel commits the exit render before it returns
+        // (SheetContent latches _exiting in OnParametersSet), so the slide-out class is
+        // present now. A polled first assertion could instead land AFTER the exit window's
+        // DelayedDispatch (SheetContent 450 ms / provider 500 ms) already ran FinishExit +
+        // removal on a starved CI thread pool — the class is then gone for good and the
+        // poll only times out at the 10 s ceiling. Reading the latched render deterministically
+        // asserts the exit state instead of racing that wall-clock timer (the CI flake).
+        Assert.Contains("animate-slide-out-to-right", cut.Markup);
 
         // The Sheet body is still in the DOM during the exit window (not vanished).
         Assert.Contains("BODY", cut.Markup);
@@ -120,7 +128,10 @@ public class OverlayLifecycleTests : IAsyncLifetime
         // unmounting it immediately (no exit class ever rendered). With the fix
         // the provider keeps it mounted with Open=false, DialogContent latches
         // _exiting, and the panel zooms out while the backdrop fades — in parallel.
-        cut.WaitForAssertion(() => Assert.Contains("animate-zoom-out", cut.Markup));
+        // Synchronous on the just-committed close render (the awaited Cancel commits
+        // it): a polled first assertion could land after the Dialog exit window
+        // (content 280 ms / provider 320 ms) already unmounted the panel under CI load.
+        Assert.Contains("animate-zoom-out", cut.Markup);
         Assert.Contains("animate-fade-out", cut.Markup);
         // The body is still in the DOM during the exit window (not vanished) — so
         // the entry was NOT removed synchronously.
@@ -141,7 +152,9 @@ public class OverlayLifecycleTests : IAsyncLifetime
         await cut.InvokeAsync(() => _overlay.Cancel(shown!.Id));
 
         // Bottom drawer (the ShowDrawerAsync default) slides out to the bottom.
-        cut.WaitForAssertion(() => Assert.Contains("animate-slide-out-to-bottom", cut.Markup));
+        // Synchronous on the just-committed close render (see the Sheet test): avoids a
+        // polled first assertion racing the exit-window timer under a starved CI runner.
+        Assert.Contains("animate-slide-out-to-bottom", cut.Markup);
         Assert.Contains("BODY", cut.Markup);
     }
 
@@ -158,7 +171,9 @@ public class OverlayLifecycleTests : IAsyncLifetime
 
         await cut.InvokeAsync(() => _overlay.Cancel(shown!.Id));
 
-        cut.WaitForAssertion(() => Assert.Contains("animate-zoom-out", cut.Markup));
+        // Synchronous on the just-committed close render (see the Sheet test): avoids a
+        // polled first assertion racing the exit-window timer under a starved CI runner.
+        Assert.Contains("animate-zoom-out", cut.Markup);
         Assert.Contains("Zoom alert", cut.Markup);
     }
 
@@ -178,11 +193,10 @@ public class OverlayLifecycleTests : IAsyncLifetime
         // Still mounted right after the close (exit is playing)...
         Assert.Contains("BODY", cut.Markup);
         // ...then removed once the provider's exit-window timer (the safety-timeout
-        // fallback) fires. Generous ceiling so a starved thread pool under parallel
-        // test load can't trip it; it does not widen the happy-path wait.
-        cut.WaitForAssertion(
-            () => Assert.DoesNotContain("BODY", cut.Markup),
-            timeout: TimeSpan.FromSeconds(5));
+        // fallback) fires. Inherits the 10 s module ceiling (TestContextExtensions) so a
+        // starved thread pool under parallel CI load can't trip it — a stable end-state
+        // poll that returns the instant BODY is gone; it does not widen the happy path.
+        cut.WaitForAssertion(() => Assert.DoesNotContain("BODY", cut.Markup));
     }
 
     [Fact]

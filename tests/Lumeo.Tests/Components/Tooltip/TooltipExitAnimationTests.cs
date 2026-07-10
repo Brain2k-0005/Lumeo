@@ -76,9 +76,9 @@ public class TooltipExitAnimationTests : IAsyncLifetime
         cut.Find("div").MouseEnter(Mouse);
         cut.Find("div").MouseLeave(Mouse);
 
-        cut.WaitForAssertion(
-            () => Assert.Empty(cut.FindAll("[role='tooltip']")),
-            timeout: TimeSpan.FromSeconds(5));
+        // Stable end-state poll; inherits the 10 s module ceiling (TestContextExtensions)
+        // so a starved CI thread pool delaying the fallback-timer dispatch can't trip it.
+        cut.WaitForAssertion(() => Assert.Empty(cut.FindAll("[role='tooltip']")));
     }
 
     [Fact]

@@ -43,12 +43,14 @@ public class SheetExitAnimationTests : IAsyncLifetime
         cut.Render(p => p.Add(s => s.Open, false));
 
         // During the exit phase the panel is still mounted but now carries the
-        // slide-out class (right side → slide-out-to-right).
-        cut.WaitForAssertion(() =>
-        {
-            var dialog = cut.Find("[role='dialog']");
-            Assert.Contains("animate-slide-out-to-right", dialog.GetAttribute("class") ?? "");
-        });
+        // slide-out class (right side → slide-out-to-right). Synchronous on the close
+        // render: bUnit commits cut.Render synchronously with no await gap, so SheetContent
+        // has latched _exiting and emitted the class while the 450 ms exit-window
+        // DelayedDispatch has not run FinishExit. Asserting the latched exit state directly
+        // can never race a delayed first poll under a starved CI runner (a poll would find
+        // the panel already unmounted and only time out at the 10 s ceiling).
+        var dialog = cut.Find("[role='dialog']");
+        Assert.Contains("animate-slide-out-to-right", dialog.GetAttribute("class") ?? "");
     }
 
     [Fact]
@@ -57,11 +59,10 @@ public class SheetExitAnimationTests : IAsyncLifetime
         var cut = RenderSheet(open: true, L.Side.Right, L.SheetContent.SheetAnimation.Fade);
         cut.Render(p => p.Add(s => s.Open, false));
 
-        cut.WaitForAssertion(() =>
-        {
-            var dialog = cut.Find("[role='dialog']");
-            Assert.Contains("animate-fade-out", dialog.GetAttribute("class") ?? "");
-        });
+        // Synchronous on the close render (no await gap → the exit-window timer can't have
+        // unmounted the panel yet); asserting the latched exit render never races it.
+        var dialog = cut.Find("[role='dialog']");
+        Assert.Contains("animate-fade-out", dialog.GetAttribute("class") ?? "");
     }
 
     [Fact]
@@ -71,14 +72,13 @@ public class SheetExitAnimationTests : IAsyncLifetime
         cut.Render(p => p.Add(s => s.Open, false));
 
         // After the exit animation window the panel is removed from the DOM. The unmount
-        // is driven by a real ~280 ms animation timer (DelayedDispatch), so this is a poll,
+        // is driven by a real ~450 ms animation timer (DelayedDispatch), so this is a poll,
         // not a fixed sleep: WaitForAssertion returns the instant the panel unmounts
-        // (typically well under 300 ms). The ceiling is deliberately generous so a starved
-        // thread pool under parallel test load — which can delay the timer callback's
-        // dispatch — cannot trip it; it does not widen any real wait on the happy path.
-        cut.WaitForAssertion(
-            () => Assert.Empty(cut.FindAll("[role='dialog']")),
-            timeout: TimeSpan.FromSeconds(5));
+        // (typically well under 500 ms). Inherits the 10 s module ceiling
+        // (TestContextExtensions) so a starved thread pool under parallel CI load — which
+        // can delay the timer callback's dispatch — cannot trip it; a stable end-state poll
+        // that does not widen any real wait on the happy path.
+        cut.WaitForAssertion(() => Assert.Empty(cut.FindAll("[role='dialog']")));
     }
 
     [Fact]
@@ -102,13 +102,12 @@ public class SheetExitAnimationTests : IAsyncLifetime
         var cut = RenderSheet(open: true, L.Side.Right, L.SheetContent.SheetAnimation.Slide);
         cut.Render(p => p.Add(s => s.Open, false));
 
-        cut.WaitForAssertion(() =>
-        {
-            // The backdrop is the sibling div with animate-fade-out.
-            var backdrop = cut.Find(".animate-fade-out");
-            var style = backdrop.GetAttribute("style") ?? "";
-            Assert.Contains("animation-duration:300ms", style);
-        });
+        // Synchronous on the close render (no await gap → the exit-window timer can't have
+        // unmounted the backdrop yet); asserting the latched exit render never races it.
+        // The backdrop is the sibling div with animate-fade-out.
+        var backdrop = cut.Find(".animate-fade-out");
+        var style = backdrop.GetAttribute("style") ?? "";
+        Assert.Contains("animation-duration:300ms", style);
     }
 
     /// <summary>
@@ -121,11 +120,10 @@ public class SheetExitAnimationTests : IAsyncLifetime
         var cut = RenderSheet(open: true, L.Side.Right, L.SheetContent.SheetAnimation.Fade);
         cut.Render(p => p.Add(s => s.Open, false));
 
-        cut.WaitForAssertion(() =>
-        {
-            var backdrop = cut.Find(".animate-fade-out");
-            var style = backdrop.GetAttribute("style") ?? "";
-            Assert.DoesNotContain("animation-duration", style);
-        });
+        // Synchronous on the close render (no await gap → the exit-window timer can't have
+        // unmounted the backdrop yet); asserting the latched exit render never races it.
+        var backdrop = cut.Find(".animate-fade-out");
+        var style = backdrop.GetAttribute("style") ?? "";
+        Assert.DoesNotContain("animation-duration", style);
     }
 }

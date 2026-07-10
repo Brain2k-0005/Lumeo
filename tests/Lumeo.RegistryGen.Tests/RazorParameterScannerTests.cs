@@ -86,6 +86,33 @@ public class RazorParameterScannerTests
     }
 
     [Fact]
+    public void Excludes_private_and_internal_nested_types_from_the_api()
+    {
+        // The public API surface must expose only PUBLIC nested types. Private/internal helper
+        // enums and records (e.g. TreeView's private PendingCarry carry) are implementation
+        // detail and must never leak into components-api.json.
+        var path = WriteTempRazor(@"@namespace Lumeo
+@code {
+    [Parameter] public Variant V { get; set; }
+
+    public enum Variant { Default, Outline }
+    private enum InternalMode { A, B }
+
+    public record Ctx(string Id);
+    private sealed record PendingCarry(int Index);
+}");
+        var s = RazorParameterScanner.Scan(path);
+
+        var variant = Assert.Single(s.Enums);
+        Assert.Equal("Variant", variant.Name);
+        Assert.DoesNotContain(s.Enums, e => e.Name == "InternalMode");
+
+        var ctx = Assert.Single(s.Records);
+        Assert.Equal("Ctx", ctx.Name);
+        Assert.DoesNotContain(s.Records, r => r.Name == "PendingCarry");
+    }
+
+    [Fact]
     public void Extracts_xml_doc_summary_into_description()
     {
         var path = WriteTempRazor(@"@namespace Lumeo

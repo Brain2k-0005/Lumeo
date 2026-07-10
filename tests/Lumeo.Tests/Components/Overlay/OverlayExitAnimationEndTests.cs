@@ -154,10 +154,10 @@ public class OverlayExitAnimationEndTests : IAsyncLifetime
         // The animationend path is wired…
         cut.WaitForAssertion(() => Assert.NotEmpty(_interop.OverlayExitEndWirings));
         // …but the callback is never invoked, so the fallback timer must still unmount
-        // the panel. Generous ceiling: WaitForAssertion returns the instant it does.
-        cut.WaitForAssertion(
-            () => Assert.Empty(cut.FindAll("[role='dialog']")),
-            timeout: TimeSpan.FromSeconds(5));
+        // the panel. Stable end-state poll; inherits the 10 s module ceiling
+        // (TestContextExtensions) — returns the instant it does, but a starved CI thread
+        // pool delaying the fallback-timer dispatch can't trip it.
+        cut.WaitForAssertion(() => Assert.Empty(cut.FindAll("[role='dialog']")));
     }
 
     // Minimal CSS class escaper for the compound attribute+class selectors above

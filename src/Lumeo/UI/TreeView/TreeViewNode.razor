@@ -18,7 +18,8 @@
      @onkeydown:stopPropagation="true"
      @attributes="AdditionalAttributes">
 
-    <div class="@NodeClass" style="padding-left: @(Level * 16)px" @onclick="HandleClick">
+    @* Indentation uses the logical inline-start so nesting mirrors correctly under RTL. *@
+    <div class="@NodeClass" style="padding-inline-start: @(Level * 16)px" @onclick="HandleClick">
 
         @* Expand chevron / loading spinner / leaf spacer *@
         @if (Item.IsLoading)
@@ -29,8 +30,14 @@
         }
         else if (ShowExpandChevron && Expandable)
         {
+            @* Ghost affordance: NO separate hover background — the whole ROW carries the
+               hover highlight (NodeClass' hover:bg-accent/50), so the chevron reads as an
+               integrated part of the row (VS Code / shadcn tree style) instead of a detached
+               button block. The icon gently brightens on row hover (group-hover/row). A
+               focus-visible ring stays for keyboard users; the 24px box keeps a comfortable
+               hit/touch target. Still stops propagation, so it toggles without selecting. *@
             <button type="button"
-                    class="shrink-0 p-0.5 rounded hover:bg-accent transition-colors"
+                    class="shrink-0 w-6 h-6 flex items-center justify-center rounded-sm text-muted-foreground focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring transition-colors"
                     @onclick="ToggleExpand"
                     @onclick:stopPropagation="true"
                     tabindex="-1"
@@ -40,7 +47,8 @@
         }
         else
         {
-            <span class="w-5"></span>
+            @* Leaf spacer — matches the 24px chevron/spinner box so labels align across rows. *@
+            <span class="w-6"></span>
         }
 
         @* Checkbox *@
@@ -85,12 +93,12 @@
                               Expandable="Expandable"
                               CascadeCheck="CascadeCheck"
                               MultiSelect="MultiSelect"
-                              SelectedValues="SelectedValues"
+                              ExpandOnRowClick="ExpandOnRowClick"
+                              SelectedNodes="SelectedNodes"
                               NodeTemplate="NodeTemplate"
                               LoadChildren="LoadChildren"
                               OnItemClick="OnItemClick"
                               OnItemCheck="OnItemCheck"
-                              OnExpandChanged="OnExpandChanged"
                               OnSelectionChanged="OnSelectionChanged" />
             }
         </div>
@@ -111,10 +119,16 @@
 
     [Parameter] public bool CascadeCheck { get; set; }
     [Parameter] public bool MultiSelect { get; set; }
-    [Parameter] public HashSet<T>? SelectedValues { get; set; }
+    // When true (the tree default), clicking anywhere on a PARENT row toggles its
+    // expansion in addition to selecting it; false keeps the chevron as the sole
+    // expand trigger. Threaded down so every level shares the tree's mode.
+    [Parameter] public bool ExpandOnRowClick { get; set; } = true;
+    // The set of currently-selected NODE instances (reference-identity comparer, owned by
+    // the parent TreeView). Selection is by identity, not Value, so a container node with a
+    // null/duplicate Value highlights only itself — see TreeView._selectedNodes (GH #350).
+    [Parameter] public HashSet<TreeView<T>.TreeViewItem<T>>? SelectedNodes { get; set; }
     [Parameter] public RenderFragment<TreeView<T>.TreeViewItem<T>>? NodeTemplate { get; set; }
     [Parameter] public Func<TreeView<T>.TreeViewItem<T>, Task<List<TreeView<T>.TreeViewItem<T>>>>? LoadChildren { get; set; }
-    [Parameter] public EventCallback<TreeView<T>.TreeViewItem<T>> OnExpandChanged { get; set; }
     [Parameter] public EventCallback<TreeView<T>.TreeViewItem<T>> OnSelectionChanged { get; set; }
 
     [Parameter] public string? Class { get; set; }
@@ -139,8 +153,8 @@
 
     private bool HasLoadedChildren => Item.Children is { Count: > 0 };
 
-    // Expansion as rendered: the item's own state, plus any search-forced
-    // expansion tracked by the parent tree while a filter is active.
+    // Expansion as rendered: the item's own state (mirrored from the tree's state store), plus any
+    // search-forced expansion tracked by the parent tree while a filter is active.
     private bool EffectiveExpanded => Context?.Tree.IsEffectivelyExpanded(Item) ?? Item.IsExpanded;
 
     // Children as rendered: when a search filter is active only the visible
@@ -154,7 +168,9 @@
         HasLoadedChildren ||
         (LoadChildren is not null && !Item.IsLeaf && !Item.ChildrenLoaded);
 
-    private bool IsSelected => SelectedValues?.Contains(Item.Value!) == true;
+    // Identity match: SelectedNodes uses a reference-equality comparer, so this is true
+    // only for the exact clicked node — never for a sibling that shares Item.Value.
+    private bool IsSelected => SelectedNodes?.Contains(Item) == true;
 
     private string? AriaExpanded => ShowExpandChevron
         ? EffectiveExpanded.ToString().ToLowerInvariant()
@@ -166,7 +182,7 @@
         {
             var parts = new List<string>
             {
-                "flex items-center gap-1.5 py-1 px-2 rounded-md transition-colors text-sm group-focus-visible:ring-[1.5px] group-focus-visible:ring-ring group-focus-visible:ring-offset-1",
+                "group/row flex items-center gap-1.5 py-1 px-2 rounded-md transition-colors text-sm group-focus-visible:ring-[1.5px] group-focus-visible:ring-ring group-focus-visible:ring-offset-1",
                 Item.IsDisabled ? "opacity-50 cursor-not-allowed text-muted-foreground" : "cursor-pointer hover:bg-accent/50"
             };
             if (IsSelected && !Item.IsDisabled)
@@ -176,8 +192,10 @@
     }
 
     // Single ChevronDown that rotates -90deg when collapsed; smooth like Accordion.
+    // Brightens from muted → foreground when the label row is hovered (group-hover/row),
+    // an integrated affordance that needs no background block of its own.
     private string ChevronClass => Cx.Join(
-        "h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-200",
+        "h-4 w-4 shrink-0 text-muted-foreground group-hover/row:text-foreground transition-transform duration-200",
         Cx.When(!EffectiveExpanded, "-rotate-90"));
 
     private string IconClass =>
@@ -197,64 +215,63 @@
         _isFocused = false;
     }
 
-    private async Task ToggleExpand()
+    // Expand / collapse is owned by the TREE's state store (TreeView.BeginToggle). The node asks the
+    // tree to flip this node's expansion SYNCHRONOUSLY (before any await) and hands back the DEFERRED
+    // tail — start the lazy child-load, or notify an already-loaded expand/collapse. The chevron and
+    // keyboard run the tail immediately (no selection to order against); the row click runs it only
+    // AFTER the selection callbacks. No path snapshots, no post-await re-resolution: the tail mutates
+    // a stable state handle that whatever instance now maps to that identity renders (PR #351 rebuild).
+    private Task ToggleExpand()
     {
-        if (EffectiveExpanded)
-        {
-            Item.IsExpanded = false;
-            await OnExpandChanged.InvokeAsync(Item);
-            return;
-        }
-
-        if (LoadChildren is not null && !Item.ChildrenLoaded && !Item.IsLeaf && !HasLoadedChildren)
-        {
-            Item.IsLoading = true;
-            StateHasChanged();
-
-            try
-            {
-                var loaded = await LoadChildren(Item);
-                Item.Children = loaded;
-                Item.ChildrenLoaded = true;
-
-                // rc.42: if the parent was fully checked before lazy-load, cascade
-                // that state to the freshly-loaded children. Without this, a
-                // checked parent would expand to reveal unchecked children — a
-                // visibly broken tri-state. Indeterminate parents leave loaded
-                // children at their default (unchecked) state, then we
-                // recompute the parent to reflect actual loaded counts.
-                if (Item.IsChecked && !Item.IsIndeterminate)
-                {
-                    CascadeChecked(Item.Children, true);
-                }
-                else if (Item.IsIndeterminate)
-                {
-                    // All loaded children default to unchecked → parent is no
-                    // longer indeterminate if nothing is checked. Recompute.
-                    var anyChecked = Item.Children.Any(c => c.IsChecked || c.IsIndeterminate);
-                    if (!anyChecked)
-                    {
-                        Item.IsIndeterminate = false;
-                        Item.IsChecked = false;
-                    }
-                }
-            }
-            finally
-            {
-                Item.IsLoading = false;
-            }
-        }
-
-        Item.IsExpanded = true;
-        await OnExpandChanged.InvokeAsync(Item);
+        if (Context is not null)
+            return Context.Tree.BeginToggle(Item)();
+        // Standalone (no tree context): a plain local flip — no lazy-load / identity survival.
+        Item.IsExpanded = !Item.IsExpanded;
+        StateHasChanged();
+        return Task.CompletedTask;
     }
 
-    private async Task HandleClick()
+    // Click semantic (documented): clicking the label ROW always SELECTS the node (and raises
+    // OnItemClick). By DEFAULT (ExpandOnRowClick=true) a click on a PARENT row also toggles its
+    // expansion (larger hit/touch target; the VS Code file-tree pattern). Leaf rows only select.
+    // The chevron button remains an expand/collapse trigger in BOTH modes and stops propagation.
+    // A selection-modifier click (Ctrl/Meta/Shift) only mutates selection, never expansion.
+    private async Task HandleClick(MouseEventArgs e)
     {
         if (Item.IsDisabled) return;
+
+        // Flip expansion SYNCHRONOUSLY now (in the tree's state store) — before the selection
+        // callbacks — so a selection-driven controlled rebuild re-maps the fresh instance to this
+        // same state entry and shows it expanded. The lazy child-load is DEFERRED to run isolated
+        // AFTER selection, so a slow/throwing loader can neither delay nor kill the selection, and a
+        // cached load can't attach ahead of the selection rebuild.
+        var deferredExpand = ExpandOnRowClick && Expandable && ShowExpandChevron
+            && !IsSelectionModifier(e) && Context is not null
+            ? Context.Tree.BeginToggle(Item)
+            : null;
+
         await OnItemClick.InvokeAsync(Item);
         await OnSelectionChanged.InvokeAsync(Item);
+
+        if (deferredExpand is not null)
+            await DrainExpansionIsolated(deferredExpand());
     }
+
+    // Drain the lazy-expansion tail AFTER the selection has been applied, absorbing a loader failure
+    // so it can neither roll back the (already-committed) selection nor surface as an unhandled
+    // circuit exception. The tree's state store has already cleared the spinner and collapsed the
+    // branch on failure; the row's contract is to SELECT — surfacing a background branch-load failure
+    // is the chevron/keyboard path's job, not the click's.
+    private static async Task DrainExpansionIsolated(Task expandTail)
+    {
+        try { await expandTail; }
+        catch (Exception) { /* a lazy-loader failure must not break the completed selection */ }
+    }
+
+    // A modifier held during the click is a selection gesture (extend/toggle a multi-selection),
+    // not a navigation intent, so row-click expansion is suppressed for it.
+    private static bool IsSelectionModifier(MouseEventArgs e)
+        => e.CtrlKey || e.MetaKey || e.ShiftKey;
 
     private async Task HandleCheck(bool value)
     {
@@ -265,15 +282,11 @@
         await OnItemCheck.InvokeAsync(Item);
     }
 
-    // WAI-ARIA tree keyboard pattern. Expand/collapse mutations stay here (the
-    // node owns its item); pure focus movement is delegated to the parent tree,
-    // which knows the flattened visible order.
+    // WAI-ARIA tree keyboard pattern. Expand/collapse route through the tree's state store
+    // (ToggleExpand); pure focus movement is delegated to the parent tree, which knows the
+    // flattened visible order.
     private async Task HandleKeyDown(KeyboardEventArgs e)
     {
-        // Page-scroll for the focus-moving keys is suppressed synchronously in
-        // JS (see OnAfterRenderAsync) — the former render-time _preventKey flag
-        // lagged one event, so the first ArrowDown/Up/Home/End still scrolled
-        // the page while focus also moved (Codex P2).
         switch (e.Key)
         {
             case "ArrowDown":
@@ -293,14 +306,9 @@
 
             case "ArrowLeft":
                 if (EffectiveExpanded)
-                {
-                    Item.IsExpanded = false;
-                    await OnExpandChanged.InvokeAsync(Item);
-                }
+                    await ToggleExpand(); // collapse via the state store (honors an in-flight load)
                 else if (Context is not null)
-                {
                     await Context.Tree.HandleNavigationKeyAsync(Item, e.Key); // move to parent
-                }
                 break;
 
             case "Enter":
@@ -327,22 +335,6 @@
                     }
                 }
                 break;
-        }
-    }
-
-    /// <summary>Cascades a check state to a freshly-loaded subtree (rc.42).
-    /// Used after <see cref="LoadChildren"/> resolves so children inherit a
-    /// fully-checked parent's state instead of staying unchecked.</summary>
-    private static void CascadeChecked(List<TreeView<T>.TreeViewItem<T>> items, bool value)
-    {
-        foreach (var item in items)
-        {
-            item.IsChecked = value;
-            item.IsIndeterminate = false;
-            if (item.Children is { Count: > 0 })
-            {
-                CascadeChecked(item.Children, value);
-            }
         }
     }
 

@@ -91,8 +91,8 @@ public class NavigationMenuExitAnimationTests : IAsyncLifetime
         cut.Find("button").Click();
         cut.Find("button").Click();
 
-        cut.WaitForAssertion(
-            () => Assert.DoesNotContain("Products content", cut.Markup),
-            timeout: TimeSpan.FromSeconds(5));
+        // Stable end-state poll; inherits the 10 s module ceiling (TestContextExtensions)
+        // so a starved CI thread pool delaying the fallback-timer dispatch can't trip it.
+        cut.WaitForAssertion(() => Assert.DoesNotContain("Products content", cut.Markup));
     }
 }

@@ -27,12 +27,12 @@
                               Expandable="Expandable"
                               CascadeCheck="CascadeCheck"
                               MultiSelect="MultiSelect"
-                              SelectedValues="_selectedValues"
+                              ExpandOnRowClick="ExpandOnRowClick"
+                              SelectedNodes="_selectedNodes"
                               NodeTemplate="NodeTemplate"
                               LoadChildren="LoadChildren"
                               OnItemClick="HandleItemClick"
                               OnItemCheck="HandleItemCheck"
-                              OnExpandChanged="HandleExpandChanged"
                               OnSelectionChanged="HandleSelectionChanged" />
             }
         </CascadingValue>
@@ -43,6 +43,16 @@
     [Parameter] public List<TreeViewItem<T>>? Items { get; set; }
     [Parameter] public bool ShowCheckboxes { get; set; }
     [Parameter] public bool Expandable { get; set; } = true;
+    /// <summary>
+    /// When <c>true</c> (the default), clicking anywhere on a parent row — a node that has, or
+    /// can lazily load, children — both selects it AND toggles its expansion (the whole row is
+    /// the expand/collapse target, giving a large hit/touch area; the VS Code file-tree pattern).
+    /// Leaf rows always just select. Set to <c>false</c> to keep the chevron as the sole expand
+    /// trigger, so a row click only selects. The chevron and keyboard (ArrowRight/Left) expand in
+    /// both modes; a Ctrl/Meta/Shift (multi-select modifier) click only selects, never expands.
+    /// Has no effect when <see cref="Expandable"/> is <c>false</c>.
+    /// </summary>
+    [Parameter] public bool ExpandOnRowClick { get; set; } = true;
     [Parameter] public EventCallback<TreeViewItem<T>> OnItemClick { get; set; }
     [Parameter] public EventCallback<TreeViewItem<T>> OnItemCheck { get; set; }
     [Parameter] public bool ShowSearch { get; set; }
@@ -63,26 +73,240 @@
     // #14: last SelectedValues reference we seeded from, so we only re-seed when
     // the parameter actually changes (not on every unrelated re-render).
     private List<T>? _previousSelectedValues;
-    // CONTROLLED discriminator: the last SelectedValues list reference we pushed UP
-    // via SelectedValuesChanged. A controlled parent re-render that echoes back this
-    // same object reference (the parent simply re-supplies what we handed it) is
-    // safe to ignore (keep the in-flight _selectedValues); any OTHER reference — a
-    // veto that restores the pre-interaction selection, a programmatic reset, or an
-    // externally-applied selection — is an authoritative assertion and must win.
+    // CONTROLLED discriminator (see OnParametersSet): the last SelectedValues list reference we
+    // pushed UP via SelectedValuesChanged. An echo of it (or of the pre-interaction reference) is a
+    // no-op; any OTHER reference is an authoritative veto/reset that wins.
     private List<T>? _lastPushedSelectedValues;
     private bool _previousExpandAll;
     private List<TreeViewItem<T>> _displayItems = [];
-    private HashSet<T> _selectedValues = [];
-    private TreeViewContext? _context;
 
-    // Search filtering renders the ORIGINAL item instances; visibility and
-    // search-forced expansion are tracked in these side tables instead of
-    // cloned subtrees, so checking/expanding a node while a filter is active
-    // mutates the real item and the state survives clearing the search.
-    // TreeViewItem is a record (value equality, mutable fields) — reference
-    // comparers keep set membership stable across mutations.
+    // ══════════════════════════════════════════════════════════════════════════
+    // OWNERSHIP MODEL — UI state lives in the TREE, keyed by a tree-owned identity
+    // ══════════════════════════════════════════════════════════════════════════
+    // The single structural change behind PR #351's TreeView rebuild. Consumers create
+    // TreeViewItem records; a controlled/immutable parent REPLACES those records on every rebuild
+    // (fresh @key'd instances), so any UI state stored ON the record is lost the moment an async
+    // operation is in flight. Fourteen review rounds accreted an in-flight registry, an orphan
+    // sweep, supersession flags, and a per-operation NodePath re-resolver — all guessing which
+    // fresh instance an operation "meant" AFTER the fact. All of that is gone.
+    //
+    // (1) STATE STORE. Per-node UI state (Expanded, Loading, ChildrenLoaded, the materialized lazy
+    //     Children, and the search manual-collapse override) lives in <see cref="NodeState"/>
+    //     entries owned by the tree — NOT on the consumer's record. An async operation captures the
+    //     state ENTRY (a stable handle) once; no rebuild can invalidate it. So: a moved node keeps
+    //     loading (its entry follows it); a collapse during a load is a plain write to the entry
+    //     (state.Expanded=false); a completion applies children to the entry and is rendered by
+    //     whatever instance currently maps to that identity; a second click while loading reads
+    //     Loading=true off the entry and starts no duplicate load.
+    //
+    // (2) IDENTITY, resolved ONCE per parameter-set (<see cref="ResolveIdentities"/>), not per
+    //     operation. Each incoming record is matched to an existing entry by, in order:
+    //       a. REFERENCE — the same instance is still present (untouched branch / unrelated render);
+    //       b. VALUE-VERIFIED SIBLING-UNIQUE PATH — the entry sat at this index path and every
+    //          segment (each ancestor + the leaf) still carries its recorded value AND is unique
+    //          among its siblings (via <see cref="WalkPath"/>); a shared value at ANY segment is not
+    //          a provable anchor, so the path drops;
+    //       c. TREE-UNIQUE VALUE — exactly one record and one entry carry the value (a node that
+    //          merely moved).
+    //     No match ⇒ a fresh entry (seeded from the record). Unmatched entries are DROPPED; an
+    //     async operation holding a dropped entry discards its result (identity is unrecoverable —
+    //     the same ambiguity-DROP convention selection uses).
+    //
+    // (3) SEEDS / MIRROR CONTRACT. The record's public flags stay the CONSUMER interface. They are
+    //     read as SEEDS (the initial value, and a later value the consumer changes between renders) and
+    //     WRITTEN BACK (mirrored) after every state change, so a consumer that reads
+    //     item.IsExpanded / item.IsLoading / item.Children keeps working and can carry state forward
+    //     when it rebuilds. IsLoading is tree-OWNED: mirrored OUT but never read as a seed (a stray
+    //     record flag can't strand a spinner). Lazy Children live in the entry AND mirror onto
+    //     item.Children; a rebuild that drops them re-attaches from the entry.
+    //
+    //     COMPARISON BASIS — the ONLY sound way to tell a consumer change from our own write-back:
+    //       • REFERENCE match (BindState sees the very instance we last mirrored onto): its flags carry
+    //         OUR write-back, so the only consumer signal is a divergence from the STORE (the mirror
+    //         keeps record ≡ store, so record ≠ store ⟹ the consumer mutated the live instance).
+    //       • FRESH instance (first bind, or a path/value re-match after a controlled/domain-pure
+    //         rebuild): its flags are the consumer's OWN values, so diff them against the last INCOMING
+    //         consumer SEED (Seeded* on the entry) — NEVER against the store or our mirror. A domain
+    //         rebuild that reverts IsExpanded to a pristine false must read as 'consumer never set it',
+    //         not 'consumer collapsed it'. The seeds advance ONLY from genuine consumer input (a fresh
+    //         value, or a live-instance mutation); MirrorState must NOT touch them, or the write-back
+    //         self-triggers as a phantom consumer change next resolution.
+    //
+    //     PER-FIELD PRECEDENCE (highest wins; tie-breakers in order):
+    //       EXPANDED : consumer seed CHANGE  >  store (tree operation)  >  pristine seed default.
+    //                  Fresh false == last seed ⟹ NO change ⟹ a pending/tree expand survives an
+    //                  interleaved rebuild (finding 2); a lazy completion re-asserting is not needed.
+    //       CHILDREN / CHILDRENLOADED : consumer AUTHORITATIVE children  >  consumer RESET  >  store
+    //                  (in-flight / materialized lazy children)  >  load completion.
+    //                  LOADED-NESS BASIS (incomingLoaded): ChildrenLoaded==true OR a NON-NULL Children
+    //                  list — an empty NON-null list is authoritative ('no children, and I know it'),
+    //                  NOT unloaded (round-17 #3). ONLY Children==null WITH ChildrenLoaded==false is the
+    //                  unloaded/reset signal. A plain non-lazy LEAF defaults to Children==null, so it
+    //                  reads unloaded here and is never mistaken for an authoritative-empty branch. This
+    //                  basis is applied CONSISTENTLY at REGISTRATION too: GetState mirrors the computed
+    //                  loaded-ness onto the record (via MirrorState) the moment it mints an entry, so a
+    //                  lazily-loaded child that arrives with a non-null (even empty) list but
+    //                  ChildrenLoaded still default-false is not left rendering as a re-expandable lazy
+    //                  node — ShowExpandChevron reads Item.ChildrenLoaded (finding 3). The leaf's
+    //                  null-children default keeps the mirror a no-op for it (leaf guard stays green).
+    //                  (A) Consumer supplies children (incomingLoaded, AND either the loaded-flag changed
+    //                      OR a NEW non-null list reference — INCLUDING an empty list, a genuine 'this
+    //                      branch is now empty' replacement, round-16 f1): adopt them, LoadToken++ so an
+    //                      in-flight load's completion is DISCARDED (consumer data supersedes the stale
+    //                      loader — finding 3), and ADVANCE the loaded-seed so a later fresh reset is
+    //                      diffed against a true basis and honored, not misread as domain-pure (round-16
+    //                      f3). loaded=true with a NULL Children carries no authoritative list (not (A)).
+    //                  (B) Consumer RESET (incomingLoaded regressed true→false vs the basis while the
+    //                      store still holds children — i.e. Children==null AND ChildrenLoaded==false):
+    //                      clear the tree children, LoadToken++ (discard any in-flight load), and COLLAPSE
+    //                      to the pristine unloaded lazy state — an expanded-yet-unloaded node has no
+    //                      defined content (no auto-load on render), so the reset supersedes tree-owned
+    //                      expansion for that node (finding 1).
+    //                  (C) Otherwise the tree keeps what it owns: a lazy branch (loaded OR in-flight)
+    //                      survives every unrelated / domain-pure rebuild — the normal lazy flow.
+    //                  A load completion is the LOWEST precedence: it applies only if its LoadToken still
+    //                  matches (neither dropped nor superseded by (A)/(B)). A superseded/dropped loader
+    //                  that later FAILS is discarded as silently as a superseded SUCCESS — it neither
+    //                  rolls back nor surfaces an error on a branch it no longer owns (round-16 f2).
+    //                  Expand-all obeys the SAME contract: it adopts only a matching-token load; on a
+    //                  supersession it DESCENDS into the consumer's now-authoritative children to keep
+    //                  expanding them (round-16 f4); a superseded/dropped expand-all load that FAILS is
+    //                  swallowed identically (round-17 #2), while a LIVE expand-all load failure rolls the
+    //                  entry back to collapsed and rethrows so an awaited ExpandAllNodesAsync surfaces it.
+    //                  When expand-all meets a branch whose loader is ACTUALLY RUNNING (a prior
+    //                  row/chevron expand, its LoadSettled signal installed), it does NOT skip it: it
+    //                  AWAITS that in-flight load (looping across supersessions) and then descends once
+    //                  the children materialize, so the whole subtree is realized (round-17 #1). It keys
+    //                  off the signal's PRESENCE, not the Loading flag: a row-click lazy tail is DEFERRED
+    //                  past its selection callbacks, so Loading can be set with NO loader running yet —
+    //                  awaiting then would DEADLOCK when expand-all is invoked reentrantly from that very
+    //                  click's OnItemClick / SelectedValuesChanged handler (the tail only runs after they
+    //                  return). A deferred-not-started branch (no signal) is instead loaded by expand-all
+    //                  ITSELF; its token bump supersedes the tail, which skips on the mismatch, so one
+    //                  fetch runs and the subtree is still realized (finding 1). A supersession/drop
+    //                  COMPLETES the signal (SupersedeLoadSignal), so a hung stale loader can never
+    //                  strand a parked waiter (finding 2).
+    //
+    // (4) OPERATION SEMANTICS. A row/chevron/keyboard toggle flips the entry SYNCHRONOUSLY (before any
+    //     await) and returns a DEFERRED tail; the row click runs the tail only AFTER its selection
+    //     callbacks (so a cached load can't attach ahead of a selection rebuild, and a slow/throwing
+    //     loader neither delays nor kills the selection). A COLLAPSE is a plain entry write; a lazy
+    //     load in flight for that entry keeps running and its completion reads Expanded=false, so it
+    //     attaches children but does not re-open (a moved node included — the entry, not a path,
+    //     carries the collapse). A second toggle while Loading=true starts NO duplicate load. A
+    //     completion ALWAYS materializes — binds a pending seeded SelectedValues and recomputes
+    //     checkbox tri-state — regardless of the branch ending expanded or collapsed. A loader failure
+    //     rolls the entry back to collapsed (retryable, ChildrenLoaded stays false). An entry DROPPED
+    //     by the identity pass mid-load discards its result (re-fetchable beats a mis-attach). Because
+    //     the row-click tail is DEFERRED past its selection callbacks, the entry can be DROPPED (the
+    //     callback removed the clicked node) or SUPERSEDED (a token bump) BEFORE the tail even starts:
+    //     the tail then skips the LoadChildren call ENTIRELY rather than fetch-then-discard — no wasted
+    //     work, no delay to a branch that no longer exists (round-17 #4).
+    //
+    //     EVENT CONTRACT: TreeView raises NO expand event. Expansion is observable only through the
+    //     mirrored item.IsExpanded; the materialization side effects above are NOT gated on any event,
+    //     so a superseded (collapsed) completion attaching "silently" is correct — there is nothing to
+    //     mis-fire.
+    //
+    // Selection keeps its own two-bucket model (seeded VALUE contract vs interactive IDENTITY carry,
+    // #350) and resolves against the state store: the clicked node is re-resolved through its
+    // captured entry, and the once-per-rebuild reanchor uses the same NodePath machinery. Checkbox
+    // tri-state stays derived on the record (cascade), recomputed by the shared UpdateAncestorStates.
+    // ══════════════════════════════════════════════════════════════════════════
+    private sealed class NodeState
+    {
+        public long Id;
+        // The record instance that currently maps to this identity (refreshed each ResolveIdentities
+        // and by each operation). An operation mirrors its state writes onto THIS instance.
+        public TreeViewItem<T>? Current;
+        // The value-verified index path this entry occupied at the last resolution — the phase-(b)
+        // re-match key across rebuilds.
+        public NodePath? Path;
+        public T? Value;
+        // Tree-owned UI state.
+        public bool Expanded;
+        public bool Loading;
+        public bool ChildrenLoaded;
+        public List<TreeViewItem<T>>? Children;      // materialized lazy children (tree-owned)
+        // Bumped every time a lazy load STARTS; a completion carrying a stale token (a consumer
+        // supersession — authoritative children or a branch reset — bumped it) discards its result.
+        public long LoadToken;
+        // Completed when the CURRENT in-flight lazy load settles (success, drop, supersession, or
+        // failure). A concurrent ExpandAllNodesAsync that meets a branch ALREADY loading (a prior
+        // row/chevron expand) awaits THIS instead of skipping the subtree, then descends once the
+        // children materialize (round-17 #1). Installed at the LOADER'S TRUE START (LoadChildrenAsync /
+        // the expand-all inline load), NEVER in BeginToggle: a row-click tail is DEFERRED past its
+        // selection callbacks, so its PRESENCE — not the Loading flag — is the proof a loader is
+        // actually running. Expand-all keys off that: a running loader (signal set) is AWAITED; a
+        // deferred-not-started tail (Loading set, signal still null) is loaded by expand-all itself, so
+        // it never deadlocks awaiting a load that has not begun (finding 1). Owned by the load that set
+        // it (a supersession that starts a fresh load installs a new signal). A supersession/drop
+        // COMPLETES and clears it (SupersedeLoadSignal), so a waiter observes settle immediately instead
+        // of blocking on a stale — possibly hung — loader (finding 2).
+        public TaskCompletionSource? LoadSettled;
+        // A user collapse of a search-force-expanded node: the filter must not re-open it on a
+        // later same-reference rebuild (RebuildDisplay recomputes _autoExpanded from scratch).
+        public bool SearchCollapse;
+        // Seed bookkeeping: the LAST INCOMING CONSUMER-SOURCE flag values (NOT our mirror). The next
+        // parameter set diffs a FRESH instance against these to tell 'consumer changed it' from
+        // 'consumer never set it' (a domain-pure rebuild); MirrorState must never write them, or our
+        // own write-back would masquerade as a consumer change. Advanced ONLY from genuine consumer
+        // input in BindState (see the SEEDS/MIRROR precedence table in the model doc block).
+        public bool SeededExpanded;
+        public bool SeededChildrenLoaded;
+        // Transients used only inside ResolveIdentities.
+        public bool Claimed;
+        // Set when the once-per-rebuild identity pass could not match this entry to any incoming
+        // record. An in-flight operation holding it then discards its result.
+        public bool Dropped;
+    }
+
+    private long _stateSeq;
+    private List<NodeState> _states = [];
+    private Dictionary<TreeViewItem<T>, NodeState> _stateByItem = new(ReferenceEqualityComparer.Instance);
+
+    // ── SELECTION (unchanged model, #350) ────────────────────────────────────
+    // Selection is tracked by NODE IDENTITY (reference equality), NOT by Value: container/parent
+    // nodes routinely share a Value (commonly null, or a duplicate across branches), and keying
+    // selection by Value made a single click light up EVERY node sharing that value (GH #350). The
+    // public SelectedValues contract is preserved: values are derived from the selected nodes on the
+    // way OUT and mapped back to nodes on the way IN.
+    private HashSet<TreeViewItem<T>> _selectedNodes = new(ReferenceEqualityComparer.Instance);
+    // Wanted VALUES with no bound node yet (a controlled/seed value for an unloaded lazy child, or
+    // an async/empty first render). Value-based by the SelectedValues contract — an ambiguous value
+    // binds EVERY match.
+    private List<T>? _pendingSelectValues;
+    // The structural IDENTITY (value-verified path + value) of a resolved node that VANISHED on an
+    // Items refresh; re-binds by path, falls back to a UNIQUE value, drops on ambiguity — so a
+    // vanished duplicate/null-valued node re-selects the SAME node, not a same-valued sibling.
+    private List<PendingCarry>? _pendingCarries;
+    // The values currently owned by a consumer SelectedValues seed (origin marker): a seeded value
+    // keeps VALUE semantics across a vanish/return (re-binds every match) instead of degrading into
+    // an identity carry that ambiguity-drops a duplicate/null seed.
+    private HashSet<T>? _seededValues;
+    private TreeViewContext? _context;
+    // The clicked node's captured state entry, snapshotted in HandleItemClick BEFORE OnItemClick can
+    // rebuild Items — so HandleSelectionChanged selects the instance that identity now maps to (or
+    // drops when the entry was dropped), instead of adding a stale/disposed instance (round-10 f4).
+    private NodeState? _clickState;
+    private sealed record PendingCarry(NodePath Path, T? Value);
+
+    /// <summary>A structural node identity: the root→node child-index chain PLUS the value at each
+    /// level. Every segment is value-verified and sibling-uniqueness-gated on the way back
+    /// (<see cref="WalkPath"/>), so a duplicate/null-valued ancestor that gets reordered can't
+    /// silently redirect the walk. Used ONLY for the once-per-rebuild identity match and selection
+    /// carries.</summary>
+    internal sealed record NodePath(IReadOnlyList<int> Indices, IReadOnlyList<T?> Values);
+
+    // Search filtering renders the ORIGINAL item instances; visibility and search-forced expansion
+    // are tracked in these side tables so checking/expanding while filtered mutates the real item.
     private HashSet<TreeViewItem<T>>? _visibleSet;
     private readonly HashSet<TreeViewItem<T>> _autoExpanded = new(ReferenceEqualityComparer.Instance);
+
+    // The structural index path of each currently-resolved selected node, snapshotted after every
+    // resolution pass so an IN-PLACE Items mutation (where _previousItems is the same, already-
+    // mutated object) can still reanchor a duplicate-valued node by the path it held while present.
+    private Dictionary<TreeViewItem<T>, NodePath> _selectionPaths = new(ReferenceEqualityComparer.Instance);
 
     // Roving tabindex / keyboard navigation state (WAI-ARIA tree pattern).
     private readonly string _treeId = LumeoIds.New("tree");
@@ -98,60 +322,79 @@
         _context = new TreeViewContext(this);
     }
 
-    // Set when a declarative ExpandAll pass needs to pull in lazy children;
-    // consumed once by OnParametersSetAsync so the load runs a single time.
+    // Set when a declarative ExpandAll pass needs to pull in lazy children; consumed once by
+    // OnParametersSetAsync so the load runs a single time.
     private bool _expandAllNeedsLazyLoad;
 
     protected override void OnParametersSet()
     {
         if (SelectedValuesChanged.HasDelegate)
         {
-            // CONTROLLED: adopt only when SelectedValues is NOT the same object
-            // reference we just pushed (reference equality is sufficient: a veto
-            // keeps the OLD reference; an echo re-supplies the same list object we
-            // handed the parent; a programmatic override supplies a new reference).
+            // CONTROLLED: adopt SelectedValues only when it is NOT an accepted echo of what we just
+            // pushed AND NOT the reference the parent held before this interaction (an observer-only
+            // consumer that never echoes). Only a third, distinct decision is an authoritative
+            // veto/override that must win. (Both snapshots read BEFORE the overwrite.)
             //
-            // ALSO a no-op when SelectedValues is unchanged from before this interaction
-            // (_previousSelectedValues, read here BEFORE it is overwritten below): an observer-only
-            // consumer that binds SelectedValuesChanged purely to react to selection — without also
-            // echoing SelectedValues back — leaves the parameter at whatever reference it started with
-            // forever, and that re-render must not be treated as the parent clearing the selection.
-            // Only a reference that differs from BOTH our own push AND the pre-interaction snapshot is
-            // an authoritative, distinguishable veto/reset.
-            var isEcho = ReferenceEquals(SelectedValues, _lastPushedSelectedValues);
+            // An echo is the SAME reference we pushed OR a value-equal (same multiset) COPY of it: a
+            // controlled parent that accepts SelectedValuesChanged by copying our list into a FRESH
+            // instance with identical values is confirming the selection we already own, not authoring
+            // a new seed. Re-resolving that copy by value would convert the interactive IDENTITY
+            // selection (the specific node the user clicked) back into the value contract and, for
+            // duplicate/null-valued nodes, light up EVERY same-valued node. Bucket rule: only a
+            // values-DIFFERENT list re-seeds; a value-equal one is an echo of the accepted selection.
+            var isEcho = ReferenceEquals(SelectedValues, _lastPushedSelectedValues)
+                || SameSelectionValues(SelectedValues, _lastPushedSelectedValues);
             var isUnchangedFromBeforeInteraction = ReferenceEquals(SelectedValues, _previousSelectedValues);
             if (!isEcho && !isUnchangedFromBeforeInteraction)
             {
-                _selectedValues = SelectedValues is not null ? [..SelectedValues] : [];
+                _selectedNodes = ResolveSelectedNodes(SelectedValues);
                 _lastPushedSelectedValues = SelectedValues;
             }
-            // else: echo of our own selection, or unchanged from before — keep the in-flight selection.
             _previousSelectedValues = SelectedValues;
         }
         else if (!ReferenceEquals(SelectedValues, _previousSelectedValues))
         {
-            // #14: UNCONTROLLED — only re-seed from SelectedValues when the
-            // parameter ITSELF changed (new reference). Re-seeding on every
-            // OnParametersSet wiped an internally-clicked selection on any
-            // unrelated re-render, breaking the two-way-binding contract used
-            // elsewhere.
+            // #14: UNCONTROLLED — only re-seed when the parameter reference actually changed, so an
+            // unrelated re-render doesn't wipe an internally-clicked selection.
             if (SelectedValues is not null)
-                _selectedValues = [..SelectedValues];
+                _selectedNodes = ResolveSelectedNodes(SelectedValues);
             _previousSelectedValues = SelectedValues;
         }
 
-        bool itemsChanged = !ReferenceEquals(Items, _previousItems);
+        bool referenceChanged = !ReferenceEquals(Items, _previousItems);
         bool expandAllChanged = ExpandAll != _previousExpandAll;
+        var previousItems = _previousItems;
         _previousItems = Items;
         _previousExpandAll = ExpandAll;
         _flatVisible = null;
 
-        if (itemsChanged)
+        // IDENTITY PASS (ownership model pillar 2): match every incoming record to its state entry,
+        // reconcile consumer seeds, mirror tree-owned state back, and re-attach materialized lazy
+        // children. Runs on every parameter set — it is idempotent (a reference match + no seed
+        // change is a no-op) and it is what carries Loading / loaded Children / expansion across a
+        // controlled rebuild that produced fresh instances.
+        ResolveIdentities(Items ?? []);
+
+        // Re-anchor the identity-tracked selection onto the current instances, then bind any pending
+        // seed/carry. Change detection must NOT hinge on the Items reference (an in-place mutation
+        // keeps it), so this runs whenever the reference changed OR a binding looks stale.
+        bool needsResolve = referenceChanged || HasStaleOrPendingSelection();
+        if (needsResolve)
+        {
+            ReanchorSelection(Items ?? [], previousItems);
+            TryResolvePendingSelection(Items);
+            // TRI-STATE DERIVE-ON-SEED: recompute parents from their (seeded or assigned) children so
+            // a tree that arrives with children already IsChecked=true shows the right parent state on
+            // the first render. Cascade-only.
+            if (CascadeCheck && ShowCheckboxes)
+                UpdateAncestorStates(Items ?? []);
+        }
+
+        if (referenceChanged)
         {
             if (ExpandAll)
             {
                 ApplyExpandAll(Items ?? [], true);
-                // #201: with lazy children, also fetch the not-yet-loaded branches.
                 if (LoadChildren is not null)
                     _expandAllNeedsLazyLoad = true;
             }
@@ -164,6 +407,536 @@
                 _expandAllNeedsLazyLoad = true;
             RebuildDisplay();
         }
+        else if (!string.IsNullOrWhiteSpace(_searchText))
+        {
+            // While a SEARCH FILTER is active _displayItems is a filtered ToList() snapshot, so an
+            // in-place mutation (retitle / replace items[i]) never reaches the render until the
+            // display is re-materialized. Change detection must not hinge on selection state, so
+            // re-materialize unconditionally while filtered. RebuildDisplay preserves a manual
+            // search collapse (via state), so a re-render no longer re-opens a collapsed ancestor.
+            RebuildDisplay();
+        }
+
+        // Snapshot the settled selection's paths against the CURRENT tree — the OLD paths a later
+        // IN-PLACE mutation reanchors against, captured while the nodes are still present.
+        SnapshotSelectionPaths();
+    }
+
+    /// <summary>Whether the reanchor/pending pass should run even when the <see cref="Items"/>
+    /// reference is UNCHANGED (an in-place mutation of the same list). True when a pending bucket
+    /// holds an unbound value/carry, or when any selected node instance is no longer in the tree.</summary>
+    private bool HasStaleOrPendingSelection()
+    {
+        if (_pendingSelectValues is { Count: > 0 } || _pendingCarries is { Count: > 0 }) return true;
+        if (_selectedNodes.Count == 0) return false;
+        var flat = new List<TreeViewItem<T>>();
+        FlattenAll(Items ?? [], flat);
+        var present = new HashSet<TreeViewItem<T>>(flat, ReferenceEqualityComparer.Instance);
+        foreach (var sel in _selectedNodes)
+            if (!present.Contains(sel)) return true;
+        return false;
+    }
+
+    // ══════════════════════════════════════════════════════════════════════════
+    // IDENTITY PASS + STATE STORE
+    // ══════════════════════════════════════════════════════════════════════════
+
+    /// <summary>Matches every incoming record to its <see cref="NodeState"/> entry (reference →
+    /// value-verified sibling-unique path → tree-unique value → fresh), reconciles consumer seeds,
+    /// mirrors tree-owned state back onto the record, and re-attaches materialized lazy children.
+    /// Unmatched entries are dropped. Runs exactly once per parameter set.</summary>
+    private void ResolveIdentities(List<TreeViewItem<T>> items)
+    {
+        var pool = _states;
+        foreach (var s in pool) s.Claimed = false;
+
+        // The full incoming (consumer) tree, for the tree-unique-value phase. Re-attached lazy children
+        // always match by reference, so their omission here is immaterial. Value comparisons go through
+        // EqualityComparer<T>.Default (null-safe) — never a T-keyed dictionary, since T is an
+        // unconstrained (nullable) component type parameter.
+        var flat = new List<TreeViewItem<T>>();
+        FlattenAll(items, flat);
+
+        // Index the OLD pool by the two non-value keys (reference + path) for O(1) claims; the value
+        // phase scans linearly (it only runs for nodes a rebuild replaced, the uncommon case).
+        var poolByRef = new Dictionary<TreeViewItem<T>, NodeState>(ReferenceEqualityComparer.Instance);
+        var poolByPath = new Dictionary<string, NodeState>();
+        foreach (var s in pool)
+        {
+            if (s.Current is not null) poolByRef[s.Current] = s;
+            if (s.Path is { Indices.Count: > 0 }) poolByPath[PathKey(s.Path.Indices)] = s;
+        }
+
+        var newStates = new List<NodeState>();
+        var byItem = new Dictionary<TreeViewItem<T>, NodeState>(ReferenceEqualityComparer.Instance);
+        ResolveLevel(items, [], [], items, flat, pool, poolByRef, poolByPath, newStates, byItem);
+
+        foreach (var s in pool)
+            if (!s.Claimed) { s.Dropped = true; s.Current = null; SupersedeLoadSignal(s); } // wake a parked expand-all on a vanished node (finding 2)
+        _states = newStates;
+        _stateByItem = byItem;
+    }
+
+    private void ResolveLevel(List<TreeViewItem<T>> level, IReadOnlyList<int> parentIdx,
+        IReadOnlyList<T?> parentVals, List<TreeViewItem<T>> roots, List<TreeViewItem<T>> flat,
+        List<NodeState> pool, Dictionary<TreeViewItem<T>, NodeState> poolByRef,
+        Dictionary<string, NodeState> poolByPath,
+        List<NodeState> newStates, Dictionary<TreeViewItem<T>, NodeState> byItem)
+    {
+        for (var i = 0; i < level.Count; i++)
+        {
+            var node = level[i];
+            var indices = new List<int>(parentIdx) { i };
+            var values = new List<T?>(parentVals) { node.Value };
+            var path = new NodePath(indices, values);
+            bool sibUnique = CountValue(level, node.Value) == 1;
+
+            var state = ClaimState(node, path, sibUnique, roots, flat, pool, poolByRef, poolByPath);
+            bool isNew = state is null;
+            state ??= new NodeState { Id = ++_stateSeq };
+            state.Claimed = true;
+            BindState(state, node, path, isNew);
+            newStates.Add(state);
+            byItem[node] = state;
+
+            if (node.Children is { Count: > 0 })
+                ResolveLevel(node.Children, indices, values, roots, flat, pool, poolByRef, poolByPath,
+                    newStates, byItem);
+        }
+    }
+
+    /// <summary>Claims an existing entry for <paramref name="node"/> by the ownership priority
+    /// (reference → value-verified sibling-unique path → tree-unique value), or null when none matches
+    /// (the caller then mints a fresh entry).</summary>
+    private NodeState? ClaimState(TreeViewItem<T> node, NodePath path, bool sibUnique,
+        List<TreeViewItem<T>> roots, List<TreeViewItem<T>> flat, List<NodeState> pool,
+        Dictionary<TreeViewItem<T>, NodeState> poolByRef, Dictionary<string, NodeState> poolByPath)
+    {
+        // (a) reference — same instance still present.
+        if (poolByRef.TryGetValue(node, out var byRef) && !byRef.Claimed)
+            return byRef;
+
+        // (b) value-verified sibling-unique path — the entry that sat here, if EVERY segment
+        // re-verifies (WalkPath) and the leaf is sibling-unique now.
+        if (sibUnique && poolByPath.TryGetValue(PathKey(path.Indices), out var byPath)
+            && !byPath.Claimed && byPath.Path is not null
+            && ReferenceEquals(WalkPath(roots, byPath.Path), node))
+            return byPath;
+
+        // (c) tree-unique value — a node that merely moved: exactly one record AND one unclaimed entry
+        // carry the value.
+        if (CountValue(flat, node.Value) == 1)
+        {
+            NodeState? only = null;
+            var count = 0;
+            foreach (var s in pool)
+            {
+                if (s.Claimed || !EqualityComparer<T>.Default.Equals(s.Value, node.Value)) continue;
+                only = s;
+                if (++count > 1) break;
+            }
+            if (count == 1) return only;
+        }
+        return null;
+    }
+
+    /// <summary>Occurrences of <paramref name="value"/> among <paramref name="nodes"/> (null-safe;
+    /// avoids a T-keyed dictionary since T is an unconstrained nullable type parameter).</summary>
+    private static int CountValue(IReadOnlyList<TreeViewItem<T>> nodes, T? value)
+    {
+        var n = 0;
+        foreach (var item in nodes)
+            if (EqualityComparer<T>.Default.Equals(item.Value, value)) n++;
+        return n;
+    }
+
+    /// <summary>Reconciles consumer seeds into <paramref name="state"/> (an incoming-seed CHANGE wins
+    /// over the store, which wins over an in-flight load completion) and mirrors the tree-owned state
+    /// back onto <paramref name="node"/>. See the SEEDS/MIRROR precedence table in the model doc block
+    /// for the per-field tie-breakers this implements.</summary>
+    private void BindState(NodeState state, TreeViewItem<T> node, NodePath path, bool isNew)
+    {
+        // A REFERENCE match means <paramref name="node"/> is the very instance we last mirrored onto,
+        // so its flags carry OUR write-back — a divergence from the STORE is the only consumer signal.
+        // A FRESH instance (first bind, or a path/value match after a controlled rebuild) carries the
+        // consumer's OWN values — diff it against the last consumer SEED, never against our mirror.
+        bool sameInstance = ReferenceEquals(node, state.Current);
+        // LOADED-NESS basis: ChildrenLoaded OR a NON-NULL Children list. A non-null list (EMPTY or
+        // not) is an authoritative children set the consumer OWNS — even an empty one means 'this
+        // branch has no children, and I know it' (round-17 #3), NOT an unloaded lazy node. Only a
+        // NULL Children with ChildrenLoaded=false is the unloaded/reset signal (see (B) below and the
+        // precedence table). A plain non-lazy LEAF carries Children=null by default, so it stays
+        // loaded=false here and is untouched — treating empty-vs-null the same would be wrong, but
+        // treating a NON-null empty list as authoritative does not disturb the null-children leaf.
+        bool incomingLoaded = node.ChildrenLoaded || node.Children is not null;
+
+        if (isNew)
+        {
+            state.Expanded = node.IsExpanded;
+            state.Loading = false;
+            state.ChildrenLoaded = incomingLoaded;
+            state.Children = node.Children;
+            state.SeededExpanded = node.IsExpanded;
+            state.SeededChildrenLoaded = incomingLoaded;
+        }
+        else
+        {
+            // ── EXPANSION ── an incoming-seed change wins; our own mirror never counts as a change.
+            bool expandBasis = sameInstance ? state.Expanded : state.SeededExpanded;
+            bool consumerExpandChange = node.IsExpanded != expandBasis;
+            if (consumerExpandChange) state.Expanded = node.IsExpanded;
+            // The seed advances from consumer input only: a fresh instance always carries one; a
+            // reference match only when the consumer actually mutated it (else the value is our mirror,
+            // and recording it would strand a later pristine rebuild as a phantom collapse — finding 2).
+            if (!sameInstance || consumerExpandChange) state.SeededExpanded = node.IsExpanded;
+
+            // ── CHILDREN / LOADED ── highest precedence: a consumer action supersedes both the store
+            // and any in-flight load (LoadToken++ discards the stale completion). The load-basis is the
+            // store on a reference match (mirror keeps them synced) or the last consumer seed on a fresh
+            // instance (so a domain-pure rebuild of a lazy node is NOT mistaken for a reset).
+            bool loadedBasis = sameInstance ? state.ChildrenLoaded : state.SeededChildrenLoaded;
+            bool consumerLoadedChange = incomingLoaded != loadedBasis;
+            // A non-null list (EMPTY or not) that differs by reference is a NEW authoritative children
+            // set — an empty loaded list means 'this branch is now empty', a genuine replacement, not a
+            // no-op (round-16 f1). Only a NULL Children (with loaded=false) is an unloaded/reset signal,
+            // handled by (B); loaded=true + a null Children carries no authoritative list.
+            bool newChildrenRef = node.Children is not null && !ReferenceEquals(node.Children, state.Children);
+            bool adoptChildren = incomingLoaded && (consumerLoadedChange || newChildrenRef);
+
+            if (adoptChildren)
+            {
+                // (A) AUTHORITATIVE CHILDREN — consumer supplies them (any list, incl. an empty one);
+                // adopt and discard any in-flight load (its completion must NOT overwrite consumer
+                // data — finding 3).
+                state.Children = node.Children;
+                state.ChildrenLoaded = true;
+                state.Loading = false;
+                state.LoadToken++;
+                SupersedeLoadSignal(state);   // wake an expand-all parked on the now-stale loader (finding 2)
+            }
+            else if (!incomingLoaded && loadedBasis && state.ChildrenLoaded)
+            {
+                // (B) LAZY-BRANCH RESET — the branch regressed loaded → unloaded (finding 1): clear the
+                // tree-owned children, discard any in-flight load, and COLLAPSE back to the pristine
+                // unloaded lazy state (an expanded-yet-unloaded node has no defined content — the tree
+                // never auto-loads on render; documented decision).
+                state.Children = null;
+                state.ChildrenLoaded = false;
+                state.Loading = false;
+                state.LoadToken++;
+                SupersedeLoadSignal(state);   // wake an expand-all parked on the now-stale loader (finding 2)
+                state.Expanded = false;
+                state.SeededExpanded = false;
+            }
+            // else: no consumer children action → the tree keeps what it owns (an in-flight/loaded lazy
+            // branch survives every unrelated rebuild).
+
+            // Advance the last-seen consumer loaded-seed on GENUINE consumer input: a fresh instance
+            // always carries one; a reference match only when the consumer actually acted — a loaded-flag
+            // change OR adopting a new/empty authoritative list. Without the adopt clause a live child
+            // replacement that leaves the flag unchanged would strand the seed, so a later fresh reset is
+            // misread as domain-pure and the prior children are wrongly reattached (round-16 f3). Never
+            // our own mirror (the self-trigger rule).
+            if (!sameInstance || consumerLoadedChange || adoptChildren)
+                state.SeededChildrenLoaded = incomingLoaded;
+        }
+
+        state.Current = node;
+        state.Path = path;
+        state.Value = node.Value;
+        state.Dropped = false;
+        MirrorState(state);
+    }
+
+    /// <summary>Writes tree-owned UI state onto the entry's current record (the seeds/mirror
+    /// contract). It deliberately does NOT touch the Seeded* bookkeeping: those track the last INCOMING
+    /// consumer value, and letting our own write-back advance them would make the mirror masquerade as
+    /// a consumer change on the next resolution (the self-trigger regression). Only BindState advances
+    /// the seeds, and only from genuine consumer input.</summary>
+    private void MirrorState(NodeState state)
+    {
+        var it = state.Current;
+        if (it is null) return;
+        it.IsExpanded = state.Expanded;
+        it.IsLoading = state.Loading;
+        if (state.ChildrenLoaded)
+        {
+            it.ChildrenLoaded = true;
+            if (state.Children is not null && !ReferenceEquals(it.Children, state.Children)
+                && it.Children is not { Count: > 0 })
+                it.Children = state.Children;   // re-attach tree-owned lazy children onto a fresh record
+        }
+    }
+
+    /// <summary>The state entry for <paramref name="item"/>, minting one (seeded from the record)
+    /// when the item has no entry yet (e.g. a freshly-loaded lazy child before the next parameter
+    /// set re-indexes the tree).</summary>
+    private NodeState GetState(TreeViewItem<T> item)
+    {
+        if (_stateByItem.TryGetValue(item, out var s) && !s.Dropped) return s;
+        s = new NodeState
+        {
+            Id = ++_stateSeq,
+            Current = item,
+            Value = item.Value,
+            Expanded = item.IsExpanded,
+            // A non-null Children list (even empty) is authoritative-loaded; only null+loaded=false is
+            // an unloaded lazy node (round-17 #3 — kept consistent with BindState/MirrorState).
+            ChildrenLoaded = item.ChildrenLoaded || item.Children is not null,
+            Children = item.Children,
+            SeededExpanded = item.IsExpanded,
+            SeededChildrenLoaded = item.ChildrenLoaded || item.Children is not null,
+        };
+        _states.Add(s);
+        _stateByItem[item] = s;
+        // Mirror the computed loaded-ness back onto the record NOW (finding 3). A lazily-loaded child
+        // registered via RegisterSubtree with a NON-null (even EMPTY) Children list but ChildrenLoaded
+        // still default-false is authoritative-loaded in the store — yet TreeViewNode.ShowExpandChevron
+        // reads Item.ChildrenLoaded, so without this mirror an already-loaded EMPTY branch keeps
+        // rendering as a re-expandable lazy node until some later parameter set happens to mirror it.
+        // MirrorState is a no-op for a plain null-children leaf (state.ChildrenLoaded stays false), so
+        // the leaf-vs-lazy guard (round-17 #3) stays green.
+        MirrorState(s);
+        return s;
+    }
+
+    /// <summary>Registers state entries for a freshly-loaded lazy subtree so an immediate operation
+    /// (or the render before the next parameter set) sees them. Seeds each entry's structural
+    /// <see cref="NodeState.Path"/> from the parent's path + the child's sibling index (known at attach
+    /// time): without it a freshly-minted lazy child carries no Path, so if a controlled rebuild
+    /// swaps in fresh instances BEFORE the next parameter pass indexes it, <see cref="ClaimState"/>
+    /// can neither reference-match nor tree-unique-value-match a duplicate-valued descendant — its
+    /// value-verified sibling-unique path (priority (b)) is the only anchor, and it would otherwise be
+    /// dropped (an expanded lazy child collapsing / losing loaded state). BindState refreshes the path
+    /// authoritatively on every subsequent pass; this only seeds the pre-index window.</summary>
+    private void RegisterSubtree(List<TreeViewItem<T>> loaded, NodePath? parentPath)
+    {
+        for (var i = 0; i < loaded.Count; i++)
+        {
+            var child = loaded[i];
+            var state = GetState(child);
+            // Only seed when the parent's path is known and the entry is fresh (no path yet) — never
+            // clobber a path an earlier indexing pass already recorded authoritatively.
+            if (parentPath is not null && state.Path is not { Indices.Count: > 0 })
+            {
+                var indices = new List<int>(parentPath.Indices) { i };
+                var values = new List<T?>(parentPath.Values) { child.Value };
+                state.Path = new NodePath(indices, values);
+            }
+            if (child.Children is { Count: > 0 })
+                RegisterSubtree(child.Children, state.Path);
+        }
+    }
+
+    private static string PathKey(IReadOnlyList<int> indices) => string.Join(",", indices);
+
+    // ══════════════════════════════════════════════════════════════════════════
+    // EXPAND / COLLAPSE / LAZY LOAD — operations hold a STATE HANDLE, never a path
+    // ══════════════════════════════════════════════════════════════════════════
+
+    /// <summary>The SYNCHRONOUS half of a row/chevron/keyboard toggle: flips the node's expansion in
+    /// the STATE store now (before any await), so a selection-driven controlled rebuild re-maps the
+    /// fresh instance to this same entry and mirrors the new state onto it. Returns the DEFERRED half
+    /// — start the lazy child-load, or notify an already-loaded expand/collapse — so the caller
+    /// chooses WHEN to run it: the chevron/keyboard run it immediately; the row click runs it only
+    /// AFTER the selection callbacks (so a cached load can't attach ahead of a selection rebuild).</summary>
+    internal Func<Task> BeginToggle(TreeViewItem<T> item)
+    {
+        var state = GetState(item);
+
+        if (IsEffectivelyExpanded(item))
+        {
+            // COLLAPSE — a plain write to the entry. If a lazy load is still in flight, its
+            // completion reads Expanded=false and does not re-open; no supersession flag needed.
+            state.Expanded = false;
+            if (_autoExpanded.Contains(item)) state.SearchCollapse = true;   // override the filter's force-open
+            _autoExpanded.Remove(item);
+            MirrorState(state);
+            _flatVisible = null;
+            StateHasChanged();
+            return () => NotifyCollapseAsync(state);
+        }
+
+        // EXPAND.
+        state.Expanded = false; // reset a stale manual-collapse before re-forcing below
+        state.SearchCollapse = false;
+        state.Expanded = true;
+
+        bool needsLoad = LoadChildren is not null && !state.ChildrenLoaded && !item.IsLeaf
+            && item.Children is not { Count: > 0 } && state.Children is not { Count: > 0 };
+
+        if (needsLoad)
+        {
+            if (state.Loading)
+            {
+                // A load is already in flight for this identity (the user collapsed the spinner and
+                // clicked again): re-assert expansion, start NO second load. The original completion
+                // reveals the children.
+                MirrorState(state);
+                _flatVisible = null;
+                StateHasChanged();
+                return () => Task.CompletedTask;
+            }
+            state.Loading = true;
+            var token = ++state.LoadToken;   // this load's generation; a consumer supersession bumps it
+            // The LoadSettled signal is installed by the LOADER (LoadChildrenAsync), NOT here: this tail
+            // is DEFERRED on the row-click path, so between now and the tail running Loading is set with
+            // no loader in flight. A concurrent expand-all keys off the signal's PRESENCE to tell 'loader
+            // actually running' (await it) from 'deferred, not started' (load it itself) — installing the
+            // signal here would make expand-all await a load that has not started and hang (finding 1).
+            MirrorState(state);
+            _flatVisible = null;
+            StateHasChanged();
+            return () => LoadChildrenAsync(state, item, token);
+        }
+
+        MirrorState(state);
+        _flatVisible = null;
+        StateHasChanged();
+        return () => NotifyExpandAsync(state);
+    }
+
+    /// <summary>Deferred tail of an already-loaded (non-lazy) expand. RE-ASSERTS the expansion on the
+    /// state entry: a selection-driven controlled rebuild may have supplied a fresh instance whose
+    /// IsExpanded seed was NOT carried forward (a consumer that rebuilds from a collapsed source), so
+    /// the identity pass' seed reconciliation reset the entry — the click's expand intent wins. Then
+    /// materialize any pending selection / tri-state for the now-visible subtree.</summary>
+    private Task NotifyExpandAsync(NodeState state)
+    {
+        if (!state.Dropped)
+        {
+            state.Expanded = true;
+            state.SearchCollapse = false;
+            MirrorState(state);
+            var item = state.Current;
+            if (item is not null)
+            {
+                TryResolvePendingSelection(item.Children);
+                if (CascadeCheck && ShowCheckboxes)
+                    UpdateAncestorStates(Items ?? []);
+            }
+        }
+        _flatVisible = null;
+        SnapshotSelectionPaths();
+        StateHasChanged();
+        return Task.CompletedTask;
+    }
+
+    /// <summary>Deferred tail of a collapse: just settle the render. The entry already holds
+    /// Expanded=false; no re-assert (that would fight the user's collapse).</summary>
+    private Task NotifyCollapseAsync(NodeState state)
+    {
+        _ = state;
+        _flatVisible = null;
+        SnapshotSelectionPaths();
+        StateHasChanged();
+        return Task.CompletedTask;
+    }
+
+    /// <summary>The awaited tail of a lazy expansion. Fetches the children and applies them to the
+    /// captured STATE entry — rendered by whatever instance currently maps to that identity. The
+    /// materialization side effects (pending-selection bind, tri-state cascade) run ALWAYS, even
+    /// when a collapse during the load left the branch closed. A loader failure rolls the entry back
+    /// to collapsed (retryable, ChildrenLoaded stays false) and re-throws; the entry being dropped
+    /// mid-load discards the result (the node vanished / its identity is unprovable).</summary>
+    private async Task LoadChildrenAsync(NodeState state, TreeViewItem<T> loadArg, long token)
+    {
+        // ROW-CLICK DEFERRAL GUARD (round-17 #4): the row click runs this tail only AFTER its
+        // selection callbacks (BeginToggle already flipped expansion + started the spinner). Those
+        // callbacks can DROP the clicked node — or a consumer supersession (incl. a reentrant
+        // expand-all that took the branch over, finding 1) can bump the token — BEFORE the tail
+        // starts. The post-await guard below would discard the result anyway, so skip the LoadChildren
+        // call ENTIRELY: no wasted fetch, no delayed click handler for a branch that no longer exists.
+        // Return WITHOUT installing a settle signal: we never became a running loader, so there is
+        // nothing to settle (a superseding op owns its own signal; a parked waiter was already woken by
+        // the supersession/drop — finding 2).
+        if (state.Dropped || token != state.LoadToken)
+            return;
+        // Install the settle signal HERE, at the loader's TRUE start — its PRESENCE is what a concurrent
+        // expand-all uses to distinguish a running loader (await it, round-17 #1) from a deferred tail
+        // that has not started (finding 1). Settled on every exit so a parked expand-all resumes.
+        var settled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        state.LoadSettled = settled;
+        try
+        {
+            var loaded = await LoadChildren!(state.Current ?? loadArg);
+
+            // Discard when the node vanished (unprovable identity) OR a consumer supersession — an
+            // authoritative-children bind or a branch reset in BindState — bumped the load token
+            // (consumer data is authoritative; this stale loader result must not overwrite it, finding 3).
+            if (state.Dropped || token != state.LoadToken) return;
+
+            state.Children = loaded;
+            state.ChildrenLoaded = true;
+            state.Loading = false;
+            RegisterSubtree(loaded, state.Path);
+
+            var target = state.Current;
+            if (target is not null)
+            {
+                target.Children = loaded;
+                target.ChildrenLoaded = true;
+                MirrorState(state);
+                // Materialization ALWAYS runs (even if the branch was collapsed during the load), so
+                // a seeded lazy selection binds and a collapsed parent still reflects a checked child.
+                TryResolvePendingSelection(loaded);
+                if (target.IsChecked && !target.IsIndeterminate)
+                    SetChildrenChecked(loaded, true);
+                else if (CascadeCheck && ShowCheckboxes)
+                    UpdateAncestorStates(Items ?? []);
+            }
+
+            _flatVisible = null;
+            RebuildDisplay();
+            SnapshotSelectionPaths();
+            StateHasChanged();
+        }
+        catch
+        {
+            // A supersession (token bump) or a DROPPED entry means this loader is dead — the consumer
+            // took over the branch (authoritative children / reset), or the node vanished. Discard the
+            // failure as SILENTLY as the early return discards a superseded SUCCESS: surfacing (or
+            // rolling back on) a dead operation's error would break a branch it no longer owns
+            // (round-16 f2). Only the LIVE loader rolls back to collapsed (retryable, ChildrenLoaded
+            // stays false) and rethrows so the consumer sees the failure.
+            if (state.Dropped || token != state.LoadToken)
+                return;
+            state.Loading = false;
+            state.Expanded = false;
+            MirrorState(state);
+            _flatVisible = null;
+            StateHasChanged();
+            throw;
+        }
+        finally
+        {
+            FinishLoadSignal(state, settled);
+        }
+    }
+
+    /// <summary>Completes the captured in-flight load <paramref name="settled"/> signal (unblocking a
+    /// concurrent expand-all that is awaiting an already-loading branch — round-17 #1) and clears the
+    /// entry's field only when it STILL points at this signal (a supersession that started a fresh
+    /// load owns the new one, so we must neither complete nor clear it).</summary>
+    private static void FinishLoadSignal(NodeState state, TaskCompletionSource? settled)
+    {
+        if (settled is null) return;
+        if (ReferenceEquals(state.LoadSettled, settled)) state.LoadSettled = null;
+        settled.TrySetResult();
+    }
+
+    /// <summary>Wakes any <see cref="ExpandAllNodesAsync"/> parked on this entry's in-flight load when
+    /// that load is SUPERSEDED (a parameter render supplied authoritative children / reset the branch)
+    /// or the entry is DROPPED by the identity pass. Without this the waiter blocks on the stale
+    /// loader's <see cref="NodeState.LoadSettled"/> until it eventually returns — or forever if it hung
+    /// — even though the branch is already resolved or gone (finding 2). The stale loader still runs;
+    /// its token no longer matches (or its entry is dropped), so it discards its result and its own
+    /// <see cref="FinishLoadSignal"/> is a harmless no-op on the replaced/cleared signal.</summary>
+    private static void SupersedeLoadSignal(NodeState state)
+    {
+        if (state.LoadSettled is not { } s) return;
+        state.LoadSettled = null;
+        s.TrySetResult();
     }
 
     protected override async Task OnParametersSetAsync()
@@ -173,34 +946,27 @@
         var gen = ++_expandGeneration;
         await LoadAndExpandAllAsync(Items ?? [], gen);
         if (gen != _expandGeneration) return; // superseded by a collapse/expand
+        if (CascadeCheck && ShowCheckboxes)
+            UpdateAncestorStates(Items ?? []);
         _flatVisible = null;
         RebuildDisplay();
         StateHasChanged();
     }
 
-    /// <summary>Expands every node in the tree. Already-loaded nodes expand
-    /// synchronously; when <see cref="LoadChildren"/> is configured, lazy children
-    /// are then fetched and expanded in the background. Await
-    /// <see cref="ExpandAllNodesAsync"/> instead when you need the lazy load to
-    /// complete before continuing.</summary>
+    /// <summary>Expands every node. Already-loaded nodes expand synchronously; when
+    /// <see cref="LoadChildren"/> is configured, lazy children are then fetched in the background.
+    /// Await <see cref="ExpandAllNodesAsync"/> instead when you need the lazy load to complete.</summary>
     public void ExpandAllNodes()
     {
         ApplyExpandAll(Items ?? [], true);
         _flatVisible = null;
         StateHasChanged();
-
-        // #201: ExpandAll must also pull in lazily-loaded children. Fire-and-forget
-        // so the synchronous void contract is preserved; the async pass re-renders
-        // as each level resolves.
         if (LoadChildren is not null)
             _ = ExpandAllNodesAsync();
     }
 
-    /// <summary>Expands every node, awaiting <see cref="LoadChildren"/> for any
-    /// not-yet-loaded lazy branches so the whole tree is realized on completion.</summary>
-    // Bumped on every expand-all / collapse-all so a stale background lazy-expand
-    // pass (started before a later collapse) detects it lost the race and bails
-    // instead of re-expanding the tree the user just collapsed.
+    // Bumped on every expand-all / collapse-all so a stale background lazy-expand pass detects it
+    // lost the race and bails instead of re-expanding a tree the user just collapsed.
     private int _expandGeneration;
 
     public async Task ExpandAllNodesAsync()
@@ -209,63 +975,170 @@
         ApplyExpandAll(Items ?? [], true);
         if (LoadChildren is not null)
             await LoadAndExpandAllAsync(Items ?? [], gen);
-        if (gen != _expandGeneration) return; // superseded by a newer expand/collapse
+        if (gen != _expandGeneration) return;
+        if (CascadeCheck && ShowCheckboxes)
+            UpdateAncestorStates(Items ?? []);
         _flatVisible = null;
         StateHasChanged();
     }
 
     public void CollapseAllNodes()
     {
-        _expandGeneration++; // cancel any in-flight lazy expand pass
+        _expandGeneration++; // cancel any in-flight lazy expand-all pass
         ApplyExpandAll(Items ?? [], false);
+        // A per-node lazy load pending during collapse-all needs no supersession: its completion
+        // reads Expanded=false off the entry and does not re-open the node.
         _flatVisible = null;
         StateHasChanged();
     }
 
-    /// <summary>Recursively expands nodes, fetching lazy children via
-    /// <see cref="LoadChildren"/> for branches that haven't been loaded yet, then
-    /// descending into the freshly-loaded subtrees. Re-renders after each fetch so
-    /// the tree fills in progressively. Safe when <see cref="LoadChildren"/> is null
-    /// (it simply recurses over already-loaded children).</summary>
+    /// <summary>Recursively expands nodes, fetching lazy children via <see cref="LoadChildren"/> and
+    /// descending into freshly-loaded subtrees. Attaches loaded children to the captured STATE entry,
+    /// so a controlled rebuild mid-pass never strands or mis-attaches them.</summary>
     private async Task LoadAndExpandAllAsync(List<TreeViewItem<T>> items, int gen)
     {
         foreach (var item in items)
         {
-            if (gen != _expandGeneration) return; // a newer collapse/expand superseded us
-            item.IsExpanded = true;
+            if (gen != _expandGeneration) return;
+            var state = GetState(item);
+            state.Expanded = true;
+            state.SearchCollapse = false;
 
-            // A lazy, not-yet-loaded, non-leaf branch: fetch it once.
-            if (LoadChildren is not null && !item.ChildrenLoaded && !item.IsLeaf
-                && item.Children is not { Count: > 0 })
+            bool needsLoad = LoadChildren is not null && !state.ChildrenLoaded && !item.IsLeaf
+                && item.Children is not { Count: > 0 } && state.Children is not { Count: > 0 };
+
+            if (needsLoad && state.Loading && state.LoadSettled is not null)
             {
-                item.IsLoading = true;
+                // ALREADY LOADING (round-17 #1): a prior row/chevron expand started this branch's load,
+                // and the loader is ACTUALLY RUNNING (its settle signal is installed). Do NOT skip it —
+                // that would leave the freshly materialized subtree collapsed after this pass returns.
+                // AWAIT the in-flight load, then fall through to DESCEND once its children exist. Loop
+                // because a supersession can install a fresh load; bail if the branch dropped or this
+                // pass was superseded (collapse-all / a newer expand-all). A supersession/drop now also
+                // COMPLETES the signal (finding 2), so a hung stale loader can no longer strand us here.
+                // The other loader owns its own success/failure/rollback — a fault it already swallowed
+                // (superseded) or surfaced (its own chevron/row path) is NOT re-raised here.
+                //
+                // The signal-PRESENCE gate is load-bearing: Loading can be set with NO loader running
+                // yet — a row-click lazy tail is DEFERRED past its selection callbacks. Awaiting then
+                // would deadlock when expand-all was invoked from that very click's OnItemClick /
+                // SelectedValuesChanged handler (the tail only runs after they return). A null signal
+                // falls to the load branch below, which does the load itself and supersedes the tail
+                // (finding 1).
+                while (state.Loading && state.LoadSettled is { } inFlight && !state.Dropped && gen == _expandGeneration)
+                    await inFlight.Task;
+                if (gen != _expandGeneration) return;
+                if (state.Dropped) continue; // node vanished mid-wait — nothing to descend into
+                MirrorState(state);
+                _flatVisible = null;
+                StateHasChanged();
+            }
+            else if (needsLoad)
+            {
+                // Not loading, OR loading-but-DEFERRED (a row-click tail that has not started — no settle
+                // signal yet, finding 1): do the load ourselves. The token bump supersedes any deferred
+                // tail, which then skips on the mismatch (round-17 #4), so at most ONE fetch runs — and
+                // the subtree is still fully realized rather than left collapsed.
+                state.Loading = true;
+                var token = ++state.LoadToken;   // this load's generation (consumer supersession bumps it)
+                var settled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+                state.LoadSettled = settled;     // let a concurrent expand-all await this branch (round-17 #1)
+                MirrorState(state);
                 _flatVisible = null;
                 StateHasChanged();
                 try
                 {
-                    item.Children = await LoadChildren(item);
-                    // Bail if the user collapsed / re-expanded while we awaited — don't
-                    // resurrect a tree they just collapsed (finally resets IsLoading).
+                    var loaded = await LoadChildren!(state.Current ?? item);
+                    // The node vanished (unprovable identity): discard the result AND skip its subtree.
+                    if (state.Dropped) continue;
+                    // ATTACH the loaded children whenever the CONSUMER has not superseded this load (token
+                    // match) — INDEPENDENTLY of _expandGeneration (round-19 finding 1). A NEWER expand-all
+                    // (double-click "expand all") bumps _expandGeneration and parks on THIS branch's
+                    // LoadSettled; a collapse-all bumps it too. Either way the children this loader fetched
+                    // are still the authoritative materialization of the branch, so we attach them ONCE,
+                    // here. Gating the attach on _expandGeneration instead RETURNED before line 1037 and
+                    // stranded the subtree expanded-but-empty: the parked sibling pass woke to
+                    // ChildrenLoaded=false / Children=null, did not retry, and descended into nothing. Only
+                    // a consumer supersession (authoritative children / branch reset) bumps the LoadToken
+                    // and makes this loader result stale (finding 3) — _expandGeneration must not.
+                    if (token == state.LoadToken)
+                    {
+                        state.Children = loaded;
+                        state.ChildrenLoaded = true;
+                        state.Loading = false;
+                        RegisterSubtree(loaded, state.Path);
+                        var target = state.Current;
+                        if (target is not null)
+                        {
+                            target.Children = loaded;
+                            target.ChildrenLoaded = true;
+                            MirrorState(state);
+                            TryResolvePendingSelection(loaded);
+                            if (target.IsChecked && !target.IsIndeterminate && loaded is { Count: > 0 })
+                                SetChildrenChecked(loaded, true);
+                            // Derive cascade tri-state from the freshly materialized (possibly seeded-
+                            // checked/indeterminate) children NOW — the same recompute the per-node lazy
+                            // path runs after materialization (round-20 finding). Without it, a supersession
+                            // (collapse-all / newer expand-all) returns below BEFORE the single final
+                            // UpdateAncestorStates in Expand/ParametersSet, so a collapsed parent that was
+                            // not already fully checked keeps a stale unchecked box until a later interaction.
+                            else if (CascadeCheck && ShowCheckboxes)
+                                UpdateAncestorStates(Items ?? []);
+                        }
+                    }
+                    // Superseded (collapse-all OR a newer expand-all): stop descending in THIS pass. The
+                    // children are already attached above for whoever now owns the branch — a newer
+                    // expand-all parked on our LoadSettled descends them itself; a collapse-all must not
+                    // re-expand. Checked AFTER the attach so the surviving pass never finds it empty.
                     if (gen != _expandGeneration) return;
-                    item.ChildrenLoaded = true;
-                    // Mirror the per-node lazy-load cascade (rc.42): a fully-checked
-                    // parent propagates its check to freshly-loaded children.
-                    if (item.IsChecked && !item.IsIndeterminate && item.Children is { Count: > 0 })
-                        SetChildrenChecked(item.Children, true);
+                }
+                catch
+                {
+                    // SUPERSEDED/DROPPED FAILURE (round-17 #2): the consumer took the branch over
+                    // (authoritative children / reset bumped the token) or the node vanished. Discard
+                    // this dead loader's REJECTION as silently as the token check discards a superseded
+                    // SUCCESS — surfacing it would fault the caller/circuit for a branch it no longer
+                    // owns (same contract as round-16 f2 / the per-node path). Swallow and fall through
+                    // to DESCEND into whatever the consumer now owns (round-16 f4). A LIVE failure rolls
+                    // the entry back to collapsed (retryable) and rethrows so an awaited
+                    // ExpandAllNodesAsync surfaces it.
+                    if (!state.Dropped && token == state.LoadToken)
+                    {
+                        state.Loading = false;
+                        state.Expanded = false;
+                        MirrorState(state);
+                        _flatVisible = null;
+                        StateHasChanged();
+                        throw;
+                    }
                 }
                 finally
                 {
-                    item.IsLoading = false;
+                    if (!state.Dropped && token == state.LoadToken)
+                    {
+                        state.Loading = false;
+                        MirrorState(state);
+                    }
+                    FinishLoadSignal(state, settled);
                 }
             }
+            else
+            {
+                MirrorState(state);
+            }
 
-            if (item.Children is { Count: > 0 })
-                await LoadAndExpandAllAsync(item.Children, gen);
+            var descend = state.Current?.Children ?? state.Children;
+            if (descend is { Count: > 0 })
+                await LoadAndExpandAllAsync(descend, gen);
         }
     }
 
     private async Task HandleItemClick(TreeViewItem<T> item)
     {
+        // Capture the clicked node's STATE entry NOW — before OnItemClick can rebuild Items — so
+        // HandleSelectionChanged selects whatever instance identity maps to (or drops if the entry
+        // was dropped), instead of adding the stale/disposed instance.
+        _clickState = GetState(item);
         await OnItemClick.InvokeAsync(item);
     }
 
@@ -287,48 +1160,52 @@
         StateHasChanged();
     }
 
-    private Task HandleExpandChanged(TreeViewItem<T> item)
-    {
-        // A manual collapse overrides any search-forced expansion.
-        if (!item.IsExpanded)
-            _autoExpanded.Remove(item);
-        _flatVisible = null;
-        StateHasChanged();
-        return Task.CompletedTask;
-    }
-
     private async Task HandleSelectionChanged(TreeViewItem<T> item)
     {
+        // Selection is by node identity (never touches expansion). Re-resolve the clicked instance
+        // through its captured STATE entry: OnItemClick (awaited before this callback) may have
+        // rebuilt Items, disposing the clicked @key'd node. The entry now points at the fresh
+        // instance, or was DROPPED when identity is unprovable (a duplicate/null-valued click whose
+        // siblings reordered) — in which case the click selects nothing (the ambiguity-DROP rule).
+        var resolvedClick = _clickState is { Dropped: false, Current: not null } ? _clickState.Current : null;
+        _clickState = null;
+        if (resolvedClick is null)
+        {
+            StateHasChanged();
+            return;
+        }
+        item = resolvedClick;
+
         bool changed;
         if (MultiSelect)
         {
-            // Toggle membership.
-            if (!_selectedValues.Add(item.Value!))
-                _selectedValues.Remove(item.Value!);
+            if (!_selectedNodes.Add(item))
+                _selectedNodes.Remove(item);
             changed = true;
+            RemovePending(item.Value);
         }
         else
         {
-            // Replace the selection; re-clicking the selected node is a no-op.
-            changed = _selectedValues.Count != 1 || !_selectedValues.Contains(item.Value!);
+            changed = _selectedNodes.Count != 1 || !_selectedNodes.Contains(item);
             if (changed)
             {
-                _selectedValues.Clear();
-                _selectedValues.Add(item.Value!);
+                _selectedNodes.Clear();
+                _selectedNodes.Add(item);
             }
+            // Single-select click owns the whole selection: void any pending seed / carried identity
+            // and take the selection INTERACTIVE (drop seed origins).
+            _pendingSelectValues = null;
+            _pendingCarries = null;
+            _seededValues = null;
         }
 
         if (changed && SelectedValuesChanged.HasDelegate)
         {
-            List<T> outgoing = [.._selectedValues];
-            // Record _lastPushedSelectedValues BEFORE invoking SelectedValuesChanged:
-            // a controlled parent re-renders synchronously inside InvokeAsync, so
-            // OnParametersSet must already see this exact list reference as "the
-            // selection we just pushed" to distinguish an accepted echo (keep the
-            // in-flight selection) from a veto (parent kept its old value → roll back).
+            List<T> outgoing = [.._selectedNodes.Select(n => n.Value!)];
             _lastPushedSelectedValues = outgoing;
             await SelectedValuesChanged.InvokeAsync(outgoing);
         }
+        SnapshotSelectionPaths();
         StateHasChanged();
     }
 
@@ -356,12 +1233,30 @@
         }
     }
 
-    /// <summary>Marks every item whose text matches the filter — or that has a matching
-    /// descendant — as visible. A text-matching item keeps its whole subtree visible;
-    /// ancestors of deeper matches are force-expanded via <see cref="_autoExpanded"/>
-    /// without mutating their persisted <c>IsExpanded</c> state. Returns whether
-    /// anything in <paramref name="items"/> matched.</summary>
-    private static bool CollectVisible(List<TreeViewItem<T>> items, string filter,
+    /// <summary>Marks every item whose text matches the filter — or that has a matching descendant —
+    /// as visible. A matching item keeps its whole subtree visible; ancestors of deeper matches are
+    /// force-expanded via <see cref="_autoExpanded"/> UNLESS the user manually collapsed them (the
+    /// per-node <see cref="NodeState.SearchCollapse"/> override, which survives a rebuild).</summary>
+    private void CollectVisible(List<TreeViewItem<T>> items, string filter,
+        HashSet<TreeViewItem<T>> visible, HashSet<TreeViewItem<T>> autoExpanded)
+    {
+        foreach (var item in items)
+        {
+            bool selfMatches = item.Text.Contains(filter, StringComparison.OrdinalIgnoreCase);
+            bool childMatches = item.Children is { Count: > 0 }
+                && CollectVisibleInner(item.Children, filter, visible, autoExpanded);
+
+            if (!selfMatches && !childMatches) continue;
+
+            visible.Add(item);
+            if (childMatches && !ManualCollapsed(item))
+                autoExpanded.Add(item);
+            else if (item.Children is { Count: > 0 })
+                MarkSubtreeVisible(item.Children, visible);
+        }
+    }
+
+    private bool CollectVisibleInner(List<TreeViewItem<T>> items, string filter,
         HashSet<TreeViewItem<T>> visible, HashSet<TreeViewItem<T>> autoExpanded)
     {
         bool any = false;
@@ -369,19 +1264,23 @@
         {
             bool selfMatches = item.Text.Contains(filter, StringComparison.OrdinalIgnoreCase);
             bool childMatches = item.Children is { Count: > 0 }
-                && CollectVisible(item.Children, filter, visible, autoExpanded);
+                && CollectVisibleInner(item.Children, filter, visible, autoExpanded);
 
             if (!selfMatches && !childMatches) continue;
 
             visible.Add(item);
             any = true;
-            if (childMatches)
+            if (childMatches && !ManualCollapsed(item))
                 autoExpanded.Add(item);
             else if (item.Children is { Count: > 0 })
                 MarkSubtreeVisible(item.Children, visible);
         }
         return any;
     }
+
+    /// <summary>Whether the user manually collapsed this search-force-expanded node (state override).</summary>
+    private bool ManualCollapsed(TreeViewItem<T> item)
+        => _stateByItem.TryGetValue(item, out var s) && s.SearchCollapse;
 
     private static void MarkSubtreeVisible(List<TreeViewItem<T>> items, HashSet<TreeViewItem<T>> visible)
     {
@@ -406,8 +1305,7 @@
             : item.Children.Where(_visibleSet.Contains).ToList();
     }
 
-    /// <summary>Deterministic per-item element id used as the focus target for
-    /// keyboard navigation. Stable for the lifetime of the component.</summary>
+    /// <summary>Deterministic per-item element id used as the focus target for keyboard navigation.</summary>
     internal string GetNodeId(TreeViewItem<T> item)
     {
         if (!_nodeIds.TryGetValue(item, out var id))
@@ -418,16 +1316,14 @@
         return id;
     }
 
-    /// <summary>Roving tabindex: exactly one visible node (the active one) is in
-    /// the tab sequence; every other node is reachable via arrow keys.</summary>
+    /// <summary>Roving tabindex: exactly one visible node (the active one) is in the tab sequence.</summary>
     internal int GetTabIndex(TreeViewItem<T> item)
     {
         EnsureFlatVisible();
         return ReferenceEquals(item, _activeItem) ? 0 : -1;
     }
 
-    /// <summary>Keeps the roving tabindex in sync when a node receives DOM focus
-    /// directly (mouse click or Tab) rather than via arrow-key navigation.</summary>
+    /// <summary>Keeps the roving tabindex in sync when a node receives DOM focus directly.</summary>
     internal void SetActive(TreeViewItem<T> item)
     {
         if (ReferenceEquals(_activeItem, item)) return;
@@ -435,11 +1331,9 @@
         StateHasChanged();
     }
 
-    /// <summary>WAI-ARIA tree navigation. Down/Up move through the visible nodes in
-    /// depth-first order, Home/End jump to the first/last visible node, Right moves
-    /// into the first child of an expanded node and Left moves to the parent of a
-    /// collapsed/leaf node (the expand/collapse halves of Right/Left are handled in
-    /// <see cref="TreeViewNode{T}"/> where the item is mutated).</summary>
+    /// <summary>WAI-ARIA tree navigation. Down/Up move through the visible nodes, Home/End jump to
+    /// the first/last, Right moves into the first child of an expanded node and Left moves to the
+    /// parent of a collapsed/leaf node.</summary>
     internal async Task HandleNavigationKeyAsync(TreeViewItem<T> item, string key)
     {
         EnsureFlatVisible();
@@ -474,10 +1368,8 @@
         AppendVisible(_displayItems, _flatVisible);
         if (_activeItem is null || !_flatVisible.Any(i => ReferenceEquals(i, _activeItem)))
         {
-            // #13: an Items refresh with new (reference-distinct) instances drops
-            // the old _activeItem out of _flatVisible. Re-anchor the roving
-            // tabindex by STABLE identity (Value) so keyboard focus survives a
-            // same-content refresh instead of snapping back to the first node.
+            // #13: re-anchor the roving tabindex by STABLE identity (Value) so keyboard focus
+            // survives a same-content refresh instead of snapping back to the first node.
             var byValue = _activeItem is not null
                 ? _flatVisible.FirstOrDefault(i => EqualityComparer<T>.Default.Equals(i.Value, _activeItem.Value))
                 : null;
@@ -505,6 +1397,305 @@
             if (found is not null) return found;
         }
         return null;
+    }
+
+    // ══════════════════════════════════════════════════════════════════════════
+    // SELECTION (two-bucket model, #350) — resolves against the state store
+    // ══════════════════════════════════════════════════════════════════════════
+
+    /// <summary>Maps an incoming (controlled/seed) <see cref="SelectedValues"/> list to the concrete
+    /// node instances carrying those values. Value-based on the way IN — an ambiguous value selects
+    /// every match (the value contract). Interactive clicks stay identity-exact.</summary>
+    /// <summary>Multiset value-equality of two selection lists (null-safe; no T-keyed dictionary, since
+    /// T is an unconstrained nullable type parameter). Used to recognize a controlled parent's value-
+    /// equal COPY of what we pushed as an accepted ECHO, not a new seed. Both-null is NOT "equal" here —
+    /// the reference check already covers that case, and this must never treat a genuine null seed as an
+    /// echo. O(n²), but selection lists are small.</summary>
+    private static bool SameSelectionValues(List<T>? a, List<T>? b)
+    {
+        if (a is null || b is null) return false;
+        if (a.Count != b.Count) return false;
+        var matched = new bool[b.Count];
+        foreach (var x in a)
+        {
+            var found = false;
+            for (var j = 0; j < b.Count; j++)
+            {
+                if (matched[j] || !EqualityComparer<T>.Default.Equals(x, b[j])) continue;
+                matched[j] = true;
+                found = true;
+                break;
+            }
+            if (!found) return false;
+        }
+        return true;
+    }
+
+    private HashSet<TreeViewItem<T>> ResolveSelectedNodes(List<T>? values)
+    {
+        _pendingCarries = null;
+        var set = new HashSet<TreeViewItem<T>>(ReferenceEqualityComparer.Instance);
+        if (values is not { Count: > 0 })
+        {
+            _pendingSelectValues = null;
+            _seededValues = null;
+            return set;
+        }
+        _seededValues = new HashSet<T>(values);
+        var wanted = new HashSet<T>(values);
+        CollectMatching(Items ?? [], wanted, set);
+        var matched = new HashSet<T>(set.Select(n => n.Value!));
+        var pending = HasUnloadedLazyBranches(Items ?? [])
+            ? values.Distinct().ToList()
+            : values.Where(v => !matched.Contains(v)).ToList();
+        _pendingSelectValues = pending.Count > 0 ? pending : null;
+        return set;
+    }
+
+    /// <summary>Drains both pending buckets. Path-carried IDENTITIES re-bind first (by value-verified
+    /// path, unique-value fallback, drop on ambiguity); then any value seed binds against the
+    /// freshly-loaded subtree. Additive — never clears an existing selection, never pushes up.</summary>
+    private void TryResolvePendingSelection(List<TreeViewItem<T>>? loaded)
+    {
+        ResolveCarriedPending();
+
+        if (_pendingSelectValues is not { Count: > 0 } || loaded is not { Count: > 0 }) return;
+        var wanted = new HashSet<T>(_pendingSelectValues);
+        var found = new HashSet<TreeViewItem<T>>(ReferenceEqualityComparer.Instance);
+        CollectMatching(loaded, wanted, found);
+        if (found.Count == 0) return;
+        foreach (var n in found) _selectedNodes.Add(n);
+        if (HasUnloadedLazyBranches(Items ?? [])) return;
+        var resolvedValues = new HashSet<T>(found.Select(n => n.Value!));
+        var remaining = _pendingSelectValues.Where(v => !resolvedValues.Contains(v)).ToList();
+        _pendingSelectValues = remaining.Count > 0 ? remaining : null;
+    }
+
+    /// <summary>True while the tree holds a lazy, not-yet-loaded branch — a value seed can't be
+    /// treated as fully satisfied while such a branch might yet materialize another node with that
+    /// value (the value contract binds EVERY match).</summary>
+    private bool HasUnloadedLazyBranches(List<TreeViewItem<T>> items)
+    {
+        if (LoadChildren is null) return false;
+        foreach (var item in items)
+        {
+            if (!item.IsLeaf && !item.ChildrenLoaded && item.Children is not { Count: > 0 })
+                return true;
+            if (item.Children is { Count: > 0 } && HasUnloadedLazyBranches(item.Children))
+                return true;
+        }
+        return false;
+    }
+
+    /// <summary>Re-binds carried node identities against the current full <see cref="Items"/> tree:
+    /// PREFER the value-verified path, fall back to a UNIQUE value; a value not yet in the tree stays
+    /// queued, an ambiguous one is dropped.</summary>
+    private void ResolveCarriedPending()
+    {
+        if (_pendingCarries is not { Count: > 0 }) return;
+        var tree = Items ?? [];
+        if (tree.Count == 0) return;
+        var flat = new List<TreeViewItem<T>>();
+        FlattenAll(tree, flat);
+        List<PendingCarry>? remaining = null;
+        foreach (var carry in _pendingCarries)
+        {
+            var (node, drop) = ResolveCarryNode(carry, tree, flat);
+            if (node is not null)
+                _selectedNodes.Add(node);
+            else if (!drop)
+                (remaining ??= []).Add(carry);
+        }
+        _pendingCarries = remaining;
+    }
+
+    private static (TreeViewItem<T>? Node, bool Drop) ResolveCarryNode(PendingCarry carry, List<TreeViewItem<T>> tree, List<TreeViewItem<T>> flat)
+    {
+        var byPath = WalkPath(tree, carry.Path);
+        if (byPath is not null) return (byPath, false);
+        var byValue = flat.Where(n => EqualityComparer<T>.Default.Equals(n.Value, carry.Value)).ToList();
+        if (byValue.Count == 1) return (byValue[0], false);
+        return (null, byValue.Count > 1);
+    }
+
+    private static void CollectMatching(List<TreeViewItem<T>> items, HashSet<T> wanted, HashSet<TreeViewItem<T>> into)
+    {
+        foreach (var item in items)
+        {
+            if (wanted.Contains(item.Value!)) into.Add(item);
+            if (item.Children is { Count: > 0 })
+                CollectMatching(item.Children, wanted, into);
+        }
+    }
+
+    /// <summary>Re-anchors the identity-tracked selection onto a freshly-supplied <see cref="Items"/>
+    /// tree: a node still present by reference is kept; a replaced node re-matches by value-verified
+    /// PATH (snapshot, falling back to <paramref name="oldItems"/>) with a UNIQUE-value fallback; a
+    /// vanished node carries back to the pending buckets by ORIGIN (seeded=value / interactive=identity).</summary>
+    private void ReanchorSelection(List<TreeViewItem<T>> newItems, List<TreeViewItem<T>>? oldItems)
+    {
+        if (_selectedNodes.Count == 0) return;
+        var flat = new List<TreeViewItem<T>>();
+        FlattenAll(newItems, flat);
+        var present = new HashSet<TreeViewItem<T>>(flat, ReferenceEqualityComparer.Instance);
+        var rebuilt = new HashSet<TreeViewItem<T>>(ReferenceEqualityComparer.Instance);
+        List<PendingCarry>? carried = null;
+        List<T>? carriedValues = null;
+        foreach (var sel in _selectedNodes)
+        {
+            if (present.Contains(sel))
+            {
+                rebuilt.Add(sel);
+                continue;
+            }
+            var oldPath = OldPathOf(sel, oldItems);
+            var match = oldPath is { Indices.Count: > 0 } ? WalkPath(newItems, oldPath) : null;
+            if (match is null)
+            {
+                var byValue = flat.Where(n => EqualityComparer<T>.Default.Equals(n.Value, sel.Value)).ToList();
+                if (byValue.Count == 1) match = byValue[0];
+            }
+            if (match is not null)
+            {
+                rebuilt.Add(match);
+                continue;
+            }
+            if (_seededValues is not null && _seededValues.Contains(sel.Value!))
+                (carriedValues ??= []).Add(sel.Value!);
+            else
+                (carried ??= []).Add(new PendingCarry(oldPath ?? new NodePath([], []), sel.Value));
+        }
+        _selectedNodes = rebuilt;
+        if (carried is { Count: > 0 })
+            MergeCarries(carried);
+        if (carriedValues is { Count: > 0 })
+            MergePendingValues(carriedValues);
+    }
+
+    private void MergeCarries(List<PendingCarry> carries)
+    {
+        if (carries.Count == 0) return;
+        _pendingCarries = _pendingCarries is { Count: > 0 }
+            ? [.._pendingCarries, ..carries]
+            : carries;
+    }
+
+    private void MergePendingValues(List<T> values)
+    {
+        if (values.Count == 0) return;
+        var merged = _pendingSelectValues is { Count: > 0 }
+            ? new List<T>(_pendingSelectValues)
+            : new List<T>();
+        foreach (var v in values)
+            if (!merged.Contains(v)) merged.Add(v);
+        _pendingSelectValues = merged.Count > 0 ? merged : null;
+    }
+
+    /// <summary>The OLD structural path of a vanished selected node: PREFERS the
+    /// <see cref="_selectionPaths"/> snapshot (captured while the node was present, so it survives an
+    /// in-place mutation where <paramref name="oldItems"/> is the same, already-mutated list); falls
+    /// back to walking <paramref name="oldItems"/>; null when neither locates the node.</summary>
+    private NodePath? OldPathOf(TreeViewItem<T> sel, List<TreeViewItem<T>>? oldItems)
+    {
+        if (_selectionPaths.TryGetValue(sel, out var snap)) return snap;
+        if (oldItems is null) return null;
+        var indices = new List<int>();
+        var values = new List<T?>();
+        return BuildNodePath(oldItems, sel, indices, values) ? new NodePath(indices, values) : null;
+    }
+
+    private void SnapshotSelectionPaths()
+    {
+        var next = new Dictionary<TreeViewItem<T>, NodePath>(ReferenceEqualityComparer.Instance);
+        if (_selectedNodes.Count > 0)
+        {
+            var tree = Items ?? [];
+            foreach (var sel in _selectedNodes)
+            {
+                var indices = new List<int>();
+                var values = new List<T?>();
+                if (BuildNodePath(tree, sel, indices, values)) next[sel] = new NodePath(indices, values);
+            }
+        }
+        _selectionPaths = next;
+    }
+
+    /// <summary>Drops a single value from BOTH pending buckets AND the seed-origin set (multi-select
+    /// supersede) — an explicit interactive selection of a value wins over any deferred seed or
+    /// carried identity for it, converting that value from SEEDED to INTERACTIVE.</summary>
+    private void RemovePending(T? value)
+    {
+        if (_pendingSelectValues is not null)
+        {
+            _pendingSelectValues = _pendingSelectValues
+                .Where(v => !EqualityComparer<T>.Default.Equals(v, value))
+                .ToList();
+            if (_pendingSelectValues.Count == 0) _pendingSelectValues = null;
+        }
+        if (_pendingCarries is not null)
+        {
+            _pendingCarries = _pendingCarries
+                .Where(c => !EqualityComparer<T>.Default.Equals(c.Value, value))
+                .ToList();
+            if (_pendingCarries.Count == 0) _pendingCarries = null;
+        }
+        if (_seededValues is not null)
+        {
+            _seededValues.Remove(value!);
+            if (_seededValues.Count == 0) _seededValues = null;
+        }
+    }
+
+    /// <summary>Walks a <see cref="NodePath"/> and returns the node at its end ONLY when EVERY segment
+    /// resolves unambiguously: at each depth the node at the recorded index must still carry the
+    /// recorded value AND that value must be UNIQUE among its immediate siblings. Any shared value at
+    /// any segment drops the whole path — the ambiguity-DROP convention.</summary>
+    private static TreeViewItem<T>? WalkPath(List<TreeViewItem<T>> roots, NodePath path)
+    {
+        var indices = path.Indices;
+        var values = path.Values;
+        if (indices.Count == 0 || indices.Count != values.Count) return null;
+        IReadOnlyList<TreeViewItem<T>> level = roots;
+        TreeViewItem<T>? node = null;
+        for (var d = 0; d < indices.Count; d++)
+        {
+            var idx = indices[d];
+            if (idx < 0 || idx >= level.Count) return null;
+            node = level[idx];
+            var expected = values[d];
+            if (!EqualityComparer<T>.Default.Equals(node.Value, expected)) return null;
+            var sameValued = 0;
+            foreach (var s in level)
+                if (EqualityComparer<T>.Default.Equals(s.Value, expected) && ++sameValued > 1)
+                    return null;
+            level = node.Children ?? (IReadOnlyList<TreeViewItem<T>>)[];
+        }
+        return node;
+    }
+
+    private static bool BuildNodePath(IReadOnlyList<TreeViewItem<T>> items, TreeViewItem<T> target, List<int> indices, List<T?> values)
+    {
+        for (int i = 0; i < items.Count; i++)
+        {
+            var item = items[i];
+            indices.Add(i);
+            values.Add(item.Value);
+            if (ReferenceEquals(item, target)) return true;
+            if (item.Children is { Count: > 0 } && BuildNodePath(item.Children, target, indices, values)) return true;
+            indices.RemoveAt(indices.Count - 1);
+            values.RemoveAt(values.Count - 1);
+        }
+        return false;
+    }
+
+    private static void FlattenAll(List<TreeViewItem<T>> items, List<TreeViewItem<T>> into)
+    {
+        foreach (var item in items)
+        {
+            into.Add(item);
+            if (item.Children is { Count: > 0 })
+                FlattenAll(item.Children, into);
+        }
     }
 
     private static void SetChildrenChecked(List<TreeViewItem<T>>? children, bool value)
@@ -565,11 +1756,17 @@
         return result;
     }
 
-    private static void ApplyExpandAll(List<TreeViewItem<T>> items, bool expanded)
+    /// <summary>Applies an expand/collapse to every node's STATE entry (and mirrors it onto the
+    /// record), so a declarative ExpandAll survives a controlled rebuild the same way an interactive
+    /// expansion does.</summary>
+    private void ApplyExpandAll(List<TreeViewItem<T>> items, bool expanded)
     {
         foreach (var item in items)
         {
-            item.IsExpanded = expanded;
+            var state = GetState(item);
+            state.Expanded = expanded;
+            if (!expanded) { state.SearchCollapse = false; _autoExpanded.Remove(item); }
+            MirrorState(state);
             if (item.Children is { Count: > 0 })
                 ApplyExpandAll(item.Children, expanded);
         }
@@ -590,7 +1787,7 @@
         public bool ChildrenLoaded { get; set; }
     }
 
-    /// <summary>Cascaded once per tree (IsFixed) so recursively-rendered nodes can
-    /// reach shared tree state: roving focus, search visibility, node ids.</summary>
+    /// <summary>Cascaded once per tree (IsFixed) so recursively-rendered nodes can reach shared tree
+    /// state: roving focus, search visibility, node ids.</summary>
     public sealed record TreeViewContext(TreeView<T> Tree);
 }

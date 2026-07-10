@@ -65,8 +65,12 @@ public class TreeViewSelectionTests : IAsyncLifetime
     public async Task SingleSelect_click_replaces_previous_selection()
     {
         var events = new List<List<string>>();
+        // Opt out of row-click expansion so clicking the pre-expanded "Documents" parent does not
+        // collapse it (which would hide "Resume"); this test targets the replace-selection
+        // semantic, exercised identically in both modes.
         var cut = _ctx.Render<L.TreeView<string>>(p => p
             .Add(c => c.Items, Tree())
+            .Add(c => c.ExpandOnRowClick, false)
             .Add(c => c.SelectedValuesChanged, v => events.Add(v)));
 
         await cut.InvokeAsync(() => Row(cut, "Documents").Click());

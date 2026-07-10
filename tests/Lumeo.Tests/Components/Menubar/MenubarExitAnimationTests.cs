@@ -66,9 +66,9 @@ public class MenubarExitAnimationTests : IAsyncLifetime
         cut.Find("button").Click();
         cut.Find("button").Click();
 
-        cut.WaitForAssertion(
-            () => Assert.Empty(cut.FindAll("[role='menu']")),
-            timeout: TimeSpan.FromSeconds(5));
+        // Stable end-state poll; inherits the 10 s module ceiling (TestContextExtensions)
+        // so a starved CI thread pool delaying the fallback-timer dispatch can't trip it.
+        cut.WaitForAssertion(() => Assert.Empty(cut.FindAll("[role='menu']")));
     }
 
     [Fact]

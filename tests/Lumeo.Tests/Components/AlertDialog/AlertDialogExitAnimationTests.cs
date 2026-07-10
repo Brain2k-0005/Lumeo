@@ -46,11 +46,14 @@ public class AlertDialogExitAnimationTests : IAsyncLifetime
         var cut = RenderAlertDialog(isOpen: true, playExit: null);
         cut.Render(p => p.Add(a => a.Open, false));
 
-        cut.WaitForAssertion(() =>
-        {
-            var panel = cut.Find("[role='alertdialog']");
-            Assert.Contains("animate-zoom-out", panel.GetAttribute("class") ?? "");
-        });
+        // Synchronous on the close render: bUnit commits cut.Render synchronously with no
+        // await gap, so AlertDialogContent has latched _exiting and emitted the class, and
+        // the ~280 ms exit-window DelayedDispatch cannot have run FinishExit yet. Asserting
+        // the latched exit state directly can never race a delayed first poll under a
+        // starved CI runner (the poll would find the panel already unmounted and only time
+        // out at the 10 s ceiling) — the exact CI flake this family suffered.
+        var panel = cut.Find("[role='alertdialog']");
+        Assert.Contains("animate-zoom-out", panel.GetAttribute("class") ?? "");
         Assert.Contains("Alert body", cut.Markup);
     }
 
@@ -77,12 +80,11 @@ public class AlertDialogExitAnimationTests : IAsyncLifetime
         var cut = RenderAlertDialog(isOpen: true);
         cut.Render(p => p.Add(a => a.Open, false));
 
-        cut.WaitForAssertion(() =>
-        {
-            var backdrop = cut.Find(".animate-fade-out");
-            var style = backdrop.GetAttribute("style") ?? "";
-            Assert.DoesNotContain("animation-duration", style);
-        });
+        // Synchronous on the close render (no await gap → the exit-window timer can't have
+        // unmounted the backdrop yet); asserting the latched exit render never races it.
+        var backdrop = cut.Find(".animate-fade-out");
+        var style = backdrop.GetAttribute("style") ?? "";
+        Assert.DoesNotContain("animation-duration", style);
     }
 
     /// <summary>
@@ -95,11 +97,10 @@ public class AlertDialogExitAnimationTests : IAsyncLifetime
         var cut = RenderAlertDialog(isOpen: true);
         cut.Render(p => p.Add(a => a.Open, false));
 
-        cut.WaitForAssertion(() =>
-        {
-            var panel = cut.Find("[role='alertdialog']");
-            Assert.Contains("animate-zoom-out", panel.GetAttribute("class") ?? "");
-        });
+        // Synchronous on the close render (no await gap → the exit-window timer can't have
+        // unmounted the panel yet); asserting the latched exit render never races it.
+        var panel = cut.Find("[role='alertdialog']");
+        Assert.Contains("animate-zoom-out", panel.GetAttribute("class") ?? "");
     }
 
     /// <summary>
@@ -130,17 +131,16 @@ public class AlertDialogExitAnimationTests : IAsyncLifetime
         var cut = RenderAlertDialog(isOpen: true);
         cut.Render(p => p.Add(a => a.Open, false));
 
-        cut.WaitForAssertion(() =>
-        {
-            var panel = cut.Find("[role='alertdialog']");
-            Assert.Contains("animate-zoom-out", panel.GetAttribute("class") ?? "");
-            Assert.Contains("pointer-events-none", panel.GetAttribute("class") ?? "");
-            Assert.DoesNotContain("pointer-events-auto", panel.GetAttribute("class") ?? "");
-            Assert.Equal("true", panel.GetAttribute("inert"));
-            var backdrop = cut.Find(".animate-fade-out");
-            Assert.Contains("pointer-events-auto", backdrop.GetAttribute("class") ?? "");
-            Assert.DoesNotContain("pointer-events-none", backdrop.GetAttribute("class") ?? "");
-        });
+        // Synchronous on the close render (no await gap → the exit-window timer can't have
+        // unmounted the ghost yet); asserting the latched exit render never races it.
+        var panel = cut.Find("[role='alertdialog']");
+        Assert.Contains("animate-zoom-out", panel.GetAttribute("class") ?? "");
+        Assert.Contains("pointer-events-none", panel.GetAttribute("class") ?? "");
+        Assert.DoesNotContain("pointer-events-auto", panel.GetAttribute("class") ?? "");
+        Assert.Equal("true", panel.GetAttribute("inert"));
+        var backdrop = cut.Find(".animate-fade-out");
+        Assert.Contains("pointer-events-auto", backdrop.GetAttribute("class") ?? "");
+        Assert.DoesNotContain("pointer-events-none", backdrop.GetAttribute("class") ?? "");
     }
 
     /// <summary>
@@ -156,8 +156,8 @@ public class AlertDialogExitAnimationTests : IAsyncLifetime
         var cut = RenderAlertDialog(isOpen: true);
         cut.Render(p => p.Add(a => a.Open, false));
 
-        cut.WaitForAssertion(() =>
-            Assert.Contains("animate-zoom-out", cut.Find("[role='alertdialog']").GetAttribute("class") ?? ""));
+        // Synchronous on the close render (no await gap → exit-window timer hasn't unmounted).
+        Assert.Contains("animate-zoom-out", cut.Find("[role='alertdialog']").GetAttribute("class") ?? "");
 
         // No @onclick is wired on the scrim → bUnit refuses to dispatch one.
         var backdrop = cut.Find(".animate-fade-out");
