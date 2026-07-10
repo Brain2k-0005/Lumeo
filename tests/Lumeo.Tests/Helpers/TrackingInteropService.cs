@@ -548,20 +548,21 @@ public class TrackingInteropService : IComponentInteropService
     }
 
     // Pointer-based (mouse/touch/pen) row reorder registration + commit capture —
-    // vertical mirror of the column tracking block above.
+    // vertical mirror of the column tracking block above. Keyed by stable row
+    // identity (data-row-key), not plain index — see ReorderRowByKeyAsync.
     private readonly List<string> _rowReorderRegistrations = new();
     private readonly List<string> _rowReorderUnregistrations = new();
-    private readonly Dictionary<string, Func<int, int, Task>> _rowReorderCommitHandlers = new();
+    private readonly Dictionary<string, Func<string, string, Task>> _rowReorderCommitHandlers = new();
     public IReadOnlyList<string> RowReorderRegistrations => _rowReorderRegistrations;
     public IReadOnlyList<string> RowReorderUnregistrations => _rowReorderUnregistrations;
-    /// <summary>Simulate a JS-side pointer-reorder commit (drop of source index onto target index).</summary>
-    public async Task<bool> SimulateRowReorderCommit(string gridId, int sourceIndex, int targetIndex)
+    /// <summary>Simulate a JS-side pointer-reorder commit (drop of source row key onto target row key).</summary>
+    public async Task<bool> SimulateRowReorderCommit(string gridId, string sourceRowKey, string targetRowKey)
     {
         if (!_rowReorderCommitHandlers.TryGetValue(gridId, out var handler)) return false;
-        await handler(sourceIndex, targetIndex);
+        await handler(sourceRowKey, targetRowKey);
         return true;
     }
-    public ValueTask RegisterRowReorder(string gridId, Func<int, int, Task> commitHandler)
+    public ValueTask RegisterRowReorder(string gridId, Func<string, string, Task> commitHandler)
     {
         _rowReorderRegistrations.Add(gridId);
         _rowReorderCommitHandlers[gridId] = commitHandler;

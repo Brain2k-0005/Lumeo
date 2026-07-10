@@ -837,7 +837,7 @@ public sealed class ComponentInteropService : IComponentInteropService
 
     // --- DataGrid Row Reorder (pointer-based mouse/touch/pen) ---
 
-    public async ValueTask RegisterRowReorder(string gridId, Func<int, int, Task> commitHandler)
+    public async ValueTask RegisterRowReorder(string gridId, Func<string, string, Task> commitHandler)
     {
         var module = await GetModuleAsync();
         await _reorder.RegisterRowReorder(module, GetSelfRef(), gridId, commitHandler);
@@ -854,8 +854,8 @@ public sealed class ComponentInteropService : IComponentInteropService
     }
 
     [JSInvokable]
-    public async Task OnRowReorderCommit(string gridId, int sourceIndex, int targetIndex)
-        => await _reorder.OnRowReorderCommit(gridId, sourceIndex, targetIndex);
+    public async Task OnRowReorderCommit(string gridId, string sourceRowKey, string targetRowKey)
+        => await _reorder.OnRowReorderCommit(gridId, sourceRowKey, targetRowKey);
 
     // --- DataGrid Row Reorder FLIP Animation ---
 

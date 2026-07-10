@@ -183,7 +183,7 @@ public class ResponsiveServiceTests
         public ValueTask UnregisterColumnResize(string handleId) => ValueTask.CompletedTask;
         public ValueTask CaptureColumnRects(string gridId) => ValueTask.CompletedTask;
         public ValueTask AnimateColumnReorder(string gridId, int durationMs) => ValueTask.CompletedTask;
-        public ValueTask RegisterRowReorder(string gridId, Func<int, int, Task> commitHandler) => ValueTask.CompletedTask;
+        public ValueTask RegisterRowReorder(string gridId, Func<string, string, Task> commitHandler) => ValueTask.CompletedTask;
         public ValueTask UnregisterRowReorder(string gridId) => ValueTask.CompletedTask;
         public ValueTask CaptureRowRects(string gridId) => ValueTask.CompletedTask;
         public ValueTask AnimateRowReorder(string gridId, int durationMs) => ValueTask.CompletedTask;

@@ -38,15 +38,24 @@ internal sealed class ReorderInterop
         }
     }
 
-    // gridId -> (sourceIndex, targetIndex) => Task — vertical mirror of the column
-    // commit-handler map above, for the pointer-based row-reorder engine.
-    private readonly Dictionary<string, Func<int, int, Task>> _rowCommitHandlers = new();
+    // gridId -> (sourceRowKey, targetRowKey) => Task — vertical mirror of the
+    // column commit-handler map above, for the pointer-based row-reorder engine.
+    // Keyed by stable row identity (DataGridRowKeys, the same value backing
+    // Blazor's own @key and the FLIP capture) rather than the plain DOM indices
+    // JS measured at drag start: the commit is delayed until after the 180ms
+    // settle animation, and if Items/_displayedItems changes underneath that
+    // window (server refresh, filter, sort), stale indices would move whatever
+    // rows currently occupy those slots instead of the ones the user actually
+    // dragged. Resolving by key at commit time (DataGrid.ReorderRowByKeyAsync)
+    // closes that window — mirrors how ReorderColumnByIdAsync already resolves
+    // column ids fresh at call time (Codex round-5 #6).
+    private readonly Dictionary<string, Func<string, string, Task>> _rowCommitHandlers = new();
 
     public async ValueTask RegisterRowReorder(
         IJSObjectReference module,
         DotNetObjectReference<ComponentInteropService> selfRef,
         string gridId,
-        Func<int, int, Task> commitHandler)
+        Func<string, string, Task> commitHandler)
     {
         _rowCommitHandlers[gridId] = commitHandler;
         await module.InvokeVoidAsync("registerRowReorder", gridId, selfRef);
@@ -58,11 +67,11 @@ internal sealed class ReorderInterop
         await module.InvokeVoidAsync("unregisterRowReorder", gridId);
     }
 
-    public async Task OnRowReorderCommit(string gridId, int sourceIndex, int targetIndex)
+    public async Task OnRowReorderCommit(string gridId, string sourceRowKey, string targetRowKey)
     {
         if (_rowCommitHandlers.TryGetValue(gridId, out var handler))
         {
-            await handler(sourceIndex, targetIndex);
+            await handler(sourceRowKey, targetRowKey);
         }
     }
 

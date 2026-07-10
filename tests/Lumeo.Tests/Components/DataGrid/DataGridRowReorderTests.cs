@@ -18,8 +18,9 @@ namespace Lumeo.Tests.Components.DataGrid;
 /// why rows can't use a column-header-style movement-threshold "arm from anywhere").
 ///
 /// JS is not under test here (that's the Playwright evidence); these tests exercise
-/// the C# boundary: <see cref="Lumeo.DataGrid{TItem}.ReorderRowByIndexAsync"/> (invoked
-/// via <c>RegisterRowReorder</c>'s commit handler) and the scope gate
+/// the C# boundary: <see cref="Lumeo.DataGrid{TItem}.ReorderRowByKeyAsync"/> (invoked
+/// via <c>RegisterRowReorder</c>'s commit handler, keyed by stable row identity —
+/// <c>data-row-key</c> — rather than the plain DOM index) and the scope gate
 /// (<c>RowReorderPointerActive</c>) that decides whether the JS listener is ever
 /// registered at all.
 /// </summary>
@@ -60,6 +61,14 @@ public class DataGridRowReorderTests : IAsyncLifetime
         cut.FindAll("tr[data-slot='datagrid-row']")
            .Select(r => r.QuerySelectorAll("td[data-slot='datagrid-cell']")[1].TextContent.Trim())
            .ToList();
+
+    /// <summary>The stable data-row-key JS reads at drag END and hands to the commit
+    /// handler — resolves the row currently showing <paramref name="name"/> in the
+    /// Name column, wherever it's currently rendered.</summary>
+    private static string KeyOf(IRenderedComponent<Lumeo.DataGrid<Emp>> cut, string name) =>
+        cut.FindAll("tr[data-slot='datagrid-row']")
+           .First(r => r.QuerySelectorAll("td[data-slot='datagrid-cell']")[1].TextContent.Trim() == name)
+           .GetAttribute("data-row-key")!;
 
     // --- Registration / scope gate ---
 
@@ -140,10 +149,12 @@ public class DataGridRowReorderTests : IAsyncLifetime
         var gridId = cut.Find("[data-slot='datagrid']").GetAttribute("data-grid-id")!;
         Assert.Contains(gridId, _interop.RowReorderRegistrations);
 
-        // Move row 0 (Alice) to row 2's slot — mirrors JS handing back the plain
-        // DOM indices it measured at drag start.
+        // Move Alice onto Charlie's slot — mirrors JS handing back the stable
+        // row keys it read at drag end, not the plain DOM indices.
+        var aliceKey = KeyOf(cut, "Alice");
+        var charlieKey = KeyOf(cut, "Charlie");
         bool handled = false;
-        await cut.InvokeAsync(async () => handled = await _interop.SimulateRowReorderCommit(gridId, 0, 2));
+        await cut.InvokeAsync(async () => handled = await _interop.SimulateRowReorderCommit(gridId, aliceKey, charlieKey));
         Assert.True(handled, "no commit handler registered for gridId");
         Assert.Equal(new List<string> { "Bob", "Charlie", "Alice" }, RowOrder(cut));
 
@@ -180,9 +191,9 @@ public class DataGridRowReorderTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task Pointer_Commit_On_Same_Index_Commits_Nothing()
+    public async Task Pointer_Commit_On_Same_Key_Commits_Nothing()
     {
-        // Guards ReorderRowByIndexAsync's own oldIndex == newIndex short-circuit —
+        // Guards ReorderRowByKeyAsync's own sourceKey == targetKey short-circuit —
         // JS's finishDrag never calls the commit handler when targetIdx == srcIdx,
         // but the C# boundary must be defensively correct too (e.g. a future JS
         // change, or a directly-simulated commit as here).
@@ -195,8 +206,9 @@ public class DataGridRowReorderTests : IAsyncLifetime
 
         var gridId = cut.Find("[data-slot='datagrid']").GetAttribute("data-grid-id")!;
         var before = RowOrder(cut);
+        var bobKey = KeyOf(cut, "Bob");
 
-        await cut.InvokeAsync(() => _interop.SimulateRowReorderCommit(gridId, 1, 1));
+        await cut.InvokeAsync(() => _interop.SimulateRowReorderCommit(gridId, bobKey, bobKey));
 
         Assert.Empty(fired);
         Assert.Equal(before, RowOrder(cut));
@@ -204,8 +216,11 @@ public class DataGridRowReorderTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task Pointer_Commit_With_OutOfRange_Index_Is_Rejected()
+    public async Task Pointer_Commit_With_Unknown_Row_Key_Is_Rejected()
     {
+        // A key that doesn't resolve to any current _displayedItems row — the row
+        // it identified was removed by an external mutation before the commit
+        // landed — must be dropped silently rather than throw or reorder anything.
         var fired = new List<RowReorderEventArgs<Emp>>();
         var cut = _ctx.Render<Lumeo.DataGrid<Emp>>(p => p
             .Add(x => x.Items, GetData())
@@ -214,10 +229,55 @@ public class DataGridRowReorderTests : IAsyncLifetime
             .Add(x => x.OnRowReorder, EventCallback.Factory.Create<RowReorderEventArgs<Emp>>(this, args => fired.Add(args))));
 
         var gridId = cut.Find("[data-slot='datagrid']").GetAttribute("data-grid-id")!;
+        var aliceKey = KeyOf(cut, "Alice");
+        var before = RowOrder(cut);
 
-        await cut.InvokeAsync(() => _interop.SimulateRowReorderCommit(gridId, 0, 99));
+        await cut.InvokeAsync(() => _interop.SimulateRowReorderCommit(gridId, aliceKey, "no-such-row-key"));
 
         Assert.Empty(fired);
+        Assert.Equal(before, RowOrder(cut));
+    }
+
+    [Fact]
+    public async Task Pointer_Commit_Resolves_By_Key_Not_Stale_Index_Across_An_External_Reorder()
+    {
+        // Regression for Codex round-5 #6: the commit is delayed until after the
+        // 180ms settle animation, so if Items/_displayedItems changes underneath
+        // that window (server refresh, filter, sort triggered by the app), the
+        // commit must still move the row the user actually dragged — identified
+        // by its stable key, captured at drag END — not whatever row now happens
+        // to occupy the drag-start indices.
+        var data = GetData();
+        var alice = data[0];
+        var charlie = data[2];
+        var fired = new List<RowReorderEventArgs<Emp>>();
+        var cut = _ctx.Render<Lumeo.DataGrid<Emp>>(p => p
+            .Add(x => x.Items, data)
+            .Add(x => x.Columns, GetColumns())
+            .Add(x => x.RowReorderable, true)
+            .Add(x => x.OnRowReorder, EventCallback.Factory.Create<RowReorderEventArgs<Emp>>(this, args => fired.Add(args))));
+
+        var gridId = cut.Find("[data-slot='datagrid']").GetAttribute("data-grid-id")!;
+        // Keys captured "at drag end" — Alice(0), Charlie(2) — before any mutation.
+        var aliceKey = KeyOf(cut, "Alice");
+        var charlieKey = KeyOf(cut, "Charlie");
+
+        // External mutation lands during the (simulated) settle window: same
+        // item instances, reordered — Charlie is now first, Alice second.
+        cut.Render(p => p.Add(x => x.Items, new List<Emp> { charlie, alice, data[1] }));
+        Assert.Equal(new List<string> { "Charlie", "Alice", "Bob" }, RowOrder(cut));
+
+        await cut.InvokeAsync(() => _interop.SimulateRowReorderCommit(gridId, aliceKey, charlieKey));
+
+        // Resolved fresh by key at commit time: Alice is now at index 1, Charlie
+        // at index 0 — MoveRow(1, 0) tucks Alice in right before Charlie, giving
+        // [Alice, Charlie, Bob]. The old index-based bug would have replayed the
+        // drag-start indices (0, 2) against this NEW list and moved Charlie
+        // (whichever row now sits at index 0) instead of Alice.
+        await WaitFor(() => fired.Count > 0);
+        Assert.Single(fired);
+        Assert.Equal("Alice", fired[0].Item.Name);
+        Assert.Equal(new List<string> { "Alice", "Charlie", "Bob" }, RowOrder(cut));
     }
 
     // --- Selection interplay: handle-only initiation must not break row click ---

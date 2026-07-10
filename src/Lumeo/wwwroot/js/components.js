@@ -2565,6 +2565,12 @@ export function registerColumnResize(handleId, dotnetRef, minWidth, maxWidth) {
     const onPointerDown = (e) => {
         // Ignore non-primary mouse buttons; touch/pen always fall through.
         if (e.pointerType === 'mouse' && e.button !== 0) return;
+        // A second pointerdown while a resize is already live (second touch
+        // point, concurrent pen) must not overwrite the single activePointerId/
+        // startWidth/startX state — the first drag's own pointermove/pointerup
+        // would silently stop matching activePointerId and get stranded mid-drag
+        // (Codex round-5 #3, mirrored onto resize).
+        if (isDragging) return;
         isDragging = true;
         activePointerId = e.pointerId;
         startX = e.clientX;
@@ -2630,6 +2636,13 @@ export function registerColumnResize(handleId, dotnetRef, minWidth, maxWidth) {
         endDrag();
         try { handle.releasePointerCapture(e.pointerId); } catch (_) { }
         activePointerId = null;
+        // No actual width change occurred — a plain click/tap, or critically
+        // the first pointerdown/pointerup pair the browser still sends before
+        // dblclick fires. Skip the commit so consumers of OnColumnResizeCommit
+        // don't see a spurious no-op resize event on every auto-fit gesture;
+        // onDoubleClick fires its own commit for the real auto-fit width
+        // (Codex round-5 #4).
+        if (currentWidth === startWidth) return;
         dotnetRef.invokeMethodAsync('OnColumnResizeCommit', handleId, currentWidth, false);
     };
     const onPointerCancel = (e) => {
@@ -3085,10 +3098,18 @@ export function registerColumnReorder(gridId, dotnetRef) {
         // consumer's own ColumnStyle inline declaration had on these four
         // properties, instead of blanking them to '' (Codex round-4 #4).
         drag.savedCellStyles = drag.cells.map((cell) => captureDragStyles(cell));
+        // A pinned column's cells hold `position: sticky` from the CSS-authored
+        // pinned classes; forcing an inline `position: relative` here overrides
+        // it and snaps the cell back into normal table flow for the duration of
+        // the drag, letting it visually jump away from the pinned edge before
+        // any transform lands (Codex round-5 #5). Skip the position write for
+        // pinned cells — `position: sticky` still counts as positioned for
+        // z-index purposes, so the opacity/z-index lift keeps working.
+        const keepSticky = drag.sourcePin !== 'None';
         for (const cell of drag.cells) {
             cell.style.transition = 'none';
             cell.style.opacity = '0.8';
-            cell.style.position = 'relative';
+            if (!keepSticky) cell.style.position = 'relative';
             cell.style.zIndex = '2';
             cell.style.pointerEvents = 'none';
         }
@@ -3221,6 +3242,13 @@ export function registerColumnReorder(gridId, dotnetRef) {
     };
 
     const onPointerDown = (e) => {
+        // A second pointerdown while a drag is already pending/armed (second
+        // touch point, second mouse button, concurrent pen) must not overwrite
+        // the single `drag` descriptor — the live one owns its pointerId until
+        // its own pointerup/pointercancel finishes it; a competing descriptor
+        // would orphan the first drag's inline drag/transform styles forever
+        // (Codex round-5 #3).
+        if (drag) return;
         const grip = e.target.closest('[data-reorder-grip]');
         let th, viaGrip;
         // A DataGrid nested inside another column-reorderable grid's
@@ -3303,7 +3331,7 @@ export function registerColumnReorder(gridId, dotnetRef) {
         drag = {
             pointerId: e.pointerId, captureTarget: viaGrip ? grip : th,
             startX: e.clientX, startY: e.clientY,
-            sourceColId, cells, headers, srcHeaderIdx, sourceRect, bounds,
+            sourceColId, sourcePin, cells, headers, srcHeaderIdx, sourceRect, bounds,
             lastProjectedIdx: srcHeaderIdx, armed: false,
         };
 
@@ -3435,7 +3463,20 @@ export function registerRowReorder(gridId, dotnetRef) {
             // to the "below everything" fallback below, which used to snap
             // any pointer over a mid-grid detail panel to the LAST row.
             const next = drag.rows[i + 1];
-            if (next && clientY > r.bottom && clientY < next.baseRect.top) return i;
+            if (next && clientY > r.bottom && clientY < next.baseRect.top) {
+                // finishDrag's RemoveAt(srcIdx)+Insert(targetIdx) treats
+                // targetIdx < srcIdx as "insert BEFORE row targetIdx" and
+                // targetIdx > srcIdx as "insert AFTER row targetIdx" (see its
+                // settle-position comment). A downward drag (srcIdx < i)
+                // already gets "after row i" correctly from plain `i` here.
+                // An upward drag (srcIdx > i) needs i+1 instead — still <
+                // srcIdx, but "insert before row i+1" IS "insert after row
+                // i" — so the gap directly below row i's detail band lands
+                // there instead of before row i itself, matching what the
+                // live sibling-shift preview (applyProjection) shows for
+                // this targetIdx (Codex round-5 #1).
+                return drag.srcIdx > i ? i + 1 : i;
+            }
         }
         const firstR = drag.rows[0].baseRect;
         return clientY < firstR.top ? 0 : drag.rows.length - 1;
@@ -3470,7 +3511,15 @@ export function registerRowReorder(gridId, dotnetRef) {
     // its own slot) — everything animates back to identity, nothing is committed.
     // For a valid drop, the dragged row glides to its projected slot (siblings are
     // already resting at their live-shift positions); once that settle finishes,
-    // OnRowReorderCommit fires exactly once with the plain DOM indices.
+    // OnRowReorderCommit fires exactly once — keyed by stable row identity
+    // (data-row-key), not the plain DOM indices measured at drag start. The
+    // commit is delayed until AFTER the 180ms settle animation below; if
+    // Items/_displayedItems changed underneath that window (server refresh,
+    // filter, sort), stale indices would move whatever rows currently occupy
+    // those slots instead of the ones the user actually dragged. The keys are
+    // read here — synchronously, at drag END, before that window opens — so
+    // the .NET side can resolve current indices fresh at commit time, exactly
+    // like the column engine already does by id (Codex round-5 #6).
     const finishDrag = (commit) => {
         const d = drag;
         drag = null;
@@ -3483,6 +3532,8 @@ export function registerRowReorder(gridId, dotnetRef) {
 
         const targetIdx = d.lastProjectedIdx;
         const isCommit = commit && targetIdx !== d.srcIdx;
+        const sourceRowKey = d.el.dataset.rowKey;
+        const targetRowKey = isCommit ? d.rows[targetIdx].el.dataset.rowKey : null;
         // Pair each shifted row's element with its (possibly absent) detail <tr>
         // so both get the identical settle/reset treatment below — the detail
         // panel was carried along by applyProjection with the same transform,
@@ -3539,7 +3590,7 @@ export function registerRowReorder(gridId, dotnetRef) {
                 // projected slot, siblings at their live-shift positions) —
                 // captureRowRects measures this true final visual order next
                 // and clears these inline styles itself.
-                dotnetRef.invokeMethodAsync('OnRowReorderCommit', gridId, d.srcIdx, targetIdx);
+                dotnetRef.invokeMethodAsync('OnRowReorderCommit', gridId, sourceRowKey, targetRowKey);
             } else {
                 for (const [el, detail] of shiftedPairs) {
                     el.style.transition = '';
@@ -3591,6 +3642,11 @@ export function registerRowReorder(gridId, dotnetRef) {
     };
 
     const onPointerDown = (e) => {
+        // A second pointerdown while a row drag is already live (second touch
+        // point, second mouse button, concurrent pen) must not overwrite the
+        // single `drag` descriptor — mirrors registerColumnReorder's guard
+        // (Codex round-5 #3).
+        if (drag) return;
         // Handle-only initiation — see the section comment above for why rows
         // don't get a header-wide/movement-threshold arm path like columns do.
         const grip = e.target.closest('[data-row-reorder-grip]');

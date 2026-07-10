@@ -326,9 +326,12 @@ public interface IComponentInteropService : IAsyncDisposable, IDisposable
     ValueTask AnimateColumnReorder(string gridId, int durationMs);
 
     // DataGrid Row Reorder (pointer-based mouse/touch/pen, handle-only) — one
-    // delegated listener per grid; commitHandler(sourceIndex, targetIndex) fires
-    // once on release. Only ever registered for flat, non-virtualized grids.
-    ValueTask RegisterRowReorder(string gridId, Func<int, int, Task> commitHandler);
+    // delegated listener per grid; commitHandler(sourceRowKey, targetRowKey)
+    // fires once on release, keyed by stable row identity (not the plain DOM
+    // index JS measured at drag start) so a mutation during the post-drop
+    // settle delay can't move the wrong row. Only ever registered for flat,
+    // non-virtualized grids.
+    ValueTask RegisterRowReorder(string gridId, Func<string, string, Task> commitHandler);
     ValueTask UnregisterRowReorder(string gridId);
 
     // DataGrid Row Reorder FLIP — capture row rects (keyed by stable row

@@ -1045,7 +1045,7 @@
     private const int ColumnReorderAnimationMs = 220;
 
     // Same FLIP handshake, vertical mirror for row reorder — see
-    // ReorderRowByIndexAsync / OnAfterRenderAsync's row-reorder block.
+    // ReorderRowByKeyAsync / OnAfterRenderAsync's row-reorder block.
     private bool _pendingRowReorderAnimation;
     private bool _pointerRowReorderRegistered;
     private const int RowReorderAnimationMs = 220;
@@ -1557,9 +1557,9 @@
         {
             try
             {
-                await Interop.RegisterRowReorder(_gridId, async (srcIdx, tgtIdx) =>
+                await Interop.RegisterRowReorder(_gridId, async (srcKey, tgtKey) =>
                 {
-                    await ReorderRowByIndexAsync(srcIdx, tgtIdx);
+                    await ReorderRowByKeyAsync(srcKey, tgtKey);
                 });
                 _pointerRowReorderRegistered = true;
             }
@@ -1601,7 +1601,7 @@
         }
 
         // FLIP-animate the row that just moved, same handshake as columns:
-        // ReorderRowByIndexAsync captured rects (keyed by stable row identity, not
+        // ReorderRowByKeyAsync captured rects (keyed by stable row identity, not
         // index — the index that moved is exactly the one that's now wrong) before
         // mutating _displayedItems; now that the reordered list has rendered, JS
         // recomputes each row's new top and slides from old to new.
@@ -3029,7 +3029,14 @@
             // A locked column can't be the one that moves at all.
             return;
         }
-        ReorderColumnsPreservingLocked(args.OldIndex, args.NewIndex);
+        // A drop that resolves to a no-op order (e.g. the columns panel proposes
+        // a slot past a locked edge column, which ReorderColumnsPreservingLocked
+        // then redirects/clamps back to nothing) must not report a reorder to
+        // consumers — the pointer-drag JS path never proposes such a target, but
+        // the columns panel (index-based) does, and both funnel through here, so
+        // guarding here covers the pointer commit path too (Codex round-5 #2).
+        var reordered = ReorderColumnsPreservingLocked(args.OldIndex, args.NewIndex);
+        if (!reordered) return;
         RefreshVisibleColumns();
         _pendingReorderAnimation = true;
 
@@ -3060,7 +3067,17 @@
     /// the intermediate result's reorderable columns (in the relative order that
     /// first pass produced) into the remaining slots.
     /// </summary>
-    private void ReorderColumnsPreservingLocked(int oldIndex, int newIndex)
+    /// <returns>
+    /// <see langword="true"/> if the resulting order actually differs from the
+    /// order before the call; <see langword="false"/> for a no-op — either the
+    /// skip-over redirect found nothing reorderable in that direction, or the
+    /// resolved target settles every reorderable column back into its original
+    /// slot (e.g. a drop past a locked edge column with no room beyond it). The
+    /// caller (<see cref="HandleColumnReorder"/>) must skip its side effects
+    /// (event, autosave, FLIP animation, rerender) when this returns false
+    /// (Codex round-5 #2).
+    /// </returns>
+    private bool ReorderColumnsPreservingLocked(int oldIndex, int newIndex)
     {
         // Resolve the effective absolute target: if it lands exactly on a locked
         // column's slot (a caller other than the pointer-drag path, which never
@@ -3073,7 +3090,7 @@
             var dir = target >= oldIndex ? 1 : -1;
             while (target >= 0 && target < _orderedColumns.Count && !_orderedColumns[target].Reorderable)
                 target += dir;
-            if (target < 0 || target >= _orderedColumns.Count) return; // nothing reorderable in that direction
+            if (target < 0 || target >= _orderedColumns.Count) return false; // nothing reorderable in that direction — no-op
         }
 
         // Pass 1: the plain (locked-unaware) result, exactly like the original code.
@@ -3085,12 +3102,16 @@
         // Pass 2: splice locked columns back into their original absolute slots;
         // everything else drains from `naive`, in the relative order pass 1 gave it.
         var reorderableInOrder = naive.Where(c => c.Reorderable).ToList();
+        var changed = false;
         var next = 0;
         for (var i = 0; i < _orderedColumns.Count; i++)
         {
             if (!_orderedColumns[i].Reorderable) continue; // locked columns already sit at their own index — leave in place
-            _orderedColumns[i] = reorderableInOrder[next++];
+            var replacement = reorderableInOrder[next++];
+            if (!ReferenceEquals(_orderedColumns[i], replacement)) changed = true;
+            _orderedColumns[i] = replacement;
         }
+        return changed;
     }
 
     /// <summary>
@@ -3146,22 +3167,36 @@
     }
 
     /// <summary>
-    /// Reorders a row by index, moving <paramref name="oldIndex"/> to
-    /// <paramref name="newIndex"/>. Drives the unified pointer-based row-reorder
-    /// path (mouse + touch + pen) registered via <c>RegisterRowReorder</c>: JS
-    /// handles the whole drag in the DOM — including the live sibling-shift
-    /// preview — and invokes this once on release with the plain DOM indices it
-    /// measured at drag-start (safe only because <see cref="RowReorderPointerActive"/>
-    /// guarantees a flat, non-virtualized body where tr index == _displayedItems
-    /// index 1:1). Captures FLIP "First" rects before mutating so the settled drag
-    /// position and the post-render position can be diffed into one slide, then
-    /// delegates the actual mutation + OnRowReorder callback to <see cref="MoveRow"/>.
+    /// Reorders a row by stable identity, moving the row keyed <paramref name="sourceRowKey"/>
+    /// to the slot of the row keyed <paramref name="targetRowKey"/>. Drives the unified
+    /// pointer-based row-reorder path (mouse + touch + pen) registered via
+    /// <c>RegisterRowReorder</c>: JS handles the whole drag in the DOM — including the
+    /// live sibling-shift preview — and invokes this once on release with the row keys
+    /// (<see cref="DataGridRowKeys"/>, the same identity backing Blazor's own <c>@key</c>
+    /// and the FLIP capture) it read at drag END. Resolving indices fresh, by key, HERE
+    /// — rather than trusting DOM indices captured at drag START — matters because the
+    /// commit fires after a 180ms settle animation; if <c>Items</c>/<c>_displayedItems</c>
+    /// changed underneath that window (server refresh, filter, sort triggered by the
+    /// app), stale indices would move whatever rows currently occupy those slots instead
+    /// of the ones the user actually dragged (Codex round-5 #6) — mirrors
+    /// <see cref="ReorderColumnByIdAsync"/> resolving column ids fresh at call time.
+    /// Captures FLIP "First" rects before mutating so the settled drag position and the
+    /// post-render position can be diffed into one slide, then delegates the actual
+    /// mutation + OnRowReorder callback to <see cref="MoveRow"/>.
     /// </summary>
-    internal async Task ReorderRowByIndexAsync(int oldIndex, int newIndex)
+    internal async Task ReorderRowByKeyAsync(string sourceRowKey, string targetRowKey)
     {
-        if (!RowReorderPointerActive || oldIndex == newIndex) return;
-        if (oldIndex < 0 || newIndex < 0 || oldIndex >= _displayedItems.Count || newIndex >= _displayedItems.Count)
-            return;
+        if (!RowReorderPointerActive) return;
+        if (string.IsNullOrEmpty(sourceRowKey) || string.IsNullOrEmpty(targetRowKey)) return;
+        if (sourceRowKey == targetRowKey) return;
+
+        var oldIndex = _displayedItems.FindIndex(i => (DataGridRowKeys.KeyFor(i).ToString() ?? "") == sourceRowKey);
+        var newIndex = _displayedItems.FindIndex(i => (DataGridRowKeys.KeyFor(i).ToString() ?? "") == targetRowKey);
+        // Either key may no longer resolve — the row it identified was removed
+        // from _displayedItems by a mutation that landed during the drag's
+        // post-drop settle window. Silently drop the stale commit rather than
+        // reorder whatever rows happen to occupy the old positions now.
+        if (oldIndex < 0 || newIndex < 0 || oldIndex == newIndex) return;
 
         try { await Interop.CaptureRowRects(_gridId); }
         catch (JSDisconnectedException) { }

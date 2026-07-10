@@ -10,7 +10,7 @@ namespace Lumeo;
 /// ResetRow / IsOwnDragRow), backing DataGridRow's native HTML5 DnD. The
 /// ReUI-parity pass replaced row reorder with the unified pointer-based engine
 /// (registerRowReorder in components.js, driven entirely by JS + a single
-/// commit call to DataGrid.ReorderRowByIndexAsync) — there's no drag state left
+/// commit call to DataGrid.ReorderRowByKeyAsync) — there's no drag state left
 /// for rows to hold here, only the column drag-to-group-panel gesture below.
 /// </para></summary>
 public sealed class DataGridDragState
