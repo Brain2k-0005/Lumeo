@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.1.2] - 2026-07-10
+
+### Changed
+- **Blazicons is gone everywhere.** The library decoupled in 4.1.0; this release
+  removes every remaining live reference across the repo: the docs' third-party
+  interop packages, lazy assembly groups and comparison surfaces (the icon page and
+  customizer are first-party-only now), the Blazicons-specific `svg[blazicon]`
+  sizing rule in `lumeo.css`, and every code sample, doc comment and guide mention.
+  The DynamicIcon docs demo third-party interop generically — bring your own SVG via
+  an inline `IconSource` (rendered as-is: trusted, static markup only).
+- **CLI preset icon catalog is first-party only.** `lumeo preset encode --icons`
+  accepts the 16 first-party packs (including all variant ids like
+  `fluent-filled` / `heroicons-solid`); the legacy third-party names are rejected
+  with the valid list. Stored presets keep decoding: legacy codec indices and
+  server-preset strings pass ONE normalization gate before anything is written —
+  mappable names rewrite to their first-party equivalent (`fluentui` → `fluent`,
+  `google-material` → `material-symbols`), unmappable ones warn and are skipped, so
+  a stale preset can no longer overwrite a valid `iconLibrary` or write a dead one.
+  `--dry-run` previews exactly what a real apply would write, warnings included.
+  A compile-level drift guard ties the CLI's known-id set to the icon pack catalog.
+
 ### Changed
 - **Docs/interop cleanup — Blazicons removed everywhere outside history.** The docs site
   no longer references or bundles any Blazicons package: the `/components/icon` browser and
