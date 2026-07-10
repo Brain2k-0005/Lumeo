@@ -147,6 +147,56 @@ public class DataGridReorderConstraintTests : IAsyncLifetime
         Assert.Equal(before, HeaderOrder(cut));
     }
 
+    [Fact]
+    public async Task Pointer_Commit_Skipping_Over_Locked_Column_Keeps_It_At_Its_Absolute_Index()
+    {
+        // [A, locked B, C], drag A onto C. The JS live preview never displaces B
+        // (it's un-displaceable — the dragged column skips over it in place), so
+        // the .NET commit must not either: a plain RemoveAt(0)+Insert(2) over the
+        // FULL array would yield [B, C, A], sliding locked B from absolute index 1
+        // to 0 even though it never visually moved. Reordering within just the
+        // reorderable subsequence (A, C) and splicing locked B back into its own
+        // fixed slot yields [C, B, A] instead — B's absolute index is unchanged.
+        var a = new DataGridColumn<Row> { Field = "Id", Title = "A" };
+        var b = new DataGridColumn<Row> { Field = "Name", Title = "B", Reorderable = false };
+        var c = new DataGridColumn<Row> { Field = "Dept", Title = "C" };
+        ColumnReorderEventArgs? fired = null;
+        var cut = RenderGrid(new() { a, b, c }, args => fired = args);
+        var gridId = cut.Find("[data-slot='datagrid']").GetAttribute("data-grid-id")!;
+
+        await cut.InvokeAsync(() => _interop.SimulateColumnReorderCommit(gridId, a.Id, c.Id));
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.NotNull(fired);
+            Assert.Equal(a.Id, fired!.ColumnId);
+            Assert.Equal(new List<string?> { c.Id, b.Id, a.Id }, HeaderOrder(cut));
+        });
+    }
+
+    [Fact]
+    public async Task Pointer_Commit_Skipping_Over_Locked_Column_Dragging_Right_To_Left()
+    {
+        // Mirror of the above in the opposite direction: [A, locked B, C], drag C
+        // onto A. Reorderable subsequence (A, C) becomes (C, A); locked B stays
+        // pinned at absolute index 1 -> final order [C, B, A].
+        var a = new DataGridColumn<Row> { Field = "Id", Title = "A" };
+        var b = new DataGridColumn<Row> { Field = "Name", Title = "B", Reorderable = false };
+        var c = new DataGridColumn<Row> { Field = "Dept", Title = "C" };
+        ColumnReorderEventArgs? fired = null;
+        var cut = RenderGrid(new() { a, b, c }, args => fired = args);
+        var gridId = cut.Find("[data-slot='datagrid']").GetAttribute("data-grid-id")!;
+
+        await cut.InvokeAsync(() => _interop.SimulateColumnReorderCommit(gridId, c.Id, a.Id));
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.NotNull(fired);
+            Assert.Equal(c.Id, fired!.ColumnId);
+            Assert.Equal(new List<string?> { c.Id, b.Id, a.Id }, HeaderOrder(cut));
+        });
+    }
+
     // --- Affordance structure ---
 
     [Fact]

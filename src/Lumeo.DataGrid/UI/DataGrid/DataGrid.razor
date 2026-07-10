@@ -3014,8 +3014,22 @@
         }
 
         var col = _orderedColumns[args.OldIndex];
-        _orderedColumns.RemoveAt(args.OldIndex);
-        _orderedColumns.Insert(args.NewIndex, col);
+        // A locked (Reorderable=false) column is un-displaceable — mirror the
+        // pointer-drag JS preview, which never proposes one as a drop target
+        // and never shifts one aside when the dragged column skips over it
+        // (see registerColumnReorder's applyProjection/computeTargetIdx in
+        // components.js). A plain RemoveAt(OldIndex)+Insert(NewIndex) over the
+        // FULL array breaks that invariant: any locked column sitting between
+        // the source and target gets shifted to a new absolute index even
+        // though it never visually moved. Reorder only within the reorderable
+        // subsequence instead, keeping every locked column pinned at its
+        // original absolute index (Codex round-3 #1).
+        if (!col.Reorderable)
+        {
+            // A locked column can't be the one that moves at all.
+            return;
+        }
+        ReorderColumnsPreservingLocked(args.OldIndex, args.NewIndex);
         RefreshVisibleColumns();
         _pendingReorderAnimation = true;
 
@@ -3028,6 +3042,55 @@
 
         ScheduleAutoSave();
         StateHasChanged();
+    }
+
+    /// <summary>
+    /// Moves the reorderable column at <paramref name="oldIndex"/> to the reorderable
+    /// slot identified by <paramref name="newIndex"/>, WITHOUT ever changing the
+    /// absolute index of any Reorderable=false column.
+    ///
+    /// Two-pass approach: first compute the plain RemoveAt(oldIndex)+Insert(newIndex)
+    /// result over the FULL array — this is exactly what the (buggy) single-pass code
+    /// used to commit directly, and it gets the RELATIVE order of the reorderable
+    /// columns exactly right (that's the part the original formula was already
+    /// correct about; "insert before" vs "insert after" falls out of using the raw,
+    /// pre-removal NewIndex as the post-removal insert index, same as before). Locked
+    /// columns can end up misplaced in that intermediate result, though, so the
+    /// second pass splices them back into their ORIGINAL absolute slots and re-flows
+    /// the intermediate result's reorderable columns (in the relative order that
+    /// first pass produced) into the remaining slots.
+    /// </summary>
+    private void ReorderColumnsPreservingLocked(int oldIndex, int newIndex)
+    {
+        // Resolve the effective absolute target: if it lands exactly on a locked
+        // column's slot (a caller other than the pointer-drag path, which never
+        // proposes one, might still pass one), redirect to the nearest reorderable
+        // neighbor in the drag direction — the same "skip over" rule the JS preview
+        // applies before it ever proposes a target.
+        var target = Math.Clamp(newIndex, 0, _orderedColumns.Count - 1);
+        if (!_orderedColumns[target].Reorderable)
+        {
+            var dir = target >= oldIndex ? 1 : -1;
+            while (target >= 0 && target < _orderedColumns.Count && !_orderedColumns[target].Reorderable)
+                target += dir;
+            if (target < 0 || target >= _orderedColumns.Count) return; // nothing reorderable in that direction
+        }
+
+        // Pass 1: the plain (locked-unaware) result, exactly like the original code.
+        var naive = new List<DataGridColumn<TItem>>(_orderedColumns);
+        var movingCol = naive[oldIndex];
+        naive.RemoveAt(oldIndex);
+        naive.Insert(Math.Min(target, naive.Count), movingCol);
+
+        // Pass 2: splice locked columns back into their original absolute slots;
+        // everything else drains from `naive`, in the relative order pass 1 gave it.
+        var reorderableInOrder = naive.Where(c => c.Reorderable).ToList();
+        var next = 0;
+        for (var i = 0; i < _orderedColumns.Count; i++)
+        {
+            if (!_orderedColumns[i].Reorderable) continue; // locked columns already sit at their own index — leave in place
+            _orderedColumns[i] = reorderableInOrder[next++];
+        }
     }
 
     /// <summary>

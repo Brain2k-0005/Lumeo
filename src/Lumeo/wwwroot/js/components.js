@@ -3099,6 +3099,16 @@ export function registerColumnReorder(gridId, dotnetRef) {
     const onPointerMove = (e) => {
         if (!drag || e.pointerId !== drag.pointerId) return;
         if (!drag.armed) {
+            // Header-wide mouse init stays unarmed (no pointer capture) until
+            // the movement threshold is crossed, so a release OUTSIDE the grid
+            // never reaches this grid's own pointerup listener and the pending
+            // drag would otherwise linger forever. Mouse pointerIds are reused,
+            // so a LATER move back over the grid — with no button held — could
+            // still cross the threshold and arm a phantom drag. e.buttons
+            // always reflects the live button state regardless of capture, so
+            // drop the stale descriptor the moment the primary button isn't
+            // held anymore instead of arming (Codex round-3 #4).
+            if (!(e.buttons & 1)) { drag = null; return; }
             const dx = e.clientX - drag.startX, dy = e.clientY - drag.startY;
             if ((dx * dx + dy * dy) < REORDER_MOVE_THRESHOLD * REORDER_MOVE_THRESHOLD) return;
             armDrag();
@@ -3301,6 +3311,14 @@ export function registerRowReorder(gridId, dotnetRef) {
             row.appliedTy = ty;
             row.el.style.transition = `transform ${ROW_REORDER_SHIFT_MS}ms ${ROW_REORDER_EASE}`;
             row.el.style.transform = ty ? `translateY(${ty}px)` : '';
+            // An expanded DetailTemplate's <tr> has no data-row-index of its own
+            // (it's absent from drag.rows) but renders as its parent row's very
+            // next sibling — carry it along with the exact same transform so it
+            // doesn't visually detach from the row it belongs to mid-shift.
+            if (row.detail) {
+                row.detail.style.transition = row.el.style.transition;
+                row.detail.style.transform = row.el.style.transform;
+            }
         }
     };
 
@@ -3310,6 +3328,15 @@ export function registerRowReorder(gridId, dotnetRef) {
         for (let i = 0; i < drag.rows.length; i++) {
             const r = drag.rows[i].baseRect;
             if (clientY >= r.top && clientY <= r.bottom) return i;
+            // The vertical gap between this row and the next (if any) is an
+            // expanded DetailTemplate panel — it carries no data-row-index so
+            // it's absent from drag.rows/baseRect entirely, but it always
+            // renders immediately after its OWN parent row. Treat the whole
+            // gap as that parent row's target band instead of falling through
+            // to the "below everything" fallback below, which used to snap
+            // any pointer over a mid-grid detail panel to the LAST row.
+            const next = drag.rows[i + 1];
+            if (next && clientY > r.bottom && clientY < next.baseRect.top) return i;
         }
         const firstR = drag.rows[0].baseRect;
         return clientY < firstR.top ? 0 : drag.rows.length - 1;
@@ -3353,7 +3380,11 @@ export function registerRowReorder(gridId, dotnetRef) {
 
         const targetIdx = d.lastProjectedIdx;
         const isCommit = commit && targetIdx !== d.srcIdx;
-        const shiftedRows = d.rows.filter((r) => r.appliedTy).map((r) => r.el);
+        // Pair each shifted row's element with its (possibly absent) detail <tr>
+        // so both get the identical settle/reset treatment below — the detail
+        // panel was carried along by applyProjection with the same transform,
+        // so it must be released the same way.
+        const shiftedPairs = d.rows.filter((r) => r.appliedTy).map((r) => [r.el, r.detail]);
         // Vertical mirror of registerColumnReorder's settle fix: MoveRow does a
         // RemoveAt+Insert, so dragging DOWN (target after source) inserts AFTER
         // the target — final top edge is the target's original BOTTOM minus the
@@ -3372,18 +3403,29 @@ export function registerRowReorder(gridId, dotnetRef) {
         d.el.style.zIndex = '';
         d.el.style.position = '';
         d.el.style.pointerEvents = '';
+        if (d.detail) {
+            // The dragged row's own expanded detail panel rides along with it
+            // through the settle glide too.
+            d.detail.style.transition = d.el.style.transition;
+            d.detail.style.transform = d.el.style.transform;
+        }
 
         if (!isCommit) {
             // Cancel: nothing is going to re-render the grid, so siblings must
             // glide back to identity here too — there's no FLIP pass to hand off to.
-            for (const el of shiftedRows) {
+            for (const [el, detail] of shiftedPairs) {
                 el.style.transition = `transform ${ROW_REORDER_SETTLE_MS}ms ${ROW_REORDER_EASE}`;
                 el.style.transform = '';
+                if (detail) {
+                    detail.style.transition = el.style.transition;
+                    detail.style.transform = '';
+                }
             }
         }
 
         window.setTimeout(() => {
             d.el.style.transition = '';
+            if (d.detail) d.detail.style.transition = '';
             if (isCommit) {
                 // Leave the settled transform in place (dragged row at its
                 // projected slot, siblings at their live-shift positions) —
@@ -3391,9 +3433,13 @@ export function registerRowReorder(gridId, dotnetRef) {
                 // and clears these inline styles itself.
                 dotnetRef.invokeMethodAsync('OnRowReorderCommit', gridId, d.srcIdx, targetIdx);
             } else {
-                for (const el of shiftedRows) {
+                for (const [el, detail] of shiftedPairs) {
                     el.style.transition = '';
                     el.style.transform = '';
+                    if (detail) {
+                        detail.style.transition = '';
+                        detail.style.transform = '';
+                    }
                 }
             }
         }, ROW_REORDER_SETTLE_MS + 20);
@@ -3408,7 +3454,11 @@ export function registerRowReorder(gridId, dotnetRef) {
         const maxTy = drag.bounds.max - drag.sourceRect.bottom;
         if (ty < minTy) ty = minTy;
         if (ty > maxTy) ty = maxTy;
-        drag.el.style.transform = ty ? `translateY(${ty}px)` : '';
+        const translate = ty ? `translateY(${ty}px)` : '';
+        drag.el.style.transform = translate;
+        // The dragged row's own expanded detail panel (if any) has to move
+        // WITH it — it's a separate <tr> the drag never captured/translated.
+        if (drag.detail) drag.detail.style.transform = translate;
 
         applyProjection(computeTargetIdx(e.clientY));
     };
@@ -3423,11 +3473,27 @@ export function registerRowReorder(gridId, dotnetRef) {
         finishDrag(false);
     };
 
+    // A row's own <tr> is immediately followed by its expanded DetailTemplate's
+    // <tr> (rendered as a sibling by DataGridRow) when one is open — that detail
+    // row carries no data-row-index of its own, so it's found by position, not
+    // by attribute.
+    const detailRowFor = (tr) => {
+        const next = tr.nextElementSibling;
+        return (next && next.tagName === 'TR' && !next.hasAttribute('data-row-index')) ? next : null;
+    };
+
     const onPointerDown = (e) => {
         // Handle-only initiation — see the section comment above for why rows
         // don't get a header-wide/movement-threshold arm path like columns do.
         const grip = e.target.closest('[data-row-reorder-grip]');
         if (!grip || !grid.contains(grip)) return;
+        // A DataGrid nested inside another row-reorderable grid's DetailTemplate
+        // or cell template sits inside this grid's DOM subtree too, so
+        // grid.contains(grip) alone can't tell the two apart — require the
+        // grip's OWN closest grid root to be this grid, not just any ancestor
+        // of it, or the outer grid would also arm on the inner grid's grips and
+        // commit with the inner row's indices (Codex round-3 #5).
+        if (grip.closest('[data-grid-id]') !== grid) return;
         const tr = grip.closest('tr[data-row-index]');
         if (!tr) return;
         const tbody = tr.closest('tbody');
@@ -3445,6 +3511,7 @@ export function registerRowReorder(gridId, dotnetRef) {
 
         const rows = allRows.map((el) => ({
             el, idx: Number(el.dataset.rowIndex), baseRect: el.getBoundingClientRect(), appliedTy: 0,
+            detail: detailRowFor(el),
         }));
         rows.sort((a, b) => a.idx - b.idx);
         const srcIdx = rows.findIndex((r) => r.el === tr);
@@ -3458,7 +3525,7 @@ export function registerRowReorder(gridId, dotnetRef) {
 
         drag = {
             pointerId: e.pointerId, captureTarget: grip,
-            startY: e.clientY, el: tr, rows, srcIdx, sourceRect, bounds,
+            startY: e.clientY, el: tr, detail: rows[srcIdx].detail, rows, srcIdx, sourceRect, bounds,
             lastProjectedIdx: srcIdx, armed: false,
         };
 
@@ -3505,13 +3572,21 @@ export function unregisterRowReorder(gridId) {
 const rowReorderSnapshots = new Map(); // gridId -> Map<rowKey, top>
 const rowReorderInFlight = new Map();  // gridId -> Set<HTMLElement>
 
+// Clears ONLY the inline properties the FLIP engine itself ever sets
+// (transform/transition during the live-shift preview + settle glide,
+// willChange during animateRowReorder) — never opacity/zIndex/position/
+// pointerEvents. Those four are the pointer-drag engine's own concern (set
+// by armDrag, already reset by finishDrag for the one row it touched) and
+// are never written by captureRowRects/animateRowReorder for ANY row,
+// dragged or sibling. Clearing them here used to also wipe out consumer
+// RowStyle inline declarations (opacity, position, pointer-events, ...) on
+// every row this FLIP pass touched, since Blazor's diff skips the style
+// attribute when nothing it tracks changed, leaving JS the only thing that
+// ever un-sets an inline property it didn't itself set (Codex round-3 #3).
 function clearRowFlipStyles(tr) {
     tr.style.transform = '';
     tr.style.transition = '';
-    tr.style.opacity = '';
-    tr.style.zIndex = '';
-    tr.style.position = '';
-    tr.style.pointerEvents = '';
+    tr.style.willChange = '';
 }
 
 export function captureRowRects(gridId) {
