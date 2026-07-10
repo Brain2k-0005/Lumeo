@@ -8,22 +8,23 @@ namespace Lumeo.Tests.Components.DataGrid;
 
 /// <summary>
 /// Regression tests for the rc.19 fix that replaced the process-global static
-/// drag-state holders in DataGridHeaderCell + DataGridRow with an
-/// instance-bound <see cref="DataGridDragState"/>. Two grids on the same page
-/// must not see each other's in-flight drags.
+/// drag-state holder in DataGridHeaderCell with an instance-bound
+/// <see cref="DataGridDragState"/>. Two grids on the same page must not see
+/// each other's in-flight drags.
 ///
-/// The column-reorder cross-talk cases that used to live here (native HTML5
-/// DnD: dragstart on grid A's header, drop on grid B's header) were removed
-/// with the ReUI-parity pass — column reorder no longer uses native DnD or
-/// DataGridDragState at all. The unified pointer path (mouse + touch + pen,
-/// registered via RegisterColumnReorder) is structurally immune to this class
-/// of cross-talk: each grid registers its own JS listener scoped to its own
-/// `[data-grid-id]` subtree and its own captured `dotnetRef`, so a drag
-/// started in grid A's DOM can never resolve headers or invoke the commit
-/// callback belonging to grid B — there is no shared/global state to leak
-/// through in the first place. DataGridDragState (and this cross-talk
-/// concern) now applies only to the drag-to-group-panel gesture and row
-/// reorder, both still native-DnD-based; the row case is covered below.
+/// The column-reorder AND row-reorder cross-talk cases that used to live here
+/// (native HTML5 DnD: dragstart on grid A's header/row, drop on grid B's) were
+/// removed with the ReUI-parity pass — neither column nor row reorder uses
+/// native DnD or DataGridDragState any more. The unified pointer paths (mouse +
+/// touch + pen, registered via RegisterColumnReorder / RegisterRowReorder) are
+/// structurally immune to this class of cross-talk: each grid registers its
+/// own JS listener scoped to its own `[data-grid-id]` subtree and its own
+/// captured `dotnetRef`, so a drag started in grid A's DOM can never resolve
+/// headers/rows or invoke the commit callback belonging to grid B — there is
+/// no shared/global state to leak through in the first place (see
+/// DataGridReorderConstraintTests / DataGridRowReorderTests for the pointer
+/// commit-path coverage that replaced these). DataGridDragState now applies
+/// only to the drag-to-group-panel gesture.
 /// </summary>
 public class DataGridCrossTalkTests : IAsyncLifetime
 {
@@ -52,37 +53,6 @@ public class DataGridCrossTalkTests : IAsyncLifetime
         new() { Field = "Name", Title = "Name" },
     };
 
-
-    [Fact]
-    public void Row_drop_on_other_grid_is_rejected()
-    {
-        var capturedA = new List<RowReorderEventArgs<TestItem>>();
-        var capturedB = new List<RowReorderEventArgs<TestItem>>();
-
-        var gridA = _ctx.Render<DataGrid<TestItem>>(p => p
-            .Add(x => x.Items, GetData())
-            .Add(x => x.Columns, GetColumns())
-            .Add(x => x.RowReorderable, true)
-            .Add(x => x.OnRowReorder, EventCallback.Factory.Create<RowReorderEventArgs<TestItem>>(this, args => capturedA.Add(args))));
-
-        var gridB = _ctx.Render<DataGrid<TestItem>>(p => p
-            .Add(x => x.Items, GetData())
-            .Add(x => x.Columns, GetColumns())
-            .Add(x => x.RowReorderable, true)
-            .Add(x => x.OnRowReorder, EventCallback.Factory.Create<RowReorderEventArgs<TestItem>>(this, args => capturedB.Add(args))));
-
-        // Start drag on row 0 of grid A, drop on row 2 of grid B.
-        var rowsA = gridA.FindAll("tr[data-slot='datagrid-row']");
-        var rowsB = gridB.FindAll("tr[data-slot='datagrid-row']");
-
-        rowsA[0].DragStart();
-        rowsB[2].Drop();
-
-        // Neither grid should have fired OnRowReorder — the drop on grid B
-        // is rejected (different gridId), and grid A never had a drop.
-        Assert.Empty(capturedA);
-        Assert.Empty(capturedB);
-    }
 
     [Fact]
     public async Task EventCallback_async_handler_is_awaited_before_grid_reflects_state()

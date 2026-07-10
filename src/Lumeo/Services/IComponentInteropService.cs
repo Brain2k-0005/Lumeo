@@ -325,6 +325,18 @@ public interface IComponentInteropService : IAsyncDisposable, IDisposable
     ValueTask CaptureColumnRects(string gridId);
     ValueTask AnimateColumnReorder(string gridId, int durationMs);
 
+    // DataGrid Row Reorder (pointer-based mouse/touch/pen, handle-only) — one
+    // delegated listener per grid; commitHandler(sourceIndex, targetIndex) fires
+    // once on release. Only ever registered for flat, non-virtualized grids.
+    ValueTask RegisterRowReorder(string gridId, Func<int, int, Task> commitHandler);
+    ValueTask UnregisterRowReorder(string gridId);
+
+    // DataGrid Row Reorder FLIP — capture row rects (keyed by stable row
+    // identity) before reorder, animate from old → new positions after
+    // Blazor's re-render.
+    ValueTask CaptureRowRects(string gridId);
+    ValueTask AnimateRowReorder(string gridId, int durationMs);
+
     // Tour
     ValueTask<ElementRect?> GetElementRectBySelector(string selector);
     /// <summary>Instantly scrolls the first element matching <paramref name="selector"/>

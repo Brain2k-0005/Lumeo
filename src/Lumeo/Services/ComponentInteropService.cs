@@ -835,6 +835,42 @@ public sealed class ComponentInteropService : IComponentInteropService
         await module.InvokeVoidAsync("animateColumnReorder", gridId, durationMs);
     }
 
+    // --- DataGrid Row Reorder (pointer-based mouse/touch/pen) ---
+
+    public async ValueTask RegisterRowReorder(string gridId, Func<int, int, Task> commitHandler)
+    {
+        var module = await GetModuleAsync();
+        await _reorder.RegisterRowReorder(module, GetSelfRef(), gridId, commitHandler);
+    }
+
+    public async ValueTask UnregisterRowReorder(string gridId)
+    {
+        try
+        {
+            var module = await GetModuleAsync();
+            await _reorder.UnregisterRowReorder(module, gridId);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
+    [JSInvokable]
+    public async Task OnRowReorderCommit(string gridId, int sourceIndex, int targetIndex)
+        => await _reorder.OnRowReorderCommit(gridId, sourceIndex, targetIndex);
+
+    // --- DataGrid Row Reorder FLIP Animation ---
+
+    public async ValueTask CaptureRowRects(string gridId)
+    {
+        var module = await GetModuleAsync();
+        await module.InvokeVoidAsync("captureRowRects", gridId);
+    }
+
+    public async ValueTask AnimateRowReorder(string gridId, int durationMs)
+    {
+        var module = await GetModuleAsync();
+        await module.InvokeVoidAsync("animateRowReorder", gridId, durationMs);
+    }
+
     // --- Tour: Element Rect By Selector ---
 
     public async ValueTask<ElementRect?> GetElementRectBySelector(string selector)

@@ -3188,6 +3188,333 @@ export function unregisterColumnReorder(gridId) {
     columnReorderPointerHandlers.delete(gridId);
 }
 
+// --- DataGrid Row Reorder: unified pointer-based (mouse + touch + pen) ---
+//
+// Vertical mirror of registerColumnReorder above — same shape (one delegated
+// pointer listener per grid, cached base rects, live sibling shift recomputed
+// only on projected-index change, glide settle + single commit, Escape/
+// pointercancel glide-back, cancelActiveDrag exposed for unregister). Two
+// differences from the column engine, both because a row is one draggable
+// unit instead of a column's (header + per-row cell) set:
+//
+//   * ONE element (the <tr>) is translated/shifted, not a per-column cell
+//     array — sticky/pinned cells are DOM descendants of the row, so a
+//     transform on the <tr> carries them along for free (no separate
+//     gather-cells pass needed).
+//   * Initiation is handle-only, always (no header-wide/mouse-threshold
+//     branch). A row's background is a click-to-select target — column
+//     headers can arm from anywhere because their "click" is a scoped
+//     sort <button>, but a row has no such safe surface to disambiguate a
+//     drag-start from a plain select click. See DataGridRow's grip markup.
+//
+// Only ever registered for flat, non-virtualized grids — DataGrid.
+// RowReorderPointerActive gates both the JS registration below and whether
+// DataGridRow renders [data-row-reorder-grip] at all (grouped/tree-grid/
+// virtualized grids keep the drag handle visible but inert).
+
+const rowReorderPointerHandlers = new Map(); // gridId -> { grid, onPointerDown, ... }
+
+const ROW_REORDER_SETTLE_MS = 180;  // release/cancel glide duration
+const ROW_REORDER_SHIFT_MS = 220;   // sibling live-shift ease duration
+const ROW_REORDER_EASE = 'cubic-bezier(0.22, 1, 0.36, 1)';
+
+export function registerRowReorder(gridId, dotnetRef) {
+    const grid = document.querySelector(`[data-grid-id="${CSS.escape(gridId)}"]`);
+    if (!grid) return;
+    if (rowReorderPointerHandlers.has(gridId)) unregisterRowReorder(gridId);
+
+    let drag = null; // active/pending drag descriptor or null
+
+    // Applies (or re-applies) the live sibling-shift preview for a projected
+    // insertion index. Guarded by drag.lastProjectedIdx so it only runs when the
+    // index actually changes, and only writes rows whose own target transform
+    // changed — mirrors applyProjection in registerColumnReorder, translateY
+    // instead of translateX.
+    const applyProjection = (targetIdx) => {
+        if (drag.lastProjectedIdx === targetIdx) return;
+        drag.lastProjectedIdx = targetIdx;
+        const srcIdx = drag.srcIdx;
+        const h = drag.sourceRect.height;
+        for (let i = 0; i < drag.rows.length; i++) {
+            if (i === srcIdx) continue;
+            const row = drag.rows[i];
+            let ty = 0;
+            if (srcIdx < targetIdx && i > srcIdx && i <= targetIdx) ty = -h;
+            else if (srcIdx > targetIdx && i >= targetIdx && i < srcIdx) ty = h;
+            if (row.appliedTy === ty) continue;
+            row.appliedTy = ty;
+            row.el.style.transition = `transform ${ROW_REORDER_SHIFT_MS}ms ${ROW_REORDER_EASE}`;
+            row.el.style.transform = ty ? `translateY(${ty}px)` : '';
+        }
+    };
+
+    // Row whose cached base rect contains clientY (clamped to the grid's ends).
+    // Never reads layout — baseRect was measured once at drag start.
+    const computeTargetIdx = (clientY) => {
+        for (let i = 0; i < drag.rows.length; i++) {
+            const r = drag.rows[i].baseRect;
+            if (clientY >= r.top && clientY <= r.bottom) return i;
+        }
+        const firstR = drag.rows[0].baseRect;
+        return clientY < firstR.top ? 0 : drag.rows.length - 1;
+    };
+
+    const armDrag = () => {
+        drag.armed = true;
+        drag.el.style.transition = 'none';
+        drag.el.style.opacity = '0.8';
+        drag.el.style.position = 'relative';
+        drag.el.style.zIndex = '2';
+        drag.el.style.pointerEvents = 'none';
+        document.body.style.cursor = 'grabbing';
+        document.documentElement.style.cursor = 'grabbing';
+        document.body.style.userSelect = 'none';
+        try { drag.captureTarget.setPointerCapture(drag.pointerId); } catch (_) { }
+        window.addEventListener('keydown', onKeyDown, true);
+    };
+
+    const onKeyDown = (e) => {
+        if (e.key === 'Escape' && drag) {
+            e.preventDefault();
+            finishDrag(false);
+        }
+    };
+
+    // Ends the drag. commit=false is a cancel (Escape / pointercancel / dropped on
+    // its own slot) — everything animates back to identity, nothing is committed.
+    // For a valid drop, the dragged row glides to its projected slot (siblings are
+    // already resting at their live-shift positions); once that settle finishes,
+    // OnRowReorderCommit fires exactly once with the plain DOM indices.
+    const finishDrag = (commit) => {
+        const d = drag;
+        drag = null;
+        window.removeEventListener('keydown', onKeyDown, true);
+        document.body.style.cursor = '';
+        document.documentElement.style.cursor = '';
+        document.body.style.userSelect = '';
+        if (!d.armed) return; // defensive — handle-only init always arms immediately
+        try { d.captureTarget.releasePointerCapture(d.pointerId); } catch (_) { }
+
+        const targetIdx = d.lastProjectedIdx;
+        const isCommit = commit && targetIdx !== d.srcIdx;
+        const shiftedRows = d.rows.filter((r) => r.appliedTy).map((r) => r.el);
+        const draggedTy = isCommit ? (d.rows[targetIdx].baseRect.top - d.sourceRect.top) : 0;
+
+        d.el.style.transition = `transform ${ROW_REORDER_SETTLE_MS}ms ${ROW_REORDER_EASE}`;
+        d.el.style.transform = draggedTy ? `translateY(${draggedTy}px)` : '';
+        d.el.style.opacity = '';
+        d.el.style.zIndex = '';
+        d.el.style.position = '';
+        d.el.style.pointerEvents = '';
+
+        if (!isCommit) {
+            // Cancel: nothing is going to re-render the grid, so siblings must
+            // glide back to identity here too — there's no FLIP pass to hand off to.
+            for (const el of shiftedRows) {
+                el.style.transition = `transform ${ROW_REORDER_SETTLE_MS}ms ${ROW_REORDER_EASE}`;
+                el.style.transform = '';
+            }
+        }
+
+        window.setTimeout(() => {
+            d.el.style.transition = '';
+            if (isCommit) {
+                // Leave the settled transform in place (dragged row at its
+                // projected slot, siblings at their live-shift positions) —
+                // captureRowRects measures this true final visual order next
+                // and clears these inline styles itself.
+                dotnetRef.invokeMethodAsync('OnRowReorderCommit', gridId, d.srcIdx, targetIdx);
+            } else {
+                for (const el of shiftedRows) {
+                    el.style.transition = '';
+                    el.style.transform = '';
+                }
+            }
+        }, ROW_REORDER_SETTLE_MS + 20);
+    };
+
+    const onPointerMove = (e) => {
+        if (!drag || e.pointerId !== drag.pointerId) return;
+        if (e.cancelable) e.preventDefault();
+        // Translate the dragged row in Y only, clamped to the grid's row span.
+        let ty = e.clientY - drag.startY;
+        const minTy = drag.bounds.min - drag.sourceRect.top;
+        const maxTy = drag.bounds.max - drag.sourceRect.bottom;
+        if (ty < minTy) ty = minTy;
+        if (ty > maxTy) ty = maxTy;
+        drag.el.style.transform = ty ? `translateY(${ty}px)` : '';
+
+        applyProjection(computeTargetIdx(e.clientY));
+    };
+
+    const onPointerUp = (e) => {
+        if (!drag || e.pointerId !== drag.pointerId) return;
+        finishDrag(true);
+    };
+
+    const onPointerCancel = (e) => {
+        if (!drag || e.pointerId !== drag.pointerId) return;
+        finishDrag(false);
+    };
+
+    const onPointerDown = (e) => {
+        // Handle-only initiation — see the section comment above for why rows
+        // don't get a header-wide/movement-threshold arm path like columns do.
+        const grip = e.target.closest('[data-row-reorder-grip]');
+        if (!grip || !grid.contains(grip)) return;
+        const tr = grip.closest('tr[data-row-index]');
+        if (!tr) return;
+        const tbody = tr.closest('tbody');
+        if (!tbody) return;
+
+        // Every reorderable row in the tbody, with cached base rects — measured
+        // ONCE here so the live sibling-shift preview never reads layout in the
+        // pointermove loop. data-row-index rows are exactly this grid's data
+        // rows (group headers / detail rows carry no such attribute), and
+        // RowReorderPointerActive guarantees a flat, non-virtualized body, so
+        // every reorderable row is present in the DOM and this index equals its
+        // _displayedItems index 1:1.
+        const allRows = Array.prototype.slice.call(tbody.querySelectorAll('tr[data-row-index]'));
+        if (allRows.length < 2) return;
+
+        const rows = allRows.map((el) => ({
+            el, idx: Number(el.dataset.rowIndex), baseRect: el.getBoundingClientRect(), appliedTy: 0,
+        }));
+        rows.sort((a, b) => a.idx - b.idx);
+        const srcIdx = rows.findIndex((r) => r.el === tr);
+        if (srcIdx < 0) return;
+
+        const sourceRect = tr.getBoundingClientRect();
+        const bounds = {
+            min: rows[0].baseRect.top,
+            max: rows[rows.length - 1].baseRect.bottom,
+        };
+
+        drag = {
+            pointerId: e.pointerId, captureTarget: grip,
+            startY: e.clientY, el: tr, rows, srcIdx, sourceRect, bounds,
+            lastProjectedIdx: srcIdx, armed: false,
+        };
+
+        armDrag();
+        e.preventDefault();
+        e.stopPropagation();
+    };
+
+    // Exposed so unregisterRowReorder can fully abort an in-flight drag on
+    // unmount — otherwise translated rows, the global cursor/selection styles,
+    // and the window Escape listener would all outlive the grid's own
+    // listeners being torn down.
+    const cancelActiveDrag = () => {
+        if (drag) finishDrag(false);
+    };
+
+    grid.addEventListener('pointerdown', onPointerDown);
+    grid.addEventListener('pointermove', onPointerMove, { passive: false });
+    grid.addEventListener('pointerup', onPointerUp);
+    grid.addEventListener('pointercancel', onPointerCancel);
+    rowReorderPointerHandlers.set(gridId, {
+        grid, onPointerDown, onPointerMove, onPointerUp, onPointerCancel, cancelActiveDrag,
+    });
+}
+
+export function unregisterRowReorder(gridId) {
+    const h = rowReorderPointerHandlers.get(gridId);
+    if (!h) return;
+    h.cancelActiveDrag();
+    h.grid.removeEventListener('pointerdown', h.onPointerDown);
+    h.grid.removeEventListener('pointermove', h.onPointerMove);
+    h.grid.removeEventListener('pointerup', h.onPointerUp);
+    h.grid.removeEventListener('pointercancel', h.onPointerCancel);
+    rowReorderPointerHandlers.delete(gridId);
+}
+
+// --- DataGrid Row Reorder FLIP Animation ---
+//
+// Same First-Last-Invert-Play handshake as captureColumnRects/animateColumnReorder,
+// keyed by a stable per-row identity (data-row-key, set from DataGridRowKeys — the
+// same value Blazor's own @key uses) instead of index, because the row that moved
+// is exactly the one whose index is no longer trustworthy across the mutation.
+
+const rowReorderSnapshots = new Map(); // gridId -> Map<rowKey, top>
+const rowReorderInFlight = new Map();  // gridId -> Set<HTMLElement>
+
+function clearRowFlipStyles(tr) {
+    tr.style.transform = '';
+    tr.style.transition = '';
+    tr.style.opacity = '';
+    tr.style.zIndex = '';
+    tr.style.position = '';
+    tr.style.pointerEvents = '';
+}
+
+export function captureRowRects(gridId) {
+    const grid = document.querySelector(`[data-grid-id="${CSS.escape(gridId)}"]`);
+    if (!grid) return;
+    // If a previous FLIP for this grid is still mid-flight, force it back to
+    // identity BEFORE measuring — same rationale as captureColumnRects.
+    const inFlight = rowReorderInFlight.get(gridId);
+    if (inFlight) {
+        for (const tr of inFlight) clearRowFlipStyles(tr);
+        rowReorderInFlight.delete(gridId);
+    }
+    const rows = grid.querySelectorAll('tbody tr[data-row-index]');
+    if (!rows.length) return;
+    const snapshot = new Map();
+    rows.forEach((tr) => {
+        const rowKey = tr.dataset.rowKey;
+        if (!rowKey) return;
+        // Measure BEFORE clearing: the pointer engine leaves the dragged row's
+        // (and its live-shifted siblings') transforms in place through commit,
+        // so this "top" is the accurate settled preview position.
+        const top = tr.getBoundingClientRect().top;
+        clearRowFlipStyles(tr);
+        snapshot.set(rowKey, top);
+    });
+    rowReorderSnapshots.set(gridId, snapshot);
+}
+
+export function animateRowReorder(gridId, durationMs) {
+    const snapshot = rowReorderSnapshots.get(gridId);
+    rowReorderSnapshots.delete(gridId);
+    if (!snapshot) return;
+    const grid = document.querySelector(`[data-grid-id="${CSS.escape(gridId)}"]`);
+    if (!grid) return;
+    const duration = Number(durationMs) > 0 ? Number(durationMs) : 200;
+
+    const rows = grid.querySelectorAll('tbody tr[data-row-index]');
+    const inFlight = new Set();
+    rows.forEach((tr) => {
+        const rowKey = tr.dataset.rowKey;
+        const oldTop = snapshot.get(rowKey);
+        if (oldTop === undefined) return;
+        const newTop = tr.getBoundingClientRect().top;
+        const delta = oldTop - newTop;
+        if (Math.abs(delta) < 1) return;
+
+        tr.style.transition = 'none';
+        tr.style.transform = `translateY(${delta}px)`;
+        tr.style.willChange = 'transform';
+        inFlight.add(tr);
+    });
+    if (inFlight.size === 0) return;
+    // Force layout flush so the inverse transform is registered before the
+    // transition is kicked off — reading offsetHeight from any one row suffices.
+    // eslint-disable-next-line no-unused-expressions
+    grid.offsetHeight;
+    for (const tr of inFlight) {
+        tr.style.transition = `transform ${duration}ms cubic-bezier(0.22, 1, 0.36, 1)`;
+        tr.style.transform = '';
+    }
+    rowReorderInFlight.set(gridId, inFlight);
+    window.setTimeout(() => {
+        const owned = rowReorderInFlight.get(gridId);
+        if (owned !== inFlight) return;
+        for (const tr of inFlight) clearRowFlipStyles(tr);
+        rowReorderInFlight.delete(gridId);
+    }, duration + 50);
+}
+
 // --- File Download ---
 
 export function downloadFile(fileName, contentBase64, mimeType) {

@@ -26,6 +26,14 @@ public record DataGridContext<TItem>(
     DataGridEditMode EditMode,
     bool IsLoading,
     bool RowReorderable,
+    /// <summary>True when the unified pointer-based (mouse/touch/pen) row-reorder
+    /// engine is actually wired up for this render — <see cref="RowReorderable"/>
+    /// AND the grid is in a flat, non-virtualized layout (not grouped, not a tree
+    /// grid, not <c>Virtualize</c>-backed). Grouped/tree-grid indices restart per
+    /// section and virtualized rows aren't all present in the DOM to live-shift,
+    /// so those modes keep the drag handle visible but inert rather than wiring
+    /// the JS pointer listener — see DataGrid.RowReorderPointerActive.</summary>
+    bool RowReorderPointerActive,
     bool RowContextMenuEnabled,
     EventCallback<TItem> OnRowClick,
     EventCallback<TItem> OnRowDoubleClick,

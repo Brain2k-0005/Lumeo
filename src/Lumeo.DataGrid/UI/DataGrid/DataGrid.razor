@@ -29,6 +29,7 @@
         EditMode: EditMode,
         IsLoading: IsLoading || (_serverService?.IsLoading ?? false),
         RowReorderable: RowReorderable,
+        RowReorderPointerActive: RowReorderPointerActive,
         RowContextMenuEnabled: RowContextMenu is not null,
         OnRowClick: OnRowClick,
         OnRowDoubleClick: OnRowDoubleClick,
@@ -1042,6 +1043,12 @@
     private bool _pendingReorderAnimation;
     private bool _pointerReorderRegistered;
     private const int ColumnReorderAnimationMs = 220;
+
+    // Same FLIP handshake, vertical mirror for row reorder — see
+    // ReorderRowByIndexAsync / OnAfterRenderAsync's row-reorder block.
+    private bool _pendingRowReorderAnimation;
+    private bool _pointerRowReorderRegistered;
+    private const int RowReorderAnimationMs = 220;
     private List<DataGridGroupSection<TItem>> _groupedSections = new();
     private HashSet<string> _expandedGroups = new();
     private HashSet<string> _knownGroupKeys = new();
@@ -1149,6 +1156,22 @@
         _displayedItems.Count > VirtualizeThreshold
         && !IsTreeGridMode
         && EffectiveGroupFields.Count <= 1;
+
+    // The unified pointer-based row-reorder engine assumes a flat DOM: tr[data-row-index]
+    // indices measured at drag-start must equal _displayedItems indices 1:1, and every
+    // reorderable row must be present in the DOM to live-shift. Grouped (single or
+    // multi-level) and tree-grid rows restart their local index per section/parent, and
+    // virtualized rows aren't all mounted — either would desync the drag from
+    // _displayedItems or make live-shift reach into rows that don't exist in the DOM.
+    // Those modes keep RowReorderable's drag handle visible (DataGridRow) but inert: the
+    // JS pointer listener is never registered for the grid (see OnAfterRenderAsync below),
+    // so the handle grip has no [data-row-reorder-grip] behaviour wired to it there.
+    private bool RowReorderPointerActive =>
+        RowReorderable
+        && !IsTreeGridMode
+        && EffectiveGroupFields.Count == 0
+        && !UseVirtualization
+        && !_useServerVirtualization;
 
     private string? HeightStyle => Height is not null ? $"height: {Height};" : null;
 
@@ -1523,6 +1546,32 @@
             _pointerReorderRegistered = false;
         }
 
+        // Unified pointer-based row reorder (mouse + touch + pen) — vertical mirror
+        // of the column engine above. Handle-only initiation (DataGridRow's grip):
+        // unlike a column header, a row's whole surface is a click-to-select target,
+        // so there's no safe movement-threshold "arm from anywhere" the way column
+        // headers do it (their surface click is a scoped sort <button>). Gated by
+        // RowReorderPointerActive, not just RowReorderable — see that property's
+        // doc comment for why grouped/tree/virtualized grids don't register.
+        if (RowReorderPointerActive && !_pointerRowReorderRegistered)
+        {
+            try
+            {
+                await Interop.RegisterRowReorder(_gridId, async (srcIdx, tgtIdx) =>
+                {
+                    await ReorderRowByIndexAsync(srcIdx, tgtIdx);
+                });
+                _pointerRowReorderRegistered = true;
+            }
+            catch (JSDisconnectedException) { }
+        }
+        else if (!RowReorderPointerActive && _pointerRowReorderRegistered)
+        {
+            try { await Interop.UnregisterRowReorder(_gridId); }
+            catch (JSDisconnectedException) { }
+            _pointerRowReorderRegistered = false;
+        }
+
         if (_isExpanded && _fullscreenNeedsFocus)
         {
             _fullscreenNeedsFocus = false;
@@ -1547,6 +1596,22 @@
                 // through OnError so consumers can react, but keep the flag
                 // cleared so a future render isn't blocked on a stale
                 // pending-animation state (Codex review on #48).
+                if (OnError.HasDelegate) await OnError.InvokeAsync(ex);
+            }
+        }
+
+        // FLIP-animate the row that just moved, same handshake as columns:
+        // ReorderRowByIndexAsync captured rects (keyed by stable row identity, not
+        // index — the index that moved is exactly the one that's now wrong) before
+        // mutating _displayedItems; now that the reordered list has rendered, JS
+        // recomputes each row's new top and slides from old to new.
+        if (_pendingRowReorderAnimation)
+        {
+            _pendingRowReorderAnimation = false;
+            try { await Interop.AnimateRowReorder(_gridId, RowReorderAnimationMs); }
+            catch (JSDisconnectedException) { }
+            catch (Exception ex)
+            {
                 if (OnError.HasDelegate) await OnError.InvokeAsync(ex);
             }
         }
@@ -3017,6 +3082,42 @@
         StateHasChanged();
     }
 
+    /// <summary>
+    /// Reorders a row by index, moving <paramref name="oldIndex"/> to
+    /// <paramref name="newIndex"/>. Drives the unified pointer-based row-reorder
+    /// path (mouse + touch + pen) registered via <c>RegisterRowReorder</c>: JS
+    /// handles the whole drag in the DOM — including the live sibling-shift
+    /// preview — and invokes this once on release with the plain DOM indices it
+    /// measured at drag-start (safe only because <see cref="RowReorderPointerActive"/>
+    /// guarantees a flat, non-virtualized body where tr index == _displayedItems
+    /// index 1:1). Captures FLIP "First" rects before mutating so the settled drag
+    /// position and the post-render position can be diffed into one slide, then
+    /// delegates the actual mutation + OnRowReorder callback to <see cref="MoveRow"/>.
+    /// </summary>
+    internal async Task ReorderRowByIndexAsync(int oldIndex, int newIndex)
+    {
+        if (!RowReorderPointerActive || oldIndex == newIndex) return;
+        if (oldIndex < 0 || newIndex < 0 || oldIndex >= _displayedItems.Count || newIndex >= _displayedItems.Count)
+            return;
+
+        try { await Interop.CaptureRowRects(_gridId); }
+        catch (JSDisconnectedException) { }
+        catch (Exception captureEx)
+        {
+            // Same rationale as ReorderColumnByIdAsync's capture: a failed FLIP
+            // snapshot must never block the actual row-order mutation.
+            if (OnError.HasDelegate) await OnError.InvokeAsync(captureEx);
+        }
+
+        // Set BEFORE MoveRow, not after: MoveRow ends with StateHasChanged(), and a
+        // synchronous-rendering host (bUnit's TestRenderer notably) can run the next
+        // OnAfterRenderAsync inline from inside that call — if the flag flipped only
+        // afterward, that render would see it still false and skip the animation with
+        // nothing left to pick it up later (mirrors HandleColumnReorder's ordering).
+        _pendingRowReorderAnimation = true;
+        MoveRow(oldIndex, newIndex);
+    }
+
     // --- Context Menu ---
 
     private void HandleContextMenu(TItem item, double x, double y)
@@ -3656,6 +3757,15 @@
             catch (Microsoft.JSInterop.JSDisconnectedException) { /* circuit gone */ }
             catch { /* best-effort */ }
             _pointerReorderRegistered = false;
+        }
+
+        // Tear down the pointer-based row-reorder listener registered on the grid.
+        if (_pointerRowReorderRegistered)
+        {
+            try { await Interop.UnregisterRowReorder(_gridId); }
+            catch (Microsoft.JSInterop.JSDisconnectedException) { /* circuit gone */ }
+            catch { /* best-effort */ }
+            _pointerRowReorderRegistered = false;
         }
 
         // Defensive: if disposed while still in fullscreen, unlock scroll AND drop

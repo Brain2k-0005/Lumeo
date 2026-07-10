@@ -209,6 +209,10 @@ public class AffixDisposeLifecycleTests : IAsyncLifetime
         public ValueTask UnregisterColumnResize(string handleId) => _inner.UnregisterColumnResize(handleId);
         public ValueTask CaptureColumnRects(string gridId) => _inner.CaptureColumnRects(gridId);
         public ValueTask AnimateColumnReorder(string gridId, int durationMs) => _inner.AnimateColumnReorder(gridId, durationMs);
+        public ValueTask RegisterRowReorder(string gridId, Func<int, int, Task> commitHandler) => _inner.RegisterRowReorder(gridId, commitHandler);
+        public ValueTask UnregisterRowReorder(string gridId) => _inner.UnregisterRowReorder(gridId);
+        public ValueTask CaptureRowRects(string gridId) => _inner.CaptureRowRects(gridId);
+        public ValueTask AnimateRowReorder(string gridId, int durationMs) => _inner.AnimateRowReorder(gridId, durationMs);
         public ValueTask<ElementRect?> GetElementRectBySelector(string selector) => _inner.GetElementRectBySelector(selector);
         public ValueTask ScrollSelectorIntoView(string selector) => _inner.ScrollSelectorIntoView(selector);
         public ValueTask ScrollIntoView(string elementId, string block = "nearest") => _inner.ScrollIntoView(elementId, block);

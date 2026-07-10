@@ -80,6 +80,8 @@ internal static partial class LumeoDefaultStrings
         ["DataGrid.DragToGroup"] = "Drag to group by this column",
         ["DataGrid.RemoveGrouping"] = "Remove grouping",
         ["DataGrid.ClearAllGrouping"] = "Clear all grouping",
+        ["DataGrid.DragToReorderRow"] = "Drag to reorder row",
+        ["DataGrid.RowReorderUnavailable"] = "Row reordering isn't available while grouped or virtualized",
         ["Filter.FilterTitle"] = "Filter: {0}",
 
         // ── Pagination ──────────────────────────────────────────────

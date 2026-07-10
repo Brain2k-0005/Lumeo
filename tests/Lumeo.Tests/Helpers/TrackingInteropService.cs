@@ -547,6 +547,48 @@ public class TrackingInteropService : IComponentInteropService
         return ValueTask.CompletedTask;
     }
 
+    // Pointer-based (mouse/touch/pen) row reorder registration + commit capture —
+    // vertical mirror of the column tracking block above.
+    private readonly List<string> _rowReorderRegistrations = new();
+    private readonly List<string> _rowReorderUnregistrations = new();
+    private readonly Dictionary<string, Func<int, int, Task>> _rowReorderCommitHandlers = new();
+    public IReadOnlyList<string> RowReorderRegistrations => _rowReorderRegistrations;
+    public IReadOnlyList<string> RowReorderUnregistrations => _rowReorderUnregistrations;
+    /// <summary>Simulate a JS-side pointer-reorder commit (drop of source index onto target index).</summary>
+    public async Task<bool> SimulateRowReorderCommit(string gridId, int sourceIndex, int targetIndex)
+    {
+        if (!_rowReorderCommitHandlers.TryGetValue(gridId, out var handler)) return false;
+        await handler(sourceIndex, targetIndex);
+        return true;
+    }
+    public ValueTask RegisterRowReorder(string gridId, Func<int, int, Task> commitHandler)
+    {
+        _rowReorderRegistrations.Add(gridId);
+        _rowReorderCommitHandlers[gridId] = commitHandler;
+        return ValueTask.CompletedTask;
+    }
+    public ValueTask UnregisterRowReorder(string gridId)
+    {
+        _rowReorderUnregistrations.Add(gridId);
+        _rowReorderCommitHandlers.Remove(gridId);
+        return ValueTask.CompletedTask;
+    }
+
+    private readonly List<string> _captureRowRectsCalls = new();
+    private readonly List<(string gridId, int durationMs)> _animateRowReorderCalls = new();
+    public IReadOnlyList<string> CaptureRowRectsGridIds => _captureRowRectsCalls;
+    public IReadOnlyList<(string gridId, int durationMs)> AnimateRowReorderCalls => _animateRowReorderCalls;
+    public ValueTask CaptureRowRects(string gridId)
+    {
+        _captureRowRectsCalls.Add(gridId);
+        return ValueTask.CompletedTask;
+    }
+    public ValueTask AnimateRowReorder(string gridId, int durationMs)
+    {
+        _animateRowReorderCalls.Add((gridId, durationMs));
+        return ValueTask.CompletedTask;
+    }
+
     public ValueTask<ElementRect?> GetElementRectBySelector(string selector) => ValueTask.FromResult<ElementRect?>(null);
 
     // Affix registration tracking (#248) — assert the sticky element is wired
