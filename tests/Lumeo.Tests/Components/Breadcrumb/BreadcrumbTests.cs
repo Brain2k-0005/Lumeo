@@ -346,7 +346,7 @@ public class BreadcrumbTests : IAsyncLifetime
     {
         var cut = _ctx.Render<L.BreadcrumbSeparator>();
 
-        // Should render an svg icon (Blazicon renders an svg)
+        // Should render an svg icon (SvgGlyph renders an svg)
         Assert.NotNull(cut.Find("svg"));
     }
 

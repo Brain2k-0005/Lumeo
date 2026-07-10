@@ -105,7 +105,7 @@ public class SelectTests : IAsyncLifetime
     public void SelectTrigger_Has_ChevronDown_Icon()
     {
         var cut = RenderSelect();
-        // Blazicons renders an svg element for the ChevronDown icon
+        // The icon renderer emits an svg element for the ChevronDown icon
         Assert.NotEmpty(cut.FindAll("svg"));
     }
 

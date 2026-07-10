@@ -67,7 +67,7 @@ dotnet pack src/Lumeo/Lumeo.csproj
 - **CSS classes**: Combine via `$"{BaseClasses} {Class}".Trim()` — no hardcoded colors
 - **Theme**: All colors via CSS variables (`bg-primary`, `text-foreground`, etc.) — never raw hex/hsl
 - **Dark mode**: Handled by CSS variable swaps in `lumeo.css` — do NOT use `dark:` Tailwind prefixes
-- **Icons**: Use `<Blazicon Svg="Lucide.X" />` from `Blazicons.Lucide`
+- **Icons**: Use `<SvgGlyph Svg="@(Lucide.X)" />` from the first-party `Lumeo.Icons.Lucide` pack (`@using Lumeo.Icons`), or `<Icon Name="X" />` for the built-in app-chrome vocabulary
 - **JS interop**: Go through `ComponentInteropService`, never call `IJSRuntime` directly in components
 - **Enums**: Define inside the component `@code` block (e.g., `Button.ButtonVariant`)
 - **Context records**: Define as nested `public record` inside the parent component

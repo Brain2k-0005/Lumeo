@@ -16,9 +16,10 @@ namespace Lumeo.Tests.E2E.Smokes;
 ///          a containing block for the `position:fixed` sub-content), so it opened
 ///          off its trigger / off-viewport. Fixed by making positionFixed
 ///          transform-free.
-///   #173 — Blazicons injects an unlayered `svg[blazicon]{width:1em}` rule that, in
-///          Tailwind v4, beats the size utilities in `@layer utilities`, collapsing
-///          every icon to the font size. Fixed by an unlayered revert-layer reset.
+///   #173 — a legacy icon library could inject an unlayered `svg[...]{width:1em}` rule
+///          that, in Tailwind v4, beat the size utilities in `@layer utilities`,
+///          collapsing every icon to the font size. Lumeo's own SvgGlyph sizes purely
+///          through utilities, so this asserts the size utilities produce the exact px.
 ///
 /// Targets the deterministic <c>/e2e/p0-harness</c> page. Requires the docs
 /// dev-server (see project README.md).
@@ -89,7 +90,7 @@ public class P0OverlayIconTests : PlaywrightTestBase
     [InlineData("p0-icon-md", 16)]
     [InlineData("p0-icon-lg", 20)]
     [InlineData("p0-icon-xl", 24)]
-    public async Task Icon_size_utility_wins_over_blazicon_1em(string testid, int expectedPx)
+    public async Task Icon_size_utility_wins_over_unlayered_1em(string testid, int expectedPx)
     {
         await Goto("/e2e/p0-harness");
         await Page.WaitForLoadStateAsync(LoadState.NetworkIdle);
@@ -103,6 +104,6 @@ public class P0OverlayIconTests : PlaywrightTestBase
         // 1.5px tolerance for sub-pixel rounding. Pre-fix every icon measured
         // ~14px (1em at text-sm) regardless of its h-/w- utility.
         Assert.True(Math.Abs(width - expectedPx) <= 1.5,
-            $"Icon '{testid}' computed width {width}px, expected ~{expectedPx}px — Blazicons' 1em rule is likely still winning the cascade.");
+            $"Icon '{testid}' computed width {width}px, expected ~{expectedPx}px — an unlayered 1em svg rule is likely still winning the cascade.");
     }
 }

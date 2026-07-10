@@ -361,7 +361,7 @@ await Theme.ToggleModeAsync();              // Toggle current
 - Tailwind CSS v4
 - ECharts for charts, FullCalendar for Scheduler, Frappe Gantt for Gantt, TipTap for RichTextEditor
 - ClosedXML + QuestPDF for DataGrid export
-- [Blazicons.Lucide](https://github.com/nickvdyck/blazicons) for icons
+- First-party `Lumeo.Icons.*` packs (Lucide, Tabler, Phosphor, …) for icons
 
 ## License
 

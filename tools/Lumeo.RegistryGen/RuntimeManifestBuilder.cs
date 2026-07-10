@@ -45,8 +45,8 @@ public static class RuntimeManifestBuilder
         if (File.Exists(Path.Combine(coreSrcRoot, "UI", "Overlay", "DismissEventArgs.cs")))
             files.Add("UI/Overlay/DismissEventArgs.cs");
 
-        // SvgGlyph is the shared SVG primitive every icon-using component renders through (the 1:1
-        // Blazicon replacement). It lives under UI/Icon/ but is runtime substrate, not a standalone
+        // SvgGlyph is the shared SVG primitive every icon-using component renders through (the
+        // first-party icon renderer). It lives under UI/Icon/ but is runtime substrate, not a standalone
         // component (Icon.razor is the component) — include just that one file so vendored .razor
         // resolves <SvgGlyph> against IconSource + LumeoIcons with no external icon package.
         if (File.Exists(Path.Combine(coreSrcRoot, "UI", "Icon", "SvgGlyph.razor")))

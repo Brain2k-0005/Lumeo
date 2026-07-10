@@ -53,7 +53,7 @@ The 16 full-page "blocks" (dashboard, authentication, calendar, chat, ecommerce,
 
 1. **Find** — `lumeo_search` (or `lumeo_list_components` by category) to pick the component(s).
 2. **Learn** — `lumeo_get_component` for the schema; `lumeo_get_example` for usage. For setup: `lumeo_get_install`. For a whole page: `lumeo_get_pattern`.
-3. **Write** — Razor following the conventions (theme tokens, no `dark:`, Blazicon, sub-component nesting).
+3. **Write** — Razor following the conventions (theme tokens, no `dark:`, SvgGlyph icons, sub-component nesting).
 4. **Verify** — `lumeo_validate_markup` on what you wrote. Fix errors, re-run.
 5. **Ship.**
 

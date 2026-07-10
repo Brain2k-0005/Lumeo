@@ -114,7 +114,7 @@ Every `.razor` file must include:
 - **CSS classes**: Always combine via `$"{BaseClasses} {Class}".Trim()` — no hardcoded colors.
 - **Theme colors**: Use CSS variables only (`bg-primary`, `text-foreground`, etc.) — never raw hex or hsl values.
 - **Dark mode**: Handled by CSS variable swaps in `lumeo.css` — do **not** use `dark:` Tailwind prefixes.
-- **Icons**: Use `<Blazicon Svg="Lucide.X" />` from `Blazicons.Lucide`.
+- **Icons**: Use `<SvgGlyph Svg="@(Lucide.X)" />` from the first-party `Lumeo.Icons.Lucide` pack (`@using Lumeo.Icons`), or `<Icon Name="X" />` for the built-in app-chrome vocabulary.
 - **JS interop**: Go through `ComponentInteropService` — never call `IJSRuntime` directly in components.
 - **Enums**: Define inside the component `@code` block.
 - **State management**: Use `CascadingValue` with context records (`IsFixed="false"` for mutable state).

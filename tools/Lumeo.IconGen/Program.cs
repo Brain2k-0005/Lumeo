@@ -6,7 +6,8 @@ using Lumeo.IconGen;
 // Lumeo.IconGen — generic, config-driven icon-pack generator.
 //
 // Phase 0 mode ("lumeo-icons", the default): vendor the exact set of Lucide icons that Lumeo's own
-// source references into src/Lumeo/Icons/LumeoIcons.g.cs, decoupling the core from Blazicons.
+// source references into src/Lumeo/Icons/LumeoIcons.g.cs, so the core owns its icons with no
+// third-party icon dependency.
 // The union is derived from truth (a regex scan of src/**/*.{cs,razor}), so it never drifts.
 //
 // Phase 1 pack modes: emit the FULL upstream set of a pack into a dedicated src/Lumeo.Icons.*

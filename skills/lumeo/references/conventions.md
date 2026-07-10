@@ -24,7 +24,7 @@ Use this when writing or reviewing Lumeo Razor. Items marked **(enforced)** will
 
 ## Icons **(enforced)**
 
-- `<Blazicon Svg="Lucide.X" />` from `Blazicons.Lucide`. Browse names at blazicons.com. Not inline `<svg>`, not Heroicons/FontAwesome/etc.
+- `<SvgGlyph Svg="@(Lucide.X)" />` from the first-party `Lumeo.Icons.Lucide` pack (`@using Lumeo.Icons`), or `<Icon Name="X" />` for the built-in app-chrome vocabulary. Browse names in the `/icons` gallery. Not raw inline `<svg>`.
 
 ## State & binding
 

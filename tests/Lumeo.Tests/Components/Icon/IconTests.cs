@@ -102,7 +102,7 @@ public class IconTests : IAsyncLifetime
         Assert.Contains("w-5", cls);
     }
 
-    // --- IconSource rendering (Blazicons-decoupled) ---
+    // --- IconSource rendering (dependency-decoupled) ---
 
     [Fact]
     public void Svg_IconSource_Renders_Through_SvgGlyph()

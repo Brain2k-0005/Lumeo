@@ -4,7 +4,6 @@
 @inject Microsoft.AspNetCore.Components.WebAssembly.Services.LazyAssemblyLoader LazyLoader
 @implements IDisposable
 @using Lumeo.Docs.Shared
-@using Blazicons
 @using System.Reflection
 
 <PageTitle>Icon — Lumeo</PageTitle>
@@ -73,12 +72,6 @@
                             <SelectItem Value="fluent">Fluent</SelectItem>
                             <SelectItem Value="fluent-filled">Fluent Filled</SelectItem>
                         </SelectGroup>
-                        <SelectGroup>
-                            <SelectLabel>Third-party interop (Blazicons)</SelectLabel>
-                            <SelectItem Value="font-awesome">Font Awesome</SelectItem>
-                            <SelectItem Value="ionicons">Ionicons</SelectItem>
-                            <SelectItem Value="material-design">Material Design</SelectItem>
-                        </SelectGroup>
                     </SelectContent>
                 </Select>
                 <Select Value="@_previewSize" ValueChanged="@((string v) => _previewSize = v)">
@@ -96,14 +89,7 @@
             </Flex>
             <div class="mt-2 flex items-center justify-between text-xs text-muted-foreground">
                 <span><span class="font-medium text-foreground">@Filtered.Count</span> of @ActiveCatalog.Count @LibraryDisplayName(IconService.ActiveLibrary) icons</span>
-                @if (IsFirstPartyLib(IconService.ActiveLibrary))
-                {
-                    <span>First-party <code class="font-mono text-[11px] px-1 rounded bg-muted">Lumeo.Icons</code> pack</span>
-                }
-                else
-                {
-                    <span>Third-party interop (Blazicons) — <code class="font-mono text-[11px] px-1 rounded bg-muted">Svg=</code></span>
-                }
+                <span>First-party <code class="font-mono text-[11px] px-1 rounded bg-muted">Lumeo.Icons</code> pack</span>
             </div>
         </div>
 
@@ -155,14 +141,7 @@
                                     @onclick="@(() => _selected = e)"
                                     title="@e.Name"
                                     class="@($"flex flex-col items-center justify-center gap-2 h-20 rounded-md border text-center transition-colors {(isActive ? "border-primary bg-primary/10 text-foreground" : "border-transparent hover:border-border/60 hover:bg-accent/50 text-muted-foreground hover:text-foreground")}")">
-                                @if (e.Glyph is {} tileGlyph)
-                                {
-                                    <SvgGlyph Svg="@tileGlyph" class="shrink-0" style="@PreviewIconStyle" />
-                                }
-                                else if (e.Blaz is {} tileBlaz)
-                                {
-                                    <Blazicon Svg="@tileBlaz" class="shrink-0" style="@PreviewIconStyle" />
-                                }
+                                <SvgGlyph Svg="@e.Glyph" class="shrink-0" style="@PreviewIconStyle" />
                                 <span class="text-[10px] leading-tight truncate w-full px-1">@e.Name</span>
                             </button>
                         }
@@ -195,14 +174,7 @@
 
                     @* Big preview — uses the selected size from the toolbar picker *@
                     <div class="flex items-center justify-center h-32 rounded-md border border-border/40 bg-background mb-4">
-                        @if (_selected.Glyph is {} bigGlyph)
-                        {
-                            <SvgGlyph Svg="@bigGlyph" class="@BigPreviewClass" />
-                        }
-                        else if (_selected.Blaz is {} bigBlaz)
-                        {
-                            <Blazicon Svg="@bigBlaz" class="@BigPreviewClass" />
-                        }
+                        <SvgGlyph Svg="@_selected.Glyph" class="@BigPreviewClass" />
                     </div>
 
                     @* Name + library *@
@@ -217,14 +189,7 @@
                         <div class="flex items-center justify-around rounded-md border border-border/40 bg-background px-3 py-3">
                             @foreach (var sz in new[] { "h-3 w-3", "h-3.5 w-3.5", "h-4 w-4", "h-5 w-5", "h-6 w-6" })
                             {
-                                @if (_selected.Glyph is {} sizeGlyph)
-                                {
-                                    <SvgGlyph Svg="@sizeGlyph" class="@sz" />
-                                }
-                                else if (_selected.Blaz is {} sizeBlaz)
-                                {
-                                    <Blazicon Svg="@sizeBlaz" class="@sz" />
-                                }
+                                <SvgGlyph Svg="@_selected.Glyph" class="@sz" />
                             }
                         </div>
                     </div>
@@ -420,20 +385,19 @@
     private string _lastGridKey = "";
 
     // An icon entry the grid can render and the snippet can target. Name is the pack
-    // property name (e.g. "Search", "ChevronDown"). Exactly one of Glyph (first-party
-    // Lumeo.Icons IconSource → <SvgGlyph>) or Blaz (a Blazicons comparison-pack SvgIcon
-    // → <Blazicon>) is populated, depending on the active library.
-    private record IconEntry(string Name, Lumeo.IconSource? Glyph, SvgIcon? Blaz);
+    // property name (e.g. "Search", "ChevronDown"); Glyph is that pack's first-party
+    // Lumeo.Icons IconSource, rendered through <SvgGlyph>.
+    private record IconEntry(string Name, Lumeo.IconSource Glyph);
 
-    // Per-library catalogs, built ON DEMAND. The non-Lucide Blazicons packs are
+    // Per-library catalogs, built ON DEMAND. The non-Lucide packs are
     // <BlazorWebAssemblyLazyLoad> assemblies. Reflecting over their types
-    // (typeof(FluentUiIcon), …) eagerly in a static initializer forced the WASM
-    // runtime to resolve those assemblies through the reflection path, which
-    // raced CustomizerSidebar's LazyAssemblyLoader fetch of the same DLLs and
-    // double-read the DLL Response ("Failed to execute 'arrayBuffer' … body
-    // stream already read"), crashing the page on load. We now load each pack
-    // via LazyAssemblyLoader BEFORE reflecting over it and cache the result.
-    // Lucide is eager (in the boot manifest), so it is safe to build up front.
+    // eagerly in a static initializer forced the WASM runtime to resolve those
+    // assemblies through the reflection path, which raced CustomizerSidebar's
+    // LazyAssemblyLoader fetch of the same DLLs and double-read the DLL Response
+    // ("Failed to execute 'arrayBuffer' … body stream already read"), crashing
+    // the page on load. We now load each pack via LazyAssemblyLoader BEFORE
+    // reflecting over it and cache the result. Lucide is eager (in the boot
+    // manifest), so it is safe to build up front.
     private readonly Dictionary<string, IReadOnlyList<IconEntry>> _catalogs = new();
     private readonly HashSet<string> _loadingLibs = new();
 
@@ -463,20 +427,6 @@
         ["fluent-filled"]                  = ("Lumeo.Icons.Fluent.dll",                  "Lumeo.Icons.FluentFilled",                 "Lumeo.Icons.Fluent",                  "FluentFilled"),
     };
 
-    private static bool IsFirstPartyLib(string key) => _firstPartyLibs.ContainsKey(key);
-
-    // library key -> (lazy-loaded DLL file, fully-qualified Blazicons container type). These
-    // are the remaining THIRD-PARTY INTEROP packs; they render via <Blazicon> (SvgIcon).
-    // Bootstrap moved to _firstPartyLibs above. FluentUI + GoogleMaterialDesign were dropped:
-    // replaced by the first-party Lumeo.Icons.Fluent / Lumeo.Icons.MaterialSymbols* packs
-    // (wave-2b), which now live in _firstPartyLibs and render via <SvgGlyph>.
-    private static readonly Dictionary<string, (string Dll, string TypeName)> _lazyLibs = new()
-    {
-        ["font-awesome"]    = ("Blazicons.FontAwesome.dll", "Blazicons.FontAwesomeSolidIcon"),
-        ["ionicons"]        = ("Blazicons.Ionicons.dll", "Blazicons.Ionicon"),
-        ["material-design"] = ("Blazicons.MaterialDesignIcons.dll", "Blazicons.MdiIcon"),
-    };
-
     // Key that re-mounts the grid scroll container whenever the filter/library
     // changes, so scrollTop resets to 0 and the first row is never cut off.
     private string GridKey => $"grid-{IconService.ActiveLibrary}-{_query}";
@@ -501,33 +451,19 @@
         : ActiveCatalog.Where(e => e.Name.Contains(_query, StringComparison.OrdinalIgnoreCase)).ToList();
 
     // Loads the active library's lazy assembly (no-op if already loaded — e.g.
-    // CustomizerSidebar preloaded it) and only then reflects over its icon type. Handles both
-    // first-party Lumeo.Icons packs (IconSource → <SvgGlyph>) and the Blazicons interop packs
-    // (SvgIcon → <Blazicon>).
+    // CustomizerSidebar preloaded it) and only then reflects over its first-party
+    // Lumeo.Icons pack type (IconSource → <SvgGlyph>).
     private async Task EnsureCatalogAsync(string lib)
     {
         if (_catalogs.ContainsKey(lib)) return;
-        var isFirstParty = _firstPartyLibs.TryGetValue(lib, out var fp);
-        var isBlaz = _lazyLibs.TryGetValue(lib, out var meta);
-        if (!isFirstParty && !isBlaz) return;   // unknown key → Lucide fallback
+        if (!_firstPartyLibs.TryGetValue(lib, out var fp)) return;   // unknown key → Lucide fallback
         if (!_loadingLibs.Add(lib)) return;      // de-dupe concurrent loads of this pack
         try
         {
-            if (isFirstParty)
-            {
-                if (fp.Dll is { } dll) await LazyLoader.LoadAssembliesAsync(new[] { dll });
-                var type = Type.GetType($"{fp.TypeName}, {fp.AssemblyName}");
-                if (type is not null)
-                    _catalogs[lib] = EnumerateGlyphPack(type);
-            }
-            else
-            {
-                await LazyLoader.LoadAssembliesAsync(new[] { meta.Dll });
-                var asmName = System.IO.Path.GetFileNameWithoutExtension(meta.Dll);
-                var type = Type.GetType($"{meta.TypeName}, {asmName}");
-                if (type is not null)
-                    _catalogs[lib] = EnumerateIcons(type);
-            }
+            if (fp.Dll is { } dll) await LazyLoader.LoadAssembliesAsync(new[] { dll });
+            var type = Type.GetType($"{fp.TypeName}, {fp.AssemblyName}");
+            if (type is not null)
+                _catalogs[lib] = EnumerateGlyphPack(type);
         }
         catch (Microsoft.JSInterop.JSDisconnectedException) { }
         finally
@@ -536,25 +472,14 @@
         }
     }
 
-    // First-party Lumeo.Icons pack (Lucide/Tabler/Phosphor/Heroicons/Remix/Bootstrap/Iconoir)
+    // First-party Lumeo.Icons pack (Lucide/Tabler/Phosphor/Heroicons/Remix/Bootstrap/Iconoir/…)
     // — properties return Lumeo.IconSource, rendered via <SvgGlyph>.
     private static IReadOnlyList<IconEntry> EnumerateGlyphPack(Type packClass)
     {
         return packClass
             .GetProperties(BindingFlags.Public | BindingFlags.Static)
             .Where(p => p.PropertyType == typeof(Lumeo.IconSource))
-            .Select(p => new IconEntry(p.Name, (Lumeo.IconSource)p.GetValue(null)!, null))
-            .OrderBy(e => e.Name, StringComparer.Ordinal)
-            .ToList();
-    }
-
-    // Blazicons comparison packs — properties return Blazicons.SvgIcon, rendered via <Blazicon>.
-    private static IReadOnlyList<IconEntry> EnumerateIcons(Type svgIconContainer)
-    {
-        return svgIconContainer
-            .GetProperties(BindingFlags.Public | BindingFlags.Static)
-            .Where(p => p.PropertyType == typeof(SvgIcon))
-            .Select(p => new IconEntry(p.Name, null, (SvgIcon)p.GetValue(null)!))
+            .Select(p => new IconEntry(p.Name, (Lumeo.IconSource)p.GetValue(null)!))
             .OrderBy(e => e.Name, StringComparer.Ordinal)
             .ToList();
     }
@@ -597,14 +522,7 @@
             // works for the ~100 icons that Icon.razor's MapName hardcodes.)
             if (_firstPartyLibs.TryGetValue(IconService.ActiveLibrary, out var fp))
                 return $"<Icon Svg=\"@({fp.UsageClass}.{n})\"{sizeAttr} />";
-            return IconService.ActiveLibrary switch
-            {
-                // Third-party Blazicons interop packs use the plain-name SvgIcon form.
-                "font-awesome"    => $"<Icon Svg=\"FontAwesomeSolidIcon.{n}\"{sizeAttr} />",
-                "ionicons"        => $"<Icon Svg=\"Ionicon.{n}\"{sizeAttr} />",
-                "material-design" => $"<Icon Svg=\"MdiIcon.{n}\"{sizeAttr} />",
-                _ => $"<Icon Svg=\"@(Lucide.{n})\"{sizeAttr} />",
-            };
+            return $"<Icon Svg=\"@(Lucide.{n})\"{sizeAttr} />";
         }
     }
 
@@ -625,9 +543,6 @@
         "material-symbols-sharp-filled" => "Material Symbols Sharp Filled",
         "fluent"                        => "Fluent",
         "fluent-filled"                 => "Fluent Filled",
-        "font-awesome"                  => "Font Awesome",
-        "ionicons"                      => "Ionicons",
-        "material-design"               => "Material Design",
         _ => key,
     };
 
@@ -688,7 +603,7 @@
         IconService.OnChange -= OnLibChanged;
     }
 
-    // Cross-library set — icons supported across all 7 Blazicons libraries.
+    // Cross-library set — semantic names that resolve across every icon pack.
     // Used when a non-Lucide provider is active so every tile renders something
     // meaningful (DynamicIcon only maps this set across providers).
     private static readonly string[] _crossLibraryCatalog =
@@ -715,9 +630,9 @@
     };
 
     // Extended Lucide-only catalog kept for reference; not used yet. Wiring it
-    // up requires reflecting into Blazicons.Lucide at render time (DynamicIcon
-    // only maps the cross-library set), and updating Icon.razor's MapName so
-    // every name here resolves through `<Icon Name=>`. Tracked as a follow-up.
+    // up requires reflecting into the Lumeo.Icons.Lucide pack at render time
+    // (DynamicIcon only maps the cross-library set), and updating Icon.razor's
+    // MapName so every name here resolves through `<Icon Name=>`. Tracked as a follow-up.
     private static readonly string[] _lucideCatalogExtended = new[]
     {
         "Accessibility", "Activity", "Airplay", "AlarmClock", "Album",

@@ -1349,10 +1349,9 @@ input[type="range"]::-moz-range-thumb {
 
 /* Draw the full check path regardless of the exact SVG path length. The
    Lucide Check path is ~22 units long so a dasharray of 16 clipped the
-   tail of the stroke. We target the inline SVG that Blazicon renders via
-   pathLength="1" — every element with a pathLength attribute normalises
-   to 0..1 — falling back to a large fixed dasharray for any icon library
-   that doesn't set pathLength. */
+   tail of the stroke. We target the inline SVG the check icon renders —
+   every element with a pathLength attribute normalises to 0..1 — falling
+   back to a large fixed dasharray for any icon that doesn't set pathLength. */
 .lumeo-checkbox-animated svg path,
 .lumeo-checkbox-animated svg polyline,
 .lumeo-checkbox-animated svg line {
@@ -1832,34 +1831,4 @@ input[type="range"]::-moz-range-thumb {
 .lumeo-scrollarea[data-scroll-type="hover"]:focus-within::-webkit-scrollbar-thumb {
   background-color: var(--color-border);
 }
-
-/* =====================================================================
-   Icon sizing under Tailwind v4 (#173)
-   =====================================================================
-   Legacy icon libs (e.g. Blazicons, if a consumer still uses one) can inject an UNLAYERED rule `svg[blazicon]{width:1em;
-   height:1em}`. Under Tailwind v4 an unlayered rule beats anything in
-   `@layer utilities`, so Lumeo's size utilities (h-4 w-4 … h-6 w-6, size-*)
-   — which live in @layer utilities — silently lose and every icon collapses
-   to the 1em font size (e.g. `<Icon Size="Lg">` renders 14px at text-sm
-   instead of 20px). Project-wide: Lumeo's own components render
-   `<Blazicon class="h-4 w-4">` directly.
-
-   Fix: an unlayered rule of HIGHER specificity than `svg[blazicon]` (the
-   attribute is repeated -> (0,3,1) > (0,1,1)) that matches only icons
-   carrying a width/height/size utility and uses `revert-layer` to defer the
-   value back to the utilities layer. Net: the size utility wins over the 1em
-   rule, while a consumer's own `Class="h-8 w-8"` override (also a utility)
-   still wins over the preset. Decorative icons with no size utility keep
-   such a lib's 1em default untouched.
-
-   LOAD ORDER: this neutralizes the 1em rule only when lumeo.css is loaded
-   UNLAYERED (the default `<link rel="stylesheet">` path — e.g. the docs
-   site). Consumers who instead `@import ".../lumeo.css" layer(base)` place
-   these rules in @layer base, which cannot outrank an unlayered rule — they
-   must add the same reset unlayered in their own entry CSS (see icon docs).
-   Cascade outcome is browser-verified on the Cloudflare preview / e2e (#173). */
-svg[blazicon][blazicon][class*="w-"],
-svg[blazicon][blazicon][class*="size-"] { width: revert-layer; }
-svg[blazicon][blazicon][class*="h-"],
-svg[blazicon][blazicon][class*="size-"] { height: revert-layer; }
 

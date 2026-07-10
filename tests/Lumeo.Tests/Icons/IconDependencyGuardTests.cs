@@ -13,9 +13,9 @@ namespace Lumeo.Tests.Icons;
 /// <c>*.razor</c> / <c>*.cs</c> / <c>*.csproj</c> under <c>src/</c>. Re-introducing it (a stray icon
 /// import, a reverted render site, a copied csproj line) fails here.
 ///
-/// Scope is <c>src/</c> ONLY — <c>docs/</c> keeps its Blazicons packs for the customizer / comparison
-/// demos (Blazicons remains usable BY consumers; it just left Lumeo's own dependency graph), and
-/// generated <c>obj/</c> / <c>bin/</c> output is excluded (stale build artifacts, not source).
+/// Scope is <c>src/</c> ONLY — the shipped library and its satellites. (The docs, tools and tests
+/// no longer reference the packages either; only generated <c>obj/</c> / <c>bin/</c> output and
+/// historical changelog/design records still mention them.) Generated build output is excluded.
 /// </summary>
 public class IconDependencyGuardTests
 {

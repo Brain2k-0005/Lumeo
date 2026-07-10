@@ -144,7 +144,7 @@ public class SidebarTests : IAsyncLifetime
 
         var button = cut.Find("button[aria-label='Toggle sidebar']");
         Assert.NotNull(button);
-        // The icon is rendered by Blazicon — just check the button is present with correct state
+        // The icon is rendered by SvgGlyph — just check the button is present with correct state
         Assert.DoesNotContain("disabled", button.GetAttribute("class") ?? "");
     }
 

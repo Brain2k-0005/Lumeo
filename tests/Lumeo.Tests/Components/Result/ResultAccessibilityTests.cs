@@ -8,7 +8,7 @@ namespace Lumeo.Tests.Components.Result;
 // Regression: wave3-53 — the default status glyph sits inside the root
 // role="status"/role="alert" live region. It is decorative, so it must be
 // aria-hidden, otherwise AT announces a redundant icon label alongside the
-// Title/SubTitle. Without the fix the Blazicon emits no aria-hidden attribute.
+// Title/SubTitle. Without the fix the icon emits no aria-hidden attribute.
 public class ResultAccessibilityTests : IAsyncLifetime
 {
     private readonly BunitContext _ctx = new();

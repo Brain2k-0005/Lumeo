@@ -1,6 +1,5 @@
 @page "/components/dynamic-icon"
 @namespace Lumeo.Docs.Pages.Components
-@using Blazicons
 
 <PageTitle>DynamicIcon — Lumeo</PageTitle>
 
@@ -24,7 +23,7 @@
             </Flex>
         </ComponentDemo>
         <Lumeo.Text Color="muted" Size="sm">
-            <code>Name</code> takes a PascalCase Lucide name (unknown names fall back to a circle); <code>Svg</code> takes any Blazicons icon directly (<code>LumeoIcons.*</code>, Bootstrap, FluentUI, …) and wins over <code>Name</code>. Size via the <code>Size</code> preset or a <code>Class</code> like <code>h-5 w-5</code>; set <code>Title</code> to give the icon an accessible name (otherwise it is <code>aria-hidden</code> decorative). Full reference on the <a href="/components/icon" class="text-primary underline-offset-4 hover:underline">Icon</a> page.
+            <code>Name</code> takes a PascalCase Lucide name (unknown names fall back to a circle); <code>Svg</code> takes any <code>Lumeo.IconSource</code> directly (a built-in <code>LumeoIcons.*</code> or any <code>Lumeo.Icons.*</code> pack member) and wins over <code>Name</code>. Size via the <code>Size</code> preset or a <code>Class</code> like <code>h-5 w-5</code>; set <code>Title</code> to give the icon an accessible name (otherwise it is <code>aria-hidden</code> decorative). Full reference on the <a href="/components/icon" class="text-primary underline-offset-4 hover:underline">Icon</a> page.
         </Lumeo.Text>
     </Stack>
 
@@ -58,7 +57,7 @@
     <!-- How It Works -->
     <Stack Gap="3">
         <Heading Level="2" Class="text-lg font-semibold">How It Works</Heading>
-        <Lumeo.Text Color="muted" Size="sm">DynamicIcon is a docs-only component that wraps Blazicons and maps abstract icon names to the correct icon in whichever library is currently active. It listens to <code>IconService.OnChange</code> and re-renders automatically.</Lumeo.Text>
+        <Lumeo.Text Color="muted" Size="sm">DynamicIcon is a docs-only component that maps an abstract icon name to the matching <code>Lumeo.IconSource</code> in whichever first-party pack is currently active, rendering it through <code>SvgGlyph</code>. It listens to <code>IconService.OnChange</code> and re-renders automatically.</Lumeo.Text>
         <ComponentDemo Title="With Colors & Sizes" Code="@_codeSizes">
             <Flex Gap="4" Wrap="true" Align="center">
                 <DynamicIcon Name="Heart" Class="h-3 w-3 text-destructive" />
@@ -69,6 +68,22 @@
                 <DynamicIcon Name="Star" Class="h-5 w-5 text-primary" />
                 <DynamicIcon Name="Bell" Class="h-5 w-5 text-muted-foreground" />
                 <DynamicIcon Name="Check" Class="h-5 w-5 text-chart-1" />
+            </Flex>
+        </ComponentDemo>
+    </Stack>
+
+    <!-- Bring your own SVG (third-party interop) -->
+    <Stack Gap="3">
+        <Heading Level="2" Class="text-lg font-semibold">Bring your own SVG (third-party interop)</Heading>
+        <Lumeo.Text Color="muted" Size="sm">
+            <code>Svg</code> accepts any <code>Lumeo.IconSource</code>, and <code>IconSource</code> is just inner SVG markup plus how to paint it — so you can adapt <strong>any</strong> icon source that exposes an SVG string (a custom brand glyph, an inline <code>&lt;path&gt;</code>, or any third-party icon library) with no extra dependency. Build one with <code>IconSource.Stroke(content, viewBox, strokeWidth)</code> for outline sets or <code>IconSource.Fill(content, viewBox)</code> for solid ones, then hand it to <code>&lt;Icon Svg&gt;</code> or the lower-level <code>&lt;SvgGlyph Svg&gt;</code>.
+        </Lumeo.Text>
+        <ComponentDemo Title="Adapt an arbitrary SVG source" Code="@_codeByos">
+            <Flex Gap="4" Wrap="true" Align="center">
+                <Lumeo.Icon Svg="_customStroke" Size="Lumeo.Size.Lg" />
+                <Lumeo.Icon Svg="_customStroke" Size="Lumeo.Size.Lg" Class="text-primary" />
+                <Lumeo.Icon Svg="_customFill" Size="Lumeo.Size.Lg" Class="text-chart-1" />
+                <SvgGlyph Svg="_customFill" class="h-6 w-6 text-destructive" />
             </Flex>
         </ComponentDemo>
     </Stack>
@@ -91,13 +106,32 @@
             <TableBody>
                 <TableRow><TableCell Class="font-mono text-xs">Name</TableCell><TableCell Class="font-mono text-xs">string</TableCell><TableCell Class="font-mono text-xs">"Circle"</TableCell><TableCell>Abstract icon name (e.g. "Search", "Bell", "Settings"). Mapped to the active icon library.</TableCell></TableRow>
                 <TableRow><TableCell Class="font-mono text-xs">Class</TableCell><TableCell Class="font-mono text-xs">string?</TableCell><TableCell Class="font-mono text-xs">null</TableCell><TableCell>CSS classes for sizing and color (e.g. "h-5 w-5 text-primary").</TableCell></TableRow>
-                <TableRow><TableCell Class="font-mono text-xs">AdditionalAttributes</TableCell><TableCell Class="font-mono text-xs">Dictionary&lt;string, object&gt;?</TableCell><TableCell Class="font-mono text-xs">null</TableCell><TableCell>Additional HTML attributes passed to the underlying Blazicon element.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">AdditionalAttributes</TableCell><TableCell Class="font-mono text-xs">Dictionary&lt;string, object&gt;?</TableCell><TableCell Class="font-mono text-xs">null</TableCell><TableCell>Additional HTML attributes captured on the component.</TableCell></TableRow>
             </TableBody>
         </Table>
     </div>
 </div>
 
 @code {
+    // Third-party interop, no dependency: an IconSource is just inner SVG markup plus how to
+    // paint it, so any SVG string (a brand glyph, an inline <path>, another icon library's
+    // output) becomes a first-class Lumeo icon. Stroke() = outline sets, Fill() = solid sets.
+    private static readonly Lumeo.IconSource _customStroke =
+        Lumeo.IconSource.Stroke("<path d=\"M13 2 3 14h9l-1 8 10-12h-9l1-8Z\" />");
+    private static readonly Lumeo.IconSource _customFill =
+        Lumeo.IconSource.Fill("<path d=\"M12 2l2.9 6.3 6.9.6-5.2 4.6 1.6 6.8L12 17.3 5.8 20.9l1.6-6.8L2.2 8.9l6.9-.6L12 2Z\" />");
+
+    private const string _codeByos = @"@* IconSource = inner SVG markup + how to paint it — adapt ANY SVG source, no extra package. *@
+@code {
+    static readonly IconSource Bolt =
+        IconSource.Stroke(""<path d=\""M13 2 3 14h9l-1 8 10-12h-9l1-8Z\"" />"");
+    static readonly IconSource Star =        // solid glyph → Fill(); outline → Stroke()
+        IconSource.Fill(""<path d=\""M12 2l2.9 6.3 6.9.6-5.2 4.6 1.6 6.8L12 17.3 ...Z\"" />"");
+}
+
+<Icon Svg=""Bolt"" Size=""Size.Lg"" Class=""text-primary"" />
+<SvgGlyph Svg=""Star"" class=""h-6 w-6 text-destructive"" />";
+
     private static readonly string[] _icons = [
         "Accessibility", "AlignCenter", "AlignLeft", "AlignRight", "Archive",
         "ArrowDown", "ArrowLeft", "ArrowRight", "ArrowUp", "BarChart3",
@@ -128,7 +162,7 @@
 <Icon Name=""Search"" Size=""Size.Lg"" />
 <Icon Name=""Heart"" Size=""Size.Lg"" Class=""text-destructive"" />
 
-@* Pass any Blazicons icon directly (wins over Name) — Lucide, Bootstrap, FluentUI, … *@
+@* Pass any Lumeo.IconSource directly (wins over Name) — a built-in LumeoIcons.* or any Lumeo.Icons.* pack member. *@
 <Icon Svg=""LumeoIcons.Star"" Size=""Size.Lg"" Class=""text-primary"" />
 
 @* Give it an accessible name (otherwise the icon is decorative / aria-hidden). *@

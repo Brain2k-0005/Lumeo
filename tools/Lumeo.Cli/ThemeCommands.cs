@@ -240,7 +240,7 @@ public static class ThemeCommands
         }
 
         // Step 8: install the icon-library NuGet package if the preset requires one
-        // the consumer doesn't already have. Blazicons are compile-time — theme.js
+        // the consumer doesn't already have. Icon packs are compile-time — theme.js
         // can't switch them at runtime — so this is the only way to keep the CLI
         // apply step 1:1 with the customizer's icon selection.
         if ((allowed is null || allowed.Contains("iconLibrary")) && !string.IsNullOrEmpty(resolved.IconLibrary))
@@ -282,10 +282,11 @@ public static class ThemeCommands
         Info(Ansi.Green("OK ") + $"Applied preset {Ansi.Bold(preset)}.");
     }
 
-    // Maps the customizer's icon library id to the corresponding Blazicons NuGet id.
-    // Keep in sync with LumeoPresetOptions.IconLibraries + the docs customizer.
-    // First-party Lumeo.Icons packs where they exist; Blazicons only for sets Lumeo
-    // doesn't (yet) vendor (third-party interop). Extend as new Lumeo.Icons packs ship.
+    // Maps the customizer's icon library id to the corresponding first-party Lumeo.Icons
+    // NuGet id. Keep in sync with LumeoPresetOptions.IconLibraries + the docs customizer.
+    // Legacy preset codes that encode an icon library with no first-party pack decode to a
+    // key that is simply absent here — MaybeInstallIconPackageAsync skips the install with a
+    // warning rather than pulling a third-party dependency. Extend as new packs ship.
     private static readonly Dictionary<string, string> IconLibraryPackages = new(StringComparer.OrdinalIgnoreCase)
     {
         ["lucide"] = "Lumeo.Icons.Lucide",
@@ -295,13 +296,9 @@ public static class ThemeCommands
         ["heroicons"] = "Lumeo.Icons.Heroicons",
         ["remix"] = "Lumeo.Icons.Remix",
         ["iconoir"] = "Lumeo.Icons.Iconoir",
-        ["fluentui"] = "Blazicons.FluentUI",
-        ["font-awesome"] = "Blazicons.FontAwesome",
-        ["google-material"] = "Blazicons.GoogleMaterialDesign",
-        ["material-design"] = "Blazicons.MaterialDesignIcons",
-        ["ionicons"] = "Blazicons.Ionicons",
-        ["devicon"] = "Blazicons.Devicon",
-        ["flag-icons"] = "Blazicons.FlagIcons",
+        // Legacy preset keys → their first-party equivalents.
+        ["fluentui"] = "Lumeo.Icons.Fluent",
+        ["google-material"] = "Lumeo.Icons.MaterialSymbols",
     };
 
     private static async Task MaybeInstallIconPackageAsync(string iconLib, bool yes, bool silent)

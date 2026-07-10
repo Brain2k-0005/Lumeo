@@ -92,7 +92,7 @@ public class ThemeToggleBehaviorTests : IAsyncLifetime
     public void Dark_State_Renders_Sun_Icon_Light_State_Renders_Moon_Icon()
     {
         // Icon is the visible affordance for the current mode: Sun while dark,
-        // Moon while light (see ThemeToggle.razor @if (_isDark)). The Blazicon
+        // Moon while light (see ThemeToggle.razor @if (_isDark)). The icon
         // wrapper renders an <svg>, so we assert via aria-pressed (a robust proxy
         // for _isDark that the same branch drives) plus the presence of an icon.
         _ctx.JSInterop.Setup<bool>("themeManager.isDark").SetResult(true);
