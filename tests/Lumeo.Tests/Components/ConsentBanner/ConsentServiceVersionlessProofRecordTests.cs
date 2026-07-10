@@ -43,6 +43,44 @@ public class ConsentServiceVersionlessProofRecordTests
     }
 
     [Fact]
+    public async Task Versionless_proof_record_exposes_no_decision_timestamp()
+    {
+        // Codex round-21, finding 3: the record has a VALID timestamp and categories but a missing
+        // version, so it is REJECTED. DecidedAtUtc is contractually the moment of the last recorded
+        // DECISION — a rejected record is not a decision, so it must expose no timestamp, even though
+        // the stored "timestamp" parsed fine. The parsed choices are still kept for the prefill.
+        var store = new RecordingJsRuntime();
+        store.Set(Key, $"{{\"categories\":{{\"analytics\":true}},\"timestamp\":\"{Ts}\"}}");
+
+        var svc = new ConsentService(store) { PolicyVersion = "1" };
+        await svc.EnsureLoadedAsync();
+
+        Assert.False(svc.HasDecided);
+        // No decision → no attributable timestamp (pre-fix this leaked the parsed 2024-01-01 stamp).
+        Assert.Null(svc.DecidedAtUtc);
+        Assert.Null(svc.DecisionPolicyVersion);
+        // …but the parsed choice survives for the re-prompt prefill.
+        Assert.True(svc.Snapshot().TryGetValue("analytics", out var prev) && prev);
+    }
+
+    [Fact]
+    public async Task Versioned_mismatch_proof_record_keeps_its_decision_timestamp()
+    {
+        // Counter-case guard: a VERSIONED record whose version no longer matches IS a prior decision
+        // (merely stale) — it stays rejected-for-reprompt but legitimately retains its DecidedAtUtc.
+        // Proves the timestamp clear is scoped to the versionLESS branch, not every mismatch.
+        var store = new RecordingJsRuntime();
+        store.Set(Key, $"{{\"categories\":{{\"analytics\":true}},\"timestamp\":\"{Ts}\",\"version\":\"old\"}}");
+
+        var svc = new ConsentService(store) { PolicyVersion = "1" };
+        await svc.EnsureLoadedAsync();
+
+        Assert.False(svc.HasDecided);            // version mismatch → re-prompt
+        Assert.NotNull(svc.DecidedAtUtc);        // …but it WAS a decision, so the timestamp stands
+        Assert.Equal("old", svc.DecisionPolicyVersion);
+    }
+
+    [Fact]
     public async Task Proof_record_non_string_version_fails_closed()
     {
         var store = new RecordingJsRuntime();

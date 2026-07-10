@@ -258,6 +258,13 @@ public sealed class ConsentService
             // a null version. Only the new record shape is held to the version requirement.
             if (_storedVersion is null)
             {
+                // Reject the record, but expose NO proof metadata for something we no longer count as a
+                // decision: DecidedAtUtc is contractually the moment of the LAST recorded decision, and a
+                // rejected record has none — leaving the parsed timestamp would let a consumer display or
+                // audit a "decision time" for a record the service rejects. Clear it here (the versioned
+                // MISMATCH branch below keeps its timestamp — that record IS a prior decision, merely
+                // stale). KEEP _state so the re-prompt dialog can still prefill the parsed choices.
+                _decidedAtUtc = null;
                 _decided = false;
                 _decisionRejected = true;
             }

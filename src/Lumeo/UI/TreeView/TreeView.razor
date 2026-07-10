@@ -330,11 +330,20 @@
     {
         if (SelectedValuesChanged.HasDelegate)
         {
-            // CONTROLLED: adopt SelectedValues only when it is NOT the same reference we just pushed
-            // (an accepted echo) AND NOT the reference the parent held before this interaction (an
-            // observer-only consumer that never echoes). Only a third, distinct reference is an
-            // authoritative veto/override that must win. (Both snapshots read BEFORE the overwrite.)
-            var isEcho = ReferenceEquals(SelectedValues, _lastPushedSelectedValues);
+            // CONTROLLED: adopt SelectedValues only when it is NOT an accepted echo of what we just
+            // pushed AND NOT the reference the parent held before this interaction (an observer-only
+            // consumer that never echoes). Only a third, distinct decision is an authoritative
+            // veto/override that must win. (Both snapshots read BEFORE the overwrite.)
+            //
+            // An echo is the SAME reference we pushed OR a value-equal (same multiset) COPY of it: a
+            // controlled parent that accepts SelectedValuesChanged by copying our list into a FRESH
+            // instance with identical values is confirming the selection we already own, not authoring
+            // a new seed. Re-resolving that copy by value would convert the interactive IDENTITY
+            // selection (the specific node the user clicked) back into the value contract and, for
+            // duplicate/null-valued nodes, light up EVERY same-valued node. Bucket rule: only a
+            // values-DIFFERENT list re-seeds; a value-equal one is an echo of the accepted selection.
+            var isEcho = ReferenceEquals(SelectedValues, _lastPushedSelectedValues)
+                || SameSelectionValues(SelectedValues, _lastPushedSelectedValues);
             var isUnchangedFromBeforeInteraction = ReferenceEquals(SelectedValues, _previousSelectedValues);
             if (!isEcho && !isUnchangedFromBeforeInteraction)
             {
@@ -692,14 +701,30 @@
     }
 
     /// <summary>Registers state entries for a freshly-loaded lazy subtree so an immediate operation
-    /// (or the render before the next parameter set) sees them.</summary>
-    private void RegisterSubtree(List<TreeViewItem<T>> loaded)
+    /// (or the render before the next parameter set) sees them. Seeds each entry's structural
+    /// <see cref="NodeState.Path"/> from the parent's path + the child's sibling index (known at attach
+    /// time): without it a freshly-minted lazy child carries no Path, so if a controlled rebuild
+    /// swaps in fresh instances BEFORE the next parameter pass indexes it, <see cref="ClaimState"/>
+    /// can neither reference-match nor tree-unique-value-match a duplicate-valued descendant — its
+    /// value-verified sibling-unique path (priority (b)) is the only anchor, and it would otherwise be
+    /// dropped (an expanded lazy child collapsing / losing loaded state). BindState refreshes the path
+    /// authoritatively on every subsequent pass; this only seeds the pre-index window.</summary>
+    private void RegisterSubtree(List<TreeViewItem<T>> loaded, NodePath? parentPath)
     {
-        foreach (var child in loaded)
+        for (var i = 0; i < loaded.Count; i++)
         {
-            GetState(child);
+            var child = loaded[i];
+            var state = GetState(child);
+            // Only seed when the parent's path is known and the entry is fresh (no path yet) — never
+            // clobber a path an earlier indexing pass already recorded authoritatively.
+            if (parentPath is not null && state.Path is not { Indices.Count: > 0 })
+            {
+                var indices = new List<int>(parentPath.Indices) { i };
+                var values = new List<T?>(parentPath.Values) { child.Value };
+                state.Path = new NodePath(indices, values);
+            }
             if (child.Children is { Count: > 0 })
-                RegisterSubtree(child.Children);
+                RegisterSubtree(child.Children, state.Path);
         }
     }
 
@@ -844,7 +869,7 @@
             state.Children = loaded;
             state.ChildrenLoaded = true;
             state.Loading = false;
-            RegisterSubtree(loaded);
+            RegisterSubtree(loaded, state.Path);
 
             var target = state.Current;
             if (target is not null)
@@ -1041,7 +1066,7 @@
                         state.Children = loaded;
                         state.ChildrenLoaded = true;
                         state.Loading = false;
-                        RegisterSubtree(loaded);
+                        RegisterSubtree(loaded, state.Path);
                         var target = state.Current;
                         if (target is not null)
                         {
@@ -1381,6 +1406,31 @@
     /// <summary>Maps an incoming (controlled/seed) <see cref="SelectedValues"/> list to the concrete
     /// node instances carrying those values. Value-based on the way IN — an ambiguous value selects
     /// every match (the value contract). Interactive clicks stay identity-exact.</summary>
+    /// <summary>Multiset value-equality of two selection lists (null-safe; no T-keyed dictionary, since
+    /// T is an unconstrained nullable type parameter). Used to recognize a controlled parent's value-
+    /// equal COPY of what we pushed as an accepted ECHO, not a new seed. Both-null is NOT "equal" here —
+    /// the reference check already covers that case, and this must never treat a genuine null seed as an
+    /// echo. O(n²), but selection lists are small.</summary>
+    private static bool SameSelectionValues(List<T>? a, List<T>? b)
+    {
+        if (a is null || b is null) return false;
+        if (a.Count != b.Count) return false;
+        var matched = new bool[b.Count];
+        foreach (var x in a)
+        {
+            var found = false;
+            for (var j = 0; j < b.Count; j++)
+            {
+                if (matched[j] || !EqualityComparer<T>.Default.Equals(x, b[j])) continue;
+                matched[j] = true;
+                found = true;
+                break;
+            }
+            if (!found) return false;
+        }
+        return true;
+    }
+
     private HashSet<TreeViewItem<T>> ResolveSelectedNodes(List<T>? values)
     {
         _pendingCarries = null;
