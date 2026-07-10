@@ -218,16 +218,15 @@ public static class ThemeCommands
             Console.Error.WriteLine(Ansi.Yellow($"! Could not back up {Paths.ConfigFile}: {ex.Message}"));
         }
 
-        // Step 5b: normalize a tombstoned (empty) icon library BEFORE any merge/write.
-        // A legacy client preset can decode to "" (font-awesome, material-design,
-        // ionicons, devicon, flag-icons) — none has a first-party Lumeo.Icons.* pack.
-        // Null it out so MergeInto / WriteOrMergeThemeJson skip it entirely; otherwise
-        // `apply --only icons` on such a code would overwrite a valid first-party
-        // iconLibrary with a blank in lumeo.json / wwwroot/lumeo-theme.json.
-        if ((allowed is null || allowed.Contains("iconLibrary")) && resolved.IconLibrary == "")
+        // Step 5b: normalise the icon library through the single shared gate BEFORE any
+        // merge/write. Handles tombstoned codec indices (""), server-preset legacy strings
+        // (fluentui, google-material, font-awesome, ionicons, devicon, flag-icons …), and
+        // already-canonical first-party names — all in one place via IconLibraryNorm.
+        if (allowed is null || allowed.Contains("iconLibrary"))
         {
-            Console.Error.WriteLine(Ansi.Yellow("! Icon library in this preset has no first-party pack; skipping icon selection."));
-            resolved.IconLibrary = null;
+            resolved.IconLibrary = IconLibraryNorm.Normalize(
+                resolved.IconLibrary,
+                msg => Console.Error.WriteLine(Ansi.Yellow("! " + msg)));
         }
 
         // Step 6: merge into cfg.Theme (only the allowed keys).
@@ -297,39 +296,15 @@ public static class ThemeCommands
         Info(Ansi.Green("OK ") + $"Applied preset {Ansi.Bold(preset)}.");
     }
 
-    // Maps every CLI icon-library ID to the corresponding first-party Lumeo.Icons NuGet package.
-    // Single source of truth for both `apply` (install) and server-preset compat decode.
-    // Keep in sync with LumeoPresetOptions.IconLibraries. Extend here when a new pack ships.
-    private static readonly Dictionary<string, string> IconLibraryPackages = new(StringComparer.OrdinalIgnoreCase)
-    {
-        // First-party packs — canonical CLI IDs matching LumeoPresetOptions.IconLibraries.
-        ["lucide"]                   = "Lumeo.Icons.Lucide",
-        ["bootstrap"]                = "Lumeo.Icons.Bootstrap",
-        ["fluent"]                   = "Lumeo.Icons.Fluent",
-        ["material-symbols"]         = "Lumeo.Icons.MaterialSymbols",
-        ["material-symbols-rounded"] = "Lumeo.Icons.MaterialSymbols.Rounded",
-        ["material-symbols-sharp"]   = "Lumeo.Icons.MaterialSymbols.Sharp",
-        ["tabler"]                   = "Lumeo.Icons.Tabler",
-        ["phosphor"]                 = "Lumeo.Icons.Phosphor",
-        ["phosphor-bold"]            = "Lumeo.Icons.Phosphor.Bold",
-        ["phosphor-duotone"]         = "Lumeo.Icons.Phosphor.Duotone",
-        ["phosphor-fill"]            = "Lumeo.Icons.Phosphor.Fill",
-        ["phosphor-light"]           = "Lumeo.Icons.Phosphor.Light",
-        ["phosphor-thin"]            = "Lumeo.Icons.Phosphor.Thin",
-        ["heroicons"]                = "Lumeo.Icons.Heroicons",
-        ["remix"]                    = "Lumeo.Icons.Remix",
-        ["iconoir"]                  = "Lumeo.Icons.Iconoir",
-        // Legacy keys — still valid in server-stored presets (e.g. Worker JSON: "iconLibrary": "fluentui").
-        // Client presets at those codec indices now decode to the first-party names above.
-        ["fluentui"]                 = "Lumeo.Icons.Fluent",
-        ["google-material"]          = "Lumeo.Icons.MaterialSymbols",
-    };
+    // IconLibraryNorm.Packages is the single source of truth for icon-library → NuGet
+    // package mapping. It is also used by Step 5b normalization (IconLibraryNorm.Normalize).
+    // Extend IconLibraryNorm.cs when a new pack ships — do not add a local copy here.
 
     private static async Task MaybeInstallIconPackageAsync(string iconLib, bool yes, bool silent)
     {
         void Info(string line) { if (!silent) Console.WriteLine(line); }
 
-        if (!IconLibraryPackages.TryGetValue(iconLib, out var packageId))
+        if (!IconLibraryNorm.Packages.TryGetValue(iconLib, out var packageId))
         {
             Console.Error.WriteLine(Ansi.Yellow($"! Unknown icon library '{iconLib}' — no NuGet package mapped. Skipping install."));
             return;
