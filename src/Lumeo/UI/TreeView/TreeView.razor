@@ -1024,14 +1024,18 @@
                 try
                 {
                     var loaded = await LoadChildren!(state.Current ?? item);
-                    if (gen != _expandGeneration) return;
                     // The node vanished (unprovable identity): discard the result AND skip its subtree.
                     if (state.Dropped) continue;
-                    // A consumer supersession (authoritative children / branch reset) bumped the token:
-                    // its data is authoritative, so DON'T adopt this stale loader result (finding 3) —
-                    // but the expand-all pass is still live, so fall through to DESCEND into whatever the
-                    // consumer now owns and keep expanding those children (round-16 f4). Only a matching
-                    // token adopts the loaded result.
+                    // ATTACH the loaded children whenever the CONSUMER has not superseded this load (token
+                    // match) — INDEPENDENTLY of _expandGeneration (round-19 finding 1). A NEWER expand-all
+                    // (double-click "expand all") bumps _expandGeneration and parks on THIS branch's
+                    // LoadSettled; a collapse-all bumps it too. Either way the children this loader fetched
+                    // are still the authoritative materialization of the branch, so we attach them ONCE,
+                    // here. Gating the attach on _expandGeneration instead RETURNED before line 1037 and
+                    // stranded the subtree expanded-but-empty: the parked sibling pass woke to
+                    // ChildrenLoaded=false / Children=null, did not retry, and descended into nothing. Only
+                    // a consumer supersession (authoritative children / branch reset) bumps the LoadToken
+                    // and makes this loader result stale (finding 3) — _expandGeneration must not.
                     if (token == state.LoadToken)
                     {
                         state.Children = loaded;
@@ -1049,6 +1053,11 @@
                                 SetChildrenChecked(loaded, true);
                         }
                     }
+                    // Superseded (collapse-all OR a newer expand-all): stop descending in THIS pass. The
+                    // children are already attached above for whoever now owns the branch — a newer
+                    // expand-all parked on our LoadSettled descends them itself; a collapse-all must not
+                    // re-expand. Checked AFTER the attach so the surviving pass never finds it empty.
+                    if (gen != _expandGeneration) return;
                 }
                 catch
                 {
