@@ -70,11 +70,10 @@ public class DropdownMenuExitAnimationTests : IAsyncLifetime
         var cut = RenderMenu(open: true);
         cut.Render(p => p.Add(m => m.Open, false).Add(m => m.ChildContent, _child));
 
-        // Unmount is driven by the ~250ms fallback timer; poll (generous ceiling so a
-        // starved thread pool under parallel load can't trip it).
-        cut.WaitForAssertion(
-            () => Assert.Empty(cut.FindAll("[role='menu']")),
-            timeout: TimeSpan.FromSeconds(5));
+        // Unmount is driven by the ~250ms fallback timer; poll a stable end state and
+        // inherit the 10 s module ceiling (TestContextExtensions) so a starved CI thread
+        // pool delaying the fallback-timer dispatch can't trip it.
+        cut.WaitForAssertion(() => Assert.Empty(cut.FindAll("[role='menu']")));
     }
 
     [Fact]

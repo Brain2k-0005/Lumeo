@@ -68,9 +68,9 @@ public class HoverCardExitAnimationTests : IAsyncLifetime
         var cut = RenderCard(open: true);
         cut.Render(p => p.Add(c => c.Open, false).Add(c => c.ChildContent, _child));
 
-        cut.WaitForAssertion(
-            () => Assert.DoesNotContain("Card body", cut.Markup),
-            timeout: TimeSpan.FromSeconds(5));
+        // Stable end-state poll; inherits the 10 s module ceiling (TestContextExtensions)
+        // so a starved CI thread pool delaying the fallback-timer dispatch can't trip it.
+        cut.WaitForAssertion(() => Assert.DoesNotContain("Card body", cut.Markup));
     }
 
     [Fact]
@@ -117,9 +117,9 @@ public class HoverCardExitAnimationTests : IAsyncLifetime
         content.MouseEnter(new Microsoft.AspNetCore.Components.Web.MouseEventArgs());
 
         // The hover did not reopen it: the card completes its exit and unmounts. (A
-        // regressed gate would reopen within ~0ms and this would time out.)
-        cut.WaitForAssertion(
-            () => Assert.DoesNotContain("Card body", cut.Markup),
-            timeout: TimeSpan.FromSeconds(5));
+        // regressed gate would reopen within ~0ms and this would time out.) Stable
+        // end-state poll; inherits the 10 s module ceiling (TestContextExtensions) so a
+        // starved CI thread pool delaying the fallback-timer dispatch can't trip it.
+        cut.WaitForAssertion(() => Assert.DoesNotContain("Card body", cut.Markup));
     }
 }

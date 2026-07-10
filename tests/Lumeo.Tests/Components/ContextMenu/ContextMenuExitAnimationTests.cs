@@ -66,9 +66,9 @@ public class ContextMenuExitAnimationTests : IAsyncLifetime
         var cut = RenderMenu(open: true);
         cut.Render(p => p.Add(m => m.Open, false).Add(m => m.ChildContent, _child));
 
-        cut.WaitForAssertion(
-            () => Assert.Empty(cut.FindAll("[role='menu']")),
-            timeout: TimeSpan.FromSeconds(5));
+        // Stable end-state poll; inherits the 10 s module ceiling (TestContextExtensions)
+        // so a starved CI thread pool delaying the fallback-timer dispatch can't trip it.
+        cut.WaitForAssertion(() => Assert.Empty(cut.FindAll("[role='menu']")));
     }
 
     [Fact]

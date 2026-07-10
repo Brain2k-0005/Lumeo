@@ -1051,6 +1051,14 @@
                             TryResolvePendingSelection(loaded);
                             if (target.IsChecked && !target.IsIndeterminate && loaded is { Count: > 0 })
                                 SetChildrenChecked(loaded, true);
+                            // Derive cascade tri-state from the freshly materialized (possibly seeded-
+                            // checked/indeterminate) children NOW — the same recompute the per-node lazy
+                            // path runs after materialization (round-20 finding). Without it, a supersession
+                            // (collapse-all / newer expand-all) returns below BEFORE the single final
+                            // UpdateAncestorStates in Expand/ParametersSet, so a collapsed parent that was
+                            // not already fully checked keeps a stale unchecked box until a later interaction.
+                            else if (CascadeCheck && ShowCheckboxes)
+                                UpdateAncestorStates(Items ?? []);
                         }
                     }
                     // Superseded (collapse-all OR a newer expand-all): stop descending in THIS pass. The

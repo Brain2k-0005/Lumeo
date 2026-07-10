@@ -50,11 +50,13 @@ public class DrawerExitAnimationTests : IAsyncLifetime
             L.Side.Bottom, playExit: null);
         cut.Render(p => p.Add(d => d.Open, false));
 
-        cut.WaitForAssertion(() =>
-        {
-            var panel = cut.Find("[role='dialog']");
-            Assert.Contains("animate-slide-out-to-bottom", panel.GetAttribute("class") ?? "");
-        });
+        // Synchronous on the close render: bUnit commits cut.Render synchronously with no
+        // await gap, so DrawerContent has latched _exiting and emitted the class while the
+        // exit-window DelayedDispatch has not run FinishExit. Asserting the latched exit
+        // state directly can never race a delayed first poll under a starved CI runner
+        // (a poll would find the panel already unmounted and time out at the 10 s ceiling).
+        var panel = cut.Find("[role='dialog']");
+        Assert.Contains("animate-slide-out-to-bottom", panel.GetAttribute("class") ?? "");
         Assert.Contains("Drawer body", cut.Markup);
     }
 
@@ -82,12 +84,11 @@ public class DrawerExitAnimationTests : IAsyncLifetime
         var cut = RenderDrawer(isOpen: true, L.DrawerContent.DrawerAnimation.Slide);
         cut.Render(p => p.Add(d => d.Open, false));
 
-        cut.WaitForAssertion(() =>
-        {
-            var backdrop = cut.Find(".animate-fade-out");
-            var style = backdrop.GetAttribute("style") ?? "";
-            Assert.Contains("animation-duration:300ms", style);
-        });
+        // Synchronous on the close render (no await gap → the exit-window timer can't have
+        // unmounted the backdrop yet); asserting the latched exit render never races it.
+        var backdrop = cut.Find(".animate-fade-out");
+        var style = backdrop.GetAttribute("style") ?? "";
+        Assert.Contains("animation-duration:300ms", style);
     }
 
     /// <summary>
@@ -100,12 +101,11 @@ public class DrawerExitAnimationTests : IAsyncLifetime
         var cut = RenderDrawer(isOpen: true, L.DrawerContent.DrawerAnimation.Fade);
         cut.Render(p => p.Add(d => d.Open, false));
 
-        cut.WaitForAssertion(() =>
-        {
-            var backdrop = cut.Find(".animate-fade-out");
-            var style = backdrop.GetAttribute("style") ?? "";
-            Assert.DoesNotContain("animation-duration", style);
-        });
+        // Synchronous on the close render (no await gap → the exit-window timer can't have
+        // unmounted the backdrop yet); asserting the latched exit render never races it.
+        var backdrop = cut.Find(".animate-fade-out");
+        var style = backdrop.GetAttribute("style") ?? "";
+        Assert.DoesNotContain("animation-duration", style);
     }
 
     /// <summary>
@@ -136,17 +136,16 @@ public class DrawerExitAnimationTests : IAsyncLifetime
         var cut = RenderDrawer(isOpen: true, L.DrawerContent.DrawerAnimation.Slide, L.Side.Bottom);
         cut.Render(p => p.Add(d => d.Open, false));
 
-        cut.WaitForAssertion(() =>
-        {
-            var panel = cut.Find("[role='dialog']");
-            Assert.Contains("animate-slide-out-to-bottom", panel.GetAttribute("class") ?? "");
-            Assert.Contains("pointer-events-none", panel.GetAttribute("class") ?? "");
-            Assert.DoesNotContain("pointer-events-auto", panel.GetAttribute("class") ?? "");
-            Assert.Equal("true", panel.GetAttribute("inert"));
-            var backdrop = cut.Find(".animate-fade-out");
-            Assert.Contains("pointer-events-auto", backdrop.GetAttribute("class") ?? "");
-            Assert.DoesNotContain("pointer-events-none", backdrop.GetAttribute("class") ?? "");
-        });
+        // Synchronous on the close render (no await gap → the exit-window timer can't have
+        // unmounted the ghost yet); asserting the latched exit render never races it.
+        var panel = cut.Find("[role='dialog']");
+        Assert.Contains("animate-slide-out-to-bottom", panel.GetAttribute("class") ?? "");
+        Assert.Contains("pointer-events-none", panel.GetAttribute("class") ?? "");
+        Assert.DoesNotContain("pointer-events-auto", panel.GetAttribute("class") ?? "");
+        Assert.Equal("true", panel.GetAttribute("inert"));
+        var exitBackdrop = cut.Find(".animate-fade-out");
+        Assert.Contains("pointer-events-auto", exitBackdrop.GetAttribute("class") ?? "");
+        Assert.DoesNotContain("pointer-events-none", exitBackdrop.GetAttribute("class") ?? "");
     }
 
     /// <summary>
@@ -161,8 +160,8 @@ public class DrawerExitAnimationTests : IAsyncLifetime
         var cut = RenderDrawer(isOpen: true, L.DrawerContent.DrawerAnimation.Slide, L.Side.Bottom);
         cut.Render(p => p.Add(d => d.Open, false));
 
-        cut.WaitForAssertion(() =>
-            Assert.Contains("animate-slide-out-to-bottom", cut.Find("[role='dialog']").GetAttribute("class") ?? ""));
+        // Synchronous on the close render (no await gap → exit-window timer hasn't unmounted).
+        Assert.Contains("animate-slide-out-to-bottom", cut.Find("[role='dialog']").GetAttribute("class") ?? "");
 
         cut.Find(".animate-fade-out").Click();
         var panel = cut.Find("[role='dialog']");
