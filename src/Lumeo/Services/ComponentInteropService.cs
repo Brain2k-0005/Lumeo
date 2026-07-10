@@ -776,8 +776,12 @@ public sealed class ComponentInteropService : IComponentInteropService
 
     public async ValueTask UnregisterColumnResize(string handleId)
     {
-        var module = await GetModuleAsync();
-        await _resize.UnregisterColumnResize(module, handleId);
+        try
+        {
+            var module = await GetModuleAsync();
+            await _resize.UnregisterColumnResize(module, handleId);
+        }
+        catch (JSDisconnectedException) { }
     }
 
     public async ValueTask NudgeColumnResize(string handleId, double delta)
@@ -805,8 +809,12 @@ public sealed class ComponentInteropService : IComponentInteropService
 
     public async ValueTask UnregisterColumnReorder(string gridId)
     {
-        var module = await GetModuleAsync();
-        await _reorder.UnregisterColumnReorder(module, gridId);
+        try
+        {
+            var module = await GetModuleAsync();
+            await _reorder.UnregisterColumnReorder(module, gridId);
+        }
+        catch (JSDisconnectedException) { }
     }
 
     [JSInvokable]

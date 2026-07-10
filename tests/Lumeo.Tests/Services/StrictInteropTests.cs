@@ -419,6 +419,54 @@ public class StrictInteropTests : IAsyncLifetime
         Assert.Equal("handle-1", inv.Arguments[0]);
     }
 
+    // PR #353 round-1 finding #1: every other Unregister* in ComponentInteropService
+    // wraps its JS call in try/catch(JSDisconnectedException) so a disposal race with
+    // a dropped circuit doesn't throw during teardown — UnregisterColumnResize (and
+    // UnregisterColumnReorder below) were missing that guard.
+    [Fact]
+    public async Task UnregisterColumnResize_Swallows_JSDisconnectedException()
+    {
+        _module.SetupVoid("unregisterColumnResize", _ => true)
+            .SetException(new Microsoft.JSInterop.JSDisconnectedException("circuit dropped"));
+
+        var ex = await Record.ExceptionAsync(() => _service.UnregisterColumnResize("handle-1").AsTask());
+
+        Assert.Null(ex);
+    }
+
+    // --- Column Reorder (pointer-based touch/pen) ---
+
+    [Fact]
+    public async Task RegisterColumnReorder_Invokes_JS_With_GridId()
+    {
+        // JS call: registerColumnReorder(gridId, selfRef)
+        await _service.RegisterColumnReorder("grid-1", (_, _) => Task.CompletedTask);
+
+        var inv = _module.VerifyInvoke("registerColumnReorder");
+        Assert.Equal("grid-1", inv.Arguments[0]);
+    }
+
+    [Fact]
+    public async Task UnregisterColumnReorder_Invokes_JS_With_GridId()
+    {
+        await _service.RegisterColumnReorder("grid-1", (_, _) => Task.CompletedTask);
+        await _service.UnregisterColumnReorder("grid-1");
+
+        var inv = _module.VerifyInvoke("unregisterColumnReorder");
+        Assert.Equal("grid-1", inv.Arguments[0]);
+    }
+
+    [Fact]
+    public async Task UnregisterColumnReorder_Swallows_JSDisconnectedException()
+    {
+        _module.SetupVoid("unregisterColumnReorder", _ => true)
+            .SetException(new Microsoft.JSInterop.JSDisconnectedException("circuit dropped"));
+
+        var ex = await Record.ExceptionAsync(() => _service.UnregisterColumnReorder("grid-1").AsTask());
+
+        Assert.Null(ex);
+    }
+
     // --- OTP Paste ---
 
     [Fact]

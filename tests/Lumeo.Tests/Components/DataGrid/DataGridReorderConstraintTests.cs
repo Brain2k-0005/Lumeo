@@ -126,6 +126,27 @@ public class DataGridReorderConstraintTests : IAsyncLifetime
         Assert.Equal(before, HeaderOrder(cut));
     }
 
+    [Fact]
+    public async Task Pointer_Drop_Onto_NonReorderable_Target_Is_Rejected()
+    {
+        // A locked column must be un-displaceable: a reorderable source dropped
+        // ONTO a Reorderable=false target's slot must be refused too, not just a
+        // non-reorderable source dragged elsewhere (that's the test above).
+        var a = new DataGridColumn<Row> { Field = "Id", Title = "A" };
+        var b = new DataGridColumn<Row> { Field = "Name", Title = "B", Reorderable = false };
+        var c = new DataGridColumn<Row> { Field = "Dept", Title = "C" };
+        ColumnReorderEventArgs? fired = null;
+        var cut = RenderGrid(new() { a, b, c }, args => fired = args);
+        var gridId = cut.Find("[data-slot='datagrid']").GetAttribute("data-grid-id")!;
+        var before = HeaderOrder(cut);
+
+        // Drop reorderable A onto locked B's slot.
+        await cut.InvokeAsync(() => _interop.SimulateColumnReorderCommit(gridId, a.Id, b.Id));
+
+        Assert.Null(fired);
+        Assert.Equal(before, HeaderOrder(cut));
+    }
+
     // --- Affordance structure ---
 
     [Fact]

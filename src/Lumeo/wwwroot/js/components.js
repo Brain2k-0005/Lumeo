@@ -2634,30 +2634,50 @@ export function registerColumnResize(handleId, dotnetRef, minWidth, maxWidth) {
     };
     const onPointerCancel = (e) => {
         if (!isDragging || e.pointerId !== activePointerId) return;
+        // A cancel (e.g. a system gesture stealing the pointer) may have already
+        // applied a live-dragged width via rAF. Since no commit follows, restore
+        // the pre-drag width so the DOM doesn't drift from the (uncommitted)
+        // grid state.
+        if (currentWidth !== startWidth) applyWidth(startWidth);
+        currentWidth = startWidth;
+        pendingWidth = startWidth;
         endDrag();
         try { handle.releasePointerCapture(e.pointerId); } catch (_) { }
         activePointerId = null;
         // No commit on cancel — the user aborted (e.g. system gesture took over).
     };
+    // Measures a cell's truly intrinsic content width — off-DOM, so a full-width
+    // table's auto-layout extra-space distribution (which inflates a live
+    // width:auto cell to fill the remaining table width) can't skew the result.
+    // A deep clone is appended to <body> as an isolated single-cell box (browsers
+    // wrap an orphan table-cell in an anonymous 1x1 table), measured, then removed
+    // — the real table's live cells/layout are never touched.
+    const measureIntrinsicWidth = (cell) => {
+        const probe = cell.cloneNode(true);
+        const ps = probe.style;
+        ps.position = 'absolute';
+        ps.visibility = 'hidden';
+        ps.left = '-9999px';
+        ps.top = '-9999px';
+        ps.width = 'auto';
+        ps.minWidth = '0';
+        ps.maxWidth = 'none';
+        ps.whiteSpace = 'nowrap';
+        document.body.appendChild(probe);
+        const w = probe.getBoundingClientRect().width;
+        probe.remove();
+        return w;
+    };
     // Double-click → auto-fit the column to its widest content (header + body).
-    // Measured by clearing the width constraint so the table-auto column collapses
-    // to its intrinsic content width, reading it, then committing that once.
     const onDoubleClick = (e) => {
         e.preventDefault();
         e.stopPropagation();
         const cells = [th, ...gatherBodyCells()];
-        const saved = cells.map((c) => [c.style.width, c.style.minWidth, c.style.whiteSpace]);
-        for (const c of cells) { c.style.width = 'auto'; c.style.minWidth = '0'; c.style.whiteSpace = 'nowrap'; }
-        // Force a synchronous reflow so the intrinsic width is measurable.
-        // eslint-disable-next-line no-unused-expressions
-        th.offsetWidth;
         let natural = 0;
-        for (const c of cells) natural = Math.max(natural, c.getBoundingClientRect().width);
+        for (const c of cells) natural = Math.max(natural, measureIntrinsicWidth(c));
         natural = Math.ceil(natural) + 2; // hairline breathing room
         let w = natural;
         if (w < min) w = min; else if (w > max) w = max;
-        // Restore whiteSpace (width/minWidth are overwritten by applyWidth next).
-        cells.forEach((c, i) => { c.style.whiteSpace = saved[i][2]; });
         colBodyCells = gatherBodyCells();
         applyWidth(w);
         currentWidth = w;
@@ -3089,9 +3109,9 @@ export function registerColumnReorder(gridId, dotnetRef) {
         const tbody = table ? table.querySelector('tbody') : null;
         if (!headerRow || !table) return;
 
-        // Same-pin partition candidates, in visual order, with cached base rects
-        // AND cached cell lists (header + body cells) — measured ONCE here so the
-        // live sibling-shift preview never reads layout in the pointermove loop.
+        // Same-pin partition candidates, with cached base rects AND cached cell
+        // lists (header + body cells) — measured ONCE here so the live
+        // sibling-shift preview never reads layout in the pointermove loop.
         const allTh = Array.prototype.slice.call(headerRow.querySelectorAll('th[data-col-id]'));
         const partitionTh = allTh.filter((h) => (h.dataset.colPin || 'None') === sourcePin);
         if (partitionTh.length < 2) return; // nothing to reorder within the partition
@@ -3103,6 +3123,14 @@ export function registerColumnReorder(gridId, dotnetRef) {
                 cells: gatherColumnCells(h, idx, tbody), appliedTx: 0,
             };
         });
+        // Sort into VISUAL left-to-right order. querySelectorAll returns DOM
+        // (logical) order, which only matches visual order in LTR. In RTL, DOM
+        // order is the visual mirror — leaving it unsorted inverts bounds.min/max
+        // below (min > max), freezes the live drag translate at a fixed offset,
+        // and clamps computeTargetIdx's past-the-ends fallback to the wrong end.
+        // Index-diff math elsewhere (applyProjection, computeTargetIdx) assumes
+        // ascending index === ascending screen x, which this sort guarantees.
+        headers.sort((a, b) => a.baseRect.left - b.baseRect.left);
         const srcHeaderIdx = headers.findIndex((h) => h.colId === sourceColId);
         if (srcHeaderIdx < 0) return;
 
@@ -3132,18 +3160,27 @@ export function registerColumnReorder(gridId, dotnetRef) {
         // pointermove that does (see onPointerMove).
     };
 
+    // Exposed so unregisterColumnReorder can fully abort an in-flight drag on
+    // unmount — otherwise translated cells, the global cursor/selection styles,
+    // the drop indicator, and the window Escape listener would all outlive the
+    // grid's own listeners being torn down.
+    const cancelActiveDrag = () => {
+        if (drag) finishDrag(null);
+    };
+
     grid.addEventListener('pointerdown', onPointerDown);
     grid.addEventListener('pointermove', onPointerMove, { passive: false });
     grid.addEventListener('pointerup', onPointerUp);
     grid.addEventListener('pointercancel', onPointerCancel);
     columnReorderPointerHandlers.set(gridId, {
-        grid, onPointerDown, onPointerMove, onPointerUp, onPointerCancel,
+        grid, onPointerDown, onPointerMove, onPointerUp, onPointerCancel, cancelActiveDrag,
     });
 }
 
 export function unregisterColumnReorder(gridId) {
     const h = columnReorderPointerHandlers.get(gridId);
     if (!h) return;
+    h.cancelActiveDrag();
     h.grid.removeEventListener('pointerdown', h.onPointerDown);
     h.grid.removeEventListener('pointermove', h.onPointerMove);
     h.grid.removeEventListener('pointerup', h.onPointerUp);
