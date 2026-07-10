@@ -176,7 +176,10 @@ public class ResponsiveServiceTests
         public ValueTask RegisterPreventDefaultKeys(string elementId, IReadOnlyList<PreventDefaultKeyRule> rules) => ValueTask.CompletedTask;
         public ValueTask UnregisterPreventDefaultKeys(string elementId) => ValueTask.CompletedTask;
         public ValueTask ScrollSelectorIntoView(string selector) => ValueTask.CompletedTask;
-        public ValueTask RegisterColumnResize(string handleId, double minWidth, double? maxWidth, Func<double, Task> commitHandler) => ValueTask.CompletedTask;
+        public ValueTask RegisterColumnResize(string handleId, double minWidth, double? maxWidth, Func<double, bool, Task> commitHandler) => ValueTask.CompletedTask;
+        public ValueTask NudgeColumnResize(string handleId, double delta) => ValueTask.CompletedTask;
+        public ValueTask RegisterColumnReorder(string gridId, Func<string, string, Task> commitHandler) => ValueTask.CompletedTask;
+        public ValueTask UnregisterColumnReorder(string gridId) => ValueTask.CompletedTask;
         public ValueTask UnregisterColumnResize(string handleId) => ValueTask.CompletedTask;
         public ValueTask CaptureColumnRects(string gridId) => ValueTask.CompletedTask;
         public ValueTask AnimateColumnReorder(string gridId, int durationMs) => ValueTask.CompletedTask;

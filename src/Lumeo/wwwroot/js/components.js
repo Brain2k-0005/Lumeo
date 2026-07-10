@@ -2446,6 +2446,38 @@ export function unregisterOtpPaste(baseId, length) {
 
 const columnResizeHandlers = new Map();
 
+// A single reusable guideline element that tracks the resized column's active
+// edge (a 2px primary line spanning the table's vertical extent). It's a purely
+// visual affordance drawn in JS during the drag — never re-rendered by Blazor —
+// so it costs nothing on the per-move hot path beyond one style write per frame.
+let resizeGuideline = null;
+function showResizeGuideline(th, xClient) {
+    const table = th.closest('table');
+    const rect = (table || th).getBoundingClientRect();
+    if (!resizeGuideline) {
+        resizeGuideline = document.createElement('div');
+        resizeGuideline.setAttribute('data-slot', 'datagrid-resize-guideline');
+        const s = resizeGuideline.style;
+        s.position = 'fixed';
+        s.width = '2px';
+        s.background = 'var(--color-primary, #6366f1)';
+        s.opacity = '0.85';
+        s.pointerEvents = 'none';
+        s.zIndex = '60';
+        s.borderRadius = '1px';
+        s.boxShadow = '0 0 6px color-mix(in oklab, var(--color-primary, #6366f1) 60%, transparent)';
+        document.body.appendChild(resizeGuideline);
+    }
+    const s = resizeGuideline.style;
+    s.display = 'block';
+    s.top = rect.top + 'px';
+    s.height = rect.height + 'px';
+    s.left = (xClient - 1) + 'px';
+}
+function hideResizeGuideline() {
+    if (resizeGuideline) resizeGuideline.style.display = 'none';
+}
+
 export function registerColumnResize(handleId, dotnetRef, minWidth, maxWidth) {
     const handle = document.getElementById(handleId);
     if (!handle) return;
@@ -2457,6 +2489,11 @@ export function registerColumnResize(handleId, dotnetRef, minWidth, maxWidth) {
     let currentWidth = 0;
     let isDragging = false;
     let colBodyCells = [];
+    // Horizontal writing direction: in RTL the resize handle sits on the visual
+    // LEFT (inline-end), so a rightward pointer move must SHRINK the column.
+    // Captured per pointerdown from the live computed style so a runtime dir
+    // flip (e.g. locale switch) is honoured without re-registering.
+    let dirMultiplier = 1;
     // rAF throttle: coalesce successive pointermoves into one DOM mutation
     // per frame. Without this, a high-frequency pointer (120-240 Hz on modern
     // touch/trackpad) triggers a full table reflow per event — visible as
@@ -2464,6 +2501,7 @@ export function registerColumnResize(handleId, dotnetRef, minWidth, maxWidth) {
     // refresh rate and lets the browser batch layout/paint naturally.
     let rafId = 0;
     let pendingWidth = 0;
+    let pendingClientX = 0;
 
     const min = Math.max(1, Number(minWidth) || 50);
     const max = Number(maxWidth) > 0 ? Number(maxWidth) : Number.POSITIVE_INFINITY;
@@ -2492,7 +2530,11 @@ export function registerColumnResize(handleId, dotnetRef, minWidth, maxWidth) {
         if (!tbody) return [];
         const cells = [];
         for (const row of tbody.rows) {
-            if (row.children[colIndex]) cells.push(row.children[colIndex]);
+            const cell = row.children[colIndex];
+            // Skip group/detail rows that span the whole table with a single
+            // colspan cell — writing a fixed width onto them would fight the
+            // colspan and jam the layout.
+            if (cell && !(cell.colSpan && cell.colSpan > 1)) cells.push(cell);
         }
         return cells;
     };
@@ -2514,9 +2556,17 @@ export function registerColumnResize(handleId, dotnetRef, minWidth, maxWidth) {
         startWidth = th.getBoundingClientRect().width;
         currentWidth = startWidth;
         pendingWidth = startWidth;
+        pendingClientX = e.clientX;
+        dirMultiplier = getComputedStyle(th).direction === 'rtl' ? -1 : 1;
         colBodyCells = gatherBodyCells();
         document.body.style.cursor = 'col-resize';
+        document.documentElement.style.cursor = 'col-resize';
         document.body.style.userSelect = 'none';
+        // Active affordance: the CSS-authored ::before divider turns primary/2px
+        // while data-resizing is set (survives the pointer straying off the
+        // handle, which :active would not once capture kicks in).
+        handle.dataset.resizing = 'true';
+        showResizeGuideline(th, e.clientX);
         try { handle.setPointerCapture(e.pointerId); } catch (_) { }
         // preventDefault on pointerdown stops touch from initiating a page
         // scroll/zoom gesture before the move begins.
@@ -2528,14 +2578,17 @@ export function registerColumnResize(handleId, dotnetRef, minWidth, maxWidth) {
         if (!isDragging) return;
         currentWidth = pendingWidth;
         applyWidth(pendingWidth);
+        showResizeGuideline(th, pendingClientX);
     };
     const onPointerMove = (e) => {
         if (!isDragging || e.pointerId !== activePointerId) return;
-        const delta = e.clientX - startX;
+        const delta = (e.clientX - startX) * dirMultiplier;
         let w = startWidth + delta;
         if (w < min) w = min;
         else if (w > max) w = max;
+        pendingClientX = e.clientX;
         if (w === pendingWidth) {
+            if (!rafId) rafId = requestAnimationFrame(flushPendingWidth);
             if (e.cancelable) e.preventDefault();
             return;
         }
@@ -2544,38 +2597,91 @@ export function registerColumnResize(handleId, dotnetRef, minWidth, maxWidth) {
         // Block scroll on touch devices while actively dragging.
         if (e.cancelable) e.preventDefault();
     };
-    const onPointerUp = (e) => {
-        if (!isDragging || e.pointerId !== activePointerId) return;
+    const endDrag = () => {
         isDragging = false;
         if (rafId) { cancelAnimationFrame(rafId); rafId = 0; }
+        document.body.style.cursor = '';
+        document.documentElement.style.cursor = '';
+        document.body.style.userSelect = '';
+        delete handle.dataset.resizing;
+        hideResizeGuideline();
+    };
+    const onPointerUp = (e) => {
+        if (!isDragging || e.pointerId !== activePointerId) return;
         // Apply any pending frame synchronously so the committed width
         // matches what the user released on (no half-frame visual snap).
         if (pendingWidth !== currentWidth) {
             currentWidth = pendingWidth;
             applyWidth(pendingWidth);
         }
-        document.body.style.cursor = '';
-        document.body.style.userSelect = '';
+        endDrag();
         try { handle.releasePointerCapture(e.pointerId); } catch (_) { }
         activePointerId = null;
-        dotnetRef.invokeMethodAsync('OnColumnResizeCommit', handleId, currentWidth);
+        dotnetRef.invokeMethodAsync('OnColumnResizeCommit', handleId, currentWidth, false);
     };
     const onPointerCancel = (e) => {
         if (!isDragging || e.pointerId !== activePointerId) return;
-        isDragging = false;
-        if (rafId) { cancelAnimationFrame(rafId); rafId = 0; }
-        document.body.style.cursor = '';
-        document.body.style.userSelect = '';
+        endDrag();
         try { handle.releasePointerCapture(e.pointerId); } catch (_) { }
         activePointerId = null;
         // No commit on cancel — the user aborted (e.g. system gesture took over).
+    };
+    // Double-click → auto-fit the column to its widest content (header + body).
+    // Measured by clearing the width constraint so the table-auto column collapses
+    // to its intrinsic content width, reading it, then committing that once.
+    const onDoubleClick = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const cells = [th, ...gatherBodyCells()];
+        const saved = cells.map((c) => [c.style.width, c.style.minWidth, c.style.whiteSpace]);
+        for (const c of cells) { c.style.width = 'auto'; c.style.minWidth = '0'; c.style.whiteSpace = 'nowrap'; }
+        // Force a synchronous reflow so the intrinsic width is measurable.
+        // eslint-disable-next-line no-unused-expressions
+        th.offsetWidth;
+        let natural = 0;
+        for (const c of cells) natural = Math.max(natural, c.getBoundingClientRect().width);
+        natural = Math.ceil(natural) + 2; // hairline breathing room
+        let w = natural;
+        if (w < min) w = min; else if (w > max) w = max;
+        // Restore whiteSpace (width/minWidth are overwritten by applyWidth next).
+        cells.forEach((c, i) => { c.style.whiteSpace = saved[i][2]; });
+        colBodyCells = gatherBodyCells();
+        applyWidth(w);
+        currentWidth = w;
+        dotnetRef.invokeMethodAsync('OnColumnResizeCommit', handleId, w, true);
     };
     handle.addEventListener('pointerdown', onPointerDown);
     // passive: false so preventDefault works inside pointermove on touch.
     handle.addEventListener('pointermove', onPointerMove, { passive: false });
     handle.addEventListener('pointerup', onPointerUp);
     handle.addEventListener('pointercancel', onPointerCancel);
-    columnResizeHandlers.set(handleId, { handle, onPointerDown, onPointerMove, onPointerUp, onPointerCancel });
+    handle.addEventListener('dblclick', onDoubleClick);
+    columnResizeHandlers.set(handleId, {
+        handle, th, min, max, dotnetRef, applyWidth, gatherBodyCells,
+        onPointerDown, onPointerMove, onPointerUp, onPointerCancel, onDoubleClick,
+    });
+}
+
+// Keyboard resize: nudge the column width by `delta` px (sign already carries
+// grow/shrink intent from the caller; we still flip for RTL so ArrowRight always
+// means "toward the visual right"). Reuses the registered min/max + commit path,
+// so a keyboard resize persists exactly like a pointer drag. Discrete (one call
+// per keypress) so a .NET round-trip here is well within the hot-path law.
+export function nudgeColumnResize(handleId, delta) {
+    const h = columnResizeHandlers.get(handleId);
+    if (!h) return 0;
+    const dir = getComputedStyle(h.th).direction === 'rtl' ? -1 : 1;
+    const current = h.th.getBoundingClientRect().width;
+    let w = current + Number(delta) * dir;
+    if (w < h.min) w = h.min; else if (w > h.max) w = h.max;
+    w = Math.round(w);
+    // Refresh the body-cell list (rows may have paged/virtualized since register).
+    const cells = h.gatherBodyCells();
+    const wpx = w + 'px';
+    h.th.style.width = wpx; h.th.style.minWidth = wpx;
+    for (const c of cells) { c.style.width = wpx; c.style.minWidth = wpx; }
+    h.dotnetRef.invokeMethodAsync('OnColumnResizeCommit', handleId, w, false);
+    return w;
 }
 
 export function unregisterColumnResize(handleId) {
@@ -2587,6 +2693,7 @@ export function unregisterColumnResize(handleId) {
             el.removeEventListener('pointermove', h.onPointerMove);
             el.removeEventListener('pointerup', h.onPointerUp);
             el.removeEventListener('pointercancel', h.onPointerCancel);
+            el.removeEventListener('dblclick', h.onDoubleClick);
         }
         columnResizeHandlers.delete(handleId);
     }
@@ -2710,6 +2817,225 @@ export function animateColumnReorder(gridId, durationMs) {
         for (const cell of inFlight) clearFlipStyles(cell);
         columnReorderInFlight.delete(gridId);
     }, duration + 50);
+}
+
+// --- DataGrid Column Reorder: pointer-based (touch/pen) ---
+//
+// Native HTML5 drag-and-drop never fires on touch, so the mouse reorder path
+// (draggable <th> + dragstart/drop + FLIP) is dead on phones/tablets. This adds
+// a pointer-driven reorder that unifies touch + pen on a dedicated grip handle,
+// matching the ReUI "translate-in-place, live drop indicator" feel:
+//   * the dragged column (header + its body cells) follows the finger in X only
+//     (Y locked), at opacity 0.8 / z above siblings;
+//   * a primary drop-indicator bar marks the target seam;
+//   * movement is clamped to the same pin partition (a left-pinned column can't
+//     cross into the unpinned/right region) and to the table bounds;
+//   * Escape / pointercancel / drop-outside aborts with no commit;
+//   * release commits ONCE via OnColumnReorderCommit(gridId, srcId, tgtId).
+// Every per-move computation stays in JS — .NET only receives the single
+// discrete commit — honouring the drag hot-path performance law.
+//
+// Mouse is intentionally excluded (pointerType 'mouse' bails) so desktop keeps
+// the well-tested native-DnD ghost + FLIP path untouched.
+
+const columnReorderPointerHandlers = new Map(); // gridId -> { grid, onPointerDown }
+let reorderDropIndicator = null;
+
+function ensureReorderIndicator() {
+    if (!reorderDropIndicator) {
+        reorderDropIndicator = document.createElement('div');
+        reorderDropIndicator.setAttribute('data-slot', 'datagrid-reorder-indicator');
+        const s = reorderDropIndicator.style;
+        s.position = 'fixed';
+        s.width = '3px';
+        s.background = 'var(--color-primary, #6366f1)';
+        s.borderRadius = '2px';
+        s.pointerEvents = 'none';
+        s.zIndex = '61';
+        s.boxShadow = '0 0 8px color-mix(in oklab, var(--color-primary, #6366f1) 70%, transparent)';
+        document.body.appendChild(reorderDropIndicator);
+    }
+    return reorderDropIndicator;
+}
+function hideReorderIndicator() {
+    if (reorderDropIndicator) reorderDropIndicator.style.display = 'none';
+}
+
+export function registerColumnReorder(gridId, dotnetRef) {
+    const grid = document.querySelector(`[data-grid-id="${CSS.escape(gridId)}"]`);
+    if (!grid) return;
+    if (columnReorderPointerHandlers.has(gridId)) unregisterColumnReorder(gridId);
+
+    let drag = null; // active drag descriptor or null
+
+    const gatherColumnCells = (th, colIndex, tbody) => {
+        const cells = [th];
+        if (tbody && colIndex >= 0) {
+            for (const row of tbody.rows) {
+                const cell = row.children[colIndex];
+                if (cell && !(cell.colSpan && cell.colSpan > 1)) cells.push(cell);
+            }
+        }
+        return cells;
+    };
+
+    const cleanup = () => {
+        if (!drag) return;
+        for (const cell of drag.cells) {
+            cell.style.transition = '';
+            cell.style.transform = '';
+            cell.style.opacity = '';
+            cell.style.zIndex = '';
+            cell.style.position = '';
+            cell.style.pointerEvents = '';
+        }
+        document.body.style.cursor = '';
+        document.documentElement.style.cursor = '';
+        document.body.style.userSelect = '';
+        hideReorderIndicator();
+        window.removeEventListener('keydown', onKeyDown, true);
+        drag = null;
+    };
+
+    const onKeyDown = (e) => {
+        if (e.key === 'Escape' && drag) {
+            e.preventDefault();
+            cleanup();
+        }
+    };
+
+    const computeTarget = (clientX) => {
+        // Insertion target = the same-pin header whose midpoint the pointer has
+        // passed. Returns { th, colId, side } or null.
+        let best = null;
+        for (const h of drag.headers) {
+            const r = h.baseRect;
+            const mid = r.left + r.width / 2;
+            if (clientX >= r.left && clientX <= r.right) {
+                best = { th: h.th, colId: h.colId, side: clientX < mid ? 'left' : 'right', rect: r };
+                break;
+            }
+        }
+        if (!best) {
+            // Past the ends → clamp to first/last same-pin header.
+            const first = drag.headers[0], last = drag.headers[drag.headers.length - 1];
+            if (clientX < first.baseRect.left) best = { th: first.th, colId: first.colId, side: 'left', rect: first.baseRect };
+            else best = { th: last.th, colId: last.colId, side: 'right', rect: last.baseRect };
+        }
+        return best;
+    };
+
+    const onPointerMove = (e) => {
+        if (!drag || e.pointerId !== drag.pointerId) return;
+        if (e.cancelable) e.preventDefault();
+        // Translate the dragged column in X only, clamped to the partition span.
+        let tx = e.clientX - drag.startX;
+        const minTx = drag.bounds.min - drag.sourceRect.left;
+        const maxTx = drag.bounds.max - drag.sourceRect.right;
+        if (tx < minTx) tx = minTx;
+        if (tx > maxTx) tx = maxTx;
+        const translate = `translateX(${tx}px)`;
+        for (const cell of drag.cells) cell.style.transform = translate;
+
+        const target = computeTarget(e.clientX);
+        drag.target = target;
+        if (target && target.colId !== drag.sourceColId) {
+            const ind = ensureReorderIndicator();
+            const seamX = target.side === 'left' ? target.rect.left : target.rect.right;
+            ind.style.display = 'block';
+            ind.style.top = drag.tableRect.top + 'px';
+            ind.style.height = drag.tableRect.height + 'px';
+            ind.style.left = (seamX - 1.5) + 'px';
+        } else {
+            hideReorderIndicator();
+        }
+    };
+
+    const onPointerUp = (e) => {
+        if (!drag || e.pointerId !== drag.pointerId) return;
+        const target = drag.target;
+        const sourceColId = drag.sourceColId;
+        try { drag.grip.releasePointerCapture(e.pointerId); } catch (_) { }
+        const commit = target && target.colId && target.colId !== sourceColId ? target.colId : null;
+        cleanup();
+        if (commit) dotnetRef.invokeMethodAsync('OnColumnReorderCommit', gridId, sourceColId, commit);
+    };
+
+    const onPointerCancel = (e) => {
+        if (!drag || e.pointerId !== drag.pointerId) return;
+        try { drag.grip.releasePointerCapture(e.pointerId); } catch (_) { }
+        cleanup();
+    };
+
+    const onPointerDown = (e) => {
+        // Touch/pen only — mouse keeps the native HTML5 drag path.
+        if (e.pointerType === 'mouse') return;
+        const grip = e.target.closest('[data-reorder-grip]');
+        if (!grip || !grid.contains(grip)) return;
+        const th = grip.closest('th[data-col-id]');
+        if (!th) return;
+        const sourceColId = th.dataset.colId;
+        const sourcePin = th.dataset.colPin || 'None';
+
+        const headerRow = th.parentElement;
+        const table = th.closest('table');
+        const tbody = table ? table.querySelector('tbody') : null;
+        if (!headerRow || !table) return;
+
+        // Same-pin partition candidates, in visual order, with cached base rects.
+        const allTh = Array.prototype.slice.call(headerRow.querySelectorAll('th[data-col-id]'));
+        const headers = allTh
+            .filter((h) => (h.dataset.colPin || 'None') === sourcePin)
+            .map((h) => ({ th: h, colId: h.dataset.colId, baseRect: h.getBoundingClientRect() }));
+        if (headers.length < 2) return; // nothing to reorder within the partition
+
+        const colIndex = Array.prototype.indexOf.call(headerRow.children, th);
+        const cells = gatherColumnCells(th, colIndex, tbody);
+        const sourceRect = th.getBoundingClientRect();
+        const tableRect = table.getBoundingClientRect();
+        const bounds = {
+            min: headers[0].baseRect.left,
+            max: headers[headers.length - 1].baseRect.right,
+        };
+
+        drag = {
+            pointerId: e.pointerId, grip, startX: e.clientX,
+            sourceColId, cells, headers, sourceRect, tableRect, bounds, target: null,
+        };
+
+        for (const cell of cells) {
+            cell.style.transition = 'none';
+            cell.style.opacity = '0.8';
+            cell.style.position = 'relative';
+            cell.style.zIndex = '2';
+            cell.style.pointerEvents = 'none';
+        }
+        document.body.style.cursor = 'grabbing';
+        document.documentElement.style.cursor = 'grabbing';
+        document.body.style.userSelect = 'none';
+        try { grip.setPointerCapture(e.pointerId); } catch (_) { }
+        window.addEventListener('keydown', onKeyDown, true);
+        e.preventDefault();
+        e.stopPropagation();
+    };
+
+    grid.addEventListener('pointerdown', onPointerDown);
+    grid.addEventListener('pointermove', onPointerMove, { passive: false });
+    grid.addEventListener('pointerup', onPointerUp);
+    grid.addEventListener('pointercancel', onPointerCancel);
+    columnReorderPointerHandlers.set(gridId, {
+        grid, onPointerDown, onPointerMove, onPointerUp, onPointerCancel,
+    });
+}
+
+export function unregisterColumnReorder(gridId) {
+    const h = columnReorderPointerHandlers.get(gridId);
+    if (!h) return;
+    h.grid.removeEventListener('pointerdown', h.onPointerDown);
+    h.grid.removeEventListener('pointermove', h.onPointerMove);
+    h.grid.removeEventListener('pointerup', h.onPointerUp);
+    h.grid.removeEventListener('pointercancel', h.onPointerCancel);
+    columnReorderPointerHandlers.delete(gridId);
 }
 
 // --- File Download ---

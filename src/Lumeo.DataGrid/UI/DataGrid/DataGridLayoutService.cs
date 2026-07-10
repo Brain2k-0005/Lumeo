@@ -4,14 +4,14 @@ namespace Lumeo;
 
 internal sealed class DataGridLayoutService : IDisposable
 {
-    private readonly ComponentInteropService _interop;
+    private readonly IComponentInteropService _interop;
     private readonly Action<Exception>? _onError;
     private System.Threading.Timer? _autoSaveTimer;
     private int _saveGeneration;
     private bool _layoutLoaded;
     private DataGridLayout? _defaultLayout;
 
-    internal DataGridLayoutService(ComponentInteropService interop, Action<Exception>? onError = null)
+    internal DataGridLayoutService(IComponentInteropService interop, Action<Exception>? onError = null)
     {
         _interop = interop;
         _onError = onError;

@@ -139,6 +139,17 @@ public record ColumnReorderEventArgs(
     int NewIndex
 );
 
+/// <summary>Raised when a column's width changes through the built-in resize UI:
+/// a pointer drag, a keyboard nudge (arrow keys on the focused handle), or a
+/// double-click auto-fit-to-content. <see cref="Width"/> is the committed pixel
+/// width (already clamped to the column's Min/Max); <see cref="AutoFit"/> is true
+/// only for the double-click auto-fit path.</summary>
+public record ColumnResizeEventArgs(
+    string ColumnId,
+    double Width,
+    bool AutoFit
+);
+
 public record ColumnPinEventArgs(
     string ColumnId,
     PinDirection Direction

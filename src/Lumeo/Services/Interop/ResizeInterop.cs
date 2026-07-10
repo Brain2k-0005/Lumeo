@@ -8,7 +8,7 @@ internal sealed class ResizeInterop
     private readonly Dictionary<string, Func<Task>> _resizeEndHandlers = new();
     private readonly Dictionary<string, Func<double, Task>> _columnResizeHandlers = new();
     private readonly Dictionary<string, Func<Task>> _columnResizeEndHandlers = new();
-    private readonly Dictionary<string, Func<double, Task>> _columnResizeCommitHandlers = new();
+    private readonly Dictionary<string, Func<double, bool, Task>> _columnResizeCommitHandlers = new();
 
     // --- Panel Resize ---
 
@@ -59,7 +59,7 @@ internal sealed class ResizeInterop
         string handleId,
         double minWidth,
         double? maxWidth,
-        Func<double, Task> commitHandler)
+        Func<double, bool, Task> commitHandler)
     {
         _columnResizeCommitHandlers[handleId] = commitHandler;
         await module.InvokeVoidAsync("registerColumnResize", handleId, selfRef, minWidth, maxWidth ?? 0);
@@ -71,6 +71,14 @@ internal sealed class ResizeInterop
         _columnResizeEndHandlers.Remove(handleId);
         _columnResizeCommitHandlers.Remove(handleId);
         await module.InvokeVoidAsync("unregisterColumnResize", handleId);
+    }
+
+    /// <summary>Keyboard resize: nudges the column width by <paramref name="delta"/>
+    /// px in JS (which clamps to the registered min/max and re-commits through the
+    /// same commit handler), so a keyboard resize persists identically to a drag.</summary>
+    public async ValueTask NudgeColumnResize(IJSObjectReference module, string handleId, double delta)
+    {
+        await module.InvokeVoidAsync("nudgeColumnResize", handleId, delta);
     }
 
     public async Task OnColumnResize(string handleId, double delta)
@@ -89,11 +97,11 @@ internal sealed class ResizeInterop
         }
     }
 
-    public async Task OnColumnResizeCommit(string handleId, double finalWidth)
+    public async Task OnColumnResizeCommit(string handleId, double finalWidth, bool autoFit)
     {
         if (_columnResizeCommitHandlers.TryGetValue(handleId, out var handler))
         {
-            await handler(finalWidth);
+            await handler(finalWidth, autoFit);
         }
     }
 

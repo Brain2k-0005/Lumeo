@@ -202,7 +202,10 @@ public class AffixDisposeLifecycleTests : IAsyncLifetime
         public ValueTask UnregisterOtpPaste(string baseId, int length) => _inner.UnregisterOtpPaste(baseId, length);
         public ValueTask RegisterPreventDefaultKeys(string elementId, IReadOnlyList<PreventDefaultKeyRule> rules) => _inner.RegisterPreventDefaultKeys(elementId, rules);
         public ValueTask UnregisterPreventDefaultKeys(string elementId) => _inner.UnregisterPreventDefaultKeys(elementId);
-        public ValueTask RegisterColumnResize(string handleId, double minWidth, double? maxWidth, Func<double, Task> commitHandler) => _inner.RegisterColumnResize(handleId, minWidth, maxWidth, commitHandler);
+        public ValueTask RegisterColumnResize(string handleId, double minWidth, double? maxWidth, Func<double, bool, Task> commitHandler) => _inner.RegisterColumnResize(handleId, minWidth, maxWidth, commitHandler);
+        public ValueTask NudgeColumnResize(string handleId, double delta) => _inner.NudgeColumnResize(handleId, delta);
+        public ValueTask RegisterColumnReorder(string gridId, Func<string, string, Task> commitHandler) => _inner.RegisterColumnReorder(gridId, commitHandler);
+        public ValueTask UnregisterColumnReorder(string gridId) => _inner.UnregisterColumnReorder(gridId);
         public ValueTask UnregisterColumnResize(string handleId) => _inner.UnregisterColumnResize(handleId);
         public ValueTask CaptureColumnRects(string gridId) => _inner.CaptureColumnRects(gridId);
         public ValueTask AnimateColumnReorder(string gridId, int durationMs) => _inner.AnimateColumnReorder(gridId, durationMs);

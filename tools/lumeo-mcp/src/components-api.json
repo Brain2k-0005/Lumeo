@@ -1,10 +1,10 @@
 {
   "$schema": "https://lumeo.nativ.sh/components-api-schema.json",
   "version": "4.1.2",
-  "generated": "2026-07-10T08:56:57.3871715Z",
+  "generated": "2026-07-10T12:25:53.8430160Z",
   "stats": {
     "componentCount": 164,
-    "totalParameters": 4261,
+    "totalParameters": 4262,
     "totalEnums": 90,
     "totalRecords": 65,
     "serviceCount": 33,
@@ -1170,13 +1170,19 @@
         {
           "name": "RegisterColumnResize",
           "returnType": "ValueTask",
-          "signature": "RegisterColumnResize(string handleId, double minWidth, double? maxWidth, Func<double, Task> commitHandler)",
+          "signature": "RegisterColumnResize(string handleId, double minWidth, double? maxWidth, Func<double, bool, Task> commitHandler)",
           "summary": null
         },
         {
           "name": "UnregisterColumnResize",
           "returnType": "ValueTask",
           "signature": "UnregisterColumnResize(string handleId)",
+          "summary": null
+        },
+        {
+          "name": "NudgeColumnResize",
+          "returnType": "ValueTask",
+          "signature": "NudgeColumnResize(string handleId, double delta)",
           "summary": null
         },
         {
@@ -1194,7 +1200,25 @@
         {
           "name": "OnColumnResizeCommit",
           "returnType": "Task",
-          "signature": "OnColumnResizeCommit(string handleId, double finalWidth)",
+          "signature": "OnColumnResizeCommit(string handleId, double finalWidth, bool autoFit)",
+          "summary": null
+        },
+        {
+          "name": "RegisterColumnReorder",
+          "returnType": "ValueTask",
+          "signature": "RegisterColumnReorder(string gridId, Func<string, string, Task> commitHandler)",
+          "summary": null
+        },
+        {
+          "name": "UnregisterColumnReorder",
+          "returnType": "ValueTask",
+          "signature": "UnregisterColumnReorder(string gridId)",
+          "summary": null
+        },
+        {
+          "name": "OnColumnReorderCommit",
+          "returnType": "Task",
+          "signature": "OnColumnReorderCommit(string gridId, string sourceColumnId, string targetColumnId)",
           "summary": null
         },
         {
@@ -2450,13 +2474,31 @@
         {
           "name": "RegisterColumnResize",
           "returnType": "ValueTask",
-          "signature": "RegisterColumnResize(string handleId, double minWidth, double? maxWidth, Func<double, Task> commitHandler)",
+          "signature": "RegisterColumnResize(string handleId, double minWidth, double? maxWidth, Func<double, bool, Task> commitHandler)",
           "summary": null
         },
         {
           "name": "UnregisterColumnResize",
           "returnType": "ValueTask",
           "signature": "UnregisterColumnResize(string handleId)",
+          "summary": null
+        },
+        {
+          "name": "NudgeColumnResize",
+          "returnType": "ValueTask",
+          "signature": "NudgeColumnResize(string handleId, double delta)",
+          "summary": "Keyboard resize: nudges the column width by px (JS clamps to min/max and re-commits through the registered handler)."
+        },
+        {
+          "name": "RegisterColumnReorder",
+          "returnType": "ValueTask",
+          "signature": "RegisterColumnReorder(string gridId, Func<string, string, Task> commitHandler)",
+          "summary": null
+        },
+        {
+          "name": "UnregisterColumnReorder",
+          "returnType": "ValueTask",
+          "signature": "UnregisterColumnReorder(string gridId)",
           "summary": null
         },
         {
@@ -24482,6 +24524,15 @@
           "isEditorRequired": false
         },
         {
+          "name": "OnColumnResize",
+          "type": "EventCallback<ColumnResizeEventArgs>",
+          "default": null,
+          "description": "Raised when a column is resized through the built-in UI — a pointer drag on the resize handle, a keyboard nudge (arrow keys on the focused handle), or a double-click auto-fit-to-content. The event args carry the column id, the committed pixel width (already clamped to Min/Max), and an AutoFit flag that is true only for the double-click auto-fit path. Column widths persist automatically with the rest of the layout when EnableLayoutPersistence is on; this callback is for consumers that also want to observe/store widths.",
+          "isCascading": false,
+          "captureUnmatched": false,
+          "isEditorRequired": false
+        },
+        {
           "name": "OnRowReorder",
           "type": "EventCallback<RowReorderEventArgs<TItem>>",
           "default": null,
@@ -24614,6 +24665,11 @@
           "name": "OnColumnReorder",
           "type": "EventCallback<ColumnReorderEventArgs>",
           "description": null
+        },
+        {
+          "name": "OnColumnResize",
+          "type": "EventCallback<ColumnResizeEventArgs>",
+          "description": "Raised when a column is resized through the built-in UI — a pointer drag on the resize handle, a keyboard nudge (arrow keys on the focused handle), or a double-click auto-fit-to-content. The event args carry the column id, the committed pixel width (already clamped to Min/Max), and an AutoFit flag that is true only for the double-click auto-fit path. Column widths persist automatically with the rest of the layout when EnableLayoutPersistence is on; this callback is for consumers that also want to observe/store widths."
         },
         {
           "name": "OnRowReorder",
@@ -26739,6 +26795,7 @@
           "menu",
           "menuitem",
           "row",
+          "separator",
           "status"
         ],
         "ariaAttributes": [
@@ -26753,11 +26810,15 @@
           "aria-live",
           "aria-modal",
           "aria-multiselectable",
+          "aria-orientation",
           "aria-readonly",
           "aria-rowcount",
           "aria-rowindex",
           "aria-selected",
-          "aria-sort"
+          "aria-sort",
+          "aria-valuemax",
+          "aria-valuemin",
+          "aria-valuenow"
         ],
         "keys": [
           "ArrowDown",

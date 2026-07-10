@@ -681,6 +681,16 @@
     /// <summary>Label for the batch-mode "+ Add row" trigger. Override for localization.</summary>
     [Parameter] public string? BatchAddRowText { get; set; } = "Add row";
     [Parameter] public EventCallback<ColumnReorderEventArgs> OnColumnReorder { get; set; }
+    /// <summary>
+    /// Raised when a column is resized through the built-in UI — a pointer drag on
+    /// the resize handle, a keyboard nudge (arrow keys on the focused handle), or a
+    /// double-click auto-fit-to-content. The event args carry the column id, the
+    /// committed pixel width (already clamped to Min/Max), and an <c>AutoFit</c> flag
+    /// that is true only for the double-click auto-fit path. Column widths persist
+    /// automatically with the rest of the layout when <see cref="EnableLayoutPersistence"/>
+    /// is on; this callback is for consumers that also want to observe/store widths.
+    /// </summary>
+    [Parameter] public EventCallback<ColumnResizeEventArgs> OnColumnResize { get; set; }
     [Parameter] public EventCallback<RowReorderEventArgs<TItem>> OnRowReorder { get; set; }
     [Parameter] public EventCallback<Exception> OnError { get; set; }
     [Parameter] public IReadOnlyList<TItem>? SelectedItems { get; set; }
@@ -704,7 +714,11 @@
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     // --- Inject ---
-    [Inject] private ComponentInteropService Interop { get; set; } = default!;
+    @* Inject the interface (not the concrete service) so tests can substitute a
+       TrackingInteropService — mirrors DataGridHeaderCell. Every Interop method the
+       grid uses (RegisterColumnReorder, CaptureColumnRects, RegisterPreventDefaultKeys,
+       LockScroll, …) is on the interface. *@
+    [Inject] private IComponentInteropService Interop { get; set; } = default!;
     [Inject] private Lumeo.Services.IDataGridExportService Export { get; set; } = default!;
 
     // --- Culture ---
@@ -1026,6 +1040,7 @@
     // been mutated; OnAfterRenderAsync sees it set, invokes the JS animator,
     // and clears it. Kept private — consumers don't need to influence it.
     private bool _pendingReorderAnimation;
+    private bool _pointerReorderRegistered;
     private const int ColumnReorderAnimationMs = 220;
     private List<DataGridGroupSection<TItem>> _groupedSections = new();
     private HashSet<string> _expandedGroups = new();
@@ -1269,7 +1284,14 @@
     private static string ColumnKey(DataGridColumn<TItem> column) =>
         !string.IsNullOrWhiteSpace(column.Field) ? column.Field! : column.Id;
 
-    public void UpdateColumnWidth(string columnId, double width)
+    /// <summary>
+    /// Commits a new pixel width for the column identified by <paramref name="columnId"/>.
+    /// Called by the resize handle's JS commit (pointer drag, keyboard nudge) and by the
+    /// double-click auto-fit path (<paramref name="autoFit"/> = true). Clamps to the
+    /// column's Min/Max, persists via the layout auto-save, and raises
+    /// <see cref="OnColumnResize"/>.
+    /// </summary>
+    public void UpdateColumnWidth(string columnId, double width, bool autoFit = false)
     {
         var column = EffectiveColumns.FirstOrDefault(c => c.Id == columnId);
         if (column is not null)
@@ -1278,6 +1300,15 @@
             if (column.MaxWidth.HasValue)
                 column.Width = Math.Min(column.MaxWidth.Value, column.Width.Value);
             ScheduleAutoSave();
+            if (OnColumnResize.HasDelegate)
+            {
+                // Fire-and-forget through SafeAsyncDispatcher so a faulting async
+                // consumer handler is observed (logged) rather than swallowed, and
+                // so this sync API doesn't have to change its signature.
+                var args = new ColumnResizeEventArgs(column.Id, column.Width.Value, autoFit);
+                Lumeo.Services.SafeAsyncDispatcher.FireAndForget(
+                    InvokeAsync, () => OnColumnResize.InvokeAsync(args), "DataGrid.ColumnResize");
+            }
             StateHasChanged();
         }
     }
@@ -1463,6 +1494,30 @@
                 }
                 catch (JSDisconnectedException) { /* circuit gone — nothing to suppress */ }
             }
+        }
+
+        // Pointer-based (touch/pen) column reorder: register one delegated listener
+        // on the grid so touch devices can reorder columns (native HTML5 DnD, which
+        // the desktop path uses, never fires on touch). Registered whenever the grid
+        // is Reorderable; JS ignores mouse pointers so the desktop native path is
+        // untouched. Re-check each render so a runtime Reorderable flip is honoured.
+        if (Reorderable && !_pointerReorderRegistered)
+        {
+            try
+            {
+                await Interop.RegisterColumnReorder(_gridId, async (srcId, tgtId) =>
+                {
+                    await ReorderColumnByIdAsync(srcId, tgtId);
+                });
+                _pointerReorderRegistered = true;
+            }
+            catch (JSDisconnectedException) { }
+        }
+        else if (!Reorderable && _pointerReorderRegistered)
+        {
+            try { await Interop.UnregisterColumnReorder(_gridId); }
+            catch (JSDisconnectedException) { }
+            _pointerReorderRegistered = false;
         }
 
         if (_isExpanded && _fullscreenNeedsFocus)
@@ -2907,6 +2962,41 @@
         StateHasChanged();
     }
 
+    /// <summary>True when both columns live in the same pin partition (both left-pinned,
+    /// both unpinned, or both right-pinned). Column reordering is only permitted within a
+    /// partition — a drop across a boundary is rejected because the pin re-partition on
+    /// the next render would silently undo it. Unknown ids (either side) are treated as
+    /// "not same partition" so a stale drag can't slip through.</summary>
+    internal bool AreColumnsSamePartition(string? aId, string? bId)
+    {
+        if (aId is null || bId is null) return false;
+        var a = _orderedColumns.FirstOrDefault(c => c.Id == aId);
+        var b = _orderedColumns.FirstOrDefault(c => c.Id == bId);
+        if (a is null || b is null) return false;
+        return a.Pin == b.Pin;
+    }
+
+    /// <summary>
+    /// Reorders a column by id, moving <paramref name="sourceId"/> to the slot of
+    /// <paramref name="targetId"/>. Drives the pointer-based (touch/pen) reorder path
+    /// registered via <c>RegisterColumnReorder</c>: JS handles the whole drag in the DOM
+    /// and invokes this once on release. Operates on <c>_orderedColumns</c> by id (robust
+    /// to hidden columns) and routes through <see cref="HandleColumnReorder"/> so it shares
+    /// the exact FLIP animation, persistence, and OnColumnReorder callback the mouse path
+    /// uses. Cross-pin-partition and per-column non-reorderable drops are rejected.
+    /// </summary>
+    internal async Task ReorderColumnByIdAsync(string sourceId, string targetId)
+    {
+        if (!Reorderable || sourceId == targetId) return;
+        var src = _orderedColumns.FindIndex(c => c.Id == sourceId);
+        var tgt = _orderedColumns.FindIndex(c => c.Id == targetId);
+        if (src < 0 || tgt < 0) return;
+        var srcCol = _orderedColumns[src];
+        if (!srcCol.Reorderable) return;
+        if (srcCol.Pin != _orderedColumns[tgt].Pin) return; // same-partition only
+        await HandleColumnReorder(new ColumnReorderEventArgs(sourceId, src, tgt));
+    }
+
     // --- Row Reordering ---
 
     public void MoveRow(int oldIndex, int newIndex)
@@ -3565,6 +3655,15 @@
             catch (Microsoft.JSInterop.JSDisconnectedException) { /* circuit gone */ }
             catch { /* best-effort */ }
             _navKeysPrevented = false;
+        }
+
+        // Tear down the pointer-based column-reorder listener registered on the grid.
+        if (_pointerReorderRegistered)
+        {
+            try { await Interop.UnregisterColumnReorder(_gridId); }
+            catch (Microsoft.JSInterop.JSDisconnectedException) { /* circuit gone */ }
+            catch { /* best-effort */ }
+            _pointerReorderRegistered = false;
         }
 
         // Defensive: if disposed while still in fullscreen, unlock scroll AND drop

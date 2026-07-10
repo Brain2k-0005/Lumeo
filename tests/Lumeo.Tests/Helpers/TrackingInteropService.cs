@@ -471,14 +471,64 @@ public class TrackingInteropService : IComponentInteropService
     public IReadOnlyList<string> RegisterColumnResizeHandleIds => _columnResizeRegistrations;
     public int UnregisterColumnResizeCallCount => _columnResizeUnregistrations.Count;
 
-    public ValueTask RegisterColumnResize(string handleId, double minWidth, double? maxWidth, Func<double, Task> commitHandler)
+    // Last commit handler captured per handle so tests can simulate a JS-side
+    // resize commit (drag/keyboard/auto-fit) and assert the width + persistence
+    // path without needing a real browser pointer.
+    private readonly Dictionary<string, Func<double, bool, Task>> _columnResizeCommitHandlers = new();
+    public IReadOnlyDictionary<string, Func<double, bool, Task>> ColumnResizeCommitHandlers => _columnResizeCommitHandlers;
+    /// <summary>Invoke the captured commit for a handle, mimicking JS on pointerup /
+    /// dblclick. Returns false when no handler is registered for that id.</summary>
+    public async Task<bool> SimulateColumnResizeCommit(string handleId, double finalWidth, bool autoFit)
+    {
+        if (!_columnResizeCommitHandlers.TryGetValue(handleId, out var handler)) return false;
+        await handler(finalWidth, autoFit);
+        return true;
+    }
+
+    public ValueTask RegisterColumnResize(string handleId, double minWidth, double? maxWidth, Func<double, bool, Task> commitHandler)
     {
         _columnResizeRegistrations.Add(handleId);
+        _columnResizeCommitHandlers[handleId] = commitHandler;
         return ValueTask.CompletedTask;
     }
     public ValueTask UnregisterColumnResize(string handleId)
     {
         _columnResizeUnregistrations.Add(handleId);
+        _columnResizeCommitHandlers.Remove(handleId);
+        return ValueTask.CompletedTask;
+    }
+
+    private readonly List<(string HandleId, double Delta)> _nudgeColumnResizeCalls = new();
+    public IReadOnlyList<(string HandleId, double Delta)> NudgeColumnResizeCalls => _nudgeColumnResizeCalls;
+    public ValueTask NudgeColumnResize(string handleId, double delta)
+    {
+        _nudgeColumnResizeCalls.Add((handleId, delta));
+        return ValueTask.CompletedTask;
+    }
+
+    // Pointer-based (touch/pen) column reorder registration + commit capture.
+    private readonly List<string> _columnReorderRegistrations = new();
+    private readonly List<string> _columnReorderUnregistrations = new();
+    private readonly Dictionary<string, Func<string, string, Task>> _columnReorderCommitHandlers = new();
+    public IReadOnlyList<string> ColumnReorderRegistrations => _columnReorderRegistrations;
+    public IReadOnlyList<string> ColumnReorderUnregistrations => _columnReorderUnregistrations;
+    /// <summary>Simulate a JS-side pointer-reorder commit (drop of source onto target).</summary>
+    public async Task<bool> SimulateColumnReorderCommit(string gridId, string sourceColumnId, string targetColumnId)
+    {
+        if (!_columnReorderCommitHandlers.TryGetValue(gridId, out var handler)) return false;
+        await handler(sourceColumnId, targetColumnId);
+        return true;
+    }
+    public ValueTask RegisterColumnReorder(string gridId, Func<string, string, Task> commitHandler)
+    {
+        _columnReorderRegistrations.Add(gridId);
+        _columnReorderCommitHandlers[gridId] = commitHandler;
+        return ValueTask.CompletedTask;
+    }
+    public ValueTask UnregisterColumnReorder(string gridId)
+    {
+        _columnReorderUnregistrations.Add(gridId);
+        _columnReorderCommitHandlers.Remove(gridId);
         return ValueTask.CompletedTask;
     }
 

@@ -307,9 +307,18 @@ public interface IComponentInteropService : IAsyncDisposable, IDisposable
     ValueTask UnregisterPreventDefaultKeys(string elementId);
 
     // DataGrid Column Resize — JS previews the drag directly in the DOM and invokes
-    // commitHandler once with the final width on mouseup.
-    ValueTask RegisterColumnResize(string handleId, double minWidth, double? maxWidth, Func<double, Task> commitHandler);
+    // commitHandler once with the final width on pointerup (autoFit = true when the
+    // width came from a double-click auto-fit-to-content rather than a drag).
+    ValueTask RegisterColumnResize(string handleId, double minWidth, double? maxWidth, Func<double, bool, Task> commitHandler);
     ValueTask UnregisterColumnResize(string handleId);
+    /// <summary>Keyboard resize: nudges the column width by <paramref name="delta"/> px
+    /// (JS clamps to min/max and re-commits through the registered handler).</summary>
+    ValueTask NudgeColumnResize(string handleId, double delta);
+
+    // DataGrid Column Reorder (pointer-based touch/pen) — one delegated listener per
+    // grid; commitHandler(sourceColumnId, targetColumnId) fires once on release.
+    ValueTask RegisterColumnReorder(string gridId, Func<string, string, Task> commitHandler);
+    ValueTask UnregisterColumnReorder(string gridId);
 
     // DataGrid Column Reorder FLIP — capture column rects before reorder,
     // animate from old → new positions after Blazor's re-render.

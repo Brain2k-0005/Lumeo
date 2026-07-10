@@ -6,6 +6,7 @@
 <th data-slot="datagrid-header-cell" class="@CssClass" style="@StyleString"
     id="@CellId"
     data-col-id="@Column.Id"
+    data-col-pin="@Column.Pin"
     role="columnheader"
     aria-colindex="@AriaColIndex"
     aria-sort="@AriaSort"
@@ -20,6 +21,22 @@
     @ondragleave="HandleDragLeave"
     @attributes="AdditionalAttributes">
     <div class="flex items-center gap-1">
+        @* Dedicated reorder grip (ReUI drag-handle affordance). Discoverable cue
+           for both drag paths: it's the initiator for touch/pen (a JS pointer
+           listener registered on the grid delegates from [data-reorder-grip] and
+           drives a translate-in-place reorder — native HTML5 DnD never fires on
+           touch), while on desktop the whole draggable <th> still starts the
+           native drag. Only shown when the column is actually reorderable. *@
+        @if (EffectiveReorderable)
+        {
+            <span data-reorder-grip
+                  class="-ms-1 inline-flex items-center justify-center h-5 w-4 shrink-0 rounded text-muted-foreground opacity-60 hover:opacity-100 cursor-grab active:cursor-grabbing touch-none"
+                  style="touch-action: none;"
+                  aria-label="@L["DataGrid.DragToReorder"]"
+                  title="@L["DataGrid.DragToReorder"]">
+                <SvgGlyph Svg="@(LumeoIcons.GripVertical)" class="h-3.5 w-3.5" />
+            </span>
+        }
         @if (Column.HeaderTemplate is not null)
         {
             @Column.HeaderTemplate
@@ -165,15 +182,35 @@
 
     @if (Column.Resizable)
     {
-        @* No Blazor pointerdown binding here — the JS listener attached via
-           RegisterColumnResize() in OnAfterRenderAsync owns this event end to
-           end (capture, move tracking via setPointerCapture, prevent the page
-           from initiating a touch-scroll, commit on pointerup). Wiring a
-           Blazor handler too would double-fire the pointerdown handling and
-           recreate the lazy-register race from before. *@
+        @* ReUI-grade resize handle: a wide (~16px) invisible hit area straddling
+           the column's inline-end edge, with a CSS-authored ::before divider that
+           idles as a 1px border line and turns 2px primary on hover / focus /
+           active drag (data-resizing set by JS). Positioned with the logical `end`
+           edge so it lands on the LEFT in RTL automatically.
+
+           Pointer drag: the JS listener attached via RegisterColumnResize() owns
+           pointerdown→up end to end (capture, rAF-coalesced DOM writes, commit
+           once on pointerup) — no Blazor round-trip per move. Double-click =
+           auto-fit to content (also JS).
+
+           tabindex=-1: a role="separator" widget with valuenow semantics for AT, but
+           NOT a Tab stop — a data grid keeps a single roving tab stop for cell nav, so
+           N tabbable handles would shatter that. Keyboard resize is reached through the
+           roving-focused header cell (Ctrl+Arrow); clicking a handle also focuses it,
+           after which plain Arrow keys resize (the @onkeydown below, stopPropagation'd
+           so the arrows don't also drive header nav). *@
         <div id="@_resizeHandleId"
-             class="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-primary/30 active:bg-primary/50"
-             style="touch-action: none;"></div>
+             data-slot="datagrid-resize-handle"
+             class="lumeo-dg-resize-handle"
+             role="separator"
+             aria-orientation="vertical"
+             aria-label="@L["DataGrid.ResizeColumn"]"
+             tabindex="-1"
+             aria-valuemin="@((int)(Column.MinWidth ?? 50))"
+             aria-valuemax="@(Column.MaxWidth.HasValue ? (int)Column.MaxWidth.Value : (int?)null)"
+             aria-valuenow="@(Column.Width.HasValue ? (int)Column.Width.Value : (int?)null)"
+             @onkeydown="HandleResizeKeyDown"
+             @onkeydown:stopPropagation="true"></div>
     }
 
     @if (_isDragOver && EffectiveReorderable && _dropSide is not null)
@@ -241,6 +278,19 @@
         // the table in DataGrid.OnAfterRenderAsync (RegisterPreventDefaultKeys) —
         // these header keydowns bubble to it. (battle-test n=8)
         if (Context is null) return;
+
+        // Keyboard resize via the roving-focused header cell: Ctrl+Arrow nudges the
+        // column width (Ctrl+Shift+Arrow = fine 1px). This is the primary keyboard
+        // resize path — it flows through the grid's single tab stop instead of adding
+        // a tabbable handle per column. ArrowRight always grows toward the visual
+        // right; the JS nudge flips the sign for RTL. Handled before header nav so the
+        // modified arrows don't also move column focus.
+        if (Column.Resizable && e.CtrlKey && (e.Key == "ArrowLeft" || e.Key == "ArrowRight"))
+        {
+            var step = e.ShiftKey ? 1.0 : 10.0;
+            await Interop.NudgeColumnResize(_resizeHandleId, e.Key == "ArrowRight" ? step : -step);
+            return;
+        }
 
         if ((e.Key == "Enter" || e.Key == " " || e.Key == "Spacebar") && Column.Sortable)
         {
@@ -508,12 +558,32 @@
             _resizeHandleId,
             Column.MinWidth ?? 50,
             Column.MaxWidth,
-            async finalWidth =>
+            async (finalWidth, autoFit) =>
             {
-                ParentGrid?.UpdateColumnWidth(Column.Id, finalWidth);
+                ParentGrid?.UpdateColumnWidth(Column.Id, finalWidth, autoFit);
                 await InvokeAsync(StateHasChanged);
             });
         _resizeRegistered = true;
+    }
+
+    // Keyboard resize (a11y): Arrow Left/Right nudge the focused handle's column
+    // by a step (Shift = fine 1px). The delta is applied in JS (NudgeColumnResize)
+    // which reads the live width, clamps to min/max, flips sign for RTL, writes the
+    // DOM directly, and re-commits through the same handler — so a keyboard resize
+    // persists exactly like a drag. ArrowRight always means "toward the visual
+    // right" regardless of writing direction.
+    private async Task HandleResizeKeyDown(KeyboardEventArgs e)
+    {
+        if (!Column.Resizable) return;
+        var step = e.ShiftKey ? 1.0 : 10.0;
+        var delta = e.Key switch
+        {
+            "ArrowRight" => step,
+            "ArrowLeft" => -step,
+            _ => 0.0
+        };
+        if (delta == 0.0) return;
+        await Interop.NudgeColumnResize(_resizeHandleId, delta);
     }
 
     // --- Column Drag & Drop Reordering ---
@@ -562,6 +632,11 @@
         if (!EffectiveReorderable || DragState is null) return;
         if (!DragState.IsOwnDragColumn(ColumnIndex)) return;
         if (DragState.SourceColumnId == Column.Id) return;
+        // Pinned-column constraint: a column can only be reordered WITHIN its pin
+        // partition (left / unpinned / right). Dropping across a boundary would be
+        // silently undone by the pin re-partition on the next render, so we don't
+        // even advertise it — no drop indicator when source and target differ in Pin.
+        if (ParentGrid is not null && !ParentGrid.AreColumnsSamePartition(DragState.SourceColumnId, Column.Id)) return;
         _isDragOver = true;
         var src = DragState.SourceColumnIndex;
         _dropSide = src >= 0 && src < ColumnIndex ? "right" : "left";
@@ -589,11 +664,16 @@
         var sourceIndex = DragState.SourceColumnIndex;
         var sourceId = DragState.SourceColumnId ?? Column.Id;
 
+        // Pinned-column constraint (mirrors HandleDragEnter): reject a cross-partition
+        // drop outright so a pinned column can't be reordered into the unpinned region.
+        var samePartition = ParentGrid is null || ParentGrid.AreColumnsSamePartition(sourceId, Column.Id);
+
         // Reset BEFORE invoking the consumer callback so re-entrant drops don't
         // see a stale source index, and so a faulting consumer can't leave the
         // grid in a "drag in progress" state.
         DragState.ResetColumn();
 
+        if (!samePartition) return;
         if (sourceIndex < 0 || sourceIndex == ColumnIndex) return;
 
         var args = new ColumnReorderEventArgs(sourceId, sourceIndex, ColumnIndex);
