@@ -1,4 +1,5 @@
 using Lumeo.Cli;
+using Lumeo.Docs.Services;
 using Xunit;
 
 namespace Lumeo.Cli.Tests;
@@ -68,27 +69,53 @@ public class IconLibraryNormTests
         Assert.Null(warning); // must not warn — null means "not set", not "legacy"
     }
 
-    // ── already-canonical first-party names → pass through unchanged, no warning ──
+    // ── all catalog IDs (base packs + variant IDs) → pass through unchanged, no warning ──
+
+    public static IEnumerable<object[]> AllCatalogKeys =>
+        IconPackCatalog.FirstParty.Select(p => new object[] { p.Key });
 
     [Theory]
-    [InlineData("lucide")]
-    [InlineData("bootstrap")]
-    [InlineData("fluent")]
-    [InlineData("material-symbols")]
-    [InlineData("tabler")]
-    [InlineData("phosphor")]
-    [InlineData("heroicons")]
-    [InlineData("remix")]
-    [InlineData("iconoir")]
-    [InlineData("material-symbols-rounded")]
-    [InlineData("material-symbols-sharp")]
-    public void Normalize_FirstPartyName_PassesThrough_NoWarning(string input)
+    [MemberData(nameof(AllCatalogKeys))]
+    public void Normalize_AllCatalogIds_PassThrough_NoWarning(string key)
     {
         string? warning = null;
-        var result = IconLibraryNorm.Normalize(input, msg => warning = msg);
+        var result = IconLibraryNorm.Normalize(key, msg => warning = msg);
 
-        Assert.Equal(input, result);
+        Assert.Equal(key, result);
         Assert.Null(warning);
+    }
+
+    // ── drift guard: CatalogKeys must equal IconPackCatalog.FirstParty keys ──────
+
+    [Fact]
+    public void CatalogKeys_MatchesIconPackCatalog_FirstParty()
+    {
+        var catalogKeys = IconPackCatalog.FirstParty.Select(p => p.Key)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var cliKeys = IconLibraryNorm.CatalogKeys;
+
+        var missingInCli = catalogKeys.Except(cliKeys, StringComparer.OrdinalIgnoreCase).OrderBy(k => k).ToList();
+        var extraInCli   = cliKeys.Except(catalogKeys, StringComparer.OrdinalIgnoreCase).OrderBy(k => k).ToList();
+
+        Assert.True(missingInCli.Count == 0 && extraInCli.Count == 0,
+            $"CatalogKeys drift detected.\n" +
+            $"  In IconPackCatalog but missing from IconLibraryNorm.CatalogKeys: [{string.Join(", ", missingInCli)}]\n" +
+            $"  In IconLibraryNorm.CatalogKeys but not in IconPackCatalog:        [{string.Join(", ", extraInCli)}]");
+    }
+
+    // ── all Packages entries have a NuGet package name (no blanks) ───────────────
+
+    [Fact]
+    public void Packages_AllEntries_HaveNonEmptyNuGetPackage()
+    {
+        var blanks = IconLibraryNorm.Packages
+            .Where(kv => string.IsNullOrWhiteSpace(kv.Value))
+            .Select(kv => kv.Key)
+            .OrderBy(k => k)
+            .ToList();
+
+        Assert.True(blanks.Count == 0,
+            $"Packages entries with empty NuGet name: [{string.Join(", ", blanks)}]");
     }
 
     // ── revert-proof: font-awesome must NEVER be written (regression guard) ──

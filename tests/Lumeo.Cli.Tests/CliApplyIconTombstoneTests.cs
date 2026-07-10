@@ -65,6 +65,33 @@ public sealed class CliApplyIconTombstoneTests : IDisposable
     }
 
     [Fact]
+    public void Apply_DryRun_TombstonedPreset_ShowsNormalizedValue_AndWarns()
+    {
+        Assert.True(File.Exists(_lumeoDll), "Built CLI (lumeo.dll) not found — build the solution first.");
+
+        // Seed a minimal project.
+        var configPath = Path.Combine(_proj, "lumeo.json");
+        File.WriteAllText(configPath, "{ \"theme\": { \"iconLibrary\": \"lucide\" } }");
+        Directory.CreateDirectory(Path.Combine(_proj, "wwwroot"));
+
+        // Index 3 in IconLibraries is a tombstone (was "font-awesome") → decodes to "".
+        var code = LumeoPresetCodec.Encode(new LumeoPreset(
+            Theme: 0, Style: 0, BaseColor: 0, Radius: 2, Font: 0,
+            IconLibrary: 3, MenuColor: 0, MenuAccent: 0, Dark: 0));
+
+        var r = RunCli("apply", code, "--only", "icons", "--dry-run", "--yes");
+        Assert.True(r.Exit == 0, $"apply --dry-run failed (exit {r.Exit}). {r.Stderr}{r.Stdout}");
+
+        // Warning must fire during dry-run (normalization moved before display).
+        Assert.Contains("no first-party pack", r.Stderr, StringComparison.OrdinalIgnoreCase);
+
+        // The preview row must not display a raw "" — it should show "(unset)" (null after normalize).
+        Assert.DoesNotContain("iconLibrary      \"\"", r.Stdout, StringComparison.Ordinal);
+        // Dry-run must not have written anything.
+        Assert.Equal("{ \"theme\": { \"iconLibrary\": \"lucide\" } }", File.ReadAllText(configPath));
+    }
+
+    [Fact]
     public void Apply_OnlyIcons_TombstonedPreset_PreservesExistingIconLibrary_AndWarns()
     {
         Assert.True(File.Exists(_lumeoDll), "Built CLI (lumeo.dll) not found — build the solution first.");

@@ -163,6 +163,15 @@ public static class ThemeCommands
             }
         }
 
+        // Step 1b: normalise the icon library early so the dry-run preview (Step 2) and
+        // the real apply path both show/write the same value (incl. rewrite warnings).
+        if (allowed is null || allowed.Contains("iconLibrary"))
+        {
+            resolved.IconLibrary = IconLibraryNorm.Normalize(
+                resolved.IconLibrary,
+                msg => Console.Error.WriteLine(Ansi.Yellow("! " + msg)));
+        }
+
         // Step 2: surface what was resolved.
         InfoBlank();
         Info(Ansi.Bold($"Preset {preset} decoded") + Ansi.Dim($" (via {source})") + ":");
@@ -216,17 +225,6 @@ public static class ThemeCommands
         catch (Exception ex)
         {
             Console.Error.WriteLine(Ansi.Yellow($"! Could not back up {Paths.ConfigFile}: {ex.Message}"));
-        }
-
-        // Step 5b: normalise the icon library through the single shared gate BEFORE any
-        // merge/write. Handles tombstoned codec indices (""), server-preset legacy strings
-        // (fluentui, google-material, font-awesome, ionicons, devicon, flag-icons …), and
-        // already-canonical first-party names — all in one place via IconLibraryNorm.
-        if (allowed is null || allowed.Contains("iconLibrary"))
-        {
-            resolved.IconLibrary = IconLibraryNorm.Normalize(
-                resolved.IconLibrary,
-                msg => Console.Error.WriteLine(Ansi.Yellow("! " + msg)));
         }
 
         // Step 6: merge into cfg.Theme (only the allowed keys).
