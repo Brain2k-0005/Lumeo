@@ -2442,6 +2442,38 @@ export function unregisterOtpPaste(baseId, length) {
     }
 }
 
+// --- DataGrid cross-engine drag arbiter ---
+// Column resize, column reorder, and row reorder are three independent
+// pointer-driven engines, each guarding itself against a SECOND pointer on
+// its OWN affordance (Codex round-5: resize's local `isDragging`, column/row
+// reorder's local `drag`). None of those local guards can see each other, so
+// a second touch that lands on a DIFFERENT engine's affordance — e.g. a
+// finger taps a resize handle while a column (or row) reorder drag is
+// already live on the same grid — still passes its own engine's gate and
+// starts a competing gesture: both then fight over the same global
+// `document.body.style.cursor`/`userSelect`, and whichever gesture's
+// pointerId gets orphaned by the other engine's DOM mutations never receives
+// its matching pointerup/cancel and is stranded mid-drag.
+// One token per grid instance — claimed atomically at the same point each
+// engine already commits to starting a drag, released the moment that drag
+// ends/cancels/never-arms — closes every cross-engine combination (resize
+// blocks reorder, reorder blocks resize, column reorder blocks row reorder
+// and back) while leaving independent grids on the same page free to drag
+// concurrently.
+const gridActiveDrags = new Map(); // gridId -> engine name currently owning the live drag
+
+function claimGridDrag(gridId, engine) {
+    if (!gridId) return true; // couldn't resolve an owning grid — fail open, nothing to arbitrate against
+    const owner = gridActiveDrags.get(gridId);
+    if (owner && owner !== engine) return false;
+    gridActiveDrags.set(gridId, engine);
+    return true;
+}
+function releaseGridDrag(gridId, engine) {
+    if (!gridId) return;
+    if (gridActiveDrags.get(gridId) === engine) gridActiveDrags.delete(gridId);
+}
+
 // --- DataGrid Column Resize ---
 
 const columnResizeHandlers = new Map();
@@ -2499,6 +2531,12 @@ export function registerColumnResize(handleId, dotnetRef, minWidth, maxWidth) {
     if (!handle) return;
     const th = handle.closest('th');
     if (!th) return;
+    // Resolved once at registration — the arbiter token this handle's drags
+    // claim/release against (see the cross-engine arbiter above). null when
+    // the handle isn't (yet) inside a DataGrid root, which just disables
+    // arbitration for it rather than failing registration.
+    const gridEl = th.closest('[data-grid-id]');
+    const gridId = gridEl ? gridEl.getAttribute('data-grid-id') : null;
 
     let startX = 0;
     let startWidth = 0;
@@ -2571,6 +2609,10 @@ export function registerColumnResize(handleId, dotnetRef, minWidth, maxWidth) {
         // would silently stop matching activePointerId and get stranded mid-drag
         // (Codex round-5 #3, mirrored onto resize).
         if (isDragging) return;
+        // Cross-engine: a column/row reorder already live on this grid owns
+        // the shared arbiter token — refuse to start a competing resize
+        // (round-6 finding; see the arbiter comment above registerColumnResize).
+        if (!claimGridDrag(gridId, 'resize')) return;
         isDragging = true;
         activePointerId = e.pointerId;
         startX = e.clientX;
@@ -2618,6 +2660,7 @@ export function registerColumnResize(handleId, dotnetRef, minWidth, maxWidth) {
     };
     const endDrag = () => {
         isDragging = false;
+        releaseGridDrag(gridId, 'resize');
         if (rafId) { cancelAnimationFrame(rafId); rafId = 0; }
         document.body.style.cursor = '';
         document.documentElement.style.cursor = '';
@@ -2731,6 +2774,16 @@ export function nudgeColumnResize(handleId, delta) {
     let w = current + Number(delta) * dir;
     if (w < h.min) w = h.min; else if (w > h.max) w = h.max;
     w = Math.round(w);
+    // Already at Min/MaxWidth and the nudge is further into the clamp: the
+    // computed width is identical to what's already committed (rounding the
+    // live rect can itself introduce ±1px drift from the last committed
+    // value, so compare against the rounded CURRENT width, not w === current
+    // pre-round). Skip the write/commit entirely — mirrors the pointer
+    // engine's motionless-drag no-op (round-5 #4) — so a repeated
+    // Ctrl+ArrowLeft/Right at the clamp doesn't keep firing
+    // OnColumnResizeCommit/autosave/re-render for a no-op keypress
+    // (round-6 finding).
+    if (w === Math.round(current)) return w;
     // Refresh the body-cell list (rows may have paged/virtualized since register).
     const cells = h.gatherBodyCells();
     const wpx = w + 'px';
@@ -3137,7 +3190,13 @@ export function registerColumnReorder(gridId, dotnetRef) {
     // moment its button is released anywhere, closing that window (Codex
     // round-4 #5).
     const onWindowPointerUp = () => {
-        if (drag && !drag.armed) drag = null;
+        // The arbiter token was claimed at the SAME pointerdown that set
+        // `drag` (see onPointerDown below) — an unarmed descriptor dropped
+        // here never reaches finishDrag, so the release has to happen here
+        // too, or a plain click that starts (but never crosses the movement
+        // threshold for) a header-wide mouse init would strand the token
+        // claimed and permanently block every other engine on this grid.
+        if (drag && !drag.armed) { drag = null; releaseGridDrag(gridId, 'column-reorder'); }
     };
 
     // Ends the drag. commitTargetColId is null for cancel (Escape / pointercancel)
@@ -3148,6 +3207,7 @@ export function registerColumnReorder(gridId, dotnetRef) {
     const finishDrag = (commitTargetColId) => {
         const d = drag;
         drag = null;
+        releaseGridDrag(gridId, 'column-reorder');
         window.removeEventListener('keydown', onKeyDown, true);
         document.body.style.cursor = '';
         document.documentElement.style.cursor = '';
@@ -3327,6 +3387,13 @@ export function registerColumnReorder(gridId, dotnetRef) {
             min: headers[0].baseRect.left,
             max: headers[headers.length - 1].baseRect.right,
         };
+
+        // Cross-engine: a resize (or row-reorder) already live on this grid
+        // owns the shared arbiter token — refuse to start a competing column
+        // reorder (round-6 finding; see the arbiter comment above
+        // registerColumnResize). Claimed here, right before `drag` becomes
+        // non-null, so a rejected claim never touches drag state.
+        if (!claimGridDrag(gridId, 'column-reorder')) return;
 
         drag = {
             pointerId: e.pointerId, captureTarget: viaGrip ? grip : th,
@@ -3523,6 +3590,7 @@ export function registerRowReorder(gridId, dotnetRef) {
     const finishDrag = (commit) => {
         const d = drag;
         drag = null;
+        releaseGridDrag(gridId, 'row-reorder');
         window.removeEventListener('keydown', onKeyDown, true);
         document.body.style.cursor = '';
         document.documentElement.style.cursor = '';
@@ -3694,6 +3762,13 @@ export function registerRowReorder(gridId, dotnetRef) {
             min: rows[0].baseRect.top,
             max: rows[rows.length - 1].baseRect.bottom,
         };
+
+        // Cross-engine: a resize (or column-reorder) already live on this
+        // grid owns the shared arbiter token — refuse to start a competing
+        // row reorder (round-6 finding; see the arbiter comment above
+        // registerColumnResize). Claimed here, right before `drag` becomes
+        // non-null, so a rejected claim never touches drag state.
+        if (!claimGridDrag(gridId, 'row-reorder')) return;
 
         drag = {
             pointerId: e.pointerId, captureTarget: grip,

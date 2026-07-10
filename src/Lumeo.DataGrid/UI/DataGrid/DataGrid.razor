@@ -3029,6 +3029,27 @@
             // A locked column can't be the one that moves at all.
             return;
         }
+        // Cross-pin-partition moves are rejected up front — mirrors the
+        // pointer-drag commit path's own guard (ReorderColumnByIdAsync:
+        // `srcCol.Pin != tgtCol.Pin`). That path always proposes a
+        // same-partition target (its JS preview never crosses a partition
+        // boundary — see registerColumnReorder's computeTargetIdx/
+        // applyProjection in components.js), but the columns panel's
+        // SortableList (DataGridColumnVisibility) is a single flat list
+        // spanning EVERY pin group with no drag restriction, so
+        // args.NewIndex can legitimately land in a different partition than
+        // args.OldIndex. Without this guard, `reordered` below is computed
+        // against the PRE-repartition array — where crossing a pin boundary
+        // still looks like a genuine move — and RefreshVisibleColumns's
+        // partition-preserving stable sort (see its own remarks) then
+        // silently restores every column to its own pin group, so the side
+        // effects below (event, autosave, FLIP animation) would fire for a
+        // move that never actually landed anywhere (round-6 finding).
+        var targetIndex = Math.Clamp(args.NewIndex, 0, _orderedColumns.Count - 1);
+        if (col.Pin != _orderedColumns[targetIndex].Pin)
+        {
+            return;
+        }
         // A drop that resolves to a no-op order (e.g. the columns panel proposes
         // a slot past a locked edge column, which ReorderColumnsPreservingLocked
         // then redirects/clamps back to nothing) must not report a reorder to
@@ -3190,8 +3211,14 @@
         if (string.IsNullOrEmpty(sourceRowKey) || string.IsNullOrEmpty(targetRowKey)) return;
         if (sourceRowKey == targetRowKey) return;
 
-        var oldIndex = _displayedItems.FindIndex(i => (DataGridRowKeys.KeyFor(i).ToString() ?? "") == sourceRowKey);
-        var newIndex = _displayedItems.FindIndex(i => (DataGridRowKeys.KeyFor(i).ToString() ?? "") == targetRowKey);
+        // Mirrors the DOM key DataGridRow.RowKey stamped at drag start/read at
+        // drag end (see DataGridRowKeys.DomKeyFor's contract) — reference-type
+        // rows resolve by their live per-instance identity hash (survives
+        // index drift below); value-type rows resolve positionally, which is
+        // exactly why the "stale index" guard immediately below still matters
+        // for them specifically.
+        var oldIndex = DataGridRowKeys.ResolveDomKeyIndex(_displayedItems, sourceRowKey);
+        var newIndex = DataGridRowKeys.ResolveDomKeyIndex(_displayedItems, targetRowKey);
         // Either key may no longer resolve — the row it identified was removed
         // from _displayedItems by a mutation that landed during the drag's
         // post-drop settle window. Silently drop the stale commit rather than

@@ -159,9 +159,29 @@
         var oldIndex = oldOrder.FindIndex(c => ReferenceEquals(c, moved));
         if (oldIndex < 0 || oldIndex == movedNewIndex) return;
 
-        _buffer = reordered;
+        _buffer = reordered; // optimistic — SortableList already shows this order
         var args = new ColumnReorderEventArgs(moved.Id, oldIndex, movedNewIndex);
         await OnColumnReorder.InvokeAsync(args);
+
+        // HandleColumnReorder (DataGrid.HandleColumnReorder) mutates the grid's own
+        // column list SYNCHRONOUSLY before this await resumes — whether it applies
+        // the move (ReorderColumnsPreservingLocked + RefreshVisibleColumns) or
+        // rejects it (locked source column, cross-pin-partition move, or a
+        // redirect-to-nothing no-op) has already fully happened by now, regardless
+        // of when/whether Blazor gets around to actually re-rendering us. A
+        // rejection deliberately skips StateHasChanged (round-5's no-op guard, so a
+        // no-op drag doesn't pay for an event/autosave/FLIP-animation/rerender it
+        // didn't need) — so without this check, a rejected drag left the panel
+        // permanently showing the optimistically-applied WRONG order until some
+        // unrelated re-render happened to reset it via OnParametersSet (round-6
+        // finding). `Columns` is a live ReadOnlyCollection view over that same
+        // mutable list (see DataGrid.EffectiveColumns), so re-reading it here — even
+        // through this still-stale parameter reference — reflects whatever DID or
+        // DIDN'T change. Snap the buffer back to it on any mismatch; a genuine
+        // accept still matches (or gets corrected again, harmlessly, once the real
+        // re-render's OnParametersSet lands the authoritative post-repartition order).
+        if (!_buffer.SequenceEqual(Columns))
+            _buffer = Columns.ToList();
     }
 
     private async Task TogglePinMenu(string columnId)

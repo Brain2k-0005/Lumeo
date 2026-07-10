@@ -211,12 +211,26 @@
     private bool IsEditing => Context?.IsRowEditing(Item) ?? false;
     private bool HasDetailTemplate => DetailTemplate is not null;
 
-    // Stable per-row identity for the pointer-reorder FLIP handshake (JS
-    // captureRowRects/animateRowReorder) — the same value Blazor's own @key
-    // uses (DataGridBody's @key="DataGridRowKeys.KeyFor(item)"), stringified for
-    // the data-row-key DOM attribute. Only rendered when RowReorderPointerActive
-    // (see the <tr> attributes above), so this only allocates in that mode.
-    private string RowKey => DataGridRowKeys.KeyFor(Item).ToString() ?? "";
+    // DOM identity for the pointer-reorder FLIP handshake (JS
+    // captureRowRects/animateRowReorder/registerRowReorder) — stamped into the
+    // data-row-key DOM attribute and read back by ReorderRowByKeyAsync at drag
+    // end. Only rendered when RowReorderPointerActive (see the <tr> attributes
+    // above), so this only allocates in that mode.
+    //
+    // NOT the same value as Blazor's own @key (DataGridBody's
+    // @key="DataGridRowKeys.KeyFor(item)") — @key only needs Equals-based
+    // dedup, which a boxed value type gets "for free" from field-value
+    // equality, but the wire protocol here needs a DOM-safe STRING, and
+    // naively stringifying KeyFor (i.e. ToString()) collapses every row of a
+    // struct TItem without an overridden ToString() to the same string (the
+    // type's full name — identical regardless of field values), misdirecting
+    // the reorder commit to the wrong row. DataGridRowKeys.DomKeyFor documents
+    // the full contract: reference types get a true per-instance identity
+    // hash (stable across concurrent list mutation during the drag's settle
+    // window); value types — which have no instance identity to hash — get a
+    // POSITIONAL key instead, safe only because RowReorderPointerActive
+    // guarantees RowIndex is 1:1 with this row's live _displayedItems index.
+    private string RowKey => DataGridRowKeys.DomKeyFor(Item, RowIndex);
 
     // Single ChevronDown that rotates -90deg when collapsed; smooth like Accordion.
     private string DetailChevronClasses =>
