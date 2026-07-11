@@ -211,6 +211,58 @@ public sealed class CliStandaloneE2ETests : IDisposable
     }
 
     [Fact]
+    public void Default_Add_Toast_Vendors_No_Internal_Lumeo_References()
+    {
+        // A NORMAL (non-standalone) project that references the Lumeo package — the DEFAULT
+        // `lumeo add <component>` path. Core UI components are ALWAYS vendored as owned SOURCE
+        // (shadcn-style), regardless of standalone mode; only the shared runtime substrate
+        // (Lumeo.Internal/Lumeo.Services/…) stays behind the NuGet package reference here — it is
+        // NOT vendored outside --standalone/eject. PR #357 round-3 (P1): Toast.razor referenced
+        // `Lumeo.Internal.LumeoIds` and `Lumeo.Services.DelayedDispatch` — both `internal` to the
+        // Lumeo assembly — so the vendored copy failed to compile in the consumer app with
+        // inaccessible-type errors the moment it was built; no restored Lumeo NuGet package grants
+        // InternalsVisibleTo to an arbitrary consumer assembly. Guards the whole vendored Toast
+        // family against reintroducing an internal reference under this path.
+        File.WriteAllText(Path.Combine(_proj, "App.csproj"),
+            "<Project Sdk=\"Microsoft.NET.Sdk.Razor\"><PropertyGroup><TargetFramework>net10.0</TargetFramework>"
+          + "<ImplicitUsings>enable</ImplicitUsings></PropertyGroup><ItemGroup>"
+          + "<PackageReference Include=\"Microsoft.AspNetCore.Components.Web\" Version=\"10.0.6\" />"
+          + "<PackageReference Include=\"Lumeo\" Version=\"4.0.0\" /></ItemGroup></Project>");
+
+        Assert.Equal(0, RunCli("init", "--yes", "--namespace", "Acme.Ui", "--path", "Components/Ui", "--no-assets").Exit);
+        var add = RunCli("add", "toast", "--local", "--yes", "--force");
+        Assert.True(add.Exit == 0, $"add toast failed (exit {add.Exit}). {add.Stderr}{add.Stdout}");
+
+        var toastDir = Path.Combine(_proj, "Components", "Ui", "Toast");
+        Assert.True(Directory.Exists(toastDir), $"Toast was not vendored to {toastDir}\n{add.Stdout}");
+
+        var vendoredFiles = Directory.EnumerateFiles(toastDir, "*.*", SearchOption.AllDirectories)
+            .Where(f => f.EndsWith(".razor", StringComparison.OrdinalIgnoreCase) || f.EndsWith(".cs", StringComparison.OrdinalIgnoreCase))
+            .ToList();
+        Assert.NotEmpty(vendoredFiles);
+
+        foreach (var file in vendoredFiles)
+        {
+            // Strip `//`/`///` line comments before scanning: the fix for this exact finding
+            // documents ITSELF in prose ("not Lumeo.Internal.LumeoIds — that helper is
+            // internal…"), which would otherwise trip this same assertion as a false positive.
+            // The guard cares about live CODE references, not explanatory comments.
+            var code = string.Join('\n', File.ReadAllLines(file)
+                .Select(line => line.IndexOf("//", StringComparison.Ordinal) is >= 0 and var i ? line[..i] : line));
+            Assert.DoesNotContain("Lumeo.Internal", code);
+            // Referencing DelayedDispatch UNQUALIFIED (e.g. via a stray `@using Lumeo.Services`)
+            // would compile fine in the source tree but not in a consumer app that never gets
+            // that using — catch the unqualified form too, not just the fully-qualified one.
+            Assert.DoesNotContain("DelayedDispatch", code);
+        }
+
+        // The default path keeps the Lumeo package reference (only satellites/--vendor/
+        // --standalone strip it) — this test is specifically about the vendored SOURCE compiling
+        // against that still-present package, i.e. never reaching into its internals.
+        Assert.Contains("Include=\"Lumeo\"", File.ReadAllText(Path.Combine(_proj, "App.csproj")));
+    }
+
+    [Fact]
     public void Eject_On_Already_Standalone_Project_Finishes_Stripping_A_Later_Vendored_Satellite()
     {
         // Reproduces Codex's exact P2 scenario: the FIRST eject can't vendor every Lumeo.* package

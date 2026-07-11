@@ -308,12 +308,17 @@ public class ToastStackingTests : IAsyncLifetime
         // "Four" starts leaving FIRST, at T0.
         var four = cut.FindAll("[role='alert'],[role='status']").Single(e => e.TextContent.Contains("Four"));
         four.QuerySelector("button")!.Click();
+        // Explicit generous timeout (not bUnit's 1s default): this test's whole point is real
+        // overlapping 220ms exit timers, and the full local/CI suite runs thousands of tests in
+        // parallel — under that contention, the thread pool can genuinely take longer than 1s to
+        // service a background render. A longer timeout costs nothing on the happy path (each
+        // WaitForAssertion still returns the instant the assertion first passes).
         cut.WaitForAssertion(() =>
         {
             var leaving = cut.FindAll("[role='alert'],[role='status']").SingleOrDefault(e => e.TextContent.Contains("Four"));
             Assert.NotNull(leaving);
             Assert.Contains("animate-toast-out", Attr(leaving!, "class") ?? "");
-        });
+        }, TimeSpan.FromSeconds(5));
 
         // Deliberate fixed real-time gap (well under the 220ms exit window —
         // ToastProvider.ExitAnimationMs) before starting "Two"'s own exit, so
@@ -332,16 +337,28 @@ public class ToastStackingTests : IAsyncLifetime
         await Task.Delay(150);
 
         // Re-find "Two" (not the `two` reference captured before "Four"'s
-        // dismissal re-rendered the tree — its event handler id is stale now).
-        cut.FindAll("[role='alert'],[role='status']").Single(e => e.TextContent.Contains("Two"))
-            .QuerySelector("button")!.Click();
+        // dismissal re-rendered the tree — its event handler id is stale now)
+        // AND click it inside the SAME InvokeAsync dispatch. "Four" is mid-exit
+        // with its own live 220ms timer, so a background render from that
+        // timer's machinery (PauseTimer/ResumeTimer, StateHasChanged, …) can
+        // land on bUnit's renderer thread in the split second between a plain
+        // Find and a separate Click call, invalidating the just-found button's
+        // event handler id (UnknownEventHandlerIdException — flaked in CI:
+        // https://github.com/Brain2k-0005/Lumeo/actions — "Four" and "Two"'s
+        // independent timers overlapping is the whole point of this test, so
+        // the race is real, not incidental). Doing the find-then-click as one
+        // synchronous unit on the renderer's own dispatcher — bUnit's own
+        // documented workaround for this exception — closes that window.
+        await cut.InvokeAsync(() =>
+            cut.FindAll("[role='alert'],[role='status']").Single(e => e.TextContent.Contains("Two"))
+                .QuerySelector("button")!.Click());
         cut.WaitForAssertion(() =>
         {
             var leaving = cut.FindAll("[role='alert'],[role='status']").SingleOrDefault(e => e.TextContent.Contains("Two"));
             Assert.NotNull(leaving);
             Assert.Contains("animate-toast-out", Attr(leaving!, "class") ?? "");
             Assert.Equal("3", Attr(leaving!, "data-index"));
-        });
+        }, TimeSpan.FromSeconds(5));
 
         // Wait for "Four" to fully finish its exit and unmount — a newer
         // sibling actually leaving the list, not just being marked Leaving.
@@ -349,7 +366,8 @@ public class ToastStackingTests : IAsyncLifetime
         // mark ~150ms before "Two" would reach its (independent) 220ms mark —
         // "Two" should still be present and still mid-exit right here.
         cut.WaitForAssertion(() =>
-            Assert.DoesNotContain(cut.FindAll("[role='alert'],[role='status']"), e => e.TextContent.Contains("Four")));
+            Assert.DoesNotContain(cut.FindAll("[role='alert'],[role='status']"), e => e.TextContent.Contains("Four")),
+            TimeSpan.FromSeconds(5));
 
         // The regression: "Two" must NOT have been promoted to a visible
         // index by "Four"'s removal — its data-index stays frozen at 3 for
@@ -363,6 +381,54 @@ public class ToastStackingTests : IAsyncLifetime
         cut.WaitForAssertion(() =>
             Assert.DoesNotContain(cut.FindAll("[role='alert'],[role='status']"), e => e.TextContent.Contains("Two")),
             TimeSpan.FromSeconds(5));
+    }
+
+    // PR #357 round-3 (Codex): focus moving BETWEEN two focusable controls inside the same
+    // expanded group (e.g. tabbing from one toast's close button to another's) bubbles a
+    // focusout from the first control immediately followed by a focusin on the second — both
+    // dispatch synchronously in that order. The group must not flicker/collapse in between.
+    [Fact]
+    public async Task Focus_Moving_Between_Two_Controls_In_The_Group_Never_Collapses_It()
+    {
+        var toastService = GetToastService();
+        var cut = _ctx.Render<L.ToastProvider>();
+
+        toastService.Show(new ToastOptions { Title = "A", Duration = 60000, Dismissible = true });
+        toastService.Show(new ToastOptions { Title = "B", Duration = 60000, Dismissible = true });
+
+        cut.WaitForAssertion(() =>
+            Assert.Equal(2, cut.FindAll("[role='alert'],[role='status']").Count));
+
+        Assert.Equal(2, cut.FindAll("[role='alert'],[role='status'] button").Count); // one close button per toast
+
+        // Focus lands on the FIRST toast's close button — group expands. Each interaction
+        // RE-QUERIES the button immediately before acting on it (not a cached reference from
+        // before the previous FocusIn/FocusOut's own re-render) — a stale element's event
+        // handler id is no longer valid once the group's markup has re-rendered, same reasoning
+        // as the "Two"/"Four" re-find above, just without a background timer in the mix here.
+        cut.FindAll("[role='alert'],[role='status'] button")[0].FocusIn();
+        cut.WaitForAssertion(() =>
+            Assert.Equal("true", Attr(cut.Find("[data-stacked='true']"), "data-expanded")));
+
+        // Tab to the SECOND toast's close button: focusout on the first, focusin on the second,
+        // back-to-back, with NO intervening wait — the deferred-collapse guard (OnFocusIn
+        // cancelling any pending OnFocusOut collapse) must keep the group expanded the whole way
+        // through, never rendering data-expanded="false" for even one frame in between.
+        cut.FindAll("[role='alert'],[role='status'] button")[0].FocusOut();
+        cut.FindAll("[role='alert'],[role='status'] button")[1].FocusIn();
+        Assert.Equal("true", Attr(cut.Find("[data-stacked='true']"), "data-expanded"));
+
+        // Give the (0ms, but still asynchronous) deferred-collapse timer every chance to fire if
+        // it were somehow still pending — it must NOT be, because focusing button[1] already
+        // cancelled it. The group stays expanded well past the timer's window.
+        await Task.Delay(100);
+        Assert.Equal("true", Attr(cut.Find("[data-stacked='true']"), "data-expanded"));
+
+        // Focus leaving the group entirely (no focusin follows) DOES still collapse it — the fix
+        // only suppresses the collapse when a focusin for the SAME group lands right after.
+        cut.FindAll("[role='alert'],[role='status'] button")[1].FocusOut();
+        cut.WaitForAssertion(() =>
+            Assert.Equal("false", Attr(cut.Find("[data-stacked='true']"), "data-expanded")));
     }
 
     // ── Held-fill entrance class: never park animate-toast-in ──────────────

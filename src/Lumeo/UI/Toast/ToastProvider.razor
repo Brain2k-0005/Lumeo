@@ -27,7 +27,13 @@
     var group = _toasts.Where(t => ResolvePosition(t.Options.Position) == pos).ToList();
     var groupCount = group.Count;
     <ToastViewport Position="@pos" StackToasts="@StackToasts" ToastCount="@groupCount" @key="@pos">
-        @{ var stackCursor = 0; }
+        @{
+            // Live-only count: how many toasts in this group are NOT mid-exit. Live toasts are
+            // ranked among THEMSELVES (below), never against the raw group — see the comment on
+            // liveCursor for why.
+            var liveCount = group.Count(t => !(t.Leaving && t.FrozenIndex.HasValue));
+            var liveCursor = 0;
+        }
         @foreach (var toast in group)
         {
             // Newest (last appended = last in group, since _toasts is oldest-first)
@@ -45,10 +51,23 @@
             // reshuffling still happening around it — matches the fact its
             // position/visibility contract was already fixed the moment dismissal
             // began.
+            //
+            // LIVE toasts are ranked among the live SUBSET only (liveCount/liveCursor), NOT
+            // `groupCount`/a shared cursor over every toast including frozen ones. PR #357
+            // round-3: overlapping exits (front toast leaves, then an older sibling ALSO starts
+            // leaving before the front's 220ms timer elapses) leave a frozen, no-longer-current
+            // index parked on that older sibling. Once the front toast actually unmounts, ranking
+            // live toasts against the shrunk `groupCount` while the frozen sibling keeps its STALE
+            // (pre-shrink) value collides two toasts onto the SAME index and, in the worst case
+            // (only one live toast left), leaves NO toast at index 0 at all — the only index the
+            // collapsed-stack CSS keeps in normal flow, so the viewport can collapse to nothing
+            // until the frozen sibling's own exit finishes. Ranking live toasts purely by their
+            // OWN newest-first order guarantees the frontmost LIVE toast always claims index 0,
+            // completely independent of however many stale frozen values sit alongside it.
             var stackIndex = StackToasts
-                ? (toast.Leaving && toast.FrozenIndex.HasValue ? toast.FrozenIndex : groupCount - 1 - stackCursor)
+                ? (toast.Leaving && toast.FrozenIndex.HasValue ? toast.FrozenIndex : liveCount - 1 - liveCursor)
                 : (int?)null;
-            stackCursor++;
+            if (!(toast.Leaving && toast.FrozenIndex.HasValue)) liveCursor++;
             <Toast Variant="@toast.Options.Variant"
                    Id="@ToastElementId(toast.Id)"
                    Class="@toast.Options.Class"
@@ -114,7 +133,24 @@
 
     [Parameter] public ToastViewport.ToastPosition Position { get; set; } = ToastViewport.ToastPosition.BottomRight;
     [Parameter] public int DefaultDuration { get; set; } = 5000;
+
+    /// <summary>
+    /// Maximum number of toasts mounted at once per position group; overflow queues FIFO
+    /// (see <see cref="_pendingQueue"/>) and drains as slots free up. Non-positive values are
+    /// clamped up to 1 — there's no "unlimited" mode and no "show nothing" mode, so a
+    /// misconfigured 0/negative value falls back to the smallest usable cap rather than
+    /// throwing on the very first <c>Show()</c> (see <see cref="EffectiveMaxToasts"/>).
+    /// </summary>
     [Parameter] public int MaxToasts { get; set; } = 5;
+
+    // MaxToasts <= 0 must NOT reach the raw comparisons below: with MaxToasts = 0 the eviction
+    // loop's `_toasts.Count >= MaxToasts` is trivially true with an EMPTY _toasts (0 >= 0), so it
+    // breaks immediately (no toast to evict) and falls through to the queued-overflow path, whose
+    // own `_pendingQueue.Count >= MaxToasts` is ALSO trivially true on an empty queue (0 >= 0) —
+    // calling Dequeue() on it throws InvalidOperationException on the very first Show(). Clamping
+    // to a floor of 1 keeps both loops' invariants ("count >= cap only once something is actually
+    // mounted/queued") intact instead of special-casing zero at every call site.
+    private int EffectiveMaxToasts => Math.Max(1, MaxToasts);
 
     /// <summary>
     /// Sonner-style stacking, default on. When a position group holds more
@@ -203,7 +239,7 @@
         // near-certain. Skipping already-Leaving toasts means every iteration
         // either evicts a fresh toast (real progress) or finds none and breaks
         // (bounded) — no candidate is ever revisited.
-        while (_toasts.Count >= MaxToasts)
+        while (_toasts.Count >= EffectiveMaxToasts)
         {
             var oldest = _toasts.FirstOrDefault(t => t.Options.Duration != 0 && !t.Leaving);
             if (oldest is null) break;
@@ -220,7 +256,7 @@
         // toast actually unmounts, from RemoveWithExitAsync) pulls it in FIFO
         // order the moment a slot frees up. This keeps `_toasts.Count` at or
         // under MaxToasts at all times, including mid-burst.
-        if (_toasts.Count >= MaxToasts)
+        if (_toasts.Count >= EffectiveMaxToasts)
         {
             // Cap the queue itself at MaxToasts too. Without this, a 100-toast
             // spam burst would durably queue all ~95 overflow toasts and drip
@@ -230,7 +266,7 @@
             // keeps the total known set (mounted + queued) bounded at 2x
             // MaxToasts and biases towards the most recent Show() calls,
             // matching sonner's overflow behaviour.
-            if (_pendingQueue.Count >= MaxToasts)
+            if (_pendingQueue.Count >= EffectiveMaxToasts)
             {
                 _pendingQueue.Dequeue();
             }
@@ -263,7 +299,7 @@
     // actually removed from `_toasts` — the only moment a slot is real.
     private void AdmitPending()
     {
-        while (_toasts.Count < MaxToasts && _pendingQueue.Count > 0)
+        while (_toasts.Count < EffectiveMaxToasts && _pendingQueue.Count > 0)
         {
             MountToast(_pendingQueue.Dequeue());
         }
@@ -304,6 +340,18 @@
         foreach (var m in remaining) _pendingQueue.Enqueue(m);
     }
 
+    // Queue<T> has no update-by-id either; rebuild preserving FIFO order, swapping in the fresh
+    // options for the matching id. No-op (and no allocation beyond the Any() scan) if the id isn't
+    // queued — same dedupe-by-id intent as the mounted path in HandleUpdateAsync, just for a toast
+    // that hasn't been admitted into _toasts yet.
+    private void UpdateQueued(string toastId, ToastOptions options)
+    {
+        if (!_pendingQueue.Any(m => m.Id == toastId)) return;
+        var updated = _pendingQueue.Select(m => m.Id == toastId ? m with { Options = options } : m).ToList();
+        _pendingQueue.Clear();
+        foreach (var m in updated) _pendingQueue.Enqueue(m);
+    }
+
     private void HandleUpdate(string toastId, ToastOptions options)
     {
         SafeAsyncDispatcher.FireAndForget(InvokeAsync, () => HandleUpdateAsync(toastId, options), "ToastProvider.HandleUpdate");
@@ -312,7 +360,18 @@
     private async Task HandleUpdateAsync(string toastId, ToastOptions options)
     {
         var index = _toasts.FindIndex(t => t.Id == toastId);
-        if (index < 0) return;
+        if (index < 0)
+        {
+            // Not mounted (yet) — it may still be sitting in the overflow queue (see
+            // HandleShowAsync/AdmitPending). ToastService.Show already handed this id back to the
+            // caller before admission runs, so Update(id, ...) can legitimately race a still-queued
+            // toast — most visibly ToastService.Promise(), whose loading toast can resolve before a
+            // slot frees up. Apply the update to the QUEUED entry so it mounts with the fresh
+            // options (not the stale Duration=0 loading state) once AdmitPending pulls it in;
+            // no-op if the id isn't queued either (already dismissed).
+            UpdateQueued(toastId, options);
+            return;
+        }
 
         var updated = new ToastItem(toastId, options);
         _toasts[index] = updated;

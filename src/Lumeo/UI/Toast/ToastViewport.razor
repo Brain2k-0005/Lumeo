@@ -1,4 +1,5 @@
 @namespace Lumeo
+@implements IDisposable
 
 @*  Sonner-style stacking (rc.??). data-stacked/data-expanded/data-stack-edge
     drive the CSS in lumeo.css's "Toast stacking" section; onmouseenter/leave
@@ -17,8 +18,8 @@
      data-stack-edge="@StackEdge"
      @onmouseenter="@(() => _hovered = true)"
      @onmouseleave="@(() => _hovered = false)"
-     @onfocusin="@(() => _focused = true)"
-     @onfocusout="@(() => _focused = false)"
+     @onfocusin="OnFocusIn"
+     @onfocusout="OnFocusOut"
      @attributes="AdditionalAttributes">
     @ChildContent
 </div>
@@ -44,6 +45,53 @@
     private bool _hovered;
     private bool _focused;
     private bool Expanded => _hovered || _focused;
+
+    // Keyboard focus moving BETWEEN two controls inside this group (e.g. one toast's close
+    // button to another's action button) fires a bubbling focusout on the FIRST control —
+    // relatedTarget is the second control, still inside this group — immediately followed by
+    // focusin on that second control; both dispatch synchronously in that order. Flipping
+    // `_focused = false` straight from focusout (as onfocusin/onfocusout did before) renders
+    // data-expanded="false" the instant the first event lands, collapsing the stack and
+    // repositioning every control mid-tab, THEN the paired focusin flips it back — a visible
+    // flicker/collapse for one frame. Deferring the actual collapse by a short grace window and
+    // having OnFocusIn cancel any pending one via the sequence guard means a focus move that
+    // stays inside the group never flips `_focused` to false at all — only a focus move that
+    // leaves the group with nothing re-claiming focus actually collapses it. Same "defer, then
+    // let the next event cancel it" idiom HoverCard/MegaMenuItem use via DelayedDispatch, inlined
+    // here (not the shared internal helper) so this component keeps compiling if it's ever
+    // vendored on its own. NOT 0ms: a same-tick `Timer(0)` races the ThreadPool against whatever
+    // dispatches the paired focusin — a genuinely async race that can (rarely but really) fire
+    // the collapse before that focusin lands. A small, still-imperceptible grace window (a browser
+    // tab-move's focusout->focusin pair lands within low single-digit ms) is the deterministic
+    // choice instead.
+    private System.Threading.Timer? _focusOutTimer;
+    private int _focusOutSequence;
+    private const int FocusCollapseGraceMs = 30;
+
+    private void OnFocusIn()
+    {
+        _focusOutSequence++;
+        _focusOutTimer?.Dispose();
+        _focusOutTimer = null;
+        _focused = true;
+    }
+
+    private void OnFocusOut()
+    {
+        var seq = ++_focusOutSequence;
+        _focusOutTimer?.Dispose();
+        _focusOutTimer = new System.Threading.Timer(_ =>
+        {
+            _ = InvokeAsync(() =>
+            {
+                if (seq != _focusOutSequence) return; // superseded by a focusin that landed first
+                _focused = false;
+                StateHasChanged();
+            });
+        }, null, FocusCollapseGraceMs, System.Threading.Timeout.Infinite);
+    }
+
+    public void Dispose() => _focusOutTimer?.Dispose();
 
     private bool IsStacked => StackToasts && ToastCount > 1;
 

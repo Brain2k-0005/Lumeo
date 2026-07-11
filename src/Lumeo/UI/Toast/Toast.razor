@@ -55,7 +55,10 @@
     [Parameter] public EventCallback OnFocusOut { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
-    private readonly string _generatedId = Lumeo.Internal.LumeoIds.New("toast");
+    // Generated inline (not Lumeo.Internal.LumeoIds — that helper is `internal` to the Lumeo
+    // assembly, so a vendored copy of this file compiled inside a consumer app under the default
+    // NuGet-backed `lumeo add toast` path can't resolve it). Same "{prefix}-{guidN}" convention.
+    private readonly string _generatedId = $"toast-{Guid.NewGuid():N}";
     private string EffectiveId => Id ?? _generatedId;
 
     // True while `animate-toast-in` still governs this element. Starts true for
@@ -85,7 +88,11 @@
     private bool _entering = true;
     private bool _enterWired;
     private DotNetObjectReference<Toast>? _enterSelfRef;
-    private readonly Lumeo.Services.DelayedDispatch _enterFallback = new();
+    // A local one-shot timer, NOT Lumeo.Services.DelayedDispatch — that helper is `internal` to
+    // the Lumeo assembly, so a vendored copy of this file compiled inside a consumer app under the
+    // default NuGet-backed `lumeo add toast` path can't resolve it. This duplicates just the
+    // single-pending-callback + cancel/dispose behaviour Toast.razor actually needs.
+    private readonly EnterFallbackTimer _enterFallback = new();
 
     // FALLBACK window only — the real cleanup is OnEnterAnimationEnd (JS).
     // Sits comfortably above the CSS entrance duration (toast-in is 0.3s, or
@@ -164,4 +171,40 @@
         ToastVariant.Info => "border-info/50 bg-info-light text-info-text",
         _ => "bg-card text-foreground"
     };
+
+    // Minimal local stand-in for Lumeo.Services.DelayedDispatch: a single pending one-shot
+    // callback that a later Schedule() replaces and Cancel()/Dispose() can pre-empt. Deliberately
+    // NOT the shared internal helper (see the _enterFallback field comment) — a vendored copy of
+    // this file must compile standalone in a consumer app with no access to Lumeo's internals.
+    private sealed class EnterFallbackTimer : IDisposable
+    {
+        private System.Threading.Timer? _timer;
+        private int _sequence;
+
+        public void Schedule(int delayMs, Func<Task> action)
+        {
+            _timer?.Dispose();
+            var seq = ++_sequence;
+            _timer = new System.Threading.Timer(_ =>
+            {
+                if (seq != _sequence) return;
+                _ = RunSafe(action);
+            }, null, delayMs, System.Threading.Timeout.Infinite);
+        }
+
+        public void Cancel()
+        {
+            ++_sequence;
+            _timer?.Dispose();
+            _timer = null;
+        }
+
+        public void Dispose() => _timer?.Dispose();
+
+        private static async Task RunSafe(Func<Task> action)
+        {
+            try { await action(); }
+            catch (ObjectDisposedException) { }
+        }
+    }
 }
