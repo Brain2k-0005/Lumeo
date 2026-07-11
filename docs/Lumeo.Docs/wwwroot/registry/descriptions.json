@@ -38,7 +38,7 @@
         "name": "ChildContent",
         "type": "RenderFragment?",
         "default": null,
-        "description": null,
+        "description": "One or more DescriptionsItem elements, rendered inside the &lt;dl&gt;.",
         "isCascading": false,
         "captureUnmatched": false,
         "isEditorRequired": false
@@ -47,7 +47,7 @@
         "name": "Title",
         "type": "string?",
         "default": null,
-        "description": null,
+        "description": "Optional heading rendered above the description list.",
         "isCascading": false,
         "captureUnmatched": false,
         "isEditorRequired": false
@@ -56,7 +56,7 @@
         "name": "Bordered",
         "type": "bool",
         "default": null,
-        "description": null,
+        "description": "Wraps the list in a bordered card and separates items with divider lines instead of gaps.",
         "isCascading": false,
         "captureUnmatched": false,
         "isEditorRequired": false
@@ -65,7 +65,7 @@
         "name": "Column",
         "type": "int",
         "default": "3",
-        "description": null,
+        "description": "Number of grid columns the items are laid out into: 1, 2, 3, or 4. Any other value falls back to 3.",
         "isCascading": false,
         "captureUnmatched": false,
         "isEditorRequired": false
@@ -74,7 +74,7 @@
         "name": "Class",
         "type": "string?",
         "default": null,
-        "description": null,
+        "description": "Additional CSS classes merged onto the outer container.",
         "isCascading": false,
         "captureUnmatched": false,
         "isEditorRequired": false
@@ -83,7 +83,7 @@
         "name": "AdditionalAttributes",
         "type": "Dictionary<string, object>?",
         "default": null,
-        "description": null,
+        "description": "Captures any unmatched attributes and applies them to the outer container.",
         "isCascading": false,
         "captureUnmatched": true,
         "isEditorRequired": false
@@ -130,7 +130,7 @@
             "name": "ChildContent",
             "type": "RenderFragment?",
             "default": null,
-            "description": null,
+            "description": "The value content, rendered inside the &lt;dd&gt;.",
             "isCascading": false,
             "captureUnmatched": false,
             "isEditorRequired": false
@@ -139,7 +139,7 @@
             "name": "Label",
             "type": "string?",
             "default": null,
-            "description": null,
+            "description": "The term text, rendered inside the &lt;dt&gt;. When omitted, the &lt;dt&gt; is still rendered (empty, visually hidden via sr-only) so the term/description pairing stays valid for screen readers.",
             "isCascading": false,
             "captureUnmatched": false,
             "isEditorRequired": false
@@ -148,7 +148,7 @@
             "name": "Class",
             "type": "string?",
             "default": null,
-            "description": null,
+            "description": "Additional CSS classes merged onto the item's wrapping &lt;div&gt;.",
             "isCascading": false,
             "captureUnmatched": false,
             "isEditorRequired": false
@@ -157,7 +157,7 @@
             "name": "AdditionalAttributes",
             "type": "Dictionary<string, object>?",
             "default": null,
-            "description": null,
+            "description": "Captures any unmatched attributes and applies them to the item's wrapping &lt;div&gt;.",
             "isCascading": false,
             "captureUnmatched": true,
             "isEditorRequired": false
@@ -211,11 +211,11 @@
   "source": [
     {
       "path": "UI/Descriptions/Descriptions.razor",
-      "content": "@namespace Lumeo\n\n<div class=\"@CssClass\" @attributes=\"AdditionalAttributes\">\n    @if (!string.IsNullOrEmpty(Title))\n    {\n        <h3 class=\"mb-4 text-base font-semibold text-foreground\">@Title</h3>\n    }\n    @* <dl> (not <div>) so the <dt>/<dd> pairs emitted by DescriptionsItem have\n       a valid definition-list ancestor; the grid classes stay on it. Each\n       DescriptionsItem's wrapping <div> is a spec-valid dt/dd group container. *@\n    @if (Bordered)\n    {\n        <div class=\"overflow-hidden rounded-lg border border-border/60\">\n            <dl class=\"@GridClasses\">\n                @ChildContent\n            </dl>\n        </div>\n    }\n    else\n    {\n        <dl class=\"@GridClasses\">\n            @ChildContent\n        </dl>\n    }\n</div>\n\n@code {\n    [Parameter] public RenderFragment? ChildContent { get; set; }\n    [Parameter] public string? Title { get; set; }\n    [Parameter] public bool Bordered { get; set; }\n    [Parameter] public int Column { get; set; } = 3;\n    [Parameter] public string? Class { get; set; }\n    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }\n\n    private string CssClass => Cx.Merge(Class);\n\n    private string GridClasses => Bordered\n        ? $\"grid {ColumnClasses} divide-x divide-y divide-border/60\"\n        : $\"grid {ColumnClasses} gap-4\";\n\n    private string ColumnClasses => Column switch\n    {\n        1 => \"grid-cols-1\",\n        2 => \"grid-cols-2\",\n        4 => \"grid-cols-4\",\n        _ => \"grid-cols-3\"\n    };\n}\n"
+      "content": "@namespace Lumeo\n\n<div class=\"@CssClass\" @attributes=\"AdditionalAttributes\">\n    @if (!string.IsNullOrEmpty(Title))\n    {\n        <h3 class=\"mb-4 text-base font-semibold text-foreground\">@Title</h3>\n    }\n    @* <dl> (not <div>) so the <dt>/<dd> pairs emitted by DescriptionsItem have\n       a valid definition-list ancestor; the grid classes stay on it. Each\n       DescriptionsItem's wrapping <div> is a spec-valid dt/dd group container. *@\n    @if (Bordered)\n    {\n        <div class=\"overflow-hidden rounded-lg border border-border/60\">\n            <dl class=\"@GridClasses\">\n                @ChildContent\n            </dl>\n        </div>\n    }\n    else\n    {\n        <dl class=\"@GridClasses\">\n            @ChildContent\n        </dl>\n    }\n</div>\n\n@code {\n    /// <summary>One or more <see cref=\"DescriptionsItem\"/> elements, rendered inside the <c>&lt;dl&gt;</c>.</summary>\n    [Parameter] public RenderFragment? ChildContent { get; set; }\n    /// <summary>Optional heading rendered above the description list.</summary>\n    [Parameter] public string? Title { get; set; }\n    /// <summary>Wraps the list in a bordered card and separates items with divider lines instead of gaps.</summary>\n    [Parameter] public bool Bordered { get; set; }\n    /// <summary>Number of grid columns the items are laid out into: 1, 2, 3, or 4. Any other value falls back to 3.</summary>\n    [Parameter] public int Column { get; set; } = 3;\n    /// <summary>Additional CSS classes merged onto the outer container.</summary>\n    [Parameter] public string? Class { get; set; }\n    /// <summary>Captures any unmatched attributes and applies them to the outer container.</summary>\n    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }\n\n    private string CssClass => Cx.Merge(Class);\n\n    private string GridClasses => Bordered\n        ? $\"grid {ColumnClasses} divide-x divide-y divide-border/60\"\n        : $\"grid {ColumnClasses} gap-4\";\n\n    private string ColumnClasses => Column switch\n    {\n        1 => \"grid-cols-1\",\n        2 => \"grid-cols-2\",\n        4 => \"grid-cols-4\",\n        _ => \"grid-cols-3\"\n    };\n}\n"
     },
     {
       "path": "UI/Descriptions/DescriptionsItem.razor",
-      "content": "@namespace Lumeo\n\n<div class=\"@CssClass\" @attributes=\"AdditionalAttributes\">\n    @* Always emit a <dt> so each group is a spec-valid dt/dd pair; hide it\n       visually with sr-only when there is no Label so value-only items keep the\n       term/description association for screen readers. *@\n    <dt class=\"text-sm text-muted-foreground @(string.IsNullOrWhiteSpace(Label) ? \"sr-only\" : \"\")\">@Label</dt>\n    <dd class=\"mt-1 text-sm text-foreground\">\n        @ChildContent\n    </dd>\n</div>\n\n@code {\n    [Parameter] public RenderFragment? ChildContent { get; set; }\n    [Parameter] public string? Label { get; set; }\n    [Parameter] public string? Class { get; set; }\n    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }\n\n    private string CssClass => Cx.Merge(\"p-3\", Class);\n}\n"
+      "content": "@namespace Lumeo\n\n<div class=\"@CssClass\" @attributes=\"AdditionalAttributes\">\n    @* Always emit a <dt> so each group is a spec-valid dt/dd pair; hide it\n       visually with sr-only when there is no Label so value-only items keep the\n       term/description association for screen readers. *@\n    <dt class=\"text-sm text-muted-foreground @(string.IsNullOrWhiteSpace(Label) ? \"sr-only\" : \"\")\">@Label</dt>\n    <dd class=\"mt-1 text-sm text-foreground\">\n        @ChildContent\n    </dd>\n</div>\n\n@code {\n    /// <summary>The value content, rendered inside the <c>&lt;dd&gt;</c>.</summary>\n    [Parameter] public RenderFragment? ChildContent { get; set; }\n    /// <summary>The term text, rendered inside the <c>&lt;dt&gt;</c>. When omitted, the <c>&lt;dt&gt;</c> is still rendered (empty, visually hidden via <c>sr-only</c>) so the term/description pairing stays valid for screen readers.</summary>\n    [Parameter] public string? Label { get; set; }\n    /// <summary>Additional CSS classes merged onto the item's wrapping <c>&lt;div&gt;</c>.</summary>\n    [Parameter] public string? Class { get; set; }\n    /// <summary>Captures any unmatched attributes and applies them to the item's wrapping <c>&lt;div&gt;</c>.</summary>\n    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }\n\n    private string CssClass => Cx.Merge(\"p-3\", Class);\n}\n"
     }
   ],
   "slots": [
@@ -223,13 +223,13 @@
       "name": "ChildContent",
       "owner": "Descriptions",
       "type": "RenderFragment?",
-      "description": null
+      "description": "One or more DescriptionsItem elements, rendered inside the &lt;dl&gt;."
     },
     {
       "name": "ChildContent",
       "owner": "DescriptionsItem",
       "type": "RenderFragment?",
-      "description": null
+      "description": "The value content, rendered inside the &lt;dd&gt;."
     }
   ],
   "serviceDependencies": [],
@@ -245,5 +245,5 @@
     "tests/Lumeo.Tests/Components/Descriptions/DescriptionsDlTests.cs",
     "tests/Lumeo.Tests/Components/Descriptions/DescriptionsTests.cs"
   ],
-  "mdSummary": "# Descriptions\n\nKey-value pair list for read-only entity details.\n\n**Package:** `Lumeo` · **Category:** Data Display/Cards & Layout\n**Docs:** https://lumeo.nativ.sh/components/descriptions\n\n## Parameters\n| Owner | Name | Type | Default | Description |\n|---|---|---|---|---|\n| Descriptions | ChildContent | `RenderFragment?` | `` |  |\n| Descriptions | Title | `string?` | `` |  |\n| Descriptions | Bordered | `bool` | `` |  |\n| Descriptions | Column | `int` | `3` |  |\n| Descriptions | Class | `string?` | `` |  |\n| Descriptions | AdditionalAttributes | `Dictionary<string, object>?` | `` |  |\n| DescriptionsItem | ChildContent | `RenderFragment?` | `` |  |\n| DescriptionsItem | Label | `string?` | `` |  |\n| DescriptionsItem | Class | `string?` | `` |  |\n| DescriptionsItem | AdditionalAttributes | `Dictionary<string, object>?` | `` |  |\n\n## Slots\n- `ChildContent` (Descriptions) — RenderFragment slot\n- `ChildContent` (DescriptionsItem) — RenderFragment slot\n\n## Events\n- (none)\n\n## Sub-components\n- `DescriptionsItem`\n\n## Cascading values it expects\n- (none)\n\n## Services it injects\n- (none)\n\n## Keyboard\n—\n\n## Example\n```razor\n<Descriptions />\n```\n\n## CSS variables\n`--color-border`, `--color-foreground`, `--color-muted`, `--color-muted-foreground`, `--radius`\n\n## Files\n- `UI/Descriptions/Descriptions.razor`\n- `UI/Descriptions/DescriptionsItem.razor`\n"
+  "mdSummary": "# Descriptions\n\nKey-value pair list for read-only entity details.\n\n**Package:** `Lumeo` · **Category:** Data Display/Cards & Layout\n**Docs:** https://lumeo.nativ.sh/components/descriptions\n\n## Parameters\n| Owner | Name | Type | Default | Description |\n|---|---|---|---|---|\n| Descriptions | ChildContent | `RenderFragment?` | `` | One or more DescriptionsItem elements, rendered inside the &lt;dl&gt;. |\n| Descriptions | Title | `string?` | `` | Optional heading rendered above the description list. |\n| Descriptions | Bordered | `bool` | `` | Wraps the list in a bordered card and separates items with divider lines instead of gaps. |\n| Descriptions | Column | `int` | `3` | Number of grid columns the items are laid out into: 1, 2, 3, or 4. Any other value falls back to 3. |\n| Descriptions | Class | `string?` | `` | Additional CSS classes merged onto the outer container. |\n| Descriptions | AdditionalAttributes | `Dictionary<string, object>?` | `` | Captures any unmatched attributes and applies them to the outer container. |\n| DescriptionsItem | ChildContent | `RenderFragment?` | `` | The value content, rendered inside the &lt;dd&gt;. |\n| DescriptionsItem | Label | `string?` | `` | The term text, rendered inside the &lt;dt&gt;. When omitted, the &lt;dt&gt; is still rendered (empty, visually hidden via sr-only) so the term/description pairing stays valid for screen readers. |\n| DescriptionsItem | Class | `string?` | `` | Additional CSS classes merged onto the item's wrapping &lt;div&gt;. |\n| DescriptionsItem | AdditionalAttributes | `Dictionary<string, object>?` | `` | Captures any unmatched attributes and applies them to the item's wrapping &lt;div&gt;. |\n\n## Slots\n- `ChildContent` (Descriptions) — One or more DescriptionsItem elements, rendered inside the &lt;dl&gt;.\n- `ChildContent` (DescriptionsItem) — The value content, rendered inside the &lt;dd&gt;.\n\n## Events\n- (none)\n\n## Sub-components\n- `DescriptionsItem`\n\n## Cascading values it expects\n- (none)\n\n## Services it injects\n- (none)\n\n## Keyboard\n—\n\n## Example\n```razor\n<Descriptions />\n```\n\n## CSS variables\n`--color-border`, `--color-foreground`, `--color-muted`, `--color-muted-foreground`, `--radius`\n\n## Files\n- `UI/Descriptions/Descriptions.razor`\n- `UI/Descriptions/DescriptionsItem.razor`\n"
 }

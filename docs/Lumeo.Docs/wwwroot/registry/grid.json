@@ -32,7 +32,7 @@
         "name": "Columns",
         "type": "int",
         "default": "1",
-        "description": null,
+        "description": "Number of grid columns (emitted as grid-cols-N, or the responsive 1–6 ramp when Responsive is true). Default 1.",
         "isCascading": false,
         "captureUnmatched": false,
         "isEditorRequired": false
@@ -50,7 +50,7 @@
         "name": "Gap",
         "type": "string?",
         "default": "\"4\"",
-        "description": null,
+        "description": "Tailwind spacing scale value applied as gap-{value} on both axes. Default \"4\"; set null to omit.",
         "isCascading": false,
         "captureUnmatched": false,
         "isEditorRequired": false
@@ -59,7 +59,7 @@
         "name": "RowGap",
         "type": "string?",
         "default": null,
-        "description": null,
+        "description": "Tailwind spacing scale value applied as gap-y-{value}, overriding the row gap independently of Gap.",
         "isCascading": false,
         "captureUnmatched": false,
         "isEditorRequired": false
@@ -68,7 +68,7 @@
         "name": "ColGap",
         "type": "string?",
         "default": null,
-        "description": null,
+        "description": "Tailwind spacing scale value applied as gap-x-{value}, overriding the column gap independently of Gap.",
         "isCascading": false,
         "captureUnmatched": false,
         "isEditorRequired": false
@@ -77,7 +77,7 @@
         "name": "ChildContent",
         "type": "RenderFragment?",
         "default": null,
-        "description": null,
+        "description": "The grid's items.",
         "isCascading": false,
         "captureUnmatched": false,
         "isEditorRequired": false
@@ -86,7 +86,7 @@
         "name": "Class",
         "type": "string?",
         "default": null,
-        "description": null,
+        "description": "Additional CSS classes merged onto the grid's root element.",
         "isCascading": false,
         "captureUnmatched": false,
         "isEditorRequired": false
@@ -95,7 +95,7 @@
         "name": "AdditionalAttributes",
         "type": "Dictionary<string, object>?",
         "default": null,
-        "description": null,
+        "description": "Unmatched attributes splatted onto the grid's root element.",
         "isCascading": false,
         "captureUnmatched": true,
         "isEditorRequired": false
@@ -163,7 +163,7 @@
   "source": [
     {
       "path": "UI/Grid/Grid.razor",
-      "content": "@namespace Lumeo\n\n<div class=\"@CssClass\" @attributes=\"AdditionalAttributes\">@ChildContent</div>\n\n@code {\n    [Parameter] public int Columns { get; set; } = 1;\n    /// <summary>\n    /// When true the grid collapses to 1 column on mobile and 2 on small screens,\n    /// expanding to <see cref=\"Columns\"/> only at the <c>lg</c> breakpoint — so a\n    /// many-column grid stays readable on phones. Uses statically-known responsive\n    /// utility strings (purge-safe) for 1–6 columns; falls back to a fixed\n    /// <c>grid-cols-N</c> for other counts. Off by default (unchanged behavior). (#250)\n    /// </summary>\n    [Parameter] public bool Responsive { get; set; }\n    [Parameter] public string? Gap { get; set; } = \"4\";\n    [Parameter] public string? RowGap { get; set; }\n    [Parameter] public string? ColGap { get; set; }\n    [Parameter] public RenderFragment? ChildContent { get; set; }\n    [Parameter] public string? Class { get; set; }\n    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }\n\n    // Static, fully-spelled responsive class strings so Tailwind's content scan\n    // compiles them (dynamic `sm:grid-cols-{n}` interpolation would be purged).\n    private string ColumnsClass => !Responsive\n        ? $\"grid-cols-{Columns}\"\n        : Columns switch\n        {\n            <= 1 => \"grid-cols-1\",\n            2 => \"grid-cols-1 sm:grid-cols-2\",\n            3 => \"grid-cols-1 sm:grid-cols-2 lg:grid-cols-3\",\n            4 => \"grid-cols-1 sm:grid-cols-2 lg:grid-cols-4\",\n            5 => \"grid-cols-1 sm:grid-cols-2 lg:grid-cols-5\",\n            6 => \"grid-cols-1 sm:grid-cols-2 lg:grid-cols-6\",\n            _ => $\"grid-cols-{Columns}\"\n        };\n\n    private string CssClass\n    {\n        get\n        {\n            var gap = !string.IsNullOrEmpty(Gap) ? $\"gap-{Gap}\" : \"\";\n            var rowGap = !string.IsNullOrEmpty(RowGap) ? $\"gap-y-{RowGap}\" : \"\";\n            var colGap = !string.IsNullOrEmpty(ColGap) ? $\"gap-x-{ColGap}\" : \"\";\n            return Cx.Merge($\"grid {ColumnsClass}\", gap, rowGap, colGap, Class);\n        }\n    }\n}\n"
+      "content": "@namespace Lumeo\n\n<div class=\"@CssClass\" @attributes=\"AdditionalAttributes\">@ChildContent</div>\n\n@code {\n    /// <summary>Number of grid columns (emitted as <c>grid-cols-N</c>, or the responsive 1–6 ramp when <see cref=\"Responsive\"/> is true). Default <c>1</c>.</summary>\n    [Parameter] public int Columns { get; set; } = 1;\n    /// <summary>\n    /// When true the grid collapses to 1 column on mobile and 2 on small screens,\n    /// expanding to <see cref=\"Columns\"/> only at the <c>lg</c> breakpoint — so a\n    /// many-column grid stays readable on phones. Uses statically-known responsive\n    /// utility strings (purge-safe) for 1–6 columns; falls back to a fixed\n    /// <c>grid-cols-N</c> for other counts. Off by default (unchanged behavior). (#250)\n    /// </summary>\n    [Parameter] public bool Responsive { get; set; }\n    /// <summary>Tailwind spacing scale value applied as <c>gap-{value}</c> on both axes. Default <c>\"4\"</c>; set null to omit.</summary>\n    [Parameter] public string? Gap { get; set; } = \"4\";\n\n    /// <summary>Tailwind spacing scale value applied as <c>gap-y-{value}</c>, overriding the row gap independently of <see cref=\"Gap\"/>.</summary>\n    [Parameter] public string? RowGap { get; set; }\n\n    /// <summary>Tailwind spacing scale value applied as <c>gap-x-{value}</c>, overriding the column gap independently of <see cref=\"Gap\"/>.</summary>\n    [Parameter] public string? ColGap { get; set; }\n\n    /// <summary>The grid's items.</summary>\n    [Parameter] public RenderFragment? ChildContent { get; set; }\n\n    /// <summary>Additional CSS classes merged onto the grid's root element.</summary>\n    [Parameter] public string? Class { get; set; }\n\n    /// <summary>Unmatched attributes splatted onto the grid's root element.</summary>\n    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }\n\n    // Static, fully-spelled responsive class strings so Tailwind's content scan\n    // compiles them (dynamic `sm:grid-cols-{n}` interpolation would be purged).\n    private string ColumnsClass => !Responsive\n        ? $\"grid-cols-{Columns}\"\n        : Columns switch\n        {\n            <= 1 => \"grid-cols-1\",\n            2 => \"grid-cols-1 sm:grid-cols-2\",\n            3 => \"grid-cols-1 sm:grid-cols-2 lg:grid-cols-3\",\n            4 => \"grid-cols-1 sm:grid-cols-2 lg:grid-cols-4\",\n            5 => \"grid-cols-1 sm:grid-cols-2 lg:grid-cols-5\",\n            6 => \"grid-cols-1 sm:grid-cols-2 lg:grid-cols-6\",\n            _ => $\"grid-cols-{Columns}\"\n        };\n\n    private string CssClass\n    {\n        get\n        {\n            var gap = !string.IsNullOrEmpty(Gap) ? $\"gap-{Gap}\" : \"\";\n            var rowGap = !string.IsNullOrEmpty(RowGap) ? $\"gap-y-{RowGap}\" : \"\";\n            var colGap = !string.IsNullOrEmpty(ColGap) ? $\"gap-x-{ColGap}\" : \"\";\n            return Cx.Merge($\"grid {ColumnsClass}\", gap, rowGap, colGap, Class);\n        }\n    }\n}\n"
     }
   ],
   "slots": [
@@ -171,7 +171,7 @@
       "name": "ChildContent",
       "owner": "Grid",
       "type": "RenderFragment?",
-      "description": null
+      "description": "The grid's items."
     }
   ],
   "serviceDependencies": [],
@@ -190,5 +190,5 @@
     "tests/Lumeo.Tests/Components/Grid/GridTests.cs",
     "tests/Lumeo.Tests/Internal/CxMergeTests.cs"
   ],
-  "mdSummary": "# Grid\n\nCSS grid wrapper with columns + gap as props.\n\n**Package:** `Lumeo` · **Category:** Layout\n**Docs:** https://lumeo.nativ.sh/components/grid\n\n## Parameters\n| Owner | Name | Type | Default | Description |\n|---|---|---|---|---|\n| Grid | Columns | `int` | `1` |  |\n| Grid | Responsive | `bool` | `` | When true the grid collapses to 1 column on mobile and 2 on small screens, expanding to Columns only at the lg breakpoint — so a many-column grid stays readable on phones. Uses statically-known responsive utility strings (purge-safe) for 1–6 columns; falls back to a fixed grid-cols-N for other counts. Off by default (unchanged behavior). (#250) |\n| Grid | Gap | `string?` | `\"4\"` |  |\n| Grid | RowGap | `string?` | `` |  |\n| Grid | ColGap | `string?` | `` |  |\n| Grid | ChildContent | `RenderFragment?` | `` |  |\n| Grid | Class | `string?` | `` |  |\n| Grid | AdditionalAttributes | `Dictionary<string, object>?` | `` |  |\n\n## Slots\n- `ChildContent` (Grid) — RenderFragment slot\n\n## Events\n- (none)\n\n## Sub-components\n- (none)\n\n## Cascading values it expects\n- (none)\n\n## Services it injects\n- (none)\n\n## Keyboard\n—\n\n## Example\n```razor\n<Grid />\n```\n\n## CSS variables\n`--color-foreground`\n\n## Files\n- `UI/Grid/Grid.razor`\n"
+  "mdSummary": "# Grid\n\nCSS grid wrapper with columns + gap as props.\n\n**Package:** `Lumeo` · **Category:** Layout\n**Docs:** https://lumeo.nativ.sh/components/grid\n\n## Parameters\n| Owner | Name | Type | Default | Description |\n|---|---|---|---|---|\n| Grid | Columns | `int` | `1` | Number of grid columns (emitted as grid-cols-N, or the responsive 1–6 ramp when Responsive is true). Default 1. |\n| Grid | Responsive | `bool` | `` | When true the grid collapses to 1 column on mobile and 2 on small screens, expanding to Columns only at the lg breakpoint — so a many-column grid stays readable on phones. Uses statically-known responsive utility strings (purge-safe) for 1–6 columns; falls back to a fixed grid-cols-N for other counts. Off by default (unchanged behavior). (#250) |\n| Grid | Gap | `string?` | `\"4\"` | Tailwind spacing scale value applied as gap-{value} on both axes. Default \"4\"; set null to omit. |\n| Grid | RowGap | `string?` | `` | Tailwind spacing scale value applied as gap-y-{value}, overriding the row gap independently of Gap. |\n| Grid | ColGap | `string?` | `` | Tailwind spacing scale value applied as gap-x-{value}, overriding the column gap independently of Gap. |\n| Grid | ChildContent | `RenderFragment?` | `` | The grid's items. |\n| Grid | Class | `string?` | `` | Additional CSS classes merged onto the grid's root element. |\n| Grid | AdditionalAttributes | `Dictionary<string, object>?` | `` | Unmatched attributes splatted onto the grid's root element. |\n\n## Slots\n- `ChildContent` (Grid) — The grid's items.\n\n## Events\n- (none)\n\n## Sub-components\n- (none)\n\n## Cascading values it expects\n- (none)\n\n## Services it injects\n- (none)\n\n## Keyboard\n—\n\n## Example\n```razor\n<Grid />\n```\n\n## CSS variables\n`--color-foreground`\n\n## Files\n- `UI/Grid/Grid.razor`\n"
 }

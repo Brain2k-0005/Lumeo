@@ -34,7 +34,7 @@
         "name": "Title",
         "type": "string?",
         "default": null,
-        "description": null,
+        "description": "Plain-text headline, rendered as an h1 that also names the section landmark. Ignored (and the h1 omitted) when TitleSlot is used instead.",
         "isCascading": false,
         "captureUnmatched": false,
         "isEditorRequired": false
@@ -43,7 +43,7 @@
         "name": "TitleSlot",
         "type": "RenderFragment?",
         "default": null,
-        "description": null,
+        "description": "Rich content slot for the headline, for when a plain-text Title isn't enough (e.g. inline styling, a gradient span). Rendered alongside Title if both are set.",
         "isCascading": false,
         "captureUnmatched": false,
         "isEditorRequired": false
@@ -52,7 +52,7 @@
         "name": "Subtitle",
         "type": "string?",
         "default": null,
-        "description": null,
+        "description": "Plain-text supporting copy below the title. Ignored when SubtitleSlot is used instead.",
         "isCascading": false,
         "captureUnmatched": false,
         "isEditorRequired": false
@@ -61,7 +61,7 @@
         "name": "SubtitleSlot",
         "type": "RenderFragment?",
         "default": null,
-        "description": null,
+        "description": "Rich content slot for the supporting copy, for when plain-text Subtitle isn't enough.",
         "isCascading": false,
         "captureUnmatched": false,
         "isEditorRequired": false
@@ -70,7 +70,7 @@
         "name": "Eyebrow",
         "type": "RenderFragment?",
         "default": null,
-        "description": null,
+        "description": "Small chip/label rendered above the title (e.g. \"New\" or a category tag).",
         "isCascading": false,
         "captureUnmatched": false,
         "isEditorRequired": false
@@ -79,7 +79,7 @@
         "name": "Actions",
         "type": "RenderFragment?",
         "default": null,
-        "description": null,
+        "description": "Call-to-action buttons/links rendered below the subtitle.",
         "isCascading": false,
         "captureUnmatched": false,
         "isEditorRequired": false
@@ -88,7 +88,7 @@
         "name": "Media",
         "type": "RenderFragment?",
         "default": null,
-        "description": null,
+        "description": "Side illustration/media slot. When set, the hero switches to a two-column grid layout with the text on one side and this media on the other.",
         "isCascading": false,
         "captureUnmatched": false,
         "isEditorRequired": false
@@ -97,7 +97,7 @@
         "name": "Alignment",
         "type": "HeroAlignment",
         "default": "HeroAlignment.Start",
-        "description": null,
+        "description": "Horizontal alignment of the text column and its actions. Default: Start.",
         "isCascading": false,
         "captureUnmatched": false,
         "isEditorRequired": false
@@ -106,7 +106,7 @@
         "name": "Class",
         "type": "string?",
         "default": null,
-        "description": null,
+        "description": "Additional CSS classes merged onto the root section.",
         "isCascading": false,
         "captureUnmatched": false,
         "isEditorRequired": false
@@ -115,7 +115,7 @@
         "name": "AdditionalAttributes",
         "type": "Dictionary<string, object>?",
         "default": null,
-        "description": null,
+        "description": "Additional HTML attributes captured and forwarded to the root section.",
         "isCascading": false,
         "captureUnmatched": true,
         "isEditorRequired": false
@@ -197,7 +197,7 @@
   "source": [
     {
       "path": "UI/Hero/Hero.razor",
-      "content": "@namespace Lumeo\n\n@*\n    Hero — landing-page hero band. Part of the 3.4 Splash Kit. Provides\n    a centered, max-width content rail with an optional Eyebrow chip,\n    Title, Subtitle, Actions slot, and a Media slot for the side\n    illustration. Layout collapses to a single column under sm:.\n*@\n\n<section class=\"@CssClass\" aria-labelledby=\"@TitleId\" @attributes=\"AdditionalAttributes\">\n    <div class=\"@($\"mx-auto max-w-6xl px-6 py-16 sm:py-24 {GridClass}\")\">\n        <div class=\"@($\"flex flex-col {AlignClass}\")\">\n            @if (Eyebrow is not null)\n            {\n                <div class=\"mb-4\">\n                    @Eyebrow\n                </div>\n            }\n            @if (!string.IsNullOrWhiteSpace(Title))\n            {\n                <h1 id=\"@TitleId\" class=\"text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight text-foreground\">@Title</h1>\n            }\n            @TitleSlot\n            @if (!string.IsNullOrWhiteSpace(Subtitle))\n            {\n                <p class=\"mt-4 text-lg text-muted-foreground max-w-2xl\">@Subtitle</p>\n            }\n            @SubtitleSlot\n            @if (Actions is not null)\n            {\n                <div class=\"mt-8 flex flex-wrap gap-3 @ActionsAlignClass\">\n                    @Actions\n                </div>\n            }\n        </div>\n        @if (Media is not null)\n        {\n            <div class=\"flex items-center justify-center\">\n                @Media\n            </div>\n        }\n    </div>\n</section>\n\n@code {\n    [Parameter] public string? Title { get; set; }\n    [Parameter] public RenderFragment? TitleSlot { get; set; }\n    [Parameter] public string? Subtitle { get; set; }\n    [Parameter] public RenderFragment? SubtitleSlot { get; set; }\n    [Parameter] public RenderFragment? Eyebrow { get; set; }\n    [Parameter] public RenderFragment? Actions { get; set; }\n    [Parameter] public RenderFragment? Media { get; set; }\n    [Parameter] public HeroAlignment Alignment { get; set; } = HeroAlignment.Start;\n    [Parameter] public string? Class { get; set; }\n    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }\n\n    private string CssClass => Cx.Merge(\"w-full\", Class);\n\n    // Name the <section> landmark via its heading so AT exposes it as a region\n    // with an accessible name (#297). Null when there's no Title — a TitleSlot-\n    // only consumer can still supply aria-label/aria-labelledby via attributes.\n    private readonly string _titleId = $\"hero-title-{Guid.NewGuid():N}\";\n    private string? TitleId => string.IsNullOrWhiteSpace(Title) ? null : _titleId;\n\n    private string GridClass => Media is not null\n        ? \"grid gap-10 lg:grid-cols-2 items-center\"\n        : \"\";\n\n    private string AlignClass => Alignment switch\n    {\n        HeroAlignment.Center => \"items-center text-center\",\n        HeroAlignment.End => \"items-end text-end\",\n        _ => \"items-start text-start\"\n    };\n\n    private string ActionsAlignClass => Alignment switch\n    {\n        HeroAlignment.Center => \"justify-center\",\n        HeroAlignment.End => \"justify-end\",\n        _ => \"justify-start\"\n    };\n\n    public enum HeroAlignment { Start, Center, End }\n}\n"
+      "content": "@namespace Lumeo\n\n@*\n    Hero — landing-page hero band. Part of the 3.4 Splash Kit. Provides\n    a centered, max-width content rail with an optional Eyebrow chip,\n    Title, Subtitle, Actions slot, and a Media slot for the side\n    illustration. Layout collapses to a single column under sm:.\n*@\n\n<section class=\"@CssClass\" aria-labelledby=\"@TitleId\" @attributes=\"AdditionalAttributes\">\n    <div class=\"@($\"mx-auto max-w-6xl px-6 py-16 sm:py-24 {GridClass}\")\">\n        <div class=\"@($\"flex flex-col {AlignClass}\")\">\n            @if (Eyebrow is not null)\n            {\n                <div class=\"mb-4\">\n                    @Eyebrow\n                </div>\n            }\n            @if (!string.IsNullOrWhiteSpace(Title))\n            {\n                <h1 id=\"@TitleId\" class=\"text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight text-foreground\">@Title</h1>\n            }\n            @TitleSlot\n            @if (!string.IsNullOrWhiteSpace(Subtitle))\n            {\n                <p class=\"mt-4 text-lg text-muted-foreground max-w-2xl\">@Subtitle</p>\n            }\n            @SubtitleSlot\n            @if (Actions is not null)\n            {\n                <div class=\"mt-8 flex flex-wrap gap-3 @ActionsAlignClass\">\n                    @Actions\n                </div>\n            }\n        </div>\n        @if (Media is not null)\n        {\n            <div class=\"flex items-center justify-center\">\n                @Media\n            </div>\n        }\n    </div>\n</section>\n\n@code {\n    /// <summary>Plain-text headline, rendered as an <c>h1</c> that also names the section landmark.\n    /// Ignored (and the <c>h1</c> omitted) when <see cref=\"TitleSlot\"/> is used instead.</summary>\n    [Parameter] public string? Title { get; set; }\n    /// <summary>Rich content slot for the headline, for when a plain-text <see cref=\"Title\"/> isn't\n    /// enough (e.g. inline styling, a gradient span). Rendered alongside <see cref=\"Title\"/> if both are set.</summary>\n    [Parameter] public RenderFragment? TitleSlot { get; set; }\n    /// <summary>Plain-text supporting copy below the title. Ignored when <see cref=\"SubtitleSlot\"/> is used instead.</summary>\n    [Parameter] public string? Subtitle { get; set; }\n    /// <summary>Rich content slot for the supporting copy, for when plain-text <see cref=\"Subtitle\"/> isn't enough.</summary>\n    [Parameter] public RenderFragment? SubtitleSlot { get; set; }\n    /// <summary>Small chip/label rendered above the title (e.g. \"New\" or a category tag).</summary>\n    [Parameter] public RenderFragment? Eyebrow { get; set; }\n    /// <summary>Call-to-action buttons/links rendered below the subtitle.</summary>\n    [Parameter] public RenderFragment? Actions { get; set; }\n    /// <summary>Side illustration/media slot. When set, the hero switches to a two-column grid layout\n    /// with the text on one side and this media on the other.</summary>\n    [Parameter] public RenderFragment? Media { get; set; }\n    /// <summary>Horizontal alignment of the text column and its actions. Default: <see cref=\"HeroAlignment.Start\"/>.</summary>\n    [Parameter] public HeroAlignment Alignment { get; set; } = HeroAlignment.Start;\n    /// <summary>Additional CSS classes merged onto the root <c>section</c>.</summary>\n    [Parameter] public string? Class { get; set; }\n    /// <summary>Additional HTML attributes captured and forwarded to the root <c>section</c>.</summary>\n    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }\n\n    private string CssClass => Cx.Merge(\"w-full\", Class);\n\n    // Name the <section> landmark via its heading so AT exposes it as a region\n    // with an accessible name (#297). Null when there's no Title — a TitleSlot-\n    // only consumer can still supply aria-label/aria-labelledby via attributes.\n    private readonly string _titleId = $\"hero-title-{Guid.NewGuid():N}\";\n    private string? TitleId => string.IsNullOrWhiteSpace(Title) ? null : _titleId;\n\n    private string GridClass => Media is not null\n        ? \"grid gap-10 lg:grid-cols-2 items-center\"\n        : \"\";\n\n    private string AlignClass => Alignment switch\n    {\n        HeroAlignment.Center => \"items-center text-center\",\n        HeroAlignment.End => \"items-end text-end\",\n        _ => \"items-start text-start\"\n    };\n\n    private string ActionsAlignClass => Alignment switch\n    {\n        HeroAlignment.Center => \"justify-center\",\n        HeroAlignment.End => \"justify-end\",\n        _ => \"justify-start\"\n    };\n\n    public enum HeroAlignment { Start, Center, End }\n}\n"
     }
   ],
   "slots": [
@@ -205,31 +205,31 @@
       "name": "TitleSlot",
       "owner": "Hero",
       "type": "RenderFragment?",
-      "description": null
+      "description": "Rich content slot for the headline, for when a plain-text Title isn't enough (e.g. inline styling, a gradient span). Rendered alongside Title if both are set."
     },
     {
       "name": "SubtitleSlot",
       "owner": "Hero",
       "type": "RenderFragment?",
-      "description": null
+      "description": "Rich content slot for the supporting copy, for when plain-text Subtitle isn't enough."
     },
     {
       "name": "Eyebrow",
       "owner": "Hero",
       "type": "RenderFragment?",
-      "description": null
+      "description": "Small chip/label rendered above the title (e.g. \"New\" or a category tag)."
     },
     {
       "name": "Actions",
       "owner": "Hero",
       "type": "RenderFragment?",
-      "description": null
+      "description": "Call-to-action buttons/links rendered below the subtitle."
     },
     {
       "name": "Media",
       "owner": "Hero",
       "type": "RenderFragment?",
-      "description": null
+      "description": "Side illustration/media slot. When set, the hero switches to a two-column grid layout with the text on one side and this media on the other."
     }
   ],
   "serviceDependencies": [],
@@ -240,5 +240,5 @@
     "tests/Lumeo.Tests/Components/A11yPolish/A11yPolishTests.cs",
     "tests/Lumeo.Tests/Components/Hero/HeroTests.cs"
   ],
-  "mdSummary": "# Hero\n\nHero component.\n\n**Package:** `Lumeo` · **Category:** Marketing\n**Docs:** https://lumeo.nativ.sh/components/hero\n\n## Parameters\n| Owner | Name | Type | Default | Description |\n|---|---|---|---|---|\n| Hero | Title | `string?` | `` |  |\n| Hero | TitleSlot | `RenderFragment?` | `` |  |\n| Hero | Subtitle | `string?` | `` |  |\n| Hero | SubtitleSlot | `RenderFragment?` | `` |  |\n| Hero | Eyebrow | `RenderFragment?` | `` |  |\n| Hero | Actions | `RenderFragment?` | `` |  |\n| Hero | Media | `RenderFragment?` | `` |  |\n| Hero | Alignment | `HeroAlignment` | `HeroAlignment.Start` |  |\n| Hero | Class | `string?` | `` |  |\n| Hero | AdditionalAttributes | `Dictionary<string, object>?` | `` |  |\n\n## Slots\n- `TitleSlot` (Hero) — RenderFragment slot\n- `SubtitleSlot` (Hero) — RenderFragment slot\n- `Eyebrow` (Hero) — RenderFragment slot\n- `Actions` (Hero) — RenderFragment slot\n- `Media` (Hero) — RenderFragment slot\n\n## Events\n- (none)\n\n## Sub-components\n- (none)\n\n## Cascading values it expects\n- (none)\n\n## Services it injects\n- (none)\n\n## Keyboard\n—\n\n## Example\n```razor\n<Hero />\n```\n\n## CSS variables\n`--color-foreground`, `--color-muted`, `--color-muted-foreground`\n\n## Files\n- `UI/Hero/Hero.razor`\n"
+  "mdSummary": "# Hero\n\nHero component.\n\n**Package:** `Lumeo` · **Category:** Marketing\n**Docs:** https://lumeo.nativ.sh/components/hero\n\n## Parameters\n| Owner | Name | Type | Default | Description |\n|---|---|---|---|---|\n| Hero | Title | `string?` | `` | Plain-text headline, rendered as an h1 that also names the section landmark. Ignored (and the h1 omitted) when TitleSlot is used instead. |\n| Hero | TitleSlot | `RenderFragment?` | `` | Rich content slot for the headline, for when a plain-text Title isn't enough (e.g. inline styling, a gradient span). Rendered alongside Title if both are set. |\n| Hero | Subtitle | `string?` | `` | Plain-text supporting copy below the title. Ignored when SubtitleSlot is used instead. |\n| Hero | SubtitleSlot | `RenderFragment?` | `` | Rich content slot for the supporting copy, for when plain-text Subtitle isn't enough. |\n| Hero | Eyebrow | `RenderFragment?` | `` | Small chip/label rendered above the title (e.g. \"New\" or a category tag). |\n| Hero | Actions | `RenderFragment?` | `` | Call-to-action buttons/links rendered below the subtitle. |\n| Hero | Media | `RenderFragment?` | `` | Side illustration/media slot. When set, the hero switches to a two-column grid layout with the text on one side and this media on the other. |\n| Hero | Alignment | `HeroAlignment` | `HeroAlignment.Start` | Horizontal alignment of the text column and its actions. Default: Start. |\n| Hero | Class | `string?` | `` | Additional CSS classes merged onto the root section. |\n| Hero | AdditionalAttributes | `Dictionary<string, object>?` | `` | Additional HTML attributes captured and forwarded to the root section. |\n\n## Slots\n- `TitleSlot` (Hero) — Rich content slot for the headline, for when a plain-text Title isn't enough (e.g. inline styling, a gradient span). Rendered alongside Title if both are set.\n- `SubtitleSlot` (Hero) — Rich content slot for the supporting copy, for when plain-text Subtitle isn't enough.\n- `Eyebrow` (Hero) — Small chip/label rendered above the title (e.g. \"New\" or a category tag).\n- `Actions` (Hero) — Call-to-action buttons/links rendered below the subtitle.\n- `Media` (Hero) — Side illustration/media slot. When set, the hero switches to a two-column grid layout with the text on one side and this media on the other.\n\n## Events\n- (none)\n\n## Sub-components\n- (none)\n\n## Cascading values it expects\n- (none)\n\n## Services it injects\n- (none)\n\n## Keyboard\n—\n\n## Example\n```razor\n<Hero />\n```\n\n## CSS variables\n`--color-foreground`, `--color-muted`, `--color-muted-foreground`\n\n## Files\n- `UI/Hero/Hero.razor`\n"
 }

@@ -34,7 +34,7 @@
         "name": "Text",
         "type": "string",
         "default": "string.Empty",
-        "description": null,
+        "description": "The text to reveal, split on whitespace into individually-animated words.",
         "isCascading": false,
         "captureUnmatched": false,
         "isEditorRequired": false
@@ -43,7 +43,7 @@
         "name": "Stagger",
         "type": "int",
         "default": "80",
-        "description": null,
+        "description": "Delay in milliseconds added per word index, so later words reveal after earlier ones. Default 80.",
         "isCascading": false,
         "captureUnmatched": false,
         "isEditorRequired": false
@@ -52,7 +52,7 @@
         "name": "Threshold",
         "type": "double",
         "default": "0.3",
-        "description": null,
+        "description": "Fraction of the element that must be visible in the viewport before the reveal triggers, passed to the underlying IntersectionObserver. Clamped to [0, 1]. Default 0.3.",
         "isCascading": false,
         "captureUnmatched": false,
         "isEditorRequired": false
@@ -61,7 +61,7 @@
         "name": "Class",
         "type": "string?",
         "default": null,
-        "description": null,
+        "description": "Additional CSS classes merged onto the root &lt;span&gt;.",
         "isCascading": false,
         "captureUnmatched": false,
         "isEditorRequired": false
@@ -70,7 +70,7 @@
         "name": "AdditionalAttributes",
         "type": "Dictionary<string, object>?",
         "default": null,
-        "description": null,
+        "description": "Captures any unmatched attributes and applies them to the root &lt;span&gt;.",
         "isCascading": false,
         "captureUnmatched": true,
         "isEditorRequired": false
@@ -138,7 +138,7 @@
   "source": [
     {
       "path": "UI/TextReveal/TextReveal.razor",
-      "content": "@namespace Lumeo\n@implements IAsyncDisposable\n@inject ComponentInteropService Interop\n\n<span id=\"@_elementId\" class=\"@CssClass\" @attributes=\"AdditionalAttributes\">\n    @for (var i = 0; i < _words.Length; i++)\n    {\n        <span data-motion-word style=\"transition-delay:@(i * Stagger)ms\">@_words[i]</span>\n        @if (i < _words.Length - 1)\n        {\n            @(\" \")\n        }\n    }\n</span>\n\n@code {\n    [Parameter] public string Text { get; set; } = string.Empty;\n    [Parameter] public int Stagger { get; set; } = 80;\n    [Parameter] public double Threshold { get; set; } = 0.3;\n    [Parameter] public string? Class { get; set; }\n    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }\n\n    private readonly string _elementId = $\"lumeo-reveal-{Guid.NewGuid():N}\";\n    private string[] _words = Array.Empty<string>();\n    private bool _registered;\n\n    private string CssClass => string.Join(\" \", new[] { \"lumeo-reveal\", Class }.Where(s => !string.IsNullOrWhiteSpace(s)));\n\n    protected override void OnParametersSet()\n    {\n        _words = string.IsNullOrEmpty(Text)\n            ? Array.Empty<string>()\n            : Text.Split(' ', StringSplitOptions.RemoveEmptyEntries);\n    }\n\n    protected override async Task OnAfterRenderAsync(bool firstRender)\n    {\n        if (firstRender && !_registered)\n        {\n            _registered = true;\n            try\n            {\n                // Clamp Threshold to the IntersectionObserver-legal [0,1] range before\n                // it reaches JS. An out-of-range value (>1 or <0) throws inside\n                // `new IntersectionObserver(..., { threshold })`, which left the text\n                // permanently invisible and surfaced an unhandled circuit exception.\n                // Scoped to the component (not the shared interop service) so the guard\n                // doesn't ripple to other MotionRevealText callers.\n                await Interop.MotionRevealText(_elementId, Stagger, Math.Clamp(Threshold, 0d, 1d));\n            }\n            catch (JSDisconnectedException) { }\n            catch (JSException) { }\n        }\n    }\n\n    public async ValueTask DisposeAsync()\n    {\n        if (!_registered) return;\n        try { await Interop.MotionDisposeObserver(_elementId); }\n        catch (JSDisconnectedException) { }\n    }\n}\n"
+      "content": "@namespace Lumeo\n@implements IAsyncDisposable\n@inject ComponentInteropService Interop\n\n<span id=\"@_elementId\" class=\"@CssClass\" @attributes=\"AdditionalAttributes\">\n    @for (var i = 0; i < _words.Length; i++)\n    {\n        <span data-motion-word style=\"transition-delay:@(i * Stagger)ms\">@_words[i]</span>\n        @if (i < _words.Length - 1)\n        {\n            @(\" \")\n        }\n    }\n</span>\n\n@code {\n    /// <summary>The text to reveal, split on whitespace into individually-animated words.</summary>\n    [Parameter] public string Text { get; set; } = string.Empty;\n    /// <summary>Delay in milliseconds added per word index, so later words reveal after earlier ones. Default 80.</summary>\n    [Parameter] public int Stagger { get; set; } = 80;\n    /// <summary>Fraction of the element that must be visible in the viewport before the reveal triggers, passed to the underlying <c>IntersectionObserver</c>. Clamped to [0, 1]. Default 0.3.</summary>\n    [Parameter] public double Threshold { get; set; } = 0.3;\n    /// <summary>Additional CSS classes merged onto the root <c>&lt;span&gt;</c>.</summary>\n    [Parameter] public string? Class { get; set; }\n    /// <summary>Captures any unmatched attributes and applies them to the root <c>&lt;span&gt;</c>.</summary>\n    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }\n\n    private readonly string _elementId = $\"lumeo-reveal-{Guid.NewGuid():N}\";\n    private string[] _words = Array.Empty<string>();\n    private bool _registered;\n\n    private string CssClass => string.Join(\" \", new[] { \"lumeo-reveal\", Class }.Where(s => !string.IsNullOrWhiteSpace(s)));\n\n    protected override void OnParametersSet()\n    {\n        _words = string.IsNullOrEmpty(Text)\n            ? Array.Empty<string>()\n            : Text.Split(' ', StringSplitOptions.RemoveEmptyEntries);\n    }\n\n    protected override async Task OnAfterRenderAsync(bool firstRender)\n    {\n        if (firstRender && !_registered)\n        {\n            _registered = true;\n            try\n            {\n                // Clamp Threshold to the IntersectionObserver-legal [0,1] range before\n                // it reaches JS. An out-of-range value (>1 or <0) throws inside\n                // `new IntersectionObserver(..., { threshold })`, which left the text\n                // permanently invisible and surfaced an unhandled circuit exception.\n                // Scoped to the component (not the shared interop service) so the guard\n                // doesn't ripple to other MotionRevealText callers.\n                await Interop.MotionRevealText(_elementId, Stagger, Math.Clamp(Threshold, 0d, 1d));\n            }\n            catch (JSDisconnectedException) { }\n            catch (JSException) { }\n        }\n    }\n\n    public async ValueTask DisposeAsync()\n    {\n        if (!_registered) return;\n        try { await Interop.MotionDisposeObserver(_elementId); }\n        catch (JSDisconnectedException) { }\n    }\n}\n"
     }
   ],
   "slots": [],
@@ -155,5 +155,5 @@
     "tests/Lumeo.Tests/Components/TextReveal/TextRevealBattleTests.cs",
     "tests/Lumeo.Tests/Components/TextReveal/TextRevealTests.cs"
   ],
-  "mdSummary": "# TextReveal\n\nWord-by-word reveal animation on scroll.\n\n**Package:** `Lumeo.Motion` · **Category:** Motion\n**Docs:** https://lumeo.nativ.sh/components/text-reveal\n\n## Parameters\n| Owner | Name | Type | Default | Description |\n|---|---|---|---|---|\n| TextReveal | Text | `string` | `string.Empty` |  |\n| TextReveal | Stagger | `int` | `80` |  |\n| TextReveal | Threshold | `double` | `0.3` |  |\n| TextReveal | Class | `string?` | `` |  |\n| TextReveal | AdditionalAttributes | `Dictionary<string, object>?` | `` |  |\n\n## Slots\n- (none)\n\n## Events\n- (none)\n\n## Sub-components\n- (none)\n\n## Cascading values it expects\n- (none)\n\n## Services it injects\n- `ComponentInteropService` ()\n\n## Keyboard\n—\n\n## Example\n```razor\n<TextReveal />\n```\n\n## CSS variables\n`--color-foreground`\n\n## Files\n- `UI/TextReveal/TextReveal.razor`\n"
+  "mdSummary": "# TextReveal\n\nWord-by-word reveal animation on scroll.\n\n**Package:** `Lumeo.Motion` · **Category:** Motion\n**Docs:** https://lumeo.nativ.sh/components/text-reveal\n\n## Parameters\n| Owner | Name | Type | Default | Description |\n|---|---|---|---|---|\n| TextReveal | Text | `string` | `string.Empty` | The text to reveal, split on whitespace into individually-animated words. |\n| TextReveal | Stagger | `int` | `80` | Delay in milliseconds added per word index, so later words reveal after earlier ones. Default 80. |\n| TextReveal | Threshold | `double` | `0.3` | Fraction of the element that must be visible in the viewport before the reveal triggers, passed to the underlying IntersectionObserver. Clamped to [0, 1]. Default 0.3. |\n| TextReveal | Class | `string?` | `` | Additional CSS classes merged onto the root &lt;span&gt;. |\n| TextReveal | AdditionalAttributes | `Dictionary<string, object>?` | `` | Captures any unmatched attributes and applies them to the root &lt;span&gt;. |\n\n## Slots\n- (none)\n\n## Events\n- (none)\n\n## Sub-components\n- (none)\n\n## Cascading values it expects\n- (none)\n\n## Services it injects\n- `ComponentInteropService` ()\n\n## Keyboard\n—\n\n## Example\n```razor\n<TextReveal />\n```\n\n## CSS variables\n`--color-foreground`\n\n## Files\n- `UI/TextReveal/TextReveal.razor`\n"
 }

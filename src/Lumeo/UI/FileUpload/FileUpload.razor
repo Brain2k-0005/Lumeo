@@ -200,23 +200,40 @@ else
     private string? FormFieldControlId => string.IsNullOrEmpty(FormField?.ControlId) ? null : FormField!.ControlId;
     private string? FormFieldDescribedBy => FormField?.DescribedBy;
 
+    /// <summary>Marks the field as required, setting <c>aria-required</c> and (outside a <c>FormField</c>, on the Dropzone/generic label) appending a destructive-colored asterisk to the label.</summary>
     [Parameter] public bool Required { get; set; }
+
+    /// <summary>Forces the invalid/error visual state (destructive border on the dropzone, destructive helper text) and <c>aria-invalid</c>, independent of the ambient <c>FormField</c>'s validation state.</summary>
     [Parameter] public bool Invalid { get; set; }
+
+    /// <summary>Error message shown below the control (outside a <c>FormField</c>) when <see cref="Invalid"/> is set. Takes precedence over <see cref="HelperText"/>.</summary>
     [Parameter] public string? ErrorText { get; set; }
+
+    /// <summary>Helper text shown below the control (outside a <c>FormField</c>) when there is no error to display.</summary>
     [Parameter] public string? HelperText { get; set; }
+
+    /// <summary>Field name for form-field integration. Not currently rendered onto the underlying <c>&lt;InputFile&gt;</c> element.</summary>
     [Parameter] public string? Name { get; set; }
 
     private bool EffectiveInvalid => Invalid || FormField?.HasError == true;
     private bool InsideFormField => FormField is not null;
 
     // ── Visual / selection params ────────────────────────────────────────────
+    /// <summary>Label text. Rendered above the control on the Dropzone/Avatar variants when outside a <c>FormField</c>, or as the Dropzone's headline / the Button variant's caption when set.</summary>
     [Parameter] public string? Label { get; set; }
+    /// <summary>Secondary helper text shown below the headline on the Dropzone variant (e.g. accepted types or size limits).</summary>
     [Parameter] public string? Description { get; set; }
+    /// <summary>Allows selecting more than one file at once. Ignored by the Avatar variant, which is always single-file.</summary>
     [Parameter] public bool Multiple { get; set; }
+    /// <summary>The native <c>accept</c> attribute value (e.g. <c>"image/*"</c> or <c>".pdf,.docx"</c>), used both to filter the OS file picker and to validate dropped/selected files client-side.</summary>
     [Parameter] public string? Accept { get; set; }
+    /// <summary>Maximum size in bytes allowed per file; larger files are rejected with <see cref="MaxFileSizeError"/> (or a localized default). Default 10 MB.</summary>
     [Parameter] public long MaxFileSize { get; set; } = 10 * 1024 * 1024;
+    /// <summary>Maximum number of files (counting non-failed/cancelled existing items) allowed in the selection at once; exceeding it rejects the whole new batch with <see cref="MaxFilesError"/>. Default 10.</summary>
     [Parameter] public int MaxFiles { get; set; } = 10;
+    /// <summary>Renders an inline image preview (data URI) for image files, on both the file-list rows and the Avatar variant's picker.</summary>
     [Parameter] public bool ShowThumbnails { get; set; }
+    /// <summary>Custom render fragment for each file-list row, receiving the underlying <see cref="IBrowserFile"/>. Falls back to the built-in row (icon/thumbnail, name, size, status, progress, actions) when unset.</summary>
     [Parameter] public RenderFragment<IBrowserFile>? FileTemplate { get; set; }
 
     /// <summary>
@@ -230,6 +247,7 @@ else
     /// </summary>
     [Parameter] public bool ShowFileList { get; set; } = true;
 
+    /// <summary>Visual presentation: <see cref="FileUploadVariant.Dropzone"/> (drag-and-drop area, default), <see cref="FileUploadVariant.Button"/> (compact inline trigger button), or <see cref="FileUploadVariant.Avatar"/> (single circular image picker).</summary>
     [Parameter] public FileUploadVariant Variant { get; set; } = FileUploadVariant.Dropzone;
 
     /// <summary>
@@ -241,6 +259,7 @@ else
     [Parameter] public Lumeo.Size Size { get; set; } = Lumeo.Size.Md;
 
     // ── Legacy back-compat progress params ──────────────────────────────────
+    /// <summary>Legacy: shows a single global progress bar driven by <see cref="Progress"/>. Ignored once <see cref="OnUpload"/> is set, since per-file progress is tracked automatically.</summary>
     [Parameter] public bool ShowProgress { get; set; }
 
     /// <remarks>Obsolete when <see cref="OnUpload"/> is set — per-file progress is tracked automatically via <see cref="FileUploadItem.ProgressPercent"/>.</remarks>
@@ -275,8 +294,11 @@ else
     [Parameter] public long? ChunkSize { get; set; }
 
     // ── Validation error message overrides ──────────────────────────────────
+    /// <summary>Overrides the default localized "exceeds max size" message shown when a file is rejected for being larger than <see cref="MaxFileSize"/>.</summary>
     [Parameter] public string? MaxFileSizeError { get; set; }
+    /// <summary>Overrides the default "Maximum N files allowed" message shown when a selection would exceed <see cref="MaxFiles"/>.</summary>
     [Parameter] public string? MaxFilesError { get; set; }
+    /// <summary>Overrides the default "unsupported file type" message shown when a file doesn't match <see cref="Accept"/>.</summary>
     [Parameter] public string? FileTypeError { get; set; }
 
     // ── Events ───────────────────────────────────────────────────────────────
@@ -299,7 +321,9 @@ else
     [Parameter] public EventCallback<(IBrowserFile File, string Reason)> OnFileRejected { get; set; }
 
     // ── CSS / additional attrs ───────────────────────────────────────────────
+    /// <summary>Additional CSS classes merged onto the variant-specific root element (the dropzone/button/avatar wrapper).</summary>
     [Parameter] public string? Class { get; set; }
+    /// <summary>Captures any unmatched attributes and applies them to the variant-specific root element.</summary>
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     // ── Enums ────────────────────────────────────────────────────────────────

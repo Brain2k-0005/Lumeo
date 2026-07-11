@@ -34,7 +34,7 @@
         "name": "ChildContent",
         "type": "RenderFragment?",
         "default": null,
-        "description": null,
+        "description": "The buttons (or button-like elements, e.g. link-buttons or Toggle) to render as a single visually-joined group.",
         "isCascading": false,
         "captureUnmatched": false,
         "isEditorRequired": false
@@ -43,7 +43,7 @@
         "name": "Class",
         "type": "string?",
         "default": null,
-        "description": null,
+        "description": "Additional CSS classes merged onto the root role=\"group\" element.",
         "isCascading": false,
         "captureUnmatched": false,
         "isEditorRequired": false
@@ -52,7 +52,7 @@
         "name": "Orientation",
         "type": "Lumeo.Orientation",
         "default": "Lumeo.Orientation.Horizontal",
-        "description": null,
+        "description": "Layout direction: Horizontal (default) joins children left-to-right with rounded end-caps; Vertical stacks them top-to-bottom.",
         "isCascading": false,
         "captureUnmatched": false,
         "isEditorRequired": false
@@ -70,7 +70,7 @@
         "name": "AdditionalAttributes",
         "type": "Dictionary<string, object>?",
         "default": null,
-        "description": null,
+        "description": "Unmatched attributes splatted onto the root role=\"group\" element.",
         "isCascading": false,
         "captureUnmatched": true,
         "isEditorRequired": false
@@ -142,7 +142,7 @@
   "source": [
     {
       "path": "UI/ButtonGroup/ButtonGroup.razor",
-      "content": "@namespace Lumeo\n\n<div class=\"@CssClass\" role=\"group\" aria-label=\"@AriaLabel\" @attributes=\"AdditionalAttributes\">\n    @ChildContent\n</div>\n\n@code {\n    [Parameter] public RenderFragment? ChildContent { get; set; }\n    [Parameter] public string? Class { get; set; }\n    [Parameter] public Lumeo.Orientation Orientation { get; set; } = Lumeo.Orientation.Horizontal;\n    /// <summary>\n    /// Accessible name for the button group (exposes it to AT as a named\n    /// <c>role=\"group\"</c>). Roving tabindex is intentionally NOT forced here —\n    /// a ButtonGroup commonly wraps independent actions that each need their own\n    /// tab stop; use <c>Toolbar</c> for single-tab-stop/arrow-key navigation. (#270)\n    /// </summary>\n    [Parameter] public string? AriaLabel { get; set; }\n    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }\n\n    private string CssClass => Cx.Merge(\n        Orientation == Lumeo.Orientation.Horizontal ? HorizontalClasses : VerticalClasses,\n        Class);\n\n    // Horizontal: first child gets left-rounded, last gets right-rounded, middle ones square.\n    // -ms-px collapses the shared border between adjacent children.\n    // Selectors target every direct child (`&>*`) — not just `button` — so link-buttons\n    // (<Button Href=...> -> <a>), AsChild/Slot, and Toggle children all collapse/round\n    // correctly, and the :first-child/:last-child index is computed over the SAME set that\n    // is styled (a non-button first/last child no longer shifts the rounding). (#111, #200)\n    private const string HorizontalClasses =\n        \"inline-flex flex-row \" +\n        \"[&>*:not(:first-child)]:rounded-s-none \" +\n        \"[&>*:not(:last-child)]:rounded-e-none \" +\n        \"[&>*:not(:first-child)]:-ms-px \" +\n        \"[&>*:not(:first-child)]:border-s-border/40\";\n\n    // Vertical: first child gets top-rounded, last gets bottom-rounded, middle ones square.\n    // -mt-px collapses the shared border between adjacent children. See HorizontalClasses\n    // for why these target every direct child (`&>*`) rather than `button`. (#111, #200)\n    private const string VerticalClasses =\n        \"inline-flex flex-col \" +\n        \"[&>*:not(:first-child)]:rounded-t-none \" +\n        \"[&>*:not(:last-child)]:rounded-b-none \" +\n        \"[&>*:not(:first-child)]:-mt-px \" +\n        \"[&>*:not(:first-child)]:border-t-border/40\";\n\n}\n"
+      "content": "@namespace Lumeo\n\n<div class=\"@CssClass\" role=\"group\" aria-label=\"@AriaLabel\" @attributes=\"AdditionalAttributes\">\n    @ChildContent\n</div>\n\n@code {\n    /// <summary>The buttons (or button-like elements, e.g. link-buttons or Toggle) to render as a single visually-joined group.</summary>\n    [Parameter] public RenderFragment? ChildContent { get; set; }\n    /// <summary>Additional CSS classes merged onto the root <c>role=\"group\"</c> element.</summary>\n    [Parameter] public string? Class { get; set; }\n    /// <summary>Layout direction: <c>Horizontal</c> (default) joins children left-to-right with rounded end-caps; <c>Vertical</c> stacks them top-to-bottom.</summary>\n    [Parameter] public Lumeo.Orientation Orientation { get; set; } = Lumeo.Orientation.Horizontal;\n    /// <summary>\n    /// Accessible name for the button group (exposes it to AT as a named\n    /// <c>role=\"group\"</c>). Roving tabindex is intentionally NOT forced here —\n    /// a ButtonGroup commonly wraps independent actions that each need their own\n    /// tab stop; use <c>Toolbar</c> for single-tab-stop/arrow-key navigation. (#270)\n    /// </summary>\n    [Parameter] public string? AriaLabel { get; set; }\n    /// <summary>Unmatched attributes splatted onto the root <c>role=\"group\"</c> element.</summary>\n    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }\n\n    private string CssClass => Cx.Merge(\n        Orientation == Lumeo.Orientation.Horizontal ? HorizontalClasses : VerticalClasses,\n        Class);\n\n    // Horizontal: first child gets left-rounded, last gets right-rounded, middle ones square.\n    // -ms-px collapses the shared border between adjacent children.\n    // Selectors target every direct child (`&>*`) — not just `button` — so link-buttons\n    // (<Button Href=...> -> <a>), AsChild/Slot, and Toggle children all collapse/round\n    // correctly, and the :first-child/:last-child index is computed over the SAME set that\n    // is styled (a non-button first/last child no longer shifts the rounding). (#111, #200)\n    private const string HorizontalClasses =\n        \"inline-flex flex-row \" +\n        \"[&>*:not(:first-child)]:rounded-s-none \" +\n        \"[&>*:not(:last-child)]:rounded-e-none \" +\n        \"[&>*:not(:first-child)]:-ms-px \" +\n        \"[&>*:not(:first-child)]:border-s-border/40\";\n\n    // Vertical: first child gets top-rounded, last gets bottom-rounded, middle ones square.\n    // -mt-px collapses the shared border between adjacent children. See HorizontalClasses\n    // for why these target every direct child (`&>*`) rather than `button`. (#111, #200)\n    private const string VerticalClasses =\n        \"inline-flex flex-col \" +\n        \"[&>*:not(:first-child)]:rounded-t-none \" +\n        \"[&>*:not(:last-child)]:rounded-b-none \" +\n        \"[&>*:not(:first-child)]:-mt-px \" +\n        \"[&>*:not(:first-child)]:border-t-border/40\";\n\n}\n"
     }
   ],
   "slots": [
@@ -150,7 +150,7 @@
       "name": "ChildContent",
       "owner": "ButtonGroup",
       "type": "RenderFragment?",
-      "description": null
+      "description": "The buttons (or button-like elements, e.g. link-buttons or Toggle) to render as a single visually-joined group."
     }
   ],
   "serviceDependencies": [],
@@ -166,5 +166,5 @@
     "tests/Lumeo.Tests/Components/A11yPolish/PolishWave2Tests.cs",
     "tests/Lumeo.Tests/Components/ButtonGroup/ButtonGroupTests.cs"
   ],
-  "mdSummary": "# ButtonGroup\n\nButton Group component.\n\n**Package:** `Lumeo` · **Category:** Utility\n**Docs:** https://lumeo.nativ.sh/components/button-group\n\n## Parameters\n| Owner | Name | Type | Default | Description |\n|---|---|---|---|---|\n| ButtonGroup | ChildContent | `RenderFragment?` | `` |  |\n| ButtonGroup | Class | `string?` | `` |  |\n| ButtonGroup | Orientation | `Lumeo.Orientation` | `Lumeo.Orientation.Horizontal` |  |\n| ButtonGroup | AriaLabel | `string?` | `` | Accessible name for the button group (exposes it to AT as a named role=\"group\"). Roving tabindex is intentionally NOT forced here — a ButtonGroup commonly wraps independent actions that each need their own tab stop; use Toolbar for single-tab-stop/arrow-key navigation. (#270) |\n| ButtonGroup | AdditionalAttributes | `Dictionary<string, object>?` | `` |  |\n\n## Slots\n- `ChildContent` (ButtonGroup) — RenderFragment slot\n\n## Events\n- (none)\n\n## Sub-components\n- (none)\n\n## Cascading values it expects\n- (none)\n\n## Services it injects\n- (none)\n\n## Keyboard\n—\n\n## Example\n```razor\n<ButtonGroup />\n```\n\n## CSS variables\n`--radius`\n\n## Files\n- `UI/ButtonGroup/ButtonGroup.razor`\n"
+  "mdSummary": "# ButtonGroup\n\nButton Group component.\n\n**Package:** `Lumeo` · **Category:** Utility\n**Docs:** https://lumeo.nativ.sh/components/button-group\n\n## Parameters\n| Owner | Name | Type | Default | Description |\n|---|---|---|---|---|\n| ButtonGroup | ChildContent | `RenderFragment?` | `` | The buttons (or button-like elements, e.g. link-buttons or Toggle) to render as a single visually-joined group. |\n| ButtonGroup | Class | `string?` | `` | Additional CSS classes merged onto the root role=\"group\" element. |\n| ButtonGroup | Orientation | `Lumeo.Orientation` | `Lumeo.Orientation.Horizontal` | Layout direction: Horizontal (default) joins children left-to-right with rounded end-caps; Vertical stacks them top-to-bottom. |\n| ButtonGroup | AriaLabel | `string?` | `` | Accessible name for the button group (exposes it to AT as a named role=\"group\"). Roving tabindex is intentionally NOT forced here — a ButtonGroup commonly wraps independent actions that each need their own tab stop; use Toolbar for single-tab-stop/arrow-key navigation. (#270) |\n| ButtonGroup | AdditionalAttributes | `Dictionary<string, object>?` | `` | Unmatched attributes splatted onto the root role=\"group\" element. |\n\n## Slots\n- `ChildContent` (ButtonGroup) — The buttons (or button-like elements, e.g. link-buttons or Toggle) to render as a single visually-joined group.\n\n## Events\n- (none)\n\n## Sub-components\n- (none)\n\n## Cascading values it expects\n- (none)\n\n## Services it injects\n- (none)\n\n## Keyboard\n—\n\n## Example\n```razor\n<ButtonGroup />\n```\n\n## CSS variables\n`--radius`\n\n## Files\n- `UI/ButtonGroup/ButtonGroup.razor`\n"
 }

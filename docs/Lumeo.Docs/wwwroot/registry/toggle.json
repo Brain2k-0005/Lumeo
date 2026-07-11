@@ -38,7 +38,7 @@
         "name": "ChildContent",
         "type": "RenderFragment?",
         "default": null,
-        "description": null,
+        "description": "The toggle's content (label text and/or icon).",
         "isCascading": false,
         "captureUnmatched": false,
         "isEditorRequired": false
@@ -47,7 +47,7 @@
         "name": "Pressed",
         "type": "bool",
         "default": null,
-        "description": null,
+        "description": "Whether the toggle is pressed (on). Two-way bindable via PressedChanged.",
         "isCascading": false,
         "captureUnmatched": false,
         "isEditorRequired": false
@@ -56,7 +56,7 @@
         "name": "PressedChanged",
         "type": "EventCallback<bool>",
         "default": null,
-        "description": null,
+        "description": "Raised when the toggle is clicked and its pressed state flips.",
         "isCascading": false,
         "captureUnmatched": false,
         "isEditorRequired": false
@@ -65,7 +65,7 @@
         "name": "Variant",
         "type": "ToggleVariant",
         "default": "ToggleVariant.Default",
-        "description": null,
+        "description": "Visual style: Default (borderless) or Outline (bordered).",
         "isCascading": false,
         "captureUnmatched": false,
         "isEditorRequired": false
@@ -74,7 +74,7 @@
         "name": "Size",
         "type": "Lumeo.Size",
         "default": "Lumeo.Size.Md",
-        "description": null,
+        "description": "Controls the toggle's height and horizontal padding. Default Md.",
         "isCascading": false,
         "captureUnmatched": false,
         "isEditorRequired": false
@@ -101,7 +101,7 @@
         "name": "Disabled",
         "type": "bool",
         "default": null,
-        "description": null,
+        "description": "Disables the toggle, preventing clicks and dimming its appearance.",
         "isCascading": false,
         "captureUnmatched": false,
         "isEditorRequired": false
@@ -119,7 +119,7 @@
         "name": "Class",
         "type": "string?",
         "default": null,
-        "description": null,
+        "description": "Additional CSS classes merged onto the &lt;button&gt; element.",
         "isCascading": false,
         "captureUnmatched": false,
         "isEditorRequired": false
@@ -128,7 +128,7 @@
         "name": "AdditionalAttributes",
         "type": "Dictionary<string, object>?",
         "default": null,
-        "description": null,
+        "description": "Captures any unmatched attributes and applies them to the &lt;button&gt; element.",
         "isCascading": false,
         "captureUnmatched": true,
         "isEditorRequired": false
@@ -138,7 +138,7 @@
       {
         "name": "PressedChanged",
         "type": "EventCallback<bool>",
-        "description": null
+        "description": "Raised when the toggle is clicked and its pressed state flips."
       }
     ],
     "enums": [
@@ -220,7 +220,7 @@
   "source": [
     {
       "path": "UI/Toggle/Toggle.razor",
-      "content": "@namespace Lumeo\n\n<button type=\"button\" aria-pressed=\"@Pressed.ToString().ToLower()\" aria-label=\"@AriaLabel\" data-state=\"@(Pressed ? \"on\" : \"off\")\" data-disabled=\"@(Disabled ? string.Empty : null)\" class=\"@CssClass\" @onclick=\"HandleToggle\" disabled=\"@Disabled\" @attributes=\"AdditionalAttributes\">\n    @ChildContent\n</button>\n\n@code {\n    [Parameter] public RenderFragment? ChildContent { get; set; }\n    [Parameter] public bool Pressed { get; set; }\n    [Parameter] public EventCallback<bool> PressedChanged { get; set; }\n    [Parameter] public ToggleVariant Variant { get; set; } = ToggleVariant.Default;\n    [Parameter] public Lumeo.Size Size { get; set; } = Lumeo.Size.Md;\n    /// <summary>Per-toggle density override. When null, inherits from any\n    /// ancestor <see cref=\"DensityScope\"/>; if neither is set, matches the\n    /// historical <c>Comfortable</c> default. Only height + horizontal\n    /// padding shift — text size + radius stay governed by <see cref=\"Size\"/>.</summary>\n    [Parameter] public Density? Density { get; set; }\n    [CascadingParameter] private Density? InheritedDensity { get; set; }\n    [Parameter] public bool Disabled { get; set; }\n    /// <summary>\n    /// Accessible name exposed via <c>aria-label</c>. Required when\n    /// <see cref=\"ChildContent\"/> is an icon only (no visible text) — otherwise\n    /// screen readers announce the toggle as an unnamed button.\n    /// </summary>\n    [Parameter] public string? AriaLabel { get; set; }\n    [Parameter] public string? Class { get; set; }\n    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }\n\n    private string CssClass => Cx.Merge(VariantClasses, SizeClasses, BaseClasses, Class);\n\n    private const string BaseClasses = \"inline-flex items-center justify-center rounded-md text-sm font-medium cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 disabled:cursor-not-allowed\";\n\n    private string VariantClasses => (Variant, Pressed) switch\n    {\n        (ToggleVariant.Default, true) => \"bg-accent text-accent-foreground\",\n        (ToggleVariant.Default, false) => \"bg-transparent hover:bg-muted hover:text-muted-foreground\",\n        (ToggleVariant.Outline, true) => \"bg-accent text-accent-foreground border border-input\",\n        (ToggleVariant.Outline, false) => \"border border-input bg-transparent hover:bg-accent hover:text-accent-foreground\",\n        _ => \"\"\n    };\n\n    private Lumeo.Density EffectiveDensity => Density ?? InheritedDensity ?? Lumeo.Density.Comfortable;\n\n    // Height + horizontal padding track Size x Density; Comfortable\n    // reproduces the historical per-Size values verbatim.\n    private string SizeClasses => (Size, EffectiveDensity) switch\n    {\n        (Lumeo.Size.Sm, Lumeo.Density.Compact)  => \"h-7 px-1.5\",\n        (Lumeo.Size.Sm, Lumeo.Density.Spacious) => \"h-9 px-3\",\n        (Lumeo.Size.Sm, _)                      => \"h-8 px-2\",\n        (Lumeo.Size.Lg, Lumeo.Density.Compact)  => \"h-9 px-3\",\n        (Lumeo.Size.Lg, Lumeo.Density.Spacious) => \"h-12 px-5\",\n        (Lumeo.Size.Lg, _)                      => \"h-10 px-4\",\n        (_, Lumeo.Density.Compact)              => \"h-8 px-2\",\n        (_, Lumeo.Density.Spacious)             => \"h-11 px-4\",\n        _                                       => \"h-9 px-3\"\n    };\n\n    private async Task HandleToggle()\n    {\n        if (!Disabled)\n        {\n            Pressed = !Pressed;\n            await PressedChanged.InvokeAsync(Pressed);\n        }\n    }\n\n    public enum ToggleVariant { Default, Outline }\n}\n"
+      "content": "@namespace Lumeo\n\n<button type=\"button\" aria-pressed=\"@Pressed.ToString().ToLower()\" aria-label=\"@AriaLabel\" data-state=\"@(Pressed ? \"on\" : \"off\")\" data-disabled=\"@(Disabled ? string.Empty : null)\" class=\"@CssClass\" @onclick=\"HandleToggle\" disabled=\"@Disabled\" @attributes=\"AdditionalAttributes\">\n    @ChildContent\n</button>\n\n@code {\n    /// <summary>The toggle's content (label text and/or icon).</summary>\n    [Parameter] public RenderFragment? ChildContent { get; set; }\n    /// <summary>Whether the toggle is pressed (on). Two-way bindable via <see cref=\"PressedChanged\"/>.</summary>\n    [Parameter] public bool Pressed { get; set; }\n    /// <summary>Raised when the toggle is clicked and its pressed state flips.</summary>\n    [Parameter] public EventCallback<bool> PressedChanged { get; set; }\n    /// <summary>Visual style: <see cref=\"ToggleVariant.Default\"/> (borderless) or <see cref=\"ToggleVariant.Outline\"/> (bordered).</summary>\n    [Parameter] public ToggleVariant Variant { get; set; } = ToggleVariant.Default;\n    /// <summary>Controls the toggle's height and horizontal padding. Default <see cref=\"Lumeo.Size.Md\"/>.</summary>\n    [Parameter] public Lumeo.Size Size { get; set; } = Lumeo.Size.Md;\n    /// <summary>Per-toggle density override. When null, inherits from any\n    /// ancestor <see cref=\"DensityScope\"/>; if neither is set, matches the\n    /// historical <c>Comfortable</c> default. Only height + horizontal\n    /// padding shift — text size + radius stay governed by <see cref=\"Size\"/>.</summary>\n    [Parameter] public Density? Density { get; set; }\n    [CascadingParameter] private Density? InheritedDensity { get; set; }\n    /// <summary>Disables the toggle, preventing clicks and dimming its appearance.</summary>\n    [Parameter] public bool Disabled { get; set; }\n    /// <summary>\n    /// Accessible name exposed via <c>aria-label</c>. Required when\n    /// <see cref=\"ChildContent\"/> is an icon only (no visible text) — otherwise\n    /// screen readers announce the toggle as an unnamed button.\n    /// </summary>\n    [Parameter] public string? AriaLabel { get; set; }\n    /// <summary>Additional CSS classes merged onto the <c>&lt;button&gt;</c> element.</summary>\n    [Parameter] public string? Class { get; set; }\n    /// <summary>Captures any unmatched attributes and applies them to the <c>&lt;button&gt;</c> element.</summary>\n    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }\n\n    private string CssClass => Cx.Merge(VariantClasses, SizeClasses, BaseClasses, Class);\n\n    private const string BaseClasses = \"inline-flex items-center justify-center rounded-md text-sm font-medium cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 disabled:cursor-not-allowed\";\n\n    private string VariantClasses => (Variant, Pressed) switch\n    {\n        (ToggleVariant.Default, true) => \"bg-accent text-accent-foreground\",\n        (ToggleVariant.Default, false) => \"bg-transparent hover:bg-muted hover:text-muted-foreground\",\n        (ToggleVariant.Outline, true) => \"bg-accent text-accent-foreground border border-input\",\n        (ToggleVariant.Outline, false) => \"border border-input bg-transparent hover:bg-accent hover:text-accent-foreground\",\n        _ => \"\"\n    };\n\n    private Lumeo.Density EffectiveDensity => Density ?? InheritedDensity ?? Lumeo.Density.Comfortable;\n\n    // Height + horizontal padding track Size x Density; Comfortable\n    // reproduces the historical per-Size values verbatim.\n    private string SizeClasses => (Size, EffectiveDensity) switch\n    {\n        (Lumeo.Size.Sm, Lumeo.Density.Compact)  => \"h-7 px-1.5\",\n        (Lumeo.Size.Sm, Lumeo.Density.Spacious) => \"h-9 px-3\",\n        (Lumeo.Size.Sm, _)                      => \"h-8 px-2\",\n        (Lumeo.Size.Lg, Lumeo.Density.Compact)  => \"h-9 px-3\",\n        (Lumeo.Size.Lg, Lumeo.Density.Spacious) => \"h-12 px-5\",\n        (Lumeo.Size.Lg, _)                      => \"h-10 px-4\",\n        (_, Lumeo.Density.Compact)              => \"h-8 px-2\",\n        (_, Lumeo.Density.Spacious)             => \"h-11 px-4\",\n        _                                       => \"h-9 px-3\"\n    };\n\n    private async Task HandleToggle()\n    {\n        if (!Disabled)\n        {\n            Pressed = !Pressed;\n            await PressedChanged.InvokeAsync(Pressed);\n        }\n    }\n\n    public enum ToggleVariant { Default, Outline }\n}\n"
     }
   ],
   "slots": [
@@ -228,7 +228,7 @@
       "name": "ChildContent",
       "owner": "Toggle",
       "type": "RenderFragment?",
-      "description": null
+      "description": "The toggle's content (label text and/or icon)."
     }
   ],
   "serviceDependencies": [],
@@ -270,5 +270,5 @@
     "tests/Lumeo.Tests/Components/Toggle/ToggleTests.cs",
     "tests/Lumeo.Tests/Components/ToggleGroup/ToggleGroupKeyboardNavTests.cs"
   ],
-  "mdSummary": "# Toggle\n\nTwo-state button with pressed/unpressed styling.\n\n**Package:** `Lumeo` · **Category:** Forms/Buttons & Actions\n**Docs:** https://lumeo.nativ.sh/components/toggle\n\n## Parameters\n| Owner | Name | Type | Default | Description |\n|---|---|---|---|---|\n| Toggle | ChildContent | `RenderFragment?` | `` |  |\n| Toggle | Pressed | `bool` | `` |  |\n| Toggle | PressedChanged | `EventCallback<bool>` | `` |  |\n| Toggle | Variant | `ToggleVariant` | `ToggleVariant.Default` |  |\n| Toggle | Size | `Lumeo.Size` | `Lumeo.Size.Md` |  |\n| Toggle | Density | `Density?` | `` | Per-toggle density override. When null, inherits from any ancestor DensityScope; if neither is set, matches the historical Comfortable default. Only height + horizontal padding shift — text size + radius stay governed by Size. |\n| Toggle | InheritedDensity | `Density?` | `` |  |\n| Toggle | Disabled | `bool` | `` |  |\n| Toggle | AriaLabel | `string?` | `` | Accessible name exposed via aria-label. Required when ChildContent is an icon only (no visible text) — otherwise screen readers announce the toggle as an unnamed button. |\n| Toggle | Class | `string?` | `` |  |\n| Toggle | AdditionalAttributes | `Dictionary<string, object>?` | `` |  |\n\n## Slots\n- `ChildContent` (Toggle) — RenderFragment slot\n\n## Events\n- `PressedChanged` (`EventCallback<bool>`)\n\n## Sub-components\n- (none)\n\n## Cascading values it expects\n- `InheritedDensity` (`Density?`)\n\n## Services it injects\n- (none)\n\n## Keyboard\n—\n\n## Example\n```razor\n<Toggle />\n```\n\n## CSS variables\n`--color-accent`, `--color-accent-foreground`, `--color-input`, `--color-muted`, `--color-muted-foreground`, `--color-ring`, `--radius`\n\n## Files\n- `UI/Toggle/Toggle.razor`\n"
+  "mdSummary": "# Toggle\n\nTwo-state button with pressed/unpressed styling.\n\n**Package:** `Lumeo` · **Category:** Forms/Buttons & Actions\n**Docs:** https://lumeo.nativ.sh/components/toggle\n\n## Parameters\n| Owner | Name | Type | Default | Description |\n|---|---|---|---|---|\n| Toggle | ChildContent | `RenderFragment?` | `` | The toggle's content (label text and/or icon). |\n| Toggle | Pressed | `bool` | `` | Whether the toggle is pressed (on). Two-way bindable via PressedChanged. |\n| Toggle | PressedChanged | `EventCallback<bool>` | `` | Raised when the toggle is clicked and its pressed state flips. |\n| Toggle | Variant | `ToggleVariant` | `ToggleVariant.Default` | Visual style: Default (borderless) or Outline (bordered). |\n| Toggle | Size | `Lumeo.Size` | `Lumeo.Size.Md` | Controls the toggle's height and horizontal padding. Default Md. |\n| Toggle | Density | `Density?` | `` | Per-toggle density override. When null, inherits from any ancestor DensityScope; if neither is set, matches the historical Comfortable default. Only height + horizontal padding shift — text size + radius stay governed by Size. |\n| Toggle | InheritedDensity | `Density?` | `` |  |\n| Toggle | Disabled | `bool` | `` | Disables the toggle, preventing clicks and dimming its appearance. |\n| Toggle | AriaLabel | `string?` | `` | Accessible name exposed via aria-label. Required when ChildContent is an icon only (no visible text) — otherwise screen readers announce the toggle as an unnamed button. |\n| Toggle | Class | `string?` | `` | Additional CSS classes merged onto the &lt;button&gt; element. |\n| Toggle | AdditionalAttributes | `Dictionary<string, object>?` | `` | Captures any unmatched attributes and applies them to the &lt;button&gt; element. |\n\n## Slots\n- `ChildContent` (Toggle) — The toggle's content (label text and/or icon).\n\n## Events\n- `PressedChanged` (`EventCallback<bool>`) — Raised when the toggle is clicked and its pressed state flips.\n\n## Sub-components\n- (none)\n\n## Cascading values it expects\n- `InheritedDensity` (`Density?`)\n\n## Services it injects\n- (none)\n\n## Keyboard\n—\n\n## Example\n```razor\n<Toggle />\n```\n\n## CSS variables\n`--color-accent`, `--color-accent-foreground`, `--color-input`, `--color-muted`, `--color-muted-foreground`, `--color-ring`, `--radius`\n\n## Files\n- `UI/Toggle/Toggle.razor`\n"
 }

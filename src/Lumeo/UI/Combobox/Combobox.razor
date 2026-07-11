@@ -77,8 +77,11 @@
     private string EffectiveInputId =>
         !string.IsNullOrEmpty(FormField?.ControlId) ? FormField!.ControlId : _inputId;
 
+    /// <summary>The composition-mode children — typically a <see cref="ComboboxInput"/> plus a <see cref="ComboboxContent"/> with <see cref="ComboboxItem"/>s. Required even in data-bound mode (see <see cref="Items"/>).</summary>
     [Parameter] public RenderFragment? ChildContent { get; set; }
+    /// <summary>Selected value in single-select mode. Ignored when <see cref="Multiple"/> is <c>true</c> (use <see cref="Values"/> instead).</summary>
     [Parameter] public string? Value { get; set; }
+    /// <summary>Raised when the selection changes in single-select mode.</summary>
     [Parameter] public EventCallback<string> ValueChanged { get; set; }
     /// <summary>
     /// Popover open state. Bind via <c>@bind-Open</c> when the Combobox lives inside
@@ -89,19 +92,26 @@
     /// the cascade-close race; binding is the recommended pattern.
     /// </summary>
     [Parameter] public bool Open { get; set; }
+    /// <summary>Raised whenever the popover opens or closes. Pair with <see cref="Open"/> for <c>@bind-Open</c>.</summary>
     [Parameter] public EventCallback<bool> OpenChanged { get; set; }
 
+    /// <summary>Deprecated alias for <see cref="Open"/>; forwards straight through.</summary>
     [Obsolete("Use Open instead. IsOpen will be removed in a future release.")]
     [Parameter] public bool IsOpen { get => Open; set => Open = value; }
 
+    /// <summary>Deprecated alias for <see cref="OpenChanged"/>; forwards straight through.</summary>
     [Obsolete("Use OpenChanged instead. IsOpenChanged will be removed in a future release.")]
     [Parameter] public EventCallback<bool> IsOpenChanged { get => OpenChanged; set => OpenChanged = value; }
 
+    /// <summary>Unmatched attributes splatted onto the combobox's wrapper element.</summary>
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     // Multi-select
+    /// <summary>When <c>true</c>, enables multi-select mode: selections accumulate in <see cref="Values"/> instead of overwriting <see cref="Value"/>, and chosen items render as removable chips.</summary>
     [Parameter] public bool Multiple { get; set; }
+    /// <summary>Selected values in <see cref="Multiple"/> mode. Ignored in single-select mode.</summary>
     [Parameter] public HashSet<string>? Values { get; set; }
+    /// <summary>Raised when the selection changes in <see cref="Multiple"/> mode.</summary>
     [Parameter] public EventCallback<HashSet<string>> ValuesChanged { get; set; }
     /// <summary>Cap on the number of selected-value chips rendered by
     /// <see cref="ComboboxInput"/> in <see cref="Multiple"/> mode; the rest collapse into a
@@ -113,20 +123,31 @@
     [Parameter] public bool Clearable { get; set; }
 
     // Creatable
+    /// <summary>When <c>true</c>, shows a <see cref="ComboboxCreate"/> affordance for the current search text that isn't matched by an existing item, letting the user add a new option.</summary>
     [Parameter] public bool Creatable { get; set; }
+    /// <summary>Invoked when the user commits creating a new item (via <see cref="Creatable"/>); the created value is then also selected.</summary>
     [Parameter] public EventCallback<string> OnCreate { get; set; }
 
     // Async search
+    /// <summary>When set, invoked with the (debounced) search text so the consumer can fetch remote results and update <see cref="Items"/>/<see cref="ChildContent"/> accordingly.</summary>
     [Parameter] public EventCallback<string> OnSearchAsync { get; set; }
+    /// <summary>Debounce delay in milliseconds before <see cref="OnSearchAsync"/> fires after the user stops typing (default <c>300</c>).</summary>
     [Parameter] public int DebounceMs { get; set; } = 300;
+    /// <summary>When <c>true</c>, shows a loading indicator in the popover while an async search is in flight.</summary>
     [Parameter] public bool IsSearchLoading { get; set; }
 
     // Validation
+    /// <summary>Marks the field as required, rendering a visual asterisk next to <see cref="Label"/>.</summary>
     [Parameter] public bool Required { get; set; }
+    /// <summary>Marks the field as invalid, applying error styling and (when set) showing <see cref="ErrorText"/> instead of <see cref="HelperText"/>. Also derived automatically from a wrapping <c>FormField</c>'s validation state.</summary>
     [Parameter] public bool Invalid { get; set; }
+    /// <summary>Error message shown below the control when <see cref="Invalid"/> is <c>true</c> (standalone usage only — inside a FormField, the FormField owns error display).</summary>
     [Parameter] public string? ErrorText { get; set; }
+    /// <summary>Helper text shown below the control when not invalid (standalone usage only).</summary>
     [Parameter] public string? HelperText { get; set; }
+    /// <summary>Label rendered above the control (standalone usage only — inside a FormField, the FormField owns the label).</summary>
     [Parameter] public string? Label { get; set; }
+    /// <summary>Logical name for the field, matching the naming convention of sibling form controls (e.g. <c>Select.Name</c>) for form-association tooling.</summary>
     [Parameter] public string? Name { get; set; }
     /// <summary>Custom CSS classes merged onto the Combobox's wrapper element. Consistent
     /// with every other form component per the library's base API contract.</summary>
