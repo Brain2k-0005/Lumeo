@@ -319,6 +319,10 @@ public static class RazorParameterScanner
         // Strip simple <see cref="..."/> -> Foo
         inner = Regex.Replace(inner, @"<see\s+cref=""[^""]*?\.?([A-Za-z0-9_]+)""\s*/>", "$1");
         inner = Regex.Replace(inner, @"<see\s+cref=""([^""]+)""\s*/>", "$1");
+        // Textualize other self-closing reference tags that would otherwise lose their text
+        inner = Regex.Replace(inner, @"<see\s+langword=""([^""]*)""\s*/>", "$1");
+        inner = Regex.Replace(inner, @"<typeparamref\s+name=""([^""]*)""\s*/>", "$1");
+        inner = Regex.Replace(inner, @"<paramref\s+name=""([^""]*)""\s*/>", "$1");
         // Strip any remaining tags
         inner = Regex.Replace(inner, @"<[^>]+>", "");
         inner = Regex.Replace(inner, @"\s+", " ").Trim();
