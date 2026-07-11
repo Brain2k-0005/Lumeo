@@ -197,6 +197,43 @@ public class DataGridReorderConstraintTests : IAsyncLifetime
         });
     }
 
+    [Fact]
+    public async Task Index_Based_Redirect_Off_A_Locked_Edge_Column_Never_Escapes_Its_Pin_Group()
+    {
+        // Round-7 #3: [A(None), locked B(None), C(Right)] — B sits at the very
+        // edge of the unpinned partition, immediately before the right-pinned
+        // one. Dragging A onto B's slot (index 1) hits the column-CHOOSER'S
+        // index-based path (DataGridColumnVisibility -> HandleColumnReorder),
+        // NOT the pointer/id-based ReorderColumnByIdAsync (which already
+        // refuses a locked TARGET outright and so never reaches the redirect
+        // loop at all). HandleColumnReorder's own cross-pin guard only checks
+        // the ORIGINAL clamped target (B, still Pin=None — passes); the
+        // skip-over loop inside ReorderColumnsPreservingLocked used to walk
+        // straight past B into C because C is Reorderable, without checking
+        // C's Pin differs from B's/A's. This must resolve to a no-op instead
+        // of redirecting the drop into the right-pinned partition.
+        var a = new DataGridColumn<Row> { Field = "Id", Title = "A" };
+        var b = new DataGridColumn<Row> { Field = "Name", Title = "B", Reorderable = false };
+        var c = new DataGridColumn<Row> { Field = "Dept", Title = "C", Pin = PinDirection.Right };
+        ColumnReorderEventArgs? fired = null;
+        var cut = RenderGrid(new() { a, b, c }, args => fired = args);
+        var before = HeaderOrder(cut);
+
+        // Directly drives the index-based path HandleColumnReorder exposes to
+        // the column chooser — there is no ID-based equivalent that can even
+        // reach a locked target's slot (see the remark above).
+        var method = cut.Instance.GetType().GetMethod("HandleColumnReorder",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!;
+        await cut.InvokeAsync(async () =>
+        {
+            var task = (Task)method.Invoke(cut.Instance, new object[] { new ColumnReorderEventArgs(a.Id, 0, 1) })!;
+            await task;
+        });
+
+        Assert.Null(fired);
+        Assert.Equal(before, HeaderOrder(cut)); // right-pinned C never displaced, B never moved
+    }
+
     // --- Affordance structure ---
 
     [Fact]

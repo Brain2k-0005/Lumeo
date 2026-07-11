@@ -280,6 +280,101 @@ public class DataGridRowReorderTests : IAsyncLifetime
         Assert.Equal(new List<string> { "Alice", "Charlie", "Bob" }, RowOrder(cut));
     }
 
+    // --- Value-type (struct) rows: DomKeyFor's per-slot token contract (round-7 #4) ---
+
+    // TItem = struct: no instance identity, so the row-reorder DOM key
+    // (data-row-key) comes from DataGridContext.RowTokenAt's stable per-slot
+    // token instead of the reference-type identity hash — see
+    // DataGridRowKeys' remarks.
+    private struct EmpStruct
+    {
+        // Reflection-backed (DataGridColumn.GetValue uses GetProperty), so these
+        // must be properties, not fields.
+        public int Id { get; set; }
+        public string Name { get; set; }
+        public string Dept { get; set; }
+        public EmpStruct(int id, string name, string dept) { Id = id; Name = name; Dept = dept; }
+    }
+
+    private static List<EmpStruct> GetStructData() => new()
+    {
+        new(1, "Alice", "Eng"),
+        new(2, "Bob", "Eng"),
+        new(3, "Charlie", "Eng"),
+    };
+
+    private static List<DataGridColumn<EmpStruct>> GetStructColumns() => new()
+    {
+        new() { Field = "Id", Title = "ID" },
+        new() { Field = "Name", Title = "Name" },
+        new() { Field = "Dept", Title = "Department" },
+    };
+
+    [Fact]
+    public void ValueType_Rows_Get_Token_Based_Keys_Not_Positional()
+    {
+        // Round-6 stamped "v:" + rowIndex (a raw slot index); round-7 replaces it
+        // with "t:" + a per-slot TOKEN minted by DataGridContext.RowTokenAt — the
+        // format alone distinguishes the fixed contract from the broken one.
+        var cut = _ctx.Render<Lumeo.DataGrid<EmpStruct>>(p => p
+            .Add(x => x.Items, GetStructData())
+            .Add(x => x.Columns, GetStructColumns())
+            .Add(x => x.RowReorderable, true));
+
+        var keys = cut.FindAll("tr[data-slot='datagrid-row']")
+            .Select(r => r.GetAttribute("data-row-key"))
+            .ToList();
+
+        Assert.Equal(3, keys.Count);
+        Assert.All(keys, k => Assert.StartsWith("t:", k));
+        Assert.Equal(keys.Distinct().Count(), keys.Count); // no collisions
+    }
+
+    [Fact]
+    public async Task Pointer_Commit_On_ValueType_Rows_Keeps_Every_Rows_Key_Glued_To_Its_Content_Across_Reorder()
+    {
+        // This is the exact scenario round-7 #4 identified: captureRowRects
+        // snapshots data-row-key -> rect BEFORE MoveRow permutes _displayedItems;
+        // the post-commit re-render must reissue THE SAME key for a row's
+        // content wherever it now sits — not a fresh key derived from the new
+        // slot — or animateRowReorder pairs stale rects with the wrong rows for
+        // the dragged row AND every displaced sibling (Bob here, shifted from
+        // index 1 to index 0 without being the row that was dragged at all).
+        var cut = _ctx.Render<Lumeo.DataGrid<EmpStruct>>(p => p
+            .Add(x => x.Items, GetStructData())
+            .Add(x => x.Columns, GetStructColumns())
+            .Add(x => x.RowReorderable, true));
+
+        var gridId = cut.Find("[data-slot='datagrid']").GetAttribute("data-grid-id")!;
+
+        List<(string Key, string Name)> Snapshot() =>
+            cut.FindAll("tr[data-slot='datagrid-row']")
+               .Select(r => (r.GetAttribute("data-row-key")!, r.QuerySelectorAll("td[data-slot='datagrid-cell']")[1].TextContent.Trim()))
+               .ToList();
+
+        var before = Snapshot();
+        var aliceKey = before.First(kv => kv.Name == "Alice").Key;
+        var charlieKey = before.First(kv => kv.Name == "Charlie").Key;
+
+        await cut.InvokeAsync(() => _interop.SimulateRowReorderCommit(gridId, aliceKey, charlieKey));
+
+        // Order actually changed as MoveRow(0, 2) dictates.
+        Assert.Equal(
+            new List<string> { "Bob", "Charlie", "Alice" },
+            cut.FindAll("tr[data-slot='datagrid-row']").Select(r => r.QuerySelectorAll("td[data-slot='datagrid-cell']")[1].TextContent.Trim()).ToList());
+
+        // The SET of keys is unchanged (tokens were permuted, not reissued) —
+        // and, critically, every pre-move key still resolves to the SAME row
+        // content post-move, dragged row and displaced siblings alike.
+        var after = Snapshot();
+        Assert.Equal(before.Select(kv => kv.Key).OrderBy(k => k), after.Select(kv => kv.Key).OrderBy(k => k));
+        foreach (var (key, name) in before)
+        {
+            var match = after.SingleOrDefault(kv => kv.Key == key);
+            Assert.Equal(name, match.Name);
+        }
+    }
+
     // --- Selection interplay: handle-only initiation must not break row click ---
 
     [Fact]

@@ -2465,7 +2465,16 @@ const gridActiveDrags = new Map(); // gridId -> engine name currently owning the
 function claimGridDrag(gridId, engine) {
     if (!gridId) return true; // couldn't resolve an owning grid — fail open, nothing to arbitrate against
     const owner = gridActiveDrags.get(gridId);
-    if (owner && owner !== engine) return false;
+    // ANY existing owner means the grid is busy — including the SAME engine
+    // name. Each resize handle/reorder registration keeps its own per-instance
+    // `isDragging`/`drag` state, so a second pointer landing on a DIFFERENT
+    // instance of the SAME engine (e.g. a second column's resize handle while
+    // the first column's resize is still live) reaches this arbiter without
+    // ever tripping that other instance's local guard. Comparing owner to the
+    // engine name only caught cross-engine collisions; same-engine concurrent
+    // drags slipped through because owner === engine looked like a no-op
+    // re-claim instead of a second, competing drag (round-7 #1).
+    if (owner) return false;
     gridActiveDrags.set(gridId, engine);
     return true;
 }
@@ -3271,7 +3280,20 @@ export function registerColumnReorder(gridId, dotnetRef) {
             // always reflects the live button state regardless of capture, so
             // drop the stale descriptor the moment the primary button isn't
             // held anymore instead of arming (Codex round-3 #4).
-            if (!(e.buttons & 1)) { drag = null; return; }
+            if (!(e.buttons & 1)) {
+                // Mirrors onWindowPointerUp's release below: the arbiter claim
+                // was taken in onPointerDown BEFORE `drag` even existed (right
+                // before the descriptor is constructed, regardless of arm
+                // state — see that claim's comment), so every path that drops
+                // an unarmed descriptor — this stale-move fallback included —
+                // must release it too, or a release outside the window/browser
+                // (which never reaches onWindowPointerUp either, e.g. the tab
+                // loses focus before any pointerup fires) leaks the token and
+                // permanently blocks every later drag on this grid (round-7 #2).
+                drag = null;
+                releaseGridDrag(gridId, 'column-reorder');
+                return;
+            }
             const dx = e.clientX - drag.startX, dy = e.clientY - drag.startY;
             if ((dx * dx + dy * dy) < REORDER_MOVE_THRESHOLD * REORDER_MOVE_THRESHOLD) return;
             armDrag();

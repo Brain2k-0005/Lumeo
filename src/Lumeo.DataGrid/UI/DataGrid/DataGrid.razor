@@ -30,6 +30,7 @@
         IsLoading: IsLoading || (_serverService?.IsLoading ?? false),
         RowReorderable: RowReorderable,
         RowReorderPointerActive: RowReorderPointerActive,
+        RowTokenAt: RowTokenAt,
         RowContextMenuEnabled: RowContextMenu is not null,
         OnRowClick: OnRowClick,
         OnRowDoubleClick: OnRowDoubleClick,
@@ -990,6 +991,45 @@
     }
     private List<TItem> _processedItems = new();
     private List<TItem> _displayedItems = new();
+
+    // --- Value-type row-reorder DOM key tokens (round-7 #4) ---
+    //
+    // Parallel array to _displayedItems (same index space) minting a stable
+    // per-SLOT identity for DataGridRowKeys.DomKeyFor's value-type branch — see
+    // that type's remarks for why struct rows need this instead of a raw
+    // positional index. EnsureRowTokens (re)mints the whole array fresh
+    // whenever its length has drifted from _displayedItems' — which only
+    // happens right after _displayedItems itself was rebuilt wholesale from
+    // _processedItems/_serverPageItems, a genuine items-set event with no
+    // continuity to preserve to begin with (mirrors Blazor's own @key
+    // semantics for a brand-new list). MoveRow is the one mutation this
+    // array-of-tokens MUST survive intact: it permutes _displayedItemTokens
+    // through the exact same RemoveAt+Insert it performs on _displayedItems,
+    // so every row's token — dragged row AND every displaced sibling — stays
+    // glued to the row content across that operation instead of being
+    // reissued positionally.
+    private List<long> _displayedItemTokens = new();
+    private long _nextRowToken;
+
+    private void EnsureRowTokens()
+    {
+        if (_displayedItemTokens.Count == _displayedItems.Count) return;
+        _displayedItemTokens = new List<long>(_displayedItems.Count);
+        for (var i = 0; i < _displayedItems.Count; i++)
+            _displayedItemTokens.Add(_nextRowToken++);
+    }
+
+    /// <summary>Stable per-slot token for the row currently at <paramref name="index"/>
+    /// in <see cref="_displayedItems"/> — the value-type half of the row-reorder DOM
+    /// key contract (see <see cref="DataGridRowKeys"/>). Computed unconditionally
+    /// (not forked behind a runtime IsValueType branch) so reference-type grids pay
+    /// one extra list the same shape as _displayedItems rather than a conditional
+    /// that could silently drift from MoveRow's permutation.</summary>
+    private long RowTokenAt(int index)
+    {
+        EnsureRowTokens();
+        return (uint)index < (uint)_displayedItemTokens.Count ? _displayedItemTokens[index] : 0;
+    }
     // The raw, unfiltered server page (ServerMode only) — set ONLY when Items is actually
     // reassigned (a genuine server refresh), NEVER by a local expand/collapse toggle.
     // RegroupServerItems() must regroup from THIS, not from _displayedItems: _displayedItems
@@ -3109,9 +3149,24 @@
         if (!_orderedColumns[target].Reorderable)
         {
             var dir = target >= oldIndex ? 1 : -1;
-            while (target >= 0 && target < _orderedColumns.Count && !_orderedColumns[target].Reorderable)
+            // The locked slot's own pin group is a hard boundary the skip-over
+            // walk must never cross. Checking `!Reorderable` alone lets the walk
+            // step past the LAST locked column of the source partition straight
+            // into the first column of the NEXT partition — e.g. dragging an
+            // unpinned column onto the last locked unpinned column immediately
+            // before a right-pinned one used to redirect the drop onto that
+            // right-pinned column, because it's Reorderable and the loop never
+            // checked its Pin. The cross-pin guard in HandleColumnReorder only
+            // validates the ORIGINAL clamped target (the locked column itself,
+            // which still shares the source's pin) and never re-checks the
+            // REDIRECTED target this loop resolves to (round-7 #3).
+            var pinGroup = _orderedColumns[target].Pin;
+            while (target >= 0 && target < _orderedColumns.Count
+                   && _orderedColumns[target].Pin == pinGroup
+                   && !_orderedColumns[target].Reorderable)
                 target += dir;
-            if (target < 0 || target >= _orderedColumns.Count) return false; // nothing reorderable in that direction — no-op
+            if (target < 0 || target >= _orderedColumns.Count
+                || _orderedColumns[target].Pin != pinGroup) return false; // nothing reorderable inside the pin group in that direction — no-op
         }
 
         // Pass 1: the plain (locked-unaware) result, exactly like the original code.
@@ -3166,6 +3221,18 @@
         if (oldIndex < 0 || newIndex < 0 || oldIndex >= _displayedItems.Count || newIndex >= _displayedItems.Count)
             return;
 
+        // Permute the parallel slot-token array through the EXACT SAME
+        // RemoveAt+Insert as _displayedItems below — see _displayedItemTokens'
+        // remarks. EnsureRowTokens is a no-op in the expected case (already
+        // sized from the render that produced the DOM keys this move was
+        // resolved from); it only re-syncs the (rare/defensive) case where the
+        // array somehow drifted, in which case there's no prior-slot continuity
+        // to preserve anyway and a fresh mint is the correct fallback.
+        EnsureRowTokens();
+        var rowToken = _displayedItemTokens[oldIndex];
+        _displayedItemTokens.RemoveAt(oldIndex);
+        _displayedItemTokens.Insert(newIndex, rowToken);
+
         var item = _displayedItems[oldIndex];
         _displayedItems.RemoveAt(oldIndex);
         _displayedItems.Insert(newIndex, item);
@@ -3213,12 +3280,14 @@
 
         // Mirrors the DOM key DataGridRow.RowKey stamped at drag start/read at
         // drag end (see DataGridRowKeys.DomKeyFor's contract) — reference-type
-        // rows resolve by their live per-instance identity hash (survives
-        // index drift below); value-type rows resolve positionally, which is
-        // exactly why the "stale index" guard immediately below still matters
-        // for them specifically.
-        var oldIndex = DataGridRowKeys.ResolveDomKeyIndex(_displayedItems, sourceRowKey);
-        var newIndex = DataGridRowKeys.ResolveDomKeyIndex(_displayedItems, targetRowKey);
+        // rows resolve by their live per-instance identity hash (survives index
+        // drift below); value-type rows resolve by their live per-slot token in
+        // _displayedItemTokens (round-7 #4 — NOT positionally, which is exactly
+        // why the "stale index" guard immediately below still matters for both
+        // shapes: the token/hash may simply no longer be present at all).
+        EnsureRowTokens();
+        var oldIndex = DataGridRowKeys.ResolveDomKeyIndex(_displayedItems, _displayedItemTokens, sourceRowKey);
+        var newIndex = DataGridRowKeys.ResolveDomKeyIndex(_displayedItems, _displayedItemTokens, targetRowKey);
         // Either key may no longer resolve — the row it identified was removed
         // from _displayedItems by a mutation that landed during the drag's
         // post-drop settle window. Silently drop the stale commit rather than

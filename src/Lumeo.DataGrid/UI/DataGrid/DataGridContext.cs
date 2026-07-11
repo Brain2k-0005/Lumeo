@@ -34,6 +34,12 @@ public record DataGridContext<TItem>(
     /// so those modes keep the drag handle visible but inert rather than wiring
     /// the JS pointer listener — see DataGrid.RowReorderPointerActive.</summary>
     bool RowReorderPointerActive,
+    /// <summary>Stable per-slot token for the row currently at the given index in
+    /// <see cref="DisplayedItems"/> — the value-type half of the row-reorder DOM
+    /// key contract (see <c>DataGridRowKeys.DomKeyFor</c> / <c>DataGrid.MoveRow</c>).
+    /// Only meaningful (and only ever read) when <see cref="RowReorderPointerActive"/>
+    /// is true.</summary>
+    Func<int, long> RowTokenAt,
     bool RowContextMenuEnabled,
     EventCallback<TItem> OnRowClick,
     EventCallback<TItem> OnRowDoubleClick,
