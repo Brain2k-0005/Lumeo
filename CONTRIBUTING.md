@@ -172,6 +172,85 @@ supported convention — `Lumeo.RegistryGen` extracts it automatically.
   `sync-mcp-registry.yml` workflow regenerates both on push to `master`, so
   don't hand-edit the JSON — just author the `<gotcha>` comment.
 
+## API Stability & Deprecation
+
+Every shipped library package (`Lumeo`, `Lumeo.Charts`, `Lumeo.CodeEditor`,
+`Lumeo.DataGrid`, `Lumeo.Editor`, `Lumeo.FileViewer`, `Lumeo.Scheduler`,
+`Lumeo.Gantt`, `Lumeo.Motion`, `Lumeo.PdfViewer`, `Lumeo.Maps`) carries a
+`PublicAPI.Shipped.txt` / `PublicAPI.Unshipped.txt` pair, enforced by
+[`Microsoft.CodeAnalysis.PublicApiAnalyzers`](https://github.com/dotnet/roslyn-analyzers/blob/main/src/PublicApiAnalyzers/PublicApiAnalyzers.Help.md)
+(wired in `Directory.Build.targets` for every `/src/` project where
+`IsPackable != false`, excluding the 16 `Lumeo.Icons.*` packs — see below).
+
+**What the baselines enforce**
+
+- `PublicAPI.Shipped.txt` is the public surface as of the last release.
+  `PublicAPI.Unshipped.txt` holds surface added since then, pending the next
+  release (moved into `Shipped.txt` at release time).
+- Add a public type or member without recording it in one of these files ->
+  **RS0016**, an error under the `-warnaserror` CI build.
+- Remove or rename a public type or member that's still listed as shipped
+  without going through the deprecation flow below -> **RS0017**.
+- Both fire at compile time, in your own build — not just in CI — so a
+  breaking change is visible before you open a PR, not after a consumer
+  reports it.
+
+**Updating the baselines when you change the API**
+
+1. Add or change a public member as normal.
+2. Build the affected project. The analyzer reports RS0016/RS0017 as
+   warnings locally (they only become build-breaking errors under
+   `-warnaserror`, which CI always uses).
+3. Let the built-in code fix add the new member(s) to
+   `PublicAPI.Unshipped.txt` (VS/Rider lightbulb -> "Add all items in the
+   source to the public API", or from the CLI:
+   `dotnet format analyzers src/<Project>/<Project>.csproj --diagnostics RS0016 --severity info --include-generated`
+   — run it twice; the first pass can miss members whose diagnostics only
+   surface once earlier fixes are compiled in).
+4. Commit the updated `PublicAPI.Unshipped.txt` alongside your change. Do
+   **not** hand-edit `PublicAPI.Shipped.txt` — a release step moves
+   `Unshipped.txt` entries into `Shipped.txt` in lockstep with the version
+   bump.
+
+**Removing or changing a public member — the `[Obsolete]`-one-minor-then-major policy**
+
+Lumeo's packages are versioned in lockstep (`Directory.Build.props`). Never
+delete or change the signature of a shipped public member directly:
+
+1. Mark it `[Obsolete("Use X instead.")]` (non-erroring) in the **next minor**
+   release, and add the *new* replacement member alongside it. Update
+   `PublicAPI.Unshipped.txt` for both (the obsolete attribute is part of the
+   member's declared signature the analyzer tracks).
+2. Keep the obsolete member working for at least one full minor release cycle
+   so consumers have a version where the compiler warns but nothing breaks.
+3. Remove the obsolete member only in the **next major** release, and record
+   the removal in `PublicAPI.Unshipped.txt` (satisfying RS0017) and in
+   `CHANGELOG.md` under a "Breaking changes" heading.
+
+**Why the 16 `Lumeo.Icons.*` packs are excluded**
+
+Their public surface is machine-generated — one record per upstream icon
+glyph, ~51k members combined across all packs — and append-only by
+construction: an icon-set refresh only *adds* members, it never renames or
+removes one, so there's no accidental-breakage risk for the analyzer to
+catch. Hand-maintaining (or even auto-fixing) a 51k-line baseline per pack on
+every icon refresh would dwarf the signal it provides. `Lumeo.DataGrid.Export`
+and `Lumeo.SourceGenerators` are excluded for a different reason: both set
+`IsPackable=false` — they're internal helper assemblies bundled into another
+package's `.nupkg` (`Lumeo.DataGrid.nupkg` and `Lumeo.nupkg` respectively),
+not NuGet packages consumers reference directly.
+
+Two analyzer sub-rules are suppressed repo-wide on tracked projects (see the
+comment in `Directory.Build.targets` for the full rationale): **RS0041**
+(nullable-oblivious member) fires on every Razor component's generated
+`BuildRenderTree` override because the Razor source generator always emits
+`#nullable disable` in its `.g.cs` output — a framework artifact, not a real
+API-nullability risk. **RS0026/RS0027** (optional-parameter overload rules)
+flag a handful of already-shipped overload sets (e.g. `Show`,
+`RegisterAsync`) that predate this gate; "fixing" them now would itself be a
+breaking signature change, which is exactly what this gate exists to
+prevent doing by accident.
+
 ## Pull Request Guidelines
 
 - Keep PRs focused — one feature or fix per PR.
