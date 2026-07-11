@@ -1636,6 +1636,20 @@ export function carouselScrollTo(elementId, index, behavior) {
 // register the exact rules here so the decision happens synchronously in
 // the real keydown dispatch.
 
+// Keyed by the id it was REGISTERED under, but the value carries the actual DOM
+// element reference alongside the handler — not just the handler alone. Blazor
+// patches the id="" attribute on an element IN PLACE (same DOM node, new id
+// value) during render, which happens BEFORE the C# OnAfterRenderAsync callback
+// that calls unregisterPreventDefaultKeys(oldId) below ever runs. So by the time
+// that call arrives, document.getElementById(oldId) already returns null — the
+// node now answers to the NEW id — and a re-lookup-by-id would silently fail to
+// find the element, leaving its keydown listener attached forever (never
+// removed, no longer reachable through this map) while a second listener gets
+// added under the new id. Storing the element reference at register time lets
+// unregister detach the listener from the exact node it was attached to,
+// independent of whatever id that node carries now (PR #356 round-5, Codex P2:
+// PopoverTrigger's stale Space-suppressor kept firing on the child control
+// after an id change).
 const preventDefaultKeyHandlers = new Map();
 
 export function registerPreventDefaultKeys(elementId, rules) {
@@ -1667,14 +1681,13 @@ export function registerPreventDefaultKeys(elementId, rules) {
         }
     };
     el.addEventListener('keydown', handler);
-    preventDefaultKeyHandlers.set(elementId, handler);
+    preventDefaultKeyHandlers.set(elementId, { el, handler });
 }
 
 export function unregisterPreventDefaultKeys(elementId) {
-    const handler = preventDefaultKeyHandlers.get(elementId);
-    if (handler) {
-        const el = document.getElementById(elementId);
-        if (el) el.removeEventListener('keydown', handler);
+    const entry = preventDefaultKeyHandlers.get(elementId);
+    if (entry) {
+        entry.el.removeEventListener('keydown', entry.handler);
         preventDefaultKeyHandlers.delete(elementId);
     }
 }
@@ -2335,6 +2348,38 @@ function isEditableFocusTarget(el) {
     return !!(el && el.closest && el.closest('input, textarea, select, [contenteditable=""], [contenteditable="true"]'));
 }
 
+// True when an editable `el`'s caret sits at the text boundary in the
+// direction `delta` travels (start, delta < 0, for Left/Up; end, delta > 0,
+// for Right/Down), with no active selection to collapse first. Only
+// input/textarea expose selectionStart/selectionEnd — a <select> or
+// contenteditable element has no unambiguous single-caret concept, so those
+// are always treated as NOT at a boundary (arrows never escape them; Home/End
+// stays their only way out, same as before this fix — a deliberate, narrower
+// scope: no known Lumeo toolbar embeds a <select>/contenteditable today).
+//
+// Chosen contract (PR #356 round-5, Codex P2 — an editable toolbar child made
+// every item AFTER it keyboard-unreachable: roving unconditionally deferred
+// to the caret and never took the toolbar back over). Mirrors how a
+// spreadsheet cell editor or a combobox search field hands off at the text
+// edge: the SAME arrow press that lands the caret on the boundary is also the
+// press that moves toolbar focus onward — there is no separate "press again
+// to escape" step, because by the time this runs the browser's native caret
+// move for that press has already happened (skipEditable leaves the key
+// unprevented), so pre- and post-press caret state are indistinguishable here.
+// A toolbar's embedded field is expected to hold a short, single-purpose
+// value (a search box, a label) rather than prose, so trading a rare "I
+// wanted to see one more character before leaving" surprise for guaranteeing
+// every toolbar item stays reachable is the right default.
+function isAtEditableBoundary(el, delta) {
+    if (!el || (el.tagName !== 'INPUT' && el.tagName !== 'TEXTAREA')) return false;
+    // input[type=number/email/...] doesn't expose a selection API in every
+    // engine — treat that as boundary-opaque so arrows escape rather than
+    // silently dead-ending on a control we can't introspect.
+    if (typeof el.selectionStart !== 'number' || typeof el.selectionEnd !== 'number') return true;
+    if (el.selectionStart !== el.selectionEnd) return false; // active selection: this press collapses it first, same as native behavior
+    return delta < 0 ? el.selectionStart === 0 : el.selectionEnd === el.value.length;
+}
+
 // Initialise the roving tabindex so only the first item is in the tab order.
 // Called when the toolbar mounts; safe to call repeatedly.
 export function initToolbarRoving(toolbarId) {
@@ -2363,7 +2408,12 @@ export function initToolbarRoving(toolbarId) {
 export function moveToolbarFocus(toolbarId, delta) {
     const items = getToolbarItems(toolbarId);
     if (items.length === 0) return -1;
-    if (isEditableFocusTarget(document.activeElement)) return -1; // let the caret move instead
+    const active = document.activeElement;
+    // Defer to the caret UNLESS it is already at the boundary the press is
+    // heading toward — see isAtEditableBoundary for the full contract. Without
+    // the boundary check every item after an editable toolbar child was
+    // permanently unreachable by keyboard (PR #356 round-5, Codex P2).
+    if (isEditableFocusTarget(active) && !isAtEditableBoundary(active, delta)) return -1;
     let current = items.findIndex(el => el === document.activeElement);
     if (current < 0) current = 0;
     let next = current + delta;
@@ -2374,6 +2424,11 @@ export function moveToolbarFocus(toolbarId, delta) {
 }
 
 // Focus the first (last=false) or last (last=true) toolbar item — Home/End.
+// Deliberately UNCHANGED by the round-5 boundary fix above: Home/End inside a
+// text field is a well-established, unambiguous native meaning (jump within
+// the field's own text, not the widget), so it stays caret-only here — arrows
+// are the one pair the round-5 fix needed to make escape-capable, since
+// "already at the edge" only has meaning for a directional key.
 export function focusToolbarEdge(toolbarId, last) {
     const items = getToolbarItems(toolbarId);
     if (items.length === 0) return -1;
