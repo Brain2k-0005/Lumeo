@@ -1,10 +1,10 @@
 {
   "$schema": "https://lumeo.nativ.sh/components-api-schema.json",
   "version": "4.2.0",
-  "generated": "2026-07-11T11:12:25.3489298Z",
+  "generated": "2026-07-11T16:15:32.5970332Z",
   "stats": {
     "componentCount": 164,
-    "totalParameters": 4261,
+    "totalParameters": 4266,
     "totalEnums": 90,
     "totalRecords": 65,
     "serviceCount": 33,
@@ -649,6 +649,12 @@
           "name": "AttachOverlayExitEnd",
           "returnType": "ValueTask",
           "signature": "AttachOverlayExitEnd<T>(string elementId, DotNetObjectReference<T> dotNetRef)",
+          "summary": null
+        },
+        {
+          "name": "AttachToastEnterEnd",
+          "returnType": "ValueTask",
+          "signature": "AttachToastEnterEnd<T>(string elementId, DotNetObjectReference<T> dotNetRef)",
           "summary": null
         },
         {
@@ -2134,6 +2140,12 @@
           "returnType": "ValueTask",
           "signature": "AttachOverlayExitEnd<T>(string elementId, DotNetObjectReference<T> dotNetRef)",
           "summary": "Radix-Presence-style overlay EXIT: clears the open-time containing-block guard (the inline animation:none/transform:none that AttachOverlaySlideEnd stamped) so the panel's animate-slide-out-*/animate-zoom-out class can actually run, then invokes OnExitAnimationEnd on once the panel's own exit animation finishes. Lets the overlay content drop backdrop + panel together on the REAL animation end instead of a blind timer (which slips late under main-thread load). The component keeps its timer strictly as a fallback. Default no-op so test doubles / prerender fall back to that timer."
+        },
+        {
+          "name": "AttachToastEnterEnd",
+          "returnType": "ValueTask",
+          "signature": "AttachToastEnterEnd<T>(string elementId, DotNetObjectReference<T> dotNetRef)",
+          "summary": "Toast's held-fill counterpart to AttachOverlaySlideEnd: registers a native, animation-name-filtered listener for the toast entrance keyframe (toast-in / its RTL alias toast-in-rtl) and invokes OnEnterAnimationEnd on once it finishes (or immediately if none is found — e.g. Animation already settled by the time this attaches). Bypasses Blazor's onanimationend event roundtrip entirely — its EventArgs carry no animation name to filter on, so a Razor-bound handler can't tell the toast's own entrance apart from a one-shot animation on arbitrary CustomContent (a Badge, a spinner, ...) bubbling out of the toast; see IToastEnterCallback. Default no-op so test doubles fall back to the component's own timer."
         },
         {
           "name": "RegisterSvDrag",
@@ -56930,7 +56942,10 @@
       ],
       "namespace": "Lumeo",
       "inheritsFrom": null,
-      "implements": [],
+      "implements": [
+        "IDisposable",
+        "IToastEnterCallback"
+      ],
       "parameters": [
         {
           "name": "ChildContent",
@@ -56954,7 +56969,25 @@
           "name": "Id",
           "type": "string?",
           "default": null,
-          "description": "Stable DOM id for the toast root. The provider sets this so it can register the touch swipe-to-dismiss gesture against this element via RegisterToastSwipe.",
+          "description": "Stable DOM id for the toast root. The provider sets this so it can register the touch swipe-to-dismiss gesture against this element via RegisterToastSwipe. When omitted (a standalone &lt;Toast&gt; rendered outside ToastProvider, e.g. a static variant preview), a generated id is used instead so the entrance-end interop below still has a stable target.",
+          "isCascading": false,
+          "captureUnmatched": false,
+          "isEditorRequired": false
+        },
+        {
+          "name": "StackIndex",
+          "type": "int?",
+          "default": null,
+          "description": "Stack position within its position group, 0 = newest/front. Set by ToastProvider when StackToasts is enabled; null renders no data-index attribute at all (legacy list, no stacking CSS applies). See lumeo.css's \"Toast stacking\" section.",
+          "isCascading": false,
+          "captureUnmatched": false,
+          "isEditorRequired": false
+        },
+        {
+          "name": "Leaving",
+          "type": "bool",
+          "default": null,
+          "description": "True while ToastProvider is playing this toast's exit animation (animate-toast-out) ahead of unmounting it. Owned here (rather than folded into Class by the caller) so CssClass can also strip the entrance class the instant this flips true — a dismiss that lands mid-entrance must play the exit cleanly, not fight a still-parked animate-toast-in.",
           "isCascading": false,
           "captureUnmatched": false,
           "isEditorRequired": false
@@ -57271,6 +57304,15 @@
               "isCascading": false,
               "captureUnmatched": false,
               "isEditorRequired": false
+            },
+            {
+              "name": "StackToasts",
+              "type": "bool",
+              "default": "true",
+              "description": "Sonner-style stacking, default on. When a position group holds more than one toast, the newest renders in front and older toasts collapse behind it with a small offset/scale, expanding to the classic list on hover or keyboard focus. Set false to always render the plain list.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
             }
           ],
           "events": [],
@@ -57352,6 +57394,24 @@
               "type": "ToastPosition",
               "default": "ToastPosition.BottomRight",
               "description": null,
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "StackToasts",
+              "type": "bool",
+              "default": "true",
+              "description": "Whether the provider wants sonner-style stacking for this group.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "ToastCount",
+              "type": "int",
+              "default": null,
+              "description": "Number of toasts currently rendered in this position group (including ones mid exit-animation). Stacking only kicks in above 1 toast.",
               "isCascading": false,
               "captureUnmatched": false,
               "isEditorRequired": false

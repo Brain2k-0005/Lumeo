@@ -1,10 +1,14 @@
 @namespace Lumeo
+@implements IDisposable
+@implements IToastEnterCallback
+@inject Lumeo.Services.IComponentInteropService Interop
 
-<div id="@Id"
+<div id="@EffectiveId"
      class="@CssClass"
      role="@Role"
      aria-live="@AriaLive"
      aria-atomic="true"
+     data-index="@(StackIndex?.ToString())"
      @onmouseenter="OnMouseEnter"
      @onmouseleave="OnMouseLeave"
      @onfocusin="OnFocusIn"
@@ -21,8 +25,29 @@
     /// Stable DOM id for the toast root. The provider sets this so it can
     /// register the touch swipe-to-dismiss gesture against this element via
     /// <see cref="Lumeo.Services.IComponentInteropService.RegisterToastSwipe"/>.
+    /// When omitted (a standalone <c>&lt;Toast&gt;</c> rendered outside
+    /// ToastProvider, e.g. a static variant preview), a generated id is used
+    /// instead so the entrance-end interop below still has a stable target.
     /// </summary>
     [Parameter] public string? Id { get; set; }
+
+    /// <summary>
+    /// Stack position within its position group, 0 = newest/front. Set by
+    /// ToastProvider when <c>StackToasts</c> is enabled; null renders no
+    /// <c>data-index</c> attribute at all (legacy list, no stacking CSS
+    /// applies). See lumeo.css's "Toast stacking" section.
+    /// </summary>
+    [Parameter] public int? StackIndex { get; set; }
+
+    /// <summary>
+    /// True while ToastProvider is playing this toast's exit animation
+    /// (<c>animate-toast-out</c>) ahead of unmounting it. Owned here (rather
+    /// than folded into <see cref="Class"/> by the caller) so
+    /// <see cref="CssClass"/> can also strip the entrance class the instant
+    /// this flips true — a dismiss that lands mid-entrance must play the exit
+    /// cleanly, not fight a still-parked <c>animate-toast-in</c>.
+    /// </summary>
+    [Parameter] public bool Leaving { get; set; }
     [Parameter] public string? Class { get; set; }
     [Parameter] public EventCallback OnMouseEnter { get; set; }
     [Parameter] public EventCallback OnMouseLeave { get; set; }
@@ -30,7 +55,99 @@
     [Parameter] public EventCallback OnFocusOut { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
-    private string CssClass => Cx.Merge("group pointer-events-auto relative flex w-full items-center justify-between space-x-2 overflow-hidden rounded-md border border-border/50 p-4 pe-11 sm:pe-6 shadow-lg animate-toast-in", VariantClasses, Class);
+    private readonly string _generatedId = Lumeo.Internal.LumeoIds.New("toast");
+    private string EffectiveId => Id ?? _generatedId;
+
+    // True while `animate-toast-in` still governs this element. Starts true for
+    // every newly-mounted toast (one Toast instance per toast id — keyed by
+    // ToastProvider — so this field is set exactly once per toast's lifetime)
+    // and flips false the moment the entrance finishes: `animate-toast-in` uses
+    // `animation-fill-mode: both`, so once it settles it permanently pins
+    // opacity:1/transform:none on the element — a running OR filled keyframe
+    // always wins over a plain declared value for the same property regardless
+    // of selector specificity, so that held fill silently overrides the
+    // "Toast stacking" transforms (lumeo.css) the moment this toast is no
+    // longer at data-index="0", and on dismiss fights `animate-toast-out`
+    // (equal specificity, `animate-toast-in` declared later). Mirrors the
+    // institutional "never leave a filled animation parked on an element"
+    // lesson (Radix-Presence, 4.1.0-preview.15): once entered, the toast
+    // carries NO animation, so the stacking transform applies immediately and
+    // a later dismiss's `animate-toast-out` isn't fighting a stuck class.
+    //
+    // Cleanup is driven by JS (AttachToastEnterEnd / OnEnterAnimationEnd), NOT
+    // a Razor `@onanimationend` handler: this codebase already tried that for
+    // the Sheet/Drawer slide-in case (see the rc.22 note in components.js /
+    // lumeo.css) and dropped it — Blazor's onanimationend EventArgs carry no
+    // AnimationName, so a handler bound in Razor can't filter which animation
+    // just ended and a fast one-shot animation on arbitrary CustomContent
+    // (a Badge, a spinner, ...) bubbling out of the toast would fire it early.
+    // The JS helper filters by animationName before ever calling back .NET.
+    private bool _entering = true;
+    private bool _enterWired;
+    private DotNetObjectReference<Toast>? _enterSelfRef;
+    private readonly Lumeo.Services.DelayedDispatch _enterFallback = new();
+
+    // FALLBACK window only — the real cleanup is OnEnterAnimationEnd (JS).
+    // Sits comfortably above the CSS entrance duration (toast-in is 0.3s, or
+    // 1ms under prefers-reduced-motion — still a real animation that still
+    // fires animationend) so the timer never preempts a slightly-late callback
+    // on the happy path. It exists solely for the JS-dead / lost-event case
+    // (prerender, a toast mounted inside a display:none ancestor, or a
+    // disconnected circuit).
+    private const int EnterFallbackMs = 350;
+
+    protected override void OnParametersSet()
+    {
+        // Dismissed while still entering (rapid show+dismiss): strip the
+        // entrance class NOW instead of waiting for a JS callback that may
+        // never arrive once animate-toast-out has replaced animate-toast-in in
+        // the class list (the JS helper would find no toast-in animation left
+        // to await and notify immediately anyway, but there's no reason to
+        // wait on the round-trip for something OnParametersSet already knows).
+        if (Leaving && _entering)
+        {
+            FinishEntering();
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && _entering && !_enterWired)
+        {
+            _enterWired = true;
+            _enterFallback.Schedule(EnterFallbackMs, () => InvokeAsync(FinishEntering));
+            _enterSelfRef ??= DotNetObjectReference.Create(this);
+            try { await Interop.AttachToastEnterEnd(EffectiveId, _enterSelfRef); }
+            catch (JSDisconnectedException) { }
+        }
+    }
+
+    /// <summary>Invoked from JS (attachToastEnterEnd) once the entrance animation ends.</summary>
+    [JSInvokable]
+    public Task OnEnterAnimationEnd()
+    {
+        FinishEntering();
+        return Task.CompletedTask;
+    }
+
+    private void FinishEntering()
+    {
+        if (!_entering) return;
+        _entering = false;
+        _enterFallback.Cancel();
+        StateHasChanged();
+    }
+
+    public void Dispose()
+    {
+        _enterFallback.Dispose();
+        _enterSelfRef?.Dispose();
+    }
+
+    private string CssClass => Cx.Merge(
+        "group pointer-events-auto relative flex w-full items-center justify-between space-x-2 overflow-hidden rounded-md border border-border/50 p-4 pe-11 sm:pe-6 shadow-lg",
+        Leaving ? "animate-toast-out" : Cx.When(_entering, "animate-toast-in"),
+        VariantClasses, Class);
 
     // Destructive variant uses role="alert" + aria-live="assertive" so screen readers
     // interrupt with errors; informational variants use role="status" + aria-live="polite"

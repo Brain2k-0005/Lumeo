@@ -99,6 +99,23 @@ public interface IComponentInteropService : IAsyncDisposable, IDisposable
     ValueTask AttachOverlayExitEnd<T>(string elementId, DotNetObjectReference<T> dotNetRef) where T : class
         => ValueTask.CompletedTask;
 
+    /// <summary>
+    /// Toast's held-fill counterpart to <see cref="AttachOverlaySlideEnd"/>:
+    /// registers a native, animation-name-filtered listener for the toast
+    /// entrance keyframe (<c>toast-in</c> / its RTL alias <c>toast-in-rtl</c>)
+    /// and invokes <c>OnEnterAnimationEnd</c> on <paramref name="dotNetRef"/>
+    /// once it finishes (or immediately if none is found — e.g. Animation
+    /// already settled by the time this attaches). Bypasses Blazor's
+    /// <c>onanimationend</c> event roundtrip entirely — its EventArgs carry no
+    /// animation name to filter on, so a Razor-bound handler can't tell the
+    /// toast's own entrance apart from a one-shot animation on arbitrary
+    /// CustomContent (a Badge, a spinner, ...) bubbling out of the toast; see
+    /// <see cref="Lumeo.IToastEnterCallback"/>. Default no-op so test doubles
+    /// fall back to the component's own timer.
+    /// </summary>
+    ValueTask AttachToastEnterEnd<T>(string elementId, DotNetObjectReference<T> dotNetRef) where T : class
+        => ValueTask.CompletedTask;
+
     // ColorPicker SV Drag
     ValueTask RegisterSvDrag(string elementId, Func<double, double, Task> handler);
     ValueTask UnregisterSvDrag(string elementId);

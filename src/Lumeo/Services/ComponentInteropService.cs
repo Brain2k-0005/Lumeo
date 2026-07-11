@@ -158,6 +158,16 @@ public sealed class ComponentInteropService : IComponentInteropService
         catch (Microsoft.JSInterop.JSDisconnectedException) { }
     }
 
+    public async ValueTask AttachToastEnterEnd<T>(string elementId, DotNetObjectReference<T> dotNetRef) where T : class
+    {
+        var module = await GetModuleAsync();
+        try
+        {
+            await module.InvokeVoidAsync("attachToastEnterEnd", elementId, dotNetRef);
+        }
+        catch (Microsoft.JSInterop.JSDisconnectedException) { }
+    }
+
     public async ValueTask UnlockScroll()
     {
         var module = await GetModuleAsync();

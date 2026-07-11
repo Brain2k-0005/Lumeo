@@ -607,6 +607,20 @@ input[type="range"]::-moz-range-thumb {
  * of the content height (the prior `height: 0 -> var(--radix-...)` approach
  * couldn't interpolate to `auto` and snapped instantly). */
 
+/* `animate-toast-in` (below) uses `animation-fill-mode: both`, so once this
+   settles it permanently pins opacity:1/transform:none on the toast — a
+   filled keyframe always wins over a plain declared value for the same
+   property regardless of selector specificity. Left alone that silently
+   overrides the "Toast stacking" transforms below the moment a toast is no
+   longer at data-index="0" (translateY/scale never visibly apply) and, on
+   dismiss, made animate-toast-out never win either (both classes at equal
+   specificity, animate-toast-in declared later). Toast.razor strips the
+   `animate-toast-in` class once the entrance finishes — via the JS
+   `attachToastEnterEnd` helper (components.js), which filters on the
+   `toast-in`/`toast-in-rtl` animation name before calling back
+   `OnEnterAnimationEnd`, with a timer fallback for the JS-dead /
+   no-DOM-animation-ever-fired case — so a settled toast carries NO animation
+   and both the stacking transform and a later exit apply cleanly. */
 @keyframes toast-in {
   from { opacity: 0; transform: translateX(100%); }
   to   { opacity: 1; transform: translateX(0); }
@@ -620,6 +634,89 @@ input[type="range"]::-moz-range-thumb {
 .animate-toast-out {
   animation: toast-out 0.22s cubic-bezier(0.4, 0, 1, 1) both;
   pointer-events: none;
+}
+
+/* =====================================================
+ * Toast stacking (sonner-style) — ToastProvider.StackToasts (default true)
+ *
+ * ToastViewport stamps `data-stacked`/`data-expanded`/`data-stack-edge` on
+ * the group container and each <Toast> gets `data-index` (0 = newest/front)
+ * from ToastProvider. All rules below are scoped to
+ * `[data-stacked="true"]:not([data-expanded="true"])` — hover/focus-within
+ * on the group flips `data-expanded="true"` (ToastViewport's
+ * onmouseenter/leave + onfocusin/out), which drops out of every selector
+ * here and the group instantly reverts to the plain flex-col list with gaps
+ * (pre-stacking behavior, untouched).
+ *
+ * Only `data-index="0"` stays in normal flow (`position: relative`, so
+ * z-index applies) — every other index is pulled out of flow via
+ * `position: absolute` anchored to the container's own top edge. That means
+ * the container's intrinsic height is driven by the front toast alone (no
+ * JS measurement needed): "the group's hit-area follows the front toast".
+ * `data-stack-edge` ("down" for Bottom* positions, "up" for Top*) sets the
+ * peek direction so the stack always trails toward the screen edge the
+ * group anchors to, per sonner.
+ *
+ * Leaving toasts keep animating correctly while stacked: `.animate-toast-out`
+ * is a CSS `animation`, and a running keyframe animation always wins over a
+ * plain declared value for the same property (transform/opacity) regardless
+ * of selector specificity — so the exit slide plays normally even on a
+ * stacked/transformed element.
+ * ===================================================== */
+
+[data-stack-edge="down"] { --lumeo-stack-y1: 10px; --lumeo-stack-y2: 20px; }
+[data-stack-edge="up"] { --lumeo-stack-y1: -10px; --lumeo-stack-y2: -20px; }
+
+[data-stacked="true"] {
+  transition: max-height 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+[data-stacked="true"]:not([data-expanded="true"]) {
+  max-height: max-content;
+}
+
+[data-stacked="true"]:not([data-expanded="true"]) > [data-index] {
+  transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.25s ease;
+  transform-origin: top center;
+}
+
+[data-stacked="true"]:not([data-expanded="true"]) > [data-index="0"] {
+  position: relative;
+  z-index: 3;
+  transform: none;
+}
+
+[data-stacked="true"]:not([data-expanded="true"]) > [data-index]:not([data-index="0"]) {
+  position: absolute;
+  inset-inline: 0;
+  top: 0;
+  pointer-events: none;
+}
+
+[data-stacked="true"]:not([data-expanded="true"]) > [data-index="1"] {
+  transform: translateY(var(--lumeo-stack-y1)) scale(0.94);
+  z-index: 2;
+}
+
+[data-stacked="true"]:not([data-expanded="true"]) > [data-index="2"] {
+  transform: translateY(var(--lumeo-stack-y2)) scale(0.88);
+  z-index: 1;
+}
+
+/* Index 3+ collapse into the same (invisible) 3rd slot so a promotion to
+   index 2 (front toasts dismissed) animates in from a defined position
+   instead of popping in from nowhere. */
+[data-stacked="true"]:not([data-expanded="true"]) > [data-index]:not([data-index="0"]):not([data-index="1"]):not([data-index="2"]) {
+  transform: translateY(var(--lumeo-stack-y2)) scale(0.88);
+  opacity: 0;
+  z-index: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-stacked="true"],
+  [data-stacked="true"] > [data-index] {
+    transition: none !important;
+  }
 }
 
 /* =====================================================

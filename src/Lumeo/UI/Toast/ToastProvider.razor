@@ -24,12 +24,21 @@
 }
 @foreach (var pos in positionsToRender)
 {
-    <ToastViewport Position="@pos" @key="@pos">
-        @foreach (var toast in _toasts.Where(t => ResolvePosition(t.Options.Position) == pos))
+    var group = _toasts.Where(t => ResolvePosition(t.Options.Position) == pos).ToList();
+    var groupCount = group.Count;
+    <ToastViewport Position="@pos" StackToasts="@StackToasts" ToastCount="@groupCount" @key="@pos">
+        @{ var stackCursor = 0; }
+        @foreach (var toast in group)
         {
+            // Newest (last appended = last in group, since _toasts is oldest-first)
+            // gets stack index 0 (front). See lumeo.css's "Toast stacking" section.
+            var stackIndex = StackToasts ? groupCount - 1 - stackCursor : (int?)null;
+            stackCursor++;
             <Toast Variant="@toast.Options.Variant"
                    Id="@ToastElementId(toast.Id)"
-                   Class="@(toast.Leaving ? $"animate-toast-out {toast.Options.Class}" : toast.Options.Class)"
+                   Class="@toast.Options.Class"
+                   Leaving="@toast.Leaving"
+                   StackIndex="@stackIndex"
                    OnMouseEnter="@(() => PauseTimer(toast.Id))"
                    OnMouseLeave="@(() => ResumeTimer(toast.Id))"
                    OnFocusIn="@(() => PauseTimer(toast.Id))"
@@ -87,6 +96,14 @@
     [Parameter] public ToastViewport.ToastPosition Position { get; set; } = ToastViewport.ToastPosition.BottomRight;
     [Parameter] public int DefaultDuration { get; set; } = 5000;
     [Parameter] public int MaxToasts { get; set; } = 5;
+
+    /// <summary>
+    /// Sonner-style stacking, default on. When a position group holds more
+    /// than one toast, the newest renders in front and older toasts collapse
+    /// behind it with a small offset/scale, expanding to the classic list on
+    /// hover or keyboard focus. Set false to always render the plain list.
+    /// </summary>
+    [Parameter] public bool StackToasts { get; set; } = true;
 
     protected override void OnInitialized()
     {

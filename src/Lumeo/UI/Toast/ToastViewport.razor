@@ -1,6 +1,20 @@
 @namespace Lumeo
 
-<div class="@CssClass" @attributes="AdditionalAttributes">
+@*  Sonner-style stacking (rc.??). data-stacked/data-expanded/data-stack-edge
+    drive the CSS in lumeo.css's "Toast stacking" section; onmouseenter/leave
+    + onfocusin/out toggle _expanded so the group fans out to the normal list
+    layout on hover or keyboard focus (focus-within) and collapses again on
+    pointer-leave / focus-out. All logic here is per-render state — no
+    per-frame JS, no .NET calls in a hot path. *@
+<div class="@CssClass"
+     data-stacked="@(IsStacked ? "true" : "false")"
+     data-expanded="@(_expanded ? "true" : "false")"
+     data-stack-edge="@StackEdge"
+     @onmouseenter="@(() => _expanded = true)"
+     @onmouseleave="@(() => _expanded = false)"
+     @onfocusin="@(() => _expanded = true)"
+     @onfocusout="@(() => _expanded = false)"
+     @attributes="AdditionalAttributes">
     @ChildContent
 </div>
 
@@ -8,7 +22,28 @@
     [Parameter] public RenderFragment? ChildContent { get; set; }
     [Parameter] public string? Class { get; set; }
     [Parameter] public ToastPosition Position { get; set; } = ToastPosition.BottomRight;
+
+    /// <summary>Whether the provider wants sonner-style stacking for this group.</summary>
+    [Parameter] public bool StackToasts { get; set; } = true;
+
+    /// <summary>Number of toasts currently rendered in this position group (including
+    /// ones mid exit-animation). Stacking only kicks in above 1 toast.</summary>
+    [Parameter] public int ToastCount { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    // Hover-anywhere-over-the-group OR focus-within expansion state. Collapsed
+    // by default; the CSS in lumeo.css only applies stacking transforms while
+    // data-expanded="false", so flipping this reverts to the plain gapped list.
+    private bool _expanded;
+
+    private bool IsStacked => StackToasts && ToastCount > 1;
+
+    private bool IsTopAnchored => Position is ToastPosition.TopLeft or ToastPosition.TopCenter or ToastPosition.TopRight;
+
+    // Direction the collapsed stack peeks toward — always the screen edge the
+    // group is anchored to (bottom groups peek down/behind, top groups peek
+    // up/behind), matching sonner.
+    private string StackEdge => IsTopAnchored ? "up" : "down";
 
     // On screens < sm (640px), every position collapses to a centered bottom strip with 16px side gutters
     // so toasts can't get cut off or have their content (title + description + close button + action) squeezed
