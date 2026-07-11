@@ -29,4 +29,61 @@
   <ItemGroup Condition="'$(_LumeoSharedIcon)' == 'true'">
     <None Include="$(MSBuildThisFileDirectory)src/Lumeo/icon.png" Pack="true" PackagePath="\" Visible="false" />
   </ItemGroup>
+
+  <!-- API stability gate (Microsoft.CodeAnalysis.PublicApiAnalyzers): every SHIPPED
+       library package tracks its public surface in PublicAPI.Shipped.txt /
+       PublicAPI.Unshipped.txt, and the -warnaserror CI build fails (RS0016/RS0017)
+       if a public member is added, removed, or changed without recording it there.
+       See CONTRIBUTING.md > "API stability & deprecation".
+
+       This lives in Directory.Build.targets (imported AFTER the project body), not
+       Directory.Build.props, for the same reason PackageReadmeFile packing does
+       (see the comment above): a project's own <IsPackable>false</IsPackable> is
+       set in its csproj body, which Directory.Build.props hasn't seen yet when it
+       evaluates — checking '$(IsPackable)' there would see it still unset (empty,
+       i.e. "not false") for EVERY project, including Lumeo.DataGrid.Export and
+       Lumeo.SourceGenerators, and wrongly add the analyzer to both.
+
+       Scope: '/src/' projects only (excludes tools/, templates/, tests/, docs/,
+       samples/ — mirrors the GenerateDocumentationFile condition above) where
+       IsPackable != false (excludes the two internal helper projects: DataGrid's
+       export backend is bundled into Lumeo.DataGrid.nupkg rather than packed on
+       its own, and SourceGenerators is an analyzer DLL bundled into Lumeo.nupkg).
+
+       The 16 Lumeo.Icons.* packs are further excluded: their public surface is
+       machine-generated (one record per upstream icon glyph, ~51k members
+       combined across all packs) and append-only by construction — an icon-set
+       refresh only ADDS members, it never renames or removes one, so there is no
+       accidental-breakage risk for the analyzer to catch, while hand-maintaining
+       (or even auto-fixing) a 51k-line baseline per pack on every icon refresh
+       would dwarf the signal it provides. -->
+  <PropertyGroup>
+    <_LumeoIsSrcProject Condition="$(MSBuildProjectDirectory.Replace('\','/').Contains('/src/'))">true</_LumeoIsSrcProject>
+    <_LumeoIsIconPack Condition="$(MSBuildProjectName.StartsWith('Lumeo.Icons.'))">true</_LumeoIsIconPack>
+    <_LumeoTracksPublicApi Condition="'$(_LumeoIsSrcProject)' == 'true' And '$(_LumeoIsIconPack)' != 'true' And '$(IsPackable)' != 'false'">true</_LumeoTracksPublicApi>
+  </PropertyGroup>
+  <ItemGroup Condition="'$(_LumeoTracksPublicApi)' == 'true'">
+    <PackageReference Include="Microsoft.CodeAnalysis.PublicApiAnalyzers" Version="5.6.0" PrivateAssets="all" />
+  </ItemGroup>
+
+  <!-- Two design-taste sub-rules of the analyzer are suppressed on the tracked
+       projects, not the compatibility rules themselves (RS0016/RS0017 stay live):
+
+       RS0041 (nullable-oblivious member) fires on EVERY Razor component's
+       generated BuildRenderTree override, because the Razor source generator
+       emits its .g.cs with '#nullable disable' unconditionally (framework
+       behavior, not something a component author controls) — with ~700 hits on
+       Lumeo core alone, this is pure noise, not a real oblivious-API risk.
+
+       RS0026/RS0027 (no multiple optional-parameter overloads / optional-param
+       overload must have the most parameters) flag a handful of ALREADY-SHIPPED
+       members (e.g. Show, RegisterAsync, TabsContext, PositionFixed) whose
+       existing overload sets predate this gate. "Fixing" them now would mean
+       reshaping already-public signatures — an actual breaking change, which is
+       exactly what this gate exists to prevent doing by accident. The
+       compatibility net these two rules would add is already provided by
+       RS0016/RS0017 diffing against PublicAPI.Shipped.txt. -->
+  <PropertyGroup Condition="'$(_LumeoTracksPublicApi)' == 'true'">
+    <NoWarn>$(NoWarn);RS0026;RS0027;RS0041</NoWarn>
+  </PropertyGroup>
 </Project>
