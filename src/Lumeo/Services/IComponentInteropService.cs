@@ -325,6 +325,13 @@ public interface IComponentInteropService : IAsyncDisposable, IDisposable
     ValueTask CaptureColumnRects(string gridId);
     ValueTask AnimateColumnReorder(string gridId, int durationMs);
 
+    /// <summary>Snaps every header/body cell back to identity WITHOUT capturing —
+    /// the no-animation counterpart to <see cref="CaptureColumnRects"/> for a
+    /// delayed reorder commit that gets REJECTED (columns changed during the
+    /// settle window), so the transforms JS left in place never get an accept-path
+    /// capture to clear them (round-8 #4).</summary>
+    ValueTask ClearColumnReorderTransforms(string gridId);
+
     // DataGrid Row Reorder (pointer-based mouse/touch/pen, handle-only) — one
     // delegated listener per grid; commitHandler(sourceRowKey, targetRowKey)
     // fires once on release, keyed by stable row identity (not the plain DOM
@@ -339,6 +346,13 @@ public interface IComponentInteropService : IAsyncDisposable, IDisposable
     // Blazor's re-render.
     ValueTask CaptureRowRects(string gridId);
     ValueTask AnimateRowReorder(string gridId, int durationMs);
+
+    /// <summary>Snaps every row (and any expanded detail sibling) back to identity
+    /// WITHOUT capturing — the no-animation counterpart to <see cref="CaptureRowRects"/>
+    /// for a delayed reorder commit that gets REJECTED (backing rows changed during
+    /// the settle window), so the transforms JS left in place never get an
+    /// accept-path capture to clear them (round-8 #2).</summary>
+    ValueTask ClearRowReorderTransforms(string gridId);
 
     // Tour
     ValueTask<ElementRect?> GetElementRectBySelector(string selector);

@@ -2934,6 +2934,41 @@ export function captureColumnRects(gridId) {
     columnReorderSnapshots.set(gridId, snapshot);
 }
 
+// Snaps every header + body cell back to identity when a delayed column-reorder
+// commit is REJECTED client-side (round-8 #4) — e.g. the target column was
+// hidden/removed or moved into another pin partition during the settle window,
+// so ReorderColumnByIdAsync never reaches HandleColumnReorder's captureColumnRects
+// call. registerColumnReorder's finishDrag already left the dragged column and
+// every live-shifted sibling cell translated for that call to clear as part of
+// the FLIP handoff; on rejection nothing else will, so this is the dedicated
+// no-animation counterpart. No transition is (re)applied — finishDrag's own
+// settle glide already finished visually before the (now-rejected) commit was
+// even dispatched, so replaying a second glide here would misleadingly look
+// like an accepted move.
+export function clearColumnReorderTransforms(gridId) {
+    const grid = document.querySelector(`[data-grid-id="${CSS.escape(gridId)}"]`);
+    if (!grid) return;
+    const inFlight = columnReorderInFlight.get(gridId);
+    if (inFlight) {
+        for (const cell of inFlight) clearFlipStyles(cell);
+        columnReorderInFlight.delete(gridId);
+    }
+    columnReorderSnapshots.delete(gridId);
+    const headers = ownedByGrid(grid.querySelectorAll('th[data-col-id]'), grid);
+    if (!headers.length) return;
+    const headerRow = headers[0].parentElement;
+    const tbody = grid.querySelector('table tbody');
+    headers.forEach((th) => {
+        clearFlipStyles(th);
+        const colIdx = Array.prototype.indexOf.call(headerRow.children, th);
+        if (!tbody || colIdx < 0) return;
+        for (const row of tbody.rows) {
+            const cell = row.children[colIdx];
+            if (cell && !(cell.colSpan > 1)) clearFlipStyles(cell);
+        }
+    });
+}
+
 export function animateColumnReorder(gridId, durationMs) {
     const snapshot = columnReorderSnapshots.get(gridId);
     columnReorderSnapshots.delete(gridId);
@@ -3732,6 +3767,14 @@ export function registerRowReorder(gridId, dotnetRef) {
     };
 
     const onPointerDown = (e) => {
+        // Ignore non-primary mouse buttons; touch/pen always fall through —
+        // mirrors registerColumnResize's guard. This grip arms IMMEDIATELY
+        // (no movement-threshold/header-wide path to filter it later like
+        // registerColumnReorder's `e.buttons & 1` re-check), so without this a
+        // right- or middle-button press on the grip would still preventDefault
+        // (suppressing the row's context menu) and could commit a reorder on
+        // release (round-8 #5).
+        if (e.pointerType === 'mouse' && e.button !== 0) return;
         // A second pointerdown while a row drag is already live (second touch
         // point, second mouse button, concurrent pen) must not overwrite the
         // single `drag` descriptor — mirrors registerColumnReorder's guard
@@ -3904,6 +3947,34 @@ export function captureRowRects(gridId) {
         snapshot.set(rowKey, top);
     });
     rowReorderSnapshots.set(gridId, snapshot);
+}
+
+// Snaps every row (and any expanded detail sibling) back to identity when a
+// delayed row-reorder commit is REJECTED client-side (round-8 #2) — e.g. the
+// backing rows changed during the 180ms settle window so ReorderRowByKeyAsync's
+// source/target key resolution fails, and it never reaches captureRowRects.
+// registerRowReorder's finishDrag already left the dragged row and every
+// live-shifted sibling (plus their detail rows) translated for that call to
+// clear as part of the FLIP handoff; on rejection nothing else will, so this is
+// the dedicated no-animation counterpart. No transition is (re)applied —
+// finishDrag's own settle glide already finished visually before the
+// (now-rejected) commit was even dispatched, so replaying a second glide here
+// would misleadingly look like an accepted move.
+export function clearRowReorderTransforms(gridId) {
+    const grid = document.querySelector(`[data-grid-id="${CSS.escape(gridId)}"]`);
+    if (!grid) return;
+    const inFlight = rowReorderInFlight.get(gridId);
+    if (inFlight) {
+        for (const tr of inFlight) clearRowFlipStyles(tr);
+        rowReorderInFlight.delete(gridId);
+    }
+    rowReorderSnapshots.delete(gridId);
+    const rows = ownedByGrid(grid.querySelectorAll('tbody tr[data-row-index]'), grid);
+    rows.forEach((tr) => {
+        clearRowFlipStyles(tr);
+        const detail = rowDetailSibling(tr);
+        if (detail) clearRowFlipStyles(detail);
+    });
 }
 
 export function animateRowReorder(gridId, durationMs) {

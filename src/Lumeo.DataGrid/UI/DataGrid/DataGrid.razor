@@ -992,31 +992,75 @@
     private List<TItem> _processedItems = new();
     private List<TItem> _displayedItems = new();
 
-    // --- Value-type row-reorder DOM key tokens (round-7 #4) ---
+    // --- Value-type row-reorder DOM key tokens (round-7 #4, round-8 #1) ---
     //
     // Parallel array to _displayedItems (same index space) minting a stable
     // per-SLOT identity for DataGridRowKeys.DomKeyFor's value-type branch — see
     // that type's remarks for why struct rows need this instead of a raw
-    // positional index. EnsureRowTokens (re)mints the whole array fresh
-    // whenever its length has drifted from _displayedItems' — which only
-    // happens right after _displayedItems itself was rebuilt wholesale from
-    // _processedItems/_serverPageItems, a genuine items-set event with no
-    // continuity to preserve to begin with (mirrors Blazor's own @key
-    // semantics for a brand-new list). MoveRow is the one mutation this
-    // array-of-tokens MUST survive intact: it permutes _displayedItemTokens
-    // through the exact same RemoveAt+Insert it performs on _displayedItems,
+    // positional index. MoveRow is the one mutation this array-of-tokens MUST
+    // survive intact: it permutes _displayedItemTokens (and _displayedItemTokenContents
+    // below) through the exact same RemoveAt+Insert it performs on _displayedItems,
     // so every row's token — dragged row AND every displaced sibling — stays
-    // glued to the row content across that operation instead of being
-    // reissued positionally.
+    // glued to the row content across that operation instead of being reissued
+    // positionally.
+    //
+    // A raw count-only guard (round-7) missed same-size REBUILDS: ProcessClientData
+    // always reassigns _displayedItems to a brand-new List (sort/filter/server
+    // refresh, or even a benign re-render — OnParametersSetAsync calls it on every
+    // parameter set), so comparing list REFERENCES would remint on nearly every
+    // render and thrash DOM-key/FLIP continuity for content that never actually
+    // changed. _displayedItemTokenContents instead snapshots the per-slot CONTENT
+    // the tokens currently represent; EnsureRowTokens diffs it against the live
+    // _displayedItems by VALUE (not reference) so only slots whose content genuinely
+    // changed get a fresh token — unchanged slots keep theirs. _rowTokensValidatedFor
+    // caches the exact list instance the tokens were last confirmed against so the
+    // O(n) diff runs once per rebuild, not once per row (RowTokenAt is called once
+    // per rendered row every render pass).
     private List<long> _displayedItemTokens = new();
+    private List<TItem> _displayedItemTokenContents = new();
+    private List<TItem>? _rowTokensValidatedFor;
     private long _nextRowToken;
 
     private void EnsureRowTokens()
     {
-        if (_displayedItemTokens.Count == _displayedItems.Count) return;
-        _displayedItemTokens = new List<long>(_displayedItems.Count);
-        for (var i = 0; i < _displayedItems.Count; i++)
-            _displayedItemTokens.Add(_nextRowToken++);
+        if (ReferenceEquals(_rowTokensValidatedFor, _displayedItems)
+            && _displayedItemTokens.Count == _displayedItems.Count)
+            return;
+
+        if (_displayedItemTokens.Count != _displayedItems.Count)
+        {
+            // Count changed: a genuine items-set event with no per-slot continuity
+            // to preserve (mirrors Blazor's own @key semantics for a brand-new list).
+            _displayedItemTokens = new List<long>(_displayedItems.Count);
+            _displayedItemTokenContents = new List<TItem>(_displayedItems.Count);
+            for (var i = 0; i < _displayedItems.Count; i++)
+            {
+                _displayedItemTokens.Add(_nextRowToken++);
+                _displayedItemTokenContents.Add(_displayedItems[i]);
+            }
+        }
+        else
+        {
+            // Same count but a DIFFERENT backing list instance than the tokens
+            // were last confirmed against (e.g. ProcessClientData reassigned
+            // _displayedItems after a sort/filter/server refresh while a JS
+            // reorder commit was in flight — round-8 #1). Remap per slot:
+            // content that didn't actually change keeps its token (preserving
+            // DOM-key/FLIP continuity across benign recomputes); content that
+            // DID change gets a freshly minted token so a stale "t:N" DOM key
+            // captured by JS before the rebuild can no longer resolve — via
+            // DataGridRowKeys.ResolveDomKeyIndex — to whatever unrelated row
+            // now occupies that old slot.
+            var cmp = EqualityComparer<TItem>.Default;
+            for (var i = 0; i < _displayedItems.Count; i++)
+            {
+                if (cmp.Equals(_displayedItemTokenContents[i], _displayedItems[i])) continue;
+                _displayedItemTokens[i] = _nextRowToken++;
+                _displayedItemTokenContents[i] = _displayedItems[i];
+            }
+        }
+
+        _rowTokensValidatedFor = _displayedItems;
     }
 
     /// <summary>Stable per-slot token for the row currently at <paramref name="index"/>
@@ -1191,11 +1235,23 @@
 
     // Row virtualization is incompatible with the recursive group-tree / tree-grid
     // renderers (they need every group/parent row present to compute indentation
-    // and expand state), so it's disabled when those modes are active.
+    // and expand state), so it's disabled when those modes are active. Single-level
+    // grouping used to be allowed through (`<= 1`) on the theory that DataGridBody's
+    // if-chain always checks its own `IsGrouped` branch before the UseVirtualization
+    // branch, so a genuinely grouped, non-empty render could never actually reach the
+    // <Virtualize Items="..."> path. That made this flag internally inconsistent with
+    // its own comment the moment `_displayedItems` crosses VirtualizeThreshold while
+    // grouped (exactly what a lots-of-data + GroupBy grid does) — nothing here
+    // prevented some OTHER caller of UseVirtualization (RowReorderPointerActive,
+    // future consumers) from reading "true" for a state DataGridBody itself would
+    // never render virtualized, and it made the actual behavior depend entirely on
+    // DataGridBody.razor's branch ORDER never changing rather than on this flag's own
+    // condition. Requiring zero group fields makes the flag agree with its own
+    // comment unconditionally, regardless of rendering-order coincidences elsewhere.
     private bool UseVirtualization =>
         _displayedItems.Count > VirtualizeThreshold
         && !IsTreeGridMode
-        && EffectiveGroupFields.Count <= 1;
+        && EffectiveGroupFields.Count == 0;
 
     // The unified pointer-based row-reorder engine assumes a flat DOM: tr[data-row-index]
     // indices measured at drag-start must equal _displayedItems indices 1:1, and every
@@ -3101,12 +3157,25 @@
         RefreshVisibleColumns();
         _pendingReorderAnimation = true;
 
+        // ReorderColumnsPreservingLocked may have REDIRECTED the drop: a slot
+        // that landed exactly on a locked column gets skipped to the nearest
+        // reorderable neighbor in the drag direction, which can resolve to a
+        // different final index than args.NewIndex requested. `col` is the
+        // column that actually moved (captured by reference above, before the
+        // mutation), so its live position in _orderedColumns IS the index that
+        // was actually applied — report that to consumers instead of the raw
+        // request, or anyone mirroring/persisting column order from this event
+        // would apply a different order than the grid actually committed
+        // (round-8 #3).
+        var appliedIndex = _orderedColumns.IndexOf(col);
+        var reportedArgs = appliedIndex == args.NewIndex ? args : args with { NewIndex = appliedIndex };
+
         // Await consumer handler so async handlers complete before we re-render.
         // Previously the returned Task was discarded which let the next
         // StateHasChanged race a still-running consumer callback and let
         // exceptions in async handlers go unobserved.
         if (OnColumnReorder.HasDelegate)
-            await OnColumnReorder.InvokeAsync(args);
+            await OnColumnReorder.InvokeAsync(reportedArgs);
 
         ScheduleAutoSave();
         StateHasChanged();
@@ -3205,13 +3274,32 @@
         if (!Reorderable || sourceId == targetId) return;
         var src = _orderedColumns.FindIndex(c => c.Id == sourceId);
         var tgt = _orderedColumns.FindIndex(c => c.Id == targetId);
-        if (src < 0 || tgt < 0) return;
+        if (src < 0 || tgt < 0) { await ClearStaleColumnReorderTransformsAsync(); return; }
         var srcCol = _orderedColumns[src];
         var tgtCol = _orderedColumns[tgt];
-        if (!srcCol.Reorderable) return;
-        if (!tgtCol.Reorderable) return; // a locked column is un-displaceable: refuse drops onto its slot
-        if (srcCol.Pin != tgtCol.Pin) return; // same-partition only
+        if (!srcCol.Reorderable) { await ClearStaleColumnReorderTransformsAsync(); return; }
+        if (!tgtCol.Reorderable) { await ClearStaleColumnReorderTransformsAsync(); return; } // a locked column is un-displaceable: refuse drops onto its slot
+        if (srcCol.Pin != tgtCol.Pin) { await ClearStaleColumnReorderTransformsAsync(); return; } // same-partition only
         await HandleColumnReorder(new ColumnReorderEventArgs(sourceId, src, tgt));
+    }
+
+    // round-8 #4: symmetric to ReorderRowByKeyAsync's stale-commit cleanup below —
+    // if columns changed during the 180ms settle window (target hidden/removed,
+    // Reorderable toggled, or moved into another pin partition) so this delayed
+    // commit is rejected above, JS already left the dragged column and every
+    // live-shifted sibling cell translated, expecting CaptureColumnRects (called
+    // only from the ACCEPT path in HandleColumnReorder) to clear those inline
+    // transforms as part of the FLIP handoff. Reaching a reject branch means that
+    // path never runs, so without this the columns stay visually stuck until some
+    // unrelated reorder happens to clean them up.
+    private async Task ClearStaleColumnReorderTransformsAsync()
+    {
+        try { await Interop.ClearColumnReorderTransforms(_gridId); }
+        catch (JSDisconnectedException) { }
+        catch (Exception clearEx)
+        {
+            if (OnError.HasDelegate) await OnError.InvokeAsync(clearEx);
+        }
     }
 
     // --- Row Reordering ---
@@ -3221,17 +3309,24 @@
         if (oldIndex < 0 || newIndex < 0 || oldIndex >= _displayedItems.Count || newIndex >= _displayedItems.Count)
             return;
 
-        // Permute the parallel slot-token array through the EXACT SAME
-        // RemoveAt+Insert as _displayedItems below — see _displayedItemTokens'
-        // remarks. EnsureRowTokens is a no-op in the expected case (already
-        // sized from the render that produced the DOM keys this move was
-        // resolved from); it only re-syncs the (rare/defensive) case where the
-        // array somehow drifted, in which case there's no prior-slot continuity
-        // to preserve anyway and a fresh mint is the correct fallback.
+        // Permute the parallel slot-token array (and its content snapshot —
+        // round-8 #1) through the EXACT SAME RemoveAt+Insert as _displayedItems
+        // below — see _displayedItemTokens' remarks. EnsureRowTokens is a no-op
+        // in the expected case (already validated against this exact
+        // _displayedItems instance by the render that produced the DOM keys
+        // this move was resolved from); it only re-syncs the (rare/defensive)
+        // case where the arrays somehow drifted, in which case there's no
+        // prior-slot continuity to preserve anyway and a fresh mint is the
+        // correct fallback. _displayedItems is mutated IN PLACE below (not
+        // reassigned), so _rowTokensValidatedFor stays correctly pointed at it
+        // through this permutation — no separate re-validation needed.
         EnsureRowTokens();
         var rowToken = _displayedItemTokens[oldIndex];
         _displayedItemTokens.RemoveAt(oldIndex);
         _displayedItemTokens.Insert(newIndex, rowToken);
+        var tokenContent = _displayedItemTokenContents[oldIndex];
+        _displayedItemTokenContents.RemoveAt(oldIndex);
+        _displayedItemTokenContents.Insert(newIndex, tokenContent);
 
         var item = _displayedItems[oldIndex];
         _displayedItems.RemoveAt(oldIndex);
@@ -3292,7 +3387,23 @@
         // from _displayedItems by a mutation that landed during the drag's
         // post-drop settle window. Silently drop the stale commit rather than
         // reorder whatever rows happen to occupy the old positions now.
-        if (oldIndex < 0 || newIndex < 0 || oldIndex == newIndex) return;
+        if (oldIndex < 0 || newIndex < 0 || oldIndex == newIndex)
+        {
+            // JS already left the dragged row and every live-shifted sibling
+            // (plus their expanded DetailTemplate rows) translated, expecting
+            // CaptureRowRects (called only from the accept path below) to clear
+            // those inline transforms as part of the FLIP handoff. This branch
+            // means that path never runs, so without an explicit clear here the
+            // rows stay visually stuck until some unrelated drag or render
+            // happens to clean them up (round-8 #2).
+            try { await Interop.ClearRowReorderTransforms(_gridId); }
+            catch (JSDisconnectedException) { }
+            catch (Exception clearEx)
+            {
+                if (OnError.HasDelegate) await OnError.InvokeAsync(clearEx);
+            }
+            return;
+        }
 
         try { await Interop.CaptureRowRects(_gridId); }
         catch (JSDisconnectedException) { }

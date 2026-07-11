@@ -835,6 +835,12 @@ public sealed class ComponentInteropService : IComponentInteropService
         await module.InvokeVoidAsync("animateColumnReorder", gridId, durationMs);
     }
 
+    public async ValueTask ClearColumnReorderTransforms(string gridId)
+    {
+        var module = await GetModuleAsync();
+        await module.InvokeVoidAsync("clearColumnReorderTransforms", gridId);
+    }
+
     // --- DataGrid Row Reorder (pointer-based mouse/touch/pen) ---
 
     public async ValueTask RegisterRowReorder(string gridId, Func<string, string, Task> commitHandler)
@@ -869,6 +875,12 @@ public sealed class ComponentInteropService : IComponentInteropService
     {
         var module = await GetModuleAsync();
         await module.InvokeVoidAsync("animateRowReorder", gridId, durationMs);
+    }
+
+    public async ValueTask ClearRowReorderTransforms(string gridId)
+    {
+        var module = await GetModuleAsync();
+        await module.InvokeVoidAsync("clearRowReorderTransforms", gridId);
     }
 
     // --- Tour: Element Rect By Selector ---

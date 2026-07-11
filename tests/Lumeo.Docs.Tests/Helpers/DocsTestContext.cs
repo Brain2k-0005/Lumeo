@@ -137,6 +137,7 @@ internal sealed class NoopInteropService : IComponentInteropService
     // DataGrid Column Reorder FLIP
     public ValueTask CaptureColumnRects(string gridId) => ValueTask.CompletedTask;
     public ValueTask AnimateColumnReorder(string gridId, int durationMs) => ValueTask.CompletedTask;
+    public ValueTask ClearColumnReorderTransforms(string gridId) => ValueTask.CompletedTask;
 
     // DataGrid Row Reorder
     public ValueTask RegisterRowReorder(string gridId, Func<string, string, Task> commitHandler) => ValueTask.CompletedTask;
@@ -145,6 +146,7 @@ internal sealed class NoopInteropService : IComponentInteropService
     // DataGrid Row Reorder FLIP
     public ValueTask CaptureRowRects(string gridId) => ValueTask.CompletedTask;
     public ValueTask AnimateRowReorder(string gridId, int durationMs) => ValueTask.CompletedTask;
+    public ValueTask ClearRowReorderTransforms(string gridId) => ValueTask.CompletedTask;
 
     // Tour
     public ValueTask<ElementRect?> GetElementRectBySelector(string selector) => ValueTask.FromResult<ElementRect?>(null);

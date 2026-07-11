@@ -547,6 +547,14 @@ public class TrackingInteropService : IComponentInteropService
         return ValueTask.CompletedTask;
     }
 
+    private readonly List<string> _clearColumnReorderTransformsCalls = new();
+    public IReadOnlyList<string> ClearColumnReorderTransformsGridIds => _clearColumnReorderTransformsCalls;
+    public ValueTask ClearColumnReorderTransforms(string gridId)
+    {
+        _clearColumnReorderTransformsCalls.Add(gridId);
+        return ValueTask.CompletedTask;
+    }
+
     // Pointer-based (mouse/touch/pen) row reorder registration + commit capture —
     // vertical mirror of the column tracking block above. Keyed by stable row
     // identity (data-row-key), not plain index — see ReorderRowByKeyAsync.
@@ -587,6 +595,14 @@ public class TrackingInteropService : IComponentInteropService
     public ValueTask AnimateRowReorder(string gridId, int durationMs)
     {
         _animateRowReorderCalls.Add((gridId, durationMs));
+        return ValueTask.CompletedTask;
+    }
+
+    private readonly List<string> _clearRowReorderTransformsCalls = new();
+    public IReadOnlyList<string> ClearRowReorderTransformsGridIds => _clearRowReorderTransformsCalls;
+    public ValueTask ClearRowReorderTransforms(string gridId)
+    {
+        _clearRowReorderTransformsCalls.Add(gridId);
         return ValueTask.CompletedTask;
     }
 

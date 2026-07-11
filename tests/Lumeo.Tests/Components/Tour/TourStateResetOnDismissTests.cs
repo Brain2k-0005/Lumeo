@@ -228,10 +228,12 @@ public class TourStateResetOnDismissTests : IAsyncLifetime
         public ValueTask UnregisterColumnResize(string handleId) => _inner.UnregisterColumnResize(handleId);
         public ValueTask CaptureColumnRects(string gridId) => _inner.CaptureColumnRects(gridId);
         public ValueTask AnimateColumnReorder(string gridId, int durationMs) => _inner.AnimateColumnReorder(gridId, durationMs);
+        public ValueTask ClearColumnReorderTransforms(string gridId) => _inner.ClearColumnReorderTransforms(gridId);
         public ValueTask RegisterRowReorder(string gridId, Func<string, string, Task> commitHandler) => _inner.RegisterRowReorder(gridId, commitHandler);
         public ValueTask UnregisterRowReorder(string gridId) => _inner.UnregisterRowReorder(gridId);
         public ValueTask CaptureRowRects(string gridId) => _inner.CaptureRowRects(gridId);
         public ValueTask AnimateRowReorder(string gridId, int durationMs) => _inner.AnimateRowReorder(gridId, durationMs);
+        public ValueTask ClearRowReorderTransforms(string gridId) => _inner.ClearRowReorderTransforms(gridId);
         public ValueTask ScrollIntoView(string elementId, string block = "nearest") => _inner.ScrollIntoView(elementId, block);
         public ValueTask<ComponentInteropService.TextareaCaretInfo> GetTextareaCaretPosition(string elementId) => _inner.GetTextareaCaretPosition(elementId);
         public ValueTask<int> GetInputCaret(string elementId) => _inner.GetInputCaret(elementId);
