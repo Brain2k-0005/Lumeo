@@ -210,7 +210,13 @@
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     private readonly string _wrapperId = LumeoIds.New("lumeo-pivotgrid");
-    private bool _pdRegistered;
+    // The id the prevent-default rule is ACTUALLY registered against (null = not
+    // registered). Tracking the id itself — not just a bool — lets OnAfterRenderAsync
+    // detect a consumer changing the splatted id at runtime (e.g. after drill-down
+    // makes cells interactive) and re-register against the NEW id instead of
+    // silently leaving the rule attached to a DOM id that may no longer exist
+    // (PR #356 round-3, Codex P3).
+    private string? _registeredWrapperId;
 
     // The id that ACTUALLY renders on the wrapper: a consumer-splatted id in
     // AdditionalAttributes wins in the DOM (it renders after the explicit
@@ -238,16 +244,35 @@
     {
         // Not gated on firstRender: a consumer can bind OnCellClick AFTER the
         // initial render (e.g. it starts null while some other state loads, then
-        // gets set once that resolves). Re-checking the registered-flag on every
-        // render — instead of only the first — means the JS-side prevent-default
-        // rule still gets registered the moment the delegate actually shows up,
-        // rather than being permanently skipped because it wasn't there on
-        // render #1 (Codex/CodeRabbit, PR #356 round-2).
-        if (_pdRegistered || !OnCellClick.HasDelegate) return;
+        // gets set once that resolves). Re-checking on every render — instead of
+        // only the first — means the JS-side prevent-default rule still gets
+        // registered the moment the delegate actually shows up, rather than being
+        // permanently skipped because it wasn't there on render #1 (Codex/
+        // CodeRabbit, PR #356 round-2).
+        //
+        // Compared against the id ACTUALLY registered (not just a bool) so a
+        // consumer-splatted id that changes at runtime — e.g. after drill-down
+        // makes cells interactive — re-registers against the NEW id instead of
+        // leaving the rule attached to the stale one (PR #356 round-3, Codex P3).
+        if (!OnCellClick.HasDelegate)
+        {
+            if (_registeredWrapperId is null) return;
+            try { await Interop.UnregisterPreventDefaultKeys(_registeredWrapperId); }
+            catch (JSDisconnectedException) { }
+            catch (ObjectDisposedException) { }
+            _registeredWrapperId = null;
+            return;
+        }
+
+        var effectiveId = EffectiveWrapperId;
+        if (_registeredWrapperId == effectiveId) return;
+
         try
         {
-            await Interop.RegisterPreventDefaultKeys(EffectiveWrapperId, CellActivationKeyRules);
-            _pdRegistered = true;
+            if (_registeredWrapperId is not null)
+                await Interop.UnregisterPreventDefaultKeys(_registeredWrapperId);
+            await Interop.RegisterPreventDefaultKeys(effectiveId, CellActivationKeyRules);
+            _registeredWrapperId = effectiveId;
         }
         catch (JSDisconnectedException) { }
         catch (ObjectDisposedException) { }
@@ -255,8 +280,8 @@
 
     public async ValueTask DisposeAsync()
     {
-        if (!_pdRegistered) return;
-        try { await Interop.UnregisterPreventDefaultKeys(EffectiveWrapperId); }
+        if (_registeredWrapperId is null) return;
+        try { await Interop.UnregisterPreventDefaultKeys(_registeredWrapperId); }
         catch (JSDisconnectedException) { }
         catch (ObjectDisposedException) { }
     }

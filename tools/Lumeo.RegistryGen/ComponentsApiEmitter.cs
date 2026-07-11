@@ -441,7 +441,14 @@ public static class ComponentsApiEmitter
 
     // Known Blazor KeyboardEventArgs.Key values we report when a component handles
     // keydown — a precise whitelist so we don't pick up unrelated string literals.
-    private static readonly string[] KnownKeys =
+    // Internal (not private): PerComponentEnricher's keyboardInteractions summary
+    // reuses this SAME whitelist + KeyComparisonRegex below, so the two scanners
+    // can never drift apart again — a switch/pattern key the a11y scanner credits
+    // must show up in the human-readable summary too (PR #356 round-3, Codex P3:
+    // dock.json's api.a11y.keys had ArrowLeft/ArrowRight/Home/End from Dock's
+    // HandleKeyDown switch, but keyboardInteractions — built from a narrower
+    // `.Key == "X"`-only regex — still said "no keyboard support").
+    internal static readonly string[] KnownKeys =
     {
         "Enter", "Escape", "Tab", " ", "Spacebar", "ArrowUp", "ArrowDown", "ArrowLeft",
         "ArrowRight", "Home", "End", "PageUp", "PageDown", "Delete", "Backspace", "ContextMenu", "F10",
@@ -466,7 +473,7 @@ public static class ComponentsApiEmitter
     // repeated named group "k" is valid in .NET regex: every alternative/repetition
     // that matches contributes its own capture, all readable via
     // Match.Groups["k"].Captures.
-    private static readonly Regex KeyComparisonRegex = new(
+    internal static readonly Regex KeyComparisonRegex = new(
         "\\bcase\\s+\"(?<k>[^\"]*)\"(?:\\s*(?:or|,)\\s*\"(?<k>[^\"]*)\")*" +
         "|\\.Key\\s+is\\s+\"(?<k>[^\"]*)\"(?:\\s*(?:or|,)\\s*\"(?<k>[^\"]*)\")*" +
         "|\\.Key\\s*==\\s*\"(?<k>[^\"]*)\"" +

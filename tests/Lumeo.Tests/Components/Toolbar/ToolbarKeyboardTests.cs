@@ -96,4 +96,37 @@ public class ToolbarKeyboardTests : IAsyncLifetime
         var cut = RenderToolbar();
         Assert.Equal("horizontal", cut.Find("[role='toolbar']").GetAttribute("aria-orientation"));
     }
+
+    // --- PR #356 round-3 (Codex P2): nav-key suppression must exempt editable
+    // children (input/textarea/contenteditable) so Arrow/Home/End inside them move
+    // the caret/selection instead of being cancelled by the toolbar's JS-level
+    // preventDefault listener or stealing roving focus. The C#-side seam is the
+    // SkipEditable flag on every registered PreventDefaultKeyRule; the JS-side
+    // early-return in moveToolbarFocus/focusToolbarEdge (components.js) is only
+    // exercisable in a real browser, not this bUnit suite.
+
+    [Fact]
+    public void Nav_Key_Rules_Are_Registered_With_SkipEditable()
+    {
+        var cut = RenderToolbar();
+        cut.WaitForAssertion(() =>
+        {
+            Assert.NotEmpty(_interop.RegisterPreventDefaultKeysRules);
+            var rules = _interop.RegisterPreventDefaultKeysRules.Values.Last();
+            Assert.NotEmpty(rules);
+            Assert.All(rules, r => Assert.True(r.SkipEditable));
+        });
+    }
+
+    [Fact]
+    public void Vertical_Nav_Key_Rules_Are_Also_Registered_With_SkipEditable()
+    {
+        var cut = RenderToolbar(L.Toolbar.ToolbarOrientation.Vertical);
+        cut.WaitForAssertion(() =>
+        {
+            var rules = _interop.RegisterPreventDefaultKeysRules.Values.Last();
+            Assert.NotEmpty(rules);
+            Assert.All(rules, r => Assert.True(r.SkipEditable));
+        });
+    }
 }

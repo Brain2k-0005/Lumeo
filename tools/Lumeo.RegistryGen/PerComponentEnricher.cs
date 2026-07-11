@@ -185,10 +185,14 @@ public static class PerComponentEnricher
         entry["relatedComponents"] = related;
 
         // 8. keyboardInteractions — heuristic.
+        // Reuses ComponentsApiEmitter's KeyComparisonRegex + KnownKeys whitelist (not
+        // a separate `.Key == "X"`-only regex) so this human-readable summary can
+        // never fall behind api.a11y.keys again — a switch-statement (`case "X":`),
+        // pattern-match (`.Key is "X" or "Y"`), or switch-expression-arm (`"X" => ...`)
+        // key handler must be credited here exactly like it is there (PR #356
+        // round-3, Codex P3).
         var keyboard = new List<Dictionary<string, object?>>();
         var seenKeyboard = new HashSet<string>(StringComparer.Ordinal);
-        // capture .Key == "Foo" patterns + try to find enclosing method name.
-        var keyRegex = new Regex(@"(\w+)\.Key\s*==\s*""([^""]+)""", RegexOptions.Compiled);
         var methodRegex = new Regex(@"(?:private|public|protected|internal)\s+(?:async\s+)?(?:Task|ValueTask|void)\s+(\w+)\s*\(",
             RegexOptions.Compiled);
         foreach (var sc in sourceContent)
@@ -206,10 +210,11 @@ public static class PerComponentEnricher
                 methodPositions.Add((mm.Index, mm.Groups[1].Value));
             }
 
-            foreach (Match km in keyRegex.Matches(content))
+            foreach (Match km in ComponentsApiEmitter.KeyComparisonRegex.Matches(content))
             {
-                var key = km.Groups[2].Value;
-                // find enclosing method (the latest method header before this match).
+                // find enclosing method (the latest method header before this match) —
+                // shared once per match, since every "k" capture in it sits at the
+                // same switch/pattern site.
                 string method = "(unknown)";
                 for (int i = methodPositions.Count - 1; i >= 0; i--)
                 {
@@ -219,13 +224,18 @@ public static class PerComponentEnricher
                         break;
                     }
                 }
-                var dedup = key + "::" + method;
-                if (!seenKeyboard.Add(dedup)) continue;
-                keyboard.Add(new Dictionary<string, object?>
+                foreach (Capture kc in km.Groups["k"].Captures)
                 {
-                    ["key"] = key,
-                    ["action"] = $"{method} handles {key} in {Path.GetFileName(path)}",
-                });
+                    if (!ComponentsApiEmitter.KnownKeys.Contains(kc.Value)) continue; // same whitelist as the a11y scanner
+                    var key = kc.Value == " " ? "Space" : kc.Value;
+                    var dedup = key + "::" + method;
+                    if (!seenKeyboard.Add(dedup)) continue;
+                    keyboard.Add(new Dictionary<string, object?>
+                    {
+                        ["key"] = key,
+                        ["action"] = $"{method} handles {key} in {Path.GetFileName(path)}",
+                    });
+                }
             }
         }
         entry["keyboardInteractions"] = keyboard;

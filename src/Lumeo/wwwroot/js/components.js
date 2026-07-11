@@ -2325,6 +2325,16 @@ function applyToolbarRovingTabindex(items, activeIndex) {
     }
 }
 
+// True when the currently focused element is text-editable (input/textarea/
+// select/contenteditable). getToolbarItems() deliberately includes these tags
+// as valid roving-focus stops (a toolbar CAN contain a real text field), but
+// arrow/Home/End pressed while one is focused must move the caret/selection,
+// not roving focus (PR #356 round-3, Codex P2) — mirrors the skipEditable
+// exemption in registerPreventDefaultKeys above.
+function isEditableFocusTarget(el) {
+    return !!(el && el.closest && el.closest('input, textarea, select, [contenteditable=""], [contenteditable="true"]'));
+}
+
 // Initialise the roving tabindex so only the first item is in the tab order.
 // Called when the toolbar mounts; safe to call repeatedly.
 export function initToolbarRoving(toolbarId) {
@@ -2353,6 +2363,7 @@ export function initToolbarRoving(toolbarId) {
 export function moveToolbarFocus(toolbarId, delta) {
     const items = getToolbarItems(toolbarId);
     if (items.length === 0) return -1;
+    if (isEditableFocusTarget(document.activeElement)) return -1; // let the caret move instead
     let current = items.findIndex(el => el === document.activeElement);
     if (current < 0) current = 0;
     let next = current + delta;
@@ -2366,6 +2377,7 @@ export function moveToolbarFocus(toolbarId, delta) {
 export function focusToolbarEdge(toolbarId, last) {
     const items = getToolbarItems(toolbarId);
     if (items.length === 0) return -1;
+    if (isEditableFocusTarget(document.activeElement)) return -1; // Home/End move the caret instead
     const index = last ? items.length - 1 : 0;
     applyToolbarRovingTabindex(items, index);
     items[index].focus();

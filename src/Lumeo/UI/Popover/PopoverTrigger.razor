@@ -23,7 +23,14 @@
 }
 else
 {
-    <div id="@EffectiveTriggerId" class="@CssClass" role="button" tabindex="0" aria-expanded="@(Context.IsOpen ? "true" : "false")" aria-haspopup="dialog" aria-controls="@(Context.IsOpen ? Context.ContentId : null)" @onclick="Toggle" @onkeydown="HandleKeyDown" @attributes="AdditionalAttributes">
+    @* tabindex is -1 (removed from Tab order) when SuppressActivationKeys: that
+       branch's child already owns its own Enter/Space (e.g. DatePicker's typeable
+       input) and is itself a real Tab stop, so a keyboard user should land there
+       directly — never on this wrapper, which cannot usefully activate on Enter/
+       Space while suppression is on (PR #356 round-3, Codex P2). Without this a
+       Tab press could park focus on a role="button" wrapper that silently eats
+       both keys. Mouse/pointer activation (@onclick) is unaffected either way. *@
+    <div id="@EffectiveTriggerId" class="@CssClass" role="button" tabindex="@(SuppressActivationKeys ? "-1" : "0")" aria-expanded="@(Context.IsOpen ? "true" : "false")" aria-haspopup="dialog" aria-controls="@(Context.IsOpen ? Context.ContentId : null)" @onclick="Toggle" @onkeydown="HandleKeyDown" @attributes="AdditionalAttributes">
         @ChildContent
     </div>
 }
@@ -121,20 +128,39 @@ else
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (!firstRender || AsChild || SuppressActivationKeys) return;
+        // battle-wave2 #88 (keyboard-a11y): the fallback div[role=button] has no
+        // native key synthesis, so Space both opened the popover AND scrolled the
+        // page. Suppress only Space's default synchronously in JS (Enter has no
+        // default on a div). Calling e.PreventDefault from the async @onkeydown
+        // handler is too late — the default has already fired — and
+        // @onkeydown:preventDefault would also trap Tab; the JS-side key-selective
+        // rule is the library idiom (Collapsible/Accordion/Tabs triggers).
+        //
+        // Reconciled on EVERY render against the CURRENT SuppressActivationKeys
+        // value — not gated to firstRender — because a consumer can flip it after
+        // mount (e.g. DatePicker switching between its button and typeable-input
+        // trigger branches by changing AllowKeyboardInput/Mode). Comparing the
+        // desired state to _pdRegistered keeps register/unregister symmetric: a
+        // button-trigger -> typeable-input transition unregisters the stale
+        // listener (else Space in the input would still be swallowed), and the
+        // inverse transition registers it (else the button trigger loses its
+        // Space-scroll suppression) — PR #356 round-3, Codex P2.
+        var shouldRegister = !AsChild && !SuppressActivationKeys;
+        if (shouldRegister == _pdRegistered) return;
         try
         {
-            // battle-wave2 #88 (keyboard-a11y): the fallback div[role=button] has no
-            // native key synthesis, so Space both opened the popover AND scrolled the
-            // page. Suppress only Space's default synchronously in JS (Enter has no
-            // default on a div). Calling e.PreventDefault from the async @onkeydown
-            // handler is too late — the default has already fired — and
-            // @onkeydown:preventDefault would also trap Tab; the JS-side key-selective
-            // rule is the library idiom (Collapsible/Accordion/Tabs triggers).
-            await Interop.RegisterPreventDefaultKeys(
-                EffectiveTriggerId,
-                new[] { new Lumeo.Services.PreventDefaultKeyRule(" ") });
-            _pdRegistered = true;
+            if (shouldRegister)
+            {
+                await Interop.RegisterPreventDefaultKeys(
+                    EffectiveTriggerId,
+                    new[] { new Lumeo.Services.PreventDefaultKeyRule(" ") });
+                _pdRegistered = true;
+            }
+            else
+            {
+                await Interop.UnregisterPreventDefaultKeys(EffectiveTriggerId);
+                _pdRegistered = false;
+            }
         }
         catch (JSDisconnectedException) { }
         catch (ObjectDisposedException) { }

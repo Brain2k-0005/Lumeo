@@ -118,4 +118,39 @@ public class PivotGridPreventDefaultRegistrationTests : IAsyncLifetime
 
         cut.WaitForAssertion(() => Assert.NotNull(RuleSetFor(renderedId)));
     }
+
+    private int UnregisterCallCountFor(string elementId) =>
+        _ctx.JSInterop.Invocations.Count(i => i.Identifier == "unregisterPreventDefaultKeys"
+            && i.Arguments[0] is string id && id == elementId);
+
+    [Fact]
+    public void Consumer_Bound_Id_Changing_At_Runtime_Re_Registers_Against_The_New_Id()
+    {
+        // PR #356 round-3 (Codex P3): a consumer can bind the splatted id and change
+        // it after drill-down cells become interactive. The stale registration on
+        // the OLD id must be torn down and a fresh one wired against the NEW id —
+        // otherwise Enter/Space suppression stays attached to an id no element in
+        // the document carries, and disposal would try to unregister the wrong id.
+        var cut = _ctx.Render<L.PivotGrid<Sale>>(p => p
+            .Add(g => g.Items, Data())
+            .Add(g => g.RowFields, RowFields())
+            .Add(g => g.Measures, SumMeasure())
+            .Add(g => g.OnCellClick, _ => { })
+            .Add(g => g.AdditionalAttributes, new Dictionary<string, object> { ["id"] = "pivot-before" }));
+
+        cut.WaitForAssertion(() => Assert.NotNull(RuleSetFor("pivot-before")));
+
+        cut.Render(p => p
+            .Add(g => g.Items, Data())
+            .Add(g => g.RowFields, RowFields())
+            .Add(g => g.Measures, SumMeasure())
+            .Add(g => g.OnCellClick, _ => { })
+            .Add(g => g.AdditionalAttributes, new Dictionary<string, object> { ["id"] = "pivot-after" }));
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.NotNull(RuleSetFor("pivot-after"));
+            Assert.True(UnregisterCallCountFor("pivot-before") >= 1);
+        });
+    }
 }

@@ -152,6 +152,11 @@ else
         // Arrow/Home/End were moving roving focus AND scrolling the page).
         // Re-registered every render (idempotent — see registerPreventDefaultKeys)
         // so a runtime Orientation change keeps the rule set aligned.
+        // SkipEditable (PR #356 round-3, Codex P2): an editable child (input/
+        // textarea/contenteditable) nested in the toolbar owns Arrow/Home/End
+        // itself for caret/selection movement — without this the JS listener
+        // preventDefault'd those keys before the browser could move the caret,
+        // and a child Blazor :stopPropagation can't stop this DOM-level listener.
         try
         {
             var navKeys = Orientation == ToolbarOrientation.Horizontal
@@ -159,7 +164,7 @@ else
                 : new[] { "ArrowUp", "ArrowDown", "Home", "End" };
             await Interop.RegisterPreventDefaultKeys(
                 _toolbarId,
-                navKeys.Select(k => new Lumeo.Services.PreventDefaultKeyRule(k)).ToArray());
+                navKeys.Select(k => new Lumeo.Services.PreventDefaultKeyRule(k, SkipEditable: true)).ToArray());
             _pdRegistered = true;
         }
         catch (JSDisconnectedException) { }
