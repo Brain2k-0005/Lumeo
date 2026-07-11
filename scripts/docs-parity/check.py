@@ -664,23 +664,78 @@ def main():
                 sub_rows, _ = extract_documented_rows(chart_page_path)
                 doc_pages_checked.append((chart_page_path, sub_rows))
 
-        documented = set()
+        # Documented set scoped by declaring type: a source parameter counts as
+        # documented only when it appears under a table whose owner heading
+        # resolves to ITS OWN declaring type — not merely somewhere on the
+        # page. Without this scoping, a table for one sibling type "absorbs"
+        # an identically named parameter that actually lives on a different
+        # type (e.g. ContextMenuPage.razor documents ContextMenuTrigger's
+        # LongPressMs/MoveTolerancePx under the ContextMenu heading; a flat
+        # by-name set would wrongly treat ContextMenuTrigger as documented
+        # too, since both types declare unrelated params under the same
+        # names elsewhere).
+        #
+        # A row only competes against a *sibling* declaring type when its
+        # heading resolves to one of this component's OTHER own types (the
+        # ContextMenu/ContextMenuTrigger case above). A row whose heading
+        # doesn't resolve to any of this component's own types at all —
+        # either because there is no heading (a descriptive prose H2 like
+        # DataGrid's "Tree-grid mode" / "Group panel" sections, or
+        # Combobox's inline multi-select table), or because it names
+        # something else entirely (an external model type, an enum, a
+        # different registered component) — makes no ownership claim among
+        # this component's siblings, so it still counts for all of them, as
+        # before scoping existed.
+        #
+        # Likewise, scoping only bites for a declaring type the page itself
+        # singles out with its own heading SOMEWHERE (a deliberate, named
+        # section — like ContextMenuTrigger's). A type that never gets a
+        # heading of its own on this page at all (the common case for
+        # internal composition/helper types among a component's files, e.g.
+        # DataGrid's DataGridColumnVisibility, which piggybacks conventional
+        # names like Columns/Class that are already documented under the
+        # main table) keeps the old flat, page-wide match — the docs
+        # authors never carved out a section to scope it against, so there
+        # is nothing to mis-file it under. Pragmatic fallback: a component
+        # with only one declaring type is never "headed" either, and so
+        # always takes this flat path.
+        flat_documented = set()
+        headed_types = set()
+        scoped_documented = {}
+        unscoped_documented = set()
         for _, rows in doc_pages_checked:
             for r in rows:
-                documented.add(r["name"])
-                documented.add(r["check_name"])
+                flat_documented.add(r["name"])
+                flat_documented.add(r["check_name"])
+                owner = r["owner_type"]
+                if owner in type_params:
+                    headed_types.add(owner)
+                    bucket = scoped_documented.setdefault(owner, set())
+                    bucket.add(r["name"])
+                    bucket.add(r["check_name"])
+                else:
+                    unscoped_documented.add(r["name"])
+                    unscoped_documented.add(r["check_name"])
+
+        def is_documented(type_name, param_name):
+            if type_name not in headed_types:
+                return param_name in flat_documented
+            if param_name in scoped_documented.get(type_name, set()):
+                return True
+            return param_name in unscoped_documented
 
         # --- Forward check: source [Parameter]s missing from docs ---
-        raw_missing = sorted(p for p in all_source_params if p not in documented)
-
         missing_params_allowlist = allowlist.get(slug, {}).get("missingParams", {})
         missing = []
-        for p in raw_missing:
+        for p in sorted(all_source_params):
             declaring_types = param_declaring_types.get(p, set())
-            covered_types = {t for t in declaring_types if p in missing_params_allowlist.get(t, {})}
+            undocumented_types = {t for t in declaring_types if not is_documented(t, p)}
+            if not undocumented_types:
+                continue
+            covered_types = {t for t in undocumented_types if p in missing_params_allowlist.get(t, {})}
             for t in covered_types:
                 allowlist_used.add((slug, t, p))
-            uncovered_types = declaring_types - covered_types
+            uncovered_types = undocumented_types - covered_types
             if not uncovered_types:
                 continue
             if covered_types:
