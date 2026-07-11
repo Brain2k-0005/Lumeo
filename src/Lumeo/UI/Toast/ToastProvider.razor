@@ -184,11 +184,41 @@
     // at every call site.
     private int EffectiveMaxToasts => Math.Max(1, MaxToasts);
 
-    // How many MOUNTED toasts count against MaxToasts — every toast EXCEPT persistents
-    // (Duration == 0). See the MaxToasts doc comment: a persistent toast can never free its own
-    // slot on its own, so it must never be part of "is the cap full" accounting, or it starves
-    // every later Show() the instant enough persistents accumulate to fill the cap.
-    private int NonPersistentMountedCount => _toasts.Count(t => t.Options.Duration != 0);
+    // How many MOUNTED toasts count against MaxToasts within ONE position group — every toast
+    // EXCEPT persistents (Duration == 0), scoped by ResolvePosition. See the MaxToasts doc
+    // comment: a persistent toast can never free its own slot on its own, so it must never be
+    // part of "is the cap full" accounting, or it starves every later Show() the instant enough
+    // persistents accumulate to fill the cap. PR #357 round-5 (P2): MaxToasts is documented as
+    // per position group but was enforced globally — a full TopLeft viewport blocked/evicted
+    // against a BottomRight Show() even though the two have entirely separate, independent
+    // viewports. Scoping the count (and every caller below) to a single resolved position fixes
+    // that; the cap VALUE (EffectiveMaxToasts) still applies identically to every group.
+    private int NonPersistentMountedCount(ToastViewport.ToastPosition pos)
+        => _toasts.Count(t => t.Options.Duration != 0 && ResolvePosition(t.Options.Position) == pos);
+
+    // Queued (never-mounted — see _pendingQueue) toasts destined for a single position group.
+    // Same per-group scoping as NonPersistentMountedCount, above, so the overflow queue's own
+    // cap (HandleShowAsync) can't let one busy position's backlog crowd out or drop a
+    // completely different position's queued toasts.
+    private int PendingCount(ToastViewport.ToastPosition pos)
+        => _pendingQueue.Count(m => ResolvePosition(m.Options.Position) == pos);
+
+    // Removes the OLDEST still-queued entry matching predicate, preserving FIFO order for
+    // everything else, and returns it (null if nothing matched). Queue<T> has no
+    // remove/dequeue-by-predicate, so this rebuilds the queue minus the first match — same
+    // approach as RemovePending/UpdateQueued below, generalised to an arbitrary predicate so
+    // both the per-position queue cap and per-position AdmitPending can share it.
+    private ToastMessage? DequeueFirstMatching(Func<ToastMessage, bool> predicate)
+    {
+        var list = _pendingQueue.ToList();
+        var idx = list.FindIndex(m => predicate(m));
+        if (idx < 0) return null;
+        var item = list[idx];
+        list.RemoveAt(idx);
+        _pendingQueue.Clear();
+        foreach (var m in list) _pendingQueue.Enqueue(m);
+        return item;
+    }
 
     /// <summary>
     /// Sonner-style stacking, default on. When a position group holds more
@@ -259,7 +289,23 @@
 
     private async Task HandleShowAsync(ToastMessage message)
     {
-        // Enforce MaxToasts against NON-PERSISTENT toasts only (NonPersistentMountedCount —
+        // PR #357 round-5 (P2): a PERSISTENT incoming toast (Duration == 0, e.g. a
+        // loading/promise toast) never counts against MaxToasts (NonPersistentMountedCount
+        // already excludes it — see its doc comment) and must never be run through the
+        // eviction/queue logic below either: that logic is sized for non-persistent toasts and
+        // was evicting/queuing an INCOMING persistent against an unrelated cap of ordinary
+        // toasts, contradicting "persistents occupy an additional slot and never evict/queue".
+        // Mount it immediately, alongside whatever is already there.
+        if (message.Options.Duration == 0)
+        {
+            MountToast(message);
+            return;
+        }
+
+        var pos = ResolvePosition(message.Options.Position);
+
+        // Enforce MaxToasts against NON-PERSISTENT toasts in this toast's OWN position group
+        // only (NonPersistentMountedCount(pos) —
         // see the MaxToasts doc comment): evict the oldest non-persistent toast that ISN'T
         // already leaving. Spamming Show() fires many concurrent HandleShowAsync
         // calls (fire-and-forget per toast); several can race this loop against
@@ -281,9 +327,9 @@
         // toast is ALSO excluded (persistent-only occupancy, e.g. the cap filled
         // entirely by loading toasts), NonPersistentMountedCount is already below
         // the cap and this loop never even starts.
-        while (NonPersistentMountedCount >= EffectiveMaxToasts)
+        while (NonPersistentMountedCount(pos) >= EffectiveMaxToasts)
         {
-            var oldest = _toasts.FirstOrDefault(t => t.Options.Duration != 0 && !t.Leaving);
+            var oldest = _toasts.FirstOrDefault(t => t.Options.Duration != 0 && !t.Leaving && ResolvePosition(t.Options.Position) == pos);
             if (oldest is null) break;
             await RemoveItemAsync(oldest.Id);
         }
@@ -303,19 +349,20 @@
         // is filled entirely by persistents (they'd never free a slot, so queuing here
         // would wait forever): the only way to reach this branch is every non-persistent
         // slot being Leaving, i.e. a real slot IS coming.
-        if (NonPersistentMountedCount >= EffectiveMaxToasts)
+        if (NonPersistentMountedCount(pos) >= EffectiveMaxToasts)
         {
-            // Cap the queue itself at MaxToasts too. Without this, a 100-toast
-            // spam burst would durably queue all ~95 overflow toasts and drip
-            // them out one 220ms exit at a time (~20s to fully drain) — the
-            // opposite of "keeping the newest bounded set". Dropping the
-            // oldest still-queued (never-shown) toast when a new one arrives
-            // keeps the total known set (mounted + queued) bounded at 2x
-            // MaxToasts and biases towards the most recent Show() calls,
-            // matching sonner's overflow behaviour.
-            if (_pendingQueue.Count >= EffectiveMaxToasts)
+            // Cap the queue itself at MaxToasts too, scoped to THIS position group (PR #357
+            // round-5, P2 — same per-group scoping as the mounted count above; an unrelated
+            // position's backlog must not be touched). Without this, a 100-toast spam burst
+            // would durably queue all ~95 overflow toasts and drip them out one 220ms exit at a
+            // time (~20s to fully drain) — the opposite of "keeping the newest bounded set".
+            // Dropping the oldest still-queued (never-shown) toast IN THIS GROUP when a new one
+            // arrives keeps that group's known set (mounted + queued) bounded at 2x MaxToasts
+            // and biases towards the most recent Show() calls, matching sonner's overflow
+            // behaviour.
+            if (PendingCount(pos) >= EffectiveMaxToasts)
             {
-                _pendingQueue.Dequeue();
+                DequeueFirstMatching(m => ResolvePosition(m.Options.Position) == pos);
             }
             _pendingQueue.Enqueue(message);
             return;
@@ -342,15 +389,21 @@
     }
 
     // Pulls queued toasts (see HandleShowAsync) into the live set FIFO as
-    // slots free up. Called from RemoveWithExitAsync right after a toast is
-    // actually removed from `_toasts` — the only moment a slot is real. Gated
-    // on NonPersistentMountedCount (not raw _toasts.Count) so a mounted
-    // persistent never counts against the room available to admit queued toasts.
-    private void AdmitPending()
+    // slots free up WITHIN a single position group. Called from RemoveWithExitAsync right
+    // after a toast is actually removed from `_toasts`, scoped to that toast's OWN resolved
+    // position — the only group whose slot just became real. Gated on
+    // NonPersistentMountedCount(pos) (not raw _toasts.Count) so a mounted persistent never
+    // counts against the room available to admit queued toasts. PR #357 round-5 (P2): this
+    // used to drain `_pendingQueue` globally in strict FIFO order regardless of position,
+    // which could admit a DIFFERENT position group's queued toast into a slot that freed up
+    // here — DequeueFirstMatching restricts the pull to entries destined for `pos`.
+    private void AdmitPending(ToastViewport.ToastPosition pos)
     {
-        while (NonPersistentMountedCount < EffectiveMaxToasts && _pendingQueue.Count > 0)
+        while (NonPersistentMountedCount(pos) < EffectiveMaxToasts)
         {
-            MountToast(_pendingQueue.Dequeue());
+            var next = DequeueFirstMatching(m => ResolvePosition(m.Options.Position) == pos);
+            if (next is null) break;
+            MountToast(next);
         }
     }
 
@@ -562,10 +615,14 @@
                 }
             }
         }
+        // Resolve the freed slot's position group BEFORE removal — `toast` still carries its
+        // original Options.Position. PR #357 round-5 (P2): AdmitPending is now scoped per
+        // group (see its doc comment), so it needs to know WHICH group just gained a slot.
+        var freedPos = ResolvePosition(toast.Options.Position);
         _toasts.RemoveAll(t => t.Id == id);
         // A slot just became real (not merely a Leaving placeholder still
-        // occupying `_toasts`) — pull the next queued toast in, if any.
-        AdmitPending();
+        // occupying `_toasts`) — pull the next queued toast for THIS group in, if any.
+        AdmitPending(freedPos);
         await InvokeAsync(StateHasChanged);
     }
 
@@ -638,16 +695,28 @@
     private ToastViewport.ToastPosition ResolvePosition(ToastPosition? optionsPosition)
         => optionsPosition is { } p ? (ToastViewport.ToastPosition)(int)p : Position;
 
-    // Mirrors the index math in the render-loop markup (groupCount - 1 - position
-    // within its own position group, oldest-first list) so RemoveWithExitAsync can
-    // capture a toast's CURRENT stack index the instant it starts leaving, before
-    // freezing it on the item.
+    // Mirrors the LIVE-ONLY/frontFrozen index math in the render-loop markup above (NOT the raw
+    // groupCount - 1 - position) so RemoveWithExitAsync captures a toast's CURRENT stack index
+    // the instant it starts leaving, before freezing it on the item. PR #357 round-5 (P2): this
+    // previously ranked against the RAW group (every toast, including other already-frozen
+    // Leaving ones), which only matches the markup's ranking while no OTHER toast in the group
+    // is mid-exit. Once the front toast unmounts and a live sibling gets promoted to index 0 by
+    // the markup's live-only ranking, dismissing THAT sibling while an older, stale frozen exit
+    // is still in flight froze it at the raw (stale-inclusive) index instead of the live-only
+    // one the markup actually rendered it at — leaving no toast frozen at index 0, so the
+    // collapsed-stack CSS (which only keeps index 0 in normal flow) could collapse or jump
+    // mid-overlap. `toast` here is still Leaving == false (RemoveWithExitAsync evaluates this
+    // BEFORE the `with { Leaving = true, ... }` that uses its result), so it naturally counts as
+    // "live" below — exactly the toast the markup's own liveCursor would be sitting on right now.
     private int? ComputeStackIndex(ToastItem toast)
     {
         if (!StackToasts) return null;
         var pos = ResolvePosition(toast.Options.Position);
         var group = _toasts.Where(t => ResolvePosition(t.Options.Position) == pos).ToList();
-        var p = group.FindIndex(t => t.Id == toast.Id);
-        return p < 0 ? null : group.Count - 1 - p;
+        var liveGroup = group.Where(t => !(t.Leaving && t.FrozenIndex.HasValue)).ToList();
+        var liveCursor = liveGroup.FindIndex(t => t.Id == toast.Id);
+        if (liveCursor < 0) return null;
+        var frontFrozen = group.Any(t => t.Leaving && t.FrozenIndex == 0);
+        return liveGroup.Count - 1 - liveCursor + (frontFrozen ? 1 : 0);
     }
 }

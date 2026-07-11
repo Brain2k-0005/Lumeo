@@ -286,6 +286,17 @@ public class ToastStackingTests : IAsyncLifetime
     // freezes a toast's data-index (ToastItem.FrozenIndex) the instant it
     // starts leaving; this proves the freeze survives a sibling's ACTUAL
     // removal (not just that sibling being marked Leaving).
+    //
+    // PR #357 round-5 (P2): once "Four" (a NEWER sibling ahead of "Two") is marked Leaving,
+    // round-3's live-only ranking already re-renders "Two" from live index 3 down to live index
+    // 2 (it fills the hole "Four" left among the four still-live toasts) — a plain, expected
+    // re-render, nothing to do with dismissing "Two" yet. ComputeStackIndex previously ranked
+    // against the RAW group (including "Four" as an ordinary member), so freezing "Two" at the
+    // instant IT starts leaving produced 3 — one MORE than what was actually on screen the
+    // render before, i.e. a backward jump from visible (depth 2) to hidden (depth 3) the moment
+    // its own exit begins. Fixed by ranking the freeze the same live-only way the markup does,
+    // so "Two" freezes at 2 — exactly where it was already rendered — and its own exit is
+    // visually continuous.
     [Fact]
     public async Task Depth3_Toast_Keeps_Its_Frozen_Index_Even_When_A_Newer_Sibling_Finishes_Dismissing_Mid_Exit()
     {
@@ -343,9 +354,9 @@ public class ToastStackingTests : IAsyncLifetime
         // background Task.Delay continuations — an unrelated hover-delay test
         // elsewhere in the suite flaked from exactly that when this used
         // Thread.Sleep. "Four" is
-        // still present (Leaving, not yet removed — 150 < 800), so the group
-        // hasn't reshuffled yet and "Two"'s frozen index is correctly
-        // captured as 3.
+        // still present (Leaving, not yet removed — 150 < 800); "Two" has
+        // already re-rendered to live index 2 (see the round-5 comment
+        // above) and stays there until its own dismissal below.
         await Task.Delay(150);
 
         // Re-find "Two" (not the `two` reference captured before "Four"'s
@@ -369,7 +380,7 @@ public class ToastStackingTests : IAsyncLifetime
             var leaving = cut.FindAll("[role='alert'],[role='status']").SingleOrDefault(e => e.TextContent.Contains("Two"));
             Assert.NotNull(leaving);
             Assert.Contains("animate-toast-out", Attr(leaving!, "class") ?? "");
-            Assert.Equal("3", Attr(leaving!, "data-index"));
+            Assert.Equal("2", Attr(leaving!, "data-index"));
         }, TimeSpan.FromSeconds(5));
 
         // Wait for "Four" to fully finish its exit and unmount — a newer
@@ -381,13 +392,13 @@ public class ToastStackingTests : IAsyncLifetime
             Assert.DoesNotContain(cut.FindAll("[role='alert'],[role='status']"), e => e.TextContent.Contains("Four")),
             TimeSpan.FromSeconds(5));
 
-        // The regression: "Two" must NOT have been promoted to a visible
-        // index by "Four"'s removal — its data-index stays frozen at 3 for
-        // the rest of ITS OWN exit, so the CSS depth>=3 (visibility:hidden)
-        // rule keeps matching it throughout.
+        // The regression: "Two" must NOT be RE-promoted (or demoted) by "Four"'s actual
+        // removal — its data-index stays frozen at 2 (where it was already rendered before
+        // its own exit began) for the rest of ITS OWN exit, matching whatever CSS selector it
+        // was already in the moment dismissal began.
         var twoStillLeaving = cut.FindAll("[role='alert'],[role='status']").SingleOrDefault(e => e.TextContent.Contains("Two"));
         Assert.NotNull(twoStillLeaving);
-        Assert.Equal("3", Attr(twoStillLeaving!, "data-index"));
+        Assert.Equal("2", Attr(twoStillLeaving!, "data-index"));
 
         // Let "Two"'s own exit finish too — no leftover element, no stale index.
         cut.WaitForAssertion(() =>

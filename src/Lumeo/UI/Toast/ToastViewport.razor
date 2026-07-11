@@ -82,16 +82,38 @@
         _focusOutTimer?.Dispose();
         _focusOutTimer = new System.Threading.Timer(_ =>
         {
-            _ = InvokeAsync(() =>
-            {
-                if (seq != _focusOutSequence) return; // superseded by a focusin that landed first
-                _focused = false;
-                StateHasChanged();
-            });
+            _ = RunSafeCollapse(seq);
         }, null, FocusCollapseGraceMs, System.Threading.Timeout.Infinite);
     }
 
-    public void Dispose() => _focusOutTimer?.Dispose();
+    // PR #357 round-5 (P2): the 30ms grace timer above can fire (or already be mid-callback)
+    // right as the component is torn down — navigating away, or a non-default position
+    // viewport disappearing along with its last toast. Two independent guards, matching the
+    // sequence-cancel + exception-swallow idiom the other local timers in this PR use
+    // (Toast.razor's EnterFallbackTimer.RunSafe, ToastProvider's exit/dismiss timers):
+    // Dispose() bumps `_focusOutSequence` so an in-flight callback's stale `seq` never matches
+    // and mutates state post-teardown, AND this catches the disconnected-renderer exceptions
+    // InvokeAsync can throw if the callback is already past that check when disposal lands.
+    private async Task RunSafeCollapse(int seq)
+    {
+        try
+        {
+            await InvokeAsync(() =>
+            {
+                if (seq != _focusOutSequence) return; // superseded by a focusin, or disposed
+                _focused = false;
+                StateHasChanged();
+            });
+        }
+        catch (JSDisconnectedException) { }
+        catch (ObjectDisposedException) { }
+    }
+
+    public void Dispose()
+    {
+        _focusOutSequence++; // invalidate any in-flight callback before disposing the timer
+        _focusOutTimer?.Dispose();
+    }
 
     private bool IsStacked => StackToasts && ToastCount > 1;
 

@@ -477,6 +477,74 @@ public class ToastTests : IAsyncLifetime
         Assert.Equal(6, cut.FindAll("[role='alert'],[role='status']").Count);
     }
 
+    // PR #357 round-5 (P2): the reverse direction of the round-4 fix above. A PERSISTENT
+    // INCOMING toast used to be run through the eviction/queue logic sized for non-persistent
+    // toasts — with 5 ordinary toasts already at the cap, showing a loading toast evicted (and
+    // awaited the exit animation of) the oldest ordinary toast before mounting the persistent
+    // one. Per the MaxToasts contract a persistent occupies an ADDITIONAL slot and must never
+    // evict or queue. Fixed by short-circuiting HandleShowAsync straight to MountToast whenever
+    // the incoming toast itself is persistent (Duration == 0).
+    [Fact]
+    public void Incoming_Persistent_Toast_At_Cap_Does_Not_Evict_Or_Queue()
+    {
+        var toastService = _ctx.Services.GetService(typeof(ToastService)) as ToastService;
+        Assert.NotNull(toastService);
+
+        var cut = _ctx.Render<L.ToastProvider>(); // MaxToasts default = 5
+
+        // Fill the cap entirely with ordinary (non-persistent) toasts.
+        for (var i = 0; i < 5; i++)
+        {
+            toastService!.Show(new ToastOptions { Title = $"Ordinary #{i}", Duration = 60000 });
+        }
+        cut.WaitForAssertion(() => Assert.Equal(5, cut.FindAll("[role='alert'],[role='status']").Count));
+
+        // A persistent (loading/promise) toast arriving at a full cap must mount immediately,
+        // as a 6th toast — not evict the oldest ordinary toast, and not queue.
+        toastService!.Show(new ToastOptions { Title = "Loading...", Duration = 0 });
+        cut.WaitForAssertion(() => Assert.Contains("Loading...", cut.Markup), TimeSpan.FromSeconds(2));
+
+        // All 5 ordinary toasts are still mounted — none evicted to make room.
+        for (var i = 0; i < 5; i++)
+        {
+            Assert.Contains($"Ordinary #{i}", cut.Markup);
+        }
+        Assert.Equal(6, cut.FindAll("[role='alert'],[role='status']").Count);
+    }
+
+    // PR #357 round-5 (P2): MaxToasts is documented as applying PER POSITION GROUP, but the
+    // accounting (mounted count, eviction, the overflow queue, AdmitPending) used to run
+    // against every toast in `_toasts` regardless of ResolvePosition — a full TopLeft viewport
+    // evicted/blocked against a completely independent BottomRight Show(). Fixed by scoping
+    // every step of the accounting to the incoming toast's resolved position.
+    [Fact]
+    public void MaxToasts_Is_Enforced_Independently_Per_Position_Group()
+    {
+        var toastService = _ctx.Services.GetService(typeof(ToastService)) as ToastService;
+        Assert.NotNull(toastService);
+
+        var cut = _ctx.Render<L.ToastProvider>(p => p.Add(b => b.MaxToasts, 1));
+
+        // Fill BottomRight's single slot.
+        toastService!.Show(new ToastOptions { Title = "BR #1", Duration = 60000, Position = ToastPosition.BottomRight });
+        cut.WaitForAssertion(() => Assert.Contains("BR #1", cut.Markup));
+
+        // A TopLeft toast must mount immediately in its OWN, independent viewport — it must
+        // neither evict "BR #1" nor be queued behind it.
+        toastService!.Show(new ToastOptions { Title = "TL #1", Duration = 60000, Position = ToastPosition.TopLeft });
+        cut.WaitForAssertion(() => Assert.Contains("TL #1", cut.Markup), TimeSpan.FromSeconds(2));
+        Assert.Contains("BR #1", cut.Markup);
+        Assert.Equal(2, cut.FindAll("[role='alert'],[role='status']").Count);
+
+        // A second BottomRight toast, however, must respect ITS group's cap of 1: it evicts
+        // "BR #1" (the only non-persistent BottomRight toast), leaving TopLeft untouched.
+        toastService!.Show(new ToastOptions { Title = "BR #2", Duration = 60000, Position = ToastPosition.BottomRight });
+        cut.WaitForAssertion(() => Assert.Contains("BR #2", cut.Markup), TimeSpan.FromSeconds(2));
+        cut.WaitForAssertion(() => Assert.DoesNotContain("BR #1", cut.Markup), TimeSpan.FromSeconds(2));
+        Assert.Contains("TL #1", cut.Markup);
+        Assert.Equal(2, cut.FindAll("[role='alert'],[role='status']").Count);
+    }
+
     [Fact]
     public void ToastProvider_Dismiss_During_Entrance_Does_Not_Throw()
     {
