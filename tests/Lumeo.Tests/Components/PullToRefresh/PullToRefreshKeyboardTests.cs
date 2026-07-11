@@ -4,6 +4,12 @@ using Lumeo.Tests.Helpers;
 
 namespace Lumeo.Tests.Components.PullToRefresh;
 
+// [keyboard-gap] — registry-gen scanner marker (Program.cs ComputeTestCoverage):
+// this file is a documented NEGATIVE keyboard audit, not a positive one. It
+// proves PullToRefresh has NO keyboard equivalent, so it must not count toward
+// "hasKeyboard" in the generated a11y matrix — see the marker's own doc comment
+// in Program.cs for why the content regex would otherwise misfire here (PR #356
+// round-2, Codex/CodeRabbit). Keep this token present as long as the gap is real.
 /// <summary>
 /// Special-case a11y audit (not a wave-4 composition) — PullToRefresh is a
 /// touch/pointer-drag gesture wrapper with NO keyboard equivalent. Verified by

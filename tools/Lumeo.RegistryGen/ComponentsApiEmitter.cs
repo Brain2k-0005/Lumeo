@@ -465,15 +465,35 @@ public static class ComponentsApiEmitter
     // by diffing every component's api.a11y.keys before/after the change. The
     // repeated named group "k" is valid in .NET regex: every alternative/repetition
     // that matches contributes its own capture, all readable via
-    // Match.Groups["k"].Captures. One known accepted gap: a key compared only
-    // through a local variable (Carousel's RTL-swapped `var (back, forward) = ...;
-    // e.Key == back`) still isn't recovered — closing it would require re-widening
-    // the match past any single statement, reopening the original bug.
+    // Match.Groups["k"].Captures.
     private static readonly Regex KeyComparisonRegex = new(
         "\\bcase\\s+\"(?<k>[^\"]*)\"(?:\\s*(?:or|,)\\s*\"(?<k>[^\"]*)\")*" +
         "|\\.Key\\s+is\\s+\"(?<k>[^\"]*)\"(?:\\s*(?:or|,)\\s*\"(?<k>[^\"]*)\")*" +
         "|\\.Key\\s*==\\s*\"(?<k>[^\"]*)\"" +
         "|\"(?<k>[^\"]*)\"(?:\\s*or\\s*\"(?<k>[^\"]*)\")*\\s*\\)?\\s*=>",
+        RegexOptions.Compiled);
+
+    // One-hop local-variable key tracking, closing the gap the comment above USED to
+    // document as accepted: Carousel/Stepper/TabsTrigger all pick their RTL-aware Arrow
+    // key pair via the exact same idiom -
+    //   var (back, forward) = isRtl ? ("ArrowRight", "ArrowLeft") : ("ArrowLeft", "ArrowRight");
+    //   if (e.Key == back) ... else if (e.Key == forward) ...
+    // - so KeyComparisonRegex (literal-only) silently dropped ArrowLeft/ArrowRight from
+    // all three (CodeRabbit/Codex, PR #356 round-2). TupleKeyAssignRegex captures BOTH
+    // branches' literals for each destructured variable name; LocalKeyUseRegex then finds
+    // where that name is later compared via `.Key == <name>`, at which point every
+    // literal ever assigned to it (from either branch - we don't evaluate the runtime
+    // condition, just union both possibilities) is credited. Intentionally narrow (one
+    // hop, this one tuple-ternary shape) rather than a general const/var resolver, to
+    // avoid reopening the original over-matching bug this whole file's history is about.
+    private static readonly Regex TupleKeyAssignRegex = new(
+        "\\bvar\\s*\\(\\s*(?<v1>\\w+)\\s*,\\s*(?<v2>\\w+)\\s*\\)\\s*=\\s*[^;]*?" +
+        "\\(\\s*\"(?<a1>[^\"]*)\"\\s*,\\s*\"(?<a2>[^\"]*)\"\\s*\\)\\s*:\\s*" +
+        "\\(\\s*\"(?<b1>[^\"]*)\"\\s*,\\s*\"(?<b2>[^\"]*)\"\\s*\\)",
+        RegexOptions.Compiled);
+
+    private static readonly Regex LocalKeyUseRegex = new(
+        "\\.Key\\s*==\\s*(?<v>[A-Za-z_]\\w*)\\b",
         RegexOptions.Compiled);
 
     /// <summary>
@@ -509,6 +529,34 @@ public static class ComponentsApiEmitter
                     {
                         if (!KnownKeys.Contains(c.Value)) continue; // still whitelist-gated
                         keys.Add(c.Value == " " ? "Space" : c.Value);
+                    }
+                }
+
+                // One-hop local-variable resolution (see TupleKeyAssignRegex's doc comment).
+                var localKeyLiterals = new Dictionary<string, HashSet<string>>(StringComparer.Ordinal);
+                foreach (Match m in TupleKeyAssignRegex.Matches(text))
+                {
+                    void Track(string varName, string literal)
+                    {
+                        if (!localKeyLiterals.TryGetValue(varName, out var set))
+                            localKeyLiterals[varName] = set = new HashSet<string>(StringComparer.Ordinal);
+                        set.Add(literal);
+                    }
+                    Track(m.Groups["v1"].Value, m.Groups["a1"].Value);
+                    Track(m.Groups["v1"].Value, m.Groups["b1"].Value);
+                    Track(m.Groups["v2"].Value, m.Groups["a2"].Value);
+                    Track(m.Groups["v2"].Value, m.Groups["b2"].Value);
+                }
+                if (localKeyLiterals.Count > 0)
+                {
+                    foreach (Match m in LocalKeyUseRegex.Matches(text))
+                    {
+                        if (!localKeyLiterals.TryGetValue(m.Groups["v"].Value, out var literals)) continue;
+                        foreach (var lit in literals)
+                        {
+                            if (!KnownKeys.Contains(lit)) continue; // still whitelist-gated
+                            keys.Add(lit == " " ? "Space" : lit);
+                        }
                     }
                 }
             }

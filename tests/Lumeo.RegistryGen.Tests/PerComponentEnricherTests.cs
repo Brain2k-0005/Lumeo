@@ -224,6 +224,43 @@ public class PerComponentEnricherTests : IDisposable
     }
 
     [Fact]
+    public void Tests_include_dedicated_folder_files_that_never_render_the_component()
+    {
+        // A sub-component/helper test filed under the component's OWN dedicated
+        // test folder (tests/Lumeo.Tests/Components/Sheet/) must count as this
+        // component's coverage even when it never renders <Sheet>/Lumeo.Sheet
+        // itself — folder ownership is the stronger signal than the render regex
+        // (Codex/CodeRabbit, PR #356 round-2).
+        WriteComponentFile("Sheet", "Sheet.razor", "@namespace Lumeo\n<div></div>");
+        var testDir = Path.Combine(_root, "tests", "Lumeo.Tests", "Components", "Sheet");
+        Directory.CreateDirectory(testDir);
+        File.WriteAllText(Path.Combine(testDir, "SheetHelperTests.cs"), """
+        using Xunit;
+        namespace Lumeo.Tests.Components.Sheet;
+        public class SheetHelperTests
+        {
+            [Fact]
+            public void ParsesSomeHelper() => Assert.True(true);
+        }
+        """);
+
+        var entry = new Dictionary<string, object?>
+        {
+            ["files"] = new[] { "UI/Sheet/Sheet.razor" },
+            ["nugetPackage"] = "Lumeo",
+            ["category"] = "Overlay",
+            ["description"] = "A sheet.",
+        };
+        var apiBlock = Api("""{ "parameters": [] }""");
+
+        PerComponentEnricher.Enrich(entry, "sheet", "Sheet", _root, apiBlock,
+            new HashSet<string> { "Sheet" });
+
+        var tests = Assert.IsType<List<string>>(entry["tests"]);
+        Assert.Contains(tests, t => t.EndsWith("SheetHelperTests.cs", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public void MdSummary_is_populated_with_parameter_table()
     {
         WriteComponentFile("Button", "Button.razor", "@namespace Lumeo\n<button></button>");

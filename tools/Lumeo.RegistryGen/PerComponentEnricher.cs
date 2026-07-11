@@ -258,12 +258,9 @@ public static class PerComponentEnricher
         // (`Lumeo.X` / `L.X`), not a bare word match. This still excludes
         // `Tour.Steps`/`c.Steps`/comment mentions since neither "Lumeo" nor the "L"
         // alias precedes them.
-        var rendersRegex = new Regex(
-            $@"Render<(?:\w+\.)*{Regex.Escape(componentName)}[<>(]" +
-            $@"|<{Regex.Escape(componentName)}[\s/>]" +
-            $@"|OpenComponent<[^>]*\b{Regex.Escape(componentName)}\b" +
-            $@"|\b(?:Lumeo|L)\.{Regex.Escape(componentName)}\b",
-            RegexOptions.Compiled);
+        // Shared with Program.cs's ComputeTestCoverage via ComponentTestSignals — see
+        // its doc comment for why these two must never diverge again (PR #356 round-2).
+        var rendersRegex = ComponentTestSignals.BuildRendersRegex(componentName);
         // E2E specs don't render Razor markup at all — they navigate a real browser
         // to the component's docs route — so they need their own route-based signal
         // rather than the render regex (which would silently drop every E2E entry).
@@ -281,12 +278,25 @@ public static class PerComponentEnricher
                 .Concat(isE2E ? Enumerable.Empty<string>() : Directory.EnumerateFiles(root, "*.razor", SearchOption.AllDirectories));
             foreach (var testFile in testFiles)
             {
-                string text;
-                try { text = File.ReadAllText(testFile).Replace("\r\n", "\n").Replace("\r", "\n"); }
-                catch { continue; }
-                var matches = isE2E ? e2eRouteRegex.IsMatch(text) : rendersRegex.IsMatch(text);
-                if (!matches) continue;
                 var rel = Path.GetRelativePath(repoRoot, testFile).Replace('\\', '/');
+                // Folder ownership is the stronger signal: a file physically filed under
+                // the component's OWN dedicated test folder (e.g.
+                // tests/Lumeo.Tests/Components/Stepper/StepperItemTests.cs) belongs to
+                // this component regardless of whether it happens to render <Stepper>
+                // itself — a test for a sub-component (StepperItem), a shared helper, or
+                // pure logic living in that folder is still THIS component's coverage.
+                // The render-only regex below previously dropped every such file
+                // (CodeRabbit, PR #356 round-2). Skipped for E2E, whose specs aren't
+                // filed per-component the same way.
+                var ownedByFolder = !isE2E && ComponentTestSignals.IsOwnedByFolder(rel, componentName);
+                if (!ownedByFolder)
+                {
+                    string text;
+                    try { text = File.ReadAllText(testFile).Replace("\r\n", "\n").Replace("\r", "\n"); }
+                    catch { continue; }
+                    var matches = isE2E ? e2eRouteRegex.IsMatch(text) : rendersRegex.IsMatch(text);
+                    if (!matches) continue;
+                }
                 if (seenTests.Add(rel)) tests.Add(rel);
             }
         }

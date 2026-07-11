@@ -181,7 +181,14 @@ else if (Inline)
 else
 {
     <Popover @bind-Open="_isOpen" Class="@(FullWidth ? "w-full" : null)">
-        <PopoverTrigger Class="@(FullWidth ? "w-full" : null)">
+        @* SuppressActivationKeys only for the typeable-input branch below: that
+           input already owns Enter (commit + close) and Space (a literal
+           character) itself via HandleInputKeyDown — see PopoverTrigger's own
+           doc comment on the parameter for why bubbling can't be fixed with
+           stopPropagation alone (PR #356 round-2, Codex/CodeRabbit). The plain
+           button-trigger branch (the `else` below) has no competing handler of
+           its own, so it keeps the normal role=button Enter/Space activation. *@
+        <PopoverTrigger Class="@(FullWidth ? "w-full" : null)" SuppressActivationKeys="@UsesTypeableInput">
             @if (UsesTypeableInput)
             {
                 @* No leading LumeoIcons.Calendar here — the trailing CalendarDays
@@ -198,13 +205,18 @@ else
                 <div class="@CssClass" @onclick="HandleInputClick" @onclick:stopPropagation="true" @attributes="AdditionalAttributes">
                     @* @onkeydown:stopPropagation is gated on _isOpen (the state as of the
                        LAST render, i.e. before this keystroke) rather than an unconditional
-                       "true": while the calendar is open, containing every key (incl. Enter/
-                       Space) is what stops PopoverTrigger's own Enter/Space handler from
-                       immediately re-toggling right after HandleInputKeyDown closes it here
-                       (the original "reopened calendar" bug). But once the calendar is
-                       already closed, HandleInputKeyDown has nothing left to do for Escape —
-                       stopping propagation then just swallows Escape before an ancestor
-                       Dialog/Sheet can dismiss on it (Codex P2). *@
+                       "true": while the calendar is open, containing every key (incl. Escape)
+                       stops it from ALSO reaching an ancestor Dialog/Sheet's own Escape-to-
+                       dismiss handler and closing that too — HandleInputKeyDown below already
+                       closes the calendar on Escape, one press should only close the nearest
+                       thing. Once the calendar is already closed, HandleInputKeyDown has
+                       nothing left to do for Escape — stopping propagation then just swallows
+                       it before that ancestor Dialog/Sheet can dismiss on it (Codex P2).
+                       Enter/Space are handled separately: PopoverTrigger.SuppressActivationKeys
+                       (set below) stops its role=button wrapper from treating either as a
+                       toggle regardless of open/closed state — @onkeydown:stopPropagation being
+                       a static per-render flag (not evaluated per key) can't do that alone
+                       without also swallowing Escape (PR #356 round-2, Codex/CodeRabbit). *@
                     <input id="@EffectiveTriggerId"
                            type="text"
                            name="@Name"

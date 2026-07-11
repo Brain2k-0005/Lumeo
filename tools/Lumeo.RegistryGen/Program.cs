@@ -656,8 +656,13 @@ Dictionary<string, object?> ComputeTestCoverage(string componentName)
 
     // Shared/sibling test files OUTSIDE the dedicated folder (and not the universal
     // contract test) that actually RENDER this component — credit their signals too.
-    var renders = new System.Text.RegularExpressions.Regex(
-        $@"Render<{System.Text.RegularExpressions.Regex.Escape(componentName)}[<>(]|<{System.Text.RegularExpressions.Regex.Escape(componentName)}[\s/>]|OpenComponent<[^>]*\b{System.Text.RegularExpressions.Regex.Escape(componentName)}\b");
+    // Built from the SAME regex PerComponentEnricher's tests[] scan uses (via
+    // ComponentTestSignals) — this used to be its own, narrower copy that never
+    // learned the namespace/alias-qualified generic form (`Render<Lumeo.X>`), so a
+    // related file counted in tests[] could silently be invisible to this
+    // testCoverage.relatedFiles stat (e.g. Spinner's A11yPolishTests.cs calling
+    // `ctx.Render<Lumeo.Spinner>()`) — CodeRabbit, PR #356 round-2.
+    var renders = Lumeo.RegistryGen.ComponentTestSignals.BuildRendersRegex(componentName);
     var relatedFiles = allUnitTests
         .Where(t => !t.path.StartsWith(dirPrefix, StringComparison.OrdinalIgnoreCase)
                     && !t.path.Contains("ComponentContractTests", StringComparison.OrdinalIgnoreCase)
@@ -678,9 +683,23 @@ Dictionary<string, object?> ComputeTestCoverage(string componentName)
     // A dedicated *KeyboardTests file is a deliberate keyboard audit even when the
     // component is a native element whose keys the browser handles (those tests
     // assert the affordances — real <button>, no tabindex override — instead of
-    // dispatching KeyDown, so the content regex alone would miss them).
-    var hasKeyboard = files.Any(f => Path.GetFileName(f).Contains("KeyboardTests", StringComparison.OrdinalIgnoreCase))
-                      || Has(@"KeyDown|KeyboardEventArgs|Arrow(Up|Down|Left|Right)|""Enter""|""Escape""|""Home""|""End""");
+    // dispatching KeyDown, so the content regex alone would miss them). BUT some
+    // *KeyboardTests files document the OPPOSITE finding — a deliberate NEGATIVE
+    // audit proving the component has NO keyboard equivalent at all (e.g.
+    // PullToRefreshKeyboardTests) — and proving an absence still has to mention
+    // KeyDown/KeyboardEventArgs/"Enter" in the assertion that dispatches the key
+    // and catches the resulting exception, which would otherwise flip hasKeyboard
+    // true for the exact opposite reason the file exists. Such files opt out with
+    // an explicit "[keyboard-gap]" marker near the class doc, which this scanner
+    // respects by excluding that file from BOTH the filename shortcut and the
+    // content regex below — leaving the a11y matrix honest (Codex/CodeRabbit, PR
+    // #356 round-2). Every OTHER signal (hasA11y, hasBehavior, hasScale, ...)
+    // still credits the marked file normally; only the keyboard signal is opted
+    // out, because that is the one specific claim the marker disputes.
+    var keyboardFiles = files.Where(f => !File.ReadAllText(f).Contains("[keyboard-gap]", StringComparison.Ordinal)).ToArray();
+    var keyboardText = string.Concat(keyboardFiles.Select(File.ReadAllText)) + relatedText;
+    var hasKeyboard = keyboardFiles.Any(f => Path.GetFileName(f).Contains("KeyboardTests", StringComparison.OrdinalIgnoreCase))
+                      || System.Text.RegularExpressions.Regex.IsMatch(keyboardText, @"KeyDown|KeyboardEventArgs|Arrow(Up|Down|Left|Right)|""Enter""|""Escape""|""Home""|""End""");
     var hasBehavior = Has(@"\.Click\(|InvokeAsync|Changed|OnClick|Toggle|SetParametersAndRender|\.Change\(|Input\(");
     var hasScale = files.Any(f => Path.GetFileName(f).Contains("ScaleTests", StringComparison.OrdinalIgnoreCase))
                    || Has(@"1_000_000|Millions|100_000");

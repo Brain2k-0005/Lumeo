@@ -178,4 +178,54 @@ public class DatePickerKeyboardTests : IAsyncLifetime
 
         Assert.DoesNotContain("onkeydown:stoppropagation", cut.Find("input").OuterHtml, StringComparison.OrdinalIgnoreCase);
     }
+
+    // --- Trigger activation keys must not fire from the typeable input, even
+    //     while the calendar is CLOSED (Codex/CodeRabbit round-2, PR #356):
+    //     @onkeydown:stopPropagation above is gated on _isOpen, so while closed
+    //     it lets everything bubble (by design — see the "does not stop
+    //     propagation while closed" test above, needed for Escape/Dialog). That
+    //     meant Enter/Space typed into the closed input ALSO reached
+    //     PopoverTrigger's own role=button Enter/Space handler and silently
+    //     reopened the calendar. Bunit can't execute real DOM bubbling to prove
+    //     that directly (see the comment block above), so this is pinned one
+    //     level down at the mechanism PopoverTrigger actually uses to suppress
+    //     it: SuppressActivationKeys must reach the typeable-input trigger (and
+    //     ONLY that branch — the plain button trigger has no competing Enter/
+    //     Space handler of its own and must keep the normal role=button
+    //     activation), proven via the same JS-registration signal
+    //     PopoverTriggerSpaceSuppressionTests/PopoverKeyboardA11yTests use:
+    //     with SuppressActivationKeys set, PopoverTrigger skips its Space-
+    //     default-suppression registration entirely (nothing left to protect
+    //     once the toggle itself is suppressed).
+
+    private static bool AnyRegisterPreventDefaultKeysFor(BunitContext ctx, string idPrefix) =>
+        ctx.JSInterop.Invocations.Any(i =>
+            i.Identifier == "registerPreventDefaultKeys"
+            && i.Arguments[0] is string id && id.StartsWith(idPrefix, StringComparison.Ordinal));
+
+    [Fact]
+    public void Typeable_Input_Trigger_Suppresses_The_Wrapper_Space_Registration()
+    {
+        // Single/Month/Year modes render the typeable input inside PopoverTrigger
+        // — SuppressActivationKeys must reach it, so the wrapper's own Space-
+        // default suppression (which exists only to protect ITS OWN toggle) never
+        // registers.
+        var cut = RenderPicker(value: new DateOnly(2026, 6, 10));
+        cut.Find("input").Click(); // open — OnAfterRenderAsync runs for PopoverTrigger
+
+        Assert.False(AnyRegisterPreventDefaultKeysFor(_ctx, "popover-trigger-"));
+    }
+
+    [Fact]
+    public void Button_Trigger_Still_Registers_The_Wrapper_Space_Suppression()
+    {
+        // Control for the test above: Range mode has no typeable input (no
+        // competing Enter/Space handler), so its plain button trigger must keep
+        // the ordinary role=button Space-default suppression — proves the fix is
+        // scoped to the typeable-input branch, not a blanket change.
+        var cut = _ctx.Render<L.DatePicker>(p => p.Add(c => c.Mode, L.DatePicker.DatePickerMode.Range));
+        cut.Find("button[type='button']").Click();
+
+        Assert.True(AnyRegisterPreventDefaultKeysFor(_ctx, "popover-trigger-"));
+    }
 }

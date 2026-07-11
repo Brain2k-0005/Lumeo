@@ -93,6 +93,67 @@ public class PopoverKeyboardA11yTests : IAsyncLifetime
         Assert.Null(RuleSetFor("popover-trigger-"));
     }
 
+    // --- PR #356 round-2 (Codex/CodeRabbit): SuppressActivationKeys ---
+    // A child that already owns Enter/Space itself (e.g. DatePicker's typeable
+    // input) must be able to opt the fallback role=button wrapper OUT of its own
+    // Enter/Space-toggles-the-popover handling, so those keys bubbling out of the
+    // child don't ALSO toggle this wrapper a second, unwanted time. Regression
+    // tested both ways: the flag actually blocks the toggle when set, and the
+    // default (unset) path still toggles normally so this is additive, not a
+    // behaviour change for every other PopoverTrigger consumer.
+
+    private static RenderFragment SuppressedFallbackTrigger => b =>
+    {
+        b.OpenComponent<L.PopoverTrigger>(0);
+        b.AddAttribute(1, "AsChild", false);
+        b.AddAttribute(2, "SuppressActivationKeys", true);
+        b.AddAttribute(3, "ChildContent", (RenderFragment)(inner => inner.AddContent(0, "Toggle")));
+        b.CloseComponent();
+
+        b.OpenComponent<L.PopoverContent>(4);
+        b.AddAttribute(5, "ChildContent", (RenderFragment)(inner => inner.AddContent(0, "Popover content")));
+        b.CloseComponent();
+    };
+
+    [Fact]
+    public void SuppressActivationKeys_Skips_The_Space_PreventDefault_Registration()
+    {
+        var cut = _ctx.Render<L.Popover>(p => p.Add(x => x.ChildContent, SuppressedFallbackTrigger));
+
+        // Space's default is only suppressed so the div[role=button] can safely
+        // toggle on it — with the toggle itself suppressed there is nothing left
+        // to protect, and registering the JS rule anyway would just swallow a
+        // literal space typed into whatever the child actually is (e.g. a text
+        // input) once it bubbles here.
+        Assert.Null(RuleSetFor("popover-trigger-"));
+    }
+
+    [Fact]
+    public void SuppressActivationKeys_Blocks_Enter_And_Space_From_Toggling_The_Popover()
+    {
+        var cut = _ctx.Render<L.Popover>(p => p.Add(x => x.ChildContent, SuppressedFallbackTrigger));
+        var trigger = cut.Find("[role='button']");
+
+        trigger.KeyDown("Enter");
+        Assert.DoesNotContain("Popover content", cut.Markup);
+
+        trigger.KeyDown(" ");
+        Assert.DoesNotContain("Popover content", cut.Markup);
+    }
+
+    [Fact]
+    public void Without_SuppressActivationKeys_Enter_Still_Toggles_The_Popover()
+    {
+        // Control for the test above: proves the fix is opt-in — the default
+        // (unset / false) path keeps toggling on Enter exactly as before.
+        var cut = _ctx.Render<L.Popover>(p => p.Add(x => x.ChildContent, FallbackTrigger));
+        var trigger = cut.Find("[role='button']");
+
+        trigger.KeyDown("Enter");
+
+        Assert.Contains("Popover content", cut.Markup);
+    }
+
     // --- #87: focus restore on close ---
     private static RenderFragment FocusChildren => b =>
     {

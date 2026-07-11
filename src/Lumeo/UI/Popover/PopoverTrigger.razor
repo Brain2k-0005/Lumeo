@@ -56,6 +56,25 @@ else
     /// </summary>
     [Parameter] public bool AsChild { get; set; }
 
+    /// <summary>
+    /// When <c>true</c>, Enter/Space keydowns that bubble up to this trigger's own
+    /// <c>role="button"</c> wrapper (from a <see cref="ChildContent"/> that contains
+    /// its OWN interactive control) do NOT toggle the popover, and the Space-default
+    /// suppression is skipped too. Set this when the child already owns Enter/Space
+    /// itself — e.g. DatePicker's typeable input, whose Enter commits the buffer and
+    /// closes, and whose Space is a literal character to type. Without this, those
+    /// keys bubbling out of the child ALSO reach this wrapper's own role=button
+    /// handler and toggle it a second, unwanted time — with the popover CLOSED this
+    /// silently reopens it; with the popover OPEN this fights whatever the child just
+    /// did (PR #356 round-2, Codex/CodeRabbit). Blazor's <c>:stopPropagation</c> is a
+    /// static per-render flag, not evaluated per key, so it cannot selectively block
+    /// only Enter/Space while still letting Escape (etc.) bubble to an ancestor
+    /// Dialog/Sheet — suppressing the toggle here, at the source, is the only way to
+    /// do that without also swallowing Escape. Default <c>false</c> preserves the
+    /// existing role=button Enter/Space activation for every other consumer.
+    /// </summary>
+    [Parameter] public bool SuppressActivationKeys { get; set; }
+
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
@@ -97,12 +116,12 @@ else
 
     private async Task HandleKeyDown(KeyboardEventArgs e)
     {
-        if (e.Key is "Enter" or " ") await Toggle();
+        if (!SuppressActivationKeys && e.Key is "Enter" or " ") await Toggle();
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (!firstRender || AsChild) return;
+        if (!firstRender || AsChild || SuppressActivationKeys) return;
         try
         {
             // battle-wave2 #88 (keyboard-a11y): the fallback div[role=button] has no
