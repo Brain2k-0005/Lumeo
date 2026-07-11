@@ -2674,9 +2674,15 @@ export function registerColumnResize(handleId, dotnetRef, minWidth, maxWidth) {
         // Block scroll on touch devices while actively dragging.
         if (e.cancelable) e.preventDefault();
     };
-    const endDrag = () => {
+    // `keepToken` lets a caller that's about to fire a commit interop hold the
+    // arbiter through that commit's completion instead of releasing here —
+    // round-12 #2: releasing right after STARTING invokeMethodAsync (rather
+    // than once it actually settles) let another gesture claim the grid while
+    // a slow .NET OnColumnResizeCommit handler was still in flight, reopening
+    // the exact race the settle-window token hold already closes for reorder.
+    const endDrag = (keepToken) => {
         isDragging = false;
-        releaseGridDrag(gridId, 'resize');
+        if (!keepToken) releaseGridDrag(gridId, 'resize');
         if (rafId) { cancelAnimationFrame(rafId); rafId = 0; }
         document.body.style.cursor = '';
         document.documentElement.style.cursor = '';
@@ -2692,17 +2698,22 @@ export function registerColumnResize(handleId, dotnetRef, minWidth, maxWidth) {
             currentWidth = pendingWidth;
             applyWidth(pendingWidth);
         }
-        endDrag();
-        try { handle.releasePointerCapture(e.pointerId); } catch (_) { }
-        activePointerId = null;
         // No actual width change occurred — a plain click/tap, or critically
         // the first pointerdown/pointerup pair the browser still sends before
         // dblclick fires. Skip the commit so consumers of OnColumnResizeCommit
         // don't see a spurious no-op resize event on every auto-fit gesture;
         // onDoubleClick fires its own commit for the real auto-fit width
         // (Codex round-5 #4).
-        if (currentWidth === startWidth) return;
-        dotnetRef.invokeMethodAsync('OnColumnResizeCommit', handleId, currentWidth, false);
+        const willCommit = currentWidth !== startWidth;
+        endDrag(willCommit);
+        try { handle.releasePointerCapture(e.pointerId); } catch (_) { }
+        activePointerId = null;
+        if (!willCommit) return;
+        // Hold the token until the interop promise actually settles (round-12
+        // #2) — `finally` releases on both a successful commit AND a rejected
+        // one, so a failed .NET round-trip can never strand the token.
+        dotnetRef.invokeMethodAsync('OnColumnResizeCommit', handleId, currentWidth, false)
+            .finally(() => releaseGridDrag(gridId, 'resize'));
     };
     const onPointerCancel = (e) => {
         if (!isDragging || e.pointerId !== activePointerId) return;
@@ -2759,9 +2770,10 @@ export function registerColumnResize(handleId, dotnetRef, minWidth, maxWidth) {
         // OnColumnResizeCommit while a reorder settle window still held the
         // token (round-11 #2). Refuse silently exactly like onPointerDown —
         // no queueing. Auto-fit is instantaneous (no drag of its own to hold
-        // the token through), so it's claimed and released immediately around
-        // the single mutation + commit, mirroring onPointerUp/endDrag's
-        // immediate release rather than reorder's settle-window hold.
+        // the token through), so it's claimed here and held through the
+        // commit interop's completion (round-12 #2) rather than released
+        // synchronously right after invokeMethodAsync starts — a slow .NET
+        // commit could otherwise let another gesture claim the grid mid-commit.
         if (!claimGridDrag(gridId, 'resize')) return;
         const cells = [th, ...gatherBodyCells()];
         let natural = 0;
@@ -2772,8 +2784,10 @@ export function registerColumnResize(handleId, dotnetRef, minWidth, maxWidth) {
         colBodyCells = gatherBodyCells();
         applyWidth(w);
         currentWidth = w;
-        dotnetRef.invokeMethodAsync('OnColumnResizeCommit', handleId, w, true);
-        releaseGridDrag(gridId, 'resize');
+        // `finally` releases on both a successful commit and a rejected one,
+        // so a failed .NET round-trip can never strand the token.
+        dotnetRef.invokeMethodAsync('OnColumnResizeCommit', handleId, w, true)
+            .finally(() => releaseGridDrag(gridId, 'resize'));
     };
     handle.addEventListener('pointerdown', onPointerDown);
     // passive: false so preventDefault works inside pointermove on touch.
@@ -2782,7 +2796,7 @@ export function registerColumnResize(handleId, dotnetRef, minWidth, maxWidth) {
     handle.addEventListener('pointercancel', onPointerCancel);
     handle.addEventListener('dblclick', onDoubleClick);
     columnResizeHandlers.set(handleId, {
-        handle, th, min, max, dotnetRef, applyWidth, gatherBodyCells,
+        handle, th, min, max, dotnetRef, applyWidth, gatherBodyCells, gridId,
         onPointerDown, onPointerMove, onPointerUp, onPointerCancel, onDoubleClick,
         cancelActiveDrag,
     });
@@ -2811,12 +2825,23 @@ export function nudgeColumnResize(handleId, delta) {
     // OnColumnResizeCommit/autosave/re-render for a no-op keypress
     // (round-6 finding).
     if (w === Math.round(current)) return w;
+    // Cross-engine: a pointer/dblclick resize, or a column/row reorder still
+    // in its post-release settle window, already owns this grid's shared
+    // arbiter token — refuse this discrete keyboard nudge silently, exactly
+    // like onPointerDown/onDoubleClick do (round-12 #3). No queueing: the
+    // width is left untouched and the next keypress after the token frees up
+    // simply tries again.
+    if (!claimGridDrag(h.gridId, 'resize')) return Math.round(current);
     // Refresh the body-cell list (rows may have paged/virtualized since register).
     const cells = h.gatherBodyCells();
     const wpx = w + 'px';
     h.th.style.width = wpx; h.th.style.minWidth = wpx;
     for (const c of cells) { c.style.width = wpx; c.style.minWidth = wpx; }
-    h.dotnetRef.invokeMethodAsync('OnColumnResizeCommit', handleId, w, false);
+    // Held through the commit interop's completion, not released
+    // synchronously right after invokeMethodAsync starts — `finally` covers
+    // a rejected commit too, mirroring every other commit site (round-12 #2).
+    h.dotnetRef.invokeMethodAsync('OnColumnResizeCommit', handleId, w, false)
+        .finally(() => releaseGridDrag(h.gridId, 'resize'));
     return w;
 }
 
@@ -3355,16 +3380,24 @@ export function registerColumnReorder(gridId, dotnetRef) {
                 // projected slot, siblings at their live-shift positions) —
                 // captureColumnRects measures this true final visual order next
                 // and clears these inline styles itself.
-                dotnetRef.invokeMethodAsync('OnColumnReorderCommit', gridId, d.sourceColId, commitTargetColId);
+                //
+                // The token is released from THIS promise's `finally`, not
+                // synchronously right after invokeMethodAsync starts (round-12
+                // #2) — a slow awaited OnColumnReorder consumer handler (or
+                // plain Blazor Server latency) would otherwise let another
+                // gesture claim the grid while the commit is still in flight,
+                // reopening the exact race the settle-window hold exists to
+                // close. `finally` covers a rejected commit too.
+                dotnetRef.invokeMethodAsync('OnColumnReorderCommit', gridId, d.sourceColId, commitTargetColId)
+                    .finally(() => releaseGridDrag(gridId, 'column-reorder'));
             } else {
                 for (const cell of shiftedCells) {
                     cell.style.transition = '';
                     cell.style.transform = '';
                 }
+                // No commit fires on cancel — nothing to await, release now.
+                releaseGridDrag(gridId, 'column-reorder');
             }
-            // Only now — after the queued commit/glide-back has actually been
-            // dispatched — does another gesture get to claim this grid (round-10 #3).
-            releaseGridDrag(gridId, 'column-reorder');
         }, REORDER_SETTLE_MS + 20);
         pendingSettle = { timeoutId, cells: settleCells };
     };
@@ -3425,6 +3458,13 @@ export function registerColumnReorder(gridId, dotnetRef) {
     };
 
     const onPointerDown = (e) => {
+        // Ignore non-primary mouse buttons; touch/pen always fall through —
+        // mirrors registerColumnResize's and registerRowReorder's guard. The
+        // grip branch below arms IMMEDIATELY (no movement-threshold to filter
+        // it later), so without this a right- or middle-button press on the
+        // grip would still claim the arbiter token, arm the drag, and
+        // preventDefault — suppressing the column's context menu (round-12 #1).
+        if (e.pointerType === 'mouse' && e.button !== 0) return;
         // A second pointerdown while a drag is already pending/armed (second
         // touch point, second mouse button, concurrent pen) must not overwrite
         // the single `drag` descriptor — the live one owns its pointerId until
@@ -3814,7 +3854,15 @@ export function registerRowReorder(gridId, dotnetRef) {
                 // projected slot, siblings at their live-shift positions) —
                 // captureRowRects measures this true final visual order next
                 // and clears these inline styles itself.
-                dotnetRef.invokeMethodAsync('OnRowReorderCommit', gridId, sourceRowKey, targetRowKey);
+                //
+                // Vertical mirror of registerColumnReorder's fix (round-12 #2):
+                // release from THIS promise's `finally`, not synchronously
+                // right after invokeMethodAsync starts — a slow awaited
+                // OnRowReorder consumer handler would otherwise let another
+                // gesture claim the grid while the commit is still in flight.
+                // `finally` covers a rejected commit too.
+                dotnetRef.invokeMethodAsync('OnRowReorderCommit', gridId, sourceRowKey, targetRowKey)
+                    .finally(() => releaseGridDrag(gridId, 'row-reorder'));
             } else {
                 for (const [el, detail] of shiftedPairs) {
                     el.style.transition = '';
@@ -3824,10 +3872,9 @@ export function registerRowReorder(gridId, dotnetRef) {
                         detail.style.transform = '';
                     }
                 }
+                // No commit fires on cancel — nothing to await, release now.
+                releaseGridDrag(gridId, 'row-reorder');
             }
-            // Only now — after the queued commit/glide-back has actually been
-            // dispatched — does another gesture get to claim this grid (round-10 #3).
-            releaseGridDrag(gridId, 'row-reorder');
         }, ROW_REORDER_SETTLE_MS + 20);
         pendingSettle = { timeoutId, els: settleEls };
     };
