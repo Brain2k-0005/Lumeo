@@ -1,10 +1,18 @@
 namespace Lumeo;
 
 /// <summary>Instance-bound drag state for one DataGrid&lt;TItem&gt;. Replaces the
-/// static ColumnDragState / DragState holders that previously lived in
-/// DataGridHeaderCell + DataGridRow. Each DataGrid creates exactly one
-/// instance and cascades it; cells / rows guard their drop logic with
-/// SourceGridId == OwnerGridId so cross-instance drags are rejected.</summary>
+/// static ColumnDragState holder that previously lived in DataGridHeaderCell.
+/// Each DataGrid creates exactly one instance and cascades it; header cells
+/// guard their drop logic with SourceGridId == OwnerGridId so cross-instance
+/// drags are rejected.
+/// <para>
+/// Row drag state used to live here too (SourceRowIndex / StartRowDrag /
+/// ResetRow / IsOwnDragRow), backing DataGridRow's native HTML5 DnD. The
+/// ReUI-parity pass replaced row reorder with the unified pointer-based engine
+/// (registerRowReorder in components.js, driven entirely by JS + a single
+/// commit call to DataGrid.ReorderRowByKeyAsync) — there's no drag state left
+/// for rows to hold here, only the column drag-to-group-panel gesture below.
+/// </para></summary>
 public sealed class DataGridDragState
 {
     public string OwnerGridId { get; }
@@ -12,11 +20,9 @@ public sealed class DataGridDragState
     public int SourceColumnIndex { get; set; } = -1;
     public string? SourceColumnId { get; set; }
 
-    public int SourceRowIndex { get; set; } = -1;
-
-    /// <summary>The grid that originated the drag. Cells / rows MUST
-    /// verify this matches their owner before applying a drop. Reset to
-    /// null on Reset().</summary>
+    /// <summary>The grid that originated the drag. Cells MUST verify this
+    /// matches their owner before applying a drop. Reset to null on
+    /// ResetColumn().</summary>
     public string? SourceGridId { get; set; }
 
     public DataGridDragState(string ownerGridId)
@@ -31,30 +37,15 @@ public sealed class DataGridDragState
         SourceGridId = OwnerGridId;
     }
 
-    public void StartRowDrag(int sourceIndex)
-    {
-        SourceRowIndex = sourceIndex;
-        SourceGridId = OwnerGridId;
-    }
-
     public void ResetColumn()
     {
         SourceColumnIndex = -1;
         SourceColumnId = null;
-        if (SourceRowIndex < 0) SourceGridId = null;
-    }
-
-    public void ResetRow()
-    {
-        SourceRowIndex = -1;
-        if (SourceColumnIndex < 0) SourceGridId = null;
+        SourceGridId = null;
     }
 
     /// <summary>True only if a drag is in progress AND it originated in this
     /// grid instance. Drop handlers should bail out when this is false.</summary>
     public bool IsOwnDragColumn(int columnIndex) =>
         SourceGridId == OwnerGridId && SourceColumnIndex >= 0;
-
-    public bool IsOwnDragRow() =>
-        SourceGridId == OwnerGridId && SourceRowIndex >= 0;
 }

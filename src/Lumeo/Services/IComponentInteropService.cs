@@ -309,12 +309,72 @@ public interface IComponentInteropService : IAsyncDisposable, IDisposable
     // DataGrid Column Resize — JS previews the drag directly in the DOM and invokes
     // commitHandler once with the final width on mouseup.
     ValueTask RegisterColumnResize(string handleId, double minWidth, double? maxWidth, Func<double, Task> commitHandler);
+    /// <summary>
+    /// Pointer-based overload that also reports whether the final width came from a
+    /// double-click auto-fit-to-content rather than a drag (<paramref name="commitHandler"/>'s
+    /// bool). Round-9 #4: the original 4-parameter member above stays the abstract
+    /// contract byte-for-byte (a prior round widened ITS delegate type in place, which
+    /// broke every external implementer / test double the moment they updated). This is
+    /// an ADDITIVE default interface member instead — the default body delegates to the
+    /// 4-parameter member with autoFit always <c>false</c> (a legacy handler has no way
+    /// to distinguish the two), so existing implementers keep compiling unchanged.
+    /// <see cref="Lumeo.Services.ComponentInteropService"/> overrides this overload
+    /// directly to report the real autoFit flag.
+    /// </summary>
+    ValueTask RegisterColumnResize(string handleId, double minWidth, double? maxWidth, Func<double, bool, Task> commitHandler) =>
+        RegisterColumnResize(handleId, minWidth, maxWidth, w => commitHandler(w, false));
     ValueTask UnregisterColumnResize(string handleId);
+    /// <summary>Keyboard resize: nudges the column width by <paramref name="delta"/> px
+    /// (JS clamps to min/max and re-commits through the registered handler). Additive
+    /// DIM — no-op default so existing implementers / test doubles keep compiling;
+    /// DataGrid's own keyboard resize simply has no effect against a legacy double.</summary>
+    ValueTask NudgeColumnResize(string handleId, double delta) => ValueTask.CompletedTask;
+
+    // DataGrid Column Reorder (pointer-based touch/pen) — one delegated listener per
+    // grid; commitHandler(sourceColumnId, targetColumnId) fires once on release.
+    // Additive DIMs (round-9 #4) — no-op default so existing implementers / test
+    // doubles keep compiling; DataGrid's pointer reorder simply won't register
+    // against a legacy double.
+    ValueTask RegisterColumnReorder(string gridId, Func<string, string, Task> commitHandler) => ValueTask.CompletedTask;
+    ValueTask UnregisterColumnReorder(string gridId) => ValueTask.CompletedTask;
 
     // DataGrid Column Reorder FLIP — capture column rects before reorder,
     // animate from old → new positions after Blazor's re-render.
     ValueTask CaptureColumnRects(string gridId);
     ValueTask AnimateColumnReorder(string gridId, int durationMs);
+
+    /// <summary>Snaps every header/body cell back to identity WITHOUT capturing —
+    /// the no-animation counterpart to <see cref="CaptureColumnRects"/> for a
+    /// delayed reorder commit that gets REJECTED (columns changed during the
+    /// settle window), so the transforms JS left in place never get an accept-path
+    /// capture to clear them (round-8 #4). Additive DIM (round-9 #4) — no-op default
+    /// so existing implementers / test doubles keep compiling.</summary>
+    ValueTask ClearColumnReorderTransforms(string gridId) => ValueTask.CompletedTask;
+
+    // DataGrid Row Reorder (pointer-based mouse/touch/pen, handle-only) — one
+    // delegated listener per grid; commitHandler(sourceRowKey, targetRowKey)
+    // fires once on release, keyed by stable row identity (not the plain DOM
+    // index JS measured at drag start) so a mutation during the post-drop
+    // settle delay can't move the wrong row. Only ever registered for flat,
+    // non-virtualized grids. Additive DIMs (round-9 #4) — no-op default so
+    // existing implementers / test doubles keep compiling.
+    ValueTask RegisterRowReorder(string gridId, Func<string, string, Task> commitHandler) => ValueTask.CompletedTask;
+    ValueTask UnregisterRowReorder(string gridId) => ValueTask.CompletedTask;
+
+    // DataGrid Row Reorder FLIP — capture row rects (keyed by stable row
+    // identity) before reorder, animate from old → new positions after
+    // Blazor's re-render. Additive DIMs (round-9 #4) — no-op default so
+    // existing implementers / test doubles keep compiling.
+    ValueTask CaptureRowRects(string gridId) => ValueTask.CompletedTask;
+    ValueTask AnimateRowReorder(string gridId, int durationMs) => ValueTask.CompletedTask;
+
+    /// <summary>Snaps every row (and any expanded detail sibling) back to identity
+    /// WITHOUT capturing — the no-animation counterpart to <see cref="CaptureRowRects"/>
+    /// for a delayed reorder commit that gets REJECTED (backing rows changed during
+    /// the settle window), so the transforms JS left in place never get an
+    /// accept-path capture to clear them (round-8 #2). Additive DIM (round-9 #4) —
+    /// no-op default so existing implementers / test doubles keep compiling.</summary>
+    ValueTask ClearRowReorderTransforms(string gridId) => ValueTask.CompletedTask;
 
     // Tour
     ValueTask<ElementRect?> GetElementRectBySelector(string selector);

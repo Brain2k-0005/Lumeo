@@ -32,6 +32,6 @@ public sealed class DataGridToolbarContext<TItem>
     public string? LayoutStorageKey { get; set; }
     public EventCallback<Exception> OnError { get; set; }
 
-    public ComponentInteropService Interop { get; set; } = default!;
+    public IComponentInteropService Interop { get; set; } = default!;
     public Services.Localization.ILumeoLocalizer Localizer { get; set; } = default!;
 }

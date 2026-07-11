@@ -19,6 +19,7 @@ public sealed class ComponentInteropService : IComponentInteropService
     private readonly FocusInterop _focus = new();
     private readonly SwipeInterop _swipe = new();
     private readonly ResizeInterop _resize = new();
+    private readonly ReorderInterop _reorder = new();
     private readonly ScrollInterop _scroll = new();
     private readonly UtilityInterop _utility = new();
     private readonly RichTextInterop _richText = new();
@@ -767,7 +768,14 @@ public sealed class ComponentInteropService : IComponentInteropService
 
     // --- DataGrid Column Resize ---
 
-    public async ValueTask RegisterColumnResize(string handleId, double minWidth, double? maxWidth, Func<double, Task> commitHandler)
+    // Explicit implementation of the interface's original (non-autoFit) abstract
+    // member (round-9 #4) — delegates to the autoFit-aware overload below with
+    // autoFit always false, mirroring the interface's own default so callers that
+    // still bind to the 4-parameter shape behave identically either way.
+    public ValueTask RegisterColumnResize(string handleId, double minWidth, double? maxWidth, Func<double, Task> commitHandler) =>
+        RegisterColumnResize(handleId, minWidth, maxWidth, (w, _) => commitHandler(w));
+
+    public async ValueTask RegisterColumnResize(string handleId, double minWidth, double? maxWidth, Func<double, bool, Task> commitHandler)
     {
         var module = await GetModuleAsync();
         await _resize.RegisterColumnResize(module, GetSelfRef(), handleId, minWidth, maxWidth, commitHandler);
@@ -775,8 +783,18 @@ public sealed class ComponentInteropService : IComponentInteropService
 
     public async ValueTask UnregisterColumnResize(string handleId)
     {
+        try
+        {
+            var module = await GetModuleAsync();
+            await _resize.UnregisterColumnResize(module, handleId);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
+    public async ValueTask NudgeColumnResize(string handleId, double delta)
+    {
         var module = await GetModuleAsync();
-        await _resize.UnregisterColumnResize(module, handleId);
+        await _resize.NudgeColumnResize(module, handleId, delta);
     }
 
     [JSInvokable]
@@ -786,7 +804,29 @@ public sealed class ComponentInteropService : IComponentInteropService
     public async Task OnColumnResizeEnd(string handleId) => await _resize.OnColumnResizeEnd(handleId);
 
     [JSInvokable]
-    public async Task OnColumnResizeCommit(string handleId, double finalWidth) => await _resize.OnColumnResizeCommit(handleId, finalWidth);
+    public async Task OnColumnResizeCommit(string handleId, double finalWidth, bool autoFit) => await _resize.OnColumnResizeCommit(handleId, finalWidth, autoFit);
+
+    // --- DataGrid Column Reorder (pointer-based touch/pen) ---
+
+    public async ValueTask RegisterColumnReorder(string gridId, Func<string, string, Task> commitHandler)
+    {
+        var module = await GetModuleAsync();
+        await _reorder.RegisterColumnReorder(module, GetSelfRef(), gridId, commitHandler);
+    }
+
+    public async ValueTask UnregisterColumnReorder(string gridId)
+    {
+        try
+        {
+            var module = await GetModuleAsync();
+            await _reorder.UnregisterColumnReorder(module, gridId);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
+    [JSInvokable]
+    public async Task OnColumnReorderCommit(string gridId, string sourceColumnId, string targetColumnId)
+        => await _reorder.OnColumnReorderCommit(gridId, sourceColumnId, targetColumnId);
 
     // --- DataGrid Column Reorder FLIP Animation ---
 
@@ -800,6 +840,54 @@ public sealed class ComponentInteropService : IComponentInteropService
     {
         var module = await GetModuleAsync();
         await module.InvokeVoidAsync("animateColumnReorder", gridId, durationMs);
+    }
+
+    public async ValueTask ClearColumnReorderTransforms(string gridId)
+    {
+        var module = await GetModuleAsync();
+        await module.InvokeVoidAsync("clearColumnReorderTransforms", gridId);
+    }
+
+    // --- DataGrid Row Reorder (pointer-based mouse/touch/pen) ---
+
+    public async ValueTask RegisterRowReorder(string gridId, Func<string, string, Task> commitHandler)
+    {
+        var module = await GetModuleAsync();
+        await _reorder.RegisterRowReorder(module, GetSelfRef(), gridId, commitHandler);
+    }
+
+    public async ValueTask UnregisterRowReorder(string gridId)
+    {
+        try
+        {
+            var module = await GetModuleAsync();
+            await _reorder.UnregisterRowReorder(module, gridId);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
+    [JSInvokable]
+    public async Task OnRowReorderCommit(string gridId, string sourceRowKey, string targetRowKey)
+        => await _reorder.OnRowReorderCommit(gridId, sourceRowKey, targetRowKey);
+
+    // --- DataGrid Row Reorder FLIP Animation ---
+
+    public async ValueTask CaptureRowRects(string gridId)
+    {
+        var module = await GetModuleAsync();
+        await module.InvokeVoidAsync("captureRowRects", gridId);
+    }
+
+    public async ValueTask AnimateRowReorder(string gridId, int durationMs)
+    {
+        var module = await GetModuleAsync();
+        await module.InvokeVoidAsync("animateRowReorder", gridId, durationMs);
+    }
+
+    public async ValueTask ClearRowReorderTransforms(string gridId)
+    {
+        var module = await GetModuleAsync();
+        await module.InvokeVoidAsync("clearRowReorderTransforms", gridId);
     }
 
     // --- Tour: Element Rect By Selector ---
@@ -1685,6 +1773,7 @@ public sealed class ComponentInteropService : IComponentInteropService
         _clickOutside.Clear();
         _swipe.Clear();
         _resize.Clear();
+        _reorder.Clear();
         _scroll.Clear();
         _utility.Clear();
         _sortable.Clear();

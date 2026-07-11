@@ -54,10 +54,15 @@ public class DataGridKeyboardPreventDefaultTests : IAsyncLifetime
             .Add(x => x.ShowPagination, false)
             .Add(x => x.SelectionMode, DataGridSelectionMode.Multiple));
 
-    private static (string ElementId, IReadOnlyList<PreventDefaultKeyRule> Rules) SingleRegistration(BunitContext ctx)
+    // Filters to the TABLE's own registration by elementId (PR-353 round-13 #3): every
+    // Resizable column's resize handle now ALSO calls registerPreventDefaultKeys for its
+    // own ArrowLeft/ArrowRight (see DataGridAwaitedCommitRaceTests), so an unqualified
+    // "the one registerPreventDefaultKeys call" assumption no longer holds — this suite
+    // is specifically about the grid/table-level nav-key registration.
+    private static (string ElementId, IReadOnlyList<PreventDefaultKeyRule> Rules) SingleRegistration(BunitContext ctx, string tableId)
     {
         var reg = Assert.Single(ctx.JSInterop.Invocations,
-            i => i.Identifier == "registerPreventDefaultKeys");
+            i => i.Identifier == "registerPreventDefaultKeys" && (string)i.Arguments[0]! == tableId);
         var elementId = (string)reg.Arguments[0]!;
         var rules = (IReadOnlyList<PreventDefaultKeyRule>)reg.Arguments[1]!;
         return (elementId, rules);
@@ -71,7 +76,7 @@ public class DataGridKeyboardPreventDefaultTests : IAsyncLifetime
         var tableId = cut.Find("table").GetAttribute("id");
         Assert.False(string.IsNullOrEmpty(tableId));
 
-        var (elementId, rules) = SingleRegistration(_ctx);
+        var (elementId, rules) = SingleRegistration(_ctx, tableId!);
 
         // Registered against the table (its id IS the grid id), where cell/header
         // keydowns bubble to.
@@ -96,8 +101,9 @@ public class DataGridKeyboardPreventDefaultTests : IAsyncLifetime
         // Tab must stay live so the user can move focus out of the grid; suppressing
         // it (the reason a blanket @onkeydown:preventDefault was rejected) would trap
         // keyboard focus inside the table.
-        RenderGrid();
-        var (_, rules) = SingleRegistration(_ctx);
+        var cut = RenderGrid();
+        var tableId = cut.Find("table").GetAttribute("id")!;
+        var (_, rules) = SingleRegistration(_ctx, tableId);
 
         Assert.DoesNotContain(rules, r => r.Key == "Tab");
     }
@@ -108,8 +114,9 @@ public class DataGridKeyboardPreventDefaultTests : IAsyncLifetime
         // SkipEditable means the listener never suppresses a key whose target sits
         // inside an <input>/<textarea>/<select> — so cell-edit typing, caret arrows,
         // Home/End and the editor's own Tab/Enter/Escape handling are untouched.
-        RenderGrid();
-        var (_, rules) = SingleRegistration(_ctx);
+        var cut = RenderGrid();
+        var tableId = cut.Find("table").GetAttribute("id")!;
+        var (_, rules) = SingleRegistration(_ctx, tableId);
 
         Assert.NotEmpty(rules);
         Assert.All(rules, r => Assert.True(r.SkipEditable));
@@ -130,8 +137,10 @@ public class DataGridKeyboardPreventDefaultTests : IAsyncLifetime
             .Add(x => x.ShowPagination, false)
             .Add(x => x.SelectionMode, DataGridSelectionMode.Multiple));
 
-        var tableId = (string)ctx.JSInterop.Invocations
-            .Single(i => i.Identifier == "registerPreventDefaultKeys").Arguments[0]!;
+        // Read the table's id directly off the DOM rather than assuming it's the
+        // only registerPreventDefaultKeys caller — every Resizable column's resize
+        // handle now ALSO registers one for its own Arrow keys (round-13 #3).
+        var tableId = cut.Find("table").GetAttribute("id")!;
 
         var unregBefore = ctx.JSInterop.Invocations.Count(i =>
             i.Identifier == "unregisterPreventDefaultKeys"

@@ -33,6 +33,8 @@ internal static partial class LumeoDefaultStrings
         ["DataGrid.PinLeft"] = "左に固定",
         ["DataGrid.PinRight"] = "右に固定",
         ["DataGrid.Unpin"] = "固定を解除",
+        ["DataGrid.ResizeColumn"] = "列幅を変更(矢印キーを使用、ダブルクリックで自動調整)",
+        ["DataGrid.DragToReorder"] = "ドラッグして列を並べ替え",
         ["DataGrid.Hide"] = "非表示",
         ["DataGrid.Show"] = "表示",
         ["DataGrid.SortAscending"] = "昇順で並べ替え",
@@ -59,6 +61,8 @@ internal static partial class LumeoDefaultStrings
         ["DataGrid.MoveDown"] = "下へ移動",
         ["DataGrid.Retry"] = "再試行",
         ["DataGrid.ErrorLoadingData"] = "読み込みに失敗しました: {0}",
+        ["DataGrid.DragToReorderRow"] = "ドラッグして行を並べ替え",
+        ["DataGrid.RowReorderUnavailable"] = "グループ化または仮想化中は行の並べ替えができません",
         ["Filter.FilterTitle"] = "フィルター: {0}",
 
         // Pagination

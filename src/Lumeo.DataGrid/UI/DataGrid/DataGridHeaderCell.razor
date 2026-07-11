@@ -6,6 +6,8 @@
 <th data-slot="datagrid-header-cell" class="@CssClass" style="@StyleString"
     id="@CellId"
     data-col-id="@Column.Id"
+    data-col-pin="@Column.Pin"
+    data-reorderable="@(EffectiveReorderable ? "true" : null)"
     role="columnheader"
     aria-colindex="@AriaColIndex"
     aria-sort="@AriaSort"
@@ -15,11 +17,24 @@
     @ondragstart="HandleDragStart"
     @ondragend="HandleDragEnd"
     @ondragover:preventDefault="true"
-    @ondrop="HandleDrop"
-    @ondragenter="HandleDragEnter"
-    @ondragleave="HandleDragLeave"
     @attributes="AdditionalAttributes">
     <div class="flex items-center gap-1">
+        @* Dedicated reorder grip (ReUI drag-handle affordance). Discoverable cue
+           for both drag paths: it's the initiator for touch/pen (a JS pointer
+           listener registered on the grid delegates from [data-reorder-grip] and
+           drives a translate-in-place reorder — native HTML5 DnD never fires on
+           touch), while on desktop the whole draggable <th> still starts the
+           native drag. Only shown when the column is actually reorderable. *@
+        @if (EffectiveReorderable)
+        {
+            <span data-reorder-grip
+                  class="-ms-1 inline-flex items-center justify-center h-5 w-4 shrink-0 rounded text-muted-foreground opacity-60 hover:opacity-100 cursor-grab active:cursor-grabbing touch-none"
+                  style="touch-action: none;"
+                  aria-label="@L["DataGrid.DragToReorder"]"
+                  title="@L["DataGrid.DragToReorder"]">
+                <SvgGlyph Svg="@(LumeoIcons.GripVertical)" class="h-3.5 w-3.5" />
+            </span>
+        }
         @if (Column.HeaderTemplate is not null)
         {
             @Column.HeaderTemplate
@@ -165,27 +180,35 @@
 
     @if (Column.Resizable)
     {
-        @* No Blazor pointerdown binding here — the JS listener attached via
-           RegisterColumnResize() in OnAfterRenderAsync owns this event end to
-           end (capture, move tracking via setPointerCapture, prevent the page
-           from initiating a touch-scroll, commit on pointerup). Wiring a
-           Blazor handler too would double-fire the pointerdown handling and
-           recreate the lazy-register race from before. *@
-        <div id="@_resizeHandleId"
-             class="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-primary/30 active:bg-primary/50"
-             style="touch-action: none;"></div>
-    }
+        @* ReUI-grade resize handle: a wide (~16px) invisible hit area straddling
+           the column's inline-end edge, with a CSS-authored ::before divider that
+           idles as a 1px border line and turns 2px primary on hover / focus /
+           active drag (data-resizing set by JS). Positioned with the logical `end`
+           edge so it lands on the LEFT in RTL automatically.
 
-    @if (_isDragOver && EffectiveReorderable && _dropSide is not null)
-    {
-        @* Drop indicator: a 4px vertical bar with primary glow that
-           materializes between the dragged column and its prospective
-           neighbour. Centred over the gap (translate -50%) so the bar
-           sits ON the seam, not flush with the column edge — much
-           easier for users to read as a slot marker than the older
-           0.5px hairline. *@
-        <div class="lumeo-datagrid-drop-indicator absolute top-0 bottom-0 w-1 bg-primary rounded-[calc(var(--radius)*2)] pointer-events-none shadow-[0_0_8px_color-mix(in_oklab,var(--primary)_70%,transparent)]"
-             style="@(_dropSide == "left" ? "left: 0; transform: translateX(-50%);" : "right: 0; transform: translateX(50%);") z-index: 10;"></div>
+           Pointer drag: the JS listener attached via RegisterColumnResize() owns
+           pointerdown→up end to end (capture, rAF-coalesced DOM writes, commit
+           once on pointerup) — no Blazor round-trip per move. Double-click =
+           auto-fit to content (also JS).
+
+           tabindex=-1: a role="separator" widget with valuenow semantics for AT, but
+           NOT a Tab stop — a data grid keeps a single roving tab stop for cell nav, so
+           N tabbable handles would shatter that. Keyboard resize is reached through the
+           roving-focused header cell (Ctrl+Arrow); clicking a handle also focuses it,
+           after which plain Arrow keys resize (the @onkeydown below, stopPropagation'd
+           so the arrows don't also drive header nav). *@
+        <div id="@_resizeHandleId"
+             data-slot="datagrid-resize-handle"
+             class="lumeo-dg-resize-handle"
+             role="separator"
+             aria-orientation="vertical"
+             aria-label="@L["DataGrid.ResizeColumn"]"
+             tabindex="-1"
+             aria-valuemin="@((int)(Column.MinWidth ?? 50))"
+             aria-valuemax="@(Column.MaxWidth.HasValue ? (int)Column.MaxWidth.Value : (int?)null)"
+             aria-valuenow="@(Column.Width.HasValue ? (int)Column.Width.Value : (int?)null)"
+             @onkeydown="HandleResizeKeyDown"
+             @onkeydown:stopPropagation="true"></div>
     }
 </th>
 
@@ -242,6 +265,19 @@
         // these header keydowns bubble to it. (battle-test n=8)
         if (Context is null) return;
 
+        // Keyboard resize via the roving-focused header cell: Ctrl+Arrow nudges the
+        // column width (Ctrl+Shift+Arrow = fine 1px). This is the primary keyboard
+        // resize path — it flows through the grid's single tab stop instead of adding
+        // a tabbable handle per column. ArrowRight always grows toward the visual
+        // right; the JS nudge flips the sign for RTL. Handled before header nav so the
+        // modified arrows don't also move column focus.
+        if (Column.Resizable && e.CtrlKey && (e.Key == "ArrowLeft" || e.Key == "ArrowRight"))
+        {
+            var step = e.ShiftKey ? 1.0 : 10.0;
+            await Interop.NudgeColumnResize(_resizeHandleId, e.Key == "ArrowRight" ? step : -step);
+            return;
+        }
+
         if ((e.Key == "Enter" || e.Key == " " || e.Key == "Spacebar") && Column.Sortable)
         {
             await HandleSort();
@@ -258,8 +294,6 @@
 
     private string _resizeHandleId = $"dg-resize-{Guid.NewGuid():N}";
     private bool _resizeRegistered;
-    private bool _isDragOver;
-    private string? _dropSide; // "left" or "right" — where the drop indicator is rendered
 
     // Filter popover positioning (2.1.2): the filter content is rendered with
     // position:fixed and pinned to the trigger via JS-computed coords from
@@ -290,14 +324,21 @@
     private bool IsDragSource =>
         DragState?.SourceColumnId is { } src && src == Column.Id;
 
-    /// <summary>True when this header is HTML5-draggable. Two reasons to drag a
-    /// header: reorder columns (Reorderable, drop on another header) or add the
-    /// column as a new grouping level (Groupable, drop on the group panel —
-    /// rc.41). The two pathways share <see cref="DataGridDragState"/> for the
-    /// source-column record; drop targets decide which action to take.</summary>
+    /// <summary>True when this header is HTML5-draggable. Native HTML5 DnD is now
+    /// used for exactly one gesture: dragging a column into the group panel to add
+    /// a grouping level (Groupable, drop on the group panel — rc.41). Column
+    /// REORDER no longer uses native DnD at all — it went through this same
+    /// draggable="true" + dragstart/drop-on-header pairing until the ReUI-parity
+    /// pass, which replaced it with the unified pointer-based path (grip/header
+    /// pointerdown, live sibling shift, no ghost/indicator) registered via
+    /// Interop.RegisterColumnReorder — see components.js. Keeping native DnD
+    /// scoped to grouping-only means a Reorderable+Groupable column still starts
+    /// a native drag from most of the header (for the group-panel gesture) while
+    /// the dedicated grip owns the reorder gesture (its pointerdown handler calls
+    /// preventDefault/stopPropagation so native dragstart never arms from the
+    /// grip).</summary>
     private bool IsDraggable =>
-        EffectiveReorderable
-        || (Context?.ShowGroupPanel == true && Column.Groupable);
+        Context?.ShowGroupPanel == true && Column.Groupable;
 
     private string CssClass
     {
@@ -316,14 +357,15 @@
                 $"group/th relative {(Context?.Compact == true ? "px-2 py-1" : "px-3 py-2")} text-left text-xs font-medium text-muted-foreground uppercase tracking-wider",
                 "outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
                 pinClass,
-                // cursor-grab signals drag-affordance both for reorder AND for drag-to-group
-                // (Groupable + ShowGroupPanel) — previously only the reorder case got it,
-                // leaving Groupable-only columns with the default arrow cursor that hid
-                // the drag-into-panel UX from users (2.2.2).
-                IsDraggable ? "cursor-grab" : null,
-                // Dim the dragged source header so users see at a glance which
-                // column is moving. Pairs with the drop indicator on the target
-                // to make the gesture's two endpoints visually distinct.
+                // cursor-grab signals drag-affordance for reorder (grip/header pointer
+                // path) AND drag-to-group (native DnD, Groupable + ShowGroupPanel) —
+                // either capability lights it up so the cue isn't missed (2.2.2).
+                (EffectiveReorderable || IsDraggable) ? "cursor-grab" : null,
+                // Dim the dragged source header so users see at a glance which column
+                // is moving. The reorder path now shows this via IsDragSource too (the
+                // pointer JS doesn't set DragState — only native drag-to-group does —
+                // so this class currently lights up for group-drags; the pointer path's
+                // own opacity-0.8 is applied directly to the cell inline by JS).
                 IsDragSource ? "opacity-40 transition-opacity" : null,
                 Column.HeaderCssClass,
                 Class
@@ -422,6 +464,10 @@
             // resizing would silently stop working (Codex review on #46).
             try { await Interop.UnregisterColumnResize(_resizeHandleId); }
             catch (Microsoft.JSInterop.JSDisconnectedException) { }
+            // Mirrors the resize listener teardown above — round-13 #3's key-selective
+            // preventDefault listener is tied to the same now-detached handle element.
+            try { await Interop.UnregisterPreventDefaultKeys(_resizeHandleId); }
+            catch (Microsoft.JSInterop.JSDisconnectedException) { }
             _resizeRegistered = false;
         }
 
@@ -508,29 +554,73 @@
             _resizeHandleId,
             Column.MinWidth ?? 50,
             Column.MaxWidth,
-            async finalWidth =>
+            async (finalWidth, autoFit) =>
             {
-                ParentGrid?.UpdateColumnWidth(Column.Id, finalWidth);
+                // Awaited internal commit, NOT the public fire-and-forget UpdateColumnWidth
+                // (PR-353 round-13 #1) — this lambda is itself awaited end-to-end from JS's
+                // registerColumnResize invokeMethodAsync call for EVERY entry point (pointer
+                // drag, dblclick auto-fit, keyboard nudge all funnel through this ONE
+                // commitHandler), which holds the cross-engine drag arbiter token open until
+                // the returned promise settles. See DataGrid.CommitColumnWidthAsync's remarks.
+                if (ParentGrid is not null)
+                    await ParentGrid.CommitColumnWidthAsync(Column.Id, finalWidth, autoFit);
                 await InvokeAsync(StateHasChanged);
             });
+
+        // Key-selective preventDefault for the handle's OWN resize keys (round-13 #3):
+        // the handle's @onkeydown:stopPropagation below keeps ArrowLeft/ArrowRight from
+        // ever reaching the table-level RegisterPreventDefaultKeys listener (registered
+        // on the table by DataGrid.OnAfterRenderAsync for header/cell keyboard nav), so
+        // without this the browser's default page/grid scroll still fires on every
+        // keyboard resize step. Registered directly on the handle — not the header
+        // <th> — so it only ever suppresses the two keys THIS element's own
+        // HandleResizeKeyDown consumes; plain header keyboard navigation (Tab, Enter,
+        // Ctrl+Arrow on the <th> itself, etc.) is untouched. Mirrors the table-level
+        // registration's idiom (a static @onkeydown:preventDefault can't be scoped to
+        // just Arrow keys — it's fixed at render time and would also swallow Tab).
+        await Interop.RegisterPreventDefaultKeys(_resizeHandleId, new[]
+        {
+            new PreventDefaultKeyRule("ArrowLeft"),
+            new PreventDefaultKeyRule("ArrowRight"),
+        });
         _resizeRegistered = true;
     }
 
-    // --- Column Drag & Drop Reordering ---
+    // Keyboard resize (a11y): Arrow Left/Right nudge the focused handle's column
+    // by a step (Shift = fine 1px). The delta is applied in JS (NudgeColumnResize)
+    // which reads the live width, clamps to min/max, flips sign for RTL, writes the
+    // DOM directly, and re-commits through the same handler — so a keyboard resize
+    // persists exactly like a drag. ArrowRight always means "toward the visual
+    // right" regardless of writing direction.
+    private async Task HandleResizeKeyDown(KeyboardEventArgs e)
+    {
+        if (!Column.Resizable) return;
+        var step = e.ShiftKey ? 1.0 : 10.0;
+        var delta = e.Key switch
+        {
+            "ArrowRight" => step,
+            "ArrowLeft" => -step,
+            _ => 0.0
+        };
+        if (delta == 0.0) return;
+        await Interop.NudgeColumnResize(_resizeHandleId, delta);
+    }
+
+    // --- Column Drag & Drop: group-panel gesture only ---
     //
-    // Drag state is held by an instance-bound DataGridDragState cascaded from
-    // the owning DataGrid<TItem>. Replaces the previous static-class holder
-    // which was process-global and cross-talked between grid instances on the
-    // same page (drag started in grid A, dropped on grid B → grid B applied
-    // grid A's source index). Drop handler verifies SourceGridId matches via
-    // DragState.IsOwnDragColumn, otherwise the drop is rejected.
+    // Native HTML5 DnD used to ALSO drive column reorder (dragstart on a header,
+    // dragenter/drop on a sibling header, a glow drop-indicator). The ReUI-parity
+    // pass replaced that entirely with the unified pointer-based path (mouse +
+    // touch + pen, live sibling shift, no ghost/indicator) registered via
+    // Interop.RegisterColumnReorder — see components.js `registerColumnReorder`.
+    // What's left here is native DnD's one remaining job: dragging a Groupable
+    // header into the group panel to add a grouping level (rc.41). Drag state is
+    // held by an instance-bound DataGridDragState cascaded from the owning
+    // DataGrid<TItem> — replaces the previous static-class holder which was
+    // process-global and cross-talked between grid instances on the same page.
 
     private void HandleDragStart(DragEventArgs e)
     {
-        // rc.41: also start the drag when the column is Groupable + ShowGroupPanel
-        // (drag target = the group panel, not another header). The single
-        // StartColumnDrag call covers both code paths — reorder vs group is
-        // decided at the drop site.
         if (!IsDraggable || DragState is null) return;
         DragState.StartColumnDrag(ColumnIndex, Column.Id);
     }
@@ -550,56 +640,6 @@
         }
     }
 
-    // Perf: the <th> deliberately binds NO @ondragover .NET handler — only the
-    // native @ondragover:preventDefault directive (no C# round-trip) so the browser
-    // still accepts the drop. dragover fires ~60/s per element; a bound handler
-    // re-rendered this HeaderCell on every tick (~1.8ms each, measured) for no gain —
-    // the drop indicator's side is fully determined by source-vs-target index, which
-    // is computed once here on dragenter. Mirrors the FileUpload / KanbanColumn
-    // drop-zone pattern.
-    private void HandleDragEnter(DragEventArgs e)
-    {
-        if (!EffectiveReorderable || DragState is null) return;
-        if (!DragState.IsOwnDragColumn(ColumnIndex)) return;
-        if (DragState.SourceColumnId == Column.Id) return;
-        _isDragOver = true;
-        var src = DragState.SourceColumnIndex;
-        _dropSide = src >= 0 && src < ColumnIndex ? "right" : "left";
-    }
-
-    private void HandleDragLeave(DragEventArgs e)
-    {
-        _isDragOver = false;
-        _dropSide = null;
-    }
-
-    private async Task HandleDrop(DragEventArgs e)
-    {
-        _isDragOver = false;
-        _dropSide = null;
-        if (!EffectiveReorderable || DragState is null) return;
-
-        // Reject drops from drags that originated in a different grid instance.
-        if (!DragState.IsOwnDragColumn(ColumnIndex))
-        {
-            DragState.ResetColumn();
-            return;
-        }
-
-        var sourceIndex = DragState.SourceColumnIndex;
-        var sourceId = DragState.SourceColumnId ?? Column.Id;
-
-        // Reset BEFORE invoking the consumer callback so re-entrant drops don't
-        // see a stale source index, and so a faulting consumer can't leave the
-        // grid in a "drag in progress" state.
-        DragState.ResetColumn();
-
-        if (sourceIndex < 0 || sourceIndex == ColumnIndex) return;
-
-        var args = new ColumnReorderEventArgs(sourceId, sourceIndex, ColumnIndex);
-        await OnColumnReorder.InvokeAsync(args);
-    }
-
     public async ValueTask DisposeAsync()
     {
         if (_resizeRegistered)
@@ -607,6 +647,13 @@
             try
             {
                 await Interop.UnregisterColumnResize(_resizeHandleId);
+            }
+            catch (JSDisconnectedException) { }
+            // Mirrors the resize listener teardown — round-13 #3's key-selective
+            // preventDefault listener must not outlive the handle it's attached to.
+            try
+            {
+                await Interop.UnregisterPreventDefaultKeys(_resizeHandleId);
             }
             catch (JSDisconnectedException) { }
         }

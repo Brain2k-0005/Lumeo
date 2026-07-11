@@ -129,11 +129,25 @@ internal sealed class NoopInteropService : IComponentInteropService
 
     // DataGrid Column Resize
     public ValueTask RegisterColumnResize(string handleId, double minWidth, double? maxWidth, Func<double, Task> commitHandler) => ValueTask.CompletedTask;
+    public ValueTask RegisterColumnResize(string handleId, double minWidth, double? maxWidth, Func<double, bool, Task> commitHandler) => ValueTask.CompletedTask;
     public ValueTask UnregisterColumnResize(string handleId) => ValueTask.CompletedTask;
+    public ValueTask NudgeColumnResize(string handleId, double delta) => ValueTask.CompletedTask;
+    public ValueTask RegisterColumnReorder(string gridId, Func<string, string, Task> commitHandler) => ValueTask.CompletedTask;
+    public ValueTask UnregisterColumnReorder(string gridId) => ValueTask.CompletedTask;
 
     // DataGrid Column Reorder FLIP
     public ValueTask CaptureColumnRects(string gridId) => ValueTask.CompletedTask;
     public ValueTask AnimateColumnReorder(string gridId, int durationMs) => ValueTask.CompletedTask;
+    public ValueTask ClearColumnReorderTransforms(string gridId) => ValueTask.CompletedTask;
+
+    // DataGrid Row Reorder
+    public ValueTask RegisterRowReorder(string gridId, Func<string, string, Task> commitHandler) => ValueTask.CompletedTask;
+    public ValueTask UnregisterRowReorder(string gridId) => ValueTask.CompletedTask;
+
+    // DataGrid Row Reorder FLIP
+    public ValueTask CaptureRowRects(string gridId) => ValueTask.CompletedTask;
+    public ValueTask AnimateRowReorder(string gridId, int durationMs) => ValueTask.CompletedTask;
+    public ValueTask ClearRowReorderTransforms(string gridId) => ValueTask.CompletedTask;
 
     // Tour
     public ValueTask<ElementRect?> GetElementRectBySelector(string selector) => ValueTask.FromResult<ElementRect?>(null);

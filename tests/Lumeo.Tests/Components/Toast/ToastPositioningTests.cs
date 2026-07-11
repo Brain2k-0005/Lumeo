@@ -57,12 +57,28 @@ public class ToastPositioningTests : IAsyncLifetime
         toastService!.Show(new ToastOptions { Title = "Toast Two", Duration = 60000 });
         toastService!.Show(new ToastOptions { Title = "Toast Three", Duration = 60000 });
 
-        // Wait until eviction settles to exactly 2 (exit animation is 220 ms).
-        cut.WaitForState(
-            () => cut.FindAll("[role='alert'],[role='status']").Count == 2,
-            TimeSpan.FromSeconds(5));
-
-        Assert.Equal(2, cut.FindAll("[role='alert'],[role='status']").Count);
+        // Wait until eviction settles to exactly 2 (exit animation is 220 ms). The
+        // assertion lives INSIDE the poll (WaitForAssertion), not a separate
+        // WaitForState-then-re-query — a boolean predicate that returns true and a
+        // disconnected Assert.Equal afterward are two independent queries against
+        // live provider state, with a real gap between them (WaitForState's own
+        // polling/dispatch overhead). Under CI scheduler starvation that gap is
+        // enough for the eviction timer's own follow-up render (or a delayed exit
+        // unmount) to land in between, so the LAST successful poll's count could
+        // differ from what the trailing Assert.Equal re-reads a moment later — this
+        // was the "Actual: 1" second CI-only failure (534 ms; never reproduced
+        // locally, 20x + 10x-under-load clean). WaitForAssertion's retry loop
+        // re-runs the SAME assertion each tick and simply returns the instant it
+        // stops throwing, so there is no second, later query that can observe a
+        // different state than the one that made the test pass — the check that
+        // decides success IS the check that gets reported. No explicit timeout:
+        // inherits BunitContext.DefaultWaitTimeout (10 s, TestContextExtensions),
+        // the module ceiling every other timing-flaky test in this suite was raised
+        // to — a tighter local override is exactly the kind of "tight ceiling" that
+        // starves under parallel CI load without buying anything on the happy path
+        // (WaitForAssertion still returns immediately once the assertion holds).
+        cut.WaitForAssertion(() =>
+            Assert.Equal(2, cut.FindAll("[role='alert'],[role='status']").Count));
     }
 
     [Theory]

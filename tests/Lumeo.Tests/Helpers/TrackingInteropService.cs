@@ -471,14 +471,70 @@ public class TrackingInteropService : IComponentInteropService
     public IReadOnlyList<string> RegisterColumnResizeHandleIds => _columnResizeRegistrations;
     public int UnregisterColumnResizeCallCount => _columnResizeUnregistrations.Count;
 
-    public ValueTask RegisterColumnResize(string handleId, double minWidth, double? maxWidth, Func<double, Task> commitHandler)
+    // Last commit handler captured per handle so tests can simulate a JS-side
+    // resize commit (drag/keyboard/auto-fit) and assert the width + persistence
+    // path without needing a real browser pointer.
+    private readonly Dictionary<string, Func<double, bool, Task>> _columnResizeCommitHandlers = new();
+    public IReadOnlyDictionary<string, Func<double, bool, Task>> ColumnResizeCommitHandlers => _columnResizeCommitHandlers;
+    /// <summary>Invoke the captured commit for a handle, mimicking JS on pointerup /
+    /// dblclick. Returns false when no handler is registered for that id.</summary>
+    public async Task<bool> SimulateColumnResizeCommit(string handleId, double finalWidth, bool autoFit)
+    {
+        if (!_columnResizeCommitHandlers.TryGetValue(handleId, out var handler)) return false;
+        await handler(finalWidth, autoFit);
+        return true;
+    }
+
+    // round-9 #4: the interface's original (non-autoFit) abstract member — forwards
+    // to the autoFit-aware overload below with autoFit always false, mirroring
+    // ComponentInteropService's own explicit implementation of this shape.
+    public ValueTask RegisterColumnResize(string handleId, double minWidth, double? maxWidth, Func<double, Task> commitHandler) =>
+        RegisterColumnResize(handleId, minWidth, maxWidth, (w, _) => commitHandler(w));
+
+    public ValueTask RegisterColumnResize(string handleId, double minWidth, double? maxWidth, Func<double, bool, Task> commitHandler)
     {
         _columnResizeRegistrations.Add(handleId);
+        _columnResizeCommitHandlers[handleId] = commitHandler;
         return ValueTask.CompletedTask;
     }
     public ValueTask UnregisterColumnResize(string handleId)
     {
         _columnResizeUnregistrations.Add(handleId);
+        _columnResizeCommitHandlers.Remove(handleId);
+        return ValueTask.CompletedTask;
+    }
+
+    private readonly List<(string HandleId, double Delta)> _nudgeColumnResizeCalls = new();
+    public IReadOnlyList<(string HandleId, double Delta)> NudgeColumnResizeCalls => _nudgeColumnResizeCalls;
+    public ValueTask NudgeColumnResize(string handleId, double delta)
+    {
+        _nudgeColumnResizeCalls.Add((handleId, delta));
+        return ValueTask.CompletedTask;
+    }
+
+    // Pointer-based (touch/pen) column reorder registration + commit capture.
+    private readonly List<string> _columnReorderRegistrations = new();
+    private readonly List<string> _columnReorderUnregistrations = new();
+    private readonly Dictionary<string, Func<string, string, Task>> _columnReorderCommitHandlers = new();
+    public IReadOnlyList<string> ColumnReorderRegistrations => _columnReorderRegistrations;
+    public IReadOnlyList<string> ColumnReorderUnregistrations => _columnReorderUnregistrations;
+    /// <summary>Simulate a JS-side pointer-reorder commit (drop of source onto target).</summary>
+    public async Task<bool> SimulateColumnReorderCommit(string gridId, string sourceColumnId, string targetColumnId)
+    {
+        if (!_columnReorderCommitHandlers.TryGetValue(gridId, out var handler)) return false;
+        await handler(sourceColumnId, targetColumnId);
+        return true;
+    }
+    public ValueTask RegisterColumnReorder(string gridId, Func<string, string, Task> commitHandler)
+    {
+        _columnReorderRegistrations.Add(gridId);
+        _columnReorderCommitHandlers[gridId] = commitHandler;
+        return ValueTask.CompletedTask;
+    }
+    public ValueTask UnregisterColumnReorder(string gridId)
+    {
+        _columnReorderUnregistrations.Add(gridId);
+        _columnReorderCommitHandlers.Remove(gridId);
         return ValueTask.CompletedTask;
     }
 
@@ -494,6 +550,65 @@ public class TrackingInteropService : IComponentInteropService
     public ValueTask AnimateColumnReorder(string gridId, int durationMs)
     {
         _animateColumnReorderCalls.Add((gridId, durationMs));
+        return ValueTask.CompletedTask;
+    }
+
+    private readonly List<string> _clearColumnReorderTransformsCalls = new();
+    public IReadOnlyList<string> ClearColumnReorderTransformsGridIds => _clearColumnReorderTransformsCalls;
+    public ValueTask ClearColumnReorderTransforms(string gridId)
+    {
+        _clearColumnReorderTransformsCalls.Add(gridId);
+        return ValueTask.CompletedTask;
+    }
+
+    // Pointer-based (mouse/touch/pen) row reorder registration + commit capture —
+    // vertical mirror of the column tracking block above. Keyed by stable row
+    // identity (data-row-key), not plain index — see ReorderRowByKeyAsync.
+    private readonly List<string> _rowReorderRegistrations = new();
+    private readonly List<string> _rowReorderUnregistrations = new();
+    private readonly Dictionary<string, Func<string, string, Task>> _rowReorderCommitHandlers = new();
+    public IReadOnlyList<string> RowReorderRegistrations => _rowReorderRegistrations;
+    public IReadOnlyList<string> RowReorderUnregistrations => _rowReorderUnregistrations;
+    /// <summary>Simulate a JS-side pointer-reorder commit (drop of source row key onto target row key).</summary>
+    public async Task<bool> SimulateRowReorderCommit(string gridId, string sourceRowKey, string targetRowKey)
+    {
+        if (!_rowReorderCommitHandlers.TryGetValue(gridId, out var handler)) return false;
+        await handler(sourceRowKey, targetRowKey);
+        return true;
+    }
+    public ValueTask RegisterRowReorder(string gridId, Func<string, string, Task> commitHandler)
+    {
+        _rowReorderRegistrations.Add(gridId);
+        _rowReorderCommitHandlers[gridId] = commitHandler;
+        return ValueTask.CompletedTask;
+    }
+    public ValueTask UnregisterRowReorder(string gridId)
+    {
+        _rowReorderUnregistrations.Add(gridId);
+        _rowReorderCommitHandlers.Remove(gridId);
+        return ValueTask.CompletedTask;
+    }
+
+    private readonly List<string> _captureRowRectsCalls = new();
+    private readonly List<(string gridId, int durationMs)> _animateRowReorderCalls = new();
+    public IReadOnlyList<string> CaptureRowRectsGridIds => _captureRowRectsCalls;
+    public IReadOnlyList<(string gridId, int durationMs)> AnimateRowReorderCalls => _animateRowReorderCalls;
+    public ValueTask CaptureRowRects(string gridId)
+    {
+        _captureRowRectsCalls.Add(gridId);
+        return ValueTask.CompletedTask;
+    }
+    public ValueTask AnimateRowReorder(string gridId, int durationMs)
+    {
+        _animateRowReorderCalls.Add((gridId, durationMs));
+        return ValueTask.CompletedTask;
+    }
+
+    private readonly List<string> _clearRowReorderTransformsCalls = new();
+    public IReadOnlyList<string> ClearRowReorderTransformsGridIds => _clearRowReorderTransformsCalls;
+    public ValueTask ClearRowReorderTransforms(string gridId)
+    {
+        _clearRowReorderTransformsCalls.Add(gridId);
         return ValueTask.CompletedTask;
     }
 

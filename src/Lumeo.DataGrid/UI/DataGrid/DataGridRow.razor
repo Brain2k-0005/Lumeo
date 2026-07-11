@@ -8,21 +8,45 @@
     aria-level="@AriaLevel"
     aria-expanded="@AriaExpanded"
     aria-selected="@(Context?.SelectionMode != DataGridSelectionMode.None ? (IsSelected ? "true" : "false") : null)"
+    data-row-index="@(Context?.RowReorderPointerActive == true ? RowIndex.ToString(System.Globalization.CultureInfo.InvariantCulture) : null)"
+    data-row-key="@(Context?.RowReorderPointerActive == true ? RowKey : null)"
     @onclick="HandleClick"
     @ondblclick="HandleDoubleClick"
     @oncontextmenu="HandleContextMenu"
     @oncontextmenu:preventDefault="@(Context?.RowContextMenuEnabled ?? false)"
-    draggable="@(Context?.RowReorderable == true ? "true" : "false")"
-    @ondragstart="HandleDragStart"
-    @ondragover:preventDefault="true"
-    @ondrop="HandleDrop"
     @attributes="AdditionalAttributes">
 
-    @* Row drag handle *@
+    @* Row drag handle — unified pointer-based reorder (mouse + touch + pen), the
+       vertical mirror of DataGridHeaderCell's column grip. Handle-only initiation:
+       unlike a column header (whose click target is a scoped sort <button>), the
+       whole row is a click-to-select surface, so there's no safe movement-threshold
+       "arm from anywhere" — the grip is the only unambiguous drag initiator (see
+       registerRowReorder in components.js). RowReorderPointerActive gates whether
+       the grip is actually wired up: grouped/tree-grid/virtualized grids keep the
+       handle visible but inert (dimmed, cursor-not-allowed, no data-row-reorder-grip
+       marker) with a tooltip explaining why, rather than a live control that would
+       silently do nothing. *@
     @if (Context?.RowReorderable == true)
     {
-        <td role="gridcell" class="px-1 @(Context?.CellPaddingY ?? "py-2") w-8 cursor-grab active:cursor-grabbing" @onclick:stopPropagation="true">
-            <SvgGlyph Svg="@(LumeoIcons.GripVertical)" class="h-4 w-4 text-muted-foreground/60" />
+        <td role="gridcell" class="px-1 @(Context?.CellPaddingY ?? "py-2") w-8" @onclick:stopPropagation="true">
+            @if (Context?.RowReorderPointerActive == true)
+            {
+                <span data-row-reorder-grip
+                      class="inline-flex items-center justify-center h-5 w-5 rounded text-muted-foreground/60 opacity-60 hover:opacity-100 cursor-grab active:cursor-grabbing touch-none"
+                      style="touch-action: none;"
+                      aria-label="@L["DataGrid.DragToReorderRow"]"
+                      title="@L["DataGrid.DragToReorderRow"]">
+                    <SvgGlyph Svg="@(LumeoIcons.GripVertical)" class="h-4 w-4" />
+                </span>
+            }
+            else
+            {
+                <span class="inline-flex items-center justify-center h-5 w-5 rounded text-muted-foreground/30 cursor-not-allowed"
+                      aria-hidden="true"
+                      title="@L["DataGrid.RowReorderUnavailable"]">
+                    <SvgGlyph Svg="@(LumeoIcons.GripVertical)" class="h-4 w-4" />
+                </span>
+            }
         </td>
     }
 
@@ -175,10 +199,12 @@
 
 @code {
     [CascadingParameter] private DataGridContext<TItem>? Context { get; set; }
-    [CascadingParameter] private DataGrid<TItem>? ParentGrid { get; set; }
-    [CascadingParameter] private DataGridDragState? DragStateCtx { get; set; }
     [Parameter] public TItem Item { get; set; } = default!;
     [Parameter] public int RowIndex { get; set; }
+    /// <summary>Stable per-slot token for this row (see <see cref="DataGridContext{TItem}.RowTokenAt"/>) —
+    /// only the value-type half of <see cref="RowKey"/>'s identity is ever built from
+    /// this; reference types key off their own instance identity hash instead.</summary>
+    [Parameter] public long RowToken { get; set; }
     [Parameter] public RenderFragment<TItem>? DetailTemplate { get; set; }
     [Parameter] public EventCallback<(TItem, double, double)> OnContextMenu { get; set; }
     [Parameter] public string? Class { get; set; }
@@ -188,6 +214,29 @@
     private bool IsExpanded => Context?.IsRowExpanded(Item) ?? false;
     private bool IsEditing => Context?.IsRowEditing(Item) ?? false;
     private bool HasDetailTemplate => DetailTemplate is not null;
+
+    // DOM identity for the pointer-reorder FLIP handshake (JS
+    // captureRowRects/animateRowReorder/registerRowReorder) — stamped into the
+    // data-row-key DOM attribute and read back by ReorderRowByKeyAsync at drag
+    // end. Only rendered when RowReorderPointerActive (see the <tr> attributes
+    // above), so this only allocates in that mode.
+    //
+    // NOT the same value as Blazor's own @key (DataGridBody's
+    // @key="DataGridRowKeys.KeyFor(item)") — @key only needs Equals-based
+    // dedup, which a boxed value type gets "for free" from field-value
+    // equality, but the wire protocol here needs a DOM-safe STRING, and
+    // naively stringifying KeyFor (i.e. ToString()) collapses every row of a
+    // struct TItem without an overridden ToString() to the same string (the
+    // type's full name — identical regardless of field values), misdirecting
+    // the reorder commit to the wrong row. DataGridRowKeys.DomKeyFor documents
+    // the full contract: reference types get a true per-instance identity
+    // hash (stable across concurrent list mutation during the drag's settle
+    // window); value types — which have no instance identity to hash — get
+    // RowToken, DataGridContext.RowTokenAt's stable per-SLOT token that
+    // DataGrid.MoveRow permutes in lockstep with _displayedItems, so it
+    // survives the very reorder it exists to support (round-7 #4; a plain
+    // positional index did not — see DataGridRowKeys' remarks).
+    private string RowKey => DataGridRowKeys.DomKeyFor(Item, RowToken);
 
     // Single ChevronDown that rotates -90deg when collapsed; smooth like Accordion.
     private string DetailChevronClasses =>
@@ -333,36 +382,4 @@
         Context?.CancelRowEdit(Item);
     }
 
-    // --- Row Drag & Drop ---
-    //
-    // Drag state is held by an instance-bound DataGridDragState cascaded from
-    // the owning DataGrid<TItem> (see DataGridHeaderCell for the column drag
-    // counterpart). This replaces the previous static-class holder which was
-    // process-global; cross-grid drops were applied to the wrong grid. The
-    // drop handler now verifies the drag originated in this grid via
-    // DragStateCtx.IsOwnDragRow().
-
-    private void HandleDragStart(DragEventArgs e)
-    {
-        if (DragStateCtx is null) return;
-        DragStateCtx.StartRowDrag(RowIndex);
-    }
-
-    private void HandleDrop(DragEventArgs e)
-    {
-        if (DragStateCtx is null) return;
-
-        // Reject cross-grid drops — only honor drags that originated in our owning grid.
-        if (!DragStateCtx.IsOwnDragRow())
-        {
-            DragStateCtx.ResetRow();
-            return;
-        }
-
-        var sourceIndex = DragStateCtx.SourceRowIndex;
-        DragStateCtx.ResetRow();
-
-        if (sourceIndex < 0 || sourceIndex == RowIndex) return;
-        ParentGrid?.MoveRow(sourceIndex, RowIndex);
-    }
 }

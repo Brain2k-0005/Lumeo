@@ -29,6 +29,8 @@
         EditMode: EditMode,
         IsLoading: IsLoading || (_serverService?.IsLoading ?? false),
         RowReorderable: RowReorderable,
+        RowReorderPointerActive: RowReorderPointerActive,
+        RowTokenAt: RowTokenAt,
         RowContextMenuEnabled: RowContextMenu is not null,
         OnRowClick: OnRowClick,
         OnRowDoubleClick: OnRowDoubleClick,
@@ -681,6 +683,16 @@
     /// <summary>Label for the batch-mode "+ Add row" trigger. Override for localization.</summary>
     [Parameter] public string? BatchAddRowText { get; set; } = "Add row";
     [Parameter] public EventCallback<ColumnReorderEventArgs> OnColumnReorder { get; set; }
+    /// <summary>
+    /// Raised when a column is resized through the built-in UI — a pointer drag on
+    /// the resize handle, a keyboard nudge (arrow keys on the focused handle), or a
+    /// double-click auto-fit-to-content. The event args carry the column id, the
+    /// committed pixel width (already clamped to Min/Max), and an <c>AutoFit</c> flag
+    /// that is true only for the double-click auto-fit path. Column widths persist
+    /// automatically with the rest of the layout when <see cref="EnableLayoutPersistence"/>
+    /// is on; this callback is for consumers that also want to observe/store widths.
+    /// </summary>
+    [Parameter] public EventCallback<ColumnResizeEventArgs> OnColumnResize { get; set; }
     [Parameter] public EventCallback<RowReorderEventArgs<TItem>> OnRowReorder { get; set; }
     [Parameter] public EventCallback<Exception> OnError { get; set; }
     [Parameter] public IReadOnlyList<TItem>? SelectedItems { get; set; }
@@ -704,7 +716,11 @@
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     // --- Inject ---
-    [Inject] private ComponentInteropService Interop { get; set; } = default!;
+    @* Inject the interface (not the concrete service) so tests can substitute a
+       TrackingInteropService — mirrors DataGridHeaderCell. Every Interop method the
+       grid uses (RegisterColumnReorder, CaptureColumnRects, RegisterPreventDefaultKeys,
+       LockScroll, …) is on the interface. *@
+    [Inject] private IComponentInteropService Interop { get; set; } = default!;
     [Inject] private Lumeo.Services.IDataGridExportService Export { get; set; } = default!;
 
     // --- Culture ---
@@ -975,6 +991,89 @@
     }
     private List<TItem> _processedItems = new();
     private List<TItem> _displayedItems = new();
+
+    // --- Value-type row-reorder DOM key tokens (round-7 #4, round-8 #1) ---
+    //
+    // Parallel array to _displayedItems (same index space) minting a stable
+    // per-SLOT identity for DataGridRowKeys.DomKeyFor's value-type branch — see
+    // that type's remarks for why struct rows need this instead of a raw
+    // positional index. MoveRow is the one mutation this array-of-tokens MUST
+    // survive intact: it permutes _displayedItemTokens (and _displayedItemTokenContents
+    // below) through the exact same RemoveAt+Insert it performs on _displayedItems,
+    // so every row's token — dragged row AND every displaced sibling — stays
+    // glued to the row content across that operation instead of being reissued
+    // positionally.
+    //
+    // A raw count-only guard (round-7) missed same-size REBUILDS: ProcessClientData
+    // always reassigns _displayedItems to a brand-new List (sort/filter/server
+    // refresh, or even a benign re-render — OnParametersSetAsync calls it on every
+    // parameter set), so comparing list REFERENCES would remint on nearly every
+    // render and thrash DOM-key/FLIP continuity for content that never actually
+    // changed. _displayedItemTokenContents instead snapshots the per-slot CONTENT
+    // the tokens currently represent; EnsureRowTokens diffs it against the live
+    // _displayedItems by VALUE (not reference) so only slots whose content genuinely
+    // changed get a fresh token — unchanged slots keep theirs. _rowTokensValidatedFor
+    // caches the exact list instance the tokens were last confirmed against so the
+    // O(n) diff runs once per rebuild, not once per row (RowTokenAt is called once
+    // per rendered row every render pass).
+    private List<long> _displayedItemTokens = new();
+    private List<TItem> _displayedItemTokenContents = new();
+    private List<TItem>? _rowTokensValidatedFor;
+    private long _nextRowToken;
+
+    private void EnsureRowTokens()
+    {
+        if (ReferenceEquals(_rowTokensValidatedFor, _displayedItems)
+            && _displayedItemTokens.Count == _displayedItems.Count)
+            return;
+
+        if (_displayedItemTokens.Count != _displayedItems.Count)
+        {
+            // Count changed: a genuine items-set event with no per-slot continuity
+            // to preserve (mirrors Blazor's own @key semantics for a brand-new list).
+            _displayedItemTokens = new List<long>(_displayedItems.Count);
+            _displayedItemTokenContents = new List<TItem>(_displayedItems.Count);
+            for (var i = 0; i < _displayedItems.Count; i++)
+            {
+                _displayedItemTokens.Add(_nextRowToken++);
+                _displayedItemTokenContents.Add(_displayedItems[i]);
+            }
+        }
+        else
+        {
+            // Same count but a DIFFERENT backing list instance than the tokens
+            // were last confirmed against (e.g. ProcessClientData reassigned
+            // _displayedItems after a sort/filter/server refresh while a JS
+            // reorder commit was in flight — round-8 #1). Remap per slot:
+            // content that didn't actually change keeps its token (preserving
+            // DOM-key/FLIP continuity across benign recomputes); content that
+            // DID change gets a freshly minted token so a stale "t:N" DOM key
+            // captured by JS before the rebuild can no longer resolve — via
+            // DataGridRowKeys.ResolveDomKeyIndex — to whatever unrelated row
+            // now occupies that old slot.
+            var cmp = EqualityComparer<TItem>.Default;
+            for (var i = 0; i < _displayedItems.Count; i++)
+            {
+                if (cmp.Equals(_displayedItemTokenContents[i], _displayedItems[i])) continue;
+                _displayedItemTokens[i] = _nextRowToken++;
+                _displayedItemTokenContents[i] = _displayedItems[i];
+            }
+        }
+
+        _rowTokensValidatedFor = _displayedItems;
+    }
+
+    /// <summary>Stable per-slot token for the row currently at <paramref name="index"/>
+    /// in <see cref="_displayedItems"/> — the value-type half of the row-reorder DOM
+    /// key contract (see <see cref="DataGridRowKeys"/>). Computed unconditionally
+    /// (not forked behind a runtime IsValueType branch) so reference-type grids pay
+    /// one extra list the same shape as _displayedItems rather than a conditional
+    /// that could silently drift from MoveRow's permutation.</summary>
+    private long RowTokenAt(int index)
+    {
+        EnsureRowTokens();
+        return (uint)index < (uint)_displayedItemTokens.Count ? _displayedItemTokens[index] : 0;
+    }
     // The raw, unfiltered server page (ServerMode only) — set ONLY when Items is actually
     // reassigned (a genuine server refresh), NEVER by a local expand/collapse toggle.
     // RegroupServerItems() must regroup from THIS, not from _displayedItems: _displayedItems
@@ -1026,7 +1125,14 @@
     // been mutated; OnAfterRenderAsync sees it set, invokes the JS animator,
     // and clears it. Kept private — consumers don't need to influence it.
     private bool _pendingReorderAnimation;
+    private bool _pointerReorderRegistered;
     private const int ColumnReorderAnimationMs = 220;
+
+    // Same FLIP handshake, vertical mirror for row reorder — see
+    // ReorderRowByKeyAsync / OnAfterRenderAsync's row-reorder block.
+    private bool _pendingRowReorderAnimation;
+    private bool _pointerRowReorderRegistered;
+    private const int RowReorderAnimationMs = 220;
     private List<DataGridGroupSection<TItem>> _groupedSections = new();
     private HashSet<string> _expandedGroups = new();
     private HashSet<string> _knownGroupKeys = new();
@@ -1129,11 +1235,39 @@
 
     // Row virtualization is incompatible with the recursive group-tree / tree-grid
     // renderers (they need every group/parent row present to compute indentation
-    // and expand state), so it's disabled when those modes are active.
+    // and expand state), so it's disabled when those modes are active. Single-level
+    // grouping used to be allowed through (`<= 1`) on the theory that DataGridBody's
+    // if-chain always checks its own `IsGrouped` branch before the UseVirtualization
+    // branch, so a genuinely grouped, non-empty render could never actually reach the
+    // <Virtualize Items="..."> path. That made this flag internally inconsistent with
+    // its own comment the moment `_displayedItems` crosses VirtualizeThreshold while
+    // grouped (exactly what a lots-of-data + GroupBy grid does) — nothing here
+    // prevented some OTHER caller of UseVirtualization (RowReorderPointerActive,
+    // future consumers) from reading "true" for a state DataGridBody itself would
+    // never render virtualized, and it made the actual behavior depend entirely on
+    // DataGridBody.razor's branch ORDER never changing rather than on this flag's own
+    // condition. Requiring zero group fields makes the flag agree with its own
+    // comment unconditionally, regardless of rendering-order coincidences elsewhere.
     private bool UseVirtualization =>
         _displayedItems.Count > VirtualizeThreshold
         && !IsTreeGridMode
-        && EffectiveGroupFields.Count <= 1;
+        && EffectiveGroupFields.Count == 0;
+
+    // The unified pointer-based row-reorder engine assumes a flat DOM: tr[data-row-index]
+    // indices measured at drag-start must equal _displayedItems indices 1:1, and every
+    // reorderable row must be present in the DOM to live-shift. Grouped (single or
+    // multi-level) and tree-grid rows restart their local index per section/parent, and
+    // virtualized rows aren't all mounted — either would desync the drag from
+    // _displayedItems or make live-shift reach into rows that don't exist in the DOM.
+    // Those modes keep RowReorderable's drag handle visible (DataGridRow) but inert: the
+    // JS pointer listener is never registered for the grid (see OnAfterRenderAsync below),
+    // so the handle grip has no [data-row-reorder-grip] behaviour wired to it there.
+    private bool RowReorderPointerActive =>
+        RowReorderable
+        && !IsTreeGridMode
+        && EffectiveGroupFields.Count == 0
+        && !UseVirtualization
+        && !_useServerVirtualization;
 
     private string? HeightStyle => Height is not null ? $"height: {Height};" : null;
 
@@ -1269,17 +1403,79 @@
     private static string ColumnKey(DataGridColumn<TItem> column) =>
         !string.IsNullOrWhiteSpace(column.Field) ? column.Field! : column.Id;
 
-    public void UpdateColumnWidth(string columnId, double width)
+    /// <summary>
+    /// Clamps <paramref name="width"/> to the column's Min/Max, applies it, and schedules
+    /// the layout auto-save. Shared mutation core for <see cref="UpdateColumnWidth"/> (public
+    /// sync API, fire-and-forget consumer dispatch) and <see cref="CommitColumnWidthAsync"/>
+    /// (awaited interop commit path) — see their remarks for why the same mutation needs two
+    /// different dispatch strategies for <see cref="OnColumnResize"/> (PR-353 round-13 #1).
+    /// </summary>
+    private DataGridColumn<TItem>? ApplyColumnWidth(string columnId, double width)
     {
         var column = EffectiveColumns.FirstOrDefault(c => c.Id == columnId);
-        if (column is not null)
+        if (column is null) return null;
+
+        column.Width = Math.Max(column.MinWidth ?? 50, width);
+        if (column.MaxWidth.HasValue)
+            column.Width = Math.Min(column.MaxWidth.Value, column.Width.Value);
+        ScheduleAutoSave();
+        return column;
+    }
+
+    /// <summary>
+    /// Commits a new pixel width for the column identified by <paramref name="columnId"/>.
+    /// Public sync entry point for app code that calls this directly (can't change the
+    /// signature without breaking consumers) — clamps to the column's Min/Max, persists via
+    /// the layout auto-save, and raises <see cref="OnColumnResize"/> fire-and-forget.
+    ///
+    /// The resize handle's own JS commit (pointer drag, dblclick auto-fit, keyboard nudge —
+    /// all three funnel through the ONE commitHandler registered in
+    /// DataGridHeaderCell.EnsureResizeRegistered) does NOT call this wrapper; it calls
+    /// <see cref="CommitColumnWidthAsync"/> directly instead. That commitHandler is itself
+    /// awaited end-to-end from JS's registerColumnResize invokeMethodAsync call, which holds
+    /// the cross-engine drag arbiter token open until the returned promise settles — routing
+    /// it through THIS fire-and-forget wrapper would let that promise (and the token release
+    /// chained off it) resolve before an async OnColumnResize persistence handler actually
+    /// finished, so a slower first resize's handler could complete AFTER a second, faster
+    /// resize and overwrite its width with stale data (PR-353 round-13 #1).
+    /// </summary>
+    public void UpdateColumnWidth(string columnId, double width, bool autoFit = false)
+    {
+        var column = ApplyColumnWidth(columnId, width);
+        if (column is null) return;
+
+        if (OnColumnResize.HasDelegate)
         {
-            column.Width = Math.Max(column.MinWidth ?? 50, width);
-            if (column.MaxWidth.HasValue)
-                column.Width = Math.Min(column.MaxWidth.Value, column.Width.Value);
-            ScheduleAutoSave();
-            StateHasChanged();
+            // Fire-and-forget through SafeAsyncDispatcher so a faulting async
+            // consumer handler is observed (logged) rather than swallowed, and
+            // so this sync API doesn't have to change its signature.
+            var args = new ColumnResizeEventArgs(column.Id, column.Width!.Value, autoFit);
+            Lumeo.Services.SafeAsyncDispatcher.FireAndForget(
+                InvokeAsync, () => OnColumnResize.InvokeAsync(args), "DataGrid.ColumnResize");
         }
+        StateHasChanged();
+    }
+
+    /// <summary>
+    /// Awaited counterpart to <see cref="UpdateColumnWidth"/> — the ONE method the resize
+    /// handle's JS commit path calls (see that method's remarks). Awaits
+    /// <see cref="OnColumnResize"/> directly instead of dispatching it fire-and-forget, so the
+    /// caller (DataGridHeaderCell's commitHandler, itself awaited by JS) doesn't resolve —
+    /// and doesn't release the drag arbiter token — until persistence for THIS width actually
+    /// completes. Overlapping resize commits on the same column therefore serialize instead
+    /// of racing (PR-353 round-13 #1).
+    /// </summary>
+    internal async Task CommitColumnWidthAsync(string columnId, double width, bool autoFit = false)
+    {
+        var column = ApplyColumnWidth(columnId, width);
+        if (column is null) return;
+
+        if (OnColumnResize.HasDelegate)
+        {
+            var args = new ColumnResizeEventArgs(column.Id, column.Width!.Value, autoFit);
+            await OnColumnResize.InvokeAsync(args);
+        }
+        StateHasChanged();
     }
 
     private void SyncOrderedColumns()
@@ -1465,6 +1661,59 @@
             }
         }
 
+        // Unified pointer-based column reorder (mouse + touch + pen): one delegated
+        // listener on the grid drives the whole gesture in JS — grip/header
+        // pointerdown (with a movement threshold on mouse so header clicks still
+        // sort), live sibling-shift preview, Escape/pointercancel abort, single
+        // commit on release. Native HTML5 DnD is no longer used for reorder at all
+        // (it's kept for the unrelated drag-to-group-panel gesture only — see
+        // DataGridHeaderCell.IsDraggable). Re-check each render so a runtime
+        // Reorderable flip is honoured.
+        if (Reorderable && !_pointerReorderRegistered)
+        {
+            try
+            {
+                await Interop.RegisterColumnReorder(_gridId, async (srcId, tgtId) =>
+                {
+                    await ReorderColumnByIdAsync(srcId, tgtId);
+                });
+                _pointerReorderRegistered = true;
+            }
+            catch (JSDisconnectedException) { }
+        }
+        else if (!Reorderable && _pointerReorderRegistered)
+        {
+            try { await Interop.UnregisterColumnReorder(_gridId); }
+            catch (JSDisconnectedException) { }
+            _pointerReorderRegistered = false;
+        }
+
+        // Unified pointer-based row reorder (mouse + touch + pen) — vertical mirror
+        // of the column engine above. Handle-only initiation (DataGridRow's grip):
+        // unlike a column header, a row's whole surface is a click-to-select target,
+        // so there's no safe movement-threshold "arm from anywhere" the way column
+        // headers do it (their surface click is a scoped sort <button>). Gated by
+        // RowReorderPointerActive, not just RowReorderable — see that property's
+        // doc comment for why grouped/tree/virtualized grids don't register.
+        if (RowReorderPointerActive && !_pointerRowReorderRegistered)
+        {
+            try
+            {
+                await Interop.RegisterRowReorder(_gridId, async (srcKey, tgtKey) =>
+                {
+                    await ReorderRowByKeyAsync(srcKey, tgtKey);
+                });
+                _pointerRowReorderRegistered = true;
+            }
+            catch (JSDisconnectedException) { }
+        }
+        else if (!RowReorderPointerActive && _pointerRowReorderRegistered)
+        {
+            try { await Interop.UnregisterRowReorder(_gridId); }
+            catch (JSDisconnectedException) { }
+            _pointerRowReorderRegistered = false;
+        }
+
         if (_isExpanded && _fullscreenNeedsFocus)
         {
             _fullscreenNeedsFocus = false;
@@ -1489,6 +1738,22 @@
                 // through OnError so consumers can react, but keep the flag
                 // cleared so a future render isn't blocked on a stale
                 // pending-animation state (Codex review on #48).
+                if (OnError.HasDelegate) await OnError.InvokeAsync(ex);
+            }
+        }
+
+        // FLIP-animate the row that just moved, same handshake as columns:
+        // ReorderRowByKeyAsync captured rects (keyed by stable row identity, not
+        // index — the index that moved is exactly the one that's now wrong) before
+        // mutating _displayedItems; now that the reordered list has rendered, JS
+        // recomputes each row's new top and slides from old to new.
+        if (_pendingRowReorderAnimation)
+        {
+            _pendingRowReorderAnimation = false;
+            try { await Interop.AnimateRowReorder(_gridId, RowReorderAnimationMs); }
+            catch (JSDisconnectedException) { }
+            catch (Exception ex)
+            {
                 if (OnError.HasDelegate) await OnError.InvokeAsync(ex);
             }
         }
@@ -2891,38 +3156,339 @@
         }
 
         var col = _orderedColumns[args.OldIndex];
-        _orderedColumns.RemoveAt(args.OldIndex);
-        _orderedColumns.Insert(args.NewIndex, col);
+        // A locked (Reorderable=false) column is un-displaceable — mirror the
+        // pointer-drag JS preview, which never proposes one as a drop target
+        // and never shifts one aside when the dragged column skips over it
+        // (see registerColumnReorder's applyProjection/computeTargetIdx in
+        // components.js). A plain RemoveAt(OldIndex)+Insert(NewIndex) over the
+        // FULL array breaks that invariant: any locked column sitting between
+        // the source and target gets shifted to a new absolute index even
+        // though it never visually moved. Reorder only within the reorderable
+        // subsequence instead, keeping every locked column pinned at its
+        // original absolute index (Codex round-3 #1).
+        if (!col.Reorderable)
+        {
+            // A locked column can't be the one that moves at all.
+            return;
+        }
+        // Cross-pin-partition moves are rejected up front — mirrors the
+        // pointer-drag commit path's own guard (ReorderColumnByIdAsync:
+        // `srcCol.Pin != tgtCol.Pin`). That path always proposes a
+        // same-partition target (its JS preview never crosses a partition
+        // boundary — see registerColumnReorder's computeTargetIdx/
+        // applyProjection in components.js), but the columns panel's
+        // SortableList (DataGridColumnVisibility) is a single flat list
+        // spanning EVERY pin group with no drag restriction, so
+        // args.NewIndex can legitimately land in a different partition than
+        // args.OldIndex. Without this guard, `reordered` below is computed
+        // against the PRE-repartition array — where crossing a pin boundary
+        // still looks like a genuine move — and RefreshVisibleColumns's
+        // partition-preserving stable sort (see its own remarks) then
+        // silently restores every column to its own pin group, so the side
+        // effects below (event, autosave, FLIP animation) would fire for a
+        // move that never actually landed anywhere (round-6 finding).
+        var targetIndex = Math.Clamp(args.NewIndex, 0, _orderedColumns.Count - 1);
+        if (col.Pin != _orderedColumns[targetIndex].Pin)
+        {
+            return;
+        }
+        // A drop that resolves to a no-op order (e.g. the columns panel proposes
+        // a slot past a locked edge column, which ReorderColumnsPreservingLocked
+        // then redirects/clamps back to nothing) must not report a reorder to
+        // consumers — the pointer-drag JS path never proposes such a target, but
+        // the columns panel (index-based) does, and both funnel through here, so
+        // guarding here covers the pointer commit path too (Codex round-5 #2).
+        var reordered = ReorderColumnsPreservingLocked(args.OldIndex, args.NewIndex);
+        if (!reordered) return;
         RefreshVisibleColumns();
         _pendingReorderAnimation = true;
+
+        // ReorderColumnsPreservingLocked may have REDIRECTED the drop: a slot
+        // that landed exactly on a locked column gets skipped to the nearest
+        // reorderable neighbor in the drag direction, which can resolve to a
+        // different final index than args.NewIndex requested. `col` is the
+        // column that actually moved (captured by reference above, before the
+        // mutation), so its live position in _orderedColumns IS the index that
+        // was actually applied — report that to consumers instead of the raw
+        // request, or anyone mirroring/persisting column order from this event
+        // would apply a different order than the grid actually committed
+        // (round-8 #3).
+        var appliedIndex = _orderedColumns.IndexOf(col);
+        var reportedArgs = appliedIndex == args.NewIndex ? args : args with { NewIndex = appliedIndex };
 
         // Await consumer handler so async handlers complete before we re-render.
         // Previously the returned Task was discarded which let the next
         // StateHasChanged race a still-running consumer callback and let
         // exceptions in async handlers go unobserved.
         if (OnColumnReorder.HasDelegate)
-            await OnColumnReorder.InvokeAsync(args);
+            await OnColumnReorder.InvokeAsync(reportedArgs);
 
         ScheduleAutoSave();
         StateHasChanged();
     }
 
+    /// <summary>
+    /// Moves the reorderable column at <paramref name="oldIndex"/> to the reorderable
+    /// slot identified by <paramref name="newIndex"/>, WITHOUT ever changing the
+    /// absolute index of any Reorderable=false column.
+    ///
+    /// Two-pass approach: first compute the plain RemoveAt(oldIndex)+Insert(newIndex)
+    /// result over the FULL array — this is exactly what the (buggy) single-pass code
+    /// used to commit directly, and it gets the RELATIVE order of the reorderable
+    /// columns exactly right (that's the part the original formula was already
+    /// correct about; "insert before" vs "insert after" falls out of using the raw,
+    /// pre-removal NewIndex as the post-removal insert index, same as before). Locked
+    /// columns can end up misplaced in that intermediate result, though, so the
+    /// second pass splices them back into their ORIGINAL absolute slots and re-flows
+    /// the intermediate result's reorderable columns (in the relative order that
+    /// first pass produced) into the remaining slots.
+    /// </summary>
+    /// <returns>
+    /// <see langword="true"/> if the resulting order actually differs from the
+    /// order before the call; <see langword="false"/> for a no-op — either the
+    /// skip-over redirect found nothing reorderable in that direction, or the
+    /// resolved target settles every reorderable column back into its original
+    /// slot (e.g. a drop past a locked edge column with no room beyond it). The
+    /// caller (<see cref="HandleColumnReorder"/>) must skip its side effects
+    /// (event, autosave, FLIP animation, rerender) when this returns false
+    /// (Codex round-5 #2).
+    /// </returns>
+    private bool ReorderColumnsPreservingLocked(int oldIndex, int newIndex)
+    {
+        // Resolve the effective absolute target: if it lands exactly on a locked
+        // column's slot (a caller other than the pointer-drag path, which never
+        // proposes one, might still pass one), redirect to the nearest reorderable
+        // neighbor in the drag direction — the same "skip over" rule the JS preview
+        // applies before it ever proposes a target.
+        var target = Math.Clamp(newIndex, 0, _orderedColumns.Count - 1);
+        if (!_orderedColumns[target].Reorderable)
+        {
+            var dir = target >= oldIndex ? 1 : -1;
+            // The locked slot's own pin group is a hard boundary the skip-over
+            // walk must never cross. Checking `!Reorderable` alone lets the walk
+            // step past the LAST locked column of the source partition straight
+            // into the first column of the NEXT partition — e.g. dragging an
+            // unpinned column onto the last locked unpinned column immediately
+            // before a right-pinned one used to redirect the drop onto that
+            // right-pinned column, because it's Reorderable and the loop never
+            // checked its Pin. The cross-pin guard in HandleColumnReorder only
+            // validates the ORIGINAL clamped target (the locked column itself,
+            // which still shares the source's pin) and never re-checks the
+            // REDIRECTED target this loop resolves to (round-7 #3).
+            var pinGroup = _orderedColumns[target].Pin;
+            while (target >= 0 && target < _orderedColumns.Count
+                   && _orderedColumns[target].Pin == pinGroup
+                   && !_orderedColumns[target].Reorderable)
+                target += dir;
+            if (target < 0 || target >= _orderedColumns.Count
+                || _orderedColumns[target].Pin != pinGroup) return false; // nothing reorderable inside the pin group in that direction — no-op
+        }
+
+        // Pass 1: the plain (locked-unaware) result, exactly like the original code.
+        var naive = new List<DataGridColumn<TItem>>(_orderedColumns);
+        var movingCol = naive[oldIndex];
+        naive.RemoveAt(oldIndex);
+        naive.Insert(Math.Min(target, naive.Count), movingCol);
+
+        // Pass 2: splice locked columns back into their original absolute slots;
+        // everything else drains from `naive`, in the relative order pass 1 gave it.
+        var reorderableInOrder = naive.Where(c => c.Reorderable).ToList();
+        var changed = false;
+        var next = 0;
+        for (var i = 0; i < _orderedColumns.Count; i++)
+        {
+            if (!_orderedColumns[i].Reorderable) continue; // locked columns already sit at their own index — leave in place
+            var replacement = reorderableInOrder[next++];
+            if (!ReferenceEquals(_orderedColumns[i], replacement)) changed = true;
+            _orderedColumns[i] = replacement;
+        }
+        return changed;
+    }
+
+    /// <summary>
+    /// Reorders a column by id, moving <paramref name="sourceId"/> to the slot of
+    /// <paramref name="targetId"/>. Drives the unified pointer-based reorder path
+    /// (mouse + touch + pen) registered via <c>RegisterColumnReorder</c>: JS handles
+    /// the whole drag in the DOM — including the live sibling-shift preview — and
+    /// invokes this once on release. Operates on <c>_orderedColumns</c> by id (robust
+    /// to hidden columns) and routes through <see cref="HandleColumnReorder"/> so it
+    /// shares the exact FLIP animation, persistence, and OnColumnReorder callback.
+    /// Cross-pin-partition and per-column non-reorderable drops are rejected.
+    ///
+    /// This is a thin wrapper around <see cref="ValidateColumnReorderCommitAsync"/> —
+    /// see that method's remarks for why ALL validity checks live there instead of
+    /// here (PR-353 round-10 canonical commit-guard).
+    /// </summary>
+    internal async Task ReorderColumnByIdAsync(string sourceId, string targetId)
+    {
+        var validation = await ValidateColumnReorderCommitAsync(sourceId, targetId);
+        if (!validation.Valid) return;
+        await HandleColumnReorder(new ColumnReorderEventArgs(sourceId, validation.SourceIndex, validation.TargetIndex));
+    }
+
+    /// <summary>
+    /// Result of <see cref="ValidateColumnReorderCommitAsync"/>: whether the delayed
+    /// JS pointer commit is still valid, and — only when it is — the resolved
+    /// indices to reorder.
+    /// </summary>
+    private readonly record struct ColumnReorderCommitValidation(bool Valid, int SourceIndex, int TargetIndex);
+
+    /// <summary>
+    /// CANONICAL COMMIT GUARD for the column-reorder pointer path (PR-353 round-10).
+    ///
+    /// <c>ReorderColumnByIdAsync</c> is invoked by JS ~180ms AFTER the pointer was
+    /// released, once the drop-settle glide finishes (see registerColumnReorder's
+    /// <c>pendingSettle</c> in components.js). Anything about the grid's state can
+    /// change during that window — <see cref="Reorderable"/> flipped off, the
+    /// source/target column hidden or unregistered, or a column moved into another
+    /// pin partition — and in every one of those cases JS has already left the
+    /// dragged column and its live-shifted siblings translated via inline
+    /// transforms, expecting <c>CaptureColumnRects</c> (called only from the ACCEPT
+    /// path in <see cref="HandleColumnReorder"/>) to clear them as part of the FLIP
+    /// handoff.
+    ///
+    /// Every validity check for this commit MUST live in this one method, and its
+    /// reject branch MUST ALWAYS call <see cref="ClearStaleColumnReorderTransformsAsync"/>
+    /// before returning "invalid" — that is the whole point of centralizing these
+    /// checks instead of scattering early-returns across the caller: rounds 8, 9 and
+    /// 10 each independently rediscovered a NEW way for a stale commit to slip past
+    /// a hand-rolled guard without the matching cleanup (stale keys, hidden columns,
+    /// <see cref="Reorderable"/> toggled off). Any FUTURE validity condition belongs
+    /// as one more check inside this method — never as a bare early return in
+    /// <see cref="ReorderColumnByIdAsync"/> or anywhere else — so it inherits the
+    /// transform cleanup for free instead of reintroducing this bug class again.
+    /// The accept path, <see cref="HandleColumnReorder"/>, is the ONLY place allowed
+    /// to actually mutate <c>_orderedColumns</c> for a pointer commit; it is reached
+    /// only when this method returns <c>Valid: true</c>.
+    /// </summary>
+    private async Task<ColumnReorderCommitValidation> ValidateColumnReorderCommitAsync(string sourceId, string targetId)
+    {
+        if (!Reorderable || sourceId == targetId)
+        {
+            await ClearStaleColumnReorderTransformsAsync();
+            return default;
+        }
+        var src = _orderedColumns.FindIndex(c => c.Id == sourceId);
+        var tgt = _orderedColumns.FindIndex(c => c.Id == targetId);
+        if (src < 0 || tgt < 0)
+        {
+            await ClearStaleColumnReorderTransformsAsync();
+            return default;
+        }
+        var srcCol = _orderedColumns[src];
+        var tgtCol = _orderedColumns[tgt];
+        // round-9 #3: a dragged source or drop target hidden during the 180ms
+        // settle window (app-level Visible flip, or the Columns panel) must be
+        // treated like removal — the lookup above still finds it in
+        // _orderedColumns (hiding doesn't remove the entry), but committing
+        // against a column the user can no longer see would reorder something
+        // invisible or drop relative to a target that isn't rendered.
+        //
+        // round-10 #1: a locked column is un-displaceable (refuse drops onto its
+        // slot); the same-partition check mirrors the pointer-drag JS preview,
+        // which never proposes a cross-pin target. ALL five of these — visible,
+        // reorderable (both sides), same pin, plus the grid-level Reorderable
+        // check above — funnel through this ONE reject branch so every one of
+        // them gets the transform cleanup, instead of five separate early
+        // returns each needing its own reminder to call it.
+        // round-11 #3: Visible == true is not the same as actually rendered —
+        // ColumnVirtualize/MaxVisibleColumns (or a column dropped mid-settle
+        // from whatever else feeds _visibleColumns) can trim a still-Visible
+        // column out of the rendered set. The JS drag/FLIP handoff only ever
+        // touches th/cells that are actually in the DOM, so committing
+        // against a column absent from _visibleColumns would reorder
+        // something the user was never shown. Rendered-presence joins the
+        // other four checks in this one reject branch.
+        if (!srcCol.Visible || !tgtCol.Visible
+            || !srcCol.Reorderable || !tgtCol.Reorderable
+            || srcCol.Pin != tgtCol.Pin
+            || !_visibleColumns.Any(c => c.Id == srcCol.Id)
+            || !_visibleColumns.Any(c => c.Id == tgtCol.Id))
+        {
+            await ClearStaleColumnReorderTransformsAsync();
+            return default;
+        }
+        return new ColumnReorderCommitValidation(true, src, tgt);
+    }
+
+    // round-8 #4: symmetric to ReorderRowByKeyAsync's stale-commit cleanup below —
+    // if columns changed during the 180ms settle window (target hidden/removed,
+    // Reorderable toggled, or moved into another pin partition) so this delayed
+    // commit is rejected above, JS already left the dragged column and every
+    // live-shifted sibling cell translated, expecting CaptureColumnRects (called
+    // only from the ACCEPT path in HandleColumnReorder) to clear those inline
+    // transforms as part of the FLIP handoff. Reaching a reject branch means that
+    // path never runs, so without this the columns stay visually stuck until some
+    // unrelated reorder happens to clean them up.
+    private async Task ClearStaleColumnReorderTransformsAsync()
+    {
+        try { await Interop.ClearColumnReorderTransforms(_gridId); }
+        catch (JSDisconnectedException) { }
+        catch (Exception clearEx)
+        {
+            if (OnError.HasDelegate) await OnError.InvokeAsync(clearEx);
+        }
+    }
+
     // --- Row Reordering ---
 
-    public void MoveRow(int oldIndex, int newIndex)
+    /// <summary>
+    /// Permutes <see cref="_displayedItems"/> (and its parallel row-token arrays) from
+    /// <paramref name="oldIndex"/> to <paramref name="newIndex"/>. Shared mutation core for
+    /// <see cref="MoveRow"/> (public sync API, fire-and-forget consumer dispatch) and
+    /// <see cref="MoveRowAsync"/> (awaited pointer-commit path) — see their remarks for why
+    /// the same mutation needs two different dispatch strategies for
+    /// <see cref="OnRowReorder"/> (PR-353 round-13 #2, mirrors ApplyColumnWidth/#1).
+    /// </summary>
+    private bool TryMoveRowCore(int oldIndex, int newIndex, out TItem item)
     {
         if (oldIndex < 0 || newIndex < 0 || oldIndex >= _displayedItems.Count || newIndex >= _displayedItems.Count)
-            return;
+        {
+            item = default!;
+            return false;
+        }
 
-        var item = _displayedItems[oldIndex];
+        // Permute the parallel slot-token array (and its content snapshot —
+        // round-8 #1) through the EXACT SAME RemoveAt+Insert as _displayedItems
+        // below — see _displayedItemTokens' remarks. EnsureRowTokens is a no-op
+        // in the expected case (already validated against this exact
+        // _displayedItems instance by the render that produced the DOM keys
+        // this move was resolved from); it only re-syncs the (rare/defensive)
+        // case where the arrays somehow drifted, in which case there's no
+        // prior-slot continuity to preserve anyway and a fresh mint is the
+        // correct fallback. _displayedItems is mutated IN PLACE below (not
+        // reassigned), so _rowTokensValidatedFor stays correctly pointed at it
+        // through this permutation — no separate re-validation needed.
+        EnsureRowTokens();
+        var rowToken = _displayedItemTokens[oldIndex];
+        _displayedItemTokens.RemoveAt(oldIndex);
+        _displayedItemTokens.Insert(newIndex, rowToken);
+        var tokenContent = _displayedItemTokenContents[oldIndex];
+        _displayedItemTokenContents.RemoveAt(oldIndex);
+        _displayedItemTokenContents.Insert(newIndex, tokenContent);
+
+        item = _displayedItems[oldIndex];
         _displayedItems.RemoveAt(oldIndex);
         _displayedItems.Insert(newIndex, item);
+        return true;
+    }
 
-        // Public sync API — can't change return type without breaking consumers.
-        // Dispatch the consumer callback through SafeAsyncDispatcher so faults
-        // in async handlers are observed (logged) instead of becoming
-        // UnobservedTaskExceptions, and so a faulting outer InvokeAsync (e.g.
-        // disposed renderer) is also handled.
+    /// <summary>
+    /// Public sync entry point for app code that calls this directly (can't change the
+    /// return type without breaking consumers). Dispatches the consumer callback through
+    /// SafeAsyncDispatcher so faults in async handlers are observed (logged) instead of
+    /// becoming UnobservedTaskExceptions, and so a faulting outer InvokeAsync (e.g. disposed
+    /// renderer) is also handled.
+    ///
+    /// The pointer row-reorder commit path (<see cref="ReorderRowByKeyAsync"/>, driven by
+    /// JS's registerRowReorder) does NOT call this wrapper; it calls
+    /// <see cref="MoveRowAsync"/> directly instead — see that method's remarks
+    /// (PR-353 round-13 #2, mirrors UpdateColumnWidth/#1).
+    /// </summary>
+    public void MoveRow(int oldIndex, int newIndex)
+    {
+        if (!TryMoveRowCore(oldIndex, newIndex, out var item)) return;
+
         if (OnRowReorder.HasDelegate)
         {
             var args = new RowReorderEventArgs<TItem>(item, oldIndex, newIndex);
@@ -2933,6 +3499,167 @@
         }
 
         StateHasChanged();
+    }
+
+    /// <summary>
+    /// Awaited counterpart to <see cref="MoveRow"/> — the ONE method the pointer row-reorder
+    /// commit path (<see cref="ReorderRowByKeyAsync"/>) calls. Awaits
+    /// <see cref="OnRowReorder"/> directly instead of dispatching it fire-and-forget, so
+    /// <c>ReorderRowByKeyAsync</c> — itself awaited end-to-end from JS's registerRowReorder
+    /// invokeMethodAsync call, which holds the cross-engine drag arbiter token open until
+    /// that promise settles — doesn't resolve, and doesn't release the token, until
+    /// persistence for THIS move actually completes (PR-353 round-13 #2).
+    /// </summary>
+    internal async Task MoveRowAsync(int oldIndex, int newIndex)
+    {
+        if (!TryMoveRowCore(oldIndex, newIndex, out var item)) return;
+
+        if (OnRowReorder.HasDelegate)
+        {
+            var args = new RowReorderEventArgs<TItem>(item, oldIndex, newIndex);
+            await OnRowReorder.InvokeAsync(args);
+        }
+
+        StateHasChanged();
+    }
+
+    /// <summary>
+    /// Reorders a row by stable identity, moving the row keyed <paramref name="sourceRowKey"/>
+    /// to the slot of the row keyed <paramref name="targetRowKey"/>. Drives the unified
+    /// pointer-based row-reorder path (mouse + touch + pen) registered via
+    /// <c>RegisterRowReorder</c>: JS handles the whole drag in the DOM — including the
+    /// live sibling-shift preview — and invokes this once on release with the row keys
+    /// (<see cref="DataGridRowKeys"/>, the same identity backing Blazor's own <c>@key</c>
+    /// and the FLIP capture) it read at drag END. Resolving indices fresh, by key, HERE
+    /// — rather than trusting DOM indices captured at drag START — matters because the
+    /// commit fires after a 180ms settle animation; if <c>Items</c>/<c>_displayedItems</c>
+    /// changed underneath that window (server refresh, filter, sort triggered by the
+    /// app), stale indices would move whatever rows currently occupy those slots instead
+    /// of the ones the user actually dragged (Codex round-5 #6) — mirrors
+    /// <see cref="ReorderColumnByIdAsync"/> resolving column ids fresh at call time.
+    /// Captures FLIP "First" rects before mutating so the settled drag position and the
+    /// post-render position can be diffed into one slide, then delegates the actual
+    /// mutation + OnRowReorder callback to <see cref="MoveRow"/>.
+    ///
+    /// Thin wrapper around <see cref="ValidateRowReorderCommitAsync"/> — see that
+    /// method's remarks for why ALL validity checks live there instead of here
+    /// (PR-353 round-10 canonical commit-guard, symmetric to the column engine's
+    /// <see cref="ValidateColumnReorderCommitAsync"/>).
+    /// </summary>
+    internal async Task ReorderRowByKeyAsync(string sourceRowKey, string targetRowKey)
+    {
+        var validation = await ValidateRowReorderCommitAsync(sourceRowKey, targetRowKey);
+        if (!validation.Valid) return;
+
+        try { await Interop.CaptureRowRects(_gridId); }
+        catch (JSDisconnectedException) { }
+        catch (Exception captureEx)
+        {
+            // Same rationale as ReorderColumnByIdAsync's capture: a failed FLIP
+            // snapshot must never block the actual row-order mutation.
+            if (OnError.HasDelegate) await OnError.InvokeAsync(captureEx);
+        }
+
+        // Set BEFORE MoveRowAsync, not after: MoveRowAsync ends with StateHasChanged(), and a
+        // synchronous-rendering host (bUnit's TestRenderer notably) can run the next
+        // OnAfterRenderAsync inline from inside that call — if the flag flipped only
+        // afterward, that render would see it still false and skip the animation with
+        // nothing left to pick it up later (mirrors HandleColumnReorder's ordering).
+        //
+        // Awaited MoveRowAsync, not the public fire-and-forget MoveRow (round-13 #2) — see
+        // MoveRowAsync's remarks: this commit is itself awaited end-to-end from JS, and the
+        // cross-engine drag arbiter token stays held until that promise settles.
+        _pendingRowReorderAnimation = true;
+        await MoveRowAsync(validation.OldIndex, validation.NewIndex);
+    }
+
+    /// <summary>
+    /// Result of <see cref="ValidateRowReorderCommitAsync"/>: whether the delayed JS
+    /// pointer commit is still valid, and — only when it is — the resolved indices
+    /// to reorder.
+    /// </summary>
+    private readonly record struct RowReorderCommitValidation(bool Valid, int OldIndex, int NewIndex);
+
+    /// <summary>
+    /// CANONICAL COMMIT GUARD for the row-reorder pointer path (PR-353 round-10) —
+    /// symmetric to <see cref="ValidateColumnReorderCommitAsync"/>; keep the two in
+    /// sync when either gains a new validity condition.
+    ///
+    /// <c>ReorderRowByKeyAsync</c> is invoked by JS ~180ms AFTER the pointer was
+    /// released, once the drop-settle glide finishes (see registerRowReorder's
+    /// <c>pendingSettle</c> in components.js). Anything about the grid's state can
+    /// change during that window — the grid becoming grouped/virtualized,
+    /// <see cref="RowReorderable"/> flipped off (both collapsed into
+    /// <see cref="RowReorderPointerActive"/>), or the source/target row removed by
+    /// an app-triggered refresh/filter/sort — and in every one of those cases JS has
+    /// already left the dragged row, its live-shifted siblings, and their expanded
+    /// DetailTemplate rows translated via inline transforms, expecting
+    /// <c>CaptureRowRects</c> (called only from the accept path in
+    /// <see cref="ReorderRowByKeyAsync"/>) to clear them as part of the FLIP handoff.
+    ///
+    /// Every validity check for this commit MUST live in this one method, and its
+    /// reject branch MUST ALWAYS call <see cref="ClearStaleRowReorderTransformsAsync"/>
+    /// before returning "invalid" — mirrors the column guard's rationale: rounds 8
+    /// and 10 each independently rediscovered a NEW way for a stale commit to slip
+    /// past a hand-rolled guard without the matching cleanup (stale keys, now
+    /// grouped/virtualized/disabled). Any FUTURE validity condition belongs as one
+    /// more check inside this method — never as a bare early return in
+    /// <see cref="ReorderRowByKeyAsync"/> or anywhere else — so it inherits the
+    /// transform cleanup for free. <see cref="MoveRow"/> (invoked only from
+    /// <see cref="ReorderRowByKeyAsync"/>'s accept path) is the ONLY place allowed to
+    /// actually mutate <c>_displayedItems</c> for a pointer commit; it is reached
+    /// only when this method returns <c>Valid: true</c>.
+    /// </summary>
+    private async Task<RowReorderCommitValidation> ValidateRowReorderCommitAsync(string sourceRowKey, string targetRowKey)
+    {
+        // RowReorderPointerActive folds in RowReorderable, grouped/tree-grid mode,
+        // and client/server virtualization — any of which can flip during the
+        // 180ms settle window (round-10 #2).
+        if (!RowReorderPointerActive
+            || string.IsNullOrEmpty(sourceRowKey) || string.IsNullOrEmpty(targetRowKey)
+            || sourceRowKey == targetRowKey)
+        {
+            await ClearStaleRowReorderTransformsAsync();
+            return default;
+        }
+
+        // Mirrors the DOM key DataGridRow.RowKey stamped at drag start/read at
+        // drag end (see DataGridRowKeys.DomKeyFor's contract) — reference-type
+        // rows resolve by their live per-instance identity hash (survives index
+        // drift below); value-type rows resolve by their live per-slot token in
+        // _displayedItemTokens (round-7 #4 — NOT positionally, which is exactly
+        // why the "stale index" guard immediately below still matters for both
+        // shapes: the token/hash may simply no longer be present at all).
+        EnsureRowTokens();
+        var oldIndex = DataGridRowKeys.ResolveDomKeyIndex(_displayedItems, _displayedItemTokens, sourceRowKey);
+        var newIndex = DataGridRowKeys.ResolveDomKeyIndex(_displayedItems, _displayedItemTokens, targetRowKey);
+        // Either key may no longer resolve — the row it identified was removed
+        // from _displayedItems by a mutation that landed during the drag's
+        // post-drop settle window. Silently drop the stale commit rather than
+        // reorder whatever rows happen to occupy the old positions now.
+        if (oldIndex < 0 || newIndex < 0 || oldIndex == newIndex)
+        {
+            await ClearStaleRowReorderTransformsAsync();
+            return default;
+        }
+        return new RowReorderCommitValidation(true, oldIndex, newIndex);
+    }
+
+    // Symmetric to ClearStaleColumnReorderTransformsAsync above — JS already left
+    // the dragged row and every live-shifted sibling (plus their expanded
+    // DetailTemplate rows) translated, expecting CaptureRowRects (called only from
+    // the accept path in ReorderRowByKeyAsync) to clear those inline transforms as
+    // part of the FLIP handoff. Every reject branch of
+    // ValidateRowReorderCommitAsync calls this so that handoff still happens even
+    // though the accept path never runs (round-8 #2, round-10 #2).
+    private async Task ClearStaleRowReorderTransformsAsync()
+    {
+        try { await Interop.ClearRowReorderTransforms(_gridId); }
+        catch (JSDisconnectedException) { }
+        catch (Exception clearEx)
+        {
+            if (OnError.HasDelegate) await OnError.InvokeAsync(clearEx);
+        }
     }
 
     // --- Context Menu ---
@@ -3565,6 +4292,24 @@
             catch (Microsoft.JSInterop.JSDisconnectedException) { /* circuit gone */ }
             catch { /* best-effort */ }
             _navKeysPrevented = false;
+        }
+
+        // Tear down the pointer-based column-reorder listener registered on the grid.
+        if (_pointerReorderRegistered)
+        {
+            try { await Interop.UnregisterColumnReorder(_gridId); }
+            catch (Microsoft.JSInterop.JSDisconnectedException) { /* circuit gone */ }
+            catch { /* best-effort */ }
+            _pointerReorderRegistered = false;
+        }
+
+        // Tear down the pointer-based row-reorder listener registered on the grid.
+        if (_pointerRowReorderRegistered)
+        {
+            try { await Interop.UnregisterRowReorder(_gridId); }
+            catch (Microsoft.JSInterop.JSDisconnectedException) { /* circuit gone */ }
+            catch { /* best-effort */ }
+            _pointerRowReorderRegistered = false;
         }
 
         // Defensive: if disposed while still in fullscreen, unlock scroll AND drop

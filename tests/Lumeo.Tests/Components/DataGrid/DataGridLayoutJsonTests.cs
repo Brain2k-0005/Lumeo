@@ -148,8 +148,15 @@ public class DataGridLayoutJsonTests : IAsyncLifetime
     // -------------------------------------------------------------------------
 
     [Fact]
-    public void HeaderCell_Not_Draggable_When_Column_Reorderable_False()
+    public void HeaderCell_Not_Reorderable_When_Column_Reorderable_False()
     {
+        // NOTE: `draggable` on the <th> no longer tracks Reorderable at all — the
+        // ReUI-parity pass moved column reorder off native HTML5 DnD entirely onto
+        // a unified pointer-based path (mouse + touch + pen). `draggable` now only
+        // reflects the unrelated drag-to-group-panel gesture (Groupable +
+        // ShowGroupPanel, neither set here, so it stays "false" throughout). The
+        // per-column Reorderable flag instead gates `data-reorderable` — the
+        // marker the JS pointer path keys off — and the grip.
         var cols = Cols();
         cols[1].Reorderable = false; // "Name" column locked
 
@@ -161,17 +168,20 @@ public class DataGridLayoutJsonTests : IAsyncLifetime
         var headerCells = cut.FindAll("th[data-slot='datagrid-header-cell']");
         Assert.Equal(3, headerCells.Count);
 
-        // "Name" is the middle header — must NOT be draggable
+        // "Name" is the middle header — must NOT expose the reorderable marker.
         var nameTh = headerCells[1];
-        Assert.Equal("false", nameTh.GetAttribute("draggable"));
+        Assert.Null(nameTh.GetAttribute("data-reorderable"));
 
-        // The others should be draggable
-        Assert.Equal("true", headerCells[0].GetAttribute("draggable"));
-        Assert.Equal("true", headerCells[2].GetAttribute("draggable"));
+        // The others still do.
+        Assert.Equal("true", headerCells[0].GetAttribute("data-reorderable"));
+        Assert.Equal("true", headerCells[2].GetAttribute("data-reorderable"));
+
+        // Grip count mirrors the marker: 2, not 3 — Name's grip is suppressed.
+        Assert.Equal(2, cut.FindAll("[data-reorder-grip]").Count);
     }
 
     [Fact]
-    public void HeaderCell_Not_Draggable_When_Grid_Reorderable_False()
+    public void HeaderCell_Not_Reorderable_When_Grid_Reorderable_False()
     {
         var cut = _ctx.Render<DataGrid<Row>>(p => p
             .Add(g => g.Items, Data())
@@ -182,7 +192,9 @@ public class DataGridLayoutJsonTests : IAsyncLifetime
         foreach (var th in headerCells)
         {
             Assert.Equal("false", th.GetAttribute("draggable"));
+            Assert.Null(th.GetAttribute("data-reorderable"));
         }
+        Assert.Empty(cut.FindAll("[data-reorder-grip]"));
     }
 
     // -------------------------------------------------------------------------
@@ -296,11 +308,19 @@ public class DataGridLayoutJsonTests : IAsyncLifetime
     }
 
     [Fact]
-    public void HeaderCell_Drop_Reorders_Columns()
+    public async Task PointerReorder_Reorders_Columns()
     {
+        // The unified pointer-based reorder path (mouse/touch/pen) drives the grid
+        // through ReorderColumnByIdAsync — see DataGridReorderConstraintTests for
+        // the JS-registration-boundary coverage (RegisterColumnReorder / commit
+        // handler via TrackingInteropService). Here we drive the same internal
+        // entry point directly to keep this file's existing GetCurrentLayout
+        // assertions intact; native HTML5 DnD (dragstart/drop on a sibling header)
+        // is no longer part of column reorder at all.
+        var cols = Cols();
         var cut = _ctx.Render<DataGrid<Row>>(p => p
             .Add(g => g.Items, Data())
-            .Add(g => g.Columns, Cols())
+            .Add(g => g.Columns, cols)
             .Add(g => g.Reorderable, true));
 
         // Initial order: Id, Name, Email
@@ -309,11 +329,8 @@ public class DataGridLayoutJsonTests : IAsyncLifetime
         Assert.Equal("Name", before.Columns[1].Field);
         Assert.Equal("Email", before.Columns[2].Field);
 
-        var headerCells = cut.FindAll("th[data-slot='datagrid-header-cell']");
-
-        // Drag column 0 (Id) onto column 2 (Email)
-        headerCells[0].TriggerEvent("ondragstart", new DragEventArgs());
-        headerCells[2].TriggerEvent("ondrop", new DragEventArgs());
+        // Reorder column 0 (Id) to column 2's (Email) slot.
+        await cut.InvokeAsync(() => cut.Instance.ReorderColumnByIdAsync(cols[0].Id, cols[2].Id));
 
         var after = cut.Instance.GetCurrentLayout();
         // Id moved to index 2; Name/Email shifted left

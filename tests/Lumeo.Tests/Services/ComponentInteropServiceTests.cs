@@ -509,15 +509,17 @@ public class ComponentInteropServiceTests : IAsyncLifetime
     public async Task OnColumnResizeCommit_Calls_Only_Matching_Handler()
     {
         double receivedWidth = 0;
+        bool receivedAutoFit = false;
         bool otherCalled = false;
         await _service.RegisterColumnResize("col-1", 50, null,
-            w => { receivedWidth = w; return Task.CompletedTask; });
+            (w, autoFit) => { receivedWidth = w; receivedAutoFit = autoFit; return Task.CompletedTask; });
         await _service.RegisterColumnResize("col-2", 50, null,
-            _ => { otherCalled = true; return Task.CompletedTask; });
+            (_, _) => { otherCalled = true; return Task.CompletedTask; });
 
-        await _service.OnColumnResizeCommit("col-1", 180.0);
+        await _service.OnColumnResizeCommit("col-1", 180.0, true);
 
         Assert.Equal(180.0, receivedWidth);
+        Assert.True(receivedAutoFit);
         Assert.False(otherCalled);
     }
 

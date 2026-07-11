@@ -44,6 +44,8 @@ internal static partial class LumeoDefaultStrings
         ["DataGrid.PinRight"] = "Pin to right",
         ["DataGrid.Unpin"] = "Unpin",
         ["DataGrid.PinColumn"] = "Pin column",
+        ["DataGrid.ResizeColumn"] = "Resize column (use arrow keys, double-click to auto-fit)",
+        ["DataGrid.DragToReorder"] = "Drag to reorder column",
         ["DataGrid.Hide"] = "Hide",
         ["DataGrid.Show"] = "Show",
         ["DataGrid.SortAscending"] = "Sort ascending",
@@ -78,6 +80,8 @@ internal static partial class LumeoDefaultStrings
         ["DataGrid.DragToGroup"] = "Drag to group by this column",
         ["DataGrid.RemoveGrouping"] = "Remove grouping",
         ["DataGrid.ClearAllGrouping"] = "Clear all grouping",
+        ["DataGrid.DragToReorderRow"] = "Drag to reorder row",
+        ["DataGrid.RowReorderUnavailable"] = "Row reordering isn't available while grouped or virtualized",
         ["Filter.FilterTitle"] = "Filter: {0}",
 
         // ── Pagination ──────────────────────────────────────────────
@@ -560,6 +564,8 @@ internal static partial class LumeoDefaultStrings
         ["DataGrid.PinRight"] = "Rechts anheften",
         ["DataGrid.Unpin"] = "Lösen",
         ["DataGrid.PinColumn"] = "Spalte anheften",
+        ["DataGrid.ResizeColumn"] = "Spaltenbreite ändern (Pfeiltasten, Doppelklick für Auto-Anpassung)",
+        ["DataGrid.DragToReorder"] = "Zum Umsortieren der Spalte ziehen",
         ["DataGrid.Hide"] = "Ausblenden",
         ["DataGrid.Show"] = "Einblenden",
         ["DataGrid.SortAscending"] = "Aufsteigend sortieren",
@@ -594,6 +600,8 @@ internal static partial class LumeoDefaultStrings
         ["DataGrid.ExitFullscreen"] = "Vollbild schließen",
         ["DataGrid.RemoveGrouping"] = "Gruppierung entfernen",
         ["DataGrid.ClearAllGrouping"] = "Alle Gruppierungen entfernen",
+        ["DataGrid.DragToReorderRow"] = "Zum Umsortieren der Zeile ziehen",
+        ["DataGrid.RowReorderUnavailable"] = "Zeilen können bei Gruppierung oder Virtualisierung nicht umsortiert werden",
         ["Filter.FilterTitle"] = "Filter: {0}",
 
         // ── Pagination ──────────────────────────────────────────────

@@ -33,6 +33,8 @@ internal static partial class LumeoDefaultStrings
         ["DataGrid.PinLeft"] = "تثبيت إلى اليسار",
         ["DataGrid.PinRight"] = "تثبيت إلى اليمين",
         ["DataGrid.Unpin"] = "إلغاء التثبيت",
+        ["DataGrid.ResizeColumn"] = "تغيير حجم العمود (استخدم مفاتيح الأسهم، انقر نقرًا مزدوجًا للملاءمة التلقائية)",
+        ["DataGrid.DragToReorder"] = "اسحب لإعادة ترتيب العمود",
         ["DataGrid.Hide"] = "إخفاء",
         ["DataGrid.Show"] = "إظهار",
         ["DataGrid.SortAscending"] = "ترتيب تصاعدي",
@@ -64,6 +66,8 @@ internal static partial class LumeoDefaultStrings
         ["DataGrid.MoveDown"] = "تحريك لأسفل",
         ["DataGrid.Retry"] = "إعادة المحاولة",
         ["DataGrid.ErrorLoadingData"] = "فشل التحميل: {0}",
+        ["DataGrid.DragToReorderRow"] = "اسحب لإعادة ترتيب الصف",
+        ["DataGrid.RowReorderUnavailable"] = "إعادة ترتيب الصفوف غير متاحة أثناء التجميع أو الافتراضية",
         ["Filter.FilterTitle"] = "تصفية: {0}",
 
         // Pagination

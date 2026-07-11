@@ -33,6 +33,8 @@ internal static partial class LumeoDefaultStrings
         ["DataGrid.PinLeft"] = "Links vastmaken",
         ["DataGrid.PinRight"] = "Rechts vastmaken",
         ["DataGrid.Unpin"] = "Losmaken",
+        ["DataGrid.ResizeColumn"] = "Kolombreedte aanpassen (gebruik de pijltjestoetsen, dubbelklik om automatisch aan te passen)",
+        ["DataGrid.DragToReorder"] = "Sleep om kolom te herschikken",
         ["DataGrid.Hide"] = "Verbergen",
         ["DataGrid.Show"] = "Weergeven",
         ["DataGrid.SortAscending"] = "Oplopend sorteren",
@@ -59,6 +61,8 @@ internal static partial class LumeoDefaultStrings
         ["DataGrid.MoveDown"] = "Omlaag",
         ["DataGrid.Retry"] = "Opnieuw proberen",
         ["DataGrid.ErrorLoadingData"] = "Laden mislukt: {0}",
+        ["DataGrid.DragToReorderRow"] = "Sleep om rij te herschikken",
+        ["DataGrid.RowReorderUnavailable"] = "Rijen herschikken is niet mogelijk tijdens groeperen of virtualisatie",
         ["Filter.FilterTitle"] = "Filter: {0}",
 
         // Pagination

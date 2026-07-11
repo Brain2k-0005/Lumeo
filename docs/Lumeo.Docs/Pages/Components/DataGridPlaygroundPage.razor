@@ -88,6 +88,8 @@
                           Hoverable="_pgHoverable"
                           IsLoading="_pgIsLoading"
                           Reorderable="_pgReorderable"
+                          OnColumnResize="_pgOnColumnResize"
+                          OnColumnReorder="_pgOnColumnReorder"
                           RowReorderable="_pgRowReorderable"
                           ShowAddRow="_pgShowAddRow"
                           NewItemFactory="@(() => new PlaygroundRow($"New entry {++_pgAddCounter}", "Team", "Role", 0, "Active", DateTime.Today))"
@@ -102,24 +104,24 @@
                           SelectionMode="@_pgSelectionModeEnum"
                           EditMode="@_pgEditModeEnum">
                     <DataGridColumnDef TItem="PlaygroundRow" Title="Name" Field="Name"
-                                       Sortable="_pgSortable" Filterable="_pgFilterable"
+                                       Sortable="_pgSortable" Filterable="_pgFilterable" Resizable="_pgResizable"
                                        Pinnable="_pgPinnable" Groupable="true" />
                     <DataGridColumnDef TItem="PlaygroundRow" Title="Team" Field="Team"
-                                       Sortable="_pgSortable" Filterable="_pgFilterable"
+                                       Sortable="_pgSortable" Filterable="_pgFilterable" Resizable="_pgResizable"
                                        Pinnable="_pgPinnable" Groupable="true" />
                     <DataGridColumnDef TItem="PlaygroundRow" Title="Role" Field="Role"
-                                       Sortable="_pgSortable" Filterable="_pgFilterable"
+                                       Sortable="_pgSortable" Filterable="_pgFilterable" Resizable="_pgResizable"
                                        Pinnable="_pgPinnable" Groupable="true" />
                     <DataGridColumnDef TItem="PlaygroundRow" Title="Salary" Field="Salary" Format="C0"
-                                       Sortable="_pgSortable" Filterable="_pgFilterable"
+                                       Sortable="_pgSortable" Filterable="_pgFilterable" Resizable="_pgResizable"
                                        FilterType="DataGridFilterType.Number"
                                        Pinnable="_pgPinnable"
                                        Aggregate="AggregateType.Average" />
                     <DataGridColumnDef TItem="PlaygroundRow" Title="Status" Field="Status"
-                                       Sortable="_pgSortable" Filterable="_pgFilterable"
+                                       Sortable="_pgSortable" Filterable="_pgFilterable" Resizable="_pgResizable"
                                        Pinnable="_pgPinnable" Groupable="true" />
                     <DataGridColumnDef TItem="PlaygroundRow" Title="Joined" Field="Joined" Format="yyyy-MM-dd"
-                                       Sortable="_pgSortable" Filterable="_pgFilterable"
+                                       Sortable="_pgSortable" Filterable="_pgFilterable" Resizable="_pgResizable"
                                        FilterType="DataGridFilterType.Date"
                                        Pinnable="_pgPinnable" />
                 </DataGrid>
@@ -148,6 +150,11 @@
         <span class="shrink-0 @(_pgSelectionMode != "None" ? On : Off)">@(_pgSelectionMode != "None" ? $"Select: {_pgSelectionMode}" : "Select: —")</span>
         <span class="shrink-0 @(_pgEditMode      != "None" ? On : Off)">@(_pgEditMode      != "None" ? $"Edit: {_pgEditMode}"      : "Edit: —")</span>
         <span class="shrink-0 @(_pgVirtualized ? On : Off)">Virtualized</span>
+        @if (_pgLastColumnAction is not null)
+        {
+            <span class="opacity-25">|</span>
+            <span class="text-primary/80 shrink-0 tabular-nums">@_pgLastColumnAction</span>
+        }
         @if (_pgIsLoading)
         {
             <span class="opacity-25">|</span>
@@ -213,6 +220,7 @@
             @ControlRow(label: "Sortable",         active: true, control: @<Switch @bind-Checked="_pgSortable" />)
             @ControlRow(label: "Filterable",        active: true, control: @<Switch @bind-Checked="_pgFilterable" />)
             @ControlRow(label: "Drag to reorder",   active: true, control: @<Switch @bind-Checked="_pgReorderable" />)
+            @ControlRow(label: "Resize columns",    active: true, control: @<Switch @bind-Checked="_pgResizable" />)
             @ControlRow(label: "Pinnable",          active: true, control: @<Switch @bind-Checked="_pgPinnable" />)
 
             @* ── Rows ── *@
@@ -353,7 +361,16 @@
     private bool _pgSortable = true;
     private bool _pgFilterable = true;
     private bool _pgReorderable = true;
+    private bool _pgResizable = true;
     private bool _pgPinnable = true;
+
+    // Surfaces the last resize/reorder in the status bar so the two features are
+    // observable in the playground (drag/keyboard/auto-fit all funnel here).
+    private string? _pgLastColumnAction;
+    private void _pgOnColumnResize(ColumnResizeEventArgs e)
+        => _pgLastColumnAction = $"{(e.AutoFit ? "Auto-fit" : "Resized")} {e.ColumnId[..Math.Min(6, e.ColumnId.Length)]} → {e.Width:0}px";
+    private void _pgOnColumnReorder(ColumnReorderEventArgs e)
+        => _pgLastColumnAction = $"Reordered {e.ColumnId[..Math.Min(6, e.ColumnId.Length)]} ({e.OldIndex}→{e.NewIndex})";
 
     // Rows
     private bool _pgRowReorderable;
