@@ -196,6 +196,15 @@ else
                    stopPropagation would otherwise keep a click on the field from reaching
                    the wrapper handler. *@
                 <div class="@CssClass" @onclick="HandleInputClick" @onclick:stopPropagation="true" @attributes="AdditionalAttributes">
+                    @* @onkeydown:stopPropagation is gated on _isOpen (the state as of the
+                       LAST render, i.e. before this keystroke) rather than an unconditional
+                       "true": while the calendar is open, containing every key (incl. Enter/
+                       Space) is what stops PopoverTrigger's own Enter/Space handler from
+                       immediately re-toggling right after HandleInputKeyDown closes it here
+                       (the original "reopened calendar" bug). But once the calendar is
+                       already closed, HandleInputKeyDown has nothing left to do for Escape —
+                       stopping propagation then just swallows Escape before an ancestor
+                       Dialog/Sheet can dismiss on it (Codex P2). *@
                     <input id="@EffectiveTriggerId"
                            type="text"
                            name="@Name"
@@ -210,7 +219,7 @@ else
                            @oninput="HandleInputChanged"
                            @onblur="HandleInputBlur"
                            @onkeydown="HandleInputKeyDown"
-                           @onkeydown:stopPropagation="true"
+                           @onkeydown:stopPropagation="_isOpen"
                            @onclick="HandleInputClick"
                            @onclick:stopPropagation="true" />
                     <button type="button"

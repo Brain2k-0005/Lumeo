@@ -36,7 +36,7 @@ public class DataTableSortableHeaderKeyboardTests : IAsyncLifetime
     }
 
     [Fact]
-    public void Activating_An_Ascending_Header_Cycles_To_Descending_Then_None()
+    public void Activating_An_Ascending_Header_Cycles_To_Descending()
     {
         (string Column, L.DataTable<object>.SortDirection Direction)? result = null;
         var cut = _ctx.Render<L.DataTableSortableHeader>(p => p
@@ -48,6 +48,25 @@ public class DataTableSortableHeaderKeyboardTests : IAsyncLifetime
         cut.Find("button").Click();
 
         Assert.Equal(("Name", L.DataTable<object>.SortDirection.Descending), result);
+    }
+
+    [Fact]
+    public void Activating_A_Descending_Header_Cycles_To_None()
+    {
+        // CodeRabbit P3 (PR #356 round 1): the ORIGINAL name of the test above claimed to
+        // cover the full None -> Ascending -> Descending -> None cycle but only asserted
+        // the Ascending -> Descending step, leaving the final Descending -> None leg
+        // unverified. This closes that gap explicitly.
+        (string Column, L.DataTable<object>.SortDirection Direction)? result = null;
+        var cut = _ctx.Render<L.DataTableSortableHeader>(p => p
+            .Add(h => h.Column, "Name")
+            .Add(h => h.SortColumn, "Name")
+            .Add(h => h.SortDirection, L.DataTable<object>.SortDirection.Descending)
+            .Add(h => h.OnSort, v => result = v));
+
+        cut.Find("button").Click();
+
+        Assert.Equal(("Name", L.DataTable<object>.SortDirection.None), result);
     }
 
     [Fact]

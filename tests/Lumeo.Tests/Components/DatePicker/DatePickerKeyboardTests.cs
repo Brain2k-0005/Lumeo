@@ -137,9 +137,45 @@ public class DatePickerKeyboardTests : IAsyncLifetime
         // exist — it is a real a11y gap, out of scope to fix in this pass.
         var cut = _ctx.Render<L.DateWheelPicker>();
 
-        foreach (var col in cut.FindAll("div.overflow-y-scroll"))
+        var columns = cut.FindAll("div.overflow-y-scroll");
+        Assert.NotEmpty(columns); // guard against a vacuous pass if the markup class ever changes
+
+        foreach (var col in columns)
         {
             Assert.Null(col.GetAttribute("tabindex"));
         }
+    }
+
+    // --- Escape must only be contained while the picker itself has something to
+    //     close (Codex P2 round-2, PR #356): @onkeydown:stopPropagation used to be
+    //     an unconditional "true", so a typeable DatePicker nested in a Dialog/Sheet
+    //     swallowed Escape even when the calendar was ALREADY closed, leaving the
+    //     ancestor modal unable to dismiss on it. Bunit doesn't execute real DOM
+    //     bubbling/stopPropagation (no browser), so the regression is pinned at the
+    //     render-tree level: the directive is present (stops propagation) only while
+    //     _isOpen is true, and absent (lets Escape bubble to the modal) once closed —
+    //     temp-reverting to an unconditional "true" fails BOTH assertions below.
+
+    [Fact]
+    public void Input_Keydown_Stops_Propagation_While_The_Calendar_Is_Open()
+    {
+        var cut = RenderPicker(value: new DateOnly(2026, 6, 10));
+        var input = cut.Find("input");
+        input.Click();
+        Assert.True(IsOpen(cut));
+
+        Assert.Contains("onkeydown:stoppropagation", cut.Find("input").OuterHtml, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void Input_Keydown_Does_Not_Stop_Propagation_While_The_Calendar_Is_Closed()
+    {
+        // Closed from the start — nothing for HandleInputKeyDown to revert/close,
+        // so Escape (or any other key) must be free to bubble to an ancestor
+        // Dialog/Sheet's own Escape-to-dismiss handler.
+        var cut = RenderPicker(value: new DateOnly(2026, 6, 10));
+        Assert.False(IsOpen(cut));
+
+        Assert.DoesNotContain("onkeydown:stoppropagation", cut.Find("input").OuterHtml, StringComparison.OrdinalIgnoreCase);
     }
 }

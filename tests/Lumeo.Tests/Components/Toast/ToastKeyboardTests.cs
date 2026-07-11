@@ -54,11 +54,18 @@ public class ToastKeyboardTests : IAsyncLifetime
         // asserting a feature that isn't implemented. A keydown with no registered
         // listener is simply not observable via bUnit; the meaningful, honest assertion
         // is that neither button declares any key-handling attribute Lumeo would use to
-        // wire one up (e.g. no data-key-handler marker), so Escape dismissal — if ever
-        // added — has to be a deliberate new feature, not a silently pre-existing one.
+        // wire one up, so Escape dismissal — if ever added — has to be a deliberate new
+        // feature, not a silently pre-existing one.
+        //
+        // CodeRabbit P3 (PR #356 round 1): plain "onkeydown" is never the attribute a
+        // Razor @onkeydown directive renders — Blazor emits "blazor:onkeydown" (an
+        // opaque event-handler id) on the element instead, so the original assertion
+        // passed vacuously regardless of whether a handler existed. Also widened from
+        // ToastClose-only to BOTH buttons this test's name already claimed to cover.
+        var action = _ctx.Render<L.ToastAction>(p => p.Add(a => a.Label, "Undo"));
         var close = _ctx.Render<L.ToastClose>();
-        var button = close.Find("button");
 
-        Assert.False(button.HasAttribute("onkeydown"));
+        Assert.False(action.Find("button").HasAttribute("blazor:onkeydown"));
+        Assert.False(close.Find("button").HasAttribute("blazor:onkeydown"));
     }
 }

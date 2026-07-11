@@ -2328,8 +2328,21 @@ function applyToolbarRovingTabindex(items, activeIndex) {
 // Initialise the roving tabindex so only the first item is in the tab order.
 // Called when the toolbar mounts; safe to call repeatedly.
 export function initToolbarRoving(toolbarId) {
+    const container = document.getElementById(toolbarId);
     const items = getToolbarItems(toolbarId);
-    if (items.length === 0) return;
+    if (items.length === 0) {
+        // No focusable items (yet) — the container itself is the only possible
+        // tab stop, so keep its own tabindex="0" as a fallback (matches the
+        // markup's initial state before hydration/first render).
+        if (container) container.setAttribute('tabindex', '0');
+        return;
+    }
+    // Items exist: they now own the single roving tab stop. The container's own
+    // tabindex="0" (set unconditionally in the Razor markup) must be retracted,
+    // otherwise it stays a SECOND tab stop alongside the active item — Tab would
+    // land on the container, then Tab again to the first item, breaking the
+    // "exactly one tab stop" APG toolbar model this function exists to provide.
+    if (container) container.setAttribute('tabindex', '-1');
     // If one item already holds focus, keep it; otherwise make the first the stop.
     const focusedIndex = items.findIndex(el => el === document.activeElement);
     applyToolbarRovingTabindex(items, focusedIndex >= 0 ? focusedIndex : 0);

@@ -98,6 +98,7 @@ else
 
     // Auto-measurement (VisibleCount == -1 + Overflow == true)
     private bool _isObservingOverflow;
+    private bool _pdRegistered;
     private int _autoVisibleCount = -1; // -1 = not yet measured
     // Last total reported by the JS ResizeObserver. Persisted so OnParametersSet
     // can rebuild the auto-measure context with the REAL total instead of
@@ -139,8 +140,28 @@ else
         // (some items left with no tabindex are tab stops; the prior stop may be
         // gone). The JS init is idempotent and preserves the currently-focused
         // item as the stop, so re-running it after every render is safe and
-        // re-establishes "exactly one tabindex=0" over the current item set.
+        // re-establishes "exactly one tabindex=0" over the current item set —
+        // including retracting the container's own tabindex="0" once real items
+        // exist, so it never lingers as a second stop alongside the roving item.
         try { await Interop.InitToolbarRoving(_toolbarId); }
+        catch (JSDisconnectedException) { }
+        catch (ObjectDisposedException) { }
+
+        // Suppress the browser's native scroll for the orientation-aligned
+        // navigation keys HandleKeyDown moves focus with (CodeRabbit P2:
+        // Arrow/Home/End were moving roving focus AND scrolling the page).
+        // Re-registered every render (idempotent — see registerPreventDefaultKeys)
+        // so a runtime Orientation change keeps the rule set aligned.
+        try
+        {
+            var navKeys = Orientation == ToolbarOrientation.Horizontal
+                ? new[] { "ArrowLeft", "ArrowRight", "Home", "End" }
+                : new[] { "ArrowUp", "ArrowDown", "Home", "End" };
+            await Interop.RegisterPreventDefaultKeys(
+                _toolbarId,
+                navKeys.Select(k => new Lumeo.Services.PreventDefaultKeyRule(k)).ToArray());
+            _pdRegistered = true;
+        }
         catch (JSDisconnectedException) { }
         catch (ObjectDisposedException) { }
 
@@ -214,6 +235,12 @@ else
 
     public async ValueTask DisposeAsync()
     {
+        if (_pdRegistered)
+        {
+            try { await Interop.UnregisterPreventDefaultKeys(_toolbarId); }
+            catch (JSDisconnectedException) { }
+            catch (ObjectDisposedException) { }
+        }
         try
         {
             if (_isObservingOverflow)

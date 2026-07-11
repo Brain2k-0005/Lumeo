@@ -21,6 +21,7 @@
 
     private readonly string _elementId = $"lumeo-dock-{Guid.NewGuid():N}";
     private bool _registered;
+    private bool _pdRegistered;
     private double _lastMaxScale;
     private int _lastRadius;
 
@@ -71,9 +72,29 @@
         // on EVERY render, not just firstRender, so items added/removed/enabled
         // after load are re-managed; initToolbarRoving is idempotent and keeps
         // the currently-focused item as the stop, so re-running it is safe.
+        // initToolbarRoving also retracts the container's own tabindex="0" once
+        // real items exist, so Tab lands on exactly one stop (Codex P2: the
+        // container used to remain a SECOND stop alongside the roving item).
         try { await Interop.InitToolbarRoving(_elementId); }
         catch (JSDisconnectedException) { }
         catch (ObjectDisposedException) { }
+
+        if (!_pdRegistered)
+        {
+            // Suppress the browser's native scroll for the navigation keys this
+            // toolbar handles itself (Codex/CodeRabbit P2: ArrowLeft/Right/Home/End
+            // were moving roving focus AND scrolling the page/dock at the same time).
+            try
+            {
+                await Interop.RegisterPreventDefaultKeys(
+                    _elementId,
+                    new[] { "ArrowLeft", "ArrowRight", "Home", "End" }
+                        .Select(k => new Lumeo.Services.PreventDefaultKeyRule(k)).ToArray());
+                _pdRegistered = true;
+            }
+            catch (JSDisconnectedException) { }
+            catch (ObjectDisposedException) { }
+        }
     }
 
     // Radix/APG Toolbar keyboard model, reused verbatim from Toolbar.razor: the
@@ -100,6 +121,12 @@
 
     public async ValueTask DisposeAsync()
     {
+        if (_pdRegistered)
+        {
+            try { await Interop.UnregisterPreventDefaultKeys(_elementId); }
+            catch (JSDisconnectedException) { }
+            catch (ObjectDisposedException) { }
+        }
         if (!_registered) return;
         try { await Interop.MotionDisposeDock(_elementId); }
         catch (JSDisconnectedException) { }

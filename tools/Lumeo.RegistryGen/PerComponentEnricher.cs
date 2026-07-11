@@ -230,7 +230,7 @@ public static class PerComponentEnricher
         }
         entry["keyboardInteractions"] = keyboard;
 
-        // 9. tests — scan tests/ for files mentioning componentName.
+        // 9. tests — scan tests/ for files that actually EXERCISE this component.
         var tests = new List<string>();
         var seenTests = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var testRoots = new[]
@@ -239,18 +239,54 @@ public static class PerComponentEnricher
             Path.Combine(repoRoot, "tests", "Lumeo.Docs.Tests"),
             Path.Combine(repoRoot, "tests", "Lumeo.Tests.E2E"),
         };
-        // Match either a class named like the component (Class FooBar) or string-literal mentions.
-        var nameWordRegex = new Regex(@"\b" + Regex.Escape(componentName) + @"\b", RegexOptions.Compiled);
+        // Precise "does this test render the component" signal — same family of
+        // patterns as Program.cs's ComputeTestCoverage `renders` regex, extended to
+        // tolerate a namespace/alias-qualified generic argument (`Render<Lumeo.X>`,
+        // `Render<L.X>`) which dedicated-folder tests use routinely. A loose
+        // whole-file `\bComponentName\b` word match (the previous heuristic) false-
+        // attributed shared test files from an incidental DOC-COMMENT mention —
+        // e.g. PullToRefreshKeyboardTests.cs -> file-viewer.json via "...counterpart
+        // to FileViewer's...", and PivotGridKeyboardTests.cs -> steps.json via
+        // "Card/Steps conditionally-interactive contract" — plus real false hits
+        // from unrelated identifiers/params that happen to spell the component name
+        // (Playwright's `MouseMoveOptions.Steps`, a `Stepper`/`Tour.Steps` mention)
+        // (CodeRabbit Major, PR #356 round 1).
+        // A fourth alternative catches non-render unit tests that still legitimately
+        // belong to this component — e.g. FileViewerCsvTests.cs tests the static
+        // `Lumeo.FileViewer.ParseCsv(...)` parsing helper without ever rendering the
+        // Blazor component — by requiring the component's OWN qualified type name
+        // (`Lumeo.X` / `L.X`), not a bare word match. This still excludes
+        // `Tour.Steps`/`c.Steps`/comment mentions since neither "Lumeo" nor the "L"
+        // alias precedes them.
+        var rendersRegex = new Regex(
+            $@"Render<(?:\w+\.)*{Regex.Escape(componentName)}[<>(]" +
+            $@"|<{Regex.Escape(componentName)}[\s/>]" +
+            $@"|OpenComponent<[^>]*\b{Regex.Escape(componentName)}\b" +
+            $@"|\b(?:Lumeo|L)\.{Regex.Escape(componentName)}\b",
+            RegexOptions.Compiled);
+        // E2E specs don't render Razor markup at all — they navigate a real browser
+        // to the component's docs route — so they need their own route-based signal
+        // rather than the render regex (which would silently drop every E2E entry).
+        var e2eRouteRegex = new Regex(
+            $@"/components/{Regex.Escape(componentKey)}(?![a-z0-9-])",
+            RegexOptions.Compiled);
         foreach (var root in testRoots)
         {
             if (!Directory.Exists(root)) continue;
-            foreach (var csFile in Directory.EnumerateFiles(root, "*.cs", SearchOption.AllDirectories))
+            var isE2E = string.Equals(Path.GetFileName(root), "Lumeo.Tests.E2E", StringComparison.OrdinalIgnoreCase);
+            // Test sources are both .cs and bUnit .razor files (StepsKeyboardTests.razor
+            // etc. use `Render(@<X …>)`) — the previous *.cs-only glob silently dropped
+            // every .razor test from this list across the WHOLE library.
+            var testFiles = Directory.EnumerateFiles(root, "*.cs", SearchOption.AllDirectories)
+                .Concat(isE2E ? Enumerable.Empty<string>() : Directory.EnumerateFiles(root, "*.razor", SearchOption.AllDirectories));
+            foreach (var testFile in testFiles)
             {
                 string text;
-                try { text = File.ReadAllText(csFile).Replace("\r\n", "\n").Replace("\r", "\n"); }
+                try { text = File.ReadAllText(testFile).Replace("\r\n", "\n").Replace("\r", "\n"); }
                 catch { continue; }
-                if (!nameWordRegex.IsMatch(text)) continue;
-                var rel = Path.GetRelativePath(repoRoot, csFile).Replace('\\', '/');
+                var matches = isE2E ? e2eRouteRegex.IsMatch(text) : rendersRegex.IsMatch(text);
+                if (!matches) continue;
+                var rel = Path.GetRelativePath(repoRoot, testFile).Replace('\\', '/');
                 if (seenTests.Add(rel)) tests.Add(rel);
             }
         }

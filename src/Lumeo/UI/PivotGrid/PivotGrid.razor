@@ -1,8 +1,10 @@
 @namespace Lumeo
 @typeparam TItem
+@implements IAsyncDisposable
 @inject Lumeo.Services.Localization.ILumeoLocalizer L
+@inject Lumeo.Services.IComponentInteropService Interop
 
-<div class="@WrapperClass" @attributes="AdditionalAttributes">
+<div id="@_wrapperId" class="@WrapperClass" @attributes="AdditionalAttributes">
     @if (_isEmpty)
     {
         <div class="p-6 text-sm text-muted-foreground text-center">
@@ -206,6 +208,41 @@
 
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private readonly string _wrapperId = LumeoIds.New("lumeo-pivotgrid");
+    private bool _pdRegistered;
+
+    // Enter/Space on a focused drill-down cell must not ALSO trigger the
+    // browser's native Space-scrolls-the-page default (CodeRabbit/Codex P2) —
+    // registered once on the wrapper (keydown bubbles up from every cell) so
+    // it scales to any number of cells without a per-cell listener. SkipEditable
+    // exempts real buttons (e.g. the column-collapse toggle) so their own native
+    // Space/Enter activation is never cancelled.
+    private static readonly Lumeo.Services.PreventDefaultKeyRule[] CellActivationKeyRules =
+    {
+        new("Enter", SkipEditable: true),
+        new(" ", SkipEditable: true),
+    };
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender || !OnCellClick.HasDelegate) return;
+        try
+        {
+            await Interop.RegisterPreventDefaultKeys(_wrapperId, CellActivationKeyRules);
+            _pdRegistered = true;
+        }
+        catch (JSDisconnectedException) { }
+        catch (ObjectDisposedException) { }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (!_pdRegistered) return;
+        try { await Interop.UnregisterPreventDefaultKeys(_wrapperId); }
+        catch (JSDisconnectedException) { }
+        catch (ObjectDisposedException) { }
+    }
 
     // ---- Cached state (computed in OnParametersSet) --------------------
 

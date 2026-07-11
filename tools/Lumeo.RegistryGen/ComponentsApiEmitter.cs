@@ -447,6 +447,35 @@ public static class ComponentsApiEmitter
         "ArrowRight", "Home", "End", "PageUp", "PageDown", "Delete", "Backspace", "ContextMenu", "F10",
     };
 
+    // A key literal only counts when it sits in an actual key-COMPARISON context:
+    //   `case "X":` / `case "X" or "Y":`             — switch STATEMENT arms
+    //   `.Key == "X"`                                 — plain equality
+    //   `.Key is "X" or "Y" or "Z"`                   — C# pattern-match "or" chain
+    //   `"X" => ...` / `(cond, "X") => ...`           — switch EXPRESSION arms, bare
+    //                                                    or tuple-patterned, incl.
+    //                                                    `"X" or "Y" => ...`
+    // Previously any quoted string equal to a known key ANYWHERE in the file
+    // counted — including plain string literals that happen to equal a key, e.g.
+    // `string.Join(" ", ...)` in a CssClass helper — which is why Dock.razor's
+    // registry entry advertised a Space interaction it doesn't actually have
+    // (CodeRabbit/Codex P3, PR #356 round 1). The switch-expression-arm alternative
+    // was added after a first tightening pass silently dropped REAL interactions
+    // from every component using that idiom (Splitter/Resizable's tuple switch,
+    // Kanban/RadioGroup/Segmented/QueryBuilder/Stepper's `"X" or "Y" => n`) — caught
+    // by diffing every component's api.a11y.keys before/after the change. The
+    // repeated named group "k" is valid in .NET regex: every alternative/repetition
+    // that matches contributes its own capture, all readable via
+    // Match.Groups["k"].Captures. One known accepted gap: a key compared only
+    // through a local variable (Carousel's RTL-swapped `var (back, forward) = ...;
+    // e.Key == back`) still isn't recovered — closing it would require re-widening
+    // the match past any single statement, reopening the original bug.
+    private static readonly Regex KeyComparisonRegex = new(
+        "\\bcase\\s+\"(?<k>[^\"]*)\"(?:\\s*(?:or|,)\\s*\"(?<k>[^\"]*)\")*" +
+        "|\\.Key\\s+is\\s+\"(?<k>[^\"]*)\"(?:\\s*(?:or|,)\\s*\"(?<k>[^\"]*)\")*" +
+        "|\\.Key\\s*==\\s*\"(?<k>[^\"]*)\"" +
+        "|\"(?<k>[^\"]*)\"(?:\\s*or\\s*\"(?<k>[^\"]*)\")*\\s*\\)?\\s*=>",
+        RegexOptions.Compiled);
+
     /// <summary>
     /// Static a11y signal extraction from a component's .razor source: the ARIA roles and
     /// aria-* attributes it renders, the keyboard keys it handles, and whether it manages
@@ -474,8 +503,14 @@ public static class ComponentsApiEmitter
             if (text.Contains("@onkeydown") || text.Contains("KeyboardEventArgs"))
             {
                 keyboardInteractive = true;
-                foreach (var k in KnownKeys)
-                    if (text.Contains("\"" + k + "\"")) keys.Add(k == " " ? "Space" : k);
+                foreach (Match m in KeyComparisonRegex.Matches(text))
+                {
+                    foreach (Capture c in m.Groups["k"].Captures)
+                    {
+                        if (!KnownKeys.Contains(c.Value)) continue; // still whitelist-gated
+                        keys.Add(c.Value == " " ? "Space" : c.Value);
+                    }
+                }
             }
             if (text.Contains("FocusAsync") || text.Contains("FocusElement") || text.Contains("tabindex"))
                 focusManaged = true;
