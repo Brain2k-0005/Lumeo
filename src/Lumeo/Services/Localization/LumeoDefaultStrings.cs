@@ -600,6 +600,8 @@ internal static partial class LumeoDefaultStrings
         ["DataGrid.ExitFullscreen"] = "Vollbild schließen",
         ["DataGrid.RemoveGrouping"] = "Gruppierung entfernen",
         ["DataGrid.ClearAllGrouping"] = "Alle Gruppierungen entfernen",
+        ["DataGrid.DragToReorderRow"] = "Zum Umsortieren der Zeile ziehen",
+        ["DataGrid.RowReorderUnavailable"] = "Zeilen können bei Gruppierung oder Virtualisierung nicht umsortiert werden",
         ["Filter.FilterTitle"] = "Filter: {0}",
 
         // ── Pagination ──────────────────────────────────────────────

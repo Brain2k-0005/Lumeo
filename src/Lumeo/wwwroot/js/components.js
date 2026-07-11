@@ -3069,6 +3069,14 @@ export function registerColumnReorder(gridId, dotnetRef) {
     if (columnReorderPointerHandlers.has(gridId)) unregisterColumnReorder(gridId);
 
     let drag = null; // active/pending drag descriptor or null
+    // Cells still carrying an engine-applied transform during the delayed-commit
+    // settle window (release/cancel happened, finishDrag's window.setTimeout for
+    // the commit/glide-back hasn't fired yet). `drag` is already null by then, so
+    // cancelActiveDrag alone can't reach them — unregister-during-settle (round-9
+    // #1) needs this separate handle to cancel the pending timeout AND strip the
+    // transforms, or the columns stay visually stuck with no future FLIP pass to
+    // clean them up.
+    let pendingSettle = null; // { timeoutId, cells: Set<HTMLElement> } or null
 
     const gatherColumnCells = (th, colIndex, tbody) => {
         const cells = [th];
@@ -3286,7 +3294,9 @@ export function registerColumnReorder(gridId, dotnetRef) {
             }
         }
 
-        window.setTimeout(() => {
+        const settleCells = new Set([...d.cells, ...shiftedCells]);
+        const timeoutId = window.setTimeout(() => {
+            pendingSettle = null;
             for (const cell of d.cells) cell.style.transition = '';
             if (isCommit) {
                 // Leave the settled transforms in place (dragged column at its
@@ -3301,6 +3311,7 @@ export function registerColumnReorder(gridId, dotnetRef) {
                 }
             }
         }, REORDER_SETTLE_MS + 20);
+        pendingSettle = { timeoutId, cells: settleCells };
     };
 
     const onPointerMove = (e) => {
@@ -3473,9 +3484,19 @@ export function registerColumnReorder(gridId, dotnetRef) {
     // Exposed so unregisterColumnReorder can fully abort an in-flight drag on
     // unmount — otherwise translated cells, the global cursor/selection styles,
     // the drop indicator, and the window Escape listener would all outlive the
-    // grid's own listeners being torn down.
+    // grid's own listeners being torn down. Also covers unregister racing the
+    // POST-release settle window (round-9 #1): drag is already null there, but
+    // pendingSettle still tracks the queued commit/glide-back timeout and the
+    // cells finishDrag left translated for it — cancel the timeout so the
+    // now-torn-down commit handler is never invoked, and strip the transforms
+    // immediately since no future FLIP pass will do it for us.
     const cancelActiveDrag = () => {
-        if (drag) finishDrag(null);
+        if (drag) { finishDrag(null); return; }
+        if (pendingSettle) {
+            window.clearTimeout(pendingSettle.timeoutId);
+            for (const cell of pendingSettle.cells) clearFlipStyles(cell);
+            pendingSettle = null;
+        }
     };
 
     grid.addEventListener('pointerdown', onPointerDown);
@@ -3536,6 +3557,13 @@ export function registerRowReorder(gridId, dotnetRef) {
     if (rowReorderPointerHandlers.has(gridId)) unregisterRowReorder(gridId);
 
     let drag = null; // active/pending drag descriptor or null
+    // Vertical mirror of registerColumnReorder's pendingSettle (round-9 #2):
+    // rows/detail <tr>s still carrying an engine-applied transform during the
+    // delayed-commit settle window, with the queued timeout that will either
+    // fire the commit or glide them back to identity. `drag` is already null
+    // by the time that timeout is pending, so unregister-during-settle needs
+    // this separate handle to cancel the timeout and strip the transforms.
+    let pendingSettle = null; // { timeoutId, els: Set<HTMLElement> } or null
 
     // Applies (or re-applies) the live sibling-shift preview for a projected
     // insertion index. Guarded by drag.lastProjectedIdx so it only runs when the
@@ -3707,7 +3735,9 @@ export function registerRowReorder(gridId, dotnetRef) {
             }
         }
 
-        window.setTimeout(() => {
+        const settleEls = new Set([d.el, d.detail, ...shiftedPairs.flat()].filter(Boolean));
+        const timeoutId = window.setTimeout(() => {
+            pendingSettle = null;
             d.el.style.transition = '';
             if (d.detail) d.detail.style.transition = '';
             if (isCommit) {
@@ -3727,6 +3757,7 @@ export function registerRowReorder(gridId, dotnetRef) {
                 }
             }
         }, ROW_REORDER_SETTLE_MS + 20);
+        pendingSettle = { timeoutId, els: settleEls };
     };
 
     const onPointerMove = (e) => {
@@ -3852,9 +3883,19 @@ export function registerRowReorder(gridId, dotnetRef) {
     // Exposed so unregisterRowReorder can fully abort an in-flight drag on
     // unmount — otherwise translated rows, the global cursor/selection styles,
     // and the window Escape listener would all outlive the grid's own
-    // listeners being torn down.
+    // listeners being torn down. Also covers unregister racing the POST-release
+    // settle window (round-9 #2): drag is already null there, but pendingSettle
+    // still tracks the queued commit/glide-back timeout and the row/detail
+    // elements finishDrag left translated for it — cancel the timeout so the
+    // now-torn-down commit handler is never invoked, and strip the transforms
+    // immediately since no future FLIP pass will do it for us.
     const cancelActiveDrag = () => {
-        if (drag) finishDrag(false);
+        if (drag) { finishDrag(false); return; }
+        if (pendingSettle) {
+            window.clearTimeout(pendingSettle.timeoutId);
+            for (const el of pendingSettle.els) clearFlipStyles(el);
+            pendingSettle = null;
+        }
     };
 
     grid.addEventListener('pointerdown', onPointerDown);

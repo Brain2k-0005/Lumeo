@@ -768,6 +768,13 @@ public sealed class ComponentInteropService : IComponentInteropService
 
     // --- DataGrid Column Resize ---
 
+    // Explicit implementation of the interface's original (non-autoFit) abstract
+    // member (round-9 #4) — delegates to the autoFit-aware overload below with
+    // autoFit always false, mirroring the interface's own default so callers that
+    // still bind to the 4-parameter shape behave identically either way.
+    public ValueTask RegisterColumnResize(string handleId, double minWidth, double? maxWidth, Func<double, Task> commitHandler) =>
+        RegisterColumnResize(handleId, minWidth, maxWidth, (w, _) => commitHandler(w));
+
     public async ValueTask RegisterColumnResize(string handleId, double minWidth, double? maxWidth, Func<double, bool, Task> commitHandler)
     {
         var module = await GetModuleAsync();

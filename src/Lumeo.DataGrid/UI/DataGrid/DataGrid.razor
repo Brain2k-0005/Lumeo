@@ -3277,6 +3277,14 @@
         if (src < 0 || tgt < 0) { await ClearStaleColumnReorderTransformsAsync(); return; }
         var srcCol = _orderedColumns[src];
         var tgtCol = _orderedColumns[tgt];
+        // round-9 #3: a dragged source or drop target hidden during the 180ms
+        // settle window (app-level Visible flip, or the Columns panel) must be
+        // treated like removal — the lookup above still finds it in
+        // _orderedColumns (hiding doesn't remove the entry), but committing
+        // against a column the user can no longer see would reorder something
+        // invisible or drop relative to a target that isn't rendered.
+        if (!srcCol.Visible) { await ClearStaleColumnReorderTransformsAsync(); return; }
+        if (!tgtCol.Visible) { await ClearStaleColumnReorderTransformsAsync(); return; }
         if (!srcCol.Reorderable) { await ClearStaleColumnReorderTransformsAsync(); return; }
         if (!tgtCol.Reorderable) { await ClearStaleColumnReorderTransformsAsync(); return; } // a locked column is un-displaceable: refuse drops onto its slot
         if (srcCol.Pin != tgtCol.Pin) { await ClearStaleColumnReorderTransformsAsync(); return; } // same-partition only

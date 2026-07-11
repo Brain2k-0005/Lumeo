@@ -485,6 +485,12 @@ public class TrackingInteropService : IComponentInteropService
         return true;
     }
 
+    // round-9 #4: the interface's original (non-autoFit) abstract member — forwards
+    // to the autoFit-aware overload below with autoFit always false, mirroring
+    // ComponentInteropService's own explicit implementation of this shape.
+    public ValueTask RegisterColumnResize(string handleId, double minWidth, double? maxWidth, Func<double, Task> commitHandler) =>
+        RegisterColumnResize(handleId, minWidth, maxWidth, (w, _) => commitHandler(w));
+
     public ValueTask RegisterColumnResize(string handleId, double minWidth, double? maxWidth, Func<double, bool, Task> commitHandler)
     {
         _columnResizeRegistrations.Add(handleId);

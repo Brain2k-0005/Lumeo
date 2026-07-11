@@ -1,138 +1,77 @@
-using Bunit;
+using System.Collections.Generic;
 using Lumeo.Services;
 using Lumeo.Services.Interop;
 using Lumeo.Tests.Helpers;
 using Microsoft.AspNetCore.Components;
-using Microsoft.AspNetCore.Components.Web;
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.JSInterop;
 using Xunit;
-using L = Lumeo;
 
-namespace Lumeo.Tests.Components.Tour;
+namespace Lumeo.Tests.Services;
 
 /// <summary>
-/// Triage #6 (high, state-on-data-change) — "Next/Previous navigation never
-/// scrolls an off-screen target into view (only the first step / parent-driven
-/// step changes do)".
+/// Round-9 P2 — additive-evolution guard for <see cref="IComponentInteropService"/>'s
+/// DataGrid column-resize/reorder + row-reorder surface.
 ///
-/// HandleNext/HandlePrevious reset <c>_currentTargetSelector = null</c> but then
-/// ALSO called <c>await UpdateTargetRect()</c>, which immediately re-assigns
-/// <c>_currentTargetSelector</c> to the new step's selector. By the time
-/// <c>OnAfterRenderAsync</c> ran, <c>movingToNewTarget</c> (which compares the new
-/// step's selector against <c>_currentTargetSelector</c>) was already false, so the
-/// <c>ScrollSelectorIntoView</c> branch was skipped — an off-screen target on
-/// Next/Previous was never scrolled into view and the spotlight pointed at nothing.
+/// A prior round widened <c>RegisterColumnResize</c>'s existing abstract member in
+/// place (its <c>commitHandler</c> delegate grew an <c>autoFit</c> bool parameter)
+/// and added the whole pointer-based column/row reorder surface
+/// (<c>RegisterColumnReorder</c>, <c>UnregisterColumnReorder</c>,
+/// <c>NudgeColumnResize</c>, <c>ClearColumnReorderTransforms</c>,
+/// <c>RegisterRowReorder</c>, <c>UnregisterRowReorder</c>, <c>CaptureRowRects</c>,
+/// <c>AnimateRowReorder</c>, <c>ClearRowReorderTransforms</c>) as new ABSTRACT
+/// members — breaking any external <see cref="IComponentInteropService"/>
+/// implementer/test double the moment it updated, even one that never touches
+/// DataGrid. The fix restores <c>RegisterColumnResize</c>'s original 4-parameter
+/// (non-autoFit) shape as the abstract contract and exposes every new member
+/// (including the autoFit-aware <c>RegisterColumnResize</c> overload) as an
+/// additive default interface member (mirrors <see cref="IKeyboardShortcutService"/>'s
+/// DIM convention — see <c>KeyboardShortcutServiceInterfaceCompatTests</c>).
 ///
-/// Fix: remove the pre-fetch from the handlers so <c>OnAfterRenderAsync</c> is the
-/// single owner of the scroll-into-view → lock → UpdateTargetRect sequence.
-///
-/// bUnit can't drive the real JS scroller, so the testable seam is the
-/// <c>ScrollSelectorIntoView</c> interop call. <see cref="RecordingTourInterop"/>
-/// records every selector passed to it and returns a non-null rect from
-/// <c>GetElementRectBySelector</c> so the spotlight/move path is exercised.
+/// This test pins that contract: a "legacy" implementer that only knows the
+/// pre-round-8 shape (old <c>RegisterColumnResize</c>, plus the column-reorder
+/// FLIP pair that predates this whole feature) must (a) still satisfy the
+/// interface — if any of the new members were abstract this file would not
+/// compile — and (b) transparently answer every new member through its DIM
+/// default (no-op, or delegating to the legacy member) without throwing.
 /// </summary>
-public class TourScrollIntoViewTests : IAsyncLifetime
+public class ComponentInteropServiceInterfaceCompatTests
 {
-    private readonly BunitContext _ctx = new();
-    private readonly RecordingTourInterop _interop = new();
-
-    public TourScrollIntoViewTests()
-    {
-        _ctx.AddLumeoServices();
-        _ctx.Services.AddSingleton<IComponentInteropService>(_interop);
-    }
-
-    public Task InitializeAsync() => Task.CompletedTask;
-    public async Task DisposeAsync() => await _ctx.DisposeAsync();
-
-    private static List<L.Tour.TourStepConfig> Steps() => new()
-    {
-        new("#step-one", "Step One", "First"),
-        new("#step-two", "Step Two", "Second"),
-    };
-
-    [Fact]
-    public void Next_Scrolls_The_New_Off_Screen_Target_Into_View()
-    {
-        var cut = _ctx.Render<L.Tour>(p => p
-            .Add(c => c.Steps, Steps())
-            .Add(c => c.Open, true)
-            .Add(c => c.CurrentStep, 0));
-
-        // First step's target is scrolled into view on open.
-        cut.WaitForAssertion(() =>
-            Assert.Contains("#step-one", _interop.ScrollSelectorIntoViewCalls));
-
-        // Advance to step two via the keyboard (drives HandleNext).
-        cut.Find("[role='dialog']").KeyDown(new KeyboardEventArgs { Key = "ArrowRight" });
-
-        // The new step's target must be scrolled into view. Without the fix the
-        // handler pre-fetched the rect (setting _currentTargetSelector to the new
-        // selector before render), so OnAfterRenderAsync saw movingToNewTarget=false
-        // and never scrolled #step-two into view.
-        cut.WaitForAssertion(() =>
-            Assert.Contains("#step-two", _interop.ScrollSelectorIntoViewCalls));
-    }
-
-    [Fact]
-    public void Previous_Scrolls_The_New_Off_Screen_Target_Into_View()
-    {
-        var cut = _ctx.Render<L.Tour>(p => p
-            .Add(c => c.Steps, Steps())
-            .Add(c => c.Open, true)
-            .Add(c => c.CurrentStep, 1));
-
-        cut.WaitForAssertion(() =>
-            Assert.Contains("#step-two", _interop.ScrollSelectorIntoViewCalls));
-
-        // Go back to step one via the keyboard (drives HandlePrevious).
-        cut.Find("[role='dialog']").KeyDown(new KeyboardEventArgs { Key = "ArrowLeft" });
-
-        cut.WaitForAssertion(() =>
-            Assert.Contains("#step-one", _interop.ScrollSelectorIntoViewCalls));
-    }
-
-    /// <summary>
-    /// Records every <c>ScrollSelectorIntoView</c> selector and returns a non-null
-    /// rect from <c>GetElementRectBySelector</c> so the Tour's move/spotlight path
-    /// runs. Every other member forwards to an inner <see cref="TrackingInteropService"/>
-    /// so the rest of the interface behaves exactly as the shared no-op tracker.
-    /// </summary>
-    private sealed class RecordingTourInterop : IComponentInteropService
+    // Implements ONLY the members that existed before round-8/9's DataGrid
+    // resize+reorder additions — no knowledge of autoFit, pointer reorder, or
+    // row reorder. Every other interface member forwards to an inner
+    // TrackingInteropService (like AffixDisposeLifecycleTests' GatedAffixInterop)
+    // so the rest of the surface behaves like the shared no-op tracker.
+    private sealed class LegacyPreReorderInterop : IComponentInteropService
     {
         private readonly TrackingInteropService _inner = new();
-        private readonly List<string> _scrollSelectorIntoViewCalls = new();
 
-        public IReadOnlyList<string> ScrollSelectorIntoViewCalls => _scrollSelectorIntoViewCalls;
+        public int RegisterColumnResizeCallCount;
 
-        public ValueTask ScrollSelectorIntoView(string selector)
+        // The interface's restored original (non-autoFit) abstract member —
+        // the only column-resize shape this "legacy" double ever knew about.
+        public ValueTask RegisterColumnResize(string handleId, double minWidth, double? maxWidth, Func<double, Task> commitHandler)
         {
-            _scrollSelectorIntoViewCalls.Add(selector);
+            RegisterColumnResizeCallCount++;
+            _ = commitHandler; // captured only to prove wiring; not invoked by this test
             return ValueTask.CompletedTask;
         }
+        public ValueTask UnregisterColumnResize(string handleId) => ValueTask.CompletedTask;
 
-        // Return a stable non-null rect so the spotlight has a target and the
-        // move path (movingToNewTarget → scroll → lock → UpdateTargetRect) runs.
-        public ValueTask<ElementRect?> GetElementRectBySelector(string selector) =>
-            ValueTask.FromResult<ElementRect?>(new ElementRect(10, 10, 100, 40, 0));
+        // Pre-existing column-reorder FLIP pair (predates round-8's pointer engine).
+        public ValueTask CaptureColumnRects(string gridId) => ValueTask.CompletedTask;
+        public ValueTask AnimateColumnReorder(string gridId, int durationMs) => ValueTask.CompletedTask;
 
         // ---- Everything else forwards to the shared no-op tracker ----
-        public ValueTask RegisterAffix(string elementId, int offsetTop, int? offsetBottom, string? target, Func<bool, Task> handler) => _inner.RegisterAffix(elementId, offsetTop, offsetBottom, target, handler);
-        public ValueTask UnregisterAffix(string elementId) => _inner.UnregisterAffix(elementId);
         public ValueTask RegisterClickOutside(string elementId, string? triggerElementId, Func<Task> handler) => _inner.RegisterClickOutside(elementId, triggerElementId, handler);
         public ValueTask UnregisterClickOutside(string elementId) => _inner.UnregisterClickOutside(elementId);
         public ValueTask FocusElement(string elementId) => _inner.FocusElement(elementId);
         public ValueTask FocusMenuItemByIndex(string containerId, int index) => _inner.FocusMenuItemByIndex(containerId, index);
         public ValueTask<int> GetMenuItemCount(string containerId) => _inner.GetMenuItemCount(containerId);
-        public ValueTask<int> FocusMenuItemByTypeahead(string containerId, string query, int currentIndex) => _inner.FocusMenuItemByTypeahead(containerId, query, currentIndex);
         public ValueTask LockScroll() => _inner.LockScroll();
         public ValueTask UnlockScroll() => _inner.UnlockScroll();
         public ValueTask SetHtmlClass(string className, bool active) => _inner.SetHtmlClass(className, active);
         public ValueTask SetupFocusTrap(string elementId, string? initialFocusSelector = null) => _inner.SetupFocusTrap(elementId, initialFocusSelector);
         public ValueTask RemoveFocusTrap(string elementId) => _inner.RemoveFocusTrap(elementId);
-        public ValueTask SaveFocus(string key) => _inner.SaveFocus(key);
-        public ValueTask RestoreFocus(string key) => _inner.RestoreFocus(key);
         public ValueTask AttachOverlaySlideEnd(string elementId) => _inner.AttachOverlaySlideEnd(elementId);
         public ValueTask RegisterSvDrag(string elementId, Func<double, double, Task> handler) => _inner.RegisterSvDrag(elementId, handler);
         public ValueTask UnregisterSvDrag(string elementId) => _inner.UnregisterSvDrag(elementId);
@@ -143,10 +82,6 @@ public class TourScrollIntoViewTests : IAsyncLifetime
         public ValueTask UnregisterViewportListener() => _inner.UnregisterViewportListener();
         public ValueTask<string> PositionFixed(string contentId, string referenceId, string align = "start", bool matchWidth = false, string side = "bottom") => _inner.PositionFixed(contentId, referenceId, align, matchWidth, side);
         public ValueTask UnpositionFixed(string contentId) => _inner.UnpositionFixed(contentId);
-        public ValueTask PositionAtPoint(string contentId, double x, double y) => _inner.PositionAtPoint(contentId, x, y);
-        public ValueTask InitToolbarRoving(string toolbarId) => _inner.InitToolbarRoving(toolbarId);
-        public ValueTask MoveToolbarFocus(string toolbarId, int delta) => _inner.MoveToolbarFocus(toolbarId, delta);
-        public ValueTask FocusToolbarEdge(string toolbarId, bool last) => _inner.FocusToolbarEdge(toolbarId, last);
         public ValueTask<ElementRect?> GetElementRect(string elementId) => _inner.GetElementRect(elementId);
         public ValueTask<double> GetElementDimension(string elementId, string dimension) => _inner.GetElementDimension(elementId, dimension);
         public ValueTask<double> GetScrollTop(string elementId) => _inner.GetScrollTop(elementId);
@@ -183,25 +118,11 @@ public class TourScrollIntoViewTests : IAsyncLifetime
         public ValueTask UnregisterOtpPaste(string baseId, int length) => _inner.UnregisterOtpPaste(baseId, length);
         public ValueTask RegisterPreventDefaultKeys(string elementId, IReadOnlyList<PreventDefaultKeyRule> rules) => _inner.RegisterPreventDefaultKeys(elementId, rules);
         public ValueTask UnregisterPreventDefaultKeys(string elementId) => _inner.UnregisterPreventDefaultKeys(elementId);
-        public ValueTask RegisterColumnResize(string handleId, double minWidth, double? maxWidth, Func<double, Task> commitHandler) => _inner.RegisterColumnResize(handleId, minWidth, maxWidth, commitHandler);
-        public ValueTask RegisterColumnResize(string handleId, double minWidth, double? maxWidth, Func<double, bool, Task> commitHandler) => _inner.RegisterColumnResize(handleId, minWidth, maxWidth, commitHandler);
-        public ValueTask NudgeColumnResize(string handleId, double delta) => _inner.NudgeColumnResize(handleId, delta);
-        public ValueTask RegisterColumnReorder(string gridId, Func<string, string, Task> commitHandler) => _inner.RegisterColumnReorder(gridId, commitHandler);
-        public ValueTask UnregisterColumnReorder(string gridId) => _inner.UnregisterColumnReorder(gridId);
-        public ValueTask UnregisterColumnResize(string handleId) => _inner.UnregisterColumnResize(handleId);
-        public ValueTask CaptureColumnRects(string gridId) => _inner.CaptureColumnRects(gridId);
-        public ValueTask AnimateColumnReorder(string gridId, int durationMs) => _inner.AnimateColumnReorder(gridId, durationMs);
-        public ValueTask ClearColumnReorderTransforms(string gridId) => _inner.ClearColumnReorderTransforms(gridId);
-        public ValueTask RegisterRowReorder(string gridId, Func<string, string, Task> commitHandler) => _inner.RegisterRowReorder(gridId, commitHandler);
-        public ValueTask UnregisterRowReorder(string gridId) => _inner.UnregisterRowReorder(gridId);
-        public ValueTask CaptureRowRects(string gridId) => _inner.CaptureRowRects(gridId);
-        public ValueTask AnimateRowReorder(string gridId, int durationMs) => _inner.AnimateRowReorder(gridId, durationMs);
-        public ValueTask ClearRowReorderTransforms(string gridId) => _inner.ClearRowReorderTransforms(gridId);
-        public ValueTask ScrollIntoView(string elementId, string block = "nearest") => _inner.ScrollIntoView(elementId, block);
+        public ValueTask<ElementRect?> GetElementRectBySelector(string selector) => _inner.GetElementRectBySelector(selector);
+        public ValueTask ScrollSelectorIntoView(string selector) => _inner.ScrollSelectorIntoView(selector);
+        public ValueTask RegisterAffix(string elementId, int offsetTop, int? offsetBottom, string? target, Func<bool, Task> handler) => _inner.RegisterAffix(elementId, offsetTop, offsetBottom, target, handler);
+        public ValueTask UnregisterAffix(string elementId) => _inner.UnregisterAffix(elementId);
         public ValueTask<ComponentInteropService.TextareaCaretInfo> GetTextareaCaretPosition(string elementId) => _inner.GetTextareaCaretPosition(elementId);
-        public ValueTask<int> GetInputCaret(string elementId) => _inner.GetInputCaret(elementId);
-        public ValueTask SetInputCaret(string elementId, int position) => _inner.SetInputCaret(elementId, position);
-        public ValueTask SetInputValue(string elementId, string value) => _inner.SetInputValue(elementId, value);
         public ValueTask<ComponentInteropService.TabMeasurement?> TabsMeasure(string elementId) => _inner.TabsMeasure(elementId);
         public ValueTask RegisterBackToTop(string id, int threshold, Func<bool, Task> handler) => _inner.RegisterBackToTop(id, threshold, handler);
         public ValueTask UnregisterBackToTop(string id) => _inner.UnregisterBackToTop(id);
@@ -210,9 +131,6 @@ public class TourScrollIntoViewTests : IAsyncLifetime
         public ValueTask CopyToClipboard(string text) => _inner.CopyToClipboard(text);
         public ValueTask RippleAttachAsync(ElementReference element) => _inner.RippleAttachAsync(element);
         public ValueTask RippleDetachAsync(ElementReference element) => _inner.RippleDetachAsync(element);
-        public ValueTask ResetFileInput(ElementReference element) => _inner.ResetFileInput(element);
-        public ValueTask<bool> PrefersReducedMotion() => _inner.PrefersReducedMotion();
-        public ValueTask<RipplePoint> TouchRippleCoords(string hostElementId, double clientX, double clientY) => _inner.TouchRippleCoords(hostElementId, clientX, clientY);
         public ValueTask PlayMedia(ElementReference element) => _inner.PlayMedia(element);
         public ValueTask PauseMedia(ElementReference element) => _inner.PauseMedia(element);
         public ValueTask SetMediaVolume(ElementReference element, double volume, bool muted) => _inner.SetMediaVolume(element, volume, muted);
@@ -222,7 +140,6 @@ public class TourScrollIntoViewTests : IAsyncLifetime
         public ValueTask SaveToLocalStorage(string key, string value) => _inner.SaveToLocalStorage(key, value);
         public ValueTask<string?> LoadFromLocalStorage(string key) => _inner.LoadFromLocalStorage(key);
         public ValueTask RemoveFromLocalStorage(string key) => _inner.RemoveFromLocalStorage(key);
-        public ValueTask<bool> MotionPrefersReducedMotion() => _inner.MotionPrefersReducedMotion();
         public ValueTask MotionTickNumber(string elementId, double from, double to, int durationMs, int decimals, string separator = ",", string decimalSeparator = ".") => _inner.MotionTickNumber(elementId, from, to, durationMs, decimals, separator, decimalSeparator);
         public ValueTask MotionDisposeTicker(string elementId) => _inner.MotionDisposeTicker(elementId);
         public ValueTask MotionRevealText(string elementId, int staggerMs, double threshold) => _inner.MotionRevealText(elementId, staggerMs, threshold);
@@ -261,7 +178,6 @@ public class TourScrollIntoViewTests : IAsyncLifetime
         public ValueTask RichTextSetDisabledAsync(string id, bool disabled) => _inner.RichTextSetDisabledAsync(id, disabled);
         public ValueTask RichTextDestroyAsync(string id) => _inner.RichTextDestroyAsync(id);
         public ValueTask<string?> RichTextPromptLinkAsync(string? initial) => _inner.RichTextPromptLinkAsync(initial);
-        public ValueTask RichTextSetAriaAttributesAsync(string id, bool ariaInvalid, string? ariaDescribedBy) => _inner.RichTextSetAriaAttributesAsync(id, ariaInvalid, ariaDescribedBy);
         public ValueTask SignaturePadInit<T>(string elementId, object options, DotNetObjectReference<T> dotNetRef) where T : class => _inner.SignaturePadInit(elementId, options, dotNetRef);
         public ValueTask SignaturePadClear(string elementId) => _inner.SignaturePadClear(elementId);
         public ValueTask<string?> SignaturePadDataUrl(string elementId, string mimeType) => _inner.SignaturePadDataUrl(elementId, mimeType);
@@ -272,5 +188,42 @@ public class TourScrollIntoViewTests : IAsyncLifetime
 
         public void Dispose() => _inner.Dispose();
         public ValueTask DisposeAsync() => _inner.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task Legacy_Implementor_Satisfies_Interface_And_Routes_New_Members_Through_DIMs()
+    {
+        // If any of round-8/9's new DataGrid resize/reorder members were abstract,
+        // this class would not compile at all — the strongest form of the guard.
+        IComponentInteropService svc = new LegacyPreReorderInterop();
+        var legacy = (LegacyPreReorderInterop)svc;
+
+        // Original 4-parameter RegisterColumnResize (unchanged public surface) —
+        // still the abstract member this legacy double implements.
+        await svc.RegisterColumnResize("handle-1", 50, 400, _ => Task.CompletedTask);
+        Assert.Equal(1, legacy.RegisterColumnResizeCallCount);
+
+        // The autoFit-aware 4-parameter overload is an ADDITIVE default interface
+        // member. The legacy double never implemented it, yet the call still
+        // resolves — the DIM delegates to the legacy 3-arg-delegate member above
+        // (autoFit dropped), so RegisterColumnResizeCallCount increments again.
+        await svc.RegisterColumnResize("handle-2", 50, 400, (_, _) => Task.CompletedTask);
+        Assert.Equal(2, legacy.RegisterColumnResizeCallCount);
+
+        // Every new pointer-reorder / row-reorder member answers via its no-op DIM
+        // default instead of throwing NotImplementedException / failing to compile.
+        var ex = await Record.ExceptionAsync(async () =>
+        {
+            await svc.NudgeColumnResize("handle-1", 5);
+            await svc.RegisterColumnReorder("grid-1", (_, _) => Task.CompletedTask);
+            await svc.UnregisterColumnReorder("grid-1");
+            await svc.ClearColumnReorderTransforms("grid-1");
+            await svc.RegisterRowReorder("grid-1", (_, _) => Task.CompletedTask);
+            await svc.UnregisterRowReorder("grid-1");
+            await svc.CaptureRowRects("grid-1");
+            await svc.AnimateRowReorder("grid-1", 180);
+            await svc.ClearRowReorderTransforms("grid-1");
+        });
+        Assert.Null(ex);
     }
 }
