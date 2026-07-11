@@ -716,15 +716,24 @@ input[type="range"]::-moz-range-thumb {
    index 2 (front toasts dismissed) animates in from a defined position
    instead of popping in from nowhere. `visibility: hidden` (not just
    opacity: 0) is load-bearing here: a depth>=3 toast that auto-dismisses or
-   gets evicted WHILE still collapsed also picks up `.animate-toast-out`
-   (Toast.razor's Leaving flag doesn't change data-index), and a running CSS
-   `animation` always wins over a plain declared value for the SAME property
-   regardless of specificity — `toast-out`'s `from { opacity: 1; }` would
-   otherwise flash this hidden toast visible as it slides out from behind the
-   stack. `visibility` isn't one of the properties `@keyframes toast-out`
-   animates, so the plain declaration here keeps winning throughout the exit,
-   and reverts to the ancestor's default (visible) the instant data-index
-   changes away from this selector (promotion to index 2). */
+   gets evicted WHILE still collapsed also picks up `.animate-toast-out`, and
+   a running CSS `animation` always wins over a plain declared value for the
+   SAME property regardless of specificity — `toast-out`'s `from { opacity:
+   1; }` would otherwise flash this hidden toast visible as it slides out
+   from behind the stack. `visibility` isn't one of the properties
+   `@keyframes toast-out` animates, so the plain declaration here keeps
+   winning throughout the exit.
+   PR #357 round-2: a depth>=3 toast's `data-index` used to be recomputed
+   every render from its live position in the (oldest-first) toast list —
+   so if a NEWER toast ahead of it finished dismissing/timing out WHILE this
+   one was still mid-exit, ToastProvider would promote it (e.g. depth 3 -> 2)
+   and it fell out of this selector with `.animate-toast-out` still running
+   from `opacity: 1`, flashing it visible for the rest of its exit. Fixed at
+   the source, not here: ToastProvider now freezes a toast's `data-index` the
+   INSTANT it starts leaving (`ToastItem.FrozenIndex`, stamped in
+   RemoveWithExitAsync) — reshuffling among its still-live siblings can no
+   longer move it out of whatever selector (this one included) it was in the
+   moment dismissal began. */
 [data-stacked="true"]:not([data-expanded="true"]) > [data-index]:not([data-index="0"]):not([data-index="1"]):not([data-index="2"]) {
   transform: translateY(var(--lumeo-stack-y2)) scale(0.88);
   opacity: 0;

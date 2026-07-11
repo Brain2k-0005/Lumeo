@@ -255,4 +255,81 @@ public class PerComponentEnricherTests : IDisposable
         Assert.Contains("| Button | Variant | `ButtonVariant`", md);
         Assert.Contains("--color-primary", md);
     }
+
+    private string WriteTestFile(string relativePath, string content)
+    {
+        var path = Path.Combine(_root, "tests", "Lumeo.Tests", relativePath);
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        File.WriteAllText(path, content);
+        return path;
+    }
+
+    // PR #357 round-2 (CodeRabbit): a plain word-boundary scan for the component
+    // name also matched `.Select(x => ...)` — a LINQ call on some unrelated
+    // IEnumerable, nothing to do with the Select component — so every test file
+    // that happened to use `.Select(` anywhere got listed as Select coverage.
+    [Fact]
+    public void Tests_field_excludes_unrelated_LINQ_Select_calls()
+    {
+        WriteComponentFile("Select", "Select.razor", "@namespace Lumeo\n<div></div>");
+        WriteTestFile("Components/Toast/ToastStackingTests.cs", """
+using System.Linq;
+namespace Lumeo.Tests.Components.Toast;
+public class ToastStackingTests
+{
+    public void Some_Test()
+    {
+        var indices = new[] { "0", "1" }.Select(x => x).ToList();
+    }
+}
+""");
+        var entry = new Dictionary<string, object?>
+        {
+            ["files"] = new[] { "UI/Select/Select.razor" },
+            ["nugetPackage"] = "Lumeo",
+            ["category"] = "Forms",
+            ["description"] = "A select.",
+        };
+        var apiBlock = Api("""{ "parameters": [] }""");
+
+        PerComponentEnricher.Enrich(entry, "select", "Select", _root, apiBlock,
+            new HashSet<string> { "Select" });
+
+        var tests = Assert.IsType<List<string>>(entry["tests"]);
+        Assert.DoesNotContain(tests, t => t.Contains("ToastStackingTests.cs"));
+    }
+
+    // Companion case: a REAL reference to the Select component — via the `L.`
+    // namespace alias every test file in this suite uses (`using L = Lumeo;`)
+    // — must still be picked up, proving the LINQ-call exclusion isn't so broad
+    // it also swallows genuine `L.Select(...)` render calls.
+    [Fact]
+    public void Tests_field_still_includes_real_L_Select_component_references()
+    {
+        WriteComponentFile("Select", "Select.razor", "@namespace Lumeo\n<div></div>");
+        WriteTestFile("Components/Select/SelectRealTests.cs", """
+namespace Lumeo.Tests.Components.Select;
+public class SelectRealTests
+{
+    public void Renders()
+    {
+        var cut = TestContext.Render<L.Select>();
+    }
+}
+""");
+        var entry = new Dictionary<string, object?>
+        {
+            ["files"] = new[] { "UI/Select/Select.razor" },
+            ["nugetPackage"] = "Lumeo",
+            ["category"] = "Forms",
+            ["description"] = "A select.",
+        };
+        var apiBlock = Api("""{ "parameters": [] }""");
+
+        PerComponentEnricher.Enrich(entry, "select", "Select", _root, apiBlock,
+            new HashSet<string> { "Select" });
+
+        var tests = Assert.IsType<List<string>>(entry["tests"]);
+        Assert.Contains(tests, t => t.Contains("SelectRealTests.cs"));
+    }
 }

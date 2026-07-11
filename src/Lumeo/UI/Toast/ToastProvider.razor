@@ -32,7 +32,22 @@
         {
             // Newest (last appended = last in group, since _toasts is oldest-first)
             // gets stack index 0 (front). See lumeo.css's "Toast stacking" section.
-            var stackIndex = StackToasts ? groupCount - 1 - stackCursor : (int?)null;
+            //
+            // A toast already Leaving keeps the index it had the INSTANT its exit
+            // started (FrozenIndex, stamped in RemoveWithExitAsync) instead of the
+            // freshly recomputed one. Without this, a toast that started leaving
+            // hidden at depth>=3 gets PROMOTED to a visible index (e.g. 2) the
+            // moment a newer toast ahead of it is dismissed/times out mid-exit —
+            // `.animate-toast-out`'s `from { opacity: 1 }` keyframe then wins over
+            // the (now non-matching) `visibility:hidden` depth rule and the
+            // previously-invisible toast flashes visible for the rest of its exit.
+            // Freezing decouples a toast's OWN departure from the stack
+            // reshuffling still happening around it — matches the fact its
+            // position/visibility contract was already fixed the moment dismissal
+            // began.
+            var stackIndex = StackToasts
+                ? (toast.Leaving && toast.FrozenIndex.HasValue ? toast.FrozenIndex : groupCount - 1 - stackCursor)
+                : (int?)null;
             stackCursor++;
             <Toast Variant="@toast.Options.Variant"
                    Id="@ToastElementId(toast.Id)"
@@ -92,6 +107,10 @@
     private readonly Dictionary<string, DateTime> _timerStart = new();
     private readonly Dictionary<string, int> _timerRemaining = new();
     private readonly HashSet<string> _paused = new();
+    // Toasts that arrived while the mounted set was at MaxToasts and every
+    // mounted toast was already Leaving (mid-exit) — see HandleShowAsync /
+    // AdmitPending. FIFO by arrival order, same as sonner's overflow queue.
+    private readonly Queue<ToastMessage> _pendingQueue = new();
 
     [Parameter] public ToastViewport.ToastPosition Position { get; set; } = ToastViewport.ToastPosition.BottomRight;
     [Parameter] public int DefaultDuration { get; set; } = 5000;
@@ -166,8 +185,6 @@
 
     private async Task HandleShowAsync(ToastMessage message)
     {
-        var item = new ToastItem(message.Id, message.Options);
-
         // Enforce MaxToasts: evict the oldest non-persistent toast that ISN'T
         // already leaving. Spamming Show() fires many concurrent HandleShowAsync
         // calls (fire-and-forget per toast); several can race this loop against
@@ -193,13 +210,62 @@
             await RemoveItemAsync(oldest.Id);
         }
 
-        _toasts.Add(item);
+        // The loop above breaks WITHOUT freeing a slot whenever every toast
+        // at/above the cap is already mid-exit (Leaving) — a burst of Show()
+        // calls arriving while a wave of 220ms exits is still in flight hits
+        // this every time. Mounting anyway (the old behaviour) let a spam
+        // burst blow straight through MaxToasts. Queue the toast instead: it
+        // waits here — never touching `_toasts`, so it can't inflate the
+        // mounted count — until AdmitPending (called the instant a Leaving
+        // toast actually unmounts, from RemoveWithExitAsync) pulls it in FIFO
+        // order the moment a slot frees up. This keeps `_toasts.Count` at or
+        // under MaxToasts at all times, including mid-burst.
+        if (_toasts.Count >= MaxToasts)
+        {
+            // Cap the queue itself at MaxToasts too. Without this, a 100-toast
+            // spam burst would durably queue all ~95 overflow toasts and drip
+            // them out one 220ms exit at a time (~20s to fully drain) — the
+            // opposite of "keeping the newest bounded set". Dropping the
+            // oldest still-queued (never-shown) toast when a new one arrives
+            // keeps the total known set (mounted + queued) bounded at 2x
+            // MaxToasts and biases towards the most recent Show() calls,
+            // matching sonner's overflow behaviour.
+            if (_pendingQueue.Count >= MaxToasts)
+            {
+                _pendingQueue.Dequeue();
+            }
+            _pendingQueue.Enqueue(message);
+            return;
+        }
+
+        MountToast(message);
+    }
+
+    // Adds a toast to the live/mounted set and starts its auto-dismiss timer.
+    // The ONLY path that appends to `_toasts` — both the direct Show() path
+    // (slot available) and AdmitPending (slot just freed by an unmount) route
+    // through here, so `_toasts.Count` can never be pushed over MaxToasts by
+    // either caller.
+    private void MountToast(ToastMessage message)
+    {
+        _toasts.Add(new ToastItem(message.Id, message.Options));
         StateHasChanged();
 
         var duration = message.Options.Duration ?? DefaultDuration;
         if (duration > 0)
         {
             StartTimer(message.Id, duration);
+        }
+    }
+
+    // Pulls queued toasts (see HandleShowAsync) into the live set FIFO as
+    // slots free up. Called from RemoveWithExitAsync right after a toast is
+    // actually removed from `_toasts` — the only moment a slot is real.
+    private void AdmitPending()
+    {
+        while (_toasts.Count < MaxToasts && _pendingQueue.Count > 0)
+        {
+            MountToast(_pendingQueue.Dequeue());
         }
     }
 
@@ -213,13 +279,29 @@
         if (toastId == "*")
         {
             var ids = _toasts.Select(t => t.Id).ToList();
+            _pendingQueue.Clear();
             await Task.WhenAll(ids.Select(id => RemoveItemAsync(id)));
+        }
+        else if (_pendingQueue.Any(m => m.Id == toastId))
+        {
+            // Dismissing a toast that's still queued (never mounted — see
+            // HandleShowAsync) has nothing to animate out; just drop it so it
+            // doesn't surface later once a slot frees up.
+            RemovePending(toastId);
         }
         else
         {
             await RemoveItemAsync(toastId);
         }
         StateHasChanged();
+    }
+
+    // Queue<T> has no remove-by-id; rebuild preserving FIFO order minus the match.
+    private void RemovePending(string toastId)
+    {
+        var remaining = _pendingQueue.Where(m => m.Id != toastId).ToList();
+        _pendingQueue.Clear();
+        foreach (var m in remaining) _pendingQueue.Enqueue(m);
     }
 
     private void HandleUpdate(string toastId, ToastOptions options)
@@ -344,11 +426,14 @@
             toast.Options.OnDismiss?.Invoke();
         }
         // Swap in the leaving marker so the render loop adds the exit animation class,
-        // then drop the toast after the animation would have played.
+        // then drop the toast after the animation would have played. Capture its
+        // CURRENT stack index first and freeze it on the item (see the render-loop
+        // comment) so later stack reshuffling — e.g. a newer toast ahead of it also
+        // getting dismissed mid-exit — can't promote/relocate this one while it's leaving.
         var index = _toasts.IndexOf(toast);
         if (index >= 0)
         {
-            _toasts[index] = toast with { Leaving = true };
+            _toasts[index] = toast with { Leaving = true, FrozenIndex = ComputeStackIndex(toast) };
             StateHasChanged();
             var exitCts = new CancellationTokenSource();
             _exitTimers[id] = exitCts;
@@ -367,6 +452,9 @@
             }
         }
         _toasts.RemoveAll(t => t.Id == id);
+        // A slot just became real (not merely a Leaving placeholder still
+        // occupying `_toasts`) — pull the next queued toast in, if any.
+        AdmitPending();
         await InvokeAsync(StateHasChanged);
     }
 
@@ -422,7 +510,12 @@
         _swipeRegistered.Clear();
     }
 
-    private record ToastItem(string Id, ToastOptions Options, bool Leaving = false);
+    // FrozenIndex: the stack index this toast had the instant it started leaving
+    // (stamped by RemoveWithExitAsync via ComputeStackIndex). Null while the toast
+    // is still live — the render loop recomputes its index fresh every render, same
+    // as always, until Leaving flips true and pins it. See the render-loop comment
+    // in the markup above for why this exists (depth>=3 promotion-mid-exit flash).
+    private record ToastItem(string Id, ToastOptions Options, bool Leaving = false, int? FrozenIndex = null);
 
     /// <summary>Resolves a per-toast <see cref="ToastPosition"/> to the
     /// <see cref="ToastViewport.ToastPosition"/> the viewport component uses,
@@ -433,4 +526,17 @@
     /// integer-cast bridges them. (rc.42)</summary>
     private ToastViewport.ToastPosition ResolvePosition(ToastPosition? optionsPosition)
         => optionsPosition is { } p ? (ToastViewport.ToastPosition)(int)p : Position;
+
+    // Mirrors the index math in the render-loop markup (groupCount - 1 - position
+    // within its own position group, oldest-first list) so RemoveWithExitAsync can
+    // capture a toast's CURRENT stack index the instant it starts leaving, before
+    // freezing it on the item.
+    private int? ComputeStackIndex(ToastItem toast)
+    {
+        if (!StackToasts) return null;
+        var pos = ResolvePosition(toast.Options.Position);
+        var group = _toasts.Where(t => ResolvePosition(t.Options.Position) == pos).ToList();
+        var p = group.FindIndex(t => t.Id == toast.Id);
+        return p < 0 ? null : group.Count - 1 - p;
+    }
 }

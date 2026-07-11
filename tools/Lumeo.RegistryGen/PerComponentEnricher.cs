@@ -249,7 +249,7 @@ public static class PerComponentEnricher
                 string text;
                 try { text = File.ReadAllText(csFile).Replace("\r\n", "\n").Replace("\r", "\n"); }
                 catch { continue; }
-                if (!nameWordRegex.IsMatch(text)) continue;
+                if (!HasRealComponentMention(text, nameWordRegex)) continue;
                 var rel = Path.GetRelativePath(repoRoot, csFile).Replace('\\', '/');
                 if (seenTests.Add(rel)) tests.Add(rel);
             }
@@ -273,6 +273,40 @@ public static class PerComponentEnricher
             IEnumerable<object?> en => en.Select(x => x?.ToString() ?? "").Where(x => x.Length > 0).ToList(),
             _ => new(),
         };
+    }
+
+    /// <summary>
+    /// True when <paramref name="text"/> contains a mention of the component
+    /// that isn't just a name collision with a common BCL/LINQ member invoked
+    /// on an unrelated value — e.g. `.Select(x => ...)` on an `IEnumerable`
+    /// has nothing to do with the `Select` component, but the plain
+    /// word-boundary regex matches it anyway (PR #357 round-2: this exact
+    /// collision put every test using `.Select(...)` into select.json's
+    /// coverage list). Real component references in this codebase's test
+    /// suite go through the `L.` namespace alias (`using L = Lumeo;`), so
+    /// `L.Select(...)` still counts as a real mention — only a plain
+    /// `.Select(` on some OTHER receiver is excluded. Deliberately does NOT
+    /// strip comments: this codebase's test comments routinely carry genuine
+    /// coverage signal (XML-doc `<see cref="L.Foo"/>` tags, prose describing
+    /// what a test asserts), so treating every comment as noise would drop
+    /// far more real coverage entries than it fixes false positives — a
+    /// comment-only false positive (one component name listed as prior-art
+    /// analogy for an unrelated fix) is rare enough to fix at the source
+    /// (rephrase the comment) instead of teaching the generator to distrust
+    /// every comment.
+    /// </summary>
+    private static bool HasRealComponentMention(string text, Regex nameWordRegex)
+    {
+        foreach (Match m in nameWordRegex.Matches(text))
+        {
+            var precededByDot = m.Index > 0 && text[m.Index - 1] == '.';
+            var precededByLDot = m.Index > 1 && text[m.Index - 2] == 'L' && text[m.Index - 1] == '.'
+                && (m.Index < 3 || !char.IsLetterOrDigit(text[m.Index - 3]));
+            var followedByOpenParen = m.Index + m.Length < text.Length && text[m.Index + m.Length] == '(';
+            if (precededByDot && !precededByLDot && followedByOpenParen) continue; // e.g. `.Select(...)` LINQ call
+            return true;
+        }
+        return false;
     }
 
     /// <summary>Files are stored relative to the package src dir (e.g. "UI/Sheet/Sheet.razor").

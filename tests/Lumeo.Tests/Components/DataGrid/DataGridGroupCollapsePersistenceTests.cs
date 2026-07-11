@@ -105,8 +105,8 @@ public class DataGridGroupCollapsePersistenceTests : IAsyncLifetime
     // CI thread pool can stall the render dispatch itself under heavy parallel
     // load, so a bare Assert immediately after Render can observe a not-yet-
     // committed tree even though nothing here is logically async. Hardened per
-    // the overlay-family doctrine regardless (HoverCard/Sheet/Overlay exit-
-    // animation tests, TestContextExtensions): the transient mid-test assert
+    // the overlay-family doctrine regardless (see the hover-card/sheet/overlay
+    // exit-animation tests, TestContextExtensions): the transient mid-test assert
     // stays a synchronous check on a just-committed render, but the FINAL
     // assertion is a single WaitForAssertion with no trailing asserts after it,
     // giving the same 10 s module ceiling (BunitContext.DefaultWaitTimeout) as

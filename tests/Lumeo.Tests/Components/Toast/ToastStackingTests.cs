@@ -130,6 +130,50 @@ public class ToastStackingTests : IAsyncLifetime
             Assert.Equal("false", Attr(cut.Find("[data-stacked='true']"), "data-expanded")));
     }
 
+    // PR #357 round-2 (CodeRabbit + Codex): ToastViewport used to track hover
+    // and focus in a SINGLE shared `_expanded` flag, so a mouseleave (pointer
+    // wandering off the group while focus is still on e.g. a toast's close
+    // button — a completely normal keyboard-then-mouse sequence) collapsed the
+    // stack right out from under the focused control. Hover and focus are now
+    // tracked independently (Expanded = hovered || focused) — a stack that's
+    // expanded because of keyboard focus must survive an unrelated mouseleave.
+    [Fact]
+    public void FocusIn_Survives_An_Unrelated_MouseLeave_Keeps_Group_Expanded()
+    {
+        var toastService = GetToastService();
+        var cut = _ctx.Render<L.ToastProvider>();
+
+        toastService.Show(new ToastOptions { Title = "A", Duration = 60000 });
+        toastService.Show(new ToastOptions { Title = "B", Duration = 60000 });
+
+        cut.WaitForAssertion(() =>
+            Assert.Equal(2, cut.FindAll("[role='alert'],[role='status']").Count));
+
+        // Mouse hovers the group first (e.g. moving toward it), THEN keyboard
+        // focus lands inside — the realistic sequence for a mouse user who
+        // then Tabs into the toast's close button.
+        var group = cut.Find("[data-stacked='true']");
+        group.MouseEnter();
+        cut.WaitForAssertion(() =>
+            Assert.Equal("true", Attr(cut.Find("[data-stacked='true']"), "data-expanded")));
+
+        cut.Find("button").FocusIn();
+        cut.WaitForAssertion(() =>
+            Assert.Equal("true", Attr(cut.Find("[data-stacked='true']"), "data-expanded")));
+
+        // Pointer leaves the group — with a single shared flag this used to
+        // collapse the stack (and reposition/hide the very control that still
+        // has keyboard focus). Focus is still active, so it must stay expanded.
+        group.MouseLeave();
+        cut.WaitForAssertion(() =>
+            Assert.Equal("true", Attr(cut.Find("[data-stacked='true']"), "data-expanded")));
+
+        // Only once focus ALSO leaves does the group finally collapse.
+        cut.Find("button").FocusOut();
+        cut.WaitForAssertion(() =>
+            Assert.Equal("false", Attr(cut.Find("[data-stacked='true']"), "data-expanded")));
+    }
+
     // ── Opt-out renders the legacy list (no stacking markup at all) ────────
 
     [Fact]
@@ -227,6 +271,98 @@ public class ToastStackingTests : IAsyncLifetime
             Assert.Contains("Older", remaining[0].TextContent);
             Assert.Equal("0", Attr(remaining[0], "data-index"));
         });
+    }
+
+    // PR #357 round-2 (Codex): a depth>=3 (hidden) toast that already started
+    // its exit must stay hidden for its WHOLE exit, even when a NEWER sibling
+    // ahead of it finishes dismissing mid-exit — which (pre-fix) recomputed
+    // its data-index every render and could promote it to a visible index
+    // (e.g. 3 -> 2), letting `.animate-toast-out`'s `from { opacity: 1 }`
+    // flash it visible for the remainder of its exit. ToastProvider now
+    // freezes a toast's data-index (ToastItem.FrozenIndex) the instant it
+    // starts leaving; this proves the freeze survives a sibling's ACTUAL
+    // removal (not just that sibling being marked Leaving).
+    [Fact]
+    public async Task Depth3_Toast_Keeps_Its_Frozen_Index_Even_When_A_Newer_Sibling_Finishes_Dismissing_Mid_Exit()
+    {
+        var toastService = GetToastService();
+        var cut = _ctx.Render<L.ToastProvider>();
+
+        // Oldest-to-newest: One, Two, Three, Four, Five. Collapsed data-index
+        // is newest-first: Five=0, Four=1, Three=2, Two=3, One=4. "Two"
+        // (index 3, hidden — depth>=3) is the toast under test; "Four"
+        // (index 1, a NEWER sibling ahead of it) is dismissed first so its
+        // removal lands WHILE "Two" is still mid-exit.
+        toastService.Show(new ToastOptions { Title = "One", Duration = 60000 });
+        toastService.Show(new ToastOptions { Title = "Two", Duration = 60000 });
+        toastService.Show(new ToastOptions { Title = "Three", Duration = 60000 });
+        toastService.Show(new ToastOptions { Title = "Four", Duration = 60000 });
+        toastService.Show(new ToastOptions { Title = "Five", Duration = 60000 });
+
+        cut.WaitForAssertion(() =>
+            Assert.Equal(5, cut.FindAll("[role='alert'],[role='status']").Count));
+
+        var two = cut.FindAll("[role='alert'],[role='status']").Single(e => e.TextContent.Contains("Two"));
+        Assert.Equal("3", Attr(two, "data-index"));
+
+        // "Four" starts leaving FIRST, at T0.
+        var four = cut.FindAll("[role='alert'],[role='status']").Single(e => e.TextContent.Contains("Four"));
+        four.QuerySelector("button")!.Click();
+        cut.WaitForAssertion(() =>
+        {
+            var leaving = cut.FindAll("[role='alert'],[role='status']").SingleOrDefault(e => e.TextContent.Contains("Four"));
+            Assert.NotNull(leaving);
+            Assert.Contains("animate-toast-out", Attr(leaving!, "class") ?? "");
+        });
+
+        // Deliberate fixed real-time gap (well under the 220ms exit window —
+        // ToastProvider.ExitAnimationMs) before starting "Two"'s own exit, so
+        // the two overlapping animations have a KNOWN, comfortable ordering
+        // margin instead of an incidental few-millisecond gap that a busy CI
+        // runner (many tests in parallel) can easily erase — that's exactly
+        // what made an earlier version of this test flaky under full-suite
+        // load. `Task.Delay` (not `Thread.Sleep`): a blocking sleep would tie
+        // up a whole thread-pool worker for 150ms doing nothing, which under
+        // xUnit's parallel test execution can itself starve OTHER tests'
+        // background Task.Delay continuations — an unrelated Tooltip test
+        // flaked from exactly that when this used Thread.Sleep. "Four" is
+        // still present (Leaving, not yet removed — 150 < 220), so the group
+        // hasn't reshuffled yet and "Two"'s frozen index is correctly
+        // captured as 3.
+        await Task.Delay(150);
+
+        // Re-find "Two" (not the `two` reference captured before "Four"'s
+        // dismissal re-rendered the tree — its event handler id is stale now).
+        cut.FindAll("[role='alert'],[role='status']").Single(e => e.TextContent.Contains("Two"))
+            .QuerySelector("button")!.Click();
+        cut.WaitForAssertion(() =>
+        {
+            var leaving = cut.FindAll("[role='alert'],[role='status']").SingleOrDefault(e => e.TextContent.Contains("Two"));
+            Assert.NotNull(leaving);
+            Assert.Contains("animate-toast-out", Attr(leaving!, "class") ?? "");
+            Assert.Equal("3", Attr(leaving!, "data-index"));
+        });
+
+        // Wait for "Four" to fully finish its exit and unmount — a newer
+        // sibling actually leaving the list, not just being marked Leaving.
+        // "Four" started ~150ms before "Two", so it reaches its own 220ms
+        // mark ~150ms before "Two" would reach its (independent) 220ms mark —
+        // "Two" should still be present and still mid-exit right here.
+        cut.WaitForAssertion(() =>
+            Assert.DoesNotContain(cut.FindAll("[role='alert'],[role='status']"), e => e.TextContent.Contains("Four")));
+
+        // The regression: "Two" must NOT have been promoted to a visible
+        // index by "Four"'s removal — its data-index stays frozen at 3 for
+        // the rest of ITS OWN exit, so the CSS depth>=3 (visibility:hidden)
+        // rule keeps matching it throughout.
+        var twoStillLeaving = cut.FindAll("[role='alert'],[role='status']").SingleOrDefault(e => e.TextContent.Contains("Two"));
+        Assert.NotNull(twoStillLeaving);
+        Assert.Equal("3", Attr(twoStillLeaving!, "data-index"));
+
+        // Let "Two"'s own exit finish too — no leftover element, no stale index.
+        cut.WaitForAssertion(() =>
+            Assert.DoesNotContain(cut.FindAll("[role='alert'],[role='status']"), e => e.TextContent.Contains("Two")),
+            TimeSpan.FromSeconds(5));
     }
 
     // ── Held-fill entrance class: never park animate-toast-in ──────────────

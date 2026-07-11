@@ -373,6 +373,20 @@ public class ToastTests : IAsyncLifetime
     // Net effect: the render thread hung permanently. Fixed by excluding
     // already-Leaving toasts from eviction candidates.
 
+    // PR #357 round-2 (Codex) — the eviction loop broke WITHOUT freeing a slot
+    // whenever every mounted toast at/above the cap was already Leaving (a
+    // burst arriving while a wave of 220ms exits is still in flight hits this
+    // every time), so the new toast mounted anyway: `_toasts.Count` could blow
+    // straight through MaxToasts mid-burst even though a WaitForState poll
+    // taken only ONCE, after the fact, could still land on a moment where the
+    // count had (temporarily, coincidentally) dipped back to <=5 — exactly
+    // the flaky-on-CI failure mode this test hit. ToastProvider now queues
+    // (rather than mounts) a toast whenever no non-Leaving candidate can be
+    // evicted, so `_toasts.Count` can never exceed MaxToasts, period — proven
+    // below by asserting the bound at EVERY render via OnAfterRender, not by
+    // sampling the DOM once on a timer. No wall-clock race: the assertion
+    // fires synchronously off the renderer's own render-committed event, so
+    // it can't miss a transient overshoot regardless of CI scheduling noise.
     [Fact]
     public void ToastProvider_Spamming_Show_Does_Not_Hang_And_Bounds_Mounted_Toasts()
     {
@@ -380,6 +394,16 @@ public class ToastTests : IAsyncLifetime
         Assert.NotNull(toastService);
 
         var cut = _ctx.Render<L.ToastProvider>(); // MaxToasts default = 5
+        const int maxToasts = 5;
+
+        var maxMountedObserved = 0;
+        int? firstOverCapObserved = null;
+        cut.OnAfterRender += (_, _) =>
+        {
+            var count = cut.FindAll("[role='alert'],[role='status']").Count;
+            if (count > maxMountedObserved) maxMountedObserved = count;
+            if (count > maxToasts) firstOverCapObserved ??= count;
+        };
 
         // Fire 100 toasts back-to-back with no awaits in between — this is
         // exactly the "spam the button" burst the bug report described, and
@@ -393,20 +417,27 @@ public class ToastTests : IAsyncLifetime
         // Pre-fix this hung forever (the render thread livelocked and never
         // produced another frame — reproduced live against the docs site: the
         // page became permanently unresponsive and had to be force-killed).
-        // WaitForState timing out here would itself be the regression signal;
-        // a bounded mounted count proves the burst converges instead.
-        cut.WaitForState(
-            () => cut.FindAll("[role='alert'],[role='status']").Count > 0
-                  && cut.FindAll("[role='alert'],[role='status']").Count <= 5,
+        // A timeout here would itself be the regression signal (still-hanging
+        // case); the invariant that the count never exceeded the cap is
+        // proven by the render hook above, not by this end-state snapshot.
+        cut.WaitForAssertion(
+            () => Assert.InRange(cut.FindAll("[role='alert'],[role='status']").Count, 1, maxToasts),
             TimeSpan.FromSeconds(15));
 
+        Assert.Null(firstOverCapObserved); // never exceeded MaxToasts, not even transiently mid-burst
+        Assert.True(maxMountedObserved >= 1, "expected at least one render with toasts mounted");
+
         var mounted = cut.FindAll("[role='alert'],[role='status']").Count;
-        Assert.InRange(mounted, 1, 5);
+        Assert.InRange(mounted, 1, maxToasts);
 
         // The strongest proof the UI isn't wedged: it still responds to a
-        // brand-new Show() call issued AFTER the burst has settled.
+        // brand-new Show() call issued AFTER the burst has settled — even
+        // though it has to wait its turn behind whatever the (bounded, at
+        // most MaxToasts) pending queue from the burst left in front of it.
         toastService.Show(new ToastOptions { Title = "Post-burst toast" });
-        cut.WaitForAssertion(() => Assert.Contains("Post-burst toast", cut.Markup), TimeSpan.FromSeconds(10));
+        cut.WaitForAssertion(() => Assert.Contains("Post-burst toast", cut.Markup), TimeSpan.FromSeconds(15));
+
+        Assert.Null(firstOverCapObserved); // still holds after the post-burst toast mounts too
     }
 
     [Fact]

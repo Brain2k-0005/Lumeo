@@ -2,18 +2,23 @@
 
 @*  Sonner-style stacking (rc.??). data-stacked/data-expanded/data-stack-edge
     drive the CSS in lumeo.css's "Toast stacking" section; onmouseenter/leave
-    + onfocusin/out toggle _expanded so the group fans out to the normal list
-    layout on hover or keyboard focus (focus-within) and collapses again on
-    pointer-leave / focus-out. All logic here is per-render state — no
-    per-frame JS, no .NET calls in a hot path. *@
+    + onfocusin/out track _hovered and _focused SEPARATELY (Expanded = hovered
+    OR focused) so the group fans out to the normal list layout on hover or
+    keyboard focus (focus-within) and only collapses again once BOTH are gone.
+    A single shared flag would let mouseleave collapse a stack that still has
+    keyboard focus inside it (e.g. tabbing through a toast's close/action
+    button while the pointer happens to leave) — the toast being interacted
+    with would fall back into the collapsed/absolute stack position mid-
+    interaction. All logic here is per-render state — no per-frame JS, no
+    .NET calls in a hot path. *@
 <div class="@CssClass"
      data-stacked="@(IsStacked ? "true" : "false")"
-     data-expanded="@(_expanded ? "true" : "false")"
+     data-expanded="@(Expanded ? "true" : "false")"
      data-stack-edge="@StackEdge"
-     @onmouseenter="@(() => _expanded = true)"
-     @onmouseleave="@(() => _expanded = false)"
-     @onfocusin="@(() => _expanded = true)"
-     @onfocusout="@(() => _expanded = false)"
+     @onmouseenter="@(() => _hovered = true)"
+     @onmouseleave="@(() => _hovered = false)"
+     @onfocusin="@(() => _focused = true)"
+     @onfocusout="@(() => _focused = false)"
      @attributes="AdditionalAttributes">
     @ChildContent
 </div>
@@ -31,10 +36,14 @@
     [Parameter] public int ToastCount { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
-    // Hover-anywhere-over-the-group OR focus-within expansion state. Collapsed
-    // by default; the CSS in lumeo.css only applies stacking transforms while
-    // data-expanded="false", so flipping this reverts to the plain gapped list.
-    private bool _expanded;
+    // Hover-anywhere-over-the-group and focus-within expansion state, tracked
+    // independently so mouseleave can't collapse a stack that still has
+    // keyboard focus inside it (and vice versa). Collapsed by default; the
+    // CSS in lumeo.css only applies stacking transforms while
+    // data-expanded="false", so Expanded=true reverts to the plain gapped list.
+    private bool _hovered;
+    private bool _focused;
+    private bool Expanded => _hovered || _focused;
 
     private bool IsStacked => StackToasts && ToastCount > 1;
 

@@ -93,6 +93,44 @@ public sealed class CliVendorE2ETests : IDisposable
         Assert.Contains("@namespace Acme.Ui", content);
     }
 
+    // PR #357 round-2 (Codex, P1): `lumeo add toast` vendors Toast.razor into a
+    // NuGet (non-standalone) project. NamespaceRewriter rewrites the @namespace
+    // line but — unlike .cs files, which get a `using Lumeo;` bridge auto-added
+    // — does NOT add a Razor `@using Lumeo` to the vendored file. IToastEnterCallback
+    // also isn't in the "toast" component's own file list (it ships as part of
+    // the shared runtime the still-referenced NuGet package provides), so an
+    // unqualified `@implements IToastEnterCallback` would compile fine here (in
+    // the library tree, still under namespace Lumeo) but fail to resolve once
+    // rewritten to the consumer namespace. Toast.razor now spells it out fully
+    // qualified (`Lumeo.IToastEnterCallback`), which — being namespace-rewriter-
+    // proof by construction (the rewriter only touches the leading `@namespace`
+    // line, never fully-qualified type references) — survives vendoring intact.
+    [Fact]
+    public void Add_Vendor_Toast_Qualifies_The_Enter_Callback_Interface_So_It_Survives_Namespace_Rewriting()
+    {
+        Assert.True(File.Exists(_lumeoDll),
+            "Built CLI (lumeo.dll) not found under tools/Lumeo.Cli/bin — build the solution first.");
+
+        var init = RunCli("init", "--yes", "--namespace", "Acme.Ui", "--path", "Components/Ui", "--no-assets");
+        Assert.True(init.Exit == 0, $"init failed (exit {init.Exit}). stderr: {init.Stderr}\nstdout: {init.Stdout}");
+
+        var add = RunCli("add", "toast", "--local", "--yes", "--force");
+        Assert.True(add.Exit == 0, $"add failed (exit {add.Exit}). stderr: {add.Stderr}\nstdout: {add.Stdout}");
+
+        var razor = Path.Combine(_proj, "Components", "Ui", "Toast", "Toast.razor");
+        Assert.True(File.Exists(razor), $"Toast.razor was not vendored to {razor}.\nadd stdout:\n{add.Stdout}");
+
+        var content = File.ReadAllText(razor);
+        Assert.Contains("@namespace Acme.Ui", content);
+        // Fully-qualified — resolves under the rewritten consumer namespace with
+        // no dependency on an `@using Lumeo` the rewriter never adds to .razor files.
+        Assert.Contains("@implements Lumeo.IToastEnterCallback", content);
+        // The regression this guards against: a BARE (unqualified) reference
+        // would silently compile in the library tree but 404 on IToastEnterCallback
+        // in a real consumer build — assert it's gone from the vendored output.
+        Assert.DoesNotContain("@implements IToastEnterCallback", content);
+    }
+
     [Fact]
     public void Add_Vendor_Copies_Satellite_Source_And_Its_Wwwroot_Asset()
     {
