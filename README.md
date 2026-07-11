@@ -242,7 +242,7 @@ For alternate color themes, import additional theme files:
 <Card>
     <CardHeader>
         <Heading Level="3">Hello Lumeo</Heading>
-        <Text Size="sm" Color="muted">A beautiful component library.</Text>
+        <Text Size="sm" Color="muted">A Blazor component library.</Text>
     </CardHeader>
     <CardContent>
         <Button OnClick="@(() => count++)">

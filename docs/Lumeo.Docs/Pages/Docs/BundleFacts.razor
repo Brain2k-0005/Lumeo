@@ -17,7 +17,7 @@
                 <Heading Level="1" Class="text-4xl sm:text-5xl font-bold tracking-tight leading-tight">
                     How Lumeo stays at
                     <Sparkles Count="6" Class="inline-flex items-baseline">
-                        <NumberTicker Value="627"
+                        <NumberTicker Value="672"
                                       Suffix=" KB"
                                       DurationMs="2000"
                                       Class="text-primary font-mono" />
@@ -26,7 +26,7 @@
 
                 <Lumeo.Text Size="base" Color="muted" Class="max-w-xl leading-relaxed">
                     What the browser actually downloads — brotli-compressed assembly size, measured
-                    <Lumeo.Text As="span" Weight="medium" Color="foreground">2026-06-28 (4.0.0)</Lumeo.Text>.
+                    <Lumeo.Text As="span" Weight="medium" Color="foreground">2026-07-11 (4.2.0)</Lumeo.Text>.
                 </Lumeo.Text>
             </Stack>
         </BlurFade>
@@ -120,7 +120,7 @@
             <div class="mt-4 rounded-lg border border-border/40 bg-muted/20 px-4 py-3">
                 <Lumeo.Text Size="xs" Color="muted">
                     Total: <Lumeo.Text As="span" Weight="semibold" Color="foreground">~1,180 KB</Lumeo.Text> in the .nupkg —
-                    matches the NuGet "Download package" badge (~1.18 MB). The <Lumeo.Text As="span" Weight="semibold" Color="foreground">627 KB brotli number</Lumeo.Text>
+                    matches the NuGet "Download package" badge (~1.18 MB). The <Lumeo.Text As="span" Weight="semibold" Color="foreground">672 KB brotli number</Lumeo.Text>
                     is just the DLL, which is the only thing the WASM linker ships to the browser.
                 </Lumeo.Text>
             </div>
@@ -219,8 +219,9 @@
                 published app) and the JS/CSS static web assets each library ships separately — some
                 substantial (e.g. Telerik's ~4.8&nbsp;MB JS bundle, Radzen's multi-theme CSS, and Lumeo's own
                 components.js&nbsp;+&nbsp;lumeo.css). DLL size reflects managed footprint, not features or final shipped size.
-                Only the Lumeo row was re-measured on 2026-07-11 against 4.2.0; every other row remains the
-                2026-06-29 measurement.
+                Only the Lumeo row was re-measured on 2026-07-11 against 4.2.0 — 671.6&nbsp;KiB
+                (687,723&nbsp;bytes) brotli of <code class="rounded bg-muted px-1 py-0.5 text-xs font-mono text-foreground">lib/net10.0/Lumeo.dll</code>,
+                rounded to 672&nbsp;KB above; every other row remains the 2026-06-29 measurement.
             </Lumeo.Text>
         </BlurFade>
     </section>
@@ -347,7 +348,7 @@
                                     </Flex>
                                     <Flex Align="center" Justify="between">
                                         <Lumeo.Text Size="xs" Weight="medium" Color="foreground">Brotli DLL actually shipped to browser</Lumeo.Text>
-                                        <Lumeo.Text As="span" Size="xs" Class="font-mono font-semibold text-primary">~627 KB</Lumeo.Text>
+                                        <Lumeo.Text As="span" Size="xs" Class="font-mono font-semibold text-primary">672 KB</Lumeo.Text>
                                     </Flex>
                                 </Stack>
                             </div>
@@ -370,16 +371,29 @@
                 <AccordionItem Value="wasm-linker">
                     <AccordionTrigger Class="px-5">What does WASM linker trimming do?</AccordionTrigger>
                     <AccordionContent Class="px-5">
-                        <Lumeo.Text Size="sm" Color="muted" Leading="relaxed">
-                            When you publish a Blazor WebAssembly app with
-                            <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">dotnet publish -c Release</code>,
-                            the .NET IL linker (trimmer) walks your dependency graph and removes every type, method, and
-                            field that is not reachable from your entry points. A component you never instantiate is stripped
-                            entirely. The resulting <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">.dll</code>
-                            is then brotli-compressed before being transferred to the browser. The 627 KB figure is what
-                            survives that process for a reference Lumeo app that uses all 143 core components — real apps
-                            using a subset will be smaller.
-                        </Lumeo.Text>
+                        <Stack Gap="3">
+                            <Lumeo.Text Size="sm" Color="muted" Leading="relaxed">
+                                When you publish a Blazor WebAssembly app with
+                                <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">dotnet publish -c Release</code>,
+                                the .NET IL linker (trimmer) can remove types, methods, and fields that are unreachable from
+                                your entry points — but only for assemblies that opt in with an
+                                <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">IsTrimmable</code>
+                                marker. <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">Lumeo.dll</code>
+                                does not currently set that flag, so the linker treats it as one unreachable-free unit and
+                                keeps it whole: a published app that uses a single core component ships the exact same
+                                672&nbsp;KB <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">Lumeo.dll.br</code>
+                                as one that uses all 144. We built both and compared SHA-256 hashes of the published DLL —
+                                identical.
+                            </Lumeo.Text>
+                            <Lumeo.Text Size="sm" Color="muted" Leading="relaxed">
+                                What trimming <em>does</em> remove is whole satellite assemblies you never reference: skip
+                                <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">Lumeo.Charts</code>,
+                                <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">Lumeo.DataGrid</code>,
+                                or any other satellite package and the linker drops that assembly entirely — it costs you
+                                0&nbsp;KB. "Install only what you use" is accurate at the package level; it doesn't (yet)
+                                apply inside the core assembly.
+                            </Lumeo.Text>
+                        </Stack>
                     </AccordionContent>
                 </AccordionItem>
 
@@ -392,7 +406,10 @@
                             against .NET 10. The <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">_framework/</code>
                             folder in the publish output was inspected; the
                             <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">Lumeo.dll.br</code>
-                            file was 627 KB. Measurement was taken on 2026-06-30 against 4.0.0.
+                            file was 687,723 bytes (671.6 KiB, rounded to 672 KB). Measurement was taken on 2026-07-11
+                            against 4.2.0, and reproduced with three independent methods that agreed. A one-component app
+                            was also published and produced a byte-identical <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">Lumeo.dll.br</code>
+                            — see "What does WASM linker trimming do?" above.
                             .NET runtime DLLs (~3–4 MB brotli total) are excluded — they are shared across all Blazor apps
                             and cached aggressively by the browser.
                         </Lumeo.Text>
@@ -533,7 +550,7 @@
 
     private readonly List<PackageRow> _packages =
     [
-        new("Lumeo",            "627 KB", 100, true,  "core — 143 components"),
+        new("Lumeo",            "672 KB", 100, true,  "core — 144 components"),
         new("Lumeo.Charts",     "128 KB",  20, false, "opt-in satellite"),
         new("Lumeo.DataGrid",   "120 KB",  19, false, "opt-in satellite"),
         new("Lumeo.Editor",      "29 KB",   5, false, "opt-in satellite"),
@@ -546,7 +563,7 @@
     [
         new("Package", "Lumeo.dll",
             "945 KB",
-            "Main Blazor component assembly — 3,076 KB raw IL, zip-compressed to 945 KB inside the .nupkg. The WASM linker then trims unused code and brotli-compresses it to the 627 KB the browser actually downloads."),
+            "Main Blazor component assembly — 3,076 KB raw IL, zip-compressed to 945 KB inside the .nupkg. The published WASM app brotli-compresses it to the 672 KB the browser actually downloads; the assembly itself is not IL-trimmed internally, so this size is the same whether you use 1 core component or all 144 (see 'What does WASM linker trimming do?' below)."),
         new("FileText", "Lumeo.xml",
             "96 KB",
             "XML documentation comments for every public API. Powers IntelliSense in Visual Studio and Rider. Never included in the WASM publish output."),
@@ -576,7 +593,7 @@
     private readonly List<ComparisonRow> _comparisonRows =
     [
         new("FluentUI Blazor",   "302 KB",    "v4.14.3 (net10.0)"),
-        new("Lumeo (core)",      "673 KB",    "v4.2.0 (net10.0)",   IsUs: true),
+        new("Lumeo (core)",      "672 KB",    "v4.2.0 (net10.0)",   IsUs: true),
         new("Radzen Blazor",     "1,003 KB",  "v11.0.5 (net10.0)"),
         new("MudBlazor",         "1,318 KB",  "v9.6.0 (net10.0)"),
         new("Telerik UI Blazor", "1,480 KB",  "v14.0.0 (net8.0)"),

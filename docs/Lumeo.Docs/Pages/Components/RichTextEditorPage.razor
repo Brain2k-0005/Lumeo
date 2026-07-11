@@ -284,6 +284,7 @@
                         <tr><td class="p-3 font-mono text-xs text-primary">OnImageRequested</td><td class="p-3 font-mono text-xs text-muted-foreground">Func&lt;EditorImageRequest, ValueTask&lt;string?&gt;&gt;?</td><td class="p-3 font-mono text-xs text-muted-foreground">null</td><td class="p-3 text-muted-foreground">Async callback that receives file metadata and returns the final image URL. When null, images are inlined as base64.</td></tr>
                         <tr><td class="p-3 font-mono text-xs text-primary">OnAiAction</td><td class="p-3 font-mono text-xs text-muted-foreground">Func&lt;string, string, ValueTask&lt;string?&gt;&gt;?</td><td class="p-3 font-mono text-xs text-muted-foreground">null</td><td class="p-3 text-muted-foreground">Async callback receiving <code class="font-mono text-xs">(actionId, selectedText)</code>; returns replacement HTML. Action IDs: <code class="font-mono text-xs">improve</code>, <code class="font-mono text-xs">shorten</code>, <code class="font-mono text-xs">expand</code>, <code class="font-mono text-xs">fix-grammar</code>, <code class="font-mono text-xs">summarize</code>, <code class="font-mono text-xs">translate</code>.</td></tr>
                         <tr><td class="p-3 font-mono text-xs text-primary">OnWordImportRequested</td><td class="p-3 font-mono text-xs text-muted-foreground">Func&lt;WordImportPayload, ValueTask&lt;string&gt;&gt;?</td><td class="p-3 font-mono text-xs text-muted-foreground">null</td><td class="p-3 text-muted-foreground">Optional override. Receives the picked file (filename + bytes) and returns the HTML to insert. When not set, the editor calls <code class="font-mono text-xs">WordImporter.ToHtmlAsync</code> in-browser and inserts the result.</td></tr>
+                        <tr><td class="p-3 font-mono text-xs text-primary">OnInitError</td><td class="p-3 font-mono text-xs text-muted-foreground">EventCallback&lt;string&gt;</td><td class="p-3 font-mono text-xs text-muted-foreground">—</td><td class="p-3 text-muted-foreground">Fired when the underlying JS editor fails to initialize (or re-initialize). Receives the error message; the editor also shows a recoverable "Retry" banner.</td></tr>
                         <tr><td class="p-3 font-mono text-xs text-primary">ToolbarMode</td><td class="p-3 font-mono text-xs text-muted-foreground">RichTextToolbarMode?</td><td class="p-3 font-mono text-xs text-muted-foreground">null</td><td class="p-3 text-muted-foreground">Legacy alias for <code class="font-mono text-xs">Toolbar</code>. Values: None, Basic, Full. Use <code class="font-mono text-xs">Toolbar</code> (EditorToolbarPreset) for new code.</td></tr>
                         <tr><td class="p-3 font-mono text-xs text-primary">MaxWordImportBytes</td><td class="p-3 font-mono text-xs text-muted-foreground">long</td><td class="p-3 font-mono text-xs text-muted-foreground">52428800</td><td class="p-3 text-muted-foreground">Maximum file size (bytes) allowed for Word import. Default is 50 MB.</td></tr>
                         <tr><td class="p-3 font-mono text-xs text-primary">FormField</td><td class="p-3 font-mono text-xs text-muted-foreground">FormFieldContext?</td><td class="p-3 font-mono text-xs text-muted-foreground">null</td><td class="p-3 text-muted-foreground">Cascaded context from a parent FormField; drives Invalid, Required, and error display automatically.</td></tr>
@@ -341,6 +342,33 @@
             </Stack>
         </Stack>
 
+        <!-- TriggerDropdown -->
+        <Stack Gap="3">
+            <Heading Level="3">TriggerDropdown</Heading>
+            <p class="text-sm text-muted-foreground">Floating suggestion list rendered above/below a trigger caret, driven by <code class="font-mono text-xs">Items</code> + a selected index. The live editor drives its own equivalent in JS; this Razor primitive exists for consumers who want to render their own trigger UI server-side (e.g. a standalone mention input).</p>
+            <Stack Class="rounded-lg border border-border/40 overflow-x-auto">
+                <table class="w-full min-w-[700px] text-sm">
+                    <thead>
+                        <tr class="border-b border-border/40 bg-muted/40">
+                            <th class="text-left p-3 font-medium text-foreground w-[160px]">Property</th>
+                            <th class="text-left p-3 font-medium text-foreground w-[260px]">Type</th>
+                            <th class="text-left p-3 font-medium text-foreground w-[100px]">Default</th>
+                            <th class="text-left p-3 font-medium text-foreground">Description</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-border/40">
+                        <tr><td class="p-3 font-mono text-xs text-primary">Id</td><td class="p-3 font-mono text-xs text-muted-foreground">string?</td><td class="p-3 font-mono text-xs text-muted-foreground">null</td><td class="p-3 text-muted-foreground">Element id on the root listbox.</td></tr>
+                        <tr><td class="p-3 font-mono text-xs text-primary">Items</td><td class="p-3 font-mono text-xs text-muted-foreground">IReadOnlyList&lt;TriggerItem&gt;?</td><td class="p-3 font-mono text-xs text-muted-foreground">null</td><td class="p-3 text-muted-foreground">The suggestion items to list. Shows a "no results" message when null or empty.</td></tr>
+                        <tr><td class="p-3 font-mono text-xs text-primary">SelectedIndex</td><td class="p-3 font-mono text-xs text-muted-foreground">int</td><td class="p-3 font-mono text-xs text-muted-foreground">0</td><td class="p-3 text-muted-foreground">Index of the highlighted item.</td></tr>
+                        <tr><td class="p-3 font-mono text-xs text-primary">ItemTemplate</td><td class="p-3 font-mono text-xs text-muted-foreground">RenderFragment&lt;TriggerItem&gt;?</td><td class="p-3 font-mono text-xs text-muted-foreground">null</td><td class="p-3 text-muted-foreground">Optional custom row renderer. Defaults to icon + label + subtitle.</td></tr>
+                        <tr><td class="p-3 font-mono text-xs text-primary">OnPick</td><td class="p-3 font-mono text-xs text-muted-foreground">EventCallback&lt;TriggerItem&gt;</td><td class="p-3 font-mono text-xs text-muted-foreground">—</td><td class="p-3 text-muted-foreground">Fires when an item is clicked.</td></tr>
+                        <tr><td class="p-3 font-mono text-xs text-primary">OnHover</td><td class="p-3 font-mono text-xs text-muted-foreground">EventCallback&lt;int&gt;</td><td class="p-3 font-mono text-xs text-muted-foreground">—</td><td class="p-3 text-muted-foreground">Fires with the item's index when the pointer enters a row (used to sync <code class="font-mono text-xs">SelectedIndex</code>).</td></tr>
+                        <tr><td class="p-3 font-mono text-xs text-primary">AriaLabel</td><td class="p-3 font-mono text-xs text-muted-foreground">string?</td><td class="p-3 font-mono text-xs text-muted-foreground">null</td><td class="p-3 text-muted-foreground">Accessible label for the listbox. Defaults to a localized "Suggestions".</td></tr>
+                    </tbody>
+                </table>
+            </Stack>
+        </Stack>
+
         <!-- EditorImageRequest -->
         <Stack Gap="3">
             <Heading Level="3">EditorImageRequest</Heading>
@@ -378,6 +406,77 @@
                         <tr><td class="p-3 font-mono text-xs text-primary">Minimal</td><td class="p-3 text-muted-foreground">Bold, Italic, Link only.</td></tr>
                         <tr><td class="p-3 font-mono text-xs text-primary">Standard</td><td class="p-3 text-muted-foreground">Headings, basic marks (bold, italic, underline, strikethrough), lists, link, undo/redo. Default value.</td></tr>
                         <tr><td class="p-3 font-mono text-xs text-primary">Full</td><td class="p-3 text-muted-foreground">Standard plus tables, image, code block, AI action menu, and Word import button.</td></tr>
+                    </tbody>
+                </table>
+            </Stack>
+        </Stack>
+
+        <!-- EditorToolbar -->
+        <Stack Gap="3">
+            <Heading Level="3">EditorToolbar</Heading>
+            <p class="text-sm text-muted-foreground">The preset-driven toolbar rendered above the editor surface when <code class="font-mono text-xs">Toolbar</code> is not <code class="font-mono text-xs">None</code>. Rendered internally by <code class="font-mono text-xs">RichTextEditor</code>; each button invokes <code class="font-mono text-xs">OnCommand</code>, which the parent forwards to the JS editor.</p>
+            <Stack Class="rounded-lg border border-border/40 overflow-x-auto">
+                <table class="w-full min-w-[700px] text-sm">
+                    <thead>
+                        <tr class="border-b border-border/40 bg-muted/40">
+                            <th class="text-left p-3 font-medium text-foreground w-[160px]">Property</th>
+                            <th class="text-left p-3 font-medium text-foreground w-[260px]">Type</th>
+                            <th class="text-left p-3 font-medium text-foreground w-[100px]">Default</th>
+                            <th class="text-left p-3 font-medium text-foreground">Description</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-border/40">
+                        <tr><td class="p-3 font-mono text-xs text-primary">Preset</td><td class="p-3 font-mono text-xs text-muted-foreground">EditorToolbarPreset</td><td class="p-3 font-mono text-xs text-muted-foreground">Standard</td><td class="p-3 text-muted-foreground">Which button set to render.</td></tr>
+                        <tr><td class="p-3 font-mono text-xs text-primary">Active</td><td class="p-3 font-mono text-xs text-muted-foreground">RichTextActiveState?</td><td class="p-3 font-mono text-xs text-muted-foreground">null</td><td class="p-3 text-muted-foreground">Current mark/node active state (bold, italic, headings, etc.) used to highlight the corresponding buttons.</td></tr>
+                        <tr><td class="p-3 font-mono text-xs text-primary">Disabled</td><td class="p-3 font-mono text-xs text-muted-foreground">bool</td><td class="p-3 font-mono text-xs text-muted-foreground">false</td><td class="p-3 text-muted-foreground">Dims and disables every toolbar button.</td></tr>
+                        <tr><td class="p-3 font-mono text-xs text-primary">AllowWordImport</td><td class="p-3 font-mono text-xs text-muted-foreground">bool</td><td class="p-3 font-mono text-xs text-muted-foreground">false</td><td class="p-3 text-muted-foreground">Shows the Import .docx button (Full preset only).</td></tr>
+                        <tr><td class="p-3 font-mono text-xs text-primary">EnableAiActions</td><td class="p-3 font-mono text-xs text-muted-foreground">bool</td><td class="p-3 font-mono text-xs text-muted-foreground">false</td><td class="p-3 text-muted-foreground">Shows the AI actions button (Full preset only).</td></tr>
+                        <tr><td class="p-3 font-mono text-xs text-primary">OnCommand</td><td class="p-3 font-mono text-xs text-muted-foreground">EventCallback&lt;(string command, object? arg)&gt;</td><td class="p-3 font-mono text-xs text-muted-foreground">—</td><td class="p-3 text-muted-foreground">Fires with the command name (and optional argument, e.g. a heading level) when a button is clicked.</td></tr>
+                    </tbody>
+                </table>
+            </Stack>
+        </Stack>
+
+        <!-- BubbleMenu -->
+        <Stack Gap="3">
+            <Heading Level="3">BubbleMenu</Heading>
+            <p class="text-sm text-muted-foreground">A static (non-floating) bubble-menu primitive consumers can drop into a custom toolbar. The live floating bubble menu is rendered in JS by <code class="font-mono text-xs">RichTextEditor</code> itself when <code class="font-mono text-xs">EnableBubbleMenu</code> is true; this component exists for building a selection menu out of band.</p>
+            <Stack Class="rounded-lg border border-border/40 overflow-x-auto">
+                <table class="w-full min-w-[700px] text-sm">
+                    <thead>
+                        <tr class="border-b border-border/40 bg-muted/40">
+                            <th class="text-left p-3 font-medium text-foreground w-[160px]">Property</th>
+                            <th class="text-left p-3 font-medium text-foreground w-[260px]">Type</th>
+                            <th class="text-left p-3 font-medium text-foreground w-[100px]">Default</th>
+                            <th class="text-left p-3 font-medium text-foreground">Description</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-border/40">
+                        <tr><td class="p-3 font-mono text-xs text-primary">EnableAiActions</td><td class="p-3 font-mono text-xs text-muted-foreground">bool</td><td class="p-3 font-mono text-xs text-muted-foreground">false</td><td class="p-3 text-muted-foreground">Shows the AI actions button alongside Bold/Italic/Underline/Link.</td></tr>
+                        <tr><td class="p-3 font-mono text-xs text-primary">OnCommand</td><td class="p-3 font-mono text-xs text-muted-foreground">EventCallback&lt;string&gt;</td><td class="p-3 font-mono text-xs text-muted-foreground">—</td><td class="p-3 text-muted-foreground">Fires with the command name ("bold", "italic", "underline", "link") when a button is clicked.</td></tr>
+                        <tr><td class="p-3 font-mono text-xs text-primary">OnAiMenuToggled</td><td class="p-3 font-mono text-xs text-muted-foreground">EventCallback</td><td class="p-3 font-mono text-xs text-muted-foreground">—</td><td class="p-3 text-muted-foreground">Fires when the AI actions button is clicked (only when <code class="font-mono text-xs">EnableAiActions</code> is true).</td></tr>
+                    </tbody>
+                </table>
+            </Stack>
+        </Stack>
+
+        <!-- AiActionMenu -->
+        <Stack Gap="3">
+            <Heading Level="3">AiActionMenu</Heading>
+            <p class="text-sm text-muted-foreground">Floating list of AI actions (Improve / Shorten / Expand / ...) wired to the editor's selection. Picking an item fires <code class="font-mono text-xs">OnAction</code> with the action record; the consumer returns replacement HTML for the current selection.</p>
+            <Stack Class="rounded-lg border border-border/40 overflow-x-auto">
+                <table class="w-full min-w-[700px] text-sm">
+                    <thead>
+                        <tr class="border-b border-border/40 bg-muted/40">
+                            <th class="text-left p-3 font-medium text-foreground w-[160px]">Property</th>
+                            <th class="text-left p-3 font-medium text-foreground w-[260px]">Type</th>
+                            <th class="text-left p-3 font-medium text-foreground w-[100px]">Default</th>
+                            <th class="text-left p-3 font-medium text-foreground">Description</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-border/40">
+                        <tr><td class="p-3 font-mono text-xs text-primary">Actions</td><td class="p-3 font-mono text-xs text-muted-foreground">IReadOnlyList&lt;AiAction&gt;?</td><td class="p-3 font-mono text-xs text-muted-foreground">null</td><td class="p-3 text-muted-foreground">Custom action set. Defaults to the localized built-in set (Improve, Shorten, Expand, Fix Grammar, Summarize, Translate).</td></tr>
+                        <tr><td class="p-3 font-mono text-xs text-primary">OnAction</td><td class="p-3 font-mono text-xs text-muted-foreground">EventCallback&lt;AiAction&gt;</td><td class="p-3 font-mono text-xs text-muted-foreground">—</td><td class="p-3 text-muted-foreground">Fires with the picked action when a menu item is clicked.</td></tr>
                     </tbody>
                 </table>
             </Stack>

@@ -1,19 +1,14 @@
 @page "/docs/accessibility"
 @namespace Lumeo.Docs.Pages.Docs
+@inject RegistryService Registry
 
-<PageTitle>Accessibility — Lumeo</PageTitle>
+<PageTitle>Accessibility in Lumeo — Per-Component Test Matrix</PageTitle>
 
 <Container MaxWidth="3xl" Padding="0" Center="false">
 <Stack Gap="10">
 
-    <!-- Header -->
-    <Stack Gap="4">
-        <Heading Level="1" Size="3xl">Accessibility</Heading>
-        <Lumeo.Text Size="base" Color="muted" Leading="relaxed">
-            Lumeo is built with accessibility as a core principle. All components follow WAI-ARIA guidelines,
-            support keyboard navigation, and work with screen readers out of the box.
-        </Lumeo.Text>
-    </Stack>
+    <PageHeader Title="Accessibility"
+                Description="How Lumeo approaches accessibility, and an honest, data-driven look at what is actually tested today — per component, generated from the real test suite." />
 
     <Separator Class="my-4" />
 
@@ -402,6 +397,114 @@
 
     <Separator Class="my-4" />
 
+    <!-- Per-Component Test Matrix -->
+    <Stack Gap="4">
+        <Heading Level="2">Per-component test matrix</Heading>
+        <Lumeo.Text Size="base" Color="muted" Leading="relaxed">
+            This is a status report, not a marketing claim. The table below is generated at runtime from
+            <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">registry.json</code>,
+            which Lumeo.RegistryGen produces directly from the real test sources — so it cannot drift from what is
+            actually tested. It reflects the state of the suite, not aspiration.
+        </Lumeo.Text>
+
+        <Stack Gap="3">
+            <Heading Level="3">What the automated tests actually assert</Heading>
+            <ul class="space-y-2 text-sm text-muted-foreground list-none">
+                <li class="flex items-start gap-2">
+                    <Lumeo.Text As="span" Class="mt-1.5 h-1.5 w-1.5 rounded-full bg-foreground shrink-0"></Lumeo.Text>
+                    <span><strong class="text-foreground">A11y assertions (bUnit).</strong> Render-level checks that
+                        the correct ARIA role, state attributes (<code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">aria-*</code>),
+                        and focus behavior are present on the rendered markup for a given component.</span>
+                </li>
+                <li class="flex items-start gap-2">
+                    <Lumeo.Text As="span" Class="mt-1.5 h-1.5 w-1.5 rounded-full bg-foreground shrink-0"></Lumeo.Text>
+                    <span><strong class="text-foreground">Keyboard tests (bUnit).</strong> Simulated key events
+                        (Tab, Arrow keys, Enter, Escape, etc. as applicable) verified to trigger the expected
+                        interaction — focus moves, selection changes, overlays close.</span>
+                </li>
+                <li class="flex items-start gap-2">
+                    <Lumeo.Text As="span" Class="mt-1.5 h-1.5 w-1.5 rounded-full bg-foreground shrink-0"></Lumeo.Text>
+                    <span><strong class="text-foreground">E2E coverage (Playwright).</strong> Real-browser end-to-end
+                        tests that exercise a full user flow through the component, for the subset of components
+                        where <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">testCoverage.e2e</code>
+                        is true.</span>
+                </li>
+            </ul>
+        </Stack>
+
+        <Stack Gap="3">
+            <Heading Level="3">What has not been done yet</Heading>
+            <ul class="space-y-2 text-sm text-muted-foreground list-none">
+                <li class="flex items-start gap-2">
+                    <Lumeo.Text As="span" Class="mt-1.5 h-1.5 w-1.5 rounded-full bg-foreground shrink-0"></Lumeo.Text>
+                    <span>No third-party accessibility audit has been commissioned.</span>
+                </li>
+                <li class="flex items-start gap-2">
+                    <Lumeo.Text As="span" Class="mt-1.5 h-1.5 w-1.5 rounded-full bg-foreground shrink-0"></Lumeo.Text>
+                    <span>axe-core is not yet wired into CI as an automated gate. The scan below is run
+                        periodically by hand against the docs site, not on every commit or pull request.</span>
+                </li>
+                <li class="flex items-start gap-2">
+                    <Lumeo.Text As="span" Class="mt-1.5 h-1.5 w-1.5 rounded-full bg-foreground shrink-0"></Lumeo.Text>
+                    <span>There has been no systematic pass with NVDA or VoiceOver across the component set.
+                        Screen-reader feedback is genuinely welcomed —
+                        <Lumeo.Link Href="https://github.com/Brain2k-0005/Lumeo/issues" Class="text-foreground underline underline-offset-4 hover:text-muted-foreground transition-colors">please open a GitHub issue</Lumeo.Link>
+                        if something doesn't announce correctly.</span>
+                </li>
+            </ul>
+        </Stack>
+
+        @if (_rows is null)
+        {
+            <p class="text-sm text-muted-foreground">Loading…</p>
+        }
+        else
+        {
+            <Lumeo.Text Size="sm" Color="muted">
+                <strong class="text-foreground">@_a11yCount</strong>/@_total components have automated a11y assertions ·
+                <strong class="text-foreground">@_keyboardCount</strong>/@_total have keyboard interaction tests ·
+                <strong class="text-foreground">@_e2eCount</strong>/@_total have E2E coverage.
+            </Lumeo.Text>
+
+            <div class="overflow-x-auto rounded-lg border border-border/40">
+                <Table>
+                    <TableHeader>
+                        <TableRow>
+                            <TableHead Class="w-56">Component</TableHead>
+                            <TableHead Class="text-center">A11y assertions</TableHead>
+                            <TableHead Class="text-center">Keyboard tests</TableHead>
+                            <TableHead Class="text-center">E2E coverage</TableHead>
+                            <TableHead>Status</TableHead>
+                        </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                        @foreach (var r in _rows)
+                        {
+                            <TableRow>
+                                <TableCell Class="font-medium">
+                                    @if (r.HasDocsPage)
+                                    {
+                                        <Lumeo.Link Href="@($"/components/{r.Slug}")" Class="text-foreground underline underline-offset-4 hover:text-muted-foreground transition-colors">@r.Name</Lumeo.Link>
+                                    }
+                                    else
+                                    {
+                                        @r.Name
+                                    }
+                                </TableCell>
+                                <TableCell Class="text-center">@Mark(r.A11y)</TableCell>
+                                <TableCell Class="text-center">@Mark(r.Keyboard)</TableCell>
+                                <TableCell Class="text-center">@Mark(r.E2e)</TableCell>
+                                <TableCell><Badge Variant="StatusVariant(r.Status)">@r.Status</Badge></TableCell>
+                            </TableRow>
+                        }
+                    </TableBody>
+                </Table>
+            </div>
+        }
+    </Stack>
+
+    <Separator Class="my-4" />
+
     <!-- Axe-core Audit Results -->
     <Stack Gap="4">
         <Heading Level="2">Axe-core audit results</Heading>
@@ -494,3 +597,53 @@
 
 </Stack>
 </Container>
+
+@code {
+    private sealed record Row(string Name, string Slug, bool HasDocsPage, bool A11y, bool Keyboard, bool E2e, string Status);
+
+    private List<Row>? _rows;
+    private int _total;
+    private int _a11yCount;
+    private int _keyboardCount;
+    private int _e2eCount;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var registry = await Registry.GetAsync();
+        _rows = registry.Components.Values
+            .Where(c => c.TestCoverage is not null)
+            .OrderBy(c => c.Name)
+            .Select(c => new Row(
+                c.Name,
+                c.Slug,
+                c.HasDocsPage,
+                c.TestCoverage!.A11y,
+                c.TestCoverage!.Keyboard,
+                c.TestCoverage!.E2e,
+                StatusFor(c.TestCoverage!.A11y, c.TestCoverage!.Keyboard)))
+            .ToList();
+
+        _total = _rows.Count;
+        _a11yCount = _rows.Count(r => r.A11y);
+        _keyboardCount = _rows.Count(r => r.Keyboard);
+        _e2eCount = _rows.Count(r => r.E2e);
+    }
+
+    private static string StatusFor(bool a11y, bool keyboard) => (a11y, keyboard) switch
+    {
+        (true, true) => "Tested (automated)",
+        (false, false) => "Not yet audited",
+        _ => "Partially tested",
+    };
+
+    private static Badge.BadgeVariant StatusVariant(string status) => status switch
+    {
+        "Tested (automated)" => Badge.BadgeVariant.Success,
+        "Partially tested" => Badge.BadgeVariant.Warning,
+        _ => Badge.BadgeVariant.Secondary,
+    };
+
+    private static MarkupString Mark(bool on) => new(on
+        ? "<span class=\"text-emerald-600 dark:text-emerald-400\" aria-label=\"yes\">✓</span>"
+        : "<span class=\"text-muted-foreground/40\" aria-label=\"no\">—</span>");
+}
