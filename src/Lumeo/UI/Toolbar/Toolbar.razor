@@ -96,9 +96,34 @@ else
     // per component instance so multiple Toolbars on a page don't share state.
     private readonly string _toolbarId = LumeoIds.New("lumeo-toolbar");
 
+    // The id that ACTUALLY renders on the <div>: a consumer-splatted id in
+    // AdditionalAttributes wins (it renders after the explicit id="@_toolbarId"
+    // above), else the generated fallback. EVERY interop call below (roving
+    // tabindex init, arrow-key prevent-default, overflow ResizeObserver, focus
+    // movement) must target THIS, not the raw _toolbarId — otherwise a
+    // consumer-supplied id (e.g. <Toolbar id="actions">) leaves those
+    // registrations pointed at an id no element in the document carries, and
+    // the toolbar silently loses its whole keyboard model: Arrow/Home/End fall
+    // through to the browser default instead of roving focus, and
+    // registerPreventDefaultKeys is a no-op lookup against a missing element
+    // (PR #356 round-6, Codex P2). Mirrors Dock.razor's EffectiveElementId /
+    // PopoverTrigger's EffectiveTriggerId.
+    private string EffectiveToolbarId => LumeoIds.Effective(AdditionalAttributes, _toolbarId);
+
     // Auto-measurement (VisibleCount == -1 + Overflow == true)
     private bool _isObservingOverflow;
-    private bool _pdRegistered;
+    // The id RegisterToolbarOverflow was ACTUALLY called with — registration
+    // only ever happens once, on firstRender, so this just remembers that
+    // exact id for a correctly-targeted unregister in DisposeAsync even if a
+    // splatted id changes afterward (PR #356 round-6).
+    private string? _registeredOverflowId;
+    // The id the arrow-key prevent-default rule is ACTUALLY registered
+    // against (null = not registered) — tracked by id, not a bool, so a
+    // consumer-splatted id changing at runtime re-registers against the NEW
+    // id instead of leaving the rule attached to a stale one that no longer
+    // exists in the DOM (PR #356 round-6, Codex P2). Mirrors Dock's
+    // _registeredPdId / PopoverTrigger's _registeredId.
+    private string? _registeredPdId;
     private int _autoVisibleCount = -1; // -1 = not yet measured
     // Last total reported by the JS ResizeObserver. Persisted so OnParametersSet
     // can rebuild the auto-measure context with the REAL total instead of
@@ -143,7 +168,9 @@ else
         // re-establishes "exactly one tabindex=0" over the current item set —
         // including retracting the container's own tabindex="0" once real items
         // exist, so it never lingers as a second stop alongside the roving item.
-        try { await Interop.InitToolbarRoving(_toolbarId); }
+        var effectiveId = EffectiveToolbarId;
+
+        try { await Interop.InitToolbarRoving(effectiveId); }
         catch (JSDisconnectedException) { }
         catch (ObjectDisposedException) { }
 
@@ -157,18 +184,50 @@ else
         // itself for caret/selection movement — without this the JS listener
         // preventDefault'd those keys before the browser could move the caret,
         // and a child Blazor :stopPropagation can't stop this DOM-level listener.
-        try
+        //
+        // Targets effectiveId (not _toolbarId) and re-registers whenever it
+        // changes at runtime — a consumer-splatted id renders over _toolbarId,
+        // so registering against the raw fallback looks up an id no element
+        // carries and the listener silently attaches to nothing (PR #356
+        // round-6, Codex P2). Compared against the id ACTUALLY registered, not
+        // just a bool, mirroring Dock's _registeredPdId.
+        if (_registeredPdId != effectiveId)
         {
-            var navKeys = Orientation == ToolbarOrientation.Horizontal
-                ? new[] { "ArrowLeft", "ArrowRight", "Home", "End" }
-                : new[] { "ArrowUp", "ArrowDown", "Home", "End" };
-            await Interop.RegisterPreventDefaultKeys(
-                _toolbarId,
-                navKeys.Select(k => new Lumeo.Services.PreventDefaultKeyRule(k, SkipEditable: true)).ToArray());
-            _pdRegistered = true;
+            try
+            {
+                if (_registeredPdId is not null)
+                    await Interop.UnregisterPreventDefaultKeys(_registeredPdId);
+                var navKeys = Orientation == ToolbarOrientation.Horizontal
+                    ? new[] { "ArrowLeft", "ArrowRight", "Home", "End" }
+                    : new[] { "ArrowUp", "ArrowDown", "Home", "End" };
+                await Interop.RegisterPreventDefaultKeys(
+                    effectiveId,
+                    navKeys.Select(k => new Lumeo.Services.PreventDefaultKeyRule(k, SkipEditable: true)).ToArray());
+                _registeredPdId = effectiveId;
+            }
+            catch (JSDisconnectedException) { }
+            catch (ObjectDisposedException) { }
         }
-        catch (JSDisconnectedException) { }
-        catch (ObjectDisposedException) { }
+        else
+        {
+            // Id unchanged, but Orientation may have flipped at runtime — the
+            // key set is captured at registration time, so re-register in
+            // place to keep it aligned (mirrors the pre-round-6 "every render"
+            // behavior for this one case, without re-registering on every
+            // render for the common no-change case).
+            try
+            {
+                await Interop.UnregisterPreventDefaultKeys(effectiveId);
+                var navKeys = Orientation == ToolbarOrientation.Horizontal
+                    ? new[] { "ArrowLeft", "ArrowRight", "Home", "End" }
+                    : new[] { "ArrowUp", "ArrowDown", "Home", "End" };
+                await Interop.RegisterPreventDefaultKeys(
+                    effectiveId,
+                    navKeys.Select(k => new Lumeo.Services.PreventDefaultKeyRule(k, SkipEditable: true)).ToArray());
+            }
+            catch (JSDisconnectedException) { }
+            catch (ObjectDisposedException) { }
+        }
 
         if (!firstRender) return; // overflow observer is wired once, on first render
 
@@ -179,9 +238,11 @@ else
             // 3.0: route through IComponentInteropService instead of a direct
             // IJSRuntime import. The service owns the toolbar.js module load
             // (cache-busted by assembly version) and dispatches measurement
-            // callbacks back to us via OnOverflowMeasured.
-            await Interop.RegisterToolbarOverflow(_toolbarId, OnOverflowMeasured);
+            // callbacks back to us via OnOverflowMeasured. Targets effectiveId
+            // for the same reason as every other call above (PR #356 round-6).
+            await Interop.RegisterToolbarOverflow(effectiveId, OnOverflowMeasured);
             _isObservingOverflow = true;
+            _registeredOverflowId = effectiveId;
         }
         catch (JSDisconnectedException) { }
         catch (ObjectDisposedException) { }
@@ -193,22 +254,23 @@ else
     // inside a horizontal toolbar still works.
     private async Task HandleKeyDown(KeyboardEventArgs e)
     {
+        var effectiveId = EffectiveToolbarId;
         var horizontal = Orientation == ToolbarOrientation.Horizontal;
         switch (e.Key)
         {
             case "ArrowRight" when horizontal:
             case "ArrowDown" when !horizontal:
-                await Interop.MoveToolbarFocus(_toolbarId, 1);
+                await Interop.MoveToolbarFocus(effectiveId, 1);
                 break;
             case "ArrowLeft" when horizontal:
             case "ArrowUp" when !horizontal:
-                await Interop.MoveToolbarFocus(_toolbarId, -1);
+                await Interop.MoveToolbarFocus(effectiveId, -1);
                 break;
             case "Home":
-                await Interop.FocusToolbarEdge(_toolbarId, last: false);
+                await Interop.FocusToolbarEdge(effectiveId, last: false);
                 break;
             case "End":
-                await Interop.FocusToolbarEdge(_toolbarId, last: true);
+                await Interop.FocusToolbarEdge(effectiveId, last: true);
                 break;
         }
     }
@@ -240,9 +302,15 @@ else
 
     public async ValueTask DisposeAsync()
     {
-        if (_pdRegistered)
+        // Unregister from the id it was ACTUALLY registered under
+        // (_registeredPdId / _registeredOverflowId), not the current
+        // EffectiveToolbarId — a consumer-splatted id can change between
+        // registration and disposal, and unregistering against the wrong id
+        // would leave the stale listener attached (PR #356 round-6, mirrors
+        // Dock's DisposeAsync).
+        if (_registeredPdId is not null)
         {
-            try { await Interop.UnregisterPreventDefaultKeys(_toolbarId); }
+            try { await Interop.UnregisterPreventDefaultKeys(_registeredPdId); }
             catch (JSDisconnectedException) { }
             catch (ObjectDisposedException) { }
         }
@@ -250,7 +318,7 @@ else
         {
             if (_isObservingOverflow)
             {
-                await Interop.UnregisterToolbarOverflow(_toolbarId);
+                await Interop.UnregisterToolbarOverflow(_registeredOverflowId ?? _toolbarId);
             }
         }
         catch (JSDisconnectedException) { }

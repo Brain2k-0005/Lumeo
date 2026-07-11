@@ -181,14 +181,25 @@ else if (Inline)
 else
 {
     <Popover @bind-Open="_isOpen" Class="@(FullWidth ? "w-full" : null)">
-        @* SuppressActivationKeys only for the typeable-input branch below: that
-           input already owns Enter (commit + close) and Space (a literal
-           character) itself via HandleInputKeyDown — see PopoverTrigger's own
-           doc comment on the parameter for why bubbling can't be fixed with
-           stopPropagation alone (PR #356 round-2, Codex/CodeRabbit). The plain
-           button-trigger branch (the `else` below) has no competing handler of
-           its own, so it keeps the normal role=button Enter/Space activation. *@
-        <PopoverTrigger Class="@(FullWidth ? "w-full" : null)" SuppressActivationKeys="@UsesTypeableInput">
+        @* SuppressActivationKeys is unconditional — BOTH branches below need it,
+           for different reasons:
+           - Typeable-input branch: the input already owns Enter (commit + close)
+             and Space (a literal character) itself via HandleInputKeyDown — see
+             PopoverTrigger's own doc comment on the parameter for why bubbling
+             can't be fixed with stopPropagation alone (PR #356 round-2, Codex/
+             CodeRabbit).
+           - Button-trigger branch (the `else` below, range/multiple/custom-
+             content modes): its ChildContent IS a native <button>. Without
+             suppression here, an Enter/Space keydown on that button bubbles to
+             this wrapper and toggles the popover via HandleKeyDown, and THEN the
+             browser's own click synthesis for that same Enter/Space (native
+             button default action) also bubbles up and toggles it again via
+             @onclick="Toggle" — two toggles cancel out and the calendar never
+             opens from the keyboard (PR #356 round-6, Codex P2). Suppressing
+             here leaves only the single click-driven toggle, and — as a side
+             effect — drops the wrapper's own tabindex to -1 so the native
+             button (already its own tab stop) isn't ALSO a second one. *@
+        <PopoverTrigger Class="@(FullWidth ? "w-full" : null)" SuppressActivationKeys="true">
             @if (UsesTypeableInput)
             {
                 @* No leading LumeoIcons.Calendar here — the trailing CalendarDays

@@ -2327,15 +2327,43 @@ function getToolbarItems(toolbarId) {
     if (!container) return [];
     // Focusable interactive descendants, excluding disabled ones and the
     // overflow trigger button (it has its own dropdown semantics).
+    //
+    // The `:not([disabled])` clauses on the button/input/select/textarea arms
+    // only exclude an element from THOSE specific arms — they do NOT stop it
+    // from ALSO matching the generic `[tabindex]:not([tabindex="-1"])` arm,
+    // since querySelectorAll returns the UNION of every comma-separated arm.
+    // A roving-active item carries `tabindex="0"` (written by a previous
+    // applyToolbarRovingTabindex call) — if it becomes disabled afterward, it
+    // still matches that last arm and comes back as a "focusable" item even
+    // though it can no longer actually receive focus. That let a disabled
+    // former-active item block the empty-fallback branch below (items.length
+    // was 1, not 0) while contributing zero real tab stops, so the toolbar
+    // silently dropped out of the Tab order entirely (PR #356 round-6, Codex
+    // P2). Filtering disabled elements out of the FINAL result — not just
+    // individual arms — closes that gap for every arm at once.
     const selector = 'button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
     return Array.from(container.querySelectorAll(selector))
-        .filter(el => !el.closest('[data-toolbar-overflow-trigger]'));
+        .filter(el => !el.closest('[data-toolbar-overflow-trigger]'))
+        .filter(el => !el.disabled && el.getAttribute('aria-disabled') !== 'true');
 }
 
 function applyToolbarRovingTabindex(items, activeIndex) {
     for (let i = 0; i < items.length; i++) {
         items[i].setAttribute('tabindex', i === activeIndex ? '0' : '-1');
     }
+}
+
+// Shared empty-fallback: when a toolbar has no focusable items (yet, or any
+// more — e.g. the roving-active item just became disabled/was removed), the
+// container itself must stay/become the sole tab stop, or the toolbar
+// disappears from the Tab order entirely (PR #356 round-6, Codex P2). Called
+// from initToolbarRoving (the render-driven path — Blazor re-renders whenever
+// a data-bound `disabled` flips, which is the common case) AND defensively
+// from moveToolbarFocus/focusToolbarEdge (the interaction-driven paths), so
+// the invariant holds even if items disappear between renders.
+function restoreToolbarContainerFallback(toolbarId) {
+    const container = document.getElementById(toolbarId);
+    if (container) container.setAttribute('tabindex', '0');
 }
 
 // True when the currently focused element is text-editable (input/textarea/
@@ -2351,11 +2379,15 @@ function isEditableFocusTarget(el) {
 // True when an editable `el`'s caret sits at the text boundary in the
 // direction `delta` travels (start, delta < 0, for Left/Up; end, delta > 0,
 // for Right/Down), with no active selection to collapse first. Only
-// input/textarea expose selectionStart/selectionEnd — a <select> or
-// contenteditable element has no unambiguous single-caret concept, so those
-// are always treated as NOT at a boundary (arrows never escape them; Home/End
-// stays their only way out, same as before this fix — a deliberate, narrower
-// scope: no known Lumeo toolbar embeds a <select>/contenteditable today).
+// input/textarea EVER expose selectionStart/selectionEnd, and even then not
+// for every input type — a <select>, a contenteditable element, or an
+// input[type=number/email/color/...] has no unambiguous single-caret concept
+// (or no selection API at all), so ALL of those are always treated as NOT at
+// a boundary (arrows never escape them; Home/End and Tab stay their only way
+// out — a deliberate, narrower scope: no known Lumeo toolbar embeds a
+// <select>/contenteditable today, and NumberInput's own Up/Down increment/
+// decrement handling depends on this, see the opacity check below, PR #356
+// round-6).
 //
 // Chosen contract (PR #356 round-5, Codex P2 — an editable toolbar child made
 // every item AFTER it keyboard-unreachable: roving unconditionally deferred
@@ -2372,10 +2404,19 @@ function isEditableFocusTarget(el) {
 // every toolbar item stays reachable is the right default.
 function isAtEditableBoundary(el, delta) {
     if (!el || (el.tagName !== 'INPUT' && el.tagName !== 'TEXTAREA')) return false;
-    // input[type=number/email/...] doesn't expose a selection API in every
-    // engine — treat that as boundary-opaque so arrows escape rather than
-    // silently dead-ending on a control we can't introspect.
-    if (typeof el.selectionStart !== 'number' || typeof el.selectionEnd !== 'number') return true;
+    // input[type=number/email/color/...] doesn't expose a selection API in
+    // every engine (Chromium returns null for selectionStart/End on these
+    // types) — treat that as boundary-OPAQUE, i.e. NEVER at a boundary, same
+    // as the <select>/contenteditable case above. A round-5 version of this
+    // returned true here ("escape since we can't introspect"), but for a
+    // control like NumberInput's <input type="number">, Up/Down ALSO drive
+    // the browser's own increment/decrement — with every press unconditionally
+    // treated as a boundary, roving focus escaped the control on the very
+    // first Up/Down instead of leaving it to repeatedly adjust the value, and
+    // Tab remained the only intentional way to leave (PR #356 round-6, Codex
+    // P2). Mirrors the select/contenteditable contract documented above:
+    // opaque editables keep the arrow event, they never escape via arrows.
+    if (typeof el.selectionStart !== 'number' || typeof el.selectionEnd !== 'number') return false;
     if (el.selectionStart !== el.selectionEnd) return false; // active selection: this press collapses it first, same as native behavior
     return delta < 0 ? el.selectionStart === 0 : el.selectionEnd === el.value.length;
 }
@@ -2386,10 +2427,14 @@ export function initToolbarRoving(toolbarId) {
     const container = document.getElementById(toolbarId);
     const items = getToolbarItems(toolbarId);
     if (items.length === 0) {
-        // No focusable items (yet) — the container itself is the only possible
-        // tab stop, so keep its own tabindex="0" as a fallback (matches the
-        // markup's initial state before hydration/first render).
-        if (container) container.setAttribute('tabindex', '0');
+        // No focusable items (yet, or any more — e.g. the previously-active
+        // item just became disabled and getToolbarItems() correctly dropped
+        // it, see the comment there) — the container itself is the only
+        // possible tab stop, so keep/restore its own tabindex="0" as a
+        // fallback (matches the markup's initial state before hydration/
+        // first render, and self-heals the disabled-active-item case on the
+        // very next render since this runs unconditionally every render).
+        restoreToolbarContainerFallback(toolbarId);
         return;
     }
     // Items exist: they now own the single roving tab stop. The container's own
@@ -2407,7 +2452,16 @@ export function initToolbarRoving(toolbarId) {
 // matches Radix RovingFocus default). Returns the new index, or -1.
 export function moveToolbarFocus(toolbarId, delta) {
     const items = getToolbarItems(toolbarId);
-    if (items.length === 0) return -1;
+    if (items.length === 0) {
+        // Defense in depth for the interaction path (PR #356 round-6, Codex
+        // P2): normally initToolbarRoving's own empty-fallback already fires
+        // on the render that dropped the last item, but restoring it here too
+        // means an arrow press that lands in this state — e.g. a mutation the
+        // Blazor render cycle hasn't caught up with yet — still can't leave
+        // the toolbar with zero tab stops.
+        restoreToolbarContainerFallback(toolbarId);
+        return -1;
+    }
     const active = document.activeElement;
     // Defer to the caret UNLESS it is already at the boundary the press is
     // heading toward — see isAtEditableBoundary for the full contract. Without
@@ -2431,7 +2485,12 @@ export function moveToolbarFocus(toolbarId, delta) {
 // "already at the edge" only has meaning for a directional key.
 export function focusToolbarEdge(toolbarId, last) {
     const items = getToolbarItems(toolbarId);
-    if (items.length === 0) return -1;
+    if (items.length === 0) {
+        // Mirrors moveToolbarFocus's defense-in-depth restore above (PR #356
+        // round-6, Codex P2).
+        restoreToolbarContainerFallback(toolbarId);
+        return -1;
+    }
     if (isEditableFocusTarget(document.activeElement)) return -1; // Home/End move the caret instead
     const index = last ? items.length - 1 : 0;
     applyToolbarRovingTabindex(items, index);

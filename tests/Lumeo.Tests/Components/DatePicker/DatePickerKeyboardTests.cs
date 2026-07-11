@@ -189,14 +189,25 @@ public class DatePickerKeyboardTests : IAsyncLifetime
     //     reopened the calendar. Bunit can't execute real DOM bubbling to prove
     //     that directly (see the comment block above), so this is pinned one
     //     level down at the mechanism PopoverTrigger actually uses to suppress
-    //     it: SuppressActivationKeys must reach the typeable-input trigger (and
-    //     ONLY that branch — the plain button trigger has no competing Enter/
-    //     Space handler of its own and must keep the normal role=button
-    //     activation), proven via the same JS-registration signal
+    //     it: SuppressActivationKeys must reach the typeable-input trigger,
+    //     proven via the same JS-registration signal
     //     PopoverTriggerSpaceSuppressionTests/PopoverKeyboardA11yTests use:
     //     with SuppressActivationKeys set, PopoverTrigger skips its Space-
     //     default-suppression registration entirely (nothing left to protect
     //     once the toggle itself is suppressed).
+    //
+    //     Round-6 (Codex P2) corrected an assumption baked into the ORIGINAL
+    //     version of this test block: the plain button-trigger branch (Range/
+    //     Multiple/custom-content) was believed to have "no competing Enter/
+    //     Space handler of its own". That's false — its ChildContent IS a
+    //     native <button>, and a native button's own Enter/Space default action
+    //     synthesizes a click, which bubbles to the SAME wrapper and toggles it
+    //     a second time (the manual keydown-Toggle plus the click-Toggle cancel
+    //     out, so the calendar never opened from the keyboard). SuppressActivationKeys
+    //     is therefore unconditional now — both branches need it, for different
+    //     reasons — so the button trigger ALSO skips the wrapper's Space
+    //     registration below (see DatePicker.razor's SuppressActivationKeys
+    //     doc comment for the full mechanism).
 
     private static bool AnyRegisterPreventDefaultKeysFor(BunitContext ctx, string idPrefix) =>
         ctx.JSInterop.Invocations.Any(i =>
@@ -217,15 +228,44 @@ public class DatePickerKeyboardTests : IAsyncLifetime
     }
 
     [Fact]
-    public void Button_Trigger_Still_Registers_The_Wrapper_Space_Suppression()
+    public void Button_Trigger_Also_Suppresses_The_Wrapper_Space_Registration()
     {
-        // Control for the test above: Range mode has no typeable input (no
-        // competing Enter/Space handler), so its plain button trigger must keep
-        // the ordinary role=button Space-default suppression — proves the fix is
-        // scoped to the typeable-input branch, not a blanket change.
+        // Round-6 (Codex P2): Range mode's plain button trigger renders a native
+        // <button> as PopoverTrigger's ChildContent — that button's own Enter/
+        // Space default action synthesizes a click that bubbles to the SAME
+        // wrapper, so the wrapper's manual keydown-Toggle must be suppressed
+        // (else it double-toggles, see Button_Trigger_Wrapper_Ignores_Enter_
+        // Because_The_Native_Button_Owns_Activation below). With the toggle
+        // suppressed there's nothing left for the Space-default JS rule to
+        // protect, so it must NOT register either — mirrors the typeable-input
+        // branch above.
         var cut = _ctx.Render<L.DatePicker>(p => p.Add(c => c.Mode, L.DatePicker.DatePickerMode.Range));
         cut.Find("button[type='button']").Click();
 
-        Assert.True(AnyRegisterPreventDefaultKeysFor(_ctx, "popover-trigger-"));
+        Assert.False(AnyRegisterPreventDefaultKeysFor(_ctx, "popover-trigger-"));
+    }
+
+    [Fact]
+    public void Button_Trigger_Wrapper_Ignores_Enter_Because_The_Native_Button_Owns_Activation()
+    {
+        // Round-6 (Codex P2): before this fix, PopoverTrigger's wrapper div
+        // (role=button, @onkeydown="HandleKeyDown") toggled the popover itself
+        // on Enter/Space bubbling from ANY child — including Range mode's plain
+        // button trigger. But that child is a native <button>: the browser's
+        // own Enter/Space default action ALSO synthesizes a click, which bubbles
+        // to the same wrapper and toggles it again via @onclick="Toggle" — two
+        // toggles cancel out and the calendar never opened from the keyboard.
+        // Pinned directly on the wrapper's own keydown handler (bUnit doesn't
+        // simulate real DOM bubbling, so this can't be proven by pressing Enter
+        // on the inner button — see the file-level comment on why bubbling
+        // assertions are pinned at the mechanism instead): with
+        // SuppressActivationKeys now unconditional, the wrapper must stay
+        // closed when Enter reaches IT directly, leaving the native button's
+        // own click (fired once, for real, by the browser) as the sole toggle.
+        var cut = _ctx.Render<L.DatePicker>(p => p.Add(c => c.Mode, L.DatePicker.DatePickerMode.Range));
+
+        cut.Find("[role='button']").KeyDown("Enter");
+
+        Assert.False(IsOpen(cut));
     }
 }
