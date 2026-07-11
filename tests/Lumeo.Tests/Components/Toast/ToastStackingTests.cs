@@ -306,6 +306,13 @@ public class ToastStackingTests : IAsyncLifetime
         cut.WaitForAssertion(() =>
             Assert.Equal(5, cut.FindAll("[role='alert'],[role='status']").Count));
 
+        // Widen the exit window through the internal test seam: the deliberate
+        // 150ms mid-exit gap below raced the real 220ms timer (70ms margin) and
+        // still flaked under full-suite starvation. 800ms gives the same
+        // overlap semantics with a 650ms margin; the CSS animation length is
+        // irrelevant to the frozen-index bookkeeping under test.
+        cut.Instance.ExitAnimationMs = 800;
+
         var two = cut.FindAll("[role='alert'],[role='status']").Single(e => e.TextContent.Contains("Two"));
         Assert.Equal("3", Attr(two, "data-index"));
 
@@ -336,7 +343,7 @@ public class ToastStackingTests : IAsyncLifetime
         // background Task.Delay continuations — an unrelated hover-delay test
         // elsewhere in the suite flaked from exactly that when this used
         // Thread.Sleep. "Four" is
-        // still present (Leaving, not yet removed — 150 < 220), so the group
+        // still present (Leaving, not yet removed — 150 < 800), so the group
         // hasn't reshuffled yet and "Two"'s frozen index is correctly
         // captured as 3.
         await Task.Delay(150);
