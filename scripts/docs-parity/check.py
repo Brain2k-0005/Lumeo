@@ -393,8 +393,9 @@ def _strip_tags(html):
 
 # Grouped tables that document several sub-components in one place
 # disambiguate rows with a "Component.Prop" prefix instead of a bare
-# parameter name (e.g. "Column.Groupable" in DataGridPage's group-panel
-# table). Both the literal cell text AND the tail after the last dot are
+# parameter name (e.g. "DataGridColumnDef.Groupable" in DataGridPage's
+# group-panel table). Both the literal cell text AND the tail after the
+# last dot are
 # checked against source, so either convention counts as documented/real.
 # The prefix is captured too: it names the row's declaring type directly
 # (stronger than a preceding <Heading>, which — if present at all — merely
@@ -829,8 +830,23 @@ def main():
                 # KpiCard/SparkCard/Delta's tables). Widening rather than
                 # replacing means a heading that fails to resolve to
                 # anything never turns a real row into a false positive.
-                check_source = set(all_stale_check_params)
+                #
+                # Mirrors the forward check's dotted-owner precedence: the
+                # flat, page-wide all_stale_check_params baseline only
+                # applies when the row makes no explicit ownership claim, or
+                # that claim names one of THIS component's own declaring
+                # types. A row whose owner (heading or dotted prefix, e.g.
+                # "Column.Groupable") names something else — a type that
+                # doesn't exist at all, or a real type this component
+                # doesn't own — must not fall back to the flat baseline,
+                # or an identically-named param on an unrelated sibling
+                # type would mask a genuine owner mismatch. Its owner's
+                # OWN resolution (below) still applies in full.
                 owner_type = r["owner_type"]
+                if owner_type is not None and owner_type not in type_params:
+                    check_source = set()
+                else:
+                    check_source = set(all_stale_check_params)
                 if owner_type is not None:
                     check_source |= type_params.get(owner_type, set())
                     check_source |= cascading_params.get(owner_type, set())
