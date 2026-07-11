@@ -1,4 +1,5 @@
 @namespace Lumeo.Docs.Shared
+@using System.Linq
 @using Lumeo.Docs.Services
 @inject RegistryService Registry
 
@@ -9,7 +10,7 @@
    any extra prose as ChildContent. So a component page shrinks from ~450 lines to a
    thin wrapper, and the look/structure live in exactly one place. *@
 
-<PageTitle>@(Title ?? _detail?.Name ?? Slug) — Lumeo</PageTitle>
+<PageTitle>@DisplayTitle — Lumeo</PageTitle>
 
 <article class="flex flex-col gap-10">
     <header class="flex flex-col gap-3">
@@ -18,7 +19,7 @@
             <span class="mx-1.5 opacity-50">/</span>
             <span>@Category</span>
         </nav>
-        <h1 class="text-3xl font-bold tracking-tight text-foreground">@(Title ?? _detail?.Name ?? Slug)</h1>
+        <h1 class="text-3xl font-bold tracking-tight text-foreground">@DisplayTitle</h1>
         @if (!string.IsNullOrEmpty(_detail?.Description))
         {
             <p class="max-w-2xl text-base leading-relaxed text-muted-foreground">@_detail.Description</p>
@@ -68,6 +69,17 @@
 
     private RegistryComponentDetail? _detail;
     private string Category => _detail?.Category ?? "Components";
+
+    /// <summary>Best available title: the explicit override, then the registry name once
+    /// loaded, then a display-cased fallback of the slug (never the raw lowercase slug —
+    /// during prerender the registry fetch hasn't resolved yet when this first renders).</summary>
+    private string DisplayTitle => Title ?? _detail?.Name ?? FormatSlug(Slug);
+
+    private static string FormatSlug(string slug) =>
+        string.IsNullOrEmpty(slug)
+            ? slug
+            : string.Join(' ', slug.Split('-', StringSplitOptions.RemoveEmptyEntries)
+                .Select(word => char.ToUpperInvariant(word[0]) + word[1..]));
 
     protected override async Task OnParametersSetAsync()
         => _detail = await Registry.GetComponentAsync(Slug);

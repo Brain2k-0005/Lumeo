@@ -87,6 +87,56 @@ function buildDescriptionMap() {
 }
 
 const descriptions = buildDescriptionMap();
+
+// Hand-written, one-sentence descriptions for pages that don't use the <PageHeader>
+// component (so the harvest above can't see them) and would otherwise fall back to
+// the generic category tagline. Same route set as TITLE_OVERRIDES below.
+const DESCRIPTION_OVERRIDES = {
+    '/docs/cli': 'Install the Lumeo CLI to scaffold components, vendor them as owned source, and apply theme presets from the terminal.',
+    '/docs/contributing': 'How to set up the Lumeo repository, understand its structure, and follow the guidelines for tests and pull requests.',
+    '/docs/templates': "Scaffold a new Blazor project with Lumeo's dotnet new templates for apps, pages, forms, and components.",
+    '/docs/registry': 'Publish a custom component registry so the Lumeo CLI and MCP server can install, search, and generate code against your own components.',
+    '/docs/theme-overrides': "Override Lumeo's CSS custom properties globally, per dark/light mode, or per component to customize the theme.",
+    '/docs/changelog': 'Release notes for every Lumeo version, grouped into Added, Improved, and Fixed changes.',
+    '/docs/form-validation': "Build validated Blazor forms with Lumeo's Form component, EditForm, and DataAnnotations.",
+    '/docs/density': "Lumeo's Compact, Comfortable, and Spacious density modes adjust component tightness independently of size.",
+    '/components': 'Browse all 164 production-ready Blazor components in the Lumeo library, grouped by category.',
+};
+for (const [route, desc] of Object.entries(DESCRIPTION_OVERRIDES)) {
+    if (!descriptions[route]) descriptions[route] = desc;
+}
+
+// ---- Component routes without a PageHeader Description (chart sub-pages, pages
+// using bespoke markup, ...) fall back to the registry JSON's own "description"
+// field — still real, per-component copy instead of the generic category tagline.
+// The PageHeader harvest above always wins when present.
+const registryDir = resolve(__dirname, '../../docs/Lumeo.Docs/wwwroot/registry');
+for (const route of routes) {
+    if (descriptions[route]) continue;
+    if (!route.startsWith('/components/')) continue;
+    const slug = route.replace(/^\/components\//, '').split('/').pop();
+    if (!slug) continue;
+    const regPath = join(registryDir, `${slug}.json`);
+    if (!existsSync(regPath)) continue;
+    try {
+        const reg = JSON.parse(readFileSync(regPath, 'utf8'));
+        if (reg?.description) descriptions[route] = reg.description;
+    } catch { /* malformed/unreadable registry file — generic tagline still applies */ }
+}
+
+// ---- Home route: index.html already carries a rich, hand-tuned meta description
+// — use it verbatim instead of the generic category tagline, which would
+// otherwise clobber it via rewriteMeta() below.
+try {
+    const homeHtml = readFileSync(join(wwwroot, 'index.html'), 'utf8');
+    const homeDescMatch = homeHtml.match(/<meta\s+name="description"\s+content="([^"]*)"/i);
+    if (homeDescMatch) {
+        descriptions['/'] = homeDescMatch[1]
+            .replace(/&mdash;/g, '—').replace(/&ndash;/g, '–')
+            .replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&#39;/g, "'");
+    }
+} catch { /* fall back to the generic tagline below if index.html is missing */ }
+
 console.log(`[og-cards] ${Object.keys(descriptions).length} per-route descriptions extracted`);
 
 function slugFor(route) {
@@ -313,6 +363,23 @@ function structuredDataFor(route, title, description) {
     };
 }
 
+// Routes whose title is already a specific, hand-tuned, human-sounding string —
+// the generic "{Title} — {category suffix}" pattern below (e.g. "CLI — Lumeo
+// Documentation") would just add keyword-stuffed boilerplate on top of it. Given
+// verbatim (not derived from the extracted <title>) because extractTitle() strips
+// any trailing " — Lumeo", which a couple of these legitimately end with.
+const TITLE_OVERRIDES = {
+    '/docs/cli': 'Lumeo CLI — Scaffold and Vendor Components from the Terminal',
+    '/docs/contributing': 'Contributing to Lumeo — Setup, Tests, and PR Guidelines',
+    '/docs/templates': 'Get Started with dotnet new Templates — Lumeo',
+    '/docs/registry': 'Build a Custom Component Registry for Lumeo',
+    '/docs/theme-overrides': "Overriding Lumeo's Theme Tokens and CSS Variables",
+    '/docs/changelog': 'Lumeo Changelog — Release Notes and Version History',
+    '/docs/form-validation': 'Form Validation Patterns in Lumeo (EditForm + DataAnnotations)',
+    '/docs/density': 'Density Modes — Compact, Comfortable, and Spacious Layouts',
+    '/components': 'Browse All 164 Lumeo Components',
+};
+
 // Build a keyword-rich <title>. The stock Blazor <PageTitle> renders as
 // "{Name} — Lumeo" which wastes the title tag. Pattern by category:
 //   component: "Button — Blazor Component | Lumeo"
@@ -321,6 +388,7 @@ function structuredDataFor(route, title, description) {
 //   root:      unchanged (already hand-tuned in index.html)
 function enhancedTitle(route, pageTitle) {
     if (route === '/') return null; // leave the home page's hand-tuned title alone
+    if (TITLE_OVERRIDES[route]) return TITLE_OVERRIDES[route]; // already specific — don't suffix it
     const cat = categoryFor(route);
     return `${pageTitle} — ${cat.titleSuffix}`;
 }

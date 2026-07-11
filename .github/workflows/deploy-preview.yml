@@ -40,6 +40,10 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+          # Full history (not the default shallow depth-1 clone) so the sitemap step's
+          # `git log -1 --format=%cs -- <file>` reflects each file's actual last commit
+          # date instead of always resolving to this checkout's single commit.
+          fetch-depth: 0
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
@@ -101,7 +105,10 @@ jobs:
         # prerender.mjs reads release/wwwroot/sitemap.xml to learn which routes to
         # visit, so this must run before the prerender step. Mirrors the prod
         # deploy; the production origin in <loc> is irrelevant to the preview
-        # crawl, which is path-based.
+        # crawl, which is path-based. /e2e/* (Playwright-only test harnesses) and
+        # /not-found are excluded — not real content, carry <meta name="robots"
+        # content="noindex">. lastmod is each file's actual last commit date (falls
+        # back to today for files with no git history yet).
         run: |
           SITE="https://lumeo.nativ.sh"
           TODAY=$(date -u +%Y-%m-%d)
@@ -112,21 +119,23 @@ jobs:
             echo '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'
             echo "  <url><loc>${SITE}/</loc><lastmod>${TODAY}</lastmod><changefreq>weekly</changefreq><priority>1.0</priority></url>"
 
-            find docs/Lumeo.Docs/Pages/ -name "*.razor" -exec sed -E 's/^\xEF\xBB\xBF//' {} + \
-              | grep -hE '^@page\s+"[^"]+"' \
-              | sed -E 's|^@page\s+"([^"]+)"|\1|' \
-              | grep -v '^/$' \
-              | sort -u \
-              | while read -r route; do
-                  case "$route" in
-                    /components/*)  PRIORITY=0.8; FREQ=monthly ;;
-                    /blocks/*)      PRIORITY=0.7; FREQ=monthly ;;
-                    /patterns/*)    PRIORITY=0.6; FREQ=monthly ;;
-                    /docs/*)        PRIORITY=0.7; FREQ=weekly  ;;
-                    *)              PRIORITY=0.5; FREQ=monthly ;;
-                  esac
-                  echo "  <url><loc>${SITE}${route}</loc><lastmod>${TODAY}</lastmod><changefreq>${FREQ}</changefreq><priority>${PRIORITY}</priority></url>"
-                done
+            find docs/Lumeo.Docs/Pages/ -name "*.razor" | sort | while read -r file; do
+                route=$(sed -E 's/^\xEF\xBB\xBF//' "$file" | grep -E '^@page\s+"[^"]+"' | head -1 | sed -E 's|^@page\s+"([^"]+)"|\1|')
+                [ -z "$route" ] && continue
+                case "$route" in
+                  /|/e2e/*|/not-found) continue ;;
+                esac
+                case "$route" in
+                  /components/*)  PRIORITY=0.8; FREQ=monthly ;;
+                  /blocks/*)      PRIORITY=0.7; FREQ=monthly ;;
+                  /patterns/*)    PRIORITY=0.6; FREQ=monthly ;;
+                  /docs/*)        PRIORITY=0.7; FREQ=weekly  ;;
+                  *)              PRIORITY=0.5; FREQ=monthly ;;
+                esac
+                LASTMOD=$(git log -1 --format=%cs -- "$file" 2>/dev/null)
+                [ -z "$LASTMOD" ] && LASTMOD="${TODAY}"
+                echo "  <url><loc>${SITE}${route}</loc><lastmod>${LASTMOD}</lastmod><changefreq>${FREQ}</changefreq><priority>${PRIORITY}</priority></url>"
+              done
             echo '</urlset>'
           } > "${SITEMAP}"
 
