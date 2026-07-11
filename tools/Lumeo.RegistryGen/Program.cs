@@ -675,7 +675,12 @@ Dictionary<string, object?> ComputeTestCoverage(string componentName)
     var text = dedicatedText + relatedText;
     bool Has(string pattern) => System.Text.RegularExpressions.Regex.IsMatch(text, pattern);
     var hasA11y = Has(@"aria-|role=|GetAttribute\(""(aria|role)");
-    var hasKeyboard = Has(@"KeyDown|KeyboardEventArgs|Arrow(Up|Down|Left|Right)|""Enter""|""Escape""|""Home""|""End""");
+    // A dedicated *KeyboardTests file is a deliberate keyboard audit even when the
+    // component is a native element whose keys the browser handles (those tests
+    // assert the affordances — real <button>, no tabindex override — instead of
+    // dispatching KeyDown, so the content regex alone would miss them).
+    var hasKeyboard = files.Any(f => Path.GetFileName(f).Contains("KeyboardTests", StringComparison.OrdinalIgnoreCase))
+                      || Has(@"KeyDown|KeyboardEventArgs|Arrow(Up|Down|Left|Right)|""Enter""|""Escape""|""Home""|""End""");
     var hasBehavior = Has(@"\.Click\(|InvokeAsync|Changed|OnClick|Toggle|SetParametersAndRender|\.Change\(|Input\(");
     var hasScale = files.Any(f => Path.GetFileName(f).Contains("ScaleTests", StringComparison.OrdinalIgnoreCase))
                    || Has(@"1_000_000|Millions|100_000");

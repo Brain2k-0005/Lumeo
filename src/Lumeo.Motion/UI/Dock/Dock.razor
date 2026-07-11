@@ -1,9 +1,9 @@
 @namespace Lumeo
 @implements IAsyncDisposable
-@inject ComponentInteropService Interop
+@inject Lumeo.Services.IComponentInteropService Interop
 @inject Lumeo.Services.Localization.ILumeoLocalizer L
 
-<div id="@_elementId" class="@CssClass" role="toolbar" aria-label="@EffectiveAriaLabel" @attributes="AdditionalAttributes">
+<div id="@_elementId" tabindex="0" class="@CssClass" role="toolbar" aria-label="@EffectiveAriaLabel" @onkeydown="HandleKeyDown" @attributes="AdditionalAttributes">
     @ChildContent
 </div>
 
@@ -62,6 +62,39 @@
                 });
             }
             catch (JSDisconnectedException) { }
+        }
+
+        // APG toolbar pattern (mirrors Toolbar.razor's #235 fix): role="toolbar"
+        // implies one tab stop with Arrow keys roving focus among the items —
+        // Dock had the role but no roving-tabindex wiring of its own, leaving
+        // every item its own Tab stop (a real ARIA-role/behavior mismatch). Runs
+        // on EVERY render, not just firstRender, so items added/removed/enabled
+        // after load are re-managed; initToolbarRoving is idempotent and keeps
+        // the currently-focused item as the stop, so re-running it is safe.
+        try { await Interop.InitToolbarRoving(_elementId); }
+        catch (JSDisconnectedException) { }
+        catch (ObjectDisposedException) { }
+    }
+
+    // Radix/APG Toolbar keyboard model, reused verbatim from Toolbar.razor: the
+    // dock lays out horizontally, so Left/Right move focus (clamped, no wrap)
+    // and Home/End jump to the first/last item.
+    private async Task HandleKeyDown(KeyboardEventArgs e)
+    {
+        switch (e.Key)
+        {
+            case "ArrowRight":
+                await Interop.MoveToolbarFocus(_elementId, 1);
+                break;
+            case "ArrowLeft":
+                await Interop.MoveToolbarFocus(_elementId, -1);
+                break;
+            case "Home":
+                await Interop.FocusToolbarEdge(_elementId, last: false);
+                break;
+            case "End":
+                await Interop.FocusToolbarEdge(_elementId, last: true);
+                break;
         }
     }
 

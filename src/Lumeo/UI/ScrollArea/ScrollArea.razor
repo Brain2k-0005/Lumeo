@@ -1,11 +1,25 @@
 @namespace Lumeo
 
-<div data-scroll-type="@TypeString" class="@CssClass" @attributes="AdditionalAttributes">
+<div data-scroll-type="@TypeString" class="@CssClass" tabindex="0" aria-label="@AriaLabel" @attributes="AdditionalAttributes">
     @ChildContent
 </div>
 
 @code {
     [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    /// <summary>
+    /// Accessible name for the scrollable region. Per the WAI-ARIA APG scrollable
+    /// region practice, the viewport itself carries <c>tabindex="0"</c> unconditionally
+    /// (verified: ScrollArea had no tabindex/@onkeydown of its own, so a mouse-only user
+    /// could not reach it via Tab at all — WCAG 2.1.1). Whether the content actually
+    /// overflows depends on runtime layout/viewport size that can change after mount, so
+    /// the pattern keeps the tab stop present unconditionally rather than trying to
+    /// detect overflow via JS; a non-overflowing ScrollArea is simply a harmless no-op
+    /// tab stop, same as the W3C APG example. Set this whenever the region's purpose
+    /// isn't already conveyed by a preceding heading/label so AT announces something
+    /// useful when focus lands here.
+    /// </summary>
+    [Parameter] public string? AriaLabel { get; set; }
 
     /// <summary>
     /// When the scrollbars become visible. Mirrors Radix UI's ScrollArea

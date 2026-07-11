@@ -114,7 +114,12 @@
                                     }
                                 </td>
                             }
-                            @* --- data columns --- *@
+                            @* --- data columns ---
+                                 Drill-down cells are only keyboard-reachable/activatable when a
+                                 consumer actually wired OnCellClick — same conditionally-interactive
+                                 contract as Card/Steps: tabindex/@onkeydown are omitted entirely
+                                 (not just inert) when the cell is passive, so a display-only grid
+                                 never grows phantom Tab stops. *@
                             @if (_hasColumnField)
                             {
                                 @foreach (var col in _columnLeaves)
@@ -126,8 +131,10 @@
                                         var mIndex = mi;
                                         var theCol = col;
                                         <td role="cell"
-                                            class="@($"{DataCellClass} tabular-nums text-end {(col.IsGrandTotal ? "bg-muted/30 font-medium" : "")}")"
-                                            @onclick="() => OnCellClickHandler(row, theCol, mIndex)">@measure.FormatValue(measure.Compute(items))</td>
+                                            class="@($"{DataCellClass} tabular-nums text-end {(col.IsGrandTotal ? "bg-muted/30 font-medium" : "")}{(OnCellClick.HasDelegate ? " cursor-pointer hover:bg-accent/30 focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-inset" : "")}")"
+                                            tabindex="@(OnCellClick.HasDelegate ? "0" : null)"
+                                            @onclick="() => OnCellClickHandler(row, theCol, mIndex)"
+                                            @onkeydown="(e) => OnCellKeyDown(e, row, theCol, mIndex)">@measure.FormatValue(measure.Compute(items))</td>
                                     }
                                 }
                             }
@@ -137,8 +144,11 @@
                                 {
                                     var measure = _measures[mi];
                                     var mIndex = mi;
-                                    <td role="cell" class="@DataCellClass tabular-nums text-end"
-                                        @onclick="() => OnCellClickHandler(row, null, mIndex)">@measure.FormatValue(measure.Compute(row.Node.Items))</td>
+                                    <td role="cell"
+                                        class="@($"{DataCellClass} tabular-nums text-end{(OnCellClick.HasDelegate ? " cursor-pointer hover:bg-accent/30 focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-inset" : "")}")"
+                                        tabindex="@(OnCellClick.HasDelegate ? "0" : null)"
+                                        @onclick="() => OnCellClickHandler(row, null, mIndex)"
+                                        @onkeydown="(e) => OnCellKeyDown(e, row, null, mIndex)">@measure.FormatValue(measure.Compute(row.Node.Items))</td>
                                 }
                             }
                         </tr>
@@ -656,6 +666,12 @@
         FlattenRows(_root);
         StateHasChanged();
     }
+
+    // Enter/Space activate a drill-down cell exactly like a click — only reachable
+    // in the first place when OnCellClick is bound (tabindex is conditional on the
+    // same check in the markup), so no guard is needed here beyond the key filter.
+    private Task OnCellKeyDown(KeyboardEventArgs e, DisplayRow row, ColumnLeaf? col, int measureIndex)
+        => (e.Key is "Enter" or " ") ? OnCellClickHandler(row, col, measureIndex) : Task.CompletedTask;
 
     private async Task OnCellClickHandler(DisplayRow row, ColumnLeaf? col, int measureIndex)
     {

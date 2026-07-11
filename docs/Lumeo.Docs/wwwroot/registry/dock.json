@@ -110,22 +110,28 @@
       "ariaAttributes": [
         "aria-label"
       ],
-      "keys": [],
-      "keyboardInteractive": false,
-      "focusManaged": false
+      "keys": [
+        "ArrowLeft",
+        "ArrowRight",
+        "End",
+        "Home",
+        "Space"
+      ],
+      "keyboardInteractive": true,
+      "focusManaged": true
     },
     "parseFailed": false,
     "parseError": null
   },
   "testCoverage": {
-    "tier": 1,
-    "files": 1,
-    "tests": 9,
+    "tier": 3,
+    "files": 2,
+    "tests": 15,
     "relatedFiles": 0,
     "render": true,
     "behavior": false,
     "a11y": true,
-    "keyboard": false,
+    "keyboard": true,
     "scale": false,
     "e2e": false,
     "e2eFiles": [],
@@ -143,7 +149,7 @@
   "source": [
     {
       "path": "UI/Dock/Dock.razor",
-      "content": "@namespace Lumeo\n@implements IAsyncDisposable\n@inject ComponentInteropService Interop\n@inject Lumeo.Services.Localization.ILumeoLocalizer L\n\n<div id=\"@_elementId\" class=\"@CssClass\" role=\"toolbar\" aria-label=\"@EffectiveAriaLabel\" @attributes=\"AdditionalAttributes\">\n    @ChildContent\n</div>\n\n@code {\n    [Parameter] public RenderFragment? ChildContent { get; set; }\n    /// <summary>Maximum scale factor applied to the item closest to the cursor (e.g. 1.8 = 80% bigger).</summary>\n    [Parameter] public double MaxScale { get; set; } = 1.8;\n    /// <summary>Radius (px) around each item within which neighbors start scaling.</summary>\n    [Parameter] public int MagnifyRadius { get; set; } = 100;\n    /// <summary>Accessible label for the dock toolbar container. Defaults to \"Application Dock\".</summary>\n    [Parameter] public string? AriaLabel { get; set; }\n    private string EffectiveAriaLabel => AriaLabel ?? L[\"Dock.ApplicationDock\"];\n    [Parameter] public string? Class { get; set; }\n    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }\n\n    private readonly string _elementId = $\"lumeo-dock-{Guid.NewGuid():N}\";\n    private bool _registered;\n    private double _lastMaxScale;\n    private int _lastRadius;\n\n    private string CssClass => string.Join(\" \", new[] { \"lumeo-dock\", Class }.Where(s => !string.IsNullOrWhiteSpace(s)));\n\n    protected override async Task OnAfterRenderAsync(bool firstRender)\n    {\n        if (firstRender && !_registered)\n        {\n            _registered = true;\n            _lastMaxScale = MaxScale;\n            _lastRadius = MagnifyRadius;\n            try\n            {\n                await Interop.MotionDock(_elementId, new\n                {\n                    maxScale = MaxScale,\n                    magnifyRadius = MagnifyRadius\n                });\n            }\n            catch (JSDisconnectedException) { }\n        }\n        else if (_registered && (MaxScale != _lastMaxScale || MagnifyRadius != _lastRadius))\n        {\n            // MaxScale / MagnifyRadius changed at runtime. The JS dock() captures\n            // these into a closure at registration time, so they must be re-pushed.\n            // Dispose first: dock() always adds a fresh listener set and overwrites\n            // its disconnect handle, so a naive re-invoke would leak the previous\n            // listeners — disposeDock removes the old set before we rebind.\n            _lastMaxScale = MaxScale;\n            _lastRadius = MagnifyRadius;\n            try\n            {\n                await Interop.MotionDisposeDock(_elementId);\n                await Interop.MotionDock(_elementId, new\n                {\n                    maxScale = MaxScale,\n                    magnifyRadius = MagnifyRadius\n                });\n            }\n            catch (JSDisconnectedException) { }\n        }\n    }\n\n    public async ValueTask DisposeAsync()\n    {\n        if (!_registered) return;\n        try { await Interop.MotionDisposeDock(_elementId); }\n        catch (JSDisconnectedException) { }\n    }\n}\n"
+      "content": "@namespace Lumeo\n@implements IAsyncDisposable\n@inject Lumeo.Services.IComponentInteropService Interop\n@inject Lumeo.Services.Localization.ILumeoLocalizer L\n\n<div id=\"@_elementId\" tabindex=\"0\" class=\"@CssClass\" role=\"toolbar\" aria-label=\"@EffectiveAriaLabel\" @onkeydown=\"HandleKeyDown\" @attributes=\"AdditionalAttributes\">\n    @ChildContent\n</div>\n\n@code {\n    [Parameter] public RenderFragment? ChildContent { get; set; }\n    /// <summary>Maximum scale factor applied to the item closest to the cursor (e.g. 1.8 = 80% bigger).</summary>\n    [Parameter] public double MaxScale { get; set; } = 1.8;\n    /// <summary>Radius (px) around each item within which neighbors start scaling.</summary>\n    [Parameter] public int MagnifyRadius { get; set; } = 100;\n    /// <summary>Accessible label for the dock toolbar container. Defaults to \"Application Dock\".</summary>\n    [Parameter] public string? AriaLabel { get; set; }\n    private string EffectiveAriaLabel => AriaLabel ?? L[\"Dock.ApplicationDock\"];\n    [Parameter] public string? Class { get; set; }\n    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }\n\n    private readonly string _elementId = $\"lumeo-dock-{Guid.NewGuid():N}\";\n    private bool _registered;\n    private double _lastMaxScale;\n    private int _lastRadius;\n\n    private string CssClass => string.Join(\" \", new[] { \"lumeo-dock\", Class }.Where(s => !string.IsNullOrWhiteSpace(s)));\n\n    protected override async Task OnAfterRenderAsync(bool firstRender)\n    {\n        if (firstRender && !_registered)\n        {\n            _registered = true;\n            _lastMaxScale = MaxScale;\n            _lastRadius = MagnifyRadius;\n            try\n            {\n                await Interop.MotionDock(_elementId, new\n                {\n                    maxScale = MaxScale,\n                    magnifyRadius = MagnifyRadius\n                });\n            }\n            catch (JSDisconnectedException) { }\n        }\n        else if (_registered && (MaxScale != _lastMaxScale || MagnifyRadius != _lastRadius))\n        {\n            // MaxScale / MagnifyRadius changed at runtime. The JS dock() captures\n            // these into a closure at registration time, so they must be re-pushed.\n            // Dispose first: dock() always adds a fresh listener set and overwrites\n            // its disconnect handle, so a naive re-invoke would leak the previous\n            // listeners — disposeDock removes the old set before we rebind.\n            _lastMaxScale = MaxScale;\n            _lastRadius = MagnifyRadius;\n            try\n            {\n                await Interop.MotionDisposeDock(_elementId);\n                await Interop.MotionDock(_elementId, new\n                {\n                    maxScale = MaxScale,\n                    magnifyRadius = MagnifyRadius\n                });\n            }\n            catch (JSDisconnectedException) { }\n        }\n\n        // APG toolbar pattern (mirrors Toolbar.razor's #235 fix): role=\"toolbar\"\n        // implies one tab stop with Arrow keys roving focus among the items —\n        // Dock had the role but no roving-tabindex wiring of its own, leaving\n        // every item its own Tab stop (a real ARIA-role/behavior mismatch). Runs\n        // on EVERY render, not just firstRender, so items added/removed/enabled\n        // after load are re-managed; initToolbarRoving is idempotent and keeps\n        // the currently-focused item as the stop, so re-running it is safe.\n        try { await Interop.InitToolbarRoving(_elementId); }\n        catch (JSDisconnectedException) { }\n        catch (ObjectDisposedException) { }\n    }\n\n    // Radix/APG Toolbar keyboard model, reused verbatim from Toolbar.razor: the\n    // dock lays out horizontally, so Left/Right move focus (clamped, no wrap)\n    // and Home/End jump to the first/last item.\n    private async Task HandleKeyDown(KeyboardEventArgs e)\n    {\n        switch (e.Key)\n        {\n            case \"ArrowRight\":\n                await Interop.MoveToolbarFocus(_elementId, 1);\n                break;\n            case \"ArrowLeft\":\n                await Interop.MoveToolbarFocus(_elementId, -1);\n                break;\n            case \"Home\":\n                await Interop.FocusToolbarEdge(_elementId, last: false);\n                break;\n            case \"End\":\n                await Interop.FocusToolbarEdge(_elementId, last: true);\n                break;\n        }\n    }\n\n    public async ValueTask DisposeAsync()\n    {\n        if (!_registered) return;\n        try { await Interop.MotionDisposeDock(_elementId); }\n        catch (JSDisconnectedException) { }\n    }\n}\n"
     }
   ],
   "slots": [
@@ -156,8 +162,8 @@
   ],
   "serviceDependencies": [
     {
-      "service": "ComponentInteropService",
-      "namespace": ""
+      "service": "IComponentInteropService",
+      "namespace": "Lumeo.Services"
     },
     {
       "service": "ILumeoLocalizer",
@@ -169,7 +175,8 @@
   "keyboardInteractions": [],
   "tests": [
     "tests/Lumeo.Docs.Tests/Helpers/DocsTestContext.cs",
+    "tests/Lumeo.Tests/Components/Dock/DockKeyboardTests.cs",
     "tests/Lumeo.Tests/Components/Dock/DockTests.cs"
   ],
-  "mdSummary": "# Dock\n\nmacOS-style icon dock with cursor-proximity magnification.\n\n**Package:** `Lumeo.Motion` · **Category:** Motion\n**Docs:** https://lumeo.nativ.sh/components/dock\n\n## Parameters\n| Owner | Name | Type | Default | Description |\n|---|---|---|---|---|\n| Dock | ChildContent | `RenderFragment?` | `` |  |\n| Dock | MaxScale | `double` | `1.8` | Maximum scale factor applied to the item closest to the cursor (e.g. 1.8 = 80% bigger). |\n| Dock | MagnifyRadius | `int` | `100` | Radius (px) around each item within which neighbors start scaling. |\n| Dock | AriaLabel | `string?` | `` | Accessible label for the dock toolbar container. Defaults to \"Application Dock\". |\n| Dock | Class | `string?` | `` |  |\n| Dock | AdditionalAttributes | `Dictionary<string, object>?` | `` |  |\n\n## Slots\n- `ChildContent` (Dock) — RenderFragment slot\n\n## Events\n- (none)\n\n## Sub-components\n- (none)\n\n## Cascading values it expects\n- (none)\n\n## Services it injects\n- `ComponentInteropService` ()\n- `ILumeoLocalizer` (Lumeo.Services.Localization)\n\n## Keyboard\n—\n\n## Example\n```razor\n<Dock />\n```\n\n## CSS variables\n`--color-foreground`\n\n## Files\n- `UI/Dock/Dock.razor`\n"
+  "mdSummary": "# Dock\n\nmacOS-style icon dock with cursor-proximity magnification.\n\n**Package:** `Lumeo.Motion` · **Category:** Motion\n**Docs:** https://lumeo.nativ.sh/components/dock\n\n## Parameters\n| Owner | Name | Type | Default | Description |\n|---|---|---|---|---|\n| Dock | ChildContent | `RenderFragment?` | `` |  |\n| Dock | MaxScale | `double` | `1.8` | Maximum scale factor applied to the item closest to the cursor (e.g. 1.8 = 80% bigger). |\n| Dock | MagnifyRadius | `int` | `100` | Radius (px) around each item within which neighbors start scaling. |\n| Dock | AriaLabel | `string?` | `` | Accessible label for the dock toolbar container. Defaults to \"Application Dock\". |\n| Dock | Class | `string?` | `` |  |\n| Dock | AdditionalAttributes | `Dictionary<string, object>?` | `` |  |\n\n## Slots\n- `ChildContent` (Dock) — RenderFragment slot\n\n## Events\n- (none)\n\n## Sub-components\n- (none)\n\n## Cascading values it expects\n- (none)\n\n## Services it injects\n- `IComponentInteropService` (Lumeo.Services)\n- `ILumeoLocalizer` (Lumeo.Services.Localization)\n\n## Keyboard\n—\n\n## Example\n```razor\n<Dock />\n```\n\n## CSS variables\n`--color-foreground`\n\n## Files\n- `UI/Dock/Dock.razor`\n"
 }

@@ -1,0 +1,145 @@
+using System.Globalization;
+using Bunit;
+using Microsoft.AspNetCore.Components;
+using Xunit;
+using Lumeo.Tests.Helpers;
+using L = Lumeo;
+
+namespace Lumeo.Tests.Components.DatePicker;
+
+/// <summary>
+/// Keyboard coverage for the typeable-input trigger's own HandleInputKeyDown
+/// (independent of the popover Calendar's own arrow/Home/End grid navigation,
+/// which is covered separately): Enter commits the typed buffer and closes
+/// the popover; Escape reverts the buffer to the last committed Value and
+/// closes WITHOUT committing.
+///
+/// PRODUCT FIX while writing these tests: the input's own @onkeydown had no
+/// stopPropagation, unlike its sibling @onclick handlers (which already carry
+/// @onclick:stopPropagation for exactly this reason, per the comment above the
+/// wrapper div). The trigger this input renders inside — PopoverTrigger — has
+/// its OWN @onkeydown that toggles the popover on Enter/Space. Without
+/// stopPropagation, pressing Enter to commit a typed date bubbled past
+/// HandleInputKeyDown's `_isOpen = false` straight into PopoverTrigger's
+/// handler, which immediately toggled the (just-closed) popover back OPEN —
+/// so committing a typed date reopened the calendar instead of closing it.
+/// Fixed by adding @onkeydown:stopPropagation="true" to the input, mirroring
+/// the existing @onclick:stopPropagation pattern.
+///
+/// Two real-world scopes this key handling does NOT cover, verified by
+/// reading DatePicker.razor / DateWheelPicker.razor rather than assumed:
+///   - Range mode (`DatePickerMode.Range`, which is what DateRangePicker
+///     always sets) never renders the typeable input — `UsesTypeableInput`
+///     excludes Range — so it always uses the plain button trigger and has
+///     no HandleInputKeyDown surface of its own; only the Calendar's range
+///     grid navigation applies there.
+///   - DateWheelPicker has no `@onkeydown` anywhere; it is scroll/pointer-only
+///     today (a real, undocumented a11y gap, not fixed here — out of the
+///     assigned SPECIAL list for this pass).
+/// </summary>
+public class DatePickerKeyboardTests : IAsyncLifetime
+{
+    private const string Format = "yyyy-MM-dd";
+    private readonly BunitContext _ctx = new();
+
+    public DatePickerKeyboardTests() => _ctx.AddLumeoServices();
+    public Task InitializeAsync() => Task.CompletedTask;
+    public async Task DisposeAsync() => await _ctx.DisposeAsync();
+
+    private IRenderedComponent<L.DatePicker> RenderPicker(
+        DateOnly? value = null,
+        EventCallback<DateOnly?>? valueChanged = null)
+        => _ctx.Render<L.DatePicker>(p =>
+        {
+            p.Add(c => c.Format, Format);
+            p.Add(c => c.Culture, CultureInfo.InvariantCulture);
+            if (value.HasValue) p.Add(c => c.Value, value.Value);
+            if (valueChanged.HasValue) p.Add(c => c.ValueChanged, valueChanged.Value);
+        });
+
+    private static bool IsOpen(IRenderedComponent<L.DatePicker> cut)
+        => cut.FindAll("div[role='dialog']").Count > 0;
+
+    [Fact]
+    public void Enter_Commits_The_Typed_Buffer_And_Closes_The_Popover()
+    {
+        DateOnly? committed = null;
+        var callback = EventCallback.Factory.Create<DateOnly?>(_ctx, (DateOnly? d) => committed = d);
+        var cut = RenderPicker(value: new DateOnly(2026, 6, 10), valueChanged: callback);
+
+        var input = cut.Find("input");
+        input.Click(); // open, mirroring real usage (typing while closed still works too)
+        Assert.True(IsOpen(cut));
+
+        input.Input("2026-06-15");
+        input.KeyDown("Enter");
+
+        Assert.Equal(new DateOnly(2026, 6, 15), committed);
+        Assert.Equal("2026-06-15", cut.Find("input").GetAttribute("value"));
+        Assert.False(IsOpen(cut));
+    }
+
+    [Fact]
+    public void Escape_Reverts_The_Buffer_To_The_Last_Committed_Value_Without_Committing()
+    {
+        var valueChangedCount = 0;
+        var callback = EventCallback.Factory.Create<DateOnly?>(_ctx, (DateOnly? _) => valueChangedCount++);
+        var cut = RenderPicker(value: new DateOnly(2026, 6, 10), valueChanged: callback);
+
+        var input = cut.Find("input");
+        input.Click();
+        Assert.True(IsOpen(cut));
+
+        input.Input("garbage-not-a-date");
+        input.KeyDown("Escape");
+
+        Assert.Equal(0, valueChangedCount);
+        Assert.Equal("2026-06-10", cut.Find("input").GetAttribute("value"));
+        Assert.False(IsOpen(cut));
+    }
+
+    [Fact]
+    public void Escape_Closes_Even_When_The_Buffer_Was_Never_Touched()
+    {
+        var cut = RenderPicker();
+        var input = cut.Find("input");
+        input.Click();
+        Assert.True(IsOpen(cut));
+
+        input.KeyDown("Escape");
+
+        Assert.False(IsOpen(cut));
+    }
+
+    // --- Range mode has no typeable-input HandleInputKeyDown surface ---
+
+    [Fact]
+    public void Range_Mode_Renders_The_Button_Trigger_Not_A_Typeable_Input()
+    {
+        // UsesTypeableInput excludes Range — DateRangePicker (which always sets
+        // Mode=Range) therefore never gets HandleInputKeyDown's Enter/Escape;
+        // navigation inside the popover is entirely the Calendar's own grid
+        // keyboard handling (covered by the Calendar test suite).
+        var cut = _ctx.Render<L.DatePicker>(p => p.Add(c => c.Mode, L.DatePicker.DatePickerMode.Range));
+
+        Assert.Empty(cut.FindAll("input"));
+        Assert.NotEmpty(cut.FindAll("button[type='button']"));
+    }
+
+    // --- DateWheelPicker: no keyboard support of its own (documented gap) ---
+
+    [Fact]
+    public void DateWheelPicker_Columns_Have_No_Keydown_Handler_Or_Tabindex()
+    {
+        // Verified against DateWheelPicker.razor: purely scroll/pointer-driven
+        // (@onscroll on each column, no @onkeydown anywhere). This test pins
+        // down that reality rather than a keyboard interaction that doesn't
+        // exist — it is a real a11y gap, out of scope to fix in this pass.
+        var cut = _ctx.Render<L.DateWheelPicker>();
+
+        foreach (var col in cut.FindAll("div.overflow-y-scroll"))
+        {
+            Assert.Null(col.GetAttribute("tabindex"));
+        }
+    }
+}
