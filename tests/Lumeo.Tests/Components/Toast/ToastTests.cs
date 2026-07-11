@@ -354,4 +354,86 @@ public class ToastTests : IAsyncLifetime
             return cls.Contains("top-4") && cls.Contains("start-4");
         });
     }
+
+    // ─── Spam safety (regression: "die Seite crashed wenn man zu viele
+    //     Toasts spamt") ─────────────────────────────────────────────────────
+    //
+    // Root cause: ToastProvider.HandleShowAsync's MaxToasts eviction loop
+    // picked the oldest toast WITHOUT excluding ones already mid-exit
+    // (Leaving). RemoveWithExitAsync's idempotency guard
+    // (`if (toast.Leaving) return;`) completes synchronously — no `await` is
+    // ever reached — so `await`ing it does not yield back to the renderer's
+    // synchronization context (an already-completed Task's continuation runs
+    // inline, per normal async/await semantics). When a burst of Show() calls
+    // raced the SAME oldest toast, a losing coroutine kept re-selecting that
+    // still-present (merely flagged) toast forever: a fully synchronous busy
+    // loop with no yield point, which also starved the WINNING coroutine's own
+    // Task.Delay(ExitAnimationMs) continuation (it needs the same single
+    // thread to fire) — so the toast never actually finished evicting either.
+    // Net effect: the render thread hung permanently. Fixed by excluding
+    // already-Leaving toasts from eviction candidates.
+
+    [Fact]
+    public void ToastProvider_Spamming_Show_Does_Not_Hang_And_Bounds_Mounted_Toasts()
+    {
+        var toastService = _ctx.Services.GetService(typeof(ToastService)) as ToastService;
+        Assert.NotNull(toastService);
+
+        var cut = _ctx.Render<L.ToastProvider>(); // MaxToasts default = 5
+
+        // Fire 100 toasts back-to-back with no awaits in between — this is
+        // exactly the "spam the button" burst the bug report described, and
+        // is what raced concurrent HandleShowAsync evictions against each
+        // other pre-fix.
+        for (var i = 0; i < 100; i++)
+        {
+            toastService!.Show(new ToastOptions { Title = $"Spam #{i}" });
+        }
+
+        // Pre-fix this hung forever (the render thread livelocked and never
+        // produced another frame — reproduced live against the docs site: the
+        // page became permanently unresponsive and had to be force-killed).
+        // WaitForState timing out here would itself be the regression signal;
+        // a bounded mounted count proves the burst converges instead.
+        cut.WaitForState(
+            () => cut.FindAll("[role='alert'],[role='status']").Count > 0
+                  && cut.FindAll("[role='alert'],[role='status']").Count <= 5,
+            TimeSpan.FromSeconds(15));
+
+        var mounted = cut.FindAll("[role='alert'],[role='status']").Count;
+        Assert.InRange(mounted, 1, 5);
+
+        // The strongest proof the UI isn't wedged: it still responds to a
+        // brand-new Show() call issued AFTER the burst has settled.
+        toastService.Show(new ToastOptions { Title = "Post-burst toast" });
+        cut.WaitForAssertion(() => Assert.Contains("Post-burst toast", cut.Markup), TimeSpan.FromSeconds(10));
+    }
+
+    [Fact]
+    public void ToastProvider_Dismiss_During_Entrance_Does_Not_Throw()
+    {
+        var toastService = _ctx.Services.GetService(typeof(ToastService)) as ToastService;
+        Assert.NotNull(toastService);
+
+        var cut = _ctx.Render<L.ToastProvider>();
+
+        // bUnit's JSInterop is loose-mode (AddLumeoServices), so
+        // attachToastEnterEnd never actually calls back OnEnterAnimationEnd —
+        // the toast stays `_entering` until the 350 ms fallback timer or an
+        // early Leaving flip. Dismissing immediately after Show forces exactly
+        // that early-Leaving-while-entering path (Toast.OnParametersSet).
+        var id = toastService!.Show(new ToastOptions { Title = "Gone before it entered" });
+        toastService.Dismiss(id);
+
+        // No ObjectDisposedException / unhandled exception should propagate
+        // through the exit animation + component disposal — bUnit surfaces
+        // any exception thrown during rendering by rethrowing it out of
+        // WaitForState/WaitForAssertion, so simply reaching an empty,
+        // stable DOM here is proof none occurred.
+        cut.WaitForState(
+            () => cut.FindAll("[role='alert'],[role='status']").Count == 0,
+            TimeSpan.FromSeconds(5));
+
+        Assert.Empty(cut.FindAll("[role='alert'],[role='status']"));
+    }
 }

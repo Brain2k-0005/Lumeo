@@ -168,10 +168,27 @@
     {
         var item = new ToastItem(message.Id, message.Options);
 
-        // Enforce MaxToasts: evict oldest non-persistent toasts
+        // Enforce MaxToasts: evict the oldest non-persistent toast that ISN'T
+        // already leaving. Spamming Show() fires many concurrent HandleShowAsync
+        // calls (fire-and-forget per toast); several can race this loop against
+        // the SAME "oldest" toast. RemoveWithExitAsync's idempotency guard
+        // (`if (toast.Leaving) return;`) completes synchronously — no `await`
+        // is ever reached — so `await RemoveItemAsync(...)` on an
+        // already-Leaving toast does NOT yield back to the WASM/renderer
+        // message loop (a completed Task's continuation runs inline). Without
+        // the `!t.Leaving` filter below, a losing coroutine kept re-selecting
+        // that same still-present (merely flagged) toast forever: a fully
+        // synchronous busy loop that never yields, which also starves the
+        // winning coroutine's own `Task.Delay(ExitAnimationMs)` callback (it
+        // needs the same single thread to fire) — so the toast never actually
+        // finished evicting either. Net effect: the tab hangs permanently the
+        // moment two Show() calls race an eviction, which rapid spamming makes
+        // near-certain. Skipping already-Leaving toasts means every iteration
+        // either evicts a fresh toast (real progress) or finds none and breaks
+        // (bounded) — no candidate is ever revisited.
         while (_toasts.Count >= MaxToasts)
         {
-            var oldest = _toasts.FirstOrDefault(t => t.Options.Duration != 0);
+            var oldest = _toasts.FirstOrDefault(t => t.Options.Duration != 0 && !t.Leaving);
             if (oldest is null) break;
             await RemoveItemAsync(oldest.Id);
         }

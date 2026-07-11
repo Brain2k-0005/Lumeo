@@ -653,9 +653,12 @@ input[type="range"]::-moz-range-thumb {
  * `position: absolute` anchored to the container's own top edge. That means
  * the container's intrinsic height is driven by the front toast alone (no
  * JS measurement needed): "the group's hit-area follows the front toast".
- * `data-stack-edge` ("down" for Bottom* positions, "up" for Top*) sets the
- * peek direction so the stack always trails toward the screen edge the
- * group anchors to, per sonner.
+ * `data-stack-edge` ("up" for Bottom* positions, "down" for Top*) sets the
+ * peek direction so the older toasts always peek out AWAY from the screen
+ * edge the group anchors to (bottom groups: peek above the front toast;
+ * top groups: peek below it), per sonner. The absolute anchor follows the
+ * peeking edge — top-aligned for an upward peek, bottom-aligned for a
+ * downward peek — so the peek stays visible whatever the toast heights.
  *
  * Leaving toasts keep animating correctly while stacked: `.animate-toast-out`
  * is a CSS `animation`, and a running keyframe animation always wins over a
@@ -664,8 +667,8 @@ input[type="range"]::-moz-range-thumb {
  * stacked/transformed element.
  * ===================================================== */
 
-[data-stack-edge="down"] { --lumeo-stack-y1: 10px; --lumeo-stack-y2: 20px; }
 [data-stack-edge="up"] { --lumeo-stack-y1: -10px; --lumeo-stack-y2: -20px; }
+[data-stack-edge="down"] { --lumeo-stack-y1: 10px; --lumeo-stack-y2: 20px; }
 
 [data-stacked="true"] {
   transition: max-height 0.3s cubic-bezier(0.16, 1, 0.3, 1);
@@ -677,8 +680,10 @@ input[type="range"]::-moz-range-thumb {
 
 [data-stacked="true"]:not([data-expanded="true"]) > [data-index] {
   transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.25s ease;
-  transform-origin: top center;
 }
+
+[data-stack-edge="up"]:not([data-expanded="true"]) > [data-index] { transform-origin: top center; }
+[data-stack-edge="down"]:not([data-expanded="true"]) > [data-index] { transform-origin: bottom center; }
 
 [data-stacked="true"]:not([data-expanded="true"]) > [data-index="0"] {
   position: relative;
@@ -689,9 +694,13 @@ input[type="range"]::-moz-range-thumb {
 [data-stacked="true"]:not([data-expanded="true"]) > [data-index]:not([data-index="0"]) {
   position: absolute;
   inset-inline: 0;
-  top: 0;
   pointer-events: none;
 }
+
+/* Anchor the hidden toasts to the PEEKING edge so the offset stays visible
+   regardless of per-toast height differences. */
+[data-stack-edge="up"]:not([data-expanded="true"]) > [data-index]:not([data-index="0"]) { top: 0; }
+[data-stack-edge="down"]:not([data-expanded="true"]) > [data-index]:not([data-index="0"]) { bottom: 0; }
 
 [data-stacked="true"]:not([data-expanded="true"]) > [data-index="1"] {
   transform: translateY(var(--lumeo-stack-y1)) scale(0.94);
@@ -705,10 +714,21 @@ input[type="range"]::-moz-range-thumb {
 
 /* Index 3+ collapse into the same (invisible) 3rd slot so a promotion to
    index 2 (front toasts dismissed) animates in from a defined position
-   instead of popping in from nowhere. */
+   instead of popping in from nowhere. `visibility: hidden` (not just
+   opacity: 0) is load-bearing here: a depth>=3 toast that auto-dismisses or
+   gets evicted WHILE still collapsed also picks up `.animate-toast-out`
+   (Toast.razor's Leaving flag doesn't change data-index), and a running CSS
+   `animation` always wins over a plain declared value for the SAME property
+   regardless of specificity — `toast-out`'s `from { opacity: 1; }` would
+   otherwise flash this hidden toast visible as it slides out from behind the
+   stack. `visibility` isn't one of the properties `@keyframes toast-out`
+   animates, so the plain declaration here keeps winning throughout the exit,
+   and reverts to the ancestor's default (visible) the instant data-index
+   changes away from this selector (promotion to index 2). */
 [data-stacked="true"]:not([data-expanded="true"]) > [data-index]:not([data-index="0"]):not([data-index="1"]):not([data-index="2"]) {
   transform: translateY(var(--lumeo-stack-y2)) scale(0.88);
   opacity: 0;
+  visibility: hidden;
   z-index: 0;
 }
 
@@ -716,6 +736,33 @@ input[type="range"]::-moz-range-thumb {
   [data-stacked="true"],
   [data-stacked="true"] > [data-index] {
     transition: none !important;
+  }
+}
+
+/* Below `sm` (640px) ToastViewport's PositionClasses anchor EVERY position —
+   including Top* — to a bottom strip (see the mobile comment there), but
+   StackEdge still reflects the desktop intent: Top* groups keep emitting
+   data-stack-edge="down" (peek trails below the front toast). On a group
+   that's actually bottom-anchored, a downward peek points off the bottom of
+   the viewport instead of trailing toward the (mobile) anchored edge. Force
+   every stacked group to the "up" peek below `sm`, regardless of the emitted
+   edge attribute — matching the real mobile layout. Selector specificity
+   matches the base `[data-stack-edge="*"]` rules above 1:1 (attribute-level
+   selector for selector); being declared later in the same cascade layer is
+   what makes this win for `data-stack-edge="down"` groups on mobile only. */
+@media (max-width: 639.98px) {
+  [data-stacked="true"] {
+    --lumeo-stack-y1: -10px;
+    --lumeo-stack-y2: -20px;
+  }
+
+  [data-stacked="true"]:not([data-expanded="true"]) > [data-index] {
+    transform-origin: top center;
+  }
+
+  [data-stacked="true"]:not([data-expanded="true"]) > [data-index]:not([data-index="0"]) {
+    top: 0;
+    bottom: auto;
   }
 }
 
@@ -824,14 +871,19 @@ input[type="range"]::-moz-range-thumb {
 
 /* Overlay exit animations honor reduced-motion too: collapse the duration so
    dismissal is instant (animationend still fires for listeners) instead of a
-   visible slide. */
+   visible slide. `.animate-toast-out` joins this family for the same reason:
+   ToastProvider's removal timer (ExitAnimationMs, 220ms) is independent of
+   this animation-duration, so collapsing it to 1ms only changes what's
+   visually shown during that fixed unmount window — a snap/fade instead of
+   the 220ms translate-X slide — without touching the unmount timing itself. */
 @media (prefers-reduced-motion: reduce) {
   .animate-fade-out,
   .animate-zoom-out,
   .animate-slide-out-to-bottom,
   .animate-slide-out-to-top,
   .animate-slide-out-to-left,
-  .animate-slide-out-to-right {
+  .animate-slide-out-to-right,
+  .animate-toast-out {
     animation-duration: 1ms !important;
   }
 }
@@ -1554,15 +1606,28 @@ input[type="range"]::-moz-range-thumb {
 }
 
 /* Toast default slides from the right-hand edge. In RTL the visual edge
- * that the toast emerges from is the left, so flip the X direction. */
+ * that the toast emerges from is the left, so flip the X direction. Same for
+ * the exit: `.animate-toast-out` translates physical +X (toward the right),
+ * which in RTL is the WRONG edge (mirrors the entrance mistake this file
+ * already fixed for toast-in) — dismissing a toast must exit back toward the
+ * left, the same edge it entered from. */
 [dir="rtl"] .toast-enter,
 [dir="rtl"] .animate-toast-in {
   animation-name: toast-in-rtl;
 }
 
+[dir="rtl"] .animate-toast-out {
+  animation-name: toast-out-rtl;
+}
+
 @keyframes toast-in-rtl {
   from { opacity: 0; transform: translateX(-100%); }
   to   { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes toast-out-rtl {
+  from { opacity: 1; transform: translateX(0); max-height: 200px; margin-top: 0; margin-bottom: 0; padding-top: var(--lumeo-toast-py, 1rem); padding-bottom: var(--lumeo-toast-py, 1rem); }
+  to   { opacity: 0; transform: translateX(-110%); max-height: 0; margin-top: 0; margin-bottom: 0; padding-top: 0; padding-bottom: 0; }
 }
 
 /* ===== RichTextEditor (TipTap / ProseMirror) =====================================

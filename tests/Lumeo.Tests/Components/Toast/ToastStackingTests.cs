@@ -180,8 +180,10 @@ public class ToastStackingTests : IAsyncLifetime
 
         var groups = cut.FindAll("[data-stacked='true']");
         Assert.Equal(2, groups.Count);
-        Assert.Contains(groups, g => Attr(g, "data-stack-edge") == "down"); // BottomRight
-        Assert.Contains(groups, g => Attr(g, "data-stack-edge") == "up");   // TopLeft
+        // The peek points AWAY from the anchored edge: bottom groups peek above
+        // the front toast, top groups below it (user feedback 2026-07-11).
+        Assert.Contains(groups, g => Attr(g, "data-stack-edge") == "up");   // BottomRight
+        Assert.Contains(groups, g => Attr(g, "data-stack-edge") == "down"); // TopLeft
     }
 
     // ── Exit-during-collapsed does not strand transforms ───────────────────

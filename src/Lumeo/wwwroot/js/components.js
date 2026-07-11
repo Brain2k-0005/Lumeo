@@ -497,7 +497,17 @@ export async function attachOverlayExitEnd(elementId, dotnetRef) {
 // one-shot animation on arbitrary CustomContent (a Badge, a spinner, ...) bubbling
 // out of the toast and firing early — this native listener can, and does.
 export async function attachToastEnterEnd(elementId, dotnetRef) {
-    const notify = () => { try { dotnetRef?.invokeMethodAsync('OnEnterAnimationEnd'); } catch { /* circuit gone */ } };
+    // Dispose-safe: a toast removed before its entrance animation ends (rapid
+    // show+dismiss, or evicted by MaxToasts under a spam burst) disposes its
+    // DotNetObjectReference (Toast.Dispose) while this listener may still be
+    // waiting on `anim.finished` below. invokeMethodAsync on a disposed
+    // reference can both throw synchronously (caught here) AND return a
+    // rejected promise (uncaught otherwise) — .catch it explicitly so a stray
+    // "no tracked object" rejection never surfaces as an unhandled rejection.
+    const notify = () => {
+        try { dotnetRef?.invokeMethodAsync('OnEnterAnimationEnd')?.catch(() => { /* disposed mid-flight */ }); }
+        catch { /* circuit / reference gone */ }
+    };
     const el = document.getElementById(elementId);
     if (!el) { notify(); return; }
 
