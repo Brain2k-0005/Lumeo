@@ -7,7 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [4.1.2] - 2026-07-10
+## [4.2.0] - 2026-07-11
+
+DataGrid column/row interaction suite rebuilt to flagship level (PR #353), hardened
+over a 13-round automated review loop plus a 41-scenario real-pointer browser harness.
+
+### Added
+- **DataGrid column resize, complete.** Always-visible hover handle, a resize
+  guideline that tracks the exact cell edge (correct under min/max clamping,
+  horizontal scroll, first column, and RTL), double-click auto-fit to intrinsic
+  content width, and keyboard resizing (arrow keys on the focused handle or
+  Ctrl+Arrow on the header) that never scrolls the page.
+- **DataGrid column reorder with live animation.** One unified pointer engine for
+  mouse, touch and pen (immediate on the grip, 5px threshold header-wide): sibling
+  columns shift out of the way live while dragging, the dropped column glides into
+  its slot, Escape glides it back. Locked/pinned columns are skipped in preview and
+  preserved on commit; non-primary mouse buttons are ignored.
+- **DataGrid row reorder on the same engine.** Handle-only vertical dragging with
+  live row shifting and glide settle; expanded detail rows travel with their parent
+  as one band. Rows keep stable identity across rebuilds, and commits resolve by
+  row key — scoped to flat, non-virtualized grids.
+- New programmatic APIs: `ReorderColumnByIdAsync`, `ReorderRowByKeyAsync`, and
+  awaited internal commit variants; additive default-interface members on
+  `IComponentInteropService` (existing implementations keep compiling); reorder and
+  resize strings localized in all 14 locales.
+
+### Changed
+- **Interaction robustness.** A per-grid arbiter serializes every mutating gesture
+  (drag, resize, double-click auto-fit, keyboard nudge) and is held until the .NET
+  commit — including awaited consumer callbacks like `OnColumnResize` /
+  `OnRowReorder` — has fully completed, so slow persistence can never be overtaken
+  or overwritten by a later gesture. Every commit runs through one canonical
+  validation path whose rejection branch always clears the drag transforms, so
+  toggling `Reorderable`/`RowReorderable`, hiding columns, grouping, or enabling
+  virtualization mid-gesture leaves no visual residue.
+- **Performance.** All per-move work stays in JavaScript (zero .NET interop calls
+  during drag/resize movement), measured at ~0.004–0.007 ms per move event.
 
 ### Changed
 - **Blazicons is gone everywhere.** The library decoupled in 4.1.0; this release
