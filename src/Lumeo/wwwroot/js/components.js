@@ -2753,6 +2753,16 @@ export function registerColumnResize(handleId, dotnetRef, minWidth, maxWidth) {
     const onDoubleClick = (e) => {
         e.preventDefault();
         e.stopPropagation();
+        // Cross-engine: a reorder (or another resize) already live on this
+        // grid owns the shared arbiter token — auto-fit was the one gesture
+        // that never checked, so it could mutate widths + dispatch
+        // OnColumnResizeCommit while a reorder settle window still held the
+        // token (round-11 #2). Refuse silently exactly like onPointerDown —
+        // no queueing. Auto-fit is instantaneous (no drag of its own to hold
+        // the token through), so it's claimed and released immediately around
+        // the single mutation + commit, mirroring onPointerUp/endDrag's
+        // immediate release rather than reorder's settle-window hold.
+        if (!claimGridDrag(gridId, 'resize')) return;
         const cells = [th, ...gatherBodyCells()];
         let natural = 0;
         for (const c of cells) natural = Math.max(natural, measureIntrinsicWidth(c));
@@ -2763,6 +2773,7 @@ export function registerColumnResize(handleId, dotnetRef, minWidth, maxWidth) {
         applyWidth(w);
         currentWidth = w;
         dotnetRef.invokeMethodAsync('OnColumnResizeCommit', handleId, w, true);
+        releaseGridDrag(gridId, 'resize');
     };
     handle.addEventListener('pointerdown', onPointerDown);
     // passive: false so preventDefault works inside pointermove on touch.
@@ -2845,6 +2856,14 @@ export function unregisterColumnResize(handleId) {
 
 const columnReorderSnapshots = new Map(); // gridId -> { colId: { left, cells: [el,...] } }
 const columnReorderInFlight = new Map();  // gridId -> Set<HTMLElement> (cells with inline FLIP styles)
+// gridId -> Set<HTMLElement> holding a JS-authored settle transform for a
+// commit .NET hasn't resolved yet — element REFERENCES captured at the exact
+// moment finishDrag applies them, so ClearColumnReorderTransforms can find
+// and strip them even if a rerender (grouping/virtualization/pin-partition
+// change racing the settle window) strips data-col-id from these same nodes
+// before the reject path runs (round-11 #1). Drained by captureColumnRects
+// (accept) and clearColumnReorderTransforms (reject).
+const columnReorderSettleEls = new Map();
 
 // A DataGrid nested inside another reorderable grid's DetailTemplate/cell
 // template sits inside the outer grid's DOM subtree too, so a plain
@@ -2892,6 +2911,12 @@ export function captureColumnRects(gridId) {
         for (const cell of inFlight) clearFlipStyles(cell);
         columnReorderInFlight.delete(gridId);
     }
+    // This capture is the accept path settling successfully — the settle-els
+    // reference set from finishDrag is now stale (its transforms are about to
+    // be re-measured/cleared below by attribute query, which still works here
+    // since an accepted commit's rerender keeps data-col-id). Drop it so a
+    // later drag's reject cleanup never acts on this drag's old elements.
+    columnReorderSettleEls.delete(gridId);
     const headers = ownedByGrid(grid.querySelectorAll('th[data-col-id]'), grid);
     if (!headers.length) return;
     const headerRow = headers[0].parentElement;
@@ -2953,6 +2978,16 @@ export function captureColumnRects(gridId) {
 // even dispatched, so replaying a second glide here would misleadingly look
 // like an accepted move.
 export function clearColumnReorderTransforms(gridId) {
+    // Element-reference cleanup FIRST (round-11 #1): a rerender racing this
+    // reject can strip data-col-id from the very cells finishDrag left
+    // transformed, before the attribute-based sweep below ever runs — these
+    // are the same DOM nodes finishDrag touched, found by reference instead
+    // of by an attribute the rerender may already have removed.
+    const settleEls = columnReorderSettleEls.get(gridId);
+    if (settleEls) {
+        for (const cell of settleEls) clearFlipStyles(cell);
+        columnReorderSettleEls.delete(gridId);
+    }
     const grid = document.querySelector(`[data-grid-id="${CSS.escape(gridId)}"]`);
     if (!grid) return;
     const inFlight = columnReorderInFlight.get(gridId);
@@ -3310,6 +3345,8 @@ export function registerColumnReorder(gridId, dotnetRef) {
         }
 
         const settleCells = new Set([...d.cells, ...shiftedCells]);
+        // Recorded by element reference (round-11 #1) — see columnReorderSettleEls.
+        columnReorderSettleEls.set(gridId, settleCells);
         const timeoutId = window.setTimeout(() => {
             pendingSettle = null;
             for (const cell of d.cells) cell.style.transition = '';
@@ -3516,6 +3553,7 @@ export function registerColumnReorder(gridId, dotnetRef) {
             window.clearTimeout(pendingSettle.timeoutId);
             for (const cell of pendingSettle.cells) clearFlipStyles(cell);
             pendingSettle = null;
+            columnReorderSettleEls.delete(gridId);
             releaseGridDrag(gridId, 'column-reorder');
         }
     };
@@ -3765,6 +3803,8 @@ export function registerRowReorder(gridId, dotnetRef) {
         }
 
         const settleEls = new Set([d.el, d.detail, ...shiftedPairs.flat()].filter(Boolean));
+        // Recorded by element reference (round-11 #1) — see rowReorderSettleEls.
+        rowReorderSettleEls.set(gridId, settleEls);
         const timeoutId = window.setTimeout(() => {
             pendingSettle = null;
             d.el.style.transition = '';
@@ -3929,6 +3969,7 @@ export function registerRowReorder(gridId, dotnetRef) {
             window.clearTimeout(pendingSettle.timeoutId);
             for (const el of pendingSettle.els) clearFlipStyles(el);
             pendingSettle = null;
+            rowReorderSettleEls.delete(gridId);
             releaseGridDrag(gridId, 'row-reorder');
         }
     };
@@ -3962,6 +4003,11 @@ export function unregisterRowReorder(gridId) {
 
 const rowReorderSnapshots = new Map(); // gridId -> Map<rowKey, top>
 const rowReorderInFlight = new Map();  // gridId -> Set<HTMLElement>
+// Row-engine mirror of columnReorderSettleEls (round-11 #1) — gridId ->
+// Set<HTMLElement> holding a JS-authored settle transform for a commit .NET
+// hasn't resolved yet, by element reference so clearRowReorderTransforms
+// still finds them after a rerender strips data-row-index.
+const rowReorderSettleEls = new Map();
 
 // Clears ONLY the inline properties the FLIP engine itself ever sets
 // (transform/transition during the live-shift preview + settle glide,
@@ -3998,6 +4044,10 @@ export function captureRowRects(gridId) {
         for (const tr of inFlight) clearRowFlipStyles(tr);
         rowReorderInFlight.delete(gridId);
     }
+    // Accept path settling successfully — drop the settle-els reference set
+    // from finishDrag (see rowReorderSettleEls) so a later drag's reject
+    // cleanup never acts on this drag's now-stale elements.
+    rowReorderSettleEls.delete(gridId);
     // A row-reorderable grid nested inside THIS grid's DetailTemplate/cell
     // template also matches 'tbody tr[data-row-index]' from this grid's own
     // root — exclude rows that actually belong to that inner grid (Codex
@@ -4037,6 +4087,18 @@ export function captureRowRects(gridId) {
 // (now-rejected) commit was even dispatched, so replaying a second glide here
 // would misleadingly look like an accepted move.
 export function clearRowReorderTransforms(gridId) {
+    // Element-reference cleanup FIRST (round-11 #1): the rejecting rerender
+    // (grouped/virtualized/RowReorderable toggled off) can strip
+    // data-row-index from the exact rows finishDrag left transformed BEFORE
+    // this runs — the attribute-based sweep below then matches nothing and
+    // the JS-authored transforms (which Blazor never clears) stay applied.
+    // These are the same DOM nodes finishDrag touched, found by reference,
+    // immune to whatever attribute the rerender removed.
+    const settleEls = rowReorderSettleEls.get(gridId);
+    if (settleEls) {
+        for (const tr of settleEls) clearRowFlipStyles(tr);
+        rowReorderSettleEls.delete(gridId);
+    }
     const grid = document.querySelector(`[data-grid-id="${CSS.escape(gridId)}"]`);
     if (!grid) return;
     const inFlight = rowReorderInFlight.get(gridId);

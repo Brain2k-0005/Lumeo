@@ -265,6 +265,47 @@ public class DataGridReorderConstraintTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Pointer_Commit_Against_Column_Dropped_From_Rendered_Set_Mid_Settle_Is_Rejected()
+    {
+        // Round-11 finding #3: Visible == true is not the same as actually RENDERED.
+        // ColumnVirtualize + a reduced MaxVisibleColumns can trim a still-Visible
+        // column out of _visibleColumns (e.g. toggled during the ~180ms JS settle
+        // window) while the source/target lookup against _orderedColumns above still
+        // finds it and every OTHER check (Visible, Reorderable, same Pin) still
+        // passes. The commit must still be rejected — and transforms still cleared —
+        // because the JS drag/FLIP handoff only ever touched th/cells that were
+        // actually in the DOM.
+        var a = new DataGridColumn<Row> { Field = "Id", Title = "A" };
+        var b = new DataGridColumn<Row> { Field = "Name", Title = "B" };
+        var c = new DataGridColumn<Row> { Field = "Dept", Title = "C" };
+        var d = new DataGridColumn<Row> { Field = "Extra", Title = "D" };
+        ColumnReorderEventArgs? fired = null;
+        var cut = _ctx.Render<Lumeo.DataGrid<Row>>(p =>
+        {
+            p.Add(g => g.Items, Data());
+            p.Add(g => g.Columns, new List<DataGridColumn<Row>> { a, b, c, d });
+            p.Add(g => g.Reorderable, true);
+            p.Add(g => g.OnColumnReorder, args => fired = args);
+        });
+        var gridId = cut.Find("[data-slot='datagrid']").GetAttribute("data-grid-id")!;
+
+        // Trim rendering to the first two unpinned columns (A, B) — C and D stay
+        // Visible=true (and Reorderable) but drop out of _visibleColumns entirely.
+        cut.Render(p =>
+        {
+            p.Add(g => g.ColumnVirtualize, true);
+            p.Add(g => g.MaxVisibleColumns, 2);
+        });
+        var before = HeaderOrder(cut); // only A, B are actually rendered now
+
+        await cut.InvokeAsync(() => cut.Instance.ReorderColumnByIdAsync(c.Id, d.Id));
+
+        Assert.Null(fired);
+        Assert.Equal(before, HeaderOrder(cut));
+        Assert.Contains(gridId, _interop.ClearColumnReorderTransformsGridIds);
+    }
+
+    [Fact]
     public async Task Pointer_Commit_Accept_Never_Calls_The_Stale_Transform_Clear()
     {
         // Canonical-guard symmetry check: the ACCEPT path (a valid, same-

@@ -3345,9 +3345,19 @@
         // check above — funnel through this ONE reject branch so every one of
         // them gets the transform cleanup, instead of five separate early
         // returns each needing its own reminder to call it.
+        // round-11 #3: Visible == true is not the same as actually rendered —
+        // ColumnVirtualize/MaxVisibleColumns (or a column dropped mid-settle
+        // from whatever else feeds _visibleColumns) can trim a still-Visible
+        // column out of the rendered set. The JS drag/FLIP handoff only ever
+        // touches th/cells that are actually in the DOM, so committing
+        // against a column absent from _visibleColumns would reorder
+        // something the user was never shown. Rendered-presence joins the
+        // other four checks in this one reject branch.
         if (!srcCol.Visible || !tgtCol.Visible
             || !srcCol.Reorderable || !tgtCol.Reorderable
-            || srcCol.Pin != tgtCol.Pin)
+            || srcCol.Pin != tgtCol.Pin
+            || !_visibleColumns.Any(c => c.Id == srcCol.Id)
+            || !_visibleColumns.Any(c => c.Id == tgtCol.Id))
         {
             await ClearStaleColumnReorderTransformsAsync();
             return default;
