@@ -417,11 +417,20 @@
 
 @code {
     // --- Data ---
+    /// <summary>The rows to render. In client mode (<see cref="ServerMode"/> false)
+    /// the grid sorts/filters/pages this sequence locally; in server mode it is
+    /// treated as the already-fetched current page.</summary>
     [Parameter] public IEnumerable<TItem>? Items { get; set; }
+
+    /// <summary>Column definitions, as an alternative to declaring <c>&lt;DataGridColumnDef&gt;</c>
+    /// children via <see cref="ChildContent"/>. Both styles can be mixed.</summary>
     [Parameter] public List<DataGridColumn<TItem>>? Columns { get; set; }
 
     // --- Appearance ---
+    /// <summary>Alternates row background colors for readability.</summary>
     [Parameter] public bool Striped { get; set; }
+
+    /// <summary>Renders visible borders around cells instead of just row dividers.</summary>
     [Parameter] public bool Bordered { get; set; }
     /// <summary>
     /// Dense layout: header and body cells drop from <c>px-3 py-2</c> to
@@ -434,19 +443,41 @@
     /// <see cref="VirtualItemSize"/>. Default <c>false</c>.
     /// </summary>
     [Parameter] public bool Compact { get; set; }
+
+    /// <summary>Highlights the row under the pointer with a hover background.
+    /// Default true.</summary>
     [Parameter] public bool Hoverable { get; set; } = true;
+
+    /// <summary>Fixed CSS height (e.g. <c>"480px"</c>) for the scrollable body.
+    /// Unset lets the grid grow to fit its content.</summary>
     [Parameter] public string? Height { get; set; }
 
     // --- Features ---
+    /// <summary>Row-selection behavior: None (default), Single, or Multiple
+    /// (adds checkboxes and enables Ctrl/Shift-click and Ctrl+A).</summary>
     [Parameter] public DataGridSelectionMode SelectionMode { get; set; } = DataGridSelectionMode.None;
+
+    /// <summary>Cell/row editing behavior: None (default), Cell (commit per cell
+    /// via <see cref="OnCellEdit"/>), Row (commit per row via <see cref="OnRowEdit"/>),
+    /// or Batch (buffer edits and commit together via <see cref="OnBatchSave"/>).</summary>
     [Parameter] public DataGridEditMode EditMode { get; set; } = DataGridEditMode.None;
+
+    /// <summary>Number of rows shown per page in client-paged mode. Defaults to 10.</summary>
     [Parameter] public int PageSize { get; set; } = 10;
     /// <summary>The list of page-size options shown in the rows-per-page
     /// selector. Defaults to <c>{ 10, 25, 50, 100 }</c>. Set to e.g.
     /// <c>{ 10, 50, 100, 200, 300 }</c> for larger datasets, or to an
     /// empty array to hide the selector entirely.</summary>
     [Parameter] public int[] PageSizeOptions { get; set; } = new[] { 10, 25, 50, 100 };
+
+    /// <summary>Shows the pagination strip beneath the grid. Default true; forced
+    /// off automatically in virtualised server mode (see <see cref="Virtualized"/>).</summary>
     [Parameter] public bool ShowPagination { get; set; } = true;
+
+    /// <summary>Shows the toolbar above the grid (search box, column chooser, export,
+    /// fullscreen button — gated individually by <see cref="ShowSearch"/>,
+    /// <see cref="ShowColumnChooser"/>, <see cref="ShowExport"/>, <see cref="Expandable"/>).
+    /// Default false.</summary>
     [Parameter] public bool ShowToolbar { get; set; }
 
     /// <summary>Show the global search box in the toolbar. Default true.</summary>
@@ -510,9 +541,19 @@
     /// <summary>Extra rows rendered above and below the viewport to
     /// hide pop-in during fast scrolling. Default 3.</summary>
     [Parameter] public int VirtualOverscanCount { get; set; } = 3;
+
+    /// <summary>Enables drag-to-reorder columns via a pointer drag on the header cell.
+    /// Default false.</summary>
     [Parameter] public bool Reorderable { get; set; }
+
+    /// <summary>Enables drag-to-reorder rows via a pointer drag on the row. Default false.</summary>
     [Parameter] public bool RowReorderable { get; set; }
+
+    /// <summary>Single-field grouping: the column <c>Field</c> to group rows by.
+    /// Superseded by <see cref="GroupByFields"/> when that is set.</summary>
     [Parameter] public string? GroupBy { get; set; }
+
+    /// <summary>Whether newly-formed groups start expanded. Default true.</summary>
     [Parameter] public bool GroupsExpandedByDefault { get; set; } = true;
 
     /// <summary>
@@ -569,6 +610,8 @@
     /// </summary>
     [Parameter] public bool IsExpanded { get; set; }
 
+    /// <summary>Fires when <see cref="IsExpanded"/> changes (fullscreen entered/exited),
+    /// for two-way binding via <c>@bind-IsExpanded</c>.</summary>
     [Parameter] public EventCallback<bool> IsExpandedChanged { get; set; }
 
     /// <summary>
@@ -577,24 +620,60 @@
     [Parameter] public string? FullscreenTitle { get; set; }
 
     // --- Conditional Row Styling ---
+    /// <summary>Per-row callback returning extra CSS classes for the <c>&lt;tr&gt;</c>,
+    /// e.g. highlighting rows that fail validation.</summary>
     [Parameter] public Func<TItem, string>? RowClass { get; set; }
+
+    /// <summary>Per-row callback returning an inline <c>style</c> string for the <c>&lt;tr&gt;</c>.</summary>
     [Parameter] public Func<TItem, string>? RowStyle { get; set; }
 
     // --- Layout Persistence ---
+    /// <summary>Persists column visibility/order/width/pin state (and grouping) across
+    /// sessions, keyed by <see cref="LayoutStorageKey"/>. Default false.</summary>
     [Parameter] public bool EnableLayoutPersistence { get; set; }
+
+    /// <summary>Storage key used to persist/restore layout when
+    /// <see cref="EnableLayoutPersistence"/> is true. Required for persistence to
+    /// actually save/load anything.</summary>
     [Parameter] public string? LayoutStorageKey { get; set; }
+
+    /// <summary>Fires whenever the persisted layout changes (column reorder/resize/pin/
+    /// visibility, grouping), carrying the new <see cref="DataGridLayout"/> snapshot.</summary>
     [Parameter] public EventCallback<DataGridLayout> OnLayoutSave { get; set; }
+
+    /// <summary>A previously-saved layout to apply on load, as an alternative to (or
+    /// seed for) <see cref="LayoutStorageKey"/>-based persistence.</summary>
     [Parameter] public DataGridLayout? SavedLayout { get; set; }
 
     // --- Named Layouts ---
+    /// <summary>Consumer-managed list of named, shareable layout presets shown in the
+    /// toolbar's layouts menu, in addition to the single auto-persisted layout.</summary>
     [Parameter] public List<DataGridNamedLayout>? GlobalLayouts { get; set; }
+
+    /// <summary>Fires when the user saves the current layout under a name from the
+    /// toolbar's layouts menu.</summary>
     [Parameter] public EventCallback<DataGridNamedLayout> OnSaveNamedLayout { get; set; }
+
+    /// <summary>Fires when the user deletes a named layout from the toolbar's layouts
+    /// menu, carrying the deleted layout's name.</summary>
     [Parameter] public EventCallback<string> OnDeleteNamedLayout { get; set; }
 
     // --- Server mode ---
+    /// <summary>Delegates sorting/filtering/paging to the backend instead of processing
+    /// <see cref="Items"/> locally. Requires <see cref="OnServerRequest"/> and
+    /// <see cref="TotalCount"/>. Default false.</summary>
     [Parameter] public bool ServerMode { get; set; }
+
+    /// <summary>Fetch callback invoked whenever sort/filter/search/page changes in
+    /// <see cref="ServerMode"/>, carrying the current request descriptor.</summary>
     [Parameter] public EventCallback<DataGridServerRequest> OnServerRequest { get; set; }
+
+    /// <summary>Total row count across all pages/filters in <see cref="ServerMode"/>,
+    /// used to compute the pagination strip. Ignored in client mode.</summary>
     [Parameter] public int TotalCount { get; set; }
+
+    /// <summary>Shows the grid's loading state (skeleton rows, pagination hidden).
+    /// Also true automatically while an internal server request is in flight.</summary>
     [Parameter] public bool IsLoading { get; set; }
 
     // --- Virtualised server mode (infinite-scroll, window-fetched) ---
@@ -615,15 +694,36 @@
     [Parameter] public Func<DataGridRangeRequest, ValueTask<DataGridRangeResponse<TItem>>>? OnRangeRequest { get; set; }
 
     // --- Templates ---
+    /// <summary>Declarative content: <c>&lt;DataGridColumnDef&gt;</c> / <c>&lt;DataGridColumnGroup&gt;</c>
+    /// children (rendered into a hidden host div and read into the column model)
+    /// plus optional <c>&lt;ToolbarContent&gt;</c>.</summary>
     [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    /// <summary>Row-detail template shown in an expandable sub-row when set. Adds an
+    /// expand-chevron column automatically.</summary>
     [Parameter] public RenderFragment<TItem>? DetailTemplate { get; set; }
+
+    /// <summary>Custom content shown instead of the default empty-state message when
+    /// there are no rows to display.</summary>
     [Parameter] public RenderFragment? EmptyContent { get; set; }
+
+    /// <summary>Per-row context-menu content, shown on right-click. Setting this enables
+    /// the context-menu interaction; leave null to disable it.</summary>
     [Parameter] public RenderFragment<TItem>? RowContextMenu { get; set; }
 
     // --- Events ---
+    /// <summary>Fires when a row is single-clicked, carrying the clicked item.</summary>
     [Parameter] public EventCallback<TItem> OnRowClick { get; set; }
+
+    /// <summary>Fires when a row is double-clicked, carrying the clicked item.</summary>
     [Parameter] public EventCallback<TItem> OnRowDoubleClick { get; set; }
+
+    /// <summary>Fires when a single-cell edit is committed (<see cref="DataGridEditMode.Cell"/>),
+    /// carrying the item, column, and old/new value.</summary>
     [Parameter] public EventCallback<CellEditEventArgs<TItem>> OnCellEdit { get; set; }
+
+    /// <summary>Fires when a row edit is committed (<see cref="DataGridEditMode.Row"/>),
+    /// carrying the item and its changed fields.</summary>
     [Parameter] public EventCallback<RowEditEventArgs<TItem>> OnRowEdit { get; set; }
 
     // --- Batch / buffered edit mode (rc.36) ---
@@ -682,6 +782,9 @@
     [Parameter] public string? BatchDiscardText { get; set; } = "Discard";
     /// <summary>Label for the batch-mode "+ Add row" trigger. Override for localization.</summary>
     [Parameter] public string? BatchAddRowText { get; set; } = "Add row";
+
+    /// <summary>Fires when a column is reordered via drag (<see cref="Reorderable"/>) or the
+    /// column-visibility menu, carrying the moved column's id and its old/new index.</summary>
     [Parameter] public EventCallback<ColumnReorderEventArgs> OnColumnReorder { get; set; }
     /// <summary>
     /// Raised when a column is resized through the built-in UI — a pointer drag on
@@ -693,9 +796,21 @@
     /// is on; this callback is for consumers that also want to observe/store widths.
     /// </summary>
     [Parameter] public EventCallback<ColumnResizeEventArgs> OnColumnResize { get; set; }
+
+    /// <summary>Fires when a row is reordered via drag (<see cref="RowReorderable"/>),
+    /// carrying the moved item and its old/new index.</summary>
     [Parameter] public EventCallback<RowReorderEventArgs<TItem>> OnRowReorder { get; set; }
+
+    /// <summary>Fires when an internal grid operation (export, server request, layout
+    /// persistence) throws, carrying the exception, instead of letting it propagate unhandled.</summary>
     [Parameter] public EventCallback<Exception> OnError { get; set; }
+
+    /// <summary>Currently-selected items. Set for one-way binding, or use with
+    /// <see cref="SelectedItemsChanged"/> / <c>@bind-SelectedItems</c> for two-way.</summary>
     [Parameter] public IReadOnlyList<TItem>? SelectedItems { get; set; }
+
+    /// <summary>Fires whenever the selection changes, for two-way binding via
+    /// <c>@bind-SelectedItems</c>.</summary>
     [Parameter] public EventCallback<IReadOnlyList<TItem>> SelectedItemsChanged { get; set; }
 
     /// <summary>
@@ -712,7 +827,10 @@
     [Parameter] public Func<TItem, object?>? SelectionKeySelector { get; set; }
 
     // --- Standard ---
+    /// <summary>Additional CSS classes merged onto the grid's outer wrapper.</summary>
     [Parameter] public string? Class { get; set; }
+
+    /// <summary>Captures unmatched attributes and applies them to the grid's outer wrapper.</summary>
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     // --- Inject ---

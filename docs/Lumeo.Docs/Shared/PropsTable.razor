@@ -4,12 +4,15 @@
 
 @* Registry-driven props/API table. Renders api.parameters (+ events) straight from
    registry/{slug}.json — the single source of truth — so the API never drifts from
-   the actual component source and is identical in shape across every page.
+   the actual component source and is identical in shape across every page. Optionally
+   renders a single sub-component's own parameters/events instead (SubComponent="Name",
+   e.g. "DialogTrigger") for composite components — see api.subComponents.<Name> in the
+   registry JSON.
    [CascadingParameter]s (FormField, InheritedDensity, ScopedDirection, a parent
    Context/Shell, ...) are excluded: they are supplied automatically by an ancestor
    component, not set by the consumer, so listing them as a settable prop would
    advertise internal/invalid markup (Codex P2). *@
-@if (_detail?.Api is { } api && ConsumerParameters(api).Any())
+@if (_parameters is { } parameters && ConsumerParameters(parameters).Any())
 {
     <div class="overflow-x-auto rounded-lg border border-border/60">
         <table class="w-full text-sm">
@@ -22,7 +25,7 @@
                 </tr>
             </thead>
             <tbody>
-                @foreach (var p in ConsumerParameters(api))
+                @foreach (var p in ConsumerParameters(parameters))
                 {
                     <tr class="border-t border-border/40 align-top hover:bg-muted/20">
                         <td class="px-3 py-2 font-mono text-xs font-medium text-foreground whitespace-nowrap">
@@ -37,13 +40,13 @@
         </table>
     </div>
 
-    @if (api.Events.Count > 0)
+    @if (_events is { Count: > 0 } events)
     {
         <p class="mt-5 mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Events</p>
         <div class="overflow-x-auto rounded-lg border border-border/60">
             <table class="w-full text-sm">
                 <tbody>
-                    @foreach (var e in api.Events)
+                    @foreach (var e in events)
                     {
                         <tr class="border-t border-border/40 first:border-t-0 align-top hover:bg-muted/20">
                             <td class="px-3 py-2 font-mono text-xs font-medium text-foreground whitespace-nowrap">@e.Name</td>
@@ -64,18 +67,45 @@ else if (_loaded)
 @code {
     [Parameter, EditorRequired] public string Slug { get; set; } = "";
 
+    /// <summary>
+    /// Optional sub-component name (e.g. "DialogTrigger") to render that sub-component's
+    /// own parameters/events (from api.subComponents.&lt;Name&gt;) instead of the
+    /// top-level component's. Leave unset for the default top-level table.
+    /// </summary>
+    [Parameter] public string? SubComponent { get; set; }
+
     private RegistryComponentDetail? _detail;
     private bool _loaded;
+    private List<ApiParameter>? _parameters;
+    private List<ApiEvent>? _events;
 
     protected override async Task OnParametersSetAsync()
     {
         _detail = await Registry.GetComponentAsync(Slug);
         _loaded = true;
+
+        if (_detail?.Api is not { } api)
+        {
+            _parameters = null;
+            _events = null;
+            return;
+        }
+
+        if (!string.IsNullOrEmpty(SubComponent) && api.SubComponents.TryGetValue(SubComponent, out var sub))
+        {
+            _parameters = sub.Parameters;
+            _events = sub.Events;
+        }
+        else
+        {
+            _parameters = api.Parameters;
+            _events = api.Events;
+        }
     }
 
     // [CascadingParameter]s are supplied by an ancestor (FormField, a parent Context/Shell,
     // InheritedDensity, ScopedDirection, ...), not set by the consumer — exclude them from the
     // consumer-facing props table (Codex P2).
-    private static IEnumerable<ApiParameter> ConsumerParameters(ApiInfo api) =>
-        api.Parameters.Where(p => !p.IsCascading);
+    private static IEnumerable<ApiParameter> ConsumerParameters(List<ApiParameter> parameters) =>
+        parameters.Where(p => !p.IsCascading);
 }

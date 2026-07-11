@@ -189,6 +189,26 @@ public sealed class ApiInfo
     public List<ApiParameter> Parameters { get; set; } = new();
     public List<ApiEvent> Events { get; set; } = new();
     public A11yInfo? A11y { get; set; }
+    /// <summary>
+    /// Sub-component APIs for composite components (e.g. Dialog's DialogTrigger,
+    /// DialogContent, DialogHeader, ...), keyed by sub-component name. Sourced from
+    /// <c>api.subComponents.&lt;Name&gt;</c> in registry/{slug}.json. Empty for leaf
+    /// components. Consumed by &lt;PropsTable SubComponent="..."&gt; to render a
+    /// sub-component's own parameter/event table instead of the top-level one.
+    /// </summary>
+    public Dictionary<string, SubComponentInfo> SubComponents { get; set; } = new();
+}
+
+/// <summary>
+/// One sub-component's API facts (e.g. DialogTrigger, SelectItem), mirroring the shape
+/// of <see cref="ApiInfo"/>'s parameters/events but scoped to that sub-component's own
+/// members. See <c>ApiInfo.SubComponents</c>.
+/// </summary>
+public sealed class SubComponentInfo
+{
+    public string ComponentName { get; set; } = "";
+    public List<ApiParameter> Parameters { get; set; } = new();
+    public List<ApiEvent> Events { get; set; } = new();
 }
 
 public sealed class ApiParameter

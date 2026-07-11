@@ -52,8 +52,13 @@ else if (Context.IsOpen || _exiting)
 @code {
     [CascadingParameter] public Sheet.SheetContext Context { get; set; } = default!;
     [CascadingParameter] public OverlayShellMarker? Shell { get; set; }
+    /// <summary>The panel's content (typically a <c>SheetHeader</c>, body, and <c>SheetFooter</c>).</summary>
     [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    /// <summary>Edge of the viewport the panel slides in from / anchors to. Defaults to <see cref="Lumeo.Side.Right"/>. Mirrored under RTL so a "Right" sheet visually anchors to the start edge.</summary>
     [Parameter] public Lumeo.Side Side { get; set; } = Lumeo.Side.Right;
+
+    /// <summary>Panel width (Left/Right sides) or height (Top/Bottom sides). Defaults to <see cref="SheetSize.Default"/>. Superseded by <see cref="SizePreset"/> when that is set.</summary>
     [Parameter] public SheetSize Size { get; set; } = SheetSize.Default;
     /// <summary>Alternative to <see cref="Size"/> that accepts the unified
     /// <see cref="Lumeo.Size"/> token. When set (non-null), wins over
@@ -68,6 +73,7 @@ else if (Context.IsOpen || _exiting)
     /// opacity tween — useful in dense forms where popovers and animations
     /// compete. <c>None</c> disables the animation entirely.</summary>
     [Parameter] public SheetAnimation Animation { get; set; } = SheetAnimation.Slide;
+    /// <summary>When <c>true</c>, disables the backdrop click, Escape key and (per <see cref="ShowCloseButton"/>) default X-button dismiss paths, so the sheet can only be closed programmatically.</summary>
     [Parameter] public bool PreventClose { get; set; }
     /// <summary>Whether the top-end close (X) button renders. <c>null</c> (default)
     /// keeps the legacy coupling — X shows whenever <see cref="PreventClose"/> is
@@ -80,11 +86,15 @@ else if (Context.IsOpen || _exiting)
     /// Default false to avoid conflicts with scrollable content. Wire to
     /// true only when the sheet's content fits without scrolling.</summary>
     [Parameter] public bool SwipeToClose { get; set; } = false;
+
+    /// <summary>Additional CSS classes merged onto the panel.</summary>
     [Parameter] public string? Class { get; set; }
     /// <summary>Backdrop z-index. Content sits at <c>ZIndex + 1</c>. Defaults
     /// to <see cref="OverlayService.BaseZIndex"/>; <see cref="OverlayProvider"/>
     /// supplies an incrementing value per nested overlay.</summary>
     [Parameter] public int ZIndex { get; set; } = OverlayService.BaseZIndex;
+
+    /// <summary>Captures any unmatched attributes and applies them to the panel (ignored when rendered as a nested passthrough inside an <c>OverlayProvider</c> shell).</summary>
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     private readonly string _contentId = LumeoIds.New("sheet");

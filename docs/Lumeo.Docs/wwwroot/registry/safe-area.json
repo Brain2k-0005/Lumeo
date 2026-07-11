@@ -41,7 +41,7 @@
         "name": "Top",
         "type": "bool",
         "default": "true",
-        "description": null,
+        "description": "Pads the top edge with env(safe-area-inset-top) (notch/status bar). Default true.",
         "isCascading": false,
         "captureUnmatched": false,
         "isEditorRequired": false
@@ -50,7 +50,7 @@
         "name": "Bottom",
         "type": "bool",
         "default": "true",
-        "description": null,
+        "description": "Pads the bottom edge with env(safe-area-inset-bottom) (home indicator). Default true.",
         "isCascading": false,
         "captureUnmatched": false,
         "isEditorRequired": false
@@ -59,7 +59,7 @@
         "name": "Left",
         "type": "bool",
         "default": "false",
-        "description": null,
+        "description": "Pads the left edge with env(safe-area-inset-left) (landscape notch). Default false.",
         "isCascading": false,
         "captureUnmatched": false,
         "isEditorRequired": false
@@ -68,7 +68,7 @@
         "name": "Right",
         "type": "bool",
         "default": "false",
-        "description": null,
+        "description": "Pads the right edge with env(safe-area-inset-right) (landscape notch). Default false.",
         "isCascading": false,
         "captureUnmatched": false,
         "isEditorRequired": false
@@ -77,7 +77,7 @@
         "name": "Class",
         "type": "string?",
         "default": null,
-        "description": null,
+        "description": "Additional CSS classes merged onto the root div, additive to the base lumeo-safe-area class.",
         "isCascading": false,
         "captureUnmatched": false,
         "isEditorRequired": false
@@ -86,7 +86,7 @@
         "name": "AdditionalAttributes",
         "type": "Dictionary<string, object>?",
         "default": null,
-        "description": null,
+        "description": "Unmatched attributes splatted onto the root div. A caller-supplied class/style here is merged additively rather than overriding the computed inset padding.",
         "isCascading": false,
         "captureUnmatched": true,
         "isEditorRequired": false
@@ -154,7 +154,7 @@
   "source": [
     {
       "path": "UI/SafeArea/SafeArea.razor",
-      "content": "@namespace Lumeo\n\n<div class=\"@CssClass\" style=\"@StyleValue\" @attributes=\"SplatAttributes\">\n    @ChildContent\n</div>\n\n@code {\n    [Parameter] public RenderFragment? ChildContent { get; set; }\n    [Parameter] public bool Top { get; set; } = true;\n    [Parameter] public bool Bottom { get; set; } = true;\n    [Parameter] public bool Left { get; set; } = false;\n    [Parameter] public bool Right { get; set; } = false;\n    [Parameter] public string? Class { get; set; }\n    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }\n\n    private string? CallerClass => AdditionalAttributes is not null\n        && AdditionalAttributes.TryGetValue(\"class\", out var c) ? c as string : null;\n\n    private string? CallerStyle => AdditionalAttributes is not null\n        && AdditionalAttributes.TryGetValue(\"style\", out var s) ? s as string : null;\n\n    private string CssClass => Cx.Merge(\"lumeo-safe-area\", Class, CallerClass);\n\n    // Splat everything EXCEPT class/style, which are merged into the computed\n    // values above so a caller-supplied class/style is additive and can never\n    // wipe the base class or the safe-area insets.\n    private IReadOnlyDictionary<string, object>? SplatAttributes\n    {\n        get\n        {\n            if (AdditionalAttributes is null) return null;\n            if (!AdditionalAttributes.ContainsKey(\"class\") && !AdditionalAttributes.ContainsKey(\"style\"))\n                return AdditionalAttributes;\n            var filtered = new Dictionary<string, object>(AdditionalAttributes);\n            filtered.Remove(\"class\");\n            filtered.Remove(\"style\");\n            return filtered;\n        }\n    }\n\n    private string StyleValue\n    {\n        get\n        {\n            var parts = new List<string>();\n            if (Top)    parts.Add(\"padding-top: env(safe-area-inset-top, 0)\");\n            if (Bottom) parts.Add(\"padding-bottom: env(safe-area-inset-bottom, 0)\");\n            if (Left)   parts.Add(\"padding-left: env(safe-area-inset-left, 0)\");\n            if (Right)  parts.Add(\"padding-right: env(safe-area-inset-right, 0)\");\n            var computed = string.Join(\"; \", parts);\n            var caller = CallerStyle;\n            if (string.IsNullOrWhiteSpace(caller)) return computed;\n            return string.IsNullOrEmpty(computed) ? caller : $\"{computed}; {caller}\";\n        }\n    }\n}\n"
+      "content": "@namespace Lumeo\n\n<div class=\"@CssClass\" style=\"@StyleValue\" @attributes=\"SplatAttributes\">\n    @ChildContent\n</div>\n\n@code {\n    [Parameter] public RenderFragment? ChildContent { get; set; }\n    /// <summary>Pads the top edge with <c>env(safe-area-inset-top)</c> (notch/status bar).\n    /// Default <c>true</c>.</summary>\n    [Parameter] public bool Top { get; set; } = true;\n    /// <summary>Pads the bottom edge with <c>env(safe-area-inset-bottom)</c> (home\n    /// indicator). Default <c>true</c>.</summary>\n    [Parameter] public bool Bottom { get; set; } = true;\n    /// <summary>Pads the left edge with <c>env(safe-area-inset-left)</c> (landscape\n    /// notch). Default <c>false</c>.</summary>\n    [Parameter] public bool Left { get; set; } = false;\n    /// <summary>Pads the right edge with <c>env(safe-area-inset-right)</c> (landscape\n    /// notch). Default <c>false</c>.</summary>\n    [Parameter] public bool Right { get; set; } = false;\n    /// <summary>Additional CSS classes merged onto the root <c>div</c>, additive to the\n    /// base <c>lumeo-safe-area</c> class.</summary>\n    [Parameter] public string? Class { get; set; }\n    /// <summary>Unmatched attributes splatted onto the root <c>div</c>. A caller-supplied\n    /// <c>class</c>/<c>style</c> here is merged additively rather than overriding the\n    /// computed inset padding.</summary>\n    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }\n\n    private string? CallerClass => AdditionalAttributes is not null\n        && AdditionalAttributes.TryGetValue(\"class\", out var c) ? c as string : null;\n\n    private string? CallerStyle => AdditionalAttributes is not null\n        && AdditionalAttributes.TryGetValue(\"style\", out var s) ? s as string : null;\n\n    private string CssClass => Cx.Merge(\"lumeo-safe-area\", Class, CallerClass);\n\n    // Splat everything EXCEPT class/style, which are merged into the computed\n    // values above so a caller-supplied class/style is additive and can never\n    // wipe the base class or the safe-area insets.\n    private IReadOnlyDictionary<string, object>? SplatAttributes\n    {\n        get\n        {\n            if (AdditionalAttributes is null) return null;\n            if (!AdditionalAttributes.ContainsKey(\"class\") && !AdditionalAttributes.ContainsKey(\"style\"))\n                return AdditionalAttributes;\n            var filtered = new Dictionary<string, object>(AdditionalAttributes);\n            filtered.Remove(\"class\");\n            filtered.Remove(\"style\");\n            return filtered;\n        }\n    }\n\n    private string StyleValue\n    {\n        get\n        {\n            var parts = new List<string>();\n            if (Top)    parts.Add(\"padding-top: env(safe-area-inset-top, 0)\");\n            if (Bottom) parts.Add(\"padding-bottom: env(safe-area-inset-bottom, 0)\");\n            if (Left)   parts.Add(\"padding-left: env(safe-area-inset-left, 0)\");\n            if (Right)  parts.Add(\"padding-right: env(safe-area-inset-right, 0)\");\n            var computed = string.Join(\"; \", parts);\n            var caller = CallerStyle;\n            if (string.IsNullOrWhiteSpace(caller)) return computed;\n            return string.IsNullOrEmpty(computed) ? caller : $\"{computed}; {caller}\";\n        }\n    }\n}\n"
     }
   ],
   "slots": [
@@ -172,5 +172,5 @@
   "tests": [
     "tests/Lumeo.Tests/Components/SafeArea/SafeAreaTests.cs"
   ],
-  "mdSummary": "# SafeArea\n\nSafe Area component.\n\n**Package:** `Lumeo` · **Category:** Utility\n**Docs:** https://lumeo.nativ.sh/components/safe-area\n\n## Parameters\n| Owner | Name | Type | Default | Description |\n|---|---|---|---|---|\n| SafeArea | ChildContent | `RenderFragment?` | `` |  |\n| SafeArea | Top | `bool` | `true` |  |\n| SafeArea | Bottom | `bool` | `true` |  |\n| SafeArea | Left | `bool` | `false` |  |\n| SafeArea | Right | `bool` | `false` |  |\n| SafeArea | Class | `string?` | `` |  |\n| SafeArea | AdditionalAttributes | `Dictionary<string, object>?` | `` |  |\n\n## Slots\n- `ChildContent` (SafeArea) — RenderFragment slot\n\n## Events\n- (none)\n\n## Sub-components\n- (none)\n\n## Cascading values it expects\n- (none)\n\n## Services it injects\n- (none)\n\n## Keyboard\n—\n\n## Example\n```razor\n<SafeArea />\n```\n\n## CSS variables\n`--color-foreground`\n\n## Files\n- `UI/SafeArea/SafeArea.razor`\n"
+  "mdSummary": "# SafeArea\n\nSafe Area component.\n\n**Package:** `Lumeo` · **Category:** Utility\n**Docs:** https://lumeo.nativ.sh/components/safe-area\n\n## Parameters\n| Owner | Name | Type | Default | Description |\n|---|---|---|---|---|\n| SafeArea | ChildContent | `RenderFragment?` | `` |  |\n| SafeArea | Top | `bool` | `true` | Pads the top edge with env(safe-area-inset-top) (notch/status bar). Default true. |\n| SafeArea | Bottom | `bool` | `true` | Pads the bottom edge with env(safe-area-inset-bottom) (home indicator). Default true. |\n| SafeArea | Left | `bool` | `false` | Pads the left edge with env(safe-area-inset-left) (landscape notch). Default false. |\n| SafeArea | Right | `bool` | `false` | Pads the right edge with env(safe-area-inset-right) (landscape notch). Default false. |\n| SafeArea | Class | `string?` | `` | Additional CSS classes merged onto the root div, additive to the base lumeo-safe-area class. |\n| SafeArea | AdditionalAttributes | `Dictionary<string, object>?` | `` | Unmatched attributes splatted onto the root div. A caller-supplied class/style here is merged additively rather than overriding the computed inset padding. |\n\n## Slots\n- `ChildContent` (SafeArea) — RenderFragment slot\n\n## Events\n- (none)\n\n## Sub-components\n- (none)\n\n## Cascading values it expects\n- (none)\n\n## Services it injects\n- (none)\n\n## Keyboard\n—\n\n## Example\n```razor\n<SafeArea />\n```\n\n## CSS variables\n`--color-foreground`\n\n## Files\n- `UI/SafeArea/SafeArea.razor`\n"
 }

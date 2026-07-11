@@ -143,35 +143,91 @@
     private string? FormFieldControlId => string.IsNullOrEmpty(FormField?.ControlId) ? null : FormField!.ControlId;
     private string EffectiveId => FormFieldControlId ?? _inputId;
 
+    /// <summary>The committed tags, rendered as removable chips before the text input.
+    /// Two-way bindable via <see cref="TagsChanged"/>.</summary>
     [Parameter] public List<TItem>? Tags { get; set; }
+    /// <summary>Raised whenever a tag is added or removed, with the full updated list.</summary>
     [Parameter] public EventCallback<List<TItem>> TagsChanged { get; set; }
+    /// <summary>Maximum number of tags allowed. <c>0</c> (default) means unlimited; once
+    /// reached, the input disables and <see cref="MaxTagsHelperText"/> shows.</summary>
     [Parameter] public int MaxTags { get; set; }
+    /// <summary>Allows the same value to be added more than once (by default, a
+    /// duplicate add and duplicate suggestions are suppressed).</summary>
     [Parameter] public bool AllowDuplicates { get; set; }
+    /// <summary>Placeholder shown in the text input while no tags are present. Falls
+    /// back to the localized "TagInput.Placeholder" string when null; hidden once at
+    /// least one tag exists.</summary>
     [Parameter] public string? Placeholder { get; set; }
+    /// <summary>Disables the input and hides each chip's remove button.</summary>
     [Parameter] public bool Disabled { get; set; }
+    /// <summary>Candidate values shown in the autocomplete dropdown as the user types,
+    /// filtered to those matching the current input text and (unless
+    /// <see cref="AllowDuplicates"/>) not already tagged.</summary>
     [Parameter] public List<TItem>? Suggestions { get; set; }
+    /// <summary>Marks the field required, rendering a trailing asterisk on <see cref="Label"/>
+    /// and setting <c>aria-required</c> on the text input.</summary>
     [Parameter] public bool Required { get; set; }
+    /// <summary>Forces the invalid (error) visual state — a destructive border/ring — even
+    /// when not inside a <c>FormField</c> reporting an error. ORed with the ambient
+    /// <c>FormField</c> error state and any live <see cref="ValidateInput"/>/
+    /// <see cref="ValidateInputAsync"/> failure.</summary>
     [Parameter] public bool Invalid { get; set; }
+    /// <summary>Error message shown below the field when invalid (and no live validation
+    /// error is active). Only rendered when this input is standalone (outside a
+    /// <c>FormField</c>, which owns its own error slot).</summary>
     [Parameter] public string? ErrorText { get; set; }
+    /// <summary>Helper text shown below the field when not invalid and not at the
+    /// <see cref="MaxTags"/> limit. Only rendered when this input is standalone (outside
+    /// a <c>FormField</c>).</summary>
     [Parameter] public string? HelperText { get; set; }
+    /// <summary>Field label rendered above the input. Suppressed when nested inside a
+    /// <c>FormField</c>, which renders its own label.</summary>
     [Parameter] public string? Label { get; set; }
+    /// <summary>The text input's <c>name</c> attribute. Falls back to the ambient
+    /// <c>FormField</c>'s name when null.</summary>
     [Parameter] public string? Name { get; set; }
+    /// <summary>Additional CSS classes merged onto the field's container <c>div</c>.</summary>
     [Parameter] public string? Class { get; set; }
     /// <summary>Focuses the inner text &lt;input&gt; on first render. See
     /// <c>Input.AutoFocus</c> for why the HTML <c>autofocus</c> attribute
     /// doesn't work in Blazor WASM.</summary>
     [Parameter] public bool AutoFocus { get; set; }
+    /// <summary>Message shown once <see cref="MaxTags"/> is reached (in place of
+    /// <see cref="HelperText"/>). Falls back to the localized "TagInput.MaxTagsReached"
+    /// string when null.</summary>
     [Parameter] public string? MaxTagsHelperText { get; set; }
 
+    /// <summary>Converts a tag to its display text on a chip. Falls back to
+    /// <c>item?.ToString()</c> when null — required for a non-<c>string</c> <c>TItem</c>
+    /// to render sensibly.</summary>
     [Parameter] public Func<TItem, string>? GetTagText { get; set; }
+    /// <summary>Converts a candidate to its display text in the suggestions dropdown.
+    /// Falls back to <see cref="GetTagText"/>, then <c>item?.ToString()</c>.</summary>
     [Parameter] public Func<TItem, string>? GetSuggestionText { get; set; }
+    /// <summary>Custom render fragment for a chip's content, replacing the default
+    /// text span (the remove button still renders alongside it).</summary>
     [Parameter] public RenderFragment<TItem>? TagTemplate { get; set; }
+    /// <summary>Custom render fragment for a suggestion row's content, replacing
+    /// <see cref="GetSuggestionText"/>.</summary>
     [Parameter] public RenderFragment<TItem>? SuggestionTemplate { get; set; }
+    /// <summary>Characters that, when typed or pasted, split the current input into
+    /// separate tags (each trimmed segment is added via <see cref="CreateTag"/> or, for
+    /// <c>TItem</c> = <c>string</c>, used as-is). Defaults to <c>[","]</c>.</summary>
     [Parameter] public string[] Separators { get; set; } = new[] { "," };
+    /// <summary>Synchronous validator run against free-text input before it becomes a
+    /// tag. Returning a non-null string rejects the input and shows it as the field's
+    /// error message. Run before <see cref="ValidateInputAsync"/>.</summary>
     [Parameter] public Func<string, string?>? ValidateInput { get; set; }
+    /// <summary>Asynchronous validator run after <see cref="ValidateInput"/> passes.
+    /// Returning a non-null string rejects the input and shows it as the field's error
+    /// message.</summary>
     [Parameter] public Func<string, Task<string?>>? ValidateInputAsync { get; set; }
+    /// <summary>Converts validated free text into a <typeparamref name="TItem"/>.
+    /// Required when <typeparamref name="TItem"/> is not <c>string</c> — otherwise
+    /// free-text entry throws. Return <c>null</c> to silently discard the input.</summary>
     [Parameter] public Func<string, TItem?>? CreateTag { get; set; }
 
+    /// <summary>Unmatched attributes splatted onto the field's container <c>div</c>.</summary>
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     private bool EffectiveInvalid => Invalid || FormField?.HasError == true || _validationError is not null;
