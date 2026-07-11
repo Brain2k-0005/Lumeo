@@ -33,6 +33,11 @@
             // liveCursor for why.
             var liveCount = group.Count(t => !(t.Leaving && t.FrozenIndex.HasValue));
             var liveCursor = 0;
+            // PR #357 round-4 (P2): whether a Leaving toast is CURRENTLY frozen at index 0 (the
+            // exact "front toast dismissed while another remains" case — see the stackIndex
+            // comment below). Computed ONCE per group/render, not per-toast, since it gates every
+            // live toast's ranking identically.
+            var frontFrozen = group.Any(t => t.Leaving && t.FrozenIndex == 0);
         }
         @foreach (var toast in group)
         {
@@ -64,8 +69,21 @@
             // until the frozen sibling's own exit finishes. Ranking live toasts purely by their
             // OWN newest-first order guarantees the frontmost LIVE toast always claims index 0,
             // completely independent of however many stale frozen values sit alongside it.
+            //
+            // PR #357 round-4 (P2): that guarantee ("some live toast always gets index 0") can
+            // itself collide with a FROZEN index 0 — the ordinary case of the front toast being
+            // dismissed while an older sibling remains live. lumeo.css only keeps `data-index="0"`
+            // in normal flow (position: relative); every other index is position: absolute. Two
+            // elements both claiming index 0 therefore both sit in flow for the Leaving toast's
+            // 220ms exit, expanding the collapsed stack into two rows. `frontFrozen` (computed
+            // above) reserves index 0 for that frozen occupant and shifts every LIVE toast's rank
+            // up by one — the next toast in line visually sits at (now-hidden) depth 1 instead,
+            // and slides into index 0 on its own once the leaving front actually unmounts and a
+            // fresh render recomputes indices with no frozen occupant left.
             var stackIndex = StackToasts
-                ? (toast.Leaving && toast.FrozenIndex.HasValue ? toast.FrozenIndex : liveCount - 1 - liveCursor)
+                ? (toast.Leaving && toast.FrozenIndex.HasValue
+                    ? toast.FrozenIndex
+                    : liveCount - 1 - liveCursor + (frontFrozen ? 1 : 0))
                 : (int?)null;
             if (!(toast.Leaving && toast.FrozenIndex.HasValue)) liveCursor++;
             <Toast Variant="@toast.Options.Variant"
@@ -135,22 +153,42 @@
     [Parameter] public int DefaultDuration { get; set; } = 5000;
 
     /// <summary>
-    /// Maximum number of toasts mounted at once per position group; overflow queues FIFO
-    /// (see <see cref="_pendingQueue"/>) and drains as slots free up. Non-positive values are
-    /// clamped up to 1 — there's no "unlimited" mode and no "show nothing" mode, so a
-    /// misconfigured 0/negative value falls back to the smallest usable cap rather than
-    /// throwing on the very first <c>Show()</c> (see <see cref="EffectiveMaxToasts"/>).
+    /// Maximum number of NON-PERSISTENT toasts (<c>Duration != 0</c>) mounted at once per
+    /// position group; overflow queues FIFO (see <see cref="_pendingQueue"/>) and drains as
+    /// slots free up. Non-positive values are clamped up to 1 — there's no "unlimited" mode and
+    /// no "show nothing" mode, so a misconfigured 0/negative value falls back to the smallest
+    /// usable cap rather than throwing on the very first <c>Show()</c> (see
+    /// <see cref="EffectiveMaxToasts"/>).
+    /// <para>
+    /// A persistent toast (<c>Duration = 0</c> — e.g. a loading/promise toast) does NOT count
+    /// against this cap and is never an eviction candidate: it stays mounted until explicitly
+    /// dismissed/updated, exactly like before <c>MaxToasts</c> existed. PR #357 round-4 (P2):
+    /// counting persistents against the cap let one fill every slot and starve EVERY later
+    /// <c>Show()</c> forever — no exit timer was ever going to free the persistent's slot, yet
+    /// the overflow-queue path (below) can't tell "waiting on toasts that are actually leaving"
+    /// apart from "waiting on a toast that will never leave" and queued anyway. Excluding
+    /// persistents from the count sidesteps that distinction entirely: a persistent simply isn't
+    /// part of the accounting, so it can occupy a mounted slot ADDITIONAL to the
+    /// <c>MaxToasts</c> non-persistent ones without ever blocking them.
+    /// </para>
     /// </summary>
     [Parameter] public int MaxToasts { get; set; } = 5;
 
     // MaxToasts <= 0 must NOT reach the raw comparisons below: with MaxToasts = 0 the eviction
-    // loop's `_toasts.Count >= MaxToasts` is trivially true with an EMPTY _toasts (0 >= 0), so it
-    // breaks immediately (no toast to evict) and falls through to the queued-overflow path, whose
-    // own `_pendingQueue.Count >= MaxToasts` is ALSO trivially true on an empty queue (0 >= 0) —
-    // calling Dequeue() on it throws InvalidOperationException on the very first Show(). Clamping
-    // to a floor of 1 keeps both loops' invariants ("count >= cap only once something is actually
-    // mounted/queued") intact instead of special-casing zero at every call site.
+    // loop's `NonPersistentMountedCount >= MaxToasts` is trivially true with an EMPTY _toasts
+    // (0 >= 0), so it breaks immediately (no toast to evict) and falls through to the
+    // queued-overflow path, whose own `_pendingQueue.Count >= MaxToasts` is ALSO trivially true
+    // on an empty queue (0 >= 0) — calling Dequeue() on it throws InvalidOperationException on
+    // the very first Show(). Clamping to a floor of 1 keeps both loops' invariants ("count >=
+    // cap only once something is actually mounted/queued") intact instead of special-casing zero
+    // at every call site.
     private int EffectiveMaxToasts => Math.Max(1, MaxToasts);
+
+    // How many MOUNTED toasts count against MaxToasts — every toast EXCEPT persistents
+    // (Duration == 0). See the MaxToasts doc comment: a persistent toast can never free its own
+    // slot on its own, so it must never be part of "is the cap full" accounting, or it starves
+    // every later Show() the instant enough persistents accumulate to fill the cap.
+    private int NonPersistentMountedCount => _toasts.Count(t => t.Options.Duration != 0);
 
     /// <summary>
     /// Sonner-style stacking, default on. When a position group holds more
@@ -221,7 +259,8 @@
 
     private async Task HandleShowAsync(ToastMessage message)
     {
-        // Enforce MaxToasts: evict the oldest non-persistent toast that ISN'T
+        // Enforce MaxToasts against NON-PERSISTENT toasts only (NonPersistentMountedCount —
+        // see the MaxToasts doc comment): evict the oldest non-persistent toast that ISN'T
         // already leaving. Spamming Show() fires many concurrent HandleShowAsync
         // calls (fire-and-forget per toast); several can race this loop against
         // the SAME "oldest" toast. RemoveWithExitAsync's idempotency guard
@@ -238,15 +277,18 @@
         // moment two Show() calls race an eviction, which rapid spamming makes
         // near-certain. Skipping already-Leaving toasts means every iteration
         // either evicts a fresh toast (real progress) or finds none and breaks
-        // (bounded) — no candidate is ever revisited.
-        while (_toasts.Count >= EffectiveMaxToasts)
+        // (bounded) — no candidate is ever revisited. When every non-persistent
+        // toast is ALSO excluded (persistent-only occupancy, e.g. the cap filled
+        // entirely by loading toasts), NonPersistentMountedCount is already below
+        // the cap and this loop never even starts.
+        while (NonPersistentMountedCount >= EffectiveMaxToasts)
         {
             var oldest = _toasts.FirstOrDefault(t => t.Options.Duration != 0 && !t.Leaving);
             if (oldest is null) break;
             await RemoveItemAsync(oldest.Id);
         }
 
-        // The loop above breaks WITHOUT freeing a slot whenever every toast
+        // The loop above breaks WITHOUT freeing a slot whenever every NON-PERSISTENT toast
         // at/above the cap is already mid-exit (Leaving) — a burst of Show()
         // calls arriving while a wave of 220ms exits is still in flight hits
         // this every time. Mounting anyway (the old behaviour) let a spam
@@ -254,9 +296,14 @@
         // waits here — never touching `_toasts`, so it can't inflate the
         // mounted count — until AdmitPending (called the instant a Leaving
         // toast actually unmounts, from RemoveWithExitAsync) pulls it in FIFO
-        // order the moment a slot frees up. This keeps `_toasts.Count` at or
-        // under MaxToasts at all times, including mid-burst.
-        if (_toasts.Count >= EffectiveMaxToasts)
+        // order the moment a slot frees up. This keeps NonPersistentMountedCount at or
+        // under MaxToasts at all times, including mid-burst. PR #357 round-4 (P2):
+        // this check — like the loop above — is scoped to NonPersistentMountedCount,
+        // NOT raw `_toasts.Count`, specifically so it can NEVER be true when the cap
+        // is filled entirely by persistents (they'd never free a slot, so queuing here
+        // would wait forever): the only way to reach this branch is every non-persistent
+        // slot being Leaving, i.e. a real slot IS coming.
+        if (NonPersistentMountedCount >= EffectiveMaxToasts)
         {
             // Cap the queue itself at MaxToasts too. Without this, a 100-toast
             // spam burst would durably queue all ~95 overflow toasts and drip
@@ -280,8 +327,8 @@
     // Adds a toast to the live/mounted set and starts its auto-dismiss timer.
     // The ONLY path that appends to `_toasts` — both the direct Show() path
     // (slot available) and AdmitPending (slot just freed by an unmount) route
-    // through here, so `_toasts.Count` can never be pushed over MaxToasts by
-    // either caller.
+    // through here, so NonPersistentMountedCount can never be pushed over
+    // MaxToasts by either caller.
     private void MountToast(ToastMessage message)
     {
         _toasts.Add(new ToastItem(message.Id, message.Options));
@@ -296,10 +343,12 @@
 
     // Pulls queued toasts (see HandleShowAsync) into the live set FIFO as
     // slots free up. Called from RemoveWithExitAsync right after a toast is
-    // actually removed from `_toasts` — the only moment a slot is real.
+    // actually removed from `_toasts` — the only moment a slot is real. Gated
+    // on NonPersistentMountedCount (not raw _toasts.Count) so a mounted
+    // persistent never counts against the room available to admit queued toasts.
     private void AdmitPending()
     {
-        while (_toasts.Count < EffectiveMaxToasts && _pendingQueue.Count > 0)
+        while (NonPersistentMountedCount < EffectiveMaxToasts && _pendingQueue.Count > 0)
         {
             MountToast(_pendingQueue.Dequeue());
         }

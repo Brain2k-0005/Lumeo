@@ -173,21 +173,6 @@ public class TrackingInteropService : IComponentInteropService
         return ValueTask.CompletedTask;
     }
 
-    // Toast entrance-end wiring capture (held-fill parity for animate-toast-in).
-    // Records each wire-up and the last captured callback so a test can SIMULATE
-    // the JS animationend (filtered by animation name in the real JS helper) by
-    // invoking OnEnterAnimationEnd — driving Toast's class-drop logic without a
-    // real browser. Does NOT auto-fire, so tests that don't invoke it exercise the
-    // fallback-timer path instead.
-    private readonly List<string> _toastEnterEndWirings = new();
-    public IReadOnlyList<string> ToastEnterEndWirings => _toastEnterEndWirings;
-    public global::Lumeo.IToastEnterCallback? LastToastEnterCallback { get; private set; }
-    public virtual ValueTask AttachToastEnterEnd<T>(string elementId, DotNetObjectReference<T> dotNetRef) where T : class
-    {
-        _toastEnterEndWirings.Add(elementId);
-        LastToastEnterCallback = dotNetRef.Value as global::Lumeo.IToastEnterCallback;
-        return ValueTask.CompletedTask;
-    }
     public ValueTask RegisterSvDrag(string elementId, Func<double, double, Task> handler) => ValueTask.CompletedTask;
     public ValueTask UnregisterSvDrag(string elementId) => ValueTask.CompletedTask;
     public ValueTask RegisterPinchZoom(string elementId, Func<double, Task> handler) => ValueTask.CompletedTask;

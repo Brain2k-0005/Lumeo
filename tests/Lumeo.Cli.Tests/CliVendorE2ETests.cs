@@ -93,20 +93,24 @@ public sealed class CliVendorE2ETests : IDisposable
         Assert.Contains("@namespace Acme.Ui", content);
     }
 
-    // PR #357 round-2 (Codex, P1): `lumeo add toast` vendors Toast.razor into a
-    // NuGet (non-standalone) project. NamespaceRewriter rewrites the @namespace
-    // line but — unlike .cs files, which get a `using Lumeo;` bridge auto-added
-    // — does NOT add a Razor `@using Lumeo` to the vendored file. IToastEnterCallback
-    // also isn't in the "toast" component's own file list (it ships as part of
-    // the shared runtime the still-referenced NuGet package provides), so an
-    // unqualified `@implements IToastEnterCallback` would compile fine here (in
-    // the library tree, still under namespace Lumeo) but fail to resolve once
-    // rewritten to the consumer namespace. Toast.razor now spells it out fully
-    // qualified (`Lumeo.IToastEnterCallback`), which — being namespace-rewriter-
-    // proof by construction (the rewriter only touches the leading `@namespace`
-    // line, never fully-qualified type references) — survives vendoring intact.
+    // PR #357 round-2/round-4: two DIFFERENT vendoring breaks hit the exact same
+    // line of Toast.razor. Round-2 (Codex, P1) was a namespace-rewriting bug — an
+    // UNQUALIFIED `@implements IToastEnterCallback` compiled fine in the library
+    // tree but 404'd once rewritten to the consumer namespace. Round-4 (P1) then
+    // found the deeper problem the round-2 fix (fully-qualifying it) papered
+    // over: `IToastEnterCallback`/`IComponentInteropService.AttachToastEnterEnd`
+    // were BOTH brand-new Lumeo interop surface added in the same unreleased
+    // change as Toast.razor itself, so a consumer whose referenced Lumeo package
+    // predates that surface (i.e. anyone, until this ships) fails to compile the
+    // moment `lumeo add toast` runs — no amount of qualifying the reference fixes
+    // a type that doesn't exist yet in the referenced assembly. The real fix was
+    // to drop the JS-callback entrance-detection path entirely (a plain local
+    // timer has zero Lumeo-surface dependency); this guard keeps it dropped, and
+    // `Add_Vendor_Toast_Compiles_Against_The_Officially_Supported_Template_Setup`
+    // (CliStandaloneE2ETests) proves the vendored output actually BUILDS, not
+    // just that these strings are absent.
     [Fact]
-    public void Add_Vendor_Toast_Qualifies_The_Enter_Callback_Interface_So_It_Survives_Namespace_Rewriting()
+    public void Add_Vendor_Toast_Never_Reintroduces_The_Brand_New_Enter_Callback_Interop()
     {
         Assert.True(File.Exists(_lumeoDll),
             "Built CLI (lumeo.dll) not found under tools/Lumeo.Cli/bin — build the solution first.");
@@ -122,13 +126,15 @@ public sealed class CliVendorE2ETests : IDisposable
 
         var content = File.ReadAllText(razor);
         Assert.Contains("@namespace Acme.Ui", content);
-        // Fully-qualified — resolves under the rewritten consumer namespace with
-        // no dependency on an `@using Lumeo` the rewriter never adds to .razor files.
-        Assert.Contains("@implements Lumeo.IToastEnterCallback", content);
-        // The regression this guards against: a BARE (unqualified) reference
-        // would silently compile in the library tree but 404 on IToastEnterCallback
-        // in a real consumer build — assert it's gone from the vendored output.
-        Assert.DoesNotContain("@implements IToastEnterCallback", content);
+        // Strip `//` line comments before scanning: Toast.razor's own fix for this exact finding
+        // documents itself in prose (explaining what it used to call and why it no longer does),
+        // which would otherwise trip this assertion as a false positive. The guard cares about
+        // live CODE references, not explanatory comments — same rationale as
+        // Default_Add_Toast_Vendors_No_Internal_Lumeo_References (CliStandaloneE2ETests).
+        var code = string.Join('\n', content.Split('\n')
+            .Select(line => line.IndexOf("//", StringComparison.Ordinal) is >= 0 and var i ? line[..i] : line));
+        Assert.DoesNotContain("IToastEnterCallback", code);
+        Assert.DoesNotContain("AttachToastEnterEnd", code);
     }
 
     [Fact]

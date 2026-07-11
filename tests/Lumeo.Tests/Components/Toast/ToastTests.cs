@@ -440,6 +440,43 @@ public class ToastTests : IAsyncLifetime
         Assert.Null(firstOverCapObserved); // still holds after the post-burst toast mounts too
     }
 
+    // PR #357 round-4 (P2): a persistent toast (Duration = 0, e.g. a loading/promise toast) is
+    // never an eviction candidate — the eviction loop's `t.Options.Duration != 0` filter already
+    // skipped it before this fix. But once persistents filled every mounted slot, the loop found
+    // no candidate, broke, and the OLD `_toasts.Count >= EffectiveMaxToasts` queue check (also
+    // true) queued the new toast anyway — behind a slot that would NEVER free, since nothing ever
+    // auto-dismisses a persistent. Every later Show() queued forever, permanently starved by the
+    // first loading toast. Fixed by excluding persistents from the cap accounting entirely
+    // (NonPersistentMountedCount) so a persistent-only cap never even reaches the eviction/queue
+    // branches — the new toast mounts immediately, alongside the persistents (not instead of them).
+    [Fact]
+    public void Persistent_Toasts_Filling_The_Cap_Do_Not_Starve_Later_Toasts()
+    {
+        var toastService = _ctx.Services.GetService(typeof(ToastService)) as ToastService;
+        Assert.NotNull(toastService);
+
+        var cut = _ctx.Render<L.ToastProvider>(); // MaxToasts default = 5
+
+        // Fill the cap entirely with persistent (Duration = 0) toasts.
+        for (var i = 0; i < 5; i++)
+        {
+            toastService!.Show(new ToastOptions { Title = $"Loading #{i}", Duration = 0 });
+        }
+        cut.WaitForAssertion(() => Assert.Equal(5, cut.FindAll("[role='alert'],[role='status']").Count));
+
+        // An ordinary, later notification must mount right away — not queue behind a slot that
+        // will never free.
+        toastService!.Show(new ToastOptions { Title = "Ordinary notification", Duration = 60000 });
+        cut.WaitForAssertion(() => Assert.Contains("Ordinary notification", cut.Markup), TimeSpan.FromSeconds(2));
+
+        // All 5 persistents are still mounted (never evicted) alongside the new one.
+        for (var i = 0; i < 5; i++)
+        {
+            Assert.Contains($"Loading #{i}", cut.Markup);
+        }
+        Assert.Equal(6, cut.FindAll("[role='alert'],[role='status']").Count);
+    }
+
     [Fact]
     public void ToastProvider_Dismiss_During_Entrance_Does_Not_Throw()
     {
@@ -448,11 +485,11 @@ public class ToastTests : IAsyncLifetime
 
         var cut = _ctx.Render<L.ToastProvider>();
 
-        // bUnit's JSInterop is loose-mode (AddLumeoServices), so
-        // attachToastEnterEnd never actually calls back OnEnterAnimationEnd —
-        // the toast stays `_entering` until the 350 ms fallback timer or an
-        // early Leaving flip. Dismissing immediately after Show forces exactly
-        // that early-Leaving-while-entering path (Toast.OnParametersSet).
+        // Entrance cleanup is a plain local timer (no JS callback — see
+        // Toast.razor), so a toast stays `_entering` until the 350 ms fallback
+        // fires or an early Leaving flip. Dismissing immediately after Show
+        // forces exactly that early-Leaving-while-entering path
+        // (Toast.OnParametersSet).
         var id = toastService!.Show(new ToastOptions { Title = "Gone before it entered" });
         toastService.Dismiss(id);
 

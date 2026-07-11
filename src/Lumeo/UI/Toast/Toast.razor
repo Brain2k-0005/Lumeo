@@ -1,7 +1,5 @@
 @namespace Lumeo
 @implements IDisposable
-@implements Lumeo.IToastEnterCallback
-@inject Lumeo.Services.IComponentInteropService Interop
 
 <div id="@EffectiveId"
      class="@CssClass"
@@ -27,7 +25,7 @@
     /// <see cref="Lumeo.Services.IComponentInteropService.RegisterToastSwipe"/>.
     /// When omitted (a standalone <c>&lt;Toast&gt;</c> rendered outside
     /// ToastProvider, e.g. a static variant preview), a generated id is used
-    /// instead so the entrance-end interop below still has a stable target.
+    /// instead.
     /// </summary>
     [Parameter] public string? Id { get; set; }
 
@@ -77,64 +75,63 @@
     // carries NO animation, so the stacking transform applies immediately and
     // a later dismiss's `animate-toast-out` isn't fighting a stuck class.
     //
-    // Cleanup is driven by JS (AttachToastEnterEnd / OnEnterAnimationEnd), NOT
-    // a Razor `@onanimationend` handler: this codebase already tried that for
-    // the Sheet/Drawer slide-in case (see the rc.22 note in components.js /
-    // lumeo.css) and dropped it — Blazor's onanimationend EventArgs carry no
-    // AnimationName, so a handler bound in Razor can't filter which animation
-    // just ended and a fast one-shot animation on arbitrary CustomContent
-    // (a Badge, a spinner, ...) bubbling out of the toast would fire it early.
-    // The JS helper filters by animationName before ever calling back .NET.
+    // Cleanup is driven PURELY by a local timer (EnterFallbackMs below), NOT a
+    // JS-side animationend callback. PR #357 round-4 (P1): an earlier revision
+    // wired this up via Interop.AttachToastEnterEnd/IToastEnterCallback for
+    // frame-exact precision, but BOTH are Lumeo interop surface added in this
+    // same unreleased change — a vendored copy of this file compiled in a
+    // consumer app whose referenced Lumeo package predates that addition
+    // (any currently-published version, since it ships only once THIS PR
+    // itself is released) fails to compile: `IToastEnterCallback` doesn't
+    // exist as a type yet, and `AttachToastEnterEnd` isn't a member of
+    // `IComponentInteropService` yet either. Default interface members only
+    // protect IMPLEMENTERS of an evolving interface, not CALLERS reading a
+    // member the referenced assembly's metadata simply doesn't declare — so
+    // there is no compile-safe way to call a brand-new interop member from
+    // source that gets vendored verbatim into arbitrary consumer projects.
+    // A plain timer has zero Lumeo-surface dependency (see EnterFallbackTimer
+    // below), so it's the only mechanism this file can use unconditionally.
+    // Also a Razor `@onanimationend` handler was considered and rejected
+    // (this codebase already tried that for the Sheet/Drawer slide-in case —
+    // see the rc.22 note in components.js/lumeo.css — and dropped it):
+    // Blazor's onanimationend EventArgs carry no AnimationName, so a handler
+    // bound in Razor can't tell the toast's own entrance apart from a
+    // one-shot animation on arbitrary CustomContent (a Badge, a spinner, ...)
+    // bubbling out of the toast and would fire early.
     private bool _entering = true;
-    private bool _enterWired;
-    private DotNetObjectReference<Toast>? _enterSelfRef;
     // A local one-shot timer, NOT Lumeo.Services.DelayedDispatch — that helper is `internal` to
     // the Lumeo assembly, so a vendored copy of this file compiled inside a consumer app under the
     // default NuGet-backed `lumeo add toast` path can't resolve it. This duplicates just the
     // single-pending-callback + cancel/dispose behaviour Toast.razor actually needs.
     private readonly EnterFallbackTimer _enterFallback = new();
 
-    // FALLBACK window only — the real cleanup is OnEnterAnimationEnd (JS).
     // Sits comfortably above the CSS entrance duration (toast-in is 0.3s, or
-    // 1ms under prefers-reduced-motion — still a real animation that still
-    // fires animationend) so the timer never preempts a slightly-late callback
-    // on the happy path. It exists solely for the JS-dead / lost-event case
-    // (prerender, a toast mounted inside a display:none ancestor, or a
-    // disconnected circuit).
+    // 1ms under prefers-reduced-motion — still a real animation) so a normal
+    // entrance has visually settled well before this fires; under
+    // prefers-reduced-motion the stacking transform simply lags this fixed
+    // window instead of the (near-instant) animationend — a bounded, minor
+    // cosmetic cost worth paying for compiling in every supported consumer
+    // project unconditionally (see the field comment above).
     private const int EnterFallbackMs = 350;
 
     protected override void OnParametersSet()
     {
         // Dismissed while still entering (rapid show+dismiss): strip the
-        // entrance class NOW instead of waiting for a JS callback that may
-        // never arrive once animate-toast-out has replaced animate-toast-in in
-        // the class list (the JS helper would find no toast-in animation left
-        // to await and notify immediately anyway, but there's no reason to
-        // wait on the round-trip for something OnParametersSet already knows).
+        // entrance class immediately instead of waiting for the fallback
+        // timer — OnParametersSet already knows Leaving flipped, no reason
+        // to sit on the remaining window for something already decided.
         if (Leaving && _entering)
         {
             FinishEntering();
         }
     }
 
-    protected override async Task OnAfterRenderAsync(bool firstRender)
+    protected override void OnAfterRender(bool firstRender)
     {
-        if (firstRender && _entering && !_enterWired)
+        if (firstRender && _entering)
         {
-            _enterWired = true;
             _enterFallback.Schedule(EnterFallbackMs, () => InvokeAsync(FinishEntering));
-            _enterSelfRef ??= DotNetObjectReference.Create(this);
-            try { await Interop.AttachToastEnterEnd(EffectiveId, _enterSelfRef); }
-            catch (JSDisconnectedException) { }
         }
-    }
-
-    /// <summary>Invoked from JS (attachToastEnterEnd) once the entrance animation ends.</summary>
-    [JSInvokable]
-    public Task OnEnterAnimationEnd()
-    {
-        FinishEntering();
-        return Task.CompletedTask;
     }
 
     private void FinishEntering()
@@ -148,12 +145,11 @@
     public void Dispose()
     {
         _enterFallback.Dispose();
-        _enterSelfRef?.Dispose();
     }
 
-    private string CssClass => Cx.Merge(
+    private string CssClass => Lumeo.Cx.Merge(
         "group pointer-events-auto relative flex w-full items-center justify-between space-x-2 overflow-hidden rounded-md border border-border/50 p-4 pe-11 sm:pe-6 shadow-lg",
-        Leaving ? "animate-toast-out" : Cx.When(_entering, "animate-toast-in"),
+        Leaving ? "animate-toast-out" : Lumeo.Cx.When(_entering, "animate-toast-in"),
         VariantClasses, Class);
 
     // Destructive variant uses role="alert" + aria-live="assertive" so screen readers

@@ -151,7 +151,11 @@ public class ToastStackingTests : IAsyncLifetime
 
         // Mouse hovers the group first (e.g. moving toward it), THEN keyboard
         // focus lands inside — the realistic sequence for a mouse user who
-        // then Tabs into the toast's close button.
+        // then presses the Tab key to reach the toast's close button.
+        // (PR #357 round-4 P3: the prior wording of this comment word-matched
+        // an unrelated component's name and mislisted this file as that
+        // component's test coverage — see
+        // PerComponentEnricher.HasRealComponentMention.)
         var group = cut.Find("[data-stacked='true']");
         group.MouseEnter();
         cut.WaitForAssertion(() =>
@@ -329,8 +333,9 @@ public class ToastStackingTests : IAsyncLifetime
         // load. `Task.Delay` (not `Thread.Sleep`): a blocking sleep would tie
         // up a whole thread-pool worker for 150ms doing nothing, which under
         // xUnit's parallel test execution can itself starve OTHER tests'
-        // background Task.Delay continuations — an unrelated Tooltip test
-        // flaked from exactly that when this used Thread.Sleep. "Four" is
+        // background Task.Delay continuations — an unrelated hover-delay test
+        // elsewhere in the suite flaked from exactly that when this used
+        // Thread.Sleep. "Four" is
         // still present (Leaving, not yet removed — 150 < 220), so the group
         // hasn't reshuffled yet and "Two"'s frozen index is correctly
         // captured as 3.
@@ -381,6 +386,57 @@ public class ToastStackingTests : IAsyncLifetime
         cut.WaitForAssertion(() =>
             Assert.DoesNotContain(cut.FindAll("[role='alert'],[role='status']"), e => e.TextContent.Contains("Two")),
             TimeSpan.FromSeconds(5));
+    }
+
+    // PR #357 round-4 (P2): dismissing the FRONT toast while an older sibling remains live must
+    // not hand BOTH of them data-index="0" — lumeo.css only keeps index 0 in normal flow
+    // (position: relative), every other index is position: absolute, so two elements at index 0
+    // simultaneously expand the collapsed stack into two rows for the whole 220ms exit. The
+    // live-only ranking (liveCount/liveCursor) independently guarantees SOME live toast always
+    // gets index 0 (round-3) — which collides with the front toast's OWN frozen index 0 the
+    // instant it starts leaving. The next live toast must sit at index 1 (still hidden behind the
+    // leaving front, position: absolute) until the front actually unmounts, then take over index 0.
+    [Fact]
+    public void Live_Toast_Does_Not_Also_Claim_Index_Zero_While_The_Front_Toast_Is_Leaving()
+    {
+        var toastService = GetToastService();
+        var cut = _ctx.Render<L.ToastProvider>();
+
+        toastService.Show(new ToastOptions { Title = "Older", Duration = 60000 });
+        toastService.Show(new ToastOptions { Title = "Newest", Duration = 60000 });
+
+        cut.WaitForAssertion(() =>
+            Assert.Equal(2, cut.FindAll("[role='alert'],[role='status']").Count));
+
+        var newest = cut.FindAll("[role='alert'],[role='status']").Single(e => e.TextContent.Contains("Newest"));
+        Assert.Equal("0", Attr(newest, "data-index"));
+
+        // Dismiss the front toast ("Newest") — it keeps data-index="0" (FrozenIndex) for its
+        // whole 220ms exit.
+        newest.QuerySelector("button")!.Click();
+
+        cut.WaitForAssertion(() =>
+        {
+            var all = cut.FindAll("[role='alert'],[role='status']");
+            var leaving = all.SingleOrDefault(e => e.TextContent.Contains("Newest"));
+            var older = all.SingleOrDefault(e => e.TextContent.Contains("Older"));
+            Assert.NotNull(leaving);
+            Assert.NotNull(older);
+            Assert.Contains("animate-toast-out", Attr(leaving!, "class") ?? "");
+            // The regression: exactly ONE element at data-index="0" (the leaving front toast),
+            // never two. "Older" — the only live toast left — must be pushed to index 1.
+            Assert.Equal("0", Attr(leaving!, "data-index"));
+            Assert.Equal("1", Attr(older!, "data-index"));
+        }, TimeSpan.FromSeconds(5));
+
+        // Once "Newest" actually unmounts, "Older" takes over index 0 — no frozen occupant left.
+        cut.WaitForAssertion(() =>
+        {
+            var all = cut.FindAll("[role='alert'],[role='status']");
+            Assert.DoesNotContain(all, e => e.TextContent.Contains("Newest"));
+            var older = all.Single(e => e.TextContent.Contains("Older"));
+            Assert.Equal("0", Attr(older, "data-index"));
+        }, TimeSpan.FromSeconds(5));
     }
 
     // PR #357 round-3 (Codex): focus moving BETWEEN two focusable controls inside the same
@@ -457,45 +513,28 @@ public class ToastStackingTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task Entrance_Class_Is_Removed_Once_Its_AnimationEnd_Fires()
+    public void Entrance_Class_Is_Removed_After_The_Fallback_Window_Elapses()
     {
-        // A local context (not the shared _ctx) whose IComponentInteropService is
-        // TrackingInteropService instead of the real ComponentInteropService — the
-        // shared _ctx's loose-mode JSInterop mock records the "attachToastEnterEnd"
-        // call but can't execute the real JS body (getAnimations/.finished), so it
-        // never invokes the DotNetObjectReference callback back. TrackingInteropService
-        // captures that reference directly instead (mirrors OverlayExitAnimationRaceTests'
-        // AttachOverlayExitEnd/LastOverlayExitCallback pattern for the same reason).
-        await using var ctx = new BunitContext();
-        ctx.AddLumeoServices();
-        var interop = new TrackingInteropService();
-        ctx.Services.AddScoped<IComponentInteropService>(_ => interop);
-
-        var toastService = (ToastService)ctx.Services.GetRequiredService(typeof(ToastService));
-        var cut = ctx.Render<L.ToastProvider>();
+        // PR #357 round-4 (P1): Toast.razor no longer drives entrance-end cleanup
+        // via a JS animationend callback (Interop.AttachToastEnterEnd /
+        // IToastEnterCallback) — that interop surface would have to be brand-new
+        // in every referenced Lumeo package, which a component vendored verbatim
+        // into a consumer project can never assume. Cleanup is a plain local
+        // timer now (Toast.razor's EnterFallbackMs), so this test waits for real
+        // time to elapse instead of simulating a JS callback.
+        var toastService = GetToastService();
+        var cut = _ctx.Render<L.ToastProvider>();
 
         toastService.Show(new ToastOptions { Title = "Fresh", Duration = 60000 });
 
         cut.WaitForAssertion(() =>
             Assert.Contains("animate-toast-in", Attr(cut.Find("[role='alert'],[role='status']"), "class") ?? ""));
 
-        // Simulate the browser's real animationend for the entrance keyframe.
-        // The real cleanup is JS-driven (attachToastEnterEnd, filtered by
-        // animation name — NOT a Razor @onanimationend: Blazor's EventArgs
-        // carry no animation name to filter on, so a handler bound in Razor
-        // can't tell the toast's own entrance apart from a one-shot animation
-        // on arbitrary CustomContent bubbling out of the toast — see the
-        // rc.22 note in Toast.razor / components.js). TrackingInteropService
-        // captures the DotNetObjectReference the component wires up so the
-        // test can invoke OnEnterAnimationEnd directly, exactly as the real
-        // JS helper would once toast-in's animationend fires.
-        await cut.InvokeAsync(() => interop.LastToastEnterCallback!.OnEnterAnimationEnd());
-
         cut.WaitForAssertion(() =>
         {
             var el = cut.Find("[role='alert'],[role='status']");
             Assert.DoesNotContain("animate-toast-in", Attr(el, "class") ?? "");
-        });
+        }, TimeSpan.FromSeconds(2));
 
         // And it does NOT pick up animate-toast-out — this toast never left.
         Assert.DoesNotContain("animate-toast-out", Attr(cut.Find("[role='alert'],[role='status']"), "class") ?? "");

@@ -480,58 +480,6 @@ export async function attachOverlayExitEnd(elementId, dotnetRef) {
     notify();
 }
 
-// Toast's held-fill counterpart to attachOverlaySlideEnd above: `.animate-toast-in`
-// also uses `animation-fill-mode: both`, so a settled entrance permanently pins
-// opacity:1/transform:none on the toast — silently overriding the "Toast stacking"
-// transforms (translateY/scale) lumeo.css applies once the toast is no longer at
-// data-index="0", and fighting `.animate-toast-out` on dismiss (equal specificity,
-// `.animate-toast-in` declared later). Toast.razor calls this once per toast (on
-// first render) to get notified — via OnEnterAnimationEnd on dotnetRef — the moment
-// the entrance settles, so it can drop the class entirely (no inline-guard stamping
-// needed here: unlike Dialog/Sheet's containing-block trap, dropping the CLASS is
-// sufficient — there's no position:fixed descendant concern for a toast).
-//
-// Filters by animationName (rc.22 lesson, same family as attachOverlaySlideEnd):
-// Blazor's own onanimationend EventArgs carry no animation name, so a Razor-bound
-// `@onanimationend` handler can't tell the toast's own entrance apart from a
-// one-shot animation on arbitrary CustomContent (a Badge, a spinner, ...) bubbling
-// out of the toast and firing early — this native listener can, and does.
-export async function attachToastEnterEnd(elementId, dotnetRef) {
-    // Dispose-safe: a toast removed before its entrance animation ends (rapid
-    // show+dismiss, or evicted by MaxToasts under a spam burst) disposes its
-    // DotNetObjectReference (Toast.Dispose) while this listener may still be
-    // waiting on `anim.finished` below. invokeMethodAsync on a disposed
-    // reference can both throw synchronously (caught here) AND return a
-    // rejected promise (uncaught otherwise) — .catch it explicitly so a stray
-    // "no tracked object" rejection never surfaces as an unhandled rejection.
-    const notify = () => {
-        try { dotnetRef?.invokeMethodAsync('OnEnterAnimationEnd')?.catch(() => { /* disposed mid-flight */ }); }
-        catch { /* circuit / reference gone */ }
-    };
-    const el = document.getElementById(elementId);
-    if (!el) { notify(); return; }
-
-    // toast-in-rtl is the [dir="rtl"] alias of the same class (see lumeo.css) —
-    // same entrance, renamed keyframe.
-    const enter = el.getAnimations({ subtree: false })
-        .filter(a => typeof a.animationName === 'string'
-                  && (a.animationName === 'toast-in' || a.animationName === 'toast-in-rtl'));
-
-    if (enter.length === 0) {
-        // No entrance animation found (already settled by the time this attached,
-        // Animation-less environment, or reduced-motion already elapsed the 1ms
-        // keyframe before we got here) — notify immediately.
-        notify();
-        return;
-    }
-
-    await Promise.all(enter.map(async (anim) => {
-        try { await anim.finished; }
-        catch { /* cancelled — e.g. dismissed mid-entrance, class already dropped */ }
-    }));
-    notify();
-}
-
 // --- Floating Position ---
 
 const positionCleanups = new Map();

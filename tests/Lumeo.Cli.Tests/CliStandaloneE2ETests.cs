@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Text.RegularExpressions;
 using Xunit;
 
 namespace Lumeo.Cli.Tests;
@@ -260,6 +261,66 @@ public sealed class CliStandaloneE2ETests : IDisposable
         // --standalone strip it) — this test is specifically about the vendored SOURCE compiling
         // against that still-present package, i.e. never reaching into its internals.
         Assert.Contains("Include=\"Lumeo\"", File.ReadAllText(Path.Combine(_proj, "App.csproj")));
+    }
+
+    [Fact]
+    public void Add_Vendor_Toast_Compiles_Against_The_Officially_Supported_Template_Setup()
+    {
+        // PR #357 round-4 (P1) — "kill the class": every prior vendoring finding this PR
+        // (round-2 namespace rewriting, round-3 internal-type refs) was only ever caught by
+        // TEXT-scanning the vendored output for known-bad patterns, never by actually compiling
+        // it. That missed a THIRD, worse break: Toast.razor called a brand-new
+        // IComponentInteropService member that doesn't exist in ANY currently-published Lumeo
+        // package (it ships only once this very change is released), so the officially
+        // documented/templated consumer setup failed to build the instant Toast was added — no
+        // string scan would ever have caught that class of bug. Reproduce that setup for real:
+        // the exact csproj shape + _Imports.razor `dotnet new lumeo-app` scaffolds (see
+        // templates/Lumeo.Templates/templates/lumeo-app), with its REAL, live-restored Lumeo
+        // PackageReference version — and assert `dotnet build` is green. Any future component
+        // whose vendored source needs a Lumeo API newer than what's actually published now fails
+        // THIS suite, not a review round.
+        Assert.True(File.Exists(_lumeoDll), "Built CLI (lumeo.dll) not found — build the solution first.");
+
+        var templateCsprojPath = Path.Combine(_repoRoot, "templates", "Lumeo.Templates", "templates", "lumeo-app", "MyApp.csproj");
+        Assert.True(File.Exists(templateCsprojPath), $"Official app template csproj not found at {templateCsprojPath}.");
+        var templateCsproj = File.ReadAllText(templateCsprojPath);
+        var versionMatch = Regex.Match(templateCsproj, "Include=\"Lumeo\"\\s+Version=\"([^\"]+)\"");
+        Assert.True(versionMatch.Success, "Could not read the officially templated Lumeo package version from " + templateCsprojPath);
+        var lumeoVersion = versionMatch.Groups[1].Value;
+
+        File.WriteAllText(Path.Combine(_proj, "App.csproj"),
+            "<Project Sdk=\"Microsoft.NET.Sdk.Razor\"><PropertyGroup><TargetFramework>net10.0</TargetFramework>"
+          + "<Nullable>enable</Nullable><ImplicitUsings>enable</ImplicitUsings></PropertyGroup><ItemGroup>"
+          + "<PackageReference Include=\"Microsoft.AspNetCore.Components.Web\" Version=\"10.0.6\" />"
+          + $"<PackageReference Include=\"Lumeo\" Version=\"{lumeoVersion}\" /></ItemGroup></Project>");
+
+        // The official template's _Imports.razor, MINUS its blanket `@using Lumeo` — that using
+        // is there so a fresh (nothing-vendored-yet) app can use Lumeo's PACKAGE components
+        // unqualified; once `lumeo add toast` vendors Acme.Ui.Toast/ToastProvider/ToastViewport
+        // (same short names, same file's implicit-same-namespace visibility), keeping `@using
+        // Lumeo` ALSO in scope makes every `<Toast>`/`<ToastProvider>`/`<ToastViewport>` tag
+        // ambiguous between the vendored type and the package's — Razor's tag-helper matching
+        // resolves that not with an "ambiguous reference" error but by unioning both descriptors'
+        // parameters, surfacing as bogus RZ10009 "parameter used twice" errors instead. `lumeo
+        // add`'s own docs never claim `@using Lumeo` is required for the vendoring path (`init`
+        // doesn't touch _Imports.razor outside `--standalone`), and `Lumeo.Services` (still
+        // needed for ToastService/ToastOptions) has no such collision since nothing is vendored
+        // under that sub-namespace.
+        File.WriteAllText(Path.Combine(_proj, "_Imports.razor"),
+            "@using Microsoft.AspNetCore.Components.Forms\n"
+          + "@using Microsoft.AspNetCore.Components.Routing\n"
+          + "@using Microsoft.AspNetCore.Components.Web\n"
+          + "@using Microsoft.AspNetCore.Components.Web.Virtualization\n"
+          + "@using Microsoft.JSInterop\n"
+          + "@using Lumeo.Services\n");
+
+        Assert.Equal(0, RunCli("init", "--yes", "--namespace", "Acme.Ui", "--path", "Components/Ui", "--no-assets").Exit);
+        var add = RunCli("add", "toast", "--local", "--yes", "--force");
+        Assert.True(add.Exit == 0, $"add toast failed (exit {add.Exit}). {add.Stderr}{add.Stdout}");
+
+        var build = RunDotnet("build", "-c", "Debug", "--nologo");
+        Assert.True(build.Exit == 0,
+            $"vendored Toast failed to compile against the officially-templated Lumeo {lumeoVersion} setup:\n{build.Stdout}\n{build.Stderr}");
     }
 
     [Fact]
