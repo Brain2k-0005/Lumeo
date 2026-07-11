@@ -209,6 +209,22 @@ def chart_source_types(files):
     return types
 
 
+def _declaring_type_name(rel):
+    """Declaring type name for one source file's relative path.
+
+    A Razor code-behind file (X.razor.cs) declares the SAME partial type as
+    its sibling X.razor — strip the compound ".razor.cs" suffix as a unit so
+    it indexes under "X" (matching X.razor's own entry, allowlist.json's
+    scoping key, and docs-heading convention), instead of the naive
+    os.path.splitext() result "X.razor", which never matches anything and
+    silently falls back to the flat page-wide set for that file's params.
+    """
+    base = os.path.basename(rel)
+    if base.endswith(".razor.cs"):
+        return base[: -len(".razor.cs")]
+    return os.path.splitext(base)[0]
+
+
 def extract_source_params_by_type(files, src_root):
     """Returns (type_params, cascading_params, file_errors).
 
@@ -230,7 +246,7 @@ def extract_source_params_by_type(files, src_root):
         if not (rel.endswith(".razor") or rel.endswith(".cs")):
             continue
         fp = os.path.join(src_root, rel)
-        type_name = os.path.splitext(os.path.basename(rel))[0]
+        type_name = _declaring_type_name(rel)
         if not os.path.exists(fp):
             file_errors.append((rel, "MISSING_FILE"))
             continue
@@ -380,7 +396,12 @@ def _strip_tags(html):
 # parameter name (e.g. "Column.Groupable" in DataGridPage's group-panel
 # table). Both the literal cell text AND the tail after the last dot are
 # checked against source, so either convention counts as documented/real.
-_DOTTED_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*\.([A-Za-z_][A-Za-z0-9_]*)$")
+# The prefix is captured too: it names the row's declaring type directly
+# (stronger than a preceding <Heading>, which — if present at all — merely
+# names whichever type happens to head the whole table) and takes priority
+# as the row's owner_type so e.g. a stale "OldComponent.Value" row isn't
+# hidden by some sibling type on the same page still declaring "Value".
+_DOTTED_RE = re.compile(r"^([A-Za-z_][A-Za-z0-9_]*)\.([A-Za-z_][A-Za-z0-9_]*)$")
 
 
 def _iter_param_table_rows(text):
@@ -459,8 +480,8 @@ def extract_documented_rows(docs_path):
             continue
         type_cell = cells[1] if len(cells) > 1 else ""
         m = _DOTTED_RE.match(name)
-        check_name = m.group(1) if m else name
-        owner_type = clean_heading_type_name(heading) if heading else None
+        dotted_owner, check_name = (m.group(1), m.group(2)) if m else (None, name)
+        owner_type = dotted_owner or (clean_heading_type_name(heading) if heading else None)
         rows.append(
             {"name": name, "check_name": check_name, "type_cell": type_cell, "owner_type": owner_type}
         )
@@ -705,9 +726,21 @@ def main():
         unscoped_documented = set()
         for _, rows in doc_pages_checked:
             for r in rows:
+                owner = r["owner_type"]
+                if owner is not None and owner not in type_params:
+                    # The row's owner (heading or dotted prefix) resolves to
+                    # a real type name, but not one of THIS component's own
+                    # declaring types — e.g. a companion model's own
+                    # showcase table (SpeedDialPage's "SpeedDialItem"
+                    # table), or another registered component's table
+                    # embedded for illustration (BentoPage showcasing
+                    # KpiCard/SparkCard/Delta). It documents a DIFFERENT
+                    # type entirely, so it must not count toward any of
+                    # this component's own undocumented parameters —
+                    # skip it instead of falling into the page-wide sets.
+                    continue
                 flat_documented.add(r["name"])
                 flat_documented.add(r["check_name"])
-                owner = r["owner_type"]
                 if owner in type_params:
                     headed_types.add(owner)
                     bucket = scoped_documented.setdefault(owner, set())
