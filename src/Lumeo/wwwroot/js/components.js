@@ -3373,7 +3373,6 @@ export function registerColumnReorder(gridId, dotnetRef) {
         // Recorded by element reference (round-11 #1) — see columnReorderSettleEls.
         columnReorderSettleEls.set(gridId, settleCells);
         const timeoutId = window.setTimeout(() => {
-            pendingSettle = null;
             for (const cell of d.cells) cell.style.transition = '';
             if (isCommit) {
                 // Leave the settled transforms in place (dragged column at its
@@ -3381,21 +3380,39 @@ export function registerColumnReorder(gridId, dotnetRef) {
                 // captureColumnRects measures this true final visual order next
                 // and clears these inline styles itself.
                 //
-                // The token is released from THIS promise's `finally`, not
-                // synchronously right after invokeMethodAsync starts (round-12
-                // #2) — a slow awaited OnColumnReorder consumer handler (or
-                // plain Blazor Server latency) would otherwise let another
-                // gesture claim the grid while the commit is still in flight,
-                // reopening the exact race the settle-window hold exists to
-                // close. `finally` covers a rejected commit too.
+                // pendingSettle stays set (NOT nulled here — round-13 #4) through the
+                // commit interop call itself, not just this timeout. The old code
+                // nulled it synchronously the instant this timeout fired, before
+                // invokeMethodAsync even started — if unregisterColumnReorder raced
+                // that in-flight window (Reorderable flipped off mid-commit, plain
+                // Blazor Server latency), cancelActiveDrag saw pendingSettle === null
+                // and skipped its cleanup branch entirely, even though
+                // columnReorderSettleEls still held these exact cells: nothing would
+                // ever strip their transforms, since no future FLIP pass was coming
+                // (captureColumnRects/clearColumnReorderTransforms — which own
+                // columnReorderSettleEls's normal lifecycle, deleting it themselves —
+                // are only reached from a commit that actually lands, which a
+                // torn-down component will never receive). pendingSettle is only
+                // cleared in this promise's `finally` (columnReorderSettleEls is
+                // deliberately left untouched here — it stays exactly whichever of
+                // captureColumnRects/clearColumnReorderTransforms's job it already
+                // was), so a cancelActiveDrag landing mid-flight still finds
+                // pendingSettle and strips the transforms itself. The token is
+                // released from the SAME `finally`, not synchronously right after
+                // invokeMethodAsync starts (round-12 #2) — see that finding for why.
+                // `finally` covers a rejected commit too.
                 dotnetRef.invokeMethodAsync('OnColumnReorderCommit', gridId, d.sourceColId, commitTargetColId)
-                    .finally(() => releaseGridDrag(gridId, 'column-reorder'));
+                    .finally(() => {
+                        pendingSettle = null;
+                        releaseGridDrag(gridId, 'column-reorder');
+                    });
             } else {
                 for (const cell of shiftedCells) {
                     cell.style.transition = '';
                     cell.style.transform = '';
                 }
                 // No commit fires on cancel — nothing to await, release now.
+                pendingSettle = null;
                 releaseGridDrag(gridId, 'column-reorder');
             }
         }, REORDER_SETTLE_MS + 20);
@@ -3587,6 +3604,12 @@ export function registerColumnReorder(gridId, dotnetRef) {
     // immediately since no future FLIP pass will do it for us. Also releases
     // the arbiter token the settle window was holding (round-10 #3) — the
     // timeout body that would normally release it never runs once cleared.
+    // Since round-13 #4, pendingSettle also stays alive through the settle
+    // timeout's OWN commit interop call, so this same branch covers unregister
+    // landing AFTER the timeout already fired and started invokeMethodAsync —
+    // window.clearTimeout on an already-fired id is a harmless no-op there; the
+    // in-flight promise's own `finally` later finds pendingSettle/settleEls
+    // already cleared and releaseGridDrag a no-op (idempotent owner check).
     const cancelActiveDrag = () => {
         if (drag) { finishDrag(null); return; }
         if (pendingSettle) {
@@ -3846,7 +3869,6 @@ export function registerRowReorder(gridId, dotnetRef) {
         // Recorded by element reference (round-11 #1) — see rowReorderSettleEls.
         rowReorderSettleEls.set(gridId, settleEls);
         const timeoutId = window.setTimeout(() => {
-            pendingSettle = null;
             d.el.style.transition = '';
             if (d.detail) d.detail.style.transition = '';
             if (isCommit) {
@@ -3855,14 +3877,36 @@ export function registerRowReorder(gridId, dotnetRef) {
                 // captureRowRects measures this true final visual order next
                 // and clears these inline styles itself.
                 //
-                // Vertical mirror of registerColumnReorder's fix (round-12 #2):
-                // release from THIS promise's `finally`, not synchronously
-                // right after invokeMethodAsync starts — a slow awaited
+                // Vertical mirror of registerColumnReorder's fix (round-13 #4):
+                // pendingSettle stays set (NOT nulled here) through the commit
+                // interop call itself. The old code nulled it synchronously the
+                // instant this timeout fired, before invokeMethodAsync even
+                // started — if unregisterRowReorder raced that in-flight window
+                // (RowReorderable flipped off mid-commit, plain Blazor Server
+                // latency), cancelActiveDrag saw pendingSettle === null and
+                // skipped its cleanup branch entirely, even though
+                // rowReorderSettleEls still held these exact elements: nothing
+                // would ever strip their transforms, since no future FLIP pass
+                // was coming (captureRowRects/clearRowReorderTransforms — which
+                // own rowReorderSettleEls's normal lifecycle, deleting it
+                // themselves — are only reached from a commit that actually
+                // lands, which a torn-down component will never receive).
+                // pendingSettle is only cleared in this promise's `finally`
+                // (rowReorderSettleEls is deliberately left untouched here — it
+                // stays exactly whichever of captureRowRects/
+                // clearRowReorderTransforms's job it already was), so a
+                // cancelActiveDrag landing mid-flight still finds pendingSettle
+                // and strips the transforms itself. The token is released from
+                // the SAME `finally`, not synchronously right after
+                // invokeMethodAsync starts (round-12 #2) — a slow awaited
                 // OnRowReorder consumer handler would otherwise let another
                 // gesture claim the grid while the commit is still in flight.
                 // `finally` covers a rejected commit too.
                 dotnetRef.invokeMethodAsync('OnRowReorderCommit', gridId, sourceRowKey, targetRowKey)
-                    .finally(() => releaseGridDrag(gridId, 'row-reorder'));
+                    .finally(() => {
+                        pendingSettle = null;
+                        releaseGridDrag(gridId, 'row-reorder');
+                    });
             } else {
                 for (const [el, detail] of shiftedPairs) {
                     el.style.transition = '';
@@ -3873,6 +3917,7 @@ export function registerRowReorder(gridId, dotnetRef) {
                     }
                 }
                 // No commit fires on cancel — nothing to await, release now.
+                pendingSettle = null;
                 releaseGridDrag(gridId, 'row-reorder');
             }
         }, ROW_REORDER_SETTLE_MS + 20);
@@ -4010,6 +4055,11 @@ export function registerRowReorder(gridId, dotnetRef) {
     // immediately since no future FLIP pass will do it for us. Also releases
     // the arbiter token the settle window was holding (round-10 #3) — the
     // timeout body that would normally release it never runs once cleared.
+    // Since round-13 #4, pendingSettle also stays alive through the settle
+    // timeout's OWN commit interop call (mirrors registerColumnReorder's
+    // cancelActiveDrag — see its remarks), so this same branch covers
+    // unregister landing AFTER the timeout already fired and started
+    // invokeMethodAsync.
     const cancelActiveDrag = () => {
         if (drag) { finishDrag(false); return; }
         if (pendingSettle) {

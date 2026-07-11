@@ -1404,32 +1404,78 @@
         !string.IsNullOrWhiteSpace(column.Field) ? column.Field! : column.Id;
 
     /// <summary>
+    /// Clamps <paramref name="width"/> to the column's Min/Max, applies it, and schedules
+    /// the layout auto-save. Shared mutation core for <see cref="UpdateColumnWidth"/> (public
+    /// sync API, fire-and-forget consumer dispatch) and <see cref="CommitColumnWidthAsync"/>
+    /// (awaited interop commit path) — see their remarks for why the same mutation needs two
+    /// different dispatch strategies for <see cref="OnColumnResize"/> (PR-353 round-13 #1).
+    /// </summary>
+    private DataGridColumn<TItem>? ApplyColumnWidth(string columnId, double width)
+    {
+        var column = EffectiveColumns.FirstOrDefault(c => c.Id == columnId);
+        if (column is null) return null;
+
+        column.Width = Math.Max(column.MinWidth ?? 50, width);
+        if (column.MaxWidth.HasValue)
+            column.Width = Math.Min(column.MaxWidth.Value, column.Width.Value);
+        ScheduleAutoSave();
+        return column;
+    }
+
+    /// <summary>
     /// Commits a new pixel width for the column identified by <paramref name="columnId"/>.
-    /// Called by the resize handle's JS commit (pointer drag, keyboard nudge) and by the
-    /// double-click auto-fit path (<paramref name="autoFit"/> = true). Clamps to the
-    /// column's Min/Max, persists via the layout auto-save, and raises
-    /// <see cref="OnColumnResize"/>.
+    /// Public sync entry point for app code that calls this directly (can't change the
+    /// signature without breaking consumers) — clamps to the column's Min/Max, persists via
+    /// the layout auto-save, and raises <see cref="OnColumnResize"/> fire-and-forget.
+    ///
+    /// The resize handle's own JS commit (pointer drag, dblclick auto-fit, keyboard nudge —
+    /// all three funnel through the ONE commitHandler registered in
+    /// DataGridHeaderCell.EnsureResizeRegistered) does NOT call this wrapper; it calls
+    /// <see cref="CommitColumnWidthAsync"/> directly instead. That commitHandler is itself
+    /// awaited end-to-end from JS's registerColumnResize invokeMethodAsync call, which holds
+    /// the cross-engine drag arbiter token open until the returned promise settles — routing
+    /// it through THIS fire-and-forget wrapper would let that promise (and the token release
+    /// chained off it) resolve before an async OnColumnResize persistence handler actually
+    /// finished, so a slower first resize's handler could complete AFTER a second, faster
+    /// resize and overwrite its width with stale data (PR-353 round-13 #1).
     /// </summary>
     public void UpdateColumnWidth(string columnId, double width, bool autoFit = false)
     {
-        var column = EffectiveColumns.FirstOrDefault(c => c.Id == columnId);
-        if (column is not null)
+        var column = ApplyColumnWidth(columnId, width);
+        if (column is null) return;
+
+        if (OnColumnResize.HasDelegate)
         {
-            column.Width = Math.Max(column.MinWidth ?? 50, width);
-            if (column.MaxWidth.HasValue)
-                column.Width = Math.Min(column.MaxWidth.Value, column.Width.Value);
-            ScheduleAutoSave();
-            if (OnColumnResize.HasDelegate)
-            {
-                // Fire-and-forget through SafeAsyncDispatcher so a faulting async
-                // consumer handler is observed (logged) rather than swallowed, and
-                // so this sync API doesn't have to change its signature.
-                var args = new ColumnResizeEventArgs(column.Id, column.Width.Value, autoFit);
-                Lumeo.Services.SafeAsyncDispatcher.FireAndForget(
-                    InvokeAsync, () => OnColumnResize.InvokeAsync(args), "DataGrid.ColumnResize");
-            }
-            StateHasChanged();
+            // Fire-and-forget through SafeAsyncDispatcher so a faulting async
+            // consumer handler is observed (logged) rather than swallowed, and
+            // so this sync API doesn't have to change its signature.
+            var args = new ColumnResizeEventArgs(column.Id, column.Width!.Value, autoFit);
+            Lumeo.Services.SafeAsyncDispatcher.FireAndForget(
+                InvokeAsync, () => OnColumnResize.InvokeAsync(args), "DataGrid.ColumnResize");
         }
+        StateHasChanged();
+    }
+
+    /// <summary>
+    /// Awaited counterpart to <see cref="UpdateColumnWidth"/> — the ONE method the resize
+    /// handle's JS commit path calls (see that method's remarks). Awaits
+    /// <see cref="OnColumnResize"/> directly instead of dispatching it fire-and-forget, so the
+    /// caller (DataGridHeaderCell's commitHandler, itself awaited by JS) doesn't resolve —
+    /// and doesn't release the drag arbiter token — until persistence for THIS width actually
+    /// completes. Overlapping resize commits on the same column therefore serialize instead
+    /// of racing (PR-353 round-13 #1).
+    /// </summary>
+    internal async Task CommitColumnWidthAsync(string columnId, double width, bool autoFit = false)
+    {
+        var column = ApplyColumnWidth(columnId, width);
+        if (column is null) return;
+
+        if (OnColumnResize.HasDelegate)
+        {
+            var args = new ColumnResizeEventArgs(column.Id, column.Width!.Value, autoFit);
+            await OnColumnResize.InvokeAsync(args);
+        }
+        StateHasChanged();
     }
 
     private void SyncOrderedColumns()
@@ -3386,10 +3432,21 @@
 
     // --- Row Reordering ---
 
-    public void MoveRow(int oldIndex, int newIndex)
+    /// <summary>
+    /// Permutes <see cref="_displayedItems"/> (and its parallel row-token arrays) from
+    /// <paramref name="oldIndex"/> to <paramref name="newIndex"/>. Shared mutation core for
+    /// <see cref="MoveRow"/> (public sync API, fire-and-forget consumer dispatch) and
+    /// <see cref="MoveRowAsync"/> (awaited pointer-commit path) — see their remarks for why
+    /// the same mutation needs two different dispatch strategies for
+    /// <see cref="OnRowReorder"/> (PR-353 round-13 #2, mirrors ApplyColumnWidth/#1).
+    /// </summary>
+    private bool TryMoveRowCore(int oldIndex, int newIndex, out TItem item)
     {
         if (oldIndex < 0 || newIndex < 0 || oldIndex >= _displayedItems.Count || newIndex >= _displayedItems.Count)
-            return;
+        {
+            item = default!;
+            return false;
+        }
 
         // Permute the parallel slot-token array (and its content snapshot —
         // round-8 #1) through the EXACT SAME RemoveAt+Insert as _displayedItems
@@ -3410,15 +3467,28 @@
         _displayedItemTokenContents.RemoveAt(oldIndex);
         _displayedItemTokenContents.Insert(newIndex, tokenContent);
 
-        var item = _displayedItems[oldIndex];
+        item = _displayedItems[oldIndex];
         _displayedItems.RemoveAt(oldIndex);
         _displayedItems.Insert(newIndex, item);
+        return true;
+    }
 
-        // Public sync API — can't change return type without breaking consumers.
-        // Dispatch the consumer callback through SafeAsyncDispatcher so faults
-        // in async handlers are observed (logged) instead of becoming
-        // UnobservedTaskExceptions, and so a faulting outer InvokeAsync (e.g.
-        // disposed renderer) is also handled.
+    /// <summary>
+    /// Public sync entry point for app code that calls this directly (can't change the
+    /// return type without breaking consumers). Dispatches the consumer callback through
+    /// SafeAsyncDispatcher so faults in async handlers are observed (logged) instead of
+    /// becoming UnobservedTaskExceptions, and so a faulting outer InvokeAsync (e.g. disposed
+    /// renderer) is also handled.
+    ///
+    /// The pointer row-reorder commit path (<see cref="ReorderRowByKeyAsync"/>, driven by
+    /// JS's registerRowReorder) does NOT call this wrapper; it calls
+    /// <see cref="MoveRowAsync"/> directly instead — see that method's remarks
+    /// (PR-353 round-13 #2, mirrors UpdateColumnWidth/#1).
+    /// </summary>
+    public void MoveRow(int oldIndex, int newIndex)
+    {
+        if (!TryMoveRowCore(oldIndex, newIndex, out var item)) return;
+
         if (OnRowReorder.HasDelegate)
         {
             var args = new RowReorderEventArgs<TItem>(item, oldIndex, newIndex);
@@ -3426,6 +3496,28 @@
                 InvokeAsync,
                 () => OnRowReorder.InvokeAsync(args),
                 "DataGrid.RowReorder");
+        }
+
+        StateHasChanged();
+    }
+
+    /// <summary>
+    /// Awaited counterpart to <see cref="MoveRow"/> — the ONE method the pointer row-reorder
+    /// commit path (<see cref="ReorderRowByKeyAsync"/>) calls. Awaits
+    /// <see cref="OnRowReorder"/> directly instead of dispatching it fire-and-forget, so
+    /// <c>ReorderRowByKeyAsync</c> — itself awaited end-to-end from JS's registerRowReorder
+    /// invokeMethodAsync call, which holds the cross-engine drag arbiter token open until
+    /// that promise settles — doesn't resolve, and doesn't release the token, until
+    /// persistence for THIS move actually completes (PR-353 round-13 #2).
+    /// </summary>
+    internal async Task MoveRowAsync(int oldIndex, int newIndex)
+    {
+        if (!TryMoveRowCore(oldIndex, newIndex, out var item)) return;
+
+        if (OnRowReorder.HasDelegate)
+        {
+            var args = new RowReorderEventArgs<TItem>(item, oldIndex, newIndex);
+            await OnRowReorder.InvokeAsync(args);
         }
 
         StateHasChanged();
@@ -3468,13 +3560,17 @@
             if (OnError.HasDelegate) await OnError.InvokeAsync(captureEx);
         }
 
-        // Set BEFORE MoveRow, not after: MoveRow ends with StateHasChanged(), and a
+        // Set BEFORE MoveRowAsync, not after: MoveRowAsync ends with StateHasChanged(), and a
         // synchronous-rendering host (bUnit's TestRenderer notably) can run the next
         // OnAfterRenderAsync inline from inside that call — if the flag flipped only
         // afterward, that render would see it still false and skip the animation with
         // nothing left to pick it up later (mirrors HandleColumnReorder's ordering).
+        //
+        // Awaited MoveRowAsync, not the public fire-and-forget MoveRow (round-13 #2) — see
+        // MoveRowAsync's remarks: this commit is itself awaited end-to-end from JS, and the
+        // cross-engine drag arbiter token stays held until that promise settles.
         _pendingRowReorderAnimation = true;
-        MoveRow(validation.OldIndex, validation.NewIndex);
+        await MoveRowAsync(validation.OldIndex, validation.NewIndex);
     }
 
     /// <summary>

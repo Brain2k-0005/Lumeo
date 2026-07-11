@@ -464,6 +464,10 @@
             // resizing would silently stop working (Codex review on #46).
             try { await Interop.UnregisterColumnResize(_resizeHandleId); }
             catch (Microsoft.JSInterop.JSDisconnectedException) { }
+            // Mirrors the resize listener teardown above — round-13 #3's key-selective
+            // preventDefault listener is tied to the same now-detached handle element.
+            try { await Interop.UnregisterPreventDefaultKeys(_resizeHandleId); }
+            catch (Microsoft.JSInterop.JSDisconnectedException) { }
             _resizeRegistered = false;
         }
 
@@ -552,9 +556,33 @@
             Column.MaxWidth,
             async (finalWidth, autoFit) =>
             {
-                ParentGrid?.UpdateColumnWidth(Column.Id, finalWidth, autoFit);
+                // Awaited internal commit, NOT the public fire-and-forget UpdateColumnWidth
+                // (PR-353 round-13 #1) — this lambda is itself awaited end-to-end from JS's
+                // registerColumnResize invokeMethodAsync call for EVERY entry point (pointer
+                // drag, dblclick auto-fit, keyboard nudge all funnel through this ONE
+                // commitHandler), which holds the cross-engine drag arbiter token open until
+                // the returned promise settles. See DataGrid.CommitColumnWidthAsync's remarks.
+                if (ParentGrid is not null)
+                    await ParentGrid.CommitColumnWidthAsync(Column.Id, finalWidth, autoFit);
                 await InvokeAsync(StateHasChanged);
             });
+
+        // Key-selective preventDefault for the handle's OWN resize keys (round-13 #3):
+        // the handle's @onkeydown:stopPropagation below keeps ArrowLeft/ArrowRight from
+        // ever reaching the table-level RegisterPreventDefaultKeys listener (registered
+        // on the table by DataGrid.OnAfterRenderAsync for header/cell keyboard nav), so
+        // without this the browser's default page/grid scroll still fires on every
+        // keyboard resize step. Registered directly on the handle — not the header
+        // <th> — so it only ever suppresses the two keys THIS element's own
+        // HandleResizeKeyDown consumes; plain header keyboard navigation (Tab, Enter,
+        // Ctrl+Arrow on the <th> itself, etc.) is untouched. Mirrors the table-level
+        // registration's idiom (a static @onkeydown:preventDefault can't be scoped to
+        // just Arrow keys — it's fixed at render time and would also swallow Tab).
+        await Interop.RegisterPreventDefaultKeys(_resizeHandleId, new[]
+        {
+            new PreventDefaultKeyRule("ArrowLeft"),
+            new PreventDefaultKeyRule("ArrowRight"),
+        });
         _resizeRegistered = true;
     }
 
@@ -619,6 +647,13 @@
             try
             {
                 await Interop.UnregisterColumnResize(_resizeHandleId);
+            }
+            catch (JSDisconnectedException) { }
+            // Mirrors the resize listener teardown — round-13 #3's key-selective
+            // preventDefault listener must not outlive the handle it's attached to.
+            try
+            {
+                await Interop.UnregisterPreventDefaultKeys(_resizeHandleId);
             }
             catch (JSDisconnectedException) { }
         }

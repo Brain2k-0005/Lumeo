@@ -158,9 +158,11 @@ public class DataGridRowReorderTests : IAsyncLifetime
         Assert.True(handled, "no commit handler registered for gridId");
         Assert.Equal(new List<string> { "Bob", "Charlie", "Alice" }, RowOrder(cut));
 
-        // The reorder callback is dispatched fire-and-forget (SafeAsyncDispatcher,
-        // same as MoveRow's public contract) — poll rather than assume synchronous
-        // completion.
+        // The pointer commit path routes through the AWAITED MoveRowAsync, not the
+        // public fire-and-forget MoveRow (PR-353 round-13 #2) — SimulateRowReorderCommit
+        // above already awaited the whole chain (mutation + OnRowReorder + the
+        // StateHasChanged that schedules the FLIP animation), so this is expected to
+        // already be true. WaitFor is kept as a defensive poll, not a requirement.
         await WaitFor(() => fired.Count > 0);
         Assert.Single(fired);
         Assert.Equal("Alice", fired[0].Item.Name);
@@ -170,17 +172,17 @@ public class DataGridRowReorderTests : IAsyncLifetime
 
         // FLIP handshake fired exactly once for this commit — CaptureRowRects runs
         // synchronously before the mutation; AnimateRowReorder runs from the
-        // OnAfterRenderAsync pass triggered by MoveRow's StateHasChanged, which is
-        // dispatched the same fire-and-forget way as OnRowReorder above.
+        // OnAfterRenderAsync pass triggered by MoveRowAsync's StateHasChanged, which
+        // (since round-13 #2) only runs AFTER the awaited OnRowReorder callback above
+        // completes.
         Assert.Single(_interop.CaptureRowRectsGridIds, gridId);
         await WaitFor(() => _interop.AnimateRowReorderCalls.Any(c => c.gridId == gridId));
         Assert.Single(_interop.AnimateRowReorderCalls, c => c.gridId == gridId);
     }
 
-    /// <summary>Polls <paramref name="condition"/> for up to 2s — MoveRow's
-    /// OnRowReorder callback (and the FLIP animation it schedules) is dispatched
-    /// fire-and-forget (SafeAsyncDispatcher), so bUnit's synchronous InvokeAsync
-    /// return doesn't guarantee either has landed yet.</summary>
+    /// <summary>Polls <paramref name="condition"/> for up to 2s — defensive against
+    /// any async gap between the commit call returning and the render/animation
+    /// landing (e.g. a slow consumer OnRowReorder handler elsewhere in this file).</summary>
     private static async Task WaitFor(Func<bool> condition)
     {
         var deadline = DateTime.UtcNow.AddSeconds(2);
