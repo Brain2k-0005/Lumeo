@@ -234,6 +234,56 @@ public class DataGridReorderConstraintTests : IAsyncLifetime
         Assert.Equal(before, HeaderOrder(cut)); // right-pinned C never displaced, B never moved
     }
 
+    // --- Canonical commit guard (PR-353 round-10) ---
+
+    [Fact]
+    public async Task Pointer_Commit_After_Reorderable_Disabled_Mid_Settle_Is_Rejected_And_Clears_Transforms()
+    {
+        // Round-10 finding #1: Reorderable flips off DURING the ~180ms JS settle
+        // window — after the pointer released but before the delayed commit
+        // reaches .NET. JS has already left the dragged column and its shifted
+        // siblings translated, expecting the accept path's CaptureColumnRects to
+        // hand them off; ReorderColumnByIdAsync's canonical guard
+        // (ValidateColumnReorderCommitAsync) must reject WITHOUT mutating and
+        // MUST still clear those stale transforms. Calling the internal method
+        // directly (rather than through SimulateColumnReorderCommit) is
+        // deliberate: it reproduces the exact race — a commit that reaches .NET
+        // after Reorderable is already false in component state, regardless of
+        // whether JS-side unregister has caught up yet.
+        var (a, b, c) = Cols();
+        ColumnReorderEventArgs? fired = null;
+        var cut = RenderGrid(new() { a, b, c }, args => fired = args);
+        var gridId = cut.Find("[data-slot='datagrid']").GetAttribute("data-grid-id")!;
+        var before = HeaderOrder(cut);
+
+        cut.Render(p => p.Add(g => g.Reorderable, false));
+        await cut.InvokeAsync(() => cut.Instance.ReorderColumnByIdAsync(b.Id, c.Id));
+
+        Assert.Null(fired);
+        Assert.Equal(before, HeaderOrder(cut));
+        Assert.Contains(gridId, _interop.ClearColumnReorderTransformsGridIds);
+    }
+
+    [Fact]
+    public async Task Pointer_Commit_Accept_Never_Calls_The_Stale_Transform_Clear()
+    {
+        // Canonical-guard symmetry check: the ACCEPT path (a valid, same-
+        // partition commit) mutates _orderedColumns and fires OnColumnReorder —
+        // and must NOT also call ClearStaleColumnReorderTransformsAsync, which
+        // is reserved for the reject branch (CaptureColumnRects owns transform
+        // handoff on the accept side instead).
+        var (a, b, c) = Cols();
+        ColumnReorderEventArgs? fired = null;
+        var cut = RenderGrid(new() { a, b, c }, args => fired = args);
+        var gridId = cut.Find("[data-slot='datagrid']").GetAttribute("data-grid-id")!;
+
+        await cut.InvokeAsync(() => _interop.SimulateColumnReorderCommit(gridId, b.Id, c.Id));
+
+        cut.WaitForAssertion(() => Assert.NotNull(fired));
+        Assert.Equal(new List<string?> { a.Id, c.Id, b.Id }, HeaderOrder(cut));
+        Assert.DoesNotContain(gridId, _interop.ClearColumnReorderTransformsGridIds);
+    }
+
     // --- Affordance structure ---
 
     [Fact]

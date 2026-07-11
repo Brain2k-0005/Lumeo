@@ -33,6 +33,8 @@ internal static partial class LumeoDefaultStrings
         ["DataGrid.PinLeft"] = "왼쪽 고정",
         ["DataGrid.PinRight"] = "오른쪽 고정",
         ["DataGrid.Unpin"] = "고정 해제",
+        ["DataGrid.ResizeColumn"] = "열 너비 조정(화살표 키 사용, 더블클릭으로 자동 맞춤)",
+        ["DataGrid.DragToReorder"] = "드래그하여 열 순서 변경",
         ["DataGrid.Hide"] = "숨기기",
         ["DataGrid.Show"] = "표시",
         ["DataGrid.SortAscending"] = "오름차순 정렬",
@@ -59,6 +61,8 @@ internal static partial class LumeoDefaultStrings
         ["DataGrid.MoveDown"] = "아래로 이동",
         ["DataGrid.Retry"] = "다시 시도",
         ["DataGrid.ErrorLoadingData"] = "데이터 로딩 실패: {0}",
+        ["DataGrid.DragToReorderRow"] = "드래그하여 행 순서 변경",
+        ["DataGrid.RowReorderUnavailable"] = "그룹화 또는 가상화 중에는 행 순서를 변경할 수 없습니다",
         ["Filter.FilterTitle"] = "필터: {0}",
 
         // Pagination

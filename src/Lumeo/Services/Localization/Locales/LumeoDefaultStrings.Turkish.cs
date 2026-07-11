@@ -33,6 +33,8 @@ internal static partial class LumeoDefaultStrings
         ["DataGrid.PinLeft"] = "Sola sabitle",
         ["DataGrid.PinRight"] = "Sağa sabitle",
         ["DataGrid.Unpin"] = "Sabitlemeyi kaldır",
+        ["DataGrid.ResizeColumn"] = "Sütun genişliğini ayarla (ok tuşlarını kullanın, otomatik sığdırmak için çift tıklayın)",
+        ["DataGrid.DragToReorder"] = "Sütunu yeniden sıralamak için sürükleyin",
         ["DataGrid.Hide"] = "Gizle",
         ["DataGrid.Show"] = "Göster",
         ["DataGrid.SortAscending"] = "Artan sırala",
@@ -59,6 +61,8 @@ internal static partial class LumeoDefaultStrings
         ["DataGrid.MoveDown"] = "Aşağı taşı",
         ["DataGrid.Retry"] = "Yeniden dene",
         ["DataGrid.ErrorLoadingData"] = "Yükleme hatası: {0}",
+        ["DataGrid.DragToReorderRow"] = "Satırı yeniden sıralamak için sürükleyin",
+        ["DataGrid.RowReorderUnavailable"] = "Gruplama veya sanallaştırma sırasında satır sıralaması değiştirilemez",
         ["Filter.FilterTitle"] = "Filtre: {0}",
 
         // Pagination

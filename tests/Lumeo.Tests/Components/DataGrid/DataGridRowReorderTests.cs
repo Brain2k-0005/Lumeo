@@ -238,6 +238,67 @@ public class DataGridRowReorderTests : IAsyncLifetime
         Assert.Equal(before, RowOrder(cut));
     }
 
+    // --- Canonical commit guard (PR-353 round-10), symmetric to
+    // DataGridReorderConstraintTests' column-engine coverage ---
+
+    [Fact]
+    public async Task Pointer_Commit_After_Grid_Becomes_Grouped_Mid_Settle_Is_Rejected_And_Clears_Transforms()
+    {
+        // Round-10 finding #2: the grid becomes grouped (or virtualized, or
+        // RowReorderable flips off — all three collapse into
+        // RowReorderPointerActive) DURING the ~180ms JS settle window. JS has
+        // already left the dragged row, its shifted siblings, and their
+        // expanded DetailTemplate rows translated, expecting the accept path's
+        // CaptureRowRects to hand them off; ReorderRowByKeyAsync's canonical
+        // guard (ValidateRowReorderCommitAsync) must reject WITHOUT mutating
+        // and MUST still clear those stale transforms. Calling the internal
+        // method directly reproduces the exact race — a commit reaching .NET
+        // after RowReorderPointerActive is already false in component state.
+        var fired = new List<RowReorderEventArgs<Emp>>();
+        var cut = _ctx.Render<Lumeo.DataGrid<Emp>>(p => p
+            .Add(x => x.Items, GetData())
+            .Add(x => x.Columns, GetColumns())
+            .Add(x => x.RowReorderable, true)
+            .Add(x => x.OnRowReorder, EventCallback.Factory.Create<RowReorderEventArgs<Emp>>(this, args => fired.Add(args))));
+
+        var gridId = cut.Find("[data-slot='datagrid']").GetAttribute("data-grid-id")!;
+        var aliceKey = KeyOf(cut, "Alice");
+        var charlieKey = KeyOf(cut, "Charlie");
+        var before = RowOrder(cut);
+
+        cut.Render(p => p.Add(x => x.GroupBy, "Dept"));
+        await cut.InvokeAsync(() => cut.Instance.ReorderRowByKeyAsync(aliceKey, charlieKey));
+
+        Assert.Empty(fired);
+        Assert.Equal(before, RowOrder(cut));
+        Assert.Contains(gridId, _interop.ClearRowReorderTransformsGridIds);
+    }
+
+    [Fact]
+    public async Task Pointer_Commit_Accept_Never_Calls_The_Stale_Transform_Clear()
+    {
+        // Canonical-guard symmetry check: the ACCEPT path mutates
+        // _displayedItems (via MoveRow) and fires OnRowReorder — and must NOT
+        // also call ClearStaleRowReorderTransformsAsync, which is reserved for
+        // the reject branch (CaptureRowRects owns transform handoff instead).
+        var fired = new List<RowReorderEventArgs<Emp>>();
+        var cut = _ctx.Render<Lumeo.DataGrid<Emp>>(p => p
+            .Add(x => x.Items, GetData())
+            .Add(x => x.Columns, GetColumns())
+            .Add(x => x.RowReorderable, true)
+            .Add(x => x.OnRowReorder, EventCallback.Factory.Create<RowReorderEventArgs<Emp>>(this, args => fired.Add(args))));
+
+        var gridId = cut.Find("[data-slot='datagrid']").GetAttribute("data-grid-id")!;
+        var aliceKey = KeyOf(cut, "Alice");
+        var charlieKey = KeyOf(cut, "Charlie");
+
+        await cut.InvokeAsync(async () => await _interop.SimulateRowReorderCommit(gridId, aliceKey, charlieKey));
+
+        await WaitFor(() => fired.Count > 0);
+        Assert.Equal(new List<string> { "Bob", "Charlie", "Alice" }, RowOrder(cut));
+        Assert.DoesNotContain(gridId, _interop.ClearRowReorderTransformsGridIds);
+    }
+
     [Fact]
     public async Task Pointer_Commit_Resolves_By_Key_Not_Stale_Index_Across_An_External_Reorder()
     {

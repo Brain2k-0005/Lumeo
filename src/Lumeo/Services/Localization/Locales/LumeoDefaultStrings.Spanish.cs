@@ -33,6 +33,8 @@ internal static partial class LumeoDefaultStrings
         ["DataGrid.PinLeft"] = "Fijar a la izquierda",
         ["DataGrid.PinRight"] = "Fijar a la derecha",
         ["DataGrid.Unpin"] = "Desanclar",
+        ["DataGrid.ResizeColumn"] = "Cambiar tamaño de columna (use las flechas, doble clic para ajuste automático)",
+        ["DataGrid.DragToReorder"] = "Arrastrar para reordenar la columna",
         ["DataGrid.Hide"] = "Ocultar",
         ["DataGrid.Show"] = "Mostrar",
         ["DataGrid.SortAscending"] = "Orden ascendente",
@@ -59,6 +61,8 @@ internal static partial class LumeoDefaultStrings
         ["DataGrid.MoveDown"] = "Bajar",
         ["DataGrid.Retry"] = "Reintentar",
         ["DataGrid.ErrorLoadingData"] = "Error al cargar los datos: {0}",
+        ["DataGrid.DragToReorderRow"] = "Arrastrar para reordenar la fila",
+        ["DataGrid.RowReorderUnavailable"] = "El reordenamiento de filas no está disponible durante la agrupación o la virtualización",
         ["Filter.FilterTitle"] = "Filtro: {0}",
 
         // Pagination

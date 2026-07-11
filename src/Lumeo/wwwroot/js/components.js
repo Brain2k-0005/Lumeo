@@ -2459,7 +2459,14 @@ export function unregisterOtpPaste(baseId, length) {
 // ends/cancels/never-arms — closes every cross-engine combination (resize
 // blocks reorder, reorder blocks resize, column reorder blocks row reorder
 // and back) while leaving independent grids on the same page free to drag
-// concurrently.
+// concurrently. Column/row reorder additionally hold the token through their
+// whole post-release settle window (round-10 #3): the drop itself only
+// SCHEDULES the .NET commit after a ~180ms glide, so releasing at drop time
+// would let a new gesture claim the grid while that queued commit is still
+// pending — the token is released only once the settle timeout actually
+// fires (or is torn down by cancelActiveDrag), not when the pointer is
+// released.
+
 const gridActiveDrags = new Map(); // gridId -> engine name currently owning the live drag
 
 function claimGridDrag(gridId, engine) {
@@ -3256,15 +3263,23 @@ export function registerColumnReorder(gridId, dotnetRef) {
     // drop, the dragged column glides to its projected slot (siblings are already
     // resting at their live-shift positions — nothing more to animate for them);
     // once that settle finishes, OnColumnReorderCommit fires exactly once.
+    //
+    // The arbiter token claimed at pointerdown is held through the WHOLE settle
+    // window, not released here — round-10 finding #3: releasing it immediately
+    // (the old behavior) let a new column/row reorder or resize claim the same
+    // grid while this pendingSettle timeout was still going to invoke .NET,
+    // so a stale queued commit could mutate/re-render the grid while another
+    // gesture owned live transforms. The token is only released once the
+    // settle timeout actually runs (below) or cancelActiveDrag tears down a
+    // still-pending settle (unregisterColumnReorder racing this window).
     const finishDrag = (commitTargetColId) => {
         const d = drag;
         drag = null;
-        releaseGridDrag(gridId, 'column-reorder');
         window.removeEventListener('keydown', onKeyDown, true);
         document.body.style.cursor = '';
         document.documentElement.style.cursor = '';
         document.body.style.userSelect = '';
-        if (!d.armed) return; // never engaged (plain click) — nothing to animate/commit
+        if (!d.armed) { releaseGridDrag(gridId, 'column-reorder'); return; } // never engaged (plain click) — nothing to animate/commit
         try { d.captureTarget.releasePointerCapture(d.pointerId); } catch (_) { }
 
         const isCommit = !!commitTargetColId;
@@ -3310,6 +3325,9 @@ export function registerColumnReorder(gridId, dotnetRef) {
                     cell.style.transform = '';
                 }
             }
+            // Only now — after the queued commit/glide-back has actually been
+            // dispatched — does another gesture get to claim this grid (round-10 #3).
+            releaseGridDrag(gridId, 'column-reorder');
         }, REORDER_SETTLE_MS + 20);
         pendingSettle = { timeoutId, cells: settleCells };
     };
@@ -3489,13 +3507,16 @@ export function registerColumnReorder(gridId, dotnetRef) {
     // pendingSettle still tracks the queued commit/glide-back timeout and the
     // cells finishDrag left translated for it — cancel the timeout so the
     // now-torn-down commit handler is never invoked, and strip the transforms
-    // immediately since no future FLIP pass will do it for us.
+    // immediately since no future FLIP pass will do it for us. Also releases
+    // the arbiter token the settle window was holding (round-10 #3) — the
+    // timeout body that would normally release it never runs once cleared.
     const cancelActiveDrag = () => {
         if (drag) { finishDrag(null); return; }
         if (pendingSettle) {
             window.clearTimeout(pendingSettle.timeoutId);
             for (const cell of pendingSettle.cells) clearFlipStyles(cell);
             pendingSettle = null;
+            releaseGridDrag(gridId, 'column-reorder');
         }
     };
 
@@ -3672,15 +3693,23 @@ export function registerRowReorder(gridId, dotnetRef) {
     // read here — synchronously, at drag END, before that window opens — so
     // the .NET side can resolve current indices fresh at commit time, exactly
     // like the column engine already does by id (Codex round-5 #6).
+    //
+    // Vertical mirror of registerColumnReorder's arbiter hold (round-10 #3):
+    // the token claimed at pointerdown is held through the WHOLE settle
+    // window, not released here — releasing it immediately let a new
+    // column/row reorder or resize claim the same grid while this
+    // pendingSettle timeout was still going to invoke .NET, so a stale
+    // queued commit could mutate/re-render the grid while another gesture
+    // owned live transforms. Released once the settle timeout actually runs
+    // (below) or cancelActiveDrag tears down a still-pending settle.
     const finishDrag = (commit) => {
         const d = drag;
         drag = null;
-        releaseGridDrag(gridId, 'row-reorder');
         window.removeEventListener('keydown', onKeyDown, true);
         document.body.style.cursor = '';
         document.documentElement.style.cursor = '';
         document.body.style.userSelect = '';
-        if (!d.armed) return; // defensive — handle-only init always arms immediately
+        if (!d.armed) { releaseGridDrag(gridId, 'row-reorder'); return; } // defensive — handle-only init always arms immediately
         try { d.captureTarget.releasePointerCapture(d.pointerId); } catch (_) { }
 
         const targetIdx = d.lastProjectedIdx;
@@ -3756,6 +3785,9 @@ export function registerRowReorder(gridId, dotnetRef) {
                     }
                 }
             }
+            // Only now — after the queued commit/glide-back has actually been
+            // dispatched — does another gesture get to claim this grid (round-10 #3).
+            releaseGridDrag(gridId, 'row-reorder');
         }, ROW_REORDER_SETTLE_MS + 20);
         pendingSettle = { timeoutId, els: settleEls };
     };
@@ -3888,13 +3920,16 @@ export function registerRowReorder(gridId, dotnetRef) {
     // still tracks the queued commit/glide-back timeout and the row/detail
     // elements finishDrag left translated for it — cancel the timeout so the
     // now-torn-down commit handler is never invoked, and strip the transforms
-    // immediately since no future FLIP pass will do it for us.
+    // immediately since no future FLIP pass will do it for us. Also releases
+    // the arbiter token the settle window was holding (round-10 #3) — the
+    // timeout body that would normally release it never runs once cleared.
     const cancelActiveDrag = () => {
         if (drag) { finishDrag(false); return; }
         if (pendingSettle) {
             window.clearTimeout(pendingSettle.timeoutId);
             for (const el of pendingSettle.els) clearFlipStyles(el);
             pendingSettle = null;
+            releaseGridDrag(gridId, 'row-reorder');
         }
     };
 

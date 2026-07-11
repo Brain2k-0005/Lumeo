@@ -3268,13 +3268,67 @@
     /// to hidden columns) and routes through <see cref="HandleColumnReorder"/> so it
     /// shares the exact FLIP animation, persistence, and OnColumnReorder callback.
     /// Cross-pin-partition and per-column non-reorderable drops are rejected.
+    ///
+    /// This is a thin wrapper around <see cref="ValidateColumnReorderCommitAsync"/> —
+    /// see that method's remarks for why ALL validity checks live there instead of
+    /// here (PR-353 round-10 canonical commit-guard).
     /// </summary>
     internal async Task ReorderColumnByIdAsync(string sourceId, string targetId)
     {
-        if (!Reorderable || sourceId == targetId) return;
+        var validation = await ValidateColumnReorderCommitAsync(sourceId, targetId);
+        if (!validation.Valid) return;
+        await HandleColumnReorder(new ColumnReorderEventArgs(sourceId, validation.SourceIndex, validation.TargetIndex));
+    }
+
+    /// <summary>
+    /// Result of <see cref="ValidateColumnReorderCommitAsync"/>: whether the delayed
+    /// JS pointer commit is still valid, and — only when it is — the resolved
+    /// indices to reorder.
+    /// </summary>
+    private readonly record struct ColumnReorderCommitValidation(bool Valid, int SourceIndex, int TargetIndex);
+
+    /// <summary>
+    /// CANONICAL COMMIT GUARD for the column-reorder pointer path (PR-353 round-10).
+    ///
+    /// <c>ReorderColumnByIdAsync</c> is invoked by JS ~180ms AFTER the pointer was
+    /// released, once the drop-settle glide finishes (see registerColumnReorder's
+    /// <c>pendingSettle</c> in components.js). Anything about the grid's state can
+    /// change during that window — <see cref="Reorderable"/> flipped off, the
+    /// source/target column hidden or unregistered, or a column moved into another
+    /// pin partition — and in every one of those cases JS has already left the
+    /// dragged column and its live-shifted siblings translated via inline
+    /// transforms, expecting <c>CaptureColumnRects</c> (called only from the ACCEPT
+    /// path in <see cref="HandleColumnReorder"/>) to clear them as part of the FLIP
+    /// handoff.
+    ///
+    /// Every validity check for this commit MUST live in this one method, and its
+    /// reject branch MUST ALWAYS call <see cref="ClearStaleColumnReorderTransformsAsync"/>
+    /// before returning "invalid" — that is the whole point of centralizing these
+    /// checks instead of scattering early-returns across the caller: rounds 8, 9 and
+    /// 10 each independently rediscovered a NEW way for a stale commit to slip past
+    /// a hand-rolled guard without the matching cleanup (stale keys, hidden columns,
+    /// <see cref="Reorderable"/> toggled off). Any FUTURE validity condition belongs
+    /// as one more check inside this method — never as a bare early return in
+    /// <see cref="ReorderColumnByIdAsync"/> or anywhere else — so it inherits the
+    /// transform cleanup for free instead of reintroducing this bug class again.
+    /// The accept path, <see cref="HandleColumnReorder"/>, is the ONLY place allowed
+    /// to actually mutate <c>_orderedColumns</c> for a pointer commit; it is reached
+    /// only when this method returns <c>Valid: true</c>.
+    /// </summary>
+    private async Task<ColumnReorderCommitValidation> ValidateColumnReorderCommitAsync(string sourceId, string targetId)
+    {
+        if (!Reorderable || sourceId == targetId)
+        {
+            await ClearStaleColumnReorderTransformsAsync();
+            return default;
+        }
         var src = _orderedColumns.FindIndex(c => c.Id == sourceId);
         var tgt = _orderedColumns.FindIndex(c => c.Id == targetId);
-        if (src < 0 || tgt < 0) { await ClearStaleColumnReorderTransformsAsync(); return; }
+        if (src < 0 || tgt < 0)
+        {
+            await ClearStaleColumnReorderTransformsAsync();
+            return default;
+        }
         var srcCol = _orderedColumns[src];
         var tgtCol = _orderedColumns[tgt];
         // round-9 #3: a dragged source or drop target hidden during the 180ms
@@ -3283,12 +3337,22 @@
         // _orderedColumns (hiding doesn't remove the entry), but committing
         // against a column the user can no longer see would reorder something
         // invisible or drop relative to a target that isn't rendered.
-        if (!srcCol.Visible) { await ClearStaleColumnReorderTransformsAsync(); return; }
-        if (!tgtCol.Visible) { await ClearStaleColumnReorderTransformsAsync(); return; }
-        if (!srcCol.Reorderable) { await ClearStaleColumnReorderTransformsAsync(); return; }
-        if (!tgtCol.Reorderable) { await ClearStaleColumnReorderTransformsAsync(); return; } // a locked column is un-displaceable: refuse drops onto its slot
-        if (srcCol.Pin != tgtCol.Pin) { await ClearStaleColumnReorderTransformsAsync(); return; } // same-partition only
-        await HandleColumnReorder(new ColumnReorderEventArgs(sourceId, src, tgt));
+        //
+        // round-10 #1: a locked column is un-displaceable (refuse drops onto its
+        // slot); the same-partition check mirrors the pointer-drag JS preview,
+        // which never proposes a cross-pin target. ALL five of these — visible,
+        // reorderable (both sides), same pin, plus the grid-level Reorderable
+        // check above — funnel through this ONE reject branch so every one of
+        // them gets the transform cleanup, instead of five separate early
+        // returns each needing its own reminder to call it.
+        if (!srcCol.Visible || !tgtCol.Visible
+            || !srcCol.Reorderable || !tgtCol.Reorderable
+            || srcCol.Pin != tgtCol.Pin)
+        {
+            await ClearStaleColumnReorderTransformsAsync();
+            return default;
+        }
+        return new ColumnReorderCommitValidation(true, src, tgt);
     }
 
     // round-8 #4: symmetric to ReorderRowByKeyAsync's stale-commit cleanup below —
@@ -3374,12 +3438,84 @@
     /// Captures FLIP "First" rects before mutating so the settled drag position and the
     /// post-render position can be diffed into one slide, then delegates the actual
     /// mutation + OnRowReorder callback to <see cref="MoveRow"/>.
+    ///
+    /// Thin wrapper around <see cref="ValidateRowReorderCommitAsync"/> — see that
+    /// method's remarks for why ALL validity checks live there instead of here
+    /// (PR-353 round-10 canonical commit-guard, symmetric to the column engine's
+    /// <see cref="ValidateColumnReorderCommitAsync"/>).
     /// </summary>
     internal async Task ReorderRowByKeyAsync(string sourceRowKey, string targetRowKey)
     {
-        if (!RowReorderPointerActive) return;
-        if (string.IsNullOrEmpty(sourceRowKey) || string.IsNullOrEmpty(targetRowKey)) return;
-        if (sourceRowKey == targetRowKey) return;
+        var validation = await ValidateRowReorderCommitAsync(sourceRowKey, targetRowKey);
+        if (!validation.Valid) return;
+
+        try { await Interop.CaptureRowRects(_gridId); }
+        catch (JSDisconnectedException) { }
+        catch (Exception captureEx)
+        {
+            // Same rationale as ReorderColumnByIdAsync's capture: a failed FLIP
+            // snapshot must never block the actual row-order mutation.
+            if (OnError.HasDelegate) await OnError.InvokeAsync(captureEx);
+        }
+
+        // Set BEFORE MoveRow, not after: MoveRow ends with StateHasChanged(), and a
+        // synchronous-rendering host (bUnit's TestRenderer notably) can run the next
+        // OnAfterRenderAsync inline from inside that call — if the flag flipped only
+        // afterward, that render would see it still false and skip the animation with
+        // nothing left to pick it up later (mirrors HandleColumnReorder's ordering).
+        _pendingRowReorderAnimation = true;
+        MoveRow(validation.OldIndex, validation.NewIndex);
+    }
+
+    /// <summary>
+    /// Result of <see cref="ValidateRowReorderCommitAsync"/>: whether the delayed JS
+    /// pointer commit is still valid, and — only when it is — the resolved indices
+    /// to reorder.
+    /// </summary>
+    private readonly record struct RowReorderCommitValidation(bool Valid, int OldIndex, int NewIndex);
+
+    /// <summary>
+    /// CANONICAL COMMIT GUARD for the row-reorder pointer path (PR-353 round-10) —
+    /// symmetric to <see cref="ValidateColumnReorderCommitAsync"/>; keep the two in
+    /// sync when either gains a new validity condition.
+    ///
+    /// <c>ReorderRowByKeyAsync</c> is invoked by JS ~180ms AFTER the pointer was
+    /// released, once the drop-settle glide finishes (see registerRowReorder's
+    /// <c>pendingSettle</c> in components.js). Anything about the grid's state can
+    /// change during that window — the grid becoming grouped/virtualized,
+    /// <see cref="RowReorderable"/> flipped off (both collapsed into
+    /// <see cref="RowReorderPointerActive"/>), or the source/target row removed by
+    /// an app-triggered refresh/filter/sort — and in every one of those cases JS has
+    /// already left the dragged row, its live-shifted siblings, and their expanded
+    /// DetailTemplate rows translated via inline transforms, expecting
+    /// <c>CaptureRowRects</c> (called only from the accept path in
+    /// <see cref="ReorderRowByKeyAsync"/>) to clear them as part of the FLIP handoff.
+    ///
+    /// Every validity check for this commit MUST live in this one method, and its
+    /// reject branch MUST ALWAYS call <see cref="ClearStaleRowReorderTransformsAsync"/>
+    /// before returning "invalid" — mirrors the column guard's rationale: rounds 8
+    /// and 10 each independently rediscovered a NEW way for a stale commit to slip
+    /// past a hand-rolled guard without the matching cleanup (stale keys, now
+    /// grouped/virtualized/disabled). Any FUTURE validity condition belongs as one
+    /// more check inside this method — never as a bare early return in
+    /// <see cref="ReorderRowByKeyAsync"/> or anywhere else — so it inherits the
+    /// transform cleanup for free. <see cref="MoveRow"/> (invoked only from
+    /// <see cref="ReorderRowByKeyAsync"/>'s accept path) is the ONLY place allowed to
+    /// actually mutate <c>_displayedItems</c> for a pointer commit; it is reached
+    /// only when this method returns <c>Valid: true</c>.
+    /// </summary>
+    private async Task<RowReorderCommitValidation> ValidateRowReorderCommitAsync(string sourceRowKey, string targetRowKey)
+    {
+        // RowReorderPointerActive folds in RowReorderable, grouped/tree-grid mode,
+        // and client/server virtualization — any of which can flip during the
+        // 180ms settle window (round-10 #2).
+        if (!RowReorderPointerActive
+            || string.IsNullOrEmpty(sourceRowKey) || string.IsNullOrEmpty(targetRowKey)
+            || sourceRowKey == targetRowKey)
+        {
+            await ClearStaleRowReorderTransformsAsync();
+            return default;
+        }
 
         // Mirrors the DOM key DataGridRow.RowKey stamped at drag start/read at
         // drag end (see DataGridRowKeys.DomKeyFor's contract) — reference-type
@@ -3397,38 +3533,27 @@
         // reorder whatever rows happen to occupy the old positions now.
         if (oldIndex < 0 || newIndex < 0 || oldIndex == newIndex)
         {
-            // JS already left the dragged row and every live-shifted sibling
-            // (plus their expanded DetailTemplate rows) translated, expecting
-            // CaptureRowRects (called only from the accept path below) to clear
-            // those inline transforms as part of the FLIP handoff. This branch
-            // means that path never runs, so without an explicit clear here the
-            // rows stay visually stuck until some unrelated drag or render
-            // happens to clean them up (round-8 #2).
-            try { await Interop.ClearRowReorderTransforms(_gridId); }
-            catch (JSDisconnectedException) { }
-            catch (Exception clearEx)
-            {
-                if (OnError.HasDelegate) await OnError.InvokeAsync(clearEx);
-            }
-            return;
+            await ClearStaleRowReorderTransformsAsync();
+            return default;
         }
+        return new RowReorderCommitValidation(true, oldIndex, newIndex);
+    }
 
-        try { await Interop.CaptureRowRects(_gridId); }
+    // Symmetric to ClearStaleColumnReorderTransformsAsync above — JS already left
+    // the dragged row and every live-shifted sibling (plus their expanded
+    // DetailTemplate rows) translated, expecting CaptureRowRects (called only from
+    // the accept path in ReorderRowByKeyAsync) to clear those inline transforms as
+    // part of the FLIP handoff. Every reject branch of
+    // ValidateRowReorderCommitAsync calls this so that handoff still happens even
+    // though the accept path never runs (round-8 #2, round-10 #2).
+    private async Task ClearStaleRowReorderTransformsAsync()
+    {
+        try { await Interop.ClearRowReorderTransforms(_gridId); }
         catch (JSDisconnectedException) { }
-        catch (Exception captureEx)
+        catch (Exception clearEx)
         {
-            // Same rationale as ReorderColumnByIdAsync's capture: a failed FLIP
-            // snapshot must never block the actual row-order mutation.
-            if (OnError.HasDelegate) await OnError.InvokeAsync(captureEx);
+            if (OnError.HasDelegate) await OnError.InvokeAsync(clearEx);
         }
-
-        // Set BEFORE MoveRow, not after: MoveRow ends with StateHasChanged(), and a
-        // synchronous-rendering host (bUnit's TestRenderer notably) can run the next
-        // OnAfterRenderAsync inline from inside that call — if the flag flipped only
-        // afterward, that render would see it still false and skip the animation with
-        // nothing left to pick it up later (mirrors HandleColumnReorder's ordering).
-        _pendingRowReorderAnimation = true;
-        MoveRow(oldIndex, newIndex);
     }
 
     // --- Context Menu ---

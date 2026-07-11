@@ -33,6 +33,8 @@ internal static partial class LumeoDefaultStrings
         ["DataGrid.PinLeft"] = "固定到左侧",
         ["DataGrid.PinRight"] = "固定到右侧",
         ["DataGrid.Unpin"] = "取消固定",
+        ["DataGrid.ResizeColumn"] = "调整列宽(使用方向键，双击自动适应)",
+        ["DataGrid.DragToReorder"] = "拖动以重新排列列",
         ["DataGrid.Hide"] = "隐藏",
         ["DataGrid.Show"] = "显示",
         ["DataGrid.SortAscending"] = "升序",
@@ -59,6 +61,8 @@ internal static partial class LumeoDefaultStrings
         ["DataGrid.MoveDown"] = "下移",
         ["DataGrid.Retry"] = "重试",
         ["DataGrid.ErrorLoadingData"] = "加载失败：{0}",
+        ["DataGrid.DragToReorderRow"] = "拖动以重新排列行",
+        ["DataGrid.RowReorderUnavailable"] = "分组或虚拟化时无法重新排列行",
         ["Filter.FilterTitle"] = "筛选：{0}",
 
         // Pagination
