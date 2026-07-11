@@ -84,12 +84,20 @@
             // Suppress the browser's native scroll for the navigation keys this
             // toolbar handles itself (Codex/CodeRabbit P2: ArrowLeft/Right/Home/End
             // were moving roving focus AND scrolling the page/dock at the same time).
+            //
+            // SkipEditable (PR #356 round-4, Codex P2, mirrors Toolbar.razor's #356
+            // round-3 fix): an editable dock item (input/textarea/contenteditable)
+            // owns Arrow/Home/End itself for caret/selection movement. The shared
+            // roving-focus JS already returns early for editable focus targets, so
+            // without SkipEditable here this listener still preventDefault'd those
+            // keys before the browser could move the caret — the key then moved
+            // neither focus nor the caret.
             try
             {
                 await Interop.RegisterPreventDefaultKeys(
                     _elementId,
                     new[] { "ArrowLeft", "ArrowRight", "Home", "End" }
-                        .Select(k => new Lumeo.Services.PreventDefaultKeyRule(k)).ToArray());
+                        .Select(k => new Lumeo.Services.PreventDefaultKeyRule(k, SkipEditable: true)).ToArray());
                 _pdRegistered = true;
             }
             catch (JSDisconnectedException) { }

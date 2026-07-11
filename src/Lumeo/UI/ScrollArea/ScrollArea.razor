@@ -1,7 +1,7 @@
 @namespace Lumeo
 
 <div data-scroll-type="@TypeString" class="@CssClass" tabindex="0"
-     role="@(string.IsNullOrWhiteSpace(AriaLabel) ? null : "region")"
+     role="@(IsNamedRegion ? "region" : null)"
      aria-label="@AriaLabel" @attributes="AdditionalAttributes">
     @ChildContent
 </div>
@@ -54,6 +54,19 @@
 
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    // role="region" makes this a NAMED landmark region, so it must only be set when
+    // the element actually has an accessible name — the AriaLabel parameter renders
+    // aria-label directly, but a caller can just as validly splat aria-label or
+    // aria-labelledby via AdditionalAttributes (@attributes renders after the
+    // explicit aria-label= above, so a splatted aria-label wins on collision). Since
+    // tabindex="0" is now unconditional, missing this left keyboard/AT users landing
+    // on an unnamed, generically-focusable div instead of a named scrollable region
+    // whenever the label arrived via the splat (PR #356 round-4, Codex P2).
+    private bool IsNamedRegion =>
+        !string.IsNullOrWhiteSpace(AriaLabel) ||
+        (AdditionalAttributes is not null &&
+         (AdditionalAttributes.ContainsKey("aria-label") || AdditionalAttributes.ContainsKey("aria-labelledby")));
 
     // Overflow is owned by the per-type CSS rule (data-scroll-type) so the mode
     // can reserve a gutter or force a persistent bar; the base class only

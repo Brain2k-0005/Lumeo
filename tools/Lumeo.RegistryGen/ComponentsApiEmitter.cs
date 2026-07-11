@@ -476,9 +476,95 @@ public static class ComponentsApiEmitter
     internal static readonly Regex KeyComparisonRegex = new(
         "\\bcase\\s+\"(?<k>[^\"]*)\"(?:\\s*(?:or|,)\\s*\"(?<k>[^\"]*)\")*" +
         "|\\.Key\\s+is\\s+\"(?<k>[^\"]*)\"(?:\\s*(?:or|,)\\s*\"(?<k>[^\"]*)\")*" +
-        "|\\.Key\\s*==\\s*\"(?<k>[^\"]*)\"" +
-        "|\"(?<k>[^\"]*)\"(?:\\s*or\\s*\"(?<k>[^\"]*)\")*\\s*\\)?\\s*=>",
+        "|\\.Key\\s*==\\s*\"(?<k>[^\"]*)\"",
         RegexOptions.Compiled);
+
+    // The switch-EXPRESSION-arm alternative (`"X" => ...` / `"X" or "Y" => ...`), split
+    // out of KeyComparisonRegex: unlike the three alternatives above, a bare `"X" => ...`
+    // carries no `.Key`/`case` marker of its own, so matching it ANYWHERE in the file
+    // (the original round-2 fix) also credits switch expressions that have nothing to do
+    // with keyboard handling — e.g. Icon.razor's `name switch { "ArrowDown" => ...,
+    // "Home" => ... }` icon-glyph lookup, or Stepper.razor's OWN `intent switch { ... }`
+    // sitting right next to its real `e.Key switch { ... }` in the same file (PR #356
+    // round-4, Codex P2). Only applied within a Key-switch body — see
+    // <see cref="FindKeySwitchBodies"/> — never against the raw file text.
+    private static readonly Regex SwitchArmKeyRegex = new(
+        "\"(?<k>[^\"]*)\"(?:\\s*or\\s*\"(?<k>[^\"]*)\")*\\s*\\)?\\s*=>",
+        RegexOptions.Compiled);
+
+    // Every `switch {` (switch-EXPRESSION opener) in the file, so its governing
+    // expression can be inspected for a `.Key`/`Key` mention.
+    private static readonly Regex SwitchExpressionOpenerRegex = new(
+        "switch\\s*\\{",
+        RegexOptions.Compiled);
+
+    // A whole-word `Key` occurrence (matches the property access in `e.Key`, `args.Key`,
+    // or a bare `Key` local) — used to test whether a switch's governing expression is
+    // actually keyboard-key-shaped.
+    private static readonly Regex KeyWordRegex = new("\\bKey\\b", RegexOptions.Compiled);
+
+    /// <summary>
+    /// Finds the body span (start index + length, EXCLUDING the braces) of every switch
+    /// EXPRESSION in <paramref name="text"/> whose governing expression mentions `.Key`/
+    /// `Key` — the one shape every real keyboard switch in the codebase uses, whether
+    /// bare (`e.Key switch { "Enter" => ... }`) or tuple-patterned (Splitter/Resizable's
+    /// `(IsHorizontal, e.Key) switch { (true, "ArrowLeft") => ... }`). The governing
+    /// expression is taken as the text back to the nearest statement/block boundary
+    /// (`;`, `{`, or `}`) before "switch" — bounded, so an unrelated switch elsewhere in
+    /// the same file (Stepper's OWN `intent switch { ... }`, Icon's `name switch { ... }`
+    /// icon-glyph lookup) is correctly excluded since ITS governing expression has no
+    /// `Key` in it. Nested braces (an arm's own object initializer, tuple, etc.) are
+    /// balanced so the body span always ends at the switch's own matching close brace.
+    /// </summary>
+    private static IEnumerable<(int Start, int Length)> FindKeySwitchBodies(string text)
+    {
+        const int MaxLookback = 300; // generous for a one-line discriminant expression
+        foreach (Match opener in SwitchExpressionOpenerRegex.Matches(text))
+        {
+            var switchStart = opener.Index; // 's' of "switch"
+            var scanStart = switchStart;
+            var floor = Math.Max(0, switchStart - MaxLookback);
+            while (scanStart > floor && text[scanStart - 1] != ';' && text[scanStart - 1] != '{' && text[scanStart - 1] != '}')
+                scanStart--;
+            var discriminant = text.Substring(scanStart, switchStart - scanStart);
+            if (!KeyWordRegex.IsMatch(discriminant)) continue;
+
+            var bodyStart = opener.Index + opener.Length; // just past the opening '{'
+            var depth = 1;
+            var i = bodyStart;
+            while (i < text.Length && depth > 0)
+            {
+                if (text[i] == '{') depth++;
+                else if (text[i] == '}') depth--;
+                i++;
+            }
+            if (depth == 0) yield return (bodyStart, i - 1 - bodyStart);
+        }
+    }
+
+    /// <summary>
+    /// All key-literal occurrences in <paramref name="text"/> that sit in an actual
+    /// key-comparison context — <see cref="KeyComparisonRegex"/>'s three alternatives,
+    /// PLUS switch-expression arms but ONLY inside a genuine `.Key switch { }` block
+    /// (see <see cref="FindKeySwitchBodies"/>). Returns raw (Index, Key) occurrences,
+    /// unfiltered by <see cref="KnownKeys"/> — callers apply the whitelist themselves.
+    /// Shared by <see cref="ExtractA11y"/> and PerComponentEnricher's keyboardInteractions
+    /// summary so neither can drift from the other (PR #356 round-3, Codex P3).
+    /// </summary>
+    internal static IEnumerable<(int Index, string Key)> MatchKeyLiteralOccurrences(string text)
+    {
+        foreach (Match m in KeyComparisonRegex.Matches(text))
+            foreach (Capture c in m.Groups["k"].Captures)
+                yield return (c.Index, c.Value);
+
+        foreach (var (start, length) in FindKeySwitchBodies(text))
+        {
+            var body = text.Substring(start, length);
+            foreach (Match m in SwitchArmKeyRegex.Matches(body))
+                foreach (Capture c in m.Groups["k"].Captures)
+                    yield return (start + c.Index, c.Value);
+        }
+    }
 
     // One-hop local-variable key tracking, closing the gap the comment above USED to
     // document as accepted: Carousel/Stepper/TabsTrigger all pick their RTL-aware Arrow
@@ -530,13 +616,10 @@ public static class ComponentsApiEmitter
             if (text.Contains("@onkeydown") || text.Contains("KeyboardEventArgs"))
             {
                 keyboardInteractive = true;
-                foreach (Match m in KeyComparisonRegex.Matches(text))
+                foreach (var (_, k) in MatchKeyLiteralOccurrences(text))
                 {
-                    foreach (Capture c in m.Groups["k"].Captures)
-                    {
-                        if (!KnownKeys.Contains(c.Value)) continue; // still whitelist-gated
-                        keys.Add(c.Value == " " ? "Space" : c.Value);
-                    }
+                    if (!KnownKeys.Contains(k)) continue; // still whitelist-gated
+                    keys.Add(k == " " ? "Space" : k);
                 }
 
                 // One-hop local-variable resolution (see TupleKeyAssignRegex's doc comment).

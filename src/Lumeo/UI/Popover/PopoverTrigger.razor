@@ -95,7 +95,13 @@ else
     // so Space silently scrolls the page again while toggling the popover (Codex P3). Mirrors
     // DialogTrigger/SheetTrigger's _id.
     private string EffectiveTriggerId => LumeoIds.Effective(AdditionalAttributes, _triggerId);
-    private bool _pdRegistered;
+    // The id ACTUALLY registered for the Space-preventDefault rule (not just a bool) — a
+    // consumer-splatted id can change at runtime while the trigger stays mounted and
+    // SuppressActivationKeys stays false, in which case EffectiveTriggerId moves but a plain
+    // bool would short-circuit before re-registering against the new DOM id, leaving the OLD
+    // id's rule orphaned and the NEW element without Space's page-scroll suppression (PR #356
+    // round-4, Codex P2). Mirrors PivotGrid's _registeredWrapperId.
+    private string? _registeredId;
 
     private string CssClass => Cx.Merge("inline-flex", Class);
 
@@ -145,22 +151,33 @@ else
         // listener (else Space in the input would still be swallowed), and the
         // inverse transition registers it (else the button trigger loses its
         // Space-scroll suppression) — PR #356 round-3, Codex P2.
+        //
+        // Compared against the id ACTUALLY registered (not just a bool) so a consumer-
+        // splatted id that changes at runtime — while shouldRegister stays true — re-
+        // registers against the NEW id instead of leaving the rule attached to the stale
+        // one (PR #356 round-4, Codex P2).
         var shouldRegister = !AsChild && !SuppressActivationKeys;
-        if (shouldRegister == _pdRegistered) return;
+        if (!shouldRegister)
+        {
+            if (_registeredId is null) return;
+            try { await Interop.UnregisterPreventDefaultKeys(_registeredId); }
+            catch (JSDisconnectedException) { }
+            catch (ObjectDisposedException) { }
+            catch (InvalidOperationException) { }
+            _registeredId = null;
+            return;
+        }
+
+        var effectiveId = EffectiveTriggerId;
+        if (_registeredId == effectiveId) return;
         try
         {
-            if (shouldRegister)
-            {
-                await Interop.RegisterPreventDefaultKeys(
-                    EffectiveTriggerId,
-                    new[] { new Lumeo.Services.PreventDefaultKeyRule(" ") });
-                _pdRegistered = true;
-            }
-            else
-            {
-                await Interop.UnregisterPreventDefaultKeys(EffectiveTriggerId);
-                _pdRegistered = false;
-            }
+            if (_registeredId is not null)
+                await Interop.UnregisterPreventDefaultKeys(_registeredId);
+            await Interop.RegisterPreventDefaultKeys(
+                effectiveId,
+                new[] { new Lumeo.Services.PreventDefaultKeyRule(" ") });
+            _registeredId = effectiveId;
         }
         catch (JSDisconnectedException) { }
         catch (ObjectDisposedException) { }
@@ -169,10 +186,10 @@ else
 
     public async ValueTask DisposeAsync()
     {
-        if (!_pdRegistered) return;
+        if (_registeredId is null) return;
         try
         {
-            await Interop.UnregisterPreventDefaultKeys(EffectiveTriggerId);
+            await Interop.UnregisterPreventDefaultKeys(_registeredId);
         }
         catch (JSDisconnectedException) { }
         catch (ObjectDisposedException) { }
