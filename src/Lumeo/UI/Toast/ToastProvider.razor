@@ -378,6 +378,14 @@
     //       already at/over cap [finding 4]. See HandleUpdateAsync.
     //   (e) queue admission is FIFO within a group — the admit loop always dequeues via
     //       DequeueFirstMatching, which preserves arrival order.
+    //   (f) ReconcileGroup keeps alternating its eviction/admission passes for a group until a full
+    //       pass does neither — a single admission can put a group right back at "AT cap with
+    //       pending demand", which must keep draining the queue in the SAME call, not stall until an
+    //       unrelated future trigger [round-8 finding 1]. A retargeted QUEUED toast's destination is
+    //       reconciled before its source, mirroring (d) [round-8 finding 2]. The toast whose OWN
+    //       persistence/position change triggered a reconcile is never that reconcile's own eviction
+    //       candidate, via ReconcileGroup's `protectedId` parameter — every OTHER candidate is still
+    //       ranked strictly oldest-first [round-8 finding 3].
     //
     // Concurrency: multiple independent calls to ReconcileGroup for the SAME position CAN be in
     // flight at once (each suspended on its own eviction's ~220ms exit-animation Task.Delay) — this
@@ -441,46 +449,77 @@
     // cap accounting (TryAdmit, RemoveItemAsync after an actual unmount, HandleUpdateAsync after a
     // position/persistence change) calls this for the affected group(s) IMMEDIATELY after its own
     // mutation, with no yield in between, rather than mounting/evicting directly itself.
-    private async Task ReconcileGroup(ToastViewport.ToastPosition pos)
+    //
+    // <c>protectedId</c> (PR #357 round-8, finding 3): the id of the toast whose OWN state change
+    // is what triggered this specific call, if any — e.g. HandleUpdateAsync reconciling the group a
+    // toast just flipped persistent -> finite in. That toast must never be the eviction candidate
+    // picked below even when it genuinely is the oldest entry in `_toasts`: the whole point of this
+    // reconcile is to correct the group AROUND the toast that just became visible/finite, not to
+    // undo the very change that triggered it. Every other candidate is still ranked strictly by
+    // mount order (oldest first) — this only ever excludes the one protected id, nothing else.
+    private async Task ReconcileGroup(ToastViewport.ToastPosition pos, string? protectedId = null)
     {
-        // Shed down to the cap. Two distinct reasons this can be needed, both folded into one
-        // condition: strictly OVER cap (finding 4 — a mounted persistent just became finite and now
-        // counts, possibly pushing the group past EffectiveMaxToasts with no queue involved at
-        // all), OR AT cap with queue demand waiting behind it (the ordinary "make room for a new
-        // arrival" case). Evicts the oldest candidate that ISN'T already leaving — see the
-        // historical spam-hang note below for why the `!t.Leaving` filter is load-bearing, not
-        // cosmetic.
-        //
-        // PR #357 round-7 (finding 2): the condition itself is measured against
-        // LiveNonPersistentMountedCount, NOT the raw (Leaving-inclusive) NonPersistentMountedCount.
-        // A toast already mid-exit has already relinquished its claim on the cap the instant some
-        // EARLIER reconciliation marked it Leaving (see LiveNonPersistentMountedCount's doc comment)
-        // — it is going to vanish on its own without this loop's help. Measuring the raw count here
-        // let a group that merely HAS a Leaving toast sitting in it look over-cap on paper even
-        // though the LIVE count is within bounds: a persistent/loading toast resolving to finite
-        // while an unrelated sibling in the same group is already leaving (e.g. MaxToasts=1, A
-        // leaving, loading P resolves) made the raw count 2 > 1, and since the candidate query below
-        // already excludes Leaving toasts (A), it evicted the live, just-resolved P instead —
-        // promise/loading toasts vanishing during perfectly ordinary exit overlap. Live count keeps
-        // this loop from ever treating "some toast is already on its way out" as "we're over cap and
-        // must evict something else".
-        while (LiveNonPersistentMountedCount(pos) > EffectiveMaxToasts ||
-               (PendingCount(pos) > 0 && LiveNonPersistentMountedCount(pos) >= EffectiveMaxToasts))
+        // PR #357 round-8 (finding 1): the eviction and admission passes below run in an OUTER loop
+        // until a full pass does neither, instead of each running exactly once. Mounting a queued
+        // toast can immediately put the group back at "AT cap with pending demand" (more entries
+        // still queued behind the one just admitted) — the exact condition the eviction loop below
+        // already treats as "keep draining", just never re-checked it after an admission pass. Without
+        // this, a burst that queues several toasts behind one slow eviction only ever drained ONE of
+        // them once that eviction's exit animation finished (the caller whose await was suspended on
+        // it), leaving the rest stranded until some unrelated toast happened to time out or get
+        // dismissed — see the finding for the concrete MaxToasts=1 A/B/C repro.
+        while (true)
         {
-            var oldest = _toasts.FirstOrDefault(t =>
-                !IsPersistent(t.Options) && !t.Leaving && ResolvePosition(t.Options.Position) == pos);
-            if (oldest is null) break; // every remaining over-cap candidate is already Leaving —
-                                        // its own removal will reconcile (ReconcileGroup) again.
-            await RemoveWithExitAsync(oldest.Id, runOnDismiss: false);
-        }
+            var evictedAny = false;
 
-        // Admit queued toasts (e) FIFO while room remains. This is the ONLY place a previously-
-        // queued message is ever mounted.
-        while (NonPersistentMountedCount(pos) < EffectiveMaxToasts)
-        {
-            var next = DequeueFirstMatching(m => ResolvePosition(m.Options.Position) == pos);
-            if (next is null) break;
-            MountToast(next);
+            // Shed down to the cap. Two distinct reasons this can be needed, both folded into one
+            // condition: strictly OVER cap (finding 4 — a mounted persistent just became finite and
+            // now counts, possibly pushing the group past EffectiveMaxToasts with no queue involved
+            // at all), OR AT cap with queue demand waiting behind it (the ordinary "make room for a
+            // new arrival" case). Evicts the oldest candidate that ISN'T already leaving — see the
+            // historical spam-hang note below for why the `!t.Leaving` filter is load-bearing, not
+            // cosmetic.
+            //
+            // PR #357 round-7 (finding 2): the condition itself is measured against
+            // LiveNonPersistentMountedCount, NOT the raw (Leaving-inclusive) NonPersistentMountedCount.
+            // A toast already mid-exit has already relinquished its claim on the cap the instant some
+            // EARLIER reconciliation marked it Leaving (see LiveNonPersistentMountedCount's doc
+            // comment) — it is going to vanish on its own without this loop's help. Measuring the raw
+            // count here let a group that merely HAS a Leaving toast sitting in it look over-cap on
+            // paper even though the LIVE count is within bounds: a persistent/loading toast resolving
+            // to finite while an unrelated sibling in the same group is already leaving (e.g.
+            // MaxToasts=1, A leaving, loading P resolves) made the raw count 2 > 1, and since the
+            // candidate query below already excludes Leaving toasts (A), it evicted the live,
+            // just-resolved P instead — promise/loading toasts vanishing during perfectly ordinary
+            // exit overlap. Live count keeps this loop from ever treating "some toast is already on
+            // its way out" as "we're over cap and must evict something else".
+            while (LiveNonPersistentMountedCount(pos) > EffectiveMaxToasts ||
+                   (PendingCount(pos) > 0 && LiveNonPersistentMountedCount(pos) >= EffectiveMaxToasts))
+            {
+                // PR #357 round-8 (finding 3): `t.Id != protectedId` keeps the toast that triggered
+                // THIS reconcile off the candidate list — see the doc comment above. Ranking among
+                // everything else is still strictly oldest-first (_toasts' own mount order), unchanged.
+                var oldest = _toasts.FirstOrDefault(t =>
+                    !IsPersistent(t.Options) && !t.Leaving && ResolvePosition(t.Options.Position) == pos &&
+                    t.Id != protectedId);
+                if (oldest is null) break; // every remaining over-cap candidate is already Leaving or
+                                            // protected — nothing more this pass can evict.
+                await RemoveWithExitAsync(oldest.Id, runOnDismiss: false);
+                evictedAny = true;
+            }
+
+            // Admit queued toasts (e) FIFO while room remains. This is the ONLY place a previously-
+            // queued message is ever mounted.
+            var admittedAny = false;
+            while (NonPersistentMountedCount(pos) < EffectiveMaxToasts)
+            {
+                var next = DequeueFirstMatching(m => ResolvePosition(m.Options.Position) == pos);
+                if (next is null) break;
+                MountToast(next);
+                admittedAny = true;
+            }
+
+            if (!evictedAny && !admittedAny) break; // fixed point: nothing left this pass could do.
         }
     }
 
@@ -578,10 +617,18 @@
             // needing a lock): the old group's PendingCount just shrank (nothing to do there
             // usually), and the new group may have room to admit this entry right now instead of
             // waiting on an unrelated future removal that may never come for that group.
+            //
+            // PR #357 round-8 (finding 2): the DESTINATION is reconciled FIRST, mirroring the
+            // mounted-toast ordering below (round-7 finding 1). `UpdateQueued` above already moved
+            // this entry to `newPos` in `_pendingQueue`, so if `oldPos` still has pending demand of
+            // its OWN and is at cap, reconciling it first can start an unrelated eviction and await
+            // out its ~220ms exit before the destination — which may have had room immediately — ever
+            // gets a chance to admit the retargeted entry. Reconciling `newPos` first closes that
+            // window exactly like the mounted path does.
             var newPos = ResolvePosition(options.Position);
             UpdateQueued(toastId, options);
-            await ReconcileGroup(oldPos.Value);
             if (newPos != oldPos.Value) await ReconcileGroup(newPos);
+            await ReconcileGroup(oldPos.Value);
             return;
         }
 
@@ -626,8 +673,17 @@
             // group with no eviction yet under way. Reconciling `isPos` first closes that window:
             // whatever correction the destination needs starts on the very next line, before
             // anything else gets a chance to yield.
-            if (isPos != wasPos) await ReconcileGroup(isPos);
-            await ReconcileGroup(wasPos);
+            //
+            // PR #357 round-8 (finding 3): both calls pass THIS toast's id as `protectedId`. `isPos`
+            // is always the group this toast counts against right now (its Options were already
+            // mutated above), so its own reconcile must never pick itself as the eviction candidate
+            // — the exact "just resolved persistent -> finite (or moved into a full position) and
+            // gets evicted by the very reconcile its own change triggered" bug. When `isPos != wasPos`
+            // the toast no longer belongs to `wasPos` at all (ResolvePosition already reflects the
+            // new position), so passing the id there is a no-op guard, not a behavior change — kept
+            // for the `isPos == wasPos` case, where both calls target the SAME group.
+            if (isPos != wasPos) await ReconcileGroup(isPos, protectedId: toastId);
+            await ReconcileGroup(wasPos, protectedId: toastId);
         }
 
         // Unconditional final render: covers the (common) case where nothing needed reconciliation

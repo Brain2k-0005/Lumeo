@@ -37,6 +37,19 @@ namespace Lumeo.Tests.Components.Toast;
 /// the rest of the burst (finding 3) — via <see cref="TrackingInteropService"/> so the captured
 /// <c>OnToastSwiped</c> delegate can be invoked exactly like the JS layer reporting a completed
 /// gesture, racing the same fire-and-forget admission passes as every other step here.
+///
+/// PR #357 round-8 extends the same burst with a FIFTH/SIXTH position pair (TopCenter/
+/// BottomCenter) exercising the two ReconcileGroup-internal edges this round fixed: a multi-
+/// toast overflow that must fully drain to the cap on its own, with no further external
+/// Show/Update/Dismiss nudging the group afterwards (finding 1), and a still-QUEUED toast
+/// retargeted to an empty destination group, which must land there promptly rather than
+/// waiting behind its source group's own unrelated eviction cascade (finding 2) — both
+/// asserted via explicit <c>WaitForAssertion</c> checks on the provider's own accounting, not
+/// just the blanket per-render cap check every other step relies on. Finding 3 (never evict the
+/// toast whose own change triggered the reconcile) needs a fully controlled, non-racing
+/// sequence to pin down deterministically — see the dedicated
+/// <see cref="ReconcileGroup_After_Update_Never_Evicts_The_Toast_That_Triggered_It"/> below
+/// instead of folding it into this burst.
 /// </summary>
 public class ToastAdmissionInvariantTests : IAsyncLifetime
 {
@@ -81,10 +94,14 @@ public class ToastAdmissionInvariantTests : IAsyncLifetime
             var tl = cut.Instance.LiveNonPersistentMountedCount(L.ToastViewport.ToastPosition.TopLeft);
             var tr = cut.Instance.LiveNonPersistentMountedCount(L.ToastViewport.ToastPosition.TopRight);
             var bl = cut.Instance.LiveNonPersistentMountedCount(L.ToastViewport.ToastPosition.BottomLeft);
+            var tc = cut.Instance.LiveNonPersistentMountedCount(L.ToastViewport.ToastPosition.TopCenter);
+            var bc = cut.Instance.LiveNonPersistentMountedCount(L.ToastViewport.ToastPosition.BottomCenter);
             if (br > maxToasts) violations.Add($"BottomRight live-mounted={br} > cap={maxToasts}");
             if (tl > maxToasts) violations.Add($"TopLeft live-mounted={tl} > cap={maxToasts}");
             if (tr > maxToasts) violations.Add($"TopRight live-mounted={tr} > cap={maxToasts}");
             if (bl > maxToasts) violations.Add($"BottomLeft live-mounted={bl} > cap={maxToasts}");
+            if (tc > maxToasts) violations.Add($"TopCenter live-mounted={tc} > cap={maxToasts}");
+            if (bc > maxToasts) violations.Add($"BottomCenter live-mounted={bc} > cap={maxToasts}");
         };
 
         var ids = new Dictionary<string, string>();
@@ -182,7 +199,45 @@ public class ToastAdmissionInvariantTests : IAsyncLifetime
             cut.InvokeAsync(() => swipeReg.Handler(ids["tr1"]));
         }
 
-        // 12) Dismiss everything — must not throw, and the invariant (checked on every render
+        // 12) PR #357 round-8 (finding 1): a multi-toast overflow on a FRESH group (TopCenter)
+        // that must fully drain to the cap on its own. The first `maxToasts` land mounted with no
+        // eviction needed; the remaining two overflow into the queue behind an eviction that has
+        // to run its own ~220ms exit animation. Nothing below this loop ever touches TopCenter
+        // again — no further Show/Update/Dismiss call — so the ONLY way it reaches a fully-drained
+        // steady state (live count == cap, queue empty) is ReconcileGroup continuing to alternate
+        // its eviction/admission passes on its own after each admission, per the fix.
+        for (var i = 0; i < maxToasts + 2; i++)
+        {
+            ids[$"tc{i}"] = toastService.Show(new ToastOptions
+            { Title = $"TC-{i}", Duration = 60000, Position = ToastPosition.TopCenter });
+        }
+
+        // 13) PR #357 round-8 (finding 2): the LAST TopCenter toast queued above is guaranteed
+        // still sitting in `_pendingQueue` right now — every Show() dispatch above it in FIFO
+        // dispatch order has already run (none of them yield past a real async boundary before
+        // this line executes; only the eviction's Task.Delay does, and that hasn't elapsed yet),
+        // while it itself needed a slot no eviction has freed yet. Retargeting it into
+        // BottomCenter — a position with zero demand of its own — must let it land there
+        // immediately (destination reconciled first) instead of waiting behind TopCenter's
+        // unrelated, already in-flight eviction cascade.
+        toastService.Update(ids[$"tc{maxToasts + 1}"], new ToastOptions
+        { Title = "TC-last-moved-to-BC", Duration = 60000, Position = ToastPosition.BottomCenter });
+
+        // Finding 2 lands promptly: BottomCenter should need no further reconciliation of its own
+        // to show the retargeted toast.
+        cut.WaitForAssertion(
+            () => Assert.Equal(1,
+                cut.Instance.LiveNonPersistentMountedCount(L.ToastViewport.ToastPosition.BottomCenter)),
+            TimeSpan.FromSeconds(10));
+
+        // Finding 1 fully drains: TopCenter settles at exactly the cap with nothing left queued,
+        // reached purely by ReconcileGroup's own continued passes — no external nudge follows.
+        cut.WaitForAssertion(
+            () => Assert.Equal(maxToasts,
+                cut.Instance.LiveNonPersistentMountedCount(L.ToastViewport.ToastPosition.TopCenter)),
+            TimeSpan.FromSeconds(10));
+
+        // 14) Dismiss everything — must not throw, and the invariant (checked on every render
         // above) must keep holding while the whole set unwinds down to empty.
         toastService.DismissAll();
 
@@ -191,5 +246,58 @@ public class ToastAdmissionInvariantTests : IAsyncLifetime
             TimeSpan.FromSeconds(10));
 
         Assert.Empty(violations);
+    }
+
+    /// <summary>
+    /// PR #357 round-8 (finding 3), pinned down deterministically rather than folded into the
+    /// racing burst above. <c>MaxToasts=1</c>: show a persistent (<c>Duration=0</c>) loading toast
+    /// first, then a long-duration ordinary toast — the loading toast mounts directly (bypasses the
+    /// cap) and stays the OLDEST entry in <c>_toasts</c>, the ordinary one queues behind it since
+    /// the live non-persistent count is already 0 but nothing evicts a persistent. Awaiting each
+    /// step keeps this test fully deterministic (no burst racing) so the assertions below pin an
+    /// EXACT sequence, not just an eventual invariant.
+    /// <para>
+    /// Once the loading toast resolves to finite (persistent -> finite, the exact transition
+    /// ReconcileGroup re-enters cap accounting for), it becomes the oldest LIVE non-persistent
+    /// candidate in a group that's now over cap — the ordinary toast, admitted from the queue while
+    /// the loading toast was still persistent, is younger. The oldest-first eviction query would
+    /// pick the just-resolved toast for eviction, undoing the very update that made it visible,
+    /// were it not for <c>ReconcileGroup</c>'s <c>protectedId</c> excluding the toast whose own
+    /// change triggered the reconcile. Asserting BOTH which toast survives AND which one is
+    /// gone (not just "cap is respected") is what actually verifies this, since a naive fix that
+    /// evicted a DIFFERENT wrong toast could satisfy a cap-only check just as well.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public async Task ReconcileGroup_After_Update_Never_Evicts_The_Toast_That_Triggered_It()
+    {
+        var toastService = GetToastService();
+        var cut = _ctx.Render<L.ToastProvider>(p => p.Add(b => b.MaxToasts, 1));
+
+        var loadingId = toastService.Show(new ToastOptions { Title = "Loading", Duration = 0 });
+        cut.WaitForAssertion(() => Assert.Single(cut.FindAll("[role='alert'],[role='status']")));
+
+        var ordinaryId = toastService.Show(new ToastOptions { Title = "Ordinary", Duration = 60000 });
+        cut.WaitForAssertion(() => Assert.Equal(2, cut.FindAll("[role='alert'],[role='status']").Count));
+
+        // Resolve the loading toast to finite — MaxToasts=1, so the group is now over cap with two
+        // LIVE non-persistent toasts (loading-turned-finite + ordinary) and must shed exactly one.
+        await cut.InvokeAsync(() => toastService.Update(loadingId,
+            new ToastOptions { Title = "Loading-resolved", Duration = 4000 }));
+
+        // The toast whose own persistence change triggered this reconcile must survive — it must
+        // never be picked as its own reconcile's eviction candidate.
+        cut.WaitForAssertion(
+            () => Assert.Contains(cut.FindAll("[role='alert'],[role='status']"),
+                el => el.TextContent.Contains("Loading-resolved")));
+
+        // The OLDER, unrelated ordinary toast is the one that gets evicted instead — it must
+        // disappear entirely once its exit animation completes.
+        cut.WaitForAssertion(
+            () => Assert.DoesNotContain(cut.FindAll("[role='alert'],[role='status']"),
+                el => el.TextContent.Contains("Ordinary")),
+            TimeSpan.FromSeconds(10));
+
+        Assert.Equal(1, cut.Instance.LiveNonPersistentMountedCount(L.ToastViewport.ToastPosition.BottomRight));
     }
 }
