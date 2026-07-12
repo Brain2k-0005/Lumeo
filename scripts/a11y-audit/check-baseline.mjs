@@ -70,7 +70,14 @@ if (!existsSync(reportsDir)) {
     process.exit(1);
 }
 
-const reportFiles = readdirSync(reportsDir).filter(f => f.endsWith('.json') && f !== 'summary.json');
+// axe-findings.json is gen-baseline.mjs's own full-detail dump (shape:
+// { findings: [...] }, not a per-component report with `.violations`) — it
+// lives in the same reportsDir as the per-component reports it's derived
+// from (see gen-baseline.mjs), so it must be excluded here the same way
+// summary.json is, or a maintainer re-running gen-baseline then
+// check-baseline hits a TypeError instead of a gate result.
+const reportFiles = readdirSync(reportsDir)
+    .filter(f => f.endsWith('.json') && f !== 'summary.json' && f !== 'axe-findings.json');
 if (reportFiles.length === 0) {
     console.error(`[check-baseline] no per-component reports found in ${reportsDir}.`);
     process.exit(1);

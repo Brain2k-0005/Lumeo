@@ -1,0 +1,54 @@
+name: A11y Audit
+
+# axe-core WCAG A/AA sweep of every documented component's docs route (see
+# scripts/a11y-audit/README.md). A full sweep is a dotnet build + Blazor
+# Server boot + 164-page Puppeteer crawl — too slow for the PR critical path,
+# so this runs weekly + on workflow_dispatch, not per-PR.
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Weekly, Monday 05:00 UTC (ahead of the Lighthouse run at 06:00).
+    - cron: '0 5 * * 1'
+
+permissions:
+  contents: read
+
+jobs:
+  a11y-audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install a11y-audit dependencies
+        run: npm install
+        working-directory: scripts/a11y-audit
+
+      - name: Run full sweep (builds + boots docs/Lumeo.Docs, crawls all components)
+        run: node run.mjs
+        working-directory: scripts/a11y-audit
+
+      - name: Check against committed baseline
+        run: node check-baseline.mjs
+        working-directory: scripts/a11y-audit
+
+      - name: Upload reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: a11y-audit-reports
+          path: scripts/a11y-audit/reports
+          if-no-files-found: ignore
