@@ -69,4 +69,84 @@ public class ComponentsApiEmitterA11yCommentStrippingTests
 
         Assert.Equal(text, stripped);
     }
+
+    /// <summary>
+    /// PR #356 round-8 (Codex P2) — round-7 only stripped Razor <c>@* *@</c> and C#
+    /// <c>///</c> lines, so an ordinary <c>//</c> line comment still fed the raw
+    /// <c>Contains("@onkeydown")</c> check. InputMask.razor's exact case: a historical
+    /// note ("the previous component also handled Backspace in @onkeydown") with no
+    /// live key handler nearby.
+    /// </summary>
+    [Fact]
+    public void Strips_A_Plain_Line_Comment_Mentioning_The_Keyboard_Token()
+    {
+        var text = """
+            @code {
+                // The previous component also handled Backspace in @onkeydown and fired
+                // ValueChanged a SECOND time.
+                private void HandleInput() { }
+            }
+            """;
+
+        var stripped = ComponentsApiEmitter.StripCommentsForA11yScan(text);
+
+        Assert.DoesNotContain("@onkeydown", stripped);
+        Assert.Contains("private void HandleInput() { }", stripped); // real code untouched
+    }
+
+    [Fact]
+    public void Strips_A_Block_Comment_Mentioning_Aria_And_Role_Tokens()
+    {
+        var text = """
+            <div /* role="toolbar" aria-expanded="true" is what the OLD markup used */ class="x"></div>
+            """;
+
+        var stripped = ComponentsApiEmitter.StripCommentsForA11yScan(text);
+
+        Assert.DoesNotContain("role=\"toolbar\"", stripped);
+        Assert.DoesNotContain("aria-expanded", stripped);
+        Assert.Contains("class=\"x\"", stripped);
+    }
+
+    /// <summary>
+    /// The exact failure mode a naive <c>//</c>-stripping regex introduces: treating the
+    /// <c>//</c> inside a quoted URL as a line-comment start and deleting the rest of the
+    /// line, including real trailing markup/code.
+    /// </summary>
+    [Fact]
+    public void Does_Not_Treat_A_Url_Inside_A_String_As_A_Line_Comment()
+    {
+        var text = "<a href=\"https://example.com/docs\" role=\"link\">docs</a>";
+
+        var stripped = ComponentsApiEmitter.StripLineAndBlockComments(text);
+
+        Assert.Equal(text, stripped);
+    }
+
+    [Fact]
+    public void Does_Not_Treat_A_Url_Inside_A_Csharp_String_Literal_As_A_Line_Comment()
+    {
+        var text = """
+            @code {
+                private const string Docs = "https://example.com/a11y"; // real trailing comment
+            }
+            """;
+
+        var stripped = ComponentsApiEmitter.StripLineAndBlockComments(text);
+
+        Assert.Contains("\"https://example.com/a11y\";", stripped); // URL string untouched
+        Assert.DoesNotContain("real trailing comment", stripped);   // actual comment IS stripped
+    }
+
+    [Fact]
+    public void Strips_A_Block_Comment_Without_Eating_A_Url_Right_Before_It()
+    {
+        var text = "const string x = \"https://example.com\"; /* aria-hidden noise */ var y = 1;";
+
+        var stripped = ComponentsApiEmitter.StripLineAndBlockComments(text);
+
+        Assert.Contains("\"https://example.com\"", stripped);
+        Assert.DoesNotContain("aria-hidden noise", stripped);
+        Assert.Contains("var y = 1;", stripped);
+    }
 }

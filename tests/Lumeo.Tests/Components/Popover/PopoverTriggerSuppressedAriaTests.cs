@@ -115,4 +115,100 @@ public class PopoverTriggerSuppressedAriaTests : IAsyncLifetime
         Assert.Equal("dialog", wrapper.GetAttribute("aria-haspopup"));
         Assert.Equal("true", wrapper.GetAttribute("aria-expanded"));
     }
+
+    /// <summary>
+    /// PR #356 round-8 (Codex P2) — the slot handed to <c>ChildContentSlot</c> in this
+    /// SuppressActivationKeys path used to be the SAME live <see cref="L.TriggerSlot"/>
+    /// as the AsChild branch (whose own doc comment tells consumers to wire
+    /// <c>slot.OnClick</c> onto their child). Doing that HERE — where the wrapper
+    /// &lt;div&gt; still owns its own <c>@onclick="Toggle"</c> — would toggle once on
+    /// the child and again when the click bubbles to the wrapper, so the popover would
+    /// appear not to open (or immediately re-close). The suppressed slot's
+    /// <c>OnClick</c>/<c>OnKeyDown</c> must be inert instead: even if a consumer follows
+    /// the general guidance, nothing double-fires.
+    /// </summary>
+    [Fact]
+    public void SuppressedSlot_OnClick_Has_No_Delegate()
+    {
+        L.TriggerSlot? captured = null;
+        var cut = _ctx.Render(builder =>
+        {
+            builder.OpenComponent<L.Popover>(0);
+            builder.AddAttribute(1, "Open", false);
+            builder.AddAttribute(2, "ChildContent", (RenderFragment)(b =>
+            {
+                b.OpenComponent<L.PopoverTrigger>(0);
+                b.AddAttribute(1, "SuppressActivationKeys", true);
+                b.AddAttribute(2, "ChildContentSlot", (RenderFragment<L.TriggerSlot>)(slot => t =>
+                {
+                    captured = slot;
+                    t.OpenElement(0, "input");
+                    t.CloseElement();
+                }));
+                b.CloseComponent();
+
+                b.OpenComponent<L.PopoverContent>(1);
+                b.AddAttribute(1, "ChildContent", (RenderFragment)(i => i.AddContent(0, "content")));
+                b.CloseComponent();
+            }));
+            builder.CloseComponent();
+        });
+
+        Assert.NotNull(captured);
+        Assert.False(captured!.OnClick.HasDelegate);
+        Assert.False(captured.OnKeyDown.HasDelegate);
+        // Attributes are unaffected — same aria state as the live Slot would carry.
+        Assert.True(captured.Attributes.ContainsKey("aria-haspopup"));
+    }
+
+    /// <summary>
+    /// End-to-end version of the same guarantee, exercising the exact double-toggle
+    /// scenario Codex flagged: a consumer wires <c>slot.OnClick</c> onto their own
+    /// child (the general <c>ChildContentSlot</c> guidance) inside this
+    /// SuppressActivationKeys path, where the wrapper &lt;div&gt; ALSO still owns its
+    /// own <c>@onclick="Toggle"</c>. Blazor's <c>@onclick</c> bubbles (bUnit's renderer
+    /// replicates this): clicking the child fires the child's own handler AND the
+    /// bubbled wrapper handler. Before this fix, both were the SAME live
+    /// <c>Toggle</c> — one toggle call from the child, one more from the bubble —
+    /// so a single click fired <c>OpenChanged</c> TWICE (open, then immediately
+    /// close again), and the popover appeared not to open. With the inert
+    /// <c>SuppressedSlot.OnClick</c>, only the wrapper's bubbled handler fires:
+    /// exactly ONE toggle per click.
+    /// </summary>
+    [Fact]
+    public void SuppressedSlot_OnClick_Wired_Onto_Child_Toggles_Only_Once_Per_Click()
+    {
+        var toggleCount = 0;
+        var openCb = EventCallback.Factory.Create<bool>(_ctx, (bool _) => toggleCount++);
+
+        var cut = _ctx.Render(builder =>
+        {
+            builder.OpenComponent<L.Popover>(0);
+            builder.AddAttribute(1, "Open", false);
+            builder.AddAttribute(2, "OpenChanged", openCb);
+            builder.AddAttribute(3, "ChildContent", (RenderFragment)(b =>
+            {
+                b.OpenComponent<L.PopoverTrigger>(0);
+                b.AddAttribute(1, "SuppressActivationKeys", true);
+                b.AddAttribute(2, "ChildContentSlot", (RenderFragment<L.TriggerSlot>)(slot => t =>
+                {
+                    t.OpenElement(0, "input");
+                    t.AddAttribute(1, "onclick", slot.OnClick); // the (mis)guided wiring
+                    t.CloseElement();
+                }));
+                b.CloseComponent();
+
+                b.OpenComponent<L.PopoverContent>(1);
+                b.AddAttribute(1, "ChildContent", (RenderFragment)(i => i.AddContent(0, "content")));
+                b.CloseComponent();
+            }));
+            builder.CloseComponent();
+        });
+
+        cut.Find("input").Click();
+
+        // Exactly one toggle (from the wrapper's own @onclick, via bubbling) — NOT
+        // two (which a live slot.OnClick would add on top, double-toggling).
+        Assert.Equal(1, toggleCount);
+    }
 }

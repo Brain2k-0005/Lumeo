@@ -41,12 +41,17 @@ else
                Mirrors the AsChild branch above: hand the SAME Slot down so a consumer that
                opted in via ChildContentSlot can splat slot.Attributes onto its own actual
                focusable element (e.g. DatePicker's input/button), where focus really lands.
-               Slot.OnClick/OnKeyDown are deliberately left unconsumed by that splat — the
-               wrapper above already owns click (native activation bubbles into it, see the
-               SuppressActivationKeys doc comment on the parameter) and re-applying them to
-               the child would double-toggle. Consumers still on plain ChildContent (no slot
-               opted in) keep the pre-existing wrapper-only ARIA state, unchanged. *@
-            @ChildContentSlot(Slot)
+               SuppressedSlot's OnClick/OnKeyDown are INERT (default(EventCallback), not the
+               live Toggle/HandleKeyDown that Slot carries) — the wrapper above already owns
+               click (native activation bubbles into it, see the SuppressActivationKeys doc
+               comment on the parameter), and a consumer splatting slot.OnClick onto their
+               own focusable child per the general ChildContentSlot guidance (its <summary>,
+               written for the AsChild/no-wrapper case) would otherwise double-toggle: once
+               on the child, again when the click bubbles here (PR #356 round-8, Codex P2).
+               Attributes are unchanged from Slot — same aria-haspopup/aria-expanded/aria-
+               controls. Consumers still on plain ChildContent (no slot opted in) keep the
+               pre-existing wrapper-only ARIA state, unchanged. *@
+            @ChildContentSlot(SuppressedSlot)
         }
         else
         {
@@ -131,6 +136,15 @@ else
         Attributes: BuildAttrs(),
         OnClick: EventCallback.Factory.Create<MouseEventArgs>(this, _ => Toggle()),
         OnKeyDown: EventCallback.Factory.Create<KeyboardEventArgs>(this, HandleKeyDown));
+
+    // Used ONLY by the SuppressActivationKeys && ChildContentSlot wrapper-retaining
+    // path below — same ARIA Attributes as Slot, but OnClick/OnKeyDown reset to
+    // default(EventCallback) (Blazor renders that as "no handler", never invokes
+    // anything) so a consumer splatting slot.OnClick per the general ChildContentSlot
+    // guidance cannot re-introduce the double-toggle SuppressActivationKeys exists to
+    // prevent (Codex P2, PR #356 round-8). The AsChild branch keeps using the live
+    // Slot above, unchanged — there the slot's OnClick is the ONLY activation path.
+    private TriggerSlot SuppressedSlot => Slot with { OnClick = default, OnKeyDown = default };
 
     private IReadOnlyDictionary<string, object> BuildAttrs()
     {

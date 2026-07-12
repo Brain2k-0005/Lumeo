@@ -599,7 +599,7 @@ public static class ComponentsApiEmitter
         "^[ \\t]*///.*$", RegexOptions.Compiled | RegexOptions.Multiline);
 
     /// <summary>
-    /// Strips the two comment forms Lumeo's .razor files actually use before
+    /// Strips every comment form Lumeo's .razor files actually use before
     /// ExtractA11y's signal regexes run over the raw source. Comments are prose, and
     /// prose routinely references the very tokens this scanner looks for — to explain
     /// why a component does or does NOT have a behaviour — not to declare markup: e.g.
@@ -607,16 +607,98 @@ public static class ComponentsApiEmitter
     /// noting "ScrollArea had no tabindex/@onkeydown of its own", and a naive
     /// <see cref="string.Contains(string)"/> over the whole file reads that prose as
     /// if it were a live @onkeydown handler, mis-reporting keyboardInteractive: true
-    /// for a component with no key handler at all (PR #356 round-7, Codex P2). This is
-    /// a general class of false positive, not a one-off in ScrollArea specifically, so
-    /// it's fixed at the scanner rather than by only rewording that one comment.
+    /// for a component with no key handler at all (PR #356 round-7, Codex P2). Round-8
+    /// (Codex P2) found the same false positive survives via a plain `//` line note —
+    /// InputMask.razor's "previous component ... handled Backspace in @onkeydown"
+    /// history comment — because only Razor `@* *@` and `///` were stripped; `//` and
+    /// `/* */` are now stripped too, via <see cref="StripLineAndBlockComments"/>. This
+    /// is a general class of false positive, not a one-off in ScrollArea/InputMask
+    /// specifically, so it's fixed at the scanner rather than by only rewording those
+    /// comments.
     /// </summary>
     internal static string StripCommentsForA11yScan(string text)
     {
         text = RazorCommentRegex.Replace(text, "");
         text = XmlDocLineRegex.Replace(text, "");
+        text = StripLineAndBlockComments(text);
         return text;
     }
+
+    /// <summary>
+    /// Strips C#-style `//` line comments and `/* ... */` block comments, WITHOUT
+    /// touching text inside a quoted string — a naive regex would treat the `//` in a
+    /// URL like <c>"https://example.com"</c> (or an href in Razor/HTML markup, which
+    /// uses the same <c>"..."</c> delimiter) as a comment start and delete the rest of
+    /// the line (PR #356 round-8, Codex P2). This is a small character-scanning state
+    /// machine, not a full C#/Razor tokenizer — this whole file is "best effort, not a
+    /// parser" (see <see cref="ExtractA11y"/>) — but tracking one string state is
+    /// enough to keep `//`/`/* */` recognition out of any quoted text, string or markup
+    /// alike, since both use <c>"..."</c>.
+    /// </summary>
+    internal static string StripLineAndBlockComments(string text)
+    {
+        var sb = new StringBuilder(text.Length);
+        var inString = false;
+        var i = 0;
+        while (i < text.Length)
+        {
+            var c = text[i];
+
+            if (inString)
+            {
+                sb.Append(c);
+                if (c == '\\' && i + 1 < text.Length)
+                {
+                    // Preserve the escaped char verbatim so `\"` doesn't end the string.
+                    sb.Append(text[i + 1]);
+                    i += 2;
+                    continue;
+                }
+                if (c == '"') inString = false;
+                i++;
+                continue;
+            }
+
+            if (c == '"')
+            {
+                inString = true;
+                sb.Append(c);
+                i++;
+                continue;
+            }
+
+            if (c == '/' && i + 1 < text.Length && text[i + 1] == '/')
+            {
+                // Line comment: drop through to (but keep) the line break.
+                i += 2;
+                while (i < text.Length && text[i] != '\n') i++;
+                continue;
+            }
+
+            if (c == '/' && i + 1 < text.Length && text[i + 1] == '*')
+            {
+                // Block comment: drop through to the closing */ (or EOF if unterminated).
+                i += 2;
+                while (i + 1 < text.Length && !(text[i] == '*' && text[i + 1] == '/')) i++;
+                i = Math.Min(i + 2, text.Length);
+                continue;
+            }
+
+            sb.Append(c);
+            i++;
+        }
+        return sb.ToString();
+    }
+
+    // A `role="@(...)"` Razor expression (e.g. a ternary that picks role="img" based on
+    // a computed property, as Chart's canvas host does). Regex can't evaluate the
+    // expression, but the literal role token it ultimately assigns is almost always
+    // written inline as a quoted string literal in a ternary/switch arm inside the
+    // parens, so the expression body is captured and re-scanned for bare string
+    // literals below (PR #356 round-8, Codex P2: comment-stripping removed the doc
+    // comment that used to accidentally supply this token as prose).
+    private static readonly Regex DynamicRoleExprRegex = new(
+        "role=\"@\\((?<expr>.*?)\\)\"", RegexOptions.Compiled | RegexOptions.Singleline);
 
     /// <summary>
     /// Static a11y signal extraction from a component's .razor source: the ARIA roles and
@@ -624,7 +706,7 @@ public static class ComponentsApiEmitter
     /// focus. Powers the MCP's a11y view so an agent can see a component's accessibility
     /// contract without reading the source. Regex over markup — best-effort, not a parser.
     /// </summary>
-    private static object ExtractA11y(IEnumerable<string> razorFiles)
+    internal static object ExtractA11y(IEnumerable<string> razorFiles)
     {
         var roles = new SortedSet<string>(StringComparer.Ordinal);
         var ariaAttrs = new SortedSet<string>(StringComparer.Ordinal);
@@ -638,10 +720,22 @@ public static class ComponentsApiEmitter
             try { text = File.ReadAllText(file); } catch { continue; }
             text = StripCommentsForA11yScan(text);
 
-            // Literal role="..." values (skip dynamic role="@(...)").
+            // Literal role="..." values.
             foreach (Match m in Regex.Matches(text, "role=\"([a-zA-Z]+)\"")) roles.Add(m.Groups[1].Value);
-            // aria-* attribute NAMES (e.g. aria-expanded, aria-label).
-            foreach (Match m in Regex.Matches(text, "(aria-[a-z]+)\\s*=")) ariaAttrs.Add(m.Groups[1].Value);
+            // role assigned through a Dictionary<string, object> splat attribute (e.g.
+            // Icon's `merged["role"] = "img";`), the pattern components use when the
+            // role is one of several conditionally-merged attributes.
+            foreach (Match m in Regex.Matches(text, "\\[\"role\"\\]\\s*=\\s*\"([a-zA-Z]+)\"")) roles.Add(m.Groups[1].Value);
+            // role picked inside a Razor `role="@(...)"` expression (ternary/switch
+            // arm) — pull any bare string-literal role token out of the expression.
+            foreach (Match outer in DynamicRoleExprRegex.Matches(text))
+                foreach (Match inner in Regex.Matches(outer.Groups["expr"].Value, "\"([a-zA-Z]+)\""))
+                    roles.Add(inner.Groups[1].Value);
+            // aria-* attribute NAMES (e.g. aria-expanded, aria-label), whether rendered
+            // as a literal HTML attribute (aria-label="...") or as a Dictionary<string,
+            // object> splat attribute key (Icon's `merged["aria-hidden"] = "true";`) —
+            // the optional `"]` tolerates the dictionary-indexer syntax before the `=`.
+            foreach (Match m in Regex.Matches(text, "(aria-[a-z]+)\"?\\]?\\s*=")) ariaAttrs.Add(m.Groups[1].Value);
 
             if (text.Contains("@onkeydown") || text.Contains("KeyboardEventArgs"))
             {
