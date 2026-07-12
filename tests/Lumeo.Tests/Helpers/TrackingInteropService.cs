@@ -156,7 +156,10 @@ public class TrackingInteropService : IComponentInteropService
         _restoreFocusKeys.Add(key);
         return ValueTask.CompletedTask;
     }
-    public ValueTask AttachOverlaySlideEnd(string elementId) => ValueTask.CompletedTask;
+    // virtual so a test subclass can observe the CALLER's rendered DOM state at the
+    // exact moment this fires (ConsentBannerSlideEndTests' non-tautological
+    // "wired after the element is actually mounted" regression coverage).
+    public virtual ValueTask AttachOverlaySlideEnd(string elementId) => ValueTask.CompletedTask;
 
     // Overlay EXIT wiring capture (B11 Radix-Presence parity). Records each
     // wire-up and the last captured callback so a test can SIMULATE the JS

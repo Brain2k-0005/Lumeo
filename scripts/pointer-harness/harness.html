@@ -1,0 +1,46 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  table { border-collapse: collapse; table-layout: fixed; }
+  th, td { box-sizing: border-box; border: 1px solid #ccc; height: 30px; padding: 0; }
+  [data-slot="datagrid-resize-handle"] { display: inline-block; width: 12px; height: 100%; cursor: col-resize; }
+  [data-reorder-grip] { display: inline-block; width: 16px; }
+  [data-row-reorder-grip] { display: inline-block; width: 16px; }
+</style>
+</head>
+<body>
+<div id="host"></div>
+<script type="module">
+  import * as C from './components.js';
+  window.__C = C;
+  window.__dotnetCalls = [];
+  window.__fakeDotNet = {
+    invokeMethodAsync: (method, ...args) => {
+      window.__dotnetCalls.push({ method, args });
+      return Promise.resolve();
+    }
+  };
+  // A dotnetRef whose invokeMethodAsync returns a promise the TEST controls
+  // (resolveNext/rejectNext), so a test can hold a commit "in flight" for as
+  // long as it likes and assert the arbiter token stays claimed until that
+  // promise actually settles — round-12 #2 coverage.
+  window.__deferred = {};
+  window.__makeDeferredDotNet = (key) => {
+    const pending = [];
+    window.__deferred[key] = {
+      resolveNext: (value) => { const p = pending.shift(); if (p) p.resolve(value); },
+      rejectNext: (reason) => { const p = pending.shift(); if (p) p.reject(reason); },
+      pendingCount: () => pending.length,
+    };
+    return {
+      invokeMethodAsync: (method, ...args) => {
+        window.__dotnetCalls.push({ method, args });
+        return new Promise((resolve, reject) => { pending.push({ resolve, reject }); });
+      }
+    };
+  };
+</script>
+</body>
+</html>

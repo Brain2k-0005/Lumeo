@@ -1,0 +1,60 @@
+name: Visual Regression
+
+on:
+  schedule:
+    # Mondays 06:00 UTC — weekly baseline check.
+    - cron: '0 6 * * 1'
+  workflow_dispatch: {}
+
+jobs:
+  visual-regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # Tailwind builds the CSS bundles consumed by the docs app — see e2e.yml
+      # for why this runs before the Release build.
+      - name: Build CSS bundles
+        run: |
+          npm install
+          npm run build:css
+          cd docs/Lumeo.Docs
+          npm install
+          npm run css:build
+
+      - name: Build docs site
+        run: dotnet build docs/Lumeo.Docs/Lumeo.Docs.csproj -c Release --nologo
+
+      - name: Install script dependencies
+        working-directory: scripts/visual-regression
+        run: npm install
+
+      - name: Install Playwright Chromium
+        working-directory: scripts/visual-regression
+        run: npx playwright-core install --with-deps chromium
+
+      - name: Run visual regression sweep
+        working-directory: scripts/visual-regression
+        env:
+          DOTNET_EXE: dotnet
+          VR_NO_BUILD: '1'
+        run: node run.mjs
+
+      - name: Upload diff artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: visual-regression-diffs
+          path: scripts/visual-regression/.diffs/
+          retention-days: 14

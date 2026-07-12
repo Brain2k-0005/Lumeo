@@ -240,7 +240,15 @@ public static class PerComponentEnricher
         }
         entry["keyboardInteractions"] = keyboard;
 
-        // 9. tests — scan tests/ for files that actually EXERCISE this component.
+        // 9. tests — scan tests/ for files that really exercise this component.
+        // The matching contract (dedicated folder ownership OR a real, comment-
+        // stripped type reference OR a longest-prefix suffixed test id — see the
+        // ComponentTestMatcher type doc for the full rationale) lives in
+        // ComponentTestMatcher, the single well-specified replacement for what
+        // used to be several ad-hoc regexes (rendersRegex + HasRealComponentMention
+        // + IsOwnedByFolder) patched independently across review waves. E2E specs,
+        // which navigate a real browser to the component's docs route instead of
+        // rendering its markup, keep their own route-based signal in addition.
         var tests = new List<string>();
         var seenTests = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var testRoots = new[]
@@ -249,40 +257,13 @@ public static class PerComponentEnricher
             Path.Combine(repoRoot, "tests", "Lumeo.Docs.Tests"),
             Path.Combine(repoRoot, "tests", "Lumeo.Tests.E2E"),
         };
-        // Precise "does this test render the component" signal — same family of
-        // patterns as Program.cs's ComputeTestCoverage `renders` regex, extended to
-        // tolerate a namespace/alias-qualified generic argument (`Render<Lumeo.X>`,
-        // `Render<L.X>`) which dedicated-folder tests use routinely. A loose
-        // whole-file `\bComponentName\b` word match (the previous heuristic) false-
-        // attributed shared test files from an incidental DOC-COMMENT mention —
-        // e.g. PullToRefreshKeyboardTests.cs -> file-viewer.json via "...counterpart
-        // to FileViewer's...", and PivotGridKeyboardTests.cs -> steps.json via
-        // "Card/Steps conditionally-interactive contract" — plus real false hits
-        // from unrelated identifiers/params that happen to spell the component name
-        // (Playwright's `MouseMoveOptions.Steps`, a `Stepper`/`Tour.Steps` mention)
-        // (CodeRabbit Major, PR #356 round 1).
-        // A fourth alternative catches non-render unit tests that still legitimately
-        // belong to this component — e.g. FileViewerCsvTests.cs tests the static
-        // `Lumeo.FileViewer.ParseCsv(...)` parsing helper without ever rendering the
-        // Blazor component — by requiring the component's OWN qualified type name
-        // (`Lumeo.X` / `L.X`), not a bare word match. This still excludes
-        // `Tour.Steps`/`c.Steps`/comment mentions since neither "Lumeo" nor the "L"
-        // alias precedes them.
-        // Shared with Program.cs's ComputeTestCoverage via ComponentTestSignals — see
-        // its doc comment for why these two must never diverge again (PR #356 round-2).
-        var rendersRegex = ComponentTestSignals.BuildRendersRegex(componentName);
         // E2E specs don't render Razor markup at all — they navigate a real browser
         // to the component's docs route — so they need their own route-based signal
-        // rather than the render regex (which would silently drop every E2E entry).
+        // (the ComponentTestMatcher content contract, which keys off rendered type
+        // references, would otherwise silently drop every route-only E2E entry).
         var e2eRouteRegex = new Regex(
             $@"/components/{Regex.Escape(componentKey)}(?![a-z0-9-])",
             RegexOptions.Compiled);
-        // Bare word-boundary match on the component name — paired with rendersRegex
-        // below (via HasRealComponentMention) as an explicit second signal that guards
-        // against BCL/LINQ name collisions, e.g. `.Select(...)` on some unrelated
-        // IEnumerable or `new List<string>()`, which are NOT real component mentions
-        // (PR #357 round-2, round-9).
-        var nameWordRegex = new Regex(@"\b" + Regex.Escape(componentName) + @"\b", RegexOptions.Compiled);
         foreach (var root in testRoots)
         {
             if (!Directory.Exists(root)) continue;
@@ -295,32 +276,19 @@ public static class PerComponentEnricher
             foreach (var testFile in testFiles)
             {
                 var rel = Path.GetRelativePath(repoRoot, testFile).Replace('\\', '/');
-                // Folder ownership is the stronger signal: a file physically filed under
-                // the component's OWN dedicated test folder (e.g.
-                // tests/Lumeo.Tests/Components/Stepper/StepperItemTests.cs) belongs to
-                // this component regardless of whether it happens to render <Stepper>
-                // itself — a test for a sub-component (StepperItem), a shared helper, or
-                // pure logic living in that folder is still THIS component's coverage.
-                // The render-only regex below previously dropped every such file
-                // (CodeRabbit, PR #356 round-2). Skipped for E2E, whose specs aren't
-                // filed per-component the same way.
-                var ownedByFolder = !isE2E && ComponentTestSignals.IsOwnedByFolder(rel, componentName);
-                if (!ownedByFolder)
-                {
-                    string text;
-                    try { text = File.ReadAllText(testFile).Replace("\r\n", "\n").Replace("\r", "\n"); }
-                    catch { continue; }
-                    // rendersRegex already requires Render</OpenComponent</<Tag/Lumeo.X context,
-                    // so it doesn't fall for a bare `.Select(...)` LINQ call or `new List<string>()`
-                    // the way a plain word-boundary scan would — but HasRealComponentMention is
-                    // ANDed in as an explicit second signal (PR #357 round-2/round-9) so a future
-                    // loosening of rendersRegex can't silently reintroduce those exact collisions
-                    // without also tripping this guard.
-                    var matches = isE2E
-                        ? e2eRouteRegex.IsMatch(text)
-                        : rendersRegex.IsMatch(text) && HasRealComponentMention(text, nameWordRegex);
-                    if (!matches) continue;
-                }
+                string text;
+                try { text = File.ReadAllText(testFile).Replace("\r\n", "\n").Replace("\r", "\n"); }
+                catch { continue; }
+                // Non-E2E files are judged solely by ComponentTestMatcher's single
+                // IsCoverage contract (dedicated-folder ownership OR a real, comment-
+                // stripped type reference OR a longest-prefix suffixed test id), which
+                // supersedes the old IsOwnedByFolder + rendersRegex + HasRealComponentMention
+                // trio while preserving every one of their signals (folder ownership and the
+                // `.Select(...)`/`new List<...>()` BCL-collision exclusion included). E2E specs
+                // additionally match on their docs route, since they never render the type.
+                var matches = ComponentTestMatcher.IsCoverage(componentName, rel, text, knownComponentNames)
+                    || (isE2E && e2eRouteRegex.IsMatch(text));
+                if (!matches) continue;
                 if (seenTests.Add(rel)) tests.Add(rel);
             }
         }
@@ -343,63 +311,6 @@ public static class PerComponentEnricher
             IEnumerable<object?> en => en.Select(x => x?.ToString() ?? "").Where(x => x.Length > 0).ToList(),
             _ => new(),
         };
-    }
-
-    /// <summary>
-    /// True when <paramref name="text"/> contains a mention of the component
-    /// that isn't just a name collision with a common BCL/LINQ member invoked
-    /// on an unrelated value — e.g. `.Select(x => ...)` on an `IEnumerable`
-    /// has nothing to do with the `Select` component, but the plain
-    /// word-boundary regex matches it anyway (PR #357 round-2: this exact
-    /// collision put every test using `.Select(...)` into select.json's
-    /// coverage list). Real component references in this codebase's test
-    /// suite go through the `L.` namespace alias (`using L = Lumeo;`), so
-    /// `L.Select(...)` still counts as a real mention — only a plain
-    /// `.Select(` on some OTHER receiver is excluded. Deliberately does NOT
-    /// strip comments: this codebase's test comments routinely carry genuine
-    /// coverage signal (XML-doc `<see cref="L.Foo"/>` tags, prose describing
-    /// what a test asserts), so treating every comment as noise would drop
-    /// far more real coverage entries than it fixes false positives — a
-    /// comment-only false positive (one component name listed as prior-art
-    /// analogy for an unrelated fix) is rare enough to fix at the source
-    /// (rephrase the comment) instead of teaching the generator to distrust
-    /// every comment.
-    /// </summary>
-    // PR #357 round-9 (finding 5): component names that collide with a common BCL generic
-    // collection/type name — used AS that BCL type, e.g. `new List<string>()` — are not real
-    // mentions either, mirroring the `.Select(...)` LINQ-call exclusion below. The regenerated
-    // `list.json` picked up a Toast invariant test SOLELY because it declares `new List<string>()`:
-    // the word "List" is immediately followed by `<` (a generic type-parameter list), not `(`, so
-    // the LINQ-call filter (which only recognizes a FOLLOWING `(`) never applied to it. Scoped to
-    // names actually used generically elsewhere in this codebase's test suite, not an exhaustive
-    // BCL catalogue — extend this set if a future component name collides with another one.
-    private static readonly HashSet<string> BclGenericTypeNames = new(StringComparer.Ordinal)
-    {
-        "List", "IList", "IReadOnlyList", "ICollection", "IReadOnlyCollection", "IEnumerable",
-        "IEnumerator", "Dictionary", "IDictionary", "IReadOnlyDictionary", "HashSet", "ISet",
-        "Queue", "Stack", "SortedList", "SortedSet", "SortedDictionary", "LinkedList",
-        "LinkedListNode", "KeyValuePair", "Nullable", "Task", "ValueTask", "Func", "Action",
-        "Lazy", "Tuple", "ValueTuple", "ReadOnlyCollection", "ObservableCollection",
-        "ConcurrentDictionary", "ConcurrentQueue", "ConcurrentBag", "ConcurrentStack",
-        "ImmutableList", "ImmutableArray", "ImmutableDictionary", "ImmutableHashSet",
-        "ImmutableSortedSet", "ImmutableSortedDictionary", "ImmutableQueue", "ImmutableStack",
-        "ArraySegment", "Memory", "ReadOnlyMemory", "Span", "ReadOnlySpan", "WeakReference",
-    };
-
-    private static bool HasRealComponentMention(string text, Regex nameWordRegex)
-    {
-        foreach (Match m in nameWordRegex.Matches(text))
-        {
-            var precededByDot = m.Index > 0 && text[m.Index - 1] == '.';
-            var precededByLDot = m.Index > 1 && text[m.Index - 2] == 'L' && text[m.Index - 1] == '.'
-                && (m.Index < 3 || !char.IsLetterOrDigit(text[m.Index - 3]));
-            var followedByOpenParen = m.Index + m.Length < text.Length && text[m.Index + m.Length] == '(';
-            if (precededByDot && !precededByLDot && followedByOpenParen) continue; // e.g. `.Select(...)` LINQ call
-            var followedByOpenAngle = m.Index + m.Length < text.Length && text[m.Index + m.Length] == '<';
-            if (!precededByLDot && followedByOpenAngle && BclGenericTypeNames.Contains(m.Value)) continue; // e.g. `List<string>()` BCL generic type
-            return true;
-        }
-        return false;
     }
 
     /// <summary>Files are stored relative to the package src dir (e.g. "UI/Sheet/Sheet.razor").
