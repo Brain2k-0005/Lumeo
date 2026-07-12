@@ -63,6 +63,11 @@ const PORT = process.env.VR_PORT || '58217';
 
 const VIEWPORT = { width: 1280, height: 800 };
 
+// Fixed reference instant for the frozen browser/WASM clock below — any fixed
+// value works (it just has to be STABLE across runs so baselines stay
+// comparable); this one has no special significance beyond being memorable.
+const FROZEN_NOW_MS = Date.UTC(2025, 0, 15, 12, 0, 0);
+
 // ---------------------------------------------------------------------
 // Route discovery — every literal `@page "/components/..."` directive under
 // the docs app's Components pages, so newly added component pages are swept
@@ -90,17 +95,54 @@ function slugFor(route) {
   return route.replace(/^\/components\//, '').replace(/\//g, '-');
 }
 
-function waitForServer(url, timeoutMs) {
+// serverProc is OPTIONAL — passed only when this script spawned its own docs
+// dev-server (not when --base-url points at an externally-running instance).
+// Guards against the "port-squatting" corruption this port was chosen to
+// avoid in the first place: if our spawn hit address-in-use and exited, an
+// HTTP response at `url` came from a DIFFERENT, pre-existing process — not
+// the checkout we're about to sweep. We refuse to treat that as "ready".
+function waitForServer(url, timeoutMs, serverProc) {
   const deadline = Date.now() + timeoutMs;
   return new Promise((resolve, reject) => {
+    let settled = false;
+    const cleanup = () => { if (serverProc) serverProc.removeListener('exit', onExit); };
+    const onExit = (code) => {
+      if (settled) return;
+      settled = true;
+      reject(new Error(
+        `docs dev-server process exited (code ${code}) before it became reachable at ${url} — ` +
+        `likely a port collision (another process already bound that port) or a startup crash.`));
+    };
+    if (serverProc) serverProc.once('exit', onExit);
     const tryOnce = () => {
+      if (settled) return;
       const req = http.get(url, (res) => {
         res.resume();
+        if (settled) return;
+        // Our own spawn may have ALREADY exited (e.g. lost an address-in-use
+        // race) even though something answered at this URL — that response
+        // is from an unrelated process squatting on the port, not our build.
+        if (serverProc && serverProc.exitCode !== null) {
+          settled = true;
+          cleanup();
+          reject(new Error(
+            `docs dev-server process already exited (code ${serverProc.exitCode}) — the response at ` +
+            `${url} came from a different, pre-existing process (port collision).`));
+          return;
+        }
+        settled = true;
+        cleanup();
         resolve();
       });
       req.on('error', () => {
-        if (Date.now() > deadline) reject(new Error(`docs dev-server did not come up at ${url} within ${timeoutMs}ms`));
-        else setTimeout(tryOnce, 500);
+        if (settled) return;
+        if (Date.now() > deadline) {
+          settled = true;
+          cleanup();
+          reject(new Error(`docs dev-server did not come up at ${url} within ${timeoutMs}ms`));
+        } else {
+          setTimeout(tryOnce, 500);
+        }
       });
       req.setTimeout(2000, () => req.destroy());
     };
@@ -147,7 +189,7 @@ async function main() {
       }
     });
     try {
-      await waitForServer(baseUrl, 120_000);
+      await waitForServer(baseUrl, 120_000, serverProc);
     } catch (e) {
       console.error(serverLog.slice(-4000));
       throw e;
@@ -170,6 +212,28 @@ async function main() {
                                   // see lumeo.css's reduced-motion blocks).
       });
       const page = await context.newPage();
+      // Freeze the browser/WASM clock BEFORE the app boots. Several swept docs
+      // routes render DateTime.Today/DateTime.Now client-side (Calendar,
+      // DatePicker, Scheduler, AgentMessageList, ...), so without this the
+      // committed baselines are tied to the day/minute they were captured and
+      // later scheduled runs diff moving "today" highlights and timestamps
+      // instead of real visual regressions. Runs as an init script (before any
+      // page — including the Blazor WASM runtime bootstrap — executes) so
+      // dotnet's own wall-clock derivation (which reads Date.now() at startup)
+      // observes the frozen value too, not just app code that calls `new
+      // Date()` directly.
+      await page.addInitScript((fixedNowMs) => {
+        const OriginalDate = Date;
+        class FrozenDate extends OriginalDate {
+          constructor(...args) {
+            if (args.length === 0) super(fixedNowMs);
+            else super(...args);
+          }
+          static now() { return fixedNowMs; }
+        }
+        // eslint-disable-next-line no-global-assign
+        Date = FrozenDate;
+      }, FROZEN_NOW_MS);
       // Deterministic theme + no first-run banners stealing focus/paint.
       await page.addInitScript((mode) => {
         try {
@@ -254,9 +318,20 @@ async function main() {
 
 function compareOrUpdate(slug, buffer, route, theme) {
   const baselinePath = path.join(BASELINES_DIR, `${slug}.png`);
-  if (UPDATE || !fs.existsSync(baselinePath)) {
+  if (UPDATE) {
     fs.writeFileSync(baselinePath, buffer);
-    return { route, theme, status: UPDATE ? 'UPDATED' : 'NEW', detail: baselinePath };
+    return { route, theme, status: 'UPDATED', detail: baselinePath };
+  }
+  if (!fs.existsSync(baselinePath)) {
+    // A missing baseline in compare mode must FAIL, not silently pass as
+    // "NEW" — that used to auto-write the file to the working tree, which
+    // let an added route (or an accidentally deleted baseline) sail through
+    // CI without ever being screenshotted-and-compared. Only `--update` is
+    // allowed to create baselines.
+    return {
+      route, theme, status: 'FAIL',
+      detail: `missing baseline: ${baselinePath} — run with --update to create it`,
+    };
   }
 
   const baseline = PNG.sync.read(fs.readFileSync(baselinePath));

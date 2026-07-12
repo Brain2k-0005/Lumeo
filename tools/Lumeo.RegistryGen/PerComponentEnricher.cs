@@ -249,7 +249,17 @@ public static class PerComponentEnricher
                 string text;
                 try { text = File.ReadAllText(csFile).Replace("\r\n", "\n").Replace("\r", "\n"); }
                 catch { continue; }
-                if (!nameWordRegex.IsMatch(text)) continue;
+                // Strip comments before matching — same heuristic idiom used for the
+                // type-ref dependency scan above (block comments, then line/XML-doc
+                // comments to end-of-line). Without this, a component merely being
+                // NAMED in prose (e.g. a doc comment noting "the same pattern already
+                // fixed for Sheet/Drawer/Dialog/AlertDialog") got credited as real test
+                // coverage for every component it happened to list — polluting THOSE
+                // components' public registry/MCP "tests" metadata with files that
+                // never exercise their behavior and hiding real coverage gaps.
+                var codeOnly = Regex.Replace(text, @"/\*[\s\S]*?\*/", " ");
+                codeOnly = Regex.Replace(codeOnly, @"//[^\n]*", " ");
+                if (!nameWordRegex.IsMatch(codeOnly)) continue;
                 var rel = Path.GetRelativePath(repoRoot, csFile).Replace('\\', '/');
                 if (seenTests.Add(rel)) tests.Add(rel);
             }

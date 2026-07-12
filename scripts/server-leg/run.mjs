@@ -148,6 +148,16 @@ async function scenarioDataGridDragCommit(page, rtt) {
   assert(headers.length >= 2, `DataGrid renders at least 2 column headers (got ${headers.length})`);
   if (headers.length < 2) return;
 
+  // Observable commit marker: the header column ORDER before the drag. A
+  // broken commit path (drag never reorders anything, or the server ignores
+  // the commit) previously still passed this scenario, because the only
+  // post-action check was "no inline transforms remain" — true whether or
+  // not anything actually moved. Comparing before/after order proves the
+  // drag's server round-trip actually landed a reorder, not just that the
+  // transient drag-transform styling cleared.
+  const colOrderBefore = await page.evaluate(() =>
+    [...document.querySelectorAll('[data-testid="server-leg-grid"] th')].map((th) => th.getAttribute('data-col-id')));
+
   const gripBox = await grip.boundingBox();
   const targetBox = await headers[1].boundingBox();
 
@@ -160,6 +170,13 @@ async function scenarioDataGridDragCommit(page, rtt) {
   // takes measurably longer than local; wait generously past the settle
   // window (180ms client-side) PLUS several RTTs for the .NET commit to land.
   await page.waitForTimeout(rtt * 4 + 1_000);
+
+  const colOrderAfter = await page.evaluate(() =>
+    [...document.querySelectorAll('[data-testid="server-leg-grid"] th')].map((th) => th.getAttribute('data-col-id')));
+  assert(JSON.stringify(colOrderAfter) !== JSON.stringify(colOrderBefore),
+    `dragging the first column's grip onto the second header actually reorders the columns under ${rtt}ms RTT ` +
+    `(before: ${JSON.stringify(colOrderBefore)}, after: ${JSON.stringify(colOrderAfter)} — unchanged means the ` +
+    `commit round-trip never landed, or the server ignored it)`);
 
   const stuckTransforms = await page.evaluate(() => {
     const cells = document.querySelectorAll('[data-testid="server-leg-grid"] th, [data-testid="server-leg-grid"] td');

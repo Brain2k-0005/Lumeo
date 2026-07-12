@@ -10,7 +10,9 @@ module has with the browser, across three engines.
 ## Run
 
 ```bash
-npm install                # once
+npm install                # once — postinstall fetches all three Playwright
+                            # browsers (chromium, firefox, webkit), so a clean
+                            # checkout with no cached binaries still works
 npm run test:chromium      # or test:firefox / test:webkit
 npm run test:all           # all three engines sequentially, combined summary
 ```
@@ -21,9 +23,10 @@ git-ignored and gets overwritten on the next run.
 
 ## Adding an engine-specific fixture
 
-`node run.js <chromium|firefox|webkit>` (also reads `PW_ENGINE`). Missing
-engines: `npx playwright-core install firefox webkit` (Chromium ships with
-most toolchains already).
+`node run.js <chromium|firefox|webkit>` (also reads `PW_ENGINE`). `npm install`'s
+postinstall already fetches all three; if a single engine is still missing
+(e.g. after a manual cache wipe), re-fetch it directly:
+`npx playwright-core install firefox webkit`.
 
 ## Cross-engine test isolation
 

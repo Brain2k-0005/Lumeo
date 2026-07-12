@@ -256,8 +256,24 @@
         // targets — a consumer-supplied fade/none AnimationClass must not be
         // touched, since the JS unconditionally stamps animation:none when it
         // finds no matching animation, which would cut a fade-in short.
+        //
+        // MUST be gated on `!firstRender`: on the first call, `_ready` flips
+        // false->true above and StateHasChanged() only QUEUES the follow-up
+        // render — it does not block until the DOM is updated. Attaching here,
+        // in the same firstRender pass, would target a `role="region"` element
+        // that doesn't exist yet: document.getElementById returns null, the JS
+        // attach is a silent no-op, and (before this fix) _slideEndWired was
+        // still latched true, permanently skipping the retry. Sheet/Dialog
+        // dodge this because their open-flag flips via a PARENT parameter
+        // change (OnParametersSetAsync -> render -> OnAfterRenderAsync), so by
+        // the time their OnAfterRenderAsync runs, the render has already
+        // committed. Here the flag flips from inside OnAfterRenderAsync itself,
+        // so we defer one render — the render that actually mounts the banner
+        // is the very next OnAfterRenderAsync(firstRender: false) call, queued
+        // by the StateHasChanged() above (or by HandleConsentChange /
+        // ClosePreferencesNoSave for later banner appearances).
         bool bannerVisible = _ready && !Consent.HasDecided && !_preferencesOpen;
-        if (bannerVisible && !_slideEndWired && IsSlideOrZoomAnimation(AnimationClass))
+        if (!firstRender && bannerVisible && !_slideEndWired && IsSlideOrZoomAnimation(AnimationClass))
         {
             _slideEndWired = true;
             try { await Interop.AttachOverlaySlideEnd(_bannerId); }
