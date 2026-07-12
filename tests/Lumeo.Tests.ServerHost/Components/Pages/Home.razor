@@ -1,0 +1,92 @@
+@page "/"
+@inject Lumeo.Services.ToastService Toast
+
+<PageTitle>Lumeo Server Latency Leg</PageTitle>
+
+<ToastProvider Position="ToastViewport.ToastPosition.BottomRight" />
+
+<div class="p-8 max-w-5xl mx-auto space-y-10">
+    <h1 class="text-2xl font-semibold">Lumeo Server Latency Leg</h1>
+    <button type="button" data-testid="plain-counter" @onclick="() => _counter++">Count: @_counter</button>
+    <p class="text-muted-foreground">
+        Interaction-heavy components under an interactive-SERVER render mode
+        (real SignalR circuit) — driven by scripts/server-leg/run.mjs with
+        artificial round-trip latency injected.
+    </p>
+
+    <section class="space-y-3">
+        <h2 class="text-lg font-medium" id="datagrid-heading">DataGrid — column reorder + resize</h2>
+        <DataGrid TItem="Employee" Items="@_employees" PageSize="10" ShowPagination="true"
+                  Reorderable="true" data-testid="server-leg-grid">
+            <DataGridColumnDef TItem="Employee" Title="Name" Field="Name" Sortable="true" Resizable="true" Reorderable="true" Width="180" />
+            <DataGridColumnDef TItem="Employee" Title="Department" Field="Department" Sortable="true" Resizable="true" Reorderable="true" Width="180" />
+            <DataGridColumnDef TItem="Employee" Title="Status" Field="Status" Sortable="true" Resizable="true" Reorderable="true" Width="140" />
+            <DataGridColumnDef TItem="Employee" Title="Salary" Field="Salary" Sortable="true" Format="C0" Resizable="true" Reorderable="true" Width="140" />
+        </DataGrid>
+    </section>
+
+    <section class="space-y-3">
+        <h2 class="text-lg font-medium">Toast burst</h2>
+        <button type="button" data-testid="toast-burst-button"
+                class="inline-flex items-center justify-center rounded-md text-sm font-medium h-9 px-4 bg-primary text-primary-foreground hover:bg-primary/90"
+                @onclick="BurstToasts">
+            Fire 8 toasts
+        </button>
+    </section>
+
+    <section class="space-y-3">
+        <h2 class="text-lg font-medium">DatePicker</h2>
+        <DatePicker @bind-Value="_selectedDate" data-testid="server-leg-datepicker" />
+    </section>
+
+    <section class="space-y-3">
+        <h2 class="text-lg font-medium">Dialog</h2>
+        <Dialog @bind-Open="_dialogOpen">
+            <DialogTrigger data-testid="server-leg-dialog-trigger">
+                <span class="inline-flex items-center justify-center rounded-md text-sm font-medium h-9 px-4 border border-border bg-background hover:bg-accent">Open dialog</span>
+            </DialogTrigger>
+            <DialogContent data-testid="server-leg-dialog-content">
+                <DialogHeader>
+                    <DialogTitle>Latency leg dialog</DialogTitle>
+                    <DialogDescription>Open/close exit-animation completion is asserted by run.js.</DialogDescription>
+                </DialogHeader>
+                <DialogFooter>
+                    <DialogClose data-testid="server-leg-dialog-close">
+                        <span class="inline-flex items-center justify-center rounded-md text-sm font-medium h-9 px-4 bg-primary text-primary-foreground hover:bg-primary/90">Close</span>
+                    </DialogClose>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+    </section>
+</div>
+
+@code {
+    private DateOnly? _selectedDate;
+    private bool _dialogOpen;
+    private int _counter;
+
+    private record Employee(int Id, string Name, string Department, string Status, decimal Salary);
+
+    private readonly List<Employee> _employees = Enumerable.Range(1, 40).Select(i => new Employee(
+        i,
+        $"Employee {i}",
+        i % 4 == 0 ? "Engineering" : i % 4 == 1 ? "Sales" : i % 4 == 2 ? "Support" : "Finance",
+        i % 3 == 0 ? "Active" : i % 3 == 1 ? "Remote" : "OnLeave",
+        40000 + (i * 733 % 90000)
+    )).ToList();
+
+    // KNOWN PRODUCT BUG (found building this leg, not fixed here — see
+    // scripts/server-leg/README.md "Confirmed product bug: Toast under
+    // Blazor Server"): ToastService.OnShow fires correctly and
+    // ToastProvider.HandleShow subscribes to it, but no SignalR render batch
+    // is ever sent to the client, so no toast ever appears in the DOM under
+    // a real interactive-server circuit. Left in place (not patched) per
+    // instructions — product issues get reported, not hacked around.
+    private void BurstToasts()
+    {
+        for (var i = 1; i <= 8; i++)
+        {
+            Toast.Show($"Toast #{i}", "Fired from the server latency leg");
+        }
+    }
+}

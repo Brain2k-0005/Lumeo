@@ -93,6 +93,157 @@ public class PopoverKeyboardA11yTests : IAsyncLifetime
         Assert.Null(RuleSetFor("popover-trigger-"));
     }
 
+    // --- PR #356 round-2 (Codex/CodeRabbit): SuppressActivationKeys ---
+    // A child that already owns Enter/Space itself (e.g. DatePicker's typeable
+    // input) must be able to opt the fallback role=button wrapper OUT of its own
+    // Enter/Space-toggles-the-popover handling, so those keys bubbling out of the
+    // child don't ALSO toggle this wrapper a second, unwanted time. Regression
+    // tested both ways: the flag actually blocks the toggle when set, and the
+    // default (unset) path still toggles normally so this is additive, not a
+    // behaviour change for every other PopoverTrigger consumer.
+
+    private static RenderFragment SuppressedFallbackTrigger => b =>
+    {
+        b.OpenComponent<L.PopoverTrigger>(0);
+        b.AddAttribute(1, "AsChild", false);
+        b.AddAttribute(2, "SuppressActivationKeys", true);
+        b.AddAttribute(3, "ChildContent", (RenderFragment)(inner => inner.AddContent(0, "Toggle")));
+        b.CloseComponent();
+
+        b.OpenComponent<L.PopoverContent>(4);
+        b.AddAttribute(5, "ChildContent", (RenderFragment)(inner => inner.AddContent(0, "Popover content")));
+        b.CloseComponent();
+    };
+
+    // Same frame shape as SuppressedFallbackTrigger (so bUnit's diff reuses the SAME
+    // PopoverTrigger instance rather than tearing it down) but with the flag
+    // explicitly false — Blazor only updates parameters that are PRESENT in the new
+    // RenderFragment; an omitted attribute leaves an already-mounted instance's
+    // current value untouched rather than resetting it to the parameter's default.
+    // FallbackTrigger (below) omits SuppressActivationKeys entirely, which is correct
+    // for asserting the DEFAULT on a freshly-created instance but cannot exercise a
+    // runtime true -> false transition on a reused one.
+    private static RenderFragment FallbackTriggerNotSuppressed => b =>
+    {
+        b.OpenComponent<L.PopoverTrigger>(0);
+        b.AddAttribute(1, "AsChild", false);
+        b.AddAttribute(2, "SuppressActivationKeys", false);
+        b.AddAttribute(3, "ChildContent", (RenderFragment)(inner => inner.AddContent(0, "Toggle")));
+        b.CloseComponent();
+
+        b.OpenComponent<L.PopoverContent>(4);
+        b.AddAttribute(5, "ChildContent", (RenderFragment)(inner => inner.AddContent(0, "Popover content")));
+        b.CloseComponent();
+    };
+
+    [Fact]
+    public void SuppressActivationKeys_Skips_The_Space_PreventDefault_Registration()
+    {
+        var cut = _ctx.Render<L.Popover>(p => p.Add(x => x.ChildContent, SuppressedFallbackTrigger));
+
+        // Space's default is only suppressed so the div[role=button] can safely
+        // toggle on it — with the toggle itself suppressed there is nothing left
+        // to protect, and registering the JS rule anyway would just swallow a
+        // literal space typed into whatever the child actually is (e.g. a text
+        // input) once it bubbles here.
+        Assert.Null(RuleSetFor("popover-trigger-"));
+    }
+
+    [Fact]
+    public void SuppressActivationKeys_Blocks_Enter_And_Space_From_Toggling_The_Popover()
+    {
+        var cut = _ctx.Render<L.Popover>(p => p.Add(x => x.ChildContent, SuppressedFallbackTrigger));
+        var trigger = cut.Find("[role='button']");
+
+        trigger.KeyDown("Enter");
+        Assert.DoesNotContain("Popover content", cut.Markup);
+
+        trigger.KeyDown(" ");
+        Assert.DoesNotContain("Popover content", cut.Markup);
+    }
+
+    [Fact]
+    public void Without_SuppressActivationKeys_Enter_Still_Toggles_The_Popover()
+    {
+        // Control for the test above: proves the fix is opt-in — the default
+        // (unset / false) path keeps toggling on Enter exactly as before.
+        var cut = _ctx.Render<L.Popover>(p => p.Add(x => x.ChildContent, FallbackTrigger));
+        var trigger = cut.Find("[role='button']");
+
+        trigger.KeyDown("Enter");
+
+        Assert.Contains("Popover content", cut.Markup);
+    }
+
+    // --- PR #356 round-3 (Codex P2, finding #1): SuppressActivationKeys must not
+    // strand a keyboard user who tabs onto the wrapper ITSELF (not the child that
+    // owns Enter/Space) on a dead-end control. The wrapper is pulled out of the Tab
+    // order for that branch instead, so keyboard focus lands on the real activation
+    // target (the child) directly.
+
+    [Fact]
+    public void SuppressActivationKeys_Removes_The_Wrapper_From_The_Tab_Order()
+    {
+        var cut = _ctx.Render<L.Popover>(p => p.Add(x => x.ChildContent, SuppressedFallbackTrigger));
+        Assert.Equal("-1", cut.Find("[role='button']").GetAttribute("tabindex"));
+    }
+
+    [Fact]
+    public void Without_SuppressActivationKeys_The_Wrapper_Stays_In_The_Tab_Order()
+    {
+        var cut = _ctx.Render<L.Popover>(p => p.Add(x => x.ChildContent, FallbackTrigger));
+        Assert.Equal("0", cut.Find("[role='button']").GetAttribute("tabindex"));
+    }
+
+    // --- PR #356 round-3 (Codex P2, finding #3): the Space-preventDefault
+    // registration must reconcile against SuppressActivationKeys on every render,
+    // not only on firstRender — a runtime flip (e.g. DatePicker switching between
+    // its button and typeable-input trigger branches) must unregister/re-register
+    // symmetrically instead of leaving a stale registration.
+
+    private int UnregisterCallCountFor(string idPrefix) =>
+        _ctx.JSInterop.Invocations.Count(i => i.Identifier == "unregisterPreventDefaultKeys"
+            && i.Arguments[0] is string id && id.StartsWith(idPrefix));
+
+    private int RegisterCallCountFor(string idPrefix) =>
+        _ctx.JSInterop.Invocations.Count(i => i.Identifier == "registerPreventDefaultKeys"
+            && i.Arguments[0] is string id && id.StartsWith(idPrefix));
+
+    [Fact]
+    public void Flipping_SuppressActivationKeys_On_Unregisters_The_Space_PreventDefault()
+    {
+        var cut = _ctx.Render<L.Popover>(p => p
+            .Add(x => x.ChildContent, FallbackTrigger));
+
+        cut.WaitForAssertion(() => Assert.True(RegisterCallCountFor("popover-trigger-") >= 1));
+
+        cut.Render(p => p.Add(x => x.ChildContent, SuppressedFallbackTrigger));
+
+        // The stale listener must be torn down — otherwise it keeps preventDefault-ing
+        // Space in whatever the child now is (e.g. swallowing a literal space typed
+        // into a text input). Asserted directly (not via WaitForAssertion): the JS
+        // interop call itself never triggers a further render/StateHasChanged, so
+        // there is no subsequent render event for WaitForAssertion to re-check
+        // against — bUnit's Render() already awaits the triggered OnAfterRenderAsync
+        // to completion before returning.
+        Assert.True(UnregisterCallCountFor("popover-trigger-") >= 1);
+    }
+
+    [Fact]
+    public void Flipping_SuppressActivationKeys_Off_Re_Registers_The_Space_PreventDefault()
+    {
+        var cut = _ctx.Render<L.Popover>(p => p
+            .Add(x => x.ChildContent, SuppressedFallbackTrigger));
+
+        Assert.Equal(0, RegisterCallCountFor("popover-trigger-"));
+
+        cut.Render(p => p.Add(x => x.ChildContent, FallbackTriggerNotSuppressed));
+
+        // The button-trigger branch regains its Space-scroll suppression instead of
+        // being stuck unregistered forever because it wasn't there on firstRender.
+        Assert.True(RegisterCallCountFor("popover-trigger-") >= 1);
+    }
+
     // --- #87: focus restore on close ---
     private static RenderFragment FocusChildren => b =>
     {

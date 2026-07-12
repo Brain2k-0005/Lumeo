@@ -455,11 +455,286 @@ public static class ComponentsApiEmitter
 
     // Known Blazor KeyboardEventArgs.Key values we report when a component handles
     // keydown — a precise whitelist so we don't pick up unrelated string literals.
-    private static readonly string[] KnownKeys =
+    // Internal (not private): PerComponentEnricher's keyboardInteractions summary
+    // reuses this SAME whitelist + KeyComparisonRegex below, so the two scanners
+    // can never drift apart again — a switch/pattern key the a11y scanner credits
+    // must show up in the human-readable summary too (PR #356 round-3, Codex P3:
+    // dock.json's api.a11y.keys had ArrowLeft/ArrowRight/Home/End from Dock's
+    // HandleKeyDown switch, but keyboardInteractions — built from a narrower
+    // `.Key == "X"`-only regex — still said "no keyboard support").
+    internal static readonly string[] KnownKeys =
     {
         "Enter", "Escape", "Tab", " ", "Spacebar", "ArrowUp", "ArrowDown", "ArrowLeft",
         "ArrowRight", "Home", "End", "PageUp", "PageDown", "Delete", "Backspace", "ContextMenu", "F10",
+        // F2 is a real editing key here — DataGridCell enters edit mode on `e.Key == "F2"`
+        // (Excel-style). Safe to list now that key detection is comparison-context-aware
+        // below: a numeric `.ToString("F2", ...)` format specifier (e.g. Tour.razor) is NOT
+        // a `.Key`/`case`/switch-arm comparison, so it is never miscounted as a handled key.
+        "F2",
     };
+
+    // A key literal only counts when it sits in an actual key-COMPARISON context:
+    //   `case "X":` / `case "X" or "Y":`             — switch STATEMENT arms
+    //   `.Key == "X"`                                 — plain equality
+    //   `.Key is "X" or "Y" or "Z"`                   — C# pattern-match "or" chain
+    //   `"X" => ...` / `(cond, "X") => ...`           — switch EXPRESSION arms, bare
+    //                                                    or tuple-patterned, incl.
+    //                                                    `"X" or "Y" => ...`
+    // Previously any quoted string equal to a known key ANYWHERE in the file
+    // counted — including plain string literals that happen to equal a key, e.g.
+    // `string.Join(" ", ...)` in a CssClass helper — which is why Dock.razor's
+    // registry entry advertised a Space interaction it doesn't actually have
+    // (CodeRabbit/Codex P3, PR #356 round 1). The switch-expression-arm alternative
+    // was added after a first tightening pass silently dropped REAL interactions
+    // from every component using that idiom (Splitter/Resizable's tuple switch,
+    // Kanban/RadioGroup/Segmented/QueryBuilder/Stepper's `"X" or "Y" => n`) — caught
+    // by diffing every component's api.a11y.keys before/after the change. The
+    // repeated named group "k" is valid in .NET regex: every alternative/repetition
+    // that matches contributes its own capture, all readable via
+    // Match.Groups["k"].Captures.
+    internal static readonly Regex KeyComparisonRegex = new(
+        "\\bcase\\s+\"(?<k>[^\"]*)\"(?:\\s*(?:or|,)\\s*\"(?<k>[^\"]*)\")*" +
+        "|\\.Key\\s+is\\s+\"(?<k>[^\"]*)\"(?:\\s*(?:or|,)\\s*\"(?<k>[^\"]*)\")*" +
+        "|\\.Key\\s*==\\s*\"(?<k>[^\"]*)\"",
+        RegexOptions.Compiled);
+
+    // The switch-EXPRESSION-arm alternative (`"X" => ...` / `"X" or "Y" => ...`), split
+    // out of KeyComparisonRegex: unlike the three alternatives above, a bare `"X" => ...`
+    // carries no `.Key`/`case` marker of its own, so matching it ANYWHERE in the file
+    // (the original round-2 fix) also credits switch expressions that have nothing to do
+    // with keyboard handling — e.g. Icon.razor's `name switch { "ArrowDown" => ...,
+    // "Home" => ... }` icon-glyph lookup, or Stepper.razor's OWN `intent switch { ... }`
+    // sitting right next to its real `e.Key switch { ... }` in the same file (PR #356
+    // round-4, Codex P2). Only applied within a Key-switch body — see
+    // <see cref="FindKeySwitchBodies"/> — never against the raw file text.
+    private static readonly Regex SwitchArmKeyRegex = new(
+        "\"(?<k>[^\"]*)\"(?:\\s*or\\s*\"(?<k>[^\"]*)\")*\\s*\\)?\\s*=>",
+        RegexOptions.Compiled);
+
+    // Every `switch {` (switch-EXPRESSION opener) in the file, so its governing
+    // expression can be inspected for a `.Key`/`Key` mention.
+    private static readonly Regex SwitchExpressionOpenerRegex = new(
+        "switch\\s*\\{",
+        RegexOptions.Compiled);
+
+    // A whole-word `Key` occurrence (matches the property access in `e.Key`, `args.Key`,
+    // or a bare `Key` local) — used to test whether a switch's governing expression is
+    // actually keyboard-key-shaped.
+    private static readonly Regex KeyWordRegex = new("\\bKey\\b", RegexOptions.Compiled);
+
+    /// <summary>
+    /// Finds the body span (start index + length, EXCLUDING the braces) of every switch
+    /// EXPRESSION in <paramref name="text"/> whose governing expression mentions `.Key`/
+    /// `Key` — the one shape every real keyboard switch in the codebase uses, whether
+    /// bare (`e.Key switch { "Enter" => ... }`) or tuple-patterned (Splitter/Resizable's
+    /// `(IsHorizontal, e.Key) switch { (true, "ArrowLeft") => ... }`). The governing
+    /// expression is taken as the text back to the nearest statement/block boundary
+    /// (`;`, `{`, or `}`) before "switch" — bounded, so an unrelated switch elsewhere in
+    /// the same file (Stepper's OWN `intent switch { ... }`, Icon's `name switch { ... }`
+    /// icon-glyph lookup) is correctly excluded since ITS governing expression has no
+    /// `Key` in it. Nested braces (an arm's own object initializer, tuple, etc.) are
+    /// balanced so the body span always ends at the switch's own matching close brace.
+    /// </summary>
+    private static IEnumerable<(int Start, int Length)> FindKeySwitchBodies(string text)
+    {
+        const int MaxLookback = 300; // generous for a one-line discriminant expression
+        foreach (Match opener in SwitchExpressionOpenerRegex.Matches(text))
+        {
+            var switchStart = opener.Index; // 's' of "switch"
+            var scanStart = switchStart;
+            var floor = Math.Max(0, switchStart - MaxLookback);
+            while (scanStart > floor && text[scanStart - 1] != ';' && text[scanStart - 1] != '{' && text[scanStart - 1] != '}')
+                scanStart--;
+            var discriminant = text.Substring(scanStart, switchStart - scanStart);
+            if (!KeyWordRegex.IsMatch(discriminant)) continue;
+
+            var bodyStart = opener.Index + opener.Length; // just past the opening '{'
+            var depth = 1;
+            var i = bodyStart;
+            while (i < text.Length && depth > 0)
+            {
+                if (text[i] == '{') depth++;
+                else if (text[i] == '}') depth--;
+                i++;
+            }
+            if (depth == 0) yield return (bodyStart, i - 1 - bodyStart);
+        }
+    }
+
+    /// <summary>
+    /// All key-literal occurrences in <paramref name="text"/> that sit in an actual
+    /// key-comparison context — <see cref="KeyComparisonRegex"/>'s three alternatives,
+    /// PLUS switch-expression arms but ONLY inside a genuine `.Key switch { }` block
+    /// (see <see cref="FindKeySwitchBodies"/>). Returns raw (Index, Key) occurrences,
+    /// unfiltered by <see cref="KnownKeys"/> — callers apply the whitelist themselves.
+    /// Shared by <see cref="ExtractA11y"/> and PerComponentEnricher's keyboardInteractions
+    /// summary so neither can drift from the other (PR #356 round-3, Codex P3).
+    /// </summary>
+    internal static IEnumerable<(int Index, string Key)> MatchKeyLiteralOccurrences(string text)
+    {
+        foreach (Match m in KeyComparisonRegex.Matches(text))
+            foreach (Capture c in m.Groups["k"].Captures)
+                yield return (c.Index, c.Value);
+
+        foreach (var (start, length) in FindKeySwitchBodies(text))
+        {
+            var body = text.Substring(start, length);
+            foreach (Match m in SwitchArmKeyRegex.Matches(body))
+                foreach (Capture c in m.Groups["k"].Captures)
+                    yield return (start + c.Index, c.Value);
+        }
+    }
+
+    // One-hop local-variable key tracking, closing the gap the comment above USED to
+    // document as accepted: Carousel/Stepper/TabsTrigger all pick their RTL-aware Arrow
+    // key pair via the exact same idiom -
+    //   var (back, forward) = isRtl ? ("ArrowRight", "ArrowLeft") : ("ArrowLeft", "ArrowRight");
+    //   if (e.Key == back) ... else if (e.Key == forward) ...
+    // - so KeyComparisonRegex (literal-only) silently dropped ArrowLeft/ArrowRight from
+    // all three (CodeRabbit/Codex, PR #356 round-2). TupleKeyAssignRegex captures BOTH
+    // branches' literals for each destructured variable name; LocalKeyUseRegex then finds
+    // where that name is later compared via `.Key == <name>`, at which point every
+    // literal ever assigned to it (from either branch - we don't evaluate the runtime
+    // condition, just union both possibilities) is credited. Intentionally narrow (one
+    // hop, this one tuple-ternary shape) rather than a general const/var resolver, to
+    // avoid reopening the original over-matching bug this whole file's history is about.
+    private static readonly Regex TupleKeyAssignRegex = new(
+        "\\bvar\\s*\\(\\s*(?<v1>\\w+)\\s*,\\s*(?<v2>\\w+)\\s*\\)\\s*=\\s*[^;]*?" +
+        "\\(\\s*\"(?<a1>[^\"]*)\"\\s*,\\s*\"(?<a2>[^\"]*)\"\\s*\\)\\s*:\\s*" +
+        "\\(\\s*\"(?<b1>[^\"]*)\"\\s*,\\s*\"(?<b2>[^\"]*)\"\\s*\\)",
+        RegexOptions.Compiled);
+
+    private static readonly Regex LocalKeyUseRegex = new(
+        "\\.Key\\s*==\\s*(?<v>[A-Za-z_]\\w*)\\b",
+        RegexOptions.Compiled);
+
+    // Razor `@* ... *@` comments (Singleline so `.` also matches the newlines inside
+    // multi-line doc-style comment blocks, common throughout Lumeo's .razor files).
+    private static readonly Regex RazorCommentRegex = new(
+        "@\\*.*?\\*@", RegexOptions.Compiled | RegexOptions.Singleline);
+
+    // C# `///` XML-doc lines (the only line-comment style Lumeo's @code blocks use).
+    private static readonly Regex XmlDocLineRegex = new(
+        "^[ \\t]*///.*$", RegexOptions.Compiled | RegexOptions.Multiline);
+
+    /// <summary>
+    /// Strips every comment form Lumeo's .razor files actually use before
+    /// ExtractA11y's signal regexes run over the raw source. Comments are prose, and
+    /// prose routinely references the very tokens this scanner looks for — to explain
+    /// why a component does or does NOT have a behaviour — not to declare markup: e.g.
+    /// ScrollArea.razor's own AriaLabel doc comment argues FOR adding a tab stop by
+    /// noting "ScrollArea had no tabindex/@onkeydown of its own", and a naive
+    /// <see cref="string.Contains(string)"/> over the whole file reads that prose as
+    /// if it were a live @onkeydown handler, mis-reporting keyboardInteractive: true
+    /// for a component with no key handler at all (PR #356 round-7, Codex P2). Round-8
+    /// (Codex P2) found the same false positive survives via a plain `//` line note —
+    /// InputMask.razor's "previous component ... handled Backspace in @onkeydown"
+    /// history comment — because only Razor `@* *@` and `///` were stripped; `//` and
+    /// `/* */` are now stripped too, via <see cref="StripLineAndBlockComments"/>. This
+    /// is a general class of false positive, not a one-off in ScrollArea/InputMask
+    /// specifically, so it's fixed at the scanner rather than by only rewording those
+    /// comments.
+    /// </summary>
+    internal static string StripCommentsForA11yScan(string text)
+    {
+        text = RazorCommentRegex.Replace(text, "");
+        text = XmlDocLineRegex.Replace(text, "");
+        text = StripLineAndBlockComments(text);
+        return text;
+    }
+
+    /// <summary>
+    /// Strips C#-style `//` line comments and `/* ... */` block comments, WITHOUT
+    /// touching text inside a quoted string — a naive regex would treat the `//` in a
+    /// URL like <c>"https://example.com"</c> (or an href in Razor/HTML markup, which
+    /// uses the same <c>"..."</c> delimiter) as a comment start and delete the rest of
+    /// the line (PR #356 round-8, Codex P2). This is a small character-scanning state
+    /// machine, not a full C#/Razor tokenizer — this whole file is "best effort, not a
+    /// parser" (see <see cref="ExtractA11y"/>) — but tracking one string state is
+    /// enough to keep `//`/`/* */` recognition out of any quoted text, string or markup
+    /// alike, since both use <c>"..."</c>.
+    /// </summary>
+    internal static string StripLineAndBlockComments(string text)
+    {
+        var sb = new StringBuilder(text.Length);
+        var inString = false;
+        var i = 0;
+        while (i < text.Length)
+        {
+            var c = text[i];
+
+            if (inString)
+            {
+                sb.Append(c);
+                if (c == '\\' && i + 1 < text.Length)
+                {
+                    // Preserve the escaped char verbatim so `\"` doesn't end the string.
+                    sb.Append(text[i + 1]);
+                    i += 2;
+                    continue;
+                }
+                if (c == '"') inString = false;
+                i++;
+                continue;
+            }
+
+            if (c == '"')
+            {
+                inString = true;
+                sb.Append(c);
+                i++;
+                continue;
+            }
+
+            if (c == '/' && i + 1 < text.Length && text[i + 1] == '/')
+            {
+                // Line comment: drop through to (but keep) the line break.
+                i += 2;
+                while (i < text.Length && text[i] != '\n') i++;
+                continue;
+            }
+
+            if (c == '/' && i + 1 < text.Length && text[i + 1] == '*')
+            {
+                // Block comment: drop through to the closing */ (or EOF if unterminated).
+                i += 2;
+                while (i + 1 < text.Length && !(text[i] == '*' && text[i + 1] == '/')) i++;
+                i = Math.Min(i + 2, text.Length);
+                continue;
+            }
+
+            sb.Append(c);
+            i++;
+        }
+        return sb.ToString();
+    }
+
+    // A `role="@(...)"` Razor expression (e.g. a ternary that picks role="img" based on
+    // a computed property, as Chart's canvas host does). Regex can't evaluate the
+    // expression, but the literal role token it ultimately assigns is almost always
+    // written inline as a quoted string literal in a ternary/switch arm inside the
+    // parens, so the expression body is captured and re-scanned for bare string
+    // literals below (PR #356 round-8, Codex P2: comment-stripping removed the doc
+    // comment that used to accidentally supply this token as prose).
+    private static readonly Regex DynamicRoleExprRegex = new(
+        "role=\"@\\((?<expr>.*?)\\)\"", RegexOptions.Compiled | RegexOptions.Singleline);
+
+    // A `role="@PropertyName"` Razor binding (e.g. Result.razor's `role="@AriaRole"`,
+    // Toast.razor's `role="@Role"`) — a bare member reference, not the `@(...)` expression
+    // form above. The member itself lives somewhere in the component's file set and is
+    // resolved via ExpressionBodiedMemberRegex below (PR #356 round-9, CodeRabbit).
+    private static readonly Regex PropertyRoleRefRegex = new(
+        "role=\"@(?<prop>[A-Za-z_][A-Za-z0-9_]*)\"", RegexOptions.Compiled);
+
+    // Expression-bodied member declarations (`<modifiers> <type> Name => <body>;`), e.g.
+    // `private string AriaRole => Status is ... ? "alert" : "status";`. Used to resolve a
+    // `role="@PropertyName"` reference: the referenced member's body is re-scanned for bare
+    // string literals, same one-hop, no-full-evaluation heuristic as DynamicRoleExprRegex —
+    // block-bodied getters (`{ get { ... } }`) and further indirection (the property calling
+    // another property) are NOT chased.
+    private static readonly Regex ExpressionBodiedMemberRegex = new(
+        @"(?:private|protected|internal|public)?\s*(?:static\s+)?[\w<>\[\],\.\?]+\s+(?<name>[A-Za-z_][A-Za-z0-9_]*)\s*=>\s*(?<body>[^;]*);",
+        RegexOptions.Compiled);
 
     /// <summary>
     /// Static a11y signal extraction from a component's .razor source: the ARIA roles and
@@ -467,7 +742,7 @@ public static class ComponentsApiEmitter
     /// focus. Powers the MCP's a11y view so an agent can see a component's accessibility
     /// contract without reading the source. Regex over markup — best-effort, not a parser.
     /// </summary>
-    private static object ExtractA11y(IEnumerable<string> razorFiles)
+    internal static object ExtractA11y(IEnumerable<string> razorFiles)
     {
         var roles = new SortedSet<string>(StringComparer.Ordinal);
         var ariaAttrs = new SortedSet<string>(StringComparer.Ordinal);
@@ -475,21 +750,93 @@ public static class ComponentsApiEmitter
         var keyboardInteractive = false;
         var focusManaged = false;
 
+        // Pre-read + comment-strip every file once, and index expression-bodied member
+        // bodies (name -> bodies) across the WHOLE component's file set up front, so a
+        // `role="@PropertyName"` reference in one file (e.g. the root .razor) can resolve
+        // to a property declared in a sibling file too, not just the same one.
+        var texts = new List<(string File, string Text)>();
+        var memberBodies = new Dictionary<string, List<string>>(StringComparer.Ordinal);
         foreach (var file in razorFiles)
         {
             string text;
             try { text = File.ReadAllText(file); } catch { continue; }
+            text = StripCommentsForA11yScan(text);
+            texts.Add((file, text));
 
-            // Literal role="..." values (skip dynamic role="@(...)").
+            foreach (Match m in ExpressionBodiedMemberRegex.Matches(text))
+            {
+                var name = m.Groups["name"].Value;
+                if (!memberBodies.TryGetValue(name, out var bodies))
+                    memberBodies[name] = bodies = new List<string>();
+                bodies.Add(m.Groups["body"].Value);
+            }
+        }
+
+        foreach (var (_, text) in texts)
+        {
+            // Literal role="..." values.
             foreach (Match m in Regex.Matches(text, "role=\"([a-zA-Z]+)\"")) roles.Add(m.Groups[1].Value);
-            // aria-* attribute NAMES (e.g. aria-expanded, aria-label).
-            foreach (Match m in Regex.Matches(text, "(aria-[a-z]+)\\s*=")) ariaAttrs.Add(m.Groups[1].Value);
+            // role assigned through a Dictionary<string, object> splat attribute (e.g.
+            // Icon's `merged["role"] = "img";`), the pattern components use when the
+            // role is one of several conditionally-merged attributes.
+            foreach (Match m in Regex.Matches(text, "\\[\"role\"\\]\\s*=\\s*\"([a-zA-Z]+)\"")) roles.Add(m.Groups[1].Value);
+            // role picked inside a Razor `role="@(...)"` expression (ternary/switch
+            // arm) — pull any bare string-literal role token out of the expression.
+            foreach (Match outer in DynamicRoleExprRegex.Matches(text))
+                foreach (Match inner in Regex.Matches(outer.Groups["expr"].Value, "\"([a-zA-Z]+)\""))
+                    roles.Add(inner.Groups[1].Value);
+            // role picked via a bare property/field reference (`role="@PropertyName"`) —
+            // resolve the member in the component's file set and harvest bare string
+            // literals from its body.
+            foreach (Match m in PropertyRoleRefRegex.Matches(text))
+            {
+                if (!memberBodies.TryGetValue(m.Groups["prop"].Value, out var bodies)) continue;
+                foreach (var body in bodies)
+                    foreach (Match inner in Regex.Matches(body, "\"([a-zA-Z]+)\""))
+                        roles.Add(inner.Groups[1].Value);
+            }
+            // aria-* attribute NAMES (e.g. aria-expanded, aria-label), whether rendered
+            // as a literal HTML attribute (aria-label="...") or as a Dictionary<string,
+            // object> splat attribute key (Icon's `merged["aria-hidden"] = "true";`) —
+            // the optional `"]` tolerates the dictionary-indexer syntax before the `=`.
+            foreach (Match m in Regex.Matches(text, "(aria-[a-z]+)\"?\\]?\\s*=")) ariaAttrs.Add(m.Groups[1].Value);
 
             if (text.Contains("@onkeydown") || text.Contains("KeyboardEventArgs"))
             {
                 keyboardInteractive = true;
-                foreach (var k in KnownKeys)
-                    if (text.Contains("\"" + k + "\"")) keys.Add(k == " " ? "Space" : k);
+                foreach (var (_, k) in MatchKeyLiteralOccurrences(text))
+                {
+                    if (!KnownKeys.Contains(k)) continue; // still whitelist-gated
+                    keys.Add(k == " " ? "Space" : k);
+                }
+
+                // One-hop local-variable resolution (see TupleKeyAssignRegex's doc comment).
+                var localKeyLiterals = new Dictionary<string, HashSet<string>>(StringComparer.Ordinal);
+                foreach (Match m in TupleKeyAssignRegex.Matches(text))
+                {
+                    void Track(string varName, string literal)
+                    {
+                        if (!localKeyLiterals.TryGetValue(varName, out var set))
+                            localKeyLiterals[varName] = set = new HashSet<string>(StringComparer.Ordinal);
+                        set.Add(literal);
+                    }
+                    Track(m.Groups["v1"].Value, m.Groups["a1"].Value);
+                    Track(m.Groups["v1"].Value, m.Groups["b1"].Value);
+                    Track(m.Groups["v2"].Value, m.Groups["a2"].Value);
+                    Track(m.Groups["v2"].Value, m.Groups["b2"].Value);
+                }
+                if (localKeyLiterals.Count > 0)
+                {
+                    foreach (Match m in LocalKeyUseRegex.Matches(text))
+                    {
+                        if (!localKeyLiterals.TryGetValue(m.Groups["v"].Value, out var literals)) continue;
+                        foreach (var lit in literals)
+                        {
+                            if (!KnownKeys.Contains(lit)) continue; // still whitelist-gated
+                            keys.Add(lit == " " ? "Space" : lit);
+                        }
+                    }
+                }
             }
             if (text.Contains("FocusAsync") || text.Contains("FocusElement") || text.Contains("tabindex"))
                 focusManaged = true;

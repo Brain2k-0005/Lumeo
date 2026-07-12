@@ -80,6 +80,32 @@ dotnet run --project docs/Lumeo.Docs/Lumeo.Docs.csproj
 dotnet test tests/Lumeo.Tests/Lumeo.Tests.csproj
 ```
 
+### The NuGet-free "standalone eject" guarantee
+
+`lumeo init --standalone` / `lumeo add` / `lumeo eject` vendor components as
+**source** into a consumer's project instead of a NuGet package, so the project
+never carries a `Lumeo`/`Lumeo.*` `PackageReference`. This is proven end-to-end by
+`tests/Lumeo.Cli.Tests/CliStandaloneE2ETests.cs`, which runs the built CLI as a
+real subprocess and does an actual `dotnet build` of the scaffolded project — not
+a unit test of the vendoring logic in isolation.
+
+Two tests generalize that proof to the whole registry and run on different
+cadences (both tagged with an xunit `Category` trait):
+
+- `Category=EjectGateSmoke` — 5 representative components in one project (a plain
+  component, one with component+service deps, the imperative-overlay pattern, the
+  icon-rendering component, and one satellite). Fast; runs on **every PR** as part
+  of the normal `dotnet test Lumeo.slnx` in `ci.yml`.
+- `Category=EjectGateFull` — **every** registered component (`add --all`) in one
+  fresh project, one `dotnet build`. Slow (~164 components); excluded from the
+  per-PR run and instead runs weekly, on `workflow_dispatch`, and on every
+  published release via `.github/workflows/eject-gate.yml`.
+
+If you add a component with a new external (non-Lumeo) NuGet dependency, also add
+it to `AllExternalPackagesCsproj()` in `CliStandaloneE2ETests.cs` — that
+pre-references every such package so the eject-gate-full build doesn't depend on
+the CLI's own `dotnet add package` shell-out succeeding in CI.
+
 ## Adding a New Component
 
 1. Create a folder: `src/Lumeo/UI/{ComponentName}/`

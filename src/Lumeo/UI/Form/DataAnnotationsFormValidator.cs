@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using System.Diagnostics.CodeAnalysis;
 
 namespace Lumeo;
 
@@ -12,6 +13,9 @@ public class DataAnnotationsFormValidator : IFormValidator
     /// </summary>
     public const string FormLevelErrorKey = "__form";
 
+    [RequiresUnreferencedCode("DataAnnotations validation reflects over the model's runtime " +
+        "type (ValidationContext resolves DisplayNameAttribute; Validator walks [Validation] " +
+        "attributes on its members). Safe when the model's type preserves its public members.")]
     public Dictionary<string, List<string>> Validate(object model)
     {
         var results = new List<ValidationResult>();
@@ -40,6 +44,9 @@ public class DataAnnotationsFormValidator : IFormValidator
         return errors;
     }
 
+    [RequiresUnreferencedCode("DataAnnotations validation reflects over the model's runtime " +
+        "type (ValidationContext resolves DisplayNameAttribute; Type.GetProperty(fieldName) " +
+        "looks up the target member). Safe when the model's type preserves its public members.")]
     public List<string> ValidateField(object model, string fieldName)
     {
         var results = new List<ValidationResult>();

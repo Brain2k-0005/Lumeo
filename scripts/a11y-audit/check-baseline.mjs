@@ -14,6 +14,19 @@
 // Moderate/minor violations are reported but never fail the gate (tracked,
 // not blocking — matches the "critical/serious only" instruction).
 //
+// This gate does NOT rely solely on run.mjs's own exit code to catch a
+// degraded sweep (a route that errored/timed out and so never got a
+// reports/<slug>.json written at all). run.mjs DOES set process.exitCode = 1
+// when summary.errors is non-empty, and the scheduled workflow's steps run
+// in sequence without `if: always()` before this one, so that already stops
+// a broken sweep from silently reaching this gate in CI today. But this
+// script is also run standalone/manually (README, local iteration) where
+// nothing enforces that ordering — so it independently cross-checks
+// summary.json's errors AND the full expected-slug list from the registry
+// (the same source run.mjs enumerates routes from), and fails loudly if
+// either shows the sweep was incomplete, instead of quietly grading whatever
+// subset of reports happened to get written.
+//
 // Usage: node check-baseline.mjs [--reports-dir <dir>]
 
 import { readFileSync, readdirSync, existsSync } from 'node:fs';
@@ -22,6 +35,7 @@ import { fileURLToPath } from 'node:url';
 import { nodeShapeHash } from './node-identity.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+const repoRoot = resolve(__dirname, '..', '..');
 const args = process.argv.slice(2);
 const reportsDir = args.includes('--reports-dir')
     ? resolve(args[args.indexOf('--reports-dir') + 1])
@@ -109,15 +123,57 @@ if (reportFiles.length === 0) {
     process.exit(1);
 }
 
+// Cross-check against the same registry.json run.mjs enumerates routes from
+// (not just "trust whatever files happen to be in reportsDir"), and against
+// summary.json's collected per-route errors — a route that errored/timed out
+// never gets a reports/<slug>.json written, and would otherwise be silently
+// skipped from grading (see run.mjs's summary.errors comment). Both files
+// are optional here (a `--reports-dir` pointed at a hand-built fixture won't
+// have either) so their absence is not itself an error.
+const registryPath = join(repoRoot, 'src', 'Lumeo', 'registry', 'registry.json');
+const registry = loadJson(registryPath, null);
+const summary = loadJson(join(reportsDir, 'summary.json'), null);
+const summaryErrors = summary?.errors ?? [];
+
+// Prefer summary.components — written atomically by run.mjs at the end of
+// THIS sweep — over "which reports/<slug>.json files happen to exist on
+// disk". File presence alone can't distinguish a slug this run actually
+// covered from a stale file left by an older sweep (different registry
+// state, a renamed/removed slug), an aborted `--slug` run, or a hand-copied
+// reports directory; any of those would let a component that was never
+// audited just now slip past the coverage check below AND (see the grading
+// loop further down) let a stale report keep a fixed baseline entry alive
+// or invent an old NEW finding for a route that wasn't part of this sweep.
+// Fall back to file presence only when summary.json is absent (e.g. a
+// `--reports-dir` pointed at a hand-built fixture with no summary.json).
+const reportedSlugs = summary?.components
+    ? new Set(Object.keys(summary.components))
+    : new Set(reportFiles.map(f => f.replace(/\.json$/, '')));
+
+let missingSlugs = [];
+if (registry) {
+    const expectedSlugs = Object.entries(registry.components)
+        .filter(([, c]) => c.hasDocsPage)
+        .map(([slug]) => slug);
+    missingSlugs = expectedSlugs.filter(s => !reportedSlugs.has(s));
+}
+
 // current: one row per (component, rule) that has at least one NON-excluded
-// node, carrying the surviving node count AND the set of node SHAPES (see
-// node-identity.mjs) — the count alone can't tell "known node fixed, new
-// node introduced" apart from "nothing changed", but the shape set can.
+// node, carrying the surviving node count AND a per-shape multiset of node
+// SHAPES (see node-identity.mjs) — the count alone can't tell "known node
+// fixed, new node introduced" apart from "nothing changed", but the shapes can.
 const current = [];
 let totalViolationInstances = 0;
 let totalExcludedNodes = 0;
 
 for (const file of reportFiles) {
+    const slug = file.replace(/\.json$/, '');
+    // Grade only slugs the current sweep actually reported (reportedSlugs,
+    // above). When summary.json exists this skips stale reports/<slug>.json
+    // files left on disk by an older sweep or a renamed/removed component —
+    // otherwise such a file would still be graded here even though it's not
+    // part of summary.components, the current sweep's source of truth.
+    if (!reportedSlugs.has(slug)) continue;
     const report = JSON.parse(readFileSync(join(reportsDir, file), 'utf8'));
     for (const v of report.violations) {
         totalViolationInstances += v.nodes.length;
@@ -250,8 +306,22 @@ if (brandNew.length > 0) {
         `debt (baseline should only grow when a violation is real and deliberately deferred, not as a rubber stamp).`);
 }
 
-if (brandNew.length > 0 || stale.length > 0 || shrunk.length > 0) {
+if (summaryErrors.length > 0) {
+    console.error(`\n[check-baseline] ${summaryErrors.length} route(s) errored during the sweep (see summary.json) — ` +
+        `the gate cannot vouch for these, they were never actually audited:`);
+    for (const e of summaryErrors) console.error(`  ✗ ${e.slug} — ${e.error}`);
+}
+
+if (missingSlugs.length > 0) {
+    console.error(`\n[check-baseline] ${missingSlugs.length} documented component(s) from registry.json have no ` +
+        `reports/<slug>.json at all — silently excluded from this gate run instead of audited:`);
+    for (const s of missingSlugs) console.error(`  ✗ ${s}`);
+    console.error(`\nRe-run the sweep (node run.mjs) and make sure it completes for every route before trusting this gate.`);
+}
+
+if (brandNew.length > 0 || stale.length > 0 || shrunk.length > 0 || summaryErrors.length > 0 || missingSlugs.length > 0) {
     process.exit(1);
 }
 
-console.log('[check-baseline] OK — no new critical/serious violations beyond baseline, no stale entries.');
+console.log('[check-baseline] OK — no new critical/serious violations beyond baseline, no stale entries, ' +
+    'no sweep errors, no missing routes.');

@@ -29,7 +29,7 @@
 // gate). Prints a one-line summary at the end.
 
 import { spawn } from 'node:child_process';
-import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync, rmSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { setTimeout as sleep } from 'node:timers/promises';
@@ -88,23 +88,12 @@ function run(cmd, cmdArgs, opts = {}) {
     });
 }
 
-// `proc` is optional — when given, an early exit (crashed `dotnet run`, port
-// already bound to some other process that never answers, etc.) aborts the
-// wait immediately with a clear error instead of polling for the full
-// timeout. Only a genuine 2xx is accepted as "ready": "/" is a real Blazor
-// page (docs/Lumeo.Docs/Pages/Home.razor, @page "/"), so a 404 here means
-// some OTHER service already owns the port, not that the docs app is still
-// booting — treating that 404 as ready used to let the crawl silently sweep
-// the wrong site (or a blank 404 page) and false-green the baseline.
-async function waitForServer(url, timeoutMs, proc) {
+async function waitForServer(url, timeoutMs = 120_000) {
     const start = Date.now();
     while (Date.now() - start < timeoutMs) {
-        if (proc && proc.exitCode !== null) {
-            throw new Error(`process exited with code ${proc.exitCode} while waiting for ${url} to come up`);
-        }
         try {
             const res = await fetch(url);
-            if (res.ok) return true;
+            if (res.ok || res.status === 404) return true;
         } catch { /* not up yet */ }
         await sleep(1000);
     }
@@ -143,16 +132,17 @@ if (!baseUrl) {
     dotnetProc.stdout.on('data', (d) => process.env.A11Y_AUDIT_VERBOSE && process.stdout.write(`[docs-server] ${d}`));
     dotnetProc.stderr.on('data', (d) => process.stderr.write(`[docs-server] ${d}`));
 
-    let up;
-    try {
-        up = await waitForServer(baseUrl, 120_000, dotnetProc);
-    } catch (err) {
-        console.error(`[a11y-audit] ${err.message}`);
-        process.exit(1);
-    }
+    const up = await waitForServer(baseUrl, 120_000);
     if (!up) {
         console.error(`[a11y-audit] docs server did not come up within 120s at ${baseUrl}`);
         dotnetProc.kill();
+        // dotnet run typically spawns a child apphost process on Windows that
+        // plain .kill() may not terminate — apply the same tree-kill fallback
+        // the finally block below uses, so this early-exit path can't leave
+        // an orphaned server bound to PORT behind for the next run.
+        if (process.platform === 'win32' && dotnetProc.pid) {
+            spawn('taskkill', ['/pid', String(dotnetProc.pid), '/T', '/F'], { stdio: 'ignore', shell: true });
+        }
         process.exit(1);
     }
     console.log(`[a11y-audit] docs server ready at ${baseUrl}`);
@@ -166,26 +156,21 @@ if (!baseUrl) {
 // ---------------------------------------------------------------------------
 mkdirSync(reportsDir, { recursive: true });
 
-// A full sweep (no --slug) is about to rewrite every current-registry
-// component's report anyway, so clear any pre-existing *.json first — a
-// component removed/renamed since the last full run, or files left over
-// from an interrupted sweep, would otherwise survive untouched and get
-// read by check-baseline.mjs/gen-baseline.mjs alongside this run's fresh
-// data. --slug mode is deliberately exempt: it exists for fast one-
-// component iteration, and wiping the directory would destroy the other
-// components' last-known reports that mode is meant to leave alone.
-if (!slugArg) {
-    for (const f of readdirSync(reportsDir)) {
-        if (f.endsWith('.json')) rmSync(join(reportsDir, f));
-    }
-}
-
-const browser = await puppeteer.launch({
-    headless: true,
-    args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
-});
-
 const AXE_TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'];
+
+// docs/Lumeo.Docs is a Blazor WebAssembly SPA (App.razor sets
+// NotFoundPage="typeof(Pages.NotFound)"); its dev-server answers ANY
+// unmatched deep link with a 200 + index.html (SPA fallback), so the HTTP
+// guard in auditOne() below cannot see a route whose @page directive drifted
+// from the registry slug — e.g. RegistryGen's hasDocsPage flag only checks
+// that a "<Name>Page.razor" FILE exists (tools/Lumeo.RegistryGen/Program.cs),
+// not that its @page string still matches /components/<slug>. The client
+// router only discovers that mismatch after hydration, by rendering
+// Pages.NotFound in place of the intended page — which itself lives inside
+// <main> (MainLayout) and would otherwise get graded as a normal, often
+// clean, component report. Pages.NotFound sets this exact <PageTitle>; every
+// component page instead gets "<Title> — Lumeo" via ComponentDocPage.
+const NOT_FOUND_TITLE = 'Page Not Found — Lumeo';
 
 const summary = {
     generated: new Date().toISOString(),
@@ -200,18 +185,17 @@ const summary = {
 async function auditOne(page, slug) {
     const route = `/components/${slug}`;
     const t0 = Date.now();
-    // Puppeteer's page.goto resolves normally on a 404/500 response — it only
-    // rejects on network-level failures (DNS, connection refused, etc.), not
-    // on HTTP error status codes. Without this check, a docs route that was
-    // removed/renamed still gets axe-run against whatever error/not-found DOM
-    // the server served, writing a normal-looking <slug>.json (often with
-    // FEW or NO violations, since a bare error page has little markup) that
-    // check-baseline.mjs then happily compares as if it were the real page —
-    // false-greening a broken component docs route instead of surfacing it
-    // as an audit error.
     const response = await page.goto(baseUrl + route, { waitUntil: 'load', timeout: 60_000 });
-    if (response && !response.ok()) {
-        throw new Error(`${route} responded ${response.status()} ${response.statusText()}`);
+    // page.goto() resolves for ANY HTTP response, including 404/500 — a
+    // broken or missing docs route would otherwise still get waited on,
+    // audited, and written to reports/<slug>.json as if the component was
+    // genuinely covered, letting a routing regression satisfy the coverage
+    // check (registry.json vs summary.components in check-baseline.mjs)
+    // without ever auditing the real component markup. Thrown here so the
+    // caller's existing try/catch records it in summary.errors, the same
+    // path check-baseline.mjs already treats as "never actually audited".
+    if (!response || !response.ok()) {
+        throw new Error(`HTTP ${response ? response.status() : '(no response)'} for ${route}`);
     }
     try {
         await page.waitForFunction(
@@ -224,6 +208,15 @@ async function auditOne(page, slug) {
     // Extra settle for late client-side renders (e.g. CodeMirror/chart canvases
     // that mount just after blazorReady).
     await sleep(300);
+
+    // Reject a route that resolved to Pages.NotFound (see NOT_FOUND_TITLE
+    // above) — thrown here so the caller's existing try/catch records it in
+    // summary.errors, the same path check-baseline.mjs already treats as
+    // "never actually audited", instead of writing a false "covered" report.
+    const title = await page.title();
+    if (title === NOT_FOUND_TITLE) {
+        throw new Error(`${route} resolved to the NotFound page (title "${title}") — no matching @page route`);
+    }
 
     await page.evaluate(axeSource);
     const result = await page.evaluate(async (tags) => {
@@ -264,7 +257,18 @@ async function auditOne(page, slug) {
     console.log(`[a11y-audit] ${tag} ${route} (${Date.now() - t0}ms)`);
 }
 
+// Declared here (not inside the try) so the finally below can still see it
+// and clean up dotnetProc even if puppeteer.launch() itself throws (e.g. no
+// Chromium/system libs on this machine) — that launch must share the same
+// cleanup path as the crawl itself, otherwise a launch failure exits with
+// the docs server still bound to PORT for the next run to trip over.
+let browser = null;
 try {
+    browser = await puppeteer.launch({
+        headless: true,
+        args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
+    });
+
     const concurrency = Number(process.env.A11Y_AUDIT_CONCURRENCY) || (process.platform === 'win32' ? 3 : 6);
     const queue = [...slugs];
     async function worker() {
@@ -283,7 +287,7 @@ try {
     }
     await Promise.all(Array.from({ length: Math.min(concurrency, slugs.length) }, worker));
 } finally {
-    await browser.close();
+    if (browser) await browser.close();
     if (dotnetProc) {
         dotnetProc.kill();
         // Give the process tree a moment; on Windows `dotnet run` spawns a

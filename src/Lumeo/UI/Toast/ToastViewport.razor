@@ -1,6 +1,26 @@
 @namespace Lumeo
+@implements IDisposable
 
-<div class="@CssClass" @attributes="AdditionalAttributes">
+@*  Sonner-style stacking (rc.??). data-stacked/data-expanded/data-stack-edge
+    drive the CSS in lumeo.css's "Toast stacking" section; onmouseenter/leave
+    + onfocusin/out track _hovered and _focused SEPARATELY (Expanded = hovered
+    OR focused) so the group fans out to the normal list layout on hover or
+    keyboard focus (focus-within) and only collapses again once BOTH are gone.
+    A single shared flag would let mouseleave collapse a stack that still has
+    keyboard focus inside it (e.g. tabbing through a toast's close/action
+    button while the pointer happens to leave) — the toast being interacted
+    with would fall back into the collapsed/absolute stack position mid-
+    interaction. All logic here is per-render state — no per-frame JS, no
+    .NET calls in a hot path. *@
+<div class="@CssClass"
+     data-stacked="@(IsStacked ? "true" : "false")"
+     data-expanded="@(Expanded ? "true" : "false")"
+     data-stack-edge="@StackEdge"
+     @onmouseenter="OnMouseEnter"
+     @onmouseleave="OnMouseLeave"
+     @onfocusin="OnFocusIn"
+     @onfocusout="OnFocusOut"
+     @attributes="AdditionalAttributes">
     @ChildContent
 </div>
 
@@ -8,7 +28,164 @@
     [Parameter] public RenderFragment? ChildContent { get; set; }
     [Parameter] public string? Class { get; set; }
     [Parameter] public ToastPosition Position { get; set; } = ToastPosition.BottomRight;
+
+    /// <summary>Whether the provider wants sonner-style stacking for this group.</summary>
+    [Parameter] public bool StackToasts { get; set; } = true;
+
+    /// <summary>Number of toasts currently rendered in this position group (including
+    /// ones mid exit-animation). Stacking only kicks in above 1 toast.</summary>
+    [Parameter] public int ToastCount { get; set; }
+
+    /// <summary>PR #357 P2 fix: fires whenever <see cref="Expanded"/> flips (hover-enter/leave,
+    /// focus-in/out — including the deferred focus-out collapse below), so a consumer (ToastProvider)
+    /// can pause EVERY toast in this position group for the duration of the expansion, not just
+    /// whichever one is directly under the pointer/keyboard focus. Without this, a stack with several
+    /// auto-dismiss toasts only ever paused the specific toast a per-toast hover/focus handler fired
+    /// for — siblings merely VISIBLE in the fanned-out expanded list kept their own timers running and
+    /// could vanish out from under the user mid-read. Not invoked for the initial (collapsed) render —
+    /// only for an actual flip, tracked via <see cref="_notifiedExpanded"/> — so a fresh viewport with
+    /// nothing hovered never fires a spurious "resume" the first time this callback is wired up.</summary>
+    [Parameter] public EventCallback<bool> OnExpandedChanged { get; set; }
+
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    // Hover-anywhere-over-the-group and focus-within expansion state, tracked
+    // independently so mouseleave can't collapse a stack that still has
+    // keyboard focus inside it (and vice versa). Collapsed by default; the
+    // CSS in lumeo.css only applies stacking transforms while
+    // data-expanded="false", so Expanded=true reverts to the plain gapped list.
+    private bool _hovered;
+    private bool _focused;
+    private bool Expanded => _hovered || _focused;
+
+    // PR #357 P2 fix: last Expanded value actually reported via OnExpandedChanged, so
+    // NotifyExpandedChangeAsync only fires on a genuine flip — never a redundant repeat call (e.g.
+    // mouseenter firing while _focused already made Expanded true) and never a spurious notification
+    // on first wire-up before anything has changed.
+    private bool _notifiedExpanded;
+
+    private async Task NotifyExpandedChangeAsync()
+    {
+        var expanded = Expanded;
+        if (expanded == _notifiedExpanded) return;
+        _notifiedExpanded = expanded;
+        if (OnExpandedChanged.HasDelegate)
+        {
+            await OnExpandedChanged.InvokeAsync(expanded);
+        }
+    }
+
+    private async Task OnMouseEnter()
+    {
+        _hovered = true;
+        await NotifyExpandedChangeAsync();
+    }
+
+    private async Task OnMouseLeave()
+    {
+        _hovered = false;
+        await NotifyExpandedChangeAsync();
+    }
+
+    // Keyboard focus moving BETWEEN two controls inside this group (e.g. one toast's close
+    // button to another's action button) fires a bubbling focusout on the FIRST control —
+    // relatedTarget is the second control, still inside this group — immediately followed by
+    // focusin on that second control; both dispatch synchronously in that order. Flipping
+    // `_focused = false` straight from focusout (as onfocusin/onfocusout did before) renders
+    // data-expanded="false" the instant the first event lands, collapsing the stack and
+    // repositioning every control mid-tab, THEN the paired focusin flips it back — a visible
+    // flicker/collapse for one frame. Deferring the actual collapse by a short grace window and
+    // having OnFocusIn cancel any pending one via the sequence guard means a focus move that
+    // stays inside the group never flips `_focused` to false at all — only a focus move that
+    // leaves the group with nothing re-claiming focus actually collapses it. Same "defer, then
+    // let the next event cancel it" idiom HoverCard/MegaMenuItem use via DelayedDispatch, inlined
+    // here (not the shared internal helper) so this component keeps compiling if it's ever
+    // vendored on its own. NOT 0ms: a same-tick `Timer(0)` races the ThreadPool against whatever
+    // dispatches the paired focusin — a genuinely async race that can (rarely but really) fire
+    // the collapse before that focusin lands. A small, still-imperceptible grace window (a browser
+    // tab-move's focusout->focusin pair lands within low single-digit ms) is the deterministic
+    // choice instead.
+    private System.Threading.Timer? _focusOutTimer;
+    private int _focusOutSequence;
+    private const int FocusCollapseGraceMs = 30;
+
+    private async Task OnFocusIn()
+    {
+        _focusOutSequence++;
+        _focusOutTimer?.Dispose();
+        _focusOutTimer = null;
+        _focused = true;
+        await NotifyExpandedChangeAsync();
+    }
+
+    private void OnFocusOut()
+    {
+        var seq = ++_focusOutSequence;
+        _focusOutTimer?.Dispose();
+        _focusOutTimer = new System.Threading.Timer(_ =>
+        {
+            _ = RunSafeCollapse(seq);
+        }, null, FocusCollapseGraceMs, System.Threading.Timeout.Infinite);
+    }
+
+    // PR #357 round-5 (P2): the 30ms grace timer above can fire (or already be mid-callback)
+    // right as the component is torn down — navigating away, or a non-default position
+    // viewport disappearing along with its last toast. Two independent guards, matching the
+    // sequence-cancel + exception-swallow idiom the other local timers in this PR use
+    // (Toast.razor's EnterFallbackTimer.RunSafe, ToastProvider's exit/dismiss timers):
+    // Dispose() bumps `_focusOutSequence` so an in-flight callback's stale `seq` never matches
+    // and mutates state post-teardown, AND this catches the disconnected-renderer exceptions
+    // InvokeAsync can throw if the callback is already past that check when disposal lands.
+    private async Task RunSafeCollapse(int seq)
+    {
+        try
+        {
+            await InvokeAsync(async () =>
+            {
+                if (seq != _focusOutSequence) return; // superseded by a focusin, or disposed
+                _focused = false;
+                StateHasChanged();
+                await NotifyExpandedChangeAsync();
+            });
+        }
+        catch (JSDisconnectedException) { }
+        catch (ObjectDisposedException) { }
+    }
+
+    public void Dispose()
+    {
+        _focusOutSequence++; // invalidate any in-flight callback before disposing the timer
+        _focusOutTimer?.Dispose();
+
+        // PR #357 (Codex finding): a non-default-position viewport is only rendered while its
+        // group is non-empty (see ToastProvider's positionsToRender/@key) — dismissing its LAST
+        // toast programmatically while the group is still hovered/focus-within tears this instance
+        // down via @key diffing without ever running a mouseleave/focusout to flip Expanded back to
+        // false. Without this, ToastProvider's _expandedGroups keeps this position marked expanded
+        // forever: the NEXT toast shown at the same position mounts a fresh (collapsed,
+        // _notifiedExpanded=false) ToastViewport that never fires a false edge either — the first
+        // render is intentionally silent (see OnExpandedChanged's doc comment) — so the stale entry
+        // is never cleared and that toast's timer starts (and stays) paused with
+        // PauseReason.Group, never auto-dismissing. Firing the same false-edge notification Dispose
+        // would have delivered via a real mouseleave/focusout closes that gap. Fire-and-forget is
+        // safe here: HandleGroupExpandedChanged is synchronous (no await, no StateHasChanged) and
+        // ToastProvider outlives this viewport, so there is no disconnected-renderer risk to guard
+        // against the way RunSafeCollapse must for its own InvokeAsync/StateHasChanged path above.
+        if (_notifiedExpanded && OnExpandedChanged.HasDelegate)
+        {
+            _notifiedExpanded = false;
+            _ = OnExpandedChanged.InvokeAsync(false);
+        }
+    }
+
+    private bool IsStacked => StackToasts && ToastCount > 1;
+
+    private bool IsTopAnchored => Position is ToastPosition.TopLeft or ToastPosition.TopCenter or ToastPosition.TopRight;
+
+    // The peek points AWAY from the anchored screen edge (sonner): a
+    // bottom-anchored group shows the older toasts peeking out ABOVE the
+    // front toast, a top-anchored group peeks out below it.
+    private string StackEdge => IsTopAnchored ? "down" : "up";
 
     // On screens < sm (640px), every position collapses to a centered bottom strip with 16px side gutters
     // so toasts can't get cut off or have their content (title + description + close button + action) squeezed
@@ -26,7 +203,14 @@
 
     // Mobile: full available width (constrained by inset-x-4 = 16px gutters each side).
     // Desktop: capped at 420px so toasts don't stretch absurdly on wide monitors.
-    private string CssClass => Cx.Merge(PositionClasses, "z-[100] flex max-h-screen w-auto sm:w-full sm:max-w-[420px] flex-col gap-2", Class);
+    // PR #357 (Codex finding): "lumeo-toast-viewport" scopes the stacking rules in lumeo.css's
+    // "Toast stacking" section to actual toast groups. Those rules used to key off the bare
+    // data-stacked/data-index attributes alone — global selectors that, loaded app-wide, would
+    // ALSO match any host app or third-party widget that happens to render its own
+    // data-stacked="true"/data-index="N" markup, silently pulling its non-zero children out of
+    // flow and making them non-interactive. See CssClass's doc comment for the width contract
+    // this class doesn't affect.
+    private string CssClass => Lumeo.Cx.Merge("lumeo-toast-viewport", PositionClasses, "z-[100] flex max-h-screen w-auto sm:w-full sm:max-w-[420px] flex-col gap-2", Class);
 
     public enum ToastPosition { TopLeft, TopCenter, TopRight, BottomLeft, BottomCenter, BottomRight }
 }

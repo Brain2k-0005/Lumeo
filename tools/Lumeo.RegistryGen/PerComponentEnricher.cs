@@ -185,10 +185,18 @@ public static class PerComponentEnricher
         entry["relatedComponents"] = related;
 
         // 8. keyboardInteractions — heuristic.
+        // Reuses ComponentsApiEmitter's MatchKeyLiteralOccurrences (KeyComparisonRegex +
+        // the Key-switch-body-gated switch-expression-arm scan) + KnownKeys whitelist —
+        // not a separate `.Key == "X"`-only regex — so this human-readable summary can
+        // never fall behind api.a11y.keys again — a switch-statement (`case "X":`),
+        // pattern-match (`.Key is "X" or "Y"`), or switch-expression-arm (`"X" => ...`,
+        // only inside an actual `.Key switch { }` block) key handler must be credited
+        // here exactly like it is there (PR #356 round-3, Codex P3; the switch-expression
+        // gating is round-4, Codex P2 — this scanner used to run over EVERY .cs/.razor
+        // file with no `@onkeydown`/`KeyboardEventArgs` gate at all, so it could credit a
+        // component with zero key handling, e.g. Icon.razor's icon-name switch).
         var keyboard = new List<Dictionary<string, object?>>();
         var seenKeyboard = new HashSet<string>(StringComparer.Ordinal);
-        // capture .Key == "Foo" patterns + try to find enclosing method name.
-        var keyRegex = new Regex(@"(\w+)\.Key\s*==\s*""([^""]+)""", RegexOptions.Compiled);
         var methodRegex = new Regex(@"(?:private|public|protected|internal)\s+(?:async\s+)?(?:Task|ValueTask|void)\s+(\w+)\s*\(",
             RegexOptions.Compiled);
         foreach (var sc in sourceContent)
@@ -206,19 +214,21 @@ public static class PerComponentEnricher
                 methodPositions.Add((mm.Index, mm.Groups[1].Value));
             }
 
-            foreach (Match km in keyRegex.Matches(content))
+            foreach (var (index, k) in ComponentsApiEmitter.MatchKeyLiteralOccurrences(content))
             {
-                var key = km.Groups[2].Value;
-                // find enclosing method (the latest method header before this match).
+                if (!ComponentsApiEmitter.KnownKeys.Contains(k)) continue; // same whitelist as the a11y scanner
+
+                // find enclosing method (the latest method header before this occurrence).
                 string method = "(unknown)";
                 for (int i = methodPositions.Count - 1; i >= 0; i--)
                 {
-                    if (methodPositions[i].Start < km.Index)
+                    if (methodPositions[i].Start < index)
                     {
                         method = methodPositions[i].Name;
                         break;
                     }
                 }
+                var key = k == " " ? "Space" : k;
                 var dedup = key + "::" + method;
                 if (!seenKeyboard.Add(dedup)) continue;
                 keyboard.Add(new Dictionary<string, object?>
@@ -230,7 +240,15 @@ public static class PerComponentEnricher
         }
         entry["keyboardInteractions"] = keyboard;
 
-        // 9. tests — scan tests/ for files mentioning componentName.
+        // 9. tests — scan tests/ for files that really exercise this component.
+        // The matching contract (dedicated folder ownership OR a real, comment-
+        // stripped type reference OR a longest-prefix suffixed test id — see the
+        // ComponentTestMatcher type doc for the full rationale) lives in
+        // ComponentTestMatcher, the single well-specified replacement for what
+        // used to be several ad-hoc regexes (rendersRegex + HasRealComponentMention
+        // + IsOwnedByFolder) patched independently across review waves. E2E specs,
+        // which navigate a real browser to the component's docs route instead of
+        // rendering its markup, keep their own route-based signal in addition.
         var tests = new List<string>();
         var seenTests = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var testRoots = new[]
@@ -239,18 +257,38 @@ public static class PerComponentEnricher
             Path.Combine(repoRoot, "tests", "Lumeo.Docs.Tests"),
             Path.Combine(repoRoot, "tests", "Lumeo.Tests.E2E"),
         };
-        // Match either a class named like the component (Class FooBar) or string-literal mentions.
-        var nameWordRegex = new Regex(@"\b" + Regex.Escape(componentName) + @"\b", RegexOptions.Compiled);
+        // E2E specs don't render Razor markup at all — they navigate a real browser
+        // to the component's docs route — so they need their own route-based signal
+        // (the ComponentTestMatcher content contract, which keys off rendered type
+        // references, would otherwise silently drop every route-only E2E entry).
+        var e2eRouteRegex = new Regex(
+            $@"/components/{Regex.Escape(componentKey)}(?![a-z0-9-])",
+            RegexOptions.Compiled);
         foreach (var root in testRoots)
         {
             if (!Directory.Exists(root)) continue;
-            foreach (var csFile in Directory.EnumerateFiles(root, "*.cs", SearchOption.AllDirectories))
+            var isE2E = string.Equals(Path.GetFileName(root), "Lumeo.Tests.E2E", StringComparison.OrdinalIgnoreCase);
+            // Test sources are both .cs and bUnit .razor files (StepsKeyboardTests.razor
+            // etc. use `Render(@<X …>)`) — the previous *.cs-only glob silently dropped
+            // every .razor test from this list across the WHOLE library.
+            var testFiles = Directory.EnumerateFiles(root, "*.cs", SearchOption.AllDirectories)
+                .Concat(isE2E ? Enumerable.Empty<string>() : Directory.EnumerateFiles(root, "*.razor", SearchOption.AllDirectories));
+            foreach (var testFile in testFiles)
             {
+                var rel = Path.GetRelativePath(repoRoot, testFile).Replace('\\', '/');
                 string text;
-                try { text = File.ReadAllText(csFile).Replace("\r\n", "\n").Replace("\r", "\n"); }
+                try { text = File.ReadAllText(testFile).Replace("\r\n", "\n").Replace("\r", "\n"); }
                 catch { continue; }
-                if (!nameWordRegex.IsMatch(text)) continue;
-                var rel = Path.GetRelativePath(repoRoot, csFile).Replace('\\', '/');
+                // Non-E2E files are judged solely by ComponentTestMatcher's single
+                // IsCoverage contract (dedicated-folder ownership OR a real, comment-
+                // stripped type reference OR a longest-prefix suffixed test id), which
+                // supersedes the old IsOwnedByFolder + rendersRegex + HasRealComponentMention
+                // trio while preserving every one of their signals (folder ownership and the
+                // `.Select(...)`/`new List<...>()` BCL-collision exclusion included). E2E specs
+                // additionally match on their docs route, since they never render the type.
+                var matches = ComponentTestMatcher.IsCoverage(componentName, rel, text, knownComponentNames)
+                    || (isE2E && e2eRouteRegex.IsMatch(text));
+                if (!matches) continue;
                 if (seenTests.Add(rel)) tests.Add(rel);
             }
         }
