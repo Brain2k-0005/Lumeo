@@ -35,7 +35,7 @@
         "name": "Text",
         "type": "string?",
         "default": null,
-        "description": null,
+        "description": "Label for the primary action button. Ignored when ChildContent is supplied.",
         "isCascading": false,
         "captureUnmatched": false,
         "isEditorRequired": false
@@ -44,7 +44,7 @@
         "name": "ChildContent",
         "type": "RenderFragment?",
         "default": null,
-        "description": null,
+        "description": "Custom content for the primary action button, replacing Text.",
         "isCascading": false,
         "captureUnmatched": false,
         "isEditorRequired": false
@@ -53,7 +53,7 @@
         "name": "MenuContent",
         "type": "RenderFragment?",
         "default": null,
-        "description": null,
+        "description": "The dropdown's menu items, rendered inside a DropdownMenuContent opened by the chevron half.",
         "isCascading": false,
         "captureUnmatched": false,
         "isEditorRequired": false
@@ -62,7 +62,7 @@
         "name": "OnClick",
         "type": "EventCallback<Microsoft.AspNetCore.Components.Web.MouseEventArgs>",
         "default": null,
-        "description": null,
+        "description": "Fires when the primary action button (the left half) is clicked.",
         "isCascading": false,
         "captureUnmatched": false,
         "isEditorRequired": false
@@ -71,7 +71,7 @@
         "name": "Variant",
         "type": "Button.ButtonVariant",
         "default": "Button.ButtonVariant.Default",
-        "description": null,
+        "description": "Button color/style variant, applied to both halves. Defaults to Default.",
         "isCascading": false,
         "captureUnmatched": false,
         "isEditorRequired": false
@@ -80,7 +80,7 @@
         "name": "Size",
         "type": "Button.ButtonSize",
         "default": "Button.ButtonSize.Default",
-        "description": null,
+        "description": "Button size, applied to both halves and used to compute the chevron half's fixed width. Defaults to Default.",
         "isCascading": false,
         "captureUnmatched": false,
         "isEditorRequired": false
@@ -88,8 +88,8 @@
       {
         "name": "Disabled",
         "type": "bool",
-        "default": null,
-        "description": null,
+        "default": "false",
+        "description": "When true, disables both halves — the primary action and the dropdown trigger.",
         "isCascading": false,
         "captureUnmatched": false,
         "isEditorRequired": false
@@ -98,7 +98,7 @@
         "name": "Class",
         "type": "string?",
         "default": null,
-        "description": null,
+        "description": "Additional CSS classes merged onto the root wrapper.",
         "isCascading": false,
         "captureUnmatched": false,
         "isEditorRequired": false
@@ -107,7 +107,7 @@
         "name": "AdditionalAttributes",
         "type": "Dictionary<string, object>?",
         "default": null,
-        "description": null,
+        "description": "Captures any unmatched attributes and applies them to the root wrapper.",
         "isCascading": false,
         "captureUnmatched": true,
         "isEditorRequired": false
@@ -117,7 +117,7 @@
       {
         "name": "OnClick",
         "type": "EventCallback<Microsoft.AspNetCore.Components.Web.MouseEventArgs>",
-        "description": null
+        "description": "Fires when the primary action button (the left half) is clicked."
       }
     ],
     "enums": [],
@@ -183,7 +183,7 @@
   "source": [
     {
       "path": "UI/SplitButton/SplitButton.razor",
-      "content": "@namespace Lumeo\n@inject Lumeo.Services.Localization.ILumeoLocalizer L\n\n<div class=\"@RootCssClass\" @attributes=\"AdditionalAttributes\">\n    @* Primary action half *@\n    <Button Variant=\"Variant\"\n            Size=\"Size\"\n            Disabled=\"Disabled\"\n            OnClick=\"OnClick\"\n            Class=\"@PrimaryButtonClass\">\n        @if (ChildContent != null)\n        {\n            @ChildContent\n        }\n        else\n        {\n            @Text\n        }\n    </Button>\n\n    @* Chevron / dropdown half *@\n    <DropdownMenu @bind-Open=\"_open\">\n        @* AsChild folds the trigger's menu ARIA (data-state/aria-haspopup/aria-expanded/\n           aria-controls) + toggle onclick onto this single focusable <button>, instead of\n           leaving them on a separate non-focusable role=button wrapper a screen reader\n           never lands on (triage #121). aria-haspopup is dropped here because the slot\n           already supplies it. *@\n        <DropdownMenuTrigger AsChild Disabled=\"Disabled\">\n            <Button Variant=\"Variant\"\n                    Size=\"Size\"\n                    Disabled=\"Disabled\"\n                    Class=\"@ChevronButtonClass\"\n                    aria-label=\"@L[\"Common.MoreOptions\"]\">\n                <SvgGlyph Svg=\"@(LumeoIcons.ChevronDown)\" Class=\"h-4 w-4 shrink-0 transition-transform duration-200 group-data-[state=open]:rotate-180\" />\n            </Button>\n        </DropdownMenuTrigger>\n        <DropdownMenuContent>\n            @MenuContent\n        </DropdownMenuContent>\n    </DropdownMenu>\n</div>\n\n@code {\n    [Parameter] public string? Text { get; set; }\n    [Parameter] public RenderFragment? ChildContent { get; set; }\n    [Parameter] public RenderFragment? MenuContent { get; set; }\n    [Parameter] public EventCallback<Microsoft.AspNetCore.Components.Web.MouseEventArgs> OnClick { get; set; }\n    [Parameter] public Button.ButtonVariant Variant { get; set; } = Button.ButtonVariant.Default;\n    [Parameter] public Button.ButtonSize Size { get; set; } = Button.ButtonSize.Default;\n    [Parameter] public bool Disabled { get; set; }\n    [Parameter] public string? Class { get; set; }\n    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }\n\n    private bool _open;\n\n    // Size-aware icon-only width for the chevron half\n    private string ChevronWidth => Size switch\n    {\n        Button.ButtonSize.Sm => \"w-7\",\n        Button.ButtonSize.Lg => \"w-10\",\n        _ => \"w-9\"\n    };\n\n    private string RootCssClass => Cx.Merge(\n        \"inline-flex\",\n        Class);\n\n    // Primary button: square right edge, collapsed right border\n    private const string PrimaryButtonClass = \"rounded-e-none border-e-0\";\n\n    // Chevron button: square left edge, collapsed left border (via -ms-px)\n    private string ChevronButtonClass => Cx.Join(\n        \"rounded-s-none -ms-px px-0 shrink-0\",\n        ChevronWidth);\n}\n"
+      "content": "@namespace Lumeo\n@inject Lumeo.Services.Localization.ILumeoLocalizer L\n\n<div class=\"@RootCssClass\" @attributes=\"AdditionalAttributes\">\n    @* Primary action half *@\n    <Button Variant=\"Variant\"\n            Size=\"Size\"\n            Disabled=\"Disabled\"\n            OnClick=\"OnClick\"\n            Class=\"@PrimaryButtonClass\">\n        @if (ChildContent != null)\n        {\n            @ChildContent\n        }\n        else\n        {\n            @Text\n        }\n    </Button>\n\n    @* Chevron / dropdown half *@\n    <DropdownMenu @bind-Open=\"_open\">\n        @* AsChild folds the trigger's menu ARIA (data-state/aria-haspopup/aria-expanded/\n           aria-controls) + toggle onclick onto this single focusable <button>, instead of\n           leaving them on a separate non-focusable role=button wrapper a screen reader\n           never lands on (triage #121). aria-haspopup is dropped here because the slot\n           already supplies it. *@\n        <DropdownMenuTrigger AsChild Disabled=\"Disabled\">\n            <Button Variant=\"Variant\"\n                    Size=\"Size\"\n                    Disabled=\"Disabled\"\n                    Class=\"@ChevronButtonClass\"\n                    aria-label=\"@L[\"Common.MoreOptions\"]\">\n                <SvgGlyph Svg=\"@(LumeoIcons.ChevronDown)\" Class=\"h-4 w-4 shrink-0 transition-transform duration-200 group-data-[state=open]:rotate-180\" />\n            </Button>\n        </DropdownMenuTrigger>\n        <DropdownMenuContent>\n            @MenuContent\n        </DropdownMenuContent>\n    </DropdownMenu>\n</div>\n\n@code {\n    /// <summary>Label for the primary action button. Ignored when <see cref=\"ChildContent\"/> is supplied.</summary>\n    [Parameter] public string? Text { get; set; }\n\n    /// <summary>Custom content for the primary action button, replacing <see cref=\"Text\"/>.</summary>\n    [Parameter] public RenderFragment? ChildContent { get; set; }\n\n    /// <summary>The dropdown's menu items, rendered inside a <c>DropdownMenuContent</c> opened by the chevron half.</summary>\n    [Parameter] public RenderFragment? MenuContent { get; set; }\n\n    /// <summary>Fires when the primary action button (the left half) is clicked.</summary>\n    [Parameter] public EventCallback<Microsoft.AspNetCore.Components.Web.MouseEventArgs> OnClick { get; set; }\n\n    /// <summary>Button color/style variant, applied to both halves. Defaults to <see cref=\"Button.ButtonVariant.Default\"/>.</summary>\n    [Parameter] public Button.ButtonVariant Variant { get; set; } = Button.ButtonVariant.Default;\n\n    /// <summary>Button size, applied to both halves and used to compute the chevron half's fixed width. Defaults to <see cref=\"Button.ButtonSize.Default\"/>.</summary>\n    [Parameter] public Button.ButtonSize Size { get; set; } = Button.ButtonSize.Default;\n\n    /// <summary>When <c>true</c>, disables both halves — the primary action and the dropdown trigger.</summary>\n    [Parameter] public bool Disabled { get; set; }\n\n    /// <summary>Additional CSS classes merged onto the root wrapper.</summary>\n    [Parameter] public string? Class { get; set; }\n\n    /// <summary>Captures any unmatched attributes and applies them to the root wrapper.</summary>\n    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }\n\n    private bool _open;\n\n    // Size-aware icon-only width for the chevron half\n    private string ChevronWidth => Size switch\n    {\n        Button.ButtonSize.Sm => \"w-7\",\n        Button.ButtonSize.Lg => \"w-10\",\n        _ => \"w-9\"\n    };\n\n    private string RootCssClass => Cx.Merge(\n        \"inline-flex\",\n        Class);\n\n    // Primary button: square right edge, collapsed right border\n    private const string PrimaryButtonClass = \"rounded-e-none border-e-0\";\n\n    // Chevron button: square left edge, collapsed left border (via -ms-px)\n    private string ChevronButtonClass => Cx.Join(\n        \"rounded-s-none -ms-px px-0 shrink-0\",\n        ChevronWidth);\n}\n"
     }
   ],
   "slots": [
@@ -191,13 +191,13 @@
       "name": "ChildContent",
       "owner": "SplitButton",
       "type": "RenderFragment?",
-      "description": null
+      "description": "Custom content for the primary action button, replacing Text."
     },
     {
       "name": "MenuContent",
       "owner": "SplitButton",
       "type": "RenderFragment?",
-      "description": null
+      "description": "The dropdown's menu items, rendered inside a DropdownMenuContent opened by the chevron half."
     }
   ],
   "serviceDependencies": [
@@ -223,5 +223,5 @@
     "tests/Lumeo.Tests/Components/SplitButton/SplitButtonChevronAriaTests.cs",
     "tests/Lumeo.Tests/Components/SplitButton/SplitButtonTests.cs"
   ],
-  "mdSummary": "# SplitButton\n\nSplit Button component.\n\n**Package:** `Lumeo` · **Category:** Utility\n**Docs:** https://lumeo.nativ.sh/components/split-button\n\n## Parameters\n| Owner | Name | Type | Default | Description |\n|---|---|---|---|---|\n| SplitButton | Text | `string?` | `` |  |\n| SplitButton | ChildContent | `RenderFragment?` | `` |  |\n| SplitButton | MenuContent | `RenderFragment?` | `` |  |\n| SplitButton | OnClick | `EventCallback<Microsoft.AspNetCore.Components.Web.MouseEventArgs>` | `` |  |\n| SplitButton | Variant | `Button.ButtonVariant` | `Button.ButtonVariant.Default` |  |\n| SplitButton | Size | `Button.ButtonSize` | `Button.ButtonSize.Default` |  |\n| SplitButton | Disabled | `bool` | `` |  |\n| SplitButton | Class | `string?` | `` |  |\n| SplitButton | AdditionalAttributes | `Dictionary<string, object>?` | `` |  |\n\n## Slots\n- `ChildContent` (SplitButton) — RenderFragment slot\n- `MenuContent` (SplitButton) — RenderFragment slot\n\n## Events\n- `OnClick` (`EventCallback<Microsoft.AspNetCore.Components.Web.MouseEventArgs>`)\n\n## Sub-components\n- (none)\n\n## Cascading values it expects\n- (none)\n\n## Services it injects\n- `ILumeoLocalizer` (Lumeo.Services.Localization)\n\n## Keyboard\n—\n\n## Example\n```razor\n<SplitButton />\n```\n\n## CSS variables\n`--radius`\n\n## Files\n- `UI/SplitButton/SplitButton.razor`\n"
+  "mdSummary": "# SplitButton\n\nSplit Button component.\n\n**Package:** `Lumeo` · **Category:** Utility\n**Docs:** https://lumeo.nativ.sh/components/split-button\n\n## Parameters\n| Owner | Name | Type | Default | Description |\n|---|---|---|---|---|\n| SplitButton | Text | `string?` | `` | Label for the primary action button. Ignored when ChildContent is supplied. |\n| SplitButton | ChildContent | `RenderFragment?` | `` | Custom content for the primary action button, replacing Text. |\n| SplitButton | MenuContent | `RenderFragment?` | `` | The dropdown's menu items, rendered inside a DropdownMenuContent opened by the chevron half. |\n| SplitButton | OnClick | `EventCallback<Microsoft.AspNetCore.Components.Web.MouseEventArgs>` | `` | Fires when the primary action button (the left half) is clicked. |\n| SplitButton | Variant | `Button.ButtonVariant` | `Button.ButtonVariant.Default` | Button color/style variant, applied to both halves. Defaults to Default. |\n| SplitButton | Size | `Button.ButtonSize` | `Button.ButtonSize.Default` | Button size, applied to both halves and used to compute the chevron half's fixed width. Defaults to Default. |\n| SplitButton | Disabled | `bool` | `false` | When true, disables both halves — the primary action and the dropdown trigger. |\n| SplitButton | Class | `string?` | `` | Additional CSS classes merged onto the root wrapper. |\n| SplitButton | AdditionalAttributes | `Dictionary<string, object>?` | `` | Captures any unmatched attributes and applies them to the root wrapper. |\n\n## Slots\n- `ChildContent` (SplitButton) — Custom content for the primary action button, replacing Text.\n- `MenuContent` (SplitButton) — The dropdown's menu items, rendered inside a DropdownMenuContent opened by the chevron half.\n\n## Events\n- `OnClick` (`EventCallback<Microsoft.AspNetCore.Components.Web.MouseEventArgs>`) — Fires when the primary action button (the left half) is clicked.\n\n## Sub-components\n- (none)\n\n## Cascading values it expects\n- (none)\n\n## Services it injects\n- `ILumeoLocalizer` (Lumeo.Services.Localization)\n\n## Keyboard\n—\n\n## Example\n```razor\n<SplitButton />\n```\n\n## CSS variables\n`--radius`\n\n## Files\n- `UI/SplitButton/SplitButton.razor`\n"
 }

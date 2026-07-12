@@ -59,17 +59,28 @@
 @inject IComponentInteropService Interop
 
 @code {
+    /// <summary>The signature as a data URL (PNG or SVG, per <see cref="Format"/>). Controlled when
+    /// <see cref="ValueChanged"/> is bound — a change to this value repaints the canvas; an echo of the
+    /// component's own emitted value is recognised and skipped to preserve the in-progress stroke.</summary>
     [Parameter] public string? Value { get; set; }
+    /// <summary>Invoked with the updated data URL after each stroke (debounced) and on clear.</summary>
     [Parameter] public EventCallback<string?> ValueChanged { get; set; }
 
+    /// <summary>Canvas width in px. Default: 500. Changing this at runtime resets and repaints the drawing surface.</summary>
     [Parameter] public int Width { get; set; } = 500;
+    /// <summary>Canvas height in px. Default: 200. Changing this at runtime resets and repaints the drawing surface.</summary>
     [Parameter] public int Height { get; set; } = 200;
 
+    /// <summary>Stroke color for new drawing. Default: <c>currentColor</c>.</summary>
     [Parameter] public string StrokeColor { get; set; } = "currentColor";
+    /// <summary>Stroke width in px for new drawing. Default: 2.0.</summary>
     [Parameter] public double StrokeWidth { get; set; } = 2.0;
+    /// <summary>Canvas background color. Default: <c>transparent</c>.</summary>
     [Parameter] public string BackgroundColor { get; set; } = "transparent";
 
+    /// <summary>Shows the Clear button (disabled when the pad is already empty). Default: true.</summary>
     [Parameter] public bool ShowClearButton { get; set; } = true;
+    /// <summary>Shows a Download button that saves the signature as a file in <see cref="Format"/>.</summary>
     [Parameter] public bool ShowDownloadButton { get; set; }
 
     /// <summary>
@@ -82,16 +93,22 @@
     /// </summary>
     [Parameter] public string Format { get; set; } = "png";
 
+    /// <summary>Disables drawing — the canvas ignores pointer input and controls are inert.</summary>
     [Parameter] public bool Disabled { get; set; }
 
+    /// <summary>Invoked after a stroke completes, alongside <see cref="ValueChanged"/>.</summary>
     [Parameter] public EventCallback OnSign { get; set; }
+    /// <summary>Invoked after the pad is cleared, alongside <see cref="ValueChanged"/>.</summary>
     [Parameter] public EventCallback OnClear { get; set; }
 
+    /// <summary>Placeholder text shown centered over the canvas while empty. Default: "Sign here".</summary>
     [Parameter] public string? Placeholder { get; set; } = "Sign here";
 
     private string? _statusMessage;
 
+    /// <summary>Additional CSS classes merged onto the root wrapper.</summary>
     [Parameter] public string? Class { get; set; }
+    /// <summary>Additional HTML attributes captured and forwarded to the labelled <c>role="group"</c> wrapper.</summary>
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     private readonly string _canvasId = LumeoIds.New("signature-pad");

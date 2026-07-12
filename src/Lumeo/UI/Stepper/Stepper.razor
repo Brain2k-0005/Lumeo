@@ -204,12 +204,19 @@
     [CascadingParameter(Name = "LumeoDirection")] private LayoutDirection? ScopedDirection { get; set; }
     private LayoutDirection EffectiveDirection => ScopedDirection ?? Theme.CurrentDirection;
 
+    /// <summary>The stepper's steps — a sequence of <see cref="StepperStep"/>s. Rendered off-screen once to let each step self-register; the active one's body is then shown in the panel below the indicators.</summary>
     [Parameter] public RenderFragment? ChildContent { get; set; }
+    /// <summary>The current step's 0-based index. Out-of-range values are clamped into range on the next parameter set (and the clamped value pushed back via <see cref="ActiveStepChanged"/>).</summary>
     [Parameter] public int ActiveStep { get; set; }
+    /// <summary>Raised whenever the active step changes — via Next/Back, clicking a step indicator (when <see cref="AllowStepClick"/> allows it), or an internal clamp. Pair with <see cref="ActiveStep"/> for <c>@bind-ActiveStep</c>.</summary>
     [Parameter] public EventCallback<int> ActiveStepChanged { get; set; }
+    /// <summary>Layout direction: <c>Horizontal</c> (default) shows indicators in a row with connector lines; <c>Vertical</c> stacks them with labels beside each indicator.</summary>
     [Parameter] public Lumeo.Orientation Orientation { get; set; } = Lumeo.Orientation.Horizontal;
+    /// <summary>When <c>true</c> (default), step indicators can only be clicked forward up to the next available step (gated by the current step's validity); set <c>false</c> to allow free navigation to any step (still requires <see cref="AllowStepClick"/>).</summary>
     [Parameter] public bool Linear { get; set; } = true;
+    /// <summary>When <c>true</c>, step indicators become clickable to jump between steps (subject to <see cref="Linear"/> gating). Default <c>false</c> (navigation only via the Next/Back/Finish buttons).</summary>
     [Parameter] public bool AllowStepClick { get; set; }
+    /// <summary>Invoked when the Finish button is clicked on the last step and the step's validity check passes.</summary>
     [Parameter] public EventCallback OnFinish { get; set; }
     /// <summary>Override the "Next" button label. When null, uses the localized <c>L["Stepper.Next"]</c>. (#245)</summary>
     [Parameter] public string? NextLabel { get; set; }
@@ -217,7 +224,9 @@
     [Parameter] public string? BackLabel { get; set; }
     /// <summary>Override the "Finish" button label. When null, uses the localized <c>L["Stepper.Finish"]</c>. (#245)</summary>
     [Parameter] public string? FinishLabel { get; set; }
+    /// <summary>Additional CSS classes merged onto the stepper's root element.</summary>
     [Parameter] public string? Class { get; set; }
+    /// <summary>Unmatched attributes splatted onto the stepper's root element.</summary>
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     // Internal step registry — populated by StepperStep on each render pass

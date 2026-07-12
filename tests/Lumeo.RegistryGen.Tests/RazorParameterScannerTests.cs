@@ -83,6 +83,97 @@ public class RazorParameterScannerTests
         Assert.Single(s.Records);
         Assert.Equal("Ctx", s.Records[0].Name);
         Assert.Contains("string Id", s.Records[0].Signature);
+        // The [Parameter] has no initializer — default(Variant) is its zero-valued member.
+        Assert.Equal("Default", s.Parameters.Single(p => p.Name == "V").Default);
+    }
+
+    [Fact]
+    public void Qualified_enum_type_resolves_implicit_default_from_sibling_file()
+    {
+        // Mirrors DataTableSortableHeader.SortDirection: a sub-component parameter typed
+        // through its PARENT's nested enum, qualified as "Owner<object>.Status", with no
+        // enum declared anywhere in the file being scanned itself. Without siblingEnumMembers
+        // this falls through to null/"—" (Codex P2, PR #358 round 3).
+        var path = WriteTempRazor(@"@namespace Lumeo
+@code {
+    [Parameter] public Owner<object>.Status CurrentStatus { get; set; }
+}");
+        var siblingEnums = new Dictionary<string, string[]>
+        {
+            ["Status"] = new[] { "None", "Active", "Done" },
+        };
+
+        var withoutSiblings = RazorParameterScanner.Scan(path);
+        Assert.Null(withoutSiblings.Parameters.Single(p => p.Name == "CurrentStatus").Default);
+
+        var withSiblings = RazorParameterScanner.Scan(path, siblingEnums);
+        Assert.Equal("None", withSiblings.Parameters.Single(p => p.Name == "CurrentStatus").Default);
+    }
+
+    [Fact]
+    public void Local_enum_wins_over_a_same_named_sibling_enum_on_name_clash()
+    {
+        var path = WriteTempRazor(@"@namespace Lumeo
+@code {
+    [Parameter] public Status CurrentStatus { get; set; }
+
+    public enum Status { Local, Other }
+}");
+        // A differently-ordered sibling enum sharing the same simple name must NOT override
+        // the file's own declaration — local always wins.
+        var siblingEnums = new Dictionary<string, string[]>
+        {
+            ["Status"] = new[] { "Remote", "Other" },
+        };
+
+        var s = RazorParameterScanner.Scan(path, siblingEnums);
+        Assert.Equal("Local", s.Parameters.Single(p => p.Name == "CurrentStatus").Default);
+    }
+
+    [Fact]
+    public void Obsolete_alias_parameter_with_no_xml_summary_uses_the_Obsolete_message()
+    {
+        // Mirrors ContextMenu.IsOpen: [Obsolete("...")] forwards to a live parameter and
+        // carries no /// <summary> of its own. The removed hand-written table showed the
+        // Obsolete message as the row description; PropsTable must not render it blank
+        // (Codex P2, PR #358 round 3).
+        var path = WriteTempRazor(@"@namespace Lumeo
+@code {
+    [Parameter] public bool Open { get; set; }
+
+    [Obsolete(""Use Open instead. IsOpen will be removed in a future release."")]
+    [Parameter] public bool IsOpen { get => Open; set => Open = value; }
+}");
+        var s = RazorParameterScanner.Scan(path);
+        var isOpen = s.Parameters.Single(p => p.Name == "IsOpen");
+        Assert.Equal("Use Open instead. IsOpen will be removed in a future release.", isOpen.Description);
+    }
+
+    [Fact]
+    public void Xml_summary_wins_over_Obsolete_message_when_both_are_present()
+    {
+        var path = WriteTempRazor(@"@namespace Lumeo
+@code {
+    /// <summary>The authored summary.</summary>
+    [Obsolete(""The obsolete message."")]
+    [Parameter] public bool Legacy { get; set; }
+}");
+        var s = RazorParameterScanner.Scan(path);
+        Assert.Equal("The authored summary.", s.Parameters.Single(p => p.Name == "Legacy").Description);
+    }
+
+    [Fact]
+    public void CollectPublicEnums_returns_only_public_enums_from_a_file()
+    {
+        var path = WriteTempRazor(@"@namespace Lumeo
+@code {
+    public enum Status { None, Active }
+    private enum Hidden { A, B }
+}");
+        var enums = RazorParameterScanner.CollectPublicEnums(path);
+        Assert.True(enums.ContainsKey("Status"));
+        Assert.Equal(new[] { "None", "Active" }, enums["Status"]);
+        Assert.False(enums.ContainsKey("Hidden"));
     }
 
     [Fact]

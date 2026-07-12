@@ -38,7 +38,7 @@
         "name": "Title",
         "type": "string?",
         "default": null,
-        "description": null,
+        "description": "Confirmation prompt title. Falls back to the localized \"PopConfirm.Title\" string when unset.",
         "isCascading": false,
         "captureUnmatched": false,
         "isEditorRequired": false
@@ -47,7 +47,7 @@
         "name": "Description",
         "type": "string?",
         "default": null,
-        "description": null,
+        "description": "Optional supporting text shown beneath Title. Hidden when null/empty; also omitted from aria-describedby in that case.",
         "isCascading": false,
         "captureUnmatched": false,
         "isEditorRequired": false
@@ -56,7 +56,7 @@
         "name": "ConfirmText",
         "type": "string?",
         "default": null,
-        "description": null,
+        "description": "Label of the confirm button. Falls back to the localized \"PopConfirm.Confirm\" string when unset.",
         "isCascading": false,
         "captureUnmatched": false,
         "isEditorRequired": false
@@ -65,7 +65,7 @@
         "name": "CancelText",
         "type": "string?",
         "default": null,
-        "description": null,
+        "description": "Label of the cancel button. Falls back to the localized \"PopConfirm.Cancel\" string when unset.",
         "isCascading": false,
         "captureUnmatched": false,
         "isEditorRequired": false
@@ -73,8 +73,8 @@
       {
         "name": "IsDestructive",
         "type": "bool",
-        "default": null,
-        "description": null,
+        "default": "false",
+        "description": "Renders the confirm button with the destructive (red) variant instead of the default variant, signalling an irreversible/dangerous action.",
         "isCascading": false,
         "captureUnmatched": false,
         "isEditorRequired": false
@@ -83,7 +83,7 @@
         "name": "OnConfirm",
         "type": "EventCallback",
         "default": null,
-        "description": null,
+        "description": "Fires when the confirm button is activated, after the popover closes and focus returns to the trigger.",
         "isCascading": false,
         "captureUnmatched": false,
         "isEditorRequired": false
@@ -92,7 +92,7 @@
         "name": "OnCancel",
         "type": "EventCallback",
         "default": null,
-        "description": null,
+        "description": "Fires when the cancel button is activated, after the popover closes and focus returns to the trigger.",
         "isCascading": false,
         "captureUnmatched": false,
         "isEditorRequired": false
@@ -101,7 +101,7 @@
         "name": "ChildContent",
         "type": "RenderFragment?",
         "default": null,
-        "description": null,
+        "description": "The trigger content that opens the confirmation popover on click.",
         "isCascading": false,
         "captureUnmatched": false,
         "isEditorRequired": false
@@ -128,7 +128,7 @@
         "name": "Class",
         "type": "string?",
         "default": null,
-        "description": null,
+        "description": "Additional CSS classes merged onto the confirmation popover's content panel.",
         "isCascading": false,
         "captureUnmatched": false,
         "isEditorRequired": false
@@ -137,7 +137,7 @@
         "name": "AdditionalAttributes",
         "type": "Dictionary<string, object>?",
         "default": null,
-        "description": null,
+        "description": "Captures unmatched attributes and applies them to the underlying Popover.",
         "isCascading": false,
         "captureUnmatched": true,
         "isEditorRequired": false
@@ -147,12 +147,12 @@
       {
         "name": "OnConfirm",
         "type": "EventCallback",
-        "description": null
+        "description": "Fires when the confirm button is activated, after the popover closes and focus returns to the trigger."
       },
       {
         "name": "OnCancel",
         "type": "EventCallback",
-        "description": null
+        "description": "Fires when the cancel button is activated, after the popover closes and focus returns to the trigger."
       }
     ],
     "enums": [],
@@ -230,7 +230,7 @@
   "source": [
     {
       "path": "UI/PopConfirm/PopConfirm.razor",
-      "content": "@namespace Lumeo\n\n<Popover @bind-Open=\"_isOpen\" @attributes=\"AdditionalAttributes\">\n    @* role=button + tabindex + keydown make the trigger keyboard-operable.\n       It wraps arbitrary content (often a Button), so we don't render a native\n       <button> (that would nest a button-in-button); we mirror PopoverTrigger's\n       interactive-div contract instead — including the popover ARIA relationship\n       (battle-wave2 #84) so assistive tech announces the trigger's expanded state\n       and the alertdialog it controls. *@\n    <span id=\"@_triggerId\" role=\"button\" tabindex=\"0\"\n          aria-haspopup=\"dialog\"\n          aria-expanded=\"@(_isOpen ? \"true\" : \"false\")\"\n          aria-controls=\"@(_isOpen ? _dialogId : null)\"\n          @onclick=\"Toggle\" @onkeydown=\"HandleTriggerKeyDown\" class=\"inline-flex cursor-pointer\">\n        @ChildContent\n    </span>\n    <PopoverContent Side=\"@PlacementSide\" Class=\"@(Cx.Merge(\"w-72 p-4\", Class))\">\n        <div id=\"@_dialogId\" class=\"flex flex-col gap-3\" role=\"alertdialog\" aria-labelledby=\"@_titleId\" aria-describedby=\"@(string.IsNullOrEmpty(Description) ? null : _descId)\">\n            <div class=\"flex items-start gap-2\">\n                @if (Icon != null)\n                {\n                    <span class=\"mt-0.5 shrink-0 text-muted-foreground\" aria-hidden=\"true\">\n                        <SvgGlyph Svg=\"@Icon\" class=\"h-4 w-4\" />\n                    </span>\n                }\n                <div class=\"flex flex-col gap-1\">\n                    <p id=\"@_titleId\" class=\"text-sm font-medium leading-none\">@EffectiveTitle</p>\n                    @if (!string.IsNullOrEmpty(Description))\n                    {\n                        <p id=\"@_descId\" class=\"text-sm text-muted-foreground\">@Description</p>\n                    }\n                </div>\n            </div>\n            <div class=\"flex justify-end gap-2\">\n                <Button Variant=\"Button.ButtonVariant.Outline\" Size=\"Button.ButtonSize.Sm\" OnClick=\"HandleCancel\">\n                    @EffectiveCancelText\n                </Button>\n                <Button Variant=\"@(IsDestructive ? Button.ButtonVariant.Destructive : Button.ButtonVariant.Default)\"\n                        Size=\"Button.ButtonSize.Sm\"\n                        OnClick=\"HandleConfirm\">\n                    @EffectiveConfirmText\n                </Button>\n            </div>\n        </div>\n    </PopoverContent>\n</Popover>\n\n@implements IAsyncDisposable\n@inject Lumeo.Services.Localization.ILumeoLocalizer L\n@inject IComponentInteropService Interop\n\n@code {\n    [Parameter] public string? Title { get; set; }\n    [Parameter] public string? Description { get; set; }\n    [Parameter] public string? ConfirmText { get; set; }\n    [Parameter] public string? CancelText { get; set; }\n\n    private string EffectiveTitle => Title ?? L[\"PopConfirm.Title\"];\n    private string EffectiveConfirmText => ConfirmText ?? L[\"PopConfirm.Confirm\"];\n    private string EffectiveCancelText => CancelText ?? L[\"PopConfirm.Cancel\"];\n    [Parameter] public bool IsDestructive { get; set; }\n    [Parameter] public EventCallback OnConfirm { get; set; }\n    [Parameter] public EventCallback OnCancel { get; set; }\n    [Parameter] public RenderFragment? ChildContent { get; set; }\n    /// <summary>Preferred side of the trigger for the confirm popover:\n    /// \"top\" (default), \"bottom\", \"left\" or \"right\". Forwarded to the\n    /// underlying <see cref=\"PopoverContent.Side\"/>.</summary>\n    [Parameter] public string Placement { get; set; } = \"top\";\n\n    private Lumeo.Side PlacementSide => Placement?.ToLowerInvariant() switch\n    {\n        \"bottom\" => Lumeo.Side.Bottom,\n        \"left\" => Lumeo.Side.Left,\n        \"right\" => Lumeo.Side.Right,\n        _ => Lumeo.Side.Top\n    };\n    /// <summary>Optional leading icon shown beside the title. Supply an\n    /// <see cref=\"IconSource\"/> from a <c>Lumeo.Icons</c> pack (e.g. <c>Lucide.TriangleAlert</c>)\n    /// or from <see cref=\"LumeoIcons\"/>.</summary>\n    [Parameter] public Lumeo.IconSource? Icon { get; set; }\n    [Parameter] public string? Class { get; set; }\n    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }\n\n    private bool _isOpen;\n    private readonly string _titleId = LumeoIds.New(\"popconfirm-title\");\n    private readonly string _descId = LumeoIds.New(\"popconfirm-desc\");\n    // Stable ids so the trigger can advertise aria-controls and we can return\n    // focus to the trigger on close (battle-wave2 #84 / #182).\n    private readonly string _triggerId = LumeoIds.New(\"popconfirm-trigger\");\n    private readonly string _dialogId = LumeoIds.New(\"popconfirm-dialog\");\n    private bool _pdRegistered;\n\n    private void Toggle() => _isOpen = !_isOpen;\n\n    // Space/Enter activate the trigger like a real button (role=button alone\n    // does not synthesize click for keyboard).\n    private void HandleTriggerKeyDown(KeyboardEventArgs e)\n    {\n        if (e.Key is \"Enter\" or \" \") Toggle();\n    }\n\n    // battle-wave2 #83 — a span[role=button] has no native key synthesis, so\n    // Space activated the trigger AND scrolled the page. Suppress only Space's\n    // default synchronously in JS (Enter has no default on a span). Mirrors\n    // CollapsibleTrigger; we deliberately avoid @onkeydown:preventDefault, which\n    // would also swallow Tab and trap keyboard navigation.\n    protected override async Task OnAfterRenderAsync(bool firstRender)\n    {\n        if (!firstRender) return;\n        try\n        {\n            await Interop.RegisterPreventDefaultKeys(\n                _triggerId,\n                new[] { new Lumeo.Services.PreventDefaultKeyRule(\" \") });\n            _pdRegistered = true;\n        }\n        catch (JSDisconnectedException) { }\n        catch (ObjectDisposedException) { }\n        catch (InvalidOperationException) { } // JS interop unavailable during prerender\n    }\n\n    private async Task HandleConfirm()\n    {\n        _isOpen = false;\n        await RestoreTriggerFocus();\n        await OnConfirm.InvokeAsync();\n    }\n\n    private async Task HandleCancel()\n    {\n        _isOpen = false;\n        await RestoreTriggerFocus();\n        await OnCancel.InvokeAsync();\n    }\n\n    // battle-wave2 #182 — on close, the shared PopoverContent returns focus to\n    // the Popover wrapper, not the actual trigger (and on nested-button usage\n    // the real trigger is the inner button). PopConfirm owns its trigger span,\n    // so restore focus straight to it: keyboard users land back where they were.\n    private async Task RestoreTriggerFocus()\n    {\n        try { await Interop.FocusElement(_triggerId); } catch (JSDisconnectedException) { }\n    }\n\n    public async ValueTask DisposeAsync()\n    {\n        if (!_pdRegistered) return;\n        try { await Interop.UnregisterPreventDefaultKeys(_triggerId); }\n        catch (JSDisconnectedException) { }\n        catch (ObjectDisposedException) { }\n        catch (InvalidOperationException) { }\n    }\n}\n"
+      "content": "@namespace Lumeo\n\n<Popover @bind-Open=\"_isOpen\" @attributes=\"AdditionalAttributes\">\n    @* role=button + tabindex + keydown make the trigger keyboard-operable.\n       It wraps arbitrary content (often a Button), so we don't render a native\n       <button> (that would nest a button-in-button); we mirror PopoverTrigger's\n       interactive-div contract instead — including the popover ARIA relationship\n       (battle-wave2 #84) so assistive tech announces the trigger's expanded state\n       and the alertdialog it controls. *@\n    <span id=\"@_triggerId\" role=\"button\" tabindex=\"0\"\n          aria-haspopup=\"dialog\"\n          aria-expanded=\"@(_isOpen ? \"true\" : \"false\")\"\n          aria-controls=\"@(_isOpen ? _dialogId : null)\"\n          @onclick=\"Toggle\" @onkeydown=\"HandleTriggerKeyDown\" class=\"inline-flex cursor-pointer\">\n        @ChildContent\n    </span>\n    <PopoverContent Side=\"@PlacementSide\" Class=\"@(Cx.Merge(\"w-72 p-4\", Class))\">\n        <div id=\"@_dialogId\" class=\"flex flex-col gap-3\" role=\"alertdialog\" aria-labelledby=\"@_titleId\" aria-describedby=\"@(string.IsNullOrEmpty(Description) ? null : _descId)\">\n            <div class=\"flex items-start gap-2\">\n                @if (Icon != null)\n                {\n                    <span class=\"mt-0.5 shrink-0 text-muted-foreground\" aria-hidden=\"true\">\n                        <SvgGlyph Svg=\"@Icon\" class=\"h-4 w-4\" />\n                    </span>\n                }\n                <div class=\"flex flex-col gap-1\">\n                    <p id=\"@_titleId\" class=\"text-sm font-medium leading-none\">@EffectiveTitle</p>\n                    @if (!string.IsNullOrEmpty(Description))\n                    {\n                        <p id=\"@_descId\" class=\"text-sm text-muted-foreground\">@Description</p>\n                    }\n                </div>\n            </div>\n            <div class=\"flex justify-end gap-2\">\n                <Button Variant=\"Button.ButtonVariant.Outline\" Size=\"Button.ButtonSize.Sm\" OnClick=\"HandleCancel\">\n                    @EffectiveCancelText\n                </Button>\n                <Button Variant=\"@(IsDestructive ? Button.ButtonVariant.Destructive : Button.ButtonVariant.Default)\"\n                        Size=\"Button.ButtonSize.Sm\"\n                        OnClick=\"HandleConfirm\">\n                    @EffectiveConfirmText\n                </Button>\n            </div>\n        </div>\n    </PopoverContent>\n</Popover>\n\n@implements IAsyncDisposable\n@inject Lumeo.Services.Localization.ILumeoLocalizer L\n@inject IComponentInteropService Interop\n\n@code {\n    /// <summary>Confirmation prompt title. Falls back to the localized\n    /// \"PopConfirm.Title\" string when unset.</summary>\n    [Parameter] public string? Title { get; set; }\n\n    /// <summary>Optional supporting text shown beneath <see cref=\"Title\"/>. Hidden\n    /// when null/empty; also omitted from <c>aria-describedby</c> in that case.</summary>\n    [Parameter] public string? Description { get; set; }\n\n    /// <summary>Label of the confirm button. Falls back to the localized\n    /// \"PopConfirm.Confirm\" string when unset.</summary>\n    [Parameter] public string? ConfirmText { get; set; }\n\n    /// <summary>Label of the cancel button. Falls back to the localized\n    /// \"PopConfirm.Cancel\" string when unset.</summary>\n    [Parameter] public string? CancelText { get; set; }\n\n    private string EffectiveTitle => Title ?? L[\"PopConfirm.Title\"];\n    private string EffectiveConfirmText => ConfirmText ?? L[\"PopConfirm.Confirm\"];\n    private string EffectiveCancelText => CancelText ?? L[\"PopConfirm.Cancel\"];\n\n    /// <summary>Renders the confirm button with the destructive (red) variant\n    /// instead of the default variant, signalling an irreversible/dangerous action.</summary>\n    [Parameter] public bool IsDestructive { get; set; }\n\n    /// <summary>Fires when the confirm button is activated, after the popover\n    /// closes and focus returns to the trigger.</summary>\n    [Parameter] public EventCallback OnConfirm { get; set; }\n\n    /// <summary>Fires when the cancel button is activated, after the popover\n    /// closes and focus returns to the trigger.</summary>\n    [Parameter] public EventCallback OnCancel { get; set; }\n\n    /// <summary>The trigger content that opens the confirmation popover on click.</summary>\n    [Parameter] public RenderFragment? ChildContent { get; set; }\n    /// <summary>Preferred side of the trigger for the confirm popover:\n    /// \"top\" (default), \"bottom\", \"left\" or \"right\". Forwarded to the\n    /// underlying <see cref=\"PopoverContent.Side\"/>.</summary>\n    [Parameter] public string Placement { get; set; } = \"top\";\n\n    private Lumeo.Side PlacementSide => Placement?.ToLowerInvariant() switch\n    {\n        \"bottom\" => Lumeo.Side.Bottom,\n        \"left\" => Lumeo.Side.Left,\n        \"right\" => Lumeo.Side.Right,\n        _ => Lumeo.Side.Top\n    };\n    /// <summary>Optional leading icon shown beside the title. Supply an\n    /// <see cref=\"IconSource\"/> from a <c>Lumeo.Icons</c> pack (e.g. <c>Lucide.TriangleAlert</c>)\n    /// or from <see cref=\"LumeoIcons\"/>.</summary>\n    [Parameter] public Lumeo.IconSource? Icon { get; set; }\n\n    /// <summary>Additional CSS classes merged onto the confirmation popover's content panel.</summary>\n    [Parameter] public string? Class { get; set; }\n\n    /// <summary>Captures unmatched attributes and applies them to the underlying <see cref=\"Popover\"/>.</summary>\n    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }\n\n    private bool _isOpen;\n    private readonly string _titleId = LumeoIds.New(\"popconfirm-title\");\n    private readonly string _descId = LumeoIds.New(\"popconfirm-desc\");\n    // Stable ids so the trigger can advertise aria-controls and we can return\n    // focus to the trigger on close (battle-wave2 #84 / #182).\n    private readonly string _triggerId = LumeoIds.New(\"popconfirm-trigger\");\n    private readonly string _dialogId = LumeoIds.New(\"popconfirm-dialog\");\n    private bool _pdRegistered;\n\n    private void Toggle() => _isOpen = !_isOpen;\n\n    // Space/Enter activate the trigger like a real button (role=button alone\n    // does not synthesize click for keyboard).\n    private void HandleTriggerKeyDown(KeyboardEventArgs e)\n    {\n        if (e.Key is \"Enter\" or \" \") Toggle();\n    }\n\n    // battle-wave2 #83 — a span[role=button] has no native key synthesis, so\n    // Space activated the trigger AND scrolled the page. Suppress only Space's\n    // default synchronously in JS (Enter has no default on a span). Mirrors\n    // CollapsibleTrigger; we deliberately avoid @onkeydown:preventDefault, which\n    // would also swallow Tab and trap keyboard navigation.\n    protected override async Task OnAfterRenderAsync(bool firstRender)\n    {\n        if (!firstRender) return;\n        try\n        {\n            await Interop.RegisterPreventDefaultKeys(\n                _triggerId,\n                new[] { new Lumeo.Services.PreventDefaultKeyRule(\" \") });\n            _pdRegistered = true;\n        }\n        catch (JSDisconnectedException) { }\n        catch (ObjectDisposedException) { }\n        catch (InvalidOperationException) { } // JS interop unavailable during prerender\n    }\n\n    private async Task HandleConfirm()\n    {\n        _isOpen = false;\n        await RestoreTriggerFocus();\n        await OnConfirm.InvokeAsync();\n    }\n\n    private async Task HandleCancel()\n    {\n        _isOpen = false;\n        await RestoreTriggerFocus();\n        await OnCancel.InvokeAsync();\n    }\n\n    // battle-wave2 #182 — on close, the shared PopoverContent returns focus to\n    // the Popover wrapper, not the actual trigger (and on nested-button usage\n    // the real trigger is the inner button). PopConfirm owns its trigger span,\n    // so restore focus straight to it: keyboard users land back where they were.\n    private async Task RestoreTriggerFocus()\n    {\n        try { await Interop.FocusElement(_triggerId); } catch (JSDisconnectedException) { }\n    }\n\n    public async ValueTask DisposeAsync()\n    {\n        if (!_pdRegistered) return;\n        try { await Interop.UnregisterPreventDefaultKeys(_triggerId); }\n        catch (JSDisconnectedException) { }\n        catch (ObjectDisposedException) { }\n        catch (InvalidOperationException) { }\n    }\n}\n"
     }
   ],
   "slots": [
@@ -238,7 +238,7 @@
       "name": "ChildContent",
       "owner": "PopConfirm",
       "type": "RenderFragment?",
-      "description": null
+      "description": "The trigger content that opens the confirmation popover on click."
     }
   ],
   "serviceDependencies": [
@@ -267,5 +267,5 @@
     "tests/Lumeo.Tests/Components/PopConfirm/PopConfirmKeyboardA11yTests.cs",
     "tests/Lumeo.Tests/Components/PopConfirm/PopConfirmTests.cs"
   ],
-  "mdSummary": "# PopConfirm\n\nInline 'are you sure?' popover attached to a trigger.\n\n**Package:** `Lumeo` · **Category:** Overlay\n**Docs:** https://lumeo.nativ.sh/components/pop-confirm\n\n## Parameters\n| Owner | Name | Type | Default | Description |\n|---|---|---|---|---|\n| PopConfirm | Title | `string?` | `` |  |\n| PopConfirm | Description | `string?` | `` |  |\n| PopConfirm | ConfirmText | `string?` | `` |  |\n| PopConfirm | CancelText | `string?` | `` |  |\n| PopConfirm | IsDestructive | `bool` | `` |  |\n| PopConfirm | OnConfirm | `EventCallback` | `` |  |\n| PopConfirm | OnCancel | `EventCallback` | `` |  |\n| PopConfirm | ChildContent | `RenderFragment?` | `` |  |\n| PopConfirm | Placement | `string` | `\"top\"` | Preferred side of the trigger for the confirm popover: \"top\" (default), \"bottom\", \"left\" or \"right\". Forwarded to the underlying Side. |\n| PopConfirm | Icon | `Lumeo.IconSource?` | `` | Optional leading icon shown beside the title. Supply an IconSource from a Lumeo.Icons pack (e.g. Lucide.TriangleAlert) or from LumeoIcons. |\n| PopConfirm | Class | `string?` | `` |  |\n| PopConfirm | AdditionalAttributes | `Dictionary<string, object>?` | `` |  |\n\n## Slots\n- `ChildContent` (PopConfirm) — RenderFragment slot\n\n## Events\n- `OnConfirm` (`EventCallback`)\n- `OnCancel` (`EventCallback`)\n\n## Sub-components\n- (none)\n\n## Cascading values it expects\n- (none)\n\n## Services it injects\n- `ILumeoLocalizer` (Lumeo.Services.Localization)\n- `IComponentInteropService` ()\n\n## Keyboard\n—\n\n## Example\n```razor\n<PopConfirm />\n```\n\n## CSS variables\n`--color-muted`, `--color-muted-foreground`\n\n## Files\n- `UI/PopConfirm/PopConfirm.razor`\n"
+  "mdSummary": "# PopConfirm\n\nInline 'are you sure?' popover attached to a trigger.\n\n**Package:** `Lumeo` · **Category:** Overlay\n**Docs:** https://lumeo.nativ.sh/components/pop-confirm\n\n## Parameters\n| Owner | Name | Type | Default | Description |\n|---|---|---|---|---|\n| PopConfirm | Title | `string?` | `` | Confirmation prompt title. Falls back to the localized \"PopConfirm.Title\" string when unset. |\n| PopConfirm | Description | `string?` | `` | Optional supporting text shown beneath Title. Hidden when null/empty; also omitted from aria-describedby in that case. |\n| PopConfirm | ConfirmText | `string?` | `` | Label of the confirm button. Falls back to the localized \"PopConfirm.Confirm\" string when unset. |\n| PopConfirm | CancelText | `string?` | `` | Label of the cancel button. Falls back to the localized \"PopConfirm.Cancel\" string when unset. |\n| PopConfirm | IsDestructive | `bool` | `false` | Renders the confirm button with the destructive (red) variant instead of the default variant, signalling an irreversible/dangerous action. |\n| PopConfirm | OnConfirm | `EventCallback` | `` | Fires when the confirm button is activated, after the popover closes and focus returns to the trigger. |\n| PopConfirm | OnCancel | `EventCallback` | `` | Fires when the cancel button is activated, after the popover closes and focus returns to the trigger. |\n| PopConfirm | ChildContent | `RenderFragment?` | `` | The trigger content that opens the confirmation popover on click. |\n| PopConfirm | Placement | `string` | `\"top\"` | Preferred side of the trigger for the confirm popover: \"top\" (default), \"bottom\", \"left\" or \"right\". Forwarded to the underlying Side. |\n| PopConfirm | Icon | `Lumeo.IconSource?` | `` | Optional leading icon shown beside the title. Supply an IconSource from a Lumeo.Icons pack (e.g. Lucide.TriangleAlert) or from LumeoIcons. |\n| PopConfirm | Class | `string?` | `` | Additional CSS classes merged onto the confirmation popover's content panel. |\n| PopConfirm | AdditionalAttributes | `Dictionary<string, object>?` | `` | Captures unmatched attributes and applies them to the underlying Popover. |\n\n## Slots\n- `ChildContent` (PopConfirm) — The trigger content that opens the confirmation popover on click.\n\n## Events\n- `OnConfirm` (`EventCallback`) — Fires when the confirm button is activated, after the popover closes and focus returns to the trigger.\n- `OnCancel` (`EventCallback`) — Fires when the cancel button is activated, after the popover closes and focus returns to the trigger.\n\n## Sub-components\n- (none)\n\n## Cascading values it expects\n- (none)\n\n## Services it injects\n- `ILumeoLocalizer` (Lumeo.Services.Localization)\n- `IComponentInteropService` ()\n\n## Keyboard\n—\n\n## Example\n```razor\n<PopConfirm />\n```\n\n## CSS variables\n`--color-muted`, `--color-muted-foreground`\n\n## Files\n- `UI/PopConfirm/PopConfirm.razor`\n"
 }

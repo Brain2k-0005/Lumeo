@@ -12,7 +12,8 @@
   "dependencies": [],
   "packageDependencies": [],
   "cssVars": [
-    "--color-foreground"
+    "--color-foreground",
+    "--radius"
   ],
   "gotchas": [],
   "api": {
@@ -31,8 +32,8 @@
       {
         "name": "Value",
         "type": "double",
-        "default": null,
-        "description": null,
+        "default": "0",
+        "description": "The progress value, clamped to 0–100. NaN is treated as 0.",
         "isCascading": false,
         "captureUnmatched": false,
         "isEditorRequired": false
@@ -41,7 +42,7 @@
         "name": "Size",
         "type": "int",
         "default": "64",
-        "description": null,
+        "description": "Diameter of the ring in pixels (both width and height of the SVG). Default 64.",
         "isCascading": false,
         "captureUnmatched": false,
         "isEditorRequired": false
@@ -50,7 +51,7 @@
         "name": "Thickness",
         "type": "int",
         "default": "6",
-        "description": null,
+        "description": "Stroke width of the ring in pixels. Default 6.",
         "isCascading": false,
         "captureUnmatched": false,
         "isEditorRequired": false
@@ -59,7 +60,7 @@
         "name": "Color",
         "type": "string",
         "default": "\"primary\"",
-        "description": null,
+        "description": "Theme color token for the filled arc, resolved as var(--color-{Color}). Default \"primary\".",
         "isCascading": false,
         "captureUnmatched": false,
         "isEditorRequired": false
@@ -68,7 +69,7 @@
         "name": "TrackColor",
         "type": "string",
         "default": "\"muted\"",
-        "description": null,
+        "description": "Theme color token for the unfilled track, resolved as var(--color-{TrackColor}). Default \"muted\".",
         "isCascading": false,
         "captureUnmatched": false,
         "isEditorRequired": false
@@ -76,8 +77,8 @@
       {
         "name": "ShowLabel",
         "type": "bool",
-        "default": null,
-        "description": null,
+        "default": "false",
+        "description": "Shows the rounded percentage as centered text. Ignored when LabelContent is set.",
         "isCascading": false,
         "captureUnmatched": false,
         "isEditorRequired": false
@@ -86,7 +87,7 @@
         "name": "LabelContent",
         "type": "RenderFragment?",
         "default": null,
-        "description": null,
+        "description": "Custom content rendered centered inside the ring, replacing the built-in percentage label.",
         "isCascading": false,
         "captureUnmatched": false,
         "isEditorRequired": false
@@ -95,7 +96,7 @@
         "name": "RoundedCaps",
         "type": "bool",
         "default": "true",
-        "description": null,
+        "description": "Uses rounded (stroke-linecap: round) instead of squared (butt) ends on the filled arc. Default true.",
         "isCascading": false,
         "captureUnmatched": false,
         "isEditorRequired": false
@@ -104,7 +105,7 @@
         "name": "Class",
         "type": "string?",
         "default": null,
-        "description": null,
+        "description": "Additional CSS classes merged onto the outer container.",
         "isCascading": false,
         "captureUnmatched": false,
         "isEditorRequired": false
@@ -113,7 +114,7 @@
         "name": "AdditionalAttributes",
         "type": "Dictionary<string, object>?",
         "default": null,
-        "description": null,
+        "description": "Captures any unmatched attributes and applies them to the outer container.",
         "isCascading": false,
         "captureUnmatched": true,
         "isEditorRequired": false
@@ -124,7 +125,8 @@
     "records": [],
     "gotchas": [],
     "cssVars": [
-      "--color-foreground"
+      "--color-foreground",
+      "--radius"
     ],
     "examples": [
       {
@@ -187,7 +189,7 @@
   "source": [
     {
       "path": "UI/RingProgress/RingProgress.razor",
-      "content": "@namespace Lumeo\n\n<div class=\"@ContainerClass\"\n     role=\"progressbar\"\n     aria-valuenow=\"@((int)Math.Round(ClampedValue))\"\n     aria-valuemin=\"0\"\n     aria-valuemax=\"100\"\n     @attributes=\"AdditionalAttributes\"\n     style=\"@ContainerStyle\">\n    <svg width=\"@Size\" height=\"@Size\"\n         viewBox=\"0 0 @Size @Size\"\n         xmlns=\"http://www.w3.org/2000/svg\">\n        @* Track circle *@\n        <circle cx=\"@Cx\" cy=\"@Cy\" r=\"@Radius\"\n                fill=\"none\"\n                stroke=\"var(--color-@TrackColor, var(--color-muted))\"\n                stroke-width=\"@Thickness\" />\n        @* Value circle *@\n        <circle cx=\"@Cx\" cy=\"@Cy\" r=\"@Radius\"\n                fill=\"none\"\n                stroke=\"var(--color-@Color, var(--color-primary))\"\n                stroke-width=\"@Thickness\"\n                stroke-linecap=\"@(RoundedCaps ? \"round\" : \"butt\")\"\n                stroke-dasharray=\"@DashArray\"\n                stroke-dashoffset=\"@DashOffset\"\n                transform=\"rotate(-90 @Cx @Cy)\"\n                style=\"transition: stroke-dashoffset 0.3s ease;\" />\n    </svg>\n    @* Centre content *@\n    @if (LabelContent is not null)\n    {\n        <div class=\"absolute inset-0 flex items-center justify-center\">\n            @LabelContent\n        </div>\n    }\n    else if (ShowLabel)\n    {\n        <span class=\"absolute inset-0 flex items-center justify-center text-foreground font-medium\"\n              style=\"font-size: @(Size / 5)px;\">\n            @((int)Math.Round(ClampedValue))%\n        </span>\n    }\n</div>\n\n@code {\n    [Parameter] public double Value { get; set; }\n    [Parameter] public int Size { get; set; } = 64;\n    [Parameter] public int Thickness { get; set; } = 6;\n    [Parameter] public string Color { get; set; } = \"primary\";\n    [Parameter] public string TrackColor { get; set; } = \"muted\";\n    [Parameter] public bool ShowLabel { get; set; }\n    [Parameter] public RenderFragment? LabelContent { get; set; }\n    [Parameter] public bool RoundedCaps { get; set; } = true;\n    [Parameter] public string? Class { get; set; }\n    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }\n\n    private double ClampedValue => Math.Clamp(double.IsNaN(Value) ? 0.0 : Value, 0.0, 100.0);\n\n    private double Cx => Size / 2.0;\n    private double Cy => Size / 2.0;\n    private double Radius => (Size - Thickness) / 2.0;\n    private double Circumference => 2 * Math.PI * Radius;\n\n    private string DashArray\n        => Circumference.ToString(System.Globalization.CultureInfo.InvariantCulture);\n\n    private string DashOffset\n    {\n        get\n        {\n            var offset = Circumference * (1.0 - ClampedValue / 100.0);\n            return offset.ToString(System.Globalization.CultureInfo.InvariantCulture);\n        }\n    }\n\n    private string ContainerClass\n        => Lumeo.Cx.Merge(\"relative inline-flex items-center justify-center\", Class);\n\n    private string ContainerStyle\n        => $\"width: {Size}px; height: {Size}px;\";\n}\n"
+      "content": "@namespace Lumeo\n\n<div class=\"@ContainerClass\"\n     role=\"progressbar\"\n     aria-valuenow=\"@((int)Math.Round(ClampedValue))\"\n     aria-valuemin=\"0\"\n     aria-valuemax=\"100\"\n     @attributes=\"AdditionalAttributes\"\n     style=\"@ContainerStyle\">\n    <svg width=\"@Size\" height=\"@Size\"\n         viewBox=\"0 0 @Size @Size\"\n         xmlns=\"http://www.w3.org/2000/svg\">\n        @* Track circle *@\n        <circle cx=\"@Cx\" cy=\"@Cy\" r=\"@Radius\"\n                fill=\"none\"\n                stroke=\"var(--color-@TrackColor, var(--color-muted))\"\n                stroke-width=\"@Thickness\" />\n        @* Value circle *@\n        <circle cx=\"@Cx\" cy=\"@Cy\" r=\"@Radius\"\n                fill=\"none\"\n                stroke=\"var(--color-@Color, var(--color-primary))\"\n                stroke-width=\"@Thickness\"\n                stroke-linecap=\"@(RoundedCaps ? \"round\" : \"butt\")\"\n                stroke-dasharray=\"@DashArray\"\n                stroke-dashoffset=\"@DashOffset\"\n                transform=\"rotate(-90 @Cx @Cy)\"\n                style=\"transition: stroke-dashoffset 0.3s ease;\" />\n    </svg>\n    @* Centre content *@\n    @if (LabelContent is not null)\n    {\n        <div class=\"absolute inset-0 flex items-center justify-center\">\n            @LabelContent\n        </div>\n    }\n    else if (ShowLabel)\n    {\n        <span class=\"absolute inset-0 flex items-center justify-center text-foreground font-medium\"\n              style=\"font-size: @(Size / 5)px;\">\n            @((int)Math.Round(ClampedValue))%\n        </span>\n    }\n</div>\n\n@code {\n    /// <summary>The progress value, clamped to 0–100. <c>NaN</c> is treated as 0.</summary>\n    [Parameter] public double Value { get; set; }\n    /// <summary>Diameter of the ring in pixels (both width and height of the SVG). Default 64.</summary>\n    [Parameter] public int Size { get; set; } = 64;\n    /// <summary>Stroke width of the ring in pixels. Default 6.</summary>\n    [Parameter] public int Thickness { get; set; } = 6;\n    /// <summary>Theme color token for the filled arc, resolved as <c>var(--color-{Color})</c>. Default <c>\"primary\"</c>.</summary>\n    [Parameter] public string Color { get; set; } = \"primary\";\n    /// <summary>Theme color token for the unfilled track, resolved as <c>var(--color-{TrackColor})</c>. Default <c>\"muted\"</c>.</summary>\n    [Parameter] public string TrackColor { get; set; } = \"muted\";\n    /// <summary>Shows the rounded percentage as centered text. Ignored when <see cref=\"LabelContent\"/> is set.</summary>\n    [Parameter] public bool ShowLabel { get; set; }\n    /// <summary>Custom content rendered centered inside the ring, replacing the built-in percentage label.</summary>\n    [Parameter] public RenderFragment? LabelContent { get; set; }\n    /// <summary>Uses rounded (<c>stroke-linecap: round</c>) instead of squared (<c>butt</c>) ends on the filled arc. Default <see langword=\"true\"/>.</summary>\n    [Parameter] public bool RoundedCaps { get; set; } = true;\n    /// <summary>Additional CSS classes merged onto the outer container.</summary>\n    [Parameter] public string? Class { get; set; }\n    /// <summary>Captures any unmatched attributes and applies them to the outer container.</summary>\n    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }\n\n    private double ClampedValue => Math.Clamp(double.IsNaN(Value) ? 0.0 : Value, 0.0, 100.0);\n\n    private double Cx => Size / 2.0;\n    private double Cy => Size / 2.0;\n    private double Radius => (Size - Thickness) / 2.0;\n    private double Circumference => 2 * Math.PI * Radius;\n\n    private string DashArray\n        => Circumference.ToString(System.Globalization.CultureInfo.InvariantCulture);\n\n    private string DashOffset\n    {\n        get\n        {\n            var offset = Circumference * (1.0 - ClampedValue / 100.0);\n            return offset.ToString(System.Globalization.CultureInfo.InvariantCulture);\n        }\n    }\n\n    private string ContainerClass\n        => Lumeo.Cx.Merge(\"relative inline-flex items-center justify-center\", Class);\n\n    private string ContainerStyle\n        => $\"width: {Size}px; height: {Size}px;\";\n}\n"
     }
   ],
   "slots": [
@@ -195,7 +197,7 @@
       "name": "LabelContent",
       "owner": "RingProgress",
       "type": "RenderFragment?",
-      "description": null
+      "description": "Custom content rendered centered inside the ring, replacing the built-in percentage label."
     }
   ],
   "serviceDependencies": [],
@@ -206,5 +208,5 @@
     "tests/Lumeo.Tests/Components/A11yPolish/A11yPolishTests.cs",
     "tests/Lumeo.Tests/Components/RingProgress/RingProgressTests.cs"
   ],
-  "mdSummary": "# RingProgress\n\nCircular determinate progress ring with optional centre label or custom content.\n\n**Package:** `Lumeo` · **Category:** Feedback\n**Docs:** https://lumeo.nativ.sh/components/ring-progress\n\n## Parameters\n| Owner | Name | Type | Default | Description |\n|---|---|---|---|---|\n| RingProgress | Value | `double` | `` |  |\n| RingProgress | Size | `int` | `64` |  |\n| RingProgress | Thickness | `int` | `6` |  |\n| RingProgress | Color | `string` | `\"primary\"` |  |\n| RingProgress | TrackColor | `string` | `\"muted\"` |  |\n| RingProgress | ShowLabel | `bool` | `` |  |\n| RingProgress | LabelContent | `RenderFragment?` | `` |  |\n| RingProgress | RoundedCaps | `bool` | `true` |  |\n| RingProgress | Class | `string?` | `` |  |\n| RingProgress | AdditionalAttributes | `Dictionary<string, object>?` | `` |  |\n\n## Slots\n- `LabelContent` (RingProgress) — RenderFragment slot\n\n## Events\n- (none)\n\n## Sub-components\n- (none)\n\n## Cascading values it expects\n- (none)\n\n## Services it injects\n- (none)\n\n## Keyboard\n—\n\n## Example\n```razor\n<RingProgress />\n```\n\n## CSS variables\n`--color-foreground`\n\n## Files\n- `UI/RingProgress/RingProgress.razor`\n"
+  "mdSummary": "# RingProgress\n\nCircular determinate progress ring with optional centre label or custom content.\n\n**Package:** `Lumeo` · **Category:** Feedback\n**Docs:** https://lumeo.nativ.sh/components/ring-progress\n\n## Parameters\n| Owner | Name | Type | Default | Description |\n|---|---|---|---|---|\n| RingProgress | Value | `double` | `0` | The progress value, clamped to 0–100. NaN is treated as 0. |\n| RingProgress | Size | `int` | `64` | Diameter of the ring in pixels (both width and height of the SVG). Default 64. |\n| RingProgress | Thickness | `int` | `6` | Stroke width of the ring in pixels. Default 6. |\n| RingProgress | Color | `string` | `\"primary\"` | Theme color token for the filled arc, resolved as var(--color-{Color}). Default \"primary\". |\n| RingProgress | TrackColor | `string` | `\"muted\"` | Theme color token for the unfilled track, resolved as var(--color-{TrackColor}). Default \"muted\". |\n| RingProgress | ShowLabel | `bool` | `false` | Shows the rounded percentage as centered text. Ignored when LabelContent is set. |\n| RingProgress | LabelContent | `RenderFragment?` | `` | Custom content rendered centered inside the ring, replacing the built-in percentage label. |\n| RingProgress | RoundedCaps | `bool` | `true` | Uses rounded (stroke-linecap: round) instead of squared (butt) ends on the filled arc. Default true. |\n| RingProgress | Class | `string?` | `` | Additional CSS classes merged onto the outer container. |\n| RingProgress | AdditionalAttributes | `Dictionary<string, object>?` | `` | Captures any unmatched attributes and applies them to the outer container. |\n\n## Slots\n- `LabelContent` (RingProgress) — Custom content rendered centered inside the ring, replacing the built-in percentage label.\n\n## Events\n- (none)\n\n## Sub-components\n- (none)\n\n## Cascading values it expects\n- (none)\n\n## Services it injects\n- (none)\n\n## Keyboard\n—\n\n## Example\n```razor\n<RingProgress />\n```\n\n## CSS variables\n`--color-foreground`, `--radius`\n\n## Files\n- `UI/RingProgress/RingProgress.razor`\n"
 }

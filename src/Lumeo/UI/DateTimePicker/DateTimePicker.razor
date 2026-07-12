@@ -189,11 +189,23 @@
 @code {
     [CascadingParameter] private FormField.FormFieldContext? FormField { get; set; }
 
+    /// <summary>Marks the field required, rendering a trailing asterisk on <see cref="Label"/>
+    /// and setting <c>aria-required</c> on the trigger button.</summary>
     [Parameter] public bool Required { get; set; }
+    /// <summary>Forces the invalid (error) visual state — a destructive border/ring — even
+    /// when not inside a <c>FormField</c> reporting an error. ORed with the ambient
+    /// <c>FormField</c> error state.</summary>
     [Parameter] public bool Invalid { get; set; }
+    /// <summary>Error message shown below the field when invalid. Only rendered when this
+    /// picker is standalone (outside a <c>FormField</c>, which owns its own error slot).</summary>
     [Parameter] public string? ErrorText { get; set; }
+    /// <summary>Helper text shown below the field when not invalid. Only rendered when this
+    /// picker is standalone (outside a <c>FormField</c>).</summary>
     [Parameter] public string? HelperText { get; set; }
+    /// <summary>Field label rendered above the trigger button. Suppressed when nested inside
+    /// a <c>FormField</c>, which renders its own label.</summary>
     [Parameter] public string? Label { get; set; }
+    /// <summary>The trigger button's <c>name</c> attribute, for form submission/identification.</summary>
     [Parameter] public string? Name { get; set; }
 
     private bool EffectiveInvalid => Invalid || FormField?.HasError == true;
@@ -210,7 +222,12 @@
             ? AdditionalAttributes.Where(kv => kv.Key != "id").ToDictionary(kv => kv.Key, kv => kv.Value)
             : AdditionalAttributes;
 
+    /// <summary>The selected local date and time. Two-way bindable via
+    /// <see cref="ValueChanged"/>; also derivable from/to <see cref="OffsetValue"/> when a
+    /// <see cref="TimeZone"/> is configured.</summary>
     [Parameter] public DateTime? Value { get; set; }
+    /// <summary>Raised when the user picks a date or time (or clears via
+    /// <see cref="Clearable"/>) with the new <see cref="Value"/>.</summary>
     [Parameter] public EventCallback<DateTime?> ValueChanged { get; set; }
 
     /// <summary>
@@ -221,6 +238,8 @@
     /// Recommended over <see cref="Value"/> when working with multi-zone scenarios.
     /// </summary>
     [Parameter] public DateTimeOffset? OffsetValue { get; set; }
+    /// <summary>Raised alongside <see cref="ValueChanged"/> with the offset-aware instant
+    /// (DST-adjusted for <see cref="TimeZone"/>) whenever the picked value changes.</summary>
     [Parameter] public EventCallback<DateTimeOffset?> OffsetValueChanged { get; set; }
 
     /// <summary>
@@ -237,7 +256,11 @@
     /// </summary>
     [Parameter] public bool ShowTimeZoneLabel { get; set; } = true;
 
+    /// <summary>Shows 24-hour time (00-23) instead of a 12-hour clock with an AM/PM column.
+    /// Default <c>true</c>.</summary>
     [Parameter] public bool Use24Hour { get; set; } = true;
+    /// <summary>Adds a seconds column to the time picker. Default <c>false</c> (minute
+    /// precision).</summary>
     [Parameter] public bool ShowSeconds { get; set; }
     /// <summary>Minute column increment. <c>1</c> (default) lists every minute;
     /// <c>5</c>/<c>15</c> etc. list only multiples of the step.</summary>
@@ -250,6 +273,8 @@
     /// <c>ShortDatePattern</c>.
     /// </summary>
     [Parameter] public string? DateFormat { get; set; }
+    /// <summary>Placeholder shown on the trigger button when no value is selected.
+    /// Falls back to the localized "DateTimePicker.Placeholder" string when null.</summary>
     [Parameter] public string? Placeholder { get; set; }
 
     /// <summary>
@@ -262,10 +287,19 @@
     private string EffectiveDateFormat => DateFormat ?? EffectiveCulture.DateTimeFormat.ShortDatePattern;
 
     private string EffectivePlaceholder => Placeholder ?? L["DateTimePicker.Placeholder"];
+    /// <summary>Disables the trigger button, preventing the popover from opening.</summary>
     [Parameter] public bool Disabled { get; set; }
+    /// <summary>Shows a trailing clear (X) button on the trigger when a value is selected,
+    /// letting the user reset <see cref="Value"/> to <c>null</c>.</summary>
     [Parameter] public bool Clearable { get; set; }
+    /// <summary>Earliest selectable date/time. Forwarded to the embedded calendar's date
+    /// gate; on the boundary day, also disables times before <c>MinDate</c>'s time-of-day.</summary>
     [Parameter] public DateTime? MinDate { get; set; }
+    /// <summary>Latest selectable date/time. Forwarded to the embedded calendar's date
+    /// gate; on the boundary day, also disables times after <c>MaxDate</c>'s time-of-day.</summary>
     [Parameter] public DateTime? MaxDate { get; set; }
+    /// <summary>Per-date predicate returning <c>true</c> to disable a specific date in the
+    /// embedded calendar, independent of <see cref="MinDate"/>/<see cref="MaxDate"/>.</summary>
     [Parameter] public Func<DateTime, bool>? IsDateDisabled { get; set; }
     /// <summary>
     /// Override the locale-derived first day of week shown by the embedded calendar.
@@ -273,7 +307,9 @@
     /// <see cref="System.Globalization.CultureInfo.CurrentCulture"/>.
     /// </summary>
     [Parameter] public DayOfWeek? FirstDayOfWeek { get; set; }
+    /// <summary>Additional CSS classes merged onto the trigger button.</summary>
     [Parameter] public string? Class { get; set; }
+    /// <summary>Unmatched attributes splatted onto the trigger button.</summary>
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     private bool _isOpen;

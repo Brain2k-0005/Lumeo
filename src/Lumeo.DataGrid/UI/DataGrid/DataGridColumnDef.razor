@@ -7,35 +7,108 @@
     // registered DataGridColumn so the header can emit the spanning parent <th>.
     [CascadingParameter(Name = "ColumnGroupId")] private string? ColumnGroupId { get; set; }
 
+    /// <summary>Column header label. Falls back to <see cref="Field"/> where a
+    /// label is needed (e.g. group-add dropdown) if left unset.</summary>
     [Parameter] public string? Title { get; set; }
+
+    /// <summary>Dotted property path on <typeparamref name="TItem"/> used to read the
+    /// cell value (e.g. <c>"Address.City"</c>), and the key used for sorting/filtering/
+    /// grouping/layout persistence. Ignored when <see cref="FieldSelector"/> is set.</summary>
     [Parameter] public string? Field { get; set; }
+
+    /// <summary>Custom value accessor, as an alternative to <see cref="Field"/> reflection
+    /// (e.g. for computed values). Takes precedence over <see cref="Field"/> when both are set.</summary>
     [Parameter] public Func<TItem, object?>? FieldSelector { get; set; }
+
+    /// <summary>Initial column width in pixels. Resizing via the header handle updates
+    /// the runtime width independently; persists with layout when enabled.</summary>
     [Parameter] public double? Width { get; set; }
+
+    /// <summary>Enables click-to-sort (and shift-click multi-sort) on the header cell.</summary>
     [Parameter] public bool Sortable { get; set; }
+
+    /// <summary>Enables the column filter UI (funnel icon + popover, or <see cref="FilterTemplate"/>
+    /// when set) on the header cell.</summary>
     [Parameter] public bool Filterable { get; set; }
+
+    /// <summary>Enables the resize handle on the header cell's trailing edge (pointer
+    /// drag, keyboard nudge, or double-click auto-fit). Defaults to true.</summary>
     [Parameter] public bool Resizable { get; set; } = true;
+
+    /// <summary>Which filter operators/UI apply to this column's built-in filter popover
+    /// (Text, Number, Date, Boolean, Select …). Defaults to Text.</summary>
     [Parameter] public DataGridFilterType FilterType { get; set; } = DataGridFilterType.Text;
+
+    /// <summary>Aggregate function computed over this column's values and shown in the
+    /// footer strip (Sum, Average, Count, Min, Max …). Defaults to None (no aggregate row cell).</summary>
     [Parameter] public AggregateType Aggregate { get; set; } = AggregateType.None;
+
+    /// <summary>.NET format string applied to <see cref="IFormattable"/> cell values
+    /// (e.g. <c>"C2"</c>, <c>"yyyy-MM-dd"</c>), rendered via the current/configured culture.</summary>
     [Parameter] public string? Format { get; set; }
     /// <summary>Optional .NET format string for the footer aggregate strip — overrides
     /// <see cref="Format"/> for the totals row only. Useful when the cell format differs
     /// from the desired totals format (e.g. cells <c>"C2"</c>, totals <c>"N0"</c>).</summary>
     [Parameter] public string? FooterFormat { get; set; }
+    /// <summary>Sticks the column to the Left or Right edge of the scroll container
+    /// (<c>position: sticky</c>). Defaults to None.</summary>
     [Parameter] public PinDirection Pin { get; set; } = PinDirection.None;
+
+    /// <summary>Custom cell rendering, given the row item. Overrides the default
+    /// formatted-value / batch-dirty display.</summary>
     [Parameter] public RenderFragment<TItem>? CellTemplate { get; set; }
+
+    /// <summary>Custom header cell content, as an alternative to plain <see cref="Title"/> text.</summary>
     [Parameter] public RenderFragment? HeaderTemplate { get; set; }
+
+    /// <summary>Custom inline-edit UI for the cell, given a <see cref="CellEditContext{TItem}"/>.
+    /// Falls back to a plain text <c>&lt;input&gt;</c> when unset.</summary>
     [Parameter] public RenderFragment<CellEditContext<TItem>>? EditTemplate { get; set; }
+
+    /// <summary>Minimum width in pixels enforced during resize.</summary>
     [Parameter] public double? MinWidth { get; set; }
+
+    /// <summary>Maximum width in pixels enforced during resize.</summary>
     [Parameter] public double? MaxWidth { get; set; }
+
+    /// <summary>Shows a pin-left/right control in the column's header menu, letting
+    /// the user pin/unpin it interactively.</summary>
     [Parameter] public bool Pinnable { get; set; }
+
+    /// <summary>Makes this column selectable as a grouping level (group panel dropdown,
+    /// or <see cref="DataGrid{TItem}.GroupBy"/>/<see cref="DataGrid{TItem}.GroupByFields"/>).</summary>
     [Parameter] public bool Groupable { get; set; }
+
+    /// <summary>Whether this column can be reordered via header drag-and-drop or the
+    /// column-chooser arrows. Defaults to true; set false to pin the column to its
+    /// declared position regardless of the grid-level <c>Reorderable</c> flag.</summary>
     [Parameter] public bool Reorderable { get; set; } = true;
+
+    /// <summary>Per-row callback returning extra CSS classes for this column's <c>&lt;td&gt;</c>.</summary>
     [Parameter] public Func<TItem, string>? CellClass { get; set; }
+
+    /// <summary>Additional CSS classes merged onto the header <c>&lt;th&gt;</c>.</summary>
     [Parameter] public string? HeaderCssClass { get; set; }
+
+    /// <summary>Custom comparer used instead of the default value comparison when
+    /// sorting by this column.</summary>
     [Parameter] public Comparison<object?>? CustomSort { get; set; }
+
+    /// <summary>Explicit value/label options for a Select-type filter
+    /// (<see cref="FilterType"/> Select). Ignored for other filter types.</summary>
     [Parameter] public List<FilterOption>? FilterOptions { get; set; }
+
+    /// <summary>Whitelist of filter operators shown in this column's filter UI. When
+    /// null, the grid exposes the default set for <see cref="FilterType"/>.</summary>
     [Parameter] public List<FilterOperator>? Operators { get; set; }
+
+    /// <summary>Custom filter popover content, replacing the default operator+value
+    /// inputs entirely. Given the current <see cref="FilterDescriptor"/> (or null) and
+    /// an Apply callback to commit the filter.</summary>
     [Parameter] public RenderFragment<DataGridFilterTemplateContext>? FilterTemplate { get; set; }
+
+    /// <summary>Additional CSS classes merged onto every cell in this column (via
+    /// <c>DataGridColumn.CssClass</c>).</summary>
     [Parameter] public string? Class { get; set; }
 
     /// <summary>
@@ -51,6 +124,8 @@
     /// the callback half of <see cref="Visible"/>'s two-way binding.</summary>
     [Parameter] public EventCallback<bool> VisibleChanged { get; set; }
 
+    /// <summary>Captures unmatched attributes. This component renders no markup of its
+    /// own (it only registers a column with the parent grid), so these are effectively unused.</summary>
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     // Stable key of the column this def registered (Field when set, else the

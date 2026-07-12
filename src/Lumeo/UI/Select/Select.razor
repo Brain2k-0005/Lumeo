@@ -74,8 +74,15 @@
     private string EffectiveTriggerId =>
         !string.IsNullOrEmpty(FormField?.ControlId) ? FormField!.ControlId : _triggerId;
 
+    /// <summary>Composition-mode content: a <see cref="SelectTrigger"/> plus a
+    /// <see cref="SelectContent"/> with <see cref="SelectItem"/> children. Required even
+    /// when using the data-bound <see cref="Items"/> parameter.</summary>
     [Parameter] public RenderFragment? ChildContent { get; set; }
+    /// <summary>The selected option's value (single-select mode). Use <see cref="Values"/>
+    /// instead when <see cref="Multiple"/> is true.</summary>
     [Parameter] public string? Value { get; set; }
+    /// <summary>Fired when the selected value changes (single-select mode). Binding it
+    /// makes <see cref="Value"/> controlled.</summary>
     [Parameter] public EventCallback<string?> ValueChanged { get; set; }
     /// <summary>
     /// Popover open state. Bind via <c>@bind-Open</c> when the Select lives inside
@@ -86,29 +93,64 @@
     /// the cascade-close race; binding is the recommended pattern.
     /// </summary>
     [Parameter] public bool Open { get; set; }
+    /// <summary>Fired when the popover opens or closes (click, Escape, click-outside, or a
+    /// selection in single-select mode). Bind alongside <see cref="Open"/> to control it.</summary>
     [Parameter] public EventCallback<bool> OpenChanged { get; set; }
 
+    /// <summary>Deprecated alias for <see cref="Open"/>.</summary>
     [Obsolete("Use Open instead. IsOpen will be removed in a future release.")]
     [Parameter] public bool IsOpen { get => Open; set => Open = value; }
 
+    /// <summary>Deprecated alias for <see cref="OpenChanged"/>.</summary>
     [Obsolete("Use OpenChanged instead. IsOpenChanged will be removed in a future release.")]
     [Parameter] public EventCallback<bool> IsOpenChanged { get => OpenChanged; set => OpenChanged = value; }
 
+    /// <summary>Shows a search input at the top of the popover that filters options by
+    /// display text.</summary>
     [Parameter] public bool Searchable { get; set; }
+    /// <summary>Enables multi-select mode: selecting toggles membership in
+    /// <see cref="Values"/> instead of replacing <see cref="Value"/>, and the trigger
+    /// shows tags for each selection.</summary>
     [Parameter] public bool Multiple { get; set; }
+    /// <summary>The selected option values (multi-select mode, used when
+    /// <see cref="Multiple"/> is true).</summary>
     [Parameter] public List<string>? Values { get; set; }
+    /// <summary>Fired when the selection changes in multi-select mode. Binding it makes
+    /// <see cref="Values"/> controlled.</summary>
     [Parameter] public EventCallback<List<string>?> ValuesChanged { get; set; }
+    /// <summary>Shows a clear button that resets <see cref="Value"/>/<see cref="Values"/>
+    /// to null when a selection exists.</summary>
     [Parameter] public bool Clearable { get; set; }
+    /// <summary>Allows the user to add a new option by typing text that doesn't match any
+    /// existing item and confirming — fires <see cref="OnCreate"/> and selects the new value.</summary>
     [Parameter] public bool Creatable { get; set; }
+    /// <summary>Fired with the typed text when the user creates a new option via
+    /// <see cref="Creatable"/>.</summary>
     [Parameter] public EventCallback<string> OnCreate { get; set; }
+    /// <summary>Maximum number of selection tags shown in the trigger before the rest are
+    /// collapsed into a "+N" summary (multi-select mode). Defaults to 3.</summary>
     [Parameter] public int MaxDisplayTags { get; set; } = 3;
+    /// <summary>Disables the trigger, preventing the popover from opening.</summary>
     [Parameter] public bool Disabled { get; set; }
+    /// <summary>Shows a loading indicator in place of the option list, for options that
+    /// load asynchronously.</summary>
     [Parameter] public bool IsLoading { get; set; }
+    /// <summary>Marks the field as required, rendering an asterisk next to <see cref="Label"/>.</summary>
     [Parameter] public bool Required { get; set; }
+    /// <summary>Forces the invalid/error visual state. Also set implicitly when a wrapping
+    /// <c>FormField</c> reports a validation error.</summary>
     [Parameter] public bool Invalid { get; set; }
+    /// <summary>Error message shown below the field when <see cref="Invalid"/> is true
+    /// (and the select is not nested inside a <c>FormField</c>).</summary>
     [Parameter] public string? ErrorText { get; set; }
+    /// <summary>Helper text shown below the field when there is no error (and the select
+    /// is not nested inside a <c>FormField</c>).</summary>
     [Parameter] public string? HelperText { get; set; }
+    /// <summary>Label rendered above the trigger. Suppressed when nested inside a
+    /// <c>FormField</c>, which renders its own label instead.</summary>
     [Parameter] public string? Label { get; set; }
+    /// <summary>The form field name, forwarded for consistency with other form controls
+    /// (not rendered directly by this component).</summary>
     [Parameter] public string? Name { get; set; }
     /// <summary>Custom CSS classes merged onto the Select's wrapper element. Consistent
     /// with every other form component per the library's base API contract.</summary>
@@ -122,6 +164,7 @@
     /// <c>Input.AutoFocus</c> — the HTML autofocus attribute doesn't work in
     /// Blazor WASM, this parameter uses <c>FocusElement</c> after mount.</summary>
     [Parameter] public bool AutoFocus { get; set; }
+    /// <summary>Unmatched attributes splatted onto the wrapper <c>div</c>.</summary>
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     /// <summary>Programmatically focus the trigger button.</summary>

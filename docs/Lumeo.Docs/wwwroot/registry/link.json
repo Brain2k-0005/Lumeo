@@ -35,7 +35,7 @@
         "name": "Href",
         "type": "string?",
         "default": null,
-        "description": null,
+        "description": "The URL the link navigates to. Omitted from the rendered <a> entirely (no href attribute) when null, empty, or whitespace-only, so the link stays inert instead of navigating to the current page.",
         "isCascading": false,
         "captureUnmatched": false,
         "isEditorRequired": false
@@ -43,8 +43,8 @@
       {
         "name": "External",
         "type": "bool",
-        "default": null,
-        "description": null,
+        "default": "false",
+        "description": "Opens the link in a new tab (target=\"_blank\"), automatically adding rel=\"noopener noreferrer\" unless the caller already supplied rel.",
         "isCascading": false,
         "captureUnmatched": false,
         "isEditorRequired": false
@@ -52,7 +52,7 @@
       {
         "name": "Disabled",
         "type": "bool",
-        "default": null,
+        "default": "false",
         "description": "Renders the link as non-interactive: no href, aria-disabled=\"true\", tabindex=\"-1\" (removed from the tab order) and pointer events disabled.",
         "isCascading": false,
         "captureUnmatched": false,
@@ -71,7 +71,7 @@
         "name": "Variant",
         "type": "string",
         "default": "\"default\"",
-        "description": null,
+        "description": "Visual style: \"default\" (primary color, underline on hover), \"muted\" (muted color, foreground on hover), or \"underline\" (always underlined).",
         "isCascading": false,
         "captureUnmatched": false,
         "isEditorRequired": false
@@ -80,7 +80,7 @@
         "name": "Size",
         "type": "string?",
         "default": null,
-        "description": null,
+        "description": "Text size utility suffix (e.g. \"sm\" renders text-sm). Omitted when null, leaving the inherited font size.",
         "isCascading": false,
         "captureUnmatched": false,
         "isEditorRequired": false
@@ -89,7 +89,7 @@
         "name": "ChildContent",
         "type": "RenderFragment?",
         "default": null,
-        "description": null,
+        "description": "The link's visible content.",
         "isCascading": false,
         "captureUnmatched": false,
         "isEditorRequired": false
@@ -98,7 +98,7 @@
         "name": "Class",
         "type": "string?",
         "default": null,
-        "description": null,
+        "description": "Additional CSS classes merged onto the <a> element.",
         "isCascading": false,
         "captureUnmatched": false,
         "isEditorRequired": false
@@ -107,7 +107,7 @@
         "name": "AdditionalAttributes",
         "type": "Dictionary<string, object>?",
         "default": null,
-        "description": null,
+        "description": "Unmatched attributes splatted onto the <a> element.",
         "isCascading": false,
         "captureUnmatched": true,
         "isEditorRequired": false
@@ -180,7 +180,7 @@
   "source": [
     {
       "path": "UI/Link/Link.razor",
-      "content": "@namespace Lumeo\n\n<a class=\"@CssClass\" @attributes=\"AllAttributes\">@ChildContent</a>\n\n@code {\n    [Parameter] public string? Href { get; set; }\n    [Parameter] public bool External { get; set; }\n\n    /// <summary>\n    /// Renders the link as non-interactive: no <c>href</c>, <c>aria-disabled=\"true\"</c>,\n    /// <c>tabindex=\"-1\"</c> (removed from the tab order) and pointer events disabled.\n    /// </summary>\n    [Parameter] public bool Disabled { get; set; }\n\n    /// <summary>\n    /// Value for the <c>aria-current</c> attribute when this link represents the\n    /// current item (e.g. <c>\"page\"</c> for the active nav link). Null omits it.\n    /// </summary>\n    [Parameter] public string? AriaCurrent { get; set; }\n\n    [Parameter] public string Variant { get; set; } = \"default\";\n    [Parameter] public string? Size { get; set; }\n    [Parameter] public RenderFragment? ChildContent { get; set; }\n    [Parameter] public string? Class { get; set; }\n    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }\n\n    private Dictionary<string, object> AllAttributes\n    {\n        get\n        {\n            var attrs = AdditionalAttributes != null\n                ? new Dictionary<string, object>(AdditionalAttributes)\n                : new Dictionary<string, object>();\n\n            // aria-current is independent of interactivity: a disabled link can\n            // still be the current page, so emit it before the Disabled early\n            // return (otherwise the current-page indicator is silently lost).\n            if (!string.IsNullOrEmpty(AriaCurrent))\n            {\n                attrs[\"aria-current\"] = AriaCurrent;\n            }\n\n            if (Disabled)\n            {\n                // A disabled link is inert: drop href so it can't navigate, and\n                // remove it from the tab order. pointer-events are killed via CSS.\n                attrs.Remove(\"href\");\n                attrs[\"aria-disabled\"] = \"true\";\n                attrs[\"tabindex\"] = \"-1\";\n                return attrs;\n            }\n\n            // href: only emit when we actually have one. Rendering href=\"\" (the\n            // old behaviour for Href=null) makes the anchor navigate to the\n            // current page root rather than being inert. Whitespace-only Href is\n            // treated the same as null/empty so it can't reintroduce that bug.\n            if (!string.IsNullOrWhiteSpace(Href))\n            {\n                attrs[\"href\"] = Href;\n            }\n\n            if (External)\n            {\n                attrs[\"target\"] = \"_blank\";\n            }\n\n            // rel-safety: any link that opens in a new browsing context\n            // (target=_blank, whether set via External or AdditionalAttributes)\n            // needs rel=\"noopener noreferrer\" to close the reverse-tabnabbing\n            // hole. Respect a caller-supplied rel if present.\n            if (attrs.TryGetValue(\"target\", out var target)\n                && string.Equals(target?.ToString(), \"_blank\", StringComparison.OrdinalIgnoreCase)\n                && !attrs.ContainsKey(\"rel\"))\n            {\n                attrs[\"rel\"] = \"noopener noreferrer\";\n            }\n\n            return attrs;\n        }\n    }\n\n    private string VariantClasses => Variant switch\n    {\n        \"muted\" => \"text-muted-foreground hover:text-foreground\",\n        \"underline\" => \"underline underline-offset-4\",\n        _ => \"text-primary underline-offset-4 hover:underline\"\n    };\n\n    private string CssClass => Cx.Join(\n        VariantClasses,\n        Cx.When(!string.IsNullOrEmpty(Size), $\"text-{Size}\"),\n        Cx.When(Disabled, \"pointer-events-none opacity-50\"),\n        Class);\n}\n"
+      "content": "@namespace Lumeo\n\n<a class=\"@CssClass\" @attributes=\"AllAttributes\">@ChildContent</a>\n\n@code {\n    /// <summary>The URL the link navigates to. Omitted from the rendered <c>&lt;a&gt;</c>\n    /// entirely (no <c>href</c> attribute) when null, empty, or whitespace-only, so the\n    /// link stays inert instead of navigating to the current page.</summary>\n    [Parameter] public string? Href { get; set; }\n    /// <summary>Opens the link in a new tab (<c>target=\"_blank\"</c>), automatically adding\n    /// <c>rel=\"noopener noreferrer\"</c> unless the caller already supplied <c>rel</c>.</summary>\n    [Parameter] public bool External { get; set; }\n\n    /// <summary>\n    /// Renders the link as non-interactive: no <c>href</c>, <c>aria-disabled=\"true\"</c>,\n    /// <c>tabindex=\"-1\"</c> (removed from the tab order) and pointer events disabled.\n    /// </summary>\n    [Parameter] public bool Disabled { get; set; }\n\n    /// <summary>\n    /// Value for the <c>aria-current</c> attribute when this link represents the\n    /// current item (e.g. <c>\"page\"</c> for the active nav link). Null omits it.\n    /// </summary>\n    [Parameter] public string? AriaCurrent { get; set; }\n\n    /// <summary>Visual style: <c>\"default\"</c> (primary color, underline on hover),\n    /// <c>\"muted\"</c> (muted color, foreground on hover), or <c>\"underline\"</c>\n    /// (always underlined).</summary>\n    [Parameter] public string Variant { get; set; } = \"default\";\n    /// <summary>Text size utility suffix (e.g. <c>\"sm\"</c> renders <c>text-sm</c>). Omitted\n    /// when null, leaving the inherited font size.</summary>\n    [Parameter] public string? Size { get; set; }\n    /// <summary>The link's visible content.</summary>\n    [Parameter] public RenderFragment? ChildContent { get; set; }\n    /// <summary>Additional CSS classes merged onto the <c>&lt;a&gt;</c> element.</summary>\n    [Parameter] public string? Class { get; set; }\n    /// <summary>Unmatched attributes splatted onto the <c>&lt;a&gt;</c> element.</summary>\n    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }\n\n    private Dictionary<string, object> AllAttributes\n    {\n        get\n        {\n            var attrs = AdditionalAttributes != null\n                ? new Dictionary<string, object>(AdditionalAttributes)\n                : new Dictionary<string, object>();\n\n            // aria-current is independent of interactivity: a disabled link can\n            // still be the current page, so emit it before the Disabled early\n            // return (otherwise the current-page indicator is silently lost).\n            if (!string.IsNullOrEmpty(AriaCurrent))\n            {\n                attrs[\"aria-current\"] = AriaCurrent;\n            }\n\n            if (Disabled)\n            {\n                // A disabled link is inert: drop href so it can't navigate, and\n                // remove it from the tab order. pointer-events are killed via CSS.\n                attrs.Remove(\"href\");\n                attrs[\"aria-disabled\"] = \"true\";\n                attrs[\"tabindex\"] = \"-1\";\n                return attrs;\n            }\n\n            // href: only emit when we actually have one. Rendering href=\"\" (the\n            // old behaviour for Href=null) makes the anchor navigate to the\n            // current page root rather than being inert. Whitespace-only Href is\n            // treated the same as null/empty so it can't reintroduce that bug.\n            if (!string.IsNullOrWhiteSpace(Href))\n            {\n                attrs[\"href\"] = Href;\n            }\n\n            if (External)\n            {\n                attrs[\"target\"] = \"_blank\";\n            }\n\n            // rel-safety: any link that opens in a new browsing context\n            // (target=_blank, whether set via External or AdditionalAttributes)\n            // needs rel=\"noopener noreferrer\" to close the reverse-tabnabbing\n            // hole. Respect a caller-supplied rel if present.\n            if (attrs.TryGetValue(\"target\", out var target)\n                && string.Equals(target?.ToString(), \"_blank\", StringComparison.OrdinalIgnoreCase)\n                && !attrs.ContainsKey(\"rel\"))\n            {\n                attrs[\"rel\"] = \"noopener noreferrer\";\n            }\n\n            return attrs;\n        }\n    }\n\n    private string VariantClasses => Variant switch\n    {\n        \"muted\" => \"text-muted-foreground hover:text-foreground\",\n        \"underline\" => \"underline underline-offset-4\",\n        _ => \"text-primary underline-offset-4 hover:underline\"\n    };\n\n    private string CssClass => Cx.Join(\n        VariantClasses,\n        Cx.When(!string.IsNullOrEmpty(Size), $\"text-{Size}\"),\n        Cx.When(Disabled, \"pointer-events-none opacity-50\"),\n        Class);\n}\n"
     }
   ],
   "slots": [
@@ -188,7 +188,7 @@
       "name": "ChildContent",
       "owner": "Link",
       "type": "RenderFragment?",
-      "description": null
+      "description": "The link's visible content."
     }
   ],
   "serviceDependencies": [],
@@ -204,5 +204,5 @@
     "tests/Lumeo.Tests/Components/RichTextEditor/RichTextEditorBehaviorTests.cs",
     "tests/Lumeo.Tests/Components/Scrollspy/ScrollspyTests.cs"
   ],
-  "mdSummary": "# Link\n\nStyled anchor with underline + color variants.\n\n**Package:** `Lumeo` · **Category:** Typography\n**Docs:** https://lumeo.nativ.sh/components/link\n\n## Parameters\n| Owner | Name | Type | Default | Description |\n|---|---|---|---|---|\n| Link | Href | `string?` | `` |  |\n| Link | External | `bool` | `` |  |\n| Link | Disabled | `bool` | `` | Renders the link as non-interactive: no href, aria-disabled=\"true\", tabindex=\"-1\" (removed from the tab order) and pointer events disabled. |\n| Link | AriaCurrent | `string?` | `` | Value for the aria-current attribute when this link represents the current item (e.g. \"page\" for the active nav link). Null omits it. |\n| Link | Variant | `string` | `\"default\"` |  |\n| Link | Size | `string?` | `` |  |\n| Link | ChildContent | `RenderFragment?` | `` |  |\n| Link | Class | `string?` | `` |  |\n| Link | AdditionalAttributes | `Dictionary<string, object>?` | `` |  |\n\n## Slots\n- `ChildContent` (Link) — RenderFragment slot\n\n## Events\n- (none)\n\n## Sub-components\n- (none)\n\n## Cascading values it expects\n- (none)\n\n## Services it injects\n- (none)\n\n## Keyboard\n—\n\n## Example\n```razor\n<Link />\n```\n\n## CSS variables\n`--color-foreground`, `--color-muted`, `--color-muted-foreground`, `--color-primary`\n\n## Files\n- `UI/Link/Link.razor`\n"
+  "mdSummary": "# Link\n\nStyled anchor with underline + color variants.\n\n**Package:** `Lumeo` · **Category:** Typography\n**Docs:** https://lumeo.nativ.sh/components/link\n\n## Parameters\n| Owner | Name | Type | Default | Description |\n|---|---|---|---|---|\n| Link | Href | `string?` | `` | The URL the link navigates to. Omitted from the rendered \\<a\\> entirely (no href attribute) when null, empty, or whitespace-only, so the link stays inert instead of navigating to the current page. |\n| Link | External | `bool` | `false` | Opens the link in a new tab (target=\"_blank\"), automatically adding rel=\"noopener noreferrer\" unless the caller already supplied rel. |\n| Link | Disabled | `bool` | `false` | Renders the link as non-interactive: no href, aria-disabled=\"true\", tabindex=\"-1\" (removed from the tab order) and pointer events disabled. |\n| Link | AriaCurrent | `string?` | `` | Value for the aria-current attribute when this link represents the current item (e.g. \"page\" for the active nav link). Null omits it. |\n| Link | Variant | `string` | `\"default\"` | Visual style: \"default\" (primary color, underline on hover), \"muted\" (muted color, foreground on hover), or \"underline\" (always underlined). |\n| Link | Size | `string?` | `` | Text size utility suffix (e.g. \"sm\" renders text-sm). Omitted when null, leaving the inherited font size. |\n| Link | ChildContent | `RenderFragment?` | `` | The link's visible content. |\n| Link | Class | `string?` | `` | Additional CSS classes merged onto the \\<a\\> element. |\n| Link | AdditionalAttributes | `Dictionary<string, object>?` | `` | Unmatched attributes splatted onto the \\<a\\> element. |\n\n## Slots\n- `ChildContent` (Link) — The link's visible content.\n\n## Events\n- (none)\n\n## Sub-components\n- (none)\n\n## Cascading values it expects\n- (none)\n\n## Services it injects\n- (none)\n\n## Keyboard\n—\n\n## Example\n```razor\n<Link />\n```\n\n## CSS variables\n`--color-foreground`, `--color-muted`, `--color-muted-foreground`, `--color-primary`\n\n## Files\n- `UI/Link/Link.razor`\n"
 }

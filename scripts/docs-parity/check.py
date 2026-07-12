@@ -57,10 +57,25 @@ ALLOWLIST_PATH = os.path.join(SCRIPT_DIR, "allowlist.json")
 # even a [Parameter] in practice but excluded defensively by name too).
 EXCLUDE_PARAMS = {"Class", "ChildContent", "AdditionalAttributes", "CascadingParameter"}
 
-# Markers that indicate a docs page renders its API table from the registry
-# (Lumeo.Docs/Shared/ComponentDocPage.razor -> PropsTable.razor), so source/docs
-# parity is structurally guaranteed and a textual diff would be a false positive.
-REGISTRY_DRIVEN_MARKERS = ("<ComponentDocPage", "<PropsTable")
+# A docs page can mix registry-rendered parameter tables with hand-written
+# ones (the common "hybrid" shape post-migration: a top-level <PropsTable/>
+# plus a couple of sub-component <PropsTable SubComponent="X"/> calls,
+# alongside a hand-written table for a type the registry doesn't cover yet).
+# Each <PropsTable Slug="s" [SubComponent="T"]/> usage marks exactly ONE
+# declaring type's parameters as documented by construction (registry-
+# rendered = correct by construction): T itself when SubComponent is given,
+# otherwise s's own top-level component. <ComponentDocPage Slug="s" ...> is
+# equivalent to the single top-level <PropsTable Slug="@Slug" /> it renders
+# internally (Lumeo.Docs/Shared/ComponentDocPage.razor). Any hand-written
+# Property/Prop/Parameter table left on the same page keeps going through
+# the full forward+reverse textual diff exactly as before — only the
+# registry-covered types are exempted. A page is skipped ENTIRELY only when
+# every parameter table on it is registry-rendered (see
+# is_registry_driven_page()).
+PROPSTABLE_RE = re.compile(r"<PropsTable\b([^>]*?)/?>")
+COMPONENTDOCPAGE_RE = re.compile(r"<ComponentDocPage\b([^>]*?)>")
+PROPSTABLE_SLUG_RE = re.compile(r'Slug\s*=\s*"([^"]*)"')
+PROPSTABLE_SUBCOMPONENT_RE = re.compile(r'SubComponent\s*=\s*"([^"]*)"')
 
 # The "chart" registry entry bundles all ~30 individual chart-type .razor files
 # (AreaChart, BarChart, ...) as its source "files", but each chart type has its
@@ -166,7 +181,6 @@ TYPE_DECL_RE = re.compile(
     r"(?:class|record|struct)\s+([A-Za-z_][A-Za-z0-9_]*)\b"
 )
 
-HEAD_SNIFF_BYTES = 4000
 SRC_DIR = os.path.join(ROOT, "src")
 
 
@@ -461,19 +475,11 @@ def _iter_param_table_rows(text):
                     yield current_heading, [_strip_tags(c) for c in cells]
 
 
-def extract_documented_rows(docs_path):
-    """Returns (rows, error) for one docs page's API table(s).
-
-    Each row is {"name": <raw first-cell text>, "check_name": <name, or the
-    tail after the last dot for "Component.Prop" rows>, "type_cell": <second
-    cell text, or "">, "owner_type": <clean_heading_type_name() of the
-    nearest preceding heading, or None>}.
-    """
-    if not os.path.exists(docs_path):
-        return [], "MISSING_DOCS_PAGE"
-    with open(docs_path, encoding="utf-8") as f:
-        text = f.read()
-
+def extract_documented_rows_from_text(text):
+    """Same as extract_documented_rows() but for already-read page text (no
+    file I/O, no MISSING_DOCS_PAGE handling — callers that already read the
+    file for another reason, e.g. to also scan it for <PropsTable> usages,
+    use this directly instead of re-reading the file)."""
     rows = []
     for heading, cells in _iter_param_table_rows(text):
         name = cells[0]
@@ -486,7 +492,81 @@ def extract_documented_rows(docs_path):
         rows.append(
             {"name": name, "check_name": check_name, "type_cell": type_cell, "owner_type": owner_type}
         )
-    return rows, None
+    return rows
+
+
+def extract_documented_rows(docs_path):
+    """Returns (rows, error) for one docs page's API table(s).
+
+    Each row is {"name": <raw first-cell text>, "check_name": <name, or the
+    tail after the last dot for "Component.Prop" rows>, "type_cell": <second
+    cell text, or "">, "owner_type": <clean_heading_type_name() of the
+    nearest preceding heading, or None>}.
+    """
+    if not os.path.exists(docs_path):
+        return [], "MISSING_DOCS_PAGE"
+    with open(docs_path, encoding="utf-8") as f:
+        text = f.read()
+    return extract_documented_rows_from_text(text), None
+
+
+def _resolve_props_table_slug(raw_slug, current_slug):
+    """Resolves a PropsTable/ComponentDocPage Slug attribute value to a
+    concrete registry slug. A literal "@Slug" — ComponentDocPage's own
+    internal <PropsTable Slug="@Slug" /> (Lumeo.Docs/Shared/ComponentDocPage.razor),
+    or a hand-written page mirroring that same indirection — always means
+    "this page's own component": that's the only identifier in scope there.
+    Any other @-expression is unresolvable statically and falls back to the
+    same assumption, since a docs page overwhelmingly only ever documents
+    its own component's slug this way."""
+    if raw_slug.startswith("@"):
+        return current_slug
+    return raw_slug
+
+
+def registry_documented_types(text, current_slug, components):
+    """Declaring type names that this page's <PropsTable>/<ComponentDocPage>
+    usages mark as fully documented (registry-rendered = correct by
+    construction — see the module note above PROPSTABLE_RE).
+
+    A <PropsTable Slug="s" SubComponent="T" /> marks T's own parameters
+    documented. A <PropsTable Slug="s" /> (no SubComponent) marks s's
+    top-level component's parameters documented. A <ComponentDocPage
+    Slug="s" ...> is equivalent to the single top-level <PropsTable
+    Slug="@Slug" /> it renders internally. A Slug that doesn't resolve to a
+    known registry component is silently ignored — nothing to mark, and not
+    this function's job to flag (a typo'd Slug would already 404 the props
+    table at runtime, which is a docs bug, not a parity bug)."""
+    types = set()
+    for m in PROPSTABLE_RE.finditer(text):
+        attrs = m.group(1)
+        sub_m = PROPSTABLE_SUBCOMPONENT_RE.search(attrs)
+        if sub_m:
+            types.add(sub_m.group(1))
+            continue
+        slug_m = PROPSTABLE_SLUG_RE.search(attrs)
+        if not slug_m:
+            continue
+        comp = components.get(_resolve_props_table_slug(slug_m.group(1), current_slug))
+        if comp:
+            types.add(comp["name"])
+    for m in COMPONENTDOCPAGE_RE.finditer(text):
+        slug_m = PROPSTABLE_SLUG_RE.search(m.group(1))
+        if not slug_m:
+            continue
+        comp = components.get(_resolve_props_table_slug(slug_m.group(1), current_slug))
+        if comp:
+            types.add(comp["name"])
+    return types
+
+
+def is_registry_driven_page(doc_rows, has_registry_markers):
+    """A page is skipped ENTIRELY only when every parameter table on it comes
+    from the registry: at least one <PropsTable>/<ComponentDocPage> usage,
+    and zero hand-written Property/Prop/Parameter table rows left over. A
+    hybrid page (registry usages AND a surviving hand-written table) is
+    never skipped — see the module note above PROPSTABLE_RE."""
+    return has_registry_markers and not doc_rows
 
 
 def extract_documented_params(docs_path):
@@ -509,14 +589,6 @@ def is_parameter_row(row):
     if GET_ONLY_MARKER in row["type_cell"]:
         return False
     return True
-
-
-def is_registry_driven(docs_path):
-    if not os.path.exists(docs_path):
-        return False
-    with open(docs_path, encoding="utf-8") as f:
-        head = f.read(HEAD_SNIFF_BYTES)
-    return any(marker in head for marker in REGISTRY_DRIVEN_MARKERS)
 
 
 ALLOWLIST_NAMESPACES = ("missingParams", "staleDocRows")
@@ -638,10 +710,6 @@ def main():
         if casing_warning:
             casing_warnings.append(f"{slug}: {casing_warning}")
 
-        if is_registry_driven(docs_path):
-            skipped_registry_driven.append(slug)
-            continue
-
         type_params, cascading_params, file_errors = per_slug_source[slug]
         file_errors = list(file_errors)
 
@@ -665,8 +733,25 @@ def main():
                     continue
                 param_declaring_types.setdefault(p, set()).add(type_name)
 
-        doc_rows, doc_err = extract_documented_rows(docs_path)
+        if os.path.exists(docs_path):
+            with open(docs_path, encoding="utf-8") as f:
+                doc_text = f.read()
+            doc_rows = extract_documented_rows_from_text(doc_text)
+            doc_err = None
+            page_registry_types = registry_documented_types(doc_text, slug, components)
+            has_registry_markers = bool(
+                page_registry_types or PROPSTABLE_RE.search(doc_text) or COMPONENTDOCPAGE_RE.search(doc_text)
+            )
+        else:
+            doc_rows, doc_err = [], "MISSING_DOCS_PAGE"
+            page_registry_types = set()
+            has_registry_markers = False
+
         doc_pages_checked = [(docs_path, doc_rows)]
+        # Types marked fully documented by a <PropsTable>/<ComponentDocPage>
+        # usage anywhere among the pages checked for this component (the main
+        # page, plus any chart sub-pages below) — see registry_documented_types().
+        registry_types = set(page_registry_types)
 
         if slug == CHART_SLUG:
             expected_chart_types = sorted(chart_source_types(files))
@@ -681,10 +766,23 @@ def main():
                     )
                     continue
                 chart_page_path = os.path.join(DOCS_COMPONENTS_ROOT, CHARTS_DOCS_SUBDIR, actual_chart_page)
-                if is_registry_driven(chart_page_path):
+                if not os.path.exists(chart_page_path):
                     continue
-                sub_rows, _ = extract_documented_rows(chart_page_path)
-                doc_pages_checked.append((chart_page_path, sub_rows))
+                with open(chart_page_path, encoding="utf-8") as f:
+                    chart_text = f.read()
+                chart_rows = extract_documented_rows_from_text(chart_text)
+                chart_registry_types = registry_documented_types(chart_text, slug, components)
+                registry_types |= chart_registry_types
+                chart_has_markers = bool(
+                    chart_registry_types or PROPSTABLE_RE.search(chart_text) or COMPONENTDOCPAGE_RE.search(chart_text)
+                )
+                if is_registry_driven_page(chart_rows, chart_has_markers):
+                    continue
+                doc_pages_checked.append((chart_page_path, chart_rows))
+
+        if is_registry_driven_page(doc_rows, has_registry_markers):
+            skipped_registry_driven.append(slug)
+            continue
 
         # Documented set scoped by declaring type: a source parameter counts as
         # documented only when it appears under a table whose owner heading
@@ -750,6 +848,33 @@ def main():
                 else:
                     unscoped_documented.add(r["name"])
                     unscoped_documented.add(r["check_name"])
+
+        # A <PropsTable>/<ComponentDocPage> usage that names one of THIS
+        # component's own declaring types marks every one of that type's real
+        # [Parameter]s documented outright (registry-rendered = correct by
+        # construction — see registry_documented_types()). A registry_types
+        # entry that names something else entirely (another registered
+        # component's slug, e.g. BentoPage showcasing KpiCard's own table) is
+        # simply not one of this component's own type_params keys and is a
+        # no-op here, exactly like an unresolved owner heading above.
+        #
+        # Joins flat_documented too, exactly like a normal headed row does
+        # (see the loop above): an internal composition/helper type that
+        # never gets its own heading (DataGridColumnVisibility piggybacking
+        # DataGrid's own Columns/Class, per the flat-fallback note above)
+        # must keep matching via the flat, page-wide fallback even though
+        # the params it piggybacks are now registry-rendered rather than
+        # hand-written — otherwise migrating DataGrid's own table to
+        # <PropsTable/> would silently orphan that companion type's forward
+        # check.
+        for owner in registry_types:
+            if owner not in type_params:
+                continue
+            headed_types.add(owner)
+            bucket = scoped_documented.setdefault(owner, set())
+            for p in type_params[owner]:
+                bucket.add(p)
+                flat_documented.add(p)
 
         def is_documented(type_name, param_name):
             if type_name not in headed_types:

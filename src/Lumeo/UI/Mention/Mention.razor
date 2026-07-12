@@ -102,21 +102,46 @@
     private string EffectiveTextareaId =>
         !string.IsNullOrEmpty(FormField?.ControlId) ? FormField!.ControlId : _textareaId;
 
+    /// <summary>The textarea's raw text content, including any committed <c>@@mention</c> tokens.</summary>
     [Parameter] public string? Value { get; set; }
+    /// <summary>Invoked on every keystroke and mention insertion with the updated text.</summary>
     [Parameter] public EventCallback<string> ValueChanged { get; set; }
+    /// <summary>The character that opens the mention suggestion dropdown. Default: <c>@@</c>.</summary>
     [Parameter] public char Trigger { get; set; } = '@';
+    /// <summary>Candidate mentions. In local/uncontrolled mode (no <see cref="OnSearch"/> delegate) this
+    /// full list is filtered client-side by the search term; when <see cref="OnSearch"/> is bound, the
+    /// caller is expected to hand back an already-filtered list.</summary>
     [Parameter] public List<MentionOption> Options { get; set; } = [];
+    /// <summary>Invoked with the text typed after the trigger character. Binding this switches to
+    /// server-driven filtering — the caller supplies the matching <see cref="Options"/> instead of the
+    /// component filtering the full list client-side.</summary>
     [Parameter] public EventCallback<string> OnSearch { get; set; }
+    /// <summary>Disables the textarea.</summary>
     [Parameter] public bool Disabled { get; set; }
+    /// <summary>Placeholder text shown when the textarea is empty.</summary>
     [Parameter] public string? Placeholder { get; set; }
+    /// <summary>Visible row count of the textarea. Default: 3.</summary>
     [Parameter] public int Rows { get; set; } = 3;
+    /// <summary>Marks the field as required, setting <c>aria-required</c>.</summary>
     [Parameter] public bool Required { get; set; }
+    /// <summary>Renders the field in an invalid/error state. Also set implicitly when inside a
+    /// <c>FormField</c> that has a validation error.</summary>
     [Parameter] public bool Invalid { get; set; }
+    /// <summary>Error message shown below the field when <see cref="Invalid"/> is true and the field
+    /// isn't inside a <c>FormField</c> (which renders its own error text).</summary>
     [Parameter] public string? ErrorText { get; set; }
+    /// <summary>Helper text shown below the field when there's no error, and the field isn't inside a
+    /// <c>FormField</c>.</summary>
     [Parameter] public string? HelperText { get; set; }
+    /// <summary>Label rendered above the field. Ignored when inside a <c>FormField</c>, which renders
+    /// its own label.</summary>
     [Parameter] public string? Label { get; set; }
+    /// <summary>The <c>name</c> attribute on the textarea, for native form submission. Falls back to
+    /// the enclosing <c>FormField</c>'s name when unset.</summary>
     [Parameter] public string? Name { get; set; }
+    /// <summary>Additional CSS classes merged onto the <c>textarea</c> element.</summary>
     [Parameter] public string? Class { get; set; }
+    /// <summary>Additional HTML attributes captured and forwarded to the relative-positioned wrapper <c>div</c>.</summary>
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     private bool EffectiveInvalid => Invalid || FormField?.HasError == true;
