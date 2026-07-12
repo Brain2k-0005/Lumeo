@@ -1114,6 +1114,29 @@
         // slot. PR #357 round-9: reads the toast's own frozen snapshot, not a live re-resolve.
         var freedPos = toast.ResolvedPosition;
         _toasts.RemoveAll(t => t.Id == id);
+
+        // PR #357 finding (review, round-13): ToastViewport.Dispose()'s false-edge notification
+        // (see its doc comment) only fires when the component actually tears down — but the
+        // PROVIDER's own default-position viewport is ALWAYS rendered, even at ToastCount=0 (see
+        // the rc.42 doc comment on positionsToRender above), so it never disposes when its last
+        // toast goes away. And even a non-default viewport can dodge Dispose the same way: if
+        // ReconcileGroup(freedPos) below immediately re-admits a queued toast into this SAME
+        // position before the next render, the @key stays alive across the diff and the instance
+        // is reused rather than torn down. Either way, a group left hovered/focused when its last
+        // toast is dismissed WITHOUT a real mouseleave/focusout (DismissAll, or a close click under
+        // a stationary pointer) would leave `_expandedGroups` holding this position forever: the
+        // next toast admitted here starts (and stays) paused for PauseReason.Group in
+        // StartOrPauseTimer, since a fresh/reused viewport's first render never fires its own
+        // resuming edge (see OnExpandedChanged's doc comment) and nothing else is guaranteed to
+        // hover/focus it again. Clearing the stale entry here — the instant the group empties, and
+        // BEFORE the caller's ReconcileGroup(freedPos) can admit anything into it — closes the gap
+        // for every removal path (UI close/swipe, DismissAll, auto-dismiss, ResumeTimer's
+        // already-elapsed case), since they all fold into this one method.
+        if (!_toasts.Any(t => t.ResolvedPosition == freedPos))
+        {
+            _expandedGroups.Remove(freedPos);
+        }
+
         await InvokeAsync(StateHasChanged);
         return freedPos;
     }
