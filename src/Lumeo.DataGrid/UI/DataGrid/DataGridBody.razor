@@ -83,6 +83,14 @@ else if (Context is not null && Context.IsTreeGrid)
 else if (Context is not null && Context.GroupTree is not null && Context.GroupTree.Count > 0)
 {
     // Multi-level grouping: render a nested forest of group rows.
+    // globalIdx spans the WHOLE tbody (every group, every nesting level), not
+    // just the current group — it's captured by the renderNode closure below
+    // and mutated across recursive calls. A per-group counter that reset to 0
+    // at each group boundary used to make DataGridRow.AriaRowIndex (and the
+    // "Select/Expand/Collapse row N" labels built from it) collide across
+    // groups, e.g. every group's first row announcing itself as "Select row 2"
+    // — a global counter guarantees each row gets a distinct index.
+    var globalIdx = 0;
     RenderFragment<DataGridGroupNode<TItem>>? renderNode = null;
     renderNode = node => __builder =>
     {
@@ -106,15 +114,14 @@ else if (Context is not null && Context.GroupTree is not null && Context.GroupTr
             }
             else
             {
-                var li = 0;
                 foreach (var item in node.Items)
                 {
                     <DataGridRow @key="DataGridRowKeys.KeyFor(item)" TItem="TItem"
                                  Item="item"
-                                 RowIndex="li"
+                                 RowIndex="globalIdx"
                                  DetailTemplate="DetailTemplate"
                                  OnContextMenu="OnContextMenu" />
-                    li++;
+                    globalIdx++;
                 }
             }
         }
@@ -129,6 +136,12 @@ else if (Context is not null && Context.GroupTree is not null && Context.GroupTr
 else if (Context is not null && Context.IsGrouped && Context.GroupedSections is not null && Context.GroupedSections.Count > 0)
 {
     <tbody data-slot="datagrid-body" class="@CssClass" @attributes="AdditionalAttributes">
+        @{
+            // Spans every group in this tbody — see the GroupTree branch above
+            // for why a per-group counter that resets at each group boundary
+            // produces duplicate row labels/aria-rowindex across groups.
+            var globalIdx = 0;
+        }
         @foreach (var grp in Context.GroupedSections)
         {
             var groupKey = grp.Key;
@@ -142,15 +155,14 @@ else if (Context is not null && Context.IsGrouped && Context.GroupedSections is 
                               OnToggle="@(() => Context.ToggleGroupExpand(groupKey))" />
             if (expanded)
             {
-                var grpIndex = 0;
                 foreach (var item in grp.Items)
                 {
                     <DataGridRow @key="DataGridRowKeys.KeyFor(item)" TItem="TItem"
                                  Item="item"
-                                 RowIndex="grpIndex"
+                                 RowIndex="globalIdx"
                                  DetailTemplate="DetailTemplate"
                                  OnContextMenu="OnContextMenu" />
-                    grpIndex++;
+                    globalIdx++;
                 }
             }
         }
@@ -228,6 +240,11 @@ else if (Context is not null)
     <tbody data-slot="datagrid-body" class="@CssClass" @attributes="AdditionalAttributes">
         @if (Context.IsGrouped && Context.GroupedSections is not null)
         {
+            // Spans every group in this tbody — see the GroupTree branch
+            // above for why a per-group counter that resets at each group
+            // boundary produces duplicate row labels/aria-rowindex across
+            // groups.
+            var globalIdx = 0;
             @foreach (var grp in Context.GroupedSections)
             {
                 var groupKey = grp.Key;
@@ -240,15 +257,14 @@ else if (Context is not null)
                                   OnToggle="@(() => Context.ToggleGroupExpand(groupKey))" />
                 if (expanded)
                 {
-                    var grpIndex = 0;
                     foreach (var item in grp.Items)
                     {
                         <DataGridRow @key="DataGridRowKeys.KeyFor(item)" TItem="TItem"
                                      Item="item"
-                                     RowIndex="grpIndex"
+                                     RowIndex="globalIdx"
                                      DetailTemplate="DetailTemplate"
                                      OnContextMenu="OnContextMenu" />
-                        grpIndex++;
+                        globalIdx++;
                     }
                 }
             }

@@ -133,6 +133,16 @@ const brandNew = gated.filter(v => {
 const currentKeySet = new Set(gated.map(v => baselineKey(v.component, v.rule)));
 const stale = baseline.entries.filter(e => !currentKeySet.has(baselineKey(e.component, e.rule)));
 
+// Enforced like `stale`, but for a PARTIAL fix: the (component, rule) pair
+// still reproduces (so it's not stale — removed entirely), but this run's
+// surviving node count is now below the accepted ceiling. Left alone, the
+// ceiling stays at the old, higher number forever, so a later regression can
+// regrow all the way back up to it without ever being classified as NEW —
+// e.g. data-grid :: button-name shrinking from 50 nodes to 1 must lower
+// baseline.json's nodeCount to 1 in the same PR, or 2-49 new nodes of the
+// exact same violation would silently pass as "known debt".
+const shrunk = known.filter(v => v.nodeCount < baselineMap.get(baselineKey(v.component, v.rule)));
+
 console.log(`[check-baseline] ${totalViolationInstances} total violation node(s) across ${reportFiles.length} components ` +
     `(${totalExcludedNodes} excluded as false positives). ${gated.length} critical/serious (component,rule) pair(s) remain ` +
     `(${known.length} known/baselined, ${brandNew.length} NEW).`);
@@ -144,6 +154,17 @@ if (stale.length > 0) {
         `This is enforced, not advisory: a stale (component, rule) pair stays in baselineSet even after the ` +
         `violation it was accepted for is gone, so a LATER, genuinely different violation under that same rule ` +
         `would silently match the stale key and be waved through as "known debt" instead of failing as NEW.`);
+}
+
+if (shrunk.length > 0) {
+    console.error(`\n[check-baseline] ${shrunk.length} baseline entr${shrunk.length === 1 ? 'y has' : 'ies have'} shrunk but not fully cleared:`);
+    for (const v of shrunk) {
+        const ceiling = baselineMap.get(baselineKey(v.component, v.rule));
+        console.error(`  - ${v.component} :: ${v.rule} — baselined at ${ceiling}, now only ${v.nodeCount}`);
+    }
+    console.error(`\nLower ${shrunk.length === 1 ? 'this entry\'s' : 'these entries\''} nodeCount in baseline.json to match, in the same PR as the ` +
+        `partial fix. This is enforced, not advisory: leaving the old, higher ceiling in place lets a later ` +
+        `regression regrow all the way back up to it without ever being classified as NEW.`);
 }
 
 if (brandNew.length > 0) {
@@ -161,7 +182,7 @@ if (brandNew.length > 0) {
         `(baseline should only grow when a violation is real and deliberately deferred, not as a rubber stamp).`);
 }
 
-if (brandNew.length > 0 || stale.length > 0) {
+if (brandNew.length > 0 || stale.length > 0 || shrunk.length > 0) {
     process.exit(1);
 }
 

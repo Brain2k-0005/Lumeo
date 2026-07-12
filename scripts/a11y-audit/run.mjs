@@ -200,7 +200,19 @@ const summary = {
 async function auditOne(page, slug) {
     const route = `/components/${slug}`;
     const t0 = Date.now();
-    await page.goto(baseUrl + route, { waitUntil: 'load', timeout: 60_000 });
+    // Puppeteer's page.goto resolves normally on a 404/500 response — it only
+    // rejects on network-level failures (DNS, connection refused, etc.), not
+    // on HTTP error status codes. Without this check, a docs route that was
+    // removed/renamed still gets axe-run against whatever error/not-found DOM
+    // the server served, writing a normal-looking <slug>.json (often with
+    // FEW or NO violations, since a bare error page has little markup) that
+    // check-baseline.mjs then happily compares as if it were the real page —
+    // false-greening a broken component docs route instead of surfacing it
+    // as an audit error.
+    const response = await page.goto(baseUrl + route, { waitUntil: 'load', timeout: 60_000 });
+    if (response && !response.ok()) {
+        throw new Error(`${route} responded ${response.status()} ${response.statusText()}`);
+    }
     try {
         await page.waitForFunction(
             () => document.documentElement.dataset.blazorReady === 'true',
