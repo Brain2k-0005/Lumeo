@@ -21,7 +21,16 @@ public enum QueryCombinator
 internal sealed class QueryCombinatorJsonConverter : JsonConverter<QueryCombinator>
 {
     public override QueryCombinator Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
-        => Enum.TryParse<QueryCombinator>(reader.GetString(), ignoreCase: true, out var value) ? value : QueryCombinator.And;
+    {
+        var s = reader.GetString();
+        // FromJson is documented to return null on parse failure (catches JsonException).
+        // Silently coercing an invalid/corrupted combinator to And would instead hand back
+        // a *different* query than the one that was saved, so an unrecognized value must
+        // fail the parse rather than default (#364 review).
+        return Enum.TryParse<QueryCombinator>(s, ignoreCase: true, out var value)
+            ? value
+            : throw new JsonException($"Invalid QueryCombinator value '{s}'.");
+    }
 
     public override void Write(Utf8JsonWriter writer, QueryCombinator value, JsonSerializerOptions options)
         => writer.WriteStringValue(value.ToString());
@@ -45,9 +54,21 @@ internal sealed class QueryValueJsonConverter : JsonConverter<object?>
             JsonTokenType.True => true,
             JsonTokenType.False => false,
             JsonTokenType.String => reader.GetString(),
-            JsonTokenType.Number => reader.GetDouble(),
+            JsonTokenType.Number => ReadNumber(ref reader),
             _ => throw new JsonException($"Unsupported QueryRule value token '{reader.TokenType}'."),
         };
+
+    // GetDouble() alone rounds anything above 2^53 (long IDs) or high-precision decimals
+    // (money amounts) before ToExpression ever sees them, silently corrupting the saved
+    // value. Try the narrowest exact representation first — Int64 for whole numbers,
+    // Decimal for fixed-point fractional values — and only fall back to Double for
+    // magnitudes/precision neither can hold (e.g. very large exponents) (#364 review).
+    private static object ReadNumber(ref Utf8JsonReader reader)
+    {
+        if (reader.TryGetInt64(out var l)) return l;
+        if (reader.TryGetDecimal(out var m)) return m;
+        return reader.GetDouble();
+    }
 
     public override void Write(Utf8JsonWriter writer, object? value, JsonSerializerOptions options)
     {
@@ -62,6 +83,14 @@ internal sealed class QueryValueJsonConverter : JsonConverter<object?>
             case long l: writer.WriteNumberValue(l); break;
             case short sh: writer.WriteNumberValue(sh); break;
             case decimal m: writer.WriteNumberValue(m); break;
+            // DateOnly/DateTime.ToString() is culture-sensitive (e.g. "12.07.2026" under
+            // de-DE), but ConvertValue parses the reloaded string back with
+            // CultureInfo.InvariantCulture. Under a non-invariant culture that mismatch
+            // makes FromJson -> ToExpression fail to reload the query or compare against
+            // the wrong date. Round-trip format ("O") is both invariant and exactly what
+            // DateOnly/DateTime.Parse(..., InvariantCulture) expects (#364 review).
+            case DateOnly dOnly: writer.WriteStringValue(dOnly.ToString("O", System.Globalization.CultureInfo.InvariantCulture)); break;
+            case DateTime dt: writer.WriteStringValue(dt.ToString("O", System.Globalization.CultureInfo.InvariantCulture)); break;
             default:
                 // Outside the framework scalar types above, fall back to ToString() — the same
                 // coercion ConvertValue (the LINQ-expression side of this same value) already

@@ -1,5 +1,6 @@
 @namespace Lumeo
 @typeparam TModel
+@using System.Text.Json.Serialization.Metadata
 
 <CascadingValue Value="_context" IsFixed="false">
     <form @onsubmit="HandleSubmit" class="@(Cx.Merge("space-y-4", Class))" @attributes="AdditionalAttributes">
@@ -20,6 +21,19 @@
     [Parameter] public IFormValidator? Validator { get; set; }
     /// <summary>Additional CSS classes merged onto the <c>&lt;form&gt;</c> element.</summary>
     [Parameter] public string? Class { get; set; }
+    /// <summary>
+    /// Optional source-generated <see cref="JsonTypeInfo{T}"/> for <typeparamref name="TModel"/>,
+    /// used for the init/<see cref="ResetValues"/> snapshot round-trip instead of reflection-based
+    /// serialization. Without this, the snapshot uses <c>JsonSerializer.Serialize/Deserialize&lt;TModel&gt;</c>
+    /// via reflection: <typeparamref name="TModel"/> itself carries <c>[DynamicallyAccessedMembers(All)]</c>
+    /// so ITS members survive trimming, but that annotation does NOT cascade into the types of
+    /// <typeparamref name="TModel"/>'s own reference-type properties (e.g. a nested <c>Address</c>
+    /// POCO) — their members can still be trimmed away, silently dropping nested values on
+    /// <see cref="ResetValues"/>. Pass your own <c>JsonSerializerContext</c>-generated
+    /// <c>MyModelContext.Default.TModel</c> here to cover the whole object graph and be fully
+    /// trim-safe (#364 review).
+    /// </summary>
+    [Parameter] public JsonTypeInfo<TModel>? ModelTypeInfo { get; set; }
     /// <summary>Unmatched attributes splatted onto the <c>&lt;form&gt;</c> element.</summary>
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
@@ -53,8 +67,10 @@
     }
 
     [System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage("Trimming", "IL2026",
-        Justification = "TModel carries [DynamicallyAccessedMembers(All)] (see Form.razor.cs), " +
-            "so the trimmer preserves every member of whatever concrete TModel a consumer binds.")]
+        Justification = "Reflection fallback only (ModelTypeInfo is null): TModel carries " +
+            "[DynamicallyAccessedMembers(All)] (see Form.razor.cs), which preserves TModel's OWN " +
+            "members, so a flat model round-trips safely. It does NOT cover members of TModel's " +
+            "nested reference-type properties — pass ModelTypeInfo for a full-graph trim guarantee.")]
     private void CaptureInitialSnapshot()
     {
         _snapshotModel = Model;
@@ -67,7 +83,9 @@
 
         try
         {
-            _initialModelSnapshot = System.Text.Json.JsonSerializer.Serialize(Model);
+            _initialModelSnapshot = ModelTypeInfo is not null
+                ? System.Text.Json.JsonSerializer.Serialize(Model, ModelTypeInfo)
+                : System.Text.Json.JsonSerializer.Serialize(Model);
         }
         catch
         {
@@ -187,17 +205,28 @@
     /// initialization time this method falls back to <see cref="Reset"/> behavior
     /// (errors cleared, values untouched).
     /// </para>
+    /// <para>
+    /// Trimming note: without <see cref="ModelTypeInfo"/>, the round-trip uses reflection and
+    /// only <typeparamref name="TModel"/>'s OWN members are guaranteed to survive trimming —
+    /// nested reference-type properties (e.g. <c>Model.Address.Street</c>) are not covered and
+    /// may silently fail to restore in a trimmed app. Pass <see cref="ModelTypeInfo"/> for a
+    /// full-graph trim guarantee.
+    /// </para>
     /// </summary>
     [System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage("Trimming", "IL2026",
-        Justification = "TModel carries [DynamicallyAccessedMembers(All)] (see Form.razor.cs), " +
-            "so the trimmer preserves every member of whatever concrete TModel a consumer binds.")]
+        Justification = "Reflection fallback only (ModelTypeInfo is null): TModel carries " +
+            "[DynamicallyAccessedMembers(All)] (see Form.razor.cs), which preserves TModel's OWN " +
+            "members, so a flat model round-trips safely. It does NOT cover members of TModel's " +
+            "nested reference-type properties — pass ModelTypeInfo for a full-graph trim guarantee.")]
     public void ResetValues()
     {
         if (Model is not null && _initialModelSnapshot is not null)
         {
             try
             {
-                var restored = System.Text.Json.JsonSerializer.Deserialize<TModel>(_initialModelSnapshot);
+                var restored = ModelTypeInfo is not null
+                    ? System.Text.Json.JsonSerializer.Deserialize(_initialModelSnapshot, ModelTypeInfo)
+                    : System.Text.Json.JsonSerializer.Deserialize<TModel>(_initialModelSnapshot);
                 if (restored is not null)
                 {
                     CopyPublicProperties(restored, Model);
