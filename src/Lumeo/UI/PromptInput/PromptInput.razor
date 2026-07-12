@@ -242,7 +242,15 @@
     {
         // Enter confirming an IME composition must never send — the user is
         // committing characters, not the message (matches every AI composer).
+#if NET9_0_OR_GREATER
+        // KeyboardEventArgs.IsComposing was added in .NET 9's Components.Web — unavailable
+        // on the net8.0 build of this package. Known net8.0 limitation: an Enter that
+        // confirms IME composition (e.g. finishing a Japanese/Chinese/Korean candidate) is
+        // no longer distinguished from a "real" Enter and will send the message early. The
+        // JS-side RegisterPreventDefaultKeys newline suppression is unaffected either way.
+        // Fixed once net9+ ships.
         if (e.IsComposing) return;
+#endif
         // Plain Enter sends — Shift+Enter (and other modifiers) pass through
         // for multiline. The matching newline suppression happens in JS via
         // RegisterPreventDefaultKeys (see OnAfterRenderAsync).

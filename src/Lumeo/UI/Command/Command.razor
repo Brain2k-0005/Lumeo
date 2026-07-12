@@ -148,7 +148,16 @@
     // aria-activedescendant, never DOM focus).
     private async Task OnNavigationKey(KeyboardEventArgs e)
     {
+#if NET9_0_OR_GREATER
+        // KeyboardEventArgs.IsComposing was added in .NET 9's Components.Web — on the
+        // net8.0 build of this package the guard is unavailable, so IME candidate-window
+        // navigation (e.g. arrow keys picking a kanji candidate) is not distinguished from
+        // list navigation. Known net8.0 limitation: harmless in the common case (most IME
+        // candidate UIs intercept the keydown before it reaches this handler), but an IME
+        // that lets the event through can double-navigate both the candidate list and this
+        // command list. Fixed once net9+ ships.
         if (e.IsComposing) return; // IME candidate navigation owns these keys
+#endif
 
         switch (e.Key)
         {

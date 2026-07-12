@@ -1,7 +1,17 @@
 <Project Sdk="Microsoft.NET.Sdk.Razor">
 
   <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
+    <!-- Multi-targeted alongside the 28 shipped packages it exercises (net8.0;net10.0
+         Directory.Build.props/publish.yml split) so CI can run the SAME suite against a
+         genuine net8.0 runtime, not just compile against it — the actual gate for
+         net8-vs-net10 BCL/runtime divergence the multi-target rollout needs before
+         advertising net8 support (see ci.yml's "Test (net8.0 lane)" step). Every
+         ProjectReference below is itself net8.0;net10.0, and MSBuild's project-reference
+         protocol resolves each to the matching TFM per inner build automatically — no
+         per-reference TargetFramework pinning needed. bunit/xunit/Microsoft.NET.Test.Sdk/
+         coverlet.collector all ship net8.0 lib assets (verified in the local NuGet cache
+         before flipping this), so no test-infra blocker. -->
+    <TargetFrameworks>net8.0;net10.0</TargetFrameworks>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <IsPackable>false</IsPackable>
