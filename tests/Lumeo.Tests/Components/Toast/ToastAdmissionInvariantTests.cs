@@ -438,6 +438,7 @@ public class ToastAdmissionInvariantTests : IAsyncLifetime
         // changes below — same deterministic dispatch as "A".
         string idB = null!;
         await cut.InvokeAsync(() => idB = toastService.Show(new ToastOptions { Title = "B" }));
+        _ = idB;
 
         // DefaultDuration flips to 0 WHILE "B" IS STILL QUEUED — under the pre-round-10 behavior,
         // this would make "B" mount persistent once its slot frees up.

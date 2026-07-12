@@ -452,6 +452,47 @@ internal static class Commands
              .Distinct(StringComparer.Ordinal)
              .ToList();
 
+    // PR #357 round-11 (Codex finding): `update`/`diff`/`view` each act on a SINGLE `entry` and,
+    // before this, built `siblingComponentNames` from only `entry.Files` — so a component whose
+    // dependency lives in a SEPARATE `RegistryEntry` (e.g. ConfirmButton.razor's own `<Button>`
+    // tag, with Button vendored as its own entry) kept that dependency's tag bare on every
+    // upstream fetch these commands make. `add` doesn't have this gap: it BFS-walks the full
+    // dependency chain into `toInstall` first (see that loop above) and qualifies across the
+    // WHOLE batch. Bare tags there mean `diff`/`update --check` report a freshly `add`-ed,
+    // correctly-qualified local file as perpetually "drifted" against upstream (upstream comes
+    // back unqualified), and `update --force`/`update -y` on a drift actually REWRITES the local
+    // file back down to the unqualified, non-compiling version — reintroducing the exact
+    // RZ10009/type-collision ambiguity `add` fixed. Mirrors the Add loop's BFS: same dependency
+    // walk, same standalone/runtime skip (a standalone project's runtime-provided components
+    // never get vendored into the user namespace, so they can't collide as siblings either).
+    // Unlike Add, there's no `--vendor`/`forceVendor` flag here to force-follow satellite
+    // (non-Lumeo-package) dependencies across package boundaries — `standalone` alone gates it,
+    // matching Add's default (no `--vendor`) behavior for the common core-component case.
+    private static List<string> ResolveSiblingComponentNames(RegistryEntry root, Registry registry, bool standalone)
+    {
+        var files = new List<string>(root.Files);
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { ToKebab(root.Name) };
+        var queue = new Queue<RegistryEntry>();
+        foreach (var dep in root.Dependencies)
+            if (registry.Components.TryGetValue(dep, out var depEntry)) queue.Enqueue(depEntry);
+
+        while (queue.Count > 0)
+        {
+            var cur = queue.Dequeue();
+            var curKey = ToKebab(cur.Name);
+            if (!seen.Add(curKey)) continue;
+            if (standalone && registry.Runtime is { } rt && rt.Components.Contains(curKey, StringComparer.OrdinalIgnoreCase)) continue;
+
+            files.AddRange(cur.Files);
+            var curPackage = string.IsNullOrEmpty(cur.NugetPackage) ? "Lumeo" : cur.NugetPackage;
+            if (!string.Equals(curPackage, "Lumeo", StringComparison.OrdinalIgnoreCase) && !standalone) continue;
+            foreach (var dep in cur.Dependencies)
+                if (registry.Components.TryGetValue(dep, out var depEntry)) queue.Enqueue(depEntry);
+        }
+
+        return RazorComponentNames(files);
+    }
+
     // Vendors the full shared Lumeo runtime (RuntimeManifest.Files) into
     // <componentsPath>/_LumeoRuntime/ VERBATIM — keeping the Lumeo namespace — so the
     // user-namespace components resolve Cx, the injected services and Lumeo.* types against it.
@@ -1461,8 +1502,9 @@ internal static class Commands
             // Satellite components live under src/<package>/, not src/Lumeo/ — resolve the
             // owning package so GetFileAsync fetches from the right root (else 404/crash).
             var entryPackage = string.IsNullOrEmpty(entry.NugetPackage) ? "Lumeo" : entry.NugetPackage;
-            // PR #357 round-9 (finding 2): see the Add loop's identical comment above.
-            var siblingComponentNames = RazorComponentNames(entry.Files);
+            // PR #357 round-11 (Codex finding): dependency-aware, not just entry.Files — see
+            // ResolveSiblingComponentNames' doc comment.
+            var siblingComponentNames = ResolveSiblingComponentNames(entry, registry, cfg.Standalone);
             foreach (var relFile in entry.Files)
             {
                 var dest = Paths.ToDestPath(outRoot, relFile);
@@ -1738,8 +1780,9 @@ internal static class Commands
 
         var root = Path.Combine(Environment.CurrentDirectory, cfg.ComponentsPath);
         var drift = 0; var missing = 0; var same = 0;
-        // PR #357 round-9 (finding 2): see the Add loop's identical comment above.
-        var siblingComponentNames = RazorComponentNames(entry.Files);
+        // PR #357 round-11 (Codex finding): dependency-aware, not just entry.Files — see
+        // ResolveSiblingComponentNames' doc comment.
+        var siblingComponentNames = ResolveSiblingComponentNames(entry, registry, cfg.Standalone);
         foreach (var relFile in entry.Files)
         {
             var dest = Paths.ToDestPath(root, relFile);
@@ -1794,8 +1837,9 @@ internal static class Commands
             Console.Error.WriteLine(Ansi.Dim("Depends on: ") + string.Join(", ", entry.Dependencies));
         Console.Error.WriteLine();
 
-        // PR #357 round-9 (finding 2): see the Add loop's identical comment above.
-        var siblingComponentNames = RazorComponentNames(entry.Files);
+        // PR #357 round-11 (Codex finding): dependency-aware, not just entry.Files — see
+        // ResolveSiblingComponentNames' doc comment.
+        var siblingComponentNames = ResolveSiblingComponentNames(entry, registry, cfg?.Standalone ?? false);
         foreach (var relFile in entry.Files)
         {
             // --path overrides the default destination mapping purely for the banner.

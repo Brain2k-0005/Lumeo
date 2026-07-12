@@ -183,6 +183,44 @@ public sealed class CliVendorE2ETests : IDisposable
         Assert.DoesNotContain("</Button>", content);
     }
 
+    // PR #357 round-11 (Codex finding) — `update`/`diff`/`view` built their sibling-tag
+    // qualification set from ONLY the target entry's own files (RazorComponentNames(entry.Files)),
+    // never walking `entry.Dependencies` the way the Add loop's BFS does. That's invisible right
+    // after `add` (the freshly-vendored file IS already fully qualified), but every SUBSEQUENT
+    // `update`/`diff` on confirm-button re-fetches upstream and re-qualifies it with only
+    // ["ConfirmButton"] in scope — Button (a separate RegistryEntry) never makes the set, so the
+    // freshly-rewritten upstream comes back with `<Button ...>` BARE while the local file on disk
+    // still reads `<Acme.Ui.Button ...>` from `add`. Diffing.Normalize does NOT ignore that
+    // difference, so `diff`/`update --check` would report ConfirmButton as perpetually "drifted"
+    // against its own just-installed copy, and `update --force`/`-y` would overwrite the correct,
+    // qualified local file with the broken bare-tag version — reintroducing the exact RZ10009
+    // ambiguity the Add-side fix (test above) closed. This test's actual assertion is that NEITHER
+    // command reports drift on a component whose local copy came straight from `add`.
+    [Fact]
+    public void Update_Check_And_Diff_Report_No_Drift_On_A_Component_With_A_Transitive_Dependency()
+    {
+        Assert.True(File.Exists(_lumeoDll),
+            "Built CLI (lumeo.dll) not found under tools/Lumeo.Cli/bin — build the solution first.");
+
+        var init = RunCli("init", "--yes", "--namespace", "Acme.Ui", "--path", "Components/Ui", "--no-assets");
+        Assert.True(init.Exit == 0, $"init failed (exit {init.Exit}). stderr: {init.Stderr}\nstdout: {init.Stdout}");
+
+        var add = RunCli("add", "confirm-button", "--local", "--yes", "--force");
+        Assert.True(add.Exit == 0, $"add failed (exit {add.Exit}). stderr: {add.Stderr}\nstdout: {add.Stdout}");
+
+        // Re-fetching and re-qualifying upstream for `confirm-button` alone (ignoring that Button
+        // is a sibling dependency) must NOT disagree with what `add` just wrote to disk.
+        var check = RunCli("update", "confirm-button", "--local", "--check");
+        Assert.True(check.Exit == 0,
+            $"update --check failed (exit {check.Exit}). stderr: {check.Stderr}\nstdout: {check.Stdout}");
+        Assert.Contains("Drift: 0 file(s)", check.Stdout);
+        Assert.DoesNotContain("  drift   ", check.Stdout);
+
+        var diff = RunCli("diff", "confirm-button", "--local");
+        Assert.True(diff.Exit == 0, $"diff failed (exit {diff.Exit}). stderr: {diff.Stderr}\nstdout: {diff.Stdout}");
+        Assert.Contains("0 drifted", diff.Stdout);
+    }
+
     [Fact]
     public void Add_Vendor_Copies_Satellite_Source_And_Its_Wwwroot_Asset()
     {
