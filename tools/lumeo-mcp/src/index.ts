@@ -188,9 +188,23 @@ function docsUrl(c: ApiComponent): string {
   return `${DOCS_BASE}/components/${slug}`;
 }
 
+// RazorParameterScanner decodes XML doc entities ONCE at the source (&lt;Button&gt; ->
+// <Button>), so a description can legitimately carry literal "<" / ">" characters. Blazor's
+// plain `@p.Description` interpolation renders those safely as a DOM text node — but these
+// markdown builders emit the SAME strings into `text/markdown` MCP resources, where a real
+// Markdown renderer may parse "<form>" as raw HTML and hide or corrupt the surrounding table
+// (Codex P2, PR #358 round 3). Backslash-escape angle brackets (and the escape character
+// itself) at this markdown boundary — CommonMark honors `\<`/`\>` as literal characters — so
+// free text can never be mistaken for a tag. Structured JSON tool responses are unaffected;
+// those interpolate the raw decoded strings, which is safe for JSON.
+function escapeMd(text: string | null | undefined): string {
+  if (!text) return "";
+  return text.replace(/\\/g, "\\\\").replace(/</g, "\\<").replace(/>/g, "\\>");
+}
+
 function paramRow(p: ApiParameter): string {
   const def = p.default ?? "—";
-  const desc = p.description ?? "";
+  const desc = escapeMd(p.description);
   const flags: string[] = [];
   if (p.isEditorRequired) flags.push("required");
   if (p.isCascading) flags.push("cascading");
@@ -202,10 +216,10 @@ function paramRow(p: ApiParameter): string {
 function toComponentMarkdown(c: ApiComponent): string {
   const paramRows = c.parameters.map(paramRow).join("\n");
   const enumRows = c.enums
-    .map((e) => `- **${e.name}**: ${e.values.join(", ")}${e.description ? ` — ${e.description}` : ""}`)
+    .map((e) => `- **${e.name}**: ${e.values.join(", ")}${e.description ? ` — ${escapeMd(e.description)}` : ""}`)
     .join("\n");
   const eventRows = c.events
-    .map((e) => `- **${e.name}** \`${e.type}\`${e.description ? ` — ${e.description}` : ""}`)
+    .map((e) => `- **${e.name}** \`${e.type}\`${e.description ? ` — ${escapeMd(e.description)}` : ""}`)
     .join("\n");
   const subRows = Object.values(c.subComponents)
     .map((s) => `- **${s.componentName}** (${s.parameters.length} params)`)
@@ -225,7 +239,7 @@ function toComponentMarkdown(c: ApiComponent): string {
     `**Namespace:** \`${c.namespace ?? "Lumeo"}\``,
     ...(coverage ? [`**Test coverage:** ${coverageSummary(coverage)}`] : []),
     "",
-    c.description,
+    escapeMd(c.description),
     "",
     "## Parameters",
     "",
@@ -258,7 +272,7 @@ function toCategoryMarkdown(category: string): string {
   const inCat = components.filter((c) => c.category.toLowerCase() === category.toLowerCase());
   if (inCat.length === 0) return `# ${category}\n\nNo components in this category.`;
   const rows = inCat
-    .map((c) => `| [\`${c.name}\`](lumeo://component/${c.name}) | ${c.description} |`)
+    .map((c) => `| [\`${c.name}\`](lumeo://component/${c.name}) | ${escapeMd(c.description)} |`)
     .join("\n");
   return [
     `# ${category}`,
@@ -280,16 +294,16 @@ function findService(name: string): ApiService | undefined {
 
 function toServiceMarkdown(s: ApiService): string {
   const propRows = s.properties
-    .map((p) => `| \`${p.name}\` | \`${p.type}\` | \`${p.default ?? "—"}\` | ${p.summary ?? ""} |`)
+    .map((p) => `| \`${p.name}\` | \`${p.type}\` | \`${p.default ?? "—"}\` | ${escapeMd(p.summary)} |`)
     .join("\n");
   const methodRows = s.methods
-    .map((m) => `- \`${m.signature}\` → \`${m.returnType}\`${m.summary ? ` — ${m.summary}` : ""}`)
+    .map((m) => `- \`${m.signature}\` → \`${m.returnType}\`${m.summary ? ` — ${escapeMd(m.summary)}` : ""}`)
     .join("\n");
   const enumRows = s.enumValues
-    .map((e) => `- **${e.name}**${e.summary ? ` — ${e.summary}` : ""}`)
+    .map((e) => `- **${e.name}**${e.summary ? ` — ${escapeMd(e.summary)}` : ""}`)
     .join("\n");
   const eventRows = s.events
-    .map((e) => `- **${e.name}** \`${e.type}\`${e.summary ? ` — ${e.summary}` : ""}`)
+    .map((e) => `- **${e.name}** \`${e.type}\`${e.summary ? ` — ${escapeMd(e.summary)}` : ""}`)
     .join("\n");
 
   const sections = [
@@ -298,7 +312,7 @@ function toServiceMarkdown(s: ApiService): string {
     `**Kind:** ${s.kind}`,
     `**Namespace:** \`${s.namespace ?? "Lumeo"}\``,
     "",
-    s.summary ?? "_(no summary)_",
+    s.summary ? escapeMd(s.summary) : "_(no summary)_",
     "",
   ];
   if (s.enumValues.length) sections.push("## Values", "", enumRows, "");

@@ -78,15 +78,32 @@ public sealed class RegistryService(HttpClient http, IJSRuntime js)
 
     private readonly Dictionary<string, RegistryComponentDetail?> _detailCache = new();
 
+    // Pages now render several <PropsTable> instances (root + sub-components) for the
+    // same slug in one render pass. Each one calls GetComponentAsync before the cache
+    // above is populated, so without this in-flight cache they'd all fire independent
+    // registry/{slug}.json fetches. Blazor's render loop is single-threaded, so the
+    // check-and-store below runs to completion before any awaited continuation can
+    // observe it — safe without a lock. Entries are removed once the load settles.
+    private readonly Dictionary<string, Task<RegistryComponentDetail?>> _detailLoads = new();
+
     /// <summary>
     /// Loads the full per-component facts (api/props, dependencies, a11y, keyboard,
     /// related, css vars, source) from <c>registry/{slug}.json</c>. Cached per slug.
     /// Returns null if the file is missing or fails to parse. This is the single source
     /// of truth that <c>ComponentDocPage</c> / <c>PropsTable</c> / <c>FactsRail</c> render.
     /// </summary>
-    public async Task<RegistryComponentDetail?> GetComponentAsync(string slug)
+    public Task<RegistryComponentDetail?> GetComponentAsync(string slug)
     {
-        if (_detailCache.TryGetValue(slug, out var cached)) return cached;
+        if (_detailCache.TryGetValue(slug, out var cached)) return Task.FromResult(cached);
+        if (_detailLoads.TryGetValue(slug, out var inFlight)) return inFlight;
+
+        var load = LoadComponentAsync(slug);
+        _detailLoads[slug] = load;
+        return load;
+    }
+
+    private async Task<RegistryComponentDetail?> LoadComponentAsync(string slug)
+    {
         try
         {
             var detail = await http.GetFromJsonAsync<RegistryComponentDetail>($"registry/{slug}.json", JsonOpts);
@@ -101,6 +118,10 @@ public sealed class RegistryService(HttpClient http, IJSRuntime js)
         {
             Console.WriteLine($"[registry] detail load failed for '{slug}': {ex.Message}");
             return null;
+        }
+        finally
+        {
+            _detailLoads.Remove(slug);
         }
     }
 }

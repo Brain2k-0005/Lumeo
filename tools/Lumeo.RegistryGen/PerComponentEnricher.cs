@@ -357,7 +357,7 @@ public static class PerComponentEnricher
 
         sb.AppendLine($"# {componentName}");
         sb.AppendLine();
-        sb.AppendLine(description);
+        sb.AppendLine(EscapeMd(description));
         sb.AppendLine();
         var catLine = string.IsNullOrEmpty(subcategory) ? category : $"{category}/{subcategory}";
         sb.AppendLine($"**Package:** `{nuget}` · **Category:** {catLine}");
@@ -385,7 +385,7 @@ public static class PerComponentEnricher
         if (slots.Count == 0) sb.AppendLine("- (none)");
         foreach (var s in slots)
         {
-            sb.AppendLine($"- `{s["name"]}` ({s["owner"]}) — {s["description"] ?? "RenderFragment slot"}");
+            sb.AppendLine($"- `{s["name"]}` ({s["owner"]}) — {EscapeMd(s["description"]?.ToString() ?? "RenderFragment slot")}");
         }
         sb.AppendLine();
 
@@ -403,7 +403,7 @@ public static class PerComponentEnricher
                 var type = ev.TryGetProperty("type", out var t) ? t.GetString() : null;
                 var desc = ev.TryGetProperty("description", out var ed) && ed.ValueKind == JsonValueKind.String
                     ? ed.GetString() : null;
-                sb.AppendLine($"- `{name}` (`{type}`){(desc is null ? "" : $" — {desc}")}");
+                sb.AppendLine($"- `{name}` (`{type}`){(desc is null ? "" : $" — {EscapeMd(desc)}")}");
             }
         }
         if (!anyEvents) sb.AppendLine("- (none)");
@@ -490,6 +490,15 @@ public static class PerComponentEnricher
         }
     }
 
+    // RazorParameterScanner decodes XML doc entities ONCE at the source (&lt;Button&gt; ->
+    // <Button>), so a description can legitimately carry literal "<" / ">" characters. The
+    // Blazor PropsTable is safe (plain text-node interpolation), but mdSummary is served as
+    // real Markdown (MCP resources, docs snippets) where "<form>" can be parsed as raw HTML
+    // and hide or corrupt the surrounding table (Codex P2, PR #358 round 3). Escape the
+    // backslash itself FIRST so a literal "\" in source text isn't mistaken for one of the
+    // escapes added below, then pipe (table-cell delimiter) and angle brackets — CommonMark
+    // honors `\<`/`\>` as literal characters.
     private static string EscapeMd(string s)
-        => s.Replace("|", "\\|").Replace("\n", " ").Replace("\r", "");
+        => s.Replace("\\", "\\\\").Replace("|", "\\|").Replace("<", "\\<").Replace(">", "\\>")
+            .Replace("\n", " ").Replace("\r", "");
 }

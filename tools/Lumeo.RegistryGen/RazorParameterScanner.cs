@@ -78,8 +78,16 @@ public static class RazorParameterScanner
 
     /// <summary>
     /// Parse a single .razor file. Always returns a schema (with ParseFailed=true on failure).
+    /// <paramref name="siblingEnumMembers"/> is an optional union of PUBLIC enums declared
+    /// across the component's WHOLE file set (root + sub-components), so
+    /// <see cref="ImplicitDefaultFor"/> can resolve a parameter typed through a sibling's
+    /// nested enum — e.g. <c>DataTableSortableHeader.SortDirection</c>, typed as
+    /// <c>DataTable&lt;object&gt;.SortDirection</c>, declared in the sibling DataTable.razor —
+    /// not just enums declared in THIS file (Codex P2, PR #358 round 3). A name already
+    /// found locally always wins; sibling entries only fill gaps. Falls back to local-only
+    /// resolution (unchanged behavior) when omitted.
     /// </summary>
-    public static RazorFileSchema Scan(string razorPath)
+    public static RazorFileSchema Scan(string razorPath, IReadOnlyDictionary<string, string[]>? siblingEnumMembers = null)
     {
         var componentName = Path.GetFileNameWithoutExtension(razorPath);
         string text;
@@ -150,6 +158,14 @@ public static class RazorParameterScanner
         // hid bool defaults (see ImplicitDefaultFor). Must run before the main pass because a
         // parameter can reference an enum declared later in the same file/later code block.
         var localEnumMembers = CollectLocalPublicEnums(codeBlocks);
+        var enumMembersForDefaults = localEnumMembers;
+        if (siblingEnumMembers is { Count: > 0 })
+        {
+            // File-local enum wins on a name clash; sibling files only fill gaps.
+            var merged = new Dictionary<string, string[]>(localEnumMembers, StringComparer.Ordinal);
+            foreach (var (enumName, members) in siblingEnumMembers) merged.TryAdd(enumName, members);
+            enumMembersForDefaults = merged;
+        }
 
         // Parse each @code block on its own. A component may split members
         // across blocks (FileManager keeps [Parameter]s in the first block,
@@ -194,8 +210,18 @@ public static class RazorParameterScanner
                 // "false" for a bool [Parameter] with no initializer) even though the source
                 // never writes "= false". Fall back to it only when there is no explicit
                 // initializer to report (Codex P2, PR #358 round 2).
-                var defaultValue = prop.Initializer?.Value.ToString() ?? ImplicitDefaultFor(type, localEnumMembers);
+                var defaultValue = prop.Initializer?.Value.ToString() ?? ImplicitDefaultFor(type, enumMembersForDefaults);
                 var description = ExtractXmlSummary(prop.GetLeadingTrivia());
+                // A deprecated alias property (e.g. ContextMenu.IsOpen forwarding to Open)
+                // typically carries [Obsolete("message")] instead of an XML doc summary — the
+                // removed hand-written API tables surfaced that message as the row's
+                // description ("Use Open instead. IsOpen will be removed in a future release."),
+                // but PropsTable (driven by this scanner) rendered it blank once those hand
+                // rows were replaced with the generated table, silently dropping documented
+                // alias info (Codex P2, PR #358 round 3). Fall back to the [Obsolete] message
+                // only when there is no XML summary to prefer — an author-written summary
+                // always wins.
+                description ??= ExtractObsoleteMessage(attrs);
 
                 // Detect [Parameter(CaptureUnmatchedValues = true)]
                 var captureUnmatched = false;
@@ -303,13 +329,14 @@ public static class RazorParameterScanner
     /// the gap that made migrated PropsTable rows show "—" for e.g. Dialog.Open even though
     /// the removed hand-written table correctly showed "false" (Codex P2, PR #358 round 2).
     /// Only well-defined value-type cases are guessed: bool, the built-in numeric primitives,
-    /// char, and an enum declared in THIS SAME FILE (default(EnumType) is its zero-valued
-    /// member, which for every Lumeo enum today is the first declared member — we have no
-    /// symbol-level way to confirm the explicit numeric value here, so this is a heuristic,
-    /// not a guarantee). A nullable value type ("bool?", "int?", "MyEnum?", ...) legitimately
-    /// defaults to null, so it is deliberately left alone (returns null, same as before — no
-    /// guess is better than a wrong one). Reference types (string, RenderFragment, an
-    /// externally-declared enum this scanner can't see, ...) are likewise left alone.
+    /// char, and an enum declared in THIS FILE or elsewhere in the component's file set
+    /// (default(EnumType) is its zero-valued member, which for every Lumeo enum today is the
+    /// first declared member — we have no symbol-level way to confirm the explicit numeric
+    /// value here, so this is a heuristic, not a guarantee). A nullable value type ("bool?",
+    /// "int?", "MyEnum?", ...) legitimately defaults to null, so it is deliberately left alone
+    /// (returns null, same as before — no guess is better than a wrong one). Reference types
+    /// (string, RenderFragment, an enum outside the component's file set entirely, ...) are
+    /// likewise left alone.
     /// </summary>
     private static string? ImplicitDefaultFor(string type, IReadOnlyDictionary<string, string[]> localEnumMembers)
     {
@@ -318,8 +345,39 @@ public static class RazorParameterScanner
         if (t == "bool") return "false";
         if (t == "char") return "'\\0'";
         if (NumericPrimitiveTypes.Contains(t)) return "0";
-        if (localEnumMembers.TryGetValue(t, out var members) && members.Length > 0) return members[0];
+        if (localEnumMembers.TryGetValue(SimpleEnumName(t), out var members) && members.Length > 0) return members[0];
         return null;
+    }
+
+    /// <summary>
+    /// A parameter can reference an enum by its bare declared name ("SortDirection") or
+    /// qualified through its declaring owner ("DataTable&lt;object&gt;.SortDirection", the
+    /// shape a sub-component sees when reading its parent's nested enum). The keys collected
+    /// by <see cref="CollectLocalPublicEnums"/> are always the enum's bare identifier, so strip
+    /// everything up to and including the last '.'. There is never a '.' inside a generic
+    /// argument list here (Lumeo's nested enums aren't generic themselves), so a plain
+    /// LastIndexOf is safe. Non-enum / unqualified types pass through unchanged and simply
+    /// won't be found in the lookup, same as before.
+    /// </summary>
+    private static string SimpleEnumName(string type)
+    {
+        var lastDot = type.LastIndexOf('.');
+        return lastDot >= 0 ? type[(lastDot + 1)..] : type;
+    }
+
+    /// <summary>
+    /// Public entry point for callers (e.g. <c>ComponentsApiEmitter</c>) that need every
+    /// PUBLIC enum declared in a single .razor file WITHOUT running the full <see cref="Scan"/>
+    /// — used to build the union across a component's whole file set that feeds
+    /// <see cref="Scan"/>'s <c>siblingEnumMembers</c> parameter (Codex P2, PR #358 round 3).
+    /// Returns an empty map if the file can't be read; never throws.
+    /// </summary>
+    public static Dictionary<string, string[]> CollectPublicEnums(string razorPath)
+    {
+        string text;
+        try { text = File.ReadAllText(razorPath).Replace("\r\n", "\n").Replace("\r", "\n"); }
+        catch { return new Dictionary<string, string[]>(StringComparer.Ordinal); }
+        return CollectLocalPublicEnums(ExtractCodeBlocks(text));
     }
 
     /// <summary>
@@ -366,6 +424,26 @@ public static class RazorParameterScanner
         if (name.EndsWith("Attribute", StringComparison.Ordinal))
             name = name.Substring(0, name.Length - "Attribute".Length);
         return string.Equals(name, targetName, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Pulls the human-readable message out of a <c>[Obsolete("message")]</c> /
+    /// <c>[Obsolete("message", true)]</c> attribute, if present. Used as a description
+    /// fallback for deprecated alias parameters that carry no XML doc summary of their own
+    /// (Codex P2, PR #358 round 3). Returns null when there is no [Obsolete] attribute, or
+    /// its first argument isn't a plain string literal (e.g. a const/interpolated
+    /// expression this build-time scanner can't evaluate).
+    /// </summary>
+    private static string? ExtractObsoleteMessage(IReadOnlyList<AttributeSyntax> attrs)
+    {
+        var obsolete = attrs.FirstOrDefault(a => IsAttr(a, "Obsolete"));
+        var firstArg = obsolete?.ArgumentList?.Arguments.FirstOrDefault(a => a.NameEquals is null);
+        if (firstArg?.Expression is LiteralExpressionSyntax { Token.RawKind: (int)SyntaxKind.StringLiteralToken } lit)
+        {
+            var msg = lit.Token.ValueText.Trim();
+            return string.IsNullOrWhiteSpace(msg) ? null : msg;
+        }
+        return null;
     }
 
     private static string? ExtractXmlSummary(SyntaxTriviaList trivia)

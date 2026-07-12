@@ -33,6 +33,35 @@ public class RegistryServiceTests
         Assert.Single(groups["Data Display"]);
     }
 
+    [Fact]
+    public async Task GetComponentAsync_dedupes_concurrent_loads_for_the_same_slug()
+    {
+        // Mirrors a page rendering several sibling <PropsTable> instances (root +
+        // sub-components) for the SAME slug in one render pass: each one calls
+        // GetComponentAsync before the first has populated _detailCache. Before the
+        // fix, that fired one registry/{slug}.json fetch PER caller instead of sharing
+        // the single in-flight load (Codex P2, PR #358 round 3).
+        var json = """{ "name": "Button", "category": "Forms", "description": "A button.", "nugetPackage": "Lumeo" }""";
+        var handler = new CountingDelayedHandler(json);
+        var http = new HttpClient(handler) { BaseAddress = new Uri("https://test/") };
+        var svc = new RegistryService(http, new StubJsRuntime());
+
+        // Two callers ask for the same slug back-to-back, before either await yields —
+        // the exact shape of two <PropsTable Slug="button" .../> instances rendering
+        // in the same synchronous pass.
+        var t1 = svc.GetComponentAsync("button");
+        var t2 = svc.GetComponentAsync("button");
+
+        Assert.Equal(1, handler.RequestCount); // only ONE HTTP request in flight
+        handler.Release();
+        var r1 = await t1;
+        var r2 = await t2;
+
+        Assert.Equal(1, handler.RequestCount); // still one, after both callers resolved
+        Assert.NotNull(r1);
+        Assert.Same(r1, r2); // both callers observe the same cached detail instance
+    }
+
     private sealed class StubHandler(string json) : HttpMessageHandler
     {
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage req, CancellationToken ct) =>
@@ -40,6 +69,26 @@ public class RegistryServiceTests
             {
                 Content = new StringContent(json, Encoding.UTF8, "application/json")
             });
+    }
+
+    // Counts requests and blocks each one on a gate so a test can assert only ONE
+    // HTTP request was issued while two callers are still awaiting the same load.
+    private sealed class CountingDelayedHandler(string json) : HttpMessageHandler
+    {
+        private readonly TaskCompletionSource _gate = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public int RequestCount { get; private set; }
+
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage req, CancellationToken ct)
+        {
+            RequestCount++;
+            await _gate.Task;
+            return new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(json, Encoding.UTF8, "application/json")
+            };
+        }
+
+        public void Release() => _gate.TrySetResult();
     }
 
     // Minimal IJSRuntime that is NOT IJSInProcessRuntime, so RegistryService's

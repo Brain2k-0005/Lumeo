@@ -73,11 +73,25 @@ public static class ComponentsApiEmitter
 
             var meta = metaResolver(name);
 
+            // Union of every PUBLIC enum declared anywhere in this component's file set (root +
+            // sub-components), so a sub-component parameter typed through a sibling's nested
+            // enum (e.g. DataTableSortableHeader.SortDirection, typed as
+            // DataTable<object>.SortDirection and declared in the sibling DataTable.razor) can
+            // still get its CLR-implicit default resolved — not just enums declared in the SAME
+            // file as the parameter (Codex P2, PR #358 round 3). First-seen wins on a name
+            // clash across files, matching CollectLocalPublicEnums' own TryAdd semantics.
+            var componentEnumMembers = new Dictionary<string, string[]>(StringComparer.Ordinal);
+            foreach (var rf in razorFiles)
+            {
+                foreach (var (enumName, members) in RazorParameterScanner.CollectPublicEnums(rf))
+                    componentEnumMembers.TryAdd(enumName, members);
+            }
+
             // Parse each razor file
             var perFile = new Dictionary<string, RazorParameterScanner.RazorFileSchema>(StringComparer.Ordinal);
             foreach (var rf in razorFiles)
             {
-                var schema = RazorParameterScanner.Scan(rf);
+                var schema = RazorParameterScanner.Scan(rf, componentEnumMembers);
                 perFile[Path.GetFileNameWithoutExtension(rf)] = schema;
                 if (schema.ParseFailed)
                 {
