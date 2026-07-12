@@ -218,7 +218,13 @@ async function main() {
     await scenarioDialogExitAnimation(page, RTT_MS);
     await scenarioToastBurst(page, RTT_MS);
   } finally {
-    if (browser) await browser.close();
+    // browser.close() can reject (Chromium already crashed, transport torn
+    // down) — awaiting it before serverProc.kill() used to let that
+    // rejection exit this finally early, leaving the spawned dotnet host
+    // alive and SERVERLEG_PORT bound, poisoning the next run with a port
+    // collision (same fix as scripts/visual-regression/run.mjs). Swallow
+    // the close failure so kill() always runs.
+    if (browser) await browser.close().catch(() => {});
     serverProc.kill();
   }
 

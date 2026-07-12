@@ -43,6 +43,12 @@ namespace Lumeo.RegistryGen;
 ///           component types) — so `Render&lt;Lumeo.Sheet&gt;`/`L.Sheet`
 ///           count, but `cut.TextContent` and `items.Select(...)` do not
 ///           (the qualifier there is a local variable, not the namespace).
+///           A bare match that opens its OWN generic argument list
+///           (`List&lt;bool&gt; field`) also doesn't count — for a component
+///           name colliding with a BCL/framework generic (List, Stack, ...)
+///           that's the framework type, not the component — UNLESS the
+///           match itself sits inside an enclosing generic argument list
+///           (`Render&lt;DataGrid&lt;Person&gt;&gt;`), which is left alone.
 ///
 ///        b) A SUFFIXED TEST IDENTIFIER: the file's own name stem, or a
 ///           `class` name declared in the file, starts with componentName
@@ -52,7 +58,12 @@ namespace Lumeo.RegistryGen;
 ///           LONGEST name in knownComponentNames that is itself a valid
 ///           prefix of that identifier this same way — so
 ///           "InputMaskDisplayTests" is coverage for "InputMask", never for
-///           the shorter, unrelated sibling "Input".
+///           the shorter, unrelated sibling "Input" — AND the file does not
+///           live under a "Services" folder (DataGridExportServiceTests.cs,
+///           ToastServiceTests.cs, ... suffix-match the component they're
+///           scoped to by naming convention, but exercise the Service class,
+///           not the component; a real reference inside them still counts
+///           via 2a above).
 /// </summary>
 public static class ComponentTestMatcher
 {
@@ -76,6 +87,18 @@ public static class ComponentTestMatcher
         var codeOnly = StripComments(fileContent);
 
         if (HasRealTypeReference(codeOnly, componentName)) return true;
+
+        // The suffix fallback only fires for files OUTSIDE a "Services" folder.
+        // This repo's convention names service test files after the component
+        // they're scoped to (DataGridExportServiceTests.cs, DataGridLayoutServiceTests.cs,
+        // DataGridServerServiceTests.cs, ToastServiceTests.cs, ...), which suffix-matches
+        // the component name by construction — but those files exercise a Service
+        // class, not the component itself, and a real component reference inside
+        // them (if any) is still picked up by the 2a content check above. Living
+        // in "Services" is the "another component signal" a suffix match alone
+        // lacks: it's the established convention this codebase already uses to
+        // mark "not a dedicated component test folder" (mirrors OwnsDedicatedFolder).
+        if (IsUnderServicesFolder(repoRelativePath)) return false;
 
         var stem = PathStem(repoRelativePath);
         if (IsLongestSuffixedMatch(stem, componentName, knownComponentNames)) return true;
@@ -101,6 +124,16 @@ public static class ComponentTestMatcher
         return false;
     }
 
+    private static bool IsUnderServicesFolder(string repoRelativePath)
+    {
+        var segments = repoRelativePath.Replace('\\', '/').Split('/');
+        for (var i = 0; i < segments.Length - 1; i++)
+        {
+            if (string.Equals(segments[i], "Services", StringComparison.OrdinalIgnoreCase)) return true;
+        }
+        return false;
+    }
+
     // ----- (2a) real type reference in code -----
 
     private static string StripComments(string text)
@@ -114,12 +147,40 @@ public static class ComponentTestMatcher
         var regex = new Regex(@"\b" + Regex.Escape(componentName) + @"\b");
         foreach (Match m in regex.Matches(codeOnly))
         {
-            if (m.Index == 0 || codeOnly[m.Index - 1] != '.') return true; // bare word / generic arg / ctor — real.
+            if (m.Index == 0 || codeOnly[m.Index - 1] != '.')
+            {
+                // A bare match immediately opening its OWN generic argument list
+                // ("List<bool> field", "Dictionary<string,int>") is a local type
+                // DECLARATION — for a component whose name collides with a BCL/
+                // framework generic (List, Stack, Queue, ...) that is near-always
+                // the colliding framework type, not the Lumeo component. The one
+                // legitimate bare-generic shape in this codebase is a generic
+                // Lumeo component used AS a type argument to another generic call
+                // (Render<DataGrid<Person>>) — there the match itself sits INSIDE
+                // somebody else's argument list (immediately preceded by '<' or
+                // ',', skipping whitespace), which this guard leaves untouched.
+                if (IsBareGenericTypeDeclaration(codeOnly, m.Index, m.Length)) continue;
+                return true; // bare word / generic arg / ctor — real.
+            }
             if (IsQualifiedByLumeoAlias(codeOnly, m.Index)) return true; // Lumeo.X / L.X — real.
             // else: member/property/method access on some other receiver (cut.TextContent,
             // items.Select(...)) — keep scanning, this particular match doesn't count.
         }
         return false;
+    }
+
+    /// <summary>True when the match at [matchIndex, matchIndex+matchLength) is
+    /// immediately followed by '&lt;' (it opens its own generic argument list)
+    /// and is NOT itself sitting inside an enclosing generic argument list
+    /// (i.e. not immediately preceded — modulo whitespace — by '&lt;' or ',').</summary>
+    private static bool IsBareGenericTypeDeclaration(string text, int matchIndex, int matchLength)
+    {
+        var end = matchIndex + matchLength;
+        if (end >= text.Length || text[end] != '<') return false;
+
+        var i = matchIndex - 1;
+        while (i >= 0 && char.IsWhiteSpace(text[i])) i--;
+        return i < 0 || (text[i] != '<' && text[i] != ',');
     }
 
     /// <summary>text[dotIndex - 1] is the '.' immediately before the match at dotIndex.

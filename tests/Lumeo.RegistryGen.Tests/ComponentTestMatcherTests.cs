@@ -15,7 +15,7 @@ public class ComponentTestMatcherTests
 {
     private static readonly HashSet<string> KnownNames = new(StringComparer.OrdinalIgnoreCase)
     {
-        "Sheet", "Select", "Input", "InputMask", "Text", "TextReveal", "Textarea", "DataGrid",
+        "Sheet", "Select", "Input", "InputMask", "Text", "TextReveal", "Textarea", "DataGrid", "List",
     };
 
     // ----- 1. dedicated folder ownership -----
@@ -223,6 +223,76 @@ public class ComponentTestMatcherTests
             KnownNames);
 
         Assert.False(ok);
+    }
+
+    // ----- bare BCL-generic-collection collision (PR #361-round-2 finding: "List") -----
+
+    [Fact]
+    public void Bare_bcl_generic_collection_declaration_does_not_count()
+    {
+        // List<bool> field — "List" the component colliding with
+        // System.Collections.Generic.List<T>, used as a plain field type.
+        var ok = ComponentTestMatcher.IsCoverage(
+            "List", "tests/Lumeo.Tests/Components/ConsentBanner/ConsentBannerSlideEndTests.cs",
+            "public class Interop { public List<bool> ElementPresentAtInvocation { get; } = new(); }",
+            KnownNames);
+
+        Assert.False(ok);
+    }
+
+    [Fact]
+    public void Generic_component_as_nested_type_argument_still_counts()
+    {
+        // Render<DataGrid<Person>>(...) — "DataGrid" sits INSIDE Render's own
+        // argument list; the bare-generic-declaration exclusion must not
+        // swallow this legitimate, already-established usage.
+        var ok = ComponentTestMatcher.IsCoverage(
+            "DataGrid", "tests/Lumeo.Tests/Misc/SomeOtherTests.cs",
+            "var cut = ctx.Render<DataGrid<Person>>(p => p.Add(x => x.Items, rows));",
+            KnownNames);
+
+        Assert.True(ok);
+    }
+
+    // ----- Services-folder suffix collision (PR #361-round-2 finding) -----
+
+    [Fact]
+    public void Suffixed_service_test_file_under_Services_folder_does_not_count()
+    {
+        // DataGridExportServiceTests.cs suffix-matches "DataGrid" by naming
+        // convention, but it tests IDataGridExportService, not the component.
+        var ok = ComponentTestMatcher.IsCoverage(
+            "DataGrid", "tests/Lumeo.Tests/Services/DataGridExportServiceTests.cs",
+            "namespace Lumeo.Tests.Services;\npublic class DataGridExportServiceTests { }",
+            KnownNames);
+
+        Assert.False(ok);
+    }
+
+    [Fact]
+    public void Suffixed_smoke_test_file_outside_Services_folder_still_counts()
+    {
+        // Same suffix shape, but NOT under Services — the existing E2E smoke
+        // convention (DataGridSmokeTests) must keep counting.
+        var ok = ComponentTestMatcher.IsCoverage(
+            "DataGrid", "tests/Lumeo.Tests.E2E/Smokes/DataGridSmokeTests.cs",
+            "namespace Lumeo.Tests.E2E.Smokes;\npublic class DataGridSmokeTests : PlaywrightTestBase { }",
+            KnownNames);
+
+        Assert.True(ok);
+    }
+
+    [Fact]
+    public void Real_reference_inside_a_Services_folder_file_still_counts()
+    {
+        // The Services-folder carve-out only disables the SUFFIX fallback —
+        // an actual type reference in the same file is still real coverage.
+        var ok = ComponentTestMatcher.IsCoverage(
+            "Select", "tests/Lumeo.Tests/Services/SomeUnrelatedServiceTests.cs",
+            "namespace Lumeo.Tests.Services;\npublic class SomeUnrelatedServiceTests { var s = new Select(); }",
+            KnownNames);
+
+        Assert.True(ok);
     }
 
     // ----- comment/prose mentions (PR #361-round-1 fix, still respected) -----

@@ -398,7 +398,12 @@ async function main() {
       await context.close();
     }
   } finally {
-    if (browser) await browser.close();
+    // browser.close() can reject (Chromium already crashed, transport torn
+    // down) — awaiting it before serverProc.kill() used to let that
+    // rejection exit this finally early, leaving the spawned docs server
+    // alive and VR_PORT bound, poisoning the next run with a port collision.
+    // Swallow the close failure so kill() always runs.
+    if (browser) await browser.close().catch(() => {});
     if (serverProc) serverProc.kill();
   }
 
