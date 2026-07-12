@@ -660,6 +660,27 @@
 
             if (!evictedAny && !admittedAny) break; // fixed point: nothing left this pass could do.
         }
+
+        // PR #357 round-14 (P2 — Codex): the stale-`_expandedGroups` cleanup for a group that just
+        // emptied lives HERE now, not in RemoveWithExitAsync — this is the ONE point that has
+        // actually settled whether `pos` ended up with zero mounted toasts, AFTER every eviction AND
+        // admission pass this call could run has finished (see the round-14 comment on
+        // RemoveWithExitAsync for why clearing mid-reconcile, before a same-pass admission had a
+        // chance to run, desynced `_expandedGroups` from a viewport that was still genuinely hovered).
+        // Still closes the original gap this guarded (see the historical comment this replaced,
+        // preserved in spirit): a group left hovered/focused when its last toast is dismissed WITHOUT
+        // a real mouseleave/focusout (DismissAll, or a close click under a stationary pointer, or —
+        // this round — an eviction with no queued replacement to admit) must not leave
+        // `_expandedGroups` holding `pos` forever, since a reused/fresh viewport's next admission
+        // would otherwise start (and stay) paused for PauseReason.Group with nothing left to ever
+        // resume it (see OnExpandedChanged's doc comment). Every caller that can empty a group always
+        // reconciles that SAME group immediately after (RemoveItemAsync's own call right below its
+        // removal; this method's own eviction loop above) with no yield in between, so this fixed-
+        // point check is never stale by the time it runs.
+        if (!_toasts.Any(t => t.ResolvedPosition == pos))
+        {
+            _expandedGroups.Remove(pos);
+        }
     }
 
     private void HandleDismiss(string toastId)
@@ -1115,28 +1136,18 @@
         var freedPos = toast.ResolvedPosition;
         _toasts.RemoveAll(t => t.Id == id);
 
-        // PR #357 finding (review, round-13): ToastViewport.Dispose()'s false-edge notification
-        // (see its doc comment) only fires when the component actually tears down — but the
-        // PROVIDER's own default-position viewport is ALWAYS rendered, even at ToastCount=0 (see
-        // the rc.42 doc comment on positionsToRender above), so it never disposes when its last
-        // toast goes away. And even a non-default viewport can dodge Dispose the same way: if
-        // ReconcileGroup(freedPos) below immediately re-admits a queued toast into this SAME
-        // position before the next render, the @key stays alive across the diff and the instance
-        // is reused rather than torn down. Either way, a group left hovered/focused when its last
-        // toast is dismissed WITHOUT a real mouseleave/focusout (DismissAll, or a close click under
-        // a stationary pointer) would leave `_expandedGroups` holding this position forever: the
-        // next toast admitted here starts (and stays) paused for PauseReason.Group in
-        // StartOrPauseTimer, since a fresh/reused viewport's first render never fires its own
-        // resuming edge (see OnExpandedChanged's doc comment) and nothing else is guaranteed to
-        // hover/focus it again. Clearing the stale entry here — the instant the group empties, and
-        // BEFORE the caller's ReconcileGroup(freedPos) can admit anything into it — closes the gap
-        // for every removal path (UI close/swipe, DismissAll, auto-dismiss, ResumeTimer's
-        // already-elapsed case), since they all fold into this one method.
-        if (!_toasts.Any(t => t.ResolvedPosition == freedPos))
-        {
-            _expandedGroups.Remove(freedPos);
-        }
-
+        // PR #357 round-14 (P2 — Codex): the stale-`_expandedGroups` cleanup that used to live HERE
+        // (clearing the instant `_toasts` has no more entries in `freedPos`) fired too early for a
+        // group ReconcileGroup is about to immediately refill. This method's only caller that can be
+        // followed by a same-group re-admission — ReconcileGroup's own eviction loop, evicting an
+        // over-cap toast to make room for a queued replacement — never yields between this removal
+        // and its admission pass (see ReconcileGroup's while-loop), so the group is transiently
+        // empty here even though the pointer/focus never actually left the still-live viewport
+        // element. Clearing eagerly at that instant desynced `_expandedGroups` from reality: the
+        // replacement's StartOrPauseTimer call moments later no longer saw the position as expanded
+        // and started its timer live, letting it auto-dismiss while the viewport was still hovered.
+        // The cleanup now runs once, at ReconcileGroup's own fixed point — see its doc comment —
+        // which is the one place that actually knows whether the group ended up empty for real.
         await InvokeAsync(StateHasChanged);
         return freedPos;
     }

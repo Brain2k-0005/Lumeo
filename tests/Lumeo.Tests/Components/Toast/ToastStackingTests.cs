@@ -656,6 +656,53 @@ public class ToastStackingTests : IAsyncLifetime
             TimeSpan.FromSeconds(5));
     }
 
+    // PR #357 round-14 (P2 — Codex): a queued REPLACEMENT admitted by ReconcileGroup's own
+    // eviction loop (MaxToasts=1: hover toast A, then Show() toast B — B evicts A to make room)
+    // used to lose the group's pause state. RemoveWithExitAsync (evicting A) used to clear
+    // ToastProvider's _expandedGroups the instant `_toasts` had no more entries at that position —
+    // which, mid-reconcile, is true even though B is about to be mounted into the SAME position by
+    // the very reconcile pass driving the eviction. B's StartOrPauseTimer then saw the position as
+    // no longer expanded and started its timer live, even though the viewport was never actually
+    // un-hovered (same DOM element, no mouseleave ever fired). B could auto-dismiss while the
+    // pointer was still sitting in the expanded group.
+    [Fact]
+    public async Task Queued_Replacement_Admitted_By_Eviction_Stays_Paused_While_Its_Group_Is_Still_Hovered()
+    {
+        var toastService = GetToastService();
+        var cut = _ctx.Render<L.ToastProvider>(p => p.Add(x => x.MaxToasts, 1));
+
+        toastService.Show(new ToastOptions { Title = "A", Duration = 60000 });
+        cut.WaitForAssertion(() =>
+            Assert.Contains(cut.FindAll("[role='alert'],[role='status']"), e => e.TextContent.Contains("A")));
+
+        // Hover the (default, always-rendered) group's own viewport container.
+        cut.Find("[role='alert'],[role='status']").ParentElement!.MouseEnter();
+        cut.WaitForAssertion(() =>
+            Assert.Equal("true", Attr(cut.Find("[data-stack-edge='up']"), "data-expanded")));
+
+        // Showing B at MaxToasts=1 evicts A (its ~220ms exit) and, once that completes, admits B
+        // into the freed slot — all within the SAME ReconcileGroup call the eviction started, with
+        // the pointer never having left the group.
+        toastService.Show(new ToastOptions { Title = "B", Duration = 100 });
+        cut.WaitForAssertion(() =>
+            Assert.Contains(cut.FindAll("[role='alert'],[role='status']"), e => e.TextContent.Contains("B")),
+            TimeSpan.FromSeconds(2));
+
+        // Wait well past B's 100ms duration (and past A's ~220ms exit) while STILL hovered —
+        // pre-fix, B's timer started running unpaused the instant it was admitted (the stale
+        // `_expandedGroups` clear from A's eviction already ran by then) and would have
+        // auto-dismissed here even though the pointer never left the group.
+        await Task.Delay(400);
+        Assert.Contains(cut.FindAll("[role='alert'],[role='status']"), e => e.TextContent.Contains("B"));
+
+        // Leaving now resumes B's timer (it never ran while paused) — it auto-dismisses like any
+        // other real-duration toast, proving this isn't just a timer that got lost.
+        cut.Find("[role='alert'],[role='status']").ParentElement!.MouseLeave();
+        cut.WaitForAssertion(() =>
+            Assert.DoesNotContain(cut.FindAll("[role='alert'],[role='status']"), e => e.TextContent.Contains("B")),
+            TimeSpan.FromSeconds(5));
+    }
+
     // ── Held-fill entrance class: never park animate-toast-in ──────────────
     //
     // animate-toast-in uses animation-fill-mode:both, so a settled entrance
