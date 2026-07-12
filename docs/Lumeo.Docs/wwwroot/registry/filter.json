@@ -38,7 +38,7 @@
         "name": "ChildContent",
         "type": "RenderFragment?",
         "default": null,
-        "description": null,
+        "description": "Content rendered above the pills row — typically the filter input controls (dropdowns, search box) that produce the active filters.",
         "isCascading": false,
         "captureUnmatched": false,
         "isEditorRequired": false
@@ -47,7 +47,7 @@
         "name": "Pills",
         "type": "RenderFragment?",
         "default": null,
-        "description": null,
+        "description": "Manually-composed filter pills, rendered alongside any pills generated from Filters.",
         "isCascading": false,
         "captureUnmatched": false,
         "isEditorRequired": false
@@ -56,7 +56,7 @@
         "name": "Actions",
         "type": "RenderFragment?",
         "default": null,
-        "description": null,
+        "description": "Trailing content rendered after the pills row — typically a \"clear all\" button or similar bulk action.",
         "isCascading": false,
         "captureUnmatched": false,
         "isEditorRequired": false
@@ -74,7 +74,7 @@
         "name": "OnRemoveFilter",
         "type": "EventCallback<FilterDescriptor>",
         "default": null,
-        "description": null,
+        "description": "Invoked with the descriptor of a data-driven pill (from Filters) when its dismiss (×) button is clicked.",
         "isCascading": false,
         "captureUnmatched": false,
         "isEditorRequired": false
@@ -83,7 +83,7 @@
         "name": "Class",
         "type": "string?",
         "default": null,
-        "description": null,
+        "description": "Additional CSS classes merged onto the root container.",
         "isCascading": false,
         "captureUnmatched": false,
         "isEditorRequired": false
@@ -92,7 +92,7 @@
         "name": "AdditionalAttributes",
         "type": "Dictionary<string, object>?",
         "default": null,
-        "description": null,
+        "description": "Unmatched attributes splatted onto the root container.",
         "isCascading": false,
         "captureUnmatched": true,
         "isEditorRequired": false
@@ -102,7 +102,7 @@
       {
         "name": "OnRemoveFilter",
         "type": "EventCallback<FilterDescriptor>",
-        "description": null
+        "description": "Invoked with the descriptor of a data-driven pill (from Filters) when its dismiss (×) button is clicked."
       }
     ],
     "enums": [],
@@ -110,7 +110,7 @@
       {
         "name": "FilterDescriptor",
         "signature": "FilterDescriptor(string Field, string? Operator = null, string? Value = null)",
-        "description": "A single active filter: a field, an optional comparison operator (e.g. \"=\", \"&gt;\", \"contains\"), and a display value."
+        "description": "A single active filter: a field, an optional comparison operator (e.g. \"=\", \">\", \"contains\"), and a display value."
       }
     ],
     "gotchas": [],
@@ -149,7 +149,7 @@
             "name": "Label",
             "type": "string",
             "default": "\"\"",
-            "description": null,
+            "description": "The filtered field's name, shown as the pill's leading label (and in the dismiss button's aria-label).",
             "isCascading": false,
             "captureUnmatched": false,
             "isEditorRequired": false
@@ -158,7 +158,7 @@
             "name": "Operator",
             "type": "string?",
             "default": null,
-            "description": "Optional comparison operator shown between Label and Value (e.g. \"=\", \"&gt;\", \"contains\"). When null the pill reads \"Label: Value\". (#319)",
+            "description": "Optional comparison operator shown between Label and Value (e.g. \"=\", \">\", \"contains\"). When null the pill reads \"Label: Value\". (#319)",
             "isCascading": false,
             "captureUnmatched": false,
             "isEditorRequired": false
@@ -167,7 +167,7 @@
             "name": "Value",
             "type": "string",
             "default": "\"\"",
-            "description": null,
+            "description": "The filter's display value, shown after Label (and Operator when set).",
             "isCascading": false,
             "captureUnmatched": false,
             "isEditorRequired": false
@@ -176,7 +176,7 @@
             "name": "OnDismiss",
             "type": "EventCallback",
             "default": null,
-            "description": null,
+            "description": "Invoked when the pill's dismiss (×) button is clicked.",
             "isCascading": false,
             "captureUnmatched": false,
             "isEditorRequired": false
@@ -185,7 +185,7 @@
             "name": "Class",
             "type": "string?",
             "default": null,
-            "description": null,
+            "description": "Additional CSS classes merged onto the pill's underlying Badge.",
             "isCascading": false,
             "captureUnmatched": false,
             "isEditorRequired": false
@@ -194,7 +194,7 @@
             "name": "AdditionalAttributes",
             "type": "Dictionary<string, object>?",
             "default": null,
-            "description": null,
+            "description": "Unmatched attributes splatted onto the pill's underlying Badge.",
             "isCascading": false,
             "captureUnmatched": true,
             "isEditorRequired": false
@@ -204,7 +204,7 @@
           {
             "name": "OnDismiss",
             "type": "EventCallback",
-            "description": null
+            "description": "Invoked when the pill's dismiss (×) button is clicked."
           }
         ],
         "enums": [],
@@ -256,11 +256,11 @@
   "source": [
     {
       "path": "UI/Filter/FilterBar.razor",
-      "content": "@namespace Lumeo\n\n<div class=\"@($\"space-y-4 {Class}\".Trim())\" @attributes=\"AdditionalAttributes\">\n    @ChildContent\n    @if ((Filters is not null && Filters.Count > 0) || Pills != null)\n    {\n        <div class=\"flex items-center gap-2 flex-wrap\">\n            @if (Filters is not null)\n            {\n                @foreach (var f in Filters)\n                {\n                    var desc = f;\n                    <FilterPill Label=\"@desc.Field\" Operator=\"@desc.Operator\" Value=\"@(desc.Value ?? \"\")\"\n                                OnDismiss=\"@(() => OnRemoveFilter.InvokeAsync(desc))\" />\n                }\n            }\n            @Pills\n        </div>\n    }\n    @if (Actions != null)\n    {\n        @Actions\n    }\n</div>\n\n@code {\n    [Parameter] public RenderFragment? ChildContent { get; set; }\n    [Parameter] public RenderFragment? Pills { get; set; }\n    [Parameter] public RenderFragment? Actions { get; set; }\n\n    /// <summary>\n    /// Data-driven filter model (#319): when supplied, the bar renders a dismissable\n    /// <see cref=\"FilterPill\"/> per descriptor (Field / Operator / Value) and raises\n    /// <see cref=\"OnRemoveFilter\"/> on dismiss. The <see cref=\"Pills\"/> slot still\n    /// works and renders alongside, so this is purely additive.\n    /// </summary>\n    [Parameter] public IReadOnlyList<FilterDescriptor>? Filters { get; set; }\n    [Parameter] public EventCallback<FilterDescriptor> OnRemoveFilter { get; set; }\n\n    [Parameter] public string? Class { get; set; }\n    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }\n\n    /// <summary>A single active filter: a field, an optional comparison operator\n    /// (e.g. \"=\", \"&gt;\", \"contains\"), and a display value.</summary>\n    public record FilterDescriptor(string Field, string? Operator = null, string? Value = null);\n}\n"
+      "content": "@namespace Lumeo\n\n<div class=\"@($\"space-y-4 {Class}\".Trim())\" @attributes=\"AdditionalAttributes\">\n    @ChildContent\n    @if ((Filters is not null && Filters.Count > 0) || Pills != null)\n    {\n        <div class=\"flex items-center gap-2 flex-wrap\">\n            @if (Filters is not null)\n            {\n                @foreach (var f in Filters)\n                {\n                    var desc = f;\n                    <FilterPill Label=\"@desc.Field\" Operator=\"@desc.Operator\" Value=\"@(desc.Value ?? \"\")\"\n                                OnDismiss=\"@(() => OnRemoveFilter.InvokeAsync(desc))\" />\n                }\n            }\n            @Pills\n        </div>\n    }\n    @if (Actions != null)\n    {\n        @Actions\n    }\n</div>\n\n@code {\n    /// <summary>Content rendered above the pills row — typically the filter input controls (dropdowns, search box) that produce the active filters.</summary>\n    [Parameter] public RenderFragment? ChildContent { get; set; }\n    /// <summary>Manually-composed filter pills, rendered alongside any pills generated from <see cref=\"Filters\"/>.</summary>\n    [Parameter] public RenderFragment? Pills { get; set; }\n    /// <summary>Trailing content rendered after the pills row — typically a \"clear all\" button or similar bulk action.</summary>\n    [Parameter] public RenderFragment? Actions { get; set; }\n\n    /// <summary>\n    /// Data-driven filter model (#319): when supplied, the bar renders a dismissable\n    /// <see cref=\"FilterPill\"/> per descriptor (Field / Operator / Value) and raises\n    /// <see cref=\"OnRemoveFilter\"/> on dismiss. The <see cref=\"Pills\"/> slot still\n    /// works and renders alongside, so this is purely additive.\n    /// </summary>\n    [Parameter] public IReadOnlyList<FilterDescriptor>? Filters { get; set; }\n    /// <summary>Invoked with the descriptor of a data-driven pill (from <see cref=\"Filters\"/>) when its dismiss (×) button is clicked.</summary>\n    [Parameter] public EventCallback<FilterDescriptor> OnRemoveFilter { get; set; }\n\n    /// <summary>Additional CSS classes merged onto the root container.</summary>\n    [Parameter] public string? Class { get; set; }\n    /// <summary>Unmatched attributes splatted onto the root container.</summary>\n    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }\n\n    /// <summary>A single active filter: a field, an optional comparison operator\n    /// (e.g. \"=\", \"&gt;\", \"contains\"), and a display value.</summary>\n    public record FilterDescriptor(string Field, string? Operator = null, string? Value = null);\n}\n"
     },
     {
       "path": "UI/Filter/FilterPill.razor",
-      "content": "@namespace Lumeo\n\n<Badge Variant=\"Badge.BadgeVariant.Secondary\" Class=\"@($\"flex items-center gap-1 ps-2 pe-1 {Class}\".Trim())\" @attributes=\"AdditionalAttributes\">\n    @DisplayText\n    <button type=\"button\" class=\"ms-1 rounded-[calc(var(--radius)*2)] hover:bg-muted p-0.5 focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-1\" aria-label=\"@($\"Remove {Label} filter\")\" @onclick=\"OnDismiss\">\n        <SvgGlyph Svg=\"@(LumeoIcons.X)\" class=\"h-3 w-3\" />\n    </button>\n</Badge>\n\n@code {\n    [Parameter] public string Label { get; set; } = \"\";\n    /// <summary>Optional comparison operator shown between Label and Value\n    /// (e.g. \"=\", \"&gt;\", \"contains\"). When null the pill reads \"Label: Value\". (#319)</summary>\n    [Parameter] public string? Operator { get; set; }\n    [Parameter] public string Value { get; set; } = \"\";\n    [Parameter] public EventCallback OnDismiss { get; set; }\n    [Parameter] public string? Class { get; set; }\n    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }\n\n    private string DisplayText => string.IsNullOrEmpty(Operator) ? $\"{Label}: {Value}\" : $\"{Label} {Operator} {Value}\";\n}\n"
+      "content": "@namespace Lumeo\n\n<Badge Variant=\"Badge.BadgeVariant.Secondary\" Class=\"@($\"flex items-center gap-1 ps-2 pe-1 {Class}\".Trim())\" @attributes=\"AdditionalAttributes\">\n    @DisplayText\n    <button type=\"button\" class=\"ms-1 rounded-[calc(var(--radius)*2)] hover:bg-muted p-0.5 focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-1\" aria-label=\"@($\"Remove {Label} filter\")\" @onclick=\"OnDismiss\">\n        <SvgGlyph Svg=\"@(LumeoIcons.X)\" class=\"h-3 w-3\" />\n    </button>\n</Badge>\n\n@code {\n    /// <summary>The filtered field's name, shown as the pill's leading label (and in the dismiss button's <c>aria-label</c>).</summary>\n    [Parameter] public string Label { get; set; } = \"\";\n    /// <summary>Optional comparison operator shown between Label and Value\n    /// (e.g. \"=\", \"&gt;\", \"contains\"). When null the pill reads \"Label: Value\". (#319)</summary>\n    [Parameter] public string? Operator { get; set; }\n    /// <summary>The filter's display value, shown after <see cref=\"Label\"/> (and <see cref=\"Operator\"/> when set).</summary>\n    [Parameter] public string Value { get; set; } = \"\";\n    /// <summary>Invoked when the pill's dismiss (×) button is clicked.</summary>\n    [Parameter] public EventCallback OnDismiss { get; set; }\n    /// <summary>Additional CSS classes merged onto the pill's underlying <c>Badge</c>.</summary>\n    [Parameter] public string? Class { get; set; }\n    /// <summary>Unmatched attributes splatted onto the pill's underlying <c>Badge</c>.</summary>\n    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }\n\n    private string DisplayText => string.IsNullOrEmpty(Operator) ? $\"{Label}: {Value}\" : $\"{Label} {Operator} {Value}\";\n}\n"
     }
   ],
   "slots": [
@@ -268,19 +268,19 @@
       "name": "ChildContent",
       "owner": "Filter",
       "type": "RenderFragment?",
-      "description": null
+      "description": "Content rendered above the pills row — typically the filter input controls (dropdowns, search box) that produce the active filters."
     },
     {
       "name": "Pills",
       "owner": "Filter",
       "type": "RenderFragment?",
-      "description": null
+      "description": "Manually-composed filter pills, rendered alongside any pills generated from Filters."
     },
     {
       "name": "Actions",
       "owner": "Filter",
       "type": "RenderFragment?",
-      "description": null
+      "description": "Trailing content rendered after the pills row — typically a \"clear all\" button or similar bulk action."
     }
   ],
   "serviceDependencies": [],
@@ -306,5 +306,5 @@
     "tests/Lumeo.Tests/Components/Filter/FilterBarTests.cs",
     "tests/Lumeo.Tests/Components/Filter/FilterPillTests.cs"
   ],
-  "mdSummary": "# Filter\n\nComposable faceted filter builder with chips.\n\n**Package:** `Lumeo.DataGrid` · **Category:** Data Display/Tables\n**Docs:** https://lumeo.nativ.sh/components/filter\n\n## Parameters\n| Owner | Name | Type | Default | Description |\n|---|---|---|---|---|\n| Filter | ChildContent | `RenderFragment?` | `` |  |\n| Filter | Pills | `RenderFragment?` | `` |  |\n| Filter | Actions | `RenderFragment?` | `` |  |\n| Filter | Filters | `IReadOnlyList<FilterDescriptor>?` | `` | Data-driven filter model (#319): when supplied, the bar renders a dismissable FilterPill per descriptor (Field / Operator / Value) and raises OnRemoveFilter on dismiss. The Pills slot still works and renders alongside, so this is purely additive. |\n| Filter | OnRemoveFilter | `EventCallback<FilterDescriptor>` | `` |  |\n| Filter | Class | `string?` | `` |  |\n| Filter | AdditionalAttributes | `Dictionary<string, object>?` | `` |  |\n| FilterPill | Label | `string` | `\"\"` |  |\n| FilterPill | Operator | `string?` | `` | Optional comparison operator shown between Label and Value (e.g. \"=\", \"&gt;\", \"contains\"). When null the pill reads \"Label: Value\". (#319) |\n| FilterPill | Value | `string` | `\"\"` |  |\n| FilterPill | OnDismiss | `EventCallback` | `` |  |\n| FilterPill | Class | `string?` | `` |  |\n| FilterPill | AdditionalAttributes | `Dictionary<string, object>?` | `` |  |\n\n## Slots\n- `ChildContent` (Filter) — RenderFragment slot\n- `Pills` (Filter) — RenderFragment slot\n- `Actions` (Filter) — RenderFragment slot\n\n## Events\n- `OnRemoveFilter` (`EventCallback<FilterDescriptor>`)\n\n## Sub-components\n- `FilterBar`, `FilterPill`\n\n## Cascading values it expects\n- (none)\n\n## Services it injects\n- (none)\n\n## Keyboard\n—\n\n## Example\n```razor\n<Filter />\n```\n\n## CSS variables\n`--color-muted`, `--color-ring`, `--radius`\n\n## Files\n- `UI/Filter/FilterBar.razor`\n- `UI/Filter/FilterPill.razor`\n"
+  "mdSummary": "# Filter\n\nComposable faceted filter builder with chips.\n\n**Package:** `Lumeo.DataGrid` · **Category:** Data Display/Tables\n**Docs:** https://lumeo.nativ.sh/components/filter\n\n## Parameters\n| Owner | Name | Type | Default | Description |\n|---|---|---|---|---|\n| Filter | ChildContent | `RenderFragment?` | `` | Content rendered above the pills row — typically the filter input controls (dropdowns, search box) that produce the active filters. |\n| Filter | Pills | `RenderFragment?` | `` | Manually-composed filter pills, rendered alongside any pills generated from Filters. |\n| Filter | Actions | `RenderFragment?` | `` | Trailing content rendered after the pills row — typically a \"clear all\" button or similar bulk action. |\n| Filter | Filters | `IReadOnlyList<FilterDescriptor>?` | `` | Data-driven filter model (#319): when supplied, the bar renders a dismissable FilterPill per descriptor (Field / Operator / Value) and raises OnRemoveFilter on dismiss. The Pills slot still works and renders alongside, so this is purely additive. |\n| Filter | OnRemoveFilter | `EventCallback<FilterDescriptor>` | `` | Invoked with the descriptor of a data-driven pill (from Filters) when its dismiss (×) button is clicked. |\n| Filter | Class | `string?` | `` | Additional CSS classes merged onto the root container. |\n| Filter | AdditionalAttributes | `Dictionary<string, object>?` | `` | Unmatched attributes splatted onto the root container. |\n| FilterPill | Label | `string` | `\"\"` | The filtered field's name, shown as the pill's leading label (and in the dismiss button's aria-label). |\n| FilterPill | Operator | `string?` | `` | Optional comparison operator shown between Label and Value (e.g. \"=\", \"\\>\", \"contains\"). When null the pill reads \"Label: Value\". (#319) |\n| FilterPill | Value | `string` | `\"\"` | The filter's display value, shown after Label (and Operator when set). |\n| FilterPill | OnDismiss | `EventCallback` | `` | Invoked when the pill's dismiss (×) button is clicked. |\n| FilterPill | Class | `string?` | `` | Additional CSS classes merged onto the pill's underlying Badge. |\n| FilterPill | AdditionalAttributes | `Dictionary<string, object>?` | `` | Unmatched attributes splatted onto the pill's underlying Badge. |\n\n## Slots\n- `ChildContent` (Filter) — Content rendered above the pills row — typically the filter input controls (dropdowns, search box) that produce the active filters.\n- `Pills` (Filter) — Manually-composed filter pills, rendered alongside any pills generated from Filters.\n- `Actions` (Filter) — Trailing content rendered after the pills row — typically a \"clear all\" button or similar bulk action.\n\n## Events\n- `OnRemoveFilter` (`EventCallback<FilterDescriptor>`) — Invoked with the descriptor of a data-driven pill (from Filters) when its dismiss (×) button is clicked.\n\n## Sub-components\n- `FilterBar`, `FilterPill`\n\n## Cascading values it expects\n- (none)\n\n## Services it injects\n- (none)\n\n## Keyboard\n—\n\n## Example\n```razor\n<Filter />\n```\n\n## CSS variables\n`--color-muted`, `--color-ring`, `--radius`\n\n## Files\n- `UI/Filter/FilterBar.razor`\n- `UI/Filter/FilterPill.razor`\n"
 }

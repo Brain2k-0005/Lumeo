@@ -33,6 +33,21 @@ public class WordImporterTests
     }
 
     [Fact]
+    public void DefaultStyleMap_UsesPlatformIndependentLineEndings()
+    {
+        // DefaultStyleMap is built from explicit "\n"-joined literals (not a
+        // multiline raw string) so its compiled value — and PublicAPI.Shipped.txt
+        // baseline entry — doesn't depend on the source file's checked-out line
+        // ending (CRLF on Windows vs. LF on Linux CI). Guard both properties:
+        // no stray "\r", and the map still parses into the expected rule count.
+        Assert.DoesNotContain('\r', WordImporter.DefaultStyleMap);
+
+        var rules = WordImporter.DefaultStyleMap.Split('\n');
+        Assert.Equal(26, rules.Length);
+        Assert.All(rules, rule => Assert.Contains("=>", rule));
+    }
+
+    [Fact]
     public void DefaultStyleMap_ContainsGermanBodyAndListStyles()
     {
         Assert.Contains("Textkörper", WordImporter.DefaultStyleMap);

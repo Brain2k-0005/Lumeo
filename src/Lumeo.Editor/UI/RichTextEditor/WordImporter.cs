@@ -83,34 +83,41 @@ public static class WordImporter
     /// List Paragraph/Listenabsatz, Quote/Zitat, Caption/Beschriftung,
     /// Strong/Emphasis runs).
     /// </summary>
-    public const string DefaultStyleMap = """
-        p[style-name='Title']          => h1.doc-title:fresh
-        p[style-name='Titel']          => h1.doc-title:fresh
-        p[style-name='Subtitle']       => h2.doc-subtitle:fresh
-        p[style-name='Untertitel']     => h2.doc-subtitle:fresh
-        p[style-name='Heading 1']      => h1:fresh
-        p[style-name='Überschrift 1']  => h1:fresh
-        p[style-name='Heading 2']      => h2:fresh
-        p[style-name='Überschrift 2']  => h2:fresh
-        p[style-name='Heading 3']      => h3:fresh
-        p[style-name='Überschrift 3']  => h3:fresh
-        p[style-name='Heading 4']      => h4:fresh
-        p[style-name='Überschrift 4']  => h4:fresh
-        p[style-name='Heading 5']      => h5:fresh
-        p[style-name='Überschrift 5']  => h5:fresh
-        p[style-name='Heading 6']      => h6:fresh
-        p[style-name='Überschrift 6']  => h6:fresh
-        p[style-name='Body Text']      => p:fresh
-        p[style-name='Textkörper']     => p:fresh
-        p[style-name='List Paragraph'] => li:fresh
-        p[style-name='Listenabsatz']   => li:fresh
-        p[style-name='Quote']          => blockquote:fresh
-        p[style-name='Zitat']          => blockquote:fresh
-        p[style-name='Caption']        => p.caption:fresh
-        p[style-name='Beschriftung']   => p.caption:fresh
-        r[style-name='Strong']         => strong
-        r[style-name='Emphasis']       => em
-        """;
+    /// <remarks>
+    /// Built from explicit "\n"-separated literals rather than a multiline raw
+    /// string: a raw string literal's embedded newlines take on whatever line
+    /// ending the source file happens to be checked out with (CRLF on Windows,
+    /// LF on Linux CI), which makes this *const*'s value — and therefore its
+    /// PublicAPI.Shipped.txt baseline entry — platform-dependent. Explicit "\n"
+    /// escapes keep the compiled value identical everywhere.
+    /// </remarks>
+    public const string DefaultStyleMap =
+        "p[style-name='Title']          => h1.doc-title:fresh\n" +
+        "p[style-name='Titel']          => h1.doc-title:fresh\n" +
+        "p[style-name='Subtitle']       => h2.doc-subtitle:fresh\n" +
+        "p[style-name='Untertitel']     => h2.doc-subtitle:fresh\n" +
+        "p[style-name='Heading 1']      => h1:fresh\n" +
+        "p[style-name='Überschrift 1']  => h1:fresh\n" +
+        "p[style-name='Heading 2']      => h2:fresh\n" +
+        "p[style-name='Überschrift 2']  => h2:fresh\n" +
+        "p[style-name='Heading 3']      => h3:fresh\n" +
+        "p[style-name='Überschrift 3']  => h3:fresh\n" +
+        "p[style-name='Heading 4']      => h4:fresh\n" +
+        "p[style-name='Überschrift 4']  => h4:fresh\n" +
+        "p[style-name='Heading 5']      => h5:fresh\n" +
+        "p[style-name='Überschrift 5']  => h5:fresh\n" +
+        "p[style-name='Heading 6']      => h6:fresh\n" +
+        "p[style-name='Überschrift 6']  => h6:fresh\n" +
+        "p[style-name='Body Text']      => p:fresh\n" +
+        "p[style-name='Textkörper']     => p:fresh\n" +
+        "p[style-name='List Paragraph'] => li:fresh\n" +
+        "p[style-name='Listenabsatz']   => li:fresh\n" +
+        "p[style-name='Quote']          => blockquote:fresh\n" +
+        "p[style-name='Zitat']          => blockquote:fresh\n" +
+        "p[style-name='Caption']        => p.caption:fresh\n" +
+        "p[style-name='Beschriftung']   => p.caption:fresh\n" +
+        "r[style-name='Strong']         => strong\n" +
+        "r[style-name='Emphasis']       => em";
 
     /// <summary>
     /// Converts a .docx stream to HTML.

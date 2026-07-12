@@ -86,8 +86,12 @@ public class SheetExitInertnessTests : IAsyncLifetime
         var cut = RenderSheet(open: true);
         cut.Render(p => p.Add(s => s.Open, false));
 
-        cut.WaitForAssertion(() =>
-            Assert.Contains("animate-slide-out-to-right", cut.Find("[role='dialog']").GetAttribute("class") ?? ""));
+        // The exit window opens synchronously on the close render — assert and click
+        // in the same beat. A WaitForAssertion here can burn past the 280/320ms
+        // fallback timers under CI starvation, unmounting the backdrop before the
+        // click (fourth overlay-exit flap of this shape; family doctrine: transient
+        // exit-state asserts are synchronous on the committed close render).
+        Assert.Contains("animate-slide-out-to-right", cut.Find("[role='dialog']").GetAttribute("class") ?? "");
 
         cut.Find(".animate-fade-out").Click();
         var panel = cut.Find("[role='dialog']");

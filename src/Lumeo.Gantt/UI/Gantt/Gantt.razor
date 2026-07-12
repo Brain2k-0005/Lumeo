@@ -48,8 +48,11 @@ else
 }
 
 @code {
+    /// <summary>The tasks (and milestones) rendered as bars. Two-way bindable via <see cref="TasksChanged"/>, which also fires after an in-chart drag/resize/progress edit so the parent can persist it.</summary>
     [Parameter] public IEnumerable<GanttTask>? Tasks { get; set; }
+    /// <summary>Raised whenever the task set changes — either because the parent's <see cref="Tasks"/> genuinely changed, or because the user dragged a bar / changed its progress in the chart.</summary>
     [Parameter] public EventCallback<IEnumerable<GanttTask>> TasksChanged { get; set; }
+    /// <summary>The active zoom level (Day/Week/Month/Year, plus the non-toolbar QuarterDay/HalfDay). Two-way bindable via <see cref="ViewModeChanged"/>; without a binding the component still tracks toolbar selections on its own. Default <see cref="GanttViewMode.Day"/>.</summary>
     [Parameter] public GanttViewMode ViewMode { get; set; } = GanttViewMode.Day;
     /// <summary>
     /// Raised when the user picks a new zoom level from the toolbar. Bind it
@@ -76,10 +79,15 @@ else
     /// falls back to <see cref="ViewMode"/> (the existing behaviour).
     /// </summary>
     [Parameter] public GanttViewMode? DefaultZoom { get; set; }
+    /// <summary>Raised when a task bar is clicked, with the clicked task.</summary>
     [Parameter] public EventCallback<GanttTask> OnTaskClick { get; set; }
+    /// <summary>Raised after a task bar's start/end dates change via drag, with the updated task. Also folded into <see cref="TasksChanged"/>.</summary>
     [Parameter] public EventCallback<GanttTask> OnDateChange { get; set; }
+    /// <summary>Raised after a task bar's progress changes via drag, with the updated task. Also folded into <see cref="TasksChanged"/>.</summary>
     [Parameter] public EventCallback<GanttTask> OnProgressChange { get; set; }
+    /// <summary>CSS max-height of the chart's scrollable viewport (a CSS length string, e.g. <c>"500px"</c>). The chart shrinks to its content and only scrolls when the task list exceeds this height. Default <c>"500px"</c>.</summary>
     [Parameter] public string Height { get; set; } = "500px";
+    /// <summary>Disables drag-to-reschedule and drag-to-progress editing in the underlying chart.</summary>
     [Parameter] public bool Readonly { get; set; }
     /// <summary>Highlight today with a vertical line and dot marker. Default true.</summary>
     [Parameter] public bool TodayHighlight { get; set; } = true;
@@ -98,9 +106,13 @@ else
     /// a visual section-header row is injected before the first task in each group.
     /// </summary>
     [Parameter] public Func<GanttTask, string>? GroupBy { get; set; }
+    /// <summary>Extra content rendered at the end of the toolbar row, alongside the zoom-level buttons.</summary>
     [Parameter] public RenderFragment? TrailingContent { get; set; }
+    /// <summary>Raised when the underlying JS chart fails to initialize, with the error message. The component also shows a destructive-styled error box in place of the chart and retries init on the next relevant parameter change.</summary>
     [Parameter] public EventCallback<string> OnInitError { get; set; }
+    /// <summary>Additional CSS classes merged onto the root container.</summary>
     [Parameter] public string? Class { get; set; }
+    /// <summary>Captures any unmatched attributes and applies them to the root container.</summary>
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     private ElementReference _hostRef;

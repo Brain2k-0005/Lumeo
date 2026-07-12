@@ -34,7 +34,7 @@
         "name": "Title",
         "type": "string?",
         "default": null,
-        "description": null,
+        "description": "Centered heading above the grid. Also names the <section> landmark via aria-labelledby. Omitted when null/empty.",
         "isCascading": false,
         "captureUnmatched": false,
         "isEditorRequired": false
@@ -43,7 +43,7 @@
         "name": "Subtitle",
         "type": "string?",
         "default": null,
-        "description": null,
+        "description": "Centered supporting text below Title.",
         "isCascading": false,
         "captureUnmatched": false,
         "isEditorRequired": false
@@ -52,7 +52,7 @@
         "name": "Columns",
         "type": "int",
         "default": "3",
-        "description": null,
+        "description": "Number of columns at the widest breakpoint: 1, 2, 3 (default) or 4. Any other value falls back to the 3-column layout.",
         "isCascading": false,
         "captureUnmatched": false,
         "isEditorRequired": false
@@ -61,7 +61,7 @@
         "name": "ChildContent",
         "type": "RenderFragment?",
         "default": null,
-        "description": null,
+        "description": "The feature callouts, typically FeatureItem instances.",
         "isCascading": false,
         "captureUnmatched": false,
         "isEditorRequired": false
@@ -70,7 +70,7 @@
         "name": "Class",
         "type": "string?",
         "default": null,
-        "description": null,
+        "description": "Additional CSS classes merged onto the root section.",
         "isCascading": false,
         "captureUnmatched": false,
         "isEditorRequired": false
@@ -79,7 +79,7 @@
         "name": "AdditionalAttributes",
         "type": "Dictionary<string, object>?",
         "default": null,
-        "description": null,
+        "description": "Unmatched attributes splatted onto the root section.",
         "isCascading": false,
         "captureUnmatched": true,
         "isEditorRequired": false
@@ -147,7 +147,7 @@
   "source": [
     {
       "path": "UI/FeatureGrid/FeatureGrid.razor",
-      "content": "@namespace Lumeo\n\n@*\n    FeatureGrid — responsive 1/2/3-column grid for landing-page feature\n    callouts. Part of the 3.4 Splash Kit. Pair with <FeatureItem> children\n    or pass raw ChildContent for full control.\n*@\n\n<section class=\"@CssClass\" aria-labelledby=\"@TitleId\" @attributes=\"AdditionalAttributes\">\n    <div class=\"mx-auto max-w-6xl px-6 py-16\">\n        @if (!string.IsNullOrEmpty(Title))\n        {\n            <h2 id=\"@TitleId\" class=\"text-3xl font-bold tracking-tight text-foreground text-center\">@Title</h2>\n        }\n        @if (!string.IsNullOrEmpty(Subtitle))\n        {\n            <p class=\"mt-3 text-muted-foreground text-center max-w-2xl mx-auto\">@Subtitle</p>\n        }\n        <div class=\"@($\"mt-12 grid gap-8 {ColumnsClass}\")\">\n            @ChildContent\n        </div>\n    </div>\n</section>\n\n@code {\n    [Parameter] public string? Title { get; set; }\n    [Parameter] public string? Subtitle { get; set; }\n    [Parameter] public int Columns { get; set; } = 3;\n    [Parameter] public RenderFragment? ChildContent { get; set; }\n    [Parameter] public string? Class { get; set; }\n    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }\n\n    private string CssClass => Cx.Merge(\"w-full\", Class);\n\n    // Name the <section> landmark via its heading so AT exposes it as a region\n    // with an accessible name (#299). Null when there's no Title.\n    private readonly string _titleId = $\"featuregrid-title-{Guid.NewGuid():N}\";\n    private string? TitleId => string.IsNullOrEmpty(Title) ? null : _titleId;\n\n    private string ColumnsClass => Columns switch\n    {\n        1 => \"grid-cols-1\",\n        2 => \"grid-cols-1 sm:grid-cols-2\",\n        4 => \"grid-cols-1 sm:grid-cols-2 lg:grid-cols-4\",\n        _ => \"grid-cols-1 sm:grid-cols-2 lg:grid-cols-3\"\n    };\n}\n"
+      "content": "@namespace Lumeo\n\n@*\n    FeatureGrid — responsive 1/2/3-column grid for landing-page feature\n    callouts. Part of the 3.4 Splash Kit. Pair with <FeatureItem> children\n    or pass raw ChildContent for full control.\n*@\n\n<section class=\"@CssClass\" aria-labelledby=\"@TitleId\" @attributes=\"AdditionalAttributes\">\n    <div class=\"mx-auto max-w-6xl px-6 py-16\">\n        @if (!string.IsNullOrEmpty(Title))\n        {\n            <h2 id=\"@TitleId\" class=\"text-3xl font-bold tracking-tight text-foreground text-center\">@Title</h2>\n        }\n        @if (!string.IsNullOrEmpty(Subtitle))\n        {\n            <p class=\"mt-3 text-muted-foreground text-center max-w-2xl mx-auto\">@Subtitle</p>\n        }\n        <div class=\"@($\"mt-12 grid gap-8 {ColumnsClass}\")\">\n            @ChildContent\n        </div>\n    </div>\n</section>\n\n@code {\n    /// <summary>Centered heading above the grid. Also names the <c>&lt;section&gt;</c>\n    /// landmark via <c>aria-labelledby</c>. Omitted when null/empty.</summary>\n    [Parameter] public string? Title { get; set; }\n    /// <summary>Centered supporting text below <see cref=\"Title\"/>.</summary>\n    [Parameter] public string? Subtitle { get; set; }\n    /// <summary>Number of columns at the widest breakpoint: 1, 2, 3 (default) or 4.\n    /// Any other value falls back to the 3-column layout.</summary>\n    [Parameter] public int Columns { get; set; } = 3;\n    /// <summary>The feature callouts, typically <see cref=\"FeatureItem\"/> instances.</summary>\n    [Parameter] public RenderFragment? ChildContent { get; set; }\n    /// <summary>Additional CSS classes merged onto the root <c>section</c>.</summary>\n    [Parameter] public string? Class { get; set; }\n    /// <summary>Unmatched attributes splatted onto the root <c>section</c>.</summary>\n    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }\n\n    private string CssClass => Cx.Merge(\"w-full\", Class);\n\n    // Name the <section> landmark via its heading so AT exposes it as a region\n    // with an accessible name (#299). Null when there's no Title.\n    private readonly string _titleId = $\"featuregrid-title-{Guid.NewGuid():N}\";\n    private string? TitleId => string.IsNullOrEmpty(Title) ? null : _titleId;\n\n    private string ColumnsClass => Columns switch\n    {\n        1 => \"grid-cols-1\",\n        2 => \"grid-cols-1 sm:grid-cols-2\",\n        4 => \"grid-cols-1 sm:grid-cols-2 lg:grid-cols-4\",\n        _ => \"grid-cols-1 sm:grid-cols-2 lg:grid-cols-3\"\n    };\n}\n"
     }
   ],
   "slots": [
@@ -155,7 +155,7 @@
       "name": "ChildContent",
       "owner": "FeatureGrid",
       "type": "RenderFragment?",
-      "description": null
+      "description": "The feature callouts, typically FeatureItem instances."
     }
   ],
   "serviceDependencies": [],
@@ -171,5 +171,5 @@
     "tests/Lumeo.Tests/Components/A11yPolish/A11yPolishTests.cs",
     "tests/Lumeo.Tests/Components/FeatureGrid/FeatureGridTests.cs"
   ],
-  "mdSummary": "# FeatureGrid\n\nFeature Grid component.\n\n**Package:** `Lumeo` · **Category:** Marketing\n**Docs:** https://lumeo.nativ.sh/components/feature-grid\n\n## Parameters\n| Owner | Name | Type | Default | Description |\n|---|---|---|---|---|\n| FeatureGrid | Title | `string?` | `` |  |\n| FeatureGrid | Subtitle | `string?` | `` |  |\n| FeatureGrid | Columns | `int` | `3` |  |\n| FeatureGrid | ChildContent | `RenderFragment?` | `` |  |\n| FeatureGrid | Class | `string?` | `` |  |\n| FeatureGrid | AdditionalAttributes | `Dictionary<string, object>?` | `` |  |\n\n## Slots\n- `ChildContent` (FeatureGrid) — RenderFragment slot\n\n## Events\n- (none)\n\n## Sub-components\n- (none)\n\n## Cascading values it expects\n- (none)\n\n## Services it injects\n- (none)\n\n## Keyboard\n—\n\n## Example\n```razor\n<FeatureGrid />\n```\n\n## CSS variables\n`--color-foreground`, `--color-muted`, `--color-muted-foreground`\n\n## Files\n- `UI/FeatureGrid/FeatureGrid.razor`\n"
+  "mdSummary": "# FeatureGrid\n\nFeature Grid component.\n\n**Package:** `Lumeo` · **Category:** Marketing\n**Docs:** https://lumeo.nativ.sh/components/feature-grid\n\n## Parameters\n| Owner | Name | Type | Default | Description |\n|---|---|---|---|---|\n| FeatureGrid | Title | `string?` | `` | Centered heading above the grid. Also names the \\<section\\> landmark via aria-labelledby. Omitted when null/empty. |\n| FeatureGrid | Subtitle | `string?` | `` | Centered supporting text below Title. |\n| FeatureGrid | Columns | `int` | `3` | Number of columns at the widest breakpoint: 1, 2, 3 (default) or 4. Any other value falls back to the 3-column layout. |\n| FeatureGrid | ChildContent | `RenderFragment?` | `` | The feature callouts, typically FeatureItem instances. |\n| FeatureGrid | Class | `string?` | `` | Additional CSS classes merged onto the root section. |\n| FeatureGrid | AdditionalAttributes | `Dictionary<string, object>?` | `` | Unmatched attributes splatted onto the root section. |\n\n## Slots\n- `ChildContent` (FeatureGrid) — The feature callouts, typically FeatureItem instances.\n\n## Events\n- (none)\n\n## Sub-components\n- (none)\n\n## Cascading values it expects\n- (none)\n\n## Services it injects\n- (none)\n\n## Keyboard\n—\n\n## Example\n```razor\n<FeatureGrid />\n```\n\n## CSS variables\n`--color-foreground`, `--color-muted`, `--color-muted-foreground`\n\n## Files\n- `UI/FeatureGrid/FeatureGrid.razor`\n"
 }

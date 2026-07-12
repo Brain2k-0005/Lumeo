@@ -15,10 +15,24 @@
 </span>
 
 @code {
+    /// <summary>The full source text to render; matched terms are wrapped in
+    /// <see cref="Tag"/>, the rest is emitted verbatim.</summary>
     [Parameter] public string Text { get; set; } = "";
+
+    /// <summary>A single term to highlight within <see cref="Text"/>. Combined with
+    /// <see cref="HighlightTerms"/> when both are set (de-duplicated, longest match wins).</summary>
     [Parameter] public string? Highlight { get; set; }
+
+    /// <summary>Multiple terms to highlight within <see cref="Text"/>. Combined with
+    /// <see cref="Highlight"/> when both are set (de-duplicated, longest match wins).</summary>
     [Parameter] public IEnumerable<string>? HighlightTerms { get; set; }
+
+    /// <summary>Matches terms case-sensitively. Defaults to false (case-insensitive matching).</summary>
     [Parameter] public bool CaseSensitive { get; set; }
+
+    /// <summary>Only matches terms on word boundaries (anchored with <c>\b</c> on sides
+    /// adjacent to a word character), so e.g. "cat" won't match inside "category".
+    /// Ignored when <see cref="RegexMode"/> is enabled.</summary>
     [Parameter] public bool WholeWord { get; set; }
     /// <summary>
     /// Treat <see cref="Highlight"/> / <see cref="HighlightTerms"/> as regular-
@@ -27,9 +41,19 @@
     /// is ignored in this mode — express boundaries in the pattern itself. (#293)
     /// </summary>
     [Parameter] public bool RegexMode { get; set; }
+
+    /// <summary>Additional CSS classes appended to the built-in highlight-mark styling
+    /// (<c>bg-warning/30 text-foreground rounded-sm px-0.5</c>) on each matched segment.</summary>
     [Parameter] public string? HighlightClass { get; set; }
+
+    /// <summary>Element name used to wrap each matched segment. Defaults to <c>"mark"</c>;
+    /// falls back to <c>"mark"</c> if set to whitespace/empty.</summary>
     [Parameter] public string Tag { get; set; } = "mark";
+
+    /// <summary>Additional CSS classes merged onto the outer <c>&lt;span&gt;</c> wrapper.</summary>
     [Parameter] public string? Class { get; set; }
+
+    /// <summary>Captures unmatched attributes and applies them to the outer <c>&lt;span&gt;</c> wrapper.</summary>
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     private List<Segment> _segments = new();

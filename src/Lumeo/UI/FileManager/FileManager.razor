@@ -187,6 +187,8 @@
     // Parameters
     // ──────────────────────────────────────────────────────────────────────────
 
+    /// <summary>The file tree's top-level nodes. Rendered in both the left folder tree and
+    /// (when <see cref="CurrentPath"/> is null) the right-hand file list.</summary>
     [Parameter] public IReadOnlyList<FileSystemNode>? Root { get; set; }
 
     /// <summary>
@@ -194,24 +196,44 @@
     /// Uses <see cref="FileSystemNode.Id"/> as the path identifier.
     /// </summary>
     [Parameter] public string? CurrentPath { get; set; }
+    /// <summary>Raised when the user navigates (double-click, breadcrumb, or up button)
+    /// with the newly-open folder's id, or <c>null</c> when returning to the root.</summary>
     [Parameter] public EventCallback<string?> CurrentPathChanged { get; set; }
 
     /// <summary>Called the first time a folder is opened if its Children is null. Return the loaded children.</summary>
     [Parameter] public Func<FileSystemNode, Task<List<FileSystemNode>>>? LoadChildren { get; set; }
 
+    /// <summary>List or grid layout for the right-hand file view. Two-way bindable via
+    /// <see cref="ViewModeChanged"/>; otherwise toggled internally by the toolbar buttons.</summary>
     [Parameter] public FileManagerViewMode ViewMode { get; set; } = FileManagerViewMode.List;
+    /// <summary>Raised when the user switches between list and grid view.</summary>
     [Parameter] public EventCallback<FileManagerViewMode> ViewModeChanged { get; set; }
 
+    /// <summary>The currently selected file/folder node (row or tile highlight, and the
+    /// gate for the toolbar Delete button). Two-way bindable via <see cref="SelectedNodeChanged"/>.</summary>
     [Parameter] public FileSystemNode? SelectedNode { get; set; }
+    /// <summary>Raised when the selection changes — via a click, Space, or an internal
+    /// clear (e.g. after the selected node is deleted or removed from a refreshed
+    /// <see cref="Root"/>).</summary>
     [Parameter] public EventCallback<FileSystemNode?> SelectedNodeChanged { get; set; }
 
+    /// <summary>Raised when a file (not a folder) is opened via double-click or Enter.</summary>
     [Parameter] public EventCallback<FileSystemNode> OnFileOpen { get; set; }
 
+    /// <summary>Raised with the node and trimmed new name when an inline rename is
+    /// committed (Enter or blur) with a non-empty, changed value. Enables the context
+    /// menu's Rename item.</summary>
     [Parameter] public EventCallback<(FileSystemNode Node, string NewName)> OnRename { get; set; }
+    /// <summary>Raised with the node(s) to delete — from the context menu or the toolbar
+    /// Delete button (acting on <see cref="SelectedNode"/>). Enables both entry points.</summary>
     [Parameter] public EventCallback<IReadOnlyList<FileSystemNode>> OnDelete { get; set; }
+    /// <summary>Raised with the current folder (or a synthetic root node) when the
+    /// toolbar's New Folder button is clicked. Enables that toolbar button.</summary>
     [Parameter] public EventCallback<FileSystemNode> OnNewFolder { get; set; }
 
+    /// <summary>Additional CSS classes merged onto the root panel.</summary>
     [Parameter] public string? Class { get; set; }
+    /// <summary>Unmatched attributes splatted onto the root panel.</summary>
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     // ──────────────────────────────────────────────────────────────────────────

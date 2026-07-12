@@ -347,4 +347,40 @@ public class PerComponentEnricherTests : IDisposable
         Assert.Contains("| Button | Variant | `ButtonVariant`", md);
         Assert.Contains("--color-primary", md);
     }
+
+    [Fact]
+    public void MdSummary_parameter_table_does_not_escape_angle_brackets_inside_code_spans()
+    {
+        // Codex P2, PR #358 round 4: Type/Default cells are wrapped in backticks, and
+        // CommonMark code spans render backslash-escapes literally instead of interpreting
+        // them — so a generic type like EventCallback<bool> must come through unescaped
+        // (`EventCallback<bool>`), NOT as `EventCallback\<bool\>`.
+        WriteComponentFile("Checkbox", "Checkbox.razor", "@namespace Lumeo\n<input type=\"checkbox\" />");
+        var entry = new Dictionary<string, object?>
+        {
+            ["files"] = new[] { "UI/Checkbox/Checkbox.razor" },
+            ["nugetPackage"] = "Lumeo",
+            ["category"] = "Forms",
+            ["description"] = "A checkbox with <form>-like validation.",
+        };
+        var apiBlock = Api("""
+        {
+          "parameters": [
+            {"name":"CheckedChanged","type":"EventCallback<bool>","default":"default(EventCallback<bool>)","isCascading":false}
+          ],
+          "events": []
+        }
+        """);
+
+        PerComponentEnricher.Enrich(entry, "checkbox", "Checkbox", _root, apiBlock,
+            new HashSet<string> { "Checkbox" });
+
+        var md = entry["mdSummary"]?.ToString() ?? "";
+        // Type/Default cells: unescaped inside the code span.
+        Assert.Contains("`EventCallback<bool>`", md);
+        Assert.Contains("`default(EventCallback<bool>)`", md);
+        Assert.DoesNotContain("EventCallback\\<bool\\>", md);
+        // Prose description cell: still escaped so "<form>" can't be parsed as raw HTML.
+        Assert.Contains("A checkbox with \\<form\\>-like validation.", md);
+    }
 }

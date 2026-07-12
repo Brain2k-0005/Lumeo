@@ -179,15 +179,27 @@ else
     /// </summary>
     public enum TimePickerVariant { List, Wheel }
 
+    /// <summary>Visual style of the picker. Defaults to <see cref="TimePickerVariant.List"/>.</summary>
     [Parameter] public TimePickerVariant Variant { get; set; } = TimePickerVariant.List;
 
     [CascadingParameter] private FormField.FormFieldContext? FormField { get; set; }
 
+    /// <summary>Marks the field as required, rendering an asterisk next to <see cref="Label"/>
+    /// and setting <c>aria-required</c> on the trigger.</summary>
     [Parameter] public bool Required { get; set; }
+    /// <summary>Forces the invalid/error visual state on the trigger. Also set implicitly
+    /// when a wrapping <c>FormField</c> reports a validation error.</summary>
     [Parameter] public bool Invalid { get; set; }
+    /// <summary>Error message shown below the field when <see cref="Invalid"/> is true
+    /// (and the picker is not nested inside a <c>FormField</c>).</summary>
     [Parameter] public string? ErrorText { get; set; }
+    /// <summary>Helper text shown below the field when there is no error (and the picker
+    /// is not nested inside a <c>FormField</c>).</summary>
     [Parameter] public string? HelperText { get; set; }
+    /// <summary>Label rendered above the trigger. Suppressed when nested inside a
+    /// <c>FormField</c>, which renders its own label instead.</summary>
     [Parameter] public string? Label { get; set; }
+    /// <summary>The <c>name</c> attribute rendered on the List-variant trigger button.</summary>
     [Parameter] public string? Name { get; set; }
 
     private bool EffectiveInvalid => Invalid || FormField?.HasError == true;
@@ -215,7 +227,11 @@ else
             ? AdditionalAttributes.Where(kv => kv.Key != "id").ToDictionary(kv => kv.Key, kv => kv.Value)
             : AdditionalAttributes;
 
+    /// <summary>The selected time of day. <c>null</c> means nothing is selected and the
+    /// trigger shows <see cref="Placeholder"/>.</summary>
     [Parameter] public TimeSpan? Value { get; set; }
+    /// <summary>Fired when the user picks an hour, minute, second, or AM/PM. Binding it
+    /// makes <see cref="Value"/> controlled.</summary>
     [Parameter] public EventCallback<TimeSpan?> ValueChanged { get; set; }
     /// <summary>
     /// When <c>true</c> renders a 24-hour clock; when <c>false</c> renders 12-hour with AM/PM.
@@ -224,8 +240,13 @@ else
     /// and similar see 24-hour; <c>en-US</c> sees 12-hour.
     /// </summary>
     [Parameter] public bool? Use24Hour { get; set; }
+    /// <summary>Adds a seconds column (List variant only — the Wheel variant does not
+    /// support seconds). Defaults to <c>false</c>.</summary>
     [Parameter] public bool ShowSeconds { get; set; }
+    /// <summary>Interval between selectable minute options (e.g. 5 shows :00, :05, :10, …).
+    /// Defaults to 1.</summary>
     [Parameter] public int MinuteStep { get; set; } = 1;
+    /// <summary>Interval between selectable second options. Defaults to 1.</summary>
     [Parameter] public int SecondStep { get; set; } = 1;
 
     /// <summary>Earliest selectable time (inclusive). Times before this are
@@ -235,6 +256,8 @@ else
     /// rendered as disabled options. Null (default) means no upper bound.</summary>
     [Parameter] public TimeSpan? Max { get; set; }
 
+    /// <summary>Placeholder shown in the trigger when no time is selected. Defaults to the
+    /// localized "TimePicker.Placeholder" string.</summary>
     [Parameter] public string? Placeholder { get; set; }
 
     /// <summary>
@@ -249,6 +272,8 @@ else
     private bool EffectiveUse24Hour => Use24Hour ?? !EffectiveCulture.DateTimeFormat.ShortTimePattern.Contains('h');
 
     private string EffectivePlaceholder => Placeholder ?? L["TimePicker.Placeholder"];
+    /// <summary>Disables the picker: the List variant's trigger is disabled, and the Wheel
+    /// variant is forwarded to <c>TimeWheelPicker</c>.</summary>
     [Parameter] public bool Disabled { get; set; }
     /// <summary>Per-picker density override. When null, inherits from any
     /// ancestor <see cref="DensityScope"/>; if neither is set, matches the
@@ -256,6 +281,8 @@ else
     /// horizontal padding shift between values.</summary>
     [Parameter] public Density? Density { get; set; }
     [CascadingParameter] private Density? InheritedDensity { get; set; }
+    /// <summary>Additional CSS classes merged onto the List variant's trigger button, or
+    /// the Wheel variant's root element.</summary>
     [Parameter] public string? Class { get; set; }
     /// <summary>
     /// When <c>true</c>, the time picker expands to fill its container width —
@@ -265,6 +292,7 @@ else
     /// shrink-wrap chain.
     /// </summary>
     [Parameter] public bool FullWidth { get; set; }
+    /// <summary>Unmatched attributes splatted onto the List variant's trigger button.</summary>
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     private bool _isOpen;

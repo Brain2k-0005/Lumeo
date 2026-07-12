@@ -32,7 +32,7 @@
         "name": "Values",
         "type": "IEnumerable<double>?",
         "default": null,
-        "description": null,
+        "description": "The data series to plot. A null or empty series renders a faint flat baseline instead of a chart. A single value renders as a flat line across the full width.",
         "isCascading": false,
         "captureUnmatched": false,
         "isEditorRequired": false
@@ -41,7 +41,7 @@
         "name": "Height",
         "type": "int",
         "default": "32",
-        "description": null,
+        "description": "Height of the chart in px. The viewBox width is always normalized to 100 units, so the SVG scales to fill its container's width. Default: 32.",
         "isCascading": false,
         "captureUnmatched": false,
         "isEditorRequired": false
@@ -50,7 +50,7 @@
         "name": "Color",
         "type": "string?",
         "default": null,
-        "description": null,
+        "description": "CSS color for the line/bars/area. Defaults to the theme's primary color (var(--color-primary, currentColor)) when unset.",
         "isCascading": false,
         "captureUnmatched": false,
         "isEditorRequired": false
@@ -59,7 +59,7 @@
         "name": "Type",
         "type": "SparkType",
         "default": "SparkType.Line",
-        "description": null,
+        "description": "Chart shape: a connected Line (default), a filled Area under the line, or discrete Bars.",
         "isCascading": false,
         "captureUnmatched": false,
         "isEditorRequired": false
@@ -67,8 +67,8 @@
       {
         "name": "ShowArea",
         "type": "bool",
-        "default": null,
-        "description": null,
+        "default": "false",
+        "description": "Fills the area under the line, without switching Type to Area explicitly.",
         "isCascading": false,
         "captureUnmatched": false,
         "isEditorRequired": false
@@ -76,8 +76,8 @@
       {
         "name": "ShowLast",
         "type": "bool",
-        "default": null,
-        "description": null,
+        "default": "false",
+        "description": "Highlights the last data point with a filled dot.",
         "isCascading": false,
         "captureUnmatched": false,
         "isEditorRequired": false
@@ -85,8 +85,8 @@
       {
         "name": "ShowTooltips",
         "type": "bool",
-        "default": null,
-        "description": "Render a marker dot at every data point with a native SVG &lt;title&gt; (hover tooltip showing the value) — point highlight + tooltips with no JS. Off by default. (#275)",
+        "default": "false",
+        "description": "Render a marker dot at every data point with a native SVG <title> (hover tooltip showing the value) — point highlight + tooltips with no JS. Off by default. (#275)",
         "isCascading": false,
         "captureUnmatched": false,
         "isEditorRequired": false
@@ -95,7 +95,7 @@
         "name": "StrokeWidth",
         "type": "double",
         "default": "1.5",
-        "description": null,
+        "description": "Line/outline stroke width. Applied with vector-effect=\"non-scaling-stroke\" so it stays a constant pixel width regardless of the SVG's scaled size. Default: 1.5.",
         "isCascading": false,
         "captureUnmatched": false,
         "isEditorRequired": false
@@ -104,7 +104,7 @@
         "name": "AriaLabel",
         "type": "string?",
         "default": "\"Trend\"",
-        "description": null,
+        "description": "Accessible name for the chart (aria-label on the svg, role=\"img\"). Default: \"Trend\".",
         "isCascading": false,
         "captureUnmatched": false,
         "isEditorRequired": false
@@ -113,7 +113,7 @@
         "name": "Class",
         "type": "string?",
         "default": null,
-        "description": null,
+        "description": "Additional CSS classes merged onto the root svg.",
         "isCascading": false,
         "captureUnmatched": false,
         "isEditorRequired": false
@@ -122,7 +122,7 @@
         "name": "AdditionalAttributes",
         "type": "Dictionary<string, object>?",
         "default": null,
-        "description": null,
+        "description": "Additional HTML attributes captured and forwarded to the root svg.",
         "isCascading": false,
         "captureUnmatched": true,
         "isEditorRequired": false
@@ -187,7 +187,7 @@
   "source": [
     {
       "path": "UI/Sparkline/Sparkline.razor",
-      "content": "@namespace Lumeo\n\n<svg viewBox=\"0 0 100 @Height\"\n     preserveAspectRatio=\"none\"\n     class=\"@CssClass\"\n     style=\"@InlineStyle\"\n     aria-label=\"@AriaLabel\"\n     role=\"img\"\n     @attributes=\"AdditionalAttributes\">\n    @((MarkupString)_shapesHtml)\n</svg>\n\n@code {\n    public enum SparkType { Line, Area, Bars }\n\n    [Parameter] public IEnumerable<double>? Values { get; set; }\n    [Parameter] public int Height { get; set; } = 32;\n    [Parameter] public string? Color { get; set; }\n    [Parameter] public SparkType Type { get; set; } = SparkType.Line;\n    [Parameter] public bool ShowArea { get; set; }\n    [Parameter] public bool ShowLast { get; set; }\n    /// <summary>\n    /// Render a marker dot at every data point with a native SVG <c>&lt;title&gt;</c>\n    /// (hover tooltip showing the value) — point highlight + tooltips with no JS.\n    /// Off by default. (#275)\n    /// </summary>\n    [Parameter] public bool ShowTooltips { get; set; }\n    [Parameter] public double StrokeWidth { get; set; } = 1.5;\n    [Parameter] public string? AriaLabel { get; set; } = \"Trend\";\n    [Parameter] public string? Class { get; set; }\n    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }\n\n    private string _shapesHtml = string.Empty;\n\n    private string CssClass => Cx.Merge(\"inline-block w-full align-middle\", Class);\n\n    private string InlineStyle\n    {\n        get\n        {\n            var style = $\"height: {Height}px;\";\n            if (!string.IsNullOrEmpty(Color)) style += $\" color: {Color};\";\n            return style;\n        }\n    }\n\n    protected override void OnParametersSet()\n    {\n        _shapesHtml = BuildShapes();\n    }\n\n    private string BuildShapes()\n    {\n        var list = Values?.ToList();\n        if (list is null || list.Count == 0)\n        {\n            // Baseline rect so the component has a visible footprint.\n            return $\"<rect x=\\\"0\\\" y=\\\"{F(Height / 2.0 - 0.5)}\\\" width=\\\"100\\\" height=\\\"1\\\" fill=\\\"var(--color-muted-foreground, currentColor)\\\" opacity=\\\"0.35\\\" />\";\n        }\n\n        var color = string.IsNullOrEmpty(Color) ? \"var(--color-primary, currentColor)\" : Color;\n        var min = list.Min();\n        var max = list.Max();\n        var range = max - min;\n        const double pad = 2.0;\n        var usable = Height - (pad * 2);\n\n        double ScaleY(double v)\n        {\n            if (range == 0) return Height / 2.0;\n            var norm = (v - min) / range;\n            return Height - pad - (norm * usable);\n        }\n\n        var sb = new System.Text.StringBuilder();\n\n        if (Type == SparkType.Bars)\n        {\n            var n = list.Count;\n            var slot = 100.0 / n;\n            var barWidth = Math.Max(0.5, slot - 1);\n            var zeroY = Height - pad;\n            for (int i = 0; i < n; i++)\n            {\n                var x = i * slot + (slot - barWidth) / 2.0;\n                var y = ScaleY(list[i]);\n                var h = Math.Max(0.5, zeroY - y);\n                sb.Append($\"<rect x=\\\"{F(x)}\\\" y=\\\"{F(y)}\\\" width=\\\"{F(barWidth)}\\\" height=\\\"{F(h)}\\\" fill=\\\"{color}\\\" />\");\n            }\n        }\n        else\n        {\n            var n = list.Count;\n            string pointsStr;\n            if (n == 1)\n            {\n                // A single data point can't form a line segment — a one-coordinate\n                // polyline (and the matching zero-width area polygon) render nothing.\n                // Emit a flat line across the full width so the sparkline stays visible.\n                var ly = ScaleY(list[0]);\n                pointsStr = $\"0,{F(ly)} 100,{F(ly)}\";\n            }\n            else\n            {\n                var pts = new System.Text.StringBuilder();\n                for (int i = 0; i < n; i++)\n                {\n                    var x = (double)i / (n - 1) * 100.0;\n                    var y = ScaleY(list[i]);\n                    if (i > 0) pts.Append(' ');\n                    pts.Append($\"{F(x)},{F(y)}\");\n                }\n                pointsStr = pts.ToString();\n            }\n\n            if (Type == SparkType.Area || ShowArea)\n            {\n                // pointsStr always spans x=0..100 (incl. the single-point flat line),\n                // so the area baseline polygon does too.\n                const double firstX = 0.0;\n                const double lastX = 100.0;\n                var polyPoints = $\"{F(firstX)},{F(Height)} {pointsStr} {F(lastX)},{F(Height)}\";\n                sb.Append($\"<polygon points=\\\"{polyPoints}\\\" fill=\\\"{color}\\\" fill-opacity=\\\"0.2\\\" stroke=\\\"none\\\" />\");\n                sb.Append($\"<polyline points=\\\"{pointsStr}\\\" fill=\\\"none\\\" stroke=\\\"{color}\\\" stroke-width=\\\"{F(StrokeWidth)}\\\" stroke-linecap=\\\"round\\\" stroke-linejoin=\\\"round\\\" vector-effect=\\\"non-scaling-stroke\\\" />\");\n            }\n            else\n            {\n                sb.Append($\"<polyline points=\\\"{pointsStr}\\\" fill=\\\"none\\\" stroke=\\\"{color}\\\" stroke-width=\\\"{F(StrokeWidth)}\\\" stroke-linecap=\\\"round\\\" stroke-linejoin=\\\"round\\\" vector-effect=\\\"non-scaling-stroke\\\" />\");\n            }\n        }\n\n        if (ShowLast && list.Count > 0)\n        {\n            double lx, ly;\n            if (Type == SparkType.Bars)\n            {\n                var n = list.Count;\n                var slot = 100.0 / n;\n                lx = (n - 1) * slot + slot / 2.0;\n                ly = ScaleY(list[^1]);\n            }\n            else\n            {\n                var n = list.Count;\n                lx = n == 1 ? 50.0 : 100.0;\n                ly = ScaleY(list[^1]);\n            }\n            var r = (Type == SparkType.Area || ShowArea) ? 2.75 : 2.25;\n            sb.Append($\"<circle cx=\\\"{F(lx)}\\\" cy=\\\"{F(ly)}\\\" r=\\\"{F(r)}\\\" fill=\\\"{color}\\\" />\");\n        }\n\n        // Per-point markers + native <title> hover tooltips (#275). Opt-in.\n        if (ShowTooltips)\n        {\n            var n = list.Count;\n            var slot = 100.0 / n;\n            for (int i = 0; i < n; i++)\n            {\n                var cx = Type == SparkType.Bars\n                    ? i * slot + slot / 2.0\n                    : (n == 1 ? 50.0 : (double)i / (n - 1) * 100.0);\n                var cy = ScaleY(list[i]);\n                sb.Append($\"<circle cx=\\\"{F(cx)}\\\" cy=\\\"{F(cy)}\\\" r=\\\"1.75\\\" fill=\\\"{color}\\\"><title>{F(list[i])}</title></circle>\");\n            }\n        }\n\n        return sb.ToString();\n    }\n\n    private static string F(double v) => v.ToString(\"0.##\", System.Globalization.CultureInfo.InvariantCulture);\n}\n"
+      "content": "@namespace Lumeo\n\n<svg viewBox=\"0 0 100 @Height\"\n     preserveAspectRatio=\"none\"\n     class=\"@CssClass\"\n     style=\"@InlineStyle\"\n     aria-label=\"@AriaLabel\"\n     role=\"img\"\n     @attributes=\"AdditionalAttributes\">\n    @((MarkupString)_shapesHtml)\n</svg>\n\n@code {\n    public enum SparkType { Line, Area, Bars }\n\n    /// <summary>The data series to plot. A null or empty series renders a faint flat baseline instead\n    /// of a chart. A single value renders as a flat line across the full width.</summary>\n    [Parameter] public IEnumerable<double>? Values { get; set; }\n    /// <summary>Height of the chart in px. The <c>viewBox</c> width is always normalized to 100 units,\n    /// so the SVG scales to fill its container's width. Default: 32.</summary>\n    [Parameter] public int Height { get; set; } = 32;\n    /// <summary>CSS color for the line/bars/area. Defaults to the theme's primary color\n    /// (<c>var(--color-primary, currentColor)</c>) when unset.</summary>\n    [Parameter] public string? Color { get; set; }\n    /// <summary>Chart shape: a connected <see cref=\"SparkType.Line\"/> (default), a filled\n    /// <see cref=\"SparkType.Area\"/> under the line, or discrete <see cref=\"SparkType.Bars\"/>.</summary>\n    [Parameter] public SparkType Type { get; set; } = SparkType.Line;\n    /// <summary>Fills the area under the line, without switching <see cref=\"Type\"/> to\n    /// <see cref=\"SparkType.Area\"/> explicitly.</summary>\n    [Parameter] public bool ShowArea { get; set; }\n    /// <summary>Highlights the last data point with a filled dot.</summary>\n    [Parameter] public bool ShowLast { get; set; }\n    /// <summary>\n    /// Render a marker dot at every data point with a native SVG <c>&lt;title&gt;</c>\n    /// (hover tooltip showing the value) — point highlight + tooltips with no JS.\n    /// Off by default. (#275)\n    /// </summary>\n    [Parameter] public bool ShowTooltips { get; set; }\n    /// <summary>Line/outline stroke width. Applied with <c>vector-effect=\"non-scaling-stroke\"</c> so it\n    /// stays a constant pixel width regardless of the SVG's scaled size. Default: 1.5.</summary>\n    [Parameter] public double StrokeWidth { get; set; } = 1.5;\n    /// <summary>Accessible name for the chart (<c>aria-label</c> on the <c>svg</c>, <c>role=\"img\"</c>).\n    /// Default: \"Trend\".</summary>\n    [Parameter] public string? AriaLabel { get; set; } = \"Trend\";\n    /// <summary>Additional CSS classes merged onto the root <c>svg</c>.</summary>\n    [Parameter] public string? Class { get; set; }\n    /// <summary>Additional HTML attributes captured and forwarded to the root <c>svg</c>.</summary>\n    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }\n\n    private string _shapesHtml = string.Empty;\n\n    private string CssClass => Cx.Merge(\"inline-block w-full align-middle\", Class);\n\n    private string InlineStyle\n    {\n        get\n        {\n            var style = $\"height: {Height}px;\";\n            if (!string.IsNullOrEmpty(Color)) style += $\" color: {Color};\";\n            return style;\n        }\n    }\n\n    protected override void OnParametersSet()\n    {\n        _shapesHtml = BuildShapes();\n    }\n\n    private string BuildShapes()\n    {\n        var list = Values?.ToList();\n        if (list is null || list.Count == 0)\n        {\n            // Baseline rect so the component has a visible footprint.\n            return $\"<rect x=\\\"0\\\" y=\\\"{F(Height / 2.0 - 0.5)}\\\" width=\\\"100\\\" height=\\\"1\\\" fill=\\\"var(--color-muted-foreground, currentColor)\\\" opacity=\\\"0.35\\\" />\";\n        }\n\n        var color = string.IsNullOrEmpty(Color) ? \"var(--color-primary, currentColor)\" : Color;\n        var min = list.Min();\n        var max = list.Max();\n        var range = max - min;\n        const double pad = 2.0;\n        var usable = Height - (pad * 2);\n\n        double ScaleY(double v)\n        {\n            if (range == 0) return Height / 2.0;\n            var norm = (v - min) / range;\n            return Height - pad - (norm * usable);\n        }\n\n        var sb = new System.Text.StringBuilder();\n\n        if (Type == SparkType.Bars)\n        {\n            var n = list.Count;\n            var slot = 100.0 / n;\n            var barWidth = Math.Max(0.5, slot - 1);\n            var zeroY = Height - pad;\n            for (int i = 0; i < n; i++)\n            {\n                var x = i * slot + (slot - barWidth) / 2.0;\n                var y = ScaleY(list[i]);\n                var h = Math.Max(0.5, zeroY - y);\n                sb.Append($\"<rect x=\\\"{F(x)}\\\" y=\\\"{F(y)}\\\" width=\\\"{F(barWidth)}\\\" height=\\\"{F(h)}\\\" fill=\\\"{color}\\\" />\");\n            }\n        }\n        else\n        {\n            var n = list.Count;\n            string pointsStr;\n            if (n == 1)\n            {\n                // A single data point can't form a line segment — a one-coordinate\n                // polyline (and the matching zero-width area polygon) render nothing.\n                // Emit a flat line across the full width so the sparkline stays visible.\n                var ly = ScaleY(list[0]);\n                pointsStr = $\"0,{F(ly)} 100,{F(ly)}\";\n            }\n            else\n            {\n                var pts = new System.Text.StringBuilder();\n                for (int i = 0; i < n; i++)\n                {\n                    var x = (double)i / (n - 1) * 100.0;\n                    var y = ScaleY(list[i]);\n                    if (i > 0) pts.Append(' ');\n                    pts.Append($\"{F(x)},{F(y)}\");\n                }\n                pointsStr = pts.ToString();\n            }\n\n            if (Type == SparkType.Area || ShowArea)\n            {\n                // pointsStr always spans x=0..100 (incl. the single-point flat line),\n                // so the area baseline polygon does too.\n                const double firstX = 0.0;\n                const double lastX = 100.0;\n                var polyPoints = $\"{F(firstX)},{F(Height)} {pointsStr} {F(lastX)},{F(Height)}\";\n                sb.Append($\"<polygon points=\\\"{polyPoints}\\\" fill=\\\"{color}\\\" fill-opacity=\\\"0.2\\\" stroke=\\\"none\\\" />\");\n                sb.Append($\"<polyline points=\\\"{pointsStr}\\\" fill=\\\"none\\\" stroke=\\\"{color}\\\" stroke-width=\\\"{F(StrokeWidth)}\\\" stroke-linecap=\\\"round\\\" stroke-linejoin=\\\"round\\\" vector-effect=\\\"non-scaling-stroke\\\" />\");\n            }\n            else\n            {\n                sb.Append($\"<polyline points=\\\"{pointsStr}\\\" fill=\\\"none\\\" stroke=\\\"{color}\\\" stroke-width=\\\"{F(StrokeWidth)}\\\" stroke-linecap=\\\"round\\\" stroke-linejoin=\\\"round\\\" vector-effect=\\\"non-scaling-stroke\\\" />\");\n            }\n        }\n\n        if (ShowLast && list.Count > 0)\n        {\n            double lx, ly;\n            if (Type == SparkType.Bars)\n            {\n                var n = list.Count;\n                var slot = 100.0 / n;\n                lx = (n - 1) * slot + slot / 2.0;\n                ly = ScaleY(list[^1]);\n            }\n            else\n            {\n                var n = list.Count;\n                lx = n == 1 ? 50.0 : 100.0;\n                ly = ScaleY(list[^1]);\n            }\n            var r = (Type == SparkType.Area || ShowArea) ? 2.75 : 2.25;\n            sb.Append($\"<circle cx=\\\"{F(lx)}\\\" cy=\\\"{F(ly)}\\\" r=\\\"{F(r)}\\\" fill=\\\"{color}\\\" />\");\n        }\n\n        // Per-point markers + native <title> hover tooltips (#275). Opt-in.\n        if (ShowTooltips)\n        {\n            var n = list.Count;\n            var slot = 100.0 / n;\n            for (int i = 0; i < n; i++)\n            {\n                var cx = Type == SparkType.Bars\n                    ? i * slot + slot / 2.0\n                    : (n == 1 ? 50.0 : (double)i / (n - 1) * 100.0);\n                var cy = ScaleY(list[i]);\n                sb.Append($\"<circle cx=\\\"{F(cx)}\\\" cy=\\\"{F(cy)}\\\" r=\\\"1.75\\\" fill=\\\"{color}\\\"><title>{F(list[i])}</title></circle>\");\n            }\n        }\n\n        return sb.ToString();\n    }\n\n    private static string F(double v) => v.ToString(\"0.##\", System.Globalization.CultureInfo.InvariantCulture);\n}\n"
     }
   ],
   "slots": [],
@@ -199,5 +199,5 @@
     "tests/Lumeo.Tests/Components/Features/GoalBatch2Tests.cs",
     "tests/Lumeo.Tests/Components/Sparkline/SparklineTests.cs"
   ],
-  "mdSummary": "# Sparkline\n\nInline SVG trend chart primitive — line, area, or bars for tables and KPI strips.\n\n**Package:** `Lumeo` · **Category:** Data Display/Status & Indicators\n**Docs:** https://lumeo.nativ.sh/components/sparkline\n\n## Parameters\n| Owner | Name | Type | Default | Description |\n|---|---|---|---|---|\n| Sparkline | Values | `IEnumerable<double>?` | `` |  |\n| Sparkline | Height | `int` | `32` |  |\n| Sparkline | Color | `string?` | `` |  |\n| Sparkline | Type | `SparkType` | `SparkType.Line` |  |\n| Sparkline | ShowArea | `bool` | `` |  |\n| Sparkline | ShowLast | `bool` | `` |  |\n| Sparkline | ShowTooltips | `bool` | `` | Render a marker dot at every data point with a native SVG &lt;title&gt; (hover tooltip showing the value) — point highlight + tooltips with no JS. Off by default. (#275) |\n| Sparkline | StrokeWidth | `double` | `1.5` |  |\n| Sparkline | AriaLabel | `string?` | `\"Trend\"` |  |\n| Sparkline | Class | `string?` | `` |  |\n| Sparkline | AdditionalAttributes | `Dictionary<string, object>?` | `` |  |\n\n## Slots\n- (none)\n\n## Events\n- (none)\n\n## Sub-components\n- (none)\n\n## Cascading values it expects\n- (none)\n\n## Services it injects\n- (none)\n\n## Keyboard\n—\n\n## Example\n```razor\n<Sparkline />\n```\n\n## CSS variables\n`--color-foreground`\n\n## Files\n- `UI/Sparkline/Sparkline.razor`\n"
+  "mdSummary": "# Sparkline\n\nInline SVG trend chart primitive — line, area, or bars for tables and KPI strips.\n\n**Package:** `Lumeo` · **Category:** Data Display/Status & Indicators\n**Docs:** https://lumeo.nativ.sh/components/sparkline\n\n## Parameters\n| Owner | Name | Type | Default | Description |\n|---|---|---|---|---|\n| Sparkline | Values | `IEnumerable<double>?` | `` | The data series to plot. A null or empty series renders a faint flat baseline instead of a chart. A single value renders as a flat line across the full width. |\n| Sparkline | Height | `int` | `32` | Height of the chart in px. The viewBox width is always normalized to 100 units, so the SVG scales to fill its container's width. Default: 32. |\n| Sparkline | Color | `string?` | `` | CSS color for the line/bars/area. Defaults to the theme's primary color (var(--color-primary, currentColor)) when unset. |\n| Sparkline | Type | `SparkType` | `SparkType.Line` | Chart shape: a connected Line (default), a filled Area under the line, or discrete Bars. |\n| Sparkline | ShowArea | `bool` | `false` | Fills the area under the line, without switching Type to Area explicitly. |\n| Sparkline | ShowLast | `bool` | `false` | Highlights the last data point with a filled dot. |\n| Sparkline | ShowTooltips | `bool` | `false` | Render a marker dot at every data point with a native SVG \\<title\\> (hover tooltip showing the value) — point highlight + tooltips with no JS. Off by default. (#275) |\n| Sparkline | StrokeWidth | `double` | `1.5` | Line/outline stroke width. Applied with vector-effect=\"non-scaling-stroke\" so it stays a constant pixel width regardless of the SVG's scaled size. Default: 1.5. |\n| Sparkline | AriaLabel | `string?` | `\"Trend\"` | Accessible name for the chart (aria-label on the svg, role=\"img\"). Default: \"Trend\". |\n| Sparkline | Class | `string?` | `` | Additional CSS classes merged onto the root svg. |\n| Sparkline | AdditionalAttributes | `Dictionary<string, object>?` | `` | Additional HTML attributes captured and forwarded to the root svg. |\n\n## Slots\n- (none)\n\n## Events\n- (none)\n\n## Sub-components\n- (none)\n\n## Cascading values it expects\n- (none)\n\n## Services it injects\n- (none)\n\n## Keyboard\n—\n\n## Example\n```razor\n<Sparkline />\n```\n\n## CSS variables\n`--color-foreground`\n\n## Files\n- `UI/Sparkline/Sparkline.razor`\n"
 }

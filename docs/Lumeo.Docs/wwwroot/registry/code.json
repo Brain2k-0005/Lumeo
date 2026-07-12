@@ -33,7 +33,7 @@
         "name": "Variant",
         "type": "string",
         "default": "\"inline\"",
-        "description": null,
+        "description": "Rendering style: \"inline\" (default) renders a compact inline <code> chip; \"block\" renders a padded, scrollable code block with preserved whitespace.",
         "isCascading": false,
         "captureUnmatched": false,
         "isEditorRequired": false
@@ -42,7 +42,7 @@
         "name": "Size",
         "type": "string?",
         "default": null,
-        "description": null,
+        "description": "Optional text-size utility suffix (e.g. \"sm\", \"lg\") appended as text-{Size}. Leave unset to use the variant's default size.",
         "isCascading": false,
         "captureUnmatched": false,
         "isEditorRequired": false
@@ -69,7 +69,7 @@
         "name": "Highlighter",
         "type": "Func<string, string?, MarkupString>?",
         "default": null,
-        "description": "Pluggable syntax highlighter: (code, language) =&gt; safe HTML. Plug in Prism / Shiki / highlight.js (or a server-side highlighter). The delegate MUST return SAFE HTML — escape untrusted source. Core ships no built-in highlighter on purpose (dependency-free), mirroring StreamingText.MarkdownRenderer. Ignored unless Source is set.",
+        "description": "Pluggable syntax highlighter: (code, language) => safe HTML. Plug in Prism / Shiki / highlight.js (or a server-side highlighter). The delegate MUST return SAFE HTML — escape untrusted source. Core ships no built-in highlighter on purpose (dependency-free), mirroring StreamingText.MarkdownRenderer. Ignored unless Source is set.",
         "isCascading": false,
         "captureUnmatched": false,
         "isEditorRequired": false
@@ -78,7 +78,7 @@
         "name": "ChildContent",
         "type": "RenderFragment?",
         "default": null,
-        "description": null,
+        "description": "Content rendered as-is when Source is null. Use for static markup/content instead of a plain source string.",
         "isCascading": false,
         "captureUnmatched": false,
         "isEditorRequired": false
@@ -87,7 +87,7 @@
         "name": "Class",
         "type": "string?",
         "default": null,
-        "description": null,
+        "description": "Additional CSS classes merged onto the <code> element.",
         "isCascading": false,
         "captureUnmatched": false,
         "isEditorRequired": false
@@ -96,7 +96,7 @@
         "name": "AdditionalAttributes",
         "type": "Dictionary<string, object>?",
         "default": null,
-        "description": null,
+        "description": "Captures unmatched attributes and applies them to the <code> element.",
         "isCascading": false,
         "captureUnmatched": true,
         "isEditorRequired": false
@@ -165,7 +165,7 @@
   "source": [
     {
       "path": "UI/Code/Code.razor",
-      "content": "@namespace Lumeo\n\n<code class=\"@CssClass\" data-language=\"@Language\" @attributes=\"AdditionalAttributes\">@Body</code>\n\n@code {\n    [Parameter] public string Variant { get; set; } = \"inline\";\n    [Parameter] public string? Size { get; set; }\n\n    /// <summary>\n    /// Raw source to render (block variant). When set together with\n    /// <see cref=\"Highlighter\"/> the output is syntax-highlighted; otherwise the\n    /// source is rendered as escaped plain text. Falls back to\n    /// <see cref=\"ChildContent\"/> when null. (#196)\n    /// </summary>\n    [Parameter] public string? Source { get; set; }\n\n    /// <summary>Language hint (e.g. \"csharp\", \"ts\") — emitted as <c>data-language</c>\n    /// and passed to <see cref=\"Highlighter\"/>.</summary>\n    [Parameter] public string? Language { get; set; }\n\n    /// <summary>\n    /// Pluggable syntax highlighter: <c>(code, language) =&gt; safe HTML</c>. Plug in\n    /// Prism / Shiki / highlight.js (or a server-side highlighter). The delegate\n    /// MUST return SAFE HTML — escape untrusted source. Core ships no built-in\n    /// highlighter on purpose (dependency-free), mirroring\n    /// <c>StreamingText.MarkdownRenderer</c>. Ignored unless <see cref=\"Source\"/> is set.\n    /// </summary>\n    [Parameter] public Func<string, string?, MarkupString>? Highlighter { get; set; }\n\n    [Parameter] public RenderFragment? ChildContent { get; set; }\n    [Parameter] public string? Class { get; set; }\n    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }\n\n    private RenderFragment Body => builder =>\n    {\n        if (Source is not null)\n        {\n            if (Highlighter is not null)\n                builder.AddContent(0, Highlighter(Source, Language)); // consumer-sanitized HTML\n            else\n                builder.AddContent(0, Source);                        // escaped plain text\n        }\n        else\n        {\n            builder.AddContent(0, ChildContent);\n        }\n    };\n\n    private string BaseClasses => Variant switch\n    {\n        \"block\" => \"block whitespace-pre rounded-lg bg-muted p-4 font-mono text-sm overflow-x-auto\",\n        _ => \"relative rounded bg-muted px-[0.3rem] py-[0.2rem] font-mono text-sm font-semibold\"\n    };\n\n    private string CssClass\n    {\n        get\n        {\n            var classes = new List<string> { BaseClasses };\n\n            if (!string.IsNullOrEmpty(Size))\n                classes.Add($\"text-{Size}\");\n\n            if (!string.IsNullOrEmpty(Class))\n                classes.Add(Class);\n\n            return string.Join(\" \", classes);\n        }\n    }\n}\n"
+      "content": "@namespace Lumeo\n\n<code class=\"@CssClass\" data-language=\"@Language\" @attributes=\"AdditionalAttributes\">@Body</code>\n\n@code {\n    /// <summary>Rendering style: <c>\"inline\"</c> (default) renders a compact inline\n    /// <c>&lt;code&gt;</c> chip; <c>\"block\"</c> renders a padded, scrollable code block\n    /// with preserved whitespace.</summary>\n    [Parameter] public string Variant { get; set; } = \"inline\";\n\n    /// <summary>Optional text-size utility suffix (e.g. <c>\"sm\"</c>, <c>\"lg\"</c>) appended\n    /// as <c>text-{Size}</c>. Leave unset to use the variant's default size.</summary>\n    [Parameter] public string? Size { get; set; }\n\n    /// <summary>\n    /// Raw source to render (block variant). When set together with\n    /// <see cref=\"Highlighter\"/> the output is syntax-highlighted; otherwise the\n    /// source is rendered as escaped plain text. Falls back to\n    /// <see cref=\"ChildContent\"/> when null. (#196)\n    /// </summary>\n    [Parameter] public string? Source { get; set; }\n\n    /// <summary>Language hint (e.g. \"csharp\", \"ts\") — emitted as <c>data-language</c>\n    /// and passed to <see cref=\"Highlighter\"/>.</summary>\n    [Parameter] public string? Language { get; set; }\n\n    /// <summary>\n    /// Pluggable syntax highlighter: <c>(code, language) =&gt; safe HTML</c>. Plug in\n    /// Prism / Shiki / highlight.js (or a server-side highlighter). The delegate\n    /// MUST return SAFE HTML — escape untrusted source. Core ships no built-in\n    /// highlighter on purpose (dependency-free), mirroring\n    /// <c>StreamingText.MarkdownRenderer</c>. Ignored unless <see cref=\"Source\"/> is set.\n    /// </summary>\n    [Parameter] public Func<string, string?, MarkupString>? Highlighter { get; set; }\n\n    /// <summary>Content rendered as-is when <see cref=\"Source\"/> is null. Use for\n    /// static markup/content instead of a plain source string.</summary>\n    [Parameter] public RenderFragment? ChildContent { get; set; }\n\n    /// <summary>Additional CSS classes merged onto the <c>&lt;code&gt;</c> element.</summary>\n    [Parameter] public string? Class { get; set; }\n\n    /// <summary>Captures unmatched attributes and applies them to the <c>&lt;code&gt;</c> element.</summary>\n    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }\n\n    private RenderFragment Body => builder =>\n    {\n        if (Source is not null)\n        {\n            if (Highlighter is not null)\n                builder.AddContent(0, Highlighter(Source, Language)); // consumer-sanitized HTML\n            else\n                builder.AddContent(0, Source);                        // escaped plain text\n        }\n        else\n        {\n            builder.AddContent(0, ChildContent);\n        }\n    };\n\n    private string BaseClasses => Variant switch\n    {\n        \"block\" => \"block whitespace-pre rounded-lg bg-muted p-4 font-mono text-sm overflow-x-auto\",\n        _ => \"relative rounded bg-muted px-[0.3rem] py-[0.2rem] font-mono text-sm font-semibold\"\n    };\n\n    private string CssClass\n    {\n        get\n        {\n            var classes = new List<string> { BaseClasses };\n\n            if (!string.IsNullOrEmpty(Size))\n                classes.Add($\"text-{Size}\");\n\n            if (!string.IsNullOrEmpty(Class))\n                classes.Add(Class);\n\n            return string.Join(\" \", classes);\n        }\n    }\n}\n"
     }
   ],
   "slots": [
@@ -173,7 +173,7 @@
       "name": "ChildContent",
       "owner": "Code",
       "type": "RenderFragment?",
-      "description": null
+      "description": "Content rendered as-is when Source is null. Use for static markup/content instead of a plain source string."
     }
   ],
   "serviceDependencies": [],
@@ -184,5 +184,5 @@
     "tests/Lumeo.Tests/Components/Code/CodeTests.cs",
     "tests/Lumeo.Tests/Components/Features/GoalBatch2Tests.cs"
   ],
-  "mdSummary": "# Code\n\nInline or block monospace code snippet with optional copy button.\n\n**Package:** `Lumeo` · **Category:** Typography\n**Docs:** https://lumeo.nativ.sh/components/code\n\n## Parameters\n| Owner | Name | Type | Default | Description |\n|---|---|---|---|---|\n| Code | Variant | `string` | `\"inline\"` |  |\n| Code | Size | `string?` | `` |  |\n| Code | Source | `string?` | `` | Raw source to render (block variant). When set together with Highlighter the output is syntax-highlighted; otherwise the source is rendered as escaped plain text. Falls back to ChildContent when null. (#196) |\n| Code | Language | `string?` | `` | Language hint (e.g. \"csharp\", \"ts\") — emitted as data-language and passed to Highlighter. |\n| Code | Highlighter | `Func<string, string?, MarkupString>?` | `` | Pluggable syntax highlighter: (code, language) =&gt; safe HTML. Plug in Prism / Shiki / highlight.js (or a server-side highlighter). The delegate MUST return SAFE HTML — escape untrusted source. Core ships no built-in highlighter on purpose (dependency-free), mirroring StreamingText.MarkdownRenderer. Ignored unless Source is set. |\n| Code | ChildContent | `RenderFragment?` | `` |  |\n| Code | Class | `string?` | `` |  |\n| Code | AdditionalAttributes | `Dictionary<string, object>?` | `` |  |\n\n## Slots\n- `ChildContent` (Code) — RenderFragment slot\n\n## Events\n- (none)\n\n## Sub-components\n- (none)\n\n## Cascading values it expects\n- (none)\n\n## Services it injects\n- (none)\n\n## Keyboard\n—\n\n## Example\n```razor\n<Code />\n```\n\n## CSS variables\n`--color-muted`, `--radius`\n\n## Files\n- `UI/Code/Code.razor`\n"
+  "mdSummary": "# Code\n\nInline or block monospace code snippet with optional copy button.\n\n**Package:** `Lumeo` · **Category:** Typography\n**Docs:** https://lumeo.nativ.sh/components/code\n\n## Parameters\n| Owner | Name | Type | Default | Description |\n|---|---|---|---|---|\n| Code | Variant | `string` | `\"inline\"` | Rendering style: \"inline\" (default) renders a compact inline \\<code\\> chip; \"block\" renders a padded, scrollable code block with preserved whitespace. |\n| Code | Size | `string?` | `` | Optional text-size utility suffix (e.g. \"sm\", \"lg\") appended as text-{Size}. Leave unset to use the variant's default size. |\n| Code | Source | `string?` | `` | Raw source to render (block variant). When set together with Highlighter the output is syntax-highlighted; otherwise the source is rendered as escaped plain text. Falls back to ChildContent when null. (#196) |\n| Code | Language | `string?` | `` | Language hint (e.g. \"csharp\", \"ts\") — emitted as data-language and passed to Highlighter. |\n| Code | Highlighter | `Func<string, string?, MarkupString>?` | `` | Pluggable syntax highlighter: (code, language) =\\> safe HTML. Plug in Prism / Shiki / highlight.js (or a server-side highlighter). The delegate MUST return SAFE HTML — escape untrusted source. Core ships no built-in highlighter on purpose (dependency-free), mirroring StreamingText.MarkdownRenderer. Ignored unless Source is set. |\n| Code | ChildContent | `RenderFragment?` | `` | Content rendered as-is when Source is null. Use for static markup/content instead of a plain source string. |\n| Code | Class | `string?` | `` | Additional CSS classes merged onto the \\<code\\> element. |\n| Code | AdditionalAttributes | `Dictionary<string, object>?` | `` | Captures unmatched attributes and applies them to the \\<code\\> element. |\n\n## Slots\n- `ChildContent` (Code) — Content rendered as-is when Source is null. Use for static markup/content instead of a plain source string.\n\n## Events\n- (none)\n\n## Sub-components\n- (none)\n\n## Cascading values it expects\n- (none)\n\n## Services it injects\n- (none)\n\n## Keyboard\n—\n\n## Example\n```razor\n<Code />\n```\n\n## CSS variables\n`--color-muted`, `--radius`\n\n## Files\n- `UI/Code/Code.razor`\n"
 }
