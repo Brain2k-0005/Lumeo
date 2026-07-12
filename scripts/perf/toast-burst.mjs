@@ -42,11 +42,28 @@ async function measureOnce(page) {
     { timeout: 30_000 },
   );
 
-  await page.evaluate((quietMs) => {
+  // Start the clock inside the page's own 'click' handler on the burst
+  // button — fired the moment the click actually lands there — NOT when
+  // page.click() below sends the CDP command. Previously t0 was captured in
+  // the evaluate() below, armed BEFORE page.click()'s CDP round trip +
+  // actionability checks, which folded that overhead into the reported
+  // settle time even though the docs claim timing starts at the trigger and
+  // excludes Playwright/CDP time. See the identical fix/comment in
+  // datagrid-100k.mjs's armAndClick.
+  const toastBurstSelector = '[data-testid="perfbench-toast-burst"]';
+  await page.evaluate((selector) => {
     window.__perfDone = false;
+    window.__perfT0 = null;
+    document.querySelector(selector).addEventListener(
+      'click',
+      () => { window.__perfT0 = performance.now(); },
+      { capture: true, once: true },
+    );
+  }, toastBurstSelector);
+
+  await page.evaluate((quietMs) => {
     let lastMutation = 0;
     let seen = false;
-    const t0 = performance.now();
     const obs = new MutationObserver(() => {
       seen = true;
       lastMutation = performance.now();
@@ -80,7 +97,7 @@ async function measureOnce(page) {
         obs.disconnect();
         document.removeEventListener('animationstart', onAnimStart, true);
         document.removeEventListener('animationend', onAnimEnd, true);
-        window.__perfResult = performance.now() - t0;
+        window.__perfResult = performance.now() - window.__perfT0;
         window.__perfDone = true;
         return;
       }
@@ -88,7 +105,7 @@ async function measureOnce(page) {
     }
     requestAnimationFrame(poll);
   }, QUIET_WINDOW_MS);
-  await page.click('[data-testid="perfbench-toast-burst"]', { timeout: 5_000, noWaitAfter: true }).catch(() => {});
+  await page.click(toastBurstSelector, { timeout: 5_000, noWaitAfter: true }).catch(() => {});
   await page.waitForFunction(() => window.__perfDone === true, undefined, { timeout: 30_000 });
   const settleMs = await page.evaluate(() => window.__perfResult);
 

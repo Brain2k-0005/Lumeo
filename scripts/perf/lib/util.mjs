@@ -43,15 +43,20 @@ export function writeResult(filename, data) {
   return full;
 }
 
-// A fresh page per run isolates each measurement from GC/JIT warm-up carried
-// over from a previous run — closer to what a real user's first visit sees,
-// and avoids one run's leftover DOM/timers skewing the next.
+// A fresh, isolated BrowserContext per run — not just a fresh page in the
+// SAME context — isolates each measurement from GC/JIT warm-up, DOM/timer
+// leftovers, AND network-level state (HTTP cache, WASM/script cache,
+// cookies, storage) carried over from a previous run. browser.newPage() with
+// no context reuses one shared context for every run, so run 2-5 would see a
+// warm HTTP/WASM cache from run 1 — closer to what a real user's first visit
+// sees, matching README.md's "no warm-up state carries over between runs".
 export async function withFreshPage(browser, fn) {
-  const page = await browser.newPage();
+  const context = await browser.newContext();
+  const page = await context.newPage();
   try {
     return await fn(page);
   } finally {
-    await page.close();
+    await context.close();
   }
 }
 

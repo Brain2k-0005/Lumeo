@@ -35,6 +35,24 @@ async function gotoReady(page) {
 }
 
 async function armAndClick(page, { armFn, clickSelector, resultTimeoutMs = 30_000 }) {
+  // Start the clock inside the page's own 'click' handler on the target —
+  // fired the moment the click actually lands there (target phase, before
+  // any ancestor-delegated handler like Blazor's own runs in the bubble
+  // phase) — NOT when Playwright's page.click() below sends the CDP command.
+  // Previously t0 was captured in armFn at arm time, before page.click()'s
+  // CDP round trip + actionability checks, which folded that overhead into
+  // the reported duration even though the docs claim timing starts at the
+  // trigger and excludes Playwright/CDP time. armFn now reads window.__perfT0
+  // (set here) instead of computing its own t0.
+  await page.evaluate((selector) => {
+    window.__perfDone = false;
+    window.__perfT0 = null;
+    document.querySelector(selector).addEventListener(
+      'click',
+      () => { window.__perfT0 = performance.now(); },
+      { capture: true, once: true },
+    );
+  }, clickSelector);
   await page.evaluate(armFn);
   await page.click(clickSelector, { timeout: 5_000, noWaitAfter: true }).catch(() => {});
   await page.waitForFunction(() => window.__perfDone === true, undefined, { timeout: resultTimeoutMs });
@@ -48,18 +66,18 @@ async function measureOnce(page) {
   //    row to land in the DOM.
   const initialRenderMs = await armAndClick(page, {
     armFn: () => {
-      window.__perfDone = false;
       // Observe the stable DataGrid ROOT, not the <tbody>: Blazor's diff
       // replaces the whole <tbody> element (a different Razor @if branch —
       // empty state vs loaded rows), so a MutationObserver bound to the
       // pre-load tbody node goes stale/detached the moment that swap happens
-      // and never sees the real row insertion.
+      // and never sees the real row insertion. window.__perfT0 is set by
+      // armAndClick's own click listener at the moment the click actually
+      // lands, not here.
       const root = document.querySelector('[data-slot="datagrid"]');
-      const t0 = performance.now();
       const obs = new MutationObserver(() => {
         if (root.querySelector('tbody[data-slot="datagrid-body"] tr[data-slot="datagrid-row"]')) {
           obs.disconnect();
-          window.__perfResult = performance.now() - t0;
+          window.__perfResult = performance.now() - window.__perfT0;
           window.__perfDone = true;
         }
       });
@@ -97,13 +115,11 @@ async function measureOnce(page) {
   //    the same synchronous pass, so this covers that whole cost).
   const sortMs = await armAndClick(page, {
     armFn: () => {
-      window.__perfDone = false;
       const th = document.querySelector('thead th[aria-colindex="5"]');
-      const t0 = performance.now();
       const obs = new MutationObserver(() => {
         if (th.getAttribute('aria-sort') !== 'none') {
           obs.disconnect();
-          window.__perfResult = performance.now() - t0;
+          window.__perfResult = performance.now() - window.__perfT0;
           window.__perfDone = true;
         }
       });
