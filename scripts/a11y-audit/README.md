@@ -48,10 +48,13 @@ committed state.
   green, since that would silently accept new debt instead of catching it.
 - `baseline.json` — committed. The accepted-but-not-yet-fixed critical/serious
   violations as of the last triage, keyed by `(component, rule)`. A fix makes
-  its entry stale (`check-baseline.mjs` will say so); prune it in the same PR
-  as the fix so the baseline actually shrinks over time. Never add an entry
-  here as a rubber stamp — only for a real finding you're deliberately
-  deferring, with a reason.
+  its entry stale, and `check-baseline.mjs` FAILS the gate on any stale entry
+  (not just advisory) — prune it in the same PR as the fix. This is enforced
+  because the key is `(component, rule)`, not per-node: a stale entry left in
+  place would still match a later, genuinely different violation under that
+  same rule and silently wave it through as "known debt" instead of failing
+  it as NEW. Never add an entry here as a rubber stamp — only for a real
+  finding you're deliberately deferring, with a reason.
 - `exclusions.json` — committed. Confirmed **false positives** — findings
   caused by shared docs-app chrome or the audit harness itself, not by the
   audited component. Excluded from both the report totals and the baseline

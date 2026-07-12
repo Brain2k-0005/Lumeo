@@ -461,6 +461,24 @@ public static class ComponentsApiEmitter
         "ArrowRight", "Home", "End", "PageUp", "PageDown", "Delete", "Backspace", "ContextMenu", "F10", "F2",
     };
 
+    // A `.ToString("F2", ...)` / `.ToString("F2")` numeric format-specifier argument, so it
+    // can be stripped before scanning for key literals — "F2"/"F10" collide with common
+    // .NET custom numeric format strings (2/10 decimal places), which would otherwise be
+    // misread as a handled KeyboardEventArgs.Key value even though the component never
+    // compares against it (e.g. Tour.razor formats a spotlight radius with `ToString("F2",
+    // CultureInfo.InvariantCulture)` and separately handles Escape/ArrowLeft/ArrowRight —
+    // the old naive `text.Contains("\"F2\"")` scan reported F2 as a handled key for it).
+    // Matching (not requiring) exact key-comparison syntax deliberately, since C# has many
+    // ways to compare `.Key` against a literal — `==`, `is "X" or "Y"`, `case "X":`, a
+    // `.Key switch { "X" or "Y" => ... }` expression, even a tuple pattern like
+    // `(IsHorizontal, e.Key) switch { (true, "ArrowLeft") => ... }` — trying to enumerate
+    // every comparison shape is an arms race against C# syntax that WILL miss real handlers
+    // (confirmed: an earlier, stricter version of this fix dropped ArrowLeft/ArrowRight from
+    // Carousel/RadioGroup/Kanban/Splitter/etc., all of which handle them via a switch
+    // expression or tuple pattern the stricter regex didn't recognize).
+    private static readonly Regex ToStringFormatArgPattern = new(
+        "\\.ToString\\(\\s*\"[^\"]*\"", RegexOptions.Compiled);
+
     /// <summary>
     /// Static a11y signal extraction from a component's .razor source: the ARIA roles and
     /// aria-* attributes it renders, the keyboard keys it handles, and whether it manages
@@ -488,8 +506,9 @@ public static class ComponentsApiEmitter
             if (text.Contains("@onkeydown") || text.Contains("KeyboardEventArgs"))
             {
                 keyboardInteractive = true;
+                var sanitized = ToStringFormatArgPattern.Replace(text, ".ToString(");
                 foreach (var k in KnownKeys)
-                    if (text.Contains("\"" + k + "\"")) keys.Add(k == " " ? "Space" : k);
+                    if (sanitized.Contains("\"" + k + "\"")) keys.Add(k == " " ? "Space" : k);
             }
             if (text.Contains("FocusAsync") || text.Contains("FocusElement") || text.Contains("tabindex"))
                 focusManaged = true;

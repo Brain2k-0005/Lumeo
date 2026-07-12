@@ -40,20 +40,29 @@ const baselineKey = (component, rule) => `${component}::${rule}`;
 const baselineSet = new Set(baseline.entries.map(e => baselineKey(e.component, e.rule)));
 
 // Each exclusion applies to one rule and matches individual violation NODES
-// via a regex against their target selector (joined). `component: null`/
-// omitted means "any component" (used for shell chrome that's identical on
-// every page, e.g. FactsRail, breadcrumb, docs-prose links).
+// via a regex against their target selector (joined) PLUS their raw outerHTML,
+// space-joined — axe's target selector is the SHORTEST selector unique enough
+// to identify the node on that specific page, so which of an element's classes
+// it includes is unpredictable and varies page-to-page (confirmed 2026-07-12:
+// the same FactsRail label span's target sometimes includes `tracking-wide`,
+// sometimes not, depending on what else needs disambiguating on that route).
+// The outerHTML always carries the full, stable class list, so class-based
+// exclusions should match against it; selector-structure exclusions (e.g. "is
+// this node a nav-wrapped breadcrumb child") still need the target, since an
+// ancestor's class isn't present in a leaf node's own outerHTML.
+// `component: null`/omitted means "any component" (used for shell chrome
+// that's identical on every page, e.g. FactsRail, breadcrumb, docs-prose links).
 const rulesExclusions = exclusions.exclusions.map(e => ({
     rule: e.rule,
     component: e.component ?? null,
     targetPattern: new RegExp(e.targetPattern),
 }));
 
-function isNodeExcluded(component, rule, target) {
+function isNodeExcluded(component, rule, matchable) {
     return rulesExclusions.some(ex =>
         ex.rule === rule &&
         (ex.component === null || ex.component === component) &&
-        ex.targetPattern.test(target));
+        ex.targetPattern.test(matchable));
 }
 
 if (!existsSync(reportsDir)) {
@@ -79,7 +88,8 @@ for (const file of reportFiles) {
         totalViolationInstances += v.nodes.length;
         const survivingNodes = v.nodes.filter(n => {
             const target = Array.isArray(n.target) ? n.target.join(' ') : String(n.target);
-            const excluded = isNodeExcluded(report.slug, v.id, target);
+            const matchable = `${target} ${n.html ?? ''}`;
+            const excluded = isNodeExcluded(report.slug, v.id, matchable);
             if (excluded) totalExcludedNodes++;
             return !excluded;
         });
@@ -103,9 +113,12 @@ console.log(`[check-baseline] ${totalViolationInstances} total violation node(s)
     `(${known.length} known/baselined, ${brandNew.length} NEW).`);
 
 if (stale.length > 0) {
-    console.log(`[check-baseline] ${stale.length} baseline entr${stale.length === 1 ? 'y is' : 'ies are'} no longer reproducing — ` +
-        `consider pruning baseline.json to shrink it:`);
-    for (const e of stale) console.log(`  - ${e.component} :: ${e.rule}`);
+    console.error(`\n[check-baseline] ${stale.length} baseline entr${stale.length === 1 ? 'y is' : 'ies are'} no longer reproducing:`);
+    for (const e of stale) console.error(`  - ${e.component} :: ${e.rule}`);
+    console.error(`\nPrune ${stale.length === 1 ? 'this entry' : 'these entries'} from baseline.json in the same PR as the fix. ` +
+        `This is enforced, not advisory: a stale (component, rule) pair stays in baselineSet even after the ` +
+        `violation it was accepted for is gone, so a LATER, genuinely different violation under that same rule ` +
+        `would silently match the stale key and be waved through as "known debt" instead of failing as NEW.`);
 }
 
 if (brandNew.length > 0) {
@@ -117,7 +130,10 @@ if (brandNew.length > 0) {
         `exclusions.json with a reason + a targetPattern precise enough to not also swallow real component ` +
         `findings under the same rule. Otherwise add them to baseline.json to accept as tracked debt ` +
         `(baseline should only grow when a violation is real and deliberately deferred, not as a rubber stamp).`);
+}
+
+if (brandNew.length > 0 || stale.length > 0) {
     process.exit(1);
 }
 
-console.log('[check-baseline] OK — no new critical/serious violations beyond baseline.');
+console.log('[check-baseline] OK — no new critical/serious violations beyond baseline, no stale entries.');

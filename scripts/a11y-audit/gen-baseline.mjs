@@ -17,9 +17,9 @@ const rulesExclusions = exclusions.exclusions.map(e => ({
     component: e.component ?? null,
     targetPattern: new RegExp(e.targetPattern),
 }));
-function isNodeExcluded(component, rule, target) {
+function isNodeExcluded(component, rule, matchable) {
     return rulesExclusions.some(ex =>
-        ex.rule === rule && (ex.component === null || ex.component === component) && ex.targetPattern.test(target));
+        ex.rule === rule && (ex.component === null || ex.component === component) && ex.targetPattern.test(matchable));
 }
 
 const reportFiles = readdirSync(reportsDir).filter(f => f.endsWith('.json') && f !== 'summary.json');
@@ -29,9 +29,13 @@ const findings = []; // full detail for axe-findings.json
 for (const file of reportFiles) {
     const report = JSON.parse(readFileSync(join(reportsDir, file), 'utf8'));
     for (const v of report.violations) {
+        // Match against target selector + raw outerHTML, not target alone — see
+        // check-baseline.mjs for why (axe's minimal-selector target unpredictably
+        // omits classes; outerHTML always has the full, stable class list).
         const survivingNodes = v.nodes.filter(n => {
             const target = Array.isArray(n.target) ? n.target.join(' ') : String(n.target);
-            return !isNodeExcluded(report.slug, v.id, target);
+            const matchable = `${target} ${n.html ?? ''}`;
+            return !isNodeExcluded(report.slug, v.id, matchable);
         });
         if (survivingNodes.length === 0) continue;
         if (GATED_IMPACTS.has(v.impact)) {
@@ -70,8 +74,9 @@ const outFindings = {
     gatedPairs: findings.filter(f => GATED_IMPACTS.has(f.impact)).length,
     findings,
 };
-writeFileSync(
-    'C:/Users/mike/AppData/Local/Temp/claude/C--Users-mike-RiderProjects-adepto-firma/ea83759a-b38b-4a07-b4ec-e0a4f7d60413/scratchpad/axe-findings.json',
-    JSON.stringify(outFindings, null, 2), 'utf8',
-);
-console.log(`Wrote ${findings.length} findings (all impacts) to scratchpad axe-findings.json`);
+// reports/ is gitignored (see README) — a fine home for this optional,
+// full-detail findings dump alongside the per-component report files it's
+// derived from. No machine-specific path so this runs for any maintainer.
+const findingsPath = join(reportsDir, 'axe-findings.json');
+writeFileSync(findingsPath, JSON.stringify(outFindings, null, 2), 'utf8');
+console.log(`Wrote ${findings.length} findings (all impacts) to ${findingsPath}`);

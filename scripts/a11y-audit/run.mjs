@@ -3,9 +3,10 @@
 //
 // axe-core WCAG A/AA sweep of every /components/<slug> docs route.
 //
-// 1. Builds docs/Lumeo.Docs (unless --no-build) and boots it with
-//    `dotnet run --no-build` (Blazor Server hosting — same pattern as
-//    .github/workflows/e2e.yml), waiting for the HTTP endpoint to answer.
+// 1. Rebuilds the Tailwind CSS bundles, builds docs/Lumeo.Docs (unless
+//    --no-build), and boots it with `dotnet run --no-build` (Blazor Server
+//    hosting — same pattern as .github/workflows/e2e.yml), waiting for the
+//    HTTP endpoint to answer.
 // 2. Enumerates every component slug from src/Lumeo/registry/registry.json
 //    (the single source of truth also used by the docs nav/catalog).
 // 3. For each /components/<slug> route: Puppeteer navigates, waits for
@@ -104,6 +105,16 @@ if (!baseUrl) {
     const docsProj = join(repoRoot, 'docs', 'Lumeo.Docs', 'Lumeo.Docs.csproj');
 
     if (!noBuild) {
+        // Same Tailwind steps .github/workflows/a11y-audit.yml runs before its own
+        // `dotnet build` — `dotnet build` alone does NOT regenerate the CSS bundles
+        // (no MSBuild hook for it), so without this a local full sweep or baseline
+        // regen would audit against stale/unstyled CSS, which can mask or mimic
+        // real a11y issues (e.g. a contrast fix that only changed Tailwind classes).
+        console.log('[a11y-audit] npm run build:css (root utilities)...');
+        await run('npm', ['run', 'build:css'], { cwd: repoRoot });
+        console.log('[a11y-audit] npm run css:build (docs/Lumeo.Docs)...');
+        await run('npm', ['run', 'css:build'], { cwd: join(repoRoot, 'docs', 'Lumeo.Docs') });
+
         console.log('[a11y-audit] dotnet build docs/Lumeo.Docs (Release)...');
         await run(dotnetExe, ['build', docsProj, '-c', 'Release', '--nologo']);
     }
