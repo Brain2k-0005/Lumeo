@@ -2342,20 +2342,29 @@ function getToolbarItems(toolbarId) {
     // P2). Filtering disabled elements out of the FINAL result — not just
     // individual arms — closes that gap for every arm at once.
     //
-    // The `[data-lumeo-toolbar-disabled]` arm exists so a custom focusable
-    // child that is ONLY discovered via the generic `[tabindex]` arm (e.g.
-    // Chip renders a `div role="button"` with no `disabled` attribute) can
-    // rejoin the candidate set after being forced out below. Once we write
-    // `tabindex="-1"` on such an element it stops matching
-    // `[tabindex]:not([tabindex="-1"])`, so without this marker arm a later
-    // aria-disabled removal would never bring it back — it would be
-    // permanently stranded outside the roving tab order (PR #356 round-9,
-    // Codex P2).
-    const selector = 'button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"]), [data-lumeo-toolbar-disabled]';
+    // The `[data-lumeo-toolbar-managed]` arm exists so ANY custom focusable
+    // child that is only discoverable via the generic `[tabindex]` arm (e.g.
+    // Chip renders a `div role="button"` with no `disabled` attribute) stays
+    // discoverable once roving tabindex has touched it. `applyToolbarRovingTabindex`
+    // writes `tabindex="-1"` to every INACTIVE item on every call — not just
+    // disabled ones — so on the very next call to this function, a merely-
+    // inactive Chip would no longer match `[tabindex]:not([tabindex="-1"])`
+    // and, having no native tag arm to fall back on, would vanish from the
+    // candidate list entirely: permanently unreachable by further roving
+    // (Home/End/arrow) even though it was never disabled (PR #356 round-10,
+    // Codex P2). Marking every such element the first time it is discovered —
+    // active, inactive, or disabled alike — keeps it matching this selector
+    // for the lifetime of the toolbar, regardless of what `tabindex` value
+    // roving/disabled-handling subsequently writes to it.
+    const selector = 'button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"]), [data-lumeo-toolbar-managed]';
     const candidates = Array.from(container.querySelectorAll(selector))
         .filter(el => !el.closest('[data-toolbar-overflow-trigger]'));
     const items = [];
     for (const el of candidates) {
+        // Tag on first sight, before the disabled branch below, so both
+        // disabled AND enabled-but-roving-inactive custom items keep matching
+        // the `[data-lumeo-toolbar-managed]` arm above on every later call.
+        if (!el.hasAttribute('data-lumeo-toolbar-managed')) el.setAttribute('data-lumeo-toolbar-managed', '');
         if (el.disabled || el.getAttribute('aria-disabled') === 'true') {
             // aria-disabled (unlike native `disabled`) does NOT make an element
             // unfocusable — e.g. a clickable disabled Chip renders a focusable
@@ -2369,21 +2378,9 @@ function getToolbarItems(toolbarId) {
             // Codex P2). Clear it here, at the one place that decides an
             // element is excluded, so every call site (initToolbarRoving,
             // moveToolbarFocus, focusToolbarEdge) is covered for free.
-            //
-            // The marker attribute is what lets this forced tabindex="-1" be
-            // undone later: it keeps the element matching the selector above
-            // even though it no longer matches the generic `[tabindex]` arm,
-            // so the NEXT call re-examines it instead of losing track of it
-            // (PR #356 round-9, Codex P2 — re-derived every pass, not a
-            // one-way mutation).
             if (el.getAttribute('tabindex') !== '-1') el.setAttribute('tabindex', '-1');
-            el.setAttribute('data-lumeo-toolbar-disabled', '');
             continue;
         }
-        // Exclusion reason is gone (aria-disabled removed / native disabled
-        // cleared) — drop the marker so this element stops depending on it to
-        // be found; it now qualifies as a normal focusable candidate again.
-        if (el.hasAttribute('data-lumeo-toolbar-disabled')) el.removeAttribute('data-lumeo-toolbar-disabled');
         items.push(el);
     }
     return items;
