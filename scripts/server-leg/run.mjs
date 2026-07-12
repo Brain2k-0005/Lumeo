@@ -46,14 +46,62 @@ function assert(cond, msg) {
   else { failures.push(msg); console.log('FAIL: ' + msg); }
 }
 
-function waitForServer(url, timeoutMs) {
+// serverProc/getLog let us reject a response that came from a DIFFERENT,
+// pre-existing process squatting on SERVERLEG_PORT rather than the host we
+// just spawned — same reasoning (and same fix) as
+// scripts/visual-regression/run.mjs's waitForServer: an exitCode check at
+// the moment an HTTP response arrives can't catch this, because Node only
+// flips exitCode once its own 'exit' event fires, which lags the real
+// bind-failure by however long dotnet takes to start up — while an HTTP
+// round trip to an ALREADY-RUNNING squatter on localhost can return in low
+// single-digit ms. Only trust a response once Kestrel's own "Now listening
+// on" log line names this exact port, since only OUR process's captured
+// stdout can produce that.
+function waitForServer(url, timeoutMs, serverProc, getLog) {
   const deadline = Date.now() + timeoutMs;
+  const port = new URL(url).port;
+  const listeningRe = new RegExp(`Now listening on:.*[:/]${port}\\b`);
   return new Promise((resolve, reject) => {
+    let settled = false;
+    const cleanup = () => { if (serverProc) serverProc.removeListener('exit', onExit); };
+    const onExit = (code) => {
+      if (settled) return;
+      settled = true;
+      reject(new Error(
+        `server host process exited (code ${code}) before it became reachable at ${url} — ` +
+        `likely a port collision (another process already bound that port) or a startup crash.`));
+    };
+    if (serverProc) serverProc.once('exit', onExit);
     const tryOnce = () => {
-      const req = http.get(url, (res) => { res.resume(); resolve(); });
+      if (settled) return;
+      if (serverProc && getLog && !listeningRe.test(getLog())) {
+        if (Date.now() > deadline) {
+          settled = true;
+          cleanup();
+          reject(new Error(
+            `server host never logged "Now listening on" for port ${port} within ${timeoutMs}ms ` +
+            `(port collision or startup failure). Last output:\n${getLog().slice(-2000)}`));
+        } else {
+          setTimeout(tryOnce, 300);
+        }
+        return;
+      }
+      const req = http.get(url, (res) => {
+        res.resume();
+        if (settled) return;
+        settled = true;
+        cleanup();
+        resolve();
+      });
       req.on('error', () => {
-        if (Date.now() > deadline) reject(new Error(`server host did not come up at ${url} within ${timeoutMs}ms`));
-        else setTimeout(tryOnce, 500);
+        if (settled) return;
+        if (Date.now() > deadline) {
+          settled = true;
+          cleanup();
+          reject(new Error(`server host did not come up at ${url} within ${timeoutMs}ms`));
+        } else {
+          setTimeout(tryOnce, 500);
+        }
       });
       req.setTimeout(2000, () => req.destroy());
     };
@@ -62,8 +110,18 @@ function waitForServer(url, timeoutMs) {
 }
 
 async function main() {
-  console.log(`Spawning Blazor Server host on ${BASE_URL} (net10.0, --arch x64) ...`);
-  const serverProc = spawn(DOTNET_EXE, ['run', '--project', HOST_PROJECT, '--arch', 'x64', '-c', 'Debug', '--no-build', '--urls', BASE_URL], {
+  // Build by default — same reasoning as the visual-regression leg
+  // (scripts/visual-regression/run.mjs): a bare `--no-build` silently runs
+  // whatever Debug/x64 output happens to already be on disk, which in a
+  // clean checkout (or after source changes since the last manual build) is
+  // either missing (dotnet run exits before the host ever comes up) or
+  // stale (the leg exercises code that doesn't match the commit under
+  // review, making PASS/FAIL meaningless). Only skip the build via an
+  // explicit opt-in, mirroring VR_NO_BUILD=1, for CI jobs that pre-build.
+  const NO_BUILD = process.env.SERVERLEG_NO_BUILD === '1';
+  console.log(`Spawning Blazor Server host on ${BASE_URL} (net10.0, --arch x64${NO_BUILD ? ', --no-build' : ''}) ...`);
+  const runArgs = ['run', '--project', HOST_PROJECT, '--arch', 'x64', '-c', 'Debug', ...(NO_BUILD ? ['--no-build'] : []), '--urls', BASE_URL];
+  const serverProc = spawn(DOTNET_EXE, runArgs, {
     cwd: REPO_ROOT,
     env: { ...process.env, ASPNETCORE_ENVIRONMENT: 'Development' },
     stdio: ['ignore', 'pipe', 'pipe'],
@@ -71,8 +129,11 @@ async function main() {
   let serverLog = '';
   serverProc.stdout.on('data', (d) => { serverLog += d; });
   serverProc.stderr.on('data', (d) => { serverLog += d; });
+  // 90s (not 60s): now that we build by default (see NO_BUILD above), the
+  // deadline has to cover an on-demand Debug build, not just process
+  // startup against an already-built output.
   try {
-    await waitForServer(BASE_URL, 60_000);
+    await waitForServer(BASE_URL, 90_000, serverProc, () => serverLog);
   } catch (e) {
     console.error(serverLog.slice(-4000));
     throw e;

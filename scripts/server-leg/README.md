@@ -9,11 +9,16 @@ Dialog) under it.
 ## Run
 
 ```bash
-cd tests/Lumeo.Tests.ServerHost && dotnet build --arch x64          # once
-cd scripts/server-leg && npm install                                 # once
-node run.mjs               # 200ms RTT (default)
+cd scripts/server-leg && npm install   # once — also fetches Playwright's Chromium
+node run.mjs               # 200ms RTT (default; builds the host on the fly)
 node run.mjs --rtt=500     # heavier RTT
 ```
+
+`node run.mjs` builds `tests/Lumeo.Tests.ServerHost` (Debug/x64) itself before
+launching it, so the leg always exercises the checkout it's run against. Set
+`SERVERLEG_NO_BUILD=1` to reuse an already-built output instead (e.g. a CI job
+that pre-builds in an earlier step) — only do this when you're certain the
+existing build matches the commit under test.
 
 ## Why CDP throttling, not a server-side delay middleware
 

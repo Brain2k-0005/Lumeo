@@ -95,14 +95,29 @@ function slugFor(route) {
   return route.replace(/^\/components\//, '').replace(/\//g, '-');
 }
 
-// serverProc is OPTIONAL — passed only when this script spawned its own docs
-// dev-server (not when --base-url points at an externally-running instance).
-// Guards against the "port-squatting" corruption this port was chosen to
-// avoid in the first place: if our spawn hit address-in-use and exited, an
-// HTTP response at `url` came from a DIFFERENT, pre-existing process — not
-// the checkout we're about to sweep. We refuse to treat that as "ready".
-function waitForServer(url, timeoutMs, serverProc) {
+// serverProc/getLog are OPTIONAL — passed only when this script spawned its
+// own docs dev-server (not when --base-url points at an externally-running
+// instance). Guards against the "port-squatting" corruption this port was
+// chosen to avoid in the first place: if our spawn lost an address-in-use
+// race, an HTTP response at `url` can come from a DIFFERENT, pre-existing
+// process — not the checkout we're about to sweep.
+//
+// An exitCode check at the moment the HTTP response arrives is NOT enough:
+// Node only flips serverProc.exitCode once its own 'exit' event fires, which
+// lags the actual OS-level bind failure by however long dotnet takes to
+// start up and attempt the bind (real, observable delay) — while an HTTP
+// round trip to an ALREADY-RUNNING squatter on localhost can complete in
+// low single-digit ms. That leaves a window where exitCode is still null
+// (our process hasn't gotten around to failing yet) even though the
+// response came from someone else entirely.
+// Instead, wait for Kestrel's own "Now listening on" log line naming this
+// port — it only prints once OUR process has actually bound the socket, so
+// it can't be spoofed by a pre-existing process's response the way a bare
+// HTTP poll can.
+function waitForServer(url, timeoutMs, serverProc, getLog) {
   const deadline = Date.now() + timeoutMs;
+  const port = new URL(url).port;
+  const listeningRe = new RegExp(`Now listening on:.*[:/]${port}\\b`);
   return new Promise((resolve, reject) => {
     let settled = false;
     const cleanup = () => { if (serverProc) serverProc.removeListener('exit', onExit); };
@@ -116,20 +131,24 @@ function waitForServer(url, timeoutMs, serverProc) {
     if (serverProc) serverProc.once('exit', onExit);
     const tryOnce = () => {
       if (settled) return;
-      const req = http.get(url, (res) => {
-        res.resume();
-        if (settled) return;
-        // Our own spawn may have ALREADY exited (e.g. lost an address-in-use
-        // race) even though something answered at this URL — that response
-        // is from an unrelated process squatting on the port, not our build.
-        if (serverProc && serverProc.exitCode !== null) {
+      if (serverProc && getLog && !listeningRe.test(getLog())) {
+        // Our own process hasn't proven it bound this exact port yet — do
+        // NOT probe the URL at all, since any response right now could only
+        // be a squatter (we know we haven't bound it ourselves).
+        if (Date.now() > deadline) {
           settled = true;
           cleanup();
           reject(new Error(
-            `docs dev-server process already exited (code ${serverProc.exitCode}) — the response at ` +
-            `${url} came from a different, pre-existing process (port collision).`));
-          return;
+            `docs dev-server never logged "Now listening on" for port ${port} within ${timeoutMs}ms ` +
+            `(port collision or startup failure). Last output:\n${getLog().slice(-2000)}`));
+        } else {
+          setTimeout(tryOnce, 300);
         }
+        return;
+      }
+      const req = http.get(url, (res) => {
+        res.resume();
+        if (settled) return;
         settled = true;
         cleanup();
         resolve();
@@ -189,7 +208,7 @@ async function main() {
       }
     });
     try {
-      await waitForServer(baseUrl, 120_000, serverProc);
+      await waitForServer(baseUrl, 120_000, serverProc, () => serverLog);
     } catch (e) {
       console.error(serverLog.slice(-4000));
       throw e;
@@ -249,6 +268,28 @@ async function main() {
           const res = await page.goto(`${baseUrl}${route}`, { waitUntil: 'networkidle', timeout: 30_000 });
           if (!res || res.status() >= 400) {
             results.push({ route, theme, status: 'ERROR', detail: `HTTP ${res ? res.status() : 'no response'}` });
+            continue;
+          }
+          // `networkidle` only proves network quiescence, not that Blazor has
+          // hydrated: this is the WASM docs app, so the static prerendered
+          // markup for a /components/* route paints FIRST (see
+          // scripts/prerender/), then the WASM runtime downloads/boots and
+          // MainLayout re-renders #app from scratch once interactive — and
+          // that re-render can still be in flight (or not yet started) when
+          // networkidle fires, especially on a slow runner. Capturing then
+          // would screenshot static/pre-hydration DOM and diff it against a
+          // hydrated baseline, producing a false FAIL (or, on --update, a bad
+          // baseline). MainLayout signals real readiness via the same
+          // data-blazor-ready flag the prerender crawler
+          // (scripts/prerender/prerender.mjs) already waits on — reuse it
+          // here instead of trusting networkidle alone.
+          try {
+            await page.waitForFunction(
+              () => document.documentElement.dataset.blazorReady === 'true',
+              { timeout: 20_000 },
+            );
+          } catch {
+            results.push({ route, theme, status: 'ERROR', detail: 'Blazor never signaled ready (data-blazor-ready) within 20s — refusing to screenshot possibly pre-hydration DOM' });
             continue;
           }
           // Belt-and-suspenders on top of reducedMotion: freeze anything that

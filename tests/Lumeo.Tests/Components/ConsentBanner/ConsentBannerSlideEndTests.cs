@@ -49,6 +49,31 @@ public class ConsentBannerSlideEndTests : IAsyncLifetime
                      && (i.Arguments[0] as string) == bannerId));
     }
 
+    // Regression for the "consumer id clobbers the generated one" bug: @attributes
+    // used to be splatted AFTER the explicit id="@_bannerId" attribute, and Blazor
+    // applies same-named attributes in source order — so a caller-supplied "id" in
+    // AdditionalAttributes silently won, AttachOverlaySlideEnd(_bannerId) then
+    // targeted a DOM id that didn't exist, and the held-fill guard never fired.
+    [Fact]
+    public void Consumer_supplied_id_via_AdditionalAttributes_does_not_break_slide_end_wiring()
+    {
+        var cut = _ctx.Render<L.ConsentBanner>(p => p
+            .Add(c => c.AdditionalAttributes, new Dictionary<string, object> { ["id"] = "consumer-chosen-id" }));
+
+        cut.WaitForAssertion(() => cut.Find("[role='region']"));
+        var renderedId = cut.Find("[role='region']").GetAttribute("id");
+
+        // The generated _bannerId must win over the consumer-supplied "id" — it's
+        // load-bearing for the interop call below, not just cosmetic.
+        Assert.NotEqual("consumer-chosen-id", renderedId);
+        Assert.False(string.IsNullOrEmpty(renderedId));
+
+        cut.WaitForAssertion(() =>
+            Assert.Contains(_ctx.JSInterop.Invocations,
+                i => i.Identifier == "attachOverlaySlideEnd"
+                     && (i.Arguments[0] as string) == renderedId));
+    }
+
     [Fact]
     public void Non_slide_AnimationClass_never_calls_AttachOverlaySlideEnd()
     {

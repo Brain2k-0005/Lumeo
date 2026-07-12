@@ -8,9 +8,18 @@
     @* Non-modal: the banner is dismissible without trapping the page, so it
        uses role="region" rather than role="dialog". Only the preferences
        overlay below is a true aria-modal dialog. *@
-    <div id="@_bannerId" role="region" aria-labelledby="@_titleId" aria-describedby="@_descId"
+    @* @attributes is splatted BEFORE the explicit id: Blazor applies same-named
+       attributes in source order, so a later explicit attribute wins over an
+       earlier splatted one. _bannerId is load-bearing for
+       Interop.AttachOverlaySlideEnd below (and for any consumer that queries
+       the rendered id) — it must always be the actual DOM id, even if a
+       caller pushes their own "id" through AdditionalAttributes. Swapping the
+       order (id after @attributes) guarantees that instead of silently
+       losing the wiring target. *@
+    <div role="region" aria-labelledby="@_titleId" aria-describedby="@_descId"
          class="@(Cx.Merge("lumeo-consent-banner fixed bottom-4 left-1/2 -translate-x-1/2 w-[calc(100%-2rem)] max-w-2xl z-50", AnimationClass, Class))"
-         @attributes="AdditionalAttributes">
+         @attributes="AdditionalAttributes"
+         id="@_bannerId">
         <div class="rounded-lg border border-border/60 bg-popover text-popover-foreground shadow-xl p-5">
             <div class="flex flex-col gap-4 md:flex-row md:items-start">
                 <div class="flex-1 min-w-0">
