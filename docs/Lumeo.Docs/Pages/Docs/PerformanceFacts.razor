@@ -22,7 +22,7 @@
                     <Sparkles Count="6" Class="inline-flex items-baseline">
                         <NumberTicker Value="0.0031"
                                       Suffix=" ms"
-                                      DecimalPlaces="4"
+                                      Decimals="4"
                                       DurationMs="1800"
                                       Class="text-primary font-mono" />
                     </Sparkles>
@@ -148,7 +148,9 @@
                             the whole loop and dividing by move count — deliberately avoiding a Playwright/CDP round trip
                             per event, which would otherwise dwarf the actual per-move cost being measured. Reorder is
                             higher than resize (0.0104&nbsp;ms vs 0.0031&nbsp;ms) because it also runs a live sibling-shift
-                            projection per move; both stayed within the library's own claimed range.
+                            projection per move; resize lands just under the claimed ~0.004–0.007&nbsp;ms range and reorder
+                            lands just above it, so neither figure is inside that range — both are still sub-hundredth-of-a-millisecond,
+                            consistent with the "zero .NET interop per move" design, but the exact claimed band undersells reorder's cost.
                         </Lumeo.Text>
                     </AccordionContent>
                 </AccordionItem>
@@ -158,11 +160,12 @@
                     <AccordionContent Class="px-5">
                         <Stack Gap="3">
                             <Lumeo.Text Size="sm" Color="muted" Leading="relaxed">
-                                "Settle" is from the trigger click to the last DOM mutation inside
-                                <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">&lt;body&gt;</code>, observed via a
-                                <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">MutationObserver</code> with a 150&nbsp;ms quiet window —
-                                deliberately generous, so it also covers the CSS enter transition, not just the synchronous
-                                <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">Show()</code> loop returning.
+                                "Settle" is from the trigger click to 150&nbsp;ms of quiet after both the last DOM mutation
+                                inside <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">&lt;body&gt;</code>
+                                (via a <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">MutationObserver</code>)
+                                and the last toast's CSS enter animation actually finishes (via <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">animationend</code>) —
+                                the animation itself doesn't mutate the DOM, so tracking mutations alone would report "settled" while toasts
+                                were still visibly sliding in.
                             </Lumeo.Text>
                             <div class="rounded-lg border border-destructive/20 bg-destructive/5 px-3 py-2.5">
                                 <Lumeo.Text As="div" Size="xs" Weight="medium" Color="foreground">A real bug, disclosed rather than hidden</Lumeo.Text>
@@ -279,7 +282,7 @@
             <div class="rounded-xl border border-border/40 bg-muted/20 p-4 overflow-x-auto">
                 <pre class="text-xs font-mono text-foreground whitespace-pre">export DOTNET_ROLL_FORWARD=Major
 cd docs/Lumeo.Docs
-dotnet run --arch x64 -c Release --urls http://localhost:5287
+dotnet run --arch x64 -c Release --urls http://localhost:5287 -p:LumeoPerfHeap=true
 
 # in another shell
 cd scripts/perf
@@ -332,7 +335,7 @@ node run-all.mjs</pre>
         new("Search", "341 ms", "Filter 10k rows", "Toolbar search input → body re-renders"),
         new("MoveHorizontal", "0.0031 ms", "Column resize", "Per pointer-move event, zero .NET calls"),
         new("ArrowLeftRight", "0.0104 ms", "Column reorder", "Per pointer-move event, live sibling-shift"),
-        new("Bell", "245 ms", "Toast burst settle", "5 toasts (see MaxToasts crash caveat)"),
+        new("Bell", "532 ms", "Toast burst settle", "5 toasts (see MaxToasts crash caveat)"),
         new("Zap", "844 ms", "WASM boot-to-interactive", "Trigger → MainLayout first interactive render"),
     ];
 

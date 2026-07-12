@@ -10,13 +10,14 @@
 // silently worked around: a genuine 100-toast burst cannot currently be
 // benchmarked against this docs build without hitting that bug first.
 //
-// "Settle" = from the trigger click to the last DOM mutation inside <body>
-// (toast mount + enter animation classes + any auto-dismiss timers touching
-// the DOM), observed via a MutationObserver with a 150ms quiet window. This
-// is a deliberately generous definition — it also covers the CSS enter
-// transition duration, not just the synchronous Show() loop — so the number
-// reflects what a user actually sees settle, not just when the last
-// ToastService.Show() call returns.
+// "Settle" = from the trigger click to 150ms of quiet after BOTH the last DOM
+// mutation inside <body> (toast mount + any auto-dismiss timers touching the
+// DOM, via a MutationObserver) AND the last toast's CSS enter animation
+// (.animate-toast-in, 300ms) actually finishing (via animationend). The
+// animation itself does not mutate the DOM, so the mutation observer alone
+// would go quiet while toasts are still visibly sliding in — animationend
+// tracking closes that gap so the number reflects what a user actually sees
+// settle, not just when the last ToastService.Show() call returns.
 import { BASE_URL, launchBrowser, machineInfo, median, nowIso, withFreshPage, writeResult } from './lib/util.mjs';
 
 const RUNS = 5;
@@ -45,9 +46,34 @@ async function measureOnce(page) {
       lastMutation = performance.now();
     });
     obs.observe(document.body, { childList: true, subtree: true, attributes: true });
+    // The toast enter transition (.animate-toast-in, 300ms — see
+    // src/Lumeo/wwwroot/css/lumeo.css) is a pure CSS animation: it does not
+    // touch the DOM while running, so the MutationObserver above goes quiet
+    // as soon as the toasts mount, well before they finish visibly entering.
+    // Track in-flight 'toast-in' animations via animationstart/animationend
+    // and require all of them to finish (not just "no DOM mutation lately")
+    // before the quiet window is allowed to close — otherwise a single early
+    // mutation plus 150ms of DOM silence could resolve the loop while the
+    // animation is still mid-flight (it doesn't mutate the DOM, so nothing
+    // would ever contradict a premature "settled").
+    let pendingAnimations = 0;
+    const onAnimStart = (e) => {
+      if (e.animationName === 'toast-in') pendingAnimations++;
+    };
+    const onAnimEnd = (e) => {
+      if (e.animationName === 'toast-in') {
+        pendingAnimations = Math.max(0, pendingAnimations - 1);
+        seen = true;
+        lastMutation = performance.now();
+      }
+    };
+    document.addEventListener('animationstart', onAnimStart, true);
+    document.addEventListener('animationend', onAnimEnd, true);
     function poll() {
-      if (seen && (performance.now() - lastMutation) > quietMs) {
+      if (seen && pendingAnimations === 0 && (performance.now() - lastMutation) > quietMs) {
         obs.disconnect();
+        document.removeEventListener('animationstart', onAnimStart, true);
+        document.removeEventListener('animationend', onAnimEnd, true);
         window.__perfResult = performance.now() - t0;
         window.__perfDone = true;
         return;

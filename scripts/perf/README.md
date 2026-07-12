@@ -35,8 +35,8 @@ these scripts read. It is not meant for human eyes.
   (`src/Lumeo/wwwroot/js/components.js`) listen on, timing the whole loop and
   dividing by move count.
 - **Not a lab.** This ran on one local Windows dev machine (specs recorded in
-  every JSON's `machine` field), Chromium only (via `playwright`), Debug
-  `dotnet run` dev-server (not a CDN-hosted, fully optimized production
+  every JSON's `machine` field), Chromium only (via `playwright`), a Release
+  `dotnet run` dev-server (not a CDN-hosted, fully optimized `dotnet publish`
   deploy). Treat these as directionally honest, not lab-grade absolute
   numbers — see the `*Note` fields in each JSON for caveats specific to that
   metric (dataset size, quiet-window definition, etc.).
@@ -75,7 +75,7 @@ and are disclosed rather than hidden:
 # 1. Start the docs dev server (from repo root)
 export DOTNET_ROLL_FORWARD=Major
 cd docs/Lumeo.Docs
-"$HOME/.dotnet/dotnet.exe" run --arch x64 -c Release --urls http://localhost:5287
+"$HOME/.dotnet/dotnet.exe" run --arch x64 -c Release --urls http://localhost:5287 -p:LumeoPerfHeap=true
 
 # 2. In another shell, install deps once and run the suite
 cd scripts/perf
