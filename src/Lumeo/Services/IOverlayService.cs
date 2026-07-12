@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using Microsoft.AspNetCore.Components;
 
 namespace Lumeo.Services;
@@ -11,19 +12,24 @@ public interface IOverlayService
     event Action<OverlayInstance>? OnShow;
     event Action<string, object?, bool>? OnClose;
 
-    Task<OverlayResult> ShowDialogAsync<TComponent>(
+    // TComponent is rendered later via <DynamicComponent Type="..."> (OverlayProvider.razor),
+    // which needs every member preserved regardless of what the trimmer can see reached
+    // through normal static usage. [DynamicallyAccessedMembers(All)] on the generic
+    // parameter propagates that requirement to typeof(TComponent) wherever it flows —
+    // through OverlayInstance.ComponentType — down to the DynamicComponent render (#354).
+    Task<OverlayResult> ShowDialogAsync<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] TComponent>(
         string? title = null,
         OverlayParameters? parameters = null,
         OverlayOptions? options = null) where TComponent : IComponent;
 
-    Task<OverlayResult> ShowSheetAsync<TComponent>(
+    Task<OverlayResult> ShowSheetAsync<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] TComponent>(
         string? title = null,
         Lumeo.Side side = Lumeo.Side.Right,
         SheetSize size = SheetSize.Default,
         OverlayParameters? parameters = null,
         OverlayOptions? options = null) where TComponent : IComponent;
 
-    Task<OverlayResult> ShowDrawerAsync<TComponent>(
+    Task<OverlayResult> ShowDrawerAsync<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] TComponent>(
         string? title = null,
         OverlayParameters? parameters = null,
         OverlayOptions? options = null) where TComponent : IComponent;

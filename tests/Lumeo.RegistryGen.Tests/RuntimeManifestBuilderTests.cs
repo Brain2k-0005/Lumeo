@@ -33,6 +33,11 @@ public class RuntimeManifestBuilderTests
         Assert.Contains("IconSource.cs", files);
         Assert.Contains("Icons/LumeoIcons.g.cs", files);
 
+        // Serialization substrate: Services/ConsentService.cs references
+        // Lumeo.Serialization.LumeoJsonContext directly, so it must be vendored alongside
+        // (#364 review) or standalone/ejected projects fail to compile.
+        Assert.Contains("Serialization/LumeoJsonContext.cs", files);
+
         // No UI components beyond the two substrate files: the service layer is decoupled
         // (SignaturePadInit is generic), so the runtime drags in no overlay host and no
         // compile-closure components.

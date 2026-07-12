@@ -8,6 +8,26 @@
     <EmitCompilerGeneratedFiles>true</EmitCompilerGeneratedFiles>
     <CompilerGeneratedFilesOutputPath>$(BaseIntermediateOutputPath)GeneratedFiles</CompilerGeneratedFilesOutputPath>
 
+    <!-- #354: the core assembly is now genuinely IL-trimmable — member-level trimming
+         (not just whole-assembly copyused) is safe. EnableTrimAnalyzer keeps it that way at
+         build time (IL2xxx as errors, see Directory.Build.props); every previously-reflective
+         path was either annotated with [DynamicallyAccessedMembers]/[RequiresUnreferencedCode]
+         or replaced with source-generated JSON (Lumeo.Serialization.LumeoJsonContext). -->
+    <IsTrimmable>true</IsTrimmable>
+    <EnableTrimAnalyzer>true</EnableTrimAnalyzer>
+    <EnableAotAnalyzer>false</EnableAotAnalyzer>
+
+    <!-- IL2111 (OverlayProvider's <DynamicComponent Type="..."> parameter-binding) is a
+         known ILLink limitation, not an unclosed hole: DynamicComponent.Type carries
+         DynamicallyAccessedMembers(All) on its setter, and the ACTUAL types that flow into
+         it (IOverlayService.Show*Async<TComponent>, OverlayInstance.ComponentType) are
+         annotated the same way, so the trimmer already preserves them (see #354). The
+         warning fires because Razor's generated parameter-binding for DynamicComponent
+         invokes that setter through a delegate the analyzer can't see through — Microsoft's
+         own guidance for this exact DynamicComponent pattern is to suppress IL2111 once the
+         type source is otherwise annotated, since there's no source-level fix available. -->
+    <NoWarn>$(NoWarn);IL2111</NoWarn>
+
     <!-- NuGet Package Metadata -->
     <PackageId>Lumeo</PackageId>
     <!-- Version is inherited from /Directory.Build.props (lockstep with all Lumeo packages) -->

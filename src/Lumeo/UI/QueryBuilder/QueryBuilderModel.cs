@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Linq.Expressions;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -5,10 +6,203 @@ using System.Text.Json.Serialization;
 namespace Lumeo;
 
 /// <summary>Boolean combinator for a <see cref="QueryGroup"/>.</summary>
+[JsonConverter(typeof(QueryCombinatorJsonConverter))]
 public enum QueryCombinator
 {
     And,
     Or
+}
+
+// Hand-written string<->enum converter (kept trivial and reflection-free) rather than the
+// framework JsonStringEnumConverter, whose non-generic form isn't guaranteed trim-clean and
+// whose generic form (JsonStringEnumConverter<TEnum>) isn't available on the net8.0 TFM this
+// assembly also targets. Enum.TryParse<TEnum>/.ToString() with a closed, compile-time-known
+// TEnum are trim-safe (#354).
+internal sealed class QueryCombinatorJsonConverter : JsonConverter<QueryCombinator>
+{
+    public override QueryCombinator Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    {
+        // reader.GetString() throws InvalidOperationException (not JsonException) for a
+        // non-string token such as {"combinator":0,...}. FromJson only catches JsonException,
+        // so an InvalidOperationException would escape past its documented
+        // return-null-on-parse-failure contract instead of being treated as an invalid query.
+        // Reject non-string tokens with JsonException up front so every malformed shape takes
+        // the same documented path (#364 review).
+        if (reader.TokenType != JsonTokenType.String)
+            throw new JsonException($"Invalid QueryCombinator token '{reader.TokenType}'; expected a string.");
+
+        var s = reader.GetString();
+        // FromJson is documented to return null on parse failure (catches JsonException).
+        // Silently coercing an invalid/corrupted combinator to And would instead hand back
+        // a *different* query than the one that was saved, so an unrecognized value must
+        // fail the parse rather than default (#364 review).
+        //
+        // Enum.TryParse ALSO succeeds for a quoted numeric literal like "2" — it returns an
+        // undefined QueryCombinator(2) rather than failing, because TryParse's numeric-string
+        // fallback doesn't check membership. Enum.IsDefined closes that gap so a hand-edited
+        // or corrupted "combinator":"2" takes the same parse-failure path as a bogus word
+        // (#366 review).
+        return Enum.TryParse<QueryCombinator>(s, ignoreCase: true, out var value) && Enum.IsDefined(value)
+            ? value
+            : throw new JsonException($"Invalid QueryCombinator value '{s}'.");
+    }
+
+    public override void Write(Utf8JsonWriter writer, QueryCombinator value, JsonSerializerOptions options)
+        => writer.WriteStringValue(value.ToString());
+}
+
+// QueryRule.Value/Value2 are declared `object?` — a genuinely open slot a consumer can box
+// anything into. Relying on System.Text.Json's built-in polymorphic `object` resolution (even
+// with a reflection-based resolver chained after the source-gen context) proved unreliable in
+// this exact combination (source-gen context + List<T> of a polymorphic base + an `object`
+// member): it kept resolving strictly against the context's own closed type list regardless of
+// what was chained after it. Handling the (small, well-known) set of leaf value shapes
+// explicitly — the same string/double/bool the built-in editors produce, plus every other
+// framework numeric type a consumer might reasonably box in directly — sidesteps type-info
+// resolution for `object` entirely: no reflection, no chain, no resolver ambiguity (#354).
+internal sealed class QueryValueJsonConverter : JsonConverter<object?>
+{
+    public override object? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) =>
+        reader.TokenType switch
+        {
+            JsonTokenType.Null => null,
+            JsonTokenType.True => true,
+            JsonTokenType.False => false,
+            JsonTokenType.String => reader.GetString(),
+            JsonTokenType.Number => ReadNumber(ref reader),
+            _ => throw new JsonException($"Unsupported QueryRule value token '{reader.TokenType}'."),
+        };
+
+    // GetDouble() alone rounds anything above 2^53 (long IDs) or high-precision decimals
+    // (money amounts) before ToExpression ever sees them, silently corrupting the saved
+    // value. Try the narrowest exact representation first — Int64 for whole numbers,
+    // Decimal for fixed-point fractional values — and only fall back to Double for
+    // magnitudes/precision neither can hold (e.g. very large exponents) (#364 review).
+    private static object ReadNumber(ref Utf8JsonReader reader)
+    {
+        if (reader.TryGetInt64(out var l)) return l;
+        if (reader.TryGetDecimal(out var m)) return m;
+        double d;
+        try
+        {
+            d = reader.GetDouble();
+        }
+        catch (FormatException ex)
+        {
+            // Historically GetDouble() could throw FormatException for a literal outside even
+            // Double's range; wrap it so every malformed numeric literal takes the same
+            // documented (return-null-on-parse-failure) path regardless of BCL version (#366 review).
+            throw new JsonException($"QueryRule value token is out of range for Int64/Decimal/Double.", ex);
+        }
+
+        // On current runtimes GetDouble() does NOT throw for an exponent/digit-count overflow
+        // (e.g. a corrupted/hand-edited query with a 1e400 literal) — it silently clamps to
+        // +/-Infinity instead. Infinity isn't valid JSON (WriteNumberValue throws ArgumentException
+        // for it), so letting it through here would rehydrate a QueryRule.Value that ToExpression
+        // can use for a comparison but ToJson can never persist again — silent corruption of the
+        // saved query rather than the documented graceful parse failure. Reject it explicitly so
+        // the oversized literal takes the same JsonException -> FromJson-returns-null path as
+        // every other malformed numeric shape (#366 review).
+        if (double.IsInfinity(d))
+            throw new JsonException($"QueryRule value token is out of range for Int64/Decimal/Double.");
+
+        return d;
+    }
+
+    public override void Write(Utf8JsonWriter writer, object? value, JsonSerializerOptions options)
+    {
+        switch (value)
+        {
+            case null: writer.WriteNullValue(); break;
+            case string s: writer.WriteStringValue(s); break;
+            case bool b: writer.WriteBooleanValue(b); break;
+            // DateOnly/DateTime.ToString() is culture-sensitive (e.g. "12.07.2026" under
+            // de-DE), but ConvertValue parses the reloaded string back with
+            // CultureInfo.InvariantCulture. Under a non-invariant culture that mismatch
+            // makes FromJson -> ToExpression fail to reload the query or compare against
+            // the wrong date. Round-trip format ("O") is both invariant and exactly what
+            // DateOnly/DateTime.Parse(..., InvariantCulture) expects (#364 review).
+            case DateOnly dOnly: writer.WriteStringValue(dOnly.ToString("O", System.Globalization.CultureInfo.InvariantCulture)); break;
+            case DateTime dt: writer.WriteStringValue(dt.ToString("O", System.Globalization.CultureInfo.InvariantCulture)); break;
+            // Guid has no natural JSON number/bool shape; write it the same way ConvertValue
+            // reads it back (Guid.Parse(s) from a plain string) so it round-trips (#366 review).
+            case Guid g: writer.WriteStringValue(g); break;
+            // MUST be checked before the numeric dispatch below: Type.GetTypeCode(enumType)
+            // returns the enum's UNDERLYING integral TypeCode (e.g. TypeCode.Int32), so without
+            // this guard an enum value would fall into WriteNumeric and be written as a raw
+            // number — which ConvertValue's Enum.Parse(targetType, s) on reload cannot consume,
+            // since it only ever receives a string (#366 review).
+            case Enum e: writer.WriteStringValue(e.ToString()); break;
+            default:
+                WriteNumeric(writer, value);
+                break;
+        }
+    }
+
+    // Root fix for the recurring "one more boxed type isn't handled" review finding (three
+    // consecutive rounds: custom non-scalar objects, then unsigned integrals, then enum/Guid
+    // above): rather than growing an ad hoc `case long l: ... case short sh: ...` list one type
+    // at a time, dispatch on Type.GetTypeCode, which has a CLOSED, fixed set of members for the
+    // BCL's numeric primitives. Every numeric TypeCode (Byte/SByte/Int16/UInt16/Int32/UInt32/
+    // Int64/UInt64/Single/Double/Decimal) is covered in this one switch, so there is no
+    // "forgot a case" surface left for a fourth round to find (#366 review, root-cause).
+    private static void WriteNumeric(Utf8JsonWriter writer, object value)
+    {
+        switch (Type.GetTypeCode(value.GetType()))
+        {
+            // byte/sbyte/short/ushort have no dedicated WriteNumberValue overload; they widen
+            // implicitly to int, which does.
+            case TypeCode.Byte: writer.WriteNumberValue((byte)value); break;
+            case TypeCode.SByte: writer.WriteNumberValue((sbyte)value); break;
+            case TypeCode.Int16: writer.WriteNumberValue((short)value); break;
+            case TypeCode.UInt16: writer.WriteNumberValue((ushort)value); break;
+            case TypeCode.Int32: writer.WriteNumberValue((int)value); break;
+            case TypeCode.UInt32: writer.WriteNumberValue((uint)value); break;
+            case TypeCode.Int64: writer.WriteNumberValue((long)value); break;
+            case TypeCode.UInt64: writer.WriteNumberValue((ulong)value); break;
+            case TypeCode.Decimal: writer.WriteNumberValue((decimal)value); break;
+            case TypeCode.Single:
+                var f = (float)value;
+                // WriteNumberValue throws ArgumentException (not JsonException) for NaN/
+                // Infinity — a caller boxing float.NaN directly (not read from JSON, since
+                // ReadNumber already rejects an Infinity-clamped literal) would otherwise
+                // escape ToJson's documented failure contract. Reject up front instead (#366
+                // review — same reasoning as ReadNumber's IsInfinity guard, mirrored for Write).
+                if (float.IsNaN(f) || float.IsInfinity(f)) throw NotFinite(value);
+                // Widen to double before writing rather than writing at float's own (lower)
+                // precision: ReadNumber's fallback numeric path only ever reconstructs a
+                // double (there is no "read back as float" branch), so a float-precision
+                // literal reparses to a DIFFERENT double than the exact widened value —
+                // enough drift near float.MaxValue to round the reloaded double to
+                // +/-Infinity. Writing the exact widened double makes that reparse bit-exact
+                // (caught by the round-trip fuzz matrix, #366 review — root-cause fix, not
+                // one of the four filed findings, but the same failure class).
+                writer.WriteNumberValue((double)f);
+                break;
+            case TypeCode.Double:
+                var d = (double)value;
+                if (double.IsNaN(d) || double.IsInfinity(d)) throw NotFinite(value);
+                writer.WriteNumberValue(d);
+                break;
+            default:
+                // A ToString() fallback here would silently CORRUPT the saved query for any
+                // custom ValueEditorTemplate that boxes a non-scalar shape into Value/Value2
+                // (e.g. a string[] becomes the literal text "System.String[]", losing the data
+                // with no way to tell from the written JSON that anything went wrong). Reject
+                // instead of guessing: throw the documented JsonException so ToJson fails loudly
+                // and the caller finds out immediately, rather than persisting an unrecoverable
+                // query it will fail to explain later (#366 review). Structured values that DO
+                // need to round-trip should be normalized to one of the scalar shapes above by
+                // the consumer's ValueEditorTemplate before assigning Value/Value2.
+                throw new JsonException(
+                    $"QueryRule value of type '{value.GetType()}' is not supported by the trim-safe " +
+                    "QueryValueJsonConverter (only string/bool/numeric/enum/Guid/DateOnly/DateTime are). " +
+                    "Normalize the value to one of those shapes before assigning it to Value/Value2.");
+        }
+    }
+
+    private static JsonException NotFinite(object value) => new(
+        $"QueryRule value '{value}' is not a finite number; NaN/Infinity cannot be persisted as JSON.");
 }
 
 /// <summary>The data type of a <see cref="QueryField"/>. Drives the default operator
@@ -67,16 +261,18 @@ public abstract class QueryNode
 public sealed class QueryRule : QueryNode
 {
     /// <summary>The <see cref="QueryField.Name"/> this rule targets.</summary>
-    public string Field { get; set; } = "";
+    [JsonPropertyName("field")] public string Field { get; set; } = "";
 
     /// <summary>One of the field's allowed operator keys.</summary>
-    public string Operator { get; set; } = "";
+    [JsonPropertyName("operator")] public string Operator { get; set; } = "";
 
     /// <summary>The comparison value. Type depends on the field; for "between"-style
     /// operators this holds the lower bound and <see cref="Value2"/> holds the upper.</summary>
+    [JsonPropertyName("value"), JsonConverter(typeof(QueryValueJsonConverter))]
     public object? Value { get; set; }
 
     /// <summary>The second comparison value, used only by range operators ("between").</summary>
+    [JsonPropertyName("value2"), JsonConverter(typeof(QueryValueJsonConverter))]
     public object? Value2 { get; set; }
 }
 
@@ -84,9 +280,9 @@ public sealed class QueryRule : QueryNode
 /// <see cref="QueryNode"/>s (rules and/or nested groups).</summary>
 public sealed class QueryGroup : QueryNode
 {
-    public QueryCombinator Combinator { get; set; } = QueryCombinator.And;
+    [JsonPropertyName("combinator")] public QueryCombinator Combinator { get; set; } = QueryCombinator.And;
 
-    public List<QueryNode> Rules { get; set; } = new();
+    [JsonPropertyName("rules")] public List<QueryNode> Rules { get; set; } = new();
 
     /// <summary>Creates an empty root group (And, no rules).</summary>
     public static QueryGroup CreateEmpty() => new() { Combinator = QueryCombinator.And, Rules = new() };
@@ -152,32 +348,46 @@ public static class QueryBuilderOperators
     public static string LabelFor(string op) => Labels.TryGetValue(op, out var l) ? l : op;
 }
 
+// Self-contained source-generated JSON metadata for the QueryGroup/QueryRule/QueryNode tree —
+// deliberately NOT the shared Lumeo.Serialization.LumeoJsonContext. `lumeo add query-builder`
+// vendors only this file's three UI/QueryBuilder/* files into the consumer's own project (see
+// the query-builder registry entry); LumeoJsonContext is `internal` to the Lumeo assembly, so a
+// vendored reference to it cannot compile — neither in NuGet-package mode (the consumer has no
+// InternalsVisibleTo grant into Lumeo.dll) nor in standalone/eject mode (Serialization/ isn't
+// part of the vendored runtime closure either). Keeping the context in the SAME file that gets
+// vendored + namespace-rewritten means it always compiles standalone, in the package, and
+// ejected alike (#364 review).
+[JsonSerializable(typeof(QueryGroup))]
+[JsonSerializable(typeof(QueryRule))]
+[JsonSerializable(typeof(QueryNode))]
+internal sealed partial class QueryBuilderJsonContext : JsonSerializerContext
+{
+}
+
 /// <summary>Serialization + LINQ helpers for <see cref="QueryGroup"/> trees.</summary>
 public static class QueryBuilderSerialization
 {
-    private static readonly JsonSerializerOptions JsonOptions = new()
-    {
-        WriteIndented = true,
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-        Converters = { new JsonStringEnumConverter() }
-    };
+    // Two lightweight wrappers around the SAME source-generated shape (QueryBuilderJsonContext),
+    // one per direction so WriteIndented (pretty JSON preview) / PropertyNameCaseInsensitive
+    // (tolerant reads) can differ without touching Default's own options. No reflection
+    // resolver needed here: QueryRule.Value/Value2 (the only genuinely open members) carry an
+    // explicit [JsonConverter(typeof(QueryValueJsonConverter))], so nothing in this tree ever
+    // needs a runtime Type -> JsonTypeInfo lookup outside the compiled shape (#354).
+    private static readonly QueryBuilderJsonContext WriteContext = new(
+        new JsonSerializerOptions(QueryBuilderJsonContext.Default.Options) { WriteIndented = true });
 
-    private static readonly JsonSerializerOptions ReadOptions = new()
-    {
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-        PropertyNameCaseInsensitive = true,
-        Converters = { new JsonStringEnumConverter() }
-    };
+    private static readonly QueryBuilderJsonContext ReadContext = new(
+        new JsonSerializerOptions(QueryBuilderJsonContext.Default.Options) { PropertyNameCaseInsensitive = true });
 
     public static string ToJson(QueryGroup query) =>
-        JsonSerializer.Serialize(query, JsonOptions);
+        JsonSerializer.Serialize(query, WriteContext.QueryGroup);
 
     public static QueryGroup? FromJson(string json)
     {
         if (string.IsNullOrWhiteSpace(json)) return null;
         try
         {
-            return JsonSerializer.Deserialize<QueryGroup>(json, ReadOptions);
+            return JsonSerializer.Deserialize(json, ReadContext.QueryGroup);
         }
         catch (JsonException)
         {
@@ -191,14 +401,14 @@ public static class QueryBuilderSerialization
     /// missing properties throw <see cref="InvalidOperationException"/>. String comparisons
     /// for <c>contains</c>/<c>startsWith</c>/<c>endsWith</c> are case-insensitive (ordinal).
     /// </summary>
-    public static Expression<Func<T, bool>>? ToExpression<T>(QueryGroup query)
+    public static Expression<Func<T, bool>>? ToExpression<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicProperties | DynamicallyAccessedMemberTypes.NonPublicProperties)] T>(QueryGroup query)
     {
         var param = Expression.Parameter(typeof(T), "x");
         var body = BuildGroup<T>(query, param);
         return body is null ? null : Expression.Lambda<Func<T, bool>>(body, param);
     }
 
-    private static Expression? BuildGroup<T>(QueryGroup group, ParameterExpression param)
+    private static Expression? BuildGroup<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicProperties | DynamicallyAccessedMemberTypes.NonPublicProperties)] T>(QueryGroup group, ParameterExpression param)
     {
         var parts = new List<Expression>();
         foreach (var node in group.Rules)
@@ -224,7 +434,7 @@ public static class QueryBuilderSerialization
         return acc;
     }
 
-    private static Expression? BuildRule<T>(QueryRule rule, ParameterExpression param)
+    private static Expression? BuildRule<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicProperties | DynamicallyAccessedMemberTypes.NonPublicProperties)] T>(QueryRule rule, ParameterExpression param)
     {
         if (string.IsNullOrEmpty(rule.Field) || string.IsNullOrEmpty(rule.Operator)) return null;
 
@@ -323,25 +533,50 @@ public static class QueryBuilderSerialization
         };
     }
 
+    // typeof(object).GetMethod(...) resolves against a compile-time-known type, so — unlike
+    // the string-methodName Expression.Call overload this replaced — this doesn't need
+    // RequiresUnreferencedCode: the trimmer preserves object.ToString() unconditionally.
+    private static readonly System.Reflection.MethodInfo ObjectToStringMethod =
+        typeof(object).GetMethod(nameof(object.ToString), Type.EmptyTypes)!;
+
     private static Expression EnsureString(Expression member) =>
-        member.Type == typeof(string) ? member : Expression.Call(member, nameof(object.ToString), Type.EmptyTypes);
+        member.Type == typeof(string) ? member : Expression.Call(member, ObjectToStringMethod);
 
     /// <summary>A rule value is "blank" when it is null or an empty/whitespace string —
     /// i.e. the editor was left untouched. Such a bound is dropped rather than coerced to default(T).</summary>
     private static bool IsBlank(object? value) =>
         value is null || (value is string s && string.IsNullOrWhiteSpace(s));
 
+    // targetType is always a bound property's type discovered via BuildRule<T>'s
+    // DAM(PublicProperties)-preserved T, narrowed to the framework value types QueryBuilder's
+    // field editors actually produce (see QueryBuilderGroup.razor: bool/double/string plus,
+    // via QueryFieldType.Date, DateOnly/DateTime) or an enum. Activator.CreateInstance(Type)
+    // here only ever targets one of those — all framework-preserved regardless of trimming —
+    // so this is safe even though the trimmer can't prove it statically (#354).
+    [UnconditionalSuppressMessage("Trimming", "IL2067", Justification =
+        "targetType is a value type resolved from a DAM(PublicProperties)-preserved TItem " +
+        "(bool/double/DateOnly/DateTime/Guid/enum/etc.) — see comment above.")]
     private static object? ConvertValue(object? value, Type targetType)
     {
         if (value is null) return targetType.IsValueType ? Activator.CreateInstance(targetType) : null;
         if (targetType.IsInstanceOfType(value)) return value;
 
-        var s = value as string ?? value.ToString();
+        // value.ToString() (no format/provider) is culture-sensitive for IFormattable sources —
+        // e.g. a decimal 1.5m (the exact-precision branch QueryValueJsonConverter.ReadNumber now
+        // returns for fractional numbers) renders as "1,5" under de-DE. The InvariantCulture parse
+        // below then misreads that comma as a thousands separator ("1,5" -> 15) instead of a
+        // decimal point. Format IFormattable values invariantly up front so this string hop never
+        // depends on CurrentCulture (#364 review).
+        var s = value as string ?? (value is IFormattable f ? f.ToString(null, System.Globalization.CultureInfo.InvariantCulture) : value.ToString());
         if (string.IsNullOrEmpty(s)) return targetType.IsValueType ? Activator.CreateInstance(targetType) : null;
 
         if (targetType.IsEnum) return Enum.Parse(targetType, s, ignoreCase: true);
         if (targetType == typeof(DateOnly)) return DateOnly.Parse(s, System.Globalization.CultureInfo.InvariantCulture);
-        if (targetType == typeof(DateTime)) return DateTime.Parse(s, System.Globalization.CultureInfo.InvariantCulture);
+        // RoundtripKind preserves the Utc/Local/Unspecified Kind a "O"-format string carries
+        // (Z or a numeric offset). Without it, DateTime.Parse silently converts an offset-bearing
+        // string to local time, so a query saved with a UTC DateTime reloads shifted by the
+        // client's timezone and compares against the wrong instant (#364 review).
+        if (targetType == typeof(DateTime)) return DateTime.Parse(s, System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.RoundtripKind);
         if (targetType == typeof(Guid)) return Guid.Parse(s);
         return Convert.ChangeType(s, targetType, System.Globalization.CultureInfo.InvariantCulture);
     }
