@@ -333,7 +333,11 @@ public class ToastAdmissionInvariantTests : IAsyncLifetime
     /// against the OLD default — only affect toasts admitted AFTER the change. Covers both an
     /// already-MOUNTED toast (finding 1's exact repro: <c>Duration=null</c> under one
     /// <c>DefaultDuration</c>, changed after mounting) and a still-QUEUED one (finding 6: resolved
-    /// group must survive a live <c>Position</c> change while waiting for a slot).
+    /// group must survive a live <c>Position</c> change while waiting for a slot). The queued
+    /// toast's own PERSISTENCE snapshot is covered separately by
+    /// <see cref="Changing_DefaultDuration_While_A_Toast_Is_Still_Queued_Does_Not_Reclassify_It_At_Mount"/>
+    /// (PR #357 round-10, finding 1) — this test uses an explicit <c>Duration</c> for "B" precisely
+    /// to keep that concern out of scope here.
     /// </summary>
     [Fact]
     public async Task Changing_Provider_Defaults_Does_Not_Reclassify_Already_Admitted_Mounted_Or_Queued_Toasts()
@@ -357,13 +361,11 @@ public class ToastAdmissionInvariantTests : IAsyncLifetime
 
         // "B" queues (cap already at 1, MaxToasts=1) — resolved to BottomRight (Position omitted),
         // still sitting in _pendingQueue, never mounted yet. Same deterministic dispatch as "A":
-        // this must fully complete (B's ResolvedPosition snapshotted against the STILL-current
-        // BottomRight default) before the live Position parameter changes below. Duration is
-        // EXPLICIT (not omitted): a queued toast's PERSISTENCE is deliberately decided fresh at the
-        // moment it actually mounts (see MountToast's doc comment — "the timer that was actually
-        // created", finding 1), so an omitted Duration here would legitimately pick up the NEW
-        // DefaultDuration once B is admitted below. This test isolates finding 6 (the queued
-        // toast's GROUP/position snapshot) from that deliberate persistence-at-mount-time behavior.
+        // this must fully complete (B's ResolvedPosition/ResolvedDuration snapshotted against the
+        // STILL-current BottomRight/5000ms defaults) before the live parameters change below.
+        // Duration is EXPLICIT (not omitted) here so this test isolates finding 6 (the queued
+        // toast's GROUP/position snapshot) — see the summary above for the sibling test that
+        // isolates the omitted-Duration/persistence half (round-10, finding 1).
         string idB = null!;
         await cut.InvokeAsync(() => idB = toastService.Show(new ToastOptions { Title = "B", Duration = 60000 }));
 
@@ -403,6 +405,63 @@ public class ToastAdmissionInvariantTests : IAsyncLifetime
         Assert.Equal(1, cut.Instance.LiveNonPersistentMountedCount(L.ToastViewport.ToastPosition.BottomRight));
         Assert.Equal(0, cut.Instance.NonPersistentMountedCount(L.ToastViewport.ToastPosition.TopLeft));
         _ = idB;
+    }
+
+    /// <summary>
+    /// PR #357 round-10 (finding 1) — the queue-side half of the ADMISSION SNAPSHOT that round-9
+    /// left open: a still-QUEUED toast's eventual PERSISTENCE used to be decided fresh in
+    /// <c>MountToast</c>, at the moment it actually mounted, against whatever <c>DefaultDuration</c>
+    /// happened to be current THEN — not what it was when the toast was actually admitted
+    /// (<c>TryAdmit</c>). A toast that omits <c>Duration</c>, queues under one <c>DefaultDuration</c>,
+    /// then sits queued through a change to <c>DefaultDuration="0"</c>, would mount PERSISTENT even
+    /// though it was admitted as (and the caller/consumer reasonably expects) a normal, timed toast.
+    /// Persistence is now frozen at admission — <c>QueuedToast.ResolvedDuration</c> — and
+    /// <c>MountToast</c> only ever consumes it, never recomputes it.
+    /// </summary>
+    [Fact]
+    public async Task Changing_DefaultDuration_While_A_Toast_Is_Still_Queued_Does_Not_Reclassify_It_At_Mount()
+    {
+        var toastService = GetToastService();
+        // MaxToasts=1 so "B" is guaranteed to queue (not mount) behind "A".
+        var cut = _ctx.Render<L.ToastProvider>(p => p
+            .Add(b => b.MaxToasts, 1)
+            .Add(b => b.DefaultDuration, 5000));
+
+        // "A" occupies the one slot, non-persistent (Duration omitted, DefaultDuration=5000).
+        string idA = null!;
+        await cut.InvokeAsync(() => idA = toastService.Show(new ToastOptions { Title = "A" }));
+        Assert.Equal(1, cut.Instance.NonPersistentMountedCount(L.ToastViewport.ToastPosition.BottomRight));
+
+        // "B" queues — Duration OMITTED, so it resolves against DefaultDuration=5000 (still
+        // non-persistent) AT THIS ADMISSION INSTANT. This must fully complete (B's ResolvedDuration
+        // snapshotted against the STILL-current DefaultDuration=5000) before the live parameter
+        // changes below — same deterministic dispatch as "A".
+        string idB = null!;
+        await cut.InvokeAsync(() => idB = toastService.Show(new ToastOptions { Title = "B" }));
+
+        // DefaultDuration flips to 0 WHILE "B" IS STILL QUEUED — under the pre-round-10 behavior,
+        // this would make "B" mount persistent once its slot frees up.
+        await cut.InvokeAsync(() => cut.Render(p => p.Add(b => b.DefaultDuration, 0)));
+
+        // Freeing "A"'s slot admits "B" from the queue.
+        toastService.Dismiss(idA);
+        cut.WaitForAssertion(
+            () => Assert.Contains(cut.FindAll("[role='alert'],[role='status']"), el => el.TextContent.Contains("B")),
+            TimeSpan.FromSeconds(10));
+
+        // "B" mounted NON-PERSISTENT — its classification is unchanged from what admission decided,
+        // never reclassified by the DefaultDuration flip that happened while it waited. The round-10
+        // bug would have made it persistent (exempt from the cap) here instead.
+        Assert.Equal(1, cut.Instance.LiveNonPersistentMountedCount(L.ToastViewport.ToastPosition.BottomRight));
+
+        // A FRESH admission after the flip, in contrast, DOES resolve against the current
+        // (DefaultDuration=0) default: persistent, bypasses the cap entirely — proving the other half
+        // of the contract ("changes affect only FUTURE admissions") the right way around.
+        toastService.Show(new ToastOptions { Title = "C" });
+        cut.WaitForAssertion(
+            () => Assert.Contains(cut.FindAll("[role='alert'],[role='status']"), el => el.TextContent.Contains("C")),
+            TimeSpan.FromSeconds(10));
+        Assert.Equal(1, cut.Instance.LiveNonPersistentMountedCount(L.ToastViewport.ToastPosition.BottomRight));
     }
 
     /// <summary>

@@ -158,11 +158,17 @@
     private readonly Queue<QueuedToast> _pendingQueue = new();
 
     // PR #357 round-9: the queue-side half of the admission snapshot — mirrors ToastItem's
-    // ResolvedPosition for a toast that hasn't mounted yet. A queued toast is never persistent (see
-    // TryAdmit's fast path), so there's no ResolvedPersistent to snapshot here; its eventual
-    // ResolvedPersistent is decided fresh in MountToast at the moment it actually mounts (matching
-    // "the timer that was actually created" — finding 1).
-    private sealed record QueuedToast(ToastMessage Message, ToastViewport.ToastPosition ResolvedPosition);
+    // ResolvedPosition for a toast that hasn't mounted yet. PR #357 round-10 (finding 1): also
+    // carries ResolvedDuration — the resolved `Options.Duration ?? DefaultDuration` at the moment
+    // THIS toast was admitted (TryAdmit) or last explicitly retargeted (UpdateQueued) — so its
+    // eventual persistence (ResolvedDuration == 0) at mount time can never drift from what admission
+    // actually decided. Before round-10, a queued toast's persistence was decided fresh in
+    // MountToast at the moment it actually mounted; a DefaultDuration change while it sat queued
+    // could silently reclassify it (a toast admitted non-persistent could mount persistent, or vice
+    // versa) even though the SAME toast, if it had mounted immediately, would never have been
+    // affected. MountToast now just consumes this frozen value — see its doc comment.
+    private sealed record QueuedToast(
+        ToastMessage Message, ToastViewport.ToastPosition ResolvedPosition, int ResolvedDuration);
 
     // PR #357 round-6: deliberately NO per-position lock/semaphore here. An earlier version of this
     // fix serialized every mutation+reconciliation for a position behind a mutex — safe, but wrong
@@ -198,12 +204,15 @@
 
     /// <summary>
     /// Default auto-dismiss duration (ms) for toasts that omit <c>ToastOptions.Duration</c>; 0
-    /// resolves to persistent (see <see cref="IsPersistent"/>). PR #357 round-9 (finding 1):
-    /// changing this parameter affects only FUTURE admissions — the resolved duration/persistence
-    /// of an already-mounted toast is decided once, in <see cref="MountToast"/>, at the exact
-    /// instant its timer is (or isn't) started, and frozen on <c>ToastItem.ResolvedPersistent</c>;
-    /// a later change here never retroactively reclassifies it. Only an explicit
-    /// <c>ToastService.Update</c> re-resolves a toast's classification.
+    /// resolves to persistent (see <see cref="IsPersistent"/>). PR #357 round-9 (finding 1) /
+    /// round-10 (finding 1): changing this parameter affects only FUTURE admissions — the resolved
+    /// duration/persistence of a toast is decided ONCE, at the exact instant it is ADMITTED (in
+    /// <see cref="TryAdmit"/>, whether it mounts immediately or is enqueued), and frozen on
+    /// <c>ToastItem.ResolvedPersistent</c> (once mounted) or <c>QueuedToast.ResolvedDuration</c>
+    /// (while still queued) — a later change here never retroactively reclassifies it, even if it
+    /// hasn't mounted yet. Only an explicit <c>ToastService.Update</c> re-resolves a toast's
+    /// classification, whether mounted (<see cref="ApplyToastMutation"/>) or still queued
+    /// (<see cref="UpdateQueued"/>).
     /// </summary>
     [Parameter] public int DefaultDuration { get; set; } = 5000;
 
@@ -439,11 +448,20 @@
         // move an already-admitted toast into a different group. See the parameter doc comments.
         var pos = ResolvePosition(message.Options.Position);
 
+        // PR #357 round-10 (finding 1): resolve the DURATION here too, at this exact admission
+        // instant, against the then-current DefaultDuration — the queue-side counterpart to `pos`
+        // above. This is now the ONE place a fresh (never-mounted) toast's persistence is decided;
+        // MountToast (both the persistent fast path immediately below and ReconcileGroup's later
+        // admit-from-queue path) only ever consumes this frozen value, never recomputes it against
+        // whatever DefaultDuration happens to be current at mount time. See QueuedToast's and
+        // DefaultDuration's doc comments.
+        var duration = message.Options.Duration ?? DefaultDuration;
+
         // (b) — persistents bypass admission entirely: mount immediately, alongside whatever is
         // already there, never touching _pendingQueue or the eviction loop below.
-        if (IsPersistent(message.Options))
+        if (duration == 0)
         {
-            MountToast(message, pos);
+            MountToast(message, pos, duration);
             return;
         }
 
@@ -462,7 +480,7 @@
         // reconcile IMMEDIATELY (no yield in between) — see the ADMISSION MODEL comment above for
         // why enqueue-then-reconcile (rather than evict-then-mount-directly) is what closes
         // finding 1.
-        _pendingQueue.Enqueue(new QueuedToast(message, pos));
+        _pendingQueue.Enqueue(new QueuedToast(message, pos, duration));
 
         await ReconcileGroup(pos);
     }
@@ -470,22 +488,23 @@
     // Adds a toast to the live/mounted set and starts its auto-dismiss timer. The ONLY path that
     // appends to `_toasts` — both TryAdmit's persistent fast path and ReconcileGroup's admit loop
     // route through here, so NonPersistentMountedCount can never be pushed over MaxToasts by
-    // either caller. PR #357 round-9 (finding 1 — the ADMISSION SNAPSHOT): `resolvedPosition` is
-    // supplied by the caller (frozen at TryAdmit entry, possibly long before a queued toast
-    // actually reaches this method) — but the resolved DURATION/persistence is decided HERE, fresh,
-    // against the CURRENT DefaultDuration, because this is the exact instant the real timer is (or
-    // isn't) started. Freezing both together on the new ToastItem is what makes cap accounting
-    // permanently match the timer that was actually created, even for a toast that sat queued
-    // through a DefaultDuration change.
-    private void MountToast(ToastMessage message, ToastViewport.ToastPosition resolvedPosition)
+    // either caller. PR #357 round-9 (finding 1) / round-10 (finding 1) — the ADMISSION SNAPSHOT:
+    // BOTH `resolvedPosition` and `resolvedDuration` are supplied by the caller, frozen at the
+    // moment this toast was actually ADMITTED (TryAdmit) — or, for a toast promoted out of the
+    // queue by an explicit Update, at that Update's instant (see HandleUpdateAsync/UpdateQueued) —
+    // possibly long before a queued toast actually reaches this method. This method no longer
+    // re-resolves duration/persistence against whatever DefaultDuration happens to be current when
+    // the timer actually starts; it only ever consumes the value it was handed. That is what makes
+    // cap accounting permanently match what admission (or the toast's own last explicit Update)
+    // actually decided, even for a toast that sat queued through a DefaultDuration change.
+    private void MountToast(ToastMessage message, ToastViewport.ToastPosition resolvedPosition, int resolvedDuration)
     {
-        var duration = message.Options.Duration ?? DefaultDuration;
-        _toasts.Add(new ToastItem(message.Id, message.Options, resolvedPosition, duration == 0));
+        _toasts.Add(new ToastItem(message.Id, message.Options, resolvedPosition, resolvedDuration == 0));
         StateHasChanged();
 
-        if (duration > 0)
+        if (resolvedDuration > 0)
         {
-            StartTimer(message.Id, duration);
+            StartTimer(message.Id, resolvedDuration);
         }
     }
 
@@ -597,7 +616,7 @@
             {
                 var next = DequeueFirstMatching(q => q.ResolvedPosition == pos);
                 if (next is null) break;
-                MountToast(next.Message, next.ResolvedPosition);
+                MountToast(next.Message, next.ResolvedPosition, next.ResolvedDuration);
                 admittedAny = true;
             }
 
@@ -641,17 +660,22 @@
     }
 
     // Queue<T> has no update-by-id either; rebuild preserving FIFO order, swapping in the fresh
-    // options AND resolved position for the matching id. No-op (and no allocation beyond the Any()
-    // scan) if the id isn't queued — same dedupe-by-id intent as the mounted path in
+    // options AND resolved position/duration for the matching id. No-op (and no allocation beyond
+    // the Any() scan) if the id isn't queued — same dedupe-by-id intent as the mounted path in
     // HandleUpdateAsync, just for a toast that hasn't been admitted into _toasts yet. PR #357
-    // round-9 (finding 6): `resolvedPosition` is supplied by the caller — an explicit Update is the
-    // ONLY thing allowed to re-stamp a queued toast's group (see the ADMISSION SNAPSHOT comment on
-    // ToastItem); this never re-derives it from the live Position parameter itself.
-    private void UpdateQueued(string toastId, ToastOptions options, ToastViewport.ToastPosition resolvedPosition)
+    // round-9 (finding 6) / round-10 (finding 1): `resolvedPosition`/`resolvedDuration` are supplied
+    // by the caller — an explicit Update is the ONLY thing allowed to re-stamp a queued toast's
+    // group AND resolved duration (see the ADMISSION SNAPSHOT comment on ToastItem/QueuedToast);
+    // this never re-derives either from the live Position/DefaultDuration parameters itself.
+    private void UpdateQueued(
+        string toastId, ToastOptions options,
+        ToastViewport.ToastPosition resolvedPosition, int resolvedDuration)
     {
         if (!_pendingQueue.Any(q => q.Message.Id == toastId)) return;
         var updated = _pendingQueue
-            .Select(q => q.Message.Id == toastId ? new QueuedToast(q.Message with { Options = options }, resolvedPosition) : q)
+            .Select(q => q.Message.Id == toastId
+                ? new QueuedToast(q.Message with { Options = options }, resolvedPosition, resolvedDuration)
+                : q)
             .ToList();
         _pendingQueue.Clear();
         foreach (var q in updated) _pendingQueue.Enqueue(q);
@@ -687,7 +711,11 @@
             // PR #357 round-9 (finding 1/6 — ADMISSION SNAPSHOT): an explicit Update is the ONE
             // place allowed to re-resolve a toast's group, against the CURRENT Position default —
             // never a passive re-read elsewhere. Computed once here for both branches below.
+            // PR #357 round-10 (finding 1): same treatment for the resolved DURATION, against the
+            // CURRENT DefaultDuration — an explicit Update is likewise the one place allowed to move
+            // a still-queued toast's persistence forward.
             var newPos = ResolvePosition(options.Position);
+            var newDuration = options.Duration ?? DefaultDuration;
 
             // PR #357 round-6 (finding 2 + 3 combined): if the update makes this entry persistent
             // (resolved Duration == 0), it no longer belongs in the cap-bounded queue at all — pull
@@ -695,10 +723,10 @@
             // (TryAdmit). Left queued, it would sit waiting on a slot it will never need. Cap-
             // neutral (mounting a persistent never affects NonPersistentMountedCount), so no group
             // lock is needed for this branch — same reasoning as TryAdmit's persistent fast path.
-            if (IsPersistent(options))
+            if (newDuration == 0)
             {
                 var promoted = DequeueFirstMatching(q => q.Message.Id == toastId);
-                if (promoted is not null) MountToast(promoted.Message with { Options = options }, newPos);
+                if (promoted is not null) MountToast(promoted.Message with { Options = options }, newPos, newDuration);
                 return;
             }
 
@@ -709,7 +737,7 @@
             // needing a lock): the old group's PendingCount just shrank (nothing to do there
             // usually), and the new group may have room to admit this entry right now instead of
             // waiting on an unrelated future removal that may never come for that group.
-            UpdateQueued(toastId, options, newPos);
+            UpdateQueued(toastId, options, newPos, newDuration);
 
             // PR #357 round-9 (finding 3): retargeting into a DIFFERENT group must obey the exact
             // same per-position pending cap TryAdmit enforces on a fresh arrival — otherwise a

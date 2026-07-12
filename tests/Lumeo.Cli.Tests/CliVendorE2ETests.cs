@@ -137,6 +137,52 @@ public sealed class CliVendorE2ETests : IDisposable
         Assert.DoesNotContain("AttachToastEnterEnd", code);
     }
 
+    // PR #357 round-10 (finding 2): the sibling-tag qualification set (round-9, finding 2) was built
+    // per-ITEM inside the vendoring loop — RazorComponentNames(item.Files) — instead of from the FULL
+    // set of everything this `add` invocation vendors. That's a no-op for a component with no
+    // dependencies (its own item IS the whole batch), but ConfirmButton depends on `button` — the BFS
+    // above pulls Button in as a SEPARATE `toInstall` entry, and ConfirmButton.razor's own markup has
+    // a bare `<Button ...>...</Button>` reference to it. Under the round-9 scoping, ConfirmButton's
+    // own siblingComponentNames was just ["ConfirmButton"] — Button was never in it — so that bare
+    // tag was left unqualified, reproducing the exact RZ10009 "two TagHelperDescriptors, same short
+    // name" ambiguity finding 2 of round-9 was supposed to close (the officially templated app keeps
+    // `@using Lumeo` in _Imports.razor, which still resolves the bare `<Button>` tag against the
+    // PACKAGE's Button after Acme.Ui.Button is ALSO vendored). Building the set from the full
+    // `toInstall` (batch + resolved dependencies) — this test's actual assertion — closes it.
+    [Fact]
+    public void Add_Vendor_Qualifies_A_Transitively_Pulled_Dependencys_Bare_Tag_Reference()
+    {
+        Assert.True(File.Exists(_lumeoDll),
+            "Built CLI (lumeo.dll) not found under tools/Lumeo.Cli/bin — build the solution first.");
+
+        var init = RunCli("init", "--yes", "--namespace", "Acme.Ui", "--path", "Components/Ui", "--no-assets");
+        Assert.True(init.Exit == 0, $"init failed (exit {init.Exit}). stderr: {init.Stderr}\nstdout: {init.Stdout}");
+
+        // confirm-button depends on button (+ overlay) — the BFS resolves both into the SAME `add`
+        // invocation's toInstall, as separate RegistryEntry items.
+        var add = RunCli("add", "confirm-button", "--local", "--yes", "--force");
+        Assert.True(add.Exit == 0, $"add failed (exit {add.Exit}). stderr: {add.Stderr}\nstdout: {add.Stdout}");
+
+        // The transitively-pulled dependency itself was vendored too, under its own rebranded
+        // namespace.
+        var buttonRazor = Path.Combine(_proj, "Components", "Ui", "Button", "Button.razor");
+        Assert.True(File.Exists(buttonRazor), $"Button.razor (ConfirmButton's dependency) was not vendored to {buttonRazor}.\nadd stdout:\n{add.Stdout}");
+        Assert.Contains("@namespace Acme.Ui", File.ReadAllText(buttonRazor));
+
+        var confirmButtonRazor = Path.Combine(_proj, "Components", "Ui", "ConfirmButton", "ConfirmButton.razor");
+        Assert.True(File.Exists(confirmButtonRazor), $"ConfirmButton.razor was not vendored to {confirmButtonRazor}.\nadd stdout:\n{add.Stdout}");
+        var content = File.ReadAllText(confirmButtonRazor);
+        Assert.Contains("@namespace Acme.Ui", content);
+
+        // The bare `<Button ...>`/`</Button>` markup reference must be fully qualified to
+        // Acme.Ui.Button — never left bare, which would collide with the still-in-scope `@using
+        // Lumeo` package reference the officially templated app's _Imports.razor keeps.
+        Assert.Contains("<Acme.Ui.Button ", content);
+        Assert.Contains("</Acme.Ui.Button>", content);
+        Assert.DoesNotContain("<Button ", content);
+        Assert.DoesNotContain("</Button>", content);
+    }
+
     [Fact]
     public void Add_Vendor_Copies_Satellite_Source_And_Its_Wwwroot_Asset()
     {

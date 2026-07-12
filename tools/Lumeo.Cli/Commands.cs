@@ -429,10 +429,13 @@ internal static class Commands
     // compile without any rewriting: relative references (Services.X), shared cascading types
     // (FormField.FormFieldContext) and inter-component references all bind under Lumeo. Rewriting them
     // to the consumer namespace is exactly what broke those. Normal (NuGet) mode still rebrands.
-    // `siblingComponentNames` (PR #357 round-9, finding 2) — the OTHER component names vendored in
-    // the SAME batch (typically a single RegistryEntry.Files group) — is threaded through to
-    // NamespaceRewriter so bare tag references between them (e.g. ToastProvider.razor's own
-    // `<Toast>`) get fully qualified; see that method's doc comment for why.
+    // `siblingComponentNames` (PR #357 round-9, finding 2; round-10, finding 2) — the OTHER
+    // component names vendored by THIS `add` invocation, whether directly requested or pulled in
+    // transitively as a dependency — is threaded through to NamespaceRewriter so bare tag references
+    // between ANY two of them (e.g. ToastProvider.razor's own `<Toast>`, or Toast referencing
+    // Button) get fully qualified; see that method's doc comment for why. Callers must build this
+    // from the FULL vendored file set (every `RegistryEntry` in `toInstall`, not just one), or a
+    // transitive dependency's tags stay bare and can still collide.
     private static string MaybeRewrite(string content, string relFile, LumeoConfig cfg,
         IReadOnlyCollection<string>? siblingComponentNames = null)
         => cfg.Standalone ? content : NamespaceRewriter.Rewrite(content, relFile, cfg.Namespace, siblingComponentNames);
@@ -1085,6 +1088,18 @@ internal static class Commands
         // component of a package, so copy them at most once per package.
         var vendoredSatelliteAssets = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
+        // PR #357 round-9 (finding 2) / round-10 (finding 2): every .razor component vendored by
+        // THIS `add` invocation — the requested component AND every dependency the BFS above pulled
+        // in transitively (e.g. Toast pulling in Button) — so MaybeRewrite can fully qualify bare
+        // sibling tag references between ANY two of them, not just within one component's own file
+        // group. Built ONCE from the FULL `toInstall` set (batch + resolved dependencies), not
+        // per-item: round-9 scoped this to `item.Files` inside the loop below, which only qualified
+        // tags between a component's OWN files — a dependency pulled in by BFS (its files live in a
+        // DIFFERENT `item`) still kept bare, unqualified tags and could still collide with a type
+        // already in the consumer's rebranded namespace. See RazorComponentNames'/
+        // NamespaceRewriter's doc comments.
+        var siblingComponentNames = RazorComponentNames(toInstall.SelectMany(i => i.Files));
+
         foreach (var item in toInstall)
         {
             // Satellites (Charts, DataGrid, …) only get their source copied when
@@ -1118,10 +1133,6 @@ internal static class Commands
             var folder = Path.Combine(outRoot, item.Name);
             if (writeAllowed) Directory.CreateDirectory(folder);
             var recordedFiles = new List<string>();
-            // PR #357 round-9 (finding 2): every OTHER .razor component vendored alongside this
-            // one — e.g. Toast's own ToastProvider/ToastViewport/… — so MaybeRewrite can fully
-            // qualify bare sibling tag references. See NamespaceRewriter's doc comment.
-            var siblingComponentNames = RazorComponentNames(item.Files);
 
             foreach (var relFile in item.Files)
             {
