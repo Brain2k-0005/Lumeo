@@ -1,0 +1,86 @@
+name: Eject Gate
+
+# Standing CI proof of the NuGet-free "standalone eject" guarantee. The CLI's
+# `standalone` mode (init --standalone / add / eject) vendors components as SOURCE
+# instead of a NuGet package so a consumer's project never carries a Lumeo
+# PackageReference. That was proven once by hand for all 164 registry components —
+# never re-verified since (see tests/Lumeo.Cli.Tests/CliStandaloneE2ETests.cs). This
+# workflow reruns that proof on a schedule, on demand, and on every release so a
+# regression in any one component's vendored-runtime closure fails loudly instead
+# of surfacing in a consumer's `lumeo eject`.
+#
+# Both jobs reuse CliStandaloneE2ETests' own harness (subprocess `lumeo` CLI
+# invocation, DOTNET_ROLL_FORWARD-aware dotnet host resolution, minimal Razor-lib
+# scaffold) via xunit Category traits, so the gate and the local dev-loop tests can
+# never drift apart:
+#   - Category=EjectGateFull  — every registered component, ONE fresh project, ONE
+#     `dotnet build` (not 164 separate projects). Slow; excluded from the per-PR
+#     `dotnet test Lumeo.slnx` run in ci.yml, runs here instead.
+#   - Category=EjectGateSmoke — 5 representative components (incl. one satellite +
+#     the icon-rendering component) as a cheap early warning. This one is NOT
+#     exclusive to this workflow — it also runs on every PR via ci.yml since
+#     Lumeo.Cli.Tests is part of Lumeo.slnx. Re-running it here (workflow_dispatch /
+#     schedule / release) is redundant with that but harmless and fast.
+
+on:
+  schedule:
+    # Monday 05:00 UTC — clear of publish.yml's release-triggered runs and ahead of
+    # the work week, so a Monday-morning drift report is waiting rather than a
+    # surprise mid-week.
+    - cron: '0 5 * * 1'
+  workflow_dispatch:
+  release:
+    types: [published]
+
+concurrency:
+  group: eject-gate-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  full-eject:
+    name: Full standalone eject (all ~164 components, one project)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Build Lumeo CLI
+        # The test harness runs the BUILT lumeo.dll as a subprocess (it can't
+        # ProjectReference an Exe with its own entry point — see the comment atop
+        # Lumeo.Cli.Tests.csproj), so it must exist before the test runs.
+        run: dotnet build tools/Lumeo.Cli/Lumeo.Cli.csproj -c Release
+
+      - name: Eject ALL components into one standalone project and compile
+        # Assertion failure messages include the full installed-component list and
+        # the raw `dotnet build`/`add --all` output — "fails loudly with the
+        # component list on any break" — surfaced here via --logger console;verbosity=detailed.
+        run: >
+          dotnet test tests/Lumeo.Cli.Tests/Lumeo.Cli.Tests.csproj -c Release
+          --filter "Category=EjectGateFull"
+          --logger "console;verbosity=detailed"
+
+  smoke-eject:
+    name: Smoke standalone eject (5 representative components)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Build Lumeo CLI
+        run: dotnet build tools/Lumeo.Cli/Lumeo.Cli.csproj -c Release
+
+      - name: Eject 5 representative components and compile
+        run: >
+          dotnet test tests/Lumeo.Cli.Tests/Lumeo.Cli.Tests.csproj -c Release
+          --filter "Category=EjectGateSmoke"
+          --logger "console;verbosity=detailed"

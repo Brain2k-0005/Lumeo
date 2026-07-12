@@ -224,6 +224,98 @@ public class PerComponentEnricherTests : IDisposable
     }
 
     [Fact]
+    public void Keyboard_interactions_captured_from_a_switch_statement_case_clause()
+    {
+        // PR #356 round-3 (Codex P3): the old `.Key == "X"`-only regex missed a
+        // switch(e.Key) { case "ArrowRight": ... } handler entirely, so
+        // keyboardInteractions stayed empty even though api.a11y.keys (built from
+        // ComponentsApiEmitter's own KeyComparisonRegex) correctly listed the keys —
+        // dock.json advertised "no keyboard support" for a Dock that actually has
+        // full roving-focus arrow/Home/End navigation. This locks in that the
+        // enricher now shares the SAME regex + whitelist as the a11y scanner.
+        WriteComponentFile("Dock", "Dock.razor", """
+@namespace Lumeo
+<div @onkeydown="HandleKeyDown"></div>
+@code {
+    private async Task HandleKeyDown(KeyboardEventArgs e)
+    {
+        switch (e.Key)
+        {
+            case "ArrowRight":
+                await MoveFocus(1);
+                break;
+            case "ArrowLeft":
+                await MoveFocus(-1);
+                break;
+            case "Home":
+                await FocusEdge(last: false);
+                break;
+            case "End":
+                await FocusEdge(last: true);
+                break;
+        }
+    }
+    private Task MoveFocus(int delta) => Task.CompletedTask;
+    private Task FocusEdge(bool last) => Task.CompletedTask;
+}
+""");
+        var entry = new Dictionary<string, object?>
+        {
+            ["files"] = new[] { "UI/Dock/Dock.razor" },
+            ["nugetPackage"] = "Lumeo.Motion",
+            ["category"] = "Motion",
+            ["description"] = "Dock.",
+        };
+        var apiBlock = Api("""{ "parameters": [] }""");
+
+        PerComponentEnricher.Enrich(entry, "dock", "Dock", _root, apiBlock,
+            new HashSet<string> { "Dock" });
+
+        var kb = Assert.IsType<List<Dictionary<string, object?>>>(entry["keyboardInteractions"]);
+        Assert.Contains(kb, k => k["key"]?.ToString() == "ArrowRight" && k["action"]?.ToString()!.Contains("HandleKeyDown") == true);
+        Assert.Contains(kb, k => k["key"]?.ToString() == "ArrowLeft");
+        Assert.Contains(kb, k => k["key"]?.ToString() == "Home");
+        Assert.Contains(kb, k => k["key"]?.ToString() == "End");
+    }
+
+    [Fact]
+    public void Tests_include_dedicated_folder_files_that_never_render_the_component()
+    {
+        // A sub-component/helper test filed under the component's OWN dedicated
+        // test folder (tests/Lumeo.Tests/Components/Sheet/) must count as this
+        // component's coverage even when it never renders <Sheet>/Lumeo.Sheet
+        // itself — folder ownership is the stronger signal than the render regex
+        // (Codex/CodeRabbit, PR #356 round-2).
+        WriteComponentFile("Sheet", "Sheet.razor", "@namespace Lumeo\n<div></div>");
+        var testDir = Path.Combine(_root, "tests", "Lumeo.Tests", "Components", "Sheet");
+        Directory.CreateDirectory(testDir);
+        File.WriteAllText(Path.Combine(testDir, "SheetHelperTests.cs"), """
+        using Xunit;
+        namespace Lumeo.Tests.Components.Sheet;
+        public class SheetHelperTests
+        {
+            [Fact]
+            public void ParsesSomeHelper() => Assert.True(true);
+        }
+        """);
+
+        var entry = new Dictionary<string, object?>
+        {
+            ["files"] = new[] { "UI/Sheet/Sheet.razor" },
+            ["nugetPackage"] = "Lumeo",
+            ["category"] = "Overlay",
+            ["description"] = "A sheet.",
+        };
+        var apiBlock = Api("""{ "parameters": [] }""");
+
+        PerComponentEnricher.Enrich(entry, "sheet", "Sheet", _root, apiBlock,
+            new HashSet<string> { "Sheet" });
+
+        var tests = Assert.IsType<List<string>>(entry["tests"]);
+        Assert.Contains(tests, t => t.EndsWith("SheetHelperTests.cs", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public void MdSummary_is_populated_with_parameter_table()
     {
         WriteComponentFile("Button", "Button.razor", "@namespace Lumeo\n<button></button>");

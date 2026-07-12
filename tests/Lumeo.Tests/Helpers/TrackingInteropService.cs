@@ -443,9 +443,15 @@ public class TrackingInteropService : IComponentInteropService
     }
     private readonly List<string> _registerPreventDefaultKeysElementIds = new();
     public IReadOnlyList<string> RegisterPreventDefaultKeysElementIds => _registerPreventDefaultKeysElementIds;
+    // PR #356 round-3: also captures the rule SET per call (keyed by elementId, last
+    // call wins) so tests can assert flags like SkipEditable on the registered rules,
+    // not just that SOME registration happened against an id.
+    private readonly Dictionary<string, IReadOnlyList<PreventDefaultKeyRule>> _registerPreventDefaultKeysRules = new();
+    public IReadOnlyDictionary<string, IReadOnlyList<PreventDefaultKeyRule>> RegisterPreventDefaultKeysRules => _registerPreventDefaultKeysRules;
     public ValueTask RegisterPreventDefaultKeys(string elementId, IReadOnlyList<PreventDefaultKeyRule> rules)
     {
         _registerPreventDefaultKeysElementIds.Add(elementId);
+        _registerPreventDefaultKeysRules[elementId] = rules;
         return ValueTask.CompletedTask;
     }
     public ValueTask UnregisterPreventDefaultKeys(string elementId) => ValueTask.CompletedTask;

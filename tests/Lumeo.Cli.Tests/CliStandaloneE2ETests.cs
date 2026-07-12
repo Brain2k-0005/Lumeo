@@ -41,11 +41,47 @@ public sealed class CliStandaloneE2ETests : IDisposable
         return null;
     }
 
-    private (int Exit, string Stdout, string Stderr) RunCli(params string[] args) => Run(_lumeoDll, args, 90_000, prefixDll: true);
+    private (int Exit, string Stdout, string Stderr) RunCli(params string[] args) => RunCli(args, timeoutMs: 90_000);
+
+    // Overload with a caller-supplied timeout — the eject-gate tests vendor ALL (or several)
+    // components in one call instead of one, so the default 90s CLI timeout is too tight.
+    private (int Exit, string Stdout, string Stderr) RunCli(string[] args, int timeoutMs) => Run(_lumeoDll, args, timeoutMs, prefixDll: true);
 
     // Build the scaffolded project with the SAME dotnet host that is running the tests — the .NET 10
     // SDK is off-PATH (~/.dotnet), so shelling out to a bare "dotnet" could hit a different runtime.
-    private (int Exit, string Stdout, string Stderr) RunDotnet(params string[] args) => Run(DotnetHost(), args, 420_000, prefixDll: false);
+    private (int Exit, string Stdout, string Stderr) RunDotnet(params string[] args) => RunDotnet(args, timeoutMs: 420_000);
+
+    // Overload with a caller-supplied timeout — building a project with every registered
+    // component vendored in is heavier than the single/handful-of-component builds elsewhere
+    // in this file, so the eject-gate-full test asks for more headroom than the default 7 min.
+    private (int Exit, string Stdout, string Stderr) RunDotnet(string[] args, int timeoutMs) => Run(DotnetHost(), args, timeoutMs, prefixDll: false);
+
+    // Best-effort snapshot of lumeo.json's installed-components map, for failure messages —
+    // "fails loudly with the component list" when the eject-gate build breaks. Never throws:
+    // a malformed/partial lumeo.json (e.g. `add --all` aborted mid-way) just yields "(unknown)".
+    private string InstalledComponentsSummary()
+    {
+        try
+        {
+            var path = Path.Combine(_proj, "lumeo.json");
+            if (!File.Exists(path)) return "(no lumeo.json — nothing installed yet)";
+            var cfg = System.Text.Json.JsonSerializer.Deserialize<LumeoConfigSnapshot>(File.ReadAllText(path),
+                new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+            var keys = cfg?.Components?.Keys.OrderBy(k => k, StringComparer.OrdinalIgnoreCase).ToList() ?? new List<string>();
+            return keys.Count == 0 ? "(none recorded)" : $"{keys.Count} component(s): {string.Join(", ", keys)}";
+        }
+        catch (Exception ex)
+        {
+            return $"(could not read lumeo.json: {ex.Message})";
+        }
+    }
+
+    // Minimal shape for reading lumeo.json's components map without depending on the CLI's
+    // internal (non-public) LumeoConfig type.
+    private sealed class LumeoConfigSnapshot
+    {
+        public Dictionary<string, object>? Components { get; set; }
+    }
 
     private static string DotnetHost()
     {
@@ -67,6 +103,24 @@ public sealed class CliStandaloneE2ETests : IDisposable
         "<Project Sdk=\"Microsoft.NET.Sdk.Razor\"><PropertyGroup><TargetFramework>net10.0</TargetFramework>"
       + "<Nullable>enable</Nullable><ImplicitUsings>enable</ImplicitUsings></PropertyGroup>"
       + "<ItemGroup><PackageReference Include=\"Microsoft.AspNetCore.Components.Web\" Version=\"10.0.6\" />"
+      + "</ItemGroup></Project>";
+
+    // Same as MinimalCsproj, but pre-references every external (non-Lumeo) NuGet package any
+    // registry component's packageDependencies can require (Mammoth/Markdig/QRCoder as of this
+    // writing — src/Lumeo.Editor, src/Lumeo.FileViewer, src/Lumeo respectively). `add --all`
+    // touches all of them, and EnsureNuGetPackageAsync skips its own `dotnet add package` shell-
+    // out once a csproj already references the package (Commands.cs FindCsprojReferencingPackage
+    // check) — so pre-referencing here avoids depending on that subprocess launch succeeding
+    // (it resolves a bare "dotnet" on PATH, which is a different/older SDK than the roll-forward
+    // dotnet host this harness itself uses; see DotnetHost()). Versions match the pinned versions
+    // in the satellites' own .csproj files.
+    private static string AllExternalPackagesCsproj() =>
+        "<Project Sdk=\"Microsoft.NET.Sdk.Razor\"><PropertyGroup><TargetFramework>net10.0</TargetFramework>"
+      + "<Nullable>enable</Nullable><ImplicitUsings>enable</ImplicitUsings></PropertyGroup>"
+      + "<ItemGroup><PackageReference Include=\"Microsoft.AspNetCore.Components.Web\" Version=\"10.0.6\" />"
+      + "<PackageReference Include=\"Mammoth\" Version=\"1.11.0\" />"
+      + "<PackageReference Include=\"Markdig\" Version=\"0.37.0\" />"
+      + "<PackageReference Include=\"QRCoder\" Version=\"1.8.0\" />"
       + "</ItemGroup></Project>";
 
     private (int Exit, string Stdout, string Stderr) Run(string program, string[] args, int timeoutMs, bool prefixDll)
@@ -276,5 +330,82 @@ public sealed class CliStandaloneE2ETests : IDisposable
         var build = RunDotnet("build", "-c", "Debug", "--nologo");
         Assert.True(build.Exit == 0, $"Editor standalone build FAILED:\n{build.Stdout}\n{build.Stderr}");
         Assert.DoesNotContain("Include=\"Lumeo\"", File.ReadAllText(Path.Combine(_proj, "App.csproj")));
+    }
+
+    // ── Eject-gate: the standing CI guarantee (.github/workflows/eject-gate.yml) ──────────────
+    //
+    // The individual tests above proved specific corners (a core component, a component with
+    // deps+services, the imperative-overlay pattern, two satellites). This pair generalizes that
+    // to the WHOLE registry so drift in any one component's vendored-runtime closure is caught,
+    // not just the handful spot-checked above.
+    //
+    //   - Standalone_All_Components_Eject_And_Build_NuGetFree (Category=EjectGateFull): every
+    //     registered component, one project, one build. Slow (164 components) — excluded from
+    //     the default per-PR `dotnet test Lumeo.slnx` run (ci.yml filters out Category=
+    //     EjectGateFull) and instead run by eject-gate.yml on its own weekly/dispatch/release
+    //     cadence.
+    //   - Standalone_Smoke_Five_Components_Build_NuGetFree (Category=EjectGateSmoke): a small,
+    //     fast representative slice. Carries NO exclusion filter, so it runs automatically in
+    //     the existing per-PR suite as a cheap early warning between full-gate runs.
+
+    [Fact]
+    [Trait("Category", "EjectGateFull")]
+    public void Standalone_All_Components_Eject_And_Build_NuGetFree()
+    {
+        File.WriteAllText(Path.Combine(_proj, "App.csproj"), AllExternalPackagesCsproj());
+        Assert.Equal(0, RunCli("init", "--yes", "--standalone", "--namespace", "Acme.Ui", "--path", "Components/Ui", "--no-assets").Exit);
+
+        // `--all` vendors every registry entry, core AND satellites — standalone mode forces
+        // vendor-as-source for satellites too (no --vendor needed), so this is the true "eject
+        // everything" path a consumer's `lumeo add --all` on a fresh standalone project takes.
+        var add = RunCli(new[] { "add", "--all", "--local", "--yes", "--force" }, timeoutMs: 300_000);
+        Assert.True(add.Exit == 0,
+            $"`add --all` failed (exit {add.Exit}) before a build was even attempted.\n"
+          + $"Installed so far: {InstalledComponentsSummary()}\n--- stderr ---\n{add.Stderr}\n--- stdout ---\n{add.Stdout}");
+
+        var build = RunDotnet(new[] { "build", "-c", "Debug", "--nologo" }, timeoutMs: 900_000);
+        Assert.True(build.Exit == 0,
+            $"EJECT GATE BROKEN — the standalone NuGet-free build failed with every registered "
+          + $"component vendored in. {InstalledComponentsSummary()}\n"
+          + $"--- dotnet build stdout ---\n{build.Stdout}\n--- dotnet build stderr ---\n{build.Stderr}");
+
+        var csproj = File.ReadAllText(Path.Combine(_proj, "App.csproj"));
+        Assert.DoesNotContain("Include=\"Lumeo\"", csproj);
+        Assert.DoesNotContain("Include=\"Lumeo.", csproj);
+    }
+
+    [Fact]
+    [Trait("Category", "EjectGateSmoke")]
+    public void Standalone_Smoke_Five_Components_Build_NuGetFree()
+    {
+        // Five components chosen to each exercise a different corner of the vendoring closure:
+        //   button           - plain core component, no deps.
+        //   dialog           - component deps (Button) + services (OverlayService, ILumeoLocalizer) + Cx.
+        //   confirm-button   - drives an overlay IMPERATIVELY (no <OverlayProvider> in its own markup);
+        //                      the transitive OverlayProvider vendoring has broken before (Codex P2).
+        //   icon             - the registry's icon-rendering component; exercises the vendored
+        //                      first-party Icons/LumeoIcons.g.cs runtime asset (the closest
+        //                      registry-addable proxy for "one icon pack" — the optional
+        //                      Lumeo.Icons.* NuGet packs selected via `lumeo apply --icons` are a
+        //                      separate opt-in feature, not part of the zero-PackageReference core
+        //                      guarantee this gate proves).
+        //   data-grid        - satellite (Lumeo.DataGrid) with a large component-dependency closure
+        //                      incl. form controls.
+        File.WriteAllText(Path.Combine(_proj, "App.csproj"), MinimalCsproj());
+        Assert.Equal(0, RunCli("init", "--yes", "--standalone", "--namespace", "Acme.Ui", "--path", "Components/Ui", "--no-assets").Exit);
+
+        foreach (var component in new[] { "button", "dialog", "confirm-button", "icon", "data-grid" })
+        {
+            var add = RunCli("add", component, "--local", "--yes", "--force");
+            Assert.True(add.Exit == 0, $"add {component} failed (exit {add.Exit}). {add.Stderr}{add.Stdout}");
+        }
+
+        var build = RunDotnet("build", "-c", "Debug", "--nologo");
+        Assert.True(build.Exit == 0,
+            $"Eject-gate SMOKE build FAILED — {InstalledComponentsSummary()}\n{build.Stdout}\n{build.Stderr}");
+
+        var csproj = File.ReadAllText(Path.Combine(_proj, "App.csproj"));
+        Assert.DoesNotContain("Include=\"Lumeo\"", csproj);
+        Assert.DoesNotContain("Include=\"Lumeo.", csproj);
     }
 }

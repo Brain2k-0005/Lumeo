@@ -1,9 +1,9 @@
 @namespace Lumeo
 @implements IAsyncDisposable
-@inject ComponentInteropService Interop
+@inject Lumeo.Services.IComponentInteropService Interop
 @inject Lumeo.Services.Localization.ILumeoLocalizer L
 
-<div id="@_elementId" class="@CssClass" role="toolbar" aria-label="@EffectiveAriaLabel" @attributes="AdditionalAttributes">
+<div id="@_elementId" tabindex="0" class="@CssClass" role="toolbar" aria-label="@EffectiveAriaLabel" @onkeydown="HandleKeyDown" @attributes="AdditionalAttributes">
     @ChildContent
 </div>
 
@@ -20,7 +20,32 @@
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     private readonly string _elementId = $"lumeo-dock-{Guid.NewGuid():N}";
-    private bool _registered;
+
+    // The id that ACTUALLY renders on the <div>: a consumer-splatted id in
+    // AdditionalAttributes wins (it renders after the explicit id="@_elementId"
+    // above), else the generated fallback. EVERY interop call below (dock
+    // magnify listeners, roving tabindex, arrow-key prevent-default, focus
+    // movement) must target THIS, not the raw _elementId — otherwise a
+    // consumer-supplied id leaves those registrations pointed at an id no
+    // element in the document carries, and the dock silently loses its whole
+    // keyboard/magnify model (PR #356 round-5, Codex P2). Mirrors
+    // PopoverTrigger's EffectiveTriggerId / PivotGrid's EffectiveWrapperId.
+    private string EffectiveElementId =>
+        AdditionalAttributes is not null
+        && AdditionalAttributes.TryGetValue("id", out var v)
+        && v is string s && !string.IsNullOrEmpty(s)
+            ? s
+            : _elementId;
+
+    // The id the motion-dock pointermove/focusin listeners are ACTUALLY
+    // registered against (null = not registered) — tracked by id, not a bool,
+    // so a consumer changing the splatted id at runtime re-registers against
+    // the NEW id instead of leaving the magnify listeners attached to a stale
+    // DOM id while the dock believes it's live (PR #356 round-5, Codex P2).
+    private string? _registeredMotionId;
+    // Same id-tracking rationale for the arrow-key prevent-default rule —
+    // mirrors PopoverTrigger's _registeredId / PivotGrid's _registeredWrapperId.
+    private string? _registeredPdId;
     private double _lastMaxScale;
     private int _lastRadius;
 
@@ -28,14 +53,48 @@
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (firstRender && !_registered)
+        var effectiveId = EffectiveElementId;
+
+        if (_registeredMotionId != effectiveId)
         {
-            _registered = true;
+            // Covers BOTH first registration (_registeredMotionId starts null)
+            // and a splatted id changing at runtime. Dispose the OLD
+            // registration — by the id it was actually registered under, not
+            // the current one — before binding the new one, so the dock never
+            // accumulates a second set of pointermove/focusin listeners on top
+            // of the first (PR #356 round-5, Codex P2).
+            if (_registeredMotionId is not null)
+            {
+                try { await Interop.MotionDisposeDock(_registeredMotionId); }
+                catch (JSDisconnectedException) { }
+            }
             _lastMaxScale = MaxScale;
             _lastRadius = MagnifyRadius;
             try
             {
-                await Interop.MotionDock(_elementId, new
+                await Interop.MotionDock(effectiveId, new
+                {
+                    maxScale = MaxScale,
+                    magnifyRadius = MagnifyRadius
+                });
+                _registeredMotionId = effectiveId;
+            }
+            catch (JSDisconnectedException) { }
+        }
+        else if (MaxScale != _lastMaxScale || MagnifyRadius != _lastRadius)
+        {
+            // Id unchanged, but MaxScale / MagnifyRadius changed at runtime. The
+            // JS dock() captures these into a closure at registration time, so
+            // they must be re-pushed. Dispose first: dock() always adds a fresh
+            // listener set and overwrites its disconnect handle, so a naive
+            // re-invoke would leak the previous listeners — disposeDock removes
+            // the old set before we rebind.
+            _lastMaxScale = MaxScale;
+            _lastRadius = MagnifyRadius;
+            try
+            {
+                await Interop.MotionDisposeDock(effectiveId);
+                await Interop.MotionDock(effectiveId, new
                 {
                     maxScale = MaxScale,
                     magnifyRadius = MagnifyRadius
@@ -43,32 +102,91 @@
             }
             catch (JSDisconnectedException) { }
         }
-        else if (_registered && (MaxScale != _lastMaxScale || MagnifyRadius != _lastRadius))
+
+        // APG toolbar pattern (mirrors Toolbar.razor's #235 fix): role="toolbar"
+        // implies one tab stop with Arrow keys roving focus among the items —
+        // Dock had the role but no roving-tabindex wiring of its own, leaving
+        // every item its own Tab stop (a real ARIA-role/behavior mismatch). Runs
+        // on EVERY render, not just firstRender, so items added/removed/enabled
+        // after load are re-managed; initToolbarRoving is idempotent and keeps
+        // the currently-focused item as the stop, so re-running it is safe.
+        // initToolbarRoving also retracts the container's own tabindex="0" once
+        // real items exist, so Tab lands on exactly one stop (Codex P2: the
+        // container used to remain a SECOND stop alongside the roving item).
+        // Targets effectiveId (not _elementId) for the same reason as every
+        // other call in this method — see EffectiveElementId above.
+        try { await Interop.InitToolbarRoving(effectiveId); }
+        catch (JSDisconnectedException) { }
+        catch (ObjectDisposedException) { }
+
+        if (_registeredPdId != effectiveId)
         {
-            // MaxScale / MagnifyRadius changed at runtime. The JS dock() captures
-            // these into a closure at registration time, so they must be re-pushed.
-            // Dispose first: dock() always adds a fresh listener set and overwrites
-            // its disconnect handle, so a naive re-invoke would leak the previous
-            // listeners — disposeDock removes the old set before we rebind.
-            _lastMaxScale = MaxScale;
-            _lastRadius = MagnifyRadius;
+            // Suppress the browser's native scroll for the navigation keys this
+            // toolbar handles itself (Codex/CodeRabbit P2: ArrowLeft/Right/Home/End
+            // were moving roving focus AND scrolling the page/dock at the same time).
+            //
+            // SkipEditable (PR #356 round-4, Codex P2, mirrors Toolbar.razor's #356
+            // round-3 fix): an editable dock item (input/textarea/contenteditable)
+            // owns Arrow/Home/End itself for caret/selection movement. The shared
+            // roving-focus JS already returns early for editable focus targets, so
+            // without SkipEditable here this listener still preventDefault'd those
+            // keys before the browser could move the caret — the key then moved
+            // neither focus nor the caret.
+            //
+            // Compared against the id ACTUALLY registered (not just a bool) so a
+            // consumer-splatted id that changes at runtime re-registers against the
+            // NEW id instead of leaving the rule attached to the stale one (PR #356
+            // round-5, Codex P2).
             try
             {
-                await Interop.MotionDisposeDock(_elementId);
-                await Interop.MotionDock(_elementId, new
-                {
-                    maxScale = MaxScale,
-                    magnifyRadius = MagnifyRadius
-                });
+                if (_registeredPdId is not null)
+                    await Interop.UnregisterPreventDefaultKeys(_registeredPdId);
+                await Interop.RegisterPreventDefaultKeys(
+                    effectiveId,
+                    new[] { "ArrowLeft", "ArrowRight", "Home", "End" }
+                        .Select(k => new Lumeo.Services.PreventDefaultKeyRule(k, SkipEditable: true)).ToArray());
+                _registeredPdId = effectiveId;
             }
             catch (JSDisconnectedException) { }
+            catch (ObjectDisposedException) { }
+        }
+    }
+
+    // Radix/APG Toolbar keyboard model, reused verbatim from Toolbar.razor: the
+    // dock lays out horizontally, so Left/Right move focus (clamped, no wrap)
+    // and Home/End jump to the first/last item. Reads EffectiveElementId live
+    // on every keypress (not a cached field) — there's nothing to leak here,
+    // each call is a one-shot lookup, not an ongoing registration.
+    private async Task HandleKeyDown(KeyboardEventArgs e)
+    {
+        var effectiveId = EffectiveElementId;
+        switch (e.Key)
+        {
+            case "ArrowRight":
+                await Interop.MoveToolbarFocus(effectiveId, 1);
+                break;
+            case "ArrowLeft":
+                await Interop.MoveToolbarFocus(effectiveId, -1);
+                break;
+            case "Home":
+                await Interop.FocusToolbarEdge(effectiveId, last: false);
+                break;
+            case "End":
+                await Interop.FocusToolbarEdge(effectiveId, last: true);
+                break;
         }
     }
 
     public async ValueTask DisposeAsync()
     {
-        if (!_registered) return;
-        try { await Interop.MotionDisposeDock(_elementId); }
+        if (_registeredPdId is not null)
+        {
+            try { await Interop.UnregisterPreventDefaultKeys(_registeredPdId); }
+            catch (JSDisconnectedException) { }
+            catch (ObjectDisposedException) { }
+        }
+        if (_registeredMotionId is null) return;
+        try { await Interop.MotionDisposeDock(_registeredMotionId); }
         catch (JSDisconnectedException) { }
     }
 }
