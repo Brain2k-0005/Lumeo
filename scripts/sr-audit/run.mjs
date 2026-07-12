@@ -198,6 +198,18 @@ async function main() {
         const dotnetExe = process.env.DOTNET_EXE || "dotnet";
         const docsProj = join(repoRoot, "docs", "Lumeo.Docs", "Lumeo.Docs.csproj");
         if (!noBuild) {
+            // Same Tailwind steps a11y-audit/run.mjs and .github/workflows/
+            // a11y-audit.yml run before their own `dotnet build` — plain
+            // `dotnet build` does NOT regenerate the committed CSS bundles
+            // docs/Lumeo.Docs serves (no MSBuild hook for it). Without this,
+            // an SR run after a Tailwind/source style change would exercise
+            // stale visibility/layout/focus styling instead of the source
+            // under test, producing misleading PASS/FAIL results.
+            console.log("[sr-audit] npm run build:css (root utilities)...");
+            await run("npm", ["run", "build:css"], { cwd: repoRoot });
+            console.log("[sr-audit] npm run css:build (docs/Lumeo.Docs)...");
+            await run("npm", ["run", "css:build"], { cwd: join(repoRoot, "docs", "Lumeo.Docs") });
+
             console.log("[sr-audit] dotnet build docs/Lumeo.Docs (Release)...");
             await run(dotnetExe, ["build", docsProj, "-c", "Release", "--nologo"]);
         }
@@ -241,6 +253,18 @@ async function main() {
     let browser = null;
     let nvdaStarted = false;
     try {
+        // NVDA must be started BEFORE the browser is launched, matching
+        // check-env.mjs's order: NVDA reads whatever currently holds OS
+        // foreground focus, and in environments where nvda.start() briefly
+        // takes real foreground focus itself, launching the browser first
+        // and starting NVDA after can invalidate a session that otherwise
+        // passed check-env.mjs — later DOM-focus changes don't fix stale/
+        // wrong-window OS foreground focus, only re-verified startup order does.
+        console.log("[sr-audit] starting NVDA via Guidepup...");
+        await nvda.start();
+        nvdaStarted = true;
+        await sleep(2000);
+
         const edgeCandidates = [
             "C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe",
             "C:/Program Files/Microsoft/Edge/Application/msedge.exe",
@@ -251,11 +275,6 @@ async function main() {
         // reliably present without an extra playwright browser download.
         browser = await chromium.launch({ headless: false, executablePath: edgePath, args: ["--start-maximized"] });
         const page = await browser.newPage();
-
-        console.log("[sr-audit] starting NVDA via Guidepup...");
-        await nvda.start();
-        nvdaStarted = true;
-        await sleep(2000);
 
         mkdirSync(resultsDir, { recursive: true });
         const report = { generated: new Date().toISOString(), baseUrl, protocolFile: "docs/superpowers/sr-test-protocol.md", components: {} };

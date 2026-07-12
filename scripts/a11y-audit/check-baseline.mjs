@@ -106,20 +106,24 @@ const registryPath = join(repoRoot, 'src', 'Lumeo', 'registry', 'registry.json')
 const registry = loadJson(registryPath, null);
 const summary = loadJson(join(reportsDir, 'summary.json'), null);
 const summaryErrors = summary?.errors ?? [];
+
+// Prefer summary.components — written atomically by run.mjs at the end of
+// THIS sweep — over "which reports/<slug>.json files happen to exist on
+// disk". File presence alone can't distinguish a slug this run actually
+// covered from a stale file left by an older sweep (different registry
+// state, a renamed/removed slug), an aborted `--slug` run, or a hand-copied
+// reports directory; any of those would let a component that was never
+// audited just now slip past the coverage check below AND (see the grading
+// loop further down) let a stale report keep a fixed baseline entry alive
+// or invent an old NEW finding for a route that wasn't part of this sweep.
+// Fall back to file presence only when summary.json is absent (e.g. a
+// `--reports-dir` pointed at a hand-built fixture with no summary.json).
+const reportedSlugs = summary?.components
+    ? new Set(Object.keys(summary.components))
+    : new Set(reportFiles.map(f => f.replace(/\.json$/, '')));
+
 let missingSlugs = [];
 if (registry) {
-    // Prefer summary.components — written atomically by run.mjs at the end of
-    // THIS sweep — over "which reports/<slug>.json files happen to exist on
-    // disk". File presence alone can't distinguish a slug this run actually
-    // covered from a stale file left by an older sweep (different registry
-    // state), an aborted `--slug` run, or a hand-copied reports directory;
-    // any of those would let a component that was never audited just now
-    // slip past this coverage check. Fall back to file presence only when
-    // summary.json is absent (e.g. a `--reports-dir` pointed at a hand-built
-    // fixture with no summary.json at all).
-    const reportedSlugs = summary?.components
-        ? new Set(Object.keys(summary.components))
-        : new Set(reportFiles.map(f => f.replace(/\.json$/, '')));
     const expectedSlugs = Object.entries(registry.components)
         .filter(([, c]) => c.hasDocsPage)
         .map(([slug]) => slug);
@@ -133,6 +137,13 @@ let totalViolationInstances = 0;
 let totalExcludedNodes = 0;
 
 for (const file of reportFiles) {
+    const slug = file.replace(/\.json$/, '');
+    // Grade only slugs the current sweep actually reported (reportedSlugs,
+    // above). When summary.json exists this skips stale reports/<slug>.json
+    // files left on disk by an older sweep or a renamed/removed component —
+    // otherwise such a file would still be graded here even though it's not
+    // part of summary.components, the current sweep's source of truth.
+    if (!reportedSlugs.has(slug)) continue;
     const report = JSON.parse(readFileSync(join(reportsDir, file), 'utf8'));
     for (const v of report.violations) {
         totalViolationInstances += v.nodes.length;

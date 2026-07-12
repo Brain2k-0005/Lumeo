@@ -156,11 +156,6 @@ if (!baseUrl) {
 // ---------------------------------------------------------------------------
 mkdirSync(reportsDir, { recursive: true });
 
-const browser = await puppeteer.launch({
-    headless: true,
-    args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
-});
-
 const AXE_TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'];
 
 const summary = {
@@ -228,7 +223,18 @@ async function auditOne(page, slug) {
     console.log(`[a11y-audit] ${tag} ${route} (${Date.now() - t0}ms)`);
 }
 
+// Declared here (not inside the try) so the finally below can still see it
+// and clean up dotnetProc even if puppeteer.launch() itself throws (e.g. no
+// Chromium/system libs on this machine) — that launch must share the same
+// cleanup path as the crawl itself, otherwise a launch failure exits with
+// the docs server still bound to PORT for the next run to trip over.
+let browser = null;
 try {
+    browser = await puppeteer.launch({
+        headless: true,
+        args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
+    });
+
     const concurrency = Number(process.env.A11Y_AUDIT_CONCURRENCY) || (process.platform === 'win32' ? 3 : 6);
     const queue = [...slugs];
     async function worker() {
@@ -247,7 +253,7 @@ try {
     }
     await Promise.all(Array.from({ length: Math.min(concurrency, slugs.length) }, worker));
 } finally {
-    await browser.close();
+    if (browser) await browser.close();
     if (dotnetProc) {
         dotnetProc.kill();
         // Give the process tree a moment; on Windows `dotnet run` spawns a
