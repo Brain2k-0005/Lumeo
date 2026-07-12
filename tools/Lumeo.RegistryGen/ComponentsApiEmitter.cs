@@ -589,6 +589,35 @@ public static class ComponentsApiEmitter
         "\\.Key\\s*==\\s*(?<v>[A-Za-z_]\\w*)\\b",
         RegexOptions.Compiled);
 
+    // Razor `@* ... *@` comments (Singleline so `.` also matches the newlines inside
+    // multi-line doc-style comment blocks, common throughout Lumeo's .razor files).
+    private static readonly Regex RazorCommentRegex = new(
+        "@\\*.*?\\*@", RegexOptions.Compiled | RegexOptions.Singleline);
+
+    // C# `///` XML-doc lines (the only line-comment style Lumeo's @code blocks use).
+    private static readonly Regex XmlDocLineRegex = new(
+        "^[ \\t]*///.*$", RegexOptions.Compiled | RegexOptions.Multiline);
+
+    /// <summary>
+    /// Strips the two comment forms Lumeo's .razor files actually use before
+    /// ExtractA11y's signal regexes run over the raw source. Comments are prose, and
+    /// prose routinely references the very tokens this scanner looks for — to explain
+    /// why a component does or does NOT have a behaviour — not to declare markup: e.g.
+    /// ScrollArea.razor's own AriaLabel doc comment argues FOR adding a tab stop by
+    /// noting "ScrollArea had no tabindex/@onkeydown of its own", and a naive
+    /// <see cref="string.Contains(string)"/> over the whole file reads that prose as
+    /// if it were a live @onkeydown handler, mis-reporting keyboardInteractive: true
+    /// for a component with no key handler at all (PR #356 round-7, Codex P2). This is
+    /// a general class of false positive, not a one-off in ScrollArea specifically, so
+    /// it's fixed at the scanner rather than by only rewording that one comment.
+    /// </summary>
+    internal static string StripCommentsForA11yScan(string text)
+    {
+        text = RazorCommentRegex.Replace(text, "");
+        text = XmlDocLineRegex.Replace(text, "");
+        return text;
+    }
+
     /// <summary>
     /// Static a11y signal extraction from a component's .razor source: the ARIA roles and
     /// aria-* attributes it renders, the keyboard keys it handles, and whether it manages
@@ -607,6 +636,7 @@ public static class ComponentsApiEmitter
         {
             string text;
             try { text = File.ReadAllText(file); } catch { continue; }
+            text = StripCommentsForA11yScan(text);
 
             // Literal role="..." values (skip dynamic role="@(...)").
             foreach (Match m in Regex.Matches(text, "role=\"([a-zA-Z]+)\"")) roles.Add(m.Groups[1].Value);

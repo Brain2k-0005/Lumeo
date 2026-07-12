@@ -47,7 +47,19 @@
     else
     {
         <Popover @bind-Open="_isOpen" Class="@(FullWidth ? "w-full" : null)">
-            <PopoverTrigger Class="@(FullWidth ? "w-full" : null)">
+            @* SuppressActivationKeys="true": this trigger's ChildContent is ALSO a native
+               <button>, so without suppression an Enter/Space keydown bubbles to the
+               wrapper's own HandleKeyDown AND the browser's own click synthesis for that
+               same key ALSO bubbles up and toggles again via @onclick="Toggle" — two
+               toggles cancel out and the wheel picker never opens from the keyboard.
+               Mirrors the Calendar-variant button-trigger branch below (PR #356 round-6,
+               Codex P2) — this Wheel-variant branch was missed by that fix (round-7,
+               Codex P2). ChildContentSlot (instead of plain ChildContent) is required so
+               aria-haspopup/aria-expanded/aria-controls land on the actual <button> —
+               the real Tab stop once the wrapper's own tabindex drops to -1 — rather than
+               only on the now-unfocusable wrapper (see PopoverTrigger's doc comment). *@
+            <PopoverTrigger Class="@(FullWidth ? "w-full" : null)" SuppressActivationKeys="true">
+                <ChildContentSlot Context="slot">
                 <button type="button"
                         id="@EffectiveTriggerId"
                         name="@Name"
@@ -56,7 +68,7 @@
                         aria-describedby="@FormFieldDescribedBy"
                         class="@CssClass"
                         disabled="@Disabled"
-                        @attributes="EffectiveAttributes">
+                        @attributes="MergeSlotAttributes(slot, EffectiveAttributes)">
                     <SvgGlyph Svg="@(LumeoIcons.Calendar)" class="me-2 h-4 w-4 shrink-0" />
                     @if (TriggerContent != null)
                     {
@@ -77,6 +89,7 @@
                         </button>
                     }
                 </button>
+                </ChildContentSlot>
             </PopoverTrigger>
             <PopoverContent Align="Lumeo.Align.Start" Class="w-[260px] p-3">
                 <DateWheelPicker Value="@Value" ValueChanged="HandleDateSelected" Min="@MinDate" Max="@MaxDate" Culture="@Culture" />
@@ -200,6 +213,14 @@ else
              effect — drops the wrapper's own tabindex to -1 so the native
              button (already its own tab stop) isn't ALSO a second one. *@
         <PopoverTrigger Class="@(FullWidth ? "w-full" : null)" SuppressActivationKeys="true">
+            @* ChildContentSlot (instead of plain ChildContent) so PopoverTrigger can hand
+               down aria-haspopup/aria-expanded/aria-controls for us to splat onto the
+               actual focusable element in EACH branch below (the input, or the button) —
+               SuppressActivationKeys already drops the wrapper's own tabindex to -1, so
+               without this the popup relationship/expanded state would only ever live on
+               that now-unfocusable wrapper (PR #356 round-7, Codex P2; see PopoverTrigger's
+               doc comment on SuppressActivationKeys for the full mechanism). *@
+            <ChildContentSlot Context="slot">
             @if (UsesTypeableInput)
             {
                 @* No leading LumeoIcons.Calendar here — the trailing CalendarDays
@@ -244,7 +265,8 @@ else
                            @onkeydown="HandleInputKeyDown"
                            @onkeydown:stopPropagation="_isOpen"
                            @onclick="HandleInputClick"
-                           @onclick:stopPropagation="true" />
+                           @onclick:stopPropagation="true"
+                           @attributes="slot.Attributes" />
                     <button type="button"
                             class="ms-1 text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-1 rounded shrink-0"
                             aria-label="@L["DatePicker.OpenCalendar"]"
@@ -271,7 +293,7 @@ else
                     aria-describedby="@FormFieldDescribedBy"
                     class="@CssClass"
                     disabled="@Disabled"
-                    @attributes="EffectiveAttributes">
+                    @attributes="MergeSlotAttributes(slot, EffectiveAttributes)">
                 <SvgGlyph Svg="@(LumeoIcons.Calendar)" class="me-2 h-4 w-4 shrink-0" />
                 @if (TriggerContent != null)
                 {
@@ -345,6 +367,7 @@ else
                 }
             </button>
             }
+            </ChildContentSlot>
         </PopoverTrigger>
         @* FocusOnOpen=false only for the typeable-input trigger so opening the calendar
            doesn't yank focus off the field mid-typing; the button trigger keeps the
@@ -918,6 +941,19 @@ else
         InsideFormField && AdditionalAttributes?.ContainsKey("id") == true
             ? AdditionalAttributes.Where(kv => kv.Key != "id").ToDictionary(kv => kv.Key, kv => kv.Value)
             : AdditionalAttributes;
+
+    // Merges a PopoverTrigger ChildContentSlot's aria-haspopup/aria-expanded/aria-controls
+    // (see PopoverTrigger's SuppressActivationKeys doc comment) onto the SAME element that
+    // also renders `extra` (EffectiveAttributes) — button-trigger branches splat both onto
+    // one native <button>, so a single @attributes can only take one merged dictionary.
+    // `extra` wins on key collision, mirroring PopoverTrigger.BuildAttrs's "author wins".
+    private static Dictionary<string, object> MergeSlotAttributes(Lumeo.TriggerSlot slot, IReadOnlyDictionary<string, object>? extra)
+    {
+        var d = new Dictionary<string, object>(slot.Attributes);
+        if (extra is not null)
+            foreach (var kv in extra) d[kv.Key] = kv.Value;
+        return d;
+    }
 
     private async Task HandleDateSelected(DateOnly? date)
     {

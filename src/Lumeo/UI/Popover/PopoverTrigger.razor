@@ -31,7 +31,27 @@ else
        Tab press could park focus on a role="button" wrapper that silently eats
        both keys. Mouse/pointer activation (@onclick) is unaffected either way. *@
     <div id="@EffectiveTriggerId" class="@CssClass" role="button" tabindex="@(SuppressActivationKeys ? "-1" : "0")" aria-expanded="@(Context.IsOpen ? "true" : "false")" aria-haspopup="dialog" aria-controls="@(Context.IsOpen ? Context.ContentId : null)" @onclick="Toggle" @onkeydown="HandleKeyDown" @attributes="AdditionalAttributes">
-        @ChildContent
+        @if (SuppressActivationKeys && ChildContentSlot is not null)
+        {
+            @* SuppressActivationKeys drops this wrapper's own tabindex to -1 above because
+               a focusable child inside ChildContent already owns the real Tab stop — but
+               aria-haspopup/aria-expanded/aria-controls above still only live on THIS now-
+               unfocusable wrapper, so a keyboard/SR user landing on the child never hears
+               the popup relationship or its expanded state (PR #356 round-7, Codex P2).
+               Mirrors the AsChild branch above: hand the SAME Slot down so a consumer that
+               opted in via ChildContentSlot can splat slot.Attributes onto its own actual
+               focusable element (e.g. DatePicker's input/button), where focus really lands.
+               Slot.OnClick/OnKeyDown are deliberately left unconsumed by that splat — the
+               wrapper above already owns click (native activation bubbles into it, see the
+               SuppressActivationKeys doc comment on the parameter) and re-applying them to
+               the child would double-toggle. Consumers still on plain ChildContent (no slot
+               opted in) keep the pre-existing wrapper-only ARIA state, unchanged. *@
+            @ChildContentSlot(Slot)
+        }
+        else
+        {
+            @ChildContent
+        }
     </div>
 }
 

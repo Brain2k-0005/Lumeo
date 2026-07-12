@@ -2342,9 +2342,29 @@ function getToolbarItems(toolbarId) {
     // P2). Filtering disabled elements out of the FINAL result — not just
     // individual arms — closes that gap for every arm at once.
     const selector = 'button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
-    return Array.from(container.querySelectorAll(selector))
-        .filter(el => !el.closest('[data-toolbar-overflow-trigger]'))
-        .filter(el => !el.disabled && el.getAttribute('aria-disabled') !== 'true');
+    const candidates = Array.from(container.querySelectorAll(selector))
+        .filter(el => !el.closest('[data-toolbar-overflow-trigger]'));
+    const items = [];
+    for (const el of candidates) {
+        if (el.disabled || el.getAttribute('aria-disabled') === 'true') {
+            // aria-disabled (unlike native `disabled`) does NOT make an element
+            // unfocusable — e.g. a clickable disabled Chip renders a focusable
+            // div with aria-disabled="true". Excluding it from `items` is not
+            // enough on its own: applyToolbarRovingTabindex only ever writes to
+            // the elements THIS function returns, so an element that already
+            // carries a stale tabindex="0" from a previous roving-active call
+            // (it was the active item before becoming aria-disabled) would keep
+            // that tabindex forever, leaving it in the Tab order alongside
+            // whichever enabled item gets the new roving slot (PR #356 round-7,
+            // Codex P2). Clear it here, at the one place that decides an
+            // element is excluded, so every call site (initToolbarRoving,
+            // moveToolbarFocus, focusToolbarEdge) is covered for free.
+            if (el.getAttribute('tabindex') !== '-1') el.setAttribute('tabindex', '-1');
+            continue;
+        }
+        items.push(el);
+    }
+    return items;
 }
 
 function applyToolbarRovingTabindex(items, activeIndex) {
