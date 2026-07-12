@@ -144,24 +144,50 @@
     private readonly Dictionary<string, DateTime> _timerStart = new();
     private readonly Dictionary<string, int> _timerRemaining = new();
     private readonly HashSet<string> _paused = new();
-    // Toasts that arrived while the mounted set was at MaxToasts and every
-    // mounted toast was already Leaving (mid-exit) — see HandleShowAsync /
-    // AdmitPending. FIFO by arrival order, same as sonner's overflow queue.
+    // Every non-persistent toast that isn't mounted yet — whether it's waiting on room right now
+    // or an eviction that hasn't finished — sits here. FIFO by arrival order, same as sonner's
+    // overflow queue. PR #357 round-6: ReconcileGroup (below) is the ONLY method that ever dequeues
+    // and mounts from this; see the ADMISSION MODEL comment on ReconcileGroup for why that's load-
+    // bearing, not incidental.
     private readonly Queue<ToastMessage> _pendingQueue = new();
+
+    // PR #357 round-6: deliberately NO per-position lock/semaphore here. An earlier version of this
+    // fix serialized every mutation+reconciliation for a position behind a mutex — safe, but wrong
+    // for a different reason: eviction ALWAYS waits out the real ~220ms exit animation
+    // (RemoveWithExitAsync), so a mutex-serialized burst of N overflowing toasts took N*~220ms
+    // wall-clock to settle instead of ~220ms (every eviction's animation overlapping, as they do
+    // without a lock) — a real, user-visible regression (a 100-toast spam burst went from settling
+    // in ~220ms to over 20 seconds), not just a slower test.
+    // <para>
+    // No lock is needed because single-threaded cooperative scheduling (Blazor's renderer
+    // synchronization context — nothing here is EVER running on two threads at once) already makes
+    // "mutate `_toasts`/`_pendingQueue`, then immediately evaluate + act on that fresh state" atomic
+    // for any stretch of code with no `await` in between. Every mutation site below chains straight
+    // into its OWN call to <see cref="ReconcileGroup"/> with no intervening `StateHasChanged()` or
+    // other yield, so the very first render anyone observes after a mutation already reflects
+    // whatever correction that mutation required — evictions overlap freely (each candidate is
+    // chosen via `!t.Leaving`, so two concurrent passes for the same position can never pick the
+    // same toast twice), and admission only ever happens through ReconcileGroup's own fresh
+    // FIFO-dequeue check (TryAdmit never mounts its own message directly), so "who gets the next
+    // freed slot" is decided once, for real, at the moment a slot is actually available — never by
+    // a caller that assumed its OWN eviction would be the one to free it (that assumption was
+    // finding 1's original bug).
+    // </para>
 
     [Parameter] public ToastViewport.ToastPosition Position { get; set; } = ToastViewport.ToastPosition.BottomRight;
     [Parameter] public int DefaultDuration { get; set; } = 5000;
 
     /// <summary>
-    /// Maximum number of NON-PERSISTENT toasts (<c>Duration != 0</c>) mounted at once per
-    /// position group; overflow queues FIFO (see <see cref="_pendingQueue"/>) and drains as
-    /// slots free up. Non-positive values are clamped up to 1 — there's no "unlimited" mode and
-    /// no "show nothing" mode, so a misconfigured 0/negative value falls back to the smallest
-    /// usable cap rather than throwing on the very first <c>Show()</c> (see
-    /// <see cref="EffectiveMaxToasts"/>).
+    /// Maximum number of NON-PERSISTENT toasts (resolved <c>Duration != 0</c> — see
+    /// <see cref="IsPersistent"/>) mounted at once per position group; overflow queues FIFO (see
+    /// <see cref="_pendingQueue"/>) and drains as slots free up. Non-positive values are clamped up
+    /// to 1 — there's no "unlimited" mode and no "show nothing" mode, so a misconfigured
+    /// 0/negative value falls back to the smallest usable cap rather than throwing on the very
+    /// first <c>Show()</c> (see <see cref="EffectiveMaxToasts"/>).
     /// <para>
-    /// A persistent toast (<c>Duration = 0</c> — e.g. a loading/promise toast) does NOT count
-    /// against this cap and is never an eviction candidate: it stays mounted until explicitly
+    /// A persistent toast (resolved <c>Duration == 0</c> — e.g. a loading/promise toast, or ANY
+    /// toast that omits <c>Duration</c> under <c>DefaultDuration="0"</c>) does NOT count against
+    /// this cap and is never an eviction candidate: it stays mounted until explicitly
     /// dismissed/updated, exactly like before <c>MaxToasts</c> existed. PR #357 round-4 (P2):
     /// counting persistents against the cap let one fill every slot and starve EVERY later
     /// <c>Show()</c> forever — no exit timer was ever going to free the persistent's slot, yet
@@ -184,8 +210,18 @@
     // at every call site.
     private int EffectiveMaxToasts => Math.Max(1, MaxToasts);
 
+    // PR #357 round-6 (finding 2): "persistent" means the RESOLVED duration is 0 —
+    // `options.Duration ?? DefaultDuration`, the exact expression MountToast uses to decide
+    // whether to start a timer — not the raw `options.Duration == 0`. A provider configured with
+    // DefaultDuration="0" makes every toast that OMITS Duration persistent too (MountToast starts
+    // no timer for it), so admission must treat it identically to an explicit `Duration = 0`: never
+    // counted, never evicted/queued. Checking the raw property let a default-persistent incoming
+    // toast fall through to the eviction/queue path meant only for toasts that WILL eventually free
+    // their own slot.
+    private bool IsPersistent(ToastOptions options) => (options.Duration ?? DefaultDuration) == 0;
+
     // How many MOUNTED toasts count against MaxToasts within ONE position group — every toast
-    // EXCEPT persistents (Duration == 0), scoped by ResolvePosition. See the MaxToasts doc
+    // EXCEPT persistents (IsPersistent), scoped by ResolvePosition. See the MaxToasts doc
     // comment: a persistent toast can never free its own slot on its own, so it must never be
     // part of "is the cap full" accounting, or it starves every later Show() the instant enough
     // persistents accumulate to fill the cap. PR #357 round-5 (P2): MaxToasts is documented as
@@ -193,13 +229,30 @@
     // against a BottomRight Show() even though the two have entirely separate, independent
     // viewports. Scoping the count (and every caller below) to a single resolved position fixes
     // that; the cap VALUE (EffectiveMaxToasts) still applies identically to every group.
-    private int NonPersistentMountedCount(ToastViewport.ToastPosition pos)
-        => _toasts.Count(t => t.Options.Duration != 0 && ResolvePosition(t.Options.Position) == pos);
+    // `internal` (not `private`) is a deliberate, narrow TEST SEAM — same idiom as
+    // `ExitAnimationMs` below — so invariant tests can assert the per-group cap directly off the
+    // provider's own accounting instead of inferring it from rendered DOM (which can't tell a
+    // persistent toast apart from a non-persistent one by markup alone).
+    internal int NonPersistentMountedCount(ToastViewport.ToastPosition pos)
+        => _toasts.Count(t => !IsPersistent(t.Options) && ResolvePosition(t.Options.Position) == pos);
+
+    // PR #357 round-6 test seam: the LIVE-only (excludes toasts currently mid-exit) non-persistent
+    // count for a group — `internal`, same idiom as NonPersistentMountedCount above. A toast that's
+    // Leaving still counts towards NonPersistentMountedCount (that's deliberate: it keeps the RAW
+    // DOM element count for the group bounded, since nothing new mounts until an eviction's exit
+    // animation has ACTUALLY finished — see that method's doc comment) but has already relinquished
+    // its claim on the cap the instant ReconcileGroup marked it Leaving. A toast mid-exit for its
+    // OWN ~220ms animation is not a "the cap is broken" bug — sonner works the same way, and this
+    // codebase already accepts that window for every ordinary eviction — so THIS is the metric
+    // invariant tests should assert against, not the raw (Leaving-inclusive) one.
+    internal int LiveNonPersistentMountedCount(ToastViewport.ToastPosition pos)
+        => _toasts.Count(t => !IsPersistent(t.Options) && !t.Leaving && ResolvePosition(t.Options.Position) == pos);
 
     // Queued (never-mounted — see _pendingQueue) toasts destined for a single position group.
     // Same per-group scoping as NonPersistentMountedCount, above, so the overflow queue's own
-    // cap (HandleShowAsync) can't let one busy position's backlog crowd out or drop a
-    // completely different position's queued toasts.
+    // cap (TryAdmit) can't let one busy position's backlog crowd out or drop a
+    // completely different position's queued toasts. Persistents never reach _pendingQueue (see
+    // TryAdmit), so every entry here is implicitly non-persistent already.
     private int PendingCount(ToastViewport.ToastPosition pos)
         => _pendingQueue.Count(m => ResolvePosition(m.Options.Position) == pos);
 
@@ -207,7 +260,7 @@
     // everything else, and returns it (null if nothing matched). Queue<T> has no
     // remove/dequeue-by-predicate, so this rebuilds the queue minus the first match — same
     // approach as RemovePending/UpdateQueued below, generalised to an arbitrary predicate so
-    // both the per-position queue cap and per-position AdmitPending can share it.
+    // both the per-position queue cap and ReconcileGroup can share it.
     private ToastMessage? DequeueFirstMatching(Func<ToastMessage, bool> predicate)
     {
         var list = _pendingQueue.ToList();
@@ -287,16 +340,58 @@
         SafeAsyncDispatcher.FireAndForget(InvokeAsync, () => HandleShowAsync(message), "ToastProvider.HandleShow");
     }
 
-    private async Task HandleShowAsync(ToastMessage message)
+    private async Task HandleShowAsync(ToastMessage message) => await TryAdmit(message);
+
+    // ══════════════════════════════════════════════════════════════════════════════════════════
+    // ADMISSION MODEL (PR #357 round-6) — the ONE decision path every mutation that can affect a
+    // position group's cap accounting funnels through. Two methods own ALL the invariants:
+    //
+    //   TryAdmit(message)   — the only entry point for a toast that has never been mounted.
+    //   ReconcileGroup(pos) — the only method that evicts an over-cap mounted toast OR mounts a
+    //                         queued one. Every mutation site chains STRAIGHT into calling this for
+    //                         the affected group(s), with no yield (no `await`, no
+    //                         `StateHasChanged()`) in between — see the field comment above for why
+    //                         that ordering, not a lock, is what keeps mutation and correction
+    //                         observably atomic.
+    //
+    // Invariants this pair maintains for every position group, at all times, including mid-burst:
+    //   (a) "persistent" = resolved Duration == 0 (IsPersistent — Options.Duration ?? DefaultDuration,
+    //       NOT the raw property). A provider with DefaultDuration="0" makes an omitted-Duration
+    //       toast persistent too. [finding 2]
+    //   (b) persistents mount directly via MountToast and NEVER touch _pendingQueue or count
+    //       against NonPersistentMountedCount — never an eviction/queue participant either way.
+    //   (c) mounted non-persistent count <= EffectiveMaxToasts ALWAYS, even while a burst of
+    //       Show()/Update() calls races each other's evictions. TryAdmit never mounts a non-
+    //       persistent toast directly — it enqueues FIRST (reserving this message's FIFO position
+    //       before anything is evicted on its behalf) and only ReconcileGroup ever dequeues+mounts.
+    //       That closes finding 1: the old code let the CALLER that started an eviction mount its
+    //       own message directly once the await returned, but a concurrent caller's own
+    //       reconciliation could already have claimed that exact freed slot for a DIFFERENT queued
+    //       message by then. With every admission going through the queue, "who gets the next freed
+    //       slot" has exactly one answer: whoever is FIFO-oldest in _pendingQueue at the moment
+    //       ReconcileGroup's admit loop actually runs — decided fresh, every time, never assumed.
+    //   (d) any state change that alters a toast's group (position) or persistence re-runs
+    //       ReconcileGroup for BOTH the old and new affected groups, called immediately after the
+    //       mutation with no yield in between: a queued toast whose Update retargets its position
+    //       [finding 3], and a mounted toast whose Update flips its resolved persistence — most
+    //       commonly a loading/promise toast resolving from persistent to finite while its group is
+    //       already at/over cap [finding 4]. See HandleUpdateAsync.
+    //   (e) queue admission is FIFO within a group — the admit loop always dequeues via
+    //       DequeueFirstMatching, which preserves arrival order.
+    //
+    // Concurrency: multiple independent calls to ReconcileGroup for the SAME position CAN be in
+    // flight at once (each suspended on its own eviction's ~220ms exit-animation Task.Delay) — this
+    // is deliberate, not a gap: see the field comment above for why serializing them would be a
+    // severe throughput regression, and why running them independently is still correct (each
+    // eviction candidate is chosen via `!t.Leaving`, so two concurrent passes never pick the same
+    // toast twice; each admission is a fresh dequeue at the moment it runs, never a stale decision).
+    // ══════════════════════════════════════════════════════════════════════════════════════════
+
+    private async Task TryAdmit(ToastMessage message)
     {
-        // PR #357 round-5 (P2): a PERSISTENT incoming toast (Duration == 0, e.g. a
-        // loading/promise toast) never counts against MaxToasts (NonPersistentMountedCount
-        // already excludes it — see its doc comment) and must never be run through the
-        // eviction/queue logic below either: that logic is sized for non-persistent toasts and
-        // was evicting/queuing an INCOMING persistent against an unrelated cap of ordinary
-        // toasts, contradicting "persistents occupy an additional slot and never evict/queue".
-        // Mount it immediately, alongside whatever is already there.
-        if (message.Options.Duration == 0)
+        // (b) — persistents bypass admission entirely: mount immediately, alongside whatever is
+        // already there, never touching _pendingQueue or the eviction loop below.
+        if (IsPersistent(message.Options))
         {
             MountToast(message);
             return;
@@ -304,78 +399,30 @@
 
         var pos = ResolvePosition(message.Options.Position);
 
-        // Enforce MaxToasts against NON-PERSISTENT toasts in this toast's OWN position group
-        // only (NonPersistentMountedCount(pos) —
-        // see the MaxToasts doc comment): evict the oldest non-persistent toast that ISN'T
-        // already leaving. Spamming Show() fires many concurrent HandleShowAsync
-        // calls (fire-and-forget per toast); several can race this loop against
-        // the SAME "oldest" toast. RemoveWithExitAsync's idempotency guard
-        // (`if (toast.Leaving) return;`) completes synchronously — no `await`
-        // is ever reached — so `await RemoveItemAsync(...)` on an
-        // already-Leaving toast does NOT yield back to the WASM/renderer
-        // message loop (a completed Task's continuation runs inline). Without
-        // the `!t.Leaving` filter below, a losing coroutine kept re-selecting
-        // that same still-present (merely flagged) toast forever: a fully
-        // synchronous busy loop that never yields, which also starves the
-        // winning coroutine's own `Task.Delay(ExitAnimationMs)` callback (it
-        // needs the same single thread to fire) — so the toast never actually
-        // finished evicting either. Net effect: the tab hangs permanently the
-        // moment two Show() calls race an eviction, which rapid spamming makes
-        // near-certain. Skipping already-Leaving toasts means every iteration
-        // either evicts a fresh toast (real progress) or finds none and breaks
-        // (bounded) — no candidate is ever revisited. When every non-persistent
-        // toast is ALSO excluded (persistent-only occupancy, e.g. the cap filled
-        // entirely by loading toasts), NonPersistentMountedCount is already below
-        // the cap and this loop never even starts.
-        while (NonPersistentMountedCount(pos) >= EffectiveMaxToasts)
+        // Cap the queue itself at MaxToasts, scoped to THIS position group (PR #357 round-5, P2).
+        // Without this, a 100-toast spam burst would durably queue all ~95 overflow toasts and
+        // drip them out one 220ms exit at a time (~20s to fully drain) — the opposite of "keeping
+        // the newest bounded set". Dropping the oldest still-queued (never-shown) toast IN THIS
+        // GROUP when a new one arrives keeps that group's known set (mounted + queued) bounded at
+        // 2x MaxToasts and biases towards the most recent Show() calls, matching sonner's overflow
+        // behaviour.
+        if (PendingCount(pos) >= EffectiveMaxToasts)
         {
-            var oldest = _toasts.FirstOrDefault(t => t.Options.Duration != 0 && !t.Leaving && ResolvePosition(t.Options.Position) == pos);
-            if (oldest is null) break;
-            await RemoveItemAsync(oldest.Id);
+            DequeueFirstMatching(m => ResolvePosition(m.Options.Position) == pos);
         }
+        // (c) — reserve this message's FIFO slot BEFORE any eviction it might need runs, then
+        // reconcile IMMEDIATELY (no yield in between) — see the ADMISSION MODEL comment above for
+        // why enqueue-then-reconcile (rather than evict-then-mount-directly) is what closes
+        // finding 1.
+        _pendingQueue.Enqueue(message);
 
-        // The loop above breaks WITHOUT freeing a slot whenever every NON-PERSISTENT toast
-        // at/above the cap is already mid-exit (Leaving) — a burst of Show()
-        // calls arriving while a wave of 220ms exits is still in flight hits
-        // this every time. Mounting anyway (the old behaviour) let a spam
-        // burst blow straight through MaxToasts. Queue the toast instead: it
-        // waits here — never touching `_toasts`, so it can't inflate the
-        // mounted count — until AdmitPending (called the instant a Leaving
-        // toast actually unmounts, from RemoveWithExitAsync) pulls it in FIFO
-        // order the moment a slot frees up. This keeps NonPersistentMountedCount at or
-        // under MaxToasts at all times, including mid-burst. PR #357 round-4 (P2):
-        // this check — like the loop above — is scoped to NonPersistentMountedCount,
-        // NOT raw `_toasts.Count`, specifically so it can NEVER be true when the cap
-        // is filled entirely by persistents (they'd never free a slot, so queuing here
-        // would wait forever): the only way to reach this branch is every non-persistent
-        // slot being Leaving, i.e. a real slot IS coming.
-        if (NonPersistentMountedCount(pos) >= EffectiveMaxToasts)
-        {
-            // Cap the queue itself at MaxToasts too, scoped to THIS position group (PR #357
-            // round-5, P2 — same per-group scoping as the mounted count above; an unrelated
-            // position's backlog must not be touched). Without this, a 100-toast spam burst
-            // would durably queue all ~95 overflow toasts and drip them out one 220ms exit at a
-            // time (~20s to fully drain) — the opposite of "keeping the newest bounded set".
-            // Dropping the oldest still-queued (never-shown) toast IN THIS GROUP when a new one
-            // arrives keeps that group's known set (mounted + queued) bounded at 2x MaxToasts
-            // and biases towards the most recent Show() calls, matching sonner's overflow
-            // behaviour.
-            if (PendingCount(pos) >= EffectiveMaxToasts)
-            {
-                DequeueFirstMatching(m => ResolvePosition(m.Options.Position) == pos);
-            }
-            _pendingQueue.Enqueue(message);
-            return;
-        }
-
-        MountToast(message);
+        await ReconcileGroup(pos);
     }
 
-    // Adds a toast to the live/mounted set and starts its auto-dismiss timer.
-    // The ONLY path that appends to `_toasts` — both the direct Show() path
-    // (slot available) and AdmitPending (slot just freed by an unmount) route
-    // through here, so NonPersistentMountedCount can never be pushed over
-    // MaxToasts by either caller.
+    // Adds a toast to the live/mounted set and starts its auto-dismiss timer. The ONLY path that
+    // appends to `_toasts` — both TryAdmit's persistent fast path and ReconcileGroup's admit loop
+    // route through here, so NonPersistentMountedCount can never be pushed over MaxToasts by
+    // either caller.
     private void MountToast(ToastMessage message)
     {
         _toasts.Add(new ToastItem(message.Id, message.Options));
@@ -388,17 +435,49 @@
         }
     }
 
-    // Pulls queued toasts (see HandleShowAsync) into the live set FIFO as
-    // slots free up WITHIN a single position group. Called from RemoveWithExitAsync right
-    // after a toast is actually removed from `_toasts`, scoped to that toast's OWN resolved
-    // position — the only group whose slot just became real. Gated on
-    // NonPersistentMountedCount(pos) (not raw _toasts.Count) so a mounted persistent never
-    // counts against the room available to admit queued toasts. PR #357 round-5 (P2): this
-    // used to drain `_pendingQueue` globally in strict FIFO order regardless of position,
-    // which could admit a DIFFERENT position group's queued toast into a slot that freed up
-    // here — DequeueFirstMatching restricts the pull to entries destined for `pos`.
-    private void AdmitPending(ToastViewport.ToastPosition pos)
+    // The ONLY method that evicts an over-cap mounted toast or mounts a queued one — see the
+    // ADMISSION MODEL comment above TryAdmit for the full invariant list and the field comment
+    // above for why this deliberately does NOT take a lock. Every caller that can change a group's
+    // cap accounting (TryAdmit, RemoveItemAsync after an actual unmount, HandleUpdateAsync after a
+    // position/persistence change) calls this for the affected group(s) IMMEDIATELY after its own
+    // mutation, with no yield in between, rather than mounting/evicting directly itself.
+    private async Task ReconcileGroup(ToastViewport.ToastPosition pos)
     {
+        // Shed down to the cap. Two distinct reasons this can be needed, both folded into one
+        // condition: strictly OVER cap (finding 4 — a mounted persistent just became finite and now
+        // counts, possibly pushing the group past EffectiveMaxToasts with no queue involved at
+        // all), OR AT cap with queue demand waiting behind it (the ordinary "make room for a new
+        // arrival" case). Evicts the oldest candidate that ISN'T already leaving — see the
+        // historical spam-hang note below for why the `!t.Leaving` filter is load-bearing, not
+        // cosmetic.
+        //
+        // Spamming Show() used to race many concurrent HandleShowAsync calls against the SAME
+        // "oldest" toast; RemoveWithExitAsync's idempotency guard (`if (toast.Leaving) return;`)
+        // completes synchronously — no `await` is ever reached — so awaiting it on an already-
+        // Leaving toast does not yield back to the renderer's synchronization context (a completed
+        // Task's continuation runs inline). Without excluding Leaving toasts, a losing pass could
+        // keep re-selecting that same still-present (merely flagged) toast forever — a synchronous
+        // busy loop that also starves the winning pass's own Task.Delay(ExitAnimationMs) callback
+        // (needs the same single thread to fire), hanging the tab permanently. Skipping already-
+        // Leaving toasts means every iteration either evicts a fresh toast (real progress) or finds
+        // none and breaks (bounded).
+        //
+        // Calls the RAW RemoveWithExitAsync primitive directly — NOT RemoveItemAsync (which would
+        // also call back into ReconcileGroup for this SAME position once the removal completes).
+        // This loop's own `while` already re-checks after every eviction, so a nested reconcile
+        // call here would just be redundant work re-deriving the same state this loop already has.
+        while (NonPersistentMountedCount(pos) > EffectiveMaxToasts ||
+               (PendingCount(pos) > 0 && NonPersistentMountedCount(pos) >= EffectiveMaxToasts))
+        {
+            var oldest = _toasts.FirstOrDefault(t =>
+                !IsPersistent(t.Options) && !t.Leaving && ResolvePosition(t.Options.Position) == pos);
+            if (oldest is null) break; // every remaining over-cap candidate is already Leaving —
+                                        // its own removal will reconcile (ReconcileGroup) again.
+            await RemoveWithExitAsync(oldest.Id, runOnDismiss: false);
+        }
+
+        // Admit queued toasts (e) FIFO while room remains. This is the ONLY place a previously-
+        // queued message is ever mounted.
         while (NonPersistentMountedCount(pos) < EffectiveMaxToasts)
         {
             var next = DequeueFirstMatching(m => ResolvePosition(m.Options.Position) == pos);
@@ -454,6 +533,15 @@
         foreach (var m in updated) _pendingQueue.Enqueue(m);
     }
 
+    // The resolved position a still-queued (never-mounted) toast currently occupies, or null if
+    // it isn't queued at all. Used by HandleUpdateAsync to capture the OLD group before an Update
+    // may retarget the entry to a different one (finding 3).
+    private ToastViewport.ToastPosition? PositionOfQueued(string toastId)
+    {
+        var msg = _pendingQueue.FirstOrDefault(m => m.Id == toastId);
+        return msg is null ? null : ResolvePosition(msg.Options.Position);
+    }
+
     private void HandleUpdate(string toastId, ToastOptions options)
     {
         SafeAsyncDispatcher.FireAndForget(InvokeAsync, () => HandleUpdateAsync(toastId, options), "ToastProvider.HandleUpdate");
@@ -464,30 +552,91 @@
         var index = _toasts.FindIndex(t => t.Id == toastId);
         if (index < 0)
         {
-            // Not mounted (yet) — it may still be sitting in the overflow queue (see
-            // HandleShowAsync/AdmitPending). ToastService.Show already handed this id back to the
-            // caller before admission runs, so Update(id, ...) can legitimately race a still-queued
-            // toast — most visibly ToastService.Promise(), whose loading toast can resolve before a
-            // slot frees up. Apply the update to the QUEUED entry so it mounts with the fresh
-            // options (not the stale Duration=0 loading state) once AdmitPending pulls it in;
-            // no-op if the id isn't queued either (already dismissed).
+            // Not mounted (yet) — it may still be sitting in the overflow queue (see TryAdmit).
+            // ToastService.Show already handed this id back to the caller before admission runs,
+            // so Update(id, ...) can legitimately race a still-queued toast — most visibly
+            // ToastService.Promise(), whose loading toast can resolve before a slot frees up.
+            var oldPos = PositionOfQueued(toastId);
+            if (oldPos is null) return; // not queued either — already dismissed, nothing to do.
+
+            // PR #357 round-6 (finding 2 + 3 combined): if the update makes this entry persistent
+            // (resolved Duration == 0), it no longer belongs in the cap-bounded queue at all — pull
+            // it straight out and mount it directly, exactly like an incoming persistent toast
+            // (TryAdmit). Left queued, it would sit waiting on a slot it will never need. Cap-
+            // neutral (mounting a persistent never affects NonPersistentMountedCount), so no group
+            // lock is needed for this branch — same reasoning as TryAdmit's persistent fast path.
+            if (IsPersistent(options))
+            {
+                UpdateQueued(toastId, options);
+                var promoted = DequeueFirstMatching(m => m.Id == toastId);
+                if (promoted is not null) MountToast(promoted);
+                return;
+            }
+
+            // (finding 3) The update may retarget this queued toast to a DIFFERENT position group
+            // (e.g. queued behind a full BottomRight, updated to an empty TopLeft). Mutate FIRST,
+            // then reconcile both affected groups IMMEDIATELY (no yield in between — see the
+            // ADMISSION MODEL field comment for why that ordering alone keeps this atomic without
+            // needing a lock): the old group's PendingCount just shrank (nothing to do there
+            // usually), and the new group may have room to admit this entry right now instead of
+            // waiting on an unrelated future removal that may never come for that group.
+            var newPos = ResolvePosition(options.Position);
             UpdateQueued(toastId, options);
+            await ReconcileGroup(oldPos.Value);
+            if (newPos != oldPos.Value) await ReconcileGroup(newPos);
             return;
         }
 
-        var updated = new ToastItem(toastId, options);
-        _toasts[index] = updated;
+        // (finding 4) Capture the group/persistence this MOUNTED toast counted against BEFORE
+        // mutating it — a loading/promise toast most commonly goes persistent (Duration == 0) ->
+        // finite (a real Duration) here, the exact transition that must re-enter cap accounting it
+        // was previously exempt from. Position can change too (Update supports retargeting a
+        // mounted toast's group, same as a fresh Show()).
+        var wasPos = ResolvePosition(_toasts[index].Options.Position);
+        var wasPersistent = IsPersistent(_toasts[index].Options);
+        var isPos = ResolvePosition(options.Position);
+        var isPersistent = IsPersistent(options);
 
-        // Reset timer
+        ApplyToastMutation(index, toastId, options);
+
+        // Deliberately NOT calling StateHasChanged() here yet when a reconciliation is about to
+        // run: `_toasts[index]` above already carries the NEW group/persistence, so if that change
+        // pushed a group over cap, ReconcileGroup below is going to mark SOME toast Leaving as its
+        // very first observable effect — chained immediately, no yield, per the ADMISSION MODEL
+        // field comment. Rendering NOW, before that correction has had a chance to run, would
+        // commit a frame where the over-cap state is fully visible with nothing yet marked as
+        // leaving (a real bug the round-6 invariant test caught). Folding this update into
+        // whichever render ReconcileGroup itself triggers (or the unconditional call below, when no
+        // reconciliation is needed) means the FIRST render anyone observes after an Update already
+        // reflects the fully-corrected state.
+        if (wasPos != isPos || wasPersistent != isPersistent)
+        {
+            // Both groups' accounting may have shifted: the OLD group may have just lost a
+            // non-persistent occupant (room to admit a queued toast, or nothing to do), and the NEW
+            // group may now be OVER cap (a persistent-turned-finite toast landing on an already-full
+            // group — finding 4's exact scenario) and need to shed back down to EffectiveMaxToasts.
+            await ReconcileGroup(wasPos);
+            if (isPos != wasPos) await ReconcileGroup(isPos);
+        }
+
+        // Unconditional final render: covers the (common) case where nothing needed reconciliation
+        // — ReconcileGroup wouldn't have rendered anything on its own then — and is a harmless
+        // no-op extra render otherwise (ReconcileGroup already committed the consistent state above).
+        StateHasChanged();
+    }
+
+    // Replaces `_toasts[index]` with the updated options and resets its auto-dismiss timer. Used by
+    // every HandleUpdateAsync mutated-toast path (group/persistence-changing or not) so the same
+    // logic applies regardless of whether a reconciliation follows.
+    private void ApplyToastMutation(int index, string toastId, ToastOptions options)
+    {
+        _toasts[index] = new ToastItem(toastId, options);
         CancelTimer(toastId);
         var duration = options.Duration ?? DefaultDuration;
         if (duration > 0)
         {
             StartTimer(toastId, duration);
         }
-
-        StateHasChanged();
-        await Task.CompletedTask;
     }
 
     private void StartTimer(string id, int duration)
@@ -559,7 +708,7 @@
 
     private void Remove(string id)
     {
-        SafeAsyncDispatcher.FireAndForget(InvokeAsync, () => RemoveWithExitAsync(id, runOnDismiss: true), "ToastProvider.Remove");
+        SafeAsyncDispatcher.FireAndForget(InvokeAsync, () => RemoveItemAsync(id, runOnDismiss: true), "ToastProvider.Remove");
     }
 
     private void RemoveItem(string id)
@@ -568,18 +717,33 @@
         _toasts.RemoveAll(t => t.Id == id);
     }
 
-    private async Task RemoveItemAsync(string id)
+    // PR #357 round-6: removes a MOUNTED toast (animated exit via the raw RemoveWithExitAsync
+    // primitive below) AND reconciles the group it freed a slot in — the "outer" removal path used
+    // by every top-level caller (UI close/swipe via Remove, programmatic Dismiss/DismissAll,
+    // auto-dismiss timers, ResumeTimer's already-elapsed-while-paused case). Deliberately NOT used
+    // by ReconcileGroupCore's OWN eviction loop, which calls RemoveWithExitAsync directly — see
+    // that loop's comment for why routing an eviction back through THIS method (and so back into
+    // ReconcileGroup) would deadlock against the very reconciliation pass driving the eviction.
+    private async Task RemoveItemAsync(string id, bool runOnDismiss = false)
     {
-        await RemoveWithExitAsync(id, runOnDismiss: false);
+        var freedPos = await RemoveWithExitAsync(id, runOnDismiss);
+        if (freedPos is { } pos) await ReconcileGroup(pos);
     }
 
-    private async Task RemoveWithExitAsync(string id, bool runOnDismiss)
+    // The raw removal mechanic ONLY — marks Leaving, plays the exit animation, drops the toast
+    // from `_toasts`, and returns the position group a slot just freed in (null if this was a
+    // no-op: the toast wasn't found, or was already Leaving — see the idempotency guard below).
+    // Deliberately does NOT itself call ReconcileGroup: every caller decides whether/how to
+    // reconcile the freed slot (RemoveItemAsync does, immediately after; ReconcileGroupCore's own
+    // eviction loop deliberately doesn't, since it IS the reconciliation already in progress for
+    // that position — see its comment).
+    private async Task<ToastViewport.ToastPosition?> RemoveWithExitAsync(string id, bool runOnDismiss)
     {
         var toast = _toasts.FirstOrDefault(t => t.Id == id);
         // Idempotent dismissal: a toast already playing its exit animation must
         // not be dismissed again. Re-entry would re-run OnDismiss, cancel the
         // in-flight exit timer (truncating the animation) and restart it.
-        if (toast is null || toast.Leaving) return;
+        if (toast is null || toast.Leaving) return null;
 
         CancelTimer(id);
         // Detach the swipe gesture before the element animates out and is
@@ -616,14 +780,13 @@
             }
         }
         // Resolve the freed slot's position group BEFORE removal — `toast` still carries its
-        // original Options.Position. PR #357 round-5 (P2): AdmitPending is now scoped per
-        // group (see its doc comment), so it needs to know WHICH group just gained a slot.
+        // original Options.Position. PR #357 round-5 (P2): reconciliation is scoped per group
+        // (see ReconcileGroup's doc comment), so the caller needs to know WHICH group just gained
+        // a slot.
         var freedPos = ResolvePosition(toast.Options.Position);
         _toasts.RemoveAll(t => t.Id == id);
-        // A slot just became real (not merely a Leaving placeholder still
-        // occupying `_toasts`) — pull the next queued toast for THIS group in, if any.
-        AdmitPending(freedPos);
         await InvokeAsync(StateHasChanged);
+        return freedPos;
     }
 
     private void CancelTimer(string id)

@@ -195,7 +195,15 @@
             _timer = null;
         }
 
-        public void Dispose() => _timer?.Dispose();
+        // PR #357 round-6 finding 5: must invalidate via Cancel() (bumps `_sequence`), NOT just
+        // dispose the timer. `System.Threading.Timer.Dispose()` does not wait for/cancel a
+        // callback that has ALREADY been queued to the thread pool (unmounting mid-fire is exactly
+        // the case here — a toast can be torn down for reasons other than entering `Leaving`, e.g.
+        // navigating away while a fresh toast is still entering). That already-queued callback can
+        // still run after this returns, see `seq != _sequence` pass (nothing bumped it), and call
+        // `InvokeAsync(FinishEntering)` on a disposed component. Same idiom as
+        // ToastViewport's `_focusOutSequence` guard (round-5).
+        public void Dispose() => Cancel();
 
         private static async Task RunSafe(Func<Task> action)
         {
