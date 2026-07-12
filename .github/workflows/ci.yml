@@ -77,6 +77,16 @@ jobs:
         # runtime (not net10 with roll-forward standing in for it), catching any
         # subtle net8-vs-net10 BCL/serialization/culture/timer divergence the
         # static scan + compile-only check can't see.
+        # DOTNET_ROLL_FORWARD=Disable overrides the csproj's <RollForward>LatestMajor</RollForward>
+        # (set there purely for local dev, where only a net10 SDK may be installed — see
+        # tests/Lumeo.Tests/Lumeo.Tests.csproj). LatestMajor rolls forward even when the exact
+        # requested major IS installed (per Microsoft's roll-forward docs), so on this runner —
+        # which has both 8.0.x and 10.0.x installed — it would silently launch the net8.0 test
+        # binary against the net10.0 runtime, defeating the lane's entire purpose. Disable forces
+        # an exact net8.0 runtime match, failing fast with "framework not found" instead of
+        # passing on the wrong runtime if the net8.0 shared runtime is ever missing.
+        env:
+          DOTNET_ROLL_FORWARD: Disable
         run: dotnet test tests/Lumeo.Tests/Lumeo.Tests.csproj -c Release --no-build --verbosity normal -f net8.0 --filter "FullyQualifiedName!~Lumeo.Tests.E2E"
 
       - name: Registry is up to date
