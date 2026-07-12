@@ -27,8 +27,13 @@
 </div>
 
 @code {
+    /// <summary>The palette's content: typically a <see cref="CommandInput"/> followed by a <see cref="CommandList"/> containing <see cref="CommandGroup"/>/<see cref="CommandItem"/> elements.</summary>
     [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    /// <summary>Additional CSS classes merged onto the root element.</summary>
     [Parameter] public string? Class { get; set; }
+
+    /// <summary>Unmatched attributes splatted onto the root element.</summary>
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     private string SearchText { get; set; } = "";
@@ -143,7 +148,19 @@
     // aria-activedescendant, never DOM focus).
     private async Task OnNavigationKey(KeyboardEventArgs e)
     {
+#if NET9_0_OR_GREATER
+        // KeyboardEventArgs.IsComposing was added in .NET 9's Components.Web. This package
+        // ships net8.0 and net10.0 assets only (no net9.0 asset), and NuGet asset selection
+        // resolves ANY consumer below net10.0 — including net9.0 apps, which do have
+        // IsComposing at runtime — to the net8.0 asset where this guard is compiled out, so
+        // IME candidate-window navigation (e.g. arrow keys picking a kanji candidate) is not
+        // distinguished from list navigation. Known limitation for net8.0-net9.0 consumers:
+        // harmless in the common case (most IME candidate UIs intercept the keydown before
+        // it reaches this handler), but an IME that lets the event through can
+        // double-navigate both the candidate list and this command list. Only fixed by
+        // shipping a net9.0-targeted asset (tracked separately).
         if (e.IsComposing) return; // IME candidate navigation owns these keys
+#endif
 
         switch (e.Key)
         {

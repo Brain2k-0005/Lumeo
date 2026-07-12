@@ -34,7 +34,7 @@
         "name": "ChildContent",
         "type": "RenderFragment?",
         "default": null,
-        "description": null,
+        "description": "The content the ripple overlays — the ripple host wraps this and spawns ripple spans on pointer-down over it.",
         "isCascading": false,
         "captureUnmatched": false,
         "isEditorRequired": false
@@ -43,7 +43,7 @@
         "name": "Color",
         "type": "string",
         "default": "\"currentColor\"",
-        "description": null,
+        "description": "Color of the ripple. Default: currentColor.",
         "isCascading": false,
         "captureUnmatched": false,
         "isEditorRequired": false
@@ -52,7 +52,7 @@
         "name": "Opacity",
         "type": "double",
         "default": "0.25",
-        "description": null,
+        "description": "Peak opacity of the ripple as it expands. Default: 0.25.",
         "isCascading": false,
         "captureUnmatched": false,
         "isEditorRequired": false
@@ -61,7 +61,7 @@
         "name": "DurationMs",
         "type": "int",
         "default": "500",
-        "description": null,
+        "description": "Duration of the ripple expand/fade animation in milliseconds, and how long its DOM node stays mounted before removal. Negative values are clamped to 0. Default: 500.",
         "isCascading": false,
         "captureUnmatched": false,
         "isEditorRequired": false
@@ -70,7 +70,7 @@
         "name": "Class",
         "type": "string?",
         "default": null,
-        "description": null,
+        "description": "Additional CSS classes merged onto the ripple host div.",
         "isCascading": false,
         "captureUnmatched": false,
         "isEditorRequired": false
@@ -79,7 +79,7 @@
         "name": "AdditionalAttributes",
         "type": "Dictionary<string, object>?",
         "default": null,
-        "description": null,
+        "description": "Additional HTML attributes captured and forwarded to the ripple host div.",
         "isCascading": false,
         "captureUnmatched": true,
         "isEditorRequired": false
@@ -147,7 +147,7 @@
   "source": [
     {
       "path": "UI/TouchRipple/TouchRipple.razor",
-      "content": "@namespace Lumeo\n@inject Services.IComponentInteropService Interop\n@implements IAsyncDisposable\n\n<div id=\"@_hostId\"\n     class=\"@CssClass\"\n     style=\"position: relative; overflow: hidden; --ripple-opacity: @Opacity.ToString(\"0.##\", System.Globalization.CultureInfo.InvariantCulture); --ripple-duration: @(Math.Max(0, DurationMs))ms\"\n     @onpointerdown=\"OnPointerDown\"\n     @attributes=\"AdditionalAttributes\">\n    @ChildContent\n    @foreach (var ripple in _ripples)\n    {\n        <span @key=\"@ripple.Id\"\n              class=\"lumeo-touch-ripple-span\"\n              style=\"left: @(ripple.X.ToString(\"0.##\", System.Globalization.CultureInfo.InvariantCulture))px; top: @(ripple.Y.ToString(\"0.##\", System.Globalization.CultureInfo.InvariantCulture))px; color: @Color;\">\n        </span>\n    }\n</div>\n\n@code {\n    [Parameter] public RenderFragment? ChildContent { get; set; }\n    [Parameter] public string Color { get; set; } = \"currentColor\";\n    [Parameter] public double Opacity { get; set; } = 0.25;\n    [Parameter] public int DurationMs { get; set; } = 500;\n    [Parameter] public string? Class { get; set; }\n    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }\n\n    private readonly string _fallbackId = LumeoIds.New(\"touch-ripple\");\n    // A consumer-supplied id wins (it lands on the element after @attributes),\n    // so the JS coordinate lookup must target the id actually in the DOM.\n    private string _hostId => LumeoIds.Effective(AdditionalAttributes, _fallbackId);\n\n    private string CssClass => Cx.Merge(\"lumeo-touch-ripple\", Class);\n\n    private record RippleEntry(Guid Id, double X, double Y);\n\n    private readonly List<RippleEntry> _ripples = new();\n    private readonly List<CancellationTokenSource> _pendingCts = new();\n\n    private async Task OnPointerDown(PointerEventArgs e)\n    {\n        // prefers-reduced-motion: don't spawn a ripple at all. The CSS also\n        // disables the span animation as defence-in-depth, but skipping here\n        // avoids running a cleanup timer for an invisible element.\n        if (await Interop.PrefersReducedMotion())\n        {\n            return;\n        }\n\n        // Resolve the click point relative to the ripple HOST element.\n        // PointerEventArgs.OffsetX/OffsetY are relative to whatever child the\n        // pointer actually landed on, so a ripple hosted around an icon/label\n        // spawned off-centre. The JS helper subtracts the host's bounding rect\n        // from the viewport clientX/clientY. Falls back to the raw offsets when\n        // interop is unavailable (prerender / no JS) or returns the (0,0)\n        // default for a click genuinely at the host origin.\n        var point = await Interop.TouchRippleCoords(_hostId, e.ClientX, e.ClientY);\n        var x = point.X;\n        var y = point.Y;\n        if (x == 0 && y == 0 && (e.OffsetX != 0 || e.OffsetY != 0))\n        {\n            x = e.OffsetX;\n            y = e.OffsetY;\n        }\n\n        var ripple = new RippleEntry(Guid.NewGuid(), x, y);\n        _ripples.Add(ripple);\n        StateHasChanged();\n\n        // Schedule removal AFTER the CSS animation without blocking the event\n        // handler: the handler's returned Task must complete now so the ripple\n        // is observable immediately (and a held pointer doesn't keep the\n        // handler \"running\" for the whole duration). The detached continuation\n        // marshals the state change back onto the renderer's sync context.\n        var cts = new CancellationTokenSource();\n        _pendingCts.Add(cts);\n        _ = RemoveAfterDelayAsync(ripple, cts);\n    }\n\n    private async Task RemoveAfterDelayAsync(RippleEntry ripple, CancellationTokenSource cts)\n    {\n        try\n        {\n            // Clamp negatives: Task.Delay throws ArgumentOutOfRangeException for any\n            // negative value other than -1, which would leak the ripple entry (the\n            // fire-and-forget continuation never reaches the removal below).\n            await Task.Delay(Math.Max(0, DurationMs), cts.Token);\n        }\n        catch (TaskCanceledException)\n        {\n            return;\n        }\n        finally\n        {\n            _pendingCts.Remove(cts);\n            cts.Dispose();\n        }\n\n        _ripples.Remove(ripple);\n        await InvokeAsync(StateHasChanged);\n    }\n\n    public async ValueTask DisposeAsync()\n    {\n        foreach (var cts in _pendingCts.ToList())\n        {\n            cts.Cancel();\n            cts.Dispose();\n        }\n        _pendingCts.Clear();\n        await ValueTask.CompletedTask;\n    }\n}\n"
+      "content": "@namespace Lumeo\n@inject Services.IComponentInteropService Interop\n@implements IAsyncDisposable\n\n<div id=\"@_hostId\"\n     class=\"@CssClass\"\n     style=\"position: relative; overflow: hidden; --ripple-opacity: @Opacity.ToString(\"0.##\", System.Globalization.CultureInfo.InvariantCulture); --ripple-duration: @(Math.Max(0, DurationMs))ms\"\n     @onpointerdown=\"OnPointerDown\"\n     @attributes=\"AdditionalAttributes\">\n    @ChildContent\n    @foreach (var ripple in _ripples)\n    {\n        <span @key=\"@ripple.Id\"\n              class=\"lumeo-touch-ripple-span\"\n              style=\"left: @(ripple.X.ToString(\"0.##\", System.Globalization.CultureInfo.InvariantCulture))px; top: @(ripple.Y.ToString(\"0.##\", System.Globalization.CultureInfo.InvariantCulture))px; color: @Color;\">\n        </span>\n    }\n</div>\n\n@code {\n    /// <summary>The content the ripple overlays — the ripple host wraps this and spawns ripple spans on\n    /// pointer-down over it.</summary>\n    [Parameter] public RenderFragment? ChildContent { get; set; }\n    /// <summary>Color of the ripple. Default: <c>currentColor</c>.</summary>\n    [Parameter] public string Color { get; set; } = \"currentColor\";\n    /// <summary>Peak opacity of the ripple as it expands. Default: 0.25.</summary>\n    [Parameter] public double Opacity { get; set; } = 0.25;\n    /// <summary>Duration of the ripple expand/fade animation in milliseconds, and how long its DOM node\n    /// stays mounted before removal. Negative values are clamped to 0. Default: 500.</summary>\n    [Parameter] public int DurationMs { get; set; } = 500;\n    /// <summary>Additional CSS classes merged onto the ripple host <c>div</c>.</summary>\n    [Parameter] public string? Class { get; set; }\n    /// <summary>Additional HTML attributes captured and forwarded to the ripple host <c>div</c>.</summary>\n    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }\n\n    private readonly string _fallbackId = LumeoIds.New(\"touch-ripple\");\n    // A consumer-supplied id wins (it lands on the element after @attributes),\n    // so the JS coordinate lookup must target the id actually in the DOM.\n    private string _hostId => LumeoIds.Effective(AdditionalAttributes, _fallbackId);\n\n    private string CssClass => Cx.Merge(\"lumeo-touch-ripple\", Class);\n\n    private record RippleEntry(Guid Id, double X, double Y);\n\n    private readonly List<RippleEntry> _ripples = new();\n    private readonly List<CancellationTokenSource> _pendingCts = new();\n\n    private async Task OnPointerDown(PointerEventArgs e)\n    {\n        // prefers-reduced-motion: don't spawn a ripple at all. The CSS also\n        // disables the span animation as defence-in-depth, but skipping here\n        // avoids running a cleanup timer for an invisible element.\n        if (await Interop.PrefersReducedMotion())\n        {\n            return;\n        }\n\n        // Resolve the click point relative to the ripple HOST element.\n        // PointerEventArgs.OffsetX/OffsetY are relative to whatever child the\n        // pointer actually landed on, so a ripple hosted around an icon/label\n        // spawned off-centre. The JS helper subtracts the host's bounding rect\n        // from the viewport clientX/clientY. Falls back to the raw offsets when\n        // interop is unavailable (prerender / no JS) or returns the (0,0)\n        // default for a click genuinely at the host origin.\n        var point = await Interop.TouchRippleCoords(_hostId, e.ClientX, e.ClientY);\n        var x = point.X;\n        var y = point.Y;\n        if (x == 0 && y == 0 && (e.OffsetX != 0 || e.OffsetY != 0))\n        {\n            x = e.OffsetX;\n            y = e.OffsetY;\n        }\n\n        var ripple = new RippleEntry(Guid.NewGuid(), x, y);\n        _ripples.Add(ripple);\n        StateHasChanged();\n\n        // Schedule removal AFTER the CSS animation without blocking the event\n        // handler: the handler's returned Task must complete now so the ripple\n        // is observable immediately (and a held pointer doesn't keep the\n        // handler \"running\" for the whole duration). The detached continuation\n        // marshals the state change back onto the renderer's sync context.\n        var cts = new CancellationTokenSource();\n        _pendingCts.Add(cts);\n        _ = RemoveAfterDelayAsync(ripple, cts);\n    }\n\n    private async Task RemoveAfterDelayAsync(RippleEntry ripple, CancellationTokenSource cts)\n    {\n        try\n        {\n            // Clamp negatives: Task.Delay throws ArgumentOutOfRangeException for any\n            // negative value other than -1, which would leak the ripple entry (the\n            // fire-and-forget continuation never reaches the removal below).\n            await Task.Delay(Math.Max(0, DurationMs), cts.Token);\n        }\n        catch (TaskCanceledException)\n        {\n            return;\n        }\n        finally\n        {\n            _pendingCts.Remove(cts);\n            cts.Dispose();\n        }\n\n        _ripples.Remove(ripple);\n        await InvokeAsync(StateHasChanged);\n    }\n\n    public async ValueTask DisposeAsync()\n    {\n        foreach (var cts in _pendingCts.ToList())\n        {\n            cts.Cancel();\n            cts.Dispose();\n        }\n        _pendingCts.Clear();\n        await ValueTask.CompletedTask;\n    }\n}\n"
     }
   ],
   "slots": [
@@ -155,7 +155,7 @@
       "name": "ChildContent",
       "owner": "TouchRipple",
       "type": "RenderFragment?",
-      "description": null
+      "description": "The content the ripple overlays — the ripple host wraps this and spawns ripple spans on pointer-down over it."
     }
   ],
   "serviceDependencies": [
@@ -168,8 +168,7 @@
   "relatedComponents": [],
   "keyboardInteractions": [],
   "tests": [
-    "tests/Lumeo.Tests/Components/TouchRipple/TouchRippleTests.cs",
-    "tests/Lumeo.Tests/Helpers/TrackingInteropService.cs"
+    "tests/Lumeo.Tests/Components/TouchRipple/TouchRippleTests.cs"
   ],
-  "mdSummary": "# TouchRipple\n\nTouch Ripple component.\n\n**Package:** `Lumeo` · **Category:** Utility\n**Docs:** https://lumeo.nativ.sh/components/touch-ripple\n\n## Parameters\n| Owner | Name | Type | Default | Description |\n|---|---|---|---|---|\n| TouchRipple | ChildContent | `RenderFragment?` | `` |  |\n| TouchRipple | Color | `string` | `\"currentColor\"` |  |\n| TouchRipple | Opacity | `double` | `0.25` |  |\n| TouchRipple | DurationMs | `int` | `500` |  |\n| TouchRipple | Class | `string?` | `` |  |\n| TouchRipple | AdditionalAttributes | `Dictionary<string, object>?` | `` |  |\n\n## Slots\n- `ChildContent` (TouchRipple) — RenderFragment slot\n\n## Events\n- (none)\n\n## Sub-components\n- (none)\n\n## Cascading values it expects\n- (none)\n\n## Services it injects\n- `IComponentInteropService` (Services)\n\n## Keyboard\n—\n\n## Example\n```razor\n<TouchRipple />\n```\n\n## CSS variables\n`--color-foreground`\n\n## Files\n- `UI/TouchRipple/TouchRipple.razor`\n"
+  "mdSummary": "# TouchRipple\n\nTouch Ripple component.\n\n**Package:** `Lumeo` · **Category:** Utility\n**Docs:** https://lumeo.nativ.sh/components/touch-ripple\n\n## Parameters\n| Owner | Name | Type | Default | Description |\n|---|---|---|---|---|\n| TouchRipple | ChildContent | `RenderFragment?` | `` | The content the ripple overlays — the ripple host wraps this and spawns ripple spans on pointer-down over it. |\n| TouchRipple | Color | `string` | `\"currentColor\"` | Color of the ripple. Default: currentColor. |\n| TouchRipple | Opacity | `double` | `0.25` | Peak opacity of the ripple as it expands. Default: 0.25. |\n| TouchRipple | DurationMs | `int` | `500` | Duration of the ripple expand/fade animation in milliseconds, and how long its DOM node stays mounted before removal. Negative values are clamped to 0. Default: 500. |\n| TouchRipple | Class | `string?` | `` | Additional CSS classes merged onto the ripple host div. |\n| TouchRipple | AdditionalAttributes | `Dictionary<string, object>?` | `` | Additional HTML attributes captured and forwarded to the ripple host div. |\n\n## Slots\n- `ChildContent` (TouchRipple) — The content the ripple overlays — the ripple host wraps this and spawns ripple spans on pointer-down over it.\n\n## Events\n- (none)\n\n## Sub-components\n- (none)\n\n## Cascading values it expects\n- (none)\n\n## Services it injects\n- `IComponentInteropService` (Services)\n\n## Keyboard\n—\n\n## Example\n```razor\n<TouchRipple />\n```\n\n## CSS variables\n`--color-foreground`\n\n## Files\n- `UI/TouchRipple/TouchRipple.razor`\n"
 }

@@ -34,8 +34,8 @@
       {
         "name": "Value",
         "type": "double",
-        "default": null,
-        "description": null,
+        "default": "0",
+        "description": "The change value to display, rounded to 2 decimal places. NaN/infinite values render as an em dash with no arrow or colour.",
         "isCascading": false,
         "captureUnmatched": false,
         "isEditorRequired": false
@@ -44,7 +44,7 @@
         "name": "Format",
         "type": "DeltaFormat",
         "default": "DeltaFormat.Percent",
-        "description": null,
+        "description": "How Value is formatted: Percent (default) appends a % sign; Absolute renders the bare number.",
         "isCascading": false,
         "captureUnmatched": false,
         "isEditorRequired": false
@@ -53,7 +53,7 @@
         "name": "Positive",
         "type": "DeltaDirection",
         "default": "DeltaDirection.Good",
-        "description": null,
+        "description": "Which direction counts as \"good\" for colouring. Good (default) colours a positive delta green and negative red; Bad inverts this (e.g. a churn-rate metric where lower is better).",
         "isCascading": false,
         "captureUnmatched": false,
         "isEditorRequired": false
@@ -62,7 +62,7 @@
         "name": "ShowArrow",
         "type": "bool",
         "default": "true",
-        "description": null,
+        "description": "When true (default), shows an up/down chevron alongside the value; hidden for a zero or non-finite delta regardless.",
         "isCascading": false,
         "captureUnmatched": false,
         "isEditorRequired": false
@@ -80,7 +80,7 @@
         "name": "Class",
         "type": "string?",
         "default": null,
-        "description": null,
+        "description": "Additional CSS classes merged onto the root <span>.",
         "isCascading": false,
         "captureUnmatched": false,
         "isEditorRequired": false
@@ -89,7 +89,7 @@
         "name": "AdditionalAttributes",
         "type": "Dictionary<string, object>?",
         "default": null,
-        "description": null,
+        "description": "Unmatched attributes splatted onto the root <span>.",
         "isCascading": false,
         "captureUnmatched": true,
         "isEditorRequired": false
@@ -179,7 +179,7 @@
   "source": [
     {
       "path": "UI/Delta/Delta.razor",
-      "content": "@namespace Lumeo\n\n<span class=\"@RootClasses\" @attributes=\"AdditionalAttributes\">\n    @if (ShowArrow)\n    {\n        @if (IsUp)\n        {\n            <svg xmlns=\"http://www.w3.org/2000/svg\" width=\"12\" height=\"12\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><polyline points=\"18 15 12 9 6 15\"/></svg>\n        }\n        else if (IsDown)\n        {\n            <svg xmlns=\"http://www.w3.org/2000/svg\" width=\"12\" height=\"12\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><polyline points=\"6 9 12 15 18 9\"/></svg>\n        }\n    }\n    <span>@FormattedValue</span>\n</span>\n\n@code {\n    [Parameter] public double Value { get; set; }\n    [Parameter] public DeltaFormat Format { get; set; } = DeltaFormat.Percent;\n    [Parameter] public DeltaDirection Positive { get; set; } = DeltaDirection.Good;\n    [Parameter] public bool ShowArrow { get; set; } = true;\n    /// <summary>\n    /// Overrides <see cref=\"System.Globalization.CultureInfo.CurrentCulture\"/> for\n    /// number formatting (decimal separator, group separator). Leave null to honour\n    /// ASP.NET request localization — a <c>de-DE</c> user sees <c>+12,5%</c> while\n    /// an <c>en-US</c> user sees <c>+12.5%</c>.\n    /// </summary>\n    [Parameter] public System.Globalization.CultureInfo? Culture { get; set; }\n    [Parameter] public string? Class { get; set; }\n    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }\n\n    private System.Globalization.CultureInfo EffectiveCulture => Culture ?? System.Globalization.CultureInfo.CurrentCulture;\n\n    private bool IsFinite => !double.IsNaN(Value) && !double.IsInfinity(Value);\n\n    // Round to the same precision the \"0.##\" format renders, then normalise\n    // negative zero (e.g. Math.Round(-0.004, 2) == -0.0) to +0.0 so direction,\n    // colour, sign, and the displayed magnitude all agree.\n    private double Rounded\n    {\n        get\n        {\n            var r = Math.Round(Value, 2);\n            return r == 0 ? 0d : r;\n        }\n    }\n\n    private bool IsUp => IsFinite && Rounded > 0;\n    private bool IsDown => IsFinite && Rounded < 0;\n\n    private string FormattedValue\n    {\n        get\n        {\n            if (!IsFinite) return \"—\";\n\n            var culture = EffectiveCulture;\n            var rounded = Rounded;\n            var sign = rounded > 0 ? \"+\" : \"\";\n            var absFormat = Format switch\n            {\n                DeltaFormat.Percent =>\n                    $\"{sign}{rounded.ToString(\"0.##\", culture)}%\",\n                _ =>\n                    $\"{sign}{rounded.ToString(\"0.##\", culture)}\"\n            };\n            return absFormat;\n        }\n    }\n\n    private string ColorClasses\n    {\n        get\n        {\n            // Good = positive delta is \"good\" (green), negative is \"bad\" (red)\n            // Bad = inverted (e.g. churn rate where lower is better)\n            var goodColor = \"bg-positive-light text-positive-text\";\n            var badColor = \"bg-destructive-light text-destructive-text\";\n            var neutral = \"bg-muted text-muted-foreground\";\n\n            if (!IsFinite || Rounded == 0) return neutral;\n\n            var isGood = Positive == DeltaDirection.Good ? IsUp : IsDown;\n            return isGood ? goodColor : badColor;\n        }\n    }\n\n    private string RootClasses =>\n        Cx.Merge(\"inline-flex items-center gap-0.5 rounded-[calc(var(--radius)*2)] px-2 py-0.5 text-xs font-medium\", ColorClasses, Class);\n\n    public enum DeltaFormat { Percent, Absolute }\n    public enum DeltaDirection { Good, Bad }\n}\n"
+      "content": "@namespace Lumeo\n\n<span class=\"@RootClasses\" @attributes=\"AdditionalAttributes\">\n    @if (ShowArrow)\n    {\n        @if (IsUp)\n        {\n            <svg xmlns=\"http://www.w3.org/2000/svg\" width=\"12\" height=\"12\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><polyline points=\"18 15 12 9 6 15\"/></svg>\n        }\n        else if (IsDown)\n        {\n            <svg xmlns=\"http://www.w3.org/2000/svg\" width=\"12\" height=\"12\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><polyline points=\"6 9 12 15 18 9\"/></svg>\n        }\n    }\n    <span>@FormattedValue</span>\n</span>\n\n@code {\n    /// <summary>The change value to display, rounded to 2 decimal places. <c>NaN</c>/infinite values render as an em dash with no arrow or colour.</summary>\n    [Parameter] public double Value { get; set; }\n    /// <summary>How <see cref=\"Value\"/> is formatted: <c>Percent</c> (default) appends a <c>%</c> sign; <c>Absolute</c> renders the bare number.</summary>\n    [Parameter] public DeltaFormat Format { get; set; } = DeltaFormat.Percent;\n    /// <summary>Which direction counts as \"good\" for colouring. <c>Good</c> (default) colours a positive delta green and negative red; <c>Bad</c> inverts this (e.g. a churn-rate metric where lower is better).</summary>\n    [Parameter] public DeltaDirection Positive { get; set; } = DeltaDirection.Good;\n    /// <summary>When <c>true</c> (default), shows an up/down chevron alongside the value; hidden for a zero or non-finite delta regardless.</summary>\n    [Parameter] public bool ShowArrow { get; set; } = true;\n    /// <summary>\n    /// Overrides <see cref=\"System.Globalization.CultureInfo.CurrentCulture\"/> for\n    /// number formatting (decimal separator, group separator). Leave null to honour\n    /// ASP.NET request localization — a <c>de-DE</c> user sees <c>+12,5%</c> while\n    /// an <c>en-US</c> user sees <c>+12.5%</c>.\n    /// </summary>\n    [Parameter] public System.Globalization.CultureInfo? Culture { get; set; }\n    /// <summary>Additional CSS classes merged onto the root <c>&lt;span&gt;</c>.</summary>\n    [Parameter] public string? Class { get; set; }\n    /// <summary>Unmatched attributes splatted onto the root <c>&lt;span&gt;</c>.</summary>\n    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }\n\n    private System.Globalization.CultureInfo EffectiveCulture => Culture ?? System.Globalization.CultureInfo.CurrentCulture;\n\n    private bool IsFinite => !double.IsNaN(Value) && !double.IsInfinity(Value);\n\n    // Round to the same precision the \"0.##\" format renders, then normalise\n    // negative zero (e.g. Math.Round(-0.004, 2) == -0.0) to +0.0 so direction,\n    // colour, sign, and the displayed magnitude all agree.\n    private double Rounded\n    {\n        get\n        {\n            var r = Math.Round(Value, 2);\n            return r == 0 ? 0d : r;\n        }\n    }\n\n    private bool IsUp => IsFinite && Rounded > 0;\n    private bool IsDown => IsFinite && Rounded < 0;\n\n    private string FormattedValue\n    {\n        get\n        {\n            if (!IsFinite) return \"—\";\n\n            var culture = EffectiveCulture;\n            var rounded = Rounded;\n            var sign = rounded > 0 ? \"+\" : \"\";\n            var absFormat = Format switch\n            {\n                DeltaFormat.Percent =>\n                    $\"{sign}{rounded.ToString(\"0.##\", culture)}%\",\n                _ =>\n                    $\"{sign}{rounded.ToString(\"0.##\", culture)}\"\n            };\n            return absFormat;\n        }\n    }\n\n    private string ColorClasses\n    {\n        get\n        {\n            // Good = positive delta is \"good\" (green), negative is \"bad\" (red)\n            // Bad = inverted (e.g. churn rate where lower is better)\n            var goodColor = \"bg-positive-light text-positive-text\";\n            var badColor = \"bg-destructive-light text-destructive-text\";\n            var neutral = \"bg-muted text-muted-foreground\";\n\n            if (!IsFinite || Rounded == 0) return neutral;\n\n            var isGood = Positive == DeltaDirection.Good ? IsUp : IsDown;\n            return isGood ? goodColor : badColor;\n        }\n    }\n\n    private string RootClasses =>\n        Cx.Merge(\"inline-flex items-center gap-0.5 rounded-[calc(var(--radius)*2)] px-2 py-0.5 text-xs font-medium\", ColorClasses, Class);\n\n    public enum DeltaFormat { Percent, Absolute }\n    public enum DeltaDirection { Good, Bad }\n}\n"
     }
   ],
   "slots": [],
@@ -188,16 +188,7 @@
   "relatedComponents": [],
   "keyboardInteractions": [],
   "tests": [
-    "tests/Lumeo.Tests/Components/Combobox/ComboboxKeyboardNavTests.cs",
-    "tests/Lumeo.Tests/Components/DataGrid/DataGridColumnResizeCommitTests.cs",
-    "tests/Lumeo.Tests/Components/Delta/DeltaTests.cs",
-    "tests/Lumeo.Tests/Components/KpiCard/KpiCardTests.cs",
-    "tests/Lumeo.Tests/Components/PickList/PickListControlledRollbackTests.cs",
-    "tests/Lumeo.Tests/Components/PickList/PickListRovingFocusTests.cs",
-    "tests/Lumeo.Tests/Components/PickList/PickListStateOnDataChangeTests.cs",
-    "tests/Lumeo.Tests/Components/Statistic/StatisticTrendA11yTests.cs",
-    "tests/Lumeo.Tests/Components/Toolbar/ToolbarKeyboardTests.cs",
-    "tests/Lumeo.Tests/Helpers/TrackingInteropService.cs"
+    "tests/Lumeo.Tests/Components/Delta/DeltaTests.cs"
   ],
-  "mdSummary": "# Delta\n\nTrend indicator showing delta value with up/down arrow + color.\n\n**Package:** `Lumeo` · **Category:** Dashboard\n**Docs:** https://lumeo.nativ.sh/components/delta\n\n## Parameters\n| Owner | Name | Type | Default | Description |\n|---|---|---|---|---|\n| Delta | Value | `double` | `` |  |\n| Delta | Format | `DeltaFormat` | `DeltaFormat.Percent` |  |\n| Delta | Positive | `DeltaDirection` | `DeltaDirection.Good` |  |\n| Delta | ShowArrow | `bool` | `true` |  |\n| Delta | Culture | `System.Globalization.CultureInfo?` | `` | Overrides CurrentCulture for number formatting (decimal separator, group separator). Leave null to honour ASP.NET request localization — a de-DE user sees +12,5% while an en-US user sees +12.5%. |\n| Delta | Class | `string?` | `` |  |\n| Delta | AdditionalAttributes | `Dictionary<string, object>?` | `` |  |\n\n## Slots\n- (none)\n\n## Events\n- (none)\n\n## Sub-components\n- (none)\n\n## Cascading values it expects\n- (none)\n\n## Services it injects\n- (none)\n\n## Keyboard\n—\n\n## Example\n```razor\n<Delta />\n```\n\n## CSS variables\n`--color-destructive`, `--color-muted`, `--color-muted-foreground`, `--radius`\n\n## Files\n- `UI/Delta/Delta.razor`\n"
+  "mdSummary": "# Delta\n\nTrend indicator showing delta value with up/down arrow + color.\n\n**Package:** `Lumeo` · **Category:** Dashboard\n**Docs:** https://lumeo.nativ.sh/components/delta\n\n## Parameters\n| Owner | Name | Type | Default | Description |\n|---|---|---|---|---|\n| Delta | Value | `double` | `0` | The change value to display, rounded to 2 decimal places. NaN/infinite values render as an em dash with no arrow or colour. |\n| Delta | Format | `DeltaFormat` | `DeltaFormat.Percent` | How Value is formatted: Percent (default) appends a % sign; Absolute renders the bare number. |\n| Delta | Positive | `DeltaDirection` | `DeltaDirection.Good` | Which direction counts as \"good\" for colouring. Good (default) colours a positive delta green and negative red; Bad inverts this (e.g. a churn-rate metric where lower is better). |\n| Delta | ShowArrow | `bool` | `true` | When true (default), shows an up/down chevron alongside the value; hidden for a zero or non-finite delta regardless. |\n| Delta | Culture | `System.Globalization.CultureInfo?` | `` | Overrides CurrentCulture for number formatting (decimal separator, group separator). Leave null to honour ASP.NET request localization — a de-DE user sees +12,5% while an en-US user sees +12.5%. |\n| Delta | Class | `string?` | `` | Additional CSS classes merged onto the root \\<span\\>. |\n| Delta | AdditionalAttributes | `Dictionary<string, object>?` | `` | Unmatched attributes splatted onto the root \\<span\\>. |\n\n## Slots\n- (none)\n\n## Events\n- (none)\n\n## Sub-components\n- (none)\n\n## Cascading values it expects\n- (none)\n\n## Services it injects\n- (none)\n\n## Keyboard\n—\n\n## Example\n```razor\n<Delta />\n```\n\n## CSS variables\n`--color-destructive`, `--color-muted`, `--color-muted-foreground`, `--radius`\n\n## Files\n- `UI/Delta/Delta.razor`\n"
 }

@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using Microsoft.AspNetCore.Components;
 
 namespace Lumeo.Services;
@@ -24,7 +25,7 @@ public sealed class OverlayService : IOverlayService
     public event Action<OverlayInstance>? OnShow;
     public event Action<string, object?, bool>? OnClose;
 
-    public Task<OverlayResult> ShowDialogAsync<TComponent>(
+    public Task<OverlayResult> ShowDialogAsync<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] TComponent>(
         string? title = null,
         OverlayParameters? parameters = null,
         OverlayOptions? options = null) where TComponent : IComponent
@@ -32,7 +33,7 @@ public sealed class OverlayService : IOverlayService
         return ShowAsync(OverlayType.Dialog, typeof(TComponent), title, parameters, options);
     }
 
-    public Task<OverlayResult> ShowSheetAsync<TComponent>(
+    public Task<OverlayResult> ShowSheetAsync<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] TComponent>(
         string? title = null,
         Lumeo.Side side = Lumeo.Side.Right,
         SheetSize size = SheetSize.Default,
@@ -49,7 +50,7 @@ public sealed class OverlayService : IOverlayService
         return ShowAsync(OverlayType.Sheet, typeof(TComponent), title, parameters, options);
     }
 
-    public Task<OverlayResult> ShowDrawerAsync<TComponent>(
+    public Task<OverlayResult> ShowDrawerAsync<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] TComponent>(
         string? title = null,
         OverlayParameters? parameters = null,
         OverlayOptions? options = null) where TComponent : IComponent
@@ -106,7 +107,7 @@ public sealed class OverlayService : IOverlayService
 
     private Task<OverlayResult> ShowAsync(
         OverlayType type,
-        Type componentType,
+        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] Type componentType,
         string? title,
         OverlayParameters? parameters,
         OverlayOptions? options)
@@ -375,6 +376,7 @@ public sealed class OverlayInstance
 {
     public required string Id { get; init; }
     public required OverlayType Type { get; init; }
+    [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)]
     public Type? ComponentType { get; init; }
     public string? Title { get; init; }
     public OverlayParameters? Parameters { get; init; }

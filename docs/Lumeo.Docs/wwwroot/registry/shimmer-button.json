@@ -47,7 +47,7 @@
         "name": "ChildContent",
         "type": "RenderFragment?",
         "default": null,
-        "description": null,
+        "description": "The button's label content.",
         "isCascading": false,
         "captureUnmatched": false,
         "isEditorRequired": false
@@ -56,7 +56,7 @@
         "name": "OnClick",
         "type": "EventCallback<Microsoft.AspNetCore.Components.Web.MouseEventArgs>",
         "default": null,
-        "description": null,
+        "description": "Invoked when the button is clicked.",
         "isCascading": false,
         "captureUnmatched": false,
         "isEditorRequired": false
@@ -65,7 +65,7 @@
         "name": "Shimmer",
         "type": "bool",
         "default": "true",
-        "description": null,
+        "description": "When true (default), plays a continuous shimmering light sweep across the button.",
         "isCascading": false,
         "captureUnmatched": false,
         "isEditorRequired": false
@@ -83,7 +83,7 @@
         "name": "Variant",
         "type": "Button.ButtonVariant",
         "default": "Button.ButtonVariant.Default",
-        "description": null,
+        "description": "Visual style, matching ButtonVariant. Defaults to Default.",
         "isCascading": false,
         "captureUnmatched": false,
         "isEditorRequired": false
@@ -92,7 +92,7 @@
         "name": "Size",
         "type": "Button.ButtonSize",
         "default": "Button.ButtonSize.Default",
-        "description": null,
+        "description": "Button height/padding, matching ButtonSize. Defaults to Default.",
         "isCascading": false,
         "captureUnmatched": false,
         "isEditorRequired": false
@@ -100,8 +100,8 @@
       {
         "name": "Disabled",
         "type": "bool",
-        "default": null,
-        "description": null,
+        "default": "false",
+        "description": "Disables interaction and dims the button.",
         "isCascading": false,
         "captureUnmatched": false,
         "isEditorRequired": false
@@ -119,7 +119,7 @@
         "name": "Class",
         "type": "string?",
         "default": null,
-        "description": null,
+        "description": "Additional CSS classes merged onto the root button element.",
         "isCascading": false,
         "captureUnmatched": false,
         "isEditorRequired": false
@@ -128,7 +128,7 @@
         "name": "AdditionalAttributes",
         "type": "Dictionary<string, object>?",
         "default": null,
-        "description": null,
+        "description": "Unmatched attributes are splatted onto the root button element.",
         "isCascading": false,
         "captureUnmatched": true,
         "isEditorRequired": false
@@ -138,7 +138,7 @@
       {
         "name": "OnClick",
         "type": "EventCallback<Microsoft.AspNetCore.Components.Web.MouseEventArgs>",
-        "description": null
+        "description": "Invoked when the button is clicked."
       }
     ],
     "enums": [],
@@ -213,7 +213,7 @@
   "source": [
     {
       "path": "UI/ShimmerButton/ShimmerButton.razor",
-      "content": "@namespace Lumeo\n@implements IAsyncDisposable\n@inject Lumeo.Services.IComponentInteropService Interop\n\n<button @ref=\"_el\"\n        class=\"@CssClass\"\n        style=\"@StyleString\"\n        disabled=\"@Disabled\"\n        @attributes=\"AdditionalAttributes\"\n        @onclick=\"OnClick\">\n    <span class=\"relative z-10 inline-flex items-center justify-center gap-2\">\n        @ChildContent\n    </span>\n</button>\n\n@code {\n    [Parameter] public RenderFragment? ChildContent { get; set; }\n    [Parameter] public EventCallback<Microsoft.AspNetCore.Components.Web.MouseEventArgs> OnClick { get; set; }\n    [Parameter] public bool Shimmer { get; set; } = true;\n\n    /// <summary>CSS color used for the shimmer sweep — defaults to a translucent foreground.</summary>\n    [Parameter] public string? ShimmerColor { get; set; }\n\n    [Parameter] public Button.ButtonVariant Variant { get; set; } = Button.ButtonVariant.Default;\n    [Parameter] public Button.ButtonSize Size { get; set; } = Button.ButtonSize.Default;\n    [Parameter] public bool Disabled { get; set; }\n\n    /// <summary>\n    /// Visual feedback when the button is pressed down. Default is <see cref=\"Button.ButtonPressEffect.None\"/>\n    /// (no press animation — original behaviour).\n    /// </summary>\n    [Parameter] public Button.ButtonPressEffect PressEffect { get; set; } = Button.ButtonPressEffect.None;\n\n    [Parameter] public string? Class { get; set; }\n    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }\n\n    private Microsoft.AspNetCore.Components.ElementReference _el;\n    private bool _rippleAttached;\n\n    private const string BaseClasses = \"inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50\";\n\n    private string VariantClasses => Variant switch\n    {\n        Button.ButtonVariant.Default => \"bg-primary text-primary-foreground shadow hover:bg-primary/90\",\n        Button.ButtonVariant.Destructive => \"bg-destructive text-destructive-foreground shadow-sm hover:bg-destructive/90\",\n        Button.ButtonVariant.Outline => \"border border-input bg-background hover:bg-accent hover:text-accent-foreground\",\n        Button.ButtonVariant.Secondary => \"bg-secondary text-secondary-foreground shadow-sm hover:bg-secondary/80\",\n        Button.ButtonVariant.Ghost => \"hover:bg-accent hover:text-accent-foreground\",\n        Button.ButtonVariant.Link => \"text-primary underline-offset-4 hover:underline\",\n        _ => \"\"\n    };\n\n    private string SizeClasses => Size switch\n    {\n        Button.ButtonSize.Default => \"h-9 px-4 py-2\",\n        Button.ButtonSize.Sm => \"h-8 rounded-md px-3 text-xs\",\n        Button.ButtonSize.Lg => \"h-10 rounded-md px-8\",\n        Button.ButtonSize.Icon => \"h-9 w-9\",\n        _ => \"\"\n    };\n\n    private string? PressEffectClass => PressEffect switch\n    {\n        Button.ButtonPressEffect.Scale => \"lumeo-press-scale\",\n        Button.ButtonPressEffect.Brightness => \"lumeo-press-brightness\",\n        Button.ButtonPressEffect.Ripple => \"lumeo-press-ripple\",\n        _ => null\n    };\n\n    private string CssClass => string.Join(\" \",\n        new[] { BaseClasses, VariantClasses, SizeClasses, \"cursor-pointer disabled:cursor-not-allowed\", Shimmer ? \"lumeo-shimmer\" : null, PressEffectClass, Class }\n            .Where(s => !string.IsNullOrWhiteSpace(s)));\n\n    private string StyleString =>\n        !string.IsNullOrWhiteSpace(ShimmerColor)\n            ? $\"--lumeo-shimmer-color: {ShimmerColor};\"\n            : string.Empty;\n\n    protected override async Task OnAfterRenderAsync(bool firstRender)\n    {\n        // Reconcile the ripple listener with the current PressEffect on EVERY render,\n        // not just the first-render value (triage #18, mirrors Button.razor): a runtime\n        // None->Ripple flip must now attach, and a Ripple->None flip must detach the\n        // leaked listener. DisposeAsync handles the unmount teardown.\n        if (PressEffect == Button.ButtonPressEffect.Ripple && !_rippleAttached)\n        {\n            try\n            {\n                await Interop.RippleAttachAsync(_el);\n                _rippleAttached = true;\n            }\n            catch (Microsoft.JSInterop.JSDisconnectedException) { }\n        }\n        else if (PressEffect != Button.ButtonPressEffect.Ripple && _rippleAttached)\n        {\n            try\n            {\n                await Interop.RippleDetachAsync(_el);\n            }\n            catch (Microsoft.JSInterop.JSDisconnectedException) { }\n            _rippleAttached = false;\n        }\n    }\n\n    public async ValueTask DisposeAsync()\n    {\n        if (_rippleAttached)\n        {\n            try\n            {\n                await Interop.RippleDetachAsync(_el);\n            }\n            catch (Microsoft.JSInterop.JSDisconnectedException) { }\n        }\n    }\n}\n"
+      "content": "@namespace Lumeo\n@implements IAsyncDisposable\n@inject Lumeo.Services.IComponentInteropService Interop\n\n<button @ref=\"_el\"\n        class=\"@CssClass\"\n        style=\"@StyleString\"\n        disabled=\"@Disabled\"\n        @attributes=\"AdditionalAttributes\"\n        @onclick=\"OnClick\">\n    <span class=\"relative z-10 inline-flex items-center justify-center gap-2\">\n        @ChildContent\n    </span>\n</button>\n\n@code {\n    /// <summary>The button's label content.</summary>\n    [Parameter] public RenderFragment? ChildContent { get; set; }\n\n    /// <summary>Invoked when the button is clicked.</summary>\n    [Parameter] public EventCallback<Microsoft.AspNetCore.Components.Web.MouseEventArgs> OnClick { get; set; }\n\n    /// <summary>When true (default), plays a continuous shimmering light sweep across the button.</summary>\n    [Parameter] public bool Shimmer { get; set; } = true;\n\n    /// <summary>CSS color used for the shimmer sweep — defaults to a translucent foreground.</summary>\n    [Parameter] public string? ShimmerColor { get; set; }\n\n    /// <summary>Visual style, matching <see cref=\"Button.ButtonVariant\"/>. Defaults to <see cref=\"Button.ButtonVariant.Default\"/>.</summary>\n    [Parameter] public Button.ButtonVariant Variant { get; set; } = Button.ButtonVariant.Default;\n\n    /// <summary>Button height/padding, matching <see cref=\"Button.ButtonSize\"/>. Defaults to <see cref=\"Button.ButtonSize.Default\"/>.</summary>\n    [Parameter] public Button.ButtonSize Size { get; set; } = Button.ButtonSize.Default;\n\n    /// <summary>Disables interaction and dims the button.</summary>\n    [Parameter] public bool Disabled { get; set; }\n\n    /// <summary>\n    /// Visual feedback when the button is pressed down. Default is <see cref=\"Button.ButtonPressEffect.None\"/>\n    /// (no press animation — original behaviour).\n    /// </summary>\n    [Parameter] public Button.ButtonPressEffect PressEffect { get; set; } = Button.ButtonPressEffect.None;\n\n    /// <summary>Additional CSS classes merged onto the root button element.</summary>\n    [Parameter] public string? Class { get; set; }\n\n    /// <summary>Unmatched attributes are splatted onto the root button element.</summary>\n    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }\n\n    private Microsoft.AspNetCore.Components.ElementReference _el;\n    private bool _rippleAttached;\n\n    private const string BaseClasses = \"inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50\";\n\n    private string VariantClasses => Variant switch\n    {\n        Button.ButtonVariant.Default => \"bg-primary text-primary-foreground shadow hover:bg-primary/90\",\n        Button.ButtonVariant.Destructive => \"bg-destructive text-destructive-foreground shadow-sm hover:bg-destructive/90\",\n        Button.ButtonVariant.Outline => \"border border-input bg-background hover:bg-accent hover:text-accent-foreground\",\n        Button.ButtonVariant.Secondary => \"bg-secondary text-secondary-foreground shadow-sm hover:bg-secondary/80\",\n        Button.ButtonVariant.Ghost => \"hover:bg-accent hover:text-accent-foreground\",\n        Button.ButtonVariant.Link => \"text-primary underline-offset-4 hover:underline\",\n        _ => \"\"\n    };\n\n    private string SizeClasses => Size switch\n    {\n        Button.ButtonSize.Default => \"h-9 px-4 py-2\",\n        Button.ButtonSize.Sm => \"h-8 rounded-md px-3 text-xs\",\n        Button.ButtonSize.Lg => \"h-10 rounded-md px-8\",\n        Button.ButtonSize.Icon => \"h-9 w-9\",\n        _ => \"\"\n    };\n\n    private string? PressEffectClass => PressEffect switch\n    {\n        Button.ButtonPressEffect.Scale => \"lumeo-press-scale\",\n        Button.ButtonPressEffect.Brightness => \"lumeo-press-brightness\",\n        Button.ButtonPressEffect.Ripple => \"lumeo-press-ripple\",\n        _ => null\n    };\n\n    private string CssClass => string.Join(\" \",\n        new[] { BaseClasses, VariantClasses, SizeClasses, \"cursor-pointer disabled:cursor-not-allowed\", Shimmer ? \"lumeo-shimmer\" : null, PressEffectClass, Class }\n            .Where(s => !string.IsNullOrWhiteSpace(s)));\n\n    private string StyleString =>\n        !string.IsNullOrWhiteSpace(ShimmerColor)\n            ? $\"--lumeo-shimmer-color: {ShimmerColor};\"\n            : string.Empty;\n\n    protected override async Task OnAfterRenderAsync(bool firstRender)\n    {\n        // Reconcile the ripple listener with the current PressEffect on EVERY render,\n        // not just the first-render value (triage #18, mirrors Button.razor): a runtime\n        // None->Ripple flip must now attach, and a Ripple->None flip must detach the\n        // leaked listener. DisposeAsync handles the unmount teardown.\n        if (PressEffect == Button.ButtonPressEffect.Ripple && !_rippleAttached)\n        {\n            try\n            {\n                await Interop.RippleAttachAsync(_el);\n                _rippleAttached = true;\n            }\n            catch (Microsoft.JSInterop.JSDisconnectedException) { }\n        }\n        else if (PressEffect != Button.ButtonPressEffect.Ripple && _rippleAttached)\n        {\n            try\n            {\n                await Interop.RippleDetachAsync(_el);\n            }\n            catch (Microsoft.JSInterop.JSDisconnectedException) { }\n            _rippleAttached = false;\n        }\n    }\n\n    public async ValueTask DisposeAsync()\n    {\n        if (_rippleAttached)\n        {\n            try\n            {\n                await Interop.RippleDetachAsync(_el);\n            }\n            catch (Microsoft.JSInterop.JSDisconnectedException) { }\n        }\n    }\n}\n"
     }
   ],
   "slots": [
@@ -221,7 +221,7 @@
       "name": "ChildContent",
       "owner": "ShimmerButton",
       "type": "RenderFragment?",
-      "description": null
+      "description": "The button's label content."
     }
   ],
   "serviceDependencies": [
@@ -234,10 +234,9 @@
   "relatedComponents": [],
   "keyboardInteractions": [],
   "tests": [
-    "tests/Lumeo.Tests/Components/Button/ButtonRippleDisposeTests.cs",
     "tests/Lumeo.Tests/Components/ShimmerButton/ShimmerButtonPressEffectReconcileTests.cs",
     "tests/Lumeo.Tests/Components/ShimmerButton/ShimmerButtonPressEffectTests.cs",
     "tests/Lumeo.Tests/Components/ShimmerButton/ShimmerButtonTests.cs"
   ],
-  "mdSummary": "# ShimmerButton\n\nButton with animated shimmer border beam.\n\n**Package:** `Lumeo.Motion` · **Category:** Motion\n**Docs:** https://lumeo.nativ.sh/components/shimmer-button\n\n## Parameters\n| Owner | Name | Type | Default | Description |\n|---|---|---|---|---|\n| ShimmerButton | ChildContent | `RenderFragment?` | `` |  |\n| ShimmerButton | OnClick | `EventCallback<Microsoft.AspNetCore.Components.Web.MouseEventArgs>` | `` |  |\n| ShimmerButton | Shimmer | `bool` | `true` |  |\n| ShimmerButton | ShimmerColor | `string?` | `` | CSS color used for the shimmer sweep — defaults to a translucent foreground. |\n| ShimmerButton | Variant | `Button.ButtonVariant` | `Button.ButtonVariant.Default` |  |\n| ShimmerButton | Size | `Button.ButtonSize` | `Button.ButtonSize.Default` |  |\n| ShimmerButton | Disabled | `bool` | `` |  |\n| ShimmerButton | PressEffect | `Button.ButtonPressEffect` | `Button.ButtonPressEffect.None` | Visual feedback when the button is pressed down. Default is None (no press animation — original behaviour). |\n| ShimmerButton | Class | `string?` | `` |  |\n| ShimmerButton | AdditionalAttributes | `Dictionary<string, object>?` | `` |  |\n\n## Slots\n- `ChildContent` (ShimmerButton) — RenderFragment slot\n\n## Events\n- `OnClick` (`EventCallback<Microsoft.AspNetCore.Components.Web.MouseEventArgs>`)\n\n## Sub-components\n- (none)\n\n## Cascading values it expects\n- (none)\n\n## Services it injects\n- `IComponentInteropService` (Lumeo.Services)\n\n## Keyboard\n—\n\n## Example\n```razor\n<ShimmerButton />\n```\n\n## CSS variables\n`--color-accent`, `--color-accent-foreground`, `--color-background`, `--color-destructive`, `--color-destructive-foreground`, `--color-input`, `--color-primary`, `--color-primary-foreground`, `--color-ring`, `--color-secondary`, `--color-secondary-foreground`, `--radius`\n\n## Files\n- `UI/ShimmerButton/ShimmerButton.razor`\n"
+  "mdSummary": "# ShimmerButton\n\nButton with animated shimmer border beam.\n\n**Package:** `Lumeo.Motion` · **Category:** Motion\n**Docs:** https://lumeo.nativ.sh/components/shimmer-button\n\n## Parameters\n| Owner | Name | Type | Default | Description |\n|---|---|---|---|---|\n| ShimmerButton | ChildContent | `RenderFragment?` | `` | The button's label content. |\n| ShimmerButton | OnClick | `EventCallback<Microsoft.AspNetCore.Components.Web.MouseEventArgs>` | `` | Invoked when the button is clicked. |\n| ShimmerButton | Shimmer | `bool` | `true` | When true (default), plays a continuous shimmering light sweep across the button. |\n| ShimmerButton | ShimmerColor | `string?` | `` | CSS color used for the shimmer sweep — defaults to a translucent foreground. |\n| ShimmerButton | Variant | `Button.ButtonVariant` | `Button.ButtonVariant.Default` | Visual style, matching ButtonVariant. Defaults to Default. |\n| ShimmerButton | Size | `Button.ButtonSize` | `Button.ButtonSize.Default` | Button height/padding, matching ButtonSize. Defaults to Default. |\n| ShimmerButton | Disabled | `bool` | `false` | Disables interaction and dims the button. |\n| ShimmerButton | PressEffect | `Button.ButtonPressEffect` | `Button.ButtonPressEffect.None` | Visual feedback when the button is pressed down. Default is None (no press animation — original behaviour). |\n| ShimmerButton | Class | `string?` | `` | Additional CSS classes merged onto the root button element. |\n| ShimmerButton | AdditionalAttributes | `Dictionary<string, object>?` | `` | Unmatched attributes are splatted onto the root button element. |\n\n## Slots\n- `ChildContent` (ShimmerButton) — The button's label content.\n\n## Events\n- `OnClick` (`EventCallback<Microsoft.AspNetCore.Components.Web.MouseEventArgs>`) — Invoked when the button is clicked.\n\n## Sub-components\n- (none)\n\n## Cascading values it expects\n- (none)\n\n## Services it injects\n- `IComponentInteropService` (Lumeo.Services)\n\n## Keyboard\n—\n\n## Example\n```razor\n<ShimmerButton />\n```\n\n## CSS variables\n`--color-accent`, `--color-accent-foreground`, `--color-background`, `--color-destructive`, `--color-destructive-foreground`, `--color-input`, `--color-primary`, `--color-primary-foreground`, `--color-ring`, `--color-secondary`, `--color-secondary-foreground`, `--radius`\n\n## Files\n- `UI/ShimmerButton/ShimmerButton.razor`\n"
 }

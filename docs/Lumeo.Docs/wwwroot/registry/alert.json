@@ -40,7 +40,7 @@
         "name": "ChildContent",
         "type": "RenderFragment?",
         "default": null,
-        "description": null,
+        "description": "Extra content rendered below the Title/Description text, inside the body column.",
         "isCascading": false,
         "captureUnmatched": false,
         "isEditorRequired": false
@@ -49,7 +49,7 @@
         "name": "Variant",
         "type": "AlertVariant",
         "default": "AlertVariant.Default",
-        "description": null,
+        "description": "The alert's semantic tone, driving its border/background color and default icon. Default Default.",
         "isCascading": false,
         "captureUnmatched": false,
         "isEditorRequired": false
@@ -58,7 +58,7 @@
         "name": "Size",
         "type": "Lumeo.Size",
         "default": "Lumeo.Size.Md",
-        "description": null,
+        "description": "Controls padding, icon size and text size. Default Md.",
         "isCascading": false,
         "captureUnmatched": false,
         "isEditorRequired": false
@@ -84,8 +84,8 @@
       {
         "name": "IsDismissible",
         "type": "bool",
-        "default": null,
-        "description": null,
+        "default": "false",
+        "description": "Shows a close button that dismisses the alert on click. Default false.",
         "isCascading": false,
         "captureUnmatched": false,
         "isEditorRequired": false
@@ -94,7 +94,7 @@
         "name": "OnDismiss",
         "type": "EventCallback",
         "default": null,
-        "description": null,
+        "description": "Invoked when the alert is dismissed, either via the close button or AutoDismissMs expiring.",
         "isCascading": false,
         "captureUnmatched": false,
         "isEditorRequired": false
@@ -103,7 +103,7 @@
         "name": "Title",
         "type": "string?",
         "default": null,
-        "description": null,
+        "description": "The alert's bold heading line, rendered above Description.",
         "isCascading": false,
         "captureUnmatched": false,
         "isEditorRequired": false
@@ -112,7 +112,7 @@
         "name": "Description",
         "type": "string?",
         "default": null,
-        "description": null,
+        "description": "The alert's body text, rendered below Title at reduced opacity.",
         "isCascading": false,
         "captureUnmatched": false,
         "isEditorRequired": false
@@ -121,7 +121,7 @@
         "name": "IconContent",
         "type": "RenderFragment?",
         "default": null,
-        "description": "Icon slot. Named IconContent to avoid shadowing the &lt;Icon&gt; component.",
+        "description": "Icon slot. Named IconContent to avoid shadowing the <Icon> component.",
         "isCascading": false,
         "captureUnmatched": false,
         "isEditorRequired": false
@@ -130,7 +130,7 @@
         "name": "ShowIcon",
         "type": "bool",
         "default": "true",
-        "description": null,
+        "description": "Renders the default variant icon (or IconContent if set) beside the text. Default true.",
         "isCascading": false,
         "captureUnmatched": false,
         "isEditorRequired": false
@@ -139,7 +139,7 @@
         "name": "AutoDismissMs",
         "type": "int?",
         "default": null,
-        "description": null,
+        "description": "Milliseconds until the alert dismisses itself automatically. Null (the default) disables auto-dismiss.",
         "isCascading": false,
         "captureUnmatched": false,
         "isEditorRequired": false
@@ -148,7 +148,7 @@
         "name": "Class",
         "type": "string?",
         "default": null,
-        "description": null,
+        "description": "Additional CSS classes merged onto the alert's root element.",
         "isCascading": false,
         "captureUnmatched": false,
         "isEditorRequired": false
@@ -157,7 +157,7 @@
         "name": "AdditionalAttributes",
         "type": "Dictionary<string, object>?",
         "default": null,
-        "description": null,
+        "description": "Unmatched attributes splatted onto the alert's root element.",
         "isCascading": false,
         "captureUnmatched": true,
         "isEditorRequired": false
@@ -167,7 +167,7 @@
       {
         "name": "OnDismiss",
         "type": "EventCallback",
-        "description": null
+        "description": "Invoked when the alert is dismissed, either via the close button or AutoDismissMs expiring."
       }
     ],
     "enums": [
@@ -229,13 +229,13 @@
   },
   "testCoverage": {
     "tier": 3,
-    "files": 2,
-    "tests": 14,
+    "files": 3,
+    "tests": 16,
     "relatedFiles": 0,
     "render": true,
     "behavior": true,
     "a11y": true,
-    "keyboard": false,
+    "keyboard": true,
     "scale": false,
     "e2e": false,
     "e2eFiles": [],
@@ -253,7 +253,7 @@
   "source": [
     {
       "path": "UI/Alert/Alert.razor",
-      "content": "@namespace Lumeo\n@implements IDisposable\n@inject Lumeo.Services.Localization.ILumeoLocalizer L\n\n@if (!_isDismissed)\n{\n    <div role=\"alert\" class=\"@CssClass\" @attributes=\"AdditionalAttributes\">\n        <div class=\"flex gap-3\">\n            @if (IconContent is not null)\n            {\n                <div class=\"shrink-0 mt-0.5\">\n                    @IconContent\n                </div>\n            }\n            else if (ShowIcon)\n            {\n                <div class=\"shrink-0 mt-0.5\">\n                    @switch (Variant)\n                    {\n                        case AlertVariant.Destructive:\n                            <SvgGlyph Svg=\"@(LumeoIcons.TriangleAlert)\" class=\"@IconSizeClass\" />\n                            break;\n                        case AlertVariant.Success:\n                            <SvgGlyph Svg=\"@(LumeoIcons.CircleCheck)\" class=\"@IconSizeClass\" />\n                            break;\n                        case AlertVariant.Warning:\n                            <SvgGlyph Svg=\"@(LumeoIcons.TriangleAlert)\" class=\"@IconSizeClass\" />\n                            break;\n                        case AlertVariant.Info:\n                            <SvgGlyph Svg=\"@(LumeoIcons.Info)\" class=\"@IconSizeClass\" />\n                            break;\n                        default:\n                            <SvgGlyph Svg=\"@(LumeoIcons.Info)\" class=\"@IconSizeClass\" />\n                            break;\n                    }\n                </div>\n            }\n            <div class=\"flex-1 min-w-0\">\n                @if (!string.IsNullOrEmpty(Title))\n                {\n                    <p class=\"@TitleClass\">@Title</p>\n                }\n                @if (!string.IsNullOrEmpty(Description))\n                {\n                    <div class=\"@DescriptionClass\">@Description</div>\n                }\n                @ChildContent\n            </div>\n            @if (IsDismissible)\n            {\n                <div class=\"shrink-0\">\n                    <button type=\"button\" class=\"rounded-md hover:bg-foreground/10 focus:outline-none focus:ring-1 focus:ring-ring p-0.5\" @onclick=\"Dismiss\" aria-label=\"@L[\"Alert.Dismiss\"]\">\n                        <SvgGlyph Svg=\"@(LumeoIcons.X)\" class=\"@IconSizeClass\" />\n                    </button>\n                </div>\n            }\n        </div>\n    </div>\n}\n\n@code {\n    [Parameter] public RenderFragment? ChildContent { get; set; }\n    [Parameter] public AlertVariant Variant { get; set; } = AlertVariant.Default;\n    [Parameter] public Lumeo.Size Size { get; set; } = Lumeo.Size.Md;\n    /// <summary>Per-alert density override. When null, inherits from any\n    /// ancestor <see cref=\"DensityScope\"/>; if neither is set, matches the\n    /// historical <c>Comfortable</c> default. Only the box padding shifts —\n    /// text/icon size stay governed by <see cref=\"Size\"/>.</summary>\n    [Parameter] public Density? Density { get; set; }\n    [CascadingParameter] private Density? InheritedDensity { get; set; }\n    [Parameter] public bool IsDismissible { get; set; }\n    [Parameter] public EventCallback OnDismiss { get; set; }\n    [Parameter] public string? Title { get; set; }\n    [Parameter] public string? Description { get; set; }\n    /// <summary>Icon slot. Named <c>IconContent</c> to avoid shadowing the <c>&lt;Icon&gt;</c> component.</summary>\n    [Parameter] public RenderFragment? IconContent { get; set; }\n\n    [Parameter] public bool ShowIcon { get; set; } = true;\n    [Parameter] public int? AutoDismissMs { get; set; }\n    [Parameter] public string? Class { get; set; }\n    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }\n\n    private bool _isDismissed;\n    private volatile bool _disposed;\n    private CancellationTokenSource? _autoDismissCts;\n\n    protected override void OnInitialized()\n    {\n        if (AutoDismissMs.HasValue && AutoDismissMs.Value > 0)\n        {\n            _autoDismissCts = new CancellationTokenSource();\n            var timeout = AutoDismissMs.Value;\n            var token = _autoDismissCts.Token;\n            // Dispatch via SafeAsyncDispatcher so any outer-task fault (e.g. circuit\n            // already disposed) is caught and never surfaces as an unobserved task.\n            SafeAsyncDispatcher.FireAndForget(\n                fn => InvokeAsync(fn),\n                () => RunAutoDismissAsync(timeout, token),\n                \"Lumeo.Alert\");\n        }\n    }\n\n    private async Task RunAutoDismissAsync(int timeout, CancellationToken token)\n    {\n        try\n        {\n            await Task.Delay(timeout, token).ConfigureAwait(true);\n        }\n        catch (TaskCanceledException) { return; }\n        catch (OperationCanceledException) { return; }\n\n        if (_disposed || token.IsCancellationRequested) return;\n        if (_isDismissed) return;\n        _isDismissed = true;\n        await OnDismiss.InvokeAsync();\n        if (_disposed) return;\n        StateHasChanged();\n    }\n\n    // Border baseline kept at /60 so the unfilled (Default variant) alert still reads as an outlined callout;\n    // colored variants knock it softer since their tinted background already carries the visual weight.\n    private string CssClass => Cx.Merge(\"relative w-full rounded-lg border border-border/60\", SizePaddingClass, \"text-sm\", VariantClasses, Class);\n\n    private Lumeo.Density EffectiveDensity => Density ?? InheritedDensity ?? Lumeo.Density.Comfortable;\n\n    // Box padding tracks Size x Density; Comfortable reproduces the historical\n    // per-Size values verbatim.\n    private string SizePaddingClass => (Size, EffectiveDensity) switch\n    {\n        (Lumeo.Size.Sm, Lumeo.Density.Compact)  => \"px-2.5 py-1.5\",\n        (Lumeo.Size.Sm, Lumeo.Density.Spacious) => \"px-4 py-3\",\n        (Lumeo.Size.Sm, _)                      => \"px-3 py-2\",\n        (Lumeo.Size.Lg, Lumeo.Density.Compact)  => \"px-4 py-3\",\n        (Lumeo.Size.Lg, Lumeo.Density.Spacious) => \"px-6 py-5\",\n        (Lumeo.Size.Lg, _)                      => \"px-5 py-4\",\n        (_, Lumeo.Density.Compact)              => \"px-3 py-2\",\n        (_, Lumeo.Density.Spacious)             => \"px-5 py-4\",\n        _                                       => \"px-4 py-3\"\n    };\n\n    private string IconSizeClass => Size switch\n    {\n        Lumeo.Size.Sm => \"h-3.5 w-3.5\",\n        Lumeo.Size.Lg => \"h-5 w-5\",\n        _ => \"h-4 w-4\"\n    };\n\n    private string TitleClass => Size switch\n    {\n        Lumeo.Size.Sm => \"mb-0.5 text-xs font-medium leading-none tracking-tight\",\n        Lumeo.Size.Lg => \"mb-1.5 text-base font-medium leading-none tracking-tight\",\n        _ => \"mb-1 font-medium leading-none tracking-tight\"\n    };\n\n    private string DescriptionClass => Size switch\n    {\n        Lumeo.Size.Sm => \"text-xs opacity-90\",\n        Lumeo.Size.Lg => \"text-sm opacity-90\",\n        _ => \"text-sm opacity-90\"\n    };\n\n    private string VariantClasses => Variant switch\n    {\n        AlertVariant.Default => \"bg-background text-foreground\",\n        AlertVariant.Destructive => \"border-destructive/50 text-destructive\",\n        AlertVariant.Success => \"border-success/50 bg-success-light text-success-text\",\n        AlertVariant.Warning => \"border-warning/50 bg-warning-light text-warning-text\",\n        AlertVariant.Info => \"border-primary/50 bg-primary/10 text-primary\",\n        _ => \"\"\n    };\n\n    private async Task Dismiss()\n    {\n        if (_isDismissed) return;\n        try { _autoDismissCts?.Cancel(); } catch (ObjectDisposedException) { }\n        _isDismissed = true;\n        await OnDismiss.InvokeAsync();\n    }\n\n    public void Dispose()\n    {\n        _disposed = true;\n        try { _autoDismissCts?.Cancel(); } catch (ObjectDisposedException) { }\n        _autoDismissCts?.Dispose();\n        _autoDismissCts = null;\n    }\n\n    public enum AlertVariant { Default, Destructive, Success, Warning, Info }\n}\n"
+      "content": "@namespace Lumeo\n@implements IDisposable\n@inject Lumeo.Services.Localization.ILumeoLocalizer L\n\n@if (!_isDismissed)\n{\n    <div role=\"alert\" class=\"@CssClass\" @attributes=\"AdditionalAttributes\">\n        <div class=\"flex gap-3\">\n            @if (IconContent is not null)\n            {\n                <div class=\"shrink-0 mt-0.5\">\n                    @IconContent\n                </div>\n            }\n            else if (ShowIcon)\n            {\n                <div class=\"shrink-0 mt-0.5\">\n                    @switch (Variant)\n                    {\n                        case AlertVariant.Destructive:\n                            <SvgGlyph Svg=\"@(LumeoIcons.TriangleAlert)\" class=\"@IconSizeClass\" />\n                            break;\n                        case AlertVariant.Success:\n                            <SvgGlyph Svg=\"@(LumeoIcons.CircleCheck)\" class=\"@IconSizeClass\" />\n                            break;\n                        case AlertVariant.Warning:\n                            <SvgGlyph Svg=\"@(LumeoIcons.TriangleAlert)\" class=\"@IconSizeClass\" />\n                            break;\n                        case AlertVariant.Info:\n                            <SvgGlyph Svg=\"@(LumeoIcons.Info)\" class=\"@IconSizeClass\" />\n                            break;\n                        default:\n                            <SvgGlyph Svg=\"@(LumeoIcons.Info)\" class=\"@IconSizeClass\" />\n                            break;\n                    }\n                </div>\n            }\n            <div class=\"flex-1 min-w-0\">\n                @if (!string.IsNullOrEmpty(Title))\n                {\n                    <p class=\"@TitleClass\">@Title</p>\n                }\n                @if (!string.IsNullOrEmpty(Description))\n                {\n                    <div class=\"@DescriptionClass\">@Description</div>\n                }\n                @ChildContent\n            </div>\n            @if (IsDismissible)\n            {\n                <div class=\"shrink-0\">\n                    <button type=\"button\" class=\"rounded-md hover:bg-foreground/10 focus:outline-none focus:ring-1 focus:ring-ring p-0.5\" @onclick=\"Dismiss\" aria-label=\"@L[\"Alert.Dismiss\"]\">\n                        <SvgGlyph Svg=\"@(LumeoIcons.X)\" class=\"@IconSizeClass\" />\n                    </button>\n                </div>\n            }\n        </div>\n    </div>\n}\n\n@code {\n    /// <summary>Extra content rendered below the <see cref=\"Title\"/>/<see cref=\"Description\"/> text, inside the body column.</summary>\n    [Parameter] public RenderFragment? ChildContent { get; set; }\n\n    /// <summary>The alert's semantic tone, driving its border/background color and default icon. Default <see cref=\"AlertVariant.Default\"/>.</summary>\n    [Parameter] public AlertVariant Variant { get; set; } = AlertVariant.Default;\n\n    /// <summary>Controls padding, icon size and text size. Default <see cref=\"Lumeo.Size.Md\"/>.</summary>\n    [Parameter] public Lumeo.Size Size { get; set; } = Lumeo.Size.Md;\n    /// <summary>Per-alert density override. When null, inherits from any\n    /// ancestor <see cref=\"DensityScope\"/>; if neither is set, matches the\n    /// historical <c>Comfortable</c> default. Only the box padding shifts —\n    /// text/icon size stay governed by <see cref=\"Size\"/>.</summary>\n    [Parameter] public Density? Density { get; set; }\n    [CascadingParameter] private Density? InheritedDensity { get; set; }\n    /// <summary>Shows a close button that dismisses the alert on click. Default <c>false</c>.</summary>\n    [Parameter] public bool IsDismissible { get; set; }\n\n    /// <summary>Invoked when the alert is dismissed, either via the close button or <see cref=\"AutoDismissMs\"/> expiring.</summary>\n    [Parameter] public EventCallback OnDismiss { get; set; }\n\n    /// <summary>The alert's bold heading line, rendered above <see cref=\"Description\"/>.</summary>\n    [Parameter] public string? Title { get; set; }\n\n    /// <summary>The alert's body text, rendered below <see cref=\"Title\"/> at reduced opacity.</summary>\n    [Parameter] public string? Description { get; set; }\n    /// <summary>Icon slot. Named <c>IconContent</c> to avoid shadowing the <c>&lt;Icon&gt;</c> component.</summary>\n    [Parameter] public RenderFragment? IconContent { get; set; }\n\n    /// <summary>Renders the default variant icon (or <see cref=\"IconContent\"/> if set) beside the text. Default <c>true</c>.</summary>\n    [Parameter] public bool ShowIcon { get; set; } = true;\n\n    /// <summary>Milliseconds until the alert dismisses itself automatically. Null (the default) disables auto-dismiss.</summary>\n    [Parameter] public int? AutoDismissMs { get; set; }\n\n    /// <summary>Additional CSS classes merged onto the alert's root element.</summary>\n    [Parameter] public string? Class { get; set; }\n\n    /// <summary>Unmatched attributes splatted onto the alert's root element.</summary>\n    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }\n\n    private bool _isDismissed;\n    private volatile bool _disposed;\n    private CancellationTokenSource? _autoDismissCts;\n\n    protected override void OnInitialized()\n    {\n        if (AutoDismissMs.HasValue && AutoDismissMs.Value > 0)\n        {\n            _autoDismissCts = new CancellationTokenSource();\n            var timeout = AutoDismissMs.Value;\n            var token = _autoDismissCts.Token;\n            // Dispatch via SafeAsyncDispatcher so any outer-task fault (e.g. circuit\n            // already disposed) is caught and never surfaces as an unobserved task.\n            SafeAsyncDispatcher.FireAndForget(\n                fn => InvokeAsync(fn),\n                () => RunAutoDismissAsync(timeout, token),\n                \"Lumeo.Alert\");\n        }\n    }\n\n    private async Task RunAutoDismissAsync(int timeout, CancellationToken token)\n    {\n        try\n        {\n            await Task.Delay(timeout, token).ConfigureAwait(true);\n        }\n        catch (TaskCanceledException) { return; }\n        catch (OperationCanceledException) { return; }\n\n        if (_disposed || token.IsCancellationRequested) return;\n        if (_isDismissed) return;\n        _isDismissed = true;\n        await OnDismiss.InvokeAsync();\n        if (_disposed) return;\n        StateHasChanged();\n    }\n\n    // Border baseline kept at /60 so the unfilled (Default variant) alert still reads as an outlined callout;\n    // colored variants knock it softer since their tinted background already carries the visual weight.\n    private string CssClass => Cx.Merge(\"relative w-full rounded-lg border border-border/60\", SizePaddingClass, \"text-sm\", VariantClasses, Class);\n\n    private Lumeo.Density EffectiveDensity => Density ?? InheritedDensity ?? Lumeo.Density.Comfortable;\n\n    // Box padding tracks Size x Density; Comfortable reproduces the historical\n    // per-Size values verbatim.\n    private string SizePaddingClass => (Size, EffectiveDensity) switch\n    {\n        (Lumeo.Size.Sm, Lumeo.Density.Compact)  => \"px-2.5 py-1.5\",\n        (Lumeo.Size.Sm, Lumeo.Density.Spacious) => \"px-4 py-3\",\n        (Lumeo.Size.Sm, _)                      => \"px-3 py-2\",\n        (Lumeo.Size.Lg, Lumeo.Density.Compact)  => \"px-4 py-3\",\n        (Lumeo.Size.Lg, Lumeo.Density.Spacious) => \"px-6 py-5\",\n        (Lumeo.Size.Lg, _)                      => \"px-5 py-4\",\n        (_, Lumeo.Density.Compact)              => \"px-3 py-2\",\n        (_, Lumeo.Density.Spacious)             => \"px-5 py-4\",\n        _                                       => \"px-4 py-3\"\n    };\n\n    private string IconSizeClass => Size switch\n    {\n        Lumeo.Size.Sm => \"h-3.5 w-3.5\",\n        Lumeo.Size.Lg => \"h-5 w-5\",\n        _ => \"h-4 w-4\"\n    };\n\n    private string TitleClass => Size switch\n    {\n        Lumeo.Size.Sm => \"mb-0.5 text-xs font-medium leading-none tracking-tight\",\n        Lumeo.Size.Lg => \"mb-1.5 text-base font-medium leading-none tracking-tight\",\n        _ => \"mb-1 font-medium leading-none tracking-tight\"\n    };\n\n    private string DescriptionClass => Size switch\n    {\n        Lumeo.Size.Sm => \"text-xs opacity-90\",\n        Lumeo.Size.Lg => \"text-sm opacity-90\",\n        _ => \"text-sm opacity-90\"\n    };\n\n    private string VariantClasses => Variant switch\n    {\n        AlertVariant.Default => \"bg-background text-foreground\",\n        AlertVariant.Destructive => \"border-destructive/50 text-destructive\",\n        AlertVariant.Success => \"border-success/50 bg-success-light text-success-text\",\n        AlertVariant.Warning => \"border-warning/50 bg-warning-light text-warning-text\",\n        AlertVariant.Info => \"border-primary/50 bg-primary/10 text-primary\",\n        _ => \"\"\n    };\n\n    private async Task Dismiss()\n    {\n        if (_isDismissed) return;\n        try { _autoDismissCts?.Cancel(); } catch (ObjectDisposedException) { }\n        _isDismissed = true;\n        await OnDismiss.InvokeAsync();\n    }\n\n    public void Dispose()\n    {\n        _disposed = true;\n        try { _autoDismissCts?.Cancel(); } catch (ObjectDisposedException) { }\n        _autoDismissCts?.Dispose();\n        _autoDismissCts = null;\n    }\n\n    public enum AlertVariant { Default, Destructive, Success, Warning, Info }\n}\n"
     }
   ],
   "slots": [
@@ -261,13 +261,13 @@
       "name": "ChildContent",
       "owner": "Alert",
       "type": "RenderFragment?",
-      "description": null
+      "description": "Extra content rendered below the Title/Description text, inside the body column."
     },
     {
       "name": "IconContent",
       "owner": "Alert",
       "type": "RenderFragment?",
-      "description": "Icon slot. Named IconContent to avoid shadowing the &lt;Icon&gt; component."
+      "description": "Icon slot. Named IconContent to avoid shadowing the <Icon> component."
     }
   ],
   "serviceDependencies": [
@@ -287,9 +287,8 @@
   "keyboardInteractions": [],
   "tests": [
     "tests/Lumeo.Tests/Components/Alert/AlertAutoDismissTests.cs",
-    "tests/Lumeo.Tests/Components/Alert/AlertTests.cs",
-    "tests/Lumeo.Tests/Components/AlertDialog/AlertDialogExitAnimationTests.cs",
-    "tests/Lumeo.Tests/Components/AlertDialog/AlertDialogTests.cs"
+    "tests/Lumeo.Tests/Components/Alert/AlertKeyboardTests.cs",
+    "tests/Lumeo.Tests/Components/Alert/AlertTests.cs"
   ],
-  "mdSummary": "# Alert\n\nInline callout for status, warning, or informational messages.\n\n**Package:** `Lumeo` · **Category:** Feedback\n**Docs:** https://lumeo.nativ.sh/components/alert\n\n## Parameters\n| Owner | Name | Type | Default | Description |\n|---|---|---|---|---|\n| Alert | ChildContent | `RenderFragment?` | `` |  |\n| Alert | Variant | `AlertVariant` | `AlertVariant.Default` |  |\n| Alert | Size | `Lumeo.Size` | `Lumeo.Size.Md` |  |\n| Alert | Density | `Density?` | `` | Per-alert density override. When null, inherits from any ancestor DensityScope; if neither is set, matches the historical Comfortable default. Only the box padding shifts — text/icon size stay governed by Size. |\n| Alert | InheritedDensity | `Density?` | `` |  |\n| Alert | IsDismissible | `bool` | `` |  |\n| Alert | OnDismiss | `EventCallback` | `` |  |\n| Alert | Title | `string?` | `` |  |\n| Alert | Description | `string?` | `` |  |\n| Alert | IconContent | `RenderFragment?` | `` | Icon slot. Named IconContent to avoid shadowing the &lt;Icon&gt; component. |\n| Alert | ShowIcon | `bool` | `true` |  |\n| Alert | AutoDismissMs | `int?` | `` |  |\n| Alert | Class | `string?` | `` |  |\n| Alert | AdditionalAttributes | `Dictionary<string, object>?` | `` |  |\n\n## Slots\n- `ChildContent` (Alert) — RenderFragment slot\n- `IconContent` (Alert) — Icon slot. Named IconContent to avoid shadowing the &lt;Icon&gt; component.\n\n## Events\n- `OnDismiss` (`EventCallback`)\n\n## Sub-components\n- (none)\n\n## Cascading values it expects\n- `InheritedDensity` (`Density?`)\n\n## Services it injects\n- `ILumeoLocalizer` (Lumeo.Services.Localization)\n\n## Keyboard\n—\n\n## Example\n```razor\n<Alert />\n```\n\n## CSS variables\n`--color-background`, `--color-border`, `--color-destructive`, `--color-foreground`, `--color-primary`, `--color-ring`, `--radius`\n\n## Files\n- `UI/Alert/Alert.razor`\n"
+  "mdSummary": "# Alert\n\nInline callout for status, warning, or informational messages.\n\n**Package:** `Lumeo` · **Category:** Feedback\n**Docs:** https://lumeo.nativ.sh/components/alert\n\n## Parameters\n| Owner | Name | Type | Default | Description |\n|---|---|---|---|---|\n| Alert | ChildContent | `RenderFragment?` | `` | Extra content rendered below the Title/Description text, inside the body column. |\n| Alert | Variant | `AlertVariant` | `AlertVariant.Default` | The alert's semantic tone, driving its border/background color and default icon. Default Default. |\n| Alert | Size | `Lumeo.Size` | `Lumeo.Size.Md` | Controls padding, icon size and text size. Default Md. |\n| Alert | Density | `Density?` | `` | Per-alert density override. When null, inherits from any ancestor DensityScope; if neither is set, matches the historical Comfortable default. Only the box padding shifts — text/icon size stay governed by Size. |\n| Alert | InheritedDensity | `Density?` | `` |  |\n| Alert | IsDismissible | `bool` | `false` | Shows a close button that dismisses the alert on click. Default false. |\n| Alert | OnDismiss | `EventCallback` | `` | Invoked when the alert is dismissed, either via the close button or AutoDismissMs expiring. |\n| Alert | Title | `string?` | `` | The alert's bold heading line, rendered above Description. |\n| Alert | Description | `string?` | `` | The alert's body text, rendered below Title at reduced opacity. |\n| Alert | IconContent | `RenderFragment?` | `` | Icon slot. Named IconContent to avoid shadowing the \\<Icon\\> component. |\n| Alert | ShowIcon | `bool` | `true` | Renders the default variant icon (or IconContent if set) beside the text. Default true. |\n| Alert | AutoDismissMs | `int?` | `` | Milliseconds until the alert dismisses itself automatically. Null (the default) disables auto-dismiss. |\n| Alert | Class | `string?` | `` | Additional CSS classes merged onto the alert's root element. |\n| Alert | AdditionalAttributes | `Dictionary<string, object>?` | `` | Unmatched attributes splatted onto the alert's root element. |\n\n## Slots\n- `ChildContent` (Alert) — Extra content rendered below the Title/Description text, inside the body column.\n- `IconContent` (Alert) — Icon slot. Named IconContent to avoid shadowing the \\<Icon\\> component.\n\n## Events\n- `OnDismiss` (`EventCallback`) — Invoked when the alert is dismissed, either via the close button or AutoDismissMs expiring.\n\n## Sub-components\n- (none)\n\n## Cascading values it expects\n- `InheritedDensity` (`Density?`)\n\n## Services it injects\n- `ILumeoLocalizer` (Lumeo.Services.Localization)\n\n## Keyboard\n—\n\n## Example\n```razor\n<Alert />\n```\n\n## CSS variables\n`--color-background`, `--color-border`, `--color-destructive`, `--color-foreground`, `--color-primary`, `--color-ring`, `--radius`\n\n## Files\n- `UI/Alert/Alert.razor`\n"
 }

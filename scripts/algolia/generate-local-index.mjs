@@ -127,6 +127,7 @@ const guides = [
     { label: 'Keyboard Shortcuts', href: 'docs/services/keyboard-shortcuts' },
     { label: 'Component Interop',  href: 'docs/services/component-interop' },
     { label: 'DataGrid Export',    href: 'docs/services/datagrid-export' },
+    { label: 'Performance Facts',  href: 'docs/performance-facts' },
 ];
 
 const guideItems = guides.map(g => ({

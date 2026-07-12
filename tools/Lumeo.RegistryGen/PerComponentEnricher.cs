@@ -185,10 +185,18 @@ public static class PerComponentEnricher
         entry["relatedComponents"] = related;
 
         // 8. keyboardInteractions — heuristic.
+        // Reuses ComponentsApiEmitter's MatchKeyLiteralOccurrences (KeyComparisonRegex +
+        // the Key-switch-body-gated switch-expression-arm scan) + KnownKeys whitelist —
+        // not a separate `.Key == "X"`-only regex — so this human-readable summary can
+        // never fall behind api.a11y.keys again — a switch-statement (`case "X":`),
+        // pattern-match (`.Key is "X" or "Y"`), or switch-expression-arm (`"X" => ...`,
+        // only inside an actual `.Key switch { }` block) key handler must be credited
+        // here exactly like it is there (PR #356 round-3, Codex P3; the switch-expression
+        // gating is round-4, Codex P2 — this scanner used to run over EVERY .cs/.razor
+        // file with no `@onkeydown`/`KeyboardEventArgs` gate at all, so it could credit a
+        // component with zero key handling, e.g. Icon.razor's icon-name switch).
         var keyboard = new List<Dictionary<string, object?>>();
         var seenKeyboard = new HashSet<string>(StringComparer.Ordinal);
-        // capture .Key == "Foo" patterns + try to find enclosing method name.
-        var keyRegex = new Regex(@"(\w+)\.Key\s*==\s*""([^""]+)""", RegexOptions.Compiled);
         var methodRegex = new Regex(@"(?:private|public|protected|internal)\s+(?:async\s+)?(?:Task|ValueTask|void)\s+(\w+)\s*\(",
             RegexOptions.Compiled);
         foreach (var sc in sourceContent)
@@ -206,19 +214,21 @@ public static class PerComponentEnricher
                 methodPositions.Add((mm.Index, mm.Groups[1].Value));
             }
 
-            foreach (Match km in keyRegex.Matches(content))
+            foreach (var (index, k) in ComponentsApiEmitter.MatchKeyLiteralOccurrences(content))
             {
-                var key = km.Groups[2].Value;
-                // find enclosing method (the latest method header before this match).
+                if (!ComponentsApiEmitter.KnownKeys.Contains(k)) continue; // same whitelist as the a11y scanner
+
+                // find enclosing method (the latest method header before this occurrence).
                 string method = "(unknown)";
                 for (int i = methodPositions.Count - 1; i >= 0; i--)
                 {
-                    if (methodPositions[i].Start < km.Index)
+                    if (methodPositions[i].Start < index)
                     {
                         method = methodPositions[i].Name;
                         break;
                     }
                 }
+                var key = k == " " ? "Space" : k;
                 var dedup = key + "::" + method;
                 if (!seenKeyboard.Add(dedup)) continue;
                 keyboard.Add(new Dictionary<string, object?>
@@ -230,7 +240,7 @@ public static class PerComponentEnricher
         }
         entry["keyboardInteractions"] = keyboard;
 
-        // 9. tests — scan tests/ for files mentioning componentName.
+        // 9. tests — scan tests/ for files that actually EXERCISE this component.
         var tests = new List<string>();
         var seenTests = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var testRoots = new[]
@@ -239,18 +249,78 @@ public static class PerComponentEnricher
             Path.Combine(repoRoot, "tests", "Lumeo.Docs.Tests"),
             Path.Combine(repoRoot, "tests", "Lumeo.Tests.E2E"),
         };
-        // Match either a class named like the component (Class FooBar) or string-literal mentions.
+        // Precise "does this test render the component" signal — same family of
+        // patterns as Program.cs's ComputeTestCoverage `renders` regex, extended to
+        // tolerate a namespace/alias-qualified generic argument (`Render<Lumeo.X>`,
+        // `Render<L.X>`) which dedicated-folder tests use routinely. A loose
+        // whole-file `\bComponentName\b` word match (the previous heuristic) false-
+        // attributed shared test files from an incidental DOC-COMMENT mention —
+        // e.g. PullToRefreshKeyboardTests.cs -> file-viewer.json via "...counterpart
+        // to FileViewer's...", and PivotGridKeyboardTests.cs -> steps.json via
+        // "Card/Steps conditionally-interactive contract" — plus real false hits
+        // from unrelated identifiers/params that happen to spell the component name
+        // (Playwright's `MouseMoveOptions.Steps`, a `Stepper`/`Tour.Steps` mention)
+        // (CodeRabbit Major, PR #356 round 1).
+        // A fourth alternative catches non-render unit tests that still legitimately
+        // belong to this component — e.g. FileViewerCsvTests.cs tests the static
+        // `Lumeo.FileViewer.ParseCsv(...)` parsing helper without ever rendering the
+        // Blazor component — by requiring the component's OWN qualified type name
+        // (`Lumeo.X` / `L.X`), not a bare word match. This still excludes
+        // `Tour.Steps`/`c.Steps`/comment mentions since neither "Lumeo" nor the "L"
+        // alias precedes them.
+        // Shared with Program.cs's ComputeTestCoverage via ComponentTestSignals — see
+        // its doc comment for why these two must never diverge again (PR #356 round-2).
+        var rendersRegex = ComponentTestSignals.BuildRendersRegex(componentName);
+        // E2E specs don't render Razor markup at all — they navigate a real browser
+        // to the component's docs route — so they need their own route-based signal
+        // rather than the render regex (which would silently drop every E2E entry).
+        var e2eRouteRegex = new Regex(
+            $@"/components/{Regex.Escape(componentKey)}(?![a-z0-9-])",
+            RegexOptions.Compiled);
+        // Bare word-boundary match on the component name — paired with rendersRegex
+        // below (via HasRealComponentMention) as an explicit second signal that guards
+        // against BCL/LINQ name collisions, e.g. `.Select(...)` on some unrelated
+        // IEnumerable or `new List<string>()`, which are NOT real component mentions
+        // (PR #357 round-2, round-9).
         var nameWordRegex = new Regex(@"\b" + Regex.Escape(componentName) + @"\b", RegexOptions.Compiled);
         foreach (var root in testRoots)
         {
             if (!Directory.Exists(root)) continue;
-            foreach (var csFile in Directory.EnumerateFiles(root, "*.cs", SearchOption.AllDirectories))
+            var isE2E = string.Equals(Path.GetFileName(root), "Lumeo.Tests.E2E", StringComparison.OrdinalIgnoreCase);
+            // Test sources are both .cs and bUnit .razor files (StepsKeyboardTests.razor
+            // etc. use `Render(@<X …>)`) — the previous *.cs-only glob silently dropped
+            // every .razor test from this list across the WHOLE library.
+            var testFiles = Directory.EnumerateFiles(root, "*.cs", SearchOption.AllDirectories)
+                .Concat(isE2E ? Enumerable.Empty<string>() : Directory.EnumerateFiles(root, "*.razor", SearchOption.AllDirectories));
+            foreach (var testFile in testFiles)
             {
-                string text;
-                try { text = File.ReadAllText(csFile).Replace("\r\n", "\n").Replace("\r", "\n"); }
-                catch { continue; }
-                if (!HasRealComponentMention(text, nameWordRegex)) continue;
-                var rel = Path.GetRelativePath(repoRoot, csFile).Replace('\\', '/');
+                var rel = Path.GetRelativePath(repoRoot, testFile).Replace('\\', '/');
+                // Folder ownership is the stronger signal: a file physically filed under
+                // the component's OWN dedicated test folder (e.g.
+                // tests/Lumeo.Tests/Components/Stepper/StepperItemTests.cs) belongs to
+                // this component regardless of whether it happens to render <Stepper>
+                // itself — a test for a sub-component (StepperItem), a shared helper, or
+                // pure logic living in that folder is still THIS component's coverage.
+                // The render-only regex below previously dropped every such file
+                // (CodeRabbit, PR #356 round-2). Skipped for E2E, whose specs aren't
+                // filed per-component the same way.
+                var ownedByFolder = !isE2E && ComponentTestSignals.IsOwnedByFolder(rel, componentName);
+                if (!ownedByFolder)
+                {
+                    string text;
+                    try { text = File.ReadAllText(testFile).Replace("\r\n", "\n").Replace("\r", "\n"); }
+                    catch { continue; }
+                    // rendersRegex already requires Render</OpenComponent</<Tag/Lumeo.X context,
+                    // so it doesn't fall for a bare `.Select(...)` LINQ call or `new List<string>()`
+                    // the way a plain word-boundary scan would — but HasRealComponentMention is
+                    // ANDed in as an explicit second signal (PR #357 round-2/round-9) so a future
+                    // loosening of rendersRegex can't silently reintroduce those exact collisions
+                    // without also tripping this guard.
+                    var matches = isE2E
+                        ? e2eRouteRegex.IsMatch(text)
+                        : rendersRegex.IsMatch(text) && HasRealComponentMention(text, nameWordRegex);
+                    if (!matches) continue;
+                }
                 if (seenTests.Add(rel)) tests.Add(rel);
             }
         }
@@ -414,7 +484,7 @@ public static class PerComponentEnricher
 
         sb.AppendLine($"# {componentName}");
         sb.AppendLine();
-        sb.AppendLine(description);
+        sb.AppendLine(EscapeMd(description));
         sb.AppendLine();
         var catLine = string.IsNullOrEmpty(subcategory) ? category : $"{category}/{subcategory}";
         sb.AppendLine($"**Package:** `{nuget}` · **Category:** {catLine}");
@@ -442,7 +512,7 @@ public static class PerComponentEnricher
         if (slots.Count == 0) sb.AppendLine("- (none)");
         foreach (var s in slots)
         {
-            sb.AppendLine($"- `{s["name"]}` ({s["owner"]}) — {s["description"] ?? "RenderFragment slot"}");
+            sb.AppendLine($"- `{s["name"]}` ({s["owner"]}) — {EscapeMd(s["description"]?.ToString() ?? "RenderFragment slot")}");
         }
         sb.AppendLine();
 
@@ -460,7 +530,7 @@ public static class PerComponentEnricher
                 var type = ev.TryGetProperty("type", out var t) ? t.GetString() : null;
                 var desc = ev.TryGetProperty("description", out var ed) && ed.ValueKind == JsonValueKind.String
                     ? ed.GetString() : null;
-                sb.AppendLine($"- `{name}` (`{type}`){(desc is null ? "" : $" — {desc}")}");
+                sb.AppendLine($"- `{name}` (`{type}`){(desc is null ? "" : $" — {EscapeMd(desc)}")}");
             }
         }
         if (!anyEvents) sb.AppendLine("- (none)");
@@ -543,10 +613,32 @@ public static class PerComponentEnricher
                 ? dd.GetString() : null;
             var desc = p.TryGetProperty("description", out var de) && de.ValueKind == JsonValueKind.String
                 ? de.GetString() : null;
-            sb.AppendLine($"| {owner} | {EscapeMd(name)} | `{EscapeMd(type)}` | `{EscapeMd(def ?? "")}` | {EscapeMd(desc ?? "")} |");
+            sb.AppendLine($"| {owner} | {EscapeMd(name)} | `{EscapeMdCode(type)}` | `{EscapeMdCode(def ?? "")}` | {EscapeMd(desc ?? "")} |");
         }
     }
 
+    // RazorParameterScanner decodes XML doc entities ONCE at the source (&lt;Button&gt; ->
+    // <Button>), so a description can legitimately carry literal "<" / ">" characters. The
+    // Blazor PropsTable is safe (plain text-node interpolation), but mdSummary is served as
+    // real Markdown (MCP resources, docs snippets) where "<form>" can be parsed as raw HTML
+    // and hide or corrupt the surrounding table (Codex P2, PR #358 round 3). Escape the
+    // backslash itself FIRST so a literal "\" in source text isn't mistaken for one of the
+    // escapes added below, then pipe (table-cell delimiter) and angle brackets — CommonMark
+    // honors `\<`/`\>` as literal characters.
+    //
+    // Only use this for PROSE table cells (Name/Description). Use EscapeMdCode below for
+    // cells whose value is wrapped in backticks (Type/Default) — code spans render their
+    // content literally, so backslash-escapes there show up as literal backslashes instead
+    // of being interpreted (Codex P2, PR #358 round 4: `EventCallback<bool>` was rendering
+    // as `EventCallback\<bool\>`).
     private static string EscapeMd(string s)
+        => s.Replace("\\", "\\\\").Replace("|", "\\|").Replace("<", "\\<").Replace(">", "\\>")
+            .Replace("\n", " ").Replace("\r", "");
+
+    // For content embedded inside a Markdown code span (`` `like this` ``): CommonMark code
+    // spans take their content literally, so angle brackets and backslashes must NOT be
+    // escaped here. The pipe is still a GFM table-cell delimiter and needs escaping even
+    // inside a code span to avoid breaking the row.
+    private static string EscapeMdCode(string s)
         => s.Replace("|", "\\|").Replace("\n", " ").Replace("\r", "");
 }

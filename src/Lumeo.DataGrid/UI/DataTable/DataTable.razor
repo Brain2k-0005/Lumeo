@@ -95,26 +95,43 @@
 </div>
 
 @code {
+    /// <summary>The rows to render. Enumerated once per parameter set into <c>_itemsList</c>; <see langword="null"/> or empty renders <see cref="EmptyTemplate"/> (or the built-in "No results" placeholder) instead of the table body.</summary>
     [Parameter] public IEnumerable<TItem>? Items { get; set; }
+    /// <summary>Header cells rendered inside the single <c>&lt;tr&gt;</c> of <c>&lt;thead&gt;</c>, after the selection checkbox column (if <see cref="Selectable"/> is on). Typically one <c>&lt;th&gt;</c> per column, e.g. via <see cref="DataTableSortableHeader"/>.</summary>
     [Parameter] public RenderFragment? HeaderTemplate { get; set; }
+    /// <summary>Per-row content, rendered once for each item in <see cref="Items"/> and given the current item as its context. Typically one <c>&lt;td&gt;</c> per column.</summary>
     [Parameter] public RenderFragment<TItem>? RowTemplate { get; set; }
+    /// <summary>Content rendered inside each skeleton row while <see cref="IsLoading"/> is <see langword="true"/>. Rendered <see cref="SkeletonRows"/> times.</summary>
     [Parameter] public RenderFragment? LoadingTemplate { get; set; }
+    /// <summary>Content shown in place of the table body when <see cref="Items"/> is <see langword="null"/> or empty. Falls back to a centered "No results." message when unset.</summary>
     [Parameter] public RenderFragment? EmptyTemplate { get; set; }
+    /// <summary>Shows <see cref="SkeletonRows"/> loading rows (via <see cref="LoadingTemplate"/>) instead of the real data while <see langword="true"/>.</summary>
     [Parameter] public bool IsLoading { get; set; }
+    /// <summary>Number of skeleton rows rendered while <see cref="IsLoading"/> is <see langword="true"/>. Default 5.</summary>
     [Parameter] public int SkeletonRows { get; set; } = 5;
+    /// <summary>Additional CSS classes merged onto the <c>&lt;table&gt;</c> element.</summary>
     [Parameter] public string? Class { get; set; }
+    /// <summary>Captures any unmatched attributes and applies them to the outer scrollable wrapper <c>&lt;div&gt;</c>.</summary>
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     // Sorting
+    /// <summary>The currently sorted column's identifier, as set by a header (e.g. <see cref="DataTableSortableHeader.Column"/>). Two-way bindable via <see cref="SortColumnChanged"/>; the table itself does not sort <see cref="Items"/> — sorting is left to the consumer.</summary>
     [Parameter] public string? SortColumn { get; set; }
+    /// <summary>Raised when <see cref="SortColumn"/> changes.</summary>
     [Parameter] public EventCallback<string?> SortColumnChanged { get; set; }
+    /// <summary>The current sort direction for <see cref="SortColumn"/>. Default <see cref="SortDirection.Ascending"/>.</summary>
     [Parameter] public SortDirection SortDir { get; set; } = SortDirection.Ascending;
+    /// <summary>Raised when <see cref="SortDir"/> changes.</summary>
     [Parameter] public EventCallback<SortDirection> SortDirChanged { get; set; }
+    /// <summary>Raised when a sortable header is clicked, with the target column and its new direction. Combine with <see cref="SortColumn"/>/<see cref="SortDir"/> (or their two-way bindings) to actually re-order <see cref="Items"/>.</summary>
     [Parameter] public EventCallback<(string Column, SortDirection Direction)> OnSort { get; set; }
 
     // Selection
+    /// <summary>Enables row selection: renders a checkbox column (with a "select all" checkbox in the header) and <c>aria-selected</c>/<c>aria-multiselectable</c> on the grid.</summary>
     [Parameter] public bool Selectable { get; set; }
+    /// <summary>The currently selected rows. Two-way bindable via <see cref="SelectedItemsChanged"/>; membership is decided by <see cref="ItemKey"/> when supplied, otherwise by reference/value equality.</summary>
     [Parameter] public HashSet<TItem>? SelectedItems { get; set; }
+    /// <summary>Raised with a new <see cref="HashSet{T}"/> whenever selection changes (row toggle or select-all). Always a fresh instance so <c>@bind-SelectedItems</c> and change detection see the update.</summary>
     [Parameter] public EventCallback<HashSet<TItem>> SelectedItemsChanged { get; set; }
 
     /// <summary>

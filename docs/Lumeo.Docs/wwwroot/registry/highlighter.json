@@ -33,7 +33,7 @@
         "name": "Text",
         "type": "string",
         "default": "\"\"",
-        "description": null,
+        "description": "The full source text to render; matched terms are wrapped in Tag, the rest is emitted verbatim.",
         "isCascading": false,
         "captureUnmatched": false,
         "isEditorRequired": false
@@ -42,7 +42,7 @@
         "name": "Highlight",
         "type": "string?",
         "default": null,
-        "description": null,
+        "description": "A single term to highlight within Text. Combined with HighlightTerms when both are set (de-duplicated, longest match wins).",
         "isCascading": false,
         "captureUnmatched": false,
         "isEditorRequired": false
@@ -51,7 +51,7 @@
         "name": "HighlightTerms",
         "type": "IEnumerable<string>?",
         "default": null,
-        "description": null,
+        "description": "Multiple terms to highlight within Text. Combined with Highlight when both are set (de-duplicated, longest match wins).",
         "isCascading": false,
         "captureUnmatched": false,
         "isEditorRequired": false
@@ -59,8 +59,8 @@
       {
         "name": "CaseSensitive",
         "type": "bool",
-        "default": null,
-        "description": null,
+        "default": "false",
+        "description": "Matches terms case-sensitively. Defaults to false (case-insensitive matching).",
         "isCascading": false,
         "captureUnmatched": false,
         "isEditorRequired": false
@@ -68,8 +68,8 @@
       {
         "name": "WholeWord",
         "type": "bool",
-        "default": null,
-        "description": null,
+        "default": "false",
+        "description": "Only matches terms on word boundaries (anchored with \\b on sides adjacent to a word character), so e.g. \"cat\" won't match inside \"category\". Ignored when RegexMode is enabled.",
         "isCascading": false,
         "captureUnmatched": false,
         "isEditorRequired": false
@@ -77,7 +77,7 @@
       {
         "name": "RegexMode",
         "type": "bool",
-        "default": null,
+        "default": "false",
         "description": "Treat Highlight / HighlightTerms as regular- expression patterns instead of literal text (the default). Invalid patterns fall back to rendering the text un-highlighted. WholeWord is ignored in this mode — express boundaries in the pattern itself. (#293)",
         "isCascading": false,
         "captureUnmatched": false,
@@ -87,7 +87,7 @@
         "name": "HighlightClass",
         "type": "string?",
         "default": null,
-        "description": null,
+        "description": "Additional CSS classes appended to the built-in highlight-mark styling (bg-warning/30 text-foreground rounded-sm px-0.5) on each matched segment.",
         "isCascading": false,
         "captureUnmatched": false,
         "isEditorRequired": false
@@ -96,7 +96,7 @@
         "name": "Tag",
         "type": "string",
         "default": "\"mark\"",
-        "description": null,
+        "description": "Element name used to wrap each matched segment. Defaults to \"mark\"; falls back to \"mark\" if set to whitespace/empty.",
         "isCascading": false,
         "captureUnmatched": false,
         "isEditorRequired": false
@@ -105,7 +105,7 @@
         "name": "Class",
         "type": "string?",
         "default": null,
-        "description": null,
+        "description": "Additional CSS classes merged onto the outer <span> wrapper.",
         "isCascading": false,
         "captureUnmatched": false,
         "isEditorRequired": false
@@ -114,7 +114,7 @@
         "name": "AdditionalAttributes",
         "type": "Dictionary<string, object>?",
         "default": null,
-        "description": null,
+        "description": "Captures unmatched attributes and applies them to the outer <span> wrapper.",
         "isCascading": false,
         "captureUnmatched": true,
         "isEditorRequired": false
@@ -161,7 +161,7 @@
     "tier": 1,
     "files": 1,
     "tests": 15,
-    "relatedFiles": 0,
+    "relatedFiles": 1,
     "render": true,
     "behavior": false,
     "a11y": false,
@@ -183,7 +183,7 @@
   "source": [
     {
       "path": "UI/Highlighter/Highlighter.razor",
-      "content": "@namespace Lumeo\n\n<span class=\"@ContainerClass\" @attributes=\"AdditionalAttributes\">\n    @foreach (var segment in _segments)\n    {\n        if (segment.IsMatch)\n        {\n            @RenderMatch(segment.Text)\n        }\n        else\n        {\n            @segment.Text\n        }\n    }\n</span>\n\n@code {\n    [Parameter] public string Text { get; set; } = \"\";\n    [Parameter] public string? Highlight { get; set; }\n    [Parameter] public IEnumerable<string>? HighlightTerms { get; set; }\n    [Parameter] public bool CaseSensitive { get; set; }\n    [Parameter] public bool WholeWord { get; set; }\n    /// <summary>\n    /// Treat <see cref=\"Highlight\"/> / <see cref=\"HighlightTerms\"/> as regular-\n    /// expression patterns instead of literal text (the default). Invalid\n    /// patterns fall back to rendering the text un-highlighted. <see cref=\"WholeWord\"/>\n    /// is ignored in this mode — express boundaries in the pattern itself. (#293)\n    /// </summary>\n    [Parameter] public bool RegexMode { get; set; }\n    [Parameter] public string? HighlightClass { get; set; }\n    [Parameter] public string Tag { get; set; } = \"mark\";\n    [Parameter] public string? Class { get; set; }\n    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }\n\n    private List<Segment> _segments = new();\n\n    private string ContainerClass => Cx.Merge(Class);\n\n    private string MarkClass =>\n        ($\"bg-warning/30 text-foreground rounded-sm px-0.5 {HighlightClass}\").Trim();\n\n    // Render the highlight wrapper with the consumer-configured element name\n    // (Tag parameter, default \"mark\") instead of a hardcoded <mark>.\n    private RenderFragment RenderMatch(string text) => builder =>\n    {\n        builder.OpenElement(0, string.IsNullOrWhiteSpace(Tag) ? \"mark\" : Tag);\n        builder.AddAttribute(1, \"class\", MarkClass);\n        builder.AddContent(2, text);\n        builder.CloseElement();\n    };\n\n    protected override void OnParametersSet() => Rebuild();\n\n    private void Rebuild()\n    {\n        _segments.Clear();\n\n        if (string.IsNullOrEmpty(Text))\n            return;\n\n        // Collect terms, largest first to ensure longest match wins\n        var terms = new List<string>();\n        if (!string.IsNullOrEmpty(Highlight))\n            terms.Add(Highlight);\n        if (HighlightTerms is not null)\n            terms.AddRange(HighlightTerms.Where(t => !string.IsNullOrEmpty(t)));\n\n        // De-duplicate\n        terms = terms.Distinct(\n            CaseSensitive ? StringComparer.Ordinal : StringComparer.OrdinalIgnoreCase\n        ).OrderByDescending(t => t.Length).ToList();\n\n        if (terms.Count == 0)\n        {\n            _segments.Add(new Segment(Text, false));\n            return;\n        }\n\n        // Build a combined regex: alternate longest-first\n        var escaped = terms.Select(t =>\n        {\n            // RegexMode: use the term verbatim as a pattern. Otherwise escape it\n            // to a literal and optionally anchor on word boundaries.\n            if (RegexMode) return t;\n            var e = System.Text.RegularExpressions.Regex.Escape(t);\n            if (!WholeWord)\n                return e;\n            // Only anchor a \\b on a side whose adjacent term char is itself a word\n            // character. A \\b next to punctuation (e.g. \"C#\", \".NET\", \"(World)\")\n            // can never match, which would silently drop the term. (t is already\n            // guaranteed non-empty by the collection filters above.)\n            var left = char.IsLetterOrDigit(t[0]) || t[0] == '_' ? @\"\\b\" : \"\";\n            var right = char.IsLetterOrDigit(t[^1]) || t[^1] == '_' ? @\"\\b\" : \"\";\n            return $\"{left}{e}{right}\";\n        });\n        var pattern = string.Join(\"|\", escaped);\n        var options = System.Text.RegularExpressions.RegexOptions.None;\n        if (!CaseSensitive)\n            options |= System.Text.RegularExpressions.RegexOptions.IgnoreCase;\n\n        System.Text.RegularExpressions.Regex? regex = null;\n        try\n        {\n            regex = new System.Text.RegularExpressions.Regex(pattern, options);\n        }\n        catch\n        {\n            // Bad pattern — render plain\n            _segments.Add(new Segment(Text, false));\n            return;\n        }\n\n        int pos = 0;\n        foreach (System.Text.RegularExpressions.Match m in regex.Matches(Text))\n        {\n            // Skip zero-length matches (e.g. a RegexMode pattern like \"a*\" or \"\\b\")\n            // so we never emit an empty highlight element. The surrounding non-match\n            // text is still preserved by the next match's `m.Index > pos` check and\n            // the trailing-text logic below. (#296)\n            if (m.Length == 0)\n                continue;\n            if (m.Index > pos)\n                _segments.Add(new Segment(Text[pos..m.Index], false));\n            _segments.Add(new Segment(m.Value, true));\n            pos = m.Index + m.Length;\n        }\n\n        if (pos < Text.Length)\n            _segments.Add(new Segment(Text[pos..], false));\n    }\n\n    private record Segment(string Text, bool IsMatch);\n}\n"
+      "content": "@namespace Lumeo\n\n<span class=\"@ContainerClass\" @attributes=\"AdditionalAttributes\">\n    @foreach (var segment in _segments)\n    {\n        if (segment.IsMatch)\n        {\n            @RenderMatch(segment.Text)\n        }\n        else\n        {\n            @segment.Text\n        }\n    }\n</span>\n\n@code {\n    /// <summary>The full source text to render; matched terms are wrapped in\n    /// <see cref=\"Tag\"/>, the rest is emitted verbatim.</summary>\n    [Parameter] public string Text { get; set; } = \"\";\n\n    /// <summary>A single term to highlight within <see cref=\"Text\"/>. Combined with\n    /// <see cref=\"HighlightTerms\"/> when both are set (de-duplicated, longest match wins).</summary>\n    [Parameter] public string? Highlight { get; set; }\n\n    /// <summary>Multiple terms to highlight within <see cref=\"Text\"/>. Combined with\n    /// <see cref=\"Highlight\"/> when both are set (de-duplicated, longest match wins).</summary>\n    [Parameter] public IEnumerable<string>? HighlightTerms { get; set; }\n\n    /// <summary>Matches terms case-sensitively. Defaults to false (case-insensitive matching).</summary>\n    [Parameter] public bool CaseSensitive { get; set; }\n\n    /// <summary>Only matches terms on word boundaries (anchored with <c>\\b</c> on sides\n    /// adjacent to a word character), so e.g. \"cat\" won't match inside \"category\".\n    /// Ignored when <see cref=\"RegexMode\"/> is enabled.</summary>\n    [Parameter] public bool WholeWord { get; set; }\n    /// <summary>\n    /// Treat <see cref=\"Highlight\"/> / <see cref=\"HighlightTerms\"/> as regular-\n    /// expression patterns instead of literal text (the default). Invalid\n    /// patterns fall back to rendering the text un-highlighted. <see cref=\"WholeWord\"/>\n    /// is ignored in this mode — express boundaries in the pattern itself. (#293)\n    /// </summary>\n    [Parameter] public bool RegexMode { get; set; }\n\n    /// <summary>Additional CSS classes appended to the built-in highlight-mark styling\n    /// (<c>bg-warning/30 text-foreground rounded-sm px-0.5</c>) on each matched segment.</summary>\n    [Parameter] public string? HighlightClass { get; set; }\n\n    /// <summary>Element name used to wrap each matched segment. Defaults to <c>\"mark\"</c>;\n    /// falls back to <c>\"mark\"</c> if set to whitespace/empty.</summary>\n    [Parameter] public string Tag { get; set; } = \"mark\";\n\n    /// <summary>Additional CSS classes merged onto the outer <c>&lt;span&gt;</c> wrapper.</summary>\n    [Parameter] public string? Class { get; set; }\n\n    /// <summary>Captures unmatched attributes and applies them to the outer <c>&lt;span&gt;</c> wrapper.</summary>\n    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }\n\n    private List<Segment> _segments = new();\n\n    private string ContainerClass => Cx.Merge(Class);\n\n    private string MarkClass =>\n        ($\"bg-warning/30 text-foreground rounded-sm px-0.5 {HighlightClass}\").Trim();\n\n    // Render the highlight wrapper with the consumer-configured element name\n    // (Tag parameter, default \"mark\") instead of a hardcoded <mark>.\n    private RenderFragment RenderMatch(string text) => builder =>\n    {\n        builder.OpenElement(0, string.IsNullOrWhiteSpace(Tag) ? \"mark\" : Tag);\n        builder.AddAttribute(1, \"class\", MarkClass);\n        builder.AddContent(2, text);\n        builder.CloseElement();\n    };\n\n    protected override void OnParametersSet() => Rebuild();\n\n    private void Rebuild()\n    {\n        _segments.Clear();\n\n        if (string.IsNullOrEmpty(Text))\n            return;\n\n        // Collect terms, largest first to ensure longest match wins\n        var terms = new List<string>();\n        if (!string.IsNullOrEmpty(Highlight))\n            terms.Add(Highlight);\n        if (HighlightTerms is not null)\n            terms.AddRange(HighlightTerms.Where(t => !string.IsNullOrEmpty(t)));\n\n        // De-duplicate\n        terms = terms.Distinct(\n            CaseSensitive ? StringComparer.Ordinal : StringComparer.OrdinalIgnoreCase\n        ).OrderByDescending(t => t.Length).ToList();\n\n        if (terms.Count == 0)\n        {\n            _segments.Add(new Segment(Text, false));\n            return;\n        }\n\n        // Build a combined regex: alternate longest-first\n        var escaped = terms.Select(t =>\n        {\n            // RegexMode: use the term verbatim as a pattern. Otherwise escape it\n            // to a literal and optionally anchor on word boundaries.\n            if (RegexMode) return t;\n            var e = System.Text.RegularExpressions.Regex.Escape(t);\n            if (!WholeWord)\n                return e;\n            // Only anchor a \\b on a side whose adjacent term char is itself a word\n            // character. A \\b next to punctuation (e.g. \"C#\", \".NET\", \"(World)\")\n            // can never match, which would silently drop the term. (t is already\n            // guaranteed non-empty by the collection filters above.)\n            var left = char.IsLetterOrDigit(t[0]) || t[0] == '_' ? @\"\\b\" : \"\";\n            var right = char.IsLetterOrDigit(t[^1]) || t[^1] == '_' ? @\"\\b\" : \"\";\n            return $\"{left}{e}{right}\";\n        });\n        var pattern = string.Join(\"|\", escaped);\n        var options = System.Text.RegularExpressions.RegexOptions.None;\n        if (!CaseSensitive)\n            options |= System.Text.RegularExpressions.RegexOptions.IgnoreCase;\n\n        System.Text.RegularExpressions.Regex? regex = null;\n        try\n        {\n            regex = new System.Text.RegularExpressions.Regex(pattern, options);\n        }\n        catch\n        {\n            // Bad pattern — render plain\n            _segments.Add(new Segment(Text, false));\n            return;\n        }\n\n        int pos = 0;\n        foreach (System.Text.RegularExpressions.Match m in regex.Matches(Text))\n        {\n            // Skip zero-length matches (e.g. a RegexMode pattern like \"a*\" or \"\\b\")\n            // so we never emit an empty highlight element. The surrounding non-match\n            // text is still preserved by the next match's `m.Index > pos` check and\n            // the trailing-text logic below. (#296)\n            if (m.Length == 0)\n                continue;\n            if (m.Index > pos)\n                _segments.Add(new Segment(Text[pos..m.Index], false));\n            _segments.Add(new Segment(m.Value, true));\n            pos = m.Index + m.Length;\n        }\n\n        if (pos < Text.Length)\n            _segments.Add(new Segment(Text[pos..], false));\n    }\n\n    private record Segment(string Text, bool IsMatch);\n}\n"
     }
   ],
   "slots": [],
@@ -193,8 +193,7 @@
   "keyboardInteractions": [],
   "tests": [
     "tests/Lumeo.Tests/Components/Features/FeatureBatchTests.cs",
-    "tests/Lumeo.Tests/Components/Features/GoalBatch2Tests.cs",
     "tests/Lumeo.Tests/Components/Highlighter/HighlighterTests.cs"
   ],
-  "mdSummary": "# Highlighter\n\nWraps occurrences of one or more search terms in the text with highlight marks.\n\n**Package:** `Lumeo` · **Category:** Typography\n**Docs:** https://lumeo.nativ.sh/components/highlighter\n\n## Parameters\n| Owner | Name | Type | Default | Description |\n|---|---|---|---|---|\n| Highlighter | Text | `string` | `\"\"` |  |\n| Highlighter | Highlight | `string?` | `` |  |\n| Highlighter | HighlightTerms | `IEnumerable<string>?` | `` |  |\n| Highlighter | CaseSensitive | `bool` | `` |  |\n| Highlighter | WholeWord | `bool` | `` |  |\n| Highlighter | RegexMode | `bool` | `` | Treat Highlight / HighlightTerms as regular- expression patterns instead of literal text (the default). Invalid patterns fall back to rendering the text un-highlighted. WholeWord is ignored in this mode — express boundaries in the pattern itself. (#293) |\n| Highlighter | HighlightClass | `string?` | `` |  |\n| Highlighter | Tag | `string` | `\"mark\"` |  |\n| Highlighter | Class | `string?` | `` |  |\n| Highlighter | AdditionalAttributes | `Dictionary<string, object>?` | `` |  |\n\n## Slots\n- (none)\n\n## Events\n- (none)\n\n## Sub-components\n- (none)\n\n## Cascading values it expects\n- (none)\n\n## Services it injects\n- (none)\n\n## Keyboard\n—\n\n## Example\n```razor\n<Highlighter />\n```\n\n## CSS variables\n`--color-foreground`, `--radius`\n\n## Files\n- `UI/Highlighter/Highlighter.razor`\n"
+  "mdSummary": "# Highlighter\n\nWraps occurrences of one or more search terms in the text with highlight marks.\n\n**Package:** `Lumeo` · **Category:** Typography\n**Docs:** https://lumeo.nativ.sh/components/highlighter\n\n## Parameters\n| Owner | Name | Type | Default | Description |\n|---|---|---|---|---|\n| Highlighter | Text | `string` | `\"\"` | The full source text to render; matched terms are wrapped in Tag, the rest is emitted verbatim. |\n| Highlighter | Highlight | `string?` | `` | A single term to highlight within Text. Combined with HighlightTerms when both are set (de-duplicated, longest match wins). |\n| Highlighter | HighlightTerms | `IEnumerable<string>?` | `` | Multiple terms to highlight within Text. Combined with Highlight when both are set (de-duplicated, longest match wins). |\n| Highlighter | CaseSensitive | `bool` | `false` | Matches terms case-sensitively. Defaults to false (case-insensitive matching). |\n| Highlighter | WholeWord | `bool` | `false` | Only matches terms on word boundaries (anchored with \\\\b on sides adjacent to a word character), so e.g. \"cat\" won't match inside \"category\". Ignored when RegexMode is enabled. |\n| Highlighter | RegexMode | `bool` | `false` | Treat Highlight / HighlightTerms as regular- expression patterns instead of literal text (the default). Invalid patterns fall back to rendering the text un-highlighted. WholeWord is ignored in this mode — express boundaries in the pattern itself. (#293) |\n| Highlighter | HighlightClass | `string?` | `` | Additional CSS classes appended to the built-in highlight-mark styling (bg-warning/30 text-foreground rounded-sm px-0.5) on each matched segment. |\n| Highlighter | Tag | `string` | `\"mark\"` | Element name used to wrap each matched segment. Defaults to \"mark\"; falls back to \"mark\" if set to whitespace/empty. |\n| Highlighter | Class | `string?` | `` | Additional CSS classes merged onto the outer \\<span\\> wrapper. |\n| Highlighter | AdditionalAttributes | `Dictionary<string, object>?` | `` | Captures unmatched attributes and applies them to the outer \\<span\\> wrapper. |\n\n## Slots\n- (none)\n\n## Events\n- (none)\n\n## Sub-components\n- (none)\n\n## Cascading values it expects\n- (none)\n\n## Services it injects\n- (none)\n\n## Keyboard\n—\n\n## Example\n```razor\n<Highlighter />\n```\n\n## CSS variables\n`--color-foreground`, `--radius`\n\n## Files\n- `UI/Highlighter/Highlighter.razor`\n"
 }

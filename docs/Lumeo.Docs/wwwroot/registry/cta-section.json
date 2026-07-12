@@ -35,7 +35,7 @@
         "name": "Title",
         "type": "string?",
         "default": null,
-        "description": null,
+        "description": "The band's plain-text heading, rendered as an h2 and used to name the section landmark. Ignored when TitleSlot is set.",
         "isCascading": false,
         "captureUnmatched": false,
         "isEditorRequired": false
@@ -44,7 +44,7 @@
         "name": "TitleSlot",
         "type": "RenderFragment?",
         "default": null,
-        "description": null,
+        "description": "Custom heading markup, rendered instead of/in addition to Title for callers that need rich heading content.",
         "isCascading": false,
         "captureUnmatched": false,
         "isEditorRequired": false
@@ -53,7 +53,7 @@
         "name": "Subtitle",
         "type": "string?",
         "default": null,
-        "description": null,
+        "description": "Supporting text rendered below the title.",
         "isCascading": false,
         "captureUnmatched": false,
         "isEditorRequired": false
@@ -62,7 +62,7 @@
         "name": "Actions",
         "type": "RenderFragment?",
         "default": null,
-        "description": null,
+        "description": "The call-to-action buttons, centered and wrapped below the title/subtitle.",
         "isCascading": false,
         "captureUnmatched": false,
         "isEditorRequired": false
@@ -71,7 +71,7 @@
         "name": "Class",
         "type": "string?",
         "default": null,
-        "description": null,
+        "description": "Additional CSS classes merged onto the root section element.",
         "isCascading": false,
         "captureUnmatched": false,
         "isEditorRequired": false
@@ -80,7 +80,7 @@
         "name": "AdditionalAttributes",
         "type": "Dictionary<string, object>?",
         "default": null,
-        "description": null,
+        "description": "Unmatched attributes splatted onto the root section element.",
         "isCascading": false,
         "captureUnmatched": true,
         "isEditorRequired": false
@@ -127,7 +127,7 @@
     "tier": 1,
     "files": 1,
     "tests": 4,
-    "relatedFiles": 0,
+    "relatedFiles": 1,
     "render": true,
     "behavior": false,
     "a11y": true,
@@ -149,7 +149,7 @@
   "source": [
     {
       "path": "UI/CTASection/CTASection.razor",
-      "content": "@namespace Lumeo\n\n@*\n    CTASection — call-to-action band. Part of the 3.4 Splash Kit. Renders\n    a tinted, centered band with title, optional subtitle, and an Actions\n    slot for primary / secondary buttons.\n*@\n\n<section class=\"@CssClass\" aria-labelledby=\"@TitleId\" @attributes=\"AdditionalAttributes\">\n    <div class=\"mx-auto max-w-4xl px-6 py-16 sm:py-20 text-center\">\n        @if (!string.IsNullOrWhiteSpace(Title))\n        {\n            <h2 id=\"@TitleId\" class=\"text-3xl sm:text-4xl font-bold tracking-tight text-foreground\">@Title</h2>\n        }\n        @TitleSlot\n        @if (!string.IsNullOrWhiteSpace(Subtitle))\n        {\n            <p class=\"mt-4 text-lg text-muted-foreground max-w-2xl mx-auto\">@Subtitle</p>\n        }\n        @if (Actions is not null)\n        {\n            <div class=\"mt-8 flex flex-wrap items-center justify-center gap-3\">\n                @Actions\n            </div>\n        }\n    </div>\n</section>\n\n@code {\n    [Parameter] public string? Title { get; set; }\n    [Parameter] public RenderFragment? TitleSlot { get; set; }\n    [Parameter] public string? Subtitle { get; set; }\n    [Parameter] public RenderFragment? Actions { get; set; }\n    [Parameter] public string? Class { get; set; }\n    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }\n\n    private string CssClass => Cx.Merge(\"w-full bg-muted/40 border-y border-border/40\", Class);\n\n    // Name the <section> landmark via its heading so AT exposes it as a region\n    // with an accessible name (#298). Null when there's no Title — a TitleSlot-\n    // only consumer can still supply aria-label/aria-labelledby via attributes.\n    private readonly string _titleId = $\"cta-title-{Guid.NewGuid():N}\";\n    private string? TitleId => string.IsNullOrWhiteSpace(Title) ? null : _titleId;\n}\n"
+      "content": "@namespace Lumeo\n\n@*\n    CTASection — call-to-action band. Part of the 3.4 Splash Kit. Renders\n    a tinted, centered band with title, optional subtitle, and an Actions\n    slot for primary / secondary buttons.\n*@\n\n<section class=\"@CssClass\" aria-labelledby=\"@TitleId\" @attributes=\"AdditionalAttributes\">\n    <div class=\"mx-auto max-w-4xl px-6 py-16 sm:py-20 text-center\">\n        @if (!string.IsNullOrWhiteSpace(Title))\n        {\n            <h2 id=\"@TitleId\" class=\"text-3xl sm:text-4xl font-bold tracking-tight text-foreground\">@Title</h2>\n        }\n        @TitleSlot\n        @if (!string.IsNullOrWhiteSpace(Subtitle))\n        {\n            <p class=\"mt-4 text-lg text-muted-foreground max-w-2xl mx-auto\">@Subtitle</p>\n        }\n        @if (Actions is not null)\n        {\n            <div class=\"mt-8 flex flex-wrap items-center justify-center gap-3\">\n                @Actions\n            </div>\n        }\n    </div>\n</section>\n\n@code {\n    /// <summary>The band's plain-text heading, rendered as an <c>h2</c> and used to name the section landmark. Ignored when <see cref=\"TitleSlot\"/> is set.</summary>\n    [Parameter] public string? Title { get; set; }\n\n    /// <summary>Custom heading markup, rendered instead of/in addition to <see cref=\"Title\"/> for callers that need rich heading content.</summary>\n    [Parameter] public RenderFragment? TitleSlot { get; set; }\n\n    /// <summary>Supporting text rendered below the title.</summary>\n    [Parameter] public string? Subtitle { get; set; }\n\n    /// <summary>The call-to-action buttons, centered and wrapped below the title/subtitle.</summary>\n    [Parameter] public RenderFragment? Actions { get; set; }\n\n    /// <summary>Additional CSS classes merged onto the root <c>section</c> element.</summary>\n    [Parameter] public string? Class { get; set; }\n\n    /// <summary>Unmatched attributes splatted onto the root <c>section</c> element.</summary>\n    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }\n\n    private string CssClass => Cx.Merge(\"w-full bg-muted/40 border-y border-border/40\", Class);\n\n    // Name the <section> landmark via its heading so AT exposes it as a region\n    // with an accessible name (#298). Null when there's no Title — a TitleSlot-\n    // only consumer can still supply aria-label/aria-labelledby via attributes.\n    private readonly string _titleId = $\"cta-title-{Guid.NewGuid():N}\";\n    private string? TitleId => string.IsNullOrWhiteSpace(Title) ? null : _titleId;\n}\n"
     }
   ],
   "slots": [
@@ -157,13 +157,13 @@
       "name": "TitleSlot",
       "owner": "CTASection",
       "type": "RenderFragment?",
-      "description": null
+      "description": "Custom heading markup, rendered instead of/in addition to Title for callers that need rich heading content."
     },
     {
       "name": "Actions",
       "owner": "CTASection",
       "type": "RenderFragment?",
-      "description": null
+      "description": "The call-to-action buttons, centered and wrapped below the title/subtitle."
     }
   ],
   "serviceDependencies": [],
@@ -174,5 +174,5 @@
     "tests/Lumeo.Tests/Components/A11yPolish/A11yPolishTests.cs",
     "tests/Lumeo.Tests/Components/CTASection/CTASectionTests.cs"
   ],
-  "mdSummary": "# CTASection\n\nCTASection component.\n\n**Package:** `Lumeo` · **Category:** Marketing\n**Docs:** https://lumeo.nativ.sh/components/cta-section\n\n## Parameters\n| Owner | Name | Type | Default | Description |\n|---|---|---|---|---|\n| CTASection | Title | `string?` | `` |  |\n| CTASection | TitleSlot | `RenderFragment?` | `` |  |\n| CTASection | Subtitle | `string?` | `` |  |\n| CTASection | Actions | `RenderFragment?` | `` |  |\n| CTASection | Class | `string?` | `` |  |\n| CTASection | AdditionalAttributes | `Dictionary<string, object>?` | `` |  |\n\n## Slots\n- `TitleSlot` (CTASection) — RenderFragment slot\n- `Actions` (CTASection) — RenderFragment slot\n\n## Events\n- (none)\n\n## Sub-components\n- (none)\n\n## Cascading values it expects\n- (none)\n\n## Services it injects\n- (none)\n\n## Keyboard\n—\n\n## Example\n```razor\n<CTASection />\n```\n\n## CSS variables\n`--color-border`, `--color-foreground`, `--color-muted`, `--color-muted-foreground`\n\n## Files\n- `UI/CTASection/CTASection.razor`\n"
+  "mdSummary": "# CTASection\n\nCTASection component.\n\n**Package:** `Lumeo` · **Category:** Marketing\n**Docs:** https://lumeo.nativ.sh/components/cta-section\n\n## Parameters\n| Owner | Name | Type | Default | Description |\n|---|---|---|---|---|\n| CTASection | Title | `string?` | `` | The band's plain-text heading, rendered as an h2 and used to name the section landmark. Ignored when TitleSlot is set. |\n| CTASection | TitleSlot | `RenderFragment?` | `` | Custom heading markup, rendered instead of/in addition to Title for callers that need rich heading content. |\n| CTASection | Subtitle | `string?` | `` | Supporting text rendered below the title. |\n| CTASection | Actions | `RenderFragment?` | `` | The call-to-action buttons, centered and wrapped below the title/subtitle. |\n| CTASection | Class | `string?` | `` | Additional CSS classes merged onto the root section element. |\n| CTASection | AdditionalAttributes | `Dictionary<string, object>?` | `` | Unmatched attributes splatted onto the root section element. |\n\n## Slots\n- `TitleSlot` (CTASection) — Custom heading markup, rendered instead of/in addition to Title for callers that need rich heading content.\n- `Actions` (CTASection) — The call-to-action buttons, centered and wrapped below the title/subtitle.\n\n## Events\n- (none)\n\n## Sub-components\n- (none)\n\n## Cascading values it expects\n- (none)\n\n## Services it injects\n- (none)\n\n## Keyboard\n—\n\n## Example\n```razor\n<CTASection />\n```\n\n## CSS variables\n`--color-border`, `--color-foreground`, `--color-muted`, `--color-muted-foreground`\n\n## Files\n- `UI/CTASection/CTASection.razor`\n"
 }

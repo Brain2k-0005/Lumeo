@@ -40,23 +40,38 @@
 </nav>
 
 @code {
+    /// <summary>Fully compositional content (<see cref="PaginationContent"/>,
+    /// <see cref="PaginationItem"/>, etc.). When set, data-driven mode is disabled
+    /// and this content renders verbatim instead.</summary>
     [Parameter] public RenderFragment? ChildContent { get; set; }
 
     // --- Data-driven mode (#210) — opt-in. Supply Page plus either TotalPages
     // or TotalItems (+ PageSize); the pager then renders prev/next, boundary and
     // sibling page buttons with ellipsis automatically. When ChildContent is set
     // the component stays fully compositional (unchanged). ---
+    /// <summary>The current 1-based page. Setting this (without <see cref="ChildContent"/>)
+    /// enables data-driven mode, which auto-renders prev/next and numbered page buttons.</summary>
     [Parameter] public int? Page { get; set; }
+    /// <summary>Fired with the newly clamped page number when the user clicks a page,
+    /// prev/next button, or when a shrunk total forces the current page back in range.</summary>
     [Parameter] public EventCallback<int> PageChanged { get; set; }
+    /// <summary>Total number of pages, for data-driven mode. Takes precedence over
+    /// <see cref="TotalItems"/>/<see cref="PageSize"/> when both are supplied.</summary>
     [Parameter] public int? TotalPages { get; set; }
+    /// <summary>Total item count, for data-driven mode; combined with <see cref="PageSize"/>
+    /// to compute the page count when <see cref="TotalPages"/> is not set directly.</summary>
     [Parameter] public int? TotalItems { get; set; }
+    /// <summary>Items per page, used with <see cref="TotalItems"/> to compute the total page
+    /// count in data-driven mode. Defaults to 10.</summary>
     [Parameter] public int PageSize { get; set; } = 10;
     /// <summary>Pages shown on each side of the current page (default 1).</summary>
     [Parameter] public int SiblingCount { get; set; } = 1;
     /// <summary>Pages always shown at the very start/end (default 1).</summary>
     [Parameter] public int BoundaryCount { get; set; } = 1;
 
+    /// <summary>Additional CSS classes merged onto the root <c>nav</c>.</summary>
     [Parameter] public string? Class { get; set; }
+    /// <summary>Unmatched attributes splatted onto the root <c>nav</c>.</summary>
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     private const int EllipsisMarker = -1;

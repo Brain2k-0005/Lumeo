@@ -79,11 +79,22 @@
 @code {
     [CascadingParameter] private FormField.FormFieldContext? FormField { get; set; }
 
+    /// <summary>Marks the field as required, setting <c>aria-required</c> and (outside a <c>FormField</c>) the bubble checkbox's <c>required</c>, plus appending a destructive-colored asterisk to the label.</summary>
     [Parameter] public bool Required { get; set; }
+
+    /// <summary>Forces the invalid/error visual state (destructive ring) and <c>aria-invalid</c>, independent of the ambient <c>FormField</c>'s validation state.</summary>
     [Parameter] public bool Invalid { get; set; }
+
+    /// <summary>Error message shown below the switch (outside a <c>FormField</c>) when <see cref="Invalid"/> is set. Takes precedence over <see cref="HelperText"/>.</summary>
     [Parameter] public string? ErrorText { get; set; }
+
+    /// <summary>Helper text shown below the switch (outside a <c>FormField</c>) when there is no error to display.</summary>
     [Parameter] public string? HelperText { get; set; }
+
+    /// <summary>Label text rendered before the switch (outside a <c>FormField</c>, which supplies its own label), linked via <c>for</c>/<c>id</c> so clicking it toggles the switch.</summary>
     [Parameter] public string? Label { get; set; }
+
+    /// <summary>HTML <c>name</c> for the hidden bubble checkbox that mirrors the switch state, so it posts in a native <c>&lt;form&gt;</c> (a plain <c>&lt;button&gt;</c> posts nothing). Falls back to a composing <c>FormField</c>'s <c>Name</c> when unset.</summary>
     [Parameter] public string? Name { get; set; }
 
     /// <summary>
@@ -131,7 +142,10 @@
             ? AdditionalAttributes.Where(kv => kv.Key != "id").ToDictionary(kv => kv.Key, kv => kv.Value)
             : AdditionalAttributes;
 
+    /// <summary>Whether the switch is on. Controlled together with <see cref="CheckedChanged"/>; when left unbound the switch tracks its own toggles internally.</summary>
     [Parameter] public bool Checked { get; set; }
+
+    /// <summary>Fires when the user toggles the switch, with the new checked state.</summary>
     [Parameter] public EventCallback<bool> CheckedChanged { get; set; }
 
     // Uncontrolled state guard (state-on-data-change). The live checked state
@@ -194,9 +208,16 @@
         // Keep the uncontrolled discriminator pointing at the last Checked we observed.
         _lastCheckedParam = Checked;
     }
+    /// <summary>When <c>true</c>, the switch cannot be toggled and renders with reduced opacity.</summary>
     [Parameter] public bool Disabled { get; set; }
+
+    /// <summary>When <c>true</c>, shows a small spinner in the thumb, disables toggling, and sets <c>aria-busy</c> — for an in-flight async state change.</summary>
     [Parameter] public bool Loading { get; set; }
+
+    /// <summary>Text shown next to the switch (and used as a fallback accessible name) while it is on.</summary>
     [Parameter] public string? OnLabel { get; set; }
+
+    /// <summary>Text shown next to the switch (and used as a fallback accessible name) while it is off.</summary>
     [Parameter] public string? OffLabel { get; set; }
     /// <summary>
     /// Accessible name for the switch button, exposed via <c>aria-label</c>. Recommended
@@ -224,7 +245,10 @@
 
     [Inject] private HapticsService Haptics { get; set; } = default!;
 
+    /// <summary>Additional CSS classes merged onto the switch's track <c>button</c>.</summary>
     [Parameter] public string? Class { get; set; }
+
+    /// <summary>Captures any unmatched attributes and applies them to the switch's track <c>button</c> (a splatted <c>id</c> is stripped inside a <c>FormField</c> so the generated id keeps the label wired up).</summary>
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     private bool HasOnOffLabel => OnLabel != null || OffLabel != null;

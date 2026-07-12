@@ -78,15 +78,44 @@ public sealed class RegistryService(HttpClient http, IJSRuntime js)
 
     private readonly Dictionary<string, RegistryComponentDetail?> _detailCache = new();
 
+    // Pages now render several <PropsTable> instances (root + sub-components) for the
+    // same slug in one render pass. Each one calls GetComponentAsync before the cache
+    // above is populated, so without this in-flight cache they'd all fire independent
+    // registry/{slug}.json fetches. Blazor's render loop is single-threaded, so the
+    // check-and-store below runs to completion before any awaited continuation can
+    // observe it — safe without a lock. Entries are removed once the load settles.
+    private readonly Dictionary<string, Task<RegistryComponentDetail?>> _detailLoads = new();
+
     /// <summary>
     /// Loads the full per-component facts (api/props, dependencies, a11y, keyboard,
     /// related, css vars, source) from <c>registry/{slug}.json</c>. Cached per slug.
     /// Returns null if the file is missing or fails to parse. This is the single source
     /// of truth that <c>ComponentDocPage</c> / <c>PropsTable</c> / <c>FactsRail</c> render.
     /// </summary>
-    public async Task<RegistryComponentDetail?> GetComponentAsync(string slug)
+    public Task<RegistryComponentDetail?> GetComponentAsync(string slug)
     {
-        if (_detailCache.TryGetValue(slug, out var cached)) return cached;
+        if (_detailCache.TryGetValue(slug, out var cached)) return Task.FromResult(cached);
+        if (_detailLoads.TryGetValue(slug, out var inFlight)) return inFlight;
+
+        var load = LoadComponentAsync(slug);
+        if (load.IsCompleted)
+        {
+            // LoadComponentAsync already ran to completion synchronously (e.g. a
+            // stub/prerender HttpMessageHandler that resolves without ever yielding).
+            // Its own `finally` tried to evict `slug` from _detailLoads BEFORE we got a
+            // chance to insert it below, so that removal was a no-op — inserting now
+            // would leave a completed (possibly failed) task cached forever with nothing
+            // left to remove it. Skip the insert entirely: successes are already in
+            // _detailCache, and failures simply get retried fresh next call
+            // (Codex P2, PR #358 round 4).
+            return load;
+        }
+        _detailLoads[slug] = load;
+        return load;
+    }
+
+    private async Task<RegistryComponentDetail?> LoadComponentAsync(string slug)
+    {
         try
         {
             var detail = await http.GetFromJsonAsync<RegistryComponentDetail>($"registry/{slug}.json", JsonOpts);
@@ -101,6 +130,10 @@ public sealed class RegistryService(HttpClient http, IJSRuntime js)
         {
             Console.WriteLine($"[registry] detail load failed for '{slug}': {ex.Message}");
             return null;
+        }
+        finally
+        {
+            _detailLoads.Remove(slug);
         }
     }
 }
@@ -189,6 +222,26 @@ public sealed class ApiInfo
     public List<ApiParameter> Parameters { get; set; } = new();
     public List<ApiEvent> Events { get; set; } = new();
     public A11yInfo? A11y { get; set; }
+    /// <summary>
+    /// Sub-component APIs for composite components (e.g. Dialog's DialogTrigger,
+    /// DialogContent, DialogHeader, ...), keyed by sub-component name. Sourced from
+    /// <c>api.subComponents.&lt;Name&gt;</c> in registry/{slug}.json. Empty for leaf
+    /// components. Consumed by &lt;PropsTable SubComponent="..."&gt; to render a
+    /// sub-component's own parameter/event table instead of the top-level one.
+    /// </summary>
+    public Dictionary<string, SubComponentInfo> SubComponents { get; set; } = new();
+}
+
+/// <summary>
+/// One sub-component's API facts (e.g. DialogTrigger, SelectItem), mirroring the shape
+/// of <see cref="ApiInfo"/>'s parameters/events but scoped to that sub-component's own
+/// members. See <c>ApiInfo.SubComponents</c>.
+/// </summary>
+public sealed class SubComponentInfo
+{
+    public string ComponentName { get; set; } = "";
+    public List<ApiParameter> Parameters { get; set; } = new();
+    public List<ApiEvent> Events { get; set; } = new();
 }
 
 public sealed class ApiParameter

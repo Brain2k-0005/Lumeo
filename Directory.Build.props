@@ -30,4 +30,46 @@
        PackageReadmeFile set in the csproj is not yet visible to a condition
        evaluated in this file. Directory.Build.targets is imported AFTER the
        body, where the property is populated. -->
+
+  <!-- net8.0/net10.0 multi-targeting: Microsoft.AspNetCore.Components.Web ships
+       TFM-specific lib assets only (no netstandard fallback), so every referencing
+       project needs a different package version per inner-build TargetFramework
+       (8.0.6 on net8.0, 10.0.6 on net10.0). Centralising the version choice here
+       means each of the (currently 11) referencing projects' PackageReference line
+       just does Version="$(LumeoComponentsWebVersion)" instead of duplicating a
+       two-line TFM-conditional PackageReference pair. This block lives in
+       Directory.Build.props (imported BEFORE the project body) rather than
+       Directory.Build.targets so the property is already resolved by the time each
+       project's own PackageReference item is evaluated. $(TargetFramework) is set
+       per inner-build even for multi-targeted projects, so this re-evaluates
+       correctly for each of net8.0 / net10.0. -->
+  <PropertyGroup>
+    <LumeoComponentsWebVersion Condition="'$(TargetFramework)' == 'net8.0'">8.0.6</LumeoComponentsWebVersion>
+    <LumeoComponentsWebVersion Condition="'$(LumeoComponentsWebVersion)' == ''">10.0.6</LumeoComponentsWebVersion>
+  </PropertyGroup>
+
+  <!-- Supply-chain / NuGet-health properties shared by every shipped package under
+       /src/ (core + satellites + icon packs + internal helper projects). Previously
+       duplicated verbatim in all 27 shipped .csproj files (and absent from the two
+       internal helper projects, Lumeo.SourceGenerators and Lumeo.DataGrid.Export,
+       whose output still ends up inside a published .nupkg). Centralised here so
+       there is exactly one place that defines "what NuGet Package Explorer's Health
+       panel expects": SourceLink (GitHub URLs embedded in the PDB), a deterministic,
+       CI-flagged build, and untracked-source embedding. Scoped to '/src/' — mirrors
+       the GenerateDocumentationFile / PublicApiAnalyzers conditions above/in
+       Directory.Build.targets — so tools/templates/docs/samples/tests are untouched. -->
+  <PropertyGroup Condition="$(MSBuildProjectDirectory.Replace('\','/').Contains('/src/'))">
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+    <EmbedUntrackedSources>true</EmbedUntrackedSources>
+    <Deterministic>true</Deterministic>
+    <ContinuousIntegrationBuild Condition="'$(GITHUB_ACTIONS)' == 'true'">true</ContinuousIntegrationBuild>
+  </PropertyGroup>
+  <ItemGroup Condition="$(MSBuildProjectDirectory.Replace('\','/').Contains('/src/'))">
+    <PackageReference Include="Microsoft.SourceLink.GitHub" Version="8.0.0" PrivateAssets="All" />
+  </ItemGroup>
+
+  <!-- Symbol packages (.snupkg): the IsPackable gate lives in Directory.Build.targets,
+       NOT here — see the IncludeSymbols/SymbolPackageFormat block there for why
+       (same "props runs before the project body sets IsPackable=false" pitfall the
+       PublicApiAnalyzers comment below explains). -->
 </Project>

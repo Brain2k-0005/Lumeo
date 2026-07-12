@@ -81,7 +81,10 @@
 @code {
     [CascadingParameter] private DataGridContext<TItem>? Context { get; set; }
 
+    /// <summary>Current value of the global search box.</summary>
     [Parameter] public string? SearchText { get; set; }
+
+    /// <summary>Fires on every keystroke in the global search box with the new value.</summary>
     [Parameter] public EventCallback<string> SearchTextChanged { get; set; }
 
     /// <summary>The <see cref="ToolbarContent{TItem}"/> component the consumer placed
@@ -89,25 +92,94 @@
     /// slot renders just the search + filter chips; when non-null, its Class styles the
     /// wrapper and its ChildContent renders alongside the chips.</summary>
     [Parameter] public ToolbarContent<TItem>? RegisteredContent { get; set; }
+
+    /// <summary>Mirrors <see cref="DataGrid{TItem}.OnColumnReorder"/> as forwarded state;
+    /// the actual column-visibility/reorder UI (<see cref="DataGridToolbarColumns{TItem}"/>)
+    /// gets its data through the cascaded <see cref="DataGridToolbarContext{TItem}"/>
+    /// instead of this parameter.</summary>
     [Parameter] public EventCallback OnColumnVisibilityToggle { get; set; }
+
+    /// <summary>Mirrors <see cref="DataGrid{TItem}.OnColumnReorder"/> as forwarded state;
+    /// column-visibility toggling is wired through the cascaded
+    /// <see cref="DataGridToolbarContext{TItem}"/> instead of this parameter.</summary>
     [Parameter] public EventCallback<DataGridColumn<TItem>> OnColumnToggle { get; set; }
+
+    /// <summary>Mirrors <see cref="DataGrid{TItem}.OnColumnReorder"/> as forwarded state;
+    /// column reordering is wired through the cascaded <see cref="DataGridToolbarContext{TItem}"/>
+    /// instead of this parameter.</summary>
     [Parameter] public EventCallback<ColumnReorderEventArgs> OnColumnReorder { get; set; }
+
+    /// <summary>Mirrors <see cref="DataGrid{TItem}.OnServerRequest"/>-adjacent export
+    /// wiring as forwarded state; the export UI (<see cref="DataGridToolbarExport{TItem}"/>)
+    /// gets its data through the cascaded <see cref="DataGridToolbarContext{TItem}"/>
+    /// instead of this parameter.</summary>
     [Parameter] public EventCallback<string> OnExport { get; set; }
+
+    /// <summary>Fires when a filter chip's remove (×) button is clicked, carrying the
+    /// removed <see cref="FilterDescriptor"/>.</summary>
     [Parameter] public EventCallback<FilterDescriptor> OnRemoveFilter { get; set; }
+
+    /// <summary>Currently-selected items. Gates whether the "copy selected" tool
+    /// (<see cref="DataGridToolbarCopySelected{TItem}"/>) renders.</summary>
     [Parameter] public List<TItem>? SelectedItems { get; set; }
+
+    /// <summary>All items available for export/copy (not just the current page).</summary>
     [Parameter] public List<TItem>? AllItems { get; set; }
+
+    /// <summary>The grid's effective column list. Along with <see cref="SelectedItems"/>,
+    /// gates whether the "copy selected" tool renders.</summary>
     [Parameter] public IReadOnlyList<DataGridColumn<TItem>>? EffectiveColumns { get; set; }
+
+    /// <summary>Shows the layouts dropdown (<see cref="DataGridToolbarLayouts{TItem}"/>)
+    /// when true, mirroring <see cref="DataGrid{TItem}.EnableLayoutPersistence"/>.</summary>
     [Parameter] public bool EnableLayoutPersistence { get; set; }
+
+    /// <summary>Mirrors <see cref="DataGrid{TItem}.OnLayoutSave"/> as forwarded state;
+    /// the layouts UI gets its data through the cascaded <see cref="DataGridToolbarContext{TItem}"/>
+    /// instead of this parameter.</summary>
     [Parameter] public EventCallback OnSaveLayout { get; set; }
+
+    /// <summary>Forwarded state mirroring the grid's layout-reset action; the layouts UI
+    /// gets its data through the cascaded <see cref="DataGridToolbarContext{TItem}"/>
+    /// instead of this parameter.</summary>
     [Parameter] public EventCallback OnResetLayout { get; set; }
+
+    /// <summary>Mirrors <see cref="DataGrid{TItem}.GlobalLayouts"/> as forwarded state;
+    /// the layouts UI gets its data through the cascaded <see cref="DataGridToolbarContext{TItem}"/>
+    /// instead of this parameter.</summary>
     [Parameter] public List<DataGridNamedLayout>? GlobalLayouts { get; set; }
+
+    /// <summary>Mirrors <see cref="DataGrid{TItem}.OnSaveNamedLayout"/> as forwarded
+    /// state; wired through the cascaded <see cref="DataGridToolbarContext{TItem}"/> instead.</summary>
     [Parameter] public EventCallback<DataGridNamedLayout> OnSaveNamedLayout { get; set; }
+
+    /// <summary>Mirrors <see cref="DataGrid{TItem}.OnDeleteNamedLayout"/> as forwarded
+    /// state; wired through the cascaded <see cref="DataGridToolbarContext{TItem}"/> instead.</summary>
     [Parameter] public EventCallback<string> OnDeleteNamedLayout { get; set; }
+
+    /// <summary>Forwarded state mirroring the grid's named-layout-apply action; wired
+    /// through the cascaded <see cref="DataGridToolbarContext{TItem}"/> instead of this parameter.</summary>
     [Parameter] public EventCallback<DataGridNamedLayout> OnApplyNamedLayout { get; set; }
+
+    /// <summary>Mirrors <see cref="DataGrid{TItem}.LayoutStorageKey"/> as forwarded
+    /// state; wired through the cascaded <see cref="DataGridToolbarContext{TItem}"/> instead.</summary>
     [Parameter] public string? LayoutStorageKey { get; set; }
+
+    /// <summary>Mirrors <see cref="DataGrid{TItem}.OnError"/> as forwarded state; wired
+    /// through the cascaded <see cref="DataGridToolbarContext{TItem}"/> instead of this parameter.</summary>
     [Parameter] public EventCallback<Exception> OnError { get; set; }
+
+    /// <summary>Shows the fullscreen-expand tool (<see cref="DataGridToolbarFullscreen{TItem}"/>)
+    /// when true, mirroring <see cref="DataGrid{TItem}.Expandable"/>.</summary>
     [Parameter] public bool Expandable { get; set; }
+
+    /// <summary>Forwarded state mirroring <see cref="DataGrid{TItem}.IsExpanded"/>; the
+    /// fullscreen tool reads its own state through the cascaded
+    /// <see cref="DataGridToolbarContext{TItem}"/> instead of this parameter.</summary>
     [Parameter] public bool IsExpanded { get; set; }
+
+    /// <summary>Forwarded state mirroring the grid's fullscreen-toggle action; wired
+    /// through the cascaded <see cref="DataGridToolbarContext{TItem}"/> instead of this parameter.</summary>
     [Parameter] public EventCallback OnToggleExpanded { get; set; }
 
     /// <summary>Show the global search box. Default true.</summary>
@@ -122,7 +194,10 @@
     /// <summary>Which export formats to include in the dropdown. Default <see cref="DataGridExportFormat.All"/>.</summary>
     [Parameter] public DataGridExportFormat ExportFormats { get; set; } = DataGridExportFormat.All;
 
+    /// <summary>Additional CSS classes merged onto the toolbar's outer wrapper.</summary>
     [Parameter] public string? Class { get; set; }
+
+    /// <summary>Captures unmatched attributes and applies them to the toolbar's outer wrapper.</summary>
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     private string CssClass => $"flex flex-wrap items-center gap-2 px-4 py-3 border-b border-border/40 {Class}".Trim();

@@ -463,7 +463,7 @@ public sealed class ConsentService
                 Timestamp = _decidedAtUtc.Value.ToString("O", CultureInfo.InvariantCulture),
                 Version = PolicyVersion,
             };
-            var json = JsonSerializer.Serialize(record);
+            var json = JsonSerializer.Serialize(record, Lumeo.Serialization.LumeoJsonContext.Default.ConsentRecord);
             await _js.InvokeVoidAsync("localStorage.setItem", StorageKey, json);
             // Mirror the FOUC-guard class so a subsequent runtime change keeps it accurate.
             await _js.InvokeVoidAsync("lumeoConsent.markDecided");
@@ -473,7 +473,9 @@ public sealed class ConsentService
     }
 
     // Persisted proof-of-consent record. Serialized to localStorage under StorageKey.
-    private sealed class ConsentRecord
+    // internal (not private) so Lumeo.Serialization.LumeoJsonContext can reference it for
+    // source-generated (trim-safe) JSON metadata (#354) — not part of the public API.
+    internal sealed class ConsentRecord
     {
         [JsonPropertyName("categories")] public Dictionary<string, bool> Categories { get; set; } = new();
         [JsonPropertyName("timestamp")] public string Timestamp { get; set; } = "";

@@ -189,10 +189,21 @@
 </div>
 
 @code {
+    /// <summary>URL of the PDF document to load (loaded by pdf.js via <c>fetch</c>).
+    /// A quiet "No PDF loaded" placeholder renders while this is empty.</summary>
     [Parameter, EditorRequired] public string? Src { get; set; }
+    /// <summary>The currently displayed 1-based page number. Clamped to
+    /// <c>[1, totalPages]</c> on render; two-way bindable via <see cref="PageChanged"/>.</summary>
     [Parameter] public int Page { get; set; } = 1;
+    /// <summary>Raised when the displayed page changes (navigation buttons, page-number
+    /// entry, keyboard, or a search jumping to a match's page).</summary>
     [Parameter] public EventCallback<int> PageChanged { get; set; }
+    /// <summary>Zoom factor (<c>1.0</c> = 100%), clamped to <c>[0.5, 4.0]</c>. Ignored
+    /// when <see cref="FitMode"/> is not <see cref="PdfFitMode.Custom"/>. Two-way bindable
+    /// via <see cref="ZoomChanged"/>.</summary>
     [Parameter] public double Zoom { get; set; } = 1.0;
+    /// <summary>Raised when the zoom level changes (zoom buttons, keyboard, or a
+    /// <see cref="FitMode"/> switch).</summary>
     [Parameter] public EventCallback<double> ZoomChanged { get; set; }
     /// <summary>Fit-to-container mode that overrides <see cref="Zoom"/> when
     /// set to a non-Custom value. <c>FitWidth</c> scales the page so its
@@ -206,13 +217,29 @@
     [Parameter] public PdfFitMode FitMode { get; set; } = PdfFitMode.Custom;
 
     public enum PdfFitMode { Custom, FitWidth, FitPage }
+    /// <summary>Shows the toolbar bar (page nav, search, zoom, download). Default
+    /// <c>true</c>; when <c>false</c> only the document viewport renders.</summary>
     [Parameter] public bool ShowToolbar { get; set; } = true;
+    /// <summary>Shows the previous/next page buttons and page-number input in the
+    /// toolbar. Default <c>true</c>.</summary>
     [Parameter] public bool ShowPageNav { get; set; } = true;
+    /// <summary>Shows the zoom out/percentage/in controls in the toolbar. Default
+    /// <c>true</c>.</summary>
     [Parameter] public bool ShowZoomControls { get; set; } = true;
+    /// <summary>Shows a download link (rendered only once <see cref="Src"/> is set) in
+    /// the toolbar. Default <c>true</c>.</summary>
     [Parameter] public bool ShowDownload { get; set; } = true;
+    /// <summary>Shows the in-document search box and match navigation in the toolbar.
+    /// Default <c>false</c>.</summary>
     [Parameter] public bool ShowSearch { get; set; }
+    /// <summary>CSS color used for search-match highlight overlays (blended via
+    /// <c>color-mix</c>; the active match renders more opaque). Default <c>"yellow"</c>.</summary>
     [Parameter] public string HighlightColor { get; set; } = "yellow";
+    /// <summary>Raised once, after the document successfully loads, with its total page
+    /// count.</summary>
     [Parameter] public EventCallback<int> OnLoaded { get; set; }
+    /// <summary>Fires alongside <see cref="PageChanged"/>; provided for symmetry with
+    /// the <see cref="OnLoaded"/>/<see cref="OnError"/> event naming.</summary>
     [Parameter] public EventCallback<int> OnPageChanged { get; set; }
     /// <summary>
     /// Fires when the underlying JS load/render fails (CDN unreachable, malformed
@@ -221,7 +248,9 @@
     /// renders regardless.
     /// </summary>
     [Parameter] public EventCallback<string> OnError { get; set; }
+    /// <summary>Additional CSS classes merged onto the root panel.</summary>
     [Parameter] public string? Class { get; set; }
+    /// <summary>Unmatched attributes splatted onto the root panel.</summary>
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     private const double MinZoom = 0.5;

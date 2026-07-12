@@ -40,8 +40,16 @@
 </div>
 
 @code {
+    /// <summary>The hierarchical node tree. Node identity is tracked internally across
+    /// rebuilds (see the ownership-model notes below), so a controlled parent that
+    /// replaces this list with fresh instances still preserves expansion/loading/selection
+    /// state for matching nodes.</summary>
     [Parameter] public List<TreeViewItem<T>>? Items { get; set; }
+    /// <summary>Shows a checkbox on every node for multi-select-style checking, independent
+    /// of row selection. Combine with <see cref="CascadeCheck"/> for tri-state parent boxes.</summary>
     [Parameter] public bool ShowCheckboxes { get; set; }
+    /// <summary>Whether nodes with children can be expanded/collapsed at all. When
+    /// <c>false</c>, every node renders as a flat leaf-style row with no chevron.</summary>
     [Parameter] public bool Expandable { get; set; } = true;
     /// <summary>
     /// When <c>true</c> (the default), clicking anywhere on a parent row — a node that has, or
@@ -53,19 +61,45 @@
     /// Has no effect when <see cref="Expandable"/> is <c>false</c>.
     /// </summary>
     [Parameter] public bool ExpandOnRowClick { get; set; } = true;
+    /// <summary>Fired when a node row is clicked/activated (selection). Fires alongside the
+    /// row's own expand/collapse toggle when <see cref="ExpandOnRowClick"/> applies.</summary>
     [Parameter] public EventCallback<TreeViewItem<T>> OnItemClick { get; set; }
+    /// <summary>Fired when a node's checkbox is toggled (requires <see cref="ShowCheckboxes"/>).</summary>
     [Parameter] public EventCallback<TreeViewItem<T>> OnItemCheck { get; set; }
+    /// <summary>Shows a search input above the tree that filters nodes by label, auto-expanding
+    /// ancestors of every match.</summary>
     [Parameter] public bool ShowSearch { get; set; }
+    /// <summary>Additional CSS classes merged onto the root <c>div</c>.</summary>
     [Parameter] public string? Class { get; set; }
+    /// <summary>Unmatched attributes splatted onto the root <c>div</c>.</summary>
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
+    /// <summary>Fetches a node's children on demand the first time it is expanded, enabling
+    /// lazy-loaded subtrees. Node identity/state tracking preserves loading and loaded
+    /// children across a controlled parent's rebuilds (see the ownership-model notes below).</summary>
     [Parameter] public Func<TreeViewItem<T>, Task<List<TreeViewItem<T>>>>? LoadChildren { get; set; }
+    /// <summary>When <see cref="ShowCheckboxes"/> is enabled, checking/unchecking a node
+    /// cascades to all its descendants and derives a tri-state (indeterminate) check on
+    /// ancestors. Defaults to <c>true</c>.</summary>
     [Parameter] public bool CascadeCheck { get; set; } = true;
+    /// <summary>Fired with the full set of checked node values whenever a checkbox toggle
+    /// changes the checked set.</summary>
     [Parameter] public EventCallback<List<T?>> CheckedValuesChanged { get; set; }
+    /// <summary>Custom render fragment for a node's row content, receiving the
+    /// <see cref="TreeViewItem{T}"/>. When null, the default label (+ optional icon) renders.</summary>
     [Parameter] public RenderFragment<TreeViewItem<T>>? NodeTemplate { get; set; }
+    /// <summary>Expands every node with children on first render (and whenever this flips
+    /// from <c>false</c> to <c>true</c>). When <see cref="LoadChildren"/> is set, lazy
+    /// children are then fetched in the background.</summary>
     [Parameter] public bool ExpandAll { get; set; }
+    /// <summary>Allows selecting multiple rows at once (Ctrl/Meta/Shift-click), instead of
+    /// single-row selection.</summary>
     [Parameter] public bool MultiSelect { get; set; }
+    /// <summary>The selected node values, resolved by identity against <see cref="Items"/>.
+    /// A value shared by multiple nodes selects every match.</summary>
     [Parameter] public List<T>? SelectedValues { get; set; }
+    /// <summary>Fired when the selection changes (row click, or a checkbox in checkbox-driven
+    /// selection modes). Binding it makes <see cref="SelectedValues"/> controlled.</summary>
     [Parameter] public EventCallback<List<T>> SelectedValuesChanged { get; set; }
 
     private string _searchText = "";
