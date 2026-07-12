@@ -358,11 +358,16 @@ await Theme.ToggleModeAsync();              // Toggle current
 ## Tech Stack
 
 - .NET 8+ / Blazor — every shipped package multi-targets `net8.0;net10.0`. One
-  known net8.0-only limitation: IME-composition guards (`KeyboardEventArgs.IsComposing`,
-  added in .NET 9's `Microsoft.AspNetCore.Components.Web`) are unavailable on net8.0,
-  so Command's arrow-key navigation and PromptInput's Enter-to-send don't
-  distinguish IME candidate-window input from a "real" keystroke on that target —
-  everything else is functionally identical across both TFMs.
+  known limitation for net8.0 **and** net9.0 consumers (the package ships no
+  net9.0 asset, so NuGet resolves net9.0 apps to the net8.0 asset too):
+  IME-composition guards (`KeyboardEventArgs.IsComposing`, added in .NET 9's
+  `Microsoft.AspNetCore.Components.Web`) are compiled out of that asset, so
+  Command's arrow-key navigation and PromptInput's Enter-to-send don't
+  distinguish IME candidate-window input from a "real" keystroke there —
+  everything else is functionally identical across both TFMs. `Lumeo.Templates`'
+  `lumeo-app`/`lumeo-fullstack` project scaffolds are net10.0-only regardless
+  (`lumeo-page`/`lumeo-form`/`lumeo-component` are item templates and inherit
+  your project's own TFM).
 - Tailwind CSS v4
 - ECharts for charts, FullCalendar for Scheduler, Frappe Gantt for Gantt, TipTap for RichTextEditor
 - ClosedXML + QuestPDF for DataGrid export

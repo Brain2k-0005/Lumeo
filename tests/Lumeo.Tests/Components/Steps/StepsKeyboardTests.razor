@@ -1,0 +1,51 @@
+@inherits Bunit.BunitContext
+
+@code {
+    // Complements StepsItemA11yTests (#45): that file already pins the passive-vs-
+    // interactive shape of the indicator (a disabled <button> is unreachable to both
+    // Tab and AT, so a non-Clickable Steps renders a plain div instead of a button; a
+    // Clickable Steps renders a real, enabled <button>). This file adds the one keyboard
+    // surface neither the a11y-shape test nor a generic click test covers: activating a
+    // Clickable indicator via its native <button @onclick="HandleClick"> — Enter/Space
+    // activation is free via the browser's default button semantics, so .Click()
+    // exercises the exact handler a synthesized keydown would run — actually drives
+    // CurrentStepChanged/OnStepClick to the clicked step's index.
+
+    public StepsKeyboardTests() { this.AddLumeoServices(); }
+
+    [Fact]
+    public void Clicking_A_Clickable_Step_Indicator_Fires_CurrentStepChanged_With_Its_Index()
+    {
+        int? changed = null;
+        var cut = Render(@<Steps CurrentStep="0" Clickable="true"
+                                  CurrentStepChanged="@((int s) => changed = s)">
+            <StepsItem Title="One" />
+            <StepsItem Title="Two" />
+            <StepsItem Title="Three" />
+        </Steps>);
+
+        var buttons = cut.FindAll("button");
+        buttons[2].Click();
+
+        Assert.Equal(2, changed);
+    }
+
+    [Fact]
+    public void NonClickable_Step_Indicator_Renders_No_Phantom_Tab_Stop_On_Click_Attempt()
+    {
+        // Reality check: HandleClick guards on Context.Clickable, but StepsItemA11yTests
+        // already established the non-Clickable indicator isn't even a <button> — so
+        // there is nothing to click. This test documents that a stray click on the
+        // rendered (non-button) indicator element is simply a no-op, not routed to
+        // OnStepClick at all.
+        int? changed = null;
+        var cut = Render(@<Steps CurrentStep="0"
+                                  CurrentStepChanged="@((int s) => changed = s)">
+            <StepsItem Title="One" />
+            <StepsItem Title="Two" />
+        </Steps>);
+
+        Assert.Empty(cut.FindAll("button"));
+        Assert.Null(changed);
+    }
+}
