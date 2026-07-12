@@ -468,7 +468,21 @@ internal static class Commands
     // Unlike Add, there's no `--vendor`/`forceVendor` flag here to force-follow satellite
     // (non-Lumeo-package) dependencies across package boundaries — `standalone` alone gates it,
     // matching Add's default (no `--vendor`) behavior for the common core-component case.
-    private static List<string> ResolveSiblingComponentNames(RegistryEntry root, Registry registry, bool standalone)
+    //
+    // `installedKeys` (PR #357 P2 fix): when supplied (update/diff, which act on an ALREADY
+    // vendored project), a dependency whose kebab key isn't in this set is skipped entirely —
+    // it, and everything only reachable through it, is left out of both the sibling-name set AND
+    // the walk. `add`'s own "Install all?" batch prompt lets an interactive user decline a
+    // dependency (toInstall then collapses to just the requested entry — see that loop above), so
+    // a declined dependency never lands in cfg.Components/on disk. Without this filter, a later
+    // `update --force` on the requested component would still treat that never-vendored
+    // dependency as a "sibling" and fully qualify its bare tag (e.g. rewriting `<Button>` to
+    // `<Acme.Ui.Button>`) even though `Button` was never vendored under the consumer namespace —
+    // breaking a project that only ever compiled via the still-referenced Lumeo package's own
+    // `Button`. `null` (View — a pre-install preview with no installed set to check against)
+    // keeps the old unfiltered walk, matching what a full, nothing-declined `add` would vendor.
+    private static List<string> ResolveSiblingComponentNames(
+        RegistryEntry root, Registry registry, bool standalone, IReadOnlyCollection<string>? installedKeys = null)
     {
         var files = new List<string>(root.Files);
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { ToKebab(root.Name) };
@@ -482,6 +496,7 @@ internal static class Commands
             var curKey = ToKebab(cur.Name);
             if (!seen.Add(curKey)) continue;
             if (standalone && registry.Runtime is { } rt && rt.Components.Contains(curKey, StringComparer.OrdinalIgnoreCase)) continue;
+            if (installedKeys is not null && !installedKeys.Contains(curKey)) continue;
 
             files.AddRange(cur.Files);
             var curPackage = string.IsNullOrEmpty(cur.NugetPackage) ? "Lumeo" : cur.NugetPackage;
@@ -1495,6 +1510,11 @@ internal static class Commands
 
         int driftTotal = 0, updatedTotal = 0, skippedTotal = 0;
         var refreshedSatelliteAssets = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        // PR #357 P2 fix: the set of components ACTUALLY vendored in this project right now — from
+        // cfg.Components when recorded, falling back to the same disk scan `targets` above already
+        // uses when it isn't — so ResolveSiblingComponentNames below can exclude a dependency the
+        // user declined during `add`'s "Install all?" prompt. See that method's doc comment.
+        var installedKeys = new HashSet<string>(InstalledKeys(cfg, outRoot, registry), StringComparer.OrdinalIgnoreCase);
         foreach (var key in targets)
         {
             if (!registry.Components.TryGetValue(key, out var entry)) continue;
@@ -1504,7 +1524,7 @@ internal static class Commands
             var entryPackage = string.IsNullOrEmpty(entry.NugetPackage) ? "Lumeo" : entry.NugetPackage;
             // PR #357 round-11 (Codex finding): dependency-aware, not just entry.Files — see
             // ResolveSiblingComponentNames' doc comment.
-            var siblingComponentNames = ResolveSiblingComponentNames(entry, registry, cfg.Standalone);
+            var siblingComponentNames = ResolveSiblingComponentNames(entry, registry, cfg.Standalone, installedKeys);
             foreach (var relFile in entry.Files)
             {
                 var dest = Paths.ToDestPath(outRoot, relFile);
@@ -1781,8 +1801,10 @@ internal static class Commands
         var root = Path.Combine(Environment.CurrentDirectory, cfg.ComponentsPath);
         var drift = 0; var missing = 0; var same = 0;
         // PR #357 round-11 (Codex finding): dependency-aware, not just entry.Files — see
-        // ResolveSiblingComponentNames' doc comment.
-        var siblingComponentNames = ResolveSiblingComponentNames(entry, registry, cfg.Standalone);
+        // ResolveSiblingComponentNames' doc comment. PR #357 P2 fix: scoped to components
+        // ACTUALLY vendored in this project (same reasoning as Update, above it).
+        var installedKeys = new HashSet<string>(InstalledKeys(cfg, root, registry), StringComparer.OrdinalIgnoreCase);
+        var siblingComponentNames = ResolveSiblingComponentNames(entry, registry, cfg.Standalone, installedKeys);
         foreach (var relFile in entry.Files)
         {
             var dest = Paths.ToDestPath(root, relFile);

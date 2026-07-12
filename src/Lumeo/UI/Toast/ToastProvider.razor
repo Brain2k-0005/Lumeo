@@ -29,18 +29,23 @@
 {
     var group = _toasts.Where(t => t.ResolvedPosition == pos).ToList();
     var groupCount = group.Count;
-    <ToastViewport Position="@pos" StackToasts="@StackToasts" ToastCount="@groupCount" @key="@pos">
+    <ToastViewport Position="@pos" StackToasts="@StackToasts" ToastCount="@groupCount"
+                   OnExpandedChanged="@(async (expanded) => await HandleGroupExpandedChanged(pos, expanded))"
+                   @key="@pos">
         @{
             // Live-only count: how many toasts in this group are NOT mid-exit. Live toasts are
             // ranked among THEMSELVES (below), never against the raw group — see the comment on
             // liveCursor for why.
             var liveCount = group.Count(t => !(t.Leaving && t.FrozenIndex.HasValue));
             var liveCursor = 0;
-            // PR #357 round-4 (P2): whether a Leaving toast is CURRENTLY frozen at index 0 (the
-            // exact "front toast dismissed while another remains" case — see the stackIndex
-            // comment below). Computed ONCE per group/render, not per-toast, since it gates every
-            // live toast's ranking identically.
-            var frontFrozen = group.Any(t => t.Leaving && t.FrozenIndex == 0);
+            // PR #357 round-12 (P2): every index a Leaving toast is CURRENTLY frozen at — not just
+            // whether index 0 is frozen. Computed ONCE per group/render, not per-toast, since it
+            // gates every live toast's ranking identically. See AvailableLiveSlots' doc comment for
+            // why the whole SET (not just "is 0 taken") is needed once more than one toast can be
+            // frozen at once.
+            var frozenIndices = group.Where(t => t.Leaving && t.FrozenIndex.HasValue)
+                .Select(t => t.FrozenIndex!.Value).ToHashSet();
+            var availableLiveSlots = AvailableLiveSlots(frozenIndices, liveCount);
         }
         @foreach (var toast in group)
         {
@@ -73,20 +78,23 @@
             // OWN newest-first order guarantees the frontmost LIVE toast always claims index 0,
             // completely independent of however many stale frozen values sit alongside it.
             //
-            // PR #357 round-4 (P2): that guarantee ("some live toast always gets index 0") can
-            // itself collide with a FROZEN index 0 — the ordinary case of the front toast being
-            // dismissed while an older sibling remains live. lumeo.css only keeps `data-index="0"`
-            // in normal flow (position: relative); every other index is position: absolute. Two
-            // elements both claiming index 0 therefore both sit in flow for the Leaving toast's
-            // 220ms exit, expanding the collapsed stack into two rows. `frontFrozen` (computed
-            // above) reserves index 0 for that frozen occupant and shifts every LIVE toast's rank
-            // up by one — the next toast in line visually sits at (now-hidden) depth 1 instead,
-            // and slides into index 0 on its own once the leaving front actually unmounts and a
-            // fresh render recomputes indices with no frozen occupant left.
+            // PR #357 round-4 (P2), generalized round-12: that guarantee ("some live toast always
+            // gets index 0") can itself collide with a FROZEN index — the front toast being
+            // dismissed while an older sibling remains live, or (round-12) TWO overlapping
+            // dismissals freezing more than one index at once (e.g. dismiss the newest, then
+            // dismiss/auto-expire the next-newest before the first exit finishes — both end up
+            // Leaving with distinct FrozenIndex values). lumeo.css only keeps `data-index="0"` in
+            // normal flow (position: relative); every other index is position: absolute. Two
+            // elements claiming the SAME index therefore both sit in flow / at the same absolute
+            // offset for the Leaving toast's 220ms exit. `availableLiveSlots` (computed above) is
+            // every index NOT already claimed by a frozen occupant, smallest-first — assigning live
+            // toasts from that list (instead of the raw 0..liveCount-1 range) reserves EVERY frozen
+            // index, not just 0, so a live toast can never collide with any frozen sibling
+            // regardless of how many are frozen or which indices they hold.
             var stackIndex = StackToasts
                 ? (toast.Leaving && toast.FrozenIndex.HasValue
                     ? toast.FrozenIndex
-                    : liveCount - 1 - liveCursor + (frontFrozen ? 1 : 0))
+                    : availableLiveSlots[liveCount - 1 - liveCursor])
                 : (int?)null;
             if (!(toast.Leaving && toast.FrozenIndex.HasValue)) liveCursor++;
             <Toast Variant="@toast.Options.Variant"
@@ -139,14 +147,30 @@
     private readonly Dictionary<string, string> _swipeRegistered = new();
     private readonly Dictionary<string, CancellationTokenSource> _exitTimers = new();
     // Per-toast timer bookkeeping for pause-on-hover/focus:
-    //   _timerStart    = wall-clock time the current Task.Delay started
+    //   _timerStart     = wall-clock time the current Task.Delay started
     //   _timerRemaining = ms left at the moment the timer was last (re)started
-    //   _paused        = true while the user is hovering / focused inside
+    //   _pauseReasons   = which independent reason(s) currently hold this toast paused
     // On pause we cancel the running delay and subtract elapsed from remaining.
     // On resume we start a fresh delay with the leftover. Matches Radix Toast / sonner.
     private readonly Dictionary<string, DateTime> _timerStart = new();
     private readonly Dictionary<string, int> _timerRemaining = new();
-    private readonly HashSet<string> _paused = new();
+
+    // PR #357 P2 fix: a toast can be paused for TWO independent reasons at once — direct
+    // pointer/focus on that specific <Toast> (Pointer), and its whole position group being
+    // expanded via hover/focus ANYWHERE in the stack (Group, see HandleGroupExpandedChanged). A
+    // plain "is it paused" bool (the pre-fix `_paused` HashSet) can't tell these apart: with a
+    // stack expanded, moving the pointer from toast A to sibling toast B fires A's OWN
+    // OnMouseLeave, which called ResumeTimer(A) unconditionally — resuming A's countdown even
+    // though the GROUP is still expanded and A is still fully visible in the fanned-out list, the
+    // exact "sibling visibly ticking down while the user is reading the expanded stack" bug this
+    // fix closes. Reference-counting via flags means a toast only actually resumes once EVERY
+    // reason holding it paused has cleared — A stays paused through the A -> B pointer move
+    // because Group is still set, and only resumes when the group itself collapses (or A gets its
+    // OWN Pointer/focus pause independently released after that).
+    [Flags]
+    private enum PauseReason { None = 0, Pointer = 1, Group = 2 }
+
+    private readonly Dictionary<string, PauseReason> _pauseReasons = new();
     // Every non-persistent toast that isn't mounted yet — whether it's waiting on room right now
     // or an eviction that hasn't finished — sits here. FIFO by arrival order, same as sonner's
     // overflow queue. PR #357 round-6: ReconcileGroup (below) is the ONLY method that ever dequeues
@@ -857,10 +881,19 @@
         SafeAsyncDispatcher.FireAndForget(InvokeAsync, () => DismissAfterDelayAsync(id, duration, cts.Token), "ToastProvider.DismissAfterDelay");
     }
 
-    private void PauseTimer(string id)
+    // PR #357 P2 fix: `reason` defaults to Pointer — every EXISTING per-toast OnMouseEnter/
+    // OnFocusIn call site (below, in the render loop) keeps working unchanged. HandleGroupExpandedChanged
+    // is the only Group-reason caller.
+    private void PauseTimer(string id, PauseReason reason = PauseReason.Pointer)
     {
-        // Don't double-pause (focusin can fire after mouseenter on the same toast).
-        if (_paused.Contains(id)) return;
+        var current = _pauseReasons.TryGetValue(id, out var r) ? r : PauseReason.None;
+        var wasPaused = current != PauseReason.None;
+        current |= reason;
+        _pauseReasons[id] = current;
+        // Already paused for some OTHER reason (or this same one re-firing, e.g. focusin after
+        // mouseenter on the same toast) — the timer is already stopped; just record the extra
+        // reason so BOTH have to clear before ResumeTimer actually restarts it.
+        if (wasPaused) return;
         if (!_timers.TryGetValue(id, out var cts)) return;
         if (!_timerStart.TryGetValue(id, out var start)) return;
         if (!_timerRemaining.TryGetValue(id, out var remaining)) return;
@@ -872,13 +905,19 @@
         cts.Dispose();
         _timers.Remove(id);
         _timerRemaining[id] = left;
-        _paused.Add(id);
     }
 
-    private void ResumeTimer(string id)
+    private void ResumeTimer(string id, PauseReason reason = PauseReason.Pointer)
     {
-        if (!_paused.Contains(id)) return;
-        _paused.Remove(id);
+        if (!_pauseReasons.TryGetValue(id, out var current) || current == PauseReason.None) return;
+        current &= ~reason;
+        if (current != PauseReason.None)
+        {
+            // Still held paused by at least one OTHER reason — don't restart the timer yet.
+            _pauseReasons[id] = current;
+            return;
+        }
+        _pauseReasons.Remove(id);
         if (!_timerRemaining.TryGetValue(id, out var remaining)) return;
         if (remaining <= 0)
         {
@@ -887,6 +926,27 @@
             return;
         }
         StartTimer(id, remaining);
+    }
+
+    // PR #357 P2 fix: the ToastViewport group-hover/focus-expand callback (wired via
+    // OnExpandedChanged in the render loop above). Pauses/resumes EVERY live, non-persistent toast
+    // in this position group with PauseReason.Group — not just whichever single toast a per-toast
+    // OnMouseEnter/OnFocusIn happened to fire for — so a stack of several auto-dismiss toasts all
+    // stop counting down for as long as the group is expanded (hovered or keyboard-focused
+    // anywhere inside it), matching sonner. Persistent toasts have no running timer to pause
+    // (IsPersistent — see MountToast) and Leaving toasts are already off the clock (CancelTimer'd
+    // in RemoveWithExitAsync), so both are excluded rather than being harmless no-ops, keeping this
+    // a precise mirror of "which toasts actually have a live timer right now".
+    private Task HandleGroupExpandedChanged(ToastViewport.ToastPosition pos, bool expanded)
+    {
+        var ids = _toasts.Where(t => t.ResolvedPosition == pos && !t.Leaving && !t.ResolvedPersistent)
+            .Select(t => t.Id).ToList();
+        foreach (var id in ids)
+        {
+            if (expanded) PauseTimer(id, PauseReason.Group);
+            else ResumeTimer(id, PauseReason.Group);
+        }
+        return Task.CompletedTask;
     }
 
     private async Task DismissAfterDelayAsync(string id, int duration, CancellationToken token)
@@ -1028,7 +1088,7 @@
         }
         _timerStart.Remove(id);
         _timerRemaining.Remove(id);
-        _paused.Remove(id);
+        _pauseReasons.Remove(id);
     }
 
     public async ValueTask DisposeAsync()
@@ -1052,7 +1112,7 @@
         _exitTimers.Clear();
         _timerStart.Clear();
         _timerRemaining.Clear();
-        _paused.Clear();
+        _pauseReasons.Clear();
 
         // Tear down any remaining swipe gestures so the JS listeners don't leak.
         foreach (var (toastId, elementId) in _swipeRegistered.ToList())
@@ -1122,7 +1182,33 @@
         var liveGroup = group.Where(t => !(t.Leaving && t.FrozenIndex.HasValue)).ToList();
         var liveCursor = liveGroup.FindIndex(t => t.Id == toast.Id);
         if (liveCursor < 0) return null;
-        var frontFrozen = group.Any(t => t.Leaving && t.FrozenIndex == 0);
-        return liveGroup.Count - 1 - liveCursor + (frontFrozen ? 1 : 0);
+        // PR #357 round-12 (P2): mirrors the render-loop markup's `availableLiveSlots` above — every
+        // index already claimed by an EXISTING frozen sibling (not just index 0) is reserved, so a
+        // second (or third, …) overlapping dismissal never freezes this toast at the SAME index an
+        // earlier frozen sibling already holds. See AvailableLiveSlots' and the markup's doc comment.
+        var frozenIndices = group.Where(t => t.Leaving && t.FrozenIndex.HasValue)
+            .Select(t => t.FrozenIndex!.Value).ToHashSet();
+        var availableLiveSlots = AvailableLiveSlots(frozenIndices, liveGroup.Count);
+        return availableLiveSlots[liveGroup.Count - 1 - liveCursor];
+    }
+
+    // Every stack index NOT already claimed by a frozen (Leaving) sibling, ascending, up to
+    // `liveCount` entries — the pool live toasts draw their `data-index` from instead of the raw
+    // `0..liveCount-1` range. PR #357 round-12 (P2): the round-4 fix only ever reserved index 0
+    // (`frontFrozen ? 1 : 0`), so a SECOND toast frozen at index 1 (overlapping dismissals — see
+    // the markup's doc comment for the concrete repro) was never accounted for and a live toast
+    // could still be assigned index 1, colliding with it. Scanning ascending integers and skipping
+    // every frozen one generalizes "reserve index 0" to "reserve every frozen index, however many
+    // there are and wherever they sit" — with no frozen indices this degenerates to exactly
+    // `0, 1, 2, …, liveCount-1`, so it reproduces the pre-round-12 numbering byte-for-byte in the
+    // common (nothing frozen) case.
+    private static List<int> AvailableLiveSlots(IReadOnlyCollection<int> frozenIndices, int liveCount)
+    {
+        var slots = new List<int>(liveCount);
+        for (var i = 0; slots.Count < liveCount; i++)
+        {
+            if (!frozenIndices.Contains(i)) slots.Add(i);
+        }
+        return slots;
     }
 }

@@ -16,8 +16,8 @@
      data-stacked="@(IsStacked ? "true" : "false")"
      data-expanded="@(Expanded ? "true" : "false")"
      data-stack-edge="@StackEdge"
-     @onmouseenter="@(() => _hovered = true)"
-     @onmouseleave="@(() => _hovered = false)"
+     @onmouseenter="OnMouseEnter"
+     @onmouseleave="OnMouseLeave"
      @onfocusin="OnFocusIn"
      @onfocusout="OnFocusOut"
      @attributes="AdditionalAttributes">
@@ -35,6 +35,18 @@
     /// <summary>Number of toasts currently rendered in this position group (including
     /// ones mid exit-animation). Stacking only kicks in above 1 toast.</summary>
     [Parameter] public int ToastCount { get; set; }
+
+    /// <summary>PR #357 P2 fix: fires whenever <see cref="Expanded"/> flips (hover-enter/leave,
+    /// focus-in/out — including the deferred focus-out collapse below), so a consumer (ToastProvider)
+    /// can pause EVERY toast in this position group for the duration of the expansion, not just
+    /// whichever one is directly under the pointer/keyboard focus. Without this, a stack with several
+    /// auto-dismiss toasts only ever paused the specific toast a per-toast hover/focus handler fired
+    /// for — siblings merely VISIBLE in the fanned-out expanded list kept their own timers running and
+    /// could vanish out from under the user mid-read. Not invoked for the initial (collapsed) render —
+    /// only for an actual flip, tracked via <see cref="_notifiedExpanded"/> — so a fresh viewport with
+    /// nothing hovered never fires a spurious "resume" the first time this callback is wired up.</summary>
+    [Parameter] public EventCallback<bool> OnExpandedChanged { get; set; }
+
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     // Hover-anywhere-over-the-group and focus-within expansion state, tracked
@@ -45,6 +57,35 @@
     private bool _hovered;
     private bool _focused;
     private bool Expanded => _hovered || _focused;
+
+    // PR #357 P2 fix: last Expanded value actually reported via OnExpandedChanged, so
+    // NotifyExpandedChangeAsync only fires on a genuine flip — never a redundant repeat call (e.g.
+    // mouseenter firing while _focused already made Expanded true) and never a spurious notification
+    // on first wire-up before anything has changed.
+    private bool _notifiedExpanded;
+
+    private async Task NotifyExpandedChangeAsync()
+    {
+        var expanded = Expanded;
+        if (expanded == _notifiedExpanded) return;
+        _notifiedExpanded = expanded;
+        if (OnExpandedChanged.HasDelegate)
+        {
+            await OnExpandedChanged.InvokeAsync(expanded);
+        }
+    }
+
+    private async Task OnMouseEnter()
+    {
+        _hovered = true;
+        await NotifyExpandedChangeAsync();
+    }
+
+    private async Task OnMouseLeave()
+    {
+        _hovered = false;
+        await NotifyExpandedChangeAsync();
+    }
 
     // Keyboard focus moving BETWEEN two controls inside this group (e.g. one toast's close
     // button to another's action button) fires a bubbling focusout on the FIRST control —
@@ -68,12 +109,13 @@
     private int _focusOutSequence;
     private const int FocusCollapseGraceMs = 30;
 
-    private void OnFocusIn()
+    private async Task OnFocusIn()
     {
         _focusOutSequence++;
         _focusOutTimer?.Dispose();
         _focusOutTimer = null;
         _focused = true;
+        await NotifyExpandedChangeAsync();
     }
 
     private void OnFocusOut()
@@ -98,11 +140,12 @@
     {
         try
         {
-            await InvokeAsync(() =>
+            await InvokeAsync(async () =>
             {
                 if (seq != _focusOutSequence) return; // superseded by a focusin, or disposed
                 _focused = false;
                 StateHasChanged();
+                await NotifyExpandedChangeAsync();
             });
         }
         catch (JSDisconnectedException) { }

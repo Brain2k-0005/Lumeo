@@ -355,8 +355,12 @@ public class ToastStackingTests : IAsyncLifetime
         // elsewhere in the suite flaked from exactly that when this used
         // Thread.Sleep. "Four" is
         // still present (Leaving, not yet removed — 150 < 800); "Two" has
-        // already re-rendered to live index 2 (see the round-5 comment
-        // above) and stays there until its own dismissal below.
+        // already re-rendered to live index 3 — PR #357 P2 fix (AvailableLiveSlots):
+        // index 1 (Four's own frozen slot) is now reserved for every live toast's
+        // ranking, not just index 0, so "Three" (which the pre-fix compacted
+        // numbering would have placed AT index 1, colliding with Four) shifts to 2
+        // and "Two" shifts one further, to 3 — and stays there until its own
+        // dismissal below.
         await Task.Delay(150);
 
         // Re-find "Two" (not the `two` reference captured before "Four"'s
@@ -380,7 +384,7 @@ public class ToastStackingTests : IAsyncLifetime
             var leaving = cut.FindAll("[role='alert'],[role='status']").SingleOrDefault(e => e.TextContent.Contains("Two"));
             Assert.NotNull(leaving);
             Assert.Contains("animate-toast-out", Attr(leaving!, "class") ?? "");
-            Assert.Equal("2", Attr(leaving!, "data-index"));
+            Assert.Equal("3", Attr(leaving!, "data-index"));
         }, TimeSpan.FromSeconds(5));
 
         // Wait for "Four" to fully finish its exit and unmount — a newer
@@ -393,12 +397,12 @@ public class ToastStackingTests : IAsyncLifetime
             TimeSpan.FromSeconds(5));
 
         // The regression: "Two" must NOT be RE-promoted (or demoted) by "Four"'s actual
-        // removal — its data-index stays frozen at 2 (where it was already rendered before
+        // removal — its data-index stays frozen at 3 (where it was already rendered before
         // its own exit began) for the rest of ITS OWN exit, matching whatever CSS selector it
         // was already in the moment dismissal began.
         var twoStillLeaving = cut.FindAll("[role='alert'],[role='status']").SingleOrDefault(e => e.TextContent.Contains("Two"));
         Assert.NotNull(twoStillLeaving);
-        Assert.Equal("2", Attr(twoStillLeaving!, "data-index"));
+        Assert.Equal("3", Attr(twoStillLeaving!, "data-index"));
 
         // Let "Two"'s own exit finish too — no leftover element, no stale index.
         cut.WaitForAssertion(() =>

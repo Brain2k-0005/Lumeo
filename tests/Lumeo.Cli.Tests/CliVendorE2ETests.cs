@@ -221,6 +221,63 @@ public sealed class CliVendorE2ETests : IDisposable
         Assert.Contains("0 drifted", diff.Stdout);
     }
 
+    // PR #357 P2 fix — ResolveSiblingComponentNames' `installedKeys` filter. `add`'s own "Install
+    // all?" batch prompt lets an interactive user decline a dependency (toInstall then collapses to
+    // just the requested entry — Commands.Add's BFS loop), so that dependency's tag is left BARE in
+    // the vendored file and it never lands in cfg.Components. This test can't drive that interactive
+    // decline through a redirected-I/O child process (Prompts.Interactive is false whenever
+    // stdin/stdout are piped, so the batch prompt always auto-accepts) — it reconstructs the resulting
+    // ON-DISK STATE directly instead: ConfirmButton vendored with a bare `<Button>` reference and
+    // Button itself absent from both the filesystem and lumeo.json's installed-components record,
+    // exactly what a genuine decline leaves behind. `update --force` on that state must NOT "fix" the
+    // bare tag into a qualified one — Button was never vendored under the consumer namespace, so
+    // qualifying it would reference a type that doesn't exist there, while the bare tag still resolves
+    // correctly against the NuGet-referenced Lumeo package's own Button (this project is NOT
+    // standalone — `init` here keeps the default NuGet mode). Before the fix, ResolveSiblingComponentNames
+    // walked entry.Dependencies unconditionally regardless of what's actually installed, so it would
+    // treat Button as a sibling anyway and requalify the bare tag on the very next update.
+    [Fact]
+    public void Update_Does_Not_Qualify_A_Dependencys_Tag_That_Was_Never_Actually_Vendored()
+    {
+        Assert.True(File.Exists(_lumeoDll),
+            "Built CLI (lumeo.dll) not found under tools/Lumeo.Cli/bin — build the solution first.");
+
+        var init = RunCli("init", "--yes", "--namespace", "Acme.Ui", "--path", "Components/Ui", "--no-assets");
+        Assert.True(init.Exit == 0, $"init failed (exit {init.Exit}). stderr: {init.Stderr}\nstdout: {init.Stdout}");
+
+        // Installs BOTH ConfirmButton and its Button dependency (this harness can't reach the
+        // interactive decline path — see the comment above) — reconstructed into a "Button declined"
+        // state immediately below.
+        var add = RunCli("add", "confirm-button", "--local", "--yes", "--force");
+        Assert.True(add.Exit == 0, $"add failed (exit {add.Exit}). stderr: {add.Stderr}\nstdout: {add.Stdout}");
+
+        var confirmButtonRazor = Path.Combine(_proj, "Components", "Ui", "ConfirmButton", "ConfirmButton.razor");
+        Assert.True(File.Exists(confirmButtonRazor), $"ConfirmButton.razor was not vendored.\nadd stdout:\n{add.Stdout}");
+
+        // Roll ConfirmButton's own file back to what it would look like had Button been declined —
+        // the qualified tag is exactly what `add`'s own BFS would have skipped rewriting.
+        var confirmButtonContent = File.ReadAllText(confirmButtonRazor)
+            .Replace("<Acme.Ui.Button ", "<Button ", StringComparison.Ordinal)
+            .Replace("</Acme.Ui.Button>", "</Button>", StringComparison.Ordinal);
+        Assert.Contains("<Button ", confirmButtonContent);
+        File.WriteAllText(confirmButtonRazor, confirmButtonContent);
+
+        // Button was never actually vendored: remove its files AND its lumeo.json record.
+        Directory.Delete(Path.Combine(_proj, "Components", "Ui", "Button"), recursive: true);
+        var configPath = Path.Combine(_proj, "lumeo.json");
+        var config = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(configPath))!.AsObject();
+        var removed = config["components"]!.AsObject().Remove("button");
+        Assert.True(removed, "test setup: 'button' wasn't recorded as installed in lumeo.json.");
+        File.WriteAllText(configPath, config.ToJsonString(new System.Text.Json.JsonSerializerOptions { WriteIndented = true }));
+
+        var update = RunCli("update", "confirm-button", "--local", "--force");
+        Assert.True(update.Exit == 0, $"update failed (exit {update.Exit}). stderr: {update.Stderr}\nstdout: {update.Stdout}");
+
+        var afterUpdate = File.ReadAllText(confirmButtonRazor);
+        Assert.DoesNotContain("<Acme.Ui.Button", afterUpdate);
+        Assert.Contains("<Button ", afterUpdate);
+    }
+
     [Fact]
     public void Add_Vendor_Copies_Satellite_Source_And_Its_Wwwroot_Asset()
     {
