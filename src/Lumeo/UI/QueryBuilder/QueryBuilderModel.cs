@@ -36,7 +36,13 @@ internal sealed class QueryCombinatorJsonConverter : JsonConverter<QueryCombinat
         // Silently coercing an invalid/corrupted combinator to And would instead hand back
         // a *different* query than the one that was saved, so an unrecognized value must
         // fail the parse rather than default (#364 review).
-        return Enum.TryParse<QueryCombinator>(s, ignoreCase: true, out var value)
+        //
+        // Enum.TryParse ALSO succeeds for a quoted numeric literal like "2" — it returns an
+        // undefined QueryCombinator(2) rather than failing, because TryParse's numeric-string
+        // fallback doesn't check membership. Enum.IsDefined closes that gap so a hand-edited
+        // or corrupted "combinator":"2" takes the same parse-failure path as a bogus word
+        // (#366 review).
+        return Enum.TryParse<QueryCombinator>(s, ignoreCase: true, out var value) && Enum.IsDefined(value)
             ? value
             : throw new JsonException($"Invalid QueryCombinator value '{s}'.");
     }
@@ -110,12 +116,6 @@ internal sealed class QueryValueJsonConverter : JsonConverter<object?>
             case null: writer.WriteNullValue(); break;
             case string s: writer.WriteStringValue(s); break;
             case bool b: writer.WriteBooleanValue(b); break;
-            case double d: writer.WriteNumberValue(d); break;
-            case float f: writer.WriteNumberValue(f); break;
-            case int i: writer.WriteNumberValue(i); break;
-            case long l: writer.WriteNumberValue(l); break;
-            case short sh: writer.WriteNumberValue(sh); break;
-            case decimal m: writer.WriteNumberValue(m); break;
             // DateOnly/DateTime.ToString() is culture-sensitive (e.g. "12.07.2026" under
             // de-DE), but ConvertValue parses the reloaded string back with
             // CultureInfo.InvariantCulture. Under a non-invariant culture that mismatch
@@ -124,6 +124,66 @@ internal sealed class QueryValueJsonConverter : JsonConverter<object?>
             // DateOnly/DateTime.Parse(..., InvariantCulture) expects (#364 review).
             case DateOnly dOnly: writer.WriteStringValue(dOnly.ToString("O", System.Globalization.CultureInfo.InvariantCulture)); break;
             case DateTime dt: writer.WriteStringValue(dt.ToString("O", System.Globalization.CultureInfo.InvariantCulture)); break;
+            // Guid has no natural JSON number/bool shape; write it the same way ConvertValue
+            // reads it back (Guid.Parse(s) from a plain string) so it round-trips (#366 review).
+            case Guid g: writer.WriteStringValue(g); break;
+            // MUST be checked before the numeric dispatch below: Type.GetTypeCode(enumType)
+            // returns the enum's UNDERLYING integral TypeCode (e.g. TypeCode.Int32), so without
+            // this guard an enum value would fall into WriteNumeric and be written as a raw
+            // number — which ConvertValue's Enum.Parse(targetType, s) on reload cannot consume,
+            // since it only ever receives a string (#366 review).
+            case Enum e: writer.WriteStringValue(e.ToString()); break;
+            default:
+                WriteNumeric(writer, value);
+                break;
+        }
+    }
+
+    // Root fix for the recurring "one more boxed type isn't handled" review finding (three
+    // consecutive rounds: custom non-scalar objects, then unsigned integrals, then enum/Guid
+    // above): rather than growing an ad hoc `case long l: ... case short sh: ...` list one type
+    // at a time, dispatch on Type.GetTypeCode, which has a CLOSED, fixed set of members for the
+    // BCL's numeric primitives. Every numeric TypeCode (Byte/SByte/Int16/UInt16/Int32/UInt32/
+    // Int64/UInt64/Single/Double/Decimal) is covered in this one switch, so there is no
+    // "forgot a case" surface left for a fourth round to find (#366 review, root-cause).
+    private static void WriteNumeric(Utf8JsonWriter writer, object value)
+    {
+        switch (Type.GetTypeCode(value.GetType()))
+        {
+            // byte/sbyte/short/ushort have no dedicated WriteNumberValue overload; they widen
+            // implicitly to int, which does.
+            case TypeCode.Byte: writer.WriteNumberValue((byte)value); break;
+            case TypeCode.SByte: writer.WriteNumberValue((sbyte)value); break;
+            case TypeCode.Int16: writer.WriteNumberValue((short)value); break;
+            case TypeCode.UInt16: writer.WriteNumberValue((ushort)value); break;
+            case TypeCode.Int32: writer.WriteNumberValue((int)value); break;
+            case TypeCode.UInt32: writer.WriteNumberValue((uint)value); break;
+            case TypeCode.Int64: writer.WriteNumberValue((long)value); break;
+            case TypeCode.UInt64: writer.WriteNumberValue((ulong)value); break;
+            case TypeCode.Decimal: writer.WriteNumberValue((decimal)value); break;
+            case TypeCode.Single:
+                var f = (float)value;
+                // WriteNumberValue throws ArgumentException (not JsonException) for NaN/
+                // Infinity — a caller boxing float.NaN directly (not read from JSON, since
+                // ReadNumber already rejects an Infinity-clamped literal) would otherwise
+                // escape ToJson's documented failure contract. Reject up front instead (#366
+                // review — same reasoning as ReadNumber's IsInfinity guard, mirrored for Write).
+                if (float.IsNaN(f) || float.IsInfinity(f)) throw NotFinite(value);
+                // Widen to double before writing rather than writing at float's own (lower)
+                // precision: ReadNumber's fallback numeric path only ever reconstructs a
+                // double (there is no "read back as float" branch), so a float-precision
+                // literal reparses to a DIFFERENT double than the exact widened value —
+                // enough drift near float.MaxValue to round the reloaded double to
+                // +/-Infinity. Writing the exact widened double makes that reparse bit-exact
+                // (caught by the round-trip fuzz matrix, #366 review — root-cause fix, not
+                // one of the four filed findings, but the same failure class).
+                writer.WriteNumberValue((double)f);
+                break;
+            case TypeCode.Double:
+                var d = (double)value;
+                if (double.IsNaN(d) || double.IsInfinity(d)) throw NotFinite(value);
+                writer.WriteNumberValue(d);
+                break;
             default:
                 // A ToString() fallback here would silently CORRUPT the saved query for any
                 // custom ValueEditorTemplate that boxes a non-scalar shape into Value/Value2
@@ -136,10 +196,13 @@ internal sealed class QueryValueJsonConverter : JsonConverter<object?>
                 // the consumer's ValueEditorTemplate before assigning Value/Value2.
                 throw new JsonException(
                     $"QueryRule value of type '{value.GetType()}' is not supported by the trim-safe " +
-                    "QueryValueJsonConverter (only string/bool/numeric/DateOnly/DateTime are). " +
+                    "QueryValueJsonConverter (only string/bool/numeric/enum/Guid/DateOnly/DateTime are). " +
                     "Normalize the value to one of those shapes before assigning it to Value/Value2.");
         }
     }
+
+    private static JsonException NotFinite(object value) => new(
+        $"QueryRule value '{value}' is not a finite number; NaN/Infinity cannot be persisted as JSON.");
 }
 
 /// <summary>The data type of a <see cref="QueryField"/>. Drives the default operator
