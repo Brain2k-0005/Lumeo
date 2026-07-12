@@ -8,7 +8,7 @@
     @* Non-modal: the banner is dismissible without trapping the page, so it
        uses role="region" rather than role="dialog". Only the preferences
        overlay below is a true aria-modal dialog. *@
-    <div role="region" aria-labelledby="@_titleId" aria-describedby="@_descId"
+    <div id="@_bannerId" role="region" aria-labelledby="@_titleId" aria-describedby="@_descId"
          class="@(Cx.Merge("lumeo-consent-banner fixed bottom-4 left-1/2 -translate-x-1/2 w-[calc(100%-2rem)] max-w-2xl z-50", AnimationClass, Class))"
          @attributes="AdditionalAttributes">
         <div class="rounded-lg border border-border/60 bg-popover text-popover-foreground shadow-xl p-5">
@@ -186,12 +186,19 @@
 
     private readonly string _titleId = LumeoIds.New("lumeo-consent-title");
     private readonly string _descId  = LumeoIds.New("lumeo-consent-desc");
+    private readonly string _bannerId = LumeoIds.New("lumeo-consent-banner");
     private readonly string _prefTitleId = LumeoIds.New("lumeo-consent-pref-title");
     private readonly string _prefDescId = LumeoIds.New("lumeo-consent-pref-desc");
     private readonly string _prefDialogId = LumeoIds.New("lumeo-consent-pref-dialog");
 
     private bool _ready;
     private bool _preferencesOpen;
+    // True once Interop.AttachOverlaySlideEnd has been wired for the currently
+    // mounted banner instance. Reset whenever the banner unmounts (decision
+    // made, or the preferences dialog covers it) so a later re-prompt — a
+    // fresh DOM node replaying the entrance animation — gets rewired instead
+    // of silently skipping the cleanup.
+    private bool _slideEndWired;
     // True while the preferences dialog has an active scroll-lock + focus-trap
     // installed. Driven from OnAfterRenderAsync so the JS calls run once the
     // dialog (or its absence) is in the DOM. SetupFocusTrap focuses the first
@@ -236,6 +243,29 @@
             }
             catch (JSDisconnectedException) { }
             catch (ObjectDisposedException) { }
+        }
+
+        // Held-fill guard: the banner's root carries AnimationClass (default
+        // animate-slide-in-from-bottom) with animation-fill-mode:both, which
+        // never resolves on its own — the same "Toast bug class" pattern fixed
+        // for Sheet/Drawer/Dialog/AlertDialog via Interop.AttachOverlaySlideEnd.
+        // Left unfixed, a transform-animating class stays live on the element
+        // forever, permanently establishing a containing block for any
+        // position:fixed descendant. Wire it once per mounted instance, and
+        // only for the slide/zoom families AttachOverlaySlideEnd actually
+        // targets — a consumer-supplied fade/none AnimationClass must not be
+        // touched, since the JS unconditionally stamps animation:none when it
+        // finds no matching animation, which would cut a fade-in short.
+        bool bannerVisible = _ready && !Consent.HasDecided && !_preferencesOpen;
+        if (bannerVisible && !_slideEndWired && IsSlideOrZoomAnimation(AnimationClass))
+        {
+            _slideEndWired = true;
+            try { await Interop.AttachOverlaySlideEnd(_bannerId); }
+            catch (JSDisconnectedException) { }
+        }
+        else if (!bannerVisible && _slideEndWired)
+        {
+            _slideEndWired = false;
         }
 
         // Drive the modal a11y primitives off the open/closed transition.
@@ -314,6 +344,15 @@
         }
         _preferencesOpen = true;
     }
+
+    // Mirrors the filter attachOverlaySlideEnd applies in components.js
+    // (animationName startsWith 'slide-in-from-' or === 'zoom-in') so we only
+    // wire the interop for classes it can actually resolve a fill-mode:both
+    // transform animation on.
+    private static bool IsSlideOrZoomAnimation(string? animationClass) =>
+        animationClass is not null
+        && (animationClass.Contains("slide-in-from-", StringComparison.Ordinal)
+            || animationClass.Contains("animate-zoom-in", StringComparison.Ordinal));
 
     /// <summary>Public entry point so a "Manage cookie preferences" link anywhere in the layout can reopen the dialog.</summary>
     public void ShowPreferences()
