@@ -12,7 +12,8 @@ namespace Lumeo.Cli;
 /// </summary>
 internal static class NamespaceRewriter
 {
-    public static string Rewrite(string content, string filePath, string targetNamespace)
+    public static string Rewrite(string content, string filePath, string targetNamespace,
+        IReadOnlyCollection<string>? siblingComponentNames = null)
     {
         if (filePath.EndsWith(".razor", StringComparison.OrdinalIgnoreCase))
         {
@@ -25,6 +26,33 @@ internal static class NamespaceRewriter
             content = Regex.Replace(content, @"^@namespace\s+Lumeo(\.[A-Za-z0-9_.]*)?(?=\r?$)",
                 m => $"@namespace {targetNamespace}{m.Groups[1].Value}",
                 RegexOptions.Multiline);
+
+            // PR #357 round-9 (finding 2): a bare tag reference to a SIBLING component in the SAME
+            // vendored batch (e.g. ToastProvider.razor's own `<Toast>`/`<ToastViewport>` markup) is
+            // resolved by Razor's TagHelper matching against every namespace the file's `@using`
+            // chain makes visible — including the consumer's own project-root `_Imports.razor`. The
+            // officially templated app keeps `@using Lumeo` there (so a fresh, nothing-vendored-yet
+            // project can use the PACKAGE's components unqualified), which is ALSO still in scope
+            // after `lumeo add toast` vendors Acme.Ui.Toast/ToastProvider/ToastViewport — two
+            // TagHelperDescriptors now match the exact same short tag name, and Razor doesn't
+            // reject that as "ambiguous": it UNIONS both descriptors' parameters, surfacing as
+            // bogus RZ10009 "parameter used twice" errors (and, for parameters whose TYPE itself
+            // collides, an outright type mismatch) — the officially documented consumer setup fails
+            // to build the instant Toast is added. Fully-qualifying every sibling tag reference
+            // inside the vendored files themselves closes that regardless of whatever else is (or
+            // isn't) in the consumer's own `_Imports.razor` — the vendored source no longer relies
+            // on implicit same-namespace tag visibility at all. Scoped to the exact sibling names
+            // vendored in THIS batch (never a blanket rewrite) so it can't touch an unrelated
+            // same-named identifier (a local variable, a BCL/record type, a string literal — none
+            // of those are immediately preceded by `<`/`</`, the only positions matched below).
+            if (siblingComponentNames is { Count: > 0 })
+            {
+                foreach (var name in siblingComponentNames)
+                {
+                    content = Regex.Replace(content, $@"(?<=<)(/?){Regex.Escape(name)}\b",
+                        $"$1{targetNamespace}.{name}");
+                }
+            }
         }
         else if (filePath.EndsWith(".cs", StringComparison.OrdinalIgnoreCase))
         {

@@ -429,8 +429,25 @@ internal static class Commands
     // compile without any rewriting: relative references (Services.X), shared cascading types
     // (FormField.FormFieldContext) and inter-component references all bind under Lumeo. Rewriting them
     // to the consumer namespace is exactly what broke those. Normal (NuGet) mode still rebrands.
-    private static string MaybeRewrite(string content, string relFile, LumeoConfig cfg)
-        => cfg.Standalone ? content : NamespaceRewriter.Rewrite(content, relFile, cfg.Namespace);
+    // `siblingComponentNames` (PR #357 round-9, finding 2) — the OTHER component names vendored in
+    // the SAME batch (typically a single RegistryEntry.Files group) — is threaded through to
+    // NamespaceRewriter so bare tag references between them (e.g. ToastProvider.razor's own
+    // `<Toast>`) get fully qualified; see that method's doc comment for why.
+    private static string MaybeRewrite(string content, string relFile, LumeoConfig cfg,
+        IReadOnlyCollection<string>? siblingComponentNames = null)
+        => cfg.Standalone ? content : NamespaceRewriter.Rewrite(content, relFile, cfg.Namespace, siblingComponentNames);
+
+    // Extracts the component CLASS names (not file paths) of every `.razor` file in a vendoring
+    // batch — e.g. "UI/Toast/ToastProvider.razor" -> "ToastProvider" — for NamespaceRewriter's
+    // sibling-tag qualification. `.razor.cs` code-behind files are excluded (their class name
+    // matches the SAME component, so including them would just re-add a duplicate string; C#
+    // same-namespace resolution already prefers the vendored partial class there regardless — see
+    // NamespaceRewriter's doc comment).
+    private static List<string> RazorComponentNames(IEnumerable<string> files) =>
+        files.Where(f => f.EndsWith(".razor", StringComparison.OrdinalIgnoreCase))
+             .Select(f => Path.GetFileNameWithoutExtension(f))
+             .Distinct(StringComparer.Ordinal)
+             .ToList();
 
     // Vendors the full shared Lumeo runtime (RuntimeManifest.Files) into
     // <componentsPath>/_LumeoRuntime/ VERBATIM — keeping the Lumeo namespace — so the
@@ -1101,6 +1118,10 @@ internal static class Commands
             var folder = Path.Combine(outRoot, item.Name);
             if (writeAllowed) Directory.CreateDirectory(folder);
             var recordedFiles = new List<string>();
+            // PR #357 round-9 (finding 2): every OTHER .razor component vendored alongside this
+            // one — e.g. Toast's own ToastProvider/ToastViewport/… — so MaybeRewrite can fully
+            // qualify bare sibling tag references. See NamespaceRewriter's doc comment.
+            var siblingComponentNames = RazorComponentNames(item.Files);
 
             foreach (var relFile in item.Files)
             {
@@ -1117,7 +1138,7 @@ internal static class Commands
                 if (opts.Diff || opts.View)
                 {
                     var upstream = await RegistryLoader.GetFileAsync(relFile, opts.Local, cfg.Registry, itemPackage);
-                    upstream = MaybeRewrite(upstream, relFile, cfg);
+                    upstream = MaybeRewrite(upstream, relFile, cfg, siblingComponentNames);
 
                     if (File.Exists(dest))
                     {
@@ -1167,7 +1188,7 @@ internal static class Commands
                     if (!forceAll)
                     {
                         var upstream = await RegistryLoader.GetFileAsync(relFile, opts.Local, cfg.Registry, itemPackage);
-                        upstream = MaybeRewrite(upstream, relFile, cfg);
+                        upstream = MaybeRewrite(upstream, relFile, cfg, siblingComponentNames);
 
                         char? choice = null;
                         while (choice is null)
@@ -1207,7 +1228,7 @@ internal static class Commands
                     continue;
                 }
                 var content = await RegistryLoader.GetFileAsync(relFile, opts.Local, cfg.Registry, itemPackage);
-                content = MaybeRewrite(content, relFile, cfg);
+                content = MaybeRewrite(content, relFile, cfg, siblingComponentNames);
                 Directory.CreateDirectory(Path.GetDirectoryName(dest)!);
                 await File.WriteAllTextAsync(dest, content, new UTF8Encoding(false));
                 Console.WriteLine(Ansi.Green("  +   ") + displayPath);
@@ -1429,6 +1450,8 @@ internal static class Commands
             // Satellite components live under src/<package>/, not src/Lumeo/ — resolve the
             // owning package so GetFileAsync fetches from the right root (else 404/crash).
             var entryPackage = string.IsNullOrEmpty(entry.NugetPackage) ? "Lumeo" : entry.NugetPackage;
+            // PR #357 round-9 (finding 2): see the Add loop's identical comment above.
+            var siblingComponentNames = RazorComponentNames(entry.Files);
             foreach (var relFile in entry.Files)
             {
                 var dest = Paths.ToDestPath(outRoot, relFile);
@@ -1442,7 +1465,7 @@ internal static class Commands
 
                 var localContent = await File.ReadAllTextAsync(dest);
                 var upstream = await RegistryLoader.GetFileAsync(relFile, local, cfg.Registry, entryPackage);
-                upstream = MaybeRewrite(upstream, relFile, cfg);
+                upstream = MaybeRewrite(upstream, relFile, cfg, siblingComponentNames);
 
                 if (Diffing.Normalize(localContent) == Diffing.Normalize(upstream))
                 {
@@ -1704,6 +1727,8 @@ internal static class Commands
 
         var root = Path.Combine(Environment.CurrentDirectory, cfg.ComponentsPath);
         var drift = 0; var missing = 0; var same = 0;
+        // PR #357 round-9 (finding 2): see the Add loop's identical comment above.
+        var siblingComponentNames = RazorComponentNames(entry.Files);
         foreach (var relFile in entry.Files)
         {
             var dest = Paths.ToDestPath(root, relFile);
@@ -1716,7 +1741,7 @@ internal static class Commands
             var local0 = await File.ReadAllTextAsync(dest);
             var upstream = await RegistryLoader.GetFileAsync(relFile, local, cfg.Registry,
                 string.IsNullOrEmpty(entry.NugetPackage) ? "Lumeo" : entry.NugetPackage);
-            upstream = MaybeRewrite(upstream, relFile, cfg);
+            upstream = MaybeRewrite(upstream, relFile, cfg, siblingComponentNames);
 
             if (Diffing.Normalize(local0) == Diffing.Normalize(upstream)) same++;
             else
@@ -1758,6 +1783,8 @@ internal static class Commands
             Console.Error.WriteLine(Ansi.Dim("Depends on: ") + string.Join(", ", entry.Dependencies));
         Console.Error.WriteLine();
 
+        // PR #357 round-9 (finding 2): see the Add loop's identical comment above.
+        var siblingComponentNames = RazorComponentNames(entry.Files);
         foreach (var relFile in entry.Files)
         {
             // --path overrides the default destination mapping purely for the banner.
@@ -1780,7 +1807,7 @@ internal static class Commands
             // Only rewrite namespace if a config exists and the project isn't standalone (standalone
             // keeps the Lumeo namespace) — so we show what `add` WOULD produce.
             if (cfg is not null && !cfg.Standalone)
-                content = NamespaceRewriter.Rewrite(content, relFile, targetNamespace);
+                content = NamespaceRewriter.Rewrite(content, relFile, targetNamespace, siblingComponentNames);
             Console.WriteLine(content);
             Console.WriteLine();
         }

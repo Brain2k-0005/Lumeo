@@ -295,6 +295,27 @@ public static class PerComponentEnricher
     /// (rephrase the comment) instead of teaching the generator to distrust
     /// every comment.
     /// </summary>
+    // PR #357 round-9 (finding 5): component names that collide with a common BCL generic
+    // collection/type name — used AS that BCL type, e.g. `new List<string>()` — are not real
+    // mentions either, mirroring the `.Select(...)` LINQ-call exclusion below. The regenerated
+    // `list.json` picked up a Toast invariant test SOLELY because it declares `new List<string>()`:
+    // the word "List" is immediately followed by `<` (a generic type-parameter list), not `(`, so
+    // the LINQ-call filter (which only recognizes a FOLLOWING `(`) never applied to it. Scoped to
+    // names actually used generically elsewhere in this codebase's test suite, not an exhaustive
+    // BCL catalogue — extend this set if a future component name collides with another one.
+    private static readonly HashSet<string> BclGenericTypeNames = new(StringComparer.Ordinal)
+    {
+        "List", "IList", "IReadOnlyList", "ICollection", "IReadOnlyCollection", "IEnumerable",
+        "IEnumerator", "Dictionary", "IDictionary", "IReadOnlyDictionary", "HashSet", "ISet",
+        "Queue", "Stack", "SortedList", "SortedSet", "SortedDictionary", "LinkedList",
+        "LinkedListNode", "KeyValuePair", "Nullable", "Task", "ValueTask", "Func", "Action",
+        "Lazy", "Tuple", "ValueTuple", "ReadOnlyCollection", "ObservableCollection",
+        "ConcurrentDictionary", "ConcurrentQueue", "ConcurrentBag", "ConcurrentStack",
+        "ImmutableList", "ImmutableArray", "ImmutableDictionary", "ImmutableHashSet",
+        "ImmutableSortedSet", "ImmutableSortedDictionary", "ImmutableQueue", "ImmutableStack",
+        "ArraySegment", "Memory", "ReadOnlyMemory", "Span", "ReadOnlySpan", "WeakReference",
+    };
+
     private static bool HasRealComponentMention(string text, Regex nameWordRegex)
     {
         foreach (Match m in nameWordRegex.Matches(text))
@@ -304,6 +325,8 @@ public static class PerComponentEnricher
                 && (m.Index < 3 || !char.IsLetterOrDigit(text[m.Index - 3]));
             var followedByOpenParen = m.Index + m.Length < text.Length && text[m.Index + m.Length] == '(';
             if (precededByDot && !precededByLDot && followedByOpenParen) continue; // e.g. `.Select(...)` LINQ call
+            var followedByOpenAngle = m.Index + m.Length < text.Length && text[m.Index + m.Length] == '<';
+            if (!precededByLDot && followedByOpenAngle && BclGenericTypeNames.Contains(m.Value)) continue; // e.g. `List<string>()` BCL generic type
             return true;
         }
         return false;

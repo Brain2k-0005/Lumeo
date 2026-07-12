@@ -292,27 +292,39 @@ public sealed class CliStandaloneE2ETests : IDisposable
             "<Project Sdk=\"Microsoft.NET.Sdk.Razor\"><PropertyGroup><TargetFramework>net10.0</TargetFramework>"
           + "<Nullable>enable</Nullable><ImplicitUsings>enable</ImplicitUsings></PropertyGroup><ItemGroup>"
           + "<PackageReference Include=\"Microsoft.AspNetCore.Components.Web\" Version=\"10.0.6\" />"
+          + "<PackageReference Include=\"Microsoft.AspNetCore.Components.WebAssembly\" Version=\"10.0.6\" />"
           + $"<PackageReference Include=\"Lumeo\" Version=\"{lumeoVersion}\" /></ItemGroup></Project>");
 
-        // The official template's _Imports.razor, MINUS its blanket `@using Lumeo` — that using
-        // is there so a fresh (nothing-vendored-yet) app can use Lumeo's PACKAGE components
-        // unqualified; once `lumeo add toast` vendors Acme.Ui.Toast/ToastProvider/ToastViewport
-        // (same short names, same file's implicit-same-namespace visibility), keeping `@using
-        // Lumeo` ALSO in scope makes every `<Toast>`/`<ToastProvider>`/`<ToastViewport>` tag
-        // ambiguous between the vendored type and the package's — Razor's tag-helper matching
-        // resolves that not with an "ambiguous reference" error but by unioning both descriptors'
-        // parameters, surfacing as bogus RZ10009 "parameter used twice" errors instead. `lumeo
-        // add`'s own docs never claim `@using Lumeo` is required for the vendoring path (`init`
-        // doesn't touch _Imports.razor outside `--standalone`), and `Lumeo.Services` (still
-        // needed for ToastService/ToastOptions) has no such collision since nothing is vendored
-        // under that sub-namespace.
-        File.WriteAllText(Path.Combine(_proj, "_Imports.razor"),
-            "@using Microsoft.AspNetCore.Components.Forms\n"
-          + "@using Microsoft.AspNetCore.Components.Routing\n"
-          + "@using Microsoft.AspNetCore.Components.Web\n"
-          + "@using Microsoft.AspNetCore.Components.Web.Virtualization\n"
-          + "@using Microsoft.JSInterop\n"
-          + "@using Lumeo.Services\n");
+        // PR #357 round-9 (finding 2): the template's REAL, live `_Imports.razor` — read from disk
+        // and used VERBATIM (only the `MyApp` project-name token substituted, exactly as `dotnet
+        // new lumeo-app` itself would do) — not a hand-curated copy that conveniently drops
+        // whatever line happens to be inconvenient. The earlier version of this test wrote its own
+        // _Imports.razor OMITTING `@using Lumeo` specifically because keeping it (as the template
+        // actually does) triggers RZ10009: once `lumeo add toast` vendors Acme.Ui.Toast/
+        // ToastProvider/ToastViewport (same short names as the package's), `@using Lumeo` ALSO
+        // being in scope makes every `<Toast>`/`<ToastProvider>`/`<ToastViewport>` tag ambiguous —
+        // Razor unions both TagHelperDescriptors' parameters instead of rejecting the collision,
+        // surfacing as bogus "parameter used twice" errors. That hand-curated omission made this
+        // gate pass while `dotnet new lumeo-app` + `lumeo add toast` remained broken for real users
+        // — reading the template file directly means ANY future template import change is
+        // automatically exercised here too, with no hand-sync to keep current. The actual fix
+        // (PR #357 round-9, NamespaceRewriter) fully-qualifies vendored components' own sibling tag
+        // references, so the vendored source compiles regardless of what else is in scope.
+        var templateImportsPath = Path.Combine(_repoRoot, "templates", "Lumeo.Templates", "templates", "lumeo-app", "_Imports.razor");
+        Assert.True(File.Exists(templateImportsPath), $"Official app template _Imports.razor not found at {templateImportsPath}.");
+        var templateImports = File.ReadAllText(templateImportsPath).Replace("MyApp", "App");
+        File.WriteAllText(Path.Combine(_proj, "_Imports.razor"), templateImports);
+
+        // The template's root-level pages (Home.razor, Routes.razor, …) and Layout/MainLayout.razor
+        // are what actually populate the bare `App`/`App.Layout` namespaces the imports above
+        // reference (`@using MyApp` / `@using MyApp.Layout`) — without at least one type in each,
+        // those two usings would fail to resolve (CS0246) in this minimal reproduction, which never
+        // scaffolds the full app. Minimal stand-ins, not full page content: irrelevant to what this
+        // test is actually proving (the vendored Toast source compiling).
+        File.WriteAllText(Path.Combine(_proj, "Home.razor"), "<h1>Home</h1>\n");
+        Directory.CreateDirectory(Path.Combine(_proj, "Layout"));
+        File.WriteAllText(Path.Combine(_proj, "Layout", "MainLayout.razor"),
+            "@inherits LayoutComponentBase\n<div>@Body</div>\n");
 
         Assert.Equal(0, RunCli("init", "--yes", "--namespace", "Acme.Ui", "--path", "Components/Ui", "--no-assets").Exit);
         var add = RunCli("add", "toast", "--local", "--yes", "--force");
