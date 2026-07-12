@@ -1,0 +1,105 @@
+name: A11y Audit
+
+# axe-core WCAG A/AA sweep of every /components/<slug> docs route
+# (scripts/a11y-audit/run.mjs), gated against a committed baseline
+# (scripts/a11y-audit/baseline.json) so the fix backlog can only shrink.
+#
+# Weekly + on-demand only — NOT per-PR. A full 164-route Puppeteer crawl
+# (dotnet build + boot + browser automation) is too slow for the PR critical
+# path; see scripts/a11y-audit/README.md for the reasoning. Wire a scoped,
+# changed-components-only variant into CI later if the runtime earns it.
+
+on:
+  schedule:
+    # Mondays 06:00 UTC.
+    - cron: '0 6 * * 1'
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      # Tailwind builds the CSS bundles consumed by the Release build — same
+      # step as e2e.yml so the audited pages are styled identically to what a
+      # user actually sees (unstyled markup can mask/mimic real a11y issues).
+      - name: Build CSS bundles
+        run: |
+          npm install --no-audit --no-fund
+          npm run build:css
+          cd docs/Lumeo.Docs
+          npm install --no-audit --no-fund
+          npm run css:build
+
+      - name: Build docs site
+        run: dotnet build docs/Lumeo.Docs/Lumeo.Docs.csproj -c Release --nologo
+
+      - name: Start docs server
+        run: |
+          cd docs/Lumeo.Docs
+          nohup dotnet run -c Release --no-launch-profile --no-build --urls http://localhost:5290 > docs-server.log 2>&1 &
+          for i in $(seq 1 60); do
+            if curl -fsS http://localhost:5290 > /dev/null; then
+              echo "docs server ready (attempt $i)"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "docs server failed to start within 120s"
+          tail -n 200 docs-server.log
+          exit 1
+
+      - name: Install a11y-audit deps
+        working-directory: scripts/a11y-audit
+        run: npm install --no-audit --no-fund
+
+      - name: Install Chromium deps for Puppeteer
+        # Same package list as deploy-cloudflare.yml / deploy-preview.yml's
+        # "Install Chromium deps for Puppeteer" step: ubuntu-latest ships most
+        # of these, but a few (libxkbcommon0, libgbm1) are missing by default,
+        # and without them `puppeteer.launch()` in run.mjs fails at browser
+        # launch before any route is audited.
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libatk-bridge2.0-0 libatk1.0-0 libcups2 \
+            libdrm2 libxkbcommon0 libxcomposite1 libxdamage1 libxfixes3 \
+            libxrandr2 libgbm1 libasound2t64
+
+      - name: Run axe-core sweep
+        working-directory: scripts/a11y-audit
+        run: node run.mjs --base-url http://localhost:5290
+
+      - name: Upload report artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: a11y-audit-reports
+          path: scripts/a11y-audit/reports/
+          retention-days: 90
+
+      - name: Check against baseline
+        working-directory: scripts/a11y-audit
+        run: node check-baseline.mjs
+
+      - name: Upload docs server log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: docs-server-log
+          path: docs/Lumeo.Docs/docs-server.log
+          if-no-files-found: ignore

@@ -466,6 +466,11 @@ public static class ComponentsApiEmitter
     {
         "Enter", "Escape", "Tab", " ", "Spacebar", "ArrowUp", "ArrowDown", "ArrowLeft",
         "ArrowRight", "Home", "End", "PageUp", "PageDown", "Delete", "Backspace", "ContextMenu", "F10",
+        // F2 is a real editing key here — DataGridCell enters edit mode on `e.Key == "F2"`
+        // (Excel-style). Safe to list now that key detection is comparison-context-aware
+        // below: a numeric `.ToString("F2", ...)` format specifier (e.g. Tour.razor) is NOT
+        // a `.Key`/`case`/switch-arm comparison, so it is never miscounted as a handled key.
+        "F2",
     };
 
     // A key literal only counts when it sits in an actual key-COMPARISON context:
