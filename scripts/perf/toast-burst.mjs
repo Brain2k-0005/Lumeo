@@ -25,7 +25,13 @@ const QUIET_WINDOW_MS = 150;
 const TOAST_COUNT = 5;
 
 async function measureOnce(page) {
-  await page.goto(`${BASE_URL}/e2e/perf-bench`, { waitUntil: 'networkidle' });
+  // Pass TOAST_COUNT through as the `toasts` query param PerfBench.razor reads
+  // (SupplyParameterFromQuery(Name = "toasts")) — without it, FireToastBurst
+  // silently falls back to its own default of 5 regardless of what TOAST_COUNT
+  // above says, so the JSON summary's toastCount would no longer match how many
+  // toasts were actually fired if TOAST_COUNT is ever changed (e.g. to re-test
+  // 6/10/100 once the eviction-crash bug documented below is fixed).
+  await page.goto(`${BASE_URL}/e2e/perf-bench?toasts=${TOAST_COUNT}`, { waitUntil: 'networkidle' });
   // Wait past PerfBench's background 10k-row generation (OnInitializedAsync)
   // so it isn't still occupying the single-threaded WASM main thread when the
   // toast burst fires — that would inject unrelated multi-second noise into
