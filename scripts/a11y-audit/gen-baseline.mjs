@@ -34,10 +34,26 @@ if (!existsSync(reportsDir)) {
 
 const reportFiles = readdirSync(reportsDir).filter(f =>
     f.endsWith('.json') && f !== 'summary.json' && f !== 'axe-findings.json');
+
+// Same source-of-truth check-baseline.mjs applies: prefer summary.json's
+// components (written atomically by run.mjs at the end of THIS sweep) over
+// "which reports/<slug>.json files happen to exist on disk". run.mjs does
+// not clear reportsDir before writing, so a component rename/removal or an
+// aborted `--slug` run can leave stale per-component files behind; without
+// this filter, baseline.json would silently re-absorb findings for routes
+// the latest sweep never actually audited. Falls back to file presence when
+// summary.json is absent (e.g. a hand-built reports/ fixture).
+const summaryPath = join(reportsDir, 'summary.json');
+const reportedSlugs = existsSync(summaryPath)
+    ? new Set(Object.keys(JSON.parse(readFileSync(summaryPath, 'utf8')).components ?? {}))
+    : new Set(reportFiles.map(f => f.replace(/\.json$/, '')));
+
 const entries = [];
 const findings = []; // full detail for axe-findings.json
 
 for (const file of reportFiles) {
+    const slug = file.replace(/\.json$/, '');
+    if (!reportedSlugs.has(slug)) continue;
     const report = JSON.parse(readFileSync(join(reportsDir, file), 'utf8'));
     for (const v of report.violations) {
         // Match against target selector + raw outerHTML, not target alone — see

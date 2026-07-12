@@ -293,6 +293,13 @@ async function main() {
             const componentResult = { route, steps: [] };
             let focusOk = false;
             try {
+                // Clear the accumulated speech log right before the action that
+                // should trigger new speech — lastSpokenPhrase() below is just
+                // spokenPhraseLog().at(-1), so without this a silent/delayed
+                // announcement leaves the PREVIOUS utterance (page load, or the
+                // prior component's last step) sitting there, which a keyword
+                // match can accidentally satisfy as a false PASS.
+                await nvda.clearSpokenPhraseLog();
                 focusOk = await page.evaluate((sel) => {
                     const el = document.querySelector(sel);
                     if (!el) return false;
@@ -311,6 +318,10 @@ async function main() {
 
             for (const step of component.steps) {
                 if (step.action === "press") {
+                    // Same reasoning as the focus clear above: this step's score
+                    // must reflect speech caused by THIS press, not whatever the
+                    // previous step (or the focus above) last spoke.
+                    await nvda.clearSpokenPhraseLog();
                     await nvda.press(step.key);
                 }
                 await sleep(600);

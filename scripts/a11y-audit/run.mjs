@@ -171,7 +171,18 @@ const summary = {
 async function auditOne(page, slug) {
     const route = `/components/${slug}`;
     const t0 = Date.now();
-    await page.goto(baseUrl + route, { waitUntil: 'load', timeout: 60_000 });
+    const response = await page.goto(baseUrl + route, { waitUntil: 'load', timeout: 60_000 });
+    // page.goto() resolves for ANY HTTP response, including 404/500 — a
+    // broken or missing docs route would otherwise still get waited on,
+    // audited, and written to reports/<slug>.json as if the component was
+    // genuinely covered, letting a routing regression satisfy the coverage
+    // check (registry.json vs summary.components in check-baseline.mjs)
+    // without ever auditing the real component markup. Thrown here so the
+    // caller's existing try/catch records it in summary.errors, the same
+    // path check-baseline.mjs already treats as "never actually audited".
+    if (!response || !response.ok()) {
+        throw new Error(`HTTP ${response ? response.status() : '(no response)'} for ${route}`);
+    }
     try {
         await page.waitForFunction(
             () => document.documentElement.dataset.blazorReady === 'true',
