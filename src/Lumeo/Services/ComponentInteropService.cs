@@ -148,7 +148,7 @@ public sealed class ComponentInteropService : IComponentInteropService
         catch (Microsoft.JSInterop.JSDisconnectedException) { }
     }
 
-    public async ValueTask AttachOverlayExitEnd<T>(string elementId, DotNetObjectReference<T> dotNetRef) where T : class
+    public async ValueTask AttachOverlayExitEnd<[System.Diagnostics.CodeAnalysis.DynamicallyAccessedMembers(System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.PublicMethods)] T>(string elementId, DotNetObjectReference<T> dotNetRef) where T : class
     {
         var module = await GetModuleAsync();
         try
@@ -1373,7 +1373,7 @@ public sealed class ComponentInteropService : IComponentInteropService
         catch (JSDisconnectedException) { }
     }
 
-    public async ValueTask AiObserveScrollButton<T>(string elementId, DotNetObjectReference<T> dotNetRef) where T : class
+    public async ValueTask AiObserveScrollButton<[System.Diagnostics.CodeAnalysis.DynamicallyAccessedMembers(System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.PublicMethods)] T>(string elementId, DotNetObjectReference<T> dotNetRef) where T : class
     {
         try
         {
@@ -1616,7 +1616,7 @@ public sealed class ComponentInteropService : IComponentInteropService
 
     // --- Rich Text Editor (TipTap) ---
 
-    public async ValueTask<string> RichTextInitAsync<T>(
+    public async ValueTask<string> RichTextInitAsync<[System.Diagnostics.CodeAnalysis.DynamicallyAccessedMembers(System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.PublicMethods)] T>(
         Microsoft.AspNetCore.Components.ElementReference elementRef,
         DotNetObjectReference<T> dotNetRef,
         object options)
@@ -1657,7 +1657,7 @@ public sealed class ComponentInteropService : IComponentInteropService
         return _signaturePadModule;
     }
 
-    public async ValueTask SignaturePadInit<T>(string elementId, object options, DotNetObjectReference<T> dotNetRef) where T : class
+    public async ValueTask SignaturePadInit<[System.Diagnostics.CodeAnalysis.DynamicallyAccessedMembers(System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.PublicMethods)] T>(string elementId, object options, DotNetObjectReference<T> dotNetRef) where T : class
     {
         try
         {

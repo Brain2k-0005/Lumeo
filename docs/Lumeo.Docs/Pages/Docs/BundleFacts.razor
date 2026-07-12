@@ -378,20 +378,25 @@
                                 the .NET IL linker (trimmer) can remove types, methods, and fields that are unreachable from
                                 your entry points — but only for assemblies that opt in with an
                                 <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">IsTrimmable</code>
-                                marker. <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">Lumeo.dll</code>
-                                does not currently set that flag, so the linker treats it as one unreachable-free unit and
-                                keeps it whole: a published app that uses a single core component ships the exact same
-                                672&nbsp;KB <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">Lumeo.dll.br</code>
-                                as one that uses all 144. We built both and compared SHA-256 hashes of the published DLL —
-                                identical.
+                                marker. As of <strong>4.3.0</strong> (<Lumeo.Link Href="https://github.com/Brain2k-0005/Lumeo/issues/354" Target="_blank" Class="underline">#354</Lumeo.Link>),
+                                <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">Lumeo.dll</code>
+                                sets that flag: a published app that uses one core component now ships a genuinely smaller
+                                <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">Lumeo.dll.br</code>
+                                than one that uses many. The library's own reflection/dynamic-typing call sites (DataAnnotations
+                                validation, the QueryBuilder JSON tree, <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">DynamicComponent</code>-based
+                                overlays, JS-interop callback targets) are annotated
+                                (<code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">[DynamicallyAccessedMembers]</code> /
+                                <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">[RequiresUnreferencedCode]</code>) or replaced with
+                                source-generated JSON (<code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">JsonSerializerContext</code>),
+                                so the shrink is real trimming, not a broken build — see "How was this measured?" below.
                             </Lumeo.Text>
                             <Lumeo.Text Size="sm" Color="muted" Leading="relaxed">
-                                What trimming <em>does</em> remove is whole satellite assemblies you never reference: skip
+                                Trimming also still removes whole satellite assemblies you never reference: skip
                                 <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">Lumeo.Charts</code>,
                                 <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">Lumeo.DataGrid</code>,
                                 or any other satellite package and the linker drops that assembly entirely — it costs you
-                                0&nbsp;KB. "Install only what you use" is accurate at the package level; it doesn't (yet)
-                                apply inside the core assembly.
+                                0&nbsp;KB. "Install only what you use" is now accurate both at the package level and, for
+                                the core, at the per-component level.
                             </Lumeo.Text>
                         </Stack>
                     </AccordionContent>
@@ -400,19 +405,33 @@
                 <AccordionItem Value="how-measured">
                     <AccordionTrigger Class="px-5">How was this measured?</AccordionTrigger>
                     <AccordionContent Class="px-5">
-                        <Lumeo.Text Size="sm" Color="muted" Leading="relaxed">
-                            A reference Blazor WASM app that imports every Lumeo core component (no satellite packages)
-                            was published with <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">dotnet publish -c Release</code>
-                            against .NET 10. The <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">_framework/</code>
-                            folder in the publish output was inspected; the
-                            <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">Lumeo.dll.br</code>
-                            file was 687,723 bytes (671.6 KiB, rounded to 672 KB). Measurement was taken on 2026-07-11
-                            against 4.2.0, and reproduced with three independent methods that agreed. A one-component app
-                            was also published and produced a byte-identical <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">Lumeo.dll.br</code>
-                            — see "What does WASM linker trimming do?" above.
-                            .NET runtime DLLs (~3–4 MB brotli total) are excluded — they are shared across all Blazor apps
-                            and cached aggressively by the browser.
-                        </Lumeo.Text>
+                        <Stack Gap="3">
+                            <Lumeo.Text Size="sm" Color="muted" Leading="relaxed">
+                                <strong>Pre-#354 baseline (2026-07-11, 4.2.0):</strong> a reference Blazor WASM app
+                                referencing every core component, and a second app referencing only
+                                <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">&lt;Button /&gt;</code>,
+                                were each published with
+                                <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">dotnet publish -c Release</code>
+                                against .NET 10. Both produced a byte-identical (SHA-256-verified)
+                                <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">Lumeo.dll.br</code>
+                                of 687,723 bytes (671.6 KiB) — the core assembly wasn't trimmable yet, so usage didn't
+                                matter.
+                            </Lumeo.Text>
+                            <Lumeo.Text Size="sm" Color="muted" Leading="relaxed">
+                                <strong>Post-#354 measurement (2026-07-12, 4.3.0):</strong> the same
+                                one-component (<code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">&lt;Button /&gt;</code>-only,
+                                <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">samples/CoreTrimDemo</code>
+                                in the repo) reference app was rebuilt against the now-<code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">IsTrimmable</code>
+                                core and republished the same way. Its <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">Lumeo.dll.br</code>
+                                measured 116,338 bytes (113.6 KiB) — an 83% reduction from the pre-#354 baseline for
+                                this usage shape. A headless-browser load check confirmed the trimmed publish still
+                                renders correctly (no console or page errors). An app using most or all 144 core
+                                components will still approach the pre-#354 ceiling, since that shape genuinely
+                                reaches most of the assembly — trimming reduces cost with usage, it doesn't create free
+                                capacity. .NET runtime DLLs (~3–4&nbsp;MB brotli total) are excluded from every figure
+                                above; they're shared across all Blazor apps and cached aggressively by the browser.
+                            </Lumeo.Text>
+                        </Stack>
                     </AccordionContent>
                 </AccordionItem>
             </Accordion>

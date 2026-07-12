@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Linq.Expressions;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -5,10 +6,70 @@ using System.Text.Json.Serialization;
 namespace Lumeo;
 
 /// <summary>Boolean combinator for a <see cref="QueryGroup"/>.</summary>
+[JsonConverter(typeof(QueryCombinatorJsonConverter))]
 public enum QueryCombinator
 {
     And,
     Or
+}
+
+// Hand-written string<->enum converter (kept trivial and reflection-free) rather than the
+// framework JsonStringEnumConverter, whose non-generic form isn't guaranteed trim-clean and
+// whose generic form (JsonStringEnumConverter<TEnum>) isn't available on the net8.0 TFM this
+// assembly also targets. Enum.TryParse<TEnum>/.ToString() with a closed, compile-time-known
+// TEnum are trim-safe (#354).
+internal sealed class QueryCombinatorJsonConverter : JsonConverter<QueryCombinator>
+{
+    public override QueryCombinator Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+        => Enum.TryParse<QueryCombinator>(reader.GetString(), ignoreCase: true, out var value) ? value : QueryCombinator.And;
+
+    public override void Write(Utf8JsonWriter writer, QueryCombinator value, JsonSerializerOptions options)
+        => writer.WriteStringValue(value.ToString());
+}
+
+// QueryRule.Value/Value2 are declared `object?` — a genuinely open slot a consumer can box
+// anything into. Relying on System.Text.Json's built-in polymorphic `object` resolution (even
+// with a reflection-based resolver chained after the source-gen context) proved unreliable in
+// this exact combination (source-gen context + List<T> of a polymorphic base + an `object`
+// member): it kept resolving strictly against the context's own closed type list regardless of
+// what was chained after it. Handling the (small, well-known) set of leaf value shapes
+// explicitly — the same string/double/bool the built-in editors produce, plus every other
+// framework numeric type a consumer might reasonably box in directly — sidesteps type-info
+// resolution for `object` entirely: no reflection, no chain, no resolver ambiguity (#354).
+internal sealed class QueryValueJsonConverter : JsonConverter<object?>
+{
+    public override object? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) =>
+        reader.TokenType switch
+        {
+            JsonTokenType.Null => null,
+            JsonTokenType.True => true,
+            JsonTokenType.False => false,
+            JsonTokenType.String => reader.GetString(),
+            JsonTokenType.Number => reader.GetDouble(),
+            _ => throw new JsonException($"Unsupported QueryRule value token '{reader.TokenType}'."),
+        };
+
+    public override void Write(Utf8JsonWriter writer, object? value, JsonSerializerOptions options)
+    {
+        switch (value)
+        {
+            case null: writer.WriteNullValue(); break;
+            case string s: writer.WriteStringValue(s); break;
+            case bool b: writer.WriteBooleanValue(b); break;
+            case double d: writer.WriteNumberValue(d); break;
+            case float f: writer.WriteNumberValue(f); break;
+            case int i: writer.WriteNumberValue(i); break;
+            case long l: writer.WriteNumberValue(l); break;
+            case short sh: writer.WriteNumberValue(sh); break;
+            case decimal m: writer.WriteNumberValue(m); break;
+            default:
+                // Outside the framework scalar types above, fall back to ToString() — the same
+                // coercion ConvertValue (the LINQ-expression side of this same value) already
+                // applies to anything that isn't one of its recognized target types.
+                writer.WriteStringValue(value.ToString());
+                break;
+        }
+    }
 }
 
 /// <summary>The data type of a <see cref="QueryField"/>. Drives the default operator
@@ -67,16 +128,18 @@ public abstract class QueryNode
 public sealed class QueryRule : QueryNode
 {
     /// <summary>The <see cref="QueryField.Name"/> this rule targets.</summary>
-    public string Field { get; set; } = "";
+    [JsonPropertyName("field")] public string Field { get; set; } = "";
 
     /// <summary>One of the field's allowed operator keys.</summary>
-    public string Operator { get; set; } = "";
+    [JsonPropertyName("operator")] public string Operator { get; set; } = "";
 
     /// <summary>The comparison value. Type depends on the field; for "between"-style
     /// operators this holds the lower bound and <see cref="Value2"/> holds the upper.</summary>
+    [JsonPropertyName("value"), JsonConverter(typeof(QueryValueJsonConverter))]
     public object? Value { get; set; }
 
     /// <summary>The second comparison value, used only by range operators ("between").</summary>
+    [JsonPropertyName("value2"), JsonConverter(typeof(QueryValueJsonConverter))]
     public object? Value2 { get; set; }
 }
 
@@ -84,9 +147,9 @@ public sealed class QueryRule : QueryNode
 /// <see cref="QueryNode"/>s (rules and/or nested groups).</summary>
 public sealed class QueryGroup : QueryNode
 {
-    public QueryCombinator Combinator { get; set; } = QueryCombinator.And;
+    [JsonPropertyName("combinator")] public QueryCombinator Combinator { get; set; } = QueryCombinator.And;
 
-    public List<QueryNode> Rules { get; set; } = new();
+    [JsonPropertyName("rules")] public List<QueryNode> Rules { get; set; } = new();
 
     /// <summary>Creates an empty root group (And, no rules).</summary>
     public static QueryGroup CreateEmpty() => new() { Combinator = QueryCombinator.And, Rules = new() };
@@ -155,29 +218,27 @@ public static class QueryBuilderOperators
 /// <summary>Serialization + LINQ helpers for <see cref="QueryGroup"/> trees.</summary>
 public static class QueryBuilderSerialization
 {
-    private static readonly JsonSerializerOptions JsonOptions = new()
-    {
-        WriteIndented = true,
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-        Converters = { new JsonStringEnumConverter() }
-    };
+    // Two lightweight wrappers around the SAME source-generated shape (LumeoJsonContext),
+    // one per direction so WriteIndented (pretty JSON preview) / PropertyNameCaseInsensitive
+    // (tolerant reads) can differ without touching Default's own options. No reflection
+    // resolver needed here: QueryRule.Value/Value2 (the only genuinely open members) carry an
+    // explicit [JsonConverter(typeof(QueryValueJsonConverter))], so nothing in this tree ever
+    // needs a runtime Type -> JsonTypeInfo lookup outside the compiled shape (#354).
+    private static readonly Lumeo.Serialization.LumeoJsonContext WriteContext = new(
+        new JsonSerializerOptions(Lumeo.Serialization.LumeoJsonContext.Default.Options) { WriteIndented = true });
 
-    private static readonly JsonSerializerOptions ReadOptions = new()
-    {
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-        PropertyNameCaseInsensitive = true,
-        Converters = { new JsonStringEnumConverter() }
-    };
+    private static readonly Lumeo.Serialization.LumeoJsonContext ReadContext = new(
+        new JsonSerializerOptions(Lumeo.Serialization.LumeoJsonContext.Default.Options) { PropertyNameCaseInsensitive = true });
 
     public static string ToJson(QueryGroup query) =>
-        JsonSerializer.Serialize(query, JsonOptions);
+        JsonSerializer.Serialize(query, WriteContext.QueryGroup);
 
     public static QueryGroup? FromJson(string json)
     {
         if (string.IsNullOrWhiteSpace(json)) return null;
         try
         {
-            return JsonSerializer.Deserialize<QueryGroup>(json, ReadOptions);
+            return JsonSerializer.Deserialize(json, ReadContext.QueryGroup);
         }
         catch (JsonException)
         {
@@ -191,14 +252,14 @@ public static class QueryBuilderSerialization
     /// missing properties throw <see cref="InvalidOperationException"/>. String comparisons
     /// for <c>contains</c>/<c>startsWith</c>/<c>endsWith</c> are case-insensitive (ordinal).
     /// </summary>
-    public static Expression<Func<T, bool>>? ToExpression<T>(QueryGroup query)
+    public static Expression<Func<T, bool>>? ToExpression<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicProperties | DynamicallyAccessedMemberTypes.NonPublicProperties)] T>(QueryGroup query)
     {
         var param = Expression.Parameter(typeof(T), "x");
         var body = BuildGroup<T>(query, param);
         return body is null ? null : Expression.Lambda<Func<T, bool>>(body, param);
     }
 
-    private static Expression? BuildGroup<T>(QueryGroup group, ParameterExpression param)
+    private static Expression? BuildGroup<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicProperties | DynamicallyAccessedMemberTypes.NonPublicProperties)] T>(QueryGroup group, ParameterExpression param)
     {
         var parts = new List<Expression>();
         foreach (var node in group.Rules)
@@ -224,7 +285,7 @@ public static class QueryBuilderSerialization
         return acc;
     }
 
-    private static Expression? BuildRule<T>(QueryRule rule, ParameterExpression param)
+    private static Expression? BuildRule<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicProperties | DynamicallyAccessedMemberTypes.NonPublicProperties)] T>(QueryRule rule, ParameterExpression param)
     {
         if (string.IsNullOrEmpty(rule.Field) || string.IsNullOrEmpty(rule.Operator)) return null;
 
@@ -323,14 +384,29 @@ public static class QueryBuilderSerialization
         };
     }
 
+    // typeof(object).GetMethod(...) resolves against a compile-time-known type, so — unlike
+    // the string-methodName Expression.Call overload this replaced — this doesn't need
+    // RequiresUnreferencedCode: the trimmer preserves object.ToString() unconditionally.
+    private static readonly System.Reflection.MethodInfo ObjectToStringMethod =
+        typeof(object).GetMethod(nameof(object.ToString), Type.EmptyTypes)!;
+
     private static Expression EnsureString(Expression member) =>
-        member.Type == typeof(string) ? member : Expression.Call(member, nameof(object.ToString), Type.EmptyTypes);
+        member.Type == typeof(string) ? member : Expression.Call(member, ObjectToStringMethod);
 
     /// <summary>A rule value is "blank" when it is null or an empty/whitespace string —
     /// i.e. the editor was left untouched. Such a bound is dropped rather than coerced to default(T).</summary>
     private static bool IsBlank(object? value) =>
         value is null || (value is string s && string.IsNullOrWhiteSpace(s));
 
+    // targetType is always a bound property's type discovered via BuildRule<T>'s
+    // DAM(PublicProperties)-preserved T, narrowed to the framework value types QueryBuilder's
+    // field editors actually produce (see QueryBuilderGroup.razor: bool/double/string plus,
+    // via QueryFieldType.Date, DateOnly/DateTime) or an enum. Activator.CreateInstance(Type)
+    // here only ever targets one of those — all framework-preserved regardless of trimming —
+    // so this is safe even though the trimmer can't prove it statically (#354).
+    [UnconditionalSuppressMessage("Trimming", "IL2067", Justification =
+        "targetType is a value type resolved from a DAM(PublicProperties)-preserved TItem " +
+        "(bool/double/DateOnly/DateTime/Guid/enum/etc.) — see comment above.")]
     private static object? ConvertValue(object? value, Type targetType)
     {
         if (value is null) return targetType.IsValueType ? Activator.CreateInstance(targetType) : null;

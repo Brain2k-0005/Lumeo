@@ -96,7 +96,7 @@ public interface IComponentInteropService : IAsyncDisposable, IDisposable
     /// timer strictly as a fallback. Default no-op so test doubles / prerender
     /// fall back to that timer.
     /// </summary>
-    ValueTask AttachOverlayExitEnd<T>(string elementId, DotNetObjectReference<T> dotNetRef) where T : class
+    ValueTask AttachOverlayExitEnd<[System.Diagnostics.CodeAnalysis.DynamicallyAccessedMembers(System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.PublicMethods)] T>(string elementId, DotNetObjectReference<T> dotNetRef) where T : class
         => ValueTask.CompletedTask;
 
     // ColorPicker SV Drag
@@ -553,7 +553,7 @@ public interface IComponentInteropService : IAsyncDisposable, IDisposable
     /// existing implementers / test doubles keep compiling (they can drive the callback
     /// directly instead of via real JS).
     /// </summary>
-    ValueTask AiObserveScrollButton<T>(string elementId, Microsoft.JSInterop.DotNetObjectReference<T> dotNetRef) where T : class
+    ValueTask AiObserveScrollButton<[System.Diagnostics.CodeAnalysis.DynamicallyAccessedMembers(System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.PublicMethods)] T>(string elementId, Microsoft.JSInterop.DotNetObjectReference<T> dotNetRef) where T : class
         => ValueTask.CompletedTask;
     /// <summary>Tears down the scroll-button observer registered by
     /// <see cref="AiObserveScrollButton{T}"/>. Default no-op.</summary>
@@ -594,7 +594,7 @@ public interface IComponentInteropService : IAsyncDisposable, IDisposable
     ValueTask UnregisterToolbarOverflow(string elementId);
 
     // Rich Text Editor (TipTap wrapper)
-    ValueTask<string> RichTextInitAsync<T>(
+    ValueTask<string> RichTextInitAsync<[System.Diagnostics.CodeAnalysis.DynamicallyAccessedMembers(System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.PublicMethods)] T>(
         Microsoft.AspNetCore.Components.ElementReference elementRef,
         DotNetObjectReference<T> dotNetRef,
         object options) where T : class;
@@ -614,7 +614,7 @@ public interface IComponentInteropService : IAsyncDisposable, IDisposable
     // Generic in the .NET object-reference type so this core interop interface stays decoupled from
     // the SignaturePad UI component (T is inferred from the call site as SignaturePad). This keeps
     // the service layer free of UI-component references so it can be vendored standalone.
-    ValueTask SignaturePadInit<T>(string elementId, object options, DotNetObjectReference<T> dotNetRef) where T : class;
+    ValueTask SignaturePadInit<[System.Diagnostics.CodeAnalysis.DynamicallyAccessedMembers(System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.PublicMethods)] T>(string elementId, object options, DotNetObjectReference<T> dotNetRef) where T : class;
     ValueTask SignaturePadClear(string elementId);
     ValueTask<string?> SignaturePadDataUrl(string elementId, string mimeType);
     ValueTask SignaturePadSetStrokeStyle(string elementId, string color, double width);
