@@ -144,7 +144,24 @@ else
     // guidance cannot re-introduce the double-toggle SuppressActivationKeys exists to
     // prevent (Codex P2, PR #356 round-8). The AsChild branch keeps using the live
     // Slot above, unchanged — there the slot's OnClick is the ONLY activation path.
-    private TriggerSlot SuppressedSlot => Slot with { OnClick = default, OnKeyDown = default };
+    //
+    // Attributes strips "id": BuildAttrs() copies AdditionalAttributes verbatim
+    // (author wins on collision), so a consumer-splatted id flows into Slot.Attributes
+    // too. In AsChild that's correct — there is no wrapper, the child IS the only
+    // element. Here the wrapper <div> above already renders that same id via
+    // EffectiveTriggerId/@attributes, so forwarding it again in Attributes would give
+    // a consumer following the ChildContentSlot splat guidance a SECOND element with
+    // the identical id — duplicate DOM ids, with aria-controls/getElementById then
+    // resolving to the now-unfocusable wrapper instead of the real focusable child
+    // (Codex P2, PR #356 round-9). The wrapper is the sole id owner on this path.
+    private TriggerSlot SuppressedSlot => Slot with
+    {
+        OnClick = default,
+        OnKeyDown = default,
+        Attributes = Slot.Attributes.ContainsKey("id")
+            ? Slot.Attributes.Where(kv => kv.Key != "id").ToDictionary(kv => kv.Key, kv => kv.Value)
+            : Slot.Attributes,
+    };
 
     private IReadOnlyDictionary<string, object> BuildAttrs()
     {
