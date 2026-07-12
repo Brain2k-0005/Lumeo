@@ -25,7 +25,7 @@
 
 import { nvda } from "@guidepup/guidepup";
 import { chromium } from "playwright-core";
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join, resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -39,7 +39,28 @@ const args = process.argv.slice(2);
 const noBuild = args.includes("--no-build");
 const baseUrlArg = args.includes("--base-url") ? args[args.indexOf("--base-url") + 1] : null;
 const componentArg = args.includes("--component") ? args[args.indexOf("--component") + 1] : null;
+// --pause: after Edge launches, give the operator a fixed window to CLICK the Edge
+// window (a direct click is the one thing that always grants OS foreground focus),
+// then auto-start the sweep on a countdown. Deliberately does NOT wait for a terminal
+// keypress — pressing Enter in the terminal would pull foreground focus straight back
+// off Edge, re-triggering the exact "NVDA reads the wrong window" blocker (README).
+const pauseForForeground = args.includes("--pause");
+// --force-foreground: programmatically drag the Edge window to real OS foreground focus
+// (via force-foreground.ps1) instead of asking a human to click it — enables a fully
+// unattended run (e.g. scheduled overnight). Re-applied before every component in case
+// focus drifts back to another window mid-sweep.
+const forceForeground = args.includes("--force-foreground");
 const PORT = process.env.SR_AUDIT_PORT || 5292;
+
+// Spawn the PowerShell foreground helper synchronously; never throws (best-effort).
+function forceEdgeForeground() {
+    if (!forceForeground) return;
+    try {
+        const ps = join(__dirname, "force-foreground.ps1");
+        const r = spawnSync("powershell", ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", ps, "-Match", "Lumeo"], { encoding: "utf8" });
+        if (r.stdout) process.stdout.write(`[sr-audit] ${r.stdout.trim()}\n`);
+    } catch (e) { console.warn(`[sr-audit] force-foreground failed: ${e.message}`); }
+}
 
 // ---------------------------------------------------------------------------
 // Protocol subset: top-5 components by keyboard-interaction depth, from
@@ -276,6 +297,27 @@ async function main() {
         browser = await chromium.launch({ headless: false, executablePath: edgePath, args: ["--start-maximized"] });
         const page = await browser.newPage();
 
+        if (forceForeground) {
+            // Unattended path: drag Edge to foreground programmatically. A short settle
+            // after launch first, so the window actually exists to be found.
+            await sleep(1500);
+            forceEdgeForeground();
+            await sleep(800);
+        } else if (pauseForForeground) {
+            // The programmatic Edge launch above happens ~15s after the operator's own
+            // keystroke (docs build/serve + nvda.start() all run first), long past Windows'
+            // recent-input foreground-grant window — so Edge often opens WITHOUT real OS
+            // foreground focus and NVDA would keep reading whatever does have it. A direct
+            // mouse click reliably transfers foreground, so hand the operator a fixed window
+            // to do exactly that, then auto-start (NOT on a keypress — that would refocus the
+            // terminal). See README "Known blocker: OS foreground focus".
+            const secs = Number(process.env.SR_AUDIT_PAUSE_SECS) || 10;
+            console.log(`\n[sr-audit] Edge is open (maximized). >>> CLICK the Edge window NOW <<< to give it OS foreground focus.`);
+            console.log(`[sr-audit] The NVDA sweep auto-starts in ${secs}s. After you click Edge, do NOT touch the keyboard or mouse until the sweep finishes.\n`);
+            for (let s = secs; s > 0; s--) { process.stdout.write(`\r  starting sweep in ${s}s ...  `); await sleep(1000); }
+            process.stdout.write("\r  starting sweep now.            \n");
+        }
+
         mkdirSync(resultsDir, { recursive: true });
         const report = { generated: new Date().toISOString(), baseUrl, protocolFile: "docs/superpowers/sr-test-protocol.md", components: {} };
 
@@ -289,6 +331,9 @@ async function main() {
                 console.warn(`[sr-audit] ${component.slug}: blazorReady never set within 30s — continuing anyway`);
             }
             await sleep(1000);
+            // Re-assert Edge foreground before each component: NVDA only reads the
+            // foreground window, and a mid-sweep navigation or dialog can steal it.
+            forceEdgeForeground();
 
             const componentResult = { route, steps: [] };
             let focusOk = false;
@@ -324,6 +369,12 @@ async function main() {
                     await nvda.clearSpokenPhraseLog();
                     await nvda.press(step.key);
                 }
+                // NOTE: the row-1 "focus" step still relies on programmatic el.focus(),
+                // which NVDA does not announce (it only speaks on user-driven navigation).
+                // A reportCurrentFocus command was tried but shifted NVDA to the Edge
+                // toolbar and corrupted the following steps — needs a different approach
+                // (e.g. Tab into the component with real key events). Left as a known gap
+                // so the navigation steps (which DO capture real announcements) stay clean.
                 await sleep(600);
                 const actual = await nvda.lastSpokenPhrase();
                 let result;
