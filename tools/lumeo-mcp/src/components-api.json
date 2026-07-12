@@ -1,10 +1,10 @@
 {
   "$schema": "https://lumeo.nativ.sh/components-api-schema.json",
   "version": "4.2.0",
-  "generated": "2026-07-12T18:23:25.0468214Z",
+  "generated": "2026-07-12T18:55:38.9441427Z",
   "stats": {
     "componentCount": 164,
-    "totalParameters": 4270,
+    "totalParameters": 4275,
     "totalEnums": 90,
     "totalRecords": 65,
     "serviceCount": 33,
@@ -23997,6 +23997,7 @@
         "UI/DataGrid/DataGridLayoutService.cs",
         "UI/DataGrid/DataGridPagination.razor",
         "UI/DataGrid/DataGridRow.razor",
+        "UI/DataGrid/DataGridRowIndexer.cs",
         "UI/DataGrid/DataGridRowKeys.cs",
         "UI/DataGrid/DataGridServerService.cs",
         "UI/DataGrid/DataGridState.cs",
@@ -25665,6 +25666,15 @@
               "isEditorRequired": false
             },
             {
+              "name": "AriaRowIndex",
+              "type": "int?",
+              "default": null,
+              "description": "1-based aria-rowindex for this detail row, among EVERY rendered <tr> in the table (per ARIA grid semantics — a detail row occupies a real table row, same as a data or group-header row). Allocated by DataGridBody{TItem}'s DataGridRowIndexer via DetailAriaRowIndex. Null at render sites that don't yet compute a table-wide index for detail rows (the virtualized branches — see DataGridRowIndexer's remarks), in which case the attribute is omitted and the browser falls back to DOM order.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
               "name": "DetailTemplate",
               "type": "RenderFragment<TItem>?",
               "default": null,
@@ -25825,6 +25835,15 @@
               "type": "int",
               "default": "1",
               "description": "Number of columns the group label cell spans, matching the grid's total column count. Defaults to 1.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "RowIndex",
+              "type": "int",
+              "default": "0",
+              "description": "0-based position of this group header row among EVERY rendered <tr> in the tbody — data rows and other group header rows alike. The caller (DataGridBody{TItem}) must count this row's own slot too, the same way it counts DataGridRow{TItem}.TableRowIndex, or a group's first item row and every row after it under-reports its aria-rowindex by one per preceding group header. See AriaRowIndex.",
               "isCascading": false,
               "captureUnmatched": false,
               "isEditorRequired": false
@@ -26286,7 +26305,25 @@
               "name": "RowIndex",
               "type": "int",
               "default": "0",
-              "description": "0-based index of this row within its current render scope (DisplayedItems, or the enclosing group/tree-node's item list).",
+              "description": "0-based index of this row within its current render scope (DisplayedItems, or the enclosing group/tree-node's item list). Item-only — does NOT count group header rows, since it also drives striping and the row-reorder token, which must stay keyed to item order regardless of how many group headers precede a given item. For aria-rowindex, see TableRowIndex.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "TableRowIndex",
+              "type": "int?",
+              "default": null,
+              "description": "0-based position of this row among EVERY rendered <tr> in the tbody — data rows AND DataGridGroupRow{TItem} header rows alike. Only diverges from RowIndex in grouped renders, where each group header occupies a table row that RowIndex deliberately does not count. Feeds AriaRowIndex only. Null (falls back to RowIndex) at every render site with no group headers ahead of it — flat, tree-grid, and virtualized — where the two counters are identical anyway.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "DetailAriaRowIndex",
+              "type": "int?",
+              "default": null,
+              "description": "1-based aria-rowindex for this row's own expanded DataGridDetailRow{TItem}, when one will render — allocated by DataGridBody{TItem}'s DataGridRowIndexer in the same pass as TableRowIndex, so the detail row's slot is reserved and every row after it advances accordingly. Null when this row has no expanded detail (either no DetailTemplate, or collapsed) — see AriaRowIndex.",
               "isCascading": false,
               "captureUnmatched": false,
               "isEditorRequired": false
@@ -26899,6 +26936,7 @@
           "aria-modal",
           "aria-multiselectable",
           "aria-orientation",
+          "aria-pressed",
           "aria-readonly",
           "aria-rowcount",
           "aria-rowindex",
@@ -57753,7 +57791,7 @@
           "name": "Orientation",
           "type": "Lumeo.Orientation",
           "default": "Lumeo.Orientation.Horizontal",
-          "description": "Group layout axis. Sets aria-orientation + data-orientation on the group and cascades data-orientation to each item (shadcn/Radix parity). Default Horizontal. Roving arrow-key navigation already accepts both axes.",
+          "description": "Group layout axis. Sets data-orientation on the group and cascades it to each item (shadcn/Radix parity). Not exposed as aria-orientation — the group ARIA role does not support that attribute, so this is a pure keyboard-navigation/layout concern, not an accessibility-tree signal. Default Horizontal. Roving arrow-key navigation already accepts both axes.",
           "isCascading": false,
           "captureUnmatched": false,
           "isEditorRequired": false
@@ -57863,15 +57901,15 @@
       "examples": [
         {
           "title": "Single Selection",
-          "code": "<ToggleGroup Type=\"ToggleGroup.ToggleGroupType.Single\">\n    <ToggleGroupItem Value=\"bold\">\n        <SvgGlyph Svg=\"@(Lucide.Bold)\" class=\"h-4 w-4\" />\n    </ToggleGroupItem>\n    <ToggleGroupItem Value=\"italic\">\n        <SvgGlyph Svg=\"@(Lucide.Italic)\" class=\"h-4 w-4\" />\n    </ToggleGroupItem>\n    <ToggleGroupItem Value=\"underline\">\n        <SvgGlyph Svg=\"@(Lucide.Underline)\" class=\"h-4 w-4\" />\n    </ToggleGroupItem>\n</ToggleGroup>"
+          "code": "<ToggleGroup Type=\"ToggleGroup.ToggleGroupType.Single\">\n    <ToggleGroupItem Value=\"bold\" AriaLabel=\"Bold\">\n        <SvgGlyph Svg=\"@(Lucide.Bold)\" class=\"h-4 w-4\" />\n    </ToggleGroupItem>\n    <ToggleGroupItem Value=\"italic\" AriaLabel=\"Italic\">\n        <SvgGlyph Svg=\"@(Lucide.Italic)\" class=\"h-4 w-4\" />\n    </ToggleGroupItem>\n    <ToggleGroupItem Value=\"underline\" AriaLabel=\"Underline\">\n        <SvgGlyph Svg=\"@(Lucide.Underline)\" class=\"h-4 w-4\" />\n    </ToggleGroupItem>\n</ToggleGroup>"
         },
         {
           "title": "Multiple Selection",
-          "code": "<ToggleGroup Type=\"ToggleGroup.ToggleGroupType.Multiple\">\n    <ToggleGroupItem Value=\"bold\">\n        <SvgGlyph Svg=\"@(Lucide.Bold)\" class=\"h-4 w-4\" />\n    </ToggleGroupItem>\n    <ToggleGroupItem Value=\"italic\">\n        <SvgGlyph Svg=\"@(Lucide.Italic)\" class=\"h-4 w-4\" />\n    </ToggleGroupItem>\n    <ToggleGroupItem Value=\"underline\">\n        <SvgGlyph Svg=\"@(Lucide.Underline)\" class=\"h-4 w-4\" />\n    </ToggleGroupItem>\n</ToggleGroup>"
+          "code": "<ToggleGroup Type=\"ToggleGroup.ToggleGroupType.Multiple\">\n    <ToggleGroupItem Value=\"bold\" AriaLabel=\"Bold\">\n        <SvgGlyph Svg=\"@(Lucide.Bold)\" class=\"h-4 w-4\" />\n    </ToggleGroupItem>\n    <ToggleGroupItem Value=\"italic\" AriaLabel=\"Italic\">\n        <SvgGlyph Svg=\"@(Lucide.Italic)\" class=\"h-4 w-4\" />\n    </ToggleGroupItem>\n    <ToggleGroupItem Value=\"underline\" AriaLabel=\"Underline\">\n        <SvgGlyph Svg=\"@(Lucide.Underline)\" class=\"h-4 w-4\" />\n    </ToggleGroupItem>\n</ToggleGroup>"
         },
         {
           "title": "Outline Variant",
-          "code": "<ToggleGroup Type=\"ToggleGroup.ToggleGroupType.Single\" Variant=\"ToggleGroup.ToggleGroupVariant.Outline\">\n    <ToggleGroupItem Value=\"left\">\n        <SvgGlyph Svg=\"@(Lucide.AlignLeft)\" class=\"h-4 w-4\" />\n    </ToggleGroupItem>\n    <ToggleGroupItem Value=\"center\">\n        <SvgGlyph Svg=\"@(Lucide.AlignCenter)\" class=\"h-4 w-4\" />\n    </ToggleGroupItem>\n    <ToggleGroupItem Value=\"right\">\n        <SvgGlyph Svg=\"@(Lucide.AlignRight)\" class=\"h-4 w-4\" />\n    </ToggleGroupItem>\n</ToggleGroup>"
+          "code": "<ToggleGroup Type=\"ToggleGroup.ToggleGroupType.Single\" Variant=\"ToggleGroup.ToggleGroupVariant.Outline\">\n    <ToggleGroupItem Value=\"left\" AriaLabel=\"Align left\">\n        <SvgGlyph Svg=\"@(Lucide.AlignLeft)\" class=\"h-4 w-4\" />\n    </ToggleGroupItem>\n    <ToggleGroupItem Value=\"center\" AriaLabel=\"Align center\">\n        <SvgGlyph Svg=\"@(Lucide.AlignCenter)\" class=\"h-4 w-4\" />\n    </ToggleGroupItem>\n    <ToggleGroupItem Value=\"right\" AriaLabel=\"Align right\">\n        <SvgGlyph Svg=\"@(Lucide.AlignRight)\" class=\"h-4 w-4\" />\n    </ToggleGroupItem>\n</ToggleGroup>"
         },
         {
           "title": "Sizes",
@@ -57911,6 +57949,15 @@
               "type": "bool",
               "default": "false",
               "description": "When true, the item cannot be toggled, is skipped by arrow-key navigation, and renders with reduced opacity.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "AriaLabel",
+              "type": "string?",
+              "default": null,
+              "description": "Accessible name exposed via aria-label. Required when ChildContent is an icon only (no visible text) — otherwise screen readers announce the item as an unnamed button (matches AriaLabel's contract).",
               "isCascading": false,
               "captureUnmatched": false,
               "isEditorRequired": false
@@ -57965,7 +58012,7 @@
           "group"
         ],
         "ariaAttributes": [
-          "aria-orientation",
+          "aria-label",
           "aria-pressed"
         ],
         "keys": [

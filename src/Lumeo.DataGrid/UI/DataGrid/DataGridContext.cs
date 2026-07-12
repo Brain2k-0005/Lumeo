@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Linq;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Web;
 
@@ -175,4 +176,73 @@ public record DataGridContext<TItem>(
     /// (drag handle, selection checkbox, detail chevron) whose horizontal padding differs
     /// from a data cell but whose height must still collapse under <see cref="Compact"/>.</summary>
     internal string CellPaddingY => Compact ? "py-1" : "py-2";
+
+    /// <summary>Number of header <c>&lt;tr&gt;</c> rows above the body, i.e. the 1-based
+    /// aria-rowindex the FIRST body row must report. Normally 1 header row (the data-column
+    /// row), so body rows start at 2; with <see cref="ColumnGroups"/> declared the header is a
+    /// 2-row block (parent labels + data-column row), so body rows must start at 3. Kept here
+    /// (rather than duplicated per row type) so <see cref="DataGridRow{TItem}"/> and
+    /// <see cref="DataGridGroupRow{TItem}"/> can't drift on this number and report a body
+    /// row's aria-rowindex that collides with the header's.</summary>
+    internal int HeaderRowOffset => ColumnGroups.Count > 0 ? 3 : 2;
+
+    /// <summary>Total number of <c>role="row"</c> <c>&lt;tr&gt;</c> elements
+    /// <see cref="DataGridBody{TItem}"/> will render in its tbody for the CURRENT state —
+    /// group header rows, item rows, and item rows whose detail row is currently expanded,
+    /// alike. Mirrors DataGridBody's own branch selection (multi-level grouped / single-level
+    /// grouped / flat-or-tree-grid) so <c>DataGrid</c>'s <c>aria-rowcount</c> (header rows +
+    /// this) can never silently drift from what <see cref="DataGridRowIndexer"/> actually
+    /// hands out as <c>aria-rowindex</c> — the exact gap the PR 365 review caught for group
+    /// headers (aria-rowcount stayed at <c>DisplayedItems.Count + 1</c>, ignoring every
+    /// rendered group row and the second header row <see cref="ColumnGroups"/> adds).
+    /// <paramref name="hasDetailTemplate"/> is passed in rather than read off Context because
+    /// "a DetailTemplate is configured" is a <c>DataGridBody</c> parameter, not part of this
+    /// record. <paramref name="countDetailRowsInFlatMode"/> should be false when the caller
+    /// is rendering through <c>UseVirtualization</c> / the server <c>ItemsProvider</c> — see
+    /// <see cref="DataGridRowIndexer"/>'s remarks for why a virtualized row's own
+    /// <c>aria-rowindex</c> doesn't yet account for detail-row precession either, so counting
+    /// it here would report a ceiling individual rows can never actually reach.</summary>
+    internal int CountBodyRows(bool hasDetailTemplate, bool countDetailRowsInFlatMode)
+    {
+        if (GroupTree is { Count: > 0 } tree)
+            return tree.Sum(node => CountGroupNodeRows(node, hasDetailTemplate));
+
+        if (IsGrouped && GroupedSections is { Count: > 0 } sections)
+        {
+            var total = 0;
+            foreach (var grp in sections)
+            {
+                total++; // the group header row itself
+                if (!IsGroupExpanded(grp.Key)) continue;
+                total += grp.Items.Count;
+                if (hasDetailTemplate) total += grp.Items.Count(IsRowExpanded);
+            }
+            return total;
+        }
+
+        // Flat / tree-grid / virtualized: DisplayedItems is already the exact row list
+        // DataGridBody iterates (tree-grid rows included, already flattened).
+        var count = DisplayedItems.Count;
+        if (hasDetailTemplate && countDetailRowsInFlatMode)
+            count += DisplayedItems.Count(IsRowExpanded);
+        return count;
+    }
+
+    private int CountGroupNodeRows(DataGridGroupNode<TItem> node, bool hasDetailTemplate)
+    {
+        var total = 1; // this node's own group row
+        if (!IsGroupPathExpanded(node.Path)) return total;
+
+        if (node.Children.Count > 0)
+        {
+            foreach (var child in node.Children)
+                total += CountGroupNodeRows(child, hasDetailTemplate);
+        }
+        else
+        {
+            total += node.Items.Count;
+            if (hasDetailTemplate) total += node.Items.Count(IsRowExpanded);
+        }
+        return total;
+    }
 }

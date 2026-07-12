@@ -6,6 +6,7 @@
 import { readFileSync, readdirSync, existsSync, writeFileSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { nodeShapeHash } from './node-identity.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(__dirname, '..', '..');
@@ -100,7 +101,32 @@ for (const file of reportFiles) {
         });
         if (survivingNodes.length === 0) continue;
         if (GATED_IMPACTS.has(v.impact)) {
-            entries.push({ component: report.slug, rule: v.id, impact: v.impact });
+            // nodeCount is the accepted debt ceiling for this (component, rule)
+            // pair, not just a presence flag — check-baseline.mjs fails the gate
+            // if a later run's surviving node count for the SAME pair exceeds
+            // this, so a new nameless control added to a component that already
+            // has baselined debt under that rule still fails as NEW instead of
+            // being waved through by the (component, rule) key alone.
+            //
+            // nodeShapes is the accepted set of node IDENTITIES (see
+            // node-identity.mjs) for the pair — count alone can't tell "a
+            // baselined node got fixed, a different one started failing" apart
+            // from "nothing changed" when the totals happen to land the same;
+            // the shape set is what lets check-baseline.mjs catch that.
+            //
+            // nodeShapeCounts carries the same shapes as a MULTISET (shape ->
+            // how many surviving nodes have it), not just membership. A plain
+            // Set can't tell "one baselined shape-A node got fixed while a
+            // different shape-A node appeared elsewhere" apart from "nothing
+            // changed" — same shape SET, same total nodeCount, but a genuine
+            // swap happened. Per-shape counts catch that: if this run's count
+            // for a shape exceeds what was ever accepted for it, that's new,
+            // even when the pair's aggregate totals still land the same.
+            const shapeHashes = survivingNodes.map(n => nodeShapeHash(n.target, n.html));
+            const nodeShapes = [...new Set(shapeHashes)].sort();
+            const nodeShapeCounts = Object.fromEntries(
+                nodeShapes.map(shape => [shape, shapeHashes.filter(s => s === shape).length]));
+            entries.push({ component: report.slug, rule: v.id, impact: v.impact, nodeCount: survivingNodes.length, nodeShapes, nodeShapeCounts });
         }
         findings.push({
             component: report.slug,

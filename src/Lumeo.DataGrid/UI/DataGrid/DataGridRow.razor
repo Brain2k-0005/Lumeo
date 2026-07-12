@@ -62,14 +62,19 @@
            already does this on its <button>. *@
         <td role="gridcell" class="@($"{(Context.Compact ? "px-2 py-1" : "px-3 py-2")} w-10{(Context.HasPinnedLeft ? " sticky left-0 z-10 group-hover/row:bg-muted/50" : "")}")" style="@SelectionPinStyle"
             @onclick:stopPropagation="true">
-            <Checkbox Checked="@IsSelected" CheckedChanged="@OnCheckChanged" />
+            @* button-name (axe): icon-only checkbox, no visible label — row-context
+               name so a screen reader announces WHICH row it toggles. *@
+            <Checkbox Checked="@IsSelected" CheckedChanged="@OnCheckChanged" AriaLabel="@L["DataGrid.SelectRow", AriaRowIndex]" />
         </td>
     }
     else if (Context?.SelectionMode == DataGridSelectionMode.Single)
     {
         <td role="gridcell" class="@($"{(Context.Compact ? "px-2 py-1" : "px-3 py-2")} w-10{(Context.HasPinnedLeft ? " sticky left-0 z-10 group-hover/row:bg-muted/50" : "")}")" style="@SelectionPinStyle">
+            @* button-name (axe): icon-only radio-style selector, no visible label. *@
             <button type="button"
                     class="h-4 w-4 rounded-full border border-primary @(IsSelected ? "bg-primary" : "bg-background")"
+                    aria-label="@L["DataGrid.SelectRow", AriaRowIndex]"
+                    aria-pressed="@(IsSelected ? "true" : "false")"
                     @onclick="@(() => Context?.ToggleSelection(Item))"
                     @onclick:stopPropagation="true">
                 @if (IsSelected)
@@ -83,8 +88,10 @@
     @if (HasDetailTemplate)
     {
         <td role="gridcell" class="px-1 @(Context?.CellPaddingY ?? "py-2") w-8">
+            @* button-name (axe): icon-only expand/collapse toggle, no visible label. *@
             <button type="button"
                     class="inline-flex items-center justify-center h-6 w-6 rounded hover:bg-muted transition-colors focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-1"
+                    aria-label="@(IsExpanded ? L["DataGrid.CollapseRow", AriaRowIndex] : L["DataGrid.ExpandRow", AriaRowIndex])"
                     @onclick="ToggleExpand"
                     @onclick:stopPropagation="true">
                 <SvgGlyph Svg="@(LumeoIcons.ChevronDown)" class="@DetailChevronClasses" />
@@ -194,7 +201,7 @@
 
 @if (IsExpanded && DetailTemplate is not null)
 {
-    <DataGridDetailRow TItem="TItem" Item="Item" DetailTemplate="DetailTemplate" ColSpan="@ColSpan" />
+    <DataGridDetailRow TItem="TItem" Item="Item" DetailTemplate="DetailTemplate" ColSpan="@ColSpan" AriaRowIndex="DetailAriaRowIndex" />
 }
 
 @code {
@@ -205,8 +212,30 @@
     [Parameter] public TItem Item { get; set; } = default!;
 
     /// <summary>0-based index of this row within its current render scope
-    /// (DisplayedItems, or the enclosing group/tree-node's item list).</summary>
+    /// (DisplayedItems, or the enclosing group/tree-node's item list). Item-only —
+    /// does NOT count group header rows, since it also drives striping and the
+    /// row-reorder token, which must stay keyed to item order regardless of how
+    /// many group headers precede a given item. For aria-rowindex, see
+    /// <see cref="TableRowIndex"/>.</summary>
     [Parameter] public int RowIndex { get; set; }
+
+    /// <summary>0-based position of this row among EVERY rendered <c>&lt;tr&gt;</c> in the
+    /// tbody — data rows AND <see cref="DataGridGroupRow{TItem}"/> header rows alike. Only
+    /// diverges from <see cref="RowIndex"/> in grouped renders, where each group header
+    /// occupies a table row that <see cref="RowIndex"/> deliberately does not count. Feeds
+    /// <see cref="AriaRowIndex"/> only. Null (falls back to <see cref="RowIndex"/>) at every
+    /// render site with no group headers ahead of it — flat, tree-grid, and virtualized —
+    /// where the two counters are identical anyway.</summary>
+    [Parameter] public int? TableRowIndex { get; set; }
+
+    /// <summary>1-based <c>aria-rowindex</c> for this row's own expanded
+    /// <see cref="DataGridDetailRow{TItem}"/>, when one will render — allocated by
+    /// <see cref="DataGridBody{TItem}"/>'s <see cref="DataGridRowIndexer"/> in the same
+    /// pass as <see cref="TableRowIndex"/>, so the detail row's slot is reserved and every
+    /// row after it advances accordingly. Null when this row has no expanded detail
+    /// (either no <see cref="DetailTemplate"/>, or collapsed) — see
+    /// <see cref="DataGridDetailRow{TItem}.AriaRowIndex"/>.</summary>
+    [Parameter] public int? DetailAriaRowIndex { get; set; }
     /// <summary>Stable per-slot token for this row (see <see cref="DataGridContext{TItem}.RowTokenAt"/>) —
     /// only the value-type half of <see cref="RowKey"/>'s identity is ever built from
     /// this; reference types key off their own instance identity hash instead.</summary>
@@ -257,12 +286,12 @@
     private string DetailChevronClasses =>
         $"h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-200{(IsExpanded ? "" : " -rotate-90")}";
 
-    // 1-based ARIA row index. The header normally occupies row 1, so body rows start at 2.
-    // When DataGridColumnGroups are declared the header is a 2-row block (parent labels +
-    // data-column row) and body rows must start at 3 — otherwise the first body row reports
-    // the same aria-rowindex the data-header already uses, giving assistive tech duplicate
-    // row positions.
-    private int AriaRowIndex => RowIndex + (Context?.ColumnGroups.Count > 0 ? 3 : 2);
+    // 1-based ARIA row index, built from TableRowIndex (which counts group header rows
+    // too), not the item-only RowIndex — see TableRowIndex's remarks. Falls back to
+    // RowIndex when TableRowIndex is unset (every non-grouped render site). The header
+    // offset itself lives on Context (HeaderRowOffset) so this can't drift from
+    // DataGridGroupRow.AriaRowIndex, which needs the exact same +2/+3 rule.
+    private int AriaRowIndex => (TableRowIndex ?? RowIndex) + (Context?.HeaderRowOffset ?? 2);
 
     // ARIA tree-grid attributes — only meaningful when IsTreeGrid is true.
     private int? AriaLevel => (Context?.IsTreeGrid == true) ? (Context.TreeLevelOf(Item) + 1) : null;

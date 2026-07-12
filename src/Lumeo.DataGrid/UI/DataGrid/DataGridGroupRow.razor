@@ -4,6 +4,7 @@
 
 <tr data-slot="datagrid-group-row" class="@CssClass"
     role="row"
+    aria-rowindex="@AriaRowIndex"
     @onclick="Toggle" @attributes="AdditionalAttributes">
     <td colspan="@ColSpan" class="px-3 py-2 font-medium">
         @* The inner sticky div pins the group label to the left viewport
@@ -11,7 +12,14 @@
            it above regular body cells (z-10 on pinned cells, but the group row
            spans the whole width so normal cells are peers, not siblings here). *@
         <div class="sticky left-0 z-10 flex items-center gap-2" style="@IndentStyle">
-            <button type="button" class="inline-flex items-center justify-center h-5 w-5 rounded hover:bg-muted focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-1">
+            @* button-name (axe): icon-only group expand/collapse chevron, no visible
+               label. No explicit @onclick here — the <tr>'s own @onclick="Toggle"
+               already fires on the bubbled click (and on the native Enter/Space
+               activation this focusable button gets for free), so this stays a
+               plain aria-label add. Group-key context so a screen reader
+               announces WHICH group it toggles. *@
+            <button type="button" class="inline-flex items-center justify-center h-5 w-5 rounded hover:bg-muted focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-1"
+                    aria-label="@(IsExpanded ? L["DataGrid.CollapseGroup", GroupKey ?? ""] : L["DataGrid.ExpandGroup", GroupKey ?? ""])">
                 <SvgGlyph Svg="@(LumeoIcons.ChevronDown)" class="@ChevronClasses" />
             </button>
             <span class="text-sm">@GroupKey</span>
@@ -50,6 +58,13 @@
     /// <summary>Number of columns the group label cell spans, matching the grid's
     /// total column count. Defaults to 1.</summary>
     [Parameter] public int ColSpan { get; set; } = 1;
+    /// <summary>0-based position of this group header row among EVERY rendered
+    /// <c>&lt;tr&gt;</c> in the tbody — data rows and other group header rows alike. The
+    /// caller (<see cref="DataGridBody{TItem}"/>) must count this row's own slot too, the
+    /// same way it counts <see cref="DataGridRow{TItem}"/>.TableRowIndex, or a group's
+    /// first item row and every row after it under-reports its aria-rowindex by one per
+    /// preceding group header. See <see cref="AriaRowIndex"/>.</summary>
+    [Parameter] public int RowIndex { get; set; }
     /// <summary>Nesting depth for multi-level grouping (0 = top level). Controls indentation.</summary>
     [Parameter] public int Level { get; set; }
     /// <summary>Per-group aggregate strip rendered next to the group label.</summary>
@@ -68,6 +83,11 @@
         $"h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-200{(IsExpanded ? "" : " -rotate-90")}";
 
     private string? IndentStyle => Level > 0 ? $"padding-left: {0.75 + Level * 1.25:0.##}rem;" : null;
+
+    // 1-based ARIA row index — same +2/+3 header-offset rule as DataGridRow.AriaRowIndex
+    // (kept on Context.HeaderRowOffset so the two can't drift), applied to THIS row's own
+    // table-wide slot rather than an item-only counter.
+    private int AriaRowIndex => RowIndex + (Context?.HeaderRowOffset ?? 2);
 
     private string ColumnTitle(string columnId)
     {

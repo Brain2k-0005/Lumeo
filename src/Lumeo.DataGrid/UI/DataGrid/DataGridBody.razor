@@ -67,26 +67,40 @@ else if (Context is not null && Context.IsTreeGrid)
         }
         else
         {
-            var ti = 0;
+            // See DataGridRowIndexer's remarks: one indexer per tbody keeps the
+            // tree-grid rows' aria-rowindex (and any expanded detail rows between
+            // them) in a single, table-wide sequence instead of a plain 0..N counter
+            // that silently ignores detail rows entirely.
+            var indexer = new DataGridRowIndexer(Context.HeaderRowOffset);
             foreach (var item in Context.DisplayedItems)
             {
+                var hasDetail = DetailTemplate is not null && Context.IsRowExpanded(item);
+                var (itemIdx, tableIdx, detailIdx) = indexer.NextItemRow(hasDetail);
                 <DataGridRow @key="DataGridRowKeys.KeyFor(item)" TItem="TItem"
                              Item="item"
-                             RowIndex="ti"
+                             RowIndex="itemIdx"
+                             TableRowIndex="tableIdx"
+                             DetailAriaRowIndex="detailIdx"
                              DetailTemplate="DetailTemplate"
                              OnContextMenu="OnContextMenu" />
-                ti++;
             }
         }
     </tbody>
 }
 else if (Context is not null && Context.GroupTree is not null && Context.GroupTree.Count > 0)
 {
-    // Multi-level grouping: render a nested forest of group rows.
+    // Multi-level grouping: render a nested forest of group rows. One
+    // DataGridRowIndexer spans the WHOLE tbody (every group, every nesting level,
+    // every expanded detail row) — captured by the renderNode closure below and
+    // threaded through every recursive call — so aria-rowindex is a single
+    // table-wide sequence instead of the per-branch counters that used to drift
+    // out of sync with each other. See DataGridRowIndexer's remarks.
+    var indexer = new DataGridRowIndexer(Context.HeaderRowOffset);
     RenderFragment<DataGridGroupNode<TItem>>? renderNode = null;
     renderNode = node => __builder =>
     {
         var expanded = Context.IsGroupPathExpanded(node.Path);
+        var groupRowIdx = indexer.NextGroupRow();
         <DataGridGroupRow @key="@("g:" + node.Path)" TItem="TItem"
                           GroupKey="@node.Key"
                           Count="@node.TotalCount"
@@ -94,6 +108,7 @@ else if (Context is not null && Context.GroupTree is not null && Context.GroupTr
                           IsExpanded="@expanded"
                           Aggregates="@node.Aggregates"
                           ColSpan="@ColSpan"
+                          RowIndex="groupRowIdx"
                           OnToggle="@(() => Context.ToggleGroupPath(node.Path))" />
         if (expanded)
         {
@@ -106,15 +121,17 @@ else if (Context is not null && Context.GroupTree is not null && Context.GroupTr
             }
             else
             {
-                var li = 0;
                 foreach (var item in node.Items)
                 {
+                    var hasDetail = DetailTemplate is not null && Context.IsRowExpanded(item);
+                    var (itemIdx, tableIdx, detailIdx) = indexer.NextItemRow(hasDetail);
                     <DataGridRow @key="DataGridRowKeys.KeyFor(item)" TItem="TItem"
                                  Item="item"
-                                 RowIndex="li"
+                                 RowIndex="itemIdx"
+                                 TableRowIndex="tableIdx"
+                                 DetailAriaRowIndex="detailIdx"
                                  DetailTemplate="DetailTemplate"
                                  OnContextMenu="OnContextMenu" />
-                    li++;
                 }
             }
         }
@@ -129,28 +146,39 @@ else if (Context is not null && Context.GroupTree is not null && Context.GroupTr
 else if (Context is not null && Context.IsGrouped && Context.GroupedSections is not null && Context.GroupedSections.Count > 0)
 {
     <tbody data-slot="datagrid-body" class="@CssClass" @attributes="AdditionalAttributes">
+        @{
+            // Spans every group in this tbody — see the GroupTree branch above
+            // and DataGridRowIndexer's remarks for why a single table-wide
+            // indexer (rather than a per-group counter that resets at each
+            // group boundary) is required for correct aria-rowindex.
+            var indexer = new DataGridRowIndexer(Context.HeaderRowOffset);
+        }
         @foreach (var grp in Context.GroupedSections)
         {
             var groupKey = grp.Key;
             var expanded = Context.IsGroupExpanded(groupKey);
+            var groupRowIdx = indexer.NextGroupRow();
             <DataGridGroupRow @key="groupKey" TItem="TItem"
                               GroupKey="@groupKey"
                               Count="@grp.TotalCount"
                               IsExpanded="@expanded"
                               Aggregates="@grp.Aggregates"
                               ColSpan="@ColSpan"
+                              RowIndex="groupRowIdx"
                               OnToggle="@(() => Context.ToggleGroupExpand(groupKey))" />
             if (expanded)
             {
-                var grpIndex = 0;
                 foreach (var item in grp.Items)
                 {
+                    var hasDetail = DetailTemplate is not null && Context.IsRowExpanded(item);
+                    var (itemIdx, tableIdx, detailIdx) = indexer.NextItemRow(hasDetail);
                     <DataGridRow @key="DataGridRowKeys.KeyFor(item)" TItem="TItem"
                                  Item="item"
-                                 RowIndex="grpIndex"
+                                 RowIndex="itemIdx"
+                                 TableRowIndex="tableIdx"
+                                 DetailAriaRowIndex="detailIdx"
                                  DetailTemplate="DetailTemplate"
                                  OnContextMenu="OnContextMenu" />
-                    grpIndex++;
                 }
             }
         }
@@ -228,48 +256,61 @@ else if (Context is not null)
     <tbody data-slot="datagrid-body" class="@CssClass" @attributes="AdditionalAttributes">
         @if (Context.IsGrouped && Context.GroupedSections is not null)
         {
+            // Spans every group in this tbody — see the GroupTree branch
+            // above and DataGridRowIndexer's remarks for why a single
+            // table-wide indexer (rather than a per-group counter that
+            // resets at each group boundary) is required for correct
+            // aria-rowindex.
+            var indexer = new DataGridRowIndexer(Context.HeaderRowOffset);
             @foreach (var grp in Context.GroupedSections)
             {
                 var groupKey = grp.Key;
                 var expanded = Context.IsGroupExpanded(groupKey);
+                var groupRowIdx = indexer.NextGroupRow();
                 <DataGridGroupRow @key="groupKey" TItem="TItem"
                                   GroupKey="@groupKey"
                                   Count="@grp.TotalCount"
                                   IsExpanded="@expanded"
                                   ColSpan="@ColSpan"
+                                  RowIndex="groupRowIdx"
                                   OnToggle="@(() => Context.ToggleGroupExpand(groupKey))" />
                 if (expanded)
                 {
-                    var grpIndex = 0;
                     foreach (var item in grp.Items)
                     {
+                        var hasDetail = DetailTemplate is not null && Context.IsRowExpanded(item);
+                        var (itemIdx, tableIdx, detailIdx) = indexer.NextItemRow(hasDetail);
                         <DataGridRow @key="DataGridRowKeys.KeyFor(item)" TItem="TItem"
                                      Item="item"
-                                     RowIndex="grpIndex"
+                                     RowIndex="itemIdx"
+                                     TableRowIndex="tableIdx"
+                                     DetailAriaRowIndex="detailIdx"
                                      DetailTemplate="DetailTemplate"
                                      OnContextMenu="OnContextMenu" />
-                        grpIndex++;
                     }
                 }
             }
         }
         else
         {
-            var idx = 0;
+            // Flat, non-grouped, non-virtualized, non-tree — the ONLY DataGridRow
+            // render site where RowReorderPointerActive can be true (see that
+            // property's remarks), so it's the only site that needs a real
+            // per-slot RowToken; every other site leaves it at its 0 default,
+            // which is harmless since DataGridRow.RowKey is never evaluated there.
+            var indexer = new DataGridRowIndexer(Context.HeaderRowOffset);
             foreach (var item in Context.DisplayedItems)
             {
-                @* This is the ONLY DataGridRow render site where RowReorderPointerActive
-                   can be true (flat, non-grouped, non-virtualized, non-tree — see that
-                   property's remarks), so it's the only site that needs a real per-slot
-                   RowToken; every other site below leaves it at its 0 default, which is
-                   harmless since DataGridRow.RowKey is never evaluated there. *@
+                var hasDetail = DetailTemplate is not null && Context.IsRowExpanded(item);
+                var (itemIdx, tableIdx, detailIdx) = indexer.NextItemRow(hasDetail);
                 <DataGridRow @key="DataGridRowKeys.KeyFor(item)" TItem="TItem"
                              Item="item"
-                             RowIndex="idx"
-                             RowToken="Context.RowTokenAt(idx)"
+                             RowIndex="itemIdx"
+                             TableRowIndex="tableIdx"
+                             DetailAriaRowIndex="detailIdx"
+                             RowToken="Context.RowTokenAt(itemIdx)"
                              DetailTemplate="DetailTemplate"
                              OnContextMenu="OnContextMenu" />
-                idx++;
             }
         }
     </tbody>
