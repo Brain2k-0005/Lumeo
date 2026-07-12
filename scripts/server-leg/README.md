@@ -14,11 +14,15 @@ node run.mjs               # 200ms RTT (default; builds the host on the fly)
 node run.mjs --rtt=500     # heavier RTT
 ```
 
-`node run.mjs` builds `tests/Lumeo.Tests.ServerHost` (Debug/x64) itself before
-launching it, so the leg always exercises the checkout it's run against. Set
-`SERVERLEG_NO_BUILD=1` to reuse an already-built output instead (e.g. a CI job
-that pre-builds in an earlier step) — only do this when you're certain the
-existing build matches the commit under test.
+`node run.mjs` builds `tests/Lumeo.Tests.ServerHost` (Debug, host's native
+architecture) itself before launching it, so the leg always exercises the
+checkout it's run against. Set `SERVERLEG_NO_BUILD=1` to reuse an
+already-built output instead (e.g. a CI job that pre-builds in an earlier
+step) — only do this when you're certain the existing build matches the
+commit under test. Set `SERVERLEG_ARCH` (e.g. `=x64`) to pin `dotnet run` to
+a specific target architecture instead of the host's native one; leave it
+unset on ARM64 hosts (Apple Silicon, ARM Linux CI) since forcing x64 there
+requires an x64 runtime/emulation layer to be installed.
 
 ## Why CDP throttling, not a server-side delay middleware
 

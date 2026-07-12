@@ -218,10 +218,15 @@ async function main() {
     console.log(`Using externally-running docs server at ${baseUrl}.`);
   }
 
-  const browser = await chromium.launch();
+  // browser is launched INSIDE the try so a launch failure (e.g. Chromium
+  // missing) still hits the finally below and kills serverProc — otherwise
+  // a throw here would leave the spawned `dotnet run` bound to VR_PORT with
+  // no one left to tear it down.
+  let browser = null;
   const results = [];
 
   try {
+    browser = await chromium.launch();
     for (const theme of ['light', 'dark']) {
       const context = await browser.newContext({
         viewport: VIEWPORT,
@@ -265,24 +270,33 @@ async function main() {
       for (const route of routes) {
         const slug = `${slugFor(route)}.${theme}`;
         try {
-          const res = await page.goto(`${baseUrl}${route}`, { waitUntil: 'networkidle', timeout: 30_000 });
+          // `load` (not `networkidle`): several swept component pages
+          // (CodeEditor, PdfViewer, Map, Scheduler, ...) lazy-load CDN-backed
+          // deps (pdf.js, Leaflet, CodeMirror, ...) on first render, which can
+          // keep the network non-quiescent well past this timeout —
+          // `scripts/prerender/prerender.mjs` hit the exact same problem
+          // sweeping the same routes and deliberately uses `waitUntil: 'load'`
+          // for it. Real hydration readiness is proven below via
+          // data-blazor-ready, not by this wait, so relaxing it here costs
+          // nothing.
+          const res = await page.goto(`${baseUrl}${route}`, { waitUntil: 'load', timeout: 30_000 });
           if (!res || res.status() >= 400) {
             results.push({ route, theme, status: 'ERROR', detail: `HTTP ${res ? res.status() : 'no response'}` });
             continue;
           }
-          // `networkidle` only proves network quiescence, not that Blazor has
-          // hydrated: this is the WASM docs app, so the static prerendered
-          // markup for a /components/* route paints FIRST (see
-          // scripts/prerender/), then the WASM runtime downloads/boots and
-          // MainLayout re-renders #app from scratch once interactive — and
-          // that re-render can still be in flight (or not yet started) when
-          // networkidle fires, especially on a slow runner. Capturing then
+          // `load` only proves the initial document/subresources finished,
+          // not that Blazor has hydrated: this is the WASM docs app, so the
+          // static prerendered markup for a /components/* route paints FIRST
+          // (see scripts/prerender/), then the WASM runtime downloads/boots
+          // and MainLayout re-renders #app from scratch once interactive —
+          // and that re-render can still be in flight (or not yet started)
+          // when `load` fires, especially on a slow runner. Capturing then
           // would screenshot static/pre-hydration DOM and diff it against a
           // hydrated baseline, producing a false FAIL (or, on --update, a bad
           // baseline). MainLayout signals real readiness via the same
           // data-blazor-ready flag the prerender crawler
           // (scripts/prerender/prerender.mjs) already waits on — reuse it
-          // here instead of trusting networkidle alone.
+          // here instead of trusting the navigation wait alone.
           try {
             await page.waitForFunction(
               () => document.documentElement.dataset.blazorReady === 'true',
@@ -350,7 +364,7 @@ async function main() {
       await context.close();
     }
   } finally {
-    await browser.close();
+    if (browser) await browser.close();
     if (serverProc) serverProc.kill();
   }
 

@@ -112,15 +112,22 @@ function waitForServer(url, timeoutMs, serverProc, getLog) {
 async function main() {
   // Build by default — same reasoning as the visual-regression leg
   // (scripts/visual-regression/run.mjs): a bare `--no-build` silently runs
-  // whatever Debug/x64 output happens to already be on disk, which in a
+  // whatever Debug output happens to already be on disk, which in a
   // clean checkout (or after source changes since the last manual build) is
   // either missing (dotnet run exits before the host ever comes up) or
   // stale (the leg exercises code that doesn't match the commit under
   // review, making PASS/FAIL meaningless). Only skip the build via an
   // explicit opt-in, mirroring VR_NO_BUILD=1, for CI jobs that pre-build.
   const NO_BUILD = process.env.SERVERLEG_NO_BUILD === '1';
-  console.log(`Spawning Blazor Server host on ${BASE_URL} (net10.0, --arch x64${NO_BUILD ? ', --no-build' : ''}) ...`);
-  const runArgs = ['run', '--project', HOST_PROJECT, '--arch', 'x64', '-c', 'Debug', ...(NO_BUILD ? ['--no-build'] : []), '--urls', BASE_URL];
+  // ARCH is opt-in, NOT forced: passing --arch pins `dotnet run` to that
+  // target RID instead of the host's native architecture. Forcing x64
+  // unconditionally would break this leg on ARM64 hosts (Apple Silicon,
+  // ARM Linux CI) unless an x64 runtime/emulation happens to be installed
+  // there too. Leave --arch off by default so `dotnet run` picks the native
+  // RID; set SERVERLEG_ARCH (e.g. =x64) only if a specific target is needed.
+  const ARCH = process.env.SERVERLEG_ARCH || null;
+  console.log(`Spawning Blazor Server host on ${BASE_URL} (net10.0${ARCH ? `, --arch ${ARCH}` : ''}${NO_BUILD ? ', --no-build' : ''}) ...`);
+  const runArgs = ['run', '--project', HOST_PROJECT, ...(ARCH ? ['--arch', ARCH] : []), '-c', 'Debug', ...(NO_BUILD ? ['--no-build'] : []), '--urls', BASE_URL];
   const serverProc = spawn(DOTNET_EXE, runArgs, {
     cwd: REPO_ROOT,
     env: { ...process.env, ASPNETCORE_ENVIRONMENT: 'Development' },
