@@ -171,6 +171,17 @@
     private enum PauseReason { None = 0, Pointer = 1, Group = 2 }
 
     private readonly Dictionary<string, PauseReason> _pauseReasons = new();
+
+    // PR #357 (finding — Codex): every position group currently Expanded (hovered/focus-within
+    // ANYWHERE in its stack), kept in lockstep with HandleGroupExpandedChanged's Add/Remove below.
+    // Needed because ToastViewport.OnExpandedChanged is edge-triggered — it fires only when
+    // Expanded flips (see NotifyExpandedChangeAsync) — so it never fires again for a toast that
+    // (re)starts its own timer while the group is ALREADY expanded: a fresh admission into an
+    // already-hovered stack, or an Update that resets an already-mounted toast's timer. Every site
+    // that (re)starts a timer consults this set via StartOrPauseTimer instead of calling StartTimer
+    // directly, so such a toast begins life already paused for PauseReason.Group — exactly as if it
+    // had been mounted before the hover started and then paused along with its siblings.
+    private readonly HashSet<ToastViewport.ToastPosition> _expandedGroups = new();
     // Every non-persistent toast that isn't mounted yet — whether it's waiting on room right now
     // or an eviction that hasn't finished — sits here. FIFO by arrival order, same as sonner's
     // overflow queue. PR #357 round-6: ReconcileGroup (below) is the ONLY method that ever dequeues
@@ -528,7 +539,10 @@
 
         if (resolvedDuration > 0)
         {
-            StartTimer(message.Id, resolvedDuration);
+            // Routes through StartOrPauseTimer (finding — Codex), not StartTimer directly: this
+            // toast's group may already be expanded (hovered/focus-within) at this exact admission
+            // instant — see the _expandedGroups field comment.
+            StartOrPauseTimer(message.Id, resolvedDuration, resolvedPosition);
         }
     }
 
@@ -868,7 +882,13 @@
         var duration = options.Duration ?? DefaultDuration;
         if (duration > 0)
         {
-            StartTimer(toastId, duration);
+            // Routes through StartOrPauseTimer (finding — Codex), not StartTimer directly:
+            // CancelTimer above just cleared _pauseReasons, so an unconditional StartTimer here
+            // would silently un-pause a toast whose group is still expanded (e.g. a loading toast
+            // resolving to a finite duration while the user is still hovering its stack) — same gap
+            // as MountToast's, just on the "reset an already-mounted toast's timer" path instead of
+            // fresh admission. See the _expandedGroups field comment.
+            StartOrPauseTimer(toastId, duration, resolvedPosition);
         }
     }
 
@@ -879,6 +899,27 @@
         _timerStart[id] = DateTime.UtcNow;
         _timerRemaining[id] = duration;
         SafeAsyncDispatcher.FireAndForget(InvokeAsync, () => DismissAfterDelayAsync(id, duration, cts.Token), "ToastProvider.DismissAfterDelay");
+    }
+
+    // PR #357 (finding — Codex): the entry point every site that (re)starts a toast's auto-dismiss
+    // timer must use instead of calling StartTimer directly — MountToast (fresh admission) and
+    // ApplyToastMutation (an Update resetting an already-mounted toast's timer). If `pos` is
+    // currently expanded (see _expandedGroups), the timer starts held paused for PauseReason.Group
+    // — mirroring PauseTimer's own bookkeeping (record the reason, stash the full duration as the
+    // remaining time) — rather than running for even one frame unpaused. Without this, a toast that
+    // lands in an already-hovered/focused stack never gets its own PauseTimer(Group) call, because
+    // OnExpandedChanged only fires on a genuine flip and Expanded is already true: it would count
+    // down and could vanish while the user is reading the very stack it just joined, unlike every
+    // sibling already paused for that same reason.
+    private void StartOrPauseTimer(string id, int duration, ToastViewport.ToastPosition pos)
+    {
+        if (_expandedGroups.Contains(pos))
+        {
+            _pauseReasons[id] = PauseReason.Group;
+            _timerRemaining[id] = duration;
+            return;
+        }
+        StartTimer(id, duration);
     }
 
     // PR #357 P2 fix: `reason` defaults to Pointer — every EXISTING per-toast OnMouseEnter/
@@ -939,6 +980,11 @@
     // a precise mirror of "which toasts actually have a live timer right now".
     private Task HandleGroupExpandedChanged(ToastViewport.ToastPosition pos, bool expanded)
     {
+        // Kept in lockstep so StartOrPauseTimer can tell, for a toast that (re)starts its timer
+        // AFTER this call returns, whether the group it's landing in is already expanded — see the
+        // _expandedGroups field comment.
+        if (expanded) _expandedGroups.Add(pos); else _expandedGroups.Remove(pos);
+
         var ids = _toasts.Where(t => t.ResolvedPosition == pos && !t.Leaving && !t.ResolvedPersistent)
             .Select(t => t.Id).ToList();
         foreach (var id in ids)

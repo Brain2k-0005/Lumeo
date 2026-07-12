@@ -178,6 +178,57 @@ public class ToastStackingTests : IAsyncLifetime
             Assert.Equal("false", Attr(cut.Find("[data-stacked='true']"), "data-expanded")));
     }
 
+    // PR #357 (finding — Codex): ToastViewport.OnExpandedChanged is edge-triggered — it fires only
+    // when Expanded flips (NotifyExpandedChangeAsync). A toast admitted WHILE the group is already
+    // expanded therefore never gets its own HandleGroupExpandedChanged(Group) pause call, because
+    // Expanded never flips for it. Pre-fix, MountToast started that toast's auto-dismiss timer
+    // unconditionally, so it could count down and vanish under the cursor while the user was still
+    // reading the (already fanned-out) stack, unlike every sibling that WAS mounted before the
+    // hover began. Fixed via ToastProvider.StartOrPauseTimer consulting the live _expandedGroups
+    // set at admission time.
+    [Fact]
+    public async Task Toast_Added_While_Group_Already_Expanded_Starts_Paused_And_Survives_Its_Own_Duration()
+    {
+        var toastService = GetToastService();
+        var cut = _ctx.Render<L.ToastProvider>();
+
+        // Two long-duration toasts first so the group is already IsStacked (data-stacked="true",
+        // ToastCount > 1) before hovering — matches every other hover test's setup in this file.
+        toastService.Show(new ToastOptions { Title = "A", Duration = 60000 });
+        toastService.Show(new ToastOptions { Title = "A2", Duration = 60000 });
+
+        cut.WaitForAssertion(() =>
+            Assert.Equal(2, cut.FindAll("[role='alert'],[role='status']").Count));
+
+        // Hover the group BEFORE the third toast ever arrives — the group is already Expanded
+        // (data-expanded="true") when "B" gets admitted below.
+        var group = cut.Find("[data-stacked='true']");
+        group.MouseEnter();
+        cut.WaitForAssertion(() =>
+            Assert.Equal("true", Attr(cut.Find("[data-stacked='true']"), "data-expanded")));
+
+        // "B" arrives with a short real Duration WHILE the group is already hovered/expanded.
+        // Expanded stays true (it was already true), so ToastViewport never re-fires
+        // OnExpandedChanged for this admission — the exact edge-triggered gap under test.
+        toastService.Show(new ToastOptions { Title = "B", Duration = 100 });
+        cut.WaitForAssertion(() =>
+            Assert.Equal(3, cut.FindAll("[role='alert'],[role='status']").Count));
+
+        // Wait well past "B"'s 100ms duration while STILL hovered — pre-fix, "B"'s timer started
+        // running unpaused at admission and would have auto-dismissed here even though the group
+        // (and "B" itself, fanned out in the expanded list) is fully visible to the user.
+        await Task.Delay(400);
+        Assert.Equal(3, cut.FindAll("[role='alert'],[role='status']").Count);
+        Assert.Contains(cut.FindAll("[role='alert'],[role='status']"), e => e.TextContent.Contains("B"));
+
+        // Leaving the group resumes "B" with its full remaining duration (it never ran while
+        // paused) — it now dismisses normally, proving this isn't just a timer that got lost.
+        group.MouseLeave();
+        cut.WaitForAssertion(() =>
+            Assert.DoesNotContain(cut.FindAll("[role='alert'],[role='status']"), e => e.TextContent.Contains("B")),
+            TimeSpan.FromSeconds(5));
+    }
+
     // ── Opt-out renders the legacy list (no stacking markup at all) ────────
 
     [Fact]
