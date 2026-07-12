@@ -22,7 +22,13 @@ function isNodeExcluded(component, rule, matchable) {
         ex.rule === rule && (ex.component === null || ex.component === component) && ex.targetPattern.test(matchable));
 }
 
-const reportFiles = readdirSync(reportsDir).filter(f => f.endsWith('.json') && f !== 'summary.json');
+// summary.json (run.mjs) and axe-findings.json (this script's own output,
+// written into reportsDir below) are not per-component reports — skip both,
+// or a second run without clearing reports/ crashes on axe-findings.json's
+// {findings: [...]} shape (no `.violations`), same exclusion check-baseline.mjs
+// already applies.
+const reportFiles = readdirSync(reportsDir).filter(f =>
+    f.endsWith('.json') && f !== 'summary.json' && f !== 'axe-findings.json');
 const entries = [];
 const findings = []; // full detail for axe-findings.json
 
