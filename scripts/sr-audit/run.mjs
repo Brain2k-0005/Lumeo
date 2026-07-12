@@ -1,0 +1,253 @@
+#!/usr/bin/env node
+// scripts/sr-audit/run.mjs
+//
+// Guidepup-driven NVDA automation of docs/superpowers/sr-test-protocol.md
+// for the top-5 highest-keyboard-surface components in that protocol
+// (DataGrid, FileManager, Tabs, Calendar, Cascader — ranked #1-#5 in the
+// protocol's own "top 20" list; the task brief's "Button, Dialog, Combobox,
+// Tabs, DataGrid" does not match the protocol, which has no Button/Dialog
+// rows at all, so this substitutes the actual top-5 the protocol documents).
+//
+// IMPORTANT — run `node check-env.mjs` first. On a shared/locked-down
+// interactive desktop this script's speech capture can silently return
+// empty strings for a reason that has nothing to do with Guidepup or NVDA:
+// see README.md "Known blocker: OS foreground focus". check-env.mjs
+// diagnoses that specific failure mode before you spend time on a full run.
+//
+// Usage:
+//   node run.mjs                  # build + run full sweep against docs/Lumeo.Docs
+//   node run.mjs --no-build       # docs site already built (dotnet build -c Release)
+//   node run.mjs --base-url <url> # crawl an already-running docs server
+//   node run.mjs --component tabs # single component, for fast iteration
+//
+// Writes results/nvda-<date>.json (PASS/PARTIAL/FAIL per step, actual vs
+// expected spoken text) and prints the same summary to stdout.
+
+import { nvda } from "@guidepup/guidepup";
+import { chromium } from "playwright-core";
+import { spawn } from "node:child_process";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { join, resolve, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
+import { setTimeout as sleep } from "node:timers/promises";
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const repoRoot = resolve(__dirname, "..", "..");
+const resultsDir = join(__dirname, "results");
+
+const args = process.argv.slice(2);
+const noBuild = args.includes("--no-build");
+const baseUrlArg = args.includes("--base-url") ? args[args.indexOf("--base-url") + 1] : null;
+const componentArg = args.includes("--component") ? args[args.indexOf("--component") + 1] : null;
+const PORT = process.env.SR_AUDIT_PORT || 5292;
+
+// ---------------------------------------------------------------------------
+// Protocol subset: top-5 components by keyboard-interaction depth, from
+// docs/superpowers/sr-test-protocol.md. Each step maps 1:1 to a numbered row
+// in that file's table for the component. `focusSelector` substitutes for
+// "Tab to <the widget>" — instead of blindly Tab-ing through the docs page's
+// topbar/sidebar chrome (fragile, changes with every nav edit), it focuses
+// the first element matching the widget's ARIA role directly inside <main>.
+// This exercises the real widget's real keyboard handling faithfully; it
+// just doesn't also re-verify the page's outer Tab order, which is already
+// covered by the repo's keyboard-interaction test suite, not this protocol.
+// ---------------------------------------------------------------------------
+const COMPONENTS = [
+    {
+        name: "DataGrid",
+        slug: "data-grid",
+        focusSelector: '[role="grid"], [role="treegrid"]',
+        steps: [
+            { row: 1, action: "focus", key: null, expected: ["table", "grid"] },
+            { row: 2, action: "press", key: "ArrowRight", expected: [] }, // no fixed text; logged for manual eyeball
+            { row: 3, action: "press", key: "ArrowDown", expected: [] },
+        ],
+    },
+    {
+        name: "FileManager",
+        slug: "file-manager",
+        focusSelector: '[role="tree"]',
+        steps: [
+            { row: 1, action: "focus", key: null, expected: ["tree"] },
+            { row: 2, action: "press", key: "ArrowDown", expected: [] },
+            { row: 3, action: "press", key: "ArrowRight", expected: ["expand"] },
+        ],
+    },
+    {
+        name: "Tabs",
+        slug: "tabs",
+        focusSelector: '[role="tablist"] [role="tab"]',
+        steps: [
+            { row: 1, action: "focus", key: null, expected: ["tab", "selected"] },
+            { row: 2, action: "press", key: "ArrowRight", expected: [] },
+            { row: 3, action: "press", key: "Home", expected: [] },
+        ],
+    },
+    {
+        name: "Calendar",
+        slug: "calendar",
+        focusSelector: '[role="grid"] [role="gridcell"][tabindex="0"], [role="grid"] [role="gridcell"]',
+        steps: [
+            { row: 1, action: "focus", key: null, expected: ["grid", "table"] },
+            { row: 2, action: "press", key: "ArrowRight", expected: [] },
+            { row: 4, action: "press", key: "PageDown", expected: [] },
+        ],
+    },
+    {
+        name: "Cascader",
+        slug: "cascader",
+        focusSelector: 'button[aria-haspopup], [role="combobox"]',
+        steps: [
+            { row: 1, action: "focus", key: null, expected: ["button", "combobox"] },
+            { row: 2, action: "press", key: "Enter", expected: ["menu"] },
+            { row: 7, action: "press", key: "Escape", expected: [] },
+        ],
+    },
+];
+
+if (componentArg) {
+    const filtered = COMPONENTS.filter((c) => c.slug === componentArg || c.name.toLowerCase() === componentArg.toLowerCase());
+    if (filtered.length === 0) {
+        console.error(`No component matches --component ${componentArg}. Known: ${COMPONENTS.map((c) => c.slug).join(", ")}`);
+        process.exit(1);
+    }
+    COMPONENTS.length = 0;
+    COMPONENTS.push(...filtered);
+}
+
+function fuzzyContains(actual, expectedKeywords) {
+    if (expectedKeywords.length === 0) return null; // no assertion, just logged
+    const a = (actual || "").toLowerCase();
+    return expectedKeywords.some((kw) => a.includes(kw.toLowerCase()));
+}
+
+function run(cmd, cmdArgs, opts = {}) {
+    return new Promise((resolveP, rejectP) => {
+        const p = spawn(cmd, cmdArgs, { stdio: "inherit", shell: process.platform === "win32", ...opts });
+        p.on("exit", (code) => (code === 0 ? resolveP() : rejectP(new Error(`${cmd} ${cmdArgs.join(" ")} exited ${code}`))));
+        p.on("error", rejectP);
+    });
+}
+
+async function waitForServer(url, timeoutMs = 120_000) {
+    const start = Date.now();
+    while (Date.now() - start < timeoutMs) {
+        try {
+            const res = await fetch(url);
+            if (res.ok || res.status === 404) return true;
+        } catch { /* not up yet */ }
+        await sleep(1000);
+    }
+    return false;
+}
+
+async function main() {
+    // ---- 1. docs server -----------------------------------------------------
+    let dotnetProc = null;
+    let baseUrl = baseUrlArg;
+    if (!baseUrl) {
+        const dotnetExe = process.env.DOTNET_EXE || "dotnet";
+        const docsProj = join(repoRoot, "docs", "Lumeo.Docs", "Lumeo.Docs.csproj");
+        if (!noBuild) {
+            console.log("[sr-audit] dotnet build docs/Lumeo.Docs (Release)...");
+            await run(dotnetExe, ["build", docsProj, "-c", "Release", "--nologo"]);
+        }
+        baseUrl = `http://localhost:${PORT}`;
+        console.log(`[sr-audit] dotnet run docs/Lumeo.Docs --urls ${baseUrl} ...`);
+        dotnetProc = spawn(dotnetExe, [
+            "run", "--project", docsProj, "-c", "Release", "--no-launch-profile", "--no-build",
+            "--urls", baseUrl,
+        ], { cwd: repoRoot, shell: process.platform === "win32", stdio: ["ignore", "pipe", "pipe"] });
+        dotnetProc.stderr.on("data", (d) => process.stderr.write(`[docs-server] ${d}`));
+        const up = await waitForServer(baseUrl, 120_000);
+        if (!up) {
+            console.error(`[sr-audit] docs server did not come up within 120s at ${baseUrl}`);
+            dotnetProc.kill();
+            process.exit(1);
+        }
+        console.log(`[sr-audit] docs server ready at ${baseUrl}`);
+        await sleep(2000);
+    }
+
+    // ---- 2. browser + NVDA ---------------------------------------------------
+    const edgeCandidates = [
+        "C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe",
+        "C:/Program Files/Microsoft/Edge/Application/msedge.exe",
+    ];
+    const edgePath = edgeCandidates.find((p) => existsSync(p));
+    // Protocol recommends Firefox as primary; Edge/Chrome are the documented
+    // fallback (see sr-test-protocol.md Setup section) and are what's
+    // reliably present without an extra playwright browser download.
+    const browser = await chromium.launch({ headless: false, executablePath: edgePath, args: ["--start-maximized"] });
+    const page = await browser.newPage();
+
+    console.log("[sr-audit] starting NVDA via Guidepup...");
+    await nvda.start();
+    await sleep(2000);
+
+    mkdirSync(resultsDir, { recursive: true });
+    const report = { generated: new Date().toISOString(), baseUrl, protocolFile: "docs/superpowers/sr-test-protocol.md", components: {} };
+
+    for (const component of COMPONENTS) {
+        console.log(`\n[sr-audit] === ${component.name} (/components/${component.slug}) ===`);
+        const route = `/components/${component.slug}`;
+        await page.goto(baseUrl + route, { waitUntil: "load", timeout: 60_000 });
+        try {
+            await page.waitForFunction(() => document.documentElement.dataset.blazorReady === "true", { timeout: 30_000 });
+        } catch {
+            console.warn(`[sr-audit] ${component.slug}: blazorReady never set within 30s — continuing anyway`);
+        }
+        await sleep(1000);
+
+        const componentResult = { route, steps: [] };
+        let focusOk = false;
+        try {
+            focusOk = await page.evaluate((sel) => {
+                const el = document.querySelector(sel);
+                if (!el) return false;
+                el.focus();
+                return document.activeElement === el;
+            }, component.focusSelector);
+        } catch (e) {
+            console.warn(`[sr-audit] ${component.slug}: focus eval failed: ${e.message}`);
+        }
+        if (!focusOk) {
+            console.warn(`[sr-audit] ${component.slug}: could not focus "${component.focusSelector}" — skipping, marking FAIL`);
+            componentResult.steps.push({ row: 0, action: "focus", key: null, expected: [], actual: null, result: "FAIL — target element not found/focusable" });
+            report.components[component.name] = componentResult;
+            continue;
+        }
+
+        for (const step of component.steps) {
+            if (step.action === "press") {
+                await nvda.press(step.key);
+            }
+            await sleep(600);
+            const actual = await nvda.lastSpokenPhrase();
+            let result;
+            const match = fuzzyContains(actual, step.expected);
+            if (match === null) {
+                result = actual && actual.trim().length > 0 ? `LOGGED — "${actual}"` : "LOGGED — (empty)";
+            } else {
+                result = match ? "PASS" : `FAIL — expected one of [${step.expected.join(", ")}], got "${actual}"`;
+            }
+            console.log(`  row ${step.row} (${step.action}${step.key ? " " + step.key : ""}): ${result}`);
+            componentResult.steps.push({ row: step.row, action: step.action, key: step.key, expected: step.expected, actual, result });
+        }
+        report.components[component.name] = componentResult;
+    }
+
+    await nvda.stop();
+    await browser.close();
+    if (dotnetProc) dotnetProc.kill();
+
+    const date = new Date().toISOString().slice(0, 10);
+    const outPath = join(resultsDir, `nvda-${date}.json`);
+    writeFileSync(outPath, JSON.stringify(report, null, 2));
+    console.log(`\n[sr-audit] wrote ${outPath}`);
+}
+
+main().catch((e) => {
+    console.error("[sr-audit] fatal:", e);
+    process.exit(1);
+});
