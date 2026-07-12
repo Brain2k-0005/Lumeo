@@ -70,7 +70,12 @@ if (!existsSync(reportsDir)) {
     process.exit(1);
 }
 
-const reportFiles = readdirSync(reportsDir).filter(f => f.endsWith('.json') && f !== 'summary.json');
+// summary.json (run.mjs) and axe-findings.json (gen-baseline.mjs) are
+// aggregate/derived files that live alongside the per-component reports in
+// this same directory but don't have a `violations` array — skip both so a
+// later `node check-baseline.mjs` run doesn't crash trying to iterate them.
+const reportFiles = readdirSync(reportsDir).filter(f =>
+    f.endsWith('.json') && f !== 'summary.json' && f !== 'axe-findings.json');
 if (reportFiles.length === 0) {
     console.error(`[check-baseline] no per-component reports found in ${reportsDir}.`);
     process.exit(1);
