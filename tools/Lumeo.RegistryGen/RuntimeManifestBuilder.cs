@@ -10,9 +10,12 @@ public static class RuntimeManifestBuilder
 {
     // Whole non-UI folders whose .cs/.razor are the shared substrate every component compiles against
     // (Cx/LumeoIds, the injected services + their interfaces, the AddLumeo DI extension, attributes,
-    // theme token C#, and the first-party LumeoIcons pack that every icon-using component renders —
-    // so standalone vendors icons with ZERO external NuGet dependency).
-    private static readonly string[] SubstrateDirs = { "Internal", "Services", "Extensions", "Attributes", "Theming", "Icons" };
+    // theme token C#, the first-party LumeoIcons pack that every icon-using component renders —
+    // so standalone vendors icons with ZERO external NuGet dependency — and Serialization, the
+    // source-generated LumeoJsonContext that Services/ConsentService.cs references directly:
+    // without it, every standalone/ejected project fails to compile against an unresolved
+    // Lumeo.Serialization.LumeoJsonContext as soon as ConsentService is vendored (#364 review).
+    private static readonly string[] SubstrateDirs = { "Internal", "Services", "Extensions", "Attributes", "Theming", "Icons", "Serialization" };
 
     /// <summary>
     /// Enumerates the runtime closure under <paramref name="coreSrcRoot"/> (= the <c>src/Lumeo</c>

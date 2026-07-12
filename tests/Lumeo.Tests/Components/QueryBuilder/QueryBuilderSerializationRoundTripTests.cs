@@ -29,6 +29,8 @@ public class QueryBuilderSerializationRoundTripTests
         public long BigId { get; set; }
         public decimal Amount { get; set; }
         public DateOnly Released { get; set; }
+        public double Score { get; set; }
+        public DateTime CreatedUtc { get; set; }
     }
 
     [Fact]
@@ -112,5 +114,67 @@ public class QueryBuilderSerializationRoundTripTests
         {
             CultureInfo.CurrentCulture = original;
         }
+    }
+
+    [Fact]
+    public void Fractional_Number_Value_Round_Trips_Under_A_Non_Invariant_Culture()
+    {
+        // ReadNumber returns `decimal` for a fractional JSON number (to preserve precision for
+        // decimal-typed fields, see Decimal_Value_Round_Trips_Without_Precision_Loss above).
+        // When the TARGET property is `double`, ConvertValue used to format that decimal via
+        // value.ToString() (culture-sensitive) before an InvariantCulture parse — under de-DE,
+        // 1.5m.ToString() renders "1,5", which InvariantCulture then misreads as 15.
+        var original = CultureInfo.CurrentCulture;
+        try
+        {
+            CultureInfo.CurrentCulture = CultureInfo.GetCultureInfo("de-DE");
+
+            var query = Lumeo.QueryGroup.CreateEmpty();
+            query.Rules.Add(new Lumeo.QueryRule { Field = "Score", Operator = "=", Value = 1.5 });
+
+            var json = Lumeo.QueryBuilder.ToJson(query);
+            var parsed = Lumeo.QueryBuilder.FromJson(json);
+            var predicate = Lumeo.QueryBuilder.ToExpression<Widget>(parsed!)!.Compile();
+
+            Assert.True(predicate(new Widget { Score = 1.5 }));
+            Assert.False(predicate(new Widget { Score = 15 }));
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = original;
+        }
+    }
+
+    [Fact]
+    public void Non_String_Combinator_Fails_The_Parse_Instead_Of_Throwing_Uncaught()
+    {
+        // reader.GetString() throws InvalidOperationException (not JsonException) for a
+        // non-string token. FromJson only catches JsonException, so {"combinator":0,...} used
+        // to bypass the documented return-null-on-parse-failure contract and let the exception
+        // escape instead of treating the query as invalid.
+        const string json = """{"combinator":0,"rules":[]}""";
+
+        var parsed = Lumeo.QueryBuilder.FromJson(json);
+
+        Assert.Null(parsed);
+    }
+
+    [Fact]
+    public void Utc_DateTime_Value_Round_Trips_Without_A_Timezone_Shift()
+    {
+        // A programmatic QueryRule.Value of Kind.Utc serializes with an "O"-format string
+        // carrying a "Z" suffix. Without DateTimeStyles.RoundtripKind, DateTime.Parse silently
+        // converts that back to local time on reload, so the rebuilt predicate compares against
+        // a shifted instant in any non-UTC timezone.
+        var createdUtc = new DateTime(2026, 7, 12, 10, 0, 0, DateTimeKind.Utc);
+        var query = Lumeo.QueryGroup.CreateEmpty();
+        query.Rules.Add(new Lumeo.QueryRule { Field = "CreatedUtc", Operator = "=", Value = createdUtc });
+
+        var json = Lumeo.QueryBuilder.ToJson(query);
+        var parsed = Lumeo.QueryBuilder.FromJson(json);
+        var predicate = Lumeo.QueryBuilder.ToExpression<Widget>(parsed!)!.Compile();
+
+        Assert.True(predicate(new Widget { CreatedUtc = createdUtc }));
+        Assert.False(predicate(new Widget { CreatedUtc = createdUtc.AddHours(1) }));
     }
 }

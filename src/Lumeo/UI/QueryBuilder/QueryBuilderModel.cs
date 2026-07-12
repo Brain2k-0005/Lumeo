@@ -22,6 +22,15 @@ internal sealed class QueryCombinatorJsonConverter : JsonConverter<QueryCombinat
 {
     public override QueryCombinator Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
     {
+        // reader.GetString() throws InvalidOperationException (not JsonException) for a
+        // non-string token such as {"combinator":0,...}. FromJson only catches JsonException,
+        // so an InvalidOperationException would escape past its documented
+        // return-null-on-parse-failure contract instead of being treated as an invalid query.
+        // Reject non-string tokens with JsonException up front so every malformed shape takes
+        // the same documented path (#364 review).
+        if (reader.TokenType != JsonTokenType.String)
+            throw new JsonException($"Invalid QueryCombinator token '{reader.TokenType}'; expected a string.");
+
         var s = reader.GetString();
         // FromJson is documented to return null on parse failure (catches JsonException).
         // Silently coercing an invalid/corrupted combinator to And would instead hand back
@@ -244,20 +253,36 @@ public static class QueryBuilderOperators
     public static string LabelFor(string op) => Labels.TryGetValue(op, out var l) ? l : op;
 }
 
+// Self-contained source-generated JSON metadata for the QueryGroup/QueryRule/QueryNode tree —
+// deliberately NOT the shared Lumeo.Serialization.LumeoJsonContext. `lumeo add query-builder`
+// vendors only this file's three UI/QueryBuilder/* files into the consumer's own project (see
+// the query-builder registry entry); LumeoJsonContext is `internal` to the Lumeo assembly, so a
+// vendored reference to it cannot compile — neither in NuGet-package mode (the consumer has no
+// InternalsVisibleTo grant into Lumeo.dll) nor in standalone/eject mode (Serialization/ isn't
+// part of the vendored runtime closure either). Keeping the context in the SAME file that gets
+// vendored + namespace-rewritten means it always compiles standalone, in the package, and
+// ejected alike (#364 review).
+[JsonSerializable(typeof(QueryGroup))]
+[JsonSerializable(typeof(QueryRule))]
+[JsonSerializable(typeof(QueryNode))]
+internal sealed partial class QueryBuilderJsonContext : JsonSerializerContext
+{
+}
+
 /// <summary>Serialization + LINQ helpers for <see cref="QueryGroup"/> trees.</summary>
 public static class QueryBuilderSerialization
 {
-    // Two lightweight wrappers around the SAME source-generated shape (LumeoJsonContext),
+    // Two lightweight wrappers around the SAME source-generated shape (QueryBuilderJsonContext),
     // one per direction so WriteIndented (pretty JSON preview) / PropertyNameCaseInsensitive
     // (tolerant reads) can differ without touching Default's own options. No reflection
     // resolver needed here: QueryRule.Value/Value2 (the only genuinely open members) carry an
     // explicit [JsonConverter(typeof(QueryValueJsonConverter))], so nothing in this tree ever
     // needs a runtime Type -> JsonTypeInfo lookup outside the compiled shape (#354).
-    private static readonly Lumeo.Serialization.LumeoJsonContext WriteContext = new(
-        new JsonSerializerOptions(Lumeo.Serialization.LumeoJsonContext.Default.Options) { WriteIndented = true });
+    private static readonly QueryBuilderJsonContext WriteContext = new(
+        new JsonSerializerOptions(QueryBuilderJsonContext.Default.Options) { WriteIndented = true });
 
-    private static readonly Lumeo.Serialization.LumeoJsonContext ReadContext = new(
-        new JsonSerializerOptions(Lumeo.Serialization.LumeoJsonContext.Default.Options) { PropertyNameCaseInsensitive = true });
+    private static readonly QueryBuilderJsonContext ReadContext = new(
+        new JsonSerializerOptions(QueryBuilderJsonContext.Default.Options) { PropertyNameCaseInsensitive = true });
 
     public static string ToJson(QueryGroup query) =>
         JsonSerializer.Serialize(query, WriteContext.QueryGroup);
@@ -441,12 +466,22 @@ public static class QueryBuilderSerialization
         if (value is null) return targetType.IsValueType ? Activator.CreateInstance(targetType) : null;
         if (targetType.IsInstanceOfType(value)) return value;
 
-        var s = value as string ?? value.ToString();
+        // value.ToString() (no format/provider) is culture-sensitive for IFormattable sources —
+        // e.g. a decimal 1.5m (the exact-precision branch QueryValueJsonConverter.ReadNumber now
+        // returns for fractional numbers) renders as "1,5" under de-DE. The InvariantCulture parse
+        // below then misreads that comma as a thousands separator ("1,5" -> 15) instead of a
+        // decimal point. Format IFormattable values invariantly up front so this string hop never
+        // depends on CurrentCulture (#364 review).
+        var s = value as string ?? (value is IFormattable f ? f.ToString(null, System.Globalization.CultureInfo.InvariantCulture) : value.ToString());
         if (string.IsNullOrEmpty(s)) return targetType.IsValueType ? Activator.CreateInstance(targetType) : null;
 
         if (targetType.IsEnum) return Enum.Parse(targetType, s, ignoreCase: true);
         if (targetType == typeof(DateOnly)) return DateOnly.Parse(s, System.Globalization.CultureInfo.InvariantCulture);
-        if (targetType == typeof(DateTime)) return DateTime.Parse(s, System.Globalization.CultureInfo.InvariantCulture);
+        // RoundtripKind preserves the Utc/Local/Unspecified Kind a "O"-format string carries
+        // (Z or a numeric offset). Without it, DateTime.Parse silently converts an offset-bearing
+        // string to local time, so a query saved with a UTC DateTime reloads shifted by the
+        // client's timezone and compares against the wrong instant (#364 review).
+        if (targetType == typeof(DateTime)) return DateTime.Parse(s, System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.RoundtripKind);
         if (targetType == typeof(Guid)) return Guid.Parse(s);
         return Convert.ChangeType(s, targetType, System.Globalization.CultureInfo.InvariantCulture);
     }
