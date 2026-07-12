@@ -821,6 +821,15 @@
             return;
         }
 
+        // PR #357 round-13 (CodeRabbit): an explicit Update targeting a MOUNTED toast whose exit
+        // animation is already in flight must be a no-op. ApplyToastMutation below would clear its
+        // Leaving/FrozenIndex and restart its timer, but the RemoveWithExitAsync scheduled the
+        // instant it started leaving still removes it by id after the exit delay — so the "update"
+        // would vanish without ever animating and leave an orphaned restarted timer firing against a
+        // toast that's already gone. Ignore it, exactly as re-dismissing an already-leaving toast is
+        // a no-op via RemoveWithExitAsync's idempotency guard.
+        if (_toasts[index].Leaving) return;
+
         // (finding 4) Capture the group/persistence this MOUNTED toast counted against BEFORE
         // mutating it — a loading/promise toast most commonly goes persistent (Duration == 0) ->
         // finite (a real Duration) here, the exact transition that must re-enter cap accounting it
