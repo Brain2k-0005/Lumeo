@@ -158,6 +158,20 @@ mkdirSync(reportsDir, { recursive: true });
 
 const AXE_TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'];
 
+// docs/Lumeo.Docs is a Blazor WebAssembly SPA (App.razor sets
+// NotFoundPage="typeof(Pages.NotFound)"); its dev-server answers ANY
+// unmatched deep link with a 200 + index.html (SPA fallback), so the HTTP
+// guard in auditOne() below cannot see a route whose @page directive drifted
+// from the registry slug — e.g. RegistryGen's hasDocsPage flag only checks
+// that a "<Name>Page.razor" FILE exists (tools/Lumeo.RegistryGen/Program.cs),
+// not that its @page string still matches /components/<slug>. The client
+// router only discovers that mismatch after hydration, by rendering
+// Pages.NotFound in place of the intended page — which itself lives inside
+// <main> (MainLayout) and would otherwise get graded as a normal, often
+// clean, component report. Pages.NotFound sets this exact <PageTitle>; every
+// component page instead gets "<Title> — Lumeo" via ComponentDocPage.
+const NOT_FOUND_TITLE = 'Page Not Found — Lumeo';
+
 const summary = {
     generated: new Date().toISOString(),
     baseUrl,
@@ -194,6 +208,15 @@ async function auditOne(page, slug) {
     // Extra settle for late client-side renders (e.g. CodeMirror/chart canvases
     // that mount just after blazorReady).
     await sleep(300);
+
+    // Reject a route that resolved to Pages.NotFound (see NOT_FOUND_TITLE
+    // above) — thrown here so the caller's existing try/catch records it in
+    // summary.errors, the same path check-baseline.mjs already treats as
+    // "never actually audited", instead of writing a false "covered" report.
+    const title = await page.title();
+    if (title === NOT_FOUND_TITLE) {
+        throw new Error(`${route} resolved to the NotFound page (title "${title}") — no matching @page route`);
+    }
 
     await page.evaluate(axeSource);
     const result = await page.evaluate(async (tags) => {
