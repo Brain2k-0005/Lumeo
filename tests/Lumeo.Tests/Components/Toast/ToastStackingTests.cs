@@ -560,6 +560,57 @@ public class ToastStackingTests : IAsyncLifetime
             Assert.Equal("false", Attr(cut.Find("[data-stacked='true']"), "data-expanded")));
     }
 
+    // PR #357 (Codex finding): ToastViewport.Dispose() used to tear down without notifying
+    // OnExpandedChanged(false) when the group was still expanded at teardown. A non-default-
+    // position viewport is only rendered while its group is non-empty (@key diffing in the
+    // render loop above) — hovering it, then dismissing its LAST toast while still hovered, tore
+    // the instance down with no mouseleave/focusout ever firing. ToastProvider's _expandedGroups
+    // kept that position marked expanded forever afterward, so the NEXT toast shown at the same
+    // position started (and stayed) paused with PauseReason.Group, never auto-dismissing.
+    [Fact]
+    public void Toast_Auto_Dismisses_After_Its_Groups_Viewport_Was_Disposed_While_Expanded()
+    {
+        var toastService = GetToastService();
+        var cut = _ctx.Render<L.ToastProvider>(); // default Position = BottomRight
+
+        // Non-default position: its ToastViewport only renders while the group is non-empty.
+        toastService.Show(new ToastOptions
+        {
+            Title = "Solo", Duration = 60000, Position = ToastPosition.TopLeft, Dismissible = true,
+        });
+
+        cut.WaitForAssertion(() =>
+            Assert.Single(cut.FindAll("[role='alert'],[role='status']")));
+
+        // Hover the TopLeft group's own viewport container (the toast's direct DOM parent).
+        // data-stack-edge is stable/unique to the TopLeft group throughout (BottomRight's default,
+        // always-rendered viewport emits "up") — re-queried fresh each time via cut.Find rather than
+        // reusing a captured element reference, which a re-render (post-hover, post-dismiss) can
+        // leave stale, same as every other hover test in this file.
+        cut.Find("[role='alert'],[role='status']").ParentElement!.MouseEnter();
+        cut.WaitForAssertion(() =>
+            Assert.Equal("true", Attr(cut.Find("[data-stack-edge='down']"), "data-expanded")));
+
+        // Dismiss the group's only toast WHILE still hovered — once its exit finishes, this
+        // ToastViewport instance is disposed (positionsToRender drops TopLeft) with no
+        // mouseleave/focusout ever having fired.
+        cut.Find("[role='alert'],[role='status'] button").Click();
+        cut.WaitForAssertion(() =>
+            Assert.Empty(cut.FindAll("[role='alert'],[role='status']")),
+            TimeSpan.FromSeconds(5));
+
+        // A fresh toast lands at the SAME position with a short real duration. Pre-fix, it starts
+        // paused with PauseReason.Group from the stale _expandedGroups entry and never resumes —
+        // nothing here ever hovers/focuses it. It must auto-dismiss on its own.
+        toastService.Show(new ToastOptions { Title = "Next", Duration = 100, Position = ToastPosition.TopLeft });
+        cut.WaitForAssertion(() =>
+            Assert.Contains(cut.FindAll("[role='alert'],[role='status']"), e => e.TextContent.Contains("Next")));
+
+        cut.WaitForAssertion(() =>
+            Assert.DoesNotContain(cut.FindAll("[role='alert'],[role='status']"), e => e.TextContent.Contains("Next")),
+            TimeSpan.FromSeconds(5));
+    }
+
     // ── Held-fill entrance class: never park animate-toast-in ──────────────
     //
     // animate-toast-in uses animation-fill-mode:both, so a settled entrance

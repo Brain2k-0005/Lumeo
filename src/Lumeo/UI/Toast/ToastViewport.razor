@@ -156,6 +156,26 @@
     {
         _focusOutSequence++; // invalidate any in-flight callback before disposing the timer
         _focusOutTimer?.Dispose();
+
+        // PR #357 (Codex finding): a non-default-position viewport is only rendered while its
+        // group is non-empty (see ToastProvider's positionsToRender/@key) — dismissing its LAST
+        // toast programmatically while the group is still hovered/focus-within tears this instance
+        // down via @key diffing without ever running a mouseleave/focusout to flip Expanded back to
+        // false. Without this, ToastProvider's _expandedGroups keeps this position marked expanded
+        // forever: the NEXT toast shown at the same position mounts a fresh (collapsed,
+        // _notifiedExpanded=false) ToastViewport that never fires a false edge either — the first
+        // render is intentionally silent (see OnExpandedChanged's doc comment) — so the stale entry
+        // is never cleared and that toast's timer starts (and stays) paused with
+        // PauseReason.Group, never auto-dismissing. Firing the same false-edge notification Dispose
+        // would have delivered via a real mouseleave/focusout closes that gap. Fire-and-forget is
+        // safe here: HandleGroupExpandedChanged is synchronous (no await, no StateHasChanged) and
+        // ToastProvider outlives this viewport, so there is no disconnected-renderer risk to guard
+        // against the way RunSafeCollapse must for its own InvokeAsync/StateHasChanged path above.
+        if (_notifiedExpanded && OnExpandedChanged.HasDelegate)
+        {
+            _notifiedExpanded = false;
+            _ = OnExpandedChanged.InvokeAsync(false);
+        }
     }
 
     private bool IsStacked => StackToasts && ToastCount > 1;
@@ -183,7 +203,14 @@
 
     // Mobile: full available width (constrained by inset-x-4 = 16px gutters each side).
     // Desktop: capped at 420px so toasts don't stretch absurdly on wide monitors.
-    private string CssClass => Lumeo.Cx.Merge(PositionClasses, "z-[100] flex max-h-screen w-auto sm:w-full sm:max-w-[420px] flex-col gap-2", Class);
+    // PR #357 (Codex finding): "lumeo-toast-viewport" scopes the stacking rules in lumeo.css's
+    // "Toast stacking" section to actual toast groups. Those rules used to key off the bare
+    // data-stacked/data-index attributes alone — global selectors that, loaded app-wide, would
+    // ALSO match any host app or third-party widget that happens to render its own
+    // data-stacked="true"/data-index="N" markup, silently pulling its non-zero children out of
+    // flow and making them non-interactive. See CssClass's doc comment for the width contract
+    // this class doesn't affect.
+    private string CssClass => Lumeo.Cx.Merge("lumeo-toast-viewport", PositionClasses, "z-[100] flex max-h-screen w-auto sm:w-full sm:max-w-[420px] flex-col gap-2", Class);
 
     public enum ToastPosition { TopLeft, TopCenter, TopRight, BottomLeft, BottomCenter, BottomRight }
 }

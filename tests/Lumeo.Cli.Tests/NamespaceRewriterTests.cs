@@ -173,6 +173,31 @@ public class NamespaceRewriterTests
         Assert.Contains("List<QueuedToast>", result);                            // different identifier, not a match at all
     }
 
+    // PR #357 (Codex finding): Select depends on List, so vendoring `lumeo add select` supplies
+    // "List" as a sibling name. Select.razor's own `EventCallback<List<string>?>` has "List"
+    // directly preceded by `<` (from `EventCallback<`) — indistinguishable from a real `<List`
+    // markup tag under the old bare `(?<=<)` lookbehind, which rewrote it to
+    // `EventCallback<Acme.Ui.List<string>?>` and broke the build. A genuine `<List` markup tag
+    // must still be qualified; only the generic-argument occurrence must survive untouched.
+    [Fact]
+    public void Sibling_Qualification_Does_Not_Rewrite_Generic_Type_Arguments()
+    {
+        const string src =
+            "<List Items=\"@_items\">\n"
+          + "  <ListItem>@context</ListItem>\n"
+          + "</List>\n"
+          + "@code {\n"
+          + "    [Parameter] public EventCallback<List<string>?> OnChanged { get; set; }\n"
+          + "}";
+        var result = NamespaceRewriter.Rewrite(src, "Select.razor", "Acme.Ui", new[] { "List", "ListItem" });
+
+        Assert.Contains("<Acme.Ui.List Items=\"@_items\">", result);   // real markup tag qualified
+        Assert.Contains("<Acme.Ui.ListItem>@context</Acme.Ui.ListItem>", result);
+        Assert.Contains("</Acme.Ui.List>", result);
+        Assert.Contains("EventCallback<List<string>?>", result);       // generic argument untouched
+        Assert.DoesNotContain("Acme.Ui.List<string>", result);
+    }
+
     [Fact]
     public void Sibling_Qualification_Does_Not_Apply_To_CSharp_Files()
     {

@@ -642,11 +642,19 @@ input[type="range"]::-moz-range-thumb {
  * ToastViewport stamps `data-stacked`/`data-expanded`/`data-stack-edge` on
  * the group container and each <Toast> gets `data-index` (0 = newest/front)
  * from ToastProvider. All rules below are scoped to
- * `[data-stacked="true"]:not([data-expanded="true"])` — hover/focus-within
- * on the group flips `data-expanded="true"` (ToastViewport's
- * onmouseenter/leave + onfocusin/out), which drops out of every selector
- * here and the group instantly reverts to the plain flex-col list with gaps
- * (pre-stacking behavior, untouched).
+ * `.lumeo-toast-viewport[data-stacked="true"]:not([data-expanded="true"])`
+ * — hover/focus-within on the group flips `data-expanded="true"`
+ * (ToastViewport's onmouseenter/leave + onfocusin/out), which drops out of
+ * every selector here and the group instantly reverts to the plain flex-col
+ * list with gaps (pre-stacking behavior, untouched).
+ *
+ * PR #357 (Codex finding): the `.lumeo-toast-viewport` class (stamped on
+ * ToastViewport's own root div, see its CssClass doc comment) is REQUIRED on
+ * every selector below — data-stacked/data-index are generic enough that,
+ * loaded app-wide, a host app or third-party widget rendering its own
+ * data-stacked="true"/data-index="N" markup would otherwise also match these
+ * rules and have its non-zero children silently pulled out of flow and made
+ * non-interactive.
  *
  * Only `data-index="0"` stays in normal flow (`position: relative`, so
  * z-index applies) — every other index is pulled out of flow via
@@ -667,31 +675,31 @@ input[type="range"]::-moz-range-thumb {
  * stacked/transformed element.
  * ===================================================== */
 
-[data-stack-edge="up"] { --lumeo-stack-y1: -10px; --lumeo-stack-y2: -20px; }
-[data-stack-edge="down"] { --lumeo-stack-y1: 10px; --lumeo-stack-y2: 20px; }
+.lumeo-toast-viewport[data-stack-edge="up"] { --lumeo-stack-y1: -10px; --lumeo-stack-y2: -20px; }
+.lumeo-toast-viewport[data-stack-edge="down"] { --lumeo-stack-y1: 10px; --lumeo-stack-y2: 20px; }
 
-[data-stacked="true"] {
+.lumeo-toast-viewport[data-stacked="true"] {
   transition: max-height 0.3s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-[data-stacked="true"]:not([data-expanded="true"]) {
+.lumeo-toast-viewport[data-stacked="true"]:not([data-expanded="true"]) {
   max-height: max-content;
 }
 
-[data-stacked="true"]:not([data-expanded="true"]) > [data-index] {
+.lumeo-toast-viewport[data-stacked="true"]:not([data-expanded="true"]) > [data-index] {
   transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.25s ease;
 }
 
-[data-stack-edge="up"]:not([data-expanded="true"]) > [data-index] { transform-origin: top center; }
-[data-stack-edge="down"]:not([data-expanded="true"]) > [data-index] { transform-origin: bottom center; }
+.lumeo-toast-viewport[data-stack-edge="up"]:not([data-expanded="true"]) > [data-index] { transform-origin: top center; }
+.lumeo-toast-viewport[data-stack-edge="down"]:not([data-expanded="true"]) > [data-index] { transform-origin: bottom center; }
 
-[data-stacked="true"]:not([data-expanded="true"]) > [data-index="0"] {
+.lumeo-toast-viewport[data-stacked="true"]:not([data-expanded="true"]) > [data-index="0"] {
   position: relative;
   z-index: 3;
   transform: none;
 }
 
-[data-stacked="true"]:not([data-expanded="true"]) > [data-index]:not([data-index="0"]) {
+.lumeo-toast-viewport[data-stacked="true"]:not([data-expanded="true"]) > [data-index]:not([data-index="0"]) {
   position: absolute;
   inset-inline: 0;
   pointer-events: none;
@@ -699,15 +707,15 @@ input[type="range"]::-moz-range-thumb {
 
 /* Anchor the hidden toasts to the PEEKING edge so the offset stays visible
    regardless of per-toast height differences. */
-[data-stack-edge="up"]:not([data-expanded="true"]) > [data-index]:not([data-index="0"]) { top: 0; }
-[data-stack-edge="down"]:not([data-expanded="true"]) > [data-index]:not([data-index="0"]) { bottom: 0; }
+.lumeo-toast-viewport[data-stack-edge="up"]:not([data-expanded="true"]) > [data-index]:not([data-index="0"]) { top: 0; }
+.lumeo-toast-viewport[data-stack-edge="down"]:not([data-expanded="true"]) > [data-index]:not([data-index="0"]) { bottom: 0; }
 
-[data-stacked="true"]:not([data-expanded="true"]) > [data-index="1"] {
+.lumeo-toast-viewport[data-stacked="true"]:not([data-expanded="true"]) > [data-index="1"] {
   transform: translateY(var(--lumeo-stack-y1)) scale(0.94);
   z-index: 2;
 }
 
-[data-stacked="true"]:not([data-expanded="true"]) > [data-index="2"] {
+.lumeo-toast-viewport[data-stacked="true"]:not([data-expanded="true"]) > [data-index="2"] {
   transform: translateY(var(--lumeo-stack-y2)) scale(0.88);
   z-index: 1;
 }
@@ -734,7 +742,7 @@ input[type="range"]::-moz-range-thumb {
    RemoveWithExitAsync) — reshuffling among its still-live siblings can no
    longer move it out of whatever selector (this one included) it was in the
    moment dismissal began. */
-[data-stacked="true"]:not([data-expanded="true"]) > [data-index]:not([data-index="0"]):not([data-index="1"]):not([data-index="2"]) {
+.lumeo-toast-viewport[data-stacked="true"]:not([data-expanded="true"]) > [data-index]:not([data-index="0"]):not([data-index="1"]):not([data-index="2"]) {
   transform: translateY(var(--lumeo-stack-y2)) scale(0.88);
   opacity: 0;
   visibility: hidden;
@@ -742,8 +750,8 @@ input[type="range"]::-moz-range-thumb {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  [data-stacked="true"],
-  [data-stacked="true"] > [data-index] {
+  .lumeo-toast-viewport[data-stacked="true"],
+  .lumeo-toast-viewport[data-stacked="true"] > [data-index] {
     transition: none !important;
   }
 }
@@ -760,16 +768,16 @@ input[type="range"]::-moz-range-thumb {
    selector for selector); being declared later in the same cascade layer is
    what makes this win for `data-stack-edge="down"` groups on mobile only. */
 @media (max-width: 639.98px) {
-  [data-stacked="true"] {
+  .lumeo-toast-viewport[data-stacked="true"] {
     --lumeo-stack-y1: -10px;
     --lumeo-stack-y2: -20px;
   }
 
-  [data-stacked="true"]:not([data-expanded="true"]) > [data-index] {
+  .lumeo-toast-viewport[data-stacked="true"]:not([data-expanded="true"]) > [data-index] {
     transform-origin: top center;
   }
 
-  [data-stacked="true"]:not([data-expanded="true"]) > [data-index]:not([data-index="0"]) {
+  .lumeo-toast-viewport[data-stacked="true"]:not([data-expanded="true"]) > [data-index]:not([data-index="0"]) {
     top: 0;
     bottom: auto;
   }

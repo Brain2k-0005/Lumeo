@@ -49,7 +49,25 @@ internal static class NamespaceRewriter
             {
                 foreach (var name in siblingComponentNames)
                 {
-                    content = Regex.Replace(content, $@"(?<=<)(/?){Regex.Escape(name)}\b",
+                    // PR #357 (Codex finding): the bare lookbehind `(?<=<)` ALSO matched a sibling
+                    // name used as a C# generic type ARGUMENT — e.g. Select depends on List, and
+                    // Select.razor's own `EventCallback<List<string>?>` has "List" directly preceded
+                    // by `<` (from `EventCallback<`) exactly like a real `<List` markup tag. That
+                    // rewrote it to `EventCallback<Acme.Ui.List<string>?>`, pointing at the
+                    // non-generic List COMPONENT instead of System.Collections.Generic.List<T> — the
+                    // vendored file no longer compiles. A lookbehind excluding "preceded by an
+                    // identifier character" was tried first and reverted: it also excludes plenty of
+                    // GENUINE closing tags, which routinely sit directly against the preceding text
+                    // node with no separator (`<ToastTitle>@toast.Options.Title</ToastTitle>` — the
+                    // "e" ending "Title" is a word character immediately before "</ToastTitle>"'s
+                    // `<`). The reliable discriminator is on the OTHER side: a real tag name in Razor
+                    // markup is always followed by whitespace, `>`, or `/` (attributes, self-close, or
+                    // the end of the start/end tag) — HTML/Razor syntax has no `<Tag<` construct.
+                    // A generic type argument is the only thing a bare identifier can be immediately
+                    // followed by `<` for (the next nested generic argument, however deep). The
+                    // negative lookahead `(?!<)` after the name excludes exactly that, without
+                    // touching any real tag position.
+                    content = Regex.Replace(content, $@"(?<=<)(/?){Regex.Escape(name)}\b(?!<)",
                         $"$1{targetNamespace}.{name}");
                 }
             }
