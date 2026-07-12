@@ -18,9 +18,9 @@
                 <Badge Variant="Badge.BadgeVariant.Outline" Class="mx-auto w-fit">Performance</Badge>
 
                 <Heading Level="2" Class="text-3xl sm:text-4xl font-bold tracking-tight leading-tight">
-                    Column drag/resize moves cost
+                    Column reorder moves cost
                     <Sparkles Count="6" Class="inline-flex items-baseline">
-                        <NumberTicker Value="0.0031"
+                        <NumberTicker Value="0.0104"
                                       Suffix=" ms"
                                       Decimals="4"
                                       DurationMs="1800"
@@ -33,6 +33,7 @@
                     Median of 3,000 synthetic pointer moves against a loaded grid, measured
                     <Lumeo.Text As="span" Weight="medium" Color="foreground">2026-07-12 (4.2.0+main)</Lumeo.Text>
                     on one local Windows machine — see "How each metric was measured" below.
+                    (Resize's own number is enqueue-only handler cost, not directly comparable — see below.)
                 </Lumeo.Text>
             </Stack>
         </BlurFade>
@@ -152,6 +153,22 @@
                             lands just above it, so neither figure is inside that range — both are still sub-hundredth-of-a-millisecond,
                             consistent with the "zero .NET interop per move" design, but the exact claimed band undersells reorder's cost.
                         </Lumeo.Text>
+                        <div class="rounded-lg border border-destructive/20 bg-destructive/5 px-3 py-2.5 mt-3">
+                            <Lumeo.Text As="div" Size="xs" Weight="medium" Color="foreground">Resize's number is enqueue-only, not the full cost</Lumeo.Text>
+                            <Lumeo.Text As="div" Size="xs" Color="muted" Leading="relaxed" Class="mt-1">
+                                <code class="rounded bg-muted px-1 py-0.5 font-mono">registerColumnResize</code> only records
+                                the pending width on each move and defers the actual width/guideline DOM write to a
+                                <code class="rounded bg-muted px-1 py-0.5 font-mono">requestAnimationFrame</code> callback (once per frame).
+                                Because this benchmark dispatches all 3,000 synthetic moves back-to-back inside one synchronous
+                                loop, it never yields to let that callback run, so the <strong>0.0031&nbsp;ms resize figure is
+                                enqueue-only handler cost</strong> and excludes the deferred DOM write a real drag actually pays.
+                                Reorder's DOM write happens synchronously on every move, so its 0.0104&nbsp;ms figure is the
+                                full per-move cost and is not directly comparable to resize's. We deliberately did not force a
+                                real rAF flush per synthetic move — that would make the number dominated by rAF's ~16&nbsp;ms
+                                scheduling latency rather than actual handler cost, a different and more misleading number
+                                than the one disclosed here.
+                            </Lumeo.Text>
+                        </div>
                     </AccordionContent>
                 </AccordionItem>
 
@@ -280,15 +297,32 @@
 
         <BlurFade DelayMs="80" ForceHidden="true">
             <div class="rounded-xl border border-border/40 bg-muted/20 p-4 overflow-x-auto">
-                <pre class="text-xs font-mono text-foreground whitespace-pre">export DOTNET_ROLL_FORWARD=Major
+                <pre class="text-xs font-mono text-foreground whitespace-pre"># 1a. Boot cost — DEFAULT heap (what real visitors get)
+export DOTNET_ROLL_FORWARD=Major
+cd docs/Lumeo.Docs
+dotnet run --arch x64 -c Release --urls http://localhost:5287
+
+# in another shell
+cd scripts/perf
+npm install
+node wasm-boot.mjs
+# stop the server, then:
+
+# 1b. DataGrid / hot-path / toast benchmarks — need the 512 MB perf heap
 cd docs/Lumeo.Docs
 dotnet run --arch x64 -c Release --urls http://localhost:5287 -p:LumeoPerfHeap=true
 
 # in another shell
 cd scripts/perf
-npm install
-node run-all.mjs</pre>
+node datagrid-100k.mjs
+node datagrid-hotpaths.mjs
+node toast-burst.mjs</pre>
             </div>
+            <Lumeo.Text Size="xs" Color="muted" Class="mt-2">
+                Two server sessions on purpose — <code class="rounded bg-muted px-1 py-0.5 font-mono">WasmInitialHeapSize</code>
+                is a publish-time property for the whole app, not scoped per route, so an accurate boot number needs a
+                session without the perf heap. See <code class="rounded bg-muted px-1 py-0.5 font-mono">scripts/perf/README.md</code>.
+            </Lumeo.Text>
         </BlurFade>
     </section>
 
@@ -333,7 +367,7 @@ node run-all.mjs</pre>
         new("Gauge", "55 fps", "Virtualized scroll", "10,000 rows, 1s scroll sweep"),
         new("ArrowUpDown", "261 ms", "Sort 10k rows", "Click header → aria-sort flips + re-render"),
         new("Search", "341 ms", "Filter 10k rows", "Toolbar search input → body re-renders"),
-        new("MoveHorizontal", "0.0031 ms", "Column resize", "Per pointer-move event, zero .NET calls"),
+        new("MoveHorizontal", "0.0031 ms", "Column resize (enqueue-only)", "Handler cost per move; excludes the deferred rAF width write"),
         new("ArrowLeftRight", "0.0104 ms", "Column reorder", "Per pointer-move event, live sibling-shift"),
         new("Bell", "532 ms", "Toast burst settle", "5 toasts (see MaxToasts crash caveat)"),
         new("Zap", "844 ms", "WASM boot-to-interactive", "Trigger → MainLayout first interactive render"),
@@ -358,5 +392,7 @@ node run-all.mjs</pre>
         "This build is non-AOT-compiled (interpreter tier). AOT-published apps trade a slower build for a materially faster runtime — the DataGrid bulk-operation numbers above are pessimistic relative to what an AOT-published app would show.",
         "DataGrid's automated dataset is 10,000 rows, not the 100,000 this page's title once implied — see \"Why 10k rows, not 100k\" above for the measured 100k OOM and the 75k/~60s render finding.",
         "The toast burst is 5 toasts, not 100 — see \"A real bug, disclosed rather than hidden\" above.",
+        "The column-resize figure (0.0031 ms) is enqueue-only handler cost and excludes the deferred rAF DOM write a real drag pays — it is not directly comparable to reorder's figure, which includes its (synchronous) DOM write. See \"Column resize / reorder\" above.",
+        "The WASM boot number is measured against the docs app's DEFAULT (auto-calculated ~108 MB) heap, not the 512 MB perf heap the DataGrid/toast benchmarks below use — see \"How to reproduce\" for why boot needs a separate server session.",
     ];
 }

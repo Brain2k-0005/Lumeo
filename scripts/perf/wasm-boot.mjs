@@ -14,6 +14,13 @@
 // "true" — the exact moment MainLayout's first interactive render completes
 // (see docs/Lumeo.Docs/Layout/MainLayout.razor calling
 // lumeo.signalBlazorReady, and js/docs.js for what that flag does).
+//
+// MUST be run against a server started WITHOUT -p:LumeoPerfHeap=true (see
+// README.md "How to reproduce"). Lumeo.Docs.csproj's WasmInitialHeapSize is
+// an MSBuild/publish-time property for the whole app, not something scoped
+// per route — running this against the 512 MB perf-heap session the other
+// three scripts need would report a boot cost for an environment real
+// visitors (who get the default, auto-calculated ~108 MB heap) never see.
 import { BASE_URL, launchBrowser, machineInfo, median, nowIso, withFreshPage, writeResult } from './lib/util.mjs';
 
 const RUNS = 5;
@@ -68,6 +75,11 @@ async function main() {
       'a real click/keypress uses, then times trigger -> blazorReady — i.e. it ' +
       'measures the runtime boot cost itself, not how long a visitor sat idle ' +
       'before touching the page.',
+    heapNote:
+      'Must be run against a server started WITHOUT -p:LumeoPerfHeap=true so ' +
+      'this reflects the docs app\'s default, auto-calculated heap (~108 MB) ' +
+      '- the same environment real visitors get - not the 512 MB heap the ' +
+      'DataGrid/toast benchmarks need for their larger in-memory datasets.',
     runs,
     machine,
     medians: {

@@ -71,22 +71,46 @@ and are disclosed rather than hidden:
 
 ## How to reproduce
 
+`wasm-boot.mjs` measures the docs home's own boot cost, which real visitors
+pay against the DEFAULT (auto-calculated, ~108 MB) heap — not the 512 MB
+`LumeoPerfHeap` the other three scripts need for their in-memory datasets
+(see the `WasmInitialHeapSize` comment in `Lumeo.Docs.csproj`). Because that
+property is an MSBuild/publish-time setting, not something toggleable per
+route at runtime, getting an accurate boot number means running it against a
+**separate server session that does NOT set `LumeoPerfHeap`** — running it
+against the perf-heap session would measure boot cost in an environment real
+visitors never see.
+
 ```bash
-# 1. Start the docs dev server (from repo root)
+# 1a. Boot cost: start the docs dev server with the DEFAULT heap (no
+#     LumeoPerfHeap) — this is what real visitors get.
 export DOTNET_ROLL_FORWARD=Major
+cd docs/Lumeo.Docs
+"$HOME/.dotnet/dotnet.exe" run --arch x64 -c Release --urls http://localhost:5287
+
+# in another shell, install deps once
+cd scripts/perf
+npm install
+node wasm-boot.mjs
+
+# stop the server (Ctrl+C) before starting 1b.
+
+# 1b. The other three benchmarks need the larger in-memory dataset headroom —
+#     restart with LumeoPerfHeap=true.
 cd docs/Lumeo.Docs
 "$HOME/.dotnet/dotnet.exe" run --arch x64 -c Release --urls http://localhost:5287 -p:LumeoPerfHeap=true
 
-# 2. In another shell, install deps once and run the suite
+# in another shell
 cd scripts/perf
-npm install
-node run-all.mjs          # all four, sequentially
-# or individually:
 node datagrid-100k.mjs
 node datagrid-hotpaths.mjs
 node toast-burst.mjs
-node wasm-boot.mjs
 ```
+
+`run-all.mjs` runs all four sequentially against whichever single server is
+currently up — convenient for a quick re-check of the dataset-heavy three,
+but do not use it to reproduce the published boot number (it would run
+`wasm-boot.mjs` against whatever heap that server session happens to have).
 
 Override the base URL with `LUMEO_PERF_BASE_URL` if the docs server runs on a
 different host/port. Results land in `scripts/perf/results/*.json` (gitignored

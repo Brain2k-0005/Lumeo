@@ -1,6 +1,13 @@
 // Runs all four Phase 5 benchmark scripts in sequence and prints a compact
 // summary of the headline numbers. Each script also writes its own JSON to
 // scripts/perf/results/ (see README.md).
+//
+// CAUTION: wasm-boot.mjs needs a server started WITHOUT -p:LumeoPerfHeap=true
+// to measure the boot cost real visitors get (see README.md "How to
+// reproduce"). Running this file against a single perf-heap session is fine
+// for re-checking the other three, but do not treat the wasm-boot number it
+// produces as the published boot figure unless that session's heap is the
+// default one.
 import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';

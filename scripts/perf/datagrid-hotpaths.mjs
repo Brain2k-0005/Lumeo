@@ -9,11 +9,25 @@
 // burst is a synthetic PointerEvent dispatched from INSIDE a single
 // page.evaluate() call, directly at the same element the real
 // registerColumnResize()/registerColumnReorder() pointer listeners
-// (src/Lumeo/wwwroot/js/components.js) are bound to. Both engines rAF-throttle
-// their DOM writes to once per frame and only invoke .NET once, on pointerup —
-// so the loop below is exercising exactly the "zero .NET calls per move" path
-// the changelog claims, and the ms/move figure it produces is directly
-// comparable to the ~0.004-0.007 ms baseline quoted there.
+// (src/Lumeo/wwwroot/js/components.js) are bound to.
+//
+// IMPORTANT asymmetry between the two numbers (Codex finding, 2026-07-12):
+// reorder's onPointerMove writes `cell.style.transform` SYNCHRONOUSLY on
+// every move, so its ms/move genuinely includes that DOM write. resize's
+// onPointerMove only records `pendingWidth` and schedules
+// `requestAnimationFrame(flushPendingWidth)` for the actual width/guideline
+// DOM write — and because this loop dispatches all N pointermoves back to
+// back inside one synchronous page.evaluate() call, it never yields to the
+// event loop, so flushPendingWidth's rAF callback CANNOT run until after t1
+// is already captured. The resize number below is therefore enqueue-only
+// handler cost (updating pendingWidth), not the full per-move cost a real
+// drag pays — see resizeRuns' note field and PerformanceFacts.razor's
+// "Column resize / reorder" accordion for the disclosure. Forcing a real
+// rAF flush per synthetic move (i.e. yielding after every dispatch) was
+// deliberately rejected: it would make the "ms/move" figure dominated by
+// requestAnimationFrame's ~16 ms scheduling latency instead of actual JS
+// handler cost, which is a different and more misleading number than the
+// one being disclosed here.
 import { BASE_URL, launchBrowser, machineInfo, median, nowIso, withFreshPage, writeResult } from './lib/util.mjs';
 
 const RUNS = 5;
@@ -130,6 +144,15 @@ async function main() {
       'this same zero-.NET-interop-per-move design. This script re-measures it ' +
       'independently against a loaded (10k-row) grid using synthetic ' +
       'PointerEvents dispatched in-page (no Playwright/CDP round trip per event).',
+    resizeNote:
+      'registerColumnResize defers its DOM width/guideline write to a ' +
+      'requestAnimationFrame callback (once per frame). This script dispatches ' +
+      'every synthetic pointermove synchronously in one loop, which never yields ' +
+      'to the event loop, so that rAF callback cannot run before this figure is ' +
+      'captured. This number is therefore ENQUEUE-ONLY handler cost, not the ' +
+      'full per-move cost (including the deferred DOM write) a real drag pays. ' +
+      'Contrast with reorder below, whose DOM write happens synchronously on ' +
+      'every move and so is fully included.',
     resize: { runsMsPerMove: resizeRuns, medianMsPerMove: median(resizeRuns) },
     reorder: { runsMsPerMove: reorderRuns, medianMsPerMove: median(reorderRuns) },
     machine,
