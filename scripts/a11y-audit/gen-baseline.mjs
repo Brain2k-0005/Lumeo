@@ -6,6 +6,7 @@
 import { readFileSync, readdirSync, existsSync, writeFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { nodeShapeHash } from './node-identity.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const reportsDir = join(__dirname, 'reports');
@@ -50,7 +51,14 @@ for (const file of reportFiles) {
             // this, so a new nameless control added to a component that already
             // has baselined debt under that rule still fails as NEW instead of
             // being waved through by the (component, rule) key alone.
-            entries.push({ component: report.slug, rule: v.id, impact: v.impact, nodeCount: survivingNodes.length });
+            //
+            // nodeShapes is the accepted set of node IDENTITIES (see
+            // node-identity.mjs) for the pair — count alone can't tell "a
+            // baselined node got fixed, a different one started failing" apart
+            // from "nothing changed" when the totals happen to land the same;
+            // the shape set is what lets check-baseline.mjs catch that.
+            const nodeShapes = [...new Set(survivingNodes.map(n => nodeShapeHash(n.target, n.html)))].sort();
+            entries.push({ component: report.slug, rule: v.id, impact: v.impact, nodeCount: survivingNodes.length, nodeShapes });
         }
         findings.push({
             component: report.slug,

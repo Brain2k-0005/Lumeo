@@ -175,4 +175,13 @@ public record DataGridContext<TItem>(
     /// (drag handle, selection checkbox, detail chevron) whose horizontal padding differs
     /// from a data cell but whose height must still collapse under <see cref="Compact"/>.</summary>
     internal string CellPaddingY => Compact ? "py-1" : "py-2";
+
+    /// <summary>Number of header <c>&lt;tr&gt;</c> rows above the body, i.e. the 1-based
+    /// aria-rowindex the FIRST body row must report. Normally 1 header row (the data-column
+    /// row), so body rows start at 2; with <see cref="ColumnGroups"/> declared the header is a
+    /// 2-row block (parent labels + data-column row), so body rows must start at 3. Kept here
+    /// (rather than duplicated per row type) so <see cref="DataGridRow{TItem}"/> and
+    /// <see cref="DataGridGroupRow{TItem}"/> can't drift on this number and report a body
+    /// row's aria-rowindex that collides with the header's.</summary>
+    internal int HeaderRowOffset => ColumnGroups.Count > 0 ? 3 : 2;
 }

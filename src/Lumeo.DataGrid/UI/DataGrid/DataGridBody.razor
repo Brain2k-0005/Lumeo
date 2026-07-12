@@ -90,7 +90,16 @@ else if (Context is not null && Context.GroupTree is not null && Context.GroupTr
     // "Select/Expand/Collapse row N" labels built from it) collide across
     // groups, e.g. every group's first row announcing itself as "Select row 2"
     // — a global counter guarantees each row gets a distinct index.
+    //
+    // tableRowIdx is a SEPARATE global counter for aria-rowindex specifically:
+    // it counts every rendered <tr> — group header rows AND item rows — while
+    // globalIdx stays item-only (it also drives striping/select-row labels, which
+    // must stay keyed to item order). A group header occupies a real table row, so
+    // the item immediately after it — and every item after that — is one aria
+    // position further along than globalIdx alone would report; tableRowIdx tracks
+    // that. Fed to DataGridRow.TableRowIndex and DataGridGroupRow.RowIndex.
     var globalIdx = 0;
+    var tableRowIdx = 0;
     RenderFragment<DataGridGroupNode<TItem>>? renderNode = null;
     renderNode = node => __builder =>
     {
@@ -102,7 +111,9 @@ else if (Context is not null && Context.GroupTree is not null && Context.GroupTr
                           IsExpanded="@expanded"
                           Aggregates="@node.Aggregates"
                           ColSpan="@ColSpan"
+                          RowIndex="tableRowIdx"
                           OnToggle="@(() => Context.ToggleGroupPath(node.Path))" />
+        tableRowIdx++;
         if (expanded)
         {
             if (node.Children.Count > 0)
@@ -119,9 +130,11 @@ else if (Context is not null && Context.GroupTree is not null && Context.GroupTr
                     <DataGridRow @key="DataGridRowKeys.KeyFor(item)" TItem="TItem"
                                  Item="item"
                                  RowIndex="globalIdx"
+                                 TableRowIndex="tableRowIdx"
                                  DetailTemplate="DetailTemplate"
                                  OnContextMenu="OnContextMenu" />
                     globalIdx++;
+                    tableRowIdx++;
                 }
             }
         }
@@ -140,7 +153,13 @@ else if (Context is not null && Context.IsGrouped && Context.GroupedSections is 
             // Spans every group in this tbody — see the GroupTree branch above
             // for why a per-group counter that resets at each group boundary
             // produces duplicate row labels/aria-rowindex across groups.
+            //
+            // tableRowIdx additionally counts each DataGridGroupRow's own row slot
+            // (globalIdx deliberately doesn't — see the GroupTree branch above) so
+            // the item rows after it report the correct aria-rowindex instead of
+            // silently reusing the group header's.
             var globalIdx = 0;
+            var tableRowIdx = 0;
         }
         @foreach (var grp in Context.GroupedSections)
         {
@@ -152,7 +171,9 @@ else if (Context is not null && Context.IsGrouped && Context.GroupedSections is 
                               IsExpanded="@expanded"
                               Aggregates="@grp.Aggregates"
                               ColSpan="@ColSpan"
+                              RowIndex="tableRowIdx"
                               OnToggle="@(() => Context.ToggleGroupExpand(groupKey))" />
+            tableRowIdx++;
             if (expanded)
             {
                 foreach (var item in grp.Items)
@@ -160,9 +181,11 @@ else if (Context is not null && Context.IsGrouped && Context.GroupedSections is 
                     <DataGridRow @key="DataGridRowKeys.KeyFor(item)" TItem="TItem"
                                  Item="item"
                                  RowIndex="globalIdx"
+                                 TableRowIndex="tableRowIdx"
                                  DetailTemplate="DetailTemplate"
                                  OnContextMenu="OnContextMenu" />
                     globalIdx++;
+                    tableRowIdx++;
                 }
             }
         }
@@ -244,7 +267,13 @@ else if (Context is not null)
             // above for why a per-group counter that resets at each group
             // boundary produces duplicate row labels/aria-rowindex across
             // groups.
+            //
+            // tableRowIdx additionally counts each DataGridGroupRow's own row
+            // slot (globalIdx deliberately doesn't — see the GroupTree branch
+            // above) so the item rows after it report the correct
+            // aria-rowindex instead of silently reusing the group header's.
             var globalIdx = 0;
+            var tableRowIdx = 0;
             @foreach (var grp in Context.GroupedSections)
             {
                 var groupKey = grp.Key;
@@ -254,7 +283,9 @@ else if (Context is not null)
                                   Count="@grp.TotalCount"
                                   IsExpanded="@expanded"
                                   ColSpan="@ColSpan"
+                                  RowIndex="tableRowIdx"
                                   OnToggle="@(() => Context.ToggleGroupExpand(groupKey))" />
+                tableRowIdx++;
                 if (expanded)
                 {
                     foreach (var item in grp.Items)
@@ -262,9 +293,11 @@ else if (Context is not null)
                         <DataGridRow @key="DataGridRowKeys.KeyFor(item)" TItem="TItem"
                                      Item="item"
                                      RowIndex="globalIdx"
+                                     TableRowIndex="tableRowIdx"
                                      DetailTemplate="DetailTemplate"
                                      OnContextMenu="OnContextMenu" />
                         globalIdx++;
+                        tableRowIdx++;
                     }
                 }
             }
