@@ -96,6 +96,22 @@ public class DataGridGroupCollapsePersistenceTests : IAsyncLifetime
             "Collapse lost after Items refresh with identical content.");
     }
 
+    // Flapped twice in CI (no local repro across 50+ runs incl. -m:1 under load;
+    // see PR #357 round-1 notes) — every render in this test is synchronous
+    // bUnit (cut.Render blocks until the component tree commits, no JS interop,
+    // no Task.Delay/debounce on this path: OnParametersSetAsync -> ProcessClientData
+    // -> ProcessSingleLevelGrouping all run inline). The unrepro'd flake is
+    // consistent with the OTHER family of timing flakes in this suite: a starved
+    // CI thread pool can stall the render dispatch itself under heavy parallel
+    // load, so a bare Assert immediately after Render can observe a not-yet-
+    // committed tree even though nothing here is logically async. Hardened per
+    // the overlay-family doctrine regardless (see the hover-card/sheet/overlay
+    // exit-animation tests, TestContextExtensions): the transient mid-test assert
+    // stays a synchronous check on a just-committed render, but the FINAL
+    // assertion is a single WaitForAssertion with no trailing asserts after it,
+    // giving the same 10 s module ceiling (BunitContext.DefaultWaitTimeout) as
+    // headroom — it returns the instant the assertion first passes, so this
+    // costs nothing on the fast path and only buys margin under CI load.
     [Fact]
     public void Collapse_Survives_LotsOfData_Refresh()
     {
@@ -111,8 +127,8 @@ public class DataGridGroupCollapsePersistenceTests : IAsyncLifetime
 
         cut.Render(p => p.Add(x => x.Items, Make(1200)));
 
-        Assert.True(FirstGroupCollapsed(cut),
-            "Collapse lost after Items refresh with lots of data.");
+        cut.WaitForAssertion(() => Assert.True(FirstGroupCollapsed(cut),
+            "Collapse lost after Items refresh with lots of data."));
     }
 
     [Fact]

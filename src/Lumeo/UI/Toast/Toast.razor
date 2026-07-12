@@ -1,10 +1,12 @@
 @namespace Lumeo
+@implements IDisposable
 
-<div id="@Id"
+<div id="@EffectiveId"
      class="@CssClass"
      role="@Role"
      aria-live="@AriaLive"
      aria-atomic="true"
+     data-index="@(StackIndex?.ToString())"
      @onmouseenter="OnMouseEnter"
      @onmouseleave="OnMouseLeave"
      @onfocusin="OnFocusIn"
@@ -21,8 +23,29 @@
     /// Stable DOM id for the toast root. The provider sets this so it can
     /// register the touch swipe-to-dismiss gesture against this element via
     /// <see cref="Lumeo.Services.IComponentInteropService.RegisterToastSwipe"/>.
+    /// When omitted (a standalone <c>&lt;Toast&gt;</c> rendered outside
+    /// ToastProvider, e.g. a static variant preview), a generated id is used
+    /// instead.
     /// </summary>
     [Parameter] public string? Id { get; set; }
+
+    /// <summary>
+    /// Stack position within its position group, 0 = newest/front. Set by
+    /// ToastProvider when <c>StackToasts</c> is enabled; null renders no
+    /// <c>data-index</c> attribute at all (legacy list, no stacking CSS
+    /// applies). See lumeo.css's "Toast stacking" section.
+    /// </summary>
+    [Parameter] public int? StackIndex { get; set; }
+
+    /// <summary>
+    /// True while ToastProvider is playing this toast's exit animation
+    /// (<c>animate-toast-out</c>) ahead of unmounting it. Owned here (rather
+    /// than folded into <see cref="Class"/> by the caller) so
+    /// <see cref="CssClass"/> can also strip the entrance class the instant
+    /// this flips true — a dismiss that lands mid-entrance must play the exit
+    /// cleanly, not fight a still-parked <c>animate-toast-in</c>.
+    /// </summary>
+    [Parameter] public bool Leaving { get; set; }
     [Parameter] public string? Class { get; set; }
     [Parameter] public EventCallback OnMouseEnter { get; set; }
     [Parameter] public EventCallback OnMouseLeave { get; set; }
@@ -30,7 +53,104 @@
     [Parameter] public EventCallback OnFocusOut { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
-    private string CssClass => Cx.Merge("group pointer-events-auto relative flex w-full items-center justify-between space-x-2 overflow-hidden rounded-md border border-border/50 p-4 pe-11 sm:pe-6 shadow-lg animate-toast-in", VariantClasses, Class);
+    // Generated inline (not Lumeo.Internal.LumeoIds — that helper is `internal` to the Lumeo
+    // assembly, so a vendored copy of this file compiled inside a consumer app under the default
+    // NuGet-backed `lumeo add toast` path can't resolve it). Same "{prefix}-{guidN}" convention.
+    private readonly string _generatedId = $"toast-{Guid.NewGuid():N}";
+    private string EffectiveId => Id ?? _generatedId;
+
+    // True while `animate-toast-in` still governs this element. Starts true for
+    // every newly-mounted toast (one Toast instance per toast id — keyed by
+    // ToastProvider — so this field is set exactly once per toast's lifetime)
+    // and flips false the moment the entrance finishes: `animate-toast-in` uses
+    // `animation-fill-mode: both`, so once it settles it permanently pins
+    // opacity:1/transform:none on the element — a running OR filled keyframe
+    // always wins over a plain declared value for the same property regardless
+    // of selector specificity, so that held fill silently overrides the
+    // "Toast stacking" transforms (lumeo.css) the moment this toast is no
+    // longer at data-index="0", and on dismiss fights `animate-toast-out`
+    // (equal specificity, `animate-toast-in` declared later). Mirrors the
+    // institutional "never leave a filled animation parked on an element"
+    // lesson (Radix-Presence, 4.1.0-preview.15): once entered, the toast
+    // carries NO animation, so the stacking transform applies immediately and
+    // a later dismiss's `animate-toast-out` isn't fighting a stuck class.
+    //
+    // Cleanup is driven PURELY by a local timer (EnterFallbackMs below), NOT a
+    // JS-side animationend callback. PR #357 round-4 (P1): an earlier revision
+    // wired this up via Interop.AttachToastEnterEnd/IToastEnterCallback for
+    // frame-exact precision, but BOTH are Lumeo interop surface added in this
+    // same unreleased change — a vendored copy of this file compiled in a
+    // consumer app whose referenced Lumeo package predates that addition
+    // (any currently-published version, since it ships only once THIS PR
+    // itself is released) fails to compile: `IToastEnterCallback` doesn't
+    // exist as a type yet, and `AttachToastEnterEnd` isn't a member of
+    // `IComponentInteropService` yet either. Default interface members only
+    // protect IMPLEMENTERS of an evolving interface, not CALLERS reading a
+    // member the referenced assembly's metadata simply doesn't declare — so
+    // there is no compile-safe way to call a brand-new interop member from
+    // source that gets vendored verbatim into arbitrary consumer projects.
+    // A plain timer has zero Lumeo-surface dependency (see EnterFallbackTimer
+    // below), so it's the only mechanism this file can use unconditionally.
+    // Also a Razor `@onanimationend` handler was considered and rejected
+    // (this codebase already tried that for the Sheet/Drawer slide-in case —
+    // see the rc.22 note in components.js/lumeo.css — and dropped it):
+    // Blazor's onanimationend EventArgs carry no AnimationName, so a handler
+    // bound in Razor can't tell the toast's own entrance apart from a
+    // one-shot animation on arbitrary CustomContent (a Badge, a spinner, ...)
+    // bubbling out of the toast and would fire early.
+    private bool _entering = true;
+    // A local one-shot timer, NOT Lumeo.Services.DelayedDispatch — that helper is `internal` to
+    // the Lumeo assembly, so a vendored copy of this file compiled inside a consumer app under the
+    // default NuGet-backed `lumeo add toast` path can't resolve it. This duplicates just the
+    // single-pending-callback + cancel/dispose behaviour Toast.razor actually needs.
+    private readonly EnterFallbackTimer _enterFallback = new();
+
+    // Sits comfortably above the CSS entrance duration (toast-in is 0.3s, or
+    // 1ms under prefers-reduced-motion — still a real animation) so a normal
+    // entrance has visually settled well before this fires; under
+    // prefers-reduced-motion the stacking transform simply lags this fixed
+    // window instead of the (near-instant) animationend — a bounded, minor
+    // cosmetic cost worth paying for compiling in every supported consumer
+    // project unconditionally (see the field comment above).
+    private const int EnterFallbackMs = 350;
+
+    protected override void OnParametersSet()
+    {
+        // Dismissed while still entering (rapid show+dismiss): strip the
+        // entrance class immediately instead of waiting for the fallback
+        // timer — OnParametersSet already knows Leaving flipped, no reason
+        // to sit on the remaining window for something already decided.
+        if (Leaving && _entering)
+        {
+            FinishEntering();
+        }
+    }
+
+    protected override void OnAfterRender(bool firstRender)
+    {
+        if (firstRender && _entering)
+        {
+            _enterFallback.Schedule(EnterFallbackMs, () => InvokeAsync(FinishEntering));
+        }
+    }
+
+    private void FinishEntering()
+    {
+        if (!_entering) return;
+        _entering = false;
+        _enterFallback.Cancel();
+        StateHasChanged();
+    }
+
+    public void Dispose()
+    {
+        _enterFallback.Dispose();
+    }
+
+    private string CssClass => Lumeo.Cx.Merge(
+        "group pointer-events-auto relative flex w-full items-center justify-between space-x-2 overflow-hidden rounded-md border border-border/50 p-4 pe-11 sm:pe-6 shadow-lg",
+        Leaving ? "animate-toast-out" : Lumeo.Cx.When(_entering, "animate-toast-in"),
+        VariantClasses, Class);
 
     // Destructive variant uses role="alert" + aria-live="assertive" so screen readers
     // interrupt with errors; informational variants use role="status" + aria-live="polite"
@@ -47,4 +167,48 @@
         ToastVariant.Info => "border-info/50 bg-info-light text-info-text",
         _ => "bg-card text-foreground"
     };
+
+    // Minimal local stand-in for Lumeo.Services.DelayedDispatch: a single pending one-shot
+    // callback that a later Schedule() replaces and Cancel()/Dispose() can pre-empt. Deliberately
+    // NOT the shared internal helper (see the _enterFallback field comment) — a vendored copy of
+    // this file must compile standalone in a consumer app with no access to Lumeo's internals.
+    private sealed class EnterFallbackTimer : IDisposable
+    {
+        private System.Threading.Timer? _timer;
+        private int _sequence;
+
+        public void Schedule(int delayMs, Func<Task> action)
+        {
+            _timer?.Dispose();
+            var seq = ++_sequence;
+            _timer = new System.Threading.Timer(_ =>
+            {
+                if (seq != _sequence) return;
+                _ = RunSafe(action);
+            }, null, delayMs, System.Threading.Timeout.Infinite);
+        }
+
+        public void Cancel()
+        {
+            ++_sequence;
+            _timer?.Dispose();
+            _timer = null;
+        }
+
+        // PR #357 round-6 finding 5: must invalidate via Cancel() (bumps `_sequence`), NOT just
+        // dispose the timer. `System.Threading.Timer.Dispose()` does not wait for/cancel a
+        // callback that has ALREADY been queued to the thread pool (unmounting mid-fire is exactly
+        // the case here — a toast can be torn down for reasons other than entering `Leaving`, e.g.
+        // navigating away while a fresh toast is still entering). That already-queued callback can
+        // still run after this returns, see `seq != _sequence` pass (nothing bumped it), and call
+        // `InvokeAsync(FinishEntering)` on a disposed component. Same idiom as
+        // ToastViewport's `_focusOutSequence` guard (round-5).
+        public void Dispose() => Cancel();
+
+        private static async Task RunSafe(Func<Task> action)
+        {
+            try { await action(); }
+            catch (ObjectDisposedException) { }
+        }
+    }
 }

@@ -106,9 +106,18 @@ jobs:
           dotnet build src/Lumeo.Icons.Fluent/Lumeo.Icons.Fluent.csproj -c Release --no-restore -warnaserror
 
       - name: Test
+        # -f net10.0: this workflow only installs the 10.0.x SDK (build/pack of the
+        # net8.0 half of every multi-targeted package needs no net8 SDK/runtime —
+        # NuGet supplies the net8 reference-assembly packs transparently — so no
+        # setup-dotnet change was needed for Build/Pack above). Lumeo.Tests now
+        # multi-targets (net8.0;net10.0) too, so EXECUTING it here without -f would
+        # try to run the net8.0 lane against a runtime that isn't installed on this
+        # runner and fail the release. Genuine net8.0 runtime execution is ci.yml's
+        # job (see its "Test (net8.0 lane)" step) — it gates every PR/push, so a
+        # net8-only regression is already caught before a release is ever cut.
         run: |
           dotnet restore tests/Lumeo.Tests/Lumeo.Tests.csproj
-          dotnet test tests/Lumeo.Tests/Lumeo.Tests.csproj -c Release --no-restore --verbosity normal
+          dotnet test tests/Lumeo.Tests/Lumeo.Tests.csproj -c Release --no-restore --verbosity normal -f net10.0
 
       - name: Pack core
         run: dotnet pack src/Lumeo/Lumeo.csproj -c Release --no-build -o ./nupkg /p:Version=${{ steps.ver.outputs.version }}

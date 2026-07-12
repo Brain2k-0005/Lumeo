@@ -1,12 +1,32 @@
 <Project Sdk="Microsoft.NET.Sdk.Razor">
 
   <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
+    <TargetFrameworks>net8.0;net10.0</TargetFrameworks>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <SupportedPlatform>browser</SupportedPlatform>
     <EmitCompilerGeneratedFiles>true</EmitCompilerGeneratedFiles>
     <CompilerGeneratedFilesOutputPath>$(BaseIntermediateOutputPath)GeneratedFiles</CompilerGeneratedFilesOutputPath>
+
+    <!-- #354: the core assembly is now genuinely IL-trimmable — member-level trimming
+         (not just whole-assembly copyused) is safe. EnableTrimAnalyzer keeps it that way at
+         build time (IL2xxx as errors, see Directory.Build.props); every previously-reflective
+         path was either annotated with [DynamicallyAccessedMembers]/[RequiresUnreferencedCode]
+         or replaced with source-generated JSON (Lumeo.Serialization.LumeoJsonContext). -->
+    <IsTrimmable>true</IsTrimmable>
+    <EnableTrimAnalyzer>true</EnableTrimAnalyzer>
+    <EnableAotAnalyzer>false</EnableAotAnalyzer>
+
+    <!-- IL2111 (OverlayProvider's <DynamicComponent Type="..."> parameter-binding) is a
+         known ILLink limitation, not an unclosed hole: DynamicComponent.Type carries
+         DynamicallyAccessedMembers(All) on its setter, and the ACTUAL types that flow into
+         it (IOverlayService.Show*Async<TComponent>, OverlayInstance.ComponentType) are
+         annotated the same way, so the trimmer already preserves them (see #354). The
+         warning fires because Razor's generated parameter-binding for DynamicComponent
+         invokes that setter through a delegate the analyzer can't see through — Microsoft's
+         own guidance for this exact DynamicComponent pattern is to suppress IL2111 once the
+         type source is otherwise annotated, since there's no source-level fix available. -->
+    <NoWarn>$(NoWarn);IL2111</NoWarn>
 
     <!-- NuGet Package Metadata -->
     <PackageId>Lumeo</PackageId>
@@ -22,20 +42,12 @@
     <RepositoryType>git</RepositoryType>
     <PackageIcon>icon.png</PackageIcon>
 
-    <!-- NuGet health: Source Link + deterministic + CI build. These three together
-         flip every "missing" indicator in NuGet Package Explorer's Health panel:
-           • PublishRepositoryUrl + EmbedUntrackedSources + Microsoft.SourceLink.GitHub
-             → enable Source Link so debuggers step into Lumeo's source from GitHub.
-           • IncludeSymbols + SymbolPackageFormat=snupkg → ship a .snupkg alongside
-             the .nupkg so PDBs are downloadable.
-           • Deterministic + ContinuousIntegrationBuild → bit-for-bit reproducible
-             build when built in CI (ensures the "Deterministic" health check passes). -->
-    <PublishRepositoryUrl>true</PublishRepositoryUrl>
-    <EmbedUntrackedSources>true</EmbedUntrackedSources>
-    <IncludeSymbols>true</IncludeSymbols>
-    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
-    <Deterministic>true</Deterministic>
-    <ContinuousIntegrationBuild Condition="'$(GITHUB_ACTIONS)' == 'true'">true</ContinuousIntegrationBuild>
+    <!-- NuGet health (Source Link + deterministic/CI build + snupkg symbols): the
+         PublishRepositoryUrl/EmbedUntrackedSources/Deterministic/ContinuousIntegrationBuild
+         properties, the IncludeSymbols/SymbolPackageFormat pair, and the
+         Microsoft.SourceLink.GitHub PackageReference below are all centralised in
+         /Directory.Build.props + /Directory.Build.targets (shared by every '/src/'
+         project) rather than duplicated here. -->
   </PropertyGroup>
 
   <ItemGroup>
@@ -82,9 +94,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.AspNetCore.Components.Web" Version="10.0.6" />
-    <!-- Source Link: embeds GitHub URLs in the PDB so debuggers can step into Lumeo source. -->
-    <PackageReference Include="Microsoft.SourceLink.GitHub" Version="8.0.0" PrivateAssets="All" />
+    <PackageReference Include="Microsoft.AspNetCore.Components.Web" Version="$(LumeoComponentsWebVersion)" />
     <PackageReference Include="QRCoder" Version="1.8.0" />
     <!-- ClosedXML (Excel) + QuestPDF (PDF) moved to the lazy-loaded Lumeo.DataGrid.Export
          assembly so their ~1.6 MB of dependencies stay out of the core's eager first load.

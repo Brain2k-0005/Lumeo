@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Toast stacking (sonner-style).** `ToastProvider.StackToasts` (default `true`):
+  when a position group holds more than one toast, the newest renders in front
+  at full scale while older toasts collapse behind it with a small directional
+  offset away from the group's anchor edge and a progressive scale-down, capped at
+  3 visible. Hovering anywhere over the group, or moving keyboard focus into it
+  (focus-within), expands it back to the classic gapped list; leaving/blurring
+  collapses it again. Pure CSS transforms/transitions driven by `data-index` /
+  `data-stacked` / `data-expanded` / `data-stack-edge` attributes — no
+  per-frame JS or .NET calls. Set `StackToasts="false"` to always render the
+  plain list.
+
 ## [4.2.0] - 2026-07-11
 
 DataGrid column/row interaction suite rebuilt to flagship level (PR #353), hardened

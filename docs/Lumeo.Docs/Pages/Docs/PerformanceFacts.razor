@@ -1,0 +1,399 @@
+@page "/docs/performance-facts"
+@namespace Lumeo.Docs.Pages.Docs
+
+<PageTitle>Performance Facts — Lumeo</PageTitle>
+
+<Container MaxWidth="4xl" Padding="0" Center="false">
+<Stack Gap="10">
+
+    <PageHeader Title="Performance Facts"
+                Description="Real numbers from one local machine, measured against real interactions — DataGrid rendering a large dataset, the resize/reorder hot paths, a toast burst, and WASM boot time. Same honesty standard as Bundle Facts: the exact methodology per metric, an honest reproduce section, and the caveats we hit along the way." />
+
+    <!-- ====================================================
+         1. HERO — hot-path headline number
+         ==================================================== -->
+    <section>
+        <BlurFade DelayMs="0">
+            <Stack Gap="5" Class="py-6 text-center items-center">
+                <Badge Variant="Badge.BadgeVariant.Outline" Class="mx-auto w-fit">Performance</Badge>
+
+                <Heading Level="2" Class="text-3xl sm:text-4xl font-bold tracking-tight leading-tight">
+                    Column reorder moves cost
+                    <Sparkles Count="6" Class="inline-flex items-baseline">
+                        <NumberTicker Value="0.0112"
+                                      Suffix=" ms"
+                                      Decimals="4"
+                                      DurationMs="1800"
+                                      Class="text-primary font-mono" />
+                    </Sparkles>
+                    of JS per move event
+                </Heading>
+
+                <Lumeo.Text Size="base" Color="muted" Class="max-w-xl leading-relaxed">
+                    Median of 3,000 synthetic pointer moves against a loaded grid, measured
+                    <Lumeo.Text As="span" Weight="medium" Color="foreground">2026-07-12 (4.2.0+main)</Lumeo.Text>
+                    on one local Windows machine — see "How each metric was measured" below.
+                    (Resize's own number is enqueue-only handler cost, not directly comparable — see below.)
+                </Lumeo.Text>
+            </Stack>
+        </BlurFade>
+    </section>
+
+    <Separator Class="opacity-30" />
+
+    <!-- ====================================================
+         2. KPI GRID — the measured numbers
+         ==================================================== -->
+    <section>
+        <BlurFade DelayMs="80">
+            <Stack Gap="3" Class="mb-6">
+                <Heading Level="2" Class="text-2xl font-semibold tracking-tight">The measured numbers</Heading>
+                <Lumeo.Text Size="sm" Color="muted">
+                    Median of 5 independent runs per metric, fresh browser page per run. Full per-run data lives in
+                    <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">scripts/perf/results/*.json</code>.
+                </Lumeo.Text>
+            </Stack>
+        </BlurFade>
+
+        <Bento Columns="3" Gap="Bento.BentoGap.Md">
+            @{ int _k = 0; }
+            @foreach (var kpi in _kpis)
+            {
+                var delay = 80 + (_k * 80);
+                _k++;
+                <BentoTile Span="1" Class="border-border/60 p-6">
+                    <BlurFade DelayMs="@delay" ForceHidden="true">
+                        <Stack Gap="3">
+                            <Flex Align="center" Gap="2">
+                                <Flex Align="center" Justify="center" Class="h-8 w-8 rounded-md bg-accent/40 text-primary">
+                                    <DynamicIcon Name="@kpi.IconName" Class="h-4 w-4" />
+                                </Flex>
+                            </Flex>
+                            <Lumeo.Text As="div" Class="text-2xl font-bold font-mono text-foreground">@kpi.Value</Lumeo.Text>
+                            <Heading Level="3" Class="text-sm font-semibold">@kpi.Title</Heading>
+                            <Lumeo.Text Size="xs" Color="muted" Leading="relaxed">@kpi.Detail</Lumeo.Text>
+                        </Stack>
+                    </BlurFade>
+                </BentoTile>
+            }
+        </Bento>
+    </section>
+
+    <Separator Class="opacity-30" />
+
+    <!-- ====================================================
+         3. HOW EACH METRIC WAS MEASURED
+         ==================================================== -->
+    <section>
+        <BlurFade DelayMs="0">
+            <Stack Gap="3" Class="mb-6">
+                <Heading Level="2" Class="text-2xl font-semibold tracking-tight">How each metric was measured</Heading>
+                <Lumeo.Text Size="sm" Color="muted">
+                    All four scripts drive
+                    <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">docs/Lumeo.Docs/Pages/E2E/PerfBench.razor</code>
+                    (a <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">noindex</code>, nav-less harness page — same pattern as the existing
+                    <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">P0Harness.razor</code>) or the docs home, with Playwright.
+                </Lumeo.Text>
+            </Stack>
+        </BlurFade>
+
+        <BlurFade DelayMs="80" ForceHidden="true">
+            <Accordion Class="border border-border/40 rounded-xl overflow-hidden divide-y divide-border/40">
+                <AccordionItem Value="datagrid">
+                    <AccordionTrigger Class="px-5">DataGrid: initial render, scroll fps, sort, filter</AccordionTrigger>
+                    <AccordionContent Class="px-5">
+                        <Stack Gap="3">
+                            <Lumeo.Text Size="sm" Color="muted" Leading="relaxed">
+                                10,000 rows are generated once (off the timed path, in <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">OnInitializedAsync</code>)
+                                so the "initial render" number is DataGrid's own render/virtualization cost, not this
+                                interpreted WASM build's cost of synthesizing the dataset. <strong>Initial render</strong> times
+                                click-to-load until the first virtualized <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">&lt;tr&gt;</code>
+                                lands in the DOM. <strong>Scroll fps</strong> drives the virtualized scroll container's
+                                <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">scrollTop</code> via a
+                                <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">requestAnimationFrame</code> loop for 1s, counting frames.
+                                <strong>Sort</strong> clicks the Salary column header and times until <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">aria-sort</code>
+                                flips. <strong>Filter</strong> types into the toolbar's global search box and times until the body re-renders.
+                                Every timer is <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">performance.now()</code> running
+                                inside the page — not Playwright/CDP round-trip time.
+                            </Lumeo.Text>
+                            <div class="rounded-lg border border-destructive/20 bg-destructive/5 px-3 py-2.5">
+                                <Lumeo.Text As="div" Size="xs" Weight="medium" Color="foreground">Why 10k rows, not 100k</Lumeo.Text>
+                                <Lumeo.Text As="div" Size="xs" Color="muted" Leading="relaxed" Class="mt-1">
+                                    Measured by hand, not on every automated run: materializing 100,000 rows plus DataGrid's
+                                    client-side sort/search indices reliably exhausts the wasm32 linear-memory ceiling —
+                                    reproduced even after raising <code class="rounded bg-muted px-1 py-0.5 font-mono">WasmInitialHeapSize</code>/<code class="rounded bg-muted px-1 py-0.5 font-mono">EmccMaximumHeapSize</code>
+                                    to ~3.5&nbsp;GB/~3.75&nbsp;GB (right up against wasm32's 4&nbsp;GB hard limit) in this non-AOT-compiled
+                                    (interpreter-tier) docs build. Even 75,000 rows — the largest size that fit — took roughly
+                                    a <strong>minute</strong> of wall clock just for the first render, confirmed twice. A
+                                    genuinely 100k+ row <em>client</em> dataset should use DataGrid's
+                                    <code class="rounded bg-muted px-1 py-0.5 font-mono">Virtualized</code> + <code class="rounded bg-muted px-1 py-0.5 font-mono">OnRangeRequest</code>
+                                    server-mode path (<Lumeo.Link Href="/components/datagrid" Class="underline">/components/datagrid</Lumeo.Link>)
+                                    instead of one in-memory <code class="rounded bg-muted px-1 py-0.5 font-mono">List</code>.
+                                </Lumeo.Text>
+                            </div>
+                        </Stack>
+                    </AccordionContent>
+                </AccordionItem>
+
+                <AccordionItem Value="hotpaths">
+                    <AccordionTrigger Class="px-5">Column resize / reorder: ms per move</AccordionTrigger>
+                    <AccordionContent Class="px-5">
+                        <Lumeo.Text Size="sm" Color="muted" Leading="relaxed">
+                            CHANGELOG.md's 4.1.0 entry (PR #353) claims all per-move drag/resize work stays in
+                            JavaScript — zero .NET interop calls during the actual pointer movement — at
+                            ~0.004–0.007&nbsp;ms per move event. This page re-measures that claim independently: a loaded
+                            (10k-row) grid, then a tight in-page loop dispatches 3,000 synthetic
+                            <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">PointerEvent</code>s directly at the same elements
+                            <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">registerColumnResize</code>/<code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">registerColumnReorder</code>
+                            (<code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">src/Lumeo/wwwroot/js/components.js</code>) listen on, timing
+                            the whole loop and dividing by move count — deliberately avoiding a Playwright/CDP round trip
+                            per event, which would otherwise dwarf the actual per-move cost being measured. Reorder is
+                            higher than resize (0.0112&nbsp;ms vs 0.0033&nbsp;ms) because it also runs a live sibling-shift
+                            projection per move; resize lands just under the claimed ~0.004–0.007&nbsp;ms range and reorder
+                            lands just above it, so neither figure is inside that range — both are still well under a
+                            tenth of a millisecond, consistent with the "zero .NET interop per move" design, but the
+                            exact claimed band undersells reorder's cost.
+                        </Lumeo.Text>
+                        <div class="rounded-lg border border-destructive/20 bg-destructive/5 px-3 py-2.5 mt-3">
+                            <Lumeo.Text As="div" Size="xs" Weight="medium" Color="foreground">Resize's number is enqueue-only, not the full cost</Lumeo.Text>
+                            <Lumeo.Text As="div" Size="xs" Color="muted" Leading="relaxed" Class="mt-1">
+                                <code class="rounded bg-muted px-1 py-0.5 font-mono">registerColumnResize</code> only records
+                                the pending width on each move and defers the actual width/guideline DOM write to a
+                                <code class="rounded bg-muted px-1 py-0.5 font-mono">requestAnimationFrame</code> callback (once per frame).
+                                Because this benchmark dispatches all 3,000 synthetic moves back-to-back inside one synchronous
+                                loop, it never yields to let that callback run, so the <strong>0.0033&nbsp;ms resize figure is
+                                enqueue-only handler cost</strong> and excludes the deferred DOM write a real drag actually pays.
+                                Reorder's DOM write happens synchronously on every move, so its 0.0112&nbsp;ms figure is the
+                                full per-move cost and is not directly comparable to resize's. We deliberately did not force a
+                                real rAF flush per synthetic move — that would make the number dominated by rAF's ~16&nbsp;ms
+                                scheduling latency rather than actual handler cost, a different and more misleading number
+                                than the one disclosed here.
+                            </Lumeo.Text>
+                        </div>
+                    </AccordionContent>
+                </AccordionItem>
+
+                <AccordionItem Value="toast">
+                    <AccordionTrigger Class="px-5">Toast burst: time to settle</AccordionTrigger>
+                    <AccordionContent Class="px-5">
+                        <Stack Gap="3">
+                            <Lumeo.Text Size="sm" Color="muted" Leading="relaxed">
+                                "Settle" is from the trigger click to 150&nbsp;ms of quiet after both the last DOM mutation
+                                inside <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">&lt;body&gt;</code>
+                                (via a <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">MutationObserver</code>)
+                                and the last toast's CSS enter animation actually finishes (via <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">animationend</code>) —
+                                the animation itself doesn't mutate the DOM, so tracking mutations alone would report "settled" while toasts
+                                were still visibly sliding in.
+                            </Lumeo.Text>
+                            <div class="rounded-lg border border-destructive/20 bg-destructive/5 px-3 py-2.5">
+                                <Lumeo.Text As="div" Size="xs" Weight="medium" Color="foreground">A real bug, disclosed rather than hidden</Lumeo.Text>
+                                <Lumeo.Text As="div" Size="xs" Color="muted" Leading="relaxed" Class="mt-1">
+                                    This was supposed to be a 100-toast burst. The docs site's global
+                                    <code class="rounded bg-muted px-1 py-0.5 font-mono">ToastProvider</code> uses the default
+                                    <code class="rounded bg-muted px-1 py-0.5 font-mono">MaxToasts=5</code>; firing more than
+                                    ~6–7 <code class="rounded bg-muted px-1 py-0.5 font-mono">ToastService.Show()</code> calls in one synchronous burst
+                                    reproducibly <strong>crashes the WASM renderer</strong> (Playwright reports
+                                    <code class="rounded bg-muted px-1 py-0.5 font-mono">Target crashed</code>, not a catchable JS exception) via the
+                                    oldest-eviction path. Confirmed by hand: 5 toasts stable, 6 (one eviction) stable, 10
+                                    (five evictions) crashes the tab. So the number above is a 5-toast burst, and this
+                                    finding is filed as a follow-up rather than papered over — a genuine 100-toast burst
+                                    cannot currently be benchmarked until that eviction-path bug is fixed.
+                                </Lumeo.Text>
+                            </div>
+                        </Stack>
+                    </AccordionContent>
+                </AccordionItem>
+
+                <AccordionItem Value="wasm-boot">
+                    <AccordionTrigger Class="px-5">WASM boot-to-interactive on the docs home</AccordionTrigger>
+                    <AccordionContent Class="px-5">
+                        <Lumeo.Text Size="sm" Color="muted" Leading="relaxed">
+                            The docs home ('/') deliberately defers <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">Blazor.start()</code>
+                            behind the visitor's first real interaction (pointerdown/keydown/touchstart fire it instantly;
+                            sustained scroll/wheel needs ~150&nbsp;ms; a 10s fallback boots regardless — see
+                            <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">wwwroot/index.html</code>). That hides boot cost behind
+                            idle reading time a real visitor spends before touching anything, so it isn't a fair "boot
+                            cost" number on its own. This script instead dispatches a synthetic
+                            <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">pointerdown</code> immediately after navigation — the
+                            same "instant" trigger path a real click uses — and times from that dispatch to
+                            <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">document.documentElement.dataset.blazorReady</code>
+                            flipping to <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">"true"</code> — the exact moment
+                            <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">MainLayout</code>'s first interactive render
+                            completes. That isolates the runtime's own boot cost from however long a visitor happened to
+                            wait before interacting.
+                        </Lumeo.Text>
+                    </AccordionContent>
+                </AccordionItem>
+
+                <AccordionItem Value="machine">
+                    <AccordionTrigger Class="px-5">Machine &amp; environment</AccordionTrigger>
+                    <AccordionContent Class="px-5">
+                        <div class="overflow-hidden rounded-lg border border-border/40">
+                            <table class="w-full text-sm">
+                                <tbody>
+                                    @foreach (var row in _machineRows)
+                                    {
+                                        <tr class="border-b border-border/40 last:border-0">
+                                            <td class="py-2 px-3 text-muted-foreground w-40">@row.Label</td>
+                                            <td class="py-2 px-3 font-mono text-xs text-foreground">@row.Value</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    </AccordionContent>
+                </AccordionItem>
+            </Accordion>
+        </BlurFade>
+    </section>
+
+    <Separator Class="opacity-30" />
+
+    <!-- ====================================================
+         4. CAVEATS — explicit, upfront
+         ==================================================== -->
+    <section>
+        <BlurFade DelayMs="0">
+            <Stack Gap="3" Class="mb-6">
+                <Heading Level="2" Class="text-2xl font-semibold tracking-tight">Caveats</Heading>
+                <Lumeo.Text Size="sm" Color="muted">This is not a lab. Read these before quoting a number.</Lumeo.Text>
+            </Stack>
+        </BlurFade>
+
+        <Stack Gap="3">
+            @{ int _c = 0; }
+            @foreach (var caveat in _caveats)
+            {
+                var cDelay = _c * 80;
+                _c++;
+                <BlurFade DelayMs="@cDelay" ForceHidden="true">
+                    <Card Class="p-4">
+                        <Flex Align="start" Gap="3">
+                            <Flex Align="center" Justify="center" Class="h-8 w-8 shrink-0 rounded-md bg-accent/40 text-primary">
+                                <DynamicIcon Name="AlertTriangle" Class="h-4 w-4" />
+                            </Flex>
+                            <Lumeo.Text Size="sm" Color="muted" Leading="relaxed">@caveat</Lumeo.Text>
+                        </Flex>
+                    </Card>
+                </BlurFade>
+            }
+        </Stack>
+    </section>
+
+    <Separator Class="opacity-30" />
+
+    <!-- ====================================================
+         5. HOW TO REPRODUCE
+         ==================================================== -->
+    <section>
+        <BlurFade DelayMs="0">
+            <Stack Gap="3" Class="mb-4">
+                <Heading Level="2" Class="text-2xl font-semibold tracking-tight">How to reproduce</Heading>
+                <Lumeo.Text Size="sm" Color="muted">
+                    Every script and its full per-run JSON output lives in the repo —
+                    <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">scripts/perf/</code>. We believe the numbers; check them yourself.
+                </Lumeo.Text>
+            </Stack>
+        </BlurFade>
+
+        <BlurFade DelayMs="80" ForceHidden="true">
+            <div class="rounded-xl border border-border/40 bg-muted/20 p-4 overflow-x-auto">
+                <pre class="text-xs font-mono text-foreground whitespace-pre"># 1a. Boot cost — DEFAULT heap (what real visitors get)
+export DOTNET_ROLL_FORWARD=Major
+cd docs/Lumeo.Docs
+dotnet run --arch x64 -c Release --urls http://localhost:5287
+
+# in another shell
+cd scripts/perf
+npm install
+node wasm-boot.mjs
+# stop the server, then:
+
+# 1b. DataGrid / hot-path / toast benchmarks — need the 512 MB perf heap
+cd docs/Lumeo.Docs
+dotnet run --arch x64 -c Release --urls http://localhost:5287 -p:LumeoPerfHeap=true
+
+# in another shell
+cd scripts/perf
+node datagrid-100k.mjs
+node datagrid-hotpaths.mjs
+node toast-burst.mjs</pre>
+            </div>
+            <Lumeo.Text Size="xs" Color="muted" Class="mt-2">
+                Two server sessions on purpose — <code class="rounded bg-muted px-1 py-0.5 font-mono">WasmInitialHeapSize</code>
+                is a publish-time property for the whole app, not scoped per route, so an accurate boot number needs a
+                session without the perf heap. See <code class="rounded bg-muted px-1 py-0.5 font-mono">scripts/perf/README.md</code>.
+            </Lumeo.Text>
+        </BlurFade>
+    </section>
+
+    <!-- ====================================================
+         6. CTA FOOTER
+         ==================================================== -->
+    <section class="pb-10">
+        <BlurFade DelayMs="0">
+            <Stack Gap="5" Class="items-center text-center">
+                <Heading Level="2" Class="text-2xl font-semibold tracking-tight">See it for yourself</Heading>
+                <Lumeo.Text Size="sm" Color="muted" Class="max-w-sm">
+                    Run the scripts, read the JSON, poke at the harness page. We'd rather you distrust a number and
+                    check it than take our word for it.
+                </Lumeo.Text>
+                <Flex Gap="3" Wrap="true" Justify="center">
+                    <Lumeo.Link Href="/docs/bundle-facts" Class="no-underline">
+                        <ShimmerButton Size="Button.ButtonSize.Lg" Class="rounded-lg">
+                            Bundle Facts
+                            <DynamicIcon Name="ArrowRight" Class="h-4 w-4" />
+                        </ShimmerButton>
+                    </Lumeo.Link>
+                    <Lumeo.Link Href="/components/datagrid"
+                                Class="inline-flex h-10 items-center gap-2 justify-center rounded-lg border border-border/60 bg-background px-6 text-sm font-semibold hover:bg-accent hover:text-accent-foreground transition-colors no-underline">
+                        <DynamicIcon Name="Table2" Class="h-4 w-4" />
+                        DataGrid docs
+                    </Lumeo.Link>
+                </Flex>
+            </Stack>
+        </BlurFade>
+    </section>
+
+</Stack>
+</Container>
+
+@code {
+    private record Kpi(string IconName, string Value, string Title, string Detail);
+    private record MachineRow(string Label, string Value);
+
+    private readonly List<Kpi> _kpis =
+    [
+        new("Table2", "5.2 s", "DataGrid initial render", "10,000 rows, click-to-first-row, virtualized"),
+        new("Gauge", "55 fps", "Virtualized scroll", "10,000 rows, 1s scroll sweep"),
+        new("ArrowUpDown", "261 ms", "Sort 10k rows", "Click header → aria-sort flips + re-render"),
+        new("Search", "341 ms", "Filter 10k rows", "Toolbar search input → body re-renders"),
+        new("MoveHorizontal", "0.0033 ms", "Column resize (enqueue-only)", "Handler cost per move; excludes the deferred rAF width write"),
+        new("ArrowLeftRight", "0.0112 ms", "Column reorder", "Per pointer-move event, live sibling-shift"),
+        new("Bell", "532 ms", "Toast burst settle", "5 toasts (see MaxToasts crash caveat)"),
+        new("Zap", "817 ms", "WASM boot-to-interactive", "Trigger → MainLayout first interactive render"),
+    ];
+
+    private readonly List<MachineRow> _machineRows =
+    [
+        new("Measured", "2026-07-12, Lumeo 4.2.0+main"),
+        new("OS", "Windows 11 Pro, x64"),
+        new("CPU", "AMD Ryzen 7 7800X3D, 8-core / 16-thread"),
+        new("RAM", "31.1 GiB"),
+        new("Browser", "Chromium 149.0.7827.55 (Playwright, headless)"),
+        new("Node.js", "v24.7.0"),
+        new("Server", "dotnet run -c Release (local dev server, not a CDN deploy)"),
+    ];
+
+    private readonly List<string> _caveats =
+    [
+        "Single local Windows dev machine, not a CI runner or a lab bench. Absolute numbers will differ on your hardware — the relative shape (hot paths sub-millisecond, bulk operations low-hundreds-of-ms) is the more portable takeaway.",
+        "Chromium only, via Playwright headless. No Firefox/WebKit/mobile numbers here.",
+        "Served by dotnet run's Development dev-server, not a published, CDN-hosted production build — real production latency will differ (mostly for network-bound metrics; the in-page timings above don't depend on transport).",
+        "This build is non-AOT-compiled (interpreter tier). AOT-published apps trade a slower build for a materially faster runtime — the DataGrid bulk-operation numbers above are pessimistic relative to what an AOT-published app would show.",
+        "DataGrid's automated dataset is 10,000 rows, not the 100,000 this page's title once implied — see \"Why 10k rows, not 100k\" above for the measured 100k OOM and the 75k/~60s render finding.",
+        "The toast burst is 5 toasts, not 100 — see \"A real bug, disclosed rather than hidden\" above.",
+        "The column-resize figure (0.0033 ms) is enqueue-only handler cost and excludes the deferred rAF DOM write a real drag pays — it is not directly comparable to reorder's figure, which includes its (synchronous) DOM write. See \"Column resize / reorder\" above.",
+        "The WASM boot number is measured against the docs app's DEFAULT (auto-calculated ~108 MB) heap, not the 512 MB perf heap the DataGrid/toast benchmarks below use — see \"How to reproduce\" for why boot needs a separate server session.",
+    ];
+}

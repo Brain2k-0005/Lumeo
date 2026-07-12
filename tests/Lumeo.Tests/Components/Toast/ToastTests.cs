@@ -354,4 +354,222 @@ public class ToastTests : IAsyncLifetime
             return cls.Contains("top-4") && cls.Contains("start-4");
         });
     }
+
+    // ─── Spam safety (regression: "die Seite crashed wenn man zu viele
+    //     Toasts spamt") ─────────────────────────────────────────────────────
+    //
+    // Root cause: ToastProvider.HandleShowAsync's MaxToasts eviction loop
+    // picked the oldest toast WITHOUT excluding ones already mid-exit
+    // (Leaving). RemoveWithExitAsync's idempotency guard
+    // (`if (toast.Leaving) return;`) completes synchronously — no `await` is
+    // ever reached — so `await`ing it does not yield back to the renderer's
+    // synchronization context (an already-completed Task's continuation runs
+    // inline, per normal async/await semantics). When a burst of Show() calls
+    // raced the SAME oldest toast, a losing coroutine kept re-selecting that
+    // still-present (merely flagged) toast forever: a fully synchronous busy
+    // loop with no yield point, which also starved the WINNING coroutine's own
+    // Task.Delay(ExitAnimationMs) continuation (it needs the same single
+    // thread to fire) — so the toast never actually finished evicting either.
+    // Net effect: the render thread hung permanently. Fixed by excluding
+    // already-Leaving toasts from eviction candidates.
+
+    // PR #357 round-2 (Codex) — the eviction loop broke WITHOUT freeing a slot
+    // whenever every mounted toast at/above the cap was already Leaving (a
+    // burst arriving while a wave of 220ms exits is still in flight hits this
+    // every time), so the new toast mounted anyway: `_toasts.Count` could blow
+    // straight through MaxToasts mid-burst even though a WaitForState poll
+    // taken only ONCE, after the fact, could still land on a moment where the
+    // count had (temporarily, coincidentally) dipped back to <=5 — exactly
+    // the flaky-on-CI failure mode this test hit. ToastProvider now queues
+    // (rather than mounts) a toast whenever no non-Leaving candidate can be
+    // evicted, so `_toasts.Count` can never exceed MaxToasts, period — proven
+    // below by asserting the bound at EVERY render via OnAfterRender, not by
+    // sampling the DOM once on a timer. No wall-clock race: the assertion
+    // fires synchronously off the renderer's own render-committed event, so
+    // it can't miss a transient overshoot regardless of CI scheduling noise.
+    [Fact]
+    public void ToastProvider_Spamming_Show_Does_Not_Hang_And_Bounds_Mounted_Toasts()
+    {
+        var toastService = _ctx.Services.GetService(typeof(ToastService)) as ToastService;
+        Assert.NotNull(toastService);
+
+        var cut = _ctx.Render<L.ToastProvider>(); // MaxToasts default = 5
+        const int maxToasts = 5;
+
+        var maxMountedObserved = 0;
+        int? firstOverCapObserved = null;
+        cut.OnAfterRender += (_, _) =>
+        {
+            var count = cut.FindAll("[role='alert'],[role='status']").Count;
+            if (count > maxMountedObserved) maxMountedObserved = count;
+            if (count > maxToasts) firstOverCapObserved ??= count;
+        };
+
+        // Fire 100 toasts back-to-back with no awaits in between — this is
+        // exactly the "spam the button" burst the bug report described, and
+        // is what raced concurrent HandleShowAsync evictions against each
+        // other pre-fix.
+        for (var i = 0; i < 100; i++)
+        {
+            toastService!.Show(new ToastOptions { Title = $"Spam #{i}" });
+        }
+
+        // Pre-fix this hung forever (the render thread livelocked and never
+        // produced another frame — reproduced live against the docs site: the
+        // page became permanently unresponsive and had to be force-killed).
+        // A timeout here would itself be the regression signal (still-hanging
+        // case); the invariant that the count never exceeded the cap is
+        // proven by the render hook above, not by this end-state snapshot.
+        cut.WaitForAssertion(
+            () => Assert.InRange(cut.FindAll("[role='alert'],[role='status']").Count, 1, maxToasts),
+            TimeSpan.FromSeconds(15));
+
+        Assert.Null(firstOverCapObserved); // never exceeded MaxToasts, not even transiently mid-burst
+        Assert.True(maxMountedObserved >= 1, "expected at least one render with toasts mounted");
+
+        var mounted = cut.FindAll("[role='alert'],[role='status']").Count;
+        Assert.InRange(mounted, 1, maxToasts);
+
+        // The strongest proof the UI isn't wedged: it still responds to a
+        // brand-new Show() call issued AFTER the burst has settled — even
+        // though it has to wait its turn behind whatever the (bounded, at
+        // most MaxToasts) pending queue from the burst left in front of it.
+        toastService.Show(new ToastOptions { Title = "Post-burst toast" });
+        cut.WaitForAssertion(() => Assert.Contains("Post-burst toast", cut.Markup), TimeSpan.FromSeconds(15));
+
+        Assert.Null(firstOverCapObserved); // still holds after the post-burst toast mounts too
+    }
+
+    // PR #357 round-4 (P2): a persistent toast (Duration = 0, e.g. a loading/promise toast) is
+    // never an eviction candidate — the eviction loop's `t.Options.Duration != 0` filter already
+    // skipped it before this fix. But once persistents filled every mounted slot, the loop found
+    // no candidate, broke, and the OLD `_toasts.Count >= EffectiveMaxToasts` queue check (also
+    // true) queued the new toast anyway — behind a slot that would NEVER free, since nothing ever
+    // auto-dismisses a persistent. Every later Show() queued forever, permanently starved by the
+    // first loading toast. Fixed by excluding persistents from the cap accounting entirely
+    // (NonPersistentMountedCount) so a persistent-only cap never even reaches the eviction/queue
+    // branches — the new toast mounts immediately, alongside the persistents (not instead of them).
+    [Fact]
+    public void Persistent_Toasts_Filling_The_Cap_Do_Not_Starve_Later_Toasts()
+    {
+        var toastService = _ctx.Services.GetService(typeof(ToastService)) as ToastService;
+        Assert.NotNull(toastService);
+
+        var cut = _ctx.Render<L.ToastProvider>(); // MaxToasts default = 5
+
+        // Fill the cap entirely with persistent (Duration = 0) toasts.
+        for (var i = 0; i < 5; i++)
+        {
+            toastService!.Show(new ToastOptions { Title = $"Loading #{i}", Duration = 0 });
+        }
+        cut.WaitForAssertion(() => Assert.Equal(5, cut.FindAll("[role='alert'],[role='status']").Count));
+
+        // An ordinary, later notification must mount right away — not queue behind a slot that
+        // will never free.
+        toastService!.Show(new ToastOptions { Title = "Ordinary notification", Duration = 60000 });
+        cut.WaitForAssertion(() => Assert.Contains("Ordinary notification", cut.Markup), TimeSpan.FromSeconds(2));
+
+        // All 5 persistents are still mounted (never evicted) alongside the new one.
+        for (var i = 0; i < 5; i++)
+        {
+            Assert.Contains($"Loading #{i}", cut.Markup);
+        }
+        Assert.Equal(6, cut.FindAll("[role='alert'],[role='status']").Count);
+    }
+
+    // PR #357 round-5 (P2): the reverse direction of the round-4 fix above. A PERSISTENT
+    // INCOMING toast used to be run through the eviction/queue logic sized for non-persistent
+    // toasts — with 5 ordinary toasts already at the cap, showing a loading toast evicted (and
+    // awaited the exit animation of) the oldest ordinary toast before mounting the persistent
+    // one. Per the MaxToasts contract a persistent occupies an ADDITIONAL slot and must never
+    // evict or queue. Fixed by short-circuiting HandleShowAsync straight to MountToast whenever
+    // the incoming toast itself is persistent (Duration == 0).
+    [Fact]
+    public void Incoming_Persistent_Toast_At_Cap_Does_Not_Evict_Or_Queue()
+    {
+        var toastService = _ctx.Services.GetService(typeof(ToastService)) as ToastService;
+        Assert.NotNull(toastService);
+
+        var cut = _ctx.Render<L.ToastProvider>(); // MaxToasts default = 5
+
+        // Fill the cap entirely with ordinary (non-persistent) toasts.
+        for (var i = 0; i < 5; i++)
+        {
+            toastService!.Show(new ToastOptions { Title = $"Ordinary #{i}", Duration = 60000 });
+        }
+        cut.WaitForAssertion(() => Assert.Equal(5, cut.FindAll("[role='alert'],[role='status']").Count));
+
+        // A persistent (loading/promise) toast arriving at a full cap must mount immediately,
+        // as a 6th toast — not evict the oldest ordinary toast, and not queue.
+        toastService!.Show(new ToastOptions { Title = "Loading...", Duration = 0 });
+        cut.WaitForAssertion(() => Assert.Contains("Loading...", cut.Markup), TimeSpan.FromSeconds(2));
+
+        // All 5 ordinary toasts are still mounted — none evicted to make room.
+        for (var i = 0; i < 5; i++)
+        {
+            Assert.Contains($"Ordinary #{i}", cut.Markup);
+        }
+        Assert.Equal(6, cut.FindAll("[role='alert'],[role='status']").Count);
+    }
+
+    // PR #357 round-5 (P2): MaxToasts is documented as applying PER POSITION GROUP, but the
+    // accounting (mounted count, eviction, the overflow queue, AdmitPending) used to run
+    // against every toast in `_toasts` regardless of ResolvePosition — a full TopLeft viewport
+    // evicted/blocked against a completely independent BottomRight Show(). Fixed by scoping
+    // every step of the accounting to the incoming toast's resolved position.
+    [Fact]
+    public void MaxToasts_Is_Enforced_Independently_Per_Position_Group()
+    {
+        var toastService = _ctx.Services.GetService(typeof(ToastService)) as ToastService;
+        Assert.NotNull(toastService);
+
+        var cut = _ctx.Render<L.ToastProvider>(p => p.Add(b => b.MaxToasts, 1));
+
+        // Fill BottomRight's single slot.
+        toastService!.Show(new ToastOptions { Title = "BR #1", Duration = 60000, Position = ToastPosition.BottomRight });
+        cut.WaitForAssertion(() => Assert.Contains("BR #1", cut.Markup));
+
+        // A TopLeft toast must mount immediately in its OWN, independent viewport — it must
+        // neither evict "BR #1" nor be queued behind it.
+        toastService!.Show(new ToastOptions { Title = "TL #1", Duration = 60000, Position = ToastPosition.TopLeft });
+        cut.WaitForAssertion(() => Assert.Contains("TL #1", cut.Markup), TimeSpan.FromSeconds(2));
+        Assert.Contains("BR #1", cut.Markup);
+        Assert.Equal(2, cut.FindAll("[role='alert'],[role='status']").Count);
+
+        // A second BottomRight toast, however, must respect ITS group's cap of 1: it evicts
+        // "BR #1" (the only non-persistent BottomRight toast), leaving TopLeft untouched.
+        toastService!.Show(new ToastOptions { Title = "BR #2", Duration = 60000, Position = ToastPosition.BottomRight });
+        cut.WaitForAssertion(() => Assert.Contains("BR #2", cut.Markup), TimeSpan.FromSeconds(2));
+        cut.WaitForAssertion(() => Assert.DoesNotContain("BR #1", cut.Markup), TimeSpan.FromSeconds(2));
+        Assert.Contains("TL #1", cut.Markup);
+        Assert.Equal(2, cut.FindAll("[role='alert'],[role='status']").Count);
+    }
+
+    [Fact]
+    public void ToastProvider_Dismiss_During_Entrance_Does_Not_Throw()
+    {
+        var toastService = _ctx.Services.GetService(typeof(ToastService)) as ToastService;
+        Assert.NotNull(toastService);
+
+        var cut = _ctx.Render<L.ToastProvider>();
+
+        // Entrance cleanup is a plain local timer (no JS callback — see
+        // Toast.razor), so a toast stays `_entering` until the 350 ms fallback
+        // fires or an early Leaving flip. Dismissing immediately after Show
+        // forces exactly that early-Leaving-while-entering path
+        // (Toast.OnParametersSet).
+        var id = toastService!.Show(new ToastOptions { Title = "Gone before it entered" });
+        toastService.Dismiss(id);
+
+        // No ObjectDisposedException / unhandled exception should propagate
+        // through the exit animation + component disposal — bUnit surfaces
+        // any exception thrown during rendering by rethrowing it out of
+        // WaitForState/WaitForAssertion, so simply reaching an empty,
+        // stable DOM here is proof none occurred.
+        cut.WaitForState(
+            () => cut.FindAll("[role='alert'],[role='status']").Count == 0,
+            TimeSpan.FromSeconds(5));
+
+        Assert.Empty(cut.FindAll("[role='alert'],[role='status']"));
+    }
 }

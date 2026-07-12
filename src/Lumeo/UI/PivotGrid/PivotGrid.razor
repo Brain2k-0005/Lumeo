@@ -1,8 +1,10 @@
 @namespace Lumeo
 @typeparam TItem
+@implements IAsyncDisposable
 @inject Lumeo.Services.Localization.ILumeoLocalizer L
+@inject Lumeo.Services.IComponentInteropService Interop
 
-<div class="@WrapperClass" @attributes="AdditionalAttributes">
+<div id="@_wrapperId" class="@WrapperClass" @attributes="AdditionalAttributes">
     @if (_isEmpty)
     {
         <div class="p-6 text-sm text-muted-foreground text-center">
@@ -114,7 +116,12 @@
                                     }
                                 </td>
                             }
-                            @* --- data columns --- *@
+                            @* --- data columns ---
+                                 Drill-down cells are only keyboard-reachable/activatable when a
+                                 consumer actually wired OnCellClick — same conditionally-interactive
+                                 contract as Card/Steps: tabindex/@onkeydown are omitted entirely
+                                 (not just inert) when the cell is passive, so a display-only grid
+                                 never grows phantom Tab stops. *@
                             @if (_hasColumnField)
                             {
                                 @foreach (var col in _columnLeaves)
@@ -126,8 +133,10 @@
                                         var mIndex = mi;
                                         var theCol = col;
                                         <td role="cell"
-                                            class="@($"{DataCellClass} tabular-nums text-end {(col.IsGrandTotal ? "bg-muted/30 font-medium" : "")}")"
-                                            @onclick="() => OnCellClickHandler(row, theCol, mIndex)">@measure.FormatValue(measure.Compute(items))</td>
+                                            class="@($"{DataCellClass} tabular-nums text-end {(col.IsGrandTotal ? "bg-muted/30 font-medium" : "")}{(OnCellClick.HasDelegate ? " cursor-pointer hover:bg-accent/30 focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-inset" : "")}")"
+                                            tabindex="@(OnCellClick.HasDelegate ? "0" : null)"
+                                            @onclick="() => OnCellClickHandler(row, theCol, mIndex)"
+                                            @onkeydown="(e) => OnCellKeyDown(e, row, theCol, mIndex)">@measure.FormatValue(measure.Compute(items))</td>
                                     }
                                 }
                             }
@@ -137,8 +146,11 @@
                                 {
                                     var measure = _measures[mi];
                                     var mIndex = mi;
-                                    <td role="cell" class="@DataCellClass tabular-nums text-end"
-                                        @onclick="() => OnCellClickHandler(row, null, mIndex)">@measure.FormatValue(measure.Compute(row.Node.Items))</td>
+                                    <td role="cell"
+                                        class="@($"{DataCellClass} tabular-nums text-end{(OnCellClick.HasDelegate ? " cursor-pointer hover:bg-accent/30 focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-inset" : "")}")"
+                                        tabindex="@(OnCellClick.HasDelegate ? "0" : null)"
+                                        @onclick="() => OnCellClickHandler(row, null, mIndex)"
+                                        @onkeydown="(e) => OnCellKeyDown(e, row, null, mIndex)">@measure.FormatValue(measure.Compute(row.Node.Items))</td>
                                 }
                             }
                         </tr>
@@ -196,6 +208,83 @@
 
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private readonly string _wrapperId = LumeoIds.New("lumeo-pivotgrid");
+    // The id the prevent-default rule is ACTUALLY registered against (null = not
+    // registered). Tracking the id itself — not just a bool — lets OnAfterRenderAsync
+    // detect a consumer changing the splatted id at runtime (e.g. after drill-down
+    // makes cells interactive) and re-register against the NEW id instead of
+    // silently leaving the rule attached to a DOM id that may no longer exist
+    // (PR #356 round-3, Codex P3).
+    private string? _registeredWrapperId;
+
+    // The id that ACTUALLY renders on the wrapper: a consumer-splatted id in
+    // AdditionalAttributes wins in the DOM (it renders after the explicit
+    // id="@_wrapperId" above), so the OnAfterRenderAsync prevent-default
+    // registration below must target THIS, not the raw _wrapperId — otherwise a
+    // consumer-supplied id leaves the registration targeting an id no element in
+    // the document carries, and Enter/Space on a drill-down cell silently scrolls
+    // the page again (Codex/CodeRabbit, PR #356 round-2). Mirrors PopoverTrigger/
+    // DialogTrigger/SheetTrigger's EffectiveTriggerId / EffectiveId.
+    private string EffectiveWrapperId => LumeoIds.Effective(AdditionalAttributes, _wrapperId);
+
+    // Enter/Space on a focused drill-down cell must not ALSO trigger the
+    // browser's native Space-scrolls-the-page default (CodeRabbit/Codex P2) —
+    // registered once on the wrapper (keydown bubbles up from every cell) so
+    // it scales to any number of cells without a per-cell listener. SkipEditable
+    // exempts real buttons (e.g. the column-collapse toggle) so their own native
+    // Space/Enter activation is never cancelled.
+    private static readonly Lumeo.Services.PreventDefaultKeyRule[] CellActivationKeyRules =
+    {
+        new("Enter", SkipEditable: true),
+        new(" ", SkipEditable: true),
+    };
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        // Not gated on firstRender: a consumer can bind OnCellClick AFTER the
+        // initial render (e.g. it starts null while some other state loads, then
+        // gets set once that resolves). Re-checking on every render — instead of
+        // only the first — means the JS-side prevent-default rule still gets
+        // registered the moment the delegate actually shows up, rather than being
+        // permanently skipped because it wasn't there on render #1 (Codex/
+        // CodeRabbit, PR #356 round-2).
+        //
+        // Compared against the id ACTUALLY registered (not just a bool) so a
+        // consumer-splatted id that changes at runtime — e.g. after drill-down
+        // makes cells interactive — re-registers against the NEW id instead of
+        // leaving the rule attached to the stale one (PR #356 round-3, Codex P3).
+        if (!OnCellClick.HasDelegate)
+        {
+            if (_registeredWrapperId is null) return;
+            try { await Interop.UnregisterPreventDefaultKeys(_registeredWrapperId); }
+            catch (JSDisconnectedException) { }
+            catch (ObjectDisposedException) { }
+            _registeredWrapperId = null;
+            return;
+        }
+
+        var effectiveId = EffectiveWrapperId;
+        if (_registeredWrapperId == effectiveId) return;
+
+        try
+        {
+            if (_registeredWrapperId is not null)
+                await Interop.UnregisterPreventDefaultKeys(_registeredWrapperId);
+            await Interop.RegisterPreventDefaultKeys(effectiveId, CellActivationKeyRules);
+            _registeredWrapperId = effectiveId;
+        }
+        catch (JSDisconnectedException) { }
+        catch (ObjectDisposedException) { }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_registeredWrapperId is null) return;
+        try { await Interop.UnregisterPreventDefaultKeys(_registeredWrapperId); }
+        catch (JSDisconnectedException) { }
+        catch (ObjectDisposedException) { }
+    }
 
     // ---- Cached state (computed in OnParametersSet) --------------------
 
@@ -656,6 +745,12 @@
         FlattenRows(_root);
         StateHasChanged();
     }
+
+    // Enter/Space activate a drill-down cell exactly like a click — only reachable
+    // in the first place when OnCellClick is bound (tabindex is conditional on the
+    // same check in the markup), so no guard is needed here beyond the key filter.
+    private Task OnCellKeyDown(KeyboardEventArgs e, DisplayRow row, ColumnLeaf? col, int measureIndex)
+        => (e.Key is "Enter" or " ") ? OnCellClickHandler(row, col, measureIndex) : Task.CompletedTask;
 
     private async Task OnCellClickHandler(DisplayRow row, ColumnLeaf? col, int measureIndex)
     {
