@@ -38,16 +38,31 @@ const baseline = loadJson(join(__dirname, 'baseline.json'), { entries: [] });
 const exclusions = loadJson(join(__dirname, 'exclusions.json'), { exclusions: [] });
 
 const baselineKey = (component, rule) => `${component}::${rule}`;
-// Keyed by (component, rule). The value carries BOTH the accepted node-count
-// ceiling AND the set of accepted node SHAPES (see node-identity.mjs) for
-// that pair. Count alone isn't enough: a run that fixes one baselined node
-// but introduces a different node under the same (component, rule) can have
-// an unchanged (or even lower) count while still shipping a genuinely new
-// violation — the shape set catches that; the count ceiling still catches a
-// known shape simply growing in volume.
+
+// Builds a shape -> accepted-count multiset from a baseline entry.
+// nodeShapeCounts (added alongside the nodeShapes SET so old entries and
+// diff-review stay readable) is the real per-shape ceiling; entries written
+// before it existed fall back to treating every listed shape as accepted
+// exactly once — see the module doc comment below for why a plain Set can't
+// replace this.
+function shapeCountsOf(nodeShapes, nodeShapeCounts) {
+    if (nodeShapeCounts) return new Map(Object.entries(nodeShapeCounts));
+    return new Map((nodeShapes ?? []).map(s => [s, 1]));
+}
+
+// Keyed by (component, rule). The value carries the accepted node-count
+// ceiling AND a MULTISET (shape -> accepted count) of accepted node SHAPES
+// (see node-identity.mjs) for that pair. Neither the aggregate count nor a
+// plain shape SET is enough on its own: a run that fixes one baselined shape-A
+// node while a different, unreviewed shape-A node starts failing elsewhere can
+// leave the aggregate nodeCount AND the shape set both unchanged (shape-A was
+// already accepted, at some count) while still being a genuinely new
+// violation instance — a per-shape count is what catches that same-count,
+// same-shape-set swap; a Set alone only catches a shape that never appeared
+// in the baseline at all.
 const baselineMap = new Map(baseline.entries.map(e => [
     baselineKey(e.component, e.rule),
-    { nodeCount: e.nodeCount ?? 0, shapes: new Set(e.nodeShapes ?? []) },
+    { nodeCount: e.nodeCount ?? 0, shapeCounts: shapeCountsOf(e.nodeShapes, e.nodeShapeCounts) },
 ]));
 
 // Each exclusion applies to one rule and matches individual violation NODES
@@ -114,8 +129,15 @@ for (const file of reportFiles) {
             return !excluded;
         });
         if (survivingNodes.length > 0) {
-            const shapes = new Set(survivingNodes.map(n => nodeShapeHash(n.target, n.html)));
-            current.push({ component: report.slug, rule: v.id, impact: v.impact, nodeCount: survivingNodes.length, shapes });
+            // Per-shape counts (multiset), not just a Set of which shapes are
+            // present — see the module doc comment above baselineMap for why
+            // membership alone misses a same-count shape swap.
+            const shapeCounts = new Map();
+            for (const n of survivingNodes) {
+                const shape = nodeShapeHash(n.target, n.html);
+                shapeCounts.set(shape, (shapeCounts.get(shape) ?? 0) + 1);
+            }
+            current.push({ component: report.slug, rule: v.id, impact: v.impact, nodeCount: survivingNodes.length, shapeCounts });
         }
     }
 }
@@ -126,12 +148,20 @@ function baselineFor(v) {
     return baselineMap.get(baselineKey(v.component, v.rule));
 }
 
-// A shape this run sees that the baseline never accepted for this
-// (component, rule) pair — the actual "different node" signal, independent
-// of whether the aggregate count happens to look unchanged (e.g. one
-// baselined node got fixed while a different one started failing).
+// Shapes this run sees MORE of than the baseline ever accepted for this
+// (component, rule) pair — a shape entirely new to the baseline (accepted
+// count 0) is the obvious case, but a shape the baseline DOES know about,
+// just at a lower count, is the actual "different node" signal a plain shape
+// SET can't see: one baselined shape-A node got fixed while a different
+// shape-A node started failing elsewhere, so shape-A's count grew back up to
+// (or past) the ceiling via a swap the aggregate nodeCount alone can't
+// distinguish from "nothing changed".
 function unacceptedShapes(v, entry) {
-    return [...v.shapes].filter(s => !entry.shapes.has(s));
+    const unaccepted = [];
+    for (const [shape, count] of v.shapeCounts) {
+        if (count > (entry.shapeCounts.get(shape) ?? 0)) unaccepted.push(shape);
+    }
+    return unaccepted;
 }
 
 // "Known" requires the (component, rule) pair to be baselined, this run's
@@ -152,16 +182,20 @@ const stale = baseline.entries.filter(e => !currentKeySet.has(baselineKey(e.comp
 
 // Enforced like `stale`, but for a PARTIAL fix: the (component, rule) pair
 // still reproduces (so it's not stale — removed entirely), but this run's
-// surviving node count is now below the accepted ceiling, or some of the
-// baselined shapes no longer reproduce. Left alone, the ceiling/shape set
-// stays at the old, wider acceptance forever, so a later regression can
-// regrow all the way back up to it (or a different node slip into the
-// now-unused shape slot) without ever being classified as NEW — e.g.
+// surviving node count is now below the accepted ceiling, or some baselined
+// shape's count has dropped (partially or fully cleared). Left alone, the
+// ceiling/shape counts stay at the old, wider acceptance forever, so a later
+// regression can regrow all the way back up to it (or a different node slip
+// into the now-slack shape count) without ever being classified as NEW — e.g.
 // data-grid :: button-name shrinking from 50 nodes to 1 must lower
-// baseline.json's nodeCount (and nodeShapes) to match in the same PR.
+// baseline.json's nodeCount (and nodeShapeCounts) to match in the same PR.
 const shrunk = known.filter(v => {
     const entry = baselineFor(v);
-    return v.nodeCount < entry.nodeCount || [...entry.shapes].some(s => !v.shapes.has(s));
+    if (v.nodeCount < entry.nodeCount) return true;
+    for (const [shape, acceptedCount] of entry.shapeCounts) {
+        if ((v.shapeCounts.get(shape) ?? 0) < acceptedCount) return true;
+    }
+    return false;
 });
 
 console.log(`[check-baseline] ${totalViolationInstances} total violation node(s) across ${reportFiles.length} components ` +
@@ -181,11 +215,14 @@ if (shrunk.length > 0) {
     console.error(`\n[check-baseline] ${shrunk.length} baseline entr${shrunk.length === 1 ? 'y has' : 'ies have'} shrunk but not fully cleared:`);
     for (const v of shrunk) {
         const entry = baselineFor(v);
-        const clearedShapes = [...entry.shapes].filter(s => !v.shapes.has(s)).length;
-        console.error(`  - ${v.component} :: ${v.rule} — baselined at ${entry.nodeCount} node(s)/${entry.shapes.size} shape(s), ` +
-            `now ${v.nodeCount} node(s)/${v.shapes.size} shape(s) (${clearedShapes} baselined shape(s) no longer reproduce)`);
+        let clearedShapes = 0;
+        for (const [shape, acceptedCount] of entry.shapeCounts) {
+            if ((v.shapeCounts.get(shape) ?? 0) < acceptedCount) clearedShapes++;
+        }
+        console.error(`  - ${v.component} :: ${v.rule} — baselined at ${entry.nodeCount} node(s)/${entry.shapeCounts.size} shape(s), ` +
+            `now ${v.nodeCount} node(s)/${v.shapeCounts.size} shape(s) (${clearedShapes} baselined shape(s) reproducing less than accepted)`);
     }
-    console.error(`\nRegenerate ${shrunk.length === 1 ? 'this entry' : 'these entries'} with gen-baseline.mjs (nodeCount AND nodeShapes) ` +
+    console.error(`\nRegenerate ${shrunk.length === 1 ? 'this entry' : 'these entries'} with gen-baseline.mjs (nodeCount AND nodeShapeCounts) ` +
         `in the same PR as the partial fix. This is enforced, not advisory: leaving the old, wider ceiling/shape set in ` +
         `place lets a later regression regrow back up to it, or a different node quietly take over a now-unused shape ` +
         `slot, without ever being classified as NEW.`);
@@ -202,8 +239,8 @@ if (brandNew.length > 0) {
             note = ` — baselined at ${entry.nodeCount}, grew to ${v.nodeCount}: check what's new before just raising the ceiling`;
         } else {
             const newShapeCount = unacceptedShapes(v, entry).length;
-            note = ` — count unchanged but ${newShapeCount} node(s) don't match any previously-baselined shape: ` +
-                `a different node is now failing this rule, not the ones baseline.json accepted`;
+            note = ` — count unchanged but ${newShapeCount} shape(s) now reproduce more often than baselined: ` +
+                `a different node is now failing this rule, not (only) the ones baseline.json accepted`;
         }
         console.error(`  ✗ ${v.component} :: ${v.rule} (${v.impact}, ${v.nodeCount} node(s))${note}`);
     }

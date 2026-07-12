@@ -57,8 +57,20 @@ for (const file of reportFiles) {
             // baselined node got fixed, a different one started failing" apart
             // from "nothing changed" when the totals happen to land the same;
             // the shape set is what lets check-baseline.mjs catch that.
-            const nodeShapes = [...new Set(survivingNodes.map(n => nodeShapeHash(n.target, n.html)))].sort();
-            entries.push({ component: report.slug, rule: v.id, impact: v.impact, nodeCount: survivingNodes.length, nodeShapes });
+            //
+            // nodeShapeCounts carries the same shapes as a MULTISET (shape ->
+            // how many surviving nodes have it), not just membership. A plain
+            // Set can't tell "one baselined shape-A node got fixed while a
+            // different shape-A node appeared elsewhere" apart from "nothing
+            // changed" — same shape SET, same total nodeCount, but a genuine
+            // swap happened. Per-shape counts catch that: if this run's count
+            // for a shape exceeds what was ever accepted for it, that's new,
+            // even when the pair's aggregate totals still land the same.
+            const shapeHashes = survivingNodes.map(n => nodeShapeHash(n.target, n.html));
+            const nodeShapes = [...new Set(shapeHashes)].sort();
+            const nodeShapeCounts = Object.fromEntries(
+                nodeShapes.map(shape => [shape, shapeHashes.filter(s => s === shape).length]));
+            entries.push({ component: report.slug, rule: v.id, impact: v.impact, nodeCount: survivingNodes.length, nodeShapes, nodeShapeCounts });
         }
         findings.push({
             component: report.slug,

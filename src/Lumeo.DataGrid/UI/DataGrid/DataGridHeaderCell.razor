@@ -295,13 +295,20 @@
     // requiring aria-valuenow. Column.Width is null until a resize actually
     // commits (columns start auto-sized by the browser, no server-side measured
     // pixel width exists yet), so the attribute used to be omitted entirely on
-    // an unresized column — 124 nodes across the docs sweep. Fall back to the
-    // same MinWidth-or-50 floor the resize commit path already clamps to
-    // (DataGrid.CommitColumnWidthAsync: `Math.Max(column.MinWidth ?? 50, width)`)
-    // so the reported value is always a real, spec-consistent number rather than
-    // a fabricated one.
+    // an unresized column — 124 nodes across the docs sweep. PR 365 round-10
+    // review: falling back straight to MinWidth-or-50 (the same floor
+    // DataGrid.CommitColumnWidthAsync clamps to: `Math.Max(column.MinWidth ?? 50,
+    // width)`) reports a fabricated value for any auto-laid-out column whose
+    // actual rendered width is larger than its minimum — which is the common
+    // case. _measuredWidth (see OnAfterRenderAsync) holds the header cell's real,
+    // one-shot-measured width for that case; only once no measurement exists yet
+    // (or ever will, off-browser) does this still fall back to the floor.
     private int ResizeHandleValueNow =>
-        Column.Width.HasValue ? (int)Column.Width.Value : (int)(Column.MinWidth ?? 50);
+        Column.Width.HasValue
+            ? (int)Column.Width.Value
+            : (int)(_measuredWidth ?? Column.MinWidth ?? 50);
+
+    private double? _measuredWidth;
 
     // Roving tabindex: exactly one header/body cell carries tabindex="0".
     private int TabIndexValue =>
@@ -505,7 +512,29 @@
         {
             await EnsureResizeRegistered();
         }
-        else if (!Column.Resizable && _resizeRegistered)
+
+        // aria-valuenow measurement: an auto-sized column (Width still null — no
+        // resize has ever committed) has no server-known pixel width, so
+        // ResizeHandleValueNow used to fall back to MinWidth-or-50 — a fabricated
+        // floor, not the column's actual rendered width. One-shot measurement via
+        // the already-known header cell id (CellId) fixes that; re-measuring on
+        // every render isn't needed because the moment a resize DOES commit,
+        // Column.Width becomes set and ResizeHandleValueNow switches to reporting
+        // that instead. GetElementDimension returns 0 when the element can't be
+        // measured (detached, or a non-browser test host) — 0 is treated as "no
+        // measurement", so the MinWidth-or-50 floor still applies there, preserving
+        // existing behaviour in that case.
+        if (Column.Resizable && !Column.Width.HasValue && _measuredWidth is null && CellId is not null)
+        {
+            var width = await Interop.GetElementDimension(CellId, "width");
+            if (width > 0)
+            {
+                _measuredWidth = width;
+                StateHasChanged();
+            }
+        }
+
+        if (!Column.Resizable && _resizeRegistered)
         {
             // Column flipped Resizable true → false. The resize-handle div is
             // gone from the DOM (the @if (Column.Resizable) gate above) but
