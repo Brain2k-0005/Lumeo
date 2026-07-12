@@ -44,7 +44,13 @@ for (const file of reportFiles) {
         });
         if (survivingNodes.length === 0) continue;
         if (GATED_IMPACTS.has(v.impact)) {
-            entries.push({ component: report.slug, rule: v.id, impact: v.impact });
+            // nodeCount is the accepted debt ceiling for this (component, rule)
+            // pair, not just a presence flag — check-baseline.mjs fails the gate
+            // if a later run's surviving node count for the SAME pair exceeds
+            // this, so a new nameless control added to a component that already
+            // has baselined debt under that rule still fails as NEW instead of
+            // being waved through by the (component, rule) key alone.
+            entries.push({ component: report.slug, rule: v.id, impact: v.impact, nodeCount: survivingNodes.length });
         }
         findings.push({
             component: report.slug,

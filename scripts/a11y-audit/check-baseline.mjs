@@ -37,7 +37,14 @@ const baseline = loadJson(join(__dirname, 'baseline.json'), { entries: [] });
 const exclusions = loadJson(join(__dirname, 'exclusions.json'), { exclusions: [] });
 
 const baselineKey = (component, rule) => `${component}::${rule}`;
-const baselineSet = new Set(baseline.entries.map(e => baselineKey(e.component, e.rule)));
+// Keyed by (component, rule), but the value is the ACCEPTED node-count
+// ceiling for that pair, not just presence — a (component, rule) pair alone
+// would let every future node under an already-baselined rule count as
+// known, so a brand-new nameless control added next to old baselined debt on
+// the same component/rule would false-green. Comparing counts means a run
+// whose surviving node count for a known pair grows still fails as NEW.
+const baselineMap = new Map(baseline.entries.map(e => [baselineKey(e.component, e.rule), e.nodeCount ?? 0]));
+const baselineSet = new Set(baselineMap.keys());
 
 // Each exclusion applies to one rule and matches individual violation NODES
 // via a regex against their target selector (joined) PLUS their raw outerHTML,
@@ -107,8 +114,19 @@ for (const file of reportFiles) {
 }
 
 const gated = current.filter(v => GATED_IMPACTS.has(v.impact));
-const known = gated.filter(v => baselineSet.has(baselineKey(v.component, v.rule)));
-const brandNew = gated.filter(v => !baselineSet.has(baselineKey(v.component, v.rule)));
+// "Known" requires BOTH the (component, rule) pair to be baselined AND this
+// run's surviving node count to be within the baselined ceiling — a pair
+// that's baselined but whose count grew (e.g. a new nameless DataGrid
+// control alongside the old debt) is NOT known, it's NEW: the maintainer
+// must look at what changed rather than have it silently absorbed.
+const known = gated.filter(v => {
+    const ceiling = baselineMap.get(baselineKey(v.component, v.rule));
+    return ceiling !== undefined && v.nodeCount <= ceiling;
+});
+const brandNew = gated.filter(v => {
+    const ceiling = baselineMap.get(baselineKey(v.component, v.rule));
+    return ceiling === undefined || v.nodeCount > ceiling;
+});
 
 // Informational: baseline entries that no longer reproduce (fixed) — the
 // maintainer should prune these so the baseline keeps shrinking.
@@ -131,7 +149,11 @@ if (stale.length > 0) {
 if (brandNew.length > 0) {
     console.error(`\n[check-baseline] ${brandNew.length} NEW critical/serious violation(s) not in baseline.json:`);
     for (const v of brandNew) {
-        console.error(`  ✗ ${v.component} :: ${v.rule} (${v.impact}, ${v.nodeCount} node(s))`);
+        const ceiling = baselineMap.get(baselineKey(v.component, v.rule));
+        const note = ceiling === undefined
+            ? ''
+            : ` — baselined at ${ceiling}, grew to ${v.nodeCount}: check what's new before just raising the ceiling`;
+        console.error(`  ✗ ${v.component} :: ${v.rule} (${v.impact}, ${v.nodeCount} node(s))${note}`);
     }
     console.error(`\nEither fix these, or — if genuinely a false positive from docs-page chrome — add them to ` +
         `exclusions.json with a reason + a targetPattern precise enough to not also swallow real component ` +

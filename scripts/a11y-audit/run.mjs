@@ -29,7 +29,7 @@
 // gate). Prints a one-line summary at the end.
 
 import { spawn } from 'node:child_process';
-import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync, rmSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { setTimeout as sleep } from 'node:timers/promises';
@@ -88,12 +88,23 @@ function run(cmd, cmdArgs, opts = {}) {
     });
 }
 
-async function waitForServer(url, timeoutMs = 120_000) {
+// `proc` is optional — when given, an early exit (crashed `dotnet run`, port
+// already bound to some other process that never answers, etc.) aborts the
+// wait immediately with a clear error instead of polling for the full
+// timeout. Only a genuine 2xx is accepted as "ready": "/" is a real Blazor
+// page (docs/Lumeo.Docs/Pages/Home.razor, @page "/"), so a 404 here means
+// some OTHER service already owns the port, not that the docs app is still
+// booting — treating that 404 as ready used to let the crawl silently sweep
+// the wrong site (or a blank 404 page) and false-green the baseline.
+async function waitForServer(url, timeoutMs, proc) {
     const start = Date.now();
     while (Date.now() - start < timeoutMs) {
+        if (proc && proc.exitCode !== null) {
+            throw new Error(`process exited with code ${proc.exitCode} while waiting for ${url} to come up`);
+        }
         try {
             const res = await fetch(url);
-            if (res.ok || res.status === 404) return true;
+            if (res.ok) return true;
         } catch { /* not up yet */ }
         await sleep(1000);
     }
@@ -132,7 +143,13 @@ if (!baseUrl) {
     dotnetProc.stdout.on('data', (d) => process.env.A11Y_AUDIT_VERBOSE && process.stdout.write(`[docs-server] ${d}`));
     dotnetProc.stderr.on('data', (d) => process.stderr.write(`[docs-server] ${d}`));
 
-    const up = await waitForServer(baseUrl, 120_000);
+    let up;
+    try {
+        up = await waitForServer(baseUrl, 120_000, dotnetProc);
+    } catch (err) {
+        console.error(`[a11y-audit] ${err.message}`);
+        process.exit(1);
+    }
     if (!up) {
         console.error(`[a11y-audit] docs server did not come up within 120s at ${baseUrl}`);
         dotnetProc.kill();
@@ -148,6 +165,20 @@ if (!baseUrl) {
 // 3. Crawl + axe
 // ---------------------------------------------------------------------------
 mkdirSync(reportsDir, { recursive: true });
+
+// A full sweep (no --slug) is about to rewrite every current-registry
+// component's report anyway, so clear any pre-existing *.json first — a
+// component removed/renamed since the last full run, or files left over
+// from an interrupted sweep, would otherwise survive untouched and get
+// read by check-baseline.mjs/gen-baseline.mjs alongside this run's fresh
+// data. --slug mode is deliberately exempt: it exists for fast one-
+// component iteration, and wiping the directory would destroy the other
+// components' last-known reports that mode is meant to leave alone.
+if (!slugArg) {
+    for (const f of readdirSync(reportsDir)) {
+        if (f.endsWith('.json')) rmSync(join(reportsDir, f));
+    }
+}
 
 const browser = await puppeteer.launch({
     headless: true,

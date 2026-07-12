@@ -37,6 +37,21 @@ jobs:
         run: npm install
         working-directory: scripts/a11y-audit
 
+      # run.mjs's own build step (skipped only with --no-build, which this
+      # workflow doesn't pass) shells out to the root `npm run build:css` and
+      # docs/Lumeo.Docs `npm run css:build`, both of which invoke
+      # `npx @tailwindcss/cli`. Without root/docs node_modules installed
+      # first, npx resolves that package from the registry instead of the
+      # checked-in lockfiles (or fails outright if the registry is
+      # unreachable) — same root+docs `npm install` pair e2e.yml runs before
+      # its own CSS build, so the audit sweeps against the same pinned CSS
+      # every other CI job builds against.
+      - name: Install root + docs CSS build dependencies
+        run: |
+          npm install
+          cd docs/Lumeo.Docs
+          npm install
+
       - name: Run full sweep (builds + boots docs/Lumeo.Docs, crawls all components)
         run: node run.mjs
         working-directory: scripts/a11y-audit
