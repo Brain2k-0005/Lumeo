@@ -240,7 +240,17 @@ public static class PerComponentEnricher
             Path.Combine(repoRoot, "tests", "Lumeo.Tests.E2E"),
         };
         // Match either a class named like the component (Class FooBar) or string-literal mentions.
-        var nameWordRegex = new Regex(@"\b" + Regex.Escape(componentName) + @"\b", RegexOptions.Compiled);
+        // The lookahead (not a trailing \b) is deliberate: a plain \b...\b exact-word match
+        // misses real test coverage recorded as a SUFFIXED PascalCase identifier — e.g.
+        // "DataGridSmokeTests" or "SelectInteractionTests" — because there is no word
+        // boundary between "DataGrid"/"d" and "SmokeTests"/"S" (both are \w chars). Once
+        // comments (incl. XML docs) are stripped above, those suffixed class names are often
+        // the ONLY code-side mention left, so missing them silently drops real E2E/smoke
+        // coverage from the public registry/MCP "tests" metadata. The lookahead requires the
+        // next char to start a new PascalCase segment (uppercase) or be a genuine word
+        // boundary, so "DataGridSmokeTests" and "SelectInteractionTests" match while
+        // lowercase continuations like "Selectable" (component "Select") still don't.
+        var nameWordRegex = new Regex(@"\b" + Regex.Escape(componentName) + @"(?=[A-Z]|\b)", RegexOptions.Compiled);
         foreach (var root in testRoots)
         {
             if (!Directory.Exists(root)) continue;

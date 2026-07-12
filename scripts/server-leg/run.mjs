@@ -147,21 +147,29 @@ async function main() {
   }
   console.log('Server host is up.');
 
-  const browser = await chromium.launch();
-  const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
-  const cdp = await page.context().newCDPSession(page);
-  await cdp.send('Network.enable');
-  // downloadThroughput/uploadThroughput: -1 means "unlimited" — only latency
-  // is injected, isolating the RTT variable from bandwidth effects.
-  await cdp.send('Network.emulateNetworkConditions', {
-    offline: false,
-    latency: RTT_MS,
-    downloadThroughput: -1,
-    uploadThroughput: -1,
-  });
-  console.log(`CDP network throttling active: ${RTT_MS}ms latency on the whole page (incl. the SignalR WebSocket).`);
-
+  // browser is declared OUTSIDE the try (started null) and the try wraps
+  // chromium.launch()/CDP setup too, not just the scenarios: if Chromium is
+  // missing or launch()/CDP setup throws, control used to skip straight past
+  // the try/finally below without ever reaching serverProc.kill(), leaving
+  // the spawned `dotnet run` alive and SERVERLEG_PORT bound — poisoning the
+  // next run with a port collision. The finally's `if (browser)` guard
+  // handles the case where launch() itself is what threw.
+  let browser;
   try {
+    browser = await chromium.launch();
+    const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+    const cdp = await page.context().newCDPSession(page);
+    await cdp.send('Network.enable');
+    // downloadThroughput/uploadThroughput: -1 means "unlimited" — only latency
+    // is injected, isolating the RTT variable from bandwidth effects.
+    await cdp.send('Network.emulateNetworkConditions', {
+      offline: false,
+      latency: RTT_MS,
+      downloadThroughput: -1,
+      uploadThroughput: -1,
+    });
+    console.log(`CDP network throttling active: ${RTT_MS}ms latency on the whole page (incl. the SignalR WebSocket).`);
+
     await page.goto(BASE_URL);
     await page.waitForFunction(() => window.Blazor !== undefined, { timeout: 20_000 });
     // Circuit-ready probe: a plain, provider-free interactive element proves
@@ -188,7 +196,7 @@ async function main() {
     await scenarioDialogExitAnimation(page, RTT_MS);
     await scenarioToastBurst(page, RTT_MS);
   } finally {
-    await browser.close();
+    if (browser) await browser.close();
     serverProc.kill();
   }
 

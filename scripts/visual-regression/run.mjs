@@ -354,6 +354,34 @@ async function main() {
           // without special-casing individual routes.
           await page.waitForTimeout(400);
 
+          // Mask live external raster content BEFORE capturing: some swept routes
+          // render pixels this repo doesn't control at all — /components/map (and
+          // the other Map* pages) draws a MapLibre GL canvas tiled from CARTO's
+          // basemaps.cartocdn.com, and /components/image + /components/avatar embed
+          // hotlinked <img> from picsum.photos / github.com's avatar CDN. When any
+          // of those upstream services changes, rate-limits, or serves a slightly
+          // different response, this job would FAIL even though nothing in this
+          // repo's UI changed. Cover every cross-origin <img> and every Map widget
+          // (Map.razor's root container is role="application" aria-label="Map",
+          // shared by all Map* demo pages) with a flat, deterministic overlay so
+          // only same-origin Lumeo-rendered pixels are ever diffed.
+          await page.evaluate(() => {
+            const mask = (el) => {
+              const r = el.getBoundingClientRect();
+              if (r.width <= 0 || r.height <= 0) return;
+              const div = document.createElement('div');
+              div.setAttribute('data-vr-mask', '1');
+              div.style.cssText = `position:fixed;left:${r.left}px;top:${r.top}px;width:${r.width}px;height:${r.height}px;background:#808080;z-index:2147483647;pointer-events:none;`;
+              document.body.appendChild(div);
+            };
+            document.querySelectorAll('img[src]').forEach((img) => {
+              try {
+                if (new URL(img.src, location.href).origin !== location.origin) mask(img);
+              } catch (_) { /* relative/data URLs never external — ignore parse failures */ }
+            });
+            document.querySelectorAll('[role="application"][aria-label="Map"]').forEach(mask);
+          });
+
           const buffer = await page.screenshot({ fullPage: false });
           const result = compareOrUpdate(slug, buffer, route, theme);
           results.push(result);
