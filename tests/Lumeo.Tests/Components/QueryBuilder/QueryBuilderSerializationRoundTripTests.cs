@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text.Json;
 using Xunit;
 using Lumeo;
 
@@ -176,5 +177,46 @@ public class QueryBuilderSerializationRoundTripTests
 
         Assert.True(predicate(new Widget { CreatedUtc = createdUtc }));
         Assert.False(predicate(new Widget { CreatedUtc = createdUtc.AddHours(1) }));
+    }
+
+    [Fact]
+    public void Custom_Non_Scalar_Value_Fails_The_Write_Instead_Of_Being_Silently_Stringified()
+    {
+        // A custom ValueEditorTemplate can box a non-scalar shape (e.g. string[]) into
+        // QueryRule.Value. A ToString() fallback would corrupt the saved query — a string[]
+        // becomes the literal text "System.String[]" with no way to recover the original data.
+        // ToJson must fail loudly instead of persisting that unrecoverable value (#366 review).
+        var query = Lumeo.QueryGroup.CreateEmpty();
+        query.Rules.Add(new Lumeo.QueryRule { Field = "Name", Operator = "in", Value = new[] { "a", "b" } });
+
+        var ex = Assert.Throws<JsonException>(() => Lumeo.QueryBuilder.ToJson(query));
+        Assert.Contains("String[]", ex.Message);
+    }
+
+    [Fact]
+    public void Oversized_Numeric_Literal_Fails_The_Parse_Instead_Of_Throwing_Uncaught()
+    {
+        // QueryNode is a polymorphic base ([JsonDerivedType] on QueryRule/QueryGroup), so any
+        // JSON with an entry in "rules" needs the "$type" discriminator the real serializer
+        // writes — hand-crafting the rule object without one fails on "must specify a type
+        // discriminator" before FromJson ever reaches the numeric value. Serialize a genuine
+        // QueryGroup first (which writes a correct, discriminated shape) and corrupt only the
+        // numeric literal, so the test exercises the oversized-value path specifically rather
+        // than an unrelated discriminator error.
+        //
+        // A numeric literal outside even Double's range (e.g. a hand-corrupted persisted
+        // filter, "1e400") makes ReadNumber's fallback GetDouble() clamp to +Infinity instead
+        // of throwing — Infinity isn't valid JSON and can never be written back out, so
+        // ReadNumber now rejects it explicitly with a JsonException. FromJson only catches
+        // JsonException and is documented to return null on parse failure (#366 review).
+        var query = Lumeo.QueryGroup.CreateEmpty();
+        query.Rules.Add(new Lumeo.QueryRule { Field = "Score", Operator = "=", Value = 42.0 });
+        var validJson = Lumeo.QueryBuilder.ToJson(query);
+        Assert.Contains("\"value\": 42", validJson);
+        var json = validJson.Replace("\"value\": 42", "\"value\": 1e400");
+
+        var parsed = Lumeo.QueryBuilder.FromJson(json);
+
+        Assert.Null(parsed);
     }
 }

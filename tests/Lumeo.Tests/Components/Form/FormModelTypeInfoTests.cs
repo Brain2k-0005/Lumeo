@@ -85,4 +85,36 @@ public partial class FormModelTypeInfoTests : IAsyncLifetime
         Assert.Equal("Ann", model.Name);
         Assert.Equal("Main St", model.Address!.Street);
     }
+
+    [Fact]
+    public async Task ResetValues_Recaptures_Snapshot_When_ModelTypeInfo_Arrives_On_The_Same_Model_Instance()
+    {
+        // PR #366 review: OnParametersSet used to compare only the Model REFERENCE, so a parent
+        // that supplies ModelTypeInfo after the first render (keeping the same Model instance)
+        // never triggered a re-capture — ResetValues() kept restoring the stale reflection-based
+        // baseline from init instead of a fresh snapshot taken once the trim-safe context arrived.
+        var model = new ProfileModel { Name = "Ann", Address = new Address { Street = "Main St" } };
+
+        var cut = _ctx.Render<L.Form<ProfileModel>>(p => p
+            .Add(f => f.Model, model)
+            .AddChildContent("<button type=\"submit\">go</button>"));
+
+        // Same instance, mutated before ModelTypeInfo shows up.
+        model.Name = "Bob";
+
+        cut.Render(p => p
+            .Add(f => f.Model, model)
+            .Add(f => f.ModelTypeInfo, ProfileModelContext.Default.ProfileModel)
+            .AddChildContent("<button type=\"submit\">go</button>"));
+
+        // Further mutation after the (expected) re-capture point.
+        model.Name = "Carol";
+
+        await cut.InvokeAsync(() => cut.Instance.ResetValues());
+
+        // Must restore to "Bob" (the state at ModelTypeInfo-arrival recapture), not "Ann"
+        // (the stale init snapshot) and not "Carol" (never captured).
+        Assert.Equal("Bob", model.Name);
+        Assert.Equal("Main St", model.Address!.Street);
+    }
 }

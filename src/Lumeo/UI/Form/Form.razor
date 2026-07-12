@@ -48,6 +48,13 @@
     // onto the current one. Tracked by reference so same-instance mutations (the
     // common edit-then-reset flow) keep the original baseline.
     private object? _snapshotModel;
+    // The ModelTypeInfo the snapshot was captured WITH. A parent that supplies
+    // ModelTypeInfo after the first render (or swaps it) while keeping the same Model
+    // instance must still trigger a re-capture: the initial reflection-based snapshot
+    // (ModelTypeInfo null) can silently miss nested members in a trimmed app, so once a
+    // trim-safe context arrives it needs to replace that stale/incomplete snapshot
+    // rather than be ignored because Model didn't change (#366 review).
+    private JsonTypeInfo<TModel>? _snapshotModelTypeInfo;
 
     protected override Task OnInitializedAsync()
     {
@@ -58,9 +65,10 @@
     protected override void OnParametersSet()
     {
         // Re-capture the reset baseline whenever the Model parameter is a different
-        // instance than the one we snapshotted. OnInitializedAsync already captured
-        // the very first instance, so this only fires on subsequent instance swaps.
-        if (!ReferenceEquals(Model, _snapshotModel))
+        // instance than the one we snapshotted, OR ModelTypeInfo changed while Model
+        // stayed the same (see _snapshotModelTypeInfo above). OnInitializedAsync already
+        // captured the very first instance, so this only fires on subsequent changes.
+        if (!ReferenceEquals(Model, _snapshotModel) || !ReferenceEquals(ModelTypeInfo, _snapshotModelTypeInfo))
         {
             CaptureInitialSnapshot();
         }
@@ -74,6 +82,7 @@
     private void CaptureInitialSnapshot()
     {
         _snapshotModel = Model;
+        _snapshotModelTypeInfo = ModelTypeInfo;
 
         if (Model is null)
         {

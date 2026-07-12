@@ -76,7 +76,31 @@ internal sealed class QueryValueJsonConverter : JsonConverter<object?>
     {
         if (reader.TryGetInt64(out var l)) return l;
         if (reader.TryGetDecimal(out var m)) return m;
-        return reader.GetDouble();
+        double d;
+        try
+        {
+            d = reader.GetDouble();
+        }
+        catch (FormatException ex)
+        {
+            // Historically GetDouble() could throw FormatException for a literal outside even
+            // Double's range; wrap it so every malformed numeric literal takes the same
+            // documented (return-null-on-parse-failure) path regardless of BCL version (#366 review).
+            throw new JsonException($"QueryRule value token is out of range for Int64/Decimal/Double.", ex);
+        }
+
+        // On current runtimes GetDouble() does NOT throw for an exponent/digit-count overflow
+        // (e.g. a corrupted/hand-edited query with a 1e400 literal) — it silently clamps to
+        // +/-Infinity instead. Infinity isn't valid JSON (WriteNumberValue throws ArgumentException
+        // for it), so letting it through here would rehydrate a QueryRule.Value that ToExpression
+        // can use for a comparison but ToJson can never persist again — silent corruption of the
+        // saved query rather than the documented graceful parse failure. Reject it explicitly so
+        // the oversized literal takes the same JsonException -> FromJson-returns-null path as
+        // every other malformed numeric shape (#366 review).
+        if (double.IsInfinity(d))
+            throw new JsonException($"QueryRule value token is out of range for Int64/Decimal/Double.");
+
+        return d;
     }
 
     public override void Write(Utf8JsonWriter writer, object? value, JsonSerializerOptions options)
@@ -101,11 +125,19 @@ internal sealed class QueryValueJsonConverter : JsonConverter<object?>
             case DateOnly dOnly: writer.WriteStringValue(dOnly.ToString("O", System.Globalization.CultureInfo.InvariantCulture)); break;
             case DateTime dt: writer.WriteStringValue(dt.ToString("O", System.Globalization.CultureInfo.InvariantCulture)); break;
             default:
-                // Outside the framework scalar types above, fall back to ToString() — the same
-                // coercion ConvertValue (the LINQ-expression side of this same value) already
-                // applies to anything that isn't one of its recognized target types.
-                writer.WriteStringValue(value.ToString());
-                break;
+                // A ToString() fallback here would silently CORRUPT the saved query for any
+                // custom ValueEditorTemplate that boxes a non-scalar shape into Value/Value2
+                // (e.g. a string[] becomes the literal text "System.String[]", losing the data
+                // with no way to tell from the written JSON that anything went wrong). Reject
+                // instead of guessing: throw the documented JsonException so ToJson fails loudly
+                // and the caller finds out immediately, rather than persisting an unrecoverable
+                // query it will fail to explain later (#366 review). Structured values that DO
+                // need to round-trip should be normalized to one of the scalar shapes above by
+                // the consumer's ValueEditorTemplate before assigning Value/Value2.
+                throw new JsonException(
+                    $"QueryRule value of type '{value.GetType()}' is not supported by the trim-safe " +
+                    "QueryValueJsonConverter (only string/bool/numeric/DateOnly/DateTime are). " +
+                    "Normalize the value to one of those shapes before assigning it to Value/Value2.");
         }
     }
 }
