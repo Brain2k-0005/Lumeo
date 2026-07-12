@@ -56,7 +56,13 @@ const COMPONENTS = [
     {
         name: "DataGrid",
         slug: "data-grid",
-        focusSelector: '[role="grid"], [role="treegrid"]',
+        // NOT the `<table role="grid">` container — it carries no tabindex at
+        // all, so it is not script-focusable and `.focus()` on it silently
+        // no-ops (the WAI-ARIA grid pattern's roving tabindex lives on the
+        // header/body CELLS, exactly one of which carries tabindex="0" at any
+        // time; see DataGridCell.razor/DataGridHeaderCell.razor TabIndexValue).
+        focusSelector: '[role="grid"] [role="gridcell"][tabindex="0"], [role="grid"] [role="columnheader"][tabindex="0"], ' +
+            '[role="treegrid"] [role="gridcell"][tabindex="0"], [role="treegrid"] [role="columnheader"][tabindex="0"]',
         steps: [
             { row: 1, action: "focus", key: null, expected: ["table", "grid"] },
             { row: 2, action: "press", key: "ArrowRight", expected: [] }, // no fixed text; logged for manual eyeball
@@ -66,6 +72,14 @@ const COMPONENTS = [
     {
         name: "FileManager",
         slug: "file-manager",
+        // Audited against the same "does .focus() actually land here" question
+        // as DataGrid/Calendar/Cascader above: the `[role="tree"]` container
+        // itself has no tabindex (fine, same as DataGrid's grid container) —
+        // but unlike DataGrid, FileManager's `role="treeitem"` rows ALSO carry
+        // no tabindex and no keydown handling at all (mouse-only; confirmed in
+        // FileManager.razor). This is a real product-level keyboard-nav gap in
+        // the component, not a selector bug this script can work around — a
+        // FAIL here is an accurate signal, tracked separately from this PR.
         focusSelector: '[role="tree"]',
         steps: [
             { row: 1, action: "focus", key: null, expected: ["tree"] },
@@ -86,7 +100,11 @@ const COMPONENTS = [
     {
         name: "Calendar",
         slug: "calendar",
-        focusSelector: '[role="grid"] [role="gridcell"][tabindex="0"], [role="grid"] [role="gridcell"]',
+        // The `[role="gridcell"]` itself is a plain, tabindex-less <div> (pure
+        // ARIA structure) — the actual roving-tabindex keyboard target is the
+        // native <button> it wraps (see Calendar.razor DayTabIndex). Focusing
+        // the gridcell div would silently no-op like the DataGrid case above.
+        focusSelector: '[role="grid"] button[tabindex="0"]',
         steps: [
             { row: 1, action: "focus", key: null, expected: ["grid", "table"] },
             { row: 2, action: "press", key: "ArrowRight", expected: [] },
@@ -96,7 +114,16 @@ const COMPONENTS = [
     {
         name: "Cascader",
         slug: "cascader",
-        focusSelector: 'button[aria-haspopup], [role="combobox"]',
+        // Cascader's trigger button has neither `aria-haspopup` nor
+        // `role="combobox"` (see Cascader.razor) — `aria-haspopup="menu"` only
+        // shows up on the nested option <button>s, which don't exist in the
+        // DOM until the popup is opened, so this selector matched nothing on
+        // page load. The trigger is the wrapper's own first direct-child
+        // <button> (id is deterministically prefixed "cascader-" via
+        // LumeoIds.New); the clear/chevron controls are nested INSIDE that
+        // same button, not siblings, so `> button` can't accidentally match
+        // them instead.
+        focusSelector: '[id^="cascader-"] > button',
         steps: [
             { row: 1, action: "focus", key: null, expected: ["button", "combobox"] },
             { row: 2, action: "press", key: "Enter", expected: ["menu"] },
@@ -170,81 +197,105 @@ async function main() {
     }
 
     // ---- 2. browser + NVDA ---------------------------------------------------
-    const edgeCandidates = [
-        "C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe",
-        "C:/Program Files/Microsoft/Edge/Application/msedge.exe",
-    ];
-    const edgePath = edgeCandidates.find((p) => existsSync(p));
-    // Protocol recommends Firefox as primary; Edge/Chrome are the documented
-    // fallback (see sr-test-protocol.md Setup section) and are what's
-    // reliably present without an extra playwright browser download.
-    const browser = await chromium.launch({ headless: false, executablePath: edgePath, args: ["--start-maximized"] });
-    const page = await browser.newPage();
+    // From here on, a headed browser, NVDA, and (usually) the docs server are
+    // all running on the maintainer's Windows desktop. If any awaited step
+    // below throws (page.goto timeout, a Guidepup press failing, etc.), the
+    // whole block still needs to tear these back down — otherwise a failed
+    // run leaves a visible browser window + NVDA + localhost server behind.
+    // `browser`/`nvdaStarted` are declared here (not just inside the try) so
+    // the `finally` can see how far setup actually got.
+    let browser = null;
+    let nvdaStarted = false;
+    try {
+        const edgeCandidates = [
+            "C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe",
+            "C:/Program Files/Microsoft/Edge/Application/msedge.exe",
+        ];
+        const edgePath = edgeCandidates.find((p) => existsSync(p));
+        // Protocol recommends Firefox as primary; Edge/Chrome are the documented
+        // fallback (see sr-test-protocol.md Setup section) and are what's
+        // reliably present without an extra playwright browser download.
+        browser = await chromium.launch({ headless: false, executablePath: edgePath, args: ["--start-maximized"] });
+        const page = await browser.newPage();
 
-    console.log("[sr-audit] starting NVDA via Guidepup...");
-    await nvda.start();
-    await sleep(2000);
+        console.log("[sr-audit] starting NVDA via Guidepup...");
+        await nvda.start();
+        nvdaStarted = true;
+        await sleep(2000);
 
-    mkdirSync(resultsDir, { recursive: true });
-    const report = { generated: new Date().toISOString(), baseUrl, protocolFile: "docs/superpowers/sr-test-protocol.md", components: {} };
+        mkdirSync(resultsDir, { recursive: true });
+        const report = { generated: new Date().toISOString(), baseUrl, protocolFile: "docs/superpowers/sr-test-protocol.md", components: {} };
 
-    for (const component of COMPONENTS) {
-        console.log(`\n[sr-audit] === ${component.name} (/components/${component.slug}) ===`);
-        const route = `/components/${component.slug}`;
-        await page.goto(baseUrl + route, { waitUntil: "load", timeout: 60_000 });
-        try {
-            await page.waitForFunction(() => document.documentElement.dataset.blazorReady === "true", { timeout: 30_000 });
-        } catch {
-            console.warn(`[sr-audit] ${component.slug}: blazorReady never set within 30s — continuing anyway`);
-        }
-        await sleep(1000);
+        for (const component of COMPONENTS) {
+            console.log(`\n[sr-audit] === ${component.name} (/components/${component.slug}) ===`);
+            const route = `/components/${component.slug}`;
+            await page.goto(baseUrl + route, { waitUntil: "load", timeout: 60_000 });
+            try {
+                await page.waitForFunction(() => document.documentElement.dataset.blazorReady === "true", { timeout: 30_000 });
+            } catch {
+                console.warn(`[sr-audit] ${component.slug}: blazorReady never set within 30s — continuing anyway`);
+            }
+            await sleep(1000);
 
-        const componentResult = { route, steps: [] };
-        let focusOk = false;
-        try {
-            focusOk = await page.evaluate((sel) => {
-                const el = document.querySelector(sel);
-                if (!el) return false;
-                el.focus();
-                return document.activeElement === el;
-            }, component.focusSelector);
-        } catch (e) {
-            console.warn(`[sr-audit] ${component.slug}: focus eval failed: ${e.message}`);
-        }
-        if (!focusOk) {
-            console.warn(`[sr-audit] ${component.slug}: could not focus "${component.focusSelector}" — skipping, marking FAIL`);
-            componentResult.steps.push({ row: 0, action: "focus", key: null, expected: [], actual: null, result: "FAIL — target element not found/focusable" });
+            const componentResult = { route, steps: [] };
+            let focusOk = false;
+            try {
+                focusOk = await page.evaluate((sel) => {
+                    const el = document.querySelector(sel);
+                    if (!el) return false;
+                    el.focus();
+                    return document.activeElement === el;
+                }, component.focusSelector);
+            } catch (e) {
+                console.warn(`[sr-audit] ${component.slug}: focus eval failed: ${e.message}`);
+            }
+            if (!focusOk) {
+                console.warn(`[sr-audit] ${component.slug}: could not focus "${component.focusSelector}" — skipping, marking FAIL`);
+                componentResult.steps.push({ row: 0, action: "focus", key: null, expected: [], actual: null, result: "FAIL — target element not found/focusable" });
+                report.components[component.name] = componentResult;
+                continue;
+            }
+
+            for (const step of component.steps) {
+                if (step.action === "press") {
+                    await nvda.press(step.key);
+                }
+                await sleep(600);
+                const actual = await nvda.lastSpokenPhrase();
+                let result;
+                const match = fuzzyContains(actual, step.expected);
+                if (match === null) {
+                    result = actual && actual.trim().length > 0 ? `LOGGED — "${actual}"` : "LOGGED — (empty)";
+                } else {
+                    result = match ? "PASS" : `FAIL — expected one of [${step.expected.join(", ")}], got "${actual}"`;
+                }
+                console.log(`  row ${step.row} (${step.action}${step.key ? " " + step.key : ""}): ${result}`);
+                componentResult.steps.push({ row: step.row, action: step.action, key: step.key, expected: step.expected, actual, result });
+            }
             report.components[component.name] = componentResult;
-            continue;
         }
 
-        for (const step of component.steps) {
-            if (step.action === "press") {
-                await nvda.press(step.key);
-            }
-            await sleep(600);
-            const actual = await nvda.lastSpokenPhrase();
-            let result;
-            const match = fuzzyContains(actual, step.expected);
-            if (match === null) {
-                result = actual && actual.trim().length > 0 ? `LOGGED — "${actual}"` : "LOGGED — (empty)";
-            } else {
-                result = match ? "PASS" : `FAIL — expected one of [${step.expected.join(", ")}], got "${actual}"`;
-            }
-            console.log(`  row ${step.row} (${step.action}${step.key ? " " + step.key : ""}): ${result}`);
-            componentResult.steps.push({ row: step.row, action: step.action, key: step.key, expected: step.expected, actual, result });
+        const date = new Date().toISOString().slice(0, 10);
+        const outPath = join(resultsDir, `nvda-${date}.json`);
+        writeFileSync(outPath, JSON.stringify(report, null, 2));
+        console.log(`\n[sr-audit] wrote ${outPath}`);
+    } finally {
+        // Runs on both the success path AND any thrown error above — mirrors
+        // run.mjs's docs-server try/finally in scripts/a11y-audit for the same
+        // reason: a partially-set-up run must not leak processes/windows.
+        if (nvdaStarted) {
+            try { await nvda.stop(); } catch (e) { console.warn(`[sr-audit] nvda.stop() failed: ${e.message}`); }
         }
-        report.components[component.name] = componentResult;
+        if (browser) {
+            try { await browser.close(); } catch (e) { console.warn(`[sr-audit] browser.close() failed: ${e.message}`); }
+        }
+        if (dotnetProc) {
+            dotnetProc.kill();
+            if (process.platform === "win32" && dotnetProc.pid) {
+                spawn("taskkill", ["/pid", String(dotnetProc.pid), "/T", "/F"], { stdio: "ignore", shell: true });
+            }
+        }
     }
-
-    await nvda.stop();
-    await browser.close();
-    if (dotnetProc) dotnetProc.kill();
-
-    const date = new Date().toISOString().slice(0, 10);
-    const outPath = join(resultsDir, `nvda-${date}.json`);
-    writeFileSync(outPath, JSON.stringify(report, null, 2));
-    console.log(`\n[sr-audit] wrote ${outPath}`);
 }
 
 main().catch((e) => {

@@ -14,6 +14,19 @@
 // Moderate/minor violations are reported but never fail the gate (tracked,
 // not blocking — matches the "critical/serious only" instruction).
 //
+// This gate does NOT rely solely on run.mjs's own exit code to catch a
+// degraded sweep (a route that errored/timed out and so never got a
+// reports/<slug>.json written at all). run.mjs DOES set process.exitCode = 1
+// when summary.errors is non-empty, and the scheduled workflow's steps run
+// in sequence without `if: always()` before this one, so that already stops
+// a broken sweep from silently reaching this gate in CI today. But this
+// script is also run standalone/manually (README, local iteration) where
+// nothing enforces that ordering — so it independently cross-checks
+// summary.json's errors AND the full expected-slug list from the registry
+// (the same source run.mjs enumerates routes from), and fails loudly if
+// either shows the sweep was incomplete, instead of quietly grading whatever
+// subset of reports happened to get written.
+//
 // Usage: node check-baseline.mjs [--reports-dir <dir>]
 
 import { readFileSync, readdirSync, existsSync } from 'node:fs';
@@ -21,6 +34,7 @@ import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+const repoRoot = resolve(__dirname, '..', '..');
 const args = process.argv.slice(2);
 const reportsDir = args.includes('--reports-dir')
     ? resolve(args[args.indexOf('--reports-dir') + 1])
@@ -81,6 +95,26 @@ if (reportFiles.length === 0) {
     process.exit(1);
 }
 
+// Cross-check against the same registry.json run.mjs enumerates routes from
+// (not just "trust whatever files happen to be in reportsDir"), and against
+// summary.json's collected per-route errors — a route that errored/timed out
+// never gets a reports/<slug>.json written, and would otherwise be silently
+// skipped from grading (see run.mjs's summary.errors comment). Both files
+// are optional here (a `--reports-dir` pointed at a hand-built fixture won't
+// have either) so their absence is not itself an error.
+const registryPath = join(repoRoot, 'src', 'Lumeo', 'registry', 'registry.json');
+const registry = loadJson(registryPath, null);
+let missingSlugs = [];
+if (registry) {
+    const reportedSlugs = new Set(reportFiles.map(f => f.replace(/\.json$/, '')));
+    const expectedSlugs = Object.entries(registry.components)
+        .filter(([, c]) => c.hasDocsPage)
+        .map(([slug]) => slug);
+    missingSlugs = expectedSlugs.filter(s => !reportedSlugs.has(s));
+}
+const summary = loadJson(join(reportsDir, 'summary.json'), null);
+const summaryErrors = summary?.errors ?? [];
+
 // current: one row per (component, rule) that has at least one NON-excluded
 // node, carrying only the surviving node count.
 const current = [];
@@ -137,8 +171,22 @@ if (brandNew.length > 0) {
         `(baseline should only grow when a violation is real and deliberately deferred, not as a rubber stamp).`);
 }
 
-if (brandNew.length > 0 || stale.length > 0) {
+if (summaryErrors.length > 0) {
+    console.error(`\n[check-baseline] ${summaryErrors.length} route(s) errored during the sweep (see summary.json) — ` +
+        `the gate cannot vouch for these, they were never actually audited:`);
+    for (const e of summaryErrors) console.error(`  ✗ ${e.slug} — ${e.error}`);
+}
+
+if (missingSlugs.length > 0) {
+    console.error(`\n[check-baseline] ${missingSlugs.length} documented component(s) from registry.json have no ` +
+        `reports/<slug>.json at all — silently excluded from this gate run instead of audited:`);
+    for (const s of missingSlugs) console.error(`  ✗ ${s}`);
+    console.error(`\nRe-run the sweep (node run.mjs) and make sure it completes for every route before trusting this gate.`);
+}
+
+if (brandNew.length > 0 || stale.length > 0 || summaryErrors.length > 0 || missingSlugs.length > 0) {
     process.exit(1);
 }
 
-console.log('[check-baseline] OK — no new critical/serious violations beyond baseline, no stale entries.');
+console.log('[check-baseline] OK — no new critical/serious violations beyond baseline, no stale entries, ' +
+    'no sweep errors, no missing routes.');

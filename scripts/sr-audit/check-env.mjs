@@ -70,6 +70,7 @@ async function main() {
         console.log("  FAIL (or inconclusive) — NVDA started but no spoken phrase was captured for next().");
         console.log("  This is consistent with the foreground-focus blocker below rather than a Guidepup bug —");
         console.log("  NVDA's object-navigation commands read whatever currently has OS focus.");
+        process.exitCode = 1;
     }
 
     console.log("[check-env] 3/3 Can this process win real OS foreground focus for its own window?...");
