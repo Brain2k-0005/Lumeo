@@ -136,6 +136,13 @@ if (!baseUrl) {
     if (!up) {
         console.error(`[a11y-audit] docs server did not come up within 120s at ${baseUrl}`);
         dotnetProc.kill();
+        // dotnet run typically spawns a child apphost process on Windows that
+        // plain .kill() may not terminate — apply the same tree-kill fallback
+        // the finally block below uses, so this early-exit path can't leave
+        // an orphaned server bound to PORT behind for the next run.
+        if (process.platform === 'win32' && dotnetProc.pid) {
+            spawn('taskkill', ['/pid', String(dotnetProc.pid), '/T', '/F'], { stdio: 'ignore', shell: true });
+        }
         process.exit(1);
     }
     console.log(`[a11y-audit] docs server ready at ${baseUrl}`);

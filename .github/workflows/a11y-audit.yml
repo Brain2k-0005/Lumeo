@@ -68,6 +68,18 @@ jobs:
         working-directory: scripts/a11y-audit
         run: npm install --no-audit --no-fund
 
+      - name: Install Chromium deps for Puppeteer
+        # Same package list as deploy-cloudflare.yml / deploy-preview.yml's
+        # "Install Chromium deps for Puppeteer" step: ubuntu-latest ships most
+        # of these, but a few (libxkbcommon0, libgbm1) are missing by default,
+        # and without them `puppeteer.launch()` in run.mjs fails at browser
+        # launch before any route is audited.
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libatk-bridge2.0-0 libatk1.0-0 libcups2 \
+            libdrm2 libxkbcommon0 libxcomposite1 libxdamage1 libxfixes3 \
+            libxrandr2 libgbm1 libasound2t64
+
       - name: Run axe-core sweep
         working-directory: scripts/a11y-audit
         run: node run.mjs --base-url http://localhost:5290

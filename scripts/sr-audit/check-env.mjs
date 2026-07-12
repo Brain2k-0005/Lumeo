@@ -103,7 +103,13 @@ async function main() {
             await sleep(1500);
             const after = checkForegroundWindowTitle();
             console.log(`  Foreground after launching a browser window: "${after.title}" (pid ${after.pid})`);
-            if (after.title.includes("Guidepup foreground check") || after.title.toLowerCase().includes("edge")) {
+            // Require the sentinel title specifically — a bare "edge" match
+            // would also PASS if some pre-existing Edge window (e.g. left over
+            // from a previous run, or the maintainer's own browsing) is the
+            // foreground window instead of the one this check just launched,
+            // silently reporting a working setup when NVDA is actually about
+            // to read the wrong window.
+            if (after.title.includes("Guidepup foreground check")) {
                 console.log("  PASS — the freshly launched browser window won real foreground focus.");
             } else {
                 console.log("  FAIL — the freshly launched window did NOT become the foreground window.");

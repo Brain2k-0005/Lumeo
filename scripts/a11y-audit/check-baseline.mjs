@@ -104,16 +104,27 @@ if (reportFiles.length === 0) {
 // have either) so their absence is not itself an error.
 const registryPath = join(repoRoot, 'src', 'Lumeo', 'registry', 'registry.json');
 const registry = loadJson(registryPath, null);
+const summary = loadJson(join(reportsDir, 'summary.json'), null);
+const summaryErrors = summary?.errors ?? [];
 let missingSlugs = [];
 if (registry) {
-    const reportedSlugs = new Set(reportFiles.map(f => f.replace(/\.json$/, '')));
+    // Prefer summary.components — written atomically by run.mjs at the end of
+    // THIS sweep — over "which reports/<slug>.json files happen to exist on
+    // disk". File presence alone can't distinguish a slug this run actually
+    // covered from a stale file left by an older sweep (different registry
+    // state), an aborted `--slug` run, or a hand-copied reports directory;
+    // any of those would let a component that was never audited just now
+    // slip past this coverage check. Fall back to file presence only when
+    // summary.json is absent (e.g. a `--reports-dir` pointed at a hand-built
+    // fixture with no summary.json at all).
+    const reportedSlugs = summary?.components
+        ? new Set(Object.keys(summary.components))
+        : new Set(reportFiles.map(f => f.replace(/\.json$/, '')));
     const expectedSlugs = Object.entries(registry.components)
         .filter(([, c]) => c.hasDocsPage)
         .map(([slug]) => slug);
     missingSlugs = expectedSlugs.filter(s => !reportedSlugs.has(s));
 }
-const summary = loadJson(join(reportsDir, 'summary.json'), null);
-const summaryErrors = summary?.errors ?? [];
 
 // current: one row per (component, rule) that has at least one NON-excluded
 // node, carrying only the surviving node count.

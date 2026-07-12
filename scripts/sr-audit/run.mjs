@@ -64,6 +64,9 @@ const COMPONENTS = [
         focusSelector: '[role="grid"] [role="gridcell"][tabindex="0"], [role="grid"] [role="columnheader"][tabindex="0"], ' +
             '[role="treegrid"] [role="gridcell"][tabindex="0"], [role="treegrid"] [role="columnheader"][tabindex="0"]',
         steps: [
+            // "table"/"grid" are true alternatives here (some SR/browser combos
+            // announce the grid role as "table", others as "grid") — either one
+            // proves the role was spoken, so this stays an OR check.
             { row: 1, action: "focus", key: null, expected: ["table", "grid"] },
             { row: 2, action: "press", key: "ArrowRight", expected: [] }, // no fixed text; logged for manual eyeball
             { row: 3, action: "press", key: "ArrowDown", expected: [] },
@@ -92,7 +95,12 @@ const COMPONENTS = [
         slug: "tabs",
         focusSelector: '[role="tablist"] [role="tab"]',
         steps: [
-            { row: 1, action: "focus", key: null, expected: ["tab", "selected"] },
+            // Conjunctive, not alternatives: the row is only a real PASS if BOTH
+            // the "tab" role AND the "selected" state are spoken — an SR that
+            // announces the generic role but drops the selected state (exactly
+            // the class of regression this audit exists to catch) must FAIL,
+            // not silently pass because "tab" alone satisfied an OR check.
+            { row: 1, action: "focus", key: null, expected: ["tab", "selected"], matchMode: "all" },
             { row: 2, action: "press", key: "ArrowRight", expected: [] },
             { row: 3, action: "press", key: "Home", expected: [] },
         ],
@@ -106,6 +114,9 @@ const COMPONENTS = [
         // the gridcell div would silently no-op like the DataGrid case above.
         focusSelector: '[role="grid"] button[tabindex="0"]',
         steps: [
+            // Alternatives (same reasoning as DataGrid row 1 above): "grid" and
+            // "table" are two vocabularies different SR/browser combos use for
+            // the same role, not two independent facts that both must be true.
             { row: 1, action: "focus", key: null, expected: ["grid", "table"] },
             { row: 2, action: "press", key: "ArrowRight", expected: [] },
             { row: 4, action: "press", key: "PageDown", expected: [] },
@@ -125,7 +136,11 @@ const COMPONENTS = [
         // them instead.
         focusSelector: '[id^="cascader-"] > button',
         steps: [
-            { row: 1, action: "focus", key: null, expected: ["button", "combobox"] },
+            // Conjunctive, not alternatives (same reasoning as Tabs row 1 above):
+            // the trigger must be spoken as BOTH a button AND a combobox — an SR
+            // that only announces the generic "button" and drops the combobox
+            // semantics is a real regression, not a PASS.
+            { row: 1, action: "focus", key: null, expected: ["button", "combobox"], matchMode: "all" },
             { row: 2, action: "press", key: "Enter", expected: ["menu"] },
             { row: 7, action: "press", key: "Escape", expected: [] },
         ],
@@ -142,10 +157,17 @@ if (componentArg) {
     COMPONENTS.push(...filtered);
 }
 
-function fuzzyContains(actual, expectedKeywords) {
+// mode "any" (default): expectedKeywords are alternatives — different SR/
+// browser vocabularies for the same fact — so one match is a PASS.
+// mode "all": expectedKeywords are conjunctive facts (e.g. role + state) that
+// must ALL be spoken; matching only one is exactly the kind of partial/
+// regressed announcement this audit exists to catch, so it must FAIL.
+function fuzzyContains(actual, expectedKeywords, mode = "any") {
     if (expectedKeywords.length === 0) return null; // no assertion, just logged
     const a = (actual || "").toLowerCase();
-    return expectedKeywords.some((kw) => a.includes(kw.toLowerCase()));
+    return mode === "all"
+        ? expectedKeywords.every((kw) => a.includes(kw.toLowerCase()))
+        : expectedKeywords.some((kw) => a.includes(kw.toLowerCase()));
 }
 
 function run(cmd, cmdArgs, opts = {}) {
@@ -275,11 +297,12 @@ async function main() {
                 await sleep(600);
                 const actual = await nvda.lastSpokenPhrase();
                 let result;
-                const match = fuzzyContains(actual, step.expected);
+                const match = fuzzyContains(actual, step.expected, step.matchMode);
                 if (match === null) {
                     result = actual && actual.trim().length > 0 ? `LOGGED — "${actual}"` : "LOGGED — (empty)";
                 } else {
-                    result = match ? "PASS" : `FAIL — expected one of [${step.expected.join(", ")}], got "${actual}"`;
+                    const quantifier = step.matchMode === "all" ? "all of" : "one of";
+                    result = match ? "PASS" : `FAIL — expected ${quantifier} [${step.expected.join(", ")}], got "${actual}"`;
                 }
                 console.log(`  row ${step.row} (${step.action}${step.key ? " " + step.key : ""}): ${result}`);
                 componentResult.steps.push({ row: step.row, action: step.action, key: step.key, expected: step.expected, actual, result });
