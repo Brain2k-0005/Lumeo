@@ -1,0 +1,18 @@
+{
+  "$schema": "./exclusions.schema.json",
+  "description": "Findings excluded from the baseline gate as confirmed false positives — caused by shared docs-app chrome (rendered identically by ComponentDocPage.razor/FactsRail/MainLayout.razor on every one of the 164 component pages) or by generic docs-prose link styling, not by the audited component itself. Matched per NODE (rule + a regex against the node's target selector), not per whole rule/component pair, so a component that ALSO happens to fail the same axe rule on its own markup (e.g. Badge's destructive-variant contrast, Alert's destructive-variant contrast) still surfaces as a real, per-component finding. generated from the 2026-07-12 full 164-route triage — re-verify selectors after any FactsRail/ComponentDocPage/MainLayout redesign.",
+  "exclusions": [
+    {
+      "rule": "color-contrast",
+      "component": null,
+      "targetPattern": "text-muted-foreground\\\\/(50|60|70)",
+      "reason": "FactsRail sidebar labels (Package/A11y/Depends on/Tested, opacity 60/50) and the breadcrumb nav (Components / <Category>, opacity 70) rendered identically by docs/Lumeo.Docs/Shared/ComponentDocPage.razor + FactsRail on EVERY component page — confirmed via node-target diffing across accordion/alert/badge/button (2026-07-12): the offending element and computed contrast ratio (3.38 or 4.22) are byte-identical across unrelated components. This is a real WCAG 1.4.3 bug in the docs app shell, not in any audited component. Tracked separately as a docs-app fix (bump text-muted-foreground/60 and /70 to a darker shade); it is NOT counted against any individual component's a11y score."
+    },
+    {
+      "rule": "link-in-text-block",
+      "component": null,
+      "targetPattern": "(?=.*\\[href\\$=)(?=.*(text-primary|underline-offset-4))",
+      "reason": "Inline prose links inside ComponentDocPage's Installation paragraph (\"Ships in the Lumeo package... already referenced? Just use it\") and per-page \"see also\" prose (e.g. links to /introduction, /density) rely on Tailwind's default hover-only underline (WCAG 1.4.1, distinguishable only by color at rest). Confirmed shared prose-link styling, not component markup, across accordion/alert/badge (2026-07-12) — every occurrence targets an <a href=\"...\"> inside a <p> or sibling prose link using the shared .text-primary/.hover:underline utility combo, never a demo's own interactive element. Real, low-effort sitewide docs-app fix (always-on underline for prose links); not counted against any individual component."
+    }
+  ]
+}

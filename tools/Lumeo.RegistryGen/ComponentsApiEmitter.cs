@@ -458,7 +458,7 @@ public static class ComponentsApiEmitter
     private static readonly string[] KnownKeys =
     {
         "Enter", "Escape", "Tab", " ", "Spacebar", "ArrowUp", "ArrowDown", "ArrowLeft",
-        "ArrowRight", "Home", "End", "PageUp", "PageDown", "Delete", "Backspace", "ContextMenu", "F10",
+        "ArrowRight", "Home", "End", "PageUp", "PageDown", "Delete", "Backspace", "ContextMenu", "F10", "F2",
     };
 
     /// <summary>
