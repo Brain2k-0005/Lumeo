@@ -224,6 +224,98 @@ public class PerComponentEnricherTests : IDisposable
     }
 
     [Fact]
+    public void Keyboard_interactions_captured_from_a_switch_statement_case_clause()
+    {
+        // PR #356 round-3 (Codex P3): the old `.Key == "X"`-only regex missed a
+        // switch(e.Key) { case "ArrowRight": ... } handler entirely, so
+        // keyboardInteractions stayed empty even though api.a11y.keys (built from
+        // ComponentsApiEmitter's own KeyComparisonRegex) correctly listed the keys —
+        // dock.json advertised "no keyboard support" for a Dock that actually has
+        // full roving-focus arrow/Home/End navigation. This locks in that the
+        // enricher now shares the SAME regex + whitelist as the a11y scanner.
+        WriteComponentFile("Dock", "Dock.razor", """
+@namespace Lumeo
+<div @onkeydown="HandleKeyDown"></div>
+@code {
+    private async Task HandleKeyDown(KeyboardEventArgs e)
+    {
+        switch (e.Key)
+        {
+            case "ArrowRight":
+                await MoveFocus(1);
+                break;
+            case "ArrowLeft":
+                await MoveFocus(-1);
+                break;
+            case "Home":
+                await FocusEdge(last: false);
+                break;
+            case "End":
+                await FocusEdge(last: true);
+                break;
+        }
+    }
+    private Task MoveFocus(int delta) => Task.CompletedTask;
+    private Task FocusEdge(bool last) => Task.CompletedTask;
+}
+""");
+        var entry = new Dictionary<string, object?>
+        {
+            ["files"] = new[] { "UI/Dock/Dock.razor" },
+            ["nugetPackage"] = "Lumeo.Motion",
+            ["category"] = "Motion",
+            ["description"] = "Dock.",
+        };
+        var apiBlock = Api("""{ "parameters": [] }""");
+
+        PerComponentEnricher.Enrich(entry, "dock", "Dock", _root, apiBlock,
+            new HashSet<string> { "Dock" });
+
+        var kb = Assert.IsType<List<Dictionary<string, object?>>>(entry["keyboardInteractions"]);
+        Assert.Contains(kb, k => k["key"]?.ToString() == "ArrowRight" && k["action"]?.ToString()!.Contains("HandleKeyDown") == true);
+        Assert.Contains(kb, k => k["key"]?.ToString() == "ArrowLeft");
+        Assert.Contains(kb, k => k["key"]?.ToString() == "Home");
+        Assert.Contains(kb, k => k["key"]?.ToString() == "End");
+    }
+
+    [Fact]
+    public void Tests_include_dedicated_folder_files_that_never_render_the_component()
+    {
+        // A sub-component/helper test filed under the component's OWN dedicated
+        // test folder (tests/Lumeo.Tests/Components/Sheet/) must count as this
+        // component's coverage even when it never renders <Sheet>/Lumeo.Sheet
+        // itself — folder ownership is the stronger signal than the render regex
+        // (Codex/CodeRabbit, PR #356 round-2).
+        WriteComponentFile("Sheet", "Sheet.razor", "@namespace Lumeo\n<div></div>");
+        var testDir = Path.Combine(_root, "tests", "Lumeo.Tests", "Components", "Sheet");
+        Directory.CreateDirectory(testDir);
+        File.WriteAllText(Path.Combine(testDir, "SheetHelperTests.cs"), """
+        using Xunit;
+        namespace Lumeo.Tests.Components.Sheet;
+        public class SheetHelperTests
+        {
+            [Fact]
+            public void ParsesSomeHelper() => Assert.True(true);
+        }
+        """);
+
+        var entry = new Dictionary<string, object?>
+        {
+            ["files"] = new[] { "UI/Sheet/Sheet.razor" },
+            ["nugetPackage"] = "Lumeo",
+            ["category"] = "Overlay",
+            ["description"] = "A sheet.",
+        };
+        var apiBlock = Api("""{ "parameters": [] }""");
+
+        PerComponentEnricher.Enrich(entry, "sheet", "Sheet", _root, apiBlock,
+            new HashSet<string> { "Sheet" });
+
+        var tests = Assert.IsType<List<string>>(entry["tests"]);
+        Assert.Contains(tests, t => t.EndsWith("SheetHelperTests.cs", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public void MdSummary_is_populated_with_parameter_table()
     {
         WriteComponentFile("Button", "Button.razor", "@namespace Lumeo\n<button></button>");
@@ -254,6 +346,152 @@ public class PerComponentEnricherTests : IDisposable
         Assert.Contains("https://lumeo.nativ.sh/components/button", md);
         Assert.Contains("| Button | Variant | `ButtonVariant`", md);
         Assert.Contains("--color-primary", md);
+    }
+
+    private string WriteTestFile(string relativePath, string content)
+    {
+        var path = Path.Combine(_root, "tests", "Lumeo.Tests", relativePath);
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        File.WriteAllText(path, content);
+        return path;
+    }
+
+    // PR #357 round-2 (CodeRabbit): a plain word-boundary scan for the component
+    // name also matched `.Select(x => ...)` — a LINQ call on some unrelated
+    // IEnumerable, nothing to do with the Select component — so every test file
+    // that happened to use `.Select(` anywhere got listed as Select coverage.
+    [Fact]
+    public void Tests_field_excludes_unrelated_LINQ_Select_calls()
+    {
+        WriteComponentFile("Select", "Select.razor", "@namespace Lumeo\n<div></div>");
+        WriteTestFile("Components/Toast/ToastStackingTests.cs", """
+using System.Linq;
+namespace Lumeo.Tests.Components.Toast;
+public class ToastStackingTests
+{
+    public void Some_Test()
+    {
+        var indices = new[] { "0", "1" }.Select(x => x).ToList();
+    }
+}
+""");
+        var entry = new Dictionary<string, object?>
+        {
+            ["files"] = new[] { "UI/Select/Select.razor" },
+            ["nugetPackage"] = "Lumeo",
+            ["category"] = "Forms",
+            ["description"] = "A select.",
+        };
+        var apiBlock = Api("""{ "parameters": [] }""");
+
+        PerComponentEnricher.Enrich(entry, "select", "Select", _root, apiBlock,
+            new HashSet<string> { "Select" });
+
+        var tests = Assert.IsType<List<string>>(entry["tests"]);
+        Assert.DoesNotContain(tests, t => t.Contains("ToastStackingTests.cs"));
+    }
+
+    // Companion case: a REAL reference to the Select component — via the `L.`
+    // namespace alias every test file in this suite uses (`using L = Lumeo;`)
+    // — must still be picked up, proving the LINQ-call exclusion isn't so broad
+    // it also swallows genuine `L.Select(...)` render calls.
+    [Fact]
+    public void Tests_field_still_includes_real_L_Select_component_references()
+    {
+        WriteComponentFile("Select", "Select.razor", "@namespace Lumeo\n<div></div>");
+        WriteTestFile("Components/Select/SelectRealTests.cs", """
+namespace Lumeo.Tests.Components.Select;
+public class SelectRealTests
+{
+    public void Renders()
+    {
+        var cut = TestContext.Render<L.Select>();
+    }
+}
+""");
+        var entry = new Dictionary<string, object?>
+        {
+            ["files"] = new[] { "UI/Select/Select.razor" },
+            ["nugetPackage"] = "Lumeo",
+            ["category"] = "Forms",
+            ["description"] = "A select.",
+        };
+        var apiBlock = Api("""{ "parameters": [] }""");
+
+        PerComponentEnricher.Enrich(entry, "select", "Select", _root, apiBlock,
+            new HashSet<string> { "Select" });
+
+        var tests = Assert.IsType<List<string>>(entry["tests"]);
+        Assert.Contains(tests, t => t.Contains("SelectRealTests.cs"));
+    }
+
+    // PR #357 round-9 (finding 5): a component name that collides with a common BCL generic
+    // collection/type name — "List" — matched `new List<string>()`, nothing to do with the List
+    // component: the word is followed by `<` (a generic type-parameter list), not `(`, so the
+    // `.Select(...)` LINQ-call filter above (which only recognizes a FOLLOWING open paren) never
+    // applied. The regenerated registry actually picked up a Toast invariant test this way.
+    [Fact]
+    public void Tests_field_excludes_unrelated_BCL_generic_type_usages()
+    {
+        WriteComponentFile("List", "List.razor", "@namespace Lumeo\n<div></div>");
+        WriteTestFile("Components/Toast/ToastAdmissionInvariantTests.cs", """
+namespace Lumeo.Tests.Components.Toast;
+public class ToastAdmissionInvariantTests
+{
+    public void Some_Test()
+    {
+        var ids = new List<string>();
+    }
+}
+""");
+        var entry = new Dictionary<string, object?>
+        {
+            ["files"] = new[] { "UI/List/List.razor" },
+            ["nugetPackage"] = "Lumeo",
+            ["category"] = "DataDisplay",
+            ["description"] = "A list.",
+        };
+        var apiBlock = Api("""{ "parameters": [] }""");
+
+        PerComponentEnricher.Enrich(entry, "list", "List", _root, apiBlock,
+            new HashSet<string> { "List" });
+
+        var tests = Assert.IsType<List<string>>(entry["tests"]);
+        Assert.DoesNotContain(tests, t => t.Contains("ToastAdmissionInvariantTests.cs"));
+    }
+
+    // Companion case: a REAL reference to the List component — via the `L.` namespace alias —
+    // must still be picked up, even when it ALSO happens to be immediately followed by `<` (a
+    // generic Lumeo component with its own type parameter, e.g. `L.List<int>`), proving the BCL
+    // exclusion is scoped to the KNOWN BCL name set and doesn't swallow every `Name<...>` shape.
+    [Fact]
+    public void Tests_field_still_includes_real_L_List_component_references()
+    {
+        WriteComponentFile("List", "List.razor", "@namespace Lumeo\n<div></div>");
+        WriteTestFile("Components/List/ListRealTests.cs", """
+namespace Lumeo.Tests.Components.List;
+public class ListRealTests
+{
+    public void Renders()
+    {
+        var cut = TestContext.Render<L.List<int>>();
+    }
+}
+""");
+        var entry = new Dictionary<string, object?>
+        {
+            ["files"] = new[] { "UI/List/List.razor" },
+            ["nugetPackage"] = "Lumeo",
+            ["category"] = "DataDisplay",
+            ["description"] = "A list.",
+        };
+        var apiBlock = Api("""{ "parameters": [] }""");
+
+        PerComponentEnricher.Enrich(entry, "list", "List", _root, apiBlock,
+            new HashSet<string> { "List" });
+
+        var tests = Assert.IsType<List<string>>(entry["tests"]);
+        Assert.Contains(tests, t => t.Contains("ListRealTests.cs"));
     }
 
     [Fact]

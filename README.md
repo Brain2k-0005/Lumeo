@@ -2,7 +2,7 @@
 
 **164 accessible Blazor components, AI-ready, motion-integrated, shadcn-inspired.**
 
-**164 components · 5,800+ tests** · 14 locales · mobile-first · MIT · .NET 10
+**164 components · 5,800+ tests** · 14 locales · mobile-first · MIT · .NET 8+
 
 [![NuGet](https://img.shields.io/nuget/v/Lumeo?logo=nuget&label=Lumeo)](https://www.nuget.org/packages/Lumeo)
 [![NuGet Downloads](https://img.shields.io/nuget/dt/Lumeo?logo=nuget&label=downloads)](https://www.nuget.org/packages/Lumeo)
@@ -357,7 +357,17 @@ await Theme.ToggleModeAsync();              // Toggle current
 
 ## Tech Stack
 
-- .NET 10 / Blazor
+- .NET 8+ / Blazor — every shipped package multi-targets `net8.0;net10.0`. One
+  known limitation for net8.0 **and** net9.0 consumers (the package ships no
+  net9.0 asset, so NuGet resolves net9.0 apps to the net8.0 asset too):
+  IME-composition guards (`KeyboardEventArgs.IsComposing`, added in .NET 9's
+  `Microsoft.AspNetCore.Components.Web`) are compiled out of that asset, so
+  Command's arrow-key navigation and PromptInput's Enter-to-send don't
+  distinguish IME candidate-window input from a "real" keystroke there —
+  everything else is functionally identical across both TFMs. `Lumeo.Templates`'
+  `lumeo-app`/`lumeo-fullstack` project scaffolds are net10.0-only regardless
+  (`lumeo-page`/`lumeo-form`/`lumeo-component` are item templates and inherit
+  your project's own TFM).
 - Tailwind CSS v4
 - ECharts for charts, FullCalendar for Scheduler, Frappe Gantt for Gantt, TipTap for RichTextEditor
 - ClosedXML + QuestPDF for DataGrid export

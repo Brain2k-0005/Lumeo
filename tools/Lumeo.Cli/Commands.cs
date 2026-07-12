@@ -429,8 +429,84 @@ internal static class Commands
     // compile without any rewriting: relative references (Services.X), shared cascading types
     // (FormField.FormFieldContext) and inter-component references all bind under Lumeo. Rewriting them
     // to the consumer namespace is exactly what broke those. Normal (NuGet) mode still rebrands.
-    private static string MaybeRewrite(string content, string relFile, LumeoConfig cfg)
-        => cfg.Standalone ? content : NamespaceRewriter.Rewrite(content, relFile, cfg.Namespace);
+    // `siblingComponentNames` (PR #357 round-9, finding 2; round-10, finding 2) — the OTHER
+    // component names vendored by THIS `add` invocation, whether directly requested or pulled in
+    // transitively as a dependency — is threaded through to NamespaceRewriter so bare tag references
+    // between ANY two of them (e.g. ToastProvider.razor's own `<Toast>`, or Toast referencing
+    // Button) get fully qualified; see that method's doc comment for why. Callers must build this
+    // from the FULL vendored file set (every `RegistryEntry` in `toInstall`, not just one), or a
+    // transitive dependency's tags stay bare and can still collide.
+    private static string MaybeRewrite(string content, string relFile, LumeoConfig cfg,
+        IReadOnlyCollection<string>? siblingComponentNames = null)
+        => cfg.Standalone ? content : NamespaceRewriter.Rewrite(content, relFile, cfg.Namespace, siblingComponentNames);
+
+    // Extracts the component CLASS names (not file paths) of every `.razor` file in a vendoring
+    // batch — e.g. "UI/Toast/ToastProvider.razor" -> "ToastProvider" — for NamespaceRewriter's
+    // sibling-tag qualification. `.razor.cs` code-behind files are excluded (their class name
+    // matches the SAME component, so including them would just re-add a duplicate string; C#
+    // same-namespace resolution already prefers the vendored partial class there regardless — see
+    // NamespaceRewriter's doc comment).
+    private static List<string> RazorComponentNames(IEnumerable<string> files) =>
+        files.Where(f => f.EndsWith(".razor", StringComparison.OrdinalIgnoreCase))
+             .Select(f => Path.GetFileNameWithoutExtension(f))
+             .Distinct(StringComparer.Ordinal)
+             .ToList();
+
+    // PR #357 round-11 (Codex finding): `update`/`diff`/`view` each act on a SINGLE `entry` and,
+    // before this, built `siblingComponentNames` from only `entry.Files` — so a component whose
+    // dependency lives in a SEPARATE `RegistryEntry` (e.g. ConfirmButton.razor's own `<Button>`
+    // tag, with Button vendored as its own entry) kept that dependency's tag bare on every
+    // upstream fetch these commands make. `add` doesn't have this gap: it BFS-walks the full
+    // dependency chain into `toInstall` first (see that loop above) and qualifies across the
+    // WHOLE batch. Bare tags there mean `diff`/`update --check` report a freshly `add`-ed,
+    // correctly-qualified local file as perpetually "drifted" against upstream (upstream comes
+    // back unqualified), and `update --force`/`update -y` on a drift actually REWRITES the local
+    // file back down to the unqualified, non-compiling version — reintroducing the exact
+    // RZ10009/type-collision ambiguity `add` fixed. Mirrors the Add loop's BFS: same dependency
+    // walk, same standalone/runtime skip (a standalone project's runtime-provided components
+    // never get vendored into the user namespace, so they can't collide as siblings either).
+    // Unlike Add, there's no `--vendor`/`forceVendor` flag here to force-follow satellite
+    // (non-Lumeo-package) dependencies across package boundaries — `standalone` alone gates it,
+    // matching Add's default (no `--vendor`) behavior for the common core-component case.
+    //
+    // `installedKeys` (PR #357 P2 fix): when supplied (update/diff, which act on an ALREADY
+    // vendored project), a dependency whose kebab key isn't in this set is skipped entirely —
+    // it, and everything only reachable through it, is left out of both the sibling-name set AND
+    // the walk. `add`'s own "Install all?" batch prompt lets an interactive user decline a
+    // dependency (toInstall then collapses to just the requested entry — see that loop above), so
+    // a declined dependency never lands in cfg.Components/on disk. Without this filter, a later
+    // `update --force` on the requested component would still treat that never-vendored
+    // dependency as a "sibling" and fully qualify its bare tag (e.g. rewriting `<Button>` to
+    // `<Acme.Ui.Button>`) even though `Button` was never vendored under the consumer namespace —
+    // breaking a project that only ever compiled via the still-referenced Lumeo package's own
+    // `Button`. `null` (View — a pre-install preview with no installed set to check against)
+    // keeps the old unfiltered walk, matching what a full, nothing-declined `add` would vendor.
+    private static List<string> ResolveSiblingComponentNames(
+        RegistryEntry root, Registry registry, bool standalone, IReadOnlyCollection<string>? installedKeys = null)
+    {
+        var files = new List<string>(root.Files);
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { ToKebab(root.Name) };
+        var queue = new Queue<RegistryEntry>();
+        foreach (var dep in root.Dependencies)
+            if (registry.Components.TryGetValue(dep, out var depEntry)) queue.Enqueue(depEntry);
+
+        while (queue.Count > 0)
+        {
+            var cur = queue.Dequeue();
+            var curKey = ToKebab(cur.Name);
+            if (!seen.Add(curKey)) continue;
+            if (standalone && registry.Runtime is { } rt && rt.Components.Contains(curKey, StringComparer.OrdinalIgnoreCase)) continue;
+            if (installedKeys is not null && !installedKeys.Contains(curKey)) continue;
+
+            files.AddRange(cur.Files);
+            var curPackage = string.IsNullOrEmpty(cur.NugetPackage) ? "Lumeo" : cur.NugetPackage;
+            if (!string.Equals(curPackage, "Lumeo", StringComparison.OrdinalIgnoreCase) && !standalone) continue;
+            foreach (var dep in cur.Dependencies)
+                if (registry.Components.TryGetValue(dep, out var depEntry)) queue.Enqueue(depEntry);
+        }
+
+        return RazorComponentNames(files);
+    }
 
     // Vendors the full shared Lumeo runtime (RuntimeManifest.Files) into
     // <componentsPath>/_LumeoRuntime/ VERBATIM — keeping the Lumeo namespace — so the
@@ -1068,6 +1144,18 @@ internal static class Commands
         // component of a package, so copy them at most once per package.
         var vendoredSatelliteAssets = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
+        // PR #357 round-9 (finding 2) / round-10 (finding 2): every .razor component vendored by
+        // THIS `add` invocation — the requested component AND every dependency the BFS above pulled
+        // in transitively (e.g. Toast pulling in Button) — so MaybeRewrite can fully qualify bare
+        // sibling tag references between ANY two of them, not just within one component's own file
+        // group. Built ONCE from the FULL `toInstall` set (batch + resolved dependencies), not
+        // per-item: round-9 scoped this to `item.Files` inside the loop below, which only qualified
+        // tags between a component's OWN files — a dependency pulled in by BFS (its files live in a
+        // DIFFERENT `item`) still kept bare, unqualified tags and could still collide with a type
+        // already in the consumer's rebranded namespace. See RazorComponentNames'/
+        // NamespaceRewriter's doc comments.
+        var siblingComponentNames = RazorComponentNames(toInstall.SelectMany(i => i.Files));
+
         foreach (var item in toInstall)
         {
             // Satellites (Charts, DataGrid, …) only get their source copied when
@@ -1117,7 +1205,7 @@ internal static class Commands
                 if (opts.Diff || opts.View)
                 {
                     var upstream = await RegistryLoader.GetFileAsync(relFile, opts.Local, cfg.Registry, itemPackage);
-                    upstream = MaybeRewrite(upstream, relFile, cfg);
+                    upstream = MaybeRewrite(upstream, relFile, cfg, siblingComponentNames);
 
                     if (File.Exists(dest))
                     {
@@ -1167,7 +1255,7 @@ internal static class Commands
                     if (!forceAll)
                     {
                         var upstream = await RegistryLoader.GetFileAsync(relFile, opts.Local, cfg.Registry, itemPackage);
-                        upstream = MaybeRewrite(upstream, relFile, cfg);
+                        upstream = MaybeRewrite(upstream, relFile, cfg, siblingComponentNames);
 
                         char? choice = null;
                         while (choice is null)
@@ -1207,7 +1295,7 @@ internal static class Commands
                     continue;
                 }
                 var content = await RegistryLoader.GetFileAsync(relFile, opts.Local, cfg.Registry, itemPackage);
-                content = MaybeRewrite(content, relFile, cfg);
+                content = MaybeRewrite(content, relFile, cfg, siblingComponentNames);
                 Directory.CreateDirectory(Path.GetDirectoryName(dest)!);
                 await File.WriteAllTextAsync(dest, content, new UTF8Encoding(false));
                 Console.WriteLine(Ansi.Green("  +   ") + displayPath);
@@ -1422,6 +1510,11 @@ internal static class Commands
 
         int driftTotal = 0, updatedTotal = 0, skippedTotal = 0;
         var refreshedSatelliteAssets = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        // PR #357 P2 fix: the set of components ACTUALLY vendored in this project right now — from
+        // cfg.Components when recorded, falling back to the same disk scan `targets` above already
+        // uses when it isn't — so ResolveSiblingComponentNames below can exclude a dependency the
+        // user declined during `add`'s "Install all?" prompt. See that method's doc comment.
+        var installedKeys = new HashSet<string>(InstalledKeys(cfg, outRoot, registry), StringComparer.OrdinalIgnoreCase);
         foreach (var key in targets)
         {
             if (!registry.Components.TryGetValue(key, out var entry)) continue;
@@ -1429,6 +1522,9 @@ internal static class Commands
             // Satellite components live under src/<package>/, not src/Lumeo/ — resolve the
             // owning package so GetFileAsync fetches from the right root (else 404/crash).
             var entryPackage = string.IsNullOrEmpty(entry.NugetPackage) ? "Lumeo" : entry.NugetPackage;
+            // PR #357 round-11 (Codex finding): dependency-aware, not just entry.Files — see
+            // ResolveSiblingComponentNames' doc comment.
+            var siblingComponentNames = ResolveSiblingComponentNames(entry, registry, cfg.Standalone, installedKeys);
             foreach (var relFile in entry.Files)
             {
                 var dest = Paths.ToDestPath(outRoot, relFile);
@@ -1442,7 +1538,7 @@ internal static class Commands
 
                 var localContent = await File.ReadAllTextAsync(dest);
                 var upstream = await RegistryLoader.GetFileAsync(relFile, local, cfg.Registry, entryPackage);
-                upstream = MaybeRewrite(upstream, relFile, cfg);
+                upstream = MaybeRewrite(upstream, relFile, cfg, siblingComponentNames);
 
                 if (Diffing.Normalize(localContent) == Diffing.Normalize(upstream))
                 {
@@ -1704,6 +1800,11 @@ internal static class Commands
 
         var root = Path.Combine(Environment.CurrentDirectory, cfg.ComponentsPath);
         var drift = 0; var missing = 0; var same = 0;
+        // PR #357 round-11 (Codex finding): dependency-aware, not just entry.Files — see
+        // ResolveSiblingComponentNames' doc comment. PR #357 P2 fix: scoped to components
+        // ACTUALLY vendored in this project (same reasoning as Update, above it).
+        var installedKeys = new HashSet<string>(InstalledKeys(cfg, root, registry), StringComparer.OrdinalIgnoreCase);
+        var siblingComponentNames = ResolveSiblingComponentNames(entry, registry, cfg.Standalone, installedKeys);
         foreach (var relFile in entry.Files)
         {
             var dest = Paths.ToDestPath(root, relFile);
@@ -1716,7 +1817,7 @@ internal static class Commands
             var local0 = await File.ReadAllTextAsync(dest);
             var upstream = await RegistryLoader.GetFileAsync(relFile, local, cfg.Registry,
                 string.IsNullOrEmpty(entry.NugetPackage) ? "Lumeo" : entry.NugetPackage);
-            upstream = MaybeRewrite(upstream, relFile, cfg);
+            upstream = MaybeRewrite(upstream, relFile, cfg, siblingComponentNames);
 
             if (Diffing.Normalize(local0) == Diffing.Normalize(upstream)) same++;
             else
@@ -1758,6 +1859,9 @@ internal static class Commands
             Console.Error.WriteLine(Ansi.Dim("Depends on: ") + string.Join(", ", entry.Dependencies));
         Console.Error.WriteLine();
 
+        // PR #357 round-11 (Codex finding): dependency-aware, not just entry.Files — see
+        // ResolveSiblingComponentNames' doc comment.
+        var siblingComponentNames = ResolveSiblingComponentNames(entry, registry, cfg?.Standalone ?? false);
         foreach (var relFile in entry.Files)
         {
             // --path overrides the default destination mapping purely for the banner.
@@ -1780,7 +1884,7 @@ internal static class Commands
             // Only rewrite namespace if a config exists and the project isn't standalone (standalone
             // keeps the Lumeo namespace) — so we show what `add` WOULD produce.
             if (cfg is not null && !cfg.Standalone)
-                content = NamespaceRewriter.Rewrite(content, relFile, targetNamespace);
+                content = NamespaceRewriter.Rewrite(content, relFile, targetNamespace, siblingComponentNames);
             Console.WriteLine(content);
             Console.WriteLine();
         }

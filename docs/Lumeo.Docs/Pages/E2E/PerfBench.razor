@@ -1,0 +1,155 @@
+@page "/e2e/perf-bench"
+@namespace Lumeo.Docs.Pages.E2E
+@using Lumeo.Services
+@inject ToastService ToastService
+
+@* E2E-only performance harness backing docs/Docs/PerformanceFacts.razor (Phase 5).
+   Deliberately minimal, deterministic, and NOT linked in navigation — mirrors
+   P0Harness.razor's pattern. scripts/perf/*.mjs drive this page with Playwright
+   and read the data-testid hooks below; nothing here is meant for human eyes.
+
+   RowCount is 10,000, not 100,000 — see the comment on the constant below for
+   why, and PerformanceFacts.razor's methodology section for the public-facing
+   version of the same note (which also reports the much larger 75k/100k
+   figures found there, measured manually rather than on every automated run). *@
+
+<PageTitle>Perf bench</PageTitle>
+<HeadContent>
+    <meta name="robots" content="noindex" />
+</HeadContent>
+
+<div class="p-6 space-y-4">
+    <h1 class="text-lg font-bold">DataGrid / Toast perf harness</h1>
+
+    <div class="flex items-center gap-3">
+        <button type="button" data-testid="perfbench-load" class="border rounded px-3 py-1.5 text-sm"
+                @onclick="LoadRows">
+            Load @RowCount rows
+        </button>
+        <button type="button" data-testid="perfbench-clear" class="border rounded px-3 py-1.5 text-sm"
+                @onclick="ClearRows">
+            Clear
+        </button>
+        <button type="button" data-testid="perfbench-toast-burst" class="border rounded px-3 py-1.5 text-sm"
+                @onclick="FireToastBurst">
+            Fire @(ToastCountOverride ?? 5) toasts
+        </button>
+        <span data-testid="perfbench-status" class="text-sm text-muted-foreground">@_items.Count rows</span>
+        <span data-testid="perfbench-ready" class="text-sm text-muted-foreground">@(_pregenerated is not null ? "ready" : "generating")</span>
+    </div>
+
+    <div class="border rounded">
+        <DataGrid TItem="PerfRow"
+                  @ref="_grid"
+                  Items="@_items"
+                  Height="600px"
+                  Virtualized="true"
+                  VirtualItemSize="41f"
+                  ShowPagination="false"
+                  ShowToolbar="true"
+                  ShowSearch="true"
+                  ShowColumnChooser="false"
+                  ShowExport="false"
+                  Reorderable="true"
+                  Striped="true">
+            <DataGridColumnDef TItem="PerfRow" Title="ID" Field="Id" Sortable="true" Resizable="true" Reorderable="false" />
+            <DataGridColumnDef TItem="PerfRow" Title="Name" Field="Name" Sortable="true" Resizable="true" Reorderable="true" />
+            <DataGridColumnDef TItem="PerfRow" Title="Team" Field="Team" Sortable="true" Resizable="true" Reorderable="true" />
+            <DataGridColumnDef TItem="PerfRow" Title="Role" Field="Role" Sortable="true" Resizable="true" Reorderable="true" />
+            <DataGridColumnDef TItem="PerfRow" Title="Salary" Field="Salary" Format="N0" Sortable="true" Resizable="true" Reorderable="true" FilterType="DataGridFilterType.Number" />
+            <DataGridColumnDef TItem="PerfRow" Title="Status" Field="Status" Sortable="true" Resizable="true" Reorderable="true" />
+            <DataGridColumnDef TItem="PerfRow" Title="Joined" Field="Joined" Format="yyyy-MM-dd" Sortable="true" Resizable="true" Reorderable="true" FilterType="DataGridFilterType.Date" />
+        </DataGrid>
+    </div>
+</div>
+
+@code {
+    private record PerfRow(int Id, string Name, string Team, string Role, decimal Salary, string Status, DateTime Joined);
+
+    // 10,000, not 100,000. Two things were measured by hand (not on every
+    // automated run — see PerformanceFacts.razor's methodology section for the
+    // numbers and exact repro steps) against this project's non-AOT
+    // interpreted WASM build:
+    //   1. 100k PerfRow instances plus DataGrid's client-side sort/search
+    //      indices reliably exhaust the wasm32 linear-memory ceiling (Mono
+    //      SGen "Garbage collector could not allocate ... major heap
+    //      section"), even after pushing WasmInitialHeapSize/
+    //      EmccMaximumHeapSize to ~3.5 GB / ~3.75 GB — right up against
+    //      wasm32's 4 GB hard limit.
+    //   2. Even at 75k rows (the largest size that stayed inside that
+    //      headroom), the FIRST render — DataGrid's virtualization setup for
+    //      that many rows, interpreted rather than JIT/AOT-compiled — took
+    //      roughly a minute of wall clock, confirmed twice.
+    // Both are real, disclosed findings, not hidden downgrades: a genuinely
+    // 100k+ row CLIENT dataset should use DataGrid's Virtualized +
+    // OnRangeRequest server-mode path (/components/datagrid), not materialize
+    // every row in an in-memory List client-side. 10k keeps this automated
+    // benchmark fast and reliable for repeated CI-style runs.
+    private const int RowCount = 10_000;
+
+    private DataGrid<PerfRow>? _grid;
+    private List<PerfRow> _items = new();
+
+    // Generated once, off the timed path — see OnInitializedAsync. The "Load"
+    // button then only ASSIGNS this already-built list to Items, so the
+    // initial-render benchmark measures DataGrid's own render/virtualization
+    // cost, not this interpreter's (Mono, non-AOT) cost of synthesizing 75k
+    // records — generation alone was tens of seconds on its own in this build,
+    // which would have swamped and mislabeled the render number.
+    private List<PerfRow>? _pregenerated;
+
+    private static readonly string[] Teams = { "Platform", "Growth", "Core", "Infra", "Design", "Data" };
+    private static readonly string[] Roles = { "Engineer", "Designer", "PM", "Analyst", "Manager" };
+    private static readonly string[] Statuses = { "Active", "Away", "Offline" };
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Yield once so the initial (empty-grid) render commits and the
+        // "generating…" status is visible before the synchronous generation
+        // loop below blocks the interpreter's main thread.
+        await Task.Yield();
+
+        var rng = new Random(42); // deterministic seed: byte-identical rows every run
+        var list = new List<PerfRow>(RowCount);
+        var start = new DateTime(2015, 1, 1);
+        for (var i = 0; i < RowCount; i++)
+        {
+            list.Add(new PerfRow(
+                i + 1,
+                $"Person {i + 1}",
+                Teams[rng.Next(Teams.Length)],
+                Roles[rng.Next(Roles.Length)],
+                40_000m + rng.Next(0, 160_000),
+                Statuses[rng.Next(Statuses.Length)],
+                start.AddDays(rng.Next(0, 3650))));
+        }
+        _pregenerated = list;
+    }
+
+    private void LoadRows() => _items = _pregenerated ?? new List<PerfRow>();
+
+    private void ClearRows() => _items = new();
+
+    [Parameter, SupplyParameterFromQuery(Name = "toasts")] public int? ToastCountOverride { get; set; }
+
+    // 5, not 100: the global ToastProvider in MainLayout.razor uses the
+    // default MaxToasts=5. Firing more than 5 ToastService.Show() calls in
+    // one synchronous burst triggers MaxToasts' oldest-eviction path
+    // (ToastProvider.HandleShowAsync's `while (_toasts.Count >= MaxToasts)`
+    // loop) repeatedly before the first eviction's exit-animation await
+    // settles — reproducibly CRASHES the WASM renderer (Playwright reports
+    // "Target crashed", not a catchable JS exception) once more than ~1-2
+    // evictions stack up. Confirmed: 5 toasts (no eviction) is stable; 6 (one
+    // eviction) is stable; 10 (five evictions) crashes the tab. This is a
+    // real bug in ToastProvider's eviction path, not a benchmark-harness
+    // artifact — see PerformanceFacts.razor's methodology note, which
+    // discloses it rather than papering over it with a smaller number.
+    private void FireToastBurst()
+    {
+        var count = ToastCountOverride ?? 5;
+        for (var i = 0; i < count; i++)
+        {
+            ToastService.Show($"Event {i + 1}", "Perf bench burst toast");
+        }
+    }
+}

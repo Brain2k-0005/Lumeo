@@ -47,7 +47,19 @@
     else
     {
         <Popover @bind-Open="_isOpen" Class="@(FullWidth ? "w-full" : null)">
-            <PopoverTrigger Class="@(FullWidth ? "w-full" : null)">
+            @* SuppressActivationKeys="true": this trigger's ChildContent is ALSO a native
+               <button>, so without suppression an Enter/Space keydown bubbles to the
+               wrapper's own HandleKeyDown AND the browser's own click synthesis for that
+               same key ALSO bubbles up and toggles again via @onclick="Toggle" — two
+               toggles cancel out and the wheel picker never opens from the keyboard.
+               Mirrors the Calendar-variant button-trigger branch below (PR #356 round-6,
+               Codex P2) — this Wheel-variant branch was missed by that fix (round-7,
+               Codex P2). ChildContentSlot (instead of plain ChildContent) is required so
+               aria-haspopup/aria-expanded/aria-controls land on the actual <button> —
+               the real Tab stop once the wrapper's own tabindex drops to -1 — rather than
+               only on the now-unfocusable wrapper (see PopoverTrigger's doc comment). *@
+            <PopoverTrigger Class="@(FullWidth ? "w-full" : null)" SuppressActivationKeys="true">
+                <ChildContentSlot Context="slot">
                 <button type="button"
                         id="@EffectiveTriggerId"
                         name="@Name"
@@ -56,7 +68,7 @@
                         aria-describedby="@FormFieldDescribedBy"
                         class="@CssClass"
                         disabled="@Disabled"
-                        @attributes="EffectiveAttributes">
+                        @attributes="MergeSlotAttributes(slot, EffectiveAttributes)">
                     <SvgGlyph Svg="@(LumeoIcons.Calendar)" class="me-2 h-4 w-4 shrink-0" />
                     @if (TriggerContent != null)
                     {
@@ -77,6 +89,7 @@
                         </button>
                     }
                 </button>
+                </ChildContentSlot>
             </PopoverTrigger>
             <PopoverContent Align="Lumeo.Align.Start" Class="w-[260px] p-3">
                 <DateWheelPicker Value="@Value" ValueChanged="HandleDateSelected" Min="@MinDate" Max="@MaxDate" Culture="@Culture" />
@@ -181,7 +194,33 @@ else if (Inline)
 else
 {
     <Popover @bind-Open="_isOpen" Class="@(FullWidth ? "w-full" : null)">
-        <PopoverTrigger Class="@(FullWidth ? "w-full" : null)">
+        @* SuppressActivationKeys is unconditional — BOTH branches below need it,
+           for different reasons:
+           - Typeable-input branch: the input already owns Enter (commit + close)
+             and Space (a literal character) itself via HandleInputKeyDown — see
+             PopoverTrigger's own doc comment on the parameter for why bubbling
+             can't be fixed with stopPropagation alone (PR #356 round-2, Codex/
+             CodeRabbit).
+           - Button-trigger branch (the `else` below, range/multiple/custom-
+             content modes): its ChildContent IS a native <button>. Without
+             suppression here, an Enter/Space keydown on that button bubbles to
+             this wrapper and toggles the popover via HandleKeyDown, and THEN the
+             browser's own click synthesis for that same Enter/Space (native
+             button default action) also bubbles up and toggles it again via
+             @onclick="Toggle" — two toggles cancel out and the calendar never
+             opens from the keyboard (PR #356 round-6, Codex P2). Suppressing
+             here leaves only the single click-driven toggle, and — as a side
+             effect — drops the wrapper's own tabindex to -1 so the native
+             button (already its own tab stop) isn't ALSO a second one. *@
+        <PopoverTrigger Class="@(FullWidth ? "w-full" : null)" SuppressActivationKeys="true">
+            @* ChildContentSlot (instead of plain ChildContent) so PopoverTrigger can hand
+               down aria-haspopup/aria-expanded/aria-controls for us to splat onto the
+               actual focusable element in EACH branch below (the input, or the button) —
+               SuppressActivationKeys already drops the wrapper's own tabindex to -1, so
+               without this the popup relationship/expanded state would only ever live on
+               that now-unfocusable wrapper (PR #356 round-7, Codex P2; see PopoverTrigger's
+               doc comment on SuppressActivationKeys for the full mechanism). *@
+            <ChildContentSlot Context="slot">
             @if (UsesTypeableInput)
             {
                 @* No leading LumeoIcons.Calendar here — the trailing CalendarDays
@@ -196,6 +235,20 @@ else
                    stopPropagation would otherwise keep a click on the field from reaching
                    the wrapper handler. *@
                 <div class="@CssClass" @onclick="HandleInputClick" @onclick:stopPropagation="true" @attributes="AdditionalAttributes">
+                    @* @onkeydown:stopPropagation is gated on _isOpen (the state as of the
+                       LAST render, i.e. before this keystroke) rather than an unconditional
+                       "true": while the calendar is open, containing every key (incl. Escape)
+                       stops it from ALSO reaching an ancestor Dialog/Sheet's own Escape-to-
+                       dismiss handler and closing that too — HandleInputKeyDown below already
+                       closes the calendar on Escape, one press should only close the nearest
+                       thing. Once the calendar is already closed, HandleInputKeyDown has
+                       nothing left to do for Escape — stopping propagation then just swallows
+                       it before that ancestor Dialog/Sheet can dismiss on it (Codex P2).
+                       Enter/Space are handled separately: PopoverTrigger.SuppressActivationKeys
+                       (set below) stops its role=button wrapper from treating either as a
+                       toggle regardless of open/closed state — @onkeydown:stopPropagation being
+                       a static per-render flag (not evaluated per key) can't do that alone
+                       without also swallowing Escape (PR #356 round-2, Codex/CodeRabbit). *@
                     <input id="@EffectiveTriggerId"
                            type="text"
                            name="@Name"
@@ -210,14 +263,24 @@ else
                            @oninput="HandleInputChanged"
                            @onblur="HandleInputBlur"
                            @onkeydown="HandleInputKeyDown"
+                           @onkeydown:stopPropagation="_isOpen"
                            @onclick="HandleInputClick"
-                           @onclick:stopPropagation="true" />
+                           @onclick:stopPropagation="true"
+                           @attributes="slot.Attributes" />
+                    @* This icon button is its OWN keyboard-focusable popup trigger — it opens/
+                       closes the SAME popover as the input above via ToggleOpen — so it needs
+                       the SAME slot.Attributes (aria-haspopup/aria-expanded/aria-controls) as
+                       the input, not just the input alone. Without this, tabbing to the icon
+                       button exposed a control with no popup relationship or expanded state to
+                       screen-reader users (PR #356 round-9, Codex P2). aria-label stays static
+                       and after slot.Attributes so it always wins over any future collision. *@
                     <button type="button"
                             class="ms-1 text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-1 rounded shrink-0"
-                            aria-label="@L["DatePicker.OpenCalendar"]"
                             disabled="@Disabled"
                             @onclick="ToggleOpen"
-                            @onclick:stopPropagation="true">
+                            @onclick:stopPropagation="true"
+                            @attributes="slot.Attributes"
+                            aria-label="@L["DatePicker.OpenCalendar"]">
                         <SvgGlyph Svg="@(LumeoIcons.CalendarDays)" class="h-4 w-4" />
                     </button>
                     @if (Clearable && HasValue)
@@ -238,7 +301,7 @@ else
                     aria-describedby="@FormFieldDescribedBy"
                     class="@CssClass"
                     disabled="@Disabled"
-                    @attributes="EffectiveAttributes">
+                    @attributes="MergeSlotAttributes(slot, EffectiveAttributes)">
                 <SvgGlyph Svg="@(LumeoIcons.Calendar)" class="me-2 h-4 w-4 shrink-0" />
                 @if (TriggerContent != null)
                 {
@@ -312,6 +375,7 @@ else
                 }
             </button>
             }
+            </ChildContentSlot>
         </PopoverTrigger>
         @* FocusOnOpen=false only for the typeable-input trigger so opening the calendar
            doesn't yank focus off the field mid-typing; the button trigger keeps the
@@ -885,6 +949,19 @@ else
         InsideFormField && AdditionalAttributes?.ContainsKey("id") == true
             ? AdditionalAttributes.Where(kv => kv.Key != "id").ToDictionary(kv => kv.Key, kv => kv.Value)
             : AdditionalAttributes;
+
+    // Merges a PopoverTrigger ChildContentSlot's aria-haspopup/aria-expanded/aria-controls
+    // (see PopoverTrigger's SuppressActivationKeys doc comment) onto the SAME element that
+    // also renders `extra` (EffectiveAttributes) — button-trigger branches splat both onto
+    // one native <button>, so a single @attributes can only take one merged dictionary.
+    // `extra` wins on key collision, mirroring PopoverTrigger.BuildAttrs's "author wins".
+    private static Dictionary<string, object> MergeSlotAttributes(Lumeo.TriggerSlot slot, IReadOnlyDictionary<string, object>? extra)
+    {
+        var d = new Dictionary<string, object>(slot.Attributes);
+        if (extra is not null)
+            foreach (var kv in extra) d[kv.Key] = kv.Value;
+        return d;
+    }
 
     private async Task HandleDateSelected(DateOnly? date)
     {

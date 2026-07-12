@@ -18,7 +18,7 @@ internal sealed class RichTextInterop
         return _module;
     }
 
-    public async ValueTask<string> InitAsync<T>(
+    public async ValueTask<string> InitAsync<[System.Diagnostics.CodeAnalysis.DynamicallyAccessedMembers(System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.PublicMethods)] T>(
         IJSRuntime js,
         Microsoft.AspNetCore.Components.ElementReference elementRef,
         DotNetObjectReference<T> dotNetRef,

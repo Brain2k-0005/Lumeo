@@ -86,4 +86,24 @@
   <PropertyGroup Condition="'$(_LumeoTracksPublicApi)' == 'true'">
     <NoWarn>$(NoWarn);RS0026;RS0027;RS0041</NoWarn>
   </PropertyGroup>
+
+  <!-- Symbol packages (.snupkg): only projects that actually pack need one. This
+       reuses the same '/src/' + IsPackable != 'false' gate as _LumeoTracksPublicApi
+       above (excludes Lumeo.SourceGenerators and Lumeo.DataGrid.Export — both
+       IsPackable=false internal helpers whose output is bundled into someone else's
+       .nupkg, not packed standalone) but WITHOUT the icon-pack exclusion, since the
+       16 Lumeo.Icons.* packs are packable and do want a .snupkg like every other
+       shipped package. Deliberately in Directory.Build.targets (imported AFTER the
+       project body), not Directory.Build.props: a project's own <IsPackable>false</IsPackable>
+       is set in its csproj body, which Directory.Build.props hasn't seen yet when it
+       evaluates — same pitfall the _LumeoTracksPublicApi comment above documents.
+       NuGet.org accepts .snupkg alongside .nupkg; publish.yml's
+       `dotnet nuget push "./nupkg/*.nupkg"` already auto-discovers and pushes a
+       same-named .snupkg next to each .nupkg by default (see the "no symbols" opt
+       OUT flag, -n, on `dotnet nuget push`), so no publish.yml change is needed on
+       the push side once pack produces the .snupkg here. -->
+  <PropertyGroup Condition="'$(_LumeoIsSrcProject)' == 'true' And '$(IsPackable)' != 'false'">
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+  </PropertyGroup>
 </Project>

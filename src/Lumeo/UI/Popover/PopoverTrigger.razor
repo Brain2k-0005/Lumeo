@@ -23,8 +23,40 @@
 }
 else
 {
-    <div id="@EffectiveTriggerId" class="@CssClass" role="button" tabindex="0" aria-expanded="@(Context.IsOpen ? "true" : "false")" aria-haspopup="dialog" aria-controls="@(Context.IsOpen ? Context.ContentId : null)" @onclick="Toggle" @onkeydown="HandleKeyDown" @attributes="AdditionalAttributes">
-        @ChildContent
+    @* tabindex is -1 (removed from Tab order) when SuppressActivationKeys: that
+       branch's child already owns its own Enter/Space (e.g. DatePicker's typeable
+       input) and is itself a real Tab stop, so a keyboard user should land there
+       directly — never on this wrapper, which cannot usefully activate on Enter/
+       Space while suppression is on (PR #356 round-3, Codex P2). Without this a
+       Tab press could park focus on a role="button" wrapper that silently eats
+       both keys. Mouse/pointer activation (@onclick) is unaffected either way. *@
+    <div id="@EffectiveTriggerId" class="@CssClass" role="button" tabindex="@(SuppressActivationKeys ? "-1" : "0")" aria-expanded="@(Context.IsOpen ? "true" : "false")" aria-haspopup="dialog" aria-controls="@(Context.IsOpen ? Context.ContentId : null)" @onclick="Toggle" @onkeydown="HandleKeyDown" @attributes="AdditionalAttributes">
+        @if (SuppressActivationKeys && ChildContentSlot is not null)
+        {
+            @* SuppressActivationKeys drops this wrapper's own tabindex to -1 above because
+               a focusable child inside ChildContent already owns the real Tab stop — but
+               aria-haspopup/aria-expanded/aria-controls above still only live on THIS now-
+               unfocusable wrapper, so a keyboard/SR user landing on the child never hears
+               the popup relationship or its expanded state (PR #356 round-7, Codex P2).
+               Mirrors the AsChild branch above: hand the SAME Slot down so a consumer that
+               opted in via ChildContentSlot can splat slot.Attributes onto its own actual
+               focusable element (e.g. DatePicker's input/button), where focus really lands.
+               SuppressedSlot's OnClick/OnKeyDown are INERT (default(EventCallback), not the
+               live Toggle/HandleKeyDown that Slot carries) — the wrapper above already owns
+               click (native activation bubbles into it, see the SuppressActivationKeys doc
+               comment on the parameter), and a consumer splatting slot.OnClick onto their
+               own focusable child per the general ChildContentSlot guidance (its <summary>,
+               written for the AsChild/no-wrapper case) would otherwise double-toggle: once
+               on the child, again when the click bubbles here (PR #356 round-8, Codex P2).
+               Attributes are unchanged from Slot — same aria-haspopup/aria-expanded/aria-
+               controls. Consumers still on plain ChildContent (no slot opted in) keep the
+               pre-existing wrapper-only ARIA state, unchanged. *@
+            @ChildContentSlot(SuppressedSlot)
+        }
+        else
+        {
+            @ChildContent
+        }
     </div>
 }
 
@@ -56,6 +88,25 @@ else
     /// </summary>
     [Parameter] public bool AsChild { get; set; }
 
+    /// <summary>
+    /// When <c>true</c>, Enter/Space keydowns that bubble up to this trigger's own
+    /// <c>role="button"</c> wrapper (from a <see cref="ChildContent"/> that contains
+    /// its OWN interactive control) do NOT toggle the popover, and the Space-default
+    /// suppression is skipped too. Set this when the child already owns Enter/Space
+    /// itself — e.g. DatePicker's typeable input, whose Enter commits the buffer and
+    /// closes, and whose Space is a literal character to type. Without this, those
+    /// keys bubbling out of the child ALSO reach this wrapper's own role=button
+    /// handler and toggle it a second, unwanted time — with the popover CLOSED this
+    /// silently reopens it; with the popover OPEN this fights whatever the child just
+    /// did (PR #356 round-2, Codex/CodeRabbit). Blazor's <c>:stopPropagation</c> is a
+    /// static per-render flag, not evaluated per key, so it cannot selectively block
+    /// only Enter/Space while still letting Escape (etc.) bubble to an ancestor
+    /// Dialog/Sheet — suppressing the toggle here, at the source, is the only way to
+    /// do that without also swallowing Escape. Default <c>false</c> preserves the
+    /// existing role=button Enter/Space activation for every other consumer.
+    /// </summary>
+    [Parameter] public bool SuppressActivationKeys { get; set; }
+
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
@@ -69,7 +120,13 @@ else
     // so Space silently scrolls the page again while toggling the popover (Codex P3). Mirrors
     // DialogTrigger/SheetTrigger's _id.
     private string EffectiveTriggerId => LumeoIds.Effective(AdditionalAttributes, _triggerId);
-    private bool _pdRegistered;
+    // The id ACTUALLY registered for the Space-preventDefault rule (not just a bool) — a
+    // consumer-splatted id can change at runtime while the trigger stays mounted and
+    // SuppressActivationKeys stays false, in which case EffectiveTriggerId moves but a plain
+    // bool would short-circuit before re-registering against the new DOM id, leaving the OLD
+    // id's rule orphaned and the NEW element without Space's page-scroll suppression (PR #356
+    // round-4, Codex P2). Mirrors PivotGrid's _registeredWrapperId.
+    private string? _registeredId;
 
     private string CssClass => Cx.Merge("inline-flex", Class);
 
@@ -79,6 +136,32 @@ else
         Attributes: BuildAttrs(),
         OnClick: EventCallback.Factory.Create<MouseEventArgs>(this, _ => Toggle()),
         OnKeyDown: EventCallback.Factory.Create<KeyboardEventArgs>(this, HandleKeyDown));
+
+    // Used ONLY by the SuppressActivationKeys && ChildContentSlot wrapper-retaining
+    // path below — same ARIA Attributes as Slot, but OnClick/OnKeyDown reset to
+    // default(EventCallback) (Blazor renders that as "no handler", never invokes
+    // anything) so a consumer splatting slot.OnClick per the general ChildContentSlot
+    // guidance cannot re-introduce the double-toggle SuppressActivationKeys exists to
+    // prevent (Codex P2, PR #356 round-8). The AsChild branch keeps using the live
+    // Slot above, unchanged — there the slot's OnClick is the ONLY activation path.
+    //
+    // Attributes strips "id": BuildAttrs() copies AdditionalAttributes verbatim
+    // (author wins on collision), so a consumer-splatted id flows into Slot.Attributes
+    // too. In AsChild that's correct — there is no wrapper, the child IS the only
+    // element. Here the wrapper <div> above already renders that same id via
+    // EffectiveTriggerId/@attributes, so forwarding it again in Attributes would give
+    // a consumer following the ChildContentSlot splat guidance a SECOND element with
+    // the identical id — duplicate DOM ids, with aria-controls/getElementById then
+    // resolving to the now-unfocusable wrapper instead of the real focusable child
+    // (Codex P2, PR #356 round-9). The wrapper is the sole id owner on this path.
+    private TriggerSlot SuppressedSlot => Slot with
+    {
+        OnClick = default,
+        OnKeyDown = default,
+        Attributes = Slot.Attributes.ContainsKey("id")
+            ? Slot.Attributes.Where(kv => kv.Key != "id").ToDictionary(kv => kv.Key, kv => kv.Value)
+            : Slot.Attributes,
+    };
 
     private IReadOnlyDictionary<string, object> BuildAttrs()
     {
@@ -97,25 +180,55 @@ else
 
     private async Task HandleKeyDown(KeyboardEventArgs e)
     {
-        if (e.Key is "Enter" or " ") await Toggle();
+        if (!SuppressActivationKeys && e.Key is "Enter" or " ") await Toggle();
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (!firstRender || AsChild) return;
+        // battle-wave2 #88 (keyboard-a11y): the fallback div[role=button] has no
+        // native key synthesis, so Space both opened the popover AND scrolled the
+        // page. Suppress only Space's default synchronously in JS (Enter has no
+        // default on a div). Calling e.PreventDefault from the async @onkeydown
+        // handler is too late — the default has already fired — and
+        // @onkeydown:preventDefault would also trap Tab; the JS-side key-selective
+        // rule is the library idiom (Collapsible/Accordion/Tabs triggers).
+        //
+        // Reconciled on EVERY render against the CURRENT SuppressActivationKeys
+        // value — not gated to firstRender — because a consumer can flip it after
+        // mount (e.g. DatePicker switching between its button and typeable-input
+        // trigger branches by changing AllowKeyboardInput/Mode). Comparing the
+        // desired state to _pdRegistered keeps register/unregister symmetric: a
+        // button-trigger -> typeable-input transition unregisters the stale
+        // listener (else Space in the input would still be swallowed), and the
+        // inverse transition registers it (else the button trigger loses its
+        // Space-scroll suppression) — PR #356 round-3, Codex P2.
+        //
+        // Compared against the id ACTUALLY registered (not just a bool) so a consumer-
+        // splatted id that changes at runtime — while shouldRegister stays true — re-
+        // registers against the NEW id instead of leaving the rule attached to the stale
+        // one (PR #356 round-4, Codex P2).
+        var shouldRegister = !AsChild && !SuppressActivationKeys;
+        if (!shouldRegister)
+        {
+            if (_registeredId is null) return;
+            try { await Interop.UnregisterPreventDefaultKeys(_registeredId); }
+            catch (JSDisconnectedException) { }
+            catch (ObjectDisposedException) { }
+            catch (InvalidOperationException) { }
+            _registeredId = null;
+            return;
+        }
+
+        var effectiveId = EffectiveTriggerId;
+        if (_registeredId == effectiveId) return;
         try
         {
-            // battle-wave2 #88 (keyboard-a11y): the fallback div[role=button] has no
-            // native key synthesis, so Space both opened the popover AND scrolled the
-            // page. Suppress only Space's default synchronously in JS (Enter has no
-            // default on a div). Calling e.PreventDefault from the async @onkeydown
-            // handler is too late — the default has already fired — and
-            // @onkeydown:preventDefault would also trap Tab; the JS-side key-selective
-            // rule is the library idiom (Collapsible/Accordion/Tabs triggers).
+            if (_registeredId is not null)
+                await Interop.UnregisterPreventDefaultKeys(_registeredId);
             await Interop.RegisterPreventDefaultKeys(
-                EffectiveTriggerId,
+                effectiveId,
                 new[] { new Lumeo.Services.PreventDefaultKeyRule(" ") });
-            _pdRegistered = true;
+            _registeredId = effectiveId;
         }
         catch (JSDisconnectedException) { }
         catch (ObjectDisposedException) { }
@@ -124,10 +237,10 @@ else
 
     public async ValueTask DisposeAsync()
     {
-        if (!_pdRegistered) return;
+        if (_registeredId is null) return;
         try
         {
-            await Interop.UnregisterPreventDefaultKeys(EffectiveTriggerId);
+            await Interop.UnregisterPreventDefaultKeys(_registeredId);
         }
         catch (JSDisconnectedException) { }
         catch (ObjectDisposedException) { }

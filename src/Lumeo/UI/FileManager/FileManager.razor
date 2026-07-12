@@ -1240,6 +1240,15 @@
     // Icon resolution
     // ──────────────────────────────────────────────────────────────────────────
 
+    // With member-level trimming enabled (#354), an unreferenced static property on
+    // LumeoIcons (5000+ vendored icons, none of them statically referenced by name here)
+    // would otherwise be removed: the trimmer can't know at compile time which node.IconName
+    // string a caller will supply at runtime. [DynamicDependency] declares the requirement
+    // explicitly so the linker preserves every LumeoIcons public property regardless of
+    // which one this reflection call ends up resolving (verified empirically: without this
+    // attribute, GetProperty(name, ...) returns null for every icon name post-trim; #364 review).
+    [System.Diagnostics.CodeAnalysis.DynamicDependency(
+        System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.PublicProperties, typeof(LumeoIcons))]
     private static IconSource GetNodeIcon(FileSystemNode node)
     {
         if (!string.IsNullOrEmpty(node.IconName))

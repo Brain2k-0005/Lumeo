@@ -93,6 +93,191 @@ public sealed class CliVendorE2ETests : IDisposable
         Assert.Contains("@namespace Acme.Ui", content);
     }
 
+    // PR #357 round-2/round-4: two DIFFERENT vendoring breaks hit the exact same
+    // line of Toast.razor. Round-2 (Codex, P1) was a namespace-rewriting bug — an
+    // UNQUALIFIED `@implements IToastEnterCallback` compiled fine in the library
+    // tree but 404'd once rewritten to the consumer namespace. Round-4 (P1) then
+    // found the deeper problem the round-2 fix (fully-qualifying it) papered
+    // over: `IToastEnterCallback`/`IComponentInteropService.AttachToastEnterEnd`
+    // were BOTH brand-new Lumeo interop surface added in the same unreleased
+    // change as Toast.razor itself, so a consumer whose referenced Lumeo package
+    // predates that surface (i.e. anyone, until this ships) fails to compile the
+    // moment `lumeo add toast` runs — no amount of qualifying the reference fixes
+    // a type that doesn't exist yet in the referenced assembly. The real fix was
+    // to drop the JS-callback entrance-detection path entirely (a plain local
+    // timer has zero Lumeo-surface dependency); this guard keeps it dropped, and
+    // `Add_Vendor_Toast_Compiles_Against_The_Officially_Supported_Template_Setup`
+    // (CliStandaloneE2ETests) proves the vendored output actually BUILDS, not
+    // just that these strings are absent.
+    [Fact]
+    public void Add_Vendor_Toast_Never_Reintroduces_The_Brand_New_Enter_Callback_Interop()
+    {
+        Assert.True(File.Exists(_lumeoDll),
+            "Built CLI (lumeo.dll) not found under tools/Lumeo.Cli/bin — build the solution first.");
+
+        var init = RunCli("init", "--yes", "--namespace", "Acme.Ui", "--path", "Components/Ui", "--no-assets");
+        Assert.True(init.Exit == 0, $"init failed (exit {init.Exit}). stderr: {init.Stderr}\nstdout: {init.Stdout}");
+
+        var add = RunCli("add", "toast", "--local", "--yes", "--force");
+        Assert.True(add.Exit == 0, $"add failed (exit {add.Exit}). stderr: {add.Stderr}\nstdout: {add.Stdout}");
+
+        var razor = Path.Combine(_proj, "Components", "Ui", "Toast", "Toast.razor");
+        Assert.True(File.Exists(razor), $"Toast.razor was not vendored to {razor}.\nadd stdout:\n{add.Stdout}");
+
+        var content = File.ReadAllText(razor);
+        Assert.Contains("@namespace Acme.Ui", content);
+        // Strip `//` line comments before scanning: Toast.razor's own fix for this exact finding
+        // documents itself in prose (explaining what it used to call and why it no longer does),
+        // which would otherwise trip this assertion as a false positive. The guard cares about
+        // live CODE references, not explanatory comments — same rationale as
+        // Default_Add_Toast_Vendors_No_Internal_Lumeo_References (CliStandaloneE2ETests).
+        var code = string.Join('\n', content.Split('\n')
+            .Select(line => line.IndexOf("//", StringComparison.Ordinal) is >= 0 and var i ? line[..i] : line));
+        Assert.DoesNotContain("IToastEnterCallback", code);
+        Assert.DoesNotContain("AttachToastEnterEnd", code);
+    }
+
+    // PR #357 round-10 (finding 2): the sibling-tag qualification set (round-9, finding 2) was built
+    // per-ITEM inside the vendoring loop — RazorComponentNames(item.Files) — instead of from the FULL
+    // set of everything this `add` invocation vendors. That's a no-op for a component with no
+    // dependencies (its own item IS the whole batch), but ConfirmButton depends on `button` — the BFS
+    // above pulls Button in as a SEPARATE `toInstall` entry, and ConfirmButton.razor's own markup has
+    // a bare `<Button ...>...</Button>` reference to it. Under the round-9 scoping, ConfirmButton's
+    // own siblingComponentNames was just ["ConfirmButton"] — Button was never in it — so that bare
+    // tag was left unqualified, reproducing the exact RZ10009 "two TagHelperDescriptors, same short
+    // name" ambiguity finding 2 of round-9 was supposed to close (the officially templated app keeps
+    // `@using Lumeo` in _Imports.razor, which still resolves the bare `<Button>` tag against the
+    // PACKAGE's Button after Acme.Ui.Button is ALSO vendored). Building the set from the full
+    // `toInstall` (batch + resolved dependencies) — this test's actual assertion — closes it.
+    [Fact]
+    public void Add_Vendor_Qualifies_A_Transitively_Pulled_Dependencys_Bare_Tag_Reference()
+    {
+        Assert.True(File.Exists(_lumeoDll),
+            "Built CLI (lumeo.dll) not found under tools/Lumeo.Cli/bin — build the solution first.");
+
+        var init = RunCli("init", "--yes", "--namespace", "Acme.Ui", "--path", "Components/Ui", "--no-assets");
+        Assert.True(init.Exit == 0, $"init failed (exit {init.Exit}). stderr: {init.Stderr}\nstdout: {init.Stdout}");
+
+        // confirm-button depends on button (+ overlay) — the BFS resolves both into the SAME `add`
+        // invocation's toInstall, as separate RegistryEntry items.
+        var add = RunCli("add", "confirm-button", "--local", "--yes", "--force");
+        Assert.True(add.Exit == 0, $"add failed (exit {add.Exit}). stderr: {add.Stderr}\nstdout: {add.Stdout}");
+
+        // The transitively-pulled dependency itself was vendored too, under its own rebranded
+        // namespace.
+        var buttonRazor = Path.Combine(_proj, "Components", "Ui", "Button", "Button.razor");
+        Assert.True(File.Exists(buttonRazor), $"Button.razor (ConfirmButton's dependency) was not vendored to {buttonRazor}.\nadd stdout:\n{add.Stdout}");
+        Assert.Contains("@namespace Acme.Ui", File.ReadAllText(buttonRazor));
+
+        var confirmButtonRazor = Path.Combine(_proj, "Components", "Ui", "ConfirmButton", "ConfirmButton.razor");
+        Assert.True(File.Exists(confirmButtonRazor), $"ConfirmButton.razor was not vendored to {confirmButtonRazor}.\nadd stdout:\n{add.Stdout}");
+        var content = File.ReadAllText(confirmButtonRazor);
+        Assert.Contains("@namespace Acme.Ui", content);
+
+        // The bare `<Button ...>`/`</Button>` markup reference must be fully qualified to
+        // Acme.Ui.Button — never left bare, which would collide with the still-in-scope `@using
+        // Lumeo` package reference the officially templated app's _Imports.razor keeps.
+        Assert.Contains("<Acme.Ui.Button ", content);
+        Assert.Contains("</Acme.Ui.Button>", content);
+        Assert.DoesNotContain("<Button ", content);
+        Assert.DoesNotContain("</Button>", content);
+    }
+
+    // PR #357 round-11 (Codex finding) — `update`/`diff`/`view` built their sibling-tag
+    // qualification set from ONLY the target entry's own files (RazorComponentNames(entry.Files)),
+    // never walking `entry.Dependencies` the way the Add loop's BFS does. That's invisible right
+    // after `add` (the freshly-vendored file IS already fully qualified), but every SUBSEQUENT
+    // `update`/`diff` on confirm-button re-fetches upstream and re-qualifies it with only
+    // ["ConfirmButton"] in scope — Button (a separate RegistryEntry) never makes the set, so the
+    // freshly-rewritten upstream comes back with `<Button ...>` BARE while the local file on disk
+    // still reads `<Acme.Ui.Button ...>` from `add`. Diffing.Normalize does NOT ignore that
+    // difference, so `diff`/`update --check` would report ConfirmButton as perpetually "drifted"
+    // against its own just-installed copy, and `update --force`/`-y` would overwrite the correct,
+    // qualified local file with the broken bare-tag version — reintroducing the exact RZ10009
+    // ambiguity the Add-side fix (test above) closed. This test's actual assertion is that NEITHER
+    // command reports drift on a component whose local copy came straight from `add`.
+    [Fact]
+    public void Update_Check_And_Diff_Report_No_Drift_On_A_Component_With_A_Transitive_Dependency()
+    {
+        Assert.True(File.Exists(_lumeoDll),
+            "Built CLI (lumeo.dll) not found under tools/Lumeo.Cli/bin — build the solution first.");
+
+        var init = RunCli("init", "--yes", "--namespace", "Acme.Ui", "--path", "Components/Ui", "--no-assets");
+        Assert.True(init.Exit == 0, $"init failed (exit {init.Exit}). stderr: {init.Stderr}\nstdout: {init.Stdout}");
+
+        var add = RunCli("add", "confirm-button", "--local", "--yes", "--force");
+        Assert.True(add.Exit == 0, $"add failed (exit {add.Exit}). stderr: {add.Stderr}\nstdout: {add.Stdout}");
+
+        // Re-fetching and re-qualifying upstream for `confirm-button` alone (ignoring that Button
+        // is a sibling dependency) must NOT disagree with what `add` just wrote to disk.
+        var check = RunCli("update", "confirm-button", "--local", "--check");
+        Assert.True(check.Exit == 0,
+            $"update --check failed (exit {check.Exit}). stderr: {check.Stderr}\nstdout: {check.Stdout}");
+        Assert.Contains("Drift: 0 file(s)", check.Stdout);
+        Assert.DoesNotContain("  drift   ", check.Stdout);
+
+        var diff = RunCli("diff", "confirm-button", "--local");
+        Assert.True(diff.Exit == 0, $"diff failed (exit {diff.Exit}). stderr: {diff.Stderr}\nstdout: {diff.Stdout}");
+        Assert.Contains("0 drifted", diff.Stdout);
+    }
+
+    // PR #357 P2 fix — ResolveSiblingComponentNames' `installedKeys` filter. `add`'s own "Install
+    // all?" batch prompt lets an interactive user decline a dependency (toInstall then collapses to
+    // just the requested entry — Commands.Add's BFS loop), so that dependency's tag is left BARE in
+    // the vendored file and it never lands in cfg.Components. This test can't drive that interactive
+    // decline through a redirected-I/O child process (Prompts.Interactive is false whenever
+    // stdin/stdout are piped, so the batch prompt always auto-accepts) — it reconstructs the resulting
+    // ON-DISK STATE directly instead: ConfirmButton vendored with a bare `<Button>` reference and
+    // Button itself absent from both the filesystem and lumeo.json's installed-components record,
+    // exactly what a genuine decline leaves behind. `update --force` on that state must NOT "fix" the
+    // bare tag into a qualified one — Button was never vendored under the consumer namespace, so
+    // qualifying it would reference a type that doesn't exist there, while the bare tag still resolves
+    // correctly against the NuGet-referenced Lumeo package's own Button (this project is NOT
+    // standalone — `init` here keeps the default NuGet mode). Before the fix, ResolveSiblingComponentNames
+    // walked entry.Dependencies unconditionally regardless of what's actually installed, so it would
+    // treat Button as a sibling anyway and requalify the bare tag on the very next update.
+    [Fact]
+    public void Update_Does_Not_Qualify_A_Dependencys_Tag_That_Was_Never_Actually_Vendored()
+    {
+        Assert.True(File.Exists(_lumeoDll),
+            "Built CLI (lumeo.dll) not found under tools/Lumeo.Cli/bin — build the solution first.");
+
+        var init = RunCli("init", "--yes", "--namespace", "Acme.Ui", "--path", "Components/Ui", "--no-assets");
+        Assert.True(init.Exit == 0, $"init failed (exit {init.Exit}). stderr: {init.Stderr}\nstdout: {init.Stdout}");
+
+        // Installs BOTH ConfirmButton and its Button dependency (this harness can't reach the
+        // interactive decline path — see the comment above) — reconstructed into a "Button declined"
+        // state immediately below.
+        var add = RunCli("add", "confirm-button", "--local", "--yes", "--force");
+        Assert.True(add.Exit == 0, $"add failed (exit {add.Exit}). stderr: {add.Stderr}\nstdout: {add.Stdout}");
+
+        var confirmButtonRazor = Path.Combine(_proj, "Components", "Ui", "ConfirmButton", "ConfirmButton.razor");
+        Assert.True(File.Exists(confirmButtonRazor), $"ConfirmButton.razor was not vendored.\nadd stdout:\n{add.Stdout}");
+
+        // Roll ConfirmButton's own file back to what it would look like had Button been declined —
+        // the qualified tag is exactly what `add`'s own BFS would have skipped rewriting.
+        var confirmButtonContent = File.ReadAllText(confirmButtonRazor)
+            .Replace("<Acme.Ui.Button ", "<Button ", StringComparison.Ordinal)
+            .Replace("</Acme.Ui.Button>", "</Button>", StringComparison.Ordinal);
+        Assert.Contains("<Button ", confirmButtonContent);
+        File.WriteAllText(confirmButtonRazor, confirmButtonContent);
+
+        // Button was never actually vendored: remove its files AND its lumeo.json record.
+        Directory.Delete(Path.Combine(_proj, "Components", "Ui", "Button"), recursive: true);
+        var configPath = Path.Combine(_proj, "lumeo.json");
+        var config = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(configPath))!.AsObject();
+        var removed = config["components"]!.AsObject().Remove("button");
+        Assert.True(removed, "test setup: 'button' wasn't recorded as installed in lumeo.json.");
+        File.WriteAllText(configPath, config.ToJsonString(new System.Text.Json.JsonSerializerOptions { WriteIndented = true }));
+
+        var update = RunCli("update", "confirm-button", "--local", "--force");
+        Assert.True(update.Exit == 0, $"update failed (exit {update.Exit}). stderr: {update.Stderr}\nstdout: {update.Stdout}");
+
+        var afterUpdate = File.ReadAllText(confirmButtonRazor);
+        Assert.DoesNotContain("<Acme.Ui.Button", afterUpdate);
+        Assert.Contains("<Button ", afterUpdate);
+    }
+
     [Fact]
     public void Add_Vendor_Copies_Satellite_Source_And_Its_Wwwroot_Asset()
     {
