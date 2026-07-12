@@ -124,6 +124,16 @@ else
     // exists in the DOM (PR #356 round-6, Codex P2). Mirrors Dock's
     // _registeredPdId / PopoverTrigger's _registeredId.
     private string? _registeredPdId;
+    // The Orientation the prevent-default rule set was ACTUALLY built for
+    // (null = not registered yet). Compared against the CURRENT Orientation
+    // below so the id-unchanged branch only unregisters/re-registers when the
+    // key set truly needs to change, instead of on every render — without
+    // this guard a Toolbar re-render with the same id (any parent/child state
+    // update, not just an Orientation flip) paid two JS interop calls it
+    // didn't need, worst on Blazor Server where each one is a round trip
+    // (PR #356 round-9, Codex P3). Mirrors the registered-flag/id pattern
+    // used throughout this file instead of a bare bool.
+    private ToolbarOrientation? _registeredPdOrientation;
     private int _autoVisibleCount = -1; // -1 = not yet measured
     // Last total reported by the JS ResizeObserver. Persisted so OnParametersSet
     // can rebuild the auto-measure context with the REAL total instead of
@@ -204,17 +214,22 @@ else
                     effectiveId,
                     navKeys.Select(k => new Lumeo.Services.PreventDefaultKeyRule(k, SkipEditable: true)).ToArray());
                 _registeredPdId = effectiveId;
+                _registeredPdOrientation = Orientation;
             }
             catch (JSDisconnectedException) { }
             catch (ObjectDisposedException) { }
         }
-        else
+        else if (_registeredPdOrientation != Orientation)
         {
-            // Id unchanged, but Orientation may have flipped at runtime — the
-            // key set is captured at registration time, so re-register in
-            // place to keep it aligned (mirrors the pre-round-6 "every render"
-            // behavior for this one case, without re-registering on every
-            // render for the common no-change case).
+            // Id unchanged, but Orientation flipped at runtime — the key set is
+            // captured at registration time, so re-register in place to keep it
+            // aligned (mirrors the pre-round-6 "every render" behavior for this
+            // one case). Gated on the tracked Orientation (not just reached
+            // unconditionally) so a same-id, same-Orientation re-render — the
+            // common case, e.g. an unrelated parent/child state update — skips
+            // the unregister/register round trip entirely instead of paying two
+            // JS interop calls for a key set that didn't change (PR #356
+            // round-9, Codex P3).
             try
             {
                 await Interop.UnregisterPreventDefaultKeys(effectiveId);
@@ -224,6 +239,7 @@ else
                 await Interop.RegisterPreventDefaultKeys(
                     effectiveId,
                     navKeys.Select(k => new Lumeo.Services.PreventDefaultKeyRule(k, SkipEditable: true)).ToArray());
+                _registeredPdOrientation = Orientation;
             }
             catch (JSDisconnectedException) { }
             catch (ObjectDisposedException) { }

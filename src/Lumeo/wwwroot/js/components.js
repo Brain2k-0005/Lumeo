@@ -2341,7 +2341,17 @@ function getToolbarItems(toolbarId) {
     // silently dropped out of the Tab order entirely (PR #356 round-6, Codex
     // P2). Filtering disabled elements out of the FINAL result — not just
     // individual arms — closes that gap for every arm at once.
-    const selector = 'button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+    //
+    // The `[data-lumeo-toolbar-disabled]` arm exists so a custom focusable
+    // child that is ONLY discovered via the generic `[tabindex]` arm (e.g.
+    // Chip renders a `div role="button"` with no `disabled` attribute) can
+    // rejoin the candidate set after being forced out below. Once we write
+    // `tabindex="-1"` on such an element it stops matching
+    // `[tabindex]:not([tabindex="-1"])`, so without this marker arm a later
+    // aria-disabled removal would never bring it back — it would be
+    // permanently stranded outside the roving tab order (PR #356 round-9,
+    // Codex P2).
+    const selector = 'button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"]), [data-lumeo-toolbar-disabled]';
     const candidates = Array.from(container.querySelectorAll(selector))
         .filter(el => !el.closest('[data-toolbar-overflow-trigger]'));
     const items = [];
@@ -2359,9 +2369,21 @@ function getToolbarItems(toolbarId) {
             // Codex P2). Clear it here, at the one place that decides an
             // element is excluded, so every call site (initToolbarRoving,
             // moveToolbarFocus, focusToolbarEdge) is covered for free.
+            //
+            // The marker attribute is what lets this forced tabindex="-1" be
+            // undone later: it keeps the element matching the selector above
+            // even though it no longer matches the generic `[tabindex]` arm,
+            // so the NEXT call re-examines it instead of losing track of it
+            // (PR #356 round-9, Codex P2 — re-derived every pass, not a
+            // one-way mutation).
             if (el.getAttribute('tabindex') !== '-1') el.setAttribute('tabindex', '-1');
+            el.setAttribute('data-lumeo-toolbar-disabled', '');
             continue;
         }
+        // Exclusion reason is gone (aria-disabled removed / native disabled
+        // cleared) — drop the marker so this element stops depending on it to
+        // be found; it now qualifies as a normal focusable candidate again.
+        if (el.hasAttribute('data-lumeo-toolbar-disabled')) el.removeAttribute('data-lumeo-toolbar-disabled');
         items.push(el);
     }
     return items;
