@@ -1,10 +1,10 @@
 {
   "$schema": "https://lumeo.nativ.sh/components-api-schema.json",
   "version": "4.2.0",
-  "generated": "2026-07-12T16:15:14.6352616Z",
+  "generated": "2026-07-12T17:19:15.8747991Z",
   "stats": {
     "componentCount": 164,
-    "totalParameters": 4264,
+    "totalParameters": 4270,
     "totalEnums": 90,
     "totalRecords": 65,
     "serviceCount": 33,
@@ -56985,7 +56985,9 @@
       ],
       "namespace": "Lumeo",
       "inheritsFrom": null,
-      "implements": [],
+      "implements": [
+        "IDisposable"
+      ],
       "parameters": [
         {
           "name": "ChildContent",
@@ -57009,7 +57011,25 @@
           "name": "Id",
           "type": "string?",
           "default": null,
-          "description": "Stable DOM id for the toast root. The provider sets this so it can register the touch swipe-to-dismiss gesture against this element via RegisterToastSwipe.",
+          "description": "Stable DOM id for the toast root. The provider sets this so it can register the touch swipe-to-dismiss gesture against this element via RegisterToastSwipe. When omitted (a standalone <Toast> rendered outside ToastProvider, e.g. a static variant preview), a generated id is used instead.",
+          "isCascading": false,
+          "captureUnmatched": false,
+          "isEditorRequired": false
+        },
+        {
+          "name": "StackIndex",
+          "type": "int?",
+          "default": null,
+          "description": "Stack position within its position group, 0 = newest/front. Set by ToastProvider when StackToasts is enabled; null renders no data-index attribute at all (legacy list, no stacking CSS applies). See lumeo.css's \"Toast stacking\" section.",
+          "isCascading": false,
+          "captureUnmatched": false,
+          "isEditorRequired": false
+        },
+        {
+          "name": "Leaving",
+          "type": "bool",
+          "default": "false",
+          "description": "True while ToastProvider is playing this toast's exit animation (animate-toast-out) ahead of unmounting it. Owned here (rather than folded into Class by the caller) so CssClass can also strip the entrance class the instant this flips true — a dismiss that lands mid-entrance must play the exit cleanly, not fight a still-parked animate-toast-in.",
           "isCascading": false,
           "captureUnmatched": false,
           "isEditorRequired": false
@@ -57304,7 +57324,7 @@
               "name": "Position",
               "type": "ToastViewport.ToastPosition",
               "default": "ToastViewport.ToastPosition.BottomRight",
-              "description": null,
+              "description": "Default position for toasts that omit ToastOptions.Position. PR #357 round-9 (findings 3/6): changing this parameter affects only FUTURE admissions (toasts not yet admitted via TryAdmit) — an already-mounted or already-queued toast's resolved group is snapshotted once (at admission, or at its own last explicit Update) and never silently reclassified by a later change here. See ToastItem.ResolvedPosition.",
               "isCascading": false,
               "captureUnmatched": false,
               "isEditorRequired": false
@@ -57313,7 +57333,7 @@
               "name": "DefaultDuration",
               "type": "int",
               "default": "5000",
-              "description": null,
+              "description": "Default auto-dismiss duration (ms) for toasts that omit ToastOptions.Duration; 0 resolves to persistent (see IsPersistent). PR #357 round-9 (finding 1) / round-10 (finding 1): changing this parameter affects only FUTURE admissions — the resolved duration/persistence of a toast is decided ONCE, at the exact instant it is ADMITTED (in TryAdmit, whether it mounts immediately or is enqueued), and frozen on ToastItem.ResolvedPersistent (once mounted) or QueuedToast.ResolvedDuration (while still queued) — a later change here never retroactively reclassifies it, even if it hasn't mounted yet. Only an explicit ToastService.Update re-resolves a toast's classification, whether mounted (ApplyToastMutation) or still queued (UpdateQueued).",
               "isCascading": false,
               "captureUnmatched": false,
               "isEditorRequired": false
@@ -57322,7 +57342,16 @@
               "name": "MaxToasts",
               "type": "int",
               "default": "5",
-              "description": null,
+              "description": "Maximum number of NON-PERSISTENT toasts (resolved Duration != 0 — see IsPersistent) mounted at once per position group; overflow queues FIFO (see _pendingQueue) and drains as slots free up. Non-positive values are clamped up to 1 — there's no \"unlimited\" mode and no \"show nothing\" mode, so a misconfigured 0/negative value falls back to the smallest usable cap rather than throwing on the very first Show() (see EffectiveMaxToasts). A persistent toast (resolved Duration == 0 — e.g. a loading/promise toast, or ANY toast that omits Duration under DefaultDuration=\"0\") does NOT count against this cap and is never an eviction candidate: it stays mounted until explicitly dismissed/updated, exactly like before MaxToasts existed. PR #357 round-4 (P2): counting persistents against the cap let one fill every slot and starve EVERY later Show() forever — no exit timer was ever going to free the persistent's slot, yet the overflow-queue path (below) can't tell \"waiting on toasts that are actually leaving\" apart from \"waiting on a toast that will never leave\" and queued anyway. Excluding persistents from the count sidesteps that distinction entirely: a persistent simply isn't part of the accounting, so it can occupy a mounted slot ADDITIONAL to the MaxToasts non-persistent ones without ever blocking them.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "StackToasts",
+              "type": "bool",
+              "default": "true",
+              "description": "Sonner-style stacking, default on. When a position group holds more than one toast, the newest renders in front and older toasts collapse behind it with a small offset/scale, expanding to the classic list on hover or keyboard focus. Set false to always render the plain list.",
               "isCascading": false,
               "captureUnmatched": false,
               "isEditorRequired": false
@@ -57382,7 +57411,9 @@
           "fileName": "ToastViewport.razor",
           "namespace": "Lumeo",
           "inheritsFrom": null,
-          "implements": [],
+          "implements": [
+            "IDisposable"
+          ],
           "parameters": [
             {
               "name": "ChildContent",
@@ -57412,6 +57443,33 @@
               "isEditorRequired": false
             },
             {
+              "name": "StackToasts",
+              "type": "bool",
+              "default": "true",
+              "description": "Whether the provider wants sonner-style stacking for this group.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "ToastCount",
+              "type": "int",
+              "default": "0",
+              "description": "Number of toasts currently rendered in this position group (including ones mid exit-animation). Stacking only kicks in above 1 toast.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "OnExpandedChanged",
+              "type": "EventCallback<bool>",
+              "default": null,
+              "description": "PR #357 P2 fix: fires whenever Expanded flips (hover-enter/leave, focus-in/out — including the deferred focus-out collapse below), so a consumer (ToastProvider) can pause EVERY toast in this position group for the duration of the expansion, not just whichever one is directly under the pointer/keyboard focus. Without this, a stack with several auto-dismiss toasts only ever paused the specific toast a per-toast hover/focus handler fired for — siblings merely VISIBLE in the fanned-out expanded list kept their own timers running and could vanish out from under the user mid-read. Not invoked for the initial (collapsed) render — only for an actual flip, tracked via _notifiedExpanded — so a fresh viewport with nothing hovered never fires a spurious \"resume\" the first time this callback is wired up.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
               "name": "AdditionalAttributes",
               "type": "Dictionary<string, object>?",
               "default": null,
@@ -57421,7 +57479,13 @@
               "isEditorRequired": false
             }
           ],
-          "events": [],
+          "events": [
+            {
+              "name": "OnExpandedChanged",
+              "type": "EventCallback<bool>",
+              "description": "PR #357 P2 fix: fires whenever Expanded flips (hover-enter/leave, focus-in/out — including the deferred focus-out collapse below), so a consumer (ToastProvider) can pause EVERY toast in this position group for the duration of the expansion, not just whichever one is directly under the pointer/keyboard focus. Without this, a stack with several auto-dismiss toasts only ever paused the specific toast a per-toast hover/focus handler fired for — siblings merely VISIBLE in the fanned-out expanded list kept their own timers running and could vanish out from under the user mid-read. Not invoked for the initial (collapsed) render — only for an actual flip, tracked via _notifiedExpanded — so a fresh viewport with nothing hovered never fires a spurious \"resume\" the first time this callback is wired up."
+            }
+          ],
           "enums": [
             {
               "name": "ToastPosition",

@@ -348,6 +348,152 @@ public class PerComponentEnricherTests : IDisposable
         Assert.Contains("--color-primary", md);
     }
 
+    private string WriteTestFile(string relativePath, string content)
+    {
+        var path = Path.Combine(_root, "tests", "Lumeo.Tests", relativePath);
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        File.WriteAllText(path, content);
+        return path;
+    }
+
+    // PR #357 round-2 (CodeRabbit): a plain word-boundary scan for the component
+    // name also matched `.Select(x => ...)` — a LINQ call on some unrelated
+    // IEnumerable, nothing to do with the Select component — so every test file
+    // that happened to use `.Select(` anywhere got listed as Select coverage.
+    [Fact]
+    public void Tests_field_excludes_unrelated_LINQ_Select_calls()
+    {
+        WriteComponentFile("Select", "Select.razor", "@namespace Lumeo\n<div></div>");
+        WriteTestFile("Components/Toast/ToastStackingTests.cs", """
+using System.Linq;
+namespace Lumeo.Tests.Components.Toast;
+public class ToastStackingTests
+{
+    public void Some_Test()
+    {
+        var indices = new[] { "0", "1" }.Select(x => x).ToList();
+    }
+}
+""");
+        var entry = new Dictionary<string, object?>
+        {
+            ["files"] = new[] { "UI/Select/Select.razor" },
+            ["nugetPackage"] = "Lumeo",
+            ["category"] = "Forms",
+            ["description"] = "A select.",
+        };
+        var apiBlock = Api("""{ "parameters": [] }""");
+
+        PerComponentEnricher.Enrich(entry, "select", "Select", _root, apiBlock,
+            new HashSet<string> { "Select" });
+
+        var tests = Assert.IsType<List<string>>(entry["tests"]);
+        Assert.DoesNotContain(tests, t => t.Contains("ToastStackingTests.cs"));
+    }
+
+    // Companion case: a REAL reference to the Select component — via the `L.`
+    // namespace alias every test file in this suite uses (`using L = Lumeo;`)
+    // — must still be picked up, proving the LINQ-call exclusion isn't so broad
+    // it also swallows genuine `L.Select(...)` render calls.
+    [Fact]
+    public void Tests_field_still_includes_real_L_Select_component_references()
+    {
+        WriteComponentFile("Select", "Select.razor", "@namespace Lumeo\n<div></div>");
+        WriteTestFile("Components/Select/SelectRealTests.cs", """
+namespace Lumeo.Tests.Components.Select;
+public class SelectRealTests
+{
+    public void Renders()
+    {
+        var cut = TestContext.Render<L.Select>();
+    }
+}
+""");
+        var entry = new Dictionary<string, object?>
+        {
+            ["files"] = new[] { "UI/Select/Select.razor" },
+            ["nugetPackage"] = "Lumeo",
+            ["category"] = "Forms",
+            ["description"] = "A select.",
+        };
+        var apiBlock = Api("""{ "parameters": [] }""");
+
+        PerComponentEnricher.Enrich(entry, "select", "Select", _root, apiBlock,
+            new HashSet<string> { "Select" });
+
+        var tests = Assert.IsType<List<string>>(entry["tests"]);
+        Assert.Contains(tests, t => t.Contains("SelectRealTests.cs"));
+    }
+
+    // PR #357 round-9 (finding 5): a component name that collides with a common BCL generic
+    // collection/type name — "List" — matched `new List<string>()`, nothing to do with the List
+    // component: the word is followed by `<` (a generic type-parameter list), not `(`, so the
+    // `.Select(...)` LINQ-call filter above (which only recognizes a FOLLOWING open paren) never
+    // applied. The regenerated registry actually picked up a Toast invariant test this way.
+    [Fact]
+    public void Tests_field_excludes_unrelated_BCL_generic_type_usages()
+    {
+        WriteComponentFile("List", "List.razor", "@namespace Lumeo\n<div></div>");
+        WriteTestFile("Components/Toast/ToastAdmissionInvariantTests.cs", """
+namespace Lumeo.Tests.Components.Toast;
+public class ToastAdmissionInvariantTests
+{
+    public void Some_Test()
+    {
+        var ids = new List<string>();
+    }
+}
+""");
+        var entry = new Dictionary<string, object?>
+        {
+            ["files"] = new[] { "UI/List/List.razor" },
+            ["nugetPackage"] = "Lumeo",
+            ["category"] = "DataDisplay",
+            ["description"] = "A list.",
+        };
+        var apiBlock = Api("""{ "parameters": [] }""");
+
+        PerComponentEnricher.Enrich(entry, "list", "List", _root, apiBlock,
+            new HashSet<string> { "List" });
+
+        var tests = Assert.IsType<List<string>>(entry["tests"]);
+        Assert.DoesNotContain(tests, t => t.Contains("ToastAdmissionInvariantTests.cs"));
+    }
+
+    // Companion case: a REAL reference to the List component — via the `L.` namespace alias —
+    // must still be picked up, even when it ALSO happens to be immediately followed by `<` (a
+    // generic Lumeo component with its own type parameter, e.g. `L.List<int>`), proving the BCL
+    // exclusion is scoped to the KNOWN BCL name set and doesn't swallow every `Name<...>` shape.
+    [Fact]
+    public void Tests_field_still_includes_real_L_List_component_references()
+    {
+        WriteComponentFile("List", "List.razor", "@namespace Lumeo\n<div></div>");
+        WriteTestFile("Components/List/ListRealTests.cs", """
+namespace Lumeo.Tests.Components.List;
+public class ListRealTests
+{
+    public void Renders()
+    {
+        var cut = TestContext.Render<L.List<int>>();
+    }
+}
+""");
+        var entry = new Dictionary<string, object?>
+        {
+            ["files"] = new[] { "UI/List/List.razor" },
+            ["nugetPackage"] = "Lumeo",
+            ["category"] = "DataDisplay",
+            ["description"] = "A list.",
+        };
+        var apiBlock = Api("""{ "parameters": [] }""");
+
+        PerComponentEnricher.Enrich(entry, "list", "List", _root, apiBlock,
+            new HashSet<string> { "List" });
+
+        var tests = Assert.IsType<List<string>>(entry["tests"]);
+        Assert.Contains(tests, t => t.Contains("ListRealTests.cs"));
+    }
+
     [Fact]
     public void MdSummary_parameter_table_does_not_escape_angle_brackets_inside_code_spans()
     {

@@ -172,6 +172,7 @@ public class TrackingInteropService : IComponentInteropService
         LastOverlayExitCallback = dotNetRef.Value as global::Lumeo.IOverlayExitCallback;
         return ValueTask.CompletedTask;
     }
+
     public ValueTask RegisterSvDrag(string elementId, Func<double, double, Task> handler) => ValueTask.CompletedTask;
     public ValueTask UnregisterSvDrag(string elementId) => ValueTask.CompletedTask;
     public ValueTask RegisterPinchZoom(string elementId, Func<double, Task> handler) => ValueTask.CompletedTask;

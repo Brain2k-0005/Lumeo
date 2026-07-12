@@ -122,4 +122,91 @@ public class NamespaceRewriterTests
         const string src = "namespace Lumeo.Services;";
         Assert.Equal(src, NamespaceRewriter.Rewrite(src, "Component.razor", "MyApp"));
     }
+
+    // PR #357 round-9 (finding 2): a vendored component's OWN markup reference to a sibling
+    // component in the SAME batch (e.g. ToastProvider.razor's `<Toast>`) must be fully qualified
+    // — otherwise it stays resolvable only via implicit same-namespace visibility, which breaks
+    // the instant the consumer's `_Imports.razor` ALSO has `@using Lumeo` in scope (RZ10009, the
+    // officially templated app's own default setup). See CliStandaloneE2ETests'
+    // Add_Vendor_Toast_Compiles_Against_The_Officially_Supported_Template_Setup for the full E2E.
+    [Fact]
+    public void Sibling_Component_Tags_Are_Fully_Qualified_When_Names_Are_Supplied()
+    {
+        const string src = "<Toast Variant=\"Foo\">\n  <ToastTitle>Hi</ToastTitle>\n</Toast>";
+        var result = NamespaceRewriter.Rewrite(src, "ToastProvider.razor", "Acme.Ui",
+            new[] { "Toast", "ToastTitle", "ToastProvider" });
+
+        Assert.Equal(
+            "<Acme.Ui.Toast Variant=\"Foo\">\n  <Acme.Ui.ToastTitle>Hi</Acme.Ui.ToastTitle>\n</Acme.Ui.Toast>",
+            result);
+    }
+
+    [Fact]
+    public void Sibling_Qualification_Is_A_No_Op_When_No_Names_Are_Supplied()
+    {
+        // Default parameter / explicit null / empty collection must all leave tag markup
+        // untouched — this is the pre-round-9 behaviour every other caller still relies on.
+        const string src = "<Toast Variant=\"Foo\"></Toast>";
+        Assert.Equal(src, NamespaceRewriter.Rewrite(src, "ToastProvider.razor", "Acme.Ui"));
+        Assert.Equal(src, NamespaceRewriter.Rewrite(src, "ToastProvider.razor", "Acme.Ui", null));
+        Assert.Equal(src, NamespaceRewriter.Rewrite(src, "ToastProvider.razor", "Acme.Ui", Array.Empty<string>()));
+    }
+
+    [Fact]
+    public void Sibling_Qualification_Only_Matches_Tag_Positions_Not_Unrelated_Word_Occurrences()
+    {
+        // "Toast" appearing as a plain word — inside a string literal, or as part of a LONGER
+        // identifier like "ToastItem"/"QueuedToast" (no word boundary at the join) — must survive
+        // untouched. Only the two literal `<Toast`/`</Toast` tag positions are matched.
+        const string src =
+            "<Toast Title=\"@L[\"Toast.Close\"]\">\n"
+          + "  <div class=\"ToastItem\"></div>\n"
+          + "</Toast>\n"
+          + "@code {\n"
+          + "    private readonly List<QueuedToast> _pending = new();\n"
+          + "}";
+        var result = NamespaceRewriter.Rewrite(src, "ToastProvider.razor", "Acme.Ui", new[] { "Toast" });
+
+        Assert.Contains("<Acme.Ui.Toast Title=\"@L[\"Toast.Close\"]\">", result); // tag qualified, string literal untouched
+        Assert.Contains("class=\"ToastItem\"", result);                          // unrelated attribute value untouched
+        Assert.Contains("</Acme.Ui.Toast>", result);                             // closing tag qualified
+        Assert.Contains("List<QueuedToast>", result);                            // different identifier, not a match at all
+    }
+
+    // PR #357 (Codex finding): Select depends on List, so vendoring `lumeo add select` supplies
+    // "List" as a sibling name. Select.razor's own `EventCallback<List<string>?>` has "List"
+    // directly preceded by `<` (from `EventCallback<`) — indistinguishable from a real `<List`
+    // markup tag under the old bare `(?<=<)` lookbehind, which rewrote it to
+    // `EventCallback<Acme.Ui.List<string>?>` and broke the build. A genuine `<List` markup tag
+    // must still be qualified; only the generic-argument occurrence must survive untouched.
+    [Fact]
+    public void Sibling_Qualification_Does_Not_Rewrite_Generic_Type_Arguments()
+    {
+        const string src =
+            "<List Items=\"@_items\">\n"
+          + "  <ListItem>@context</ListItem>\n"
+          + "</List>\n"
+          + "@code {\n"
+          + "    [Parameter] public EventCallback<List<string>?> OnChanged { get; set; }\n"
+          + "}";
+        var result = NamespaceRewriter.Rewrite(src, "Select.razor", "Acme.Ui", new[] { "List", "ListItem" });
+
+        Assert.Contains("<Acme.Ui.List Items=\"@_items\">", result);   // real markup tag qualified
+        Assert.Contains("<Acme.Ui.ListItem>@context</Acme.Ui.ListItem>", result);
+        Assert.Contains("</Acme.Ui.List>", result);
+        Assert.Contains("EventCallback<List<string>?>", result);       // generic argument untouched
+        Assert.DoesNotContain("Acme.Ui.List<string>", result);
+    }
+
+    [Fact]
+    public void Sibling_Qualification_Does_Not_Apply_To_CSharp_Files()
+    {
+        // .cs code-behind files never get the markup-tag rewrite — only .razor markup has this
+        // ambiguity (TagHelper resolution, not ordinary C# same-namespace-wins type resolution;
+        // see NamespaceRewriter's doc comment).
+        const string src = "namespace Lumeo;\npublic partial class ToastProvider { }";
+        Assert.Equal(
+            "using Lumeo;\nnamespace Acme.Ui;\npublic partial class ToastProvider { }",
+            NamespaceRewriter.Rewrite(src, "ToastProvider.razor.cs", "Acme.Ui", new[] { "ToastProvider" }));
+    }
 }
