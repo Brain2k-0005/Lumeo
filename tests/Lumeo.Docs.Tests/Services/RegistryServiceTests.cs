@@ -62,6 +62,51 @@ public class RegistryServiceTests
         Assert.Same(r1, r2); // both callers observe the same cached detail instance
     }
 
+    [Fact]
+    public async Task GetComponentAsync_retries_after_a_synchronously_failing_load()
+    {
+        // Codex P2, PR #358 round 4: when LoadComponentAsync completes synchronously
+        // (e.g. a handler that resolves without ever yielding, as a real 404/invalid-JSON
+        // response can), its own `finally` tries to evict `slug` from _detailLoads BEFORE
+        // GetComponentAsync has stored the entry — a no-op. Without the fix, the
+        // already-completed failed task then gets stored and NEVER removed, so every
+        // later call for that slug returns the stale null forever instead of retrying.
+        var handler = new SyncFailingThenSucceedingHandler();
+        var http = new HttpClient(handler) { BaseAddress = new Uri("https://test/") };
+        var svc = new RegistryService(http, new StubJsRuntime());
+
+        var first = await svc.GetComponentAsync("button");
+        Assert.Null(first); // first load failed synchronously
+
+        var second = await svc.GetComponentAsync("button");
+
+        Assert.Equal(2, handler.RequestCount); // second call issued a FRESH request, not a cached failure
+        Assert.NotNull(second);
+        Assert.Equal("Button", second!.Name);
+    }
+
+    // Fails the first request synchronously (no await ever reached), succeeds on the second —
+    // reproduces a handler that resolves without yielding, so LoadComponentAsync runs to
+    // completion before GetComponentAsync's caller regains control.
+    private sealed class SyncFailingThenSucceedingHandler : HttpMessageHandler
+    {
+        public int RequestCount { get; private set; }
+
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage req, CancellationToken ct)
+        {
+            RequestCount++;
+            if (RequestCount == 1)
+            {
+                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.NotFound));
+            }
+            var json = """{ "name": "Button", "category": "Forms", "description": "A button.", "nugetPackage": "Lumeo" }""";
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(json, Encoding.UTF8, "application/json")
+            });
+        }
+    }
+
     private sealed class StubHandler(string json) : HttpMessageHandler
     {
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage req, CancellationToken ct) =>

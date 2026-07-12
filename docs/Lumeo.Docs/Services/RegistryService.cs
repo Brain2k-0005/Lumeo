@@ -98,6 +98,18 @@ public sealed class RegistryService(HttpClient http, IJSRuntime js)
         if (_detailLoads.TryGetValue(slug, out var inFlight)) return inFlight;
 
         var load = LoadComponentAsync(slug);
+        if (load.IsCompleted)
+        {
+            // LoadComponentAsync already ran to completion synchronously (e.g. a
+            // stub/prerender HttpMessageHandler that resolves without ever yielding).
+            // Its own `finally` tried to evict `slug` from _detailLoads BEFORE we got a
+            // chance to insert it below, so that removal was a no-op — inserting now
+            // would leave a completed (possibly failed) task cached forever with nothing
+            // left to remove it. Skip the insert entirely: successes are already in
+            // _detailCache, and failures simply get retried fresh next call
+            // (Codex P2, PR #358 round 4).
+            return load;
+        }
         _detailLoads[slug] = load;
         return load;
     }

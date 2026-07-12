@@ -486,7 +486,7 @@ public static class PerComponentEnricher
                 ? dd.GetString() : null;
             var desc = p.TryGetProperty("description", out var de) && de.ValueKind == JsonValueKind.String
                 ? de.GetString() : null;
-            sb.AppendLine($"| {owner} | {EscapeMd(name)} | `{EscapeMd(type)}` | `{EscapeMd(def ?? "")}` | {EscapeMd(desc ?? "")} |");
+            sb.AppendLine($"| {owner} | {EscapeMd(name)} | `{EscapeMdCode(type)}` | `{EscapeMdCode(def ?? "")}` | {EscapeMd(desc ?? "")} |");
         }
     }
 
@@ -498,7 +498,20 @@ public static class PerComponentEnricher
     // backslash itself FIRST so a literal "\" in source text isn't mistaken for one of the
     // escapes added below, then pipe (table-cell delimiter) and angle brackets — CommonMark
     // honors `\<`/`\>` as literal characters.
+    //
+    // Only use this for PROSE table cells (Name/Description). Use EscapeMdCode below for
+    // cells whose value is wrapped in backticks (Type/Default) — code spans render their
+    // content literally, so backslash-escapes there show up as literal backslashes instead
+    // of being interpreted (Codex P2, PR #358 round 4: `EventCallback<bool>` was rendering
+    // as `EventCallback\<bool\>`).
     private static string EscapeMd(string s)
         => s.Replace("\\", "\\\\").Replace("|", "\\|").Replace("<", "\\<").Replace(">", "\\>")
             .Replace("\n", " ").Replace("\r", "");
+
+    // For content embedded inside a Markdown code span (`` `like this` ``): CommonMark code
+    // spans take their content literally, so angle brackets and backslashes must NOT be
+    // escaped here. The pipe is still a GFM table-cell delimiter and needs escaping even
+    // inside a code span to avoid breaking the row.
+    private static string EscapeMdCode(string s)
+        => s.Replace("|", "\\|").Replace("\n", " ").Replace("\r", "");
 }
