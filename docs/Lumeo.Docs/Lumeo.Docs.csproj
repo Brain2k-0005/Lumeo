@@ -18,6 +18,18 @@
          WASM publish pipeline can't P/Invoke Skia's native callbacks, but that's
          fine because they aren't reachable at runtime here. -->
     <NoWarn>$(NoWarn);WASM0001</NoWarn>
+
+    <!-- Auto-calculated initial heap (~108 MB from this app's DLL bitcode) is enough
+         for normal docs browsing but not for the Phase 5 perf harness
+         (Pages/E2E/PerfBench.razor), which materializes a 10k-row in-memory
+         dataset for the public DataGrid benchmarks — SGen's major-heap growth can
+         fail under that pressure. 512 MB gives comfortable headroom (proven
+         stable up to ~20k rows in manual testing; see PerformanceFacts.razor's
+         methodology note for the much larger — 75k/100k-row — WASM
+         linear-memory ceiling this project's non-AOT interpreted build hits,
+         which motivated keeping the automated benchmark's own dataset small
+         and fast rather than chasing that ceiling on every CI run). -->
+    <WasmInitialHeapSize>536870912</WasmInitialHeapSize>
   </PropertyGroup>
 
   <ItemGroup>
