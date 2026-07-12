@@ -60,55 +60,64 @@ async function main() {
         return;
     }
 
-    console.log("[check-env] 2/3 Guidepup <-> NVDA remote-control channel + speech capture...");
-    await sleep(2000);
-    await nvda.next();
-    const phrase = await nvda.lastSpokenPhrase();
-    if (phrase && phrase.trim().length > 0) {
-        console.log(`  PASS — captured: "${phrase}"`);
-    } else {
-        console.log("  FAIL (or inconclusive) — NVDA started but no spoken phrase was captured for next().");
-        console.log("  This is consistent with the foreground-focus blocker below rather than a Guidepup bug —");
-        console.log("  NVDA's object-navigation commands read whatever currently has OS focus.");
-        process.exitCode = 1;
-    }
-
-    console.log("[check-env] 3/3 Can this process win real OS foreground focus for its own window?...");
-    const before = checkForegroundWindowTitle();
-    console.log(`  Foreground before: "${before.title}" (pid ${before.pid})`);
-
-    const edgeCandidates = [
-        "C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe",
-        "C:/Program Files/Microsoft/Edge/Application/msedge.exe",
-    ];
-    const { existsSync } = await import("node:fs");
-    const edgePath = edgeCandidates.find((p) => existsSync(p));
-    let browser = null;
+    // Everything from here on runs with NVDA already started — a throw in any
+    // of these steps must not leak the NVDA process, so nvda.stop() lives in
+    // this finally, not just at the tail end of main().
     try {
-        browser = await chromium.launch({
-            headless: false,
-            executablePath: edgePath, // undefined => playwright-core needs its own browser; edge is the pragmatic fallback here
-            args: ["--start-maximized", "--new-window"],
-        });
-        const page = await browser.newPage();
-        await page.goto("data:text/html,<h1>Guidepup foreground check</h1>", { waitUntil: "load" });
-        await sleep(1500);
-        const after = checkForegroundWindowTitle();
-        console.log(`  Foreground after launching a browser window: "${after.title}" (pid ${after.pid})`);
-        if (after.title.includes("Guidepup foreground check") || after.title.toLowerCase().includes("edge")) {
-            console.log("  PASS — the freshly launched browser window won real foreground focus.");
+        console.log("[check-env] 2/3 Guidepup <-> NVDA remote-control channel + speech capture...");
+        await sleep(2000);
+        await nvda.next();
+        const phrase = await nvda.lastSpokenPhrase();
+        if (phrase && phrase.trim().length > 0) {
+            console.log(`  PASS — captured: "${phrase}"`);
         } else {
-            console.log("  FAIL — the freshly launched window did NOT become the foreground window.");
-            console.log(`  Something else ("${after.title}") is holding OS foreground focus/lock on this desktop.`);
-            console.log("  NVDA will keep reading/reviewing that window, not the docs site under test.");
+            console.log("  FAIL (or inconclusive) — NVDA started but no spoken phrase was captured for next().");
+            console.log("  This is consistent with the foreground-focus blocker below rather than a Guidepup bug —");
+            console.log("  NVDA's object-navigation commands read whatever currently has OS focus.");
             process.exitCode = 1;
         }
-    } finally {
-        if (browser) await browser.close();
-    }
 
-    if (started) {
-        await nvda.stop();
+        console.log("[check-env] 3/3 Can this process win real OS foreground focus for its own window?...");
+        const before = checkForegroundWindowTitle();
+        console.log(`  Foreground before: "${before.title}" (pid ${before.pid})`);
+
+        const edgeCandidates = [
+            "C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe",
+            "C:/Program Files/Microsoft/Edge/Application/msedge.exe",
+        ];
+        const { existsSync } = await import("node:fs");
+        const edgePath = edgeCandidates.find((p) => existsSync(p));
+        let browser = null;
+        try {
+            browser = await chromium.launch({
+                headless: false,
+                executablePath: edgePath, // undefined => playwright-core needs its own browser; edge is the pragmatic fallback here
+                args: ["--start-maximized", "--new-window"],
+            });
+            const page = await browser.newPage();
+            // Real <title> (not just an <h1>) — the foreground check below reads
+            // the OS window title, which browsers derive from <title>, not from
+            // heading text. Without this, after.title.includes(...) can never be
+            // true and the check silently degrades to the generic "edge" fallback.
+            await page.goto("data:text/html,<title>Guidepup foreground check</title><h1>Guidepup foreground check</h1>", { waitUntil: "load" });
+            await sleep(1500);
+            const after = checkForegroundWindowTitle();
+            console.log(`  Foreground after launching a browser window: "${after.title}" (pid ${after.pid})`);
+            if (after.title.includes("Guidepup foreground check") || after.title.toLowerCase().includes("edge")) {
+                console.log("  PASS — the freshly launched browser window won real foreground focus.");
+            } else {
+                console.log("  FAIL — the freshly launched window did NOT become the foreground window.");
+                console.log(`  Something else ("${after.title}") is holding OS foreground focus/lock on this desktop.`);
+                console.log("  NVDA will keep reading/reviewing that window, not the docs site under test.");
+                process.exitCode = 1;
+            }
+        } finally {
+            if (browser) await browser.close();
+        }
+    } finally {
+        if (started) {
+            await nvda.stop();
+        }
     }
 }
 

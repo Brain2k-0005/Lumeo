@@ -27,6 +27,11 @@ function isNodeExcluded(component, rule, matchable) {
 // or a second run without clearing reports/ crashes on axe-findings.json's
 // {findings: [...]} shape (no `.violations`), same exclusion check-baseline.mjs
 // already applies.
+if (!existsSync(reportsDir)) {
+    console.error(`[gen-baseline] reports dir not found: ${reportsDir}. Run 'node run.mjs' first.`);
+    process.exit(1);
+}
+
 const reportFiles = readdirSync(reportsDir).filter(f =>
     f.endsWith('.json') && f !== 'summary.json' && f !== 'axe-findings.json');
 const entries = [];

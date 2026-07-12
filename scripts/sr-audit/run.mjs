@@ -185,11 +185,23 @@ async function main() {
             "run", "--project", docsProj, "-c", "Release", "--no-launch-profile", "--no-build",
             "--urls", baseUrl,
         ], { cwd: repoRoot, shell: process.platform === "win32", stdio: ["ignore", "pipe", "pipe"] });
+        // Both pipes must be drained — ASP.NET Core logs a request line per page
+        // load during the crawl, and an unconsumed stdout pipe backpressures the
+        // dotnet process once the OS pipe buffer fills, hanging the run in a way
+        // that looks like a server timeout rather than a pipe issue.
+        dotnetProc.stdout.on("data", (d) => process.stdout.write(`[docs-server] ${d}`));
         dotnetProc.stderr.on("data", (d) => process.stderr.write(`[docs-server] ${d}`));
         const up = await waitForServer(baseUrl, 120_000);
         if (!up) {
             console.error(`[sr-audit] docs server did not come up within 120s at ${baseUrl}`);
             dotnetProc.kill();
+            // dotnet run typically spawns a child host process on Windows that
+            // plain .kill() may not terminate — apply the same tree-kill fallback
+            // the finally block below uses, so this early-exit path can't leave
+            // an orphaned server process behind.
+            if (process.platform === "win32" && dotnetProc.pid) {
+                spawn("taskkill", ["/pid", String(dotnetProc.pid), "/T", "/F"], { stdio: "ignore", shell: true });
+            }
             process.exit(1);
         }
         console.log(`[sr-audit] docs server ready at ${baseUrl}`);
