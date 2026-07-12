@@ -211,6 +211,12 @@ async function main() {
       await waitForServer(baseUrl, 120_000, serverProc, () => serverLog);
     } catch (e) {
       console.error(serverLog.slice(-4000));
+      // waitForServer can reject while the docs dev-server is still alive
+      // (e.g. a slow build exceeding 120s, or a Kestrel log line that never
+      // matches "Now listening on") — this early return never reaches the
+      // browser try/finally below, so kill the spawned process here too.
+      // Safe even if it already exited (the onExit path that also rejects).
+      serverProc.kill();
       throw e;
     }
     console.log('docs dev-server is up.');
