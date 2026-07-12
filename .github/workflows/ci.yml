@@ -27,23 +27,67 @@ jobs:
         run: python3 scripts/docs-parity/check.py
 
       - name: Setup .NET
+        # Both SDKs installed side by side: 10.0.x builds/runs the primary net10.0
+        # lane (and everything not test-execution — restore/build/pack for the
+        # net8.0 half of every multi-targeted package needs only the net8 NuGet
+        # reference-assembly packs, resolved automatically from NuGet, not an
+        # installed net8 SDK/runtime). 8.0.x is here specifically so the "Test
+        # (net8.0 lane)" step below has a genuine net8.0 shared runtime to execute
+        # against — without it, a net8.0-targeted test binary would fail to launch
+        # ("framework not found") rather than actually proving net8 runtime parity.
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '10.0.x'
+          dotnet-version: |
+            10.0.x
+            8.0.x
 
       - name: Restore
         run: dotnet restore Lumeo.slnx
 
       - name: Build
+        # Builds BOTH TFMs of every multi-targeted project (net8.0;net10.0) in one
+        # invocation — MSBuild dispatches an inner build per TargetFrameworks entry
+        # automatically, no matrix/flag needed.
         run: dotnet build Lumeo.slnx -c Release --no-restore -warnaserror
 
-      - name: Test
+      - name: Test (net10.0 lane)
         # Exclude Lumeo.Tests.E2E — those are Playwright tests that need browser
         # binaries + a running dev server (see tests/Lumeo.Tests.E2E/README.md).
         # The project still builds in the previous step, so compile breakage is
         # caught; only execution is skipped. Wire to a separate workflow when
         # ready to run them headless against a deployed preview.
-        run: dotnet test Lumeo.slnx -c Release --no-build --verbosity normal --filter "FullyQualifiedName!~Lumeo.Tests.E2E"
+        # -f net10.0 pins this lane explicitly now that Lumeo.Tests multi-targets
+        # (net8.0;net10.0) — without it `dotnet test` on the solution would run
+        # BOTH TFMs here, duplicating the net8.0 lane added below and making the
+        # two lanes' results harder to tell apart in the Actions log.
+        # Also exclude Category=EjectGateFull — CliStandaloneE2ETests vendors ALL
+        # ~164 registry components into one project and does a real `dotnet build`
+        # to prove the NuGet-free "standalone eject" guarantee; too slow for every
+        # PR. It runs on its own weekly/dispatch/release cadence in
+        # .github/workflows/eject-gate.yml instead. The paired Category=
+        # EjectGateSmoke test (5 representative components) carries no exclusion
+        # and still runs here as a cheap early warning between full-gate runs.
+        run: dotnet test Lumeo.slnx -c Release --no-build --verbosity normal -f net10.0 --filter "FullyQualifiedName!~Lumeo.Tests.E2E&Category!=EjectGateFull"
+
+      - name: Test (net8.0 lane)
+        # The actual net8-vs-net10 runtime-parity gate the multi-target rollout
+        # needs: the net8.0 build of Lumeo.Tests already compiled successfully in
+        # the Build step above (proving API-surface parity); this proves the SAME
+        # 4,800+ tests also PASS when executed against a genuine net8.0 shared
+        # runtime (not net10 with roll-forward standing in for it), catching any
+        # subtle net8-vs-net10 BCL/serialization/culture/timer divergence the
+        # static scan + compile-only check can't see.
+        # DOTNET_ROLL_FORWARD=Disable overrides the csproj's <RollForward>LatestMajor</RollForward>
+        # (set there purely for local dev, where only a net10 SDK may be installed — see
+        # tests/Lumeo.Tests/Lumeo.Tests.csproj). LatestMajor rolls forward even when the exact
+        # requested major IS installed (per Microsoft's roll-forward docs), so on this runner —
+        # which has both 8.0.x and 10.0.x installed — it would silently launch the net8.0 test
+        # binary against the net10.0 runtime, defeating the lane's entire purpose. Disable forces
+        # an exact net8.0 runtime match, failing fast with "framework not found" instead of
+        # passing on the wrong runtime if the net8.0 shared runtime is ever missing.
+        env:
+          DOTNET_ROLL_FORWARD: Disable
+        run: dotnet test tests/Lumeo.Tests/Lumeo.Tests.csproj -c Release --no-build --verbosity normal -f net8.0 --filter "FullyQualifiedName!~Lumeo.Tests.E2E"
 
       - name: Registry is up to date
         # The MCP/docs registry (registry.json, components-api.json and the
@@ -86,9 +130,12 @@ jobs:
         # floor. The floor sits well under the current ~80% (Release) so it catches a
         # real regression without being brittle to small platform differences. The
         # uninstrumented Test step above stays the primary correctness gate.
+        # -f net10.0: pinned now that Lumeo.Tests multi-targets (net8.0;net10.0) —
+        # coverage is a source-level metric (same code under test either TFM), so
+        # instrumenting/running it twice would be pure duplicate cost, not signal.
         run: |
           set -o pipefail
-          dotnet test tests/Lumeo.Tests/Lumeo.Tests.csproj -c Release --no-build \
+          dotnet test tests/Lumeo.Tests/Lumeo.Tests.csproj -c Release --no-build -f net10.0 \
             --collect:"XPlat Code Coverage" --settings coverage.runsettings \
             --results-directory covreport
           COB=$(find covreport -name coverage.cobertura.xml | head -1)
