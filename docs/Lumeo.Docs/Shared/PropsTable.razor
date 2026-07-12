@@ -12,7 +12,19 @@
    Context/Shell, ...) are excluded: they are supplied automatically by an ancestor
    component, not set by the consumer, so listing them as a settable prop would
    advertise internal/invalid markup (Codex P2). *@
-@if (_parameters is { } parameters && ConsumerParameters(parameters).Any())
+@{
+    // Own local so the "no public parameters" fallback message below can tell a component
+    // with ZERO consumer parameters but at least one event (e.g. a trigger whose only public
+    // surface is an EventCallback, now excluded from this list — see ConsumerParameters) apart
+    // from one with genuinely nothing public at all. Splitting this out from the render
+    // condition below fixes a latent bug the EventCallback exclusion would otherwise introduce:
+    // the props table and the events section used to share one "any consumer parameters?" gate,
+    // so a component with only callback parameters would render NEITHER — showing the wrong
+    // "takes no public parameters" message right above its very real Events section.
+    var consumerParams = _parameters is { } parameters ? ConsumerParameters(parameters).ToList() : null;
+    var hasEvents = _events is { Count: > 0 };
+}
+@if (consumerParams is { Count: > 0 })
 {
     <div class="overflow-x-auto rounded-lg border border-border/60">
         <table class="w-full text-sm">
@@ -25,7 +37,7 @@
                 </tr>
             </thead>
             <tbody>
-                @foreach (var p in ConsumerParameters(parameters))
+                @foreach (var p in consumerParams)
                 {
                     <tr class="border-t border-border/40 align-top hover:bg-muted/20">
                         <td class="px-3 py-2 font-mono text-xs font-medium text-foreground whitespace-nowrap">
@@ -39,29 +51,29 @@
             </tbody>
         </table>
     </div>
-
-    @if (_events is { Count: > 0 } events)
-    {
-        <p class="mt-5 mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Events</p>
-        <div class="overflow-x-auto rounded-lg border border-border/60">
-            <table class="w-full text-sm">
-                <tbody>
-                    @foreach (var e in events)
-                    {
-                        <tr class="border-t border-border/40 first:border-t-0 align-top hover:bg-muted/20">
-                            <td class="px-3 py-2 font-mono text-xs font-medium text-foreground whitespace-nowrap">@e.Name</td>
-                            <td class="px-3 py-2 font-mono text-xs text-primary/90">@e.Type</td>
-                            <td class="px-3 py-2 text-muted-foreground leading-snug">@e.Description</td>
-                        </tr>
-                    }
-                </tbody>
-            </table>
-        </div>
-    }
 }
-else if (_loaded)
+else if (_loaded && !hasEvents)
 {
     <p class="text-sm text-muted-foreground">This component takes no public parameters.</p>
+}
+
+@if (_events is { Count: > 0 } events)
+{
+    <p class="mt-5 mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Events</p>
+    <div class="overflow-x-auto rounded-lg border border-border/60">
+        <table class="w-full text-sm">
+            <tbody>
+                @foreach (var e in events)
+                {
+                    <tr class="border-t border-border/40 first:border-t-0 align-top hover:bg-muted/20">
+                        <td class="px-3 py-2 font-mono text-xs font-medium text-foreground whitespace-nowrap">@e.Name</td>
+                        <td class="px-3 py-2 font-mono text-xs text-primary/90">@e.Type</td>
+                        <td class="px-3 py-2 text-muted-foreground leading-snug">@e.Description</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
 }
 
 @code {
@@ -105,7 +117,12 @@ else if (_loaded)
 
     // [CascadingParameter]s are supplied by an ancestor (FormField, a parent Context/Shell,
     // InheritedDensity, ScopedDirection, ...), not set by the consumer — exclude them from the
-    // consumer-facing props table (Codex P2).
+    // consumer-facing props table (Codex P2). EventCallback-typed parameters are ALSO excluded
+    // here: the emitter (ComponentsApiEmitter) already promotes every EventCallback parameter
+    // into api.events for convenience, so rendering both the parameters table AND the Events
+    // section listed callbacks like OpenChanged/OnBeforeClose twice. The removed hand-written
+    // tables listed them once, in an Events section — match that convention (Codex P3, PR #358
+    // round 2).
     private static IEnumerable<ApiParameter> ConsumerParameters(List<ApiParameter> parameters) =>
-        parameters.Where(p => !p.IsCascading);
+        parameters.Where(p => !p.IsCascading && !p.Type.StartsWith("EventCallback", StringComparison.Ordinal));
 }

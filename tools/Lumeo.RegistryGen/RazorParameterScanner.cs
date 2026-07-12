@@ -1,3 +1,4 @@
+using System.Net;
 using System.Text;
 using System.Text.RegularExpressions;
 using Microsoft.CodeAnalysis;
@@ -143,6 +144,13 @@ public static class RazorParameterScanner
         var seenRecords = new HashSet<string>(StringComparer.Ordinal);
         var anyClassRecovered = false;
 
+        // Pre-pass: every PUBLIC enum declared anywhere in this file's @code blocks, keyed by
+        // name, so a [Parameter] of that enum type with NO initializer (default(EnumType) is
+        // its zero-valued member) can get a sensible implicit default below — the same gap that
+        // hid bool defaults (see ImplicitDefaultFor). Must run before the main pass because a
+        // parameter can reference an enum declared later in the same file/later code block.
+        var localEnumMembers = CollectLocalPublicEnums(codeBlocks);
+
         // Parse each @code block on its own. A component may split members
         // across blocks (FileManager keeps [Parameter]s in the first block,
         // helper types in the last), and a block holding a markup-bearing
@@ -182,7 +190,11 @@ public static class RazorParameterScanner
                 var name = prop.Identifier.Text;
                 if (!seenParams.Add(name)) continue;
                 var type = prop.Type.ToString();
-                var defaultValue = prop.Initializer?.Value.ToString();
+                // The removed hand-written API tables showed the CLR's IMPLICIT default (e.g.
+                // "false" for a bool [Parameter] with no initializer) even though the source
+                // never writes "= false". Fall back to it only when there is no explicit
+                // initializer to report (Codex P2, PR #358 round 2).
+                var defaultValue = prop.Initializer?.Value.ToString() ?? ImplicitDefaultFor(type, localEnumMembers);
                 var description = ExtractXmlSummary(prop.GetLeadingTrivia());
 
                 // Detect [Parameter(CaptureUnmatchedValues = true)]
@@ -277,6 +289,68 @@ public static class RazorParameterScanner
             ParseFailed: true,
             ParseError: error);
 
+    // Built-in C# numeric primitive keywords whose default(T) is a plain "0" — used by
+    // ImplicitDefaultFor. Deliberately NOT including bool/char (handled separately, distinct
+    // literal shapes) or any reference type (default is null, already rendered correctly).
+    private static readonly HashSet<string> NumericPrimitiveTypes = new(StringComparer.Ordinal)
+    {
+        "int", "uint", "long", "ulong", "short", "ushort", "byte", "sbyte",
+        "float", "double", "decimal", "nint", "nuint",
+    };
+
+    /// <summary>
+    /// Derives the CLR's IMPLICIT default for a parameter that has no explicit initializer —
+    /// the gap that made migrated PropsTable rows show "—" for e.g. Dialog.Open even though
+    /// the removed hand-written table correctly showed "false" (Codex P2, PR #358 round 2).
+    /// Only well-defined value-type cases are guessed: bool, the built-in numeric primitives,
+    /// char, and an enum declared in THIS SAME FILE (default(EnumType) is its zero-valued
+    /// member, which for every Lumeo enum today is the first declared member — we have no
+    /// symbol-level way to confirm the explicit numeric value here, so this is a heuristic,
+    /// not a guarantee). A nullable value type ("bool?", "int?", "MyEnum?", ...) legitimately
+    /// defaults to null, so it is deliberately left alone (returns null, same as before — no
+    /// guess is better than a wrong one). Reference types (string, RenderFragment, an
+    /// externally-declared enum this scanner can't see, ...) are likewise left alone.
+    /// </summary>
+    private static string? ImplicitDefaultFor(string type, IReadOnlyDictionary<string, string[]> localEnumMembers)
+    {
+        var t = type.Trim();
+        if (t.EndsWith("?", StringComparison.Ordinal)) return null;
+        if (t == "bool") return "false";
+        if (t == "char") return "'\\0'";
+        if (NumericPrimitiveTypes.Contains(t)) return "0";
+        if (localEnumMembers.TryGetValue(t, out var members) && members.Length > 0) return members[0];
+        return null;
+    }
+
+    /// <summary>
+    /// Every PUBLIC enum declared anywhere across this file's <c>@code</c> blocks, keyed by
+    /// simple name to its declared member names in source order. Feeds
+    /// <see cref="ImplicitDefaultFor"/>. A cheap, isolated re-parse of each block (the main
+    /// scan loop below parses the same blocks again for the full member walk) — simplicity
+    /// over micro-optimizing a build-time-only tool.
+    /// </summary>
+    private static Dictionary<string, string[]> CollectLocalPublicEnums(List<string> codeBlocks)
+    {
+        var result = new Dictionary<string, string[]>(StringComparer.Ordinal);
+        foreach (var codeBlock in codeBlocks)
+        {
+            var wrapped = $"using System; using System.Collections.Generic; using System.Threading.Tasks; using Microsoft.AspNetCore.Components; using Microsoft.AspNetCore.Components.Web;\npublic partial class _DocWrapper {{\n{codeBlock}\n}}";
+            SyntaxTree tree;
+            try { tree = CSharpSyntaxTree.ParseText(wrapped); }
+            catch { continue; }
+
+            var classDecl = tree.GetRoot().DescendantNodes().OfType<ClassDeclarationSyntax>().FirstOrDefault();
+            if (classDecl is null) continue;
+
+            foreach (var en in classDecl.DescendantNodes().OfType<EnumDeclarationSyntax>())
+            {
+                if (!IsPublicType(en.Modifiers)) continue;
+                result.TryAdd(en.Identifier.Text, en.Members.Select(m => m.Identifier.Text).ToArray());
+            }
+        }
+        return result;
+    }
+
     // A nested type belongs to the public component API only when explicitly declared public.
     // C# defaults a modifier-less nested type to PRIVATE, so anything without the public keyword
     // (private / internal / protected / default) is an implementation detail we must not emit.
@@ -325,6 +399,16 @@ public static class RazorParameterScanner
         inner = Regex.Replace(inner, @"<paramref\s+name=""([^""]*)""\s*/>", "$1");
         // Strip any remaining tags
         inner = Regex.Replace(inner, @"<[^>]+>", "");
+        // Decode XML entities (&lt;Button&gt; -> <Button>, &amp; -> &, ...) AFTER tag-stripping,
+        // never before: an XML doc comment escapes a literal "<Button>" mention as "&lt;Button&gt;"
+        // precisely so it ISN'T mistaken for a real tag; decoding first would turn it back into
+        // "<Button>" and the tag-strip above would then eat it. Decoding here — once, at the
+        // registry source of truth — also means the emitted JSON already holds the real "<"/">"
+        // characters, so Blazor's plain `@p.Description` text interpolation (which creates a DOM
+        // text node, never re-parses/decodes it) renders the readable text directly and safely,
+        // with no second decode anywhere downstream (PropsTable, mdSummary, the MCP, ...) that
+        // could double-decode an already-plain string (Codex P3, PR #358 round 2).
+        inner = WebUtility.HtmlDecode(inner);
         inner = Regex.Replace(inner, @"\s+", " ").Trim();
         return string.IsNullOrWhiteSpace(inner) ? null : inner;
     }
