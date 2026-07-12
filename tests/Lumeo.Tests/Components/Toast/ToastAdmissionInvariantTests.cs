@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 using Bunit;
 using Microsoft.Extensions.DependencyInjection;
@@ -28,12 +29,29 @@ namespace Lumeo.Tests.Components.Toast;
 /// and — critically for round-6 finding 1 — this technique is what actually races
 /// TryAdmit/ReconcileGroup against themselves (fire-and-forget calls with no awaits in between),
 /// instead of merely asserting a single request/response pair in isolation.
+///
+/// PR #357 round-7 extends the same burst with a THIRD/FOURTH position pair
+/// (TopRight/BottomLeft) exercising two more interaction edges of the admission model: a
+/// position-change of a MOUNTED toast into an already-full destination while its source group
+/// ALSO carries queued demand (finding 1), and a swipe-dismiss of a live toast interleaved with
+/// the rest of the burst (finding 3) — via <see cref="TrackingInteropService"/> so the captured
+/// <c>OnToastSwiped</c> delegate can be invoked exactly like the JS layer reporting a completed
+/// gesture, racing the same fire-and-forget admission passes as every other step here.
 /// </summary>
 public class ToastAdmissionInvariantTests : IAsyncLifetime
 {
     private readonly BunitContext _ctx = new();
+    private readonly TrackingInteropService _interop = new();
 
-    public ToastAdmissionInvariantTests() => _ctx.AddLumeoServices();
+    public ToastAdmissionInvariantTests()
+    {
+        _ctx.AddLumeoServices();
+        // Last registration wins: route component interop (incl. toast swipe) through the
+        // tracker so round-7's swipe step can capture and invoke the registered handler — same
+        // idiom as ToastSwipeTests.
+        _ctx.Services.AddSingleton<IComponentInteropService>(_interop);
+    }
+
     public Task InitializeAsync() => Task.CompletedTask;
     public async Task DisposeAsync() => await _ctx.DisposeAsync();
 
@@ -61,8 +79,12 @@ public class ToastAdmissionInvariantTests : IAsyncLifetime
         {
             var br = cut.Instance.LiveNonPersistentMountedCount(L.ToastViewport.ToastPosition.BottomRight);
             var tl = cut.Instance.LiveNonPersistentMountedCount(L.ToastViewport.ToastPosition.TopLeft);
+            var tr = cut.Instance.LiveNonPersistentMountedCount(L.ToastViewport.ToastPosition.TopRight);
+            var bl = cut.Instance.LiveNonPersistentMountedCount(L.ToastViewport.ToastPosition.BottomLeft);
             if (br > maxToasts) violations.Add($"BottomRight live-mounted={br} > cap={maxToasts}");
             if (tl > maxToasts) violations.Add($"TopLeft live-mounted={tl} > cap={maxToasts}");
+            if (tr > maxToasts) violations.Add($"TopRight live-mounted={tr} > cap={maxToasts}");
+            if (bl > maxToasts) violations.Add($"BottomLeft live-mounted={bl} > cap={maxToasts}");
         };
 
         var ids = new Dictionary<string, string>();
@@ -126,7 +148,41 @@ public class ToastAdmissionInvariantTests : IAsyncLifetime
         toastService.Update(ids["tl-loading"], new ToastOptions
         { Title = "TL-loading-resolved", Duration = 3000, Position = ToastPosition.TopLeft });
 
-        // 10) Dismiss everything — must not throw, and the invariant (checked on every render
+        // 10) PR #357 round-7 (finding 1): a dedicated mini-burst on a FRESH position pair
+        // (TopRight/BottomLeft) so this scenario's admission state is fully known, independent of
+        // whatever BR/TL happened to settle into above. Fill BottomLeft (destination) exactly to
+        // the cap, then flood TopRight (source) past the cap so it carries queued demand of its
+        // own — the first `maxToasts` TopRight Show()s land mounted (no eviction needed yet), so
+        // "tr0" is a known-MOUNTED toast at this point. Retargeting it into the already-full
+        // BottomLeft group is exactly the precondition ReconcileGroup(wasPos) used to await ahead
+        // of the destination reconcile: a MOUNTED toast, moving into a group already at
+        // EffectiveMaxToasts, while the source group also has PendingCount > 0.
+        for (var i = 0; i < maxToasts; i++)
+        {
+            ids[$"bl{i}"] = toastService.Show(new ToastOptions
+            { Title = $"BL-{i}", Duration = 60000, Position = ToastPosition.BottomLeft });
+        }
+        for (var i = 0; i < maxToasts + 2; i++)
+        {
+            ids[$"tr{i}"] = toastService.Show(new ToastOptions
+            { Title = $"TR-{i}", Duration = 60000, Position = ToastPosition.TopRight });
+        }
+        toastService.Update(ids["tr0"], new ToastOptions
+        { Title = "TR-0-moved-to-BL", Duration = 60000, Position = ToastPosition.BottomLeft });
+
+        // 11) PR #357 round-7 (finding 3): swipe-dismiss a live TopRight toast ("tr1" — still
+        // mounted; step 10 only moved "tr0" out) while the rest of this burst is still resolving.
+        // The provider registers the SAME `OnToastSwiped` delegate for every toast it wires up, so
+        // any already-captured registration's Handler can drive the dismissal for a SPECIFIC toast
+        // id — exactly like the JS layer reporting a completed swipe gesture for that element. No
+        // await here either, matching every other step's fire-and-forget racing style.
+        var swipeReg = _interop.ToastSwipeRegistrations.LastOrDefault();
+        if (swipeReg.Handler is not null)
+        {
+            cut.InvokeAsync(() => swipeReg.Handler(ids["tr1"]));
+        }
+
+        // 12) Dismiss everything — must not throw, and the invariant (checked on every render
         // above) must keep holding while the whole set unwinds down to empty.
         toastService.DismissAll();
 

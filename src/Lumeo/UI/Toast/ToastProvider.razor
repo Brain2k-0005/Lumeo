@@ -451,23 +451,21 @@
         // historical spam-hang note below for why the `!t.Leaving` filter is load-bearing, not
         // cosmetic.
         //
-        // Spamming Show() used to race many concurrent HandleShowAsync calls against the SAME
-        // "oldest" toast; RemoveWithExitAsync's idempotency guard (`if (toast.Leaving) return;`)
-        // completes synchronously — no `await` is ever reached — so awaiting it on an already-
-        // Leaving toast does not yield back to the renderer's synchronization context (a completed
-        // Task's continuation runs inline). Without excluding Leaving toasts, a losing pass could
-        // keep re-selecting that same still-present (merely flagged) toast forever — a synchronous
-        // busy loop that also starves the winning pass's own Task.Delay(ExitAnimationMs) callback
-        // (needs the same single thread to fire), hanging the tab permanently. Skipping already-
-        // Leaving toasts means every iteration either evicts a fresh toast (real progress) or finds
-        // none and breaks (bounded).
-        //
-        // Calls the RAW RemoveWithExitAsync primitive directly — NOT RemoveItemAsync (which would
-        // also call back into ReconcileGroup for this SAME position once the removal completes).
-        // This loop's own `while` already re-checks after every eviction, so a nested reconcile
-        // call here would just be redundant work re-deriving the same state this loop already has.
-        while (NonPersistentMountedCount(pos) > EffectiveMaxToasts ||
-               (PendingCount(pos) > 0 && NonPersistentMountedCount(pos) >= EffectiveMaxToasts))
+        // PR #357 round-7 (finding 2): the condition itself is measured against
+        // LiveNonPersistentMountedCount, NOT the raw (Leaving-inclusive) NonPersistentMountedCount.
+        // A toast already mid-exit has already relinquished its claim on the cap the instant some
+        // EARLIER reconciliation marked it Leaving (see LiveNonPersistentMountedCount's doc comment)
+        // — it is going to vanish on its own without this loop's help. Measuring the raw count here
+        // let a group that merely HAS a Leaving toast sitting in it look over-cap on paper even
+        // though the LIVE count is within bounds: a persistent/loading toast resolving to finite
+        // while an unrelated sibling in the same group is already leaving (e.g. MaxToasts=1, A
+        // leaving, loading P resolves) made the raw count 2 > 1, and since the candidate query below
+        // already excludes Leaving toasts (A), it evicted the live, just-resolved P instead —
+        // promise/loading toasts vanishing during perfectly ordinary exit overlap. Live count keeps
+        // this loop from ever treating "some toast is already on its way out" as "we're over cap and
+        // must evict something else".
+        while (LiveNonPersistentMountedCount(pos) > EffectiveMaxToasts ||
+               (PendingCount(pos) > 0 && LiveNonPersistentMountedCount(pos) >= EffectiveMaxToasts))
         {
             var oldest = _toasts.FirstOrDefault(t =>
                 !IsPersistent(t.Options) && !t.Leaving && ResolvePosition(t.Options.Position) == pos);
@@ -611,12 +609,25 @@
         // reflects the fully-corrected state.
         if (wasPos != isPos || wasPersistent != isPersistent)
         {
-            // Both groups' accounting may have shifted: the OLD group may have just lost a
-            // non-persistent occupant (room to admit a queued toast, or nothing to do), and the NEW
-            // group may now be OVER cap (a persistent-turned-finite toast landing on an already-full
-            // group — finding 4's exact scenario) and need to shed back down to EffectiveMaxToasts.
-            await ReconcileGroup(wasPos);
+            // Both groups' accounting may have shifted: the NEW group may now be OVER cap (a
+            // persistent-turned-finite toast landing on an already-full group — finding 4's exact
+            // scenario, or a MOUNTED toast retargeted into an already-full group — round-7 finding
+            // 1) and need to shed back down to EffectiveMaxToasts; the OLD group may have just lost
+            // a non-persistent occupant (room to admit a queued toast, or nothing to do).
+            //
+            // PR #357 round-7 (finding 1): the DESTINATION is reconciled FIRST, before the source.
+            // `ApplyToastMutation` above already moved this toast's Options — by this point it
+            // counts against `isPos`, not `wasPos` — so if `isPos` is already at cap, it is
+            // OVER-cap right now and must start shedding immediately. Reconciling `wasPos` first
+            // used to risk starting an UNRELATED eviction there (its own await on the ~220ms exit
+            // animation, reached after `wasPos`'s own StateHasChanged), which yields control back to
+            // the renderer before the over-cap destination has had any chance to correct itself —
+            // committing an observable frame where the moved toast already sits in a full `isPos`
+            // group with no eviction yet under way. Reconciling `isPos` first closes that window:
+            // whatever correction the destination needs starts on the very next line, before
+            // anything else gets a chance to yield.
             if (isPos != wasPos) await ReconcileGroup(isPos);
+            await ReconcileGroup(wasPos);
         }
 
         // Unconditional final render: covers the (common) case where nothing needed reconciliation
@@ -745,6 +756,26 @@
         // in-flight exit timer (truncating the animation) and restart it.
         if (toast is null || toast.Leaving) return null;
 
+        // PR #357 round-7 (finding 3): swap in the leaving marker SYNCHRONOUSLY, before any await
+        // — including UnregisterSwipe's JS interop call below. The idempotency guard directly above
+        // only protects THIS call from re-entering on a toast it already marked; it does nothing for
+        // a SECOND, independent RemoveWithExitAsync call (e.g. a concurrent ReconcileGroup eviction
+        // pass, or a swipe callback racing that pass) that reads `toast.Leaving` while this call is
+        // still suspended on an earlier await and hasn't stamped it yet. With a real browser,
+        // UnregisterSwipe awaiting JS was exactly that window: a second pass could select this SAME
+        // "oldest"/candidate toast and enter its own RemoveWithExitAsync before this assignment used
+        // to run, double-counting/double-evicting one toast. Capturing FrozenIndex and stamping
+        // Leaving here — before CancelTimer/UnregisterSwipe/OnDismiss — means every subsequent
+        // await in this method (and every OTHER concurrent caller checking `!t.Leaving`, e.g.
+        // ReconcileGroup's candidate query) observes the toast as already leaving from this point
+        // forward, closing that window.
+        var index = _toasts.IndexOf(toast);
+        if (index >= 0)
+        {
+            _toasts[index] = toast with { Leaving = true, FrozenIndex = ComputeStackIndex(toast) };
+            StateHasChanged();
+        }
+
         CancelTimer(id);
         // Detach the swipe gesture before the element animates out and is
         // removed; once marked Leaving it won't be re-registered.
@@ -753,16 +784,10 @@
         {
             toast.Options.OnDismiss?.Invoke();
         }
-        // Swap in the leaving marker so the render loop adds the exit animation class,
-        // then drop the toast after the animation would have played. Capture its
-        // CURRENT stack index first and freeze it on the item (see the render-loop
-        // comment) so later stack reshuffling — e.g. a newer toast ahead of it also
-        // getting dismissed mid-exit — can't promote/relocate this one while it's leaving.
-        var index = _toasts.IndexOf(toast);
+        // Drop the toast after the animation would have played — the leaving marker/FrozenIndex
+        // were already stamped above, before any await, per finding 3.
         if (index >= 0)
         {
-            _toasts[index] = toast with { Leaving = true, FrozenIndex = ComputeStackIndex(toast) };
-            StateHasChanged();
             var exitCts = new CancellationTokenSource();
             _exitTimers[id] = exitCts;
             try
