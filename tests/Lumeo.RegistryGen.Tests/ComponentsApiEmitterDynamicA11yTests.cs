@@ -122,4 +122,81 @@ public class ComponentsApiEmitterDynamicA11yTests
         var ariaAttrs = Assert.IsType<string[]>(a11y["ariaAttributes"]);
         Assert.Contains("aria-expanded", ariaAttrs);
     }
+
+    [Fact]
+    public void Resolves_A_Role_Chosen_Via_A_Bare_Property_Reference()
+    {
+        // Mirrors Result.razor exactly: `role="@AriaRole"` where AriaRole is an
+        // expression-bodied property elsewhere in the same file's @code block
+        // (PR #356 round-9, CodeRabbit). The literal-markup regex alone never sees
+        // "alert"/"status" because they never appear as `role="..."` anywhere.
+        var source = """
+            <div role="@AriaRole" class="@CssClass"></div>
+
+            @code {
+                private string AriaRole => Status is ResultStatus.Error
+                    ? "alert"
+                    : "status";
+            }
+            """;
+
+        var a11y = ExtractFromSource(source);
+
+        var roles = Assert.IsType<string[]>(a11y["roles"]);
+        Assert.Contains("alert", roles);
+        Assert.Contains("status", roles);
+    }
+
+    [Fact]
+    public void Resolves_A_Property_Reference_Role_Across_Files_In_The_Same_Component_Directory()
+    {
+        // The referenced member need not live in the same file being scanned — it
+        // just needs to live somewhere in the component's razor file set (e.g. a
+        // sibling sub-component file).
+        var dir = Path.Combine(Path.GetTempPath(), $"lumeo-a11y-test-dir-{Path.GetRandomFileName()}");
+        Directory.CreateDirectory(dir);
+        var rootFile = Path.Combine(dir, "Widget.razor");
+        var siblingFile = Path.Combine(dir, "WidgetRoleSource.razor");
+        try
+        {
+            File.WriteAllText(rootFile, "<div role=\"@Role\"></div>");
+            File.WriteAllText(siblingFile, "@code { private string Role => Decorative ? \"none\" : \"separator\"; }");
+
+            var a11y = (Dictionary<string, object?>)ComponentsApiEmitter.ExtractA11y(new[] { rootFile, siblingFile });
+
+            var roles = Assert.IsType<string[]>(a11y["roles"]);
+            Assert.Contains("none", roles);
+            Assert.Contains("separator", roles);
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void Does_Not_Resolve_A_Property_Reference_To_A_Block_Bodied_Getter()
+    {
+        // Documents the heuristic limit: only expression-bodied (`=>`) members are
+        // resolved, not `{ get { ... } }` block bodies — no false negative crash,
+        // but no role signal either.
+        var source = """
+            <div role="@Role"></div>
+
+            @code {
+                private string Role
+                {
+                    get
+                    {
+                        return Decorative ? "none" : "separator";
+                    }
+                }
+            }
+            """;
+
+        var a11y = ExtractFromSource(source);
+
+        var roles = Assert.IsType<string[]>(a11y["roles"]);
+        Assert.Empty(roles);
+    }
 }

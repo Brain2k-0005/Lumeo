@@ -700,6 +700,23 @@ public static class ComponentsApiEmitter
     private static readonly Regex DynamicRoleExprRegex = new(
         "role=\"@\\((?<expr>.*?)\\)\"", RegexOptions.Compiled | RegexOptions.Singleline);
 
+    // A `role="@PropertyName"` Razor binding (e.g. Result.razor's `role="@AriaRole"`,
+    // Toast.razor's `role="@Role"`) — a bare member reference, not the `@(...)` expression
+    // form above. The member itself lives somewhere in the component's file set and is
+    // resolved via ExpressionBodiedMemberRegex below (PR #356 round-9, CodeRabbit).
+    private static readonly Regex PropertyRoleRefRegex = new(
+        "role=\"@(?<prop>[A-Za-z_][A-Za-z0-9_]*)\"", RegexOptions.Compiled);
+
+    // Expression-bodied member declarations (`<modifiers> <type> Name => <body>;`), e.g.
+    // `private string AriaRole => Status is ... ? "alert" : "status";`. Used to resolve a
+    // `role="@PropertyName"` reference: the referenced member's body is re-scanned for bare
+    // string literals, same one-hop, no-full-evaluation heuristic as DynamicRoleExprRegex —
+    // block-bodied getters (`{ get { ... } }`) and further indirection (the property calling
+    // another property) are NOT chased.
+    private static readonly Regex ExpressionBodiedMemberRegex = new(
+        @"(?:private|protected|internal|public)?\s*(?:static\s+)?[\w<>\[\],\.\?]+\s+(?<name>[A-Za-z_][A-Za-z0-9_]*)\s*=>\s*(?<body>[^;]*);",
+        RegexOptions.Compiled);
+
     /// <summary>
     /// Static a11y signal extraction from a component's .razor source: the ARIA roles and
     /// aria-* attributes it renders, the keyboard keys it handles, and whether it manages
@@ -714,12 +731,30 @@ public static class ComponentsApiEmitter
         var keyboardInteractive = false;
         var focusManaged = false;
 
+        // Pre-read + comment-strip every file once, and index expression-bodied member
+        // bodies (name -> bodies) across the WHOLE component's file set up front, so a
+        // `role="@PropertyName"` reference in one file (e.g. the root .razor) can resolve
+        // to a property declared in a sibling file too, not just the same one.
+        var texts = new List<(string File, string Text)>();
+        var memberBodies = new Dictionary<string, List<string>>(StringComparer.Ordinal);
         foreach (var file in razorFiles)
         {
             string text;
             try { text = File.ReadAllText(file); } catch { continue; }
             text = StripCommentsForA11yScan(text);
+            texts.Add((file, text));
 
+            foreach (Match m in ExpressionBodiedMemberRegex.Matches(text))
+            {
+                var name = m.Groups["name"].Value;
+                if (!memberBodies.TryGetValue(name, out var bodies))
+                    memberBodies[name] = bodies = new List<string>();
+                bodies.Add(m.Groups["body"].Value);
+            }
+        }
+
+        foreach (var (_, text) in texts)
+        {
             // Literal role="..." values.
             foreach (Match m in Regex.Matches(text, "role=\"([a-zA-Z]+)\"")) roles.Add(m.Groups[1].Value);
             // role assigned through a Dictionary<string, object> splat attribute (e.g.
@@ -731,6 +766,16 @@ public static class ComponentsApiEmitter
             foreach (Match outer in DynamicRoleExprRegex.Matches(text))
                 foreach (Match inner in Regex.Matches(outer.Groups["expr"].Value, "\"([a-zA-Z]+)\""))
                     roles.Add(inner.Groups[1].Value);
+            // role picked via a bare property/field reference (`role="@PropertyName"`) —
+            // resolve the member in the component's file set and harvest bare string
+            // literals from its body.
+            foreach (Match m in PropertyRoleRefRegex.Matches(text))
+            {
+                if (!memberBodies.TryGetValue(m.Groups["prop"].Value, out var bodies)) continue;
+                foreach (var body in bodies)
+                    foreach (Match inner in Regex.Matches(body, "\"([a-zA-Z]+)\""))
+                        roles.Add(inner.Groups[1].Value);
+            }
             // aria-* attribute NAMES (e.g. aria-expanded, aria-label), whether rendered
             // as a literal HTML attribute (aria-label="...") or as a Dictionary<string,
             // object> splat attribute key (Icon's `merged["aria-hidden"] = "true";`) —
