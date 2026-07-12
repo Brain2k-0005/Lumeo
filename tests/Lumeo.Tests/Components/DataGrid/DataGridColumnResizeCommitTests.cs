@@ -133,6 +133,40 @@ public class DataGridColumnResizeCommitTests : IAsyncLifetime
         Assert.Equal("150", handle.GetAttribute("aria-valuenow"));
     }
 
+    [Fact]
+    public void ResizeHandle_Emits_AriaValueNow_Even_Before_Any_Resize()
+    {
+        // aria-required-attr (axe) regression: a focusable role="separator" (this
+        // handle carries tabindex + aria-valuemin, making it a range widget per
+        // ARIA 1.2) must always report aria-valuenow. Column.Width starts null
+        // (auto-sized by the browser until the user actually resizes), which
+        // previously omitted the attribute entirely — 124 nodes across the docs
+        // sweep. It must fall back to a real number, not disappear.
+        var col = new DataGridColumn<Row> { Field = "Id", Title = "ID", Resizable = true };
+
+        var cut = _ctx.Render<Lumeo.DataGrid<Row>>(p => p
+            .Add(g => g.Items, Data())
+            .Add(g => g.Columns, new List<DataGridColumn<Row>> { col }));
+
+        var handle = cut.Find("[data-slot='datagrid-resize-handle']");
+        Assert.True(handle.HasAttribute("aria-valuenow"));
+        // Falls back to the same MinWidth-or-50 floor the commit path clamps to.
+        Assert.Equal("50", handle.GetAttribute("aria-valuenow"));
+    }
+
+    [Fact]
+    public void ResizeHandle_AriaValueNow_Falls_Back_To_MinWidth_When_Unresized()
+    {
+        var col = new DataGridColumn<Row> { Field = "Id", Title = "ID", Resizable = true, MinWidth = 90 };
+
+        var cut = _ctx.Render<Lumeo.DataGrid<Row>>(p => p
+            .Add(g => g.Items, Data())
+            .Add(g => g.Columns, new List<DataGridColumn<Row>> { col }));
+
+        var handle = cut.Find("[data-slot='datagrid-resize-handle']");
+        Assert.Equal("90", handle.GetAttribute("aria-valuenow"));
+    }
+
     [Theory]
     [InlineData("ArrowRight", false, 10)]
     [InlineData("ArrowLeft", false, -10)]

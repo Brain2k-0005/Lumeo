@@ -1,0 +1,30 @@
+{
+  "$schema": "./exclusions.schema.json",
+  "description": "Findings excluded from the baseline gate as confirmed false positives — caused by shared docs-app chrome (rendered identically by ComponentDocPage.razor/FactsRail/MainLayout.razor on every one of the 164 component pages) or by generic docs-prose link styling, not by the audited component itself. Matched per NODE (rule + a regex against the node's target selector AND its outerHTML, space-joined — see check-baseline.mjs for why both are checked), not per whole rule/component pair, so a component that ALSO happens to fail the same axe rule on its own markup (e.g. Badge's destructive-variant contrast, Alert's destructive-variant contrast) still surfaces as a real, per-component finding. Generated from the 2026-07-12 full 164-route triage, re-tightened same-day after discovering axe's target selector unpredictably omits classes depending on page context — re-verify selectors/outerHTML after any FactsRail/ComponentDocPage/MainLayout redesign.",
+  "exclusions": [
+    {
+      "rule": "color-contrast",
+      "component": null,
+      "targetPattern": "class=\"text-\\[11px\\] uppercase tracking-wide text-muted-foreground/60\"",
+      "reason": "FactsRail/ComponentFactsBar sidebar row labels (Package/A11y/Depends on/Tested — docs/Lumeo.Docs/Shared/FactsRail.razor + ComponentFactsBar.razor: `<span class=\"text-[11px] uppercase tracking-wide text-muted-foreground/60\">`), rendered identically on EVERY component page — confirmed via node-target diffing across accordion/alert/badge/button/affix (2026-07-12). Matched against the node's outerHTML (not its `target` selector): axe's target is the SHORTEST selector unique enough for that page, so which classes it includes is unpredictable and varies page-to-page — e.g. it drops `tracking-wide` on some pages and `uppercase` on others, so an earlier version of this exclusion matching against `target` with a partial class combo missed those variants and leaked 2-3 FactsRail-chrome nodes per page as false NEW findings (2026-07-12: 25 components affected). outerHTML always has the complete, stable, template-rendered class string, so an exact literal match against it is reliable. Real WCAG 1.4.3 docs-app-shell bug, tracked separately; NOT counted against any individual component's a11y score."
+    },
+    {
+      "rule": "color-contrast",
+      "component": null,
+      "targetPattern": "bg-muted text-muted-foreground/50\"",
+      "reason": "FactsRail's per-component TestCoverage \"off\" badge (docs/Lumeo.Docs/Shared/TestCoverage.razor: `class=\"... bg-muted text-muted-foreground/50\"`), rendered identically on EVERY component page. Matched against the node's outerHTML (see the /60 exclusion above for why target-selector matching is unreliable here — confirmed the same instability applies: some pages' target selector for this badge omits `bg-muted` entirely, e.g. `.text-muted-foreground\\/50.gap-1.py-1:nth-child(2)`). The literal `bg-muted text-muted-foreground/50` tail (exact order, from the shared Razor template) doesn't swallow real component markup that independently uses text-muted-foreground/50 without bg-muted, e.g. Calendar's disabled/outside-month day cells (`text-muted-foreground/50 hover:bg-accent ...`). Real WCAG 1.4.3 docs-app-shell bug, tracked separately; NOT counted against any individual component's a11y score."
+    },
+    {
+      "rule": "color-contrast",
+      "component": null,
+      "targetPattern": "text-muted-foreground\\\\/70\\s*>",
+      "reason": "The breadcrumb nav (Components / <Category>, docs/Lumeo.Docs/Shared/ComponentDocPage.razor: `<nav class=\"text-xs text-muted-foreground/70\">` wrapping the crumb links/separators), rendered identically on EVERY component page. Requires the muted/70 class to be an ANCESTOR of a child selector (trailing ` > `, matching axe's `<nav> > <link-or-span>` target shape for this node) so it does NOT match a component's own text-muted-foreground/70 LEAF node — confirmed this distinction matters: Timeline's own per-item timestamps (TimelineItem.razor: `<p class=\"text-xs text-muted-foreground/70\">@Time</p>`) previously matched the old unanchored pattern and were silently dropped even though they are a genuine, component-owned WCAG 1.4.3 finding (verified 2026-07-12: ~20 surviving nodes in reports/timeline.json once this exclusion is scoped correctly). Real docs-app-shell bug, tracked separately; NOT counted against any individual component's a11y score."
+    },
+    {
+      "rule": "link-in-text-block",
+      "component": null,
+      "targetPattern": "(?=.*\\[href\\$=)(?=.*(text-primary|underline-offset-4))",
+      "reason": "Inline prose links inside ComponentDocPage's Installation paragraph (\"Ships in the Lumeo package... already referenced? Just use it\") and per-page \"see also\" prose (e.g. links to /introduction, /density) rely on Tailwind's default hover-only underline (WCAG 1.4.1, distinguishable only by color at rest). Confirmed shared prose-link styling, not component markup, across accordion/alert/badge (2026-07-12) — every occurrence targets an <a href=\"...\"> inside a <p> or sibling prose link using the shared .text-primary/.hover:underline utility combo, never a demo's own interactive element. Real, low-effort sitewide docs-app fix (always-on underline for prose links); not counted against any individual component."
+    }
+  ]
+}

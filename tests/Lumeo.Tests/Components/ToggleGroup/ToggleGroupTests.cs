@@ -257,6 +257,31 @@ public class ToggleGroupTests : IAsyncLifetime
         Assert.Contains("flex", cls);
     }
 
+    // --- AriaLabel (axe button-name) ---
+
+    [Fact]
+    public void Item_AriaLabel_Renders_As_Aria_Label_Attribute()
+    {
+        // button-name (axe) component-level fix: an icon-only item has no
+        // discernible text, so it needs an explicit accessible name — mirrors
+        // Toggle.AriaLabel's contract.
+        var cut = _ctx.Render(builder =>
+        {
+            builder.OpenComponent<L.ToggleGroup>(0);
+            builder.AddAttribute(1, "Type", L.ToggleGroup.ToggleGroupType.Single);
+            builder.AddAttribute(2, "ChildContent", (RenderFragment)(b =>
+            {
+                b.OpenComponent<L.ToggleGroupItem>(0);
+                b.AddAttribute(1, "Value", "bold");
+                b.AddAttribute(2, "AriaLabel", "Bold");
+                b.CloseComponent();
+            }));
+            builder.CloseComponent();
+        });
+
+        Assert.Equal("Bold", cut.Find("button").GetAttribute("aria-label"));
+    }
+
     [Fact]
     public void Item_Custom_Class_Is_Applied()
     {

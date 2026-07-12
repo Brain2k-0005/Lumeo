@@ -91,9 +91,14 @@
         }
         @if (Column.Filterable)
         {
+            @* button-name (axe): icon-only — no visible text, so it needs an
+               explicit name. Column-context label (matches the pin/resize/
+               reorder controls above) rather than a bare "Filter" so a screen
+               reader announces WHICH column's filter this opens. *@
             <button type="button"
                     id="@_filterTriggerId"
                     class="inline-flex items-center justify-center h-5 w-5 rounded hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-1 @(HasActiveFilter ? "text-primary" : "text-muted-foreground opacity-0 group-hover/th:opacity-100")"
+                    aria-label="@L["DataGrid.FilterColumn", Column.Title ?? Column.Field ?? ""]"
                     @onclick="ToggleFilter"
                     @onclick:stopPropagation="true">
                 <SvgGlyph Svg="@(LumeoIcons.ListFilter)" class="h-3 w-3" />
@@ -206,7 +211,7 @@
              tabindex="-1"
              aria-valuemin="@((int)(Column.MinWidth ?? 50))"
              aria-valuemax="@(Column.MaxWidth.HasValue ? (int)Column.MaxWidth.Value : (int?)null)"
-             aria-valuenow="@(Column.Width.HasValue ? (int)Column.Width.Value : (int?)null)"
+             aria-valuenow="@ResizeHandleValueNow"
              @onkeydown="HandleResizeKeyDown"
              @onkeydown:stopPropagation="true"></div>
     }
@@ -284,6 +289,19 @@
             _ => "none"
         }
         : null;
+
+    // aria-required-attr (axe): the resize handle is role="separator" with
+    // tabindex — a FOCUSABLE separator, which ARIA 1.2 treats as a range widget
+    // requiring aria-valuenow. Column.Width is null until a resize actually
+    // commits (columns start auto-sized by the browser, no server-side measured
+    // pixel width exists yet), so the attribute used to be omitted entirely on
+    // an unresized column — 124 nodes across the docs sweep. Fall back to the
+    // same MinWidth-or-50 floor the resize commit path already clamps to
+    // (DataGrid.CommitColumnWidthAsync: `Math.Max(column.MinWidth ?? 50, width)`)
+    // so the reported value is always a real, spec-consistent number rather than
+    // a fabricated one.
+    private int ResizeHandleValueNow =>
+        Column.Width.HasValue ? (int)Column.Width.Value : (int)(Column.MinWidth ?? 50);
 
     // Roving tabindex: exactly one header/body cell carries tabindex="0".
     private int TabIndexValue =>
