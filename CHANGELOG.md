@@ -5,7 +5,11 @@ All notable changes to Lumeo will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [4.3.0] - 2026-07-13
+
+The trust release: a seven-point maturity campaign hardened over ~13 automated review
+waves, plus a full-library screen-reader audit. Everything below shipped through
+feature-branch PRs with green CI, a docs-parity gate, and API-stability baselines.
 
 ### Added
 - **Toast stacking (sonner-style).** `ToastProvider.StackToasts` (default `true`):
@@ -17,7 +21,77 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   collapses it again. Pure CSS transforms/transitions driven by `data-index` /
   `data-stacked` / `data-expanded` / `data-stack-edge` attributes — no
   per-frame JS or .NET calls. Set `StackToasts="false"` to always render the
-  plain list.
+  plain list. Admission (per-position caps, queueing, explicit `Update`
+  reclassification) was consolidated into one canonical `TryAdmit`/`ReconcileGroup`
+  path with frozen per-toast snapshots and an invariant test suite.
+- **.NET 8 + .NET 10 multi-targeting** across all shipped packages, with the test
+  suite executed against a genuine .NET 8 runtime in CI (not roll-forward).
+- **Real trimming** (#354): `IsTrimmable` on shipped assemblies plus a trim-safe
+  source-generated JSON context — a single-component publish drops the Lumeo
+  contribution by ~83%. The QueryBuilder value serializer moved to a closed
+  `Type.GetTypeCode` switch backed by a 44-case fuzz matrix.
+- **SourceLink + symbol packages (snupkg)** for step-into debugging.
+- **Public performance benchmarks**: reproducible scripts plus a docs page
+  (`/docs/performance-facts`) with measured numbers and honest disclosure of limits.
+- **New test legs**: a Blazor Server latency leg (real SignalR circuit under CDP
+  network throttling), a three-engine pointer harness (Chromium/Firefox/WebKit),
+  visual-regression baselines, a weekly axe-core WCAG A/AA sweep of all 164
+  component routes gated on a node-shape baseline, and an automated NVDA
+  screen-reader audit (`scripts/sr-audit`, Guidepup) that runs unattended and
+  verifies what NVDA actually announces per component.
+- **Keyboard-interaction test families** for 42 more components (matrix 61 → 103),
+  with ~15 accompanying product fixes (PivotGrid cells, DatePicker toggle/escape,
+  ScrollArea region semantics, Dock/Toolbar roving tabindex, and more).
+- **New parameters**: `Form.ModelTypeInfo` (trim-safe snapshot round-trip),
+  `PopoverTrigger.SuppressActivationKeys`, `ScrollArea.AriaLabel`,
+  `ToggleGroupItem.AriaLabel`, `ToastProvider.StackToasts` /
+  `ToastViewport.StackToasts`.
+- **Docs infrastructure**: 141 component pages now render their API tables directly
+  from the generated registry (no hand-maintained drift), enforced by a two-way
+  docs-parity CI gate; public API surfaces are locked by PublicApiAnalyzers
+  baselines on all shipped packages; a weekly NuGet-free eject gate proves all 164
+  components vendor and compile standalone.
+
+### Changed
+- **Toast exits now animate** (previously removed without an exit transition), and
+  toast stacking is on by default — see `StackToasts` above to opt out.
+- **DataGrid `aria-rowindex`/`aria-rowcount`** are now computed by a single row
+  indexer over all rendered rows — group headers, detail rows and items count
+  correctly in grouped grids (screen readers previously received wrong indices).
+- **Docs facts pass**: every number on the site is now measured from the repo
+  (component/block counts, test totals, a11y coverage), and the accessibility page
+  documents the real audit state including the tracked axe baseline.
+
+### Fixed
+- **Trimmed publish: components crashed at runtime** — under `PublishTrimmed`, the
+  linker strips constructor parameter names and removes reflection-only parameterless
+  constructors, so any anonymous type or positional record crossing JS interop threw
+  `ConstructorContainsNullParameterNames` (hit live on the docs site; keyboard
+  scroll-suppression alone affected ~60 components). All interop option bags now
+  serialize as plain dictionaries (identical JSON) and incoming payload types carry
+  `[DynamicDependency]` so the reflection deserializer keeps working. Verified with a
+  real trimmed publish + a crawl of all 165 docs routes.
+- **Blazor Server: toasts never rendered** (#363) — `ToastService.Show` produced no
+  render batches on a real SignalR circuit and bursts >6 could crash the renderer;
+  verified fixed under the new server latency leg (burst caps at the configured
+  maximum, no crash).
+- **FileManager folder tree was mouse-only** (WCAG 2.1.1) — full WAI-ARIA
+  roving-tabindex keyboard navigation (arrows, Home/End, Enter/Space), found by the
+  NVDA audit.
+- **Cascader trigger announced as a bare button** — now advertises its menu popup
+  (`aria-haspopup`/`aria-expanded`/`aria-controls`), found by the NVDA audit.
+- **QueryBuilder silently corrupted out-of-range numbers** — an oversized literal
+  (e.g. `1e400`) clamped to `Infinity` and round-tripped as a corrupt query; it now
+  fails parsing loudly.
+- **Grid ARIA contracts + localized accessible names** across the DataGrid family
+  in all 14 locales (axe baseline shrink wave 1).
+- **ConsentBanner could freeze** after its entrance animation (filled animation
+  state overrode later transforms); resolved via animationend handling.
+- **CLI vendoring rewrote generic type arguments** (`EventCallback<List<...>>`
+  became uncompilable) — namespace rewriting is now argument-aware.
+- **Toast: `Update` on an already-leaving toast** is a no-op instead of restarting
+  a timer on a toast that still gets removed; a `DismissAll` on a hovered group no
+  longer strands the next toast paused.
 
 ## [4.2.0] - 2026-07-11
 
