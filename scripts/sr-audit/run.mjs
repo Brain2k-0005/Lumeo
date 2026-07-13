@@ -531,13 +531,32 @@ async function getAllSlugs(baseUrl) {
 // protocol walkthrough.
 async function runGenericProbe(page, slug) {
     const focusInfo = await page.evaluate(() => {
-        // Scope to the demo area the same way discover-selectors did during development
-        // (excludes topbar/sidebar/docs chrome such as the sidebar nav and TOC), falling
-        // back to <main> if no dedicated preview wrapper is found.
         const main = document.querySelector("main");
         if (!main) return { found: false };
-        const host = main.querySelector('[class*="preview"]') || main;
-        const el = host.querySelector('[tabindex="0"]');
+        // The first focusables in <main> are always the page's own INSTALL-USAGE chrome
+        // (the ".NET CLI / Package Reference" tablist + its snippet tabpanel) — probing
+        // those "verified" the docs chrome on 144/146 pages instead of the component
+        // (first full-run lesson). Also: a bare [tabindex="0"] query misses NATIVE
+        // focusables (button/input/select/textarea/a[href] need no tabindex), which is
+        // why e.g. Slider's native input thumb was invisible to the first probe.
+        const isChrome = (el) => {
+            // install-usage tablist (".NET CLI / Package Reference") + its snippet panel
+            const tl = el.closest('[role="tablist"]');
+            if (tl && /NET CLI|Package Reference/i.test(tl.textContent || "")) return true;
+            const tp = el.closest('[role="tabpanel"]');
+            if (tp && /dotnet add package/i.test(tp.textContent || "")) return true;
+            // each example frame's own Preview/Code toggle + copy button
+            const nm = (el.getAttribute("aria-label") || el.textContent || "").trim();
+            if (/^(Preview|Code|Copy|Copy code)$/i.test(nm)) return true;
+            return false;
+        };
+        // Links are docs prose/related-component chrome, never the demo control itself —
+        // and native controls (button/input/...) need no explicit tabindex, so a bare
+        // [tabindex="0"] query missed e.g. Slider's native range input entirely.
+        const candidates = [...main.querySelectorAll(
+            '[tabindex="0"], button:not([tabindex]), input:not([tabindex]), select:not([tabindex]), textarea:not([tabindex]), [contenteditable="true"]'
+        )].filter((el) => el.tagName !== "A" && !el.disabled && !isChrome(el) && el.getBoundingClientRect().width > 0);
+        const el = candidates[0];
         if (!el) return { found: false };
         el.focus();
         return {
@@ -545,6 +564,7 @@ async function runGenericProbe(page, slug) {
             focused: document.activeElement === el,
             tag: el.tagName.toLowerCase(),
             role: el.getAttribute("role"),
+            name: (el.getAttribute("aria-label") || el.textContent || "").trim().slice(0, 40),
         };
     });
     if (!focusInfo.found || !focusInfo.focused) {
