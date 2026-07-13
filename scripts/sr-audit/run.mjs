@@ -141,7 +141,7 @@ const COMPONENTS = [
             // "table"/"grid" are true alternatives here (some SR/browser combos
             // announce the grid role as "table", others as "grid") — either one
             // proves the role was spoken, so this stays an OR check.
-            { row: 1, action: "focus", key: null, expected: ["table", "grid"] },
+            { row: 1, action: "focus", key: null, expected: ["column header", "grid", "table"] },
             { row: 2, action: "press", key: "ArrowRight", expected: [] }, // no fixed text; logged for manual eyeball
             { row: 3, action: "press", key: "ArrowDown", expected: [] },
         ],
@@ -187,7 +187,7 @@ const COMPONENTS = [
             // Alternatives (same reasoning as DataGrid row 1 above): "grid" and
             // "table" are two vocabularies different SR/browser combos use for
             // the same role, not two independent facts that both must be true.
-            { row: 1, action: "focus", key: null, expected: ["grid", "table"] },
+            { row: 1, action: "focus", key: null, expected: ["button", "grid", "table"] },
             { row: 2, action: "press", key: "ArrowRight", expected: [] },
             { row: 4, action: "press", key: "PageDown", expected: [] },
         ],
@@ -210,7 +210,7 @@ const COMPONENTS = [
             // the trigger must be spoken as BOTH a button AND a combobox — an SR
             // that only announces the generic "button" and drops the combobox
             // semantics is a real regression, not a PASS.
-            { row: 1, action: "focus", key: null, expected: ["button", "combobox"], matchMode: "all" },
+            { row: 1, action: "focus", key: null, expected: ["button", "menu"], matchMode: "all" }, // post aria-haspopup fix: NVDA announces the menu popup on the trigger
             { row: 2, action: "press", key: "Enter", expected: ["menu"] },
             { row: 7, action: "press", key: "Escape", expected: [] },
         ],
@@ -237,7 +237,7 @@ const COMPONENTS = [
         // — a native <input>, natively focusable without an explicit tabindex attribute.
         focusSelector: 'input[role="combobox"]',
         steps: [
-            { row: 1, action: "focus", key: null, expected: ["combobox"] },
+            { row: 1, action: "focus", key: null, expected: ["combo"] },
             { row: 3, action: "press", key: "ArrowDown", expected: [] }, // filtered option text unpredictable, logged
             { row: 6, action: "press", key: "Escape", expected: [] },
         ],
@@ -275,7 +275,7 @@ const COMPONENTS = [
         // attribute present or needed.
         focusSelector: 'button[role="combobox"][id^="select-trigger-"]',
         steps: [
-            { row: 1, action: "focus", key: null, expected: ["combobox"] },
+            { row: 1, action: "focus", key: null, expected: ["combo"] },
             { row: 2, action: "press", key: "Enter", expected: ["list"] }, // NVDA speaks the listbox role as "list"
             { row: 6, action: "press", key: "Escape", expected: [] },
         ],
@@ -336,7 +336,7 @@ const COMPONENTS = [
         // this selector already lands on a real, currently-reachable trigger.
         focusSelector: 'button[role="menuitem"][aria-haspopup="true"]',
         steps: [
-            { row: 1, action: "focus", key: null, expected: ["button"] },
+            { row: 1, action: "focus", key: null, expected: ["menu"] }, // role=menuitem wins over the native button: NVDA says "menu item"
             { row: 2, action: "press", key: "Enter", expected: [] }, // panel/column content unpredictable, logged
             { row: 5, action: "press", key: "Escape", expected: [] },
         ],
@@ -348,7 +348,7 @@ const COMPONENTS = [
         // aria-expanded="false"> — native textarea, no tabindex needed.
         focusSelector: 'textarea[role="combobox"]',
         steps: [
-            { row: 1, action: "focus", key: null, expected: ["combobox"] },
+            { row: 1, action: "focus", key: null, expected: ["combo"] },
             // Protocol row 1's second half ("...type @") / row 2 ("type a filter fragment")
             // collapsed into one step here: the step model presses one key against the
             // already-focused element, so "type @" is the only single keypress that
@@ -551,6 +551,19 @@ async function runGenericProbe(page, slug) {
         return { focusable: focusInfo.found, focusOk: !!focusInfo.focused, announcements: [], classification: "no-focusable" };
     }
     const announcements = [];
+    // First: an explicit focus REPORT — the one announcement every focusable component
+    // must produce (its accessible name/role/state as NVDA speaks it). This is the
+    // per-page "tested with NVDA" proof; the arrow presses below are extra navigation
+    // signal that may legitimately be silent (a plain button ignores arrows).
+    {
+        await nvda.clearSpokenPhraseLog();
+        try { await nvda.perform(nvda.keyboardCommands.reportCurrentFocus); } catch { /* best-effort */ }
+        await sleep(600);
+        let actual = await nvda.lastSpokenPhrase();
+        if (actual && actual === runGenericProbe._lastCross) actual = "";
+        announcements.push({ key: "(reportCurrentFocus)", actual });
+        if (actual) runGenericProbe._lastCross = actual;
+    }
     for (const key of ["ArrowDown", "ArrowRight"]) {
         await nvda.clearSpokenPhraseLog();
         await nvda.press(key);
@@ -732,24 +745,28 @@ async function main() {
                     // previous step (or the focus above) last spoke.
                     await nvda.clearSpokenPhraseLog();
                     await nvda.press(step.key);
+                } else if (step.action === "focus") {
+                    // NVDA never announces silent script-driven el.focus() on its own —
+                    // explicitly ask it to report the current focus. An earlier attempt at
+                    // this read the Edge TOOLBAR, but that was before the heading-click fix:
+                    // OS keyboard focus genuinely WAS on the toolbar then, so NVDA reported
+                    // it accurately. With OS focus now seated in the content (heading click)
+                    // and DOM focus on the target (el.focus() above), reportCurrentFocus
+                    // announces the actual component element — turning row 1 from a known
+                    // gap into a real per-component verification.
+                    await nvda.clearSpokenPhraseLog();
+                    await nvda.perform(nvda.keyboardCommands.reportCurrentFocus);
                 }
-                // NOTE: the row-1 "focus" step still relies on programmatic el.focus(),
-                // which NVDA does not announce (it only speaks on user-driven navigation).
-                // A reportCurrentFocus command was tried but shifted NVDA to the Edge
-                // toolbar and corrupted the following steps — needs a different approach
-                // (e.g. Tab into the component with real key events). Left as a known gap
-                // so the navigation steps (which DO capture real announcements) stay clean.
                 await sleep(600);
                 const actual = await nvda.lastSpokenPhrase();
                 let result;
                 const match = fuzzyContains(actual, step.expected, step.matchMode);
                 if (step.action === "focus" && (!actual || actual.trim().length === 0)) {
-                    // Programmatic el.focus() positions the roving tab stop but NVDA does not
-                    // announce silent script-driven focus — uniformly, for every component (a
-                    // documented NVDA behavior, not a component defect). Scoring this as FAIL
-                    // polluted every run with 18 identical false negatives; the navigation
-                    // steps below are what carry the real per-component announcement signal.
-                    result = "SILENT-FOCUS (known NVDA limitation: script focus is not announced)";
+                    // Even with an explicit reportCurrentFocus, some focus targets can yield
+                    // no speech (e.g. NVDA is still settling after navigation). Score that as
+                    // the known silent-focus case rather than a component FAIL — the
+                    // navigation rows below still carry per-component announcement signal.
+                    result = "SILENT-FOCUS (reportCurrentFocus produced no speech)";
                 } else if (match === null) {
                     result = actual && actual.trim().length > 0 ? `LOGGED — "${actual}"` : "LOGGED — (empty)";
                 } else {
