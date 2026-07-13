@@ -46,18 +46,9 @@ public static class FG {
     AttachThreadInput(tCur, tFg, true);
     SetForegroundWindow(h); BringWindowToTop(h);
     AttachThreadInput(tCur, tFg, false);
-    // Bringing the window forward leaves OS KEYBOARD focus on the browser CHROME
-    // (toolbar/address bar) — el.focus() only sets DOM focus, so NVDA reads the toolbar
-    // and physical nav keys hit the chrome, not the page. A real left-click inside the
-    // web content moves OS focus there. Click high in the content column (just below the
-    // ~130px toolbar), where docs pages render non-interactive title/breadcrumb text.
-    RECT r; if (GetWindowRect(h, out r)) {
-      int cx = r.L + (r.R - r.L) / 2;
-      int cy = r.T + 170;
-      SetCursorPos(cx, cy);
-      mouse_event(0x0002, 0, 0, 0, UIntPtr.Zero); // LEFTDOWN
-      mouse_event(0x0004, 0, 0, 0, UIntPtr.Zero); // LEFTUP
-    }
+    // Window is foreground, but OS KEYBOARD focus is still on the browser chrome. run.mjs
+    // follows up (via click-at.ps1) with a click on the page HEADING's real screen coords to
+    // move OS focus into the content — a neutral, per-page target that beats a fixed guess.
   }
 }
 "@

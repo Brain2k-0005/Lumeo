@@ -62,6 +62,29 @@ function forceEdgeForeground() {
     } catch (e) { console.warn(`[sr-audit] force-foreground failed: ${e.message}`); }
 }
 
+// After the window is foreground, physically click the page HEADING (h1) at its real screen
+// coords to move OS keyboard focus INTO the page content. el.focus() alone only sets DOM focus,
+// so without this NVDA keeps reading the browser toolbar. The heading is a neutral, per-page
+// target (no side effects; its Y differs per page, which is exactly why a fixed coordinate was
+// fragile — DataGrid's heading sits higher than Tabs'). Best-effort; never throws.
+async function clickHeadingIntoContent(page) {
+    if (!forceForeground) return;
+    try {
+        const c = await page.evaluate(() => {
+            const h = document.querySelector('main h1, h1');
+            if (!h) return null;
+            const r = h.getBoundingClientRect();
+            if (r.width === 0 && r.height === 0) return null;
+            const dpr = window.devicePixelRatio || 1;
+            const vx = window.screenX;                                   // viewport origin on screen (CSS px)
+            const vy = window.screenY + (window.outerHeight - window.innerHeight);
+            return { x: Math.round((vx + r.left + Math.min(r.width / 2, 80)) * dpr), y: Math.round((vy + r.top + r.height / 2) * dpr) };
+        });
+        if (!c) return;
+        spawnSync("powershell", ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", join(__dirname, "click-at.ps1"), "-X", String(c.x), "-Y", String(c.y)], { encoding: "utf8" });
+    } catch (e) { console.warn(`[sr-audit] heading-click failed: ${e.message}`); }
+}
+
 // ---------------------------------------------------------------------------
 // Protocol subset: top-5 components by keyboard-interaction depth, from
 // docs/superpowers/sr-test-protocol.md. Each step maps 1:1 to a numbered row
@@ -96,19 +119,15 @@ const COMPONENTS = [
     {
         name: "FileManager",
         slug: "file-manager",
-        // Audited against the same "does .focus() actually land here" question
-        // as DataGrid/Calendar/Cascader above: the `[role="tree"]` container
-        // itself has no tabindex (fine, same as DataGrid's grid container) —
-        // but unlike DataGrid, FileManager's `role="treeitem"` rows ALSO carry
-        // no tabindex and no keydown handling at all (mouse-only; confirmed in
-        // FileManager.razor). This is a real product-level keyboard-nav gap in
-        // the component, not a selector bug this script can work around — a
-        // FAIL here is an accurate signal, tracked separately from this PR.
-        focusSelector: '[role="tree"]',
+        // The `[role="tree"]` container carries no tabindex (same as DataGrid's grid) — the
+        // roving-tabindex keyboard target is the active `role="treeitem"` (the folder tree got
+        // full WAI-ARIA keyboard nav in the FileManager-tree-keyboard fix; before that the tree
+        // was mouse-only, which this audit is what surfaced). Focus the active treeitem.
+        focusSelector: '[role="treeitem"] [tabindex="0"], [role="tree"] [tabindex="0"], [role="treeitem"][tabindex="0"]',
         steps: [
             { row: 1, action: "focus", key: null, expected: ["tree"] },
             { row: 2, action: "press", key: "ArrowDown", expected: [] },
-            { row: 3, action: "press", key: "ArrowRight", expected: ["expand"] },
+            { row: 3, action: "press", key: "ArrowRight", expected: ["expanded"] },
         ],
     },
     {
@@ -334,6 +353,10 @@ async function main() {
             // Re-assert Edge foreground before each component: NVDA only reads the
             // foreground window, and a mid-sweep navigation or dialog can steal it.
             forceEdgeForeground();
+            // Then move OS keyboard focus into the page by clicking its heading — the missing
+            // piece that made NVDA read the toolbar for heavier layouts like DataGrid.
+            await clickHeadingIntoContent(page);
+            await sleep(250);
 
             const componentResult = { route, steps: [] };
             let focusOk = false;
