@@ -441,8 +441,9 @@
                 </li>
                 <li class="flex items-start gap-2">
                     <Lumeo.Text As="span" Class="mt-1.5 h-1.5 w-1.5 rounded-full bg-foreground shrink-0"></Lumeo.Text>
-                    <span>axe-core is not yet wired into CI as an automated gate. The scan below is run
-                        periodically by hand against the docs site, not on every commit or pull request.</span>
+                    <span>The axe-core sweep runs weekly (and on-demand) in CI against all 164 component
+                        routes, not per-commit or per-PR — a full sweep is a build + boot + 164-page crawl,
+                        too slow for the PR critical path. See the results below.</span>
                 </li>
                 <li class="flex items-start gap-2">
                     <Lumeo.Text As="span" Class="mt-1.5 h-1.5 w-1.5 rounded-full bg-foreground shrink-0"></Lumeo.Text>
@@ -509,51 +510,28 @@
     <Stack Gap="4">
         <Heading Level="2">Axe-core audit results</Heading>
         <Lumeo.Text Size="base" Color="muted" Leading="relaxed">
-            The docs site is periodically scanned with axe-core 4.10 across all major routes. The table below
-            summarises the most recent scan. Violations from browser-extension injected elements are excluded.
+            <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">scripts/a11y-audit</code>
+            runs an axe-core WCAG A/AA sweep of every <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">/components/&lt;slug&gt;</code>
+            docs route (all 164), scoped to each page's <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">&lt;main&gt;</code>
+            content so shared app-shell chrome doesn't spam every report with the same findings. It runs weekly
+            and on-demand in CI, gated against a committed baseline of accepted-but-not-yet-fixed findings —
+            a pull request fails the gate only if it introduces a <em>new</em> (component, rule) violation, so
+            the backlog can only shrink, never silently grow.
         </Lumeo.Text>
 
-        <Alert Variant="Alert.AlertVariant.Success" Title="0 critical · 0 serious violations" ShowIcon="true">
-            All critical and serious axe-core violations have been resolved. The remaining findings are
-            moderate/minor and relate to third-party embedded content (PDF.js canvas, MapLibre GL map).
+        <Alert Variant="Alert.AlertVariant.Warning" Title="138 accepted critical/serious findings (last triage 2026-07-12)" ShowIcon="true">
+            These are tracked, known-not-yet-fixed violations across the component set — not zero. Each fix
+            removes its entry from the baseline in the same PR; any new (component, rule) pair not already in
+            the baseline fails CI. Confirmed false positives (shared docs-chrome or harness artifacts, e.g.
+            third-party embedded content like the PDF.js canvas or MapLibre GL map) are excluded entirely via
+            <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">exclusions.json</code>
+            and aren't counted here.
         </Alert>
 
-        <div class="overflow-x-auto rounded-lg border border-border/40">
-            <Table>
-                <TableHeader>
-                    <TableRow>
-                        <TableHead Class="w-48">Route</TableHead>
-                        <TableHead Class="w-24">Before</TableHead>
-                        <TableHead Class="w-24">After</TableHead>
-                        <TableHead>Notes</TableHead>
-                    </TableRow>
-                </TableHeader>
-                <TableBody>
-                    <TableRow>
-                        <TableCell Class="font-medium"><code class="text-xs font-mono">/</code> (Home)</TableCell>
-                        <TableCell><Badge Variant="Badge.BadgeVariant.Destructive">6</Badge></TableCell>
-                        <TableCell><Badge Variant="Badge.BadgeVariant.Default" Class="bg-success text-success-text">0</Badge></TableCell>
-                        <TableCell>Fixed: DataGrid aggregate <code class="text-xs font-mono">role=row</code>, RadioGroupItem missing name, NumberInput missing label, code-block contrast (#64748b → #94a3b8)</TableCell>
-                    </TableRow>
-                    <TableRow>
-                        <TableCell Class="font-medium"><code class="text-xs font-mono">/components/button</code></TableCell>
-                        <TableCell><Badge Variant="Badge.BadgeVariant.Destructive">4</Badge></TableCell>
-                        <TableCell><Badge Variant="Badge.BadgeVariant.Default" Class="bg-success text-success-text">0</Badge></TableCell>
-                        <TableCell>Fixed: icon-only buttons in demo, sidebar nav landmark labels, sidebar subgroup contrast</TableCell>
-                    </TableRow>
-                    <TableRow>
-                        <TableCell Class="font-medium"><code class="text-xs font-mono">/docs/introduction</code></TableCell>
-                        <TableCell><Badge Variant="Badge.BadgeVariant.Destructive">4</Badge></TableCell>
-                        <TableCell><Badge Variant="Badge.BadgeVariant.Default" Class="bg-success text-success-text">0</Badge></TableCell>
-                        <TableCell>Fixed: code-block contrast, Alert h5→p heading order, landmark labels</TableCell>
-                    </TableRow>
-                </TableBody>
-            </Table>
-        </div>
-
         <Lumeo.Text Size="sm" Color="muted">
-            Scan date: 2026-05-25. Tool: axe-core 4.10.0 · rules: wcag2a, wcag2aa, best-practice.
-            Canvas-based and iframe-based third-party elements (MapLibre GL, PDF.js) are excluded from the scan scope.
+            Last triage: 2026-07-12. Tool: axe-core 4.12.1 · rules: wcag2a, wcag2aa, best-practice.
+            See <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">scripts/a11y-audit/README.md</code>
+            for how to run the sweep locally and how the baseline/exclusions gate works.
         </Lumeo.Text>
     </Stack>
 

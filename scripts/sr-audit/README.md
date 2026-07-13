@@ -6,21 +6,31 @@ captures its spoken output; `@guidepup/setup` provisions a **portable** NVDA
 with no system-wide install). VoiceOver (macOS) is out of scope here and
 stays manual — Guidepup's VoiceOver driver needs a macOS host.
 
-## Status: setup works, live run is blocked in this environment
+## Status: setup works, live runs now work unattended
 
 - **Setup: done, confirmed working.** `npx @guidepup/setup` (via `npm run
   setup`) downloaded and registered a portable NVDA build with no admin
   rights and no system-wide install. See "What setup changed" below.
-- **Live NVDA automation: blocked here by a foreground-focus problem, not
-  a Guidepup/NVDA problem.** `check-env.mjs` reproduces and diagnoses this
-  precisely. See "Known blocker" below — this is the honest failure report
-  the task asked for.
+- **Live NVDA automation: unblocked.** The foreground-focus problem
+  described below (NVDA only reads the real OS-foreground window, which a
+  programmatically-launched browser never gets on Windows) is solved by
+  `run.mjs --force-foreground`, which drags Edge to real foreground via
+  `force-foreground.ps1` (ALT-key foreground-lock release +
+  `AttachThreadInput` + `SetForegroundWindow`), re-asserted before each
+  component. Validated end-to-end: NVDA correctly read live announcements
+  (e.g. "Package Reference, tab, selected, 2 of 3") and Home correctly moved
+  focus to the first tab. `--pause` remains available as a human-in-the-loop
+  fallback (click Edge, auto-countdown) when running with a person present.
+  One known gap remains: the row-1 "focus" step still relies on
+  programmatic `el.focus()`, which NVDA does not announce (it only speaks on
+  user-driven navigation) — a `reportCurrentFocus` command was tried but
+  shifted NVDA to the Edge toolbar and corrupted following steps, so this is
+  left as a follow-up (e.g. Tab into the component with real key events); the
+  navigation steps, which do capture real announcements, are unaffected.
 - `run.mjs` is a complete, ready-to-run implementation of the top-5-component
-  sweep. It was **not** run end-to-end against the real docs site in this
-  session, because doing so on this machine right now would only produce
-  empty/`FAIL` noise from the blocker below, not genuine signal about the
-  components. A maintainer should run it after clearing the blocker (see
-  "What to run locally instead").
+  sweep. Run it with `--force-foreground` for a fully unattended sweep, or
+  `--pause` when a human is present to click Edge into focus (see "How to
+  run it" below).
 
 ## What setup changed
 
@@ -43,7 +53,10 @@ Nothing under `Program Files`, no Windows service, no scheduled task. To
 fully undo it: delete the `%TEMP%\guidepup_nvda_*` folder and the
 `HKCU:\Software\Guidepup` registry key.
 
-## Known blocker: OS foreground focus
+## Root cause: OS foreground focus (solved via `--force-foreground`)
+
+This section documents the original diagnosis; it's now mitigated by
+`run.mjs --force-foreground` (see "Status" above) rather than an open blocker.
 
 NVDA's navigation commands (`next()`, arrow-key presses, etc.) read whatever
 currently holds **real OS foreground focus** — not just whatever window is
@@ -79,27 +92,23 @@ the task anticipated — the session is fully interactive, not headless — it's
 a **different, more mundane** foreground-focus contention that happens to
 produce the same symptom (silence).
 
-## What a maintainer must run locally instead
+## How to run it
 
 To get real PASS/PARTIAL/FAIL results:
 
-1. Use a machine/session dedicated to this run — ideally a fresh interactive
-   Windows sign-in (RDP session used only for this, or a Windows CI runner
-   with no other GUI apps) so no other window can hold foreground focus.
-   Close/resolve any pending Windows Security / credential dialogs first.
-2. `cd scripts/sr-audit && npm install`
-3. `npm run setup` (skips cleanly if NVDA is already registered).
-4. `node check-env.mjs` — **all three checks must PASS** before proceeding.
-   If check 3 fails, nothing downstream will produce real data; fix the
-   foreground-focus contention (close whatever dialog/app is stuck in the
-   foreground, or run in a session where this script is the only GUI actor)
-   and re-run `check-env.mjs` until it's clean.
-5. `npm run run` (`node run.mjs`) — builds `docs/Lumeo.Docs` (Release),
-   boots it on `localhost:5292`, launches Edge (headed — NVDA needs a real
-   visible window, not headless), starts NVDA, and walks the top-5
+1. `cd scripts/sr-audit && npm install`
+2. `npm run setup` (skips cleanly if NVDA is already registered).
+3. `node check-env.mjs` — run once as a sanity check. If check 3 (foreground
+   focus) fails on your machine, pass `--force-foreground` to `run.mjs` in
+   the next step (or `--pause` for a human-in-the-loop fallback) rather than
+   trying to make `check-env.mjs` itself pass — it predates the fix.
+4. `node run.mjs --force-foreground` (or `npm run run -- --force-foreground`)
+   — builds `docs/Lumeo.Docs` (Release), boots it on `localhost:5292`,
+   launches Edge (headed — NVDA needs a real visible window, not headless),
+   starts NVDA, drags Edge to real foreground, and walks the top-5
    components: **DataGrid, FileManager, Tabs, Calendar, Cascader** (see
    "Component selection" below). Writes `results/nvda-<date>.json`.
-6. Everything the script starts (NVDA, the browser, the `dotnet run` docs
+5. Everything the script starts (NVDA, the browser, the `dotnet run` docs
    server) is torn down at the end of `run.mjs`, mirroring what this session
    did manually.
 
