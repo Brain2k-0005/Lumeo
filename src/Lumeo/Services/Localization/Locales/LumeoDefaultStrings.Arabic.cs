@@ -36,6 +36,7 @@ internal static partial class LumeoDefaultStrings
         ["DataGrid.PinColumn"] = "تثبيت العمود",
         ["DataGrid.ResizeColumn"] = "تغيير حجم العمود (استخدم مفاتيح الأسهم، انقر نقرًا مزدوجًا للملاءمة التلقائية)",
         ["DataGrid.DragToReorder"] = "اسحب لإعادة ترتيب العمود",
+        ["DataGrid.ColumnMovedAnnouncement"] = "تم نقل {0} إلى الموضع {1} من {2}",
         ["DataGrid.FilterColumn"] = "تصفية {0}",
         ["DataGrid.SelectRow"] = "تحديد الصف {0}",
         ["DataGrid.SelectAllRows"] = "تحديد كل الصفوف",

@@ -25,10 +25,17 @@
            drives a translate-in-place reorder — native HTML5 DnD never fires on
            touch), while on desktop the whole draggable <th> still starts the
            native drag. Only shown when the column is actually reorderable. *@
+        @* Zone model (column-header drag redesign): A = resize edges (handled by
+           the resize handle below, unaffected). B = this whole row's content — the
+           grip plus the sort button that now fills the remaining space — where a
+           CLICK sorts and a DRAG >5px (or a touch/pen long-press) reorders. C = the
+           action-cluster buttons after it (group-drag, filter, pin) — exclusive,
+           never a drag source, never sorts. See components.js's
+           registerColumnReorder for the pointer-engine half of this. *@
         @if (EffectiveReorderable)
         {
             <span data-reorder-grip
-                  class="-ms-1 inline-flex items-center justify-center h-5 w-4 shrink-0 rounded text-muted-foreground opacity-60 hover:opacity-100 cursor-grab active:cursor-grabbing touch-none"
+                  class="-ms-1 inline-flex items-center justify-center h-5 w-4 shrink-0 rounded text-muted-foreground cursor-grab active:cursor-grabbing touch-none lumeo-dg-reorder-grip"
                   style="touch-action: none;"
                   aria-label="@L["DataGrid.DragToReorder"]"
                   title="@L["DataGrid.DragToReorder"]">
@@ -41,11 +48,23 @@
         }
         else
         {
+            @* data-slot="datagrid-sort-button" is what the pointer engine's
+               header-wide branch now allows to arm a drag from (previously
+               excluded along with every other interactive control) — see the
+               "interactive" exclusion check in registerColumnReorder's
+               onPointerDown. flex-1 + self-stretch fills the rest of zone B's
+               width/height so clicking/dragging anywhere between the grip and
+               the action cluster works, not just directly on the title text.
+               Only truly inert (neither sortable nor reorderable) columns are
+               disabled — a reorderable-but-not-sortable column must stay an
+               enabled pointer target, since a disabled <button> never receives
+               pointerdown at all and would silently kill the drag gesture. *@
             <button type="button"
-                    class="flex items-center gap-1 select-none rounded focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-2 @(Column.Sortable ? "cursor-pointer hover:text-foreground" : "cursor-default")"
+                    data-slot="datagrid-sort-button"
+                    class="flex-1 self-stretch min-w-0 flex items-center gap-1 select-none rounded focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-2 @(Column.Sortable ? "cursor-pointer hover:text-foreground" : "cursor-default")"
                     @onclick="HandleSort"
-                    disabled="@(!Column.Sortable)">
-                <span>@(Column.Title ?? Column.Field ?? "")</span>
+                    disabled="@(!Column.Sortable && !EffectiveReorderable)">
+                <span class="truncate">@(Column.Title ?? Column.Field ?? "")</span>
                 @if (Column.Sortable && SortDirection != SortDirection.None)
                 {
                     @if (SortDirection == SortDirection.Ascending)
@@ -338,6 +357,19 @@
             return;
         }
 
+        // Keyboard reorder (pointer-free path for the header-drag redesign): Alt+Arrow
+        // moves the focused column one slot. Mirrors MoveFocusAsync's plain
+        // col-1/col+1 convention below rather than flipping for RTL itself — like that
+        // existing arrow-key handling, it walks _orderedColumns/VisibleColumns in DOM
+        // order, which the pointer engine's own comments note already mirrors visual
+        // order correctly under RTL. Handled before the plain (unmodified) arrow-key
+        // header nav below so Alt+Arrow doesn't also move focus.
+        if (EffectiveReorderable && e.AltKey && !e.CtrlKey && (e.Key == "ArrowLeft" || e.Key == "ArrowRight"))
+        {
+            await HandleKeyboardReorder(e.Key == "ArrowRight" ? 1 : -1);
+            return;
+        }
+
         if ((e.Key == "Enter" || e.Key == " " || e.Key == "Spacebar") && Column.Sortable)
         {
             await HandleSort();
@@ -345,6 +377,44 @@
         }
 
         await Context.OnHeaderKeyDown(ColumnIndex, e);
+    }
+
+    /// <summary>
+    /// Moves this column one slot toward <paramref name="direction"/> (+1 = next,
+    /// -1 = previous) within its own pin partition, skipping non-reorderable
+    /// columns exactly like the pointer engine's computeTargetIdx skip-over —
+    /// staying put (no-op) if the partition boundary is reached before finding a
+    /// reorderable neighbor. Routes through the same <see
+    /// cref="DataGrid{TItem}.ReorderColumnByIdAsync"/> commit guard the pointer
+    /// drop path uses, then announces the result through the grid's polite live
+    /// region so screen readers hear a keyboard reorder just like they hear
+    /// <c>Sortable.Moved</c> for <c>SortableList</c>'s own keyboard reorder.
+    /// </summary>
+    private async Task HandleKeyboardReorder(int direction)
+    {
+        if (Context is null || ParentGrid is null) return;
+
+        var visible = Context.VisibleColumns;
+        var srcIdx = -1;
+        for (var i = 0; i < visible.Count; i++)
+        {
+            if (visible[i].Id == Column.Id) { srcIdx = i; break; }
+        }
+        if (srcIdx < 0) return;
+
+        var j = srcIdx + direction;
+        while (j >= 0 && j < visible.Count && visible[j].Pin == Column.Pin && !visible[j].Reorderable)
+            j += direction;
+        if (j < 0 || j >= visible.Count || visible[j].Pin != Column.Pin) return; // partition boundary — no-op
+
+        var target = visible[j];
+        await ParentGrid.ReorderColumnByIdAsync(Column.Id, target.Id);
+
+        // 1-based position: for a single adjacent-slot move, the source's new
+        // position equals the neighbor's own pre-move position (j+1) — no need to
+        // wait for the re-render to know where it landed.
+        await ParentGrid.AnnounceColumnReorderAsync(
+            L["DataGrid.ColumnMovedAnnouncement", Column.Title ?? Column.Field ?? "", j + 1, visible.Count]);
     }
 
     private FilterDescriptor? CurrentFilter =>

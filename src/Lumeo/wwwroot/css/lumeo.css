@@ -1768,6 +1768,49 @@ input[type="range"]::-moz-range-thumb {
   width: 2px;
 }
 
+/* === datagrid header drag redesign (zone model) === */
+/* Reorder grip (redesign point 5): hover-only affordance on pointer-fine devices —
+   idle invisible, revealed when the header cell is hovered OR contains focus (roving
+   tabindex keeps the actual focused element at the <th>/sort-button level, so
+   :focus-within on the header cell is the right scope). Always visible on touch —
+   there's no hover state to reveal it there, and it's the "no-wait" initiator for
+   the long-press header-wide gesture. */
+.lumeo-dg-reorder-grip {
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+[data-slot="datagrid-header-cell"]:hover .lumeo-dg-reorder-grip,
+[data-slot="datagrid-header-cell"]:focus-within .lumeo-dg-reorder-grip {
+  opacity: 1;
+}
+@media (hover: none) {
+  .lumeo-dg-reorder-grip {
+    opacity: 1;
+  }
+}
+
+/* Non-reorderable "can't drag this" feedback (redesign point 7): a tiny 2px
+   nudge-and-spring, triggered by components.js's registerColumnReorder toggling
+   this class on an attempted-but-rejected drag. No lift (opacity/shadow) — this is
+   deliberately a lighter, more "refused" gesture than the real lift affordance. */
+@keyframes lumeo-dg-reorder-nudge {
+  0% { transform: translateX(0); }
+  30% { transform: translateX(-2px); }
+  65% { transform: translateX(2px); }
+  100% { transform: translateX(0); }
+}
+.lumeo-dg-reorder-nudge {
+  animation: lumeo-dg-reorder-nudge 150ms ease-out;
+}
+@media (prefers-reduced-motion: reduce) {
+  .lumeo-dg-reorder-grip {
+    transition: none;
+  }
+  .lumeo-dg-reorder-nudge {
+    animation: none;
+  }
+}
+
 /* === datagrid fullscreen === */
 /* Ensures the grid inside the fullscreen modal fills the available width and
    height regardless of any Height / max-width the host set on the grid. */

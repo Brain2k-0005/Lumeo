@@ -36,6 +36,7 @@ internal static partial class LumeoDefaultStrings
         ["DataGrid.PinColumn"] = "Fissa colonna",
         ["DataGrid.ResizeColumn"] = "Ridimensiona colonna (usa i tasti freccia, doppio clic per l'adattamento automatico)",
         ["DataGrid.DragToReorder"] = "Trascina per riordinare la colonna",
+        ["DataGrid.ColumnMovedAnnouncement"] = "{0} spostato in posizione {1} di {2}",
         ["DataGrid.FilterColumn"] = "Filtra {0}",
         ["DataGrid.SelectRow"] = "Seleziona la riga {0}",
         ["DataGrid.SelectAllRows"] = "Seleziona tutte le righe",

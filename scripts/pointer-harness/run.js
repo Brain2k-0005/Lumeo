@@ -2437,6 +2437,276 @@ function assert(cond, msg) {
   });
   assert(freed41 === 'true', `resize on the SAME handle succeeds once the earlier commit's promise resolves and frees the arbiter (data-resizing got '${freed41}')`);
 
+  // ---------------------------------------------------------------
+  // TEST 42 — Header-drag redesign (a): a plain click on the title (the
+  // data-slot="datagrid-sort-button" zone-B surface) reaches the button —
+  // no movement, no drag armed, no reorder commit. There's no Blazor host in
+  // this harness, so "sorts" is observed as the native click actually
+  // reaching the button (a plain click listener), which is what HandleSort
+  // is wired to in the real component.
+  // ---------------------------------------------------------------
+  await page.evaluate(() => {
+    document.getElementById('host').innerHTML = `
+      <div data-grid-id="g42">
+        <table id="tbl42" style="width:300px">
+          <thead><tr>
+            <th id="th42A" data-col-id="A" data-col-pin="None" data-reorderable="true" style="width:150px">
+              <span data-reorder-grip>::</span><button id="btn42A" data-slot="datagrid-sort-button" style="width:100%;height:100%;">A</button></th>
+            <th id="th42B" data-col-id="B" data-col-pin="None" data-reorderable="true" style="width:150px">
+              <span data-reorder-grip>::</span><button id="btn42B" data-slot="datagrid-sort-button" style="width:100%;height:100%;">B</button></th>
+          </tr></thead>
+          <tbody><tr><td>a</td><td>b</td></tr></tbody>
+        </table>
+      </div>`;
+    window.__sortClicks42 = 0;
+    document.getElementById('btn42A').addEventListener('click', () => { window.__sortClicks42++; });
+  });
+  await page.evaluate(() => {
+    window.__dotnetCalls.length = 0;
+    window.__C.registerColumnReorder('g42', window.__fakeDotNet);
+  });
+  const btn42A = await page.$('#btn42A');
+  const box42A = await btn42A.boundingBox();
+  await page.mouse.move(box42A.x + box42A.width / 2, box42A.y + box42A.height / 2);
+  await page.mouse.down();
+  await page.mouse.up();
+  await page.waitForTimeout(50);
+  const result42 = await page.evaluate(() => ({
+    clicks: window.__sortClicks42,
+    commits: window.__dotnetCalls.filter((c) => c.method === 'OnColumnReorderCommit').length,
+    opacity: document.getElementById('th42A').style.opacity,
+  }));
+  assert(result42.clicks === 1, `a plain click (no movement) on the sort button reaches it exactly once (got ${result42.clicks})`);
+  assert(result42.commits === 0, `a plain click never fires a reorder commit (got ${result42.commits})`);
+  assert(result42.opacity === '', `a plain click never arms the drag lift (header opacity got '${result42.opacity}')`);
+
+  // ---------------------------------------------------------------
+  // TEST 43 — Header-drag redesign (b): a 6px mouse drag starting on the
+  // title (data-slot="datagrid-sort-button") — past REORDER_MOVE_THRESHOLD
+  // (5px) — arms a reorder and, after release over a different column,
+  // commits it WITHOUT ever firing the sort button's click (click-
+  // suppression, redesign point 2).
+  // ---------------------------------------------------------------
+  await page.evaluate(() => {
+    document.getElementById('host').innerHTML = `
+      <div data-grid-id="g43">
+        <table id="tbl43" style="width:300px">
+          <thead><tr>
+            <th id="th43A" data-col-id="A" data-col-pin="None" data-reorderable="true" style="width:150px">
+              <span data-reorder-grip>::</span><button id="btn43A" data-slot="datagrid-sort-button" style="width:100%;height:100%;">A</button></th>
+            <th id="th43B" data-col-id="B" data-col-pin="None" data-reorderable="true" style="width:150px">
+              <span data-reorder-grip>::</span><button id="btn43B" data-slot="datagrid-sort-button" style="width:100%;height:100%;">B</button></th>
+          </tr></thead>
+          <tbody><tr><td>a</td><td>b</td></tr></tbody>
+        </table>
+      </div>`;
+    window.__sortClicks43 = 0;
+    document.getElementById('btn43A').addEventListener('click', () => { window.__sortClicks43++; });
+  });
+  await page.evaluate(() => {
+    window.__dotnetCalls.length = 0;
+    window.__C.registerColumnReorder('g43', window.__fakeDotNet);
+  });
+  const btn43A = await page.$('#btn43A');
+  const box43A = await btn43A.boundingBox();
+  const th43B = await page.$('#th43B');
+  const box43B = await th43B.boundingBox();
+  await page.mouse.move(box43A.x + box43A.width / 2, box43A.y + box43A.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box43A.x + box43A.width / 2 + 6, box43A.y + box43A.height / 2, { steps: 2 });
+  const armedOpacity43 = await page.evaluate(() => document.getElementById('th43A').style.opacity);
+  await page.mouse.move(box43B.x + box43B.width / 2, box43B.y + box43B.height / 2, { steps: 5 });
+  await page.mouse.up();
+  await page.waitForTimeout(300);
+  const result43 = await page.evaluate(() => ({
+    clicks: window.__sortClicks43,
+    commit: window.__dotnetCalls.find((c) => c.method === 'OnColumnReorderCommit'),
+  }));
+  assert(armedOpacity43 === '0.8', `dragging the title past the 5px threshold arms the drag (header opacity got '${armedOpacity43}')`);
+  assert(!!result43.commit, 'the drag commits a reorder on release');
+  assert(result43.commit.args[2] === 'B', `commit targets column B (got '${result43.commit && result43.commit.args[2]}')`);
+  assert(result43.clicks === 0, `the completed drag never also fires the sort button's click (got ${result43.clicks} clicks)`);
+
+  // ---------------------------------------------------------------
+  // TEST 44 — Header-drag redesign (c): Escape mid-drag still cancels and
+  // glides back to identity (pre-existing behavior) even when the drag was
+  // armed from the title instead of the grip — no commit, and the abandoned
+  // drag's eventual (real) mouseup/click still never reaches the sort
+  // button, because click-suppression stays armed until it actually
+  // consumes one.
+  // ---------------------------------------------------------------
+  await page.evaluate(() => {
+    document.getElementById('host').innerHTML = `
+      <div data-grid-id="g44">
+        <table id="tbl44" style="width:300px">
+          <thead><tr>
+            <th id="th44A" data-col-id="A" data-col-pin="None" data-reorderable="true" style="width:150px">
+              <span data-reorder-grip>::</span><button id="btn44A" data-slot="datagrid-sort-button" style="width:100%;height:100%;">A</button></th>
+            <th id="th44B" data-col-id="B" data-col-pin="None" data-reorderable="true" style="width:150px">
+              <span data-reorder-grip>::</span><button id="btn44B" data-slot="datagrid-sort-button" style="width:100%;height:100%;">B</button></th>
+          </tr></thead>
+          <tbody><tr><td>a</td><td>b</td></tr></tbody>
+        </table>
+      </div>`;
+    window.__sortClicks44 = 0;
+    document.getElementById('btn44A').addEventListener('click', () => { window.__sortClicks44++; });
+  });
+  await page.evaluate(() => {
+    window.__dotnetCalls.length = 0;
+    window.__C.registerColumnReorder('g44', window.__fakeDotNet);
+  });
+  const btn44A = await page.$('#btn44A');
+  const box44A = await btn44A.boundingBox();
+  await page.mouse.move(box44A.x + box44A.width / 2, box44A.y + box44A.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box44A.x + box44A.width / 2 + 20, box44A.y + box44A.height / 2, { steps: 3 });
+  const armedOpacity44 = await page.evaluate(() => document.getElementById('th44A').style.opacity);
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(300);
+  await page.mouse.up();
+  await page.waitForTimeout(50);
+  const result44 = await page.evaluate(() => ({
+    clicks: window.__sortClicks44,
+    commit: window.__dotnetCalls.find((c) => c.method === 'OnColumnReorderCommit'),
+    transform: document.getElementById('th44A').style.transform,
+    opacity: document.getElementById('th44A').style.opacity,
+  }));
+  assert(armedOpacity44 === '0.8', 'the title-initiated drag armed before Escape');
+  assert(!result44.commit, 'Escape mid-drag never commits a reorder');
+  assert(result44.clicks === 0, `Escape mid-drag's eventual release never fires the sort button's click either (got ${result44.clicks})`);
+  assert(result44.transform === '', `the header glides back to identity transform after Escape (got '${result44.transform}')`);
+  assert(result44.opacity === '', `the header's lift opacity is restored after the Escape glide-back (got '${result44.opacity}')`);
+
+  // ---------------------------------------------------------------
+  // TEST 45 — Header-drag redesign (d): a drag attempt starting on a zone-C
+  // action button (anything other than the sort button — a menu/pin/filter
+  // trigger) never arms a reorder and never claims the grid's drag arbiter,
+  // no matter how far the pointer moves afterwards.
+  // ---------------------------------------------------------------
+  await page.evaluate(() => {
+    document.getElementById('host').innerHTML = `
+      <div data-grid-id="g45">
+        <table id="tbl45" style="width:300px">
+          <thead><tr>
+            <th id="th45A" data-col-id="A" data-col-pin="None" data-reorderable="true" style="width:150px">
+              <span data-reorder-grip>::</span>
+              <button id="btn45A" data-slot="datagrid-sort-button" style="width:60%;height:100%;">A</button>
+              <button id="menu45A">Menu</button>
+            </th>
+            <th id="th45B" data-col-id="B" data-col-pin="None" data-reorderable="true" style="width:150px">
+              <span data-reorder-grip>::</span><button id="btn45B" data-slot="datagrid-sort-button" style="width:100%;height:100%;">B</button></th>
+          </tr></thead>
+          <tbody><tr><td>a</td><td>b</td></tr></tbody>
+        </table>
+      </div>`;
+  });
+  await page.evaluate(() => {
+    window.__dotnetCalls.length = 0;
+    window.__C.registerColumnReorder('g45', window.__fakeDotNet);
+  });
+  const menu45A = await page.$('#menu45A');
+  const boxMenu45A = await menu45A.boundingBox();
+  const th45B = await page.$('#th45B');
+  const boxTh45B = await th45B.boundingBox();
+  await page.mouse.move(boxMenu45A.x + boxMenu45A.width / 2, boxMenu45A.y + boxMenu45A.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(boxTh45B.x + boxTh45B.width / 2, boxTh45B.y + boxTh45B.height / 2, { steps: 6 });
+  const midOpacity45 = await page.evaluate(() => document.getElementById('th45A').style.opacity);
+  await page.mouse.up();
+  await page.waitForTimeout(50);
+  const commit45 = await page.evaluate(() => window.__dotnetCalls.find((c) => c.method === 'OnColumnReorderCommit'));
+  assert(midOpacity45 === '', `dragging from a zone-C button never arms the reorder lift (header opacity got '${midOpacity45}')`);
+  assert(!commit45, 'dragging from a zone-C button never commits a reorder');
+
+  // ---------------------------------------------------------------
+  // TEST 46 — Header-drag redesign (e): touch/pen long-press arming from the
+  // title (zone B). (e1) a short tap (immediate release, no movement) never
+  // arms and never preventDefaults the pointerdown, so a real device's
+  // native tap-to-sort still reaches the button. (e2) a quick swipe (past
+  // the cancel threshold BEFORE the long-press timer fires) is never
+  // preventDefault'd either — native scroll wins — and waiting out the rest
+  // of the long-press window afterwards must not retroactively arm it. (e3)
+  // a real ~350ms press-and-hold with no significant movement arms the
+  // drag, which can then be released over a sibling column to commit a
+  // reorder exactly like the mouse/grip paths.
+  // ---------------------------------------------------------------
+  await page.evaluate(() => {
+    document.getElementById('host').innerHTML = `
+      <div data-grid-id="g46">
+        <table id="tbl46" style="width:300px">
+          <thead><tr>
+            <th id="th46A" data-col-id="A" data-col-pin="None" data-reorderable="true" style="width:150px">
+              <span data-reorder-grip>::</span><button id="btn46A" data-slot="datagrid-sort-button" style="width:100%;height:100%;">A</button></th>
+            <th id="th46B" data-col-id="B" data-col-pin="None" data-reorderable="true" style="width:150px">
+              <span data-reorder-grip>::</span><button id="btn46B" data-slot="datagrid-sort-button" style="width:100%;height:100%;">B</button></th>
+          </tr></thead>
+          <tbody><tr><td>a</td><td>b</td></tr></tbody>
+        </table>
+      </div>`;
+  });
+  await page.evaluate(() => {
+    window.__dotnetCalls.length = 0;
+    window.__C.registerColumnReorder('g46', window.__fakeDotNet);
+  });
+
+  // (e1) short tap.
+  const tap46 = await page.evaluate(() => {
+    const btn = document.getElementById('btn46A');
+    const rect = btn.getBoundingClientRect();
+    const x = rect.x + rect.width / 2, y = rect.y + rect.height / 2;
+    const down = new PointerEvent('pointerdown', { pointerId: 60, clientX: x, clientY: y, bubbles: true, cancelable: true, button: 0, pointerType: 'touch' });
+    const notPrevented = btn.dispatchEvent(down);
+    btn.dispatchEvent(new PointerEvent('pointerup', { pointerId: 60, clientX: x, clientY: y, bubbles: true, cancelable: true, pointerType: 'touch' }));
+    return { notPrevented, opacity: document.getElementById('th46A').style.opacity };
+  });
+  assert(tap46.notPrevented === true, `a short touch tap on the title never preventDefaults the pointerdown (got ${tap46.notPrevented})`);
+  assert(tap46.opacity === '', `a short touch tap never arms the drag lift (header opacity got '${tap46.opacity}')`);
+  const commitAfterTap46 = await page.evaluate(() => window.__dotnetCalls.find((c) => c.method === 'OnColumnReorderCommit'));
+  assert(!commitAfterTap46, 'a short touch tap never commits a reorder');
+
+  // (e2) quick swipe past the cancel threshold, well before the long-press
+  // timer would fire.
+  const swipe46 = await page.evaluate(() => {
+    const btn = document.getElementById('btn46A');
+    const rect = btn.getBoundingClientRect();
+    const x = rect.x + rect.width / 2, y = rect.y + rect.height / 2;
+    btn.dispatchEvent(new PointerEvent('pointerdown', { pointerId: 61, clientX: x, clientY: y, bubbles: true, cancelable: true, button: 0, pointerType: 'touch' }));
+    const move = new PointerEvent('pointermove', { pointerId: 61, clientX: x, clientY: y + 20, bubbles: true, cancelable: true, pointerType: 'touch' });
+    const moveNotPrevented = btn.dispatchEvent(move);
+    return { moveNotPrevented };
+  });
+  await page.waitForTimeout(450); // past the 350ms long-press window — must NOT retroactively arm
+  const afterSwipeWait46 = await page.evaluate(() => document.getElementById('th46A').style.opacity);
+  await page.evaluate(() => {
+    document.getElementById('btn46A').dispatchEvent(new PointerEvent('pointerup', { pointerId: 61, bubbles: true, cancelable: true, pointerType: 'touch' }));
+  });
+  assert(swipe46.moveNotPrevented === true, `a quick swipe past the cancel threshold is never preventDefault'd — native scroll wins (got ${swipe46.moveNotPrevented})`);
+  assert(afterSwipeWait46 === '', `a cancelled long-press never arms even after the long-press window elapses (header opacity got '${afterSwipeWait46}')`);
+
+  // (e3) a real long-press: press-and-hold ~350ms with no significant
+  // movement arms the drag; releasing over a sibling column then commits a
+  // reorder.
+  const btn46A = await page.$('#btn46A');
+  const box46A = await btn46A.boundingBox();
+  const th46B = await page.$('#th46B');
+  const box46B = await th46B.boundingBox();
+  await page.evaluate(([x, y]) => {
+    document.getElementById('btn46A').dispatchEvent(new PointerEvent('pointerdown', { pointerId: 62, clientX: x, clientY: y, bubbles: true, cancelable: true, button: 0, pointerType: 'touch' }));
+  }, [box46A.x + box46A.width / 2, box46A.y + box46A.height / 2]);
+  await page.waitForTimeout(400); // past REORDER_LONGPRESS_MS (350ms)
+  const armedOpacity46 = await page.evaluate(() => document.getElementById('th46A').style.opacity);
+  await page.evaluate(([x, y]) => {
+    document.getElementById('btn46A').dispatchEvent(new PointerEvent('pointermove', { pointerId: 62, clientX: x, clientY: y, bubbles: true, cancelable: true, pointerType: 'touch' }));
+  }, [box46B.x + box46B.width / 2, box46B.y + box46B.height / 2]);
+  await page.evaluate(([x, y]) => {
+    document.getElementById('btn46A').dispatchEvent(new PointerEvent('pointerup', { pointerId: 62, clientX: x, clientY: y, bubbles: true, cancelable: true, pointerType: 'touch' }));
+  }, [box46B.x + box46B.width / 2, box46B.y + box46B.height / 2]);
+  await page.waitForTimeout(300);
+  const commit46 = await page.evaluate(() => window.__dotnetCalls.find((c) => c.method === 'OnColumnReorderCommit'));
+  assert(armedOpacity46 === '0.8', `a ~350ms press-and-hold with no significant movement arms the drag (header opacity got '${armedOpacity46}')`);
+  assert(!!commit46, 'the long-press-armed touch drag commits a reorder on release over a sibling column');
+  assert(commit46.args[2] === 'B', `the long-press touch drag commits targeting column B (got '${commit46 && commit46.args[2]}')`);
+
   console.log(`\nALL TESTS PASSED (${passCount} assertions) — engine: ${ENGINE}`);
   await browser.close();
   server.close();

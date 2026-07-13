@@ -369,6 +369,13 @@
                                 PageSizeChanged="HandlePageSizeChanged"
                                 PageSizeOptions="@PageSizeOptions" />
         }
+
+        @* Header-drag redesign: visually-hidden live region announcing keyboard
+           (Alt+Arrow) column reorders to assistive tech — the pointer-driven drag
+           already has a visible live-shift preview, but a keyboard move is
+           otherwise silent. Mirrors Sortable's own "Moved" live region (same
+           polite/aria-atomic/sr-only shape) — see DataGridHeaderCell.HandleKeyboardReorder. *@
+        <span aria-live="polite" aria-atomic="true" class="sr-only">@_columnReorderAnnouncement</span>
     </div>;
 }
 
@@ -1245,6 +1252,11 @@
     private bool _pendingReorderAnimation;
     private bool _pointerReorderRegistered;
     private const int ColumnReorderAnimationMs = 220;
+
+    // Header-drag redesign: backing field for the polite live region announcing
+    // keyboard (Alt+Arrow) column reorders — see AnnounceColumnReorderAsync and the
+    // <span aria-live="polite"> rendered inside gridRoot.
+    private string _columnReorderAnnouncement = string.Empty;
 
     // Same FLIP handshake, vertical mirror for row reorder — see
     // ReorderRowByKeyAsync / OnAfterRenderAsync's row-reorder block.
@@ -3442,6 +3454,21 @@
         var validation = await ValidateColumnReorderCommitAsync(sourceId, targetId);
         if (!validation.Valid) return;
         await HandleColumnReorder(new ColumnReorderEventArgs(sourceId, validation.SourceIndex, validation.TargetIndex));
+    }
+
+    /// <summary>
+    /// Updates the polite live region so assistive tech hears the result of a
+    /// keyboard (Alt+Arrow) column reorder — <see
+    /// cref="DataGridHeaderCell{TItem}.HandleKeyboardReorder"/> is the only caller.
+    /// A pointer-driven drag doesn't need this: its live sibling-shift preview is
+    /// itself a visible (if not audible) signal, and re-announcing every intermediate
+    /// projected slot during a drag would be far too chatty for a screen reader.
+    /// </summary>
+    internal Task AnnounceColumnReorderAsync(string message)
+    {
+        _columnReorderAnnouncement = message;
+        StateHasChanged();
+        return Task.CompletedTask;
     }
 
     /// <summary>

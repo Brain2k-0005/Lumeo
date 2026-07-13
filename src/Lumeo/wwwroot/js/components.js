@@ -3079,13 +3079,14 @@ const ownedByGrid = (nodeList, grid) =>
     Array.prototype.filter.call(nodeList, (el) => el.closest('[data-grid-id]') === grid);
 
 // Inline style properties the column/row pointer-drag engines temporarily
-// overwrite while a drag is armed (opacity/position/zIndex/pointerEvents).
-// Captured before the overwrite and restored verbatim on cleanup instead of
-// being blanked to '' — a consumer's own ColumnStyle/RowStyle inline
-// declaration on one of these properties would otherwise be permanently
-// erased, since Blazor may not rewrite an unchanged style attribute on the
-// next render (Codex round-4 #4).
-const REORDER_DRAG_STYLE_PROPS = ['opacity', 'position', 'zIndex', 'pointerEvents'];
+// overwrite while a drag is armed (opacity/position/zIndex/pointerEvents/
+// boxShadow — the last one added for the column-header lift affordance, see
+// registerColumnReorder's armDrag). Captured before the overwrite and
+// restored verbatim on cleanup instead of being blanked to '' — a consumer's
+// own ColumnStyle/RowStyle inline declaration on one of these properties
+// would otherwise be permanently erased, since Blazor may not rewrite an
+// unchanged style attribute on the next render (Codex round-4 #4).
+const REORDER_DRAG_STYLE_PROPS = ['opacity', 'position', 'zIndex', 'pointerEvents', 'boxShadow'];
 const captureDragStyles = (el) => {
     const saved = {};
     for (const prop of REORDER_DRAG_STYLE_PROPS) saved[prop] = el.style[prop];
@@ -3307,6 +3308,13 @@ const REORDER_MOVE_THRESHOLD = 5;  // px — mouse header-wide init must clear t
 const REORDER_SETTLE_MS = 180;     // release/cancel glide duration
 const REORDER_SHIFT_MS = 220;      // sibling live-shift ease duration
 const REORDER_EASE = 'cubic-bezier(0.22, 1, 0.36, 1)';
+// Header-drag redesign (zone model B: whole-surface sort click + title drag):
+const REORDER_LONGPRESS_MS = 350;        // touch/pen header-wide (non-grip) press-and-hold before arming
+const REORDER_LONGPRESS_CANCEL_PX = 10;  // touch/pen: movement past this BEFORE the timer fires cancels the pending arm (native scroll wins)
+const REORDER_LIFT_MS = 120;             // header lift (scale+shadow) pop-in duration on arm
+const REORDER_NUDGE_MS = 150;            // non-reorderable "can't drag this" nudge-and-spring duration
+const REORDER_AUTOSCROLL_EDGE_PX = 48;   // distance from the scroll container's edge that triggers auto-scroll
+const REORDER_AUTOSCROLL_MAX_PX = 18;    // px/frame at the very edge (accelerates linearly from 0 at the edge threshold)
 
 export function registerColumnReorder(gridId, dotnetRef) {
     const grid = document.querySelector(`[data-grid-id="${CSS.escape(gridId)}"]`);
@@ -3322,6 +3330,17 @@ export function registerColumnReorder(gridId, dotnetRef) {
     // transforms, or the columns stay visually stuck with no future FLIP pass to
     // clean them up.
     let pendingSettle = null; // { timeoutId, cells: Set<HTMLElement> } or null
+    // Non-reorderable column: a lightweight "attempted drag" watcher (NOT the shared
+    // `drag` descriptor — never claims the grid arbiter, never preventDefaults) that
+    // shows the tiny nudge-and-spring feedback if the pointer moves past the same
+    // threshold a real drag would arm at. See onPointerDown/onPointerMove.
+    let nudgeWatch = null; // { th, pointerId, startX, startY, firedNudge } or null
+    // One-shot capture-phase click swallow armed by a header-wide (non-grip) drag the
+    // moment it actually arms — see armSortClickSuppression's comment above its
+    // definition for why this is needed at all.
+    let pendingSortClickSuppressor = null; // { fn, timeoutId } or null
+    let autoScrollRafId = null; // rAF id while an armed drag is auto-scrolling near an edge, else null
+    let autoScrollDx = 0;       // signed px/frame the scroll container is currently being nudged by; 0 = inactive
 
     const gatherColumnCells = (th, colIndex, tbody) => {
         const cells = [th];
@@ -3442,6 +3461,127 @@ export function registerColumnReorder(gridId, dotnetRef) {
         return (j < 0 || j >= drag.headers.length) ? drag.srcHeaderIdx : j;
     };
 
+    const reducedMotion = () => !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+
+    const clearPendingLongPressTimer = (d) => {
+        if (d && d.longPressTimer) { window.clearTimeout(d.longPressTimer); d.longPressTimer = null; }
+    };
+
+    const clearSortClickSuppressor = () => {
+        if (!pendingSortClickSuppressor) return;
+        document.removeEventListener('click', pendingSortClickSuppressor.fn, true);
+        window.clearTimeout(pendingSortClickSuppressor.timeoutId);
+        pendingSortClickSuppressor = null;
+    };
+
+    // Click-suppression (whole-surface sort click vs. title-drag, redesign point 2):
+    // once a header-wide (non-grip) drag actually ARMS, the eventual pointerup would
+    // otherwise still be followed by a real 'click' MouseEvent wherever the pointer
+    // visually released — pointer CAPTURE (set right below, in armDrag) retargets
+    // pointer events to the capturing element but does NOT retarget the synthesized
+    // 'click', so without this the completed/cancelled drag would also fire
+    // HandleSort on the sort button. A capture-phase listener on `document` runs
+    // BEFORE Blazor's own delegated bubble-phase click dispatcher (capture always
+    // finishes before bubble begins for the same event), so swallowing it here is
+    // reliable regardless of where Blazor's own listener is rooted. Always self-
+    // removes on the very next click (exactly once) — but only actually prevents it
+    // when that click landed inside the dragged header, so an unrelated click
+    // elsewhere in the app right after a drag is never eaten. The 500ms timeout is a
+    // safety net for the case no click ever arrives at all (e.g. released outside
+    // the document).
+    const armSortClickSuppression = (th) => {
+        clearSortClickSuppressor();
+        const fn = (e) => {
+            if (th.contains(e.target)) {
+                e.preventDefault();
+                e.stopPropagation();
+            }
+            clearSortClickSuppressor();
+        };
+        const timeoutId = window.setTimeout(clearSortClickSuppressor, 500);
+        pendingSortClickSuppressor = { fn, timeoutId };
+        document.addEventListener('click', fn, true);
+    };
+
+    const stopAutoScroll = () => {
+        if (autoScrollRafId !== null) { window.cancelAnimationFrame(autoScrollRafId); autoScrollRafId = null; }
+        autoScrollDx = 0;
+    };
+
+    // Non-reorderable "can't drag this" feedback (redesign point 7): a tiny 2px
+    // nudge-and-spring on the header, driven entirely by a CSS keyframe animation
+    // (lumeo.css) so it never touches `transform` inline (which only ever belongs to
+    // the live-drag engine for actually-reorderable columns).
+    const triggerNonReorderableNudge = (th) => {
+        th.classList.remove('lumeo-dg-reorder-nudge');
+        void th.offsetWidth; // restart the animation even if a previous nudge on this header hasn't cleared yet
+        th.classList.add('lumeo-dg-reorder-nudge');
+        window.setTimeout(() => th.classList.remove('lumeo-dg-reorder-nudge'), REORDER_NUDGE_MS + 20);
+    };
+
+    // Writes the live drag-follow transform for the current pointer position,
+    // composing the header's lift scale into the SAME transform string (never a
+    // separate CSS rule — an inline `style.transform` write always wins outright
+    // over a class's `transform`, so a class-authored scale would simply be
+    // discarded the instant this runs). Factored out of onPointerMove so the
+    // auto-scroll rAF loop (which must keep the dragged column glued to a
+    // STATIONARY pointer while the container scrolls under it) can re-invoke the
+    // exact same math on every scrolled frame, not just on real pointermoves.
+    // scrollDelta compensates bounds/tx for however far the container has scrolled
+    // since drag start — when auto-scroll never triggers, scrollDelta is always 0
+    // and every formula below reduces exactly to the pre-redesign math.
+    const applyLiveTranslate = (clientX) => {
+        if (!drag) return;
+        const sc = drag.scrollContainer;
+        const scrollDelta = sc ? (sc.scrollLeft - drag.startScrollLeft) : 0;
+        let tx = (clientX - drag.startX) + scrollDelta;
+        const minTx = (drag.bounds.min - drag.sourceRect.left) + scrollDelta;
+        const maxTx = (drag.bounds.max - drag.sourceRect.right) + scrollDelta;
+        if (tx < minTx) tx = minTx;
+        if (tx > maxTx) tx = maxTx;
+        const translate = tx ? `translateX(${tx}px)` : '';
+        for (let i = 0; i < drag.cells.length; i++) {
+            const lift = i === 0 ? drag.liftTransform : '';
+            drag.cells[i].style.transform = lift ? (translate ? `${translate} ${lift}` : lift) : translate;
+        }
+        applyProjection(computeTargetIdx(clientX + scrollDelta));
+    };
+
+    const autoScrollTick = () => {
+        if (!drag || !drag.armed || autoScrollDx === 0) { autoScrollRafId = null; return; }
+        const sc = drag.scrollContainer;
+        if (sc && sc.scrollWidth > sc.clientWidth) {
+            const max = sc.scrollWidth - sc.clientWidth;
+            const next = Math.max(0, Math.min(max, sc.scrollLeft + autoScrollDx));
+            if (next !== sc.scrollLeft) {
+                sc.scrollLeft = next;
+                applyLiveTranslate(drag.lastClientX);
+            }
+        }
+        autoScrollRafId = window.requestAnimationFrame(autoScrollTick);
+    };
+
+    // Gentle accelerating auto-scroll near the scroll container's edges while an
+    // armed drag is live (redesign point 8 — this engine previously had none at
+    // all). Speed ramps linearly from 0 at REORDER_AUTOSCROLL_EDGE_PX away from the
+    // edge up to REORDER_AUTOSCROLL_MAX_PX/frame right at the edge.
+    const updateAutoScroll = (clientX) => {
+        const sc = drag && drag.scrollContainer;
+        if (!sc || sc.scrollWidth <= sc.clientWidth) { stopAutoScroll(); return; }
+        const rect = sc.getBoundingClientRect();
+        let dx = 0;
+        if (clientX < rect.left + REORDER_AUTOSCROLL_EDGE_PX) {
+            const depth = Math.min(1, (rect.left + REORDER_AUTOSCROLL_EDGE_PX - clientX) / REORDER_AUTOSCROLL_EDGE_PX);
+            dx = -Math.ceil(depth * REORDER_AUTOSCROLL_MAX_PX);
+        } else if (clientX > rect.right - REORDER_AUTOSCROLL_EDGE_PX) {
+            const depth = Math.min(1, (clientX - (rect.right - REORDER_AUTOSCROLL_EDGE_PX)) / REORDER_AUTOSCROLL_EDGE_PX);
+            dx = Math.ceil(depth * REORDER_AUTOSCROLL_MAX_PX);
+        }
+        autoScrollDx = dx;
+        if (dx !== 0 && autoScrollRafId === null) autoScrollRafId = window.requestAnimationFrame(autoScrollTick);
+        else if (dx === 0) stopAutoScroll();
+    };
+
     const armDrag = () => {
         drag.armed = true;
         // Saved BEFORE overwriting so finishDrag can restore whatever a
@@ -3468,6 +3608,34 @@ export function registerColumnReorder(gridId, dotnetRef) {
         document.body.style.userSelect = 'none';
         try { drag.captureTarget.setPointerCapture(drag.pointerId); } catch (_) { }
         window.addEventListener('keydown', onKeyDown, true);
+
+        // Lift affordance (subtle, redesign point 4): the dragged HEADER cell
+        // (cells[0] — gatherColumnCells always puts th first) gets a brief
+        // scale(1.03) + drop-shadow pop, composed into the transform applyLiveTranslate
+        // writes rather than a separate CSS rule (see that function's comment). Neither
+        // the live-drag loop's own transform nor finishDrag's settle transform ever
+        // re-applies liftTransform once cleared, so the scale eases back to 1 for free
+        // as part of the normal settle glide — no separate "un-lift" animation needed.
+        // The one-shot transition below is stripped again once the pop-in completes so
+        // continuous translateX tracking stays lag-free for the rest of the drag
+        // (mirrors the `transition = 'none'` reasoning on drag.cells just above).
+        // Respects prefers-reduced-motion by skipping the scale (shadow still applies).
+        const headerCell = drag.cells[0];
+        drag.liftTransform = reducedMotion() ? '' : 'scale(1.03)';
+        headerCell.style.boxShadow = 'var(--lumeo-dg-reorder-lift-shadow, 0 10px 24px -6px rgb(0 0 0 / 0.35))';
+        headerCell.style.transition = `transform ${REORDER_LIFT_MS}ms ease-out, box-shadow ${REORDER_LIFT_MS}ms ease-out`;
+        if (drag.liftTransform) headerCell.style.transform = drag.liftTransform;
+        const armedDrag = drag;
+        window.setTimeout(() => {
+            if (drag !== armedDrag) return; // released/cancelled/re-armed before the pop-in finished — settle owns transition now
+            headerCell.style.transition = 'none';
+        }, REORDER_LIFT_MS + 10);
+
+        // Click-suppression (redesign point 2) only applies to a header-wide
+        // (non-grip) arm — a grip-initiated drag has pointer capture on the grip
+        // itself (a sibling of the sort button), so its eventual click can never
+        // land on the button in the first place.
+        if (drag.suppressSortClick) armSortClickSuppression(headerCell);
     };
 
     const onKeyDown = (e) => {
@@ -3493,7 +3661,11 @@ export function registerColumnReorder(gridId, dotnetRef) {
         // too, or a plain click that starts (but never crosses the movement
         // threshold for) a header-wide mouse init would strand the token
         // claimed and permanently block every other engine on this grid.
-        if (drag && !drag.armed) { drag = null; releaseGridDrag(gridId, 'column-reorder'); }
+        // Mirrors the same reasoning for a pending touch/pen long-press timer
+        // and the non-reorderable nudge watch — neither survives a release
+        // anywhere in the window.
+        nudgeWatch = null;
+        if (drag && !drag.armed) { clearPendingLongPressTimer(drag); drag = null; releaseGridDrag(gridId, 'column-reorder'); }
     };
 
     // Ends the drag. commitTargetColId is null for cancel (Escape / pointercancel)
@@ -3513,11 +3685,13 @@ export function registerColumnReorder(gridId, dotnetRef) {
     const finishDrag = (commitTargetColId) => {
         const d = drag;
         drag = null;
+        clearPendingLongPressTimer(d);
+        stopAutoScroll();
         window.removeEventListener('keydown', onKeyDown, true);
         document.body.style.cursor = '';
         document.documentElement.style.cursor = '';
         document.body.style.userSelect = '';
-        if (!d.armed) { releaseGridDrag(gridId, 'column-reorder'); return; } // never engaged (plain click) — nothing to animate/commit
+        if (!d.armed) { releaseGridDrag(gridId, 'column-reorder'); return; } // never engaged (plain click, or a touch/pen long-press that never fired) — nothing to animate/commit
         try { d.captureTarget.releasePointerCapture(d.pointerId); } catch (_) { }
 
         const isCommit = !!commitTargetColId;
@@ -3598,49 +3772,69 @@ export function registerColumnReorder(gridId, dotnetRef) {
     };
 
     const onPointerMove = (e) => {
+        // Non-reorderable "attempted drag" nudge watch runs independently of `drag`
+        // (it never claims the arbiter) — check it first so it still fires even
+        // while a DIFFERENT column's real drag isn't live.
+        if (nudgeWatch && e.pointerId === nudgeWatch.pointerId && !nudgeWatch.firedNudge) {
+            const ndx = e.clientX - nudgeWatch.startX, ndy = e.clientY - nudgeWatch.startY;
+            if ((ndx * ndx + ndy * ndy) >= REORDER_MOVE_THRESHOLD * REORDER_MOVE_THRESHOLD) {
+                nudgeWatch.firedNudge = true;
+                triggerNonReorderableNudge(nudgeWatch.th);
+            }
+        }
         if (!drag || e.pointerId !== drag.pointerId) return;
         if (!drag.armed) {
-            // Header-wide mouse init stays unarmed (no pointer capture) until
-            // the movement threshold is crossed, so a release OUTSIDE the grid
-            // never reaches this grid's own pointerup listener and the pending
-            // drag would otherwise linger forever. Mouse pointerIds are reused,
-            // so a LATER move back over the grid — with no button held — could
-            // still cross the threshold and arm a phantom drag. e.buttons
-            // always reflects the live button state regardless of capture, so
-            // drop the stale descriptor the moment the primary button isn't
-            // held anymore instead of arming (Codex round-3 #4).
-            if (!(e.buttons & 1)) {
-                // Mirrors onWindowPointerUp's release below: the arbiter claim
-                // was taken in onPointerDown BEFORE `drag` even existed (right
-                // before the descriptor is constructed, regardless of arm
-                // state — see that claim's comment), so every path that drops
-                // an unarmed descriptor — this stale-move fallback included —
-                // must release it too, or a release outside the window/browser
-                // (which never reaches onWindowPointerUp either, e.g. the tab
-                // loses focus before any pointerup fires) leaks the token and
-                // permanently blocks every later drag on this grid (round-7 #2).
-                drag = null;
-                releaseGridDrag(gridId, 'column-reorder');
+            if (drag.pointerType === 'mouse') {
+                // Header-wide mouse init stays unarmed (no pointer capture) until
+                // the movement threshold is crossed, so a release OUTSIDE the grid
+                // never reaches this grid's own pointerup listener and the pending
+                // drag would otherwise linger forever. Mouse pointerIds are reused,
+                // so a LATER move back over the grid — with no button held — could
+                // still cross the threshold and arm a phantom drag. e.buttons
+                // always reflects the live button state regardless of capture, so
+                // drop the stale descriptor the moment the primary button isn't
+                // held anymore instead of arming (Codex round-3 #4).
+                if (!(e.buttons & 1)) {
+                    // Mirrors onWindowPointerUp's release below: the arbiter claim
+                    // was taken in onPointerDown BEFORE `drag` even existed (right
+                    // before the descriptor is constructed, regardless of arm
+                    // state — see that claim's comment), so every path that drops
+                    // an unarmed descriptor — this stale-move fallback included —
+                    // must release it too, or a release outside the window/browser
+                    // (which never reaches onWindowPointerUp either, e.g. the tab
+                    // loses focus before any pointerup fires) leaks the token and
+                    // permanently blocks every later drag on this grid (round-7 #2).
+                    drag = null;
+                    releaseGridDrag(gridId, 'column-reorder');
+                    return;
+                }
+                const dx = e.clientX - drag.startX, dy = e.clientY - drag.startY;
+                if ((dx * dx + dy * dy) < REORDER_MOVE_THRESHOLD * REORDER_MOVE_THRESHOLD) return;
+                armDrag();
+            } else {
+                // Touch/pen header-wide long-press arming (zone B, redesign point 3):
+                // movement alone never arms a header-wide touch/pen drag — only the
+                // long-press timer scheduled in onPointerDown does. Crossing
+                // REORDER_LONGPRESS_CANCEL_PX BEFORE that timer fires cancels the
+                // pending arm entirely (never preventDefault'd, never captured) so
+                // native scroll/pan wins, same as a real press-and-hold gesture.
+                const dx = e.clientX - drag.startX, dy = e.clientY - drag.startY;
+                if ((dx * dx + dy * dy) >= REORDER_LONGPRESS_CANCEL_PX * REORDER_LONGPRESS_CANCEL_PX) {
+                    clearPendingLongPressTimer(drag);
+                    drag = null;
+                    releaseGridDrag(gridId, 'column-reorder');
+                }
                 return;
             }
-            const dx = e.clientX - drag.startX, dy = e.clientY - drag.startY;
-            if ((dx * dx + dy * dy) < REORDER_MOVE_THRESHOLD * REORDER_MOVE_THRESHOLD) return;
-            armDrag();
         }
         if (e.cancelable) e.preventDefault();
-        // Translate the dragged column in X only, clamped to the partition span.
-        let tx = e.clientX - drag.startX;
-        const minTx = drag.bounds.min - drag.sourceRect.left;
-        const maxTx = drag.bounds.max - drag.sourceRect.right;
-        if (tx < minTx) tx = minTx;
-        if (tx > maxTx) tx = maxTx;
-        const translate = tx ? `translateX(${tx}px)` : '';
-        for (const cell of drag.cells) cell.style.transform = translate;
-
-        applyProjection(computeTargetIdx(e.clientX));
+        drag.lastClientX = e.clientX;
+        applyLiveTranslate(e.clientX);
+        updateAutoScroll(e.clientX);
     };
 
     const onPointerUp = (e) => {
+        if (nudgeWatch && e.pointerId === nudgeWatch.pointerId) nudgeWatch = null;
         if (!drag || e.pointerId !== drag.pointerId) return;
         const targetHeader = drag.headers[drag.lastProjectedIdx];
         const commitTargetColId = targetHeader.colId !== drag.sourceColId ? targetHeader.colId : null;
@@ -3648,6 +3842,7 @@ export function registerColumnReorder(gridId, dotnetRef) {
     };
 
     const onPointerCancel = (e) => {
+        if (nudgeWatch && e.pointerId === nudgeWatch.pointerId) nudgeWatch = null;
         if (!drag || e.pointerId !== drag.pointerId) return;
         finishDrag(null);
     };
@@ -3668,7 +3863,7 @@ export function registerColumnReorder(gridId, dotnetRef) {
         // (Codex round-5 #3).
         if (drag) return;
         const grip = e.target.closest('[data-reorder-grip]');
-        let th, viaGrip;
+        let th, viaGrip, viaLongPress = false;
         // A DataGrid nested inside another column-reorderable grid's
         // DetailTemplate/cell template sits inside this grid's DOM subtree
         // too, so grid.contains(grip) alone can't tell the two apart —
@@ -3680,24 +3875,42 @@ export function registerColumnReorder(gridId, dotnetRef) {
             th = grip.closest('th[data-col-id]');
             viaGrip = true;
         } else {
-            // Header-wide initiation: mouse only. Touch/pen keep the dedicated
-            // grip — a tap on the header must stay unambiguous with tap-to-sort.
-            if (e.pointerType !== 'mouse') return;
-            const candidate = e.target.closest('th[data-col-id][data-reorderable="true"]');
-            // Same nested-grid ownership requirement as the grip branch above
-            // — a header-wide mouse press inside an inner grid's header must
-            // not arm the OUTER grid's drag either.
-            if (!candidate || candidate.closest('[data-grid-id]') !== grid) return;
+            // Header-wide initiation (zone B — redesign points 2/3): mouse arms via
+            // a movement threshold, touch/pen via a long-press timer. Either way we
+            // first need ANY header th under the pointer, reorderable or not, so a
+            // non-reorderable column can still get its "can't drag this" nudge
+            // feedback below instead of just doing nothing.
+            if (e.pointerType !== 'mouse' && e.pointerType !== 'touch' && e.pointerType !== 'pen') return;
+            const anyTh = e.target.closest('th[data-col-id]');
+            // Same nested-grid ownership requirement as the grip branch above — a
+            // header-wide press inside an inner grid's header must not arm (or
+            // nudge-watch) the OUTER grid either.
+            if (!anyTh || anyTh.closest('[data-grid-id]') !== grid) return;
             // A header that's ALSO native-drag-enabled (Groupable + ShowGroupPanel)
             // keeps that gesture over most of its surface — only the grip
             // initiates reorder there, so native dragstart (drag-to-group) isn't
             // shadowed by our own pointer capture.
-            if (candidate.getAttribute('draggable') === 'true') return;
-            // Don't hijack interactive controls living inside the header (sort
-            // button, filter/pin triggers, resize handle).
-            if (e.target.closest('button, a, input, select, textarea, [data-slot="datagrid-resize-handle"]')) return;
-            th = candidate;
+            if (anyTh.getAttribute('draggable') === 'true') return;
+            // Don't hijack interactive controls living inside the header — EXCEPT
+            // the sort button itself, which IS zone B (redesign point 2): clicking
+            // it sorts, dragging FROM it reorders. Every other control (filter/pin/
+            // group-drag triggers, the resize handle) stays exclusive zone
+            // A/C territory and never arms a reorder.
+            const interactive = e.target.closest('button, a, input, select, textarea, [data-slot="datagrid-resize-handle"]');
+            if (interactive && interactive.getAttribute('data-slot') !== 'datagrid-sort-button') return;
+
+            if (anyTh.dataset.reorderable !== 'true') {
+                // Non-reorderable column: never arms a drag, never claims the grid
+                // arbiter — just watch for an attempted drag past the same
+                // threshold a real one would use, to show the nudge-and-spring
+                // "can't drag this" feedback (redesign point 7). Sorting/clicking
+                // is completely untouched since nothing here preventDefaults.
+                nudgeWatch = { th: anyTh, pointerId: e.pointerId, startX: e.clientX, startY: e.clientY, firedNudge: false };
+                return;
+            }
+            th = anyTh;
             viaGrip = false;
+            viaLongPress = e.pointerType !== 'mouse';
         }
         if (!th) return;
         const sourceColId = th.dataset.colId;
@@ -3753,22 +3966,50 @@ export function registerColumnReorder(gridId, dotnetRef) {
         // non-null, so a rejected claim never touches drag state.
         if (!claimGridDrag(gridId, 'column-reorder')) return;
 
+        // The horizontal scroll container is the table's own parent (see the
+        // `.overflow-auto` wrapper in DataGrid.razor) — derived from `table` rather
+        // than a class-name lookup so it stays correct even if that wrapper's
+        // class ever changes. Used only for auto-scroll-near-edge (redesign point
+        // 8); startScrollLeft anchors applyLiveTranslate's scroll-compensation math
+        // so the non-autoscrolling path (scrollDelta always 0) is untouched.
+        const scrollContainer = table.parentElement;
+
         drag = {
             pointerId: e.pointerId, captureTarget: viaGrip ? grip : th,
             startX: e.clientX, startY: e.clientY,
             sourceColId, sourcePin, cells, headers, srcHeaderIdx, sourceRect, bounds,
             lastProjectedIdx: srcHeaderIdx, armed: false,
+            pointerType: e.pointerType, longPressTimer: null,
+            // Only a header-wide (non-grip) arm needs the post-arm click swallow —
+            // see armSortClickSuppression's comment.
+            suppressSortClick: !viaGrip,
+            liftTransform: '', lastClientX: e.clientX,
+            scrollContainer, startScrollLeft: scrollContainer ? scrollContainer.scrollLeft : 0,
         };
 
         if (viaGrip) {
             armDrag();
             e.preventDefault();
             e.stopPropagation();
+        } else if (viaLongPress) {
+            // Touch/pen header-wide init (redesign point 3): schedule the long-press
+            // arm timer. Captured by reference (not just nulled-check) so a stray
+            // late-firing timer from an ALREADY-finished/cancelled drag can never
+            // arm a new, unrelated one that happens to be pending at the same
+            // moment (mirrors this file's pendingSettle-style identity guards).
+            const pendingDrag = drag;
+            pendingDrag.longPressTimer = window.setTimeout(() => {
+                if (drag !== pendingDrag) return;
+                pendingDrag.longPressTimer = null;
+                armDrag();
+            }, REORDER_LONGPRESS_MS);
         }
         // Header-wide mouse init stays UNARMED here — no preventDefault/capture
         // yet, so a plain click still reaches its target if the pointer never
         // clears the movement threshold. armDrag() runs lazily from the first
-        // pointermove that does (see onPointerMove).
+        // pointermove that does (see onPointerMove). Header-wide touch/pen init
+        // also stays unarmed and un-prevented here for the same reason — a short
+        // tap must still reach the sort button's native click.
     };
 
     // Exposed so unregisterColumnReorder can fully abort an in-flight drag on
@@ -3789,6 +4030,9 @@ export function registerColumnReorder(gridId, dotnetRef) {
     // in-flight promise's own `finally` later finds pendingSettle/settleEls
     // already cleared and releaseGridDrag a no-op (idempotent owner check).
     const cancelActiveDrag = () => {
+        nudgeWatch = null;
+        clearSortClickSuppressor();
+        stopAutoScroll();
         if (drag) { finishDrag(null); return; }
         if (pendingSettle) {
             window.clearTimeout(pendingSettle.timeoutId);
