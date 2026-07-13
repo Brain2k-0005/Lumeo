@@ -40,10 +40,19 @@ public class MapInteropPayloadTests : IAsyncLifetime
     public Task InitializeAsync() => Task.CompletedTask;
     public async Task DisposeAsync() => await _ctx.DisposeAsync();
 
-    // Reads a named property from an anonymous-type object via reflection.
-    // Accepts object? so callers don't need null-forgiving operators on Arguments[n].
-    private static T? GetProp<T>(object? obj, string prop) =>
-        obj is null ? default : (T?)obj.GetType().GetProperty(prop)?.GetValue(obj);
+    // Reads a named key from the interop payload. Payloads are
+    // Dictionary<string, object?> (trim-safe — see the "Trim safety" comments on
+    // Map.razor's options/payload builders) rather than anonymous types, so this reads
+    // via the dictionary indexer; falls back to reflection for any caller still passing
+    // a plain object. Accepts object? so callers don't need null-forgiving operators on
+    // Arguments[n].
+    private static T? GetProp<T>(object? obj, string prop)
+    {
+        if (obj is null) return default;
+        if (obj is System.Collections.Generic.IDictionary<string, object?> dict)
+            return dict.TryGetValue(prop, out var v) ? (T?)v : default;
+        return (T?)obj.GetType().GetProperty(prop)?.GetValue(obj);
+    }
 
     // Returns the setMarkers invocation — there is exactly one per render.
     private JSRuntimeInvocation SetMarkersInvocation() =>

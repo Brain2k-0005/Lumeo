@@ -2,6 +2,11 @@ using Microsoft.JSInterop;
 
 namespace Lumeo.Services.Interop;
 
+// NOTE (trim safety): JS-interop option bags in this file use Dictionary<string, object?>
+// instead of anonymous types — under a trimmed publish the linker strips anonymous types'
+// constructor parameter names and JSRuntime's serializer throws
+// "ConstructorContainsNullParameterNames" at runtime (hit live by BlurFade; same class of
+// bug here). The dictionary serializes to the identical JSON; the JS side is unchanged.
 internal sealed class SwipeInterop
 {
     private readonly Dictionary<string, Func<Task>> _drawerSwipeHandlers = new();
@@ -28,7 +33,7 @@ internal sealed class SwipeInterop
         double? velocity = null)
     {
         _drawerSwipeHandlers[elementId] = handler;
-        await module.InvokeVoidAsync("registerDrawerSwipe", elementId, direction, selfRef, new { activationPx, firePx, velocity });
+        await module.InvokeVoidAsync("registerDrawerSwipe", elementId, direction, selfRef, new Dictionary<string, object?> { ["activationPx"] = activationPx, ["firePx"] = firePx, ["velocity"] = velocity });
     }
 
     // --- Drawer Snap Points (3.19) ---
@@ -50,7 +55,7 @@ internal sealed class SwipeInterop
         _drawerSnapDismissHandlers[elementId] = dismissHandler;
         _drawerSnapHandlers[elementId] = snapHandler;
         await module.InvokeVoidAsync("registerDrawerSnap", elementId, direction, selfRef,
-            new { snapPoints, activeIndex, dismissible, activationPx, firePx, velocity });
+            new Dictionary<string, object?> { ["snapPoints"] = snapPoints, ["activeIndex"] = activeIndex, ["dismissible"] = dismissible, ["activationPx"] = activationPx, ["firePx"] = firePx, ["velocity"] = velocity });
     }
 
     public async Task<bool> OnDrawerSnapDismiss(string elementId)
@@ -91,7 +96,7 @@ internal sealed class SwipeInterop
         int? firePx = null)
     {
         _drawerSwipeHandlers[elementId] = handler;
-        await module.InvokeVoidAsync("registerDrawerSwipe", elementId, "down", selfRef, new { activationPx, firePx });
+        await module.InvokeVoidAsync("registerDrawerSwipe", elementId, "down", selfRef, new Dictionary<string, object?> { ["activationPx"] = activationPx, ["firePx"] = firePx });
     }
 
     public async ValueTask UnregisterDrawerSwipe(IJSObjectReference module, string elementId)
@@ -122,7 +127,7 @@ internal sealed class SwipeInterop
     {
         _carouselSwipeHandlers[elementId] = swipeHandler;
         _carouselScrollHandlers[elementId] = scrollHandler;
-        await module.InvokeVoidAsync("registerCarouselSwipe", elementId, orientation, selfRef, new { swipeThresholdPx, verticalDeadZonePx });
+        await module.InvokeVoidAsync("registerCarouselSwipe", elementId, orientation, selfRef, new Dictionary<string, object?> { ["swipeThresholdPx"] = swipeThresholdPx, ["verticalDeadZonePx"] = verticalDeadZonePx });
     }
 
     public async ValueTask UnregisterCarouselSwipe(IJSObjectReference module, string elementId)
@@ -195,7 +200,7 @@ internal sealed class SwipeInterop
         int? verticalDeadZonePx = null)
     {
         _horizontalSwipeHandlers[elementId] = handler;
-        await module.InvokeVoidAsync("registerHorizontalSwipe", elementId, selfRef, new { swipeThresholdPx, verticalDeadZonePx });
+        await module.InvokeVoidAsync("registerHorizontalSwipe", elementId, selfRef, new Dictionary<string, object?> { ["swipeThresholdPx"] = swipeThresholdPx, ["verticalDeadZonePx"] = verticalDeadZonePx });
     }
 
     public async ValueTask UnregisterHorizontalSwipe(IJSObjectReference module, string elementId)
@@ -223,7 +228,7 @@ internal sealed class SwipeInterop
         int? verticalDeadZonePx = null)
     {
         _gallerySwipeHandlers[elementId] = handler;
-        await module.InvokeVoidAsync("registerGallerySwipe", elementId, selfRef, new { swipeThresholdPx, verticalDeadZonePx });
+        await module.InvokeVoidAsync("registerGallerySwipe", elementId, selfRef, new Dictionary<string, object?> { ["swipeThresholdPx"] = swipeThresholdPx, ["verticalDeadZonePx"] = verticalDeadZonePx });
     }
 
     public async ValueTask UnregisterGallerySwipe(IJSObjectReference module, string elementId)
@@ -256,7 +261,7 @@ internal sealed class SwipeInterop
         int? verticalDeadZonePx = null)
     {
         _tabSwipeHandlers[elementId] = handler;
-        await module.InvokeVoidAsync("registerTabSwipe", elementId, wrap, selfRef, new { swipeThresholdPx, verticalDeadZonePx });
+        await module.InvokeVoidAsync("registerTabSwipe", elementId, wrap, selfRef, new Dictionary<string, object?> { ["swipeThresholdPx"] = swipeThresholdPx, ["verticalDeadZonePx"] = verticalDeadZonePx });
     }
 
     public async ValueTask UnregisterTabSwipe(IJSObjectReference module, string elementId)

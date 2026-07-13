@@ -286,12 +286,17 @@ else
         if (optionsHash != _lastOptionsHash)
         {
             _lastOptionsHash = optionsHash;
-            await Interop.GanttRefreshAsync(_instanceId, new
+            // Trim safety: anonymous types crossing JS interop lose their constructor
+            // parameter names under a trimmed publish, and JSRuntime's reflection-based
+            // serializer throws NotSupportedException("ConstructorContainsNullParameterNames")
+            // at runtime (same class of bug as BlurFade/PreventDefaultKeyRule). Use a
+            // Dictionary instead — identical JSON, no constructor metadata involved.
+            await Interop.GanttRefreshAsync(_instanceId, new Dictionary<string, object?>
             {
-                @readonly = Readonly,
-                todayHighlight = TodayHighlight,
-                barHeight = BarHeight,
-                columnWidth = ColumnWidth,
+                ["readonly"] = Readonly,
+                ["todayHighlight"] = TodayHighlight,
+                ["barHeight"] = BarHeight,
+                ["columnWidth"] = ColumnWidth,
             });
         }
 
@@ -340,15 +345,18 @@ else
         // not leak the first one.
         _selfRef ??= DotNetObjectReference.Create(this);
 
-        var options = new
+        // Trim safety: see the GanttRefreshAsync comment above — anonymous types crossing
+        // JS interop crash under a trimmed publish, so this options bag (and ToJsTask
+        // below) use Dictionary<string, object?> instead.
+        var options = new Dictionary<string, object?>
         {
-            tasks = _tasks.Select(ToJsTask).ToArray(),
+            ["tasks"] = _tasks.Select(ToJsTask).ToArray(),
             // Mount at the effective current level so DefaultZoom is honoured on first paint.
-            viewMode = _currentViewMode.ToString(),
-            @readonly = Readonly,
-            todayHighlight = TodayHighlight,
-            barHeight = BarHeight,
-            columnWidth = ColumnWidth,
+            ["viewMode"] = _currentViewMode.ToString(),
+            ["readonly"] = Readonly,
+            ["todayHighlight"] = TodayHighlight,
+            ["barHeight"] = BarHeight,
+            ["columnWidth"] = ColumnWidth,
         };
 
         _initializing = true;
@@ -382,18 +390,20 @@ else
         // For milestones render as zero-duration (start == end) so the renderer
         // picks them up and draws a diamond shape.
         var end = t.IsMilestone ? t.Start : t.End;
-        return new
+        // Trim safety: Dictionary instead of an anonymous type — see the GanttRefreshAsync
+        // comment above.
+        return new Dictionary<string, object?>
         {
-            id = t.Id,
-            name = t.Name,
-            start = t.Start.ToString("yyyy-MM-dd"),
-            end = end.ToString("yyyy-MM-dd"),
-            progress = t.Progress,
-            dependencies = t.Dependencies ?? Array.Empty<string>(),
-            custom_class = t.CustomClass,
-            is_milestone = t.IsMilestone,
-            group_label = t.GroupLabel,
-            bar_color = BarColor?.Invoke(t),
+            ["id"] = t.Id,
+            ["name"] = t.Name,
+            ["start"] = t.Start.ToString("yyyy-MM-dd"),
+            ["end"] = end.ToString("yyyy-MM-dd"),
+            ["progress"] = t.Progress,
+            ["dependencies"] = t.Dependencies ?? Array.Empty<string>(),
+            ["custom_class"] = t.CustomClass,
+            ["is_milestone"] = t.IsMilestone,
+            ["group_label"] = t.GroupLabel,
+            ["bar_color"] = BarColor?.Invoke(t),
         };
     }
 

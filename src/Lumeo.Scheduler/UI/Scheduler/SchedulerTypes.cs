@@ -50,7 +50,16 @@ public record SchedulerEvent(
     IReadOnlyList<DateTime>? ExceptionDates = null,
     string? ResourceId = null,
     string? ClassNames = null
-);
+)
+{
+    // Trim safety: this record is deserialized from JS (JsOnEventClick/JsOnEventChange
+    // [JSInvokable] parameters). JSRuntime's reflection-based serializer must never bind
+    // the positional ctor — the trimmer strips its parameter names
+    // ("ConstructorContainsNullParameterNames", crashes the component under a trimmed
+    // publish). With this parameterless ctor STJ uses property-based (de)serialization
+    // instead. Do not remove.
+    public SchedulerEvent() : this("", "", default, default) { }
+}
 
 /// <summary>
 /// A named resource (person, room, equipment) used by the Scheduler for
@@ -67,7 +76,12 @@ public record SchedulerResource(string Id, string Title, string? Color = null);
 /// <summary>
 /// A date range produced when the user drag-selects in the calendar.
 /// </summary>
-public record SchedulerDateRange(DateTime Start, DateTime End, bool AllDay);
+public record SchedulerDateRange(DateTime Start, DateTime End, bool AllDay)
+{
+    // Trim safety: this record is deserialized from JS (JsOnDateSelect [JSInvokable]
+    // parameter). See SchedulerEvent's parameterless ctor above. Do not remove.
+    public SchedulerDateRange() : this(default, default, false) { }
+}
 
 /// <summary>
 /// Built-in views exposed by the Lumeo scheduler. Maps onto FullCalendar's

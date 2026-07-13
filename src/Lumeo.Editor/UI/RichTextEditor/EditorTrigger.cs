@@ -24,4 +24,12 @@ public sealed record TriggerItem(
     string Label,
     string? Subtitle = null,
     string? IconName = null,
-    object? Payload = null);
+    object? Payload = null)
+{
+    // Trim safety: this record is returned to JS from the OnTriggerQuery [JSInvokable]
+    // method. JSRuntime's reflection-based serializer must never bind the positional
+    // ctor — the trimmer strips its parameter names ("ConstructorContainsNullParameterNames",
+    // crashes the component under a trimmed publish). With this parameterless ctor STJ
+    // uses property-based (de)serialization instead. Do not remove.
+    public TriggerItem() : this("", "") { }
+}

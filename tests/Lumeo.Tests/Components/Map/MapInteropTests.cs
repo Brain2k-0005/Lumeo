@@ -103,7 +103,9 @@ public class MapInteropTests : IAsyncLifetime
         var setMarkers = _module.Invocations.Last(i => i.Identifier == "setMarkers");
         var payload = setMarkers.Arguments[1]; // (mapId, payload[])
         var markers = ((System.Collections.IEnumerable)payload!).Cast<object>().ToList();
+        // Marker payload entries are Dictionary<string, object?> (trim-safe — see
+        // Map.razor's SyncMarkersAsync), not anonymous types.
         Assert.Contains(markers, m =>
-            m.GetType().GetProperty("highlighted")?.GetValue(m) is bool h && h);
+            ((System.Collections.Generic.IDictionary<string, object?>)m)["highlighted"] is bool h && h);
     }
 }

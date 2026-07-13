@@ -14,7 +14,16 @@ public record GanttTask(
     string? CustomClass = null,
     bool IsMilestone = false,        // renders as a diamond; zero-duration point event
     string? GroupLabel = null        // optional swim-lane / group header label
-);
+)
+{
+    // Trim safety: this record is deserialized from JS (JsOnTaskClick/JsOnDateChange/
+    // JsOnProgressChange [JSInvokable] parameters). JSRuntime's reflection-based
+    // serializer must never bind the positional ctor — the trimmer strips its parameter
+    // names ("ConstructorContainsNullParameterNames", crashes the component under a
+    // trimmed publish). With this parameterless ctor STJ uses property-based
+    // (de)serialization instead. Do not remove.
+    public GanttTask() : this("", "", default, default) { }
+}
 
 /// <summary>
 /// Gantt timeline zoom level. Supported by the Lumeo SVG engine:

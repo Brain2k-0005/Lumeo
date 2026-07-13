@@ -159,4 +159,11 @@ public sealed record RichTextActiveState(
     bool CodeBlock,
     bool Link,
     bool CanUndo,
-    bool CanRedo);
+    bool CanRedo)
+{
+    // Trim safety: JSRuntime's reflection-based serializer must never bind the positional
+    // ctor — the trimmer strips its parameter names ("ConstructorContainsNullParameterNames",
+    // crashes the component under a trimmed publish). With this parameterless ctor STJ
+    // uses property-based (de)serialization instead. Do not remove.
+    public RichTextActiveState() : this(false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false) { }
+}

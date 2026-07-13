@@ -70,9 +70,11 @@ public class CodeEditorTests : IAsyncLifetime
         _ctx.Render<L.CodeEditor>(p => p.Add(c => c.EsmBase, "/_content/MyApp/esm"));
 
         var init = _ctx.JSInterop.Invocations.Single(i => i.Identifier == "init");
-        // options object is the 2nd arg to init(elementId, options, dotNetRef).
-        var options = init.Arguments[1]!;
-        var esmBase = options.GetType().GetProperty("esmBase")!.GetValue(options);
+        // options is the 2nd arg to init(elementId, options, dotNetRef); it's a
+        // Dictionary<string, object?> (trim-safe — see CodeEditor.razor), not an
+        // anonymous type.
+        var options = (Dictionary<string, object?>)init.Arguments[1]!;
+        var esmBase = options["esmBase"];
         Assert.Equal("/_content/MyApp/esm", esmBase);
     }
 
@@ -82,8 +84,10 @@ public class CodeEditorTests : IAsyncLifetime
         _ctx.Render<L.CodeEditor>(p => p.Add(c => c.ShowMinimap, true));
 
         var init = _ctx.JSInterop.Invocations.Single(i => i.Identifier == "init");
-        var options = init.Arguments[1]!;
-        var minimap = options.GetType().GetProperty("minimap")!.GetValue(options);
+        // Dictionary<string, object?> (trim-safe — see CodeEditor.razor), not an
+        // anonymous type.
+        var options = (Dictionary<string, object?>)init.Arguments[1]!;
+        var minimap = options["minimap"];
         Assert.Equal(true, minimap);
     }
 

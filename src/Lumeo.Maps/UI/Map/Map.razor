@@ -244,27 +244,32 @@
             _module = await Interop.ImportModuleAsync("./_content/Lumeo.Maps/js/map.js");
             _selfRef = DotNetObjectReference.Create(this);
 
-            var options = new
+            // Trim safety: anonymous types crossing JS interop lose their constructor
+            // parameter names under a trimmed publish, and JSRuntime's reflection-based
+            // serializer throws NotSupportedException("ConstructorContainsNullParameterNames")
+            // at runtime (same class of bug as BlurFade/PreventDefaultKeyRule). Use a
+            // Dictionary instead — identical JSON, no constructor metadata involved.
+            var options = new Dictionary<string, object?>
             {
-                lat = Center.Lat,
-                lon = Center.Lon,
-                zoom = Zoom,
-                tileLayer = TileLayer,
-                layers = Layers,
-                zoomControl = ZoomControl,
-                attribution = Attribution,
-                scrollWheelZoom = ScrollWheelZoom,
-                cluster = Cluster,
-                clusterProperties = ClusterProperties,
-                clusterColorExpression = ClusterColorExpression,
-                clusterRadius = ClusterRadius,
-                clusterMaxZoom = ClusterMaxZoom,
-                geolocate = Geolocate,
-                fullscreen = Fullscreen,
-                scale = Scale,
-                search = Search,
-                projection = Projection,
-                autoFitBounds = AutoFitBounds,
+                ["lat"] = Center.Lat,
+                ["lon"] = Center.Lon,
+                ["zoom"] = Zoom,
+                ["tileLayer"] = TileLayer,
+                ["layers"] = Layers,
+                ["zoomControl"] = ZoomControl,
+                ["attribution"] = Attribution,
+                ["scrollWheelZoom"] = ScrollWheelZoom,
+                ["cluster"] = Cluster,
+                ["clusterProperties"] = ClusterProperties,
+                ["clusterColorExpression"] = ClusterColorExpression,
+                ["clusterRadius"] = ClusterRadius,
+                ["clusterMaxZoom"] = ClusterMaxZoom,
+                ["geolocate"] = Geolocate,
+                ["fullscreen"] = Fullscreen,
+                ["scale"] = Scale,
+                ["search"] = Search,
+                ["projection"] = Projection,
+                ["autoFitBounds"] = AutoFitBounds,
             };
 
             try
@@ -320,26 +325,28 @@
         // id rather than a positional index that shifts when a marker is removed.
         _markersById.Clear();
         foreach (var m in _markers) _markersById[m.MarkerId] = m;
-        var payload = _markers.Select(m => new
+        // Trim safety: Dictionary instead of an anonymous type — see the options
+        // comment in OnAfterRenderAsync above.
+        var payload = _markers.Select(m => new Dictionary<string, object?>
         {
-            id = m.MarkerId,
-            lat = m.Lat,
-            lon = m.Lon,
-            title = m.Title,
-            iconUrl = m.IconUrl,
-            variant = m.Variant,
-            color = m.Color,
-            highlighted = m.Highlighted,
-            label = m.Label,
-            labelHoverOnly = m.LabelHoverOnly,
-            iconHostId = m.HasIcon ? m.IconHostId : null,
-            popupHtml = m.HasRichPopup ? null : m.GetPopupHtml(),
-            popupHostId = m.HasRichPopup ? m.PopupHostId : null,
-            hasClick = m.OnClick.HasDelegate,
-            draggable = m.Draggable,
-            hasDragEnd = m.OnDragEnd.HasDelegate,
-            clusterExclude = m.ClusterExclude,
-            properties = m.Properties,
+            ["id"] = m.MarkerId,
+            ["lat"] = m.Lat,
+            ["lon"] = m.Lon,
+            ["title"] = m.Title,
+            ["iconUrl"] = m.IconUrl,
+            ["variant"] = m.Variant,
+            ["color"] = m.Color,
+            ["highlighted"] = m.Highlighted,
+            ["label"] = m.Label,
+            ["labelHoverOnly"] = m.LabelHoverOnly,
+            ["iconHostId"] = m.HasIcon ? m.IconHostId : null,
+            ["popupHtml"] = m.HasRichPopup ? null : m.GetPopupHtml(),
+            ["popupHostId"] = m.HasRichPopup ? m.PopupHostId : null,
+            ["hasClick"] = m.OnClick.HasDelegate,
+            ["draggable"] = m.Draggable,
+            ["hasDragEnd"] = m.OnDragEnd.HasDelegate,
+            ["clusterExclude"] = m.ClusterExclude,
+            ["properties"] = m.Properties,
         }).ToArray();
 
         var json = System.Text.Json.JsonSerializer.Serialize(payload);
@@ -356,27 +363,39 @@
     private async Task SyncStandalonePopupsAsync()
     {
         if (_module is null || !_initialized) return;
-        var payload = _standalonePopups.Select(p => new
+        // Trim safety: Dictionary instead of an anonymous type — see the options
+        // comment in OnAfterRenderAsync above.
+        var payload = _standalonePopups.Select(p => new Dictionary<string, object?>
         {
-            id = p.PopupId,
-            lat = p.Lat,
-            lon = p.Lon,
-            isOpen = p.IsOpen,
-            closeButton = p.CloseButton,
-            closeOnClick = p.CloseOnClick,
-            html = p.GetHtml(),
-            hostId = p.HasRichContent ? p.HostId : null,
+            ["id"] = p.PopupId,
+            ["lat"] = p.Lat,
+            ["lon"] = p.Lon,
+            ["isOpen"] = p.IsOpen,
+            ["closeButton"] = p.CloseButton,
+            ["closeOnClick"] = p.CloseOnClick,
+            ["html"] = p.GetHtml(),
+            ["hostId"] = p.HasRichContent ? p.HostId : null,
             // Per-popup ref so JS can fire OnPopupClosed back to the right popup
             // when the user dismisses it; without this the two-way IsOpen binding
             // never updated and IsOpen desynced.
-            dotNetRef = p.SelfRef,
+            ["dotNetRef"] = p.SelfRef,
         }).ToArray();
         // Diff key from serializable fields only — payload carries a per-popup
         // DotNetObjectReference (dotNetRef) that System.Text.Json has no converter
         // for; serializing it would walk the referenced component and throw,
         // aborting the sync before setStandalonePopups runs.
         var json = System.Text.Json.JsonSerializer.Serialize(
-            payload.Select(p => new { p.id, p.lat, p.lon, p.isOpen, p.closeButton, p.closeOnClick, p.html, p.hostId }).ToArray());
+            payload.Select(p => new Dictionary<string, object?>
+            {
+                ["id"] = p["id"],
+                ["lat"] = p["lat"],
+                ["lon"] = p["lon"],
+                ["isOpen"] = p["isOpen"],
+                ["closeButton"] = p["closeButton"],
+                ["closeOnClick"] = p["closeOnClick"],
+                ["html"] = p["html"],
+                ["hostId"] = p["hostId"],
+            }).ToArray());
         if (json == _lastPopupJson) return;
         _lastPopupJson = json;
         try

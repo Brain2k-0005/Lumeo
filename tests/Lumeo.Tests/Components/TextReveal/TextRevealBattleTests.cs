@@ -116,12 +116,14 @@ public class TextRevealBattleTests : IAsyncLifetime
     private static string Style(AngleSharp.Dom.IElement el)
         => (el.GetAttribute("style") ?? string.Empty).Replace(" ", string.Empty);
 
-    /// <summary>Reads the <c>threshold</c> arg of the recorded motion.revealText interop call.</summary>
+    /// <summary>Reads the <c>threshold</c> arg of the recorded motion.revealText interop call.
+    /// The options bag is a Dictionary&lt;string, object?&gt; (trim-safe — see
+    /// ComponentInteropService.MotionRevealText), not an anonymous type.</summary>
     private double RevealThreshold()
     {
         var inv = _ctx.JSInterop.Invocations
             .First(i => i.Identifier == "motion.revealText");
-        var options = inv.Arguments[1]!;
-        return (double)options.GetType().GetProperty("threshold")!.GetValue(options)!;
+        var options = (Dictionary<string, object?>)inv.Arguments[1]!;
+        return (double)options["threshold"]!;
     }
 }

@@ -97,8 +97,10 @@ public class SchedulerBehaviorTests : IAsyncLifetime
         // options is the 3rd arg to scheduler.init(el, dotNetRef, options); its `events`
         // property is the serialized event array the JS layer renders as chips.
         var init = Assert.Single(_module.Invocations, i => i.Identifier == "scheduler.init");
-        var options = init.Arguments[2]!;
-        var serialized = options.GetType().GetProperty("events")!.GetValue(options);
+        // Init options are Dictionary<string, object?> (trim-safe — see
+        // Scheduler.razor's OnAfterRenderAsync), not an anonymous type.
+        var options = (System.Collections.Generic.IDictionary<string, object?>)init.Arguments[2]!;
+        var serialized = options["events"];
         var array = Assert.IsAssignableFrom<System.Collections.IEnumerable>(serialized);
         Assert.Equal(2, array.Cast<object>().Count());
     }
@@ -111,8 +113,10 @@ public class SchedulerBehaviorTests : IAsyncLifetime
         // The starting view name is handed to FullCalendar through the init options'
         // `view` field, so the calendar boots directly into the requested view.
         var init = Assert.Single(_module.Invocations, i => i.Identifier == "scheduler.init");
-        var options = init.Arguments[2]!;
-        var view = options.GetType().GetProperty("view")!.GetValue(options);
+        // Init options are Dictionary<string, object?> (trim-safe — see
+        // Scheduler.razor's OnAfterRenderAsync), not an anonymous type.
+        var options = (System.Collections.Generic.IDictionary<string, object?>)init.Arguments[2]!;
+        var view = options["view"];
         Assert.Equal("Week", view);
     }
 

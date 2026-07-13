@@ -53,8 +53,10 @@ public class SchedulerControlledRollbackTests : IAsyncLifetime
     private static int SetEventsCount(BunitJSModuleInterop module) =>
         module.Invocations.Count(i => i.Identifier == "scheduler.setEvents");
 
+    // Event payload entries are Dictionary<string, object?> (trim-safe — see
+    // Scheduler.razor's ToJsEvent), not anonymous types.
     private static object? Prop(object jsEvent, string name) =>
-        jsEvent.GetType().GetProperty(name)?.GetValue(jsEvent);
+        ((System.Collections.Generic.IDictionary<string, object?>)jsEvent).TryGetValue(name, out var v) ? v : null;
 
     // --- Controlled: veto rolls back ---
 

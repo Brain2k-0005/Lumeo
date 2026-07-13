@@ -54,8 +54,10 @@ public class MapMarkerRoutingTests : IAsyncLifetime
         var setMarkers = _module.Invocations.Last(i => i.Identifier == "setMarkers");
         var payload = setMarkers.Arguments[1]; // (mapId, payload[])
         var markers = ((System.Collections.IEnumerable)payload!).Cast<object>().ToList();
+        // Marker payload entries are Dictionary<string, object?> (trim-safe — see
+        // Map.razor's SyncMarkersAsync), not anonymous types.
         return markers
-            .Select(m => m.GetType().GetProperty("id")?.GetValue(m))
+            .Select(m => ((System.Collections.Generic.IDictionary<string, object?>)m)["id"])
             .ToList();
     }
 
