@@ -1,12 +1,25 @@
 #!/usr/bin/env node
 // scripts/sr-audit/run.mjs
 //
-// Guidepup-driven NVDA automation of docs/superpowers/sr-test-protocol.md
-// for the top-5 highest-keyboard-surface components in that protocol
-// (DataGrid, FileManager, Tabs, Calendar, Cascader — ranked #1-#5 in the
-// protocol's own "top 20" list; the task brief's "Button, Dialog, Combobox,
-// Tabs, DataGrid" does not match the protocol, which has no Button/Dialog
-// rows at all, so this substitutes the actual top-5 the protocol documents).
+// Guidepup-driven NVDA automation of docs/superpowers/sr-test-protocol.md.
+//
+// Two modes:
+//   1. COMPONENTS sweep (default) — the protocol's full top-20 list, each with a
+//      hand-verified `focusSelector` (evidence-based, see comments per entry) and a
+//      subset of the protocol's numbered rows exercised as focus + key-press steps,
+//      scored PASS/FAIL/LOGGED against conservative expected keywords.
+//   2. --all generic sweep — every OTHER component page the docs registry knows about
+//      (164 total minus cdn-deps, minus the 20 above) gets a lighter-weight probe:
+//      focus the first `[tabindex="0"]` in its demo area, press ArrowDown/ArrowRight,
+//      and classify the page as "no-focusable" / "silent" / "spoke". This is a coarse
+//      keyboard-reachability smoke test, not a full protocol walkthrough — it exists to
+//      surface components that silently have NO keyboard/SR surface at all, which is
+//      exactly the kind of regression a per-component protocol entry would miss until
+//      someone thinks to add it.
+//
+// A few protocol components have NO focusable/keyboard surface in their current docs
+// demo at all (confirmed empirically, not guessed) — see the SKIPPED array below
+// instead of a fabricated COMPONENTS entry for them.
 //
 // IMPORTANT — run `node check-env.mjs` first. On a shared/locked-down
 // interactive desktop this script's speech capture can silently return
@@ -19,14 +32,16 @@
 //   node run.mjs --no-build       # docs site already built (dotnet build -c Release)
 //   node run.mjs --base-url <url> # crawl an already-running docs server
 //   node run.mjs --component tabs # single component, for fast iteration
+//   node run.mjs --all            # ALSO generic-probe every non-top-20 component page
 //
 // Writes results/nvda-<date>.json (PASS/PARTIAL/FAIL per step, actual vs
-// expected spoken text) and prints the same summary to stdout.
+// expected spoken text, plus a `generic` section when --all was used) and
+// prints the same summary to stdout.
 
 import { nvda } from "@guidepup/guidepup";
 import { chromium } from "playwright-core";
 import { spawn, spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, writeFileSync } from "node:fs";
 import { join, resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { setTimeout as sleep } from "node:timers/promises";
@@ -39,6 +54,10 @@ const args = process.argv.slice(2);
 const noBuild = args.includes("--no-build");
 const baseUrlArg = args.includes("--base-url") ? args[args.indexOf("--base-url") + 1] : null;
 const componentArg = args.includes("--component") ? args[args.indexOf("--component") + 1] : null;
+// --all: after the COMPONENTS sweep, also generic-probe every OTHER component page the
+// docs registry knows about (see runGenericSweep below). Off by default because it adds
+// ~25-30 minutes to the run (164 pages) — opt in explicitly.
+const allMode = args.includes("--all");
 // --pause: after Edge launches, give the operator a fixed window to CLICK the Edge
 // window (a direct click is the one thing that always grants OS foreground focus),
 // then auto-start the sweep on a countdown. Deliberately does NOT wait for a terminal
@@ -196,6 +215,223 @@ const COMPONENTS = [
             { row: 7, action: "press", key: "Escape", expected: [] },
         ],
     },
+    {
+        name: "ColorPicker",
+        slug: "color-picker",
+        // Empirically (headless playwright-core dump of /components/color-picker's demo
+        // area): the swatch trigger is a plain native <button aria-haspopup="dialog"
+        // aria-expanded="false" aria-label="Pick a color">#3B82F6</button> — no explicit
+        // tabindex needed (buttons are natively focusable), and the aria-label already
+        // carries the current color per protocol row 1.
+        focusSelector: 'button[aria-haspopup="dialog"]',
+        steps: [
+            { row: 1, action: "focus", key: null, expected: ["button"] },
+            { row: 2, action: "press", key: "Enter", expected: ["dialog"] },
+            { row: 7, action: "press", key: "Escape", expected: [] }, // dialog closes; new color text is unpredictable, logged
+        ],
+    },
+    {
+        name: "Combobox",
+        slug: "combobox",
+        // Evidence: <input role="combobox" aria-haspopup="listbox" aria-expanded="false">
+        // — a native <input>, natively focusable without an explicit tabindex attribute.
+        focusSelector: 'input[role="combobox"]',
+        steps: [
+            { row: 1, action: "focus", key: null, expected: ["combobox"] },
+            { row: 3, action: "press", key: "ArrowDown", expected: [] }, // filtered option text unpredictable, logged
+            { row: 6, action: "press", key: "Escape", expected: [] },
+        ],
+    },
+    {
+        name: "SpeedDial",
+        slug: "speed-dial",
+        // Evidence: <button id="speeddial-trigger-…" aria-haspopup="menu"
+        // aria-expanded="false" aria-label="Actions"> — native button, no tabindex needed.
+        focusSelector: '[id^="speeddial-trigger-"]',
+        steps: [
+            { row: 1, action: "focus", key: null, expected: ["button"] },
+            { row: 2, action: "press", key: "Enter", expected: ["menu"] },
+            { row: 6, action: "press", key: "Escape", expected: [] },
+        ],
+    },
+    {
+        name: "TreeSelect",
+        slug: "tree-select",
+        // Evidence: <button id="treeselect-trigger-…" aria-haspopup="tree">Select…</button>
+        // — native button trigger; the nested "Clear selection" span[role=button] is a
+        // secondary control, not the main trigger, so it's deliberately not targeted here.
+        focusSelector: 'button[aria-haspopup="tree"]',
+        steps: [
+            { row: 1, action: "focus", key: null, expected: ["button"] },
+            { row: 2, action: "press", key: "Enter", expected: ["tree"] },
+            { row: 6, action: "press", key: "Escape", expected: [] },
+        ],
+    },
+    {
+        name: "Select",
+        slug: "select",
+        // Evidence: <button role="combobox" id="select-trigger-…" aria-haspopup="listbox"
+        // aria-expanded="false">Select an option</button> — native button, no tabindex
+        // attribute present or needed.
+        focusSelector: 'button[role="combobox"][id^="select-trigger-"]',
+        steps: [
+            { row: 1, action: "focus", key: null, expected: ["combobox"] },
+            { row: 2, action: "press", key: "Enter", expected: ["listbox"] },
+            { row: 6, action: "press", key: "Escape", expected: [] },
+        ],
+    },
+    {
+        name: "Splitter",
+        slug: "splitter",
+        // Evidence: every <div role="separator" id="splitter-divider-…" tabindex="0">
+        // found in the demo — unlike DataGrid/Calendar this is NOT a roving-tabindex
+        // pattern; each divider is independently tabbable, so the first DOM match is a
+        // legitimate, real target (not an arbitrary pick among many equal candidates).
+        focusSelector: '[role="separator"][tabindex="0"]',
+        steps: [
+            { row: 1, action: "focus", key: null, expected: ["separator"] },
+            { row: 2, action: "press", key: "ArrowRight", expected: [] }, // value-change text unpredictable, logged
+            { row: 3, action: "press", key: "Home", expected: [] },
+        ],
+    },
+    {
+        name: "TreeView",
+        slug: "tree-view",
+        // Evidence: every <div role="treeitem" id="tree-…-node-0" tabindex="0"
+        // aria-expanded="true|false"> found in the demo — same "every item independently
+        // tabbable" shape as Splitter above, not a single roving-tabindex node.
+        focusSelector: '[role="treeitem"][tabindex="0"]',
+        steps: [
+            // "tree" is a safe substring match for either "tree" or "treeitem"/"tree item"
+            // being spoken — this is the initial-focus row, so either vocabulary proves
+            // the role was announced.
+            { row: 1, action: "focus", key: null, expected: ["tree"] },
+            { row: 3, action: "press", key: "ArrowRight", expected: ["expanded"] },
+            { row: 6, action: "press", key: "Home", expected: [] },
+        ],
+    },
+    {
+        name: "DropdownMenu",
+        slug: "dropdown-menu",
+        // NOT the outer `<div id="dropdown-trigger-…" role="button" aria-haspopup="menu"
+        // aria-expanded="false">` — confirmed via a targeted focus() + activeElement check
+        // that this div has tabIndex === -1 (not script-focusable; el.focus() moved focus
+        // to <h1> instead, exactly the "container has no tabindex" mistake this task warns
+        // about). The div wraps one plain native `<button type="button">` with no ARIA of
+        // its own but tabIndex === 0 — THAT nested button is the real keyboard target.
+        focusSelector: '[id^="dropdown-trigger-"] > button',
+        steps: [
+            { row: 1, action: "focus", key: null, expected: ["button"] },
+            { row: 2, action: "press", key: "Enter", expected: ["menu"] },
+            { row: 7, action: "press", key: "Escape", expected: [] },
+        ],
+    },
+    {
+        name: "MegaMenu",
+        slug: "mega-menu",
+        // Evidence: <button role="menuitem" id="megamenu-trigger-…" aria-haspopup="true"
+        // aria-expanded="false" tabindex="0">Products</button> — a real native button,
+        // unlike DropdownMenu above; only the FIRST top-level trigger in each menubar
+        // carries tabindex="0" (roving tabindex across the row), later ones are -1, so
+        // this selector already lands on a real, currently-reachable trigger.
+        focusSelector: 'button[role="menuitem"][aria-haspopup="true"]',
+        steps: [
+            { row: 1, action: "focus", key: null, expected: ["button"] },
+            { row: 2, action: "press", key: "Enter", expected: [] }, // panel/column content unpredictable, logged
+            { row: 5, action: "press", key: "Escape", expected: [] },
+        ],
+    },
+    {
+        name: "Mention",
+        slug: "mention",
+        // Evidence: <textarea role="combobox" id="mention-…" aria-haspopup="listbox"
+        // aria-expanded="false"> — native textarea, no tabindex needed.
+        focusSelector: 'textarea[role="combobox"]',
+        steps: [
+            { row: 1, action: "focus", key: null, expected: ["combobox"] },
+            // Protocol row 1's second half ("...type @") / row 2 ("type a filter fragment")
+            // collapsed into one step here: the step model presses one key against the
+            // already-focused element, so "type @" is the only single keypress that
+            // actually starts the mention flow (opens the popup) — logged, not asserted,
+            // since Guidepup's press("@") support for a bare symbol key isn't guaranteed
+            // across SR/browser combos.
+            { row: 2, action: "press", key: "@", expected: [] },
+            { row: 5, action: "press", key: "Escape", expected: [] },
+        ],
+    },
+    {
+        name: "Menubar",
+        slug: "menubar",
+        // Evidence: <button role="menuitem" id="menubar-menu-…-trigger" aria-haspopup="menu"
+        // aria-expanded="false" tabindex="0"> — native button; only the first top-level
+        // item carries tabindex="0" (roving tabindex), rest are -1.
+        focusSelector: '[id*="menubar-menu-"][role="menuitem"]',
+        steps: [
+            // "menu" is a deliberately loose substring match: NVDA may render "menuitem" as
+            // "menu item" (with a space), which a literal "menuitem" keyword would miss.
+            { row: 1, action: "focus", key: null, expected: ["menu"] },
+            { row: 3, action: "press", key: "Enter", expected: ["menu"] },
+            { row: 5, action: "press", key: "Escape", expected: [] },
+        ],
+    },
+    {
+        name: "NavigationMenu",
+        slug: "navigation-menu",
+        // Evidence: <button id="nav-trigger-…" aria-haspopup="menu" aria-expanded="false"
+        // tabindex="0">Getting Started</button> — native button, no roving-tabindex
+        // ambiguity (this one carries tabindex="0" directly, unlike MegaMenu/Menubar's
+        // first-of-row pattern, but the evidence check confirms it either way).
+        focusSelector: 'button[aria-haspopup="menu"][id^="nav-trigger-"]',
+        steps: [
+            { row: 1, action: "focus", key: null, expected: ["menu"] },
+            { row: 2, action: "press", key: "Enter", expected: [] }, // first panel item unpredictable, logged
+            { row: 5, action: "press", key: "Escape", expected: [] },
+        ],
+    },
+    {
+        name: "OtpInput",
+        slug: "otp-input",
+        // Evidence: <input id="otp-…-0" aria-label="Digit 1 of 6"> — native input, no
+        // tabindex needed; "digit" is a safe keyword since EVERY demo's box label follows
+        // the same "Digit N of M" pattern regardless of which demo this selector's first
+        // DOM match lands in.
+        focusSelector: 'input[id^="otp-"]',
+        steps: [
+            { row: 1, action: "focus", key: null, expected: ["digit"] },
+            { row: 3, action: "press", key: "ArrowRight", expected: [] },
+            { row: 5, action: "press", key: "Home", expected: [] },
+        ],
+    },
+];
+
+// ---------------------------------------------------------------------------
+// Protocol components with NO empirically-confirmed keyboard/SR surface in
+// their current docs demo — real audit signal, not a gap in this script.
+// Each entry's `reason` was verified with a headless playwright-core probe
+// (focus() + document.activeElement check), not guessed.
+// ---------------------------------------------------------------------------
+const SKIPPED = [
+    {
+        name: "ContextMenu",
+        slug: "context-menu",
+        reason: 'Demo trigger area is `<div id="ctx-trigger-…" aria-expanded="false">' +
+            '<div>Right click here</div></div>` — neither div carries a `role` or a ' +
+            '`tabindex`. Confirmed via el.focus(): tabIndex === -1 and the call is a ' +
+            "no-op (document.activeElement stayed on <h1>). The protocol's row 1 " +
+            '("Focus the trigger area, open via Shift+F10") has no way to reach step 1 ' +
+            "with a keyboard in this demo — it is mouse/right-click only as currently " +
+            "rendered, not merely untested.",
+    },
+    {
+        name: "Kanban",
+        slug: "kanban",
+        reason: "Every demo card is `<div draggable=\"true\" class=\"bg-card…\">` with " +
+            "no `role`, no `tabindex`, and no `aria-roledescription` (confirmed via a " +
+            "headless DOM dump of all `[draggable]` nodes in the demo — 10 found, all " +
+            "identical shape). The protocol's whole row set (grab/move/drop via keyboard) " +
+            "assumes a focusable, ARIA-described draggable card; this demo implements " +
+            "pointer-only HTML5 drag-and-drop with no keyboard equivalent at all.",
+    },
 ];
 
 if (componentArg) {
@@ -239,6 +475,98 @@ async function waitForServer(url, timeoutMs = 120_000) {
         await sleep(1000);
     }
     return false;
+}
+
+// Navigates to a component page, waits for Blazor readiness, and re-asserts Edge OS
+// foreground focus (+ the physical heading click that moves keyboard focus INTO page
+// content) exactly as the original COMPONENTS loop did inline. Shared by both the
+// detailed COMPONENTS sweep and the generic --all sweep so the two don't duplicate this
+// navigation/foreground dance. `blazorTimeoutMs`/`settleMs` are shorter for the generic
+// sweep (bounded per-page time across ~150 pages) than for the detailed 20-component walk.
+async function gotoComponentPage(page, baseUrl, slug, { blazorTimeoutMs = 30_000, settleMs = 1000 } = {}) {
+    const route = `/components/${slug}`;
+    await page.goto(baseUrl + route, { waitUntil: "load", timeout: 60_000 });
+    try {
+        await page.waitForFunction(() => document.documentElement.dataset.blazorReady === "true", { timeout: blazorTimeoutMs });
+    } catch {
+        console.warn(`[sr-audit] ${slug}: blazorReady never set within ${blazorTimeoutMs}ms — continuing anyway`);
+    }
+    await sleep(settleMs);
+    // Re-assert Edge foreground before each page: NVDA only reads the foreground window,
+    // and a mid-sweep navigation or dialog can steal it. Only follow up with the physical
+    // heading click when Edge is CONFIRMED foreground — otherwise the click would land in
+    // whatever window actually owns the desktop (Codex P2). The heading click is what
+    // moves OS keyboard focus into page content (the missing piece for heavier layouts).
+    if (forceEdgeForeground()) {
+        await clickHeadingIntoContent(page);
+        await sleep(250);
+    } else if (forceForeground) {
+        console.warn(`[sr-audit] ${slug}: Edge did not reach foreground — skipping content click; speech capture may read the wrong window`);
+    }
+    return route;
+}
+
+// Resolves the full set of component slugs the docs registry knows about, for --all.
+// Prefers the LIVE registry.json served by the already-running docs server (works
+// against any --base-url, and reflects exactly what that server currently serves);
+// falls back to reading the registry JSON files off disk if the route isn't reachable.
+async function getAllSlugs(baseUrl) {
+    try {
+        const res = await fetch(`${baseUrl}/registry.json`);
+        if (res.ok) {
+            const data = await res.json();
+            const slugs = Object.keys(data.components || {}).filter((s) => s !== "cdn-deps");
+            if (slugs.length > 0) return slugs.sort();
+        }
+    } catch { /* fall through to filesystem */ }
+    const registryDir = join(repoRoot, "docs", "Lumeo.Docs", "wwwroot", "registry");
+    const files = readdirSync(registryDir).filter((f) => f.endsWith(".json") && f !== "cdn-deps.json");
+    return files.map((f) => f.replace(/\.json$/, "")).sort();
+}
+
+// Generic keyboard-reachability probe for --all, used on every component page NOT
+// already covered by a detailed COMPONENTS entry above. Deliberately lightweight (one
+// focus + two key presses) — its job is coarse classification (is this page keyboard-
+// reachable at all, and does NVDA say anything on basic arrow navigation), not a full
+// protocol walkthrough.
+async function runGenericProbe(page, slug) {
+    const focusInfo = await page.evaluate(() => {
+        // Scope to the demo area the same way discover-selectors did during development
+        // (excludes topbar/sidebar/docs chrome such as the sidebar nav and TOC), falling
+        // back to <main> if no dedicated preview wrapper is found.
+        const main = document.querySelector("main");
+        if (!main) return { found: false };
+        const host = main.querySelector('[class*="preview"]') || main;
+        const el = host.querySelector('[tabindex="0"]');
+        if (!el) return { found: false };
+        el.focus();
+        return {
+            found: true,
+            focused: document.activeElement === el,
+            tag: el.tagName.toLowerCase(),
+            role: el.getAttribute("role"),
+        };
+    });
+    if (!focusInfo.found || !focusInfo.focused) {
+        return { focusable: focusInfo.found, focusOk: !!focusInfo.focused, announcements: [], classification: "no-focusable" };
+    }
+    const announcements = [];
+    for (const key of ["ArrowDown", "ArrowRight"]) {
+        await nvda.clearSpokenPhraseLog();
+        await nvda.press(key);
+        await sleep(500);
+        const actual = await nvda.lastSpokenPhrase();
+        announcements.push({ key, actual });
+    }
+    const spoke = announcements.some((a) => a.actual && a.actual.trim().length > 0);
+    return {
+        focusable: true,
+        focusOk: true,
+        focusedTag: focusInfo.tag,
+        focusedRole: focusInfo.role,
+        announcements,
+        classification: spoke ? "spoke" : "silent",
+    };
 }
 
 async function main() {
@@ -349,30 +677,15 @@ async function main() {
         }
 
         mkdirSync(resultsDir, { recursive: true });
-        const report = { generated: new Date().toISOString(), baseUrl, protocolFile: "docs/superpowers/sr-test-protocol.md", components: {} };
+        const report = { generated: new Date().toISOString(), baseUrl, protocolFile: "docs/superpowers/sr-test-protocol.md", components: {}, skipped: SKIPPED };
+
+        if (SKIPPED.length > 0) {
+            console.log(`[sr-audit] SKIPPED (no keyboard/SR surface, verified empirically): ${SKIPPED.map((s) => s.name).join(", ")}`);
+        }
 
         for (const component of COMPONENTS) {
             console.log(`\n[sr-audit] === ${component.name} (/components/${component.slug}) ===`);
-            const route = `/components/${component.slug}`;
-            await page.goto(baseUrl + route, { waitUntil: "load", timeout: 60_000 });
-            try {
-                await page.waitForFunction(() => document.documentElement.dataset.blazorReady === "true", { timeout: 30_000 });
-            } catch {
-                console.warn(`[sr-audit] ${component.slug}: blazorReady never set within 30s — continuing anyway`);
-            }
-            await sleep(1000);
-            // Re-assert Edge foreground before each component: NVDA only reads the
-            // foreground window, and a mid-sweep navigation or dialog can steal it.
-            // Only follow up with the physical heading click when Edge is CONFIRMED
-            // foreground — otherwise the click would land in whatever window actually
-            // owns the desktop (Codex P2). The heading click is what moves OS keyboard
-            // focus into page content (the missing piece for heavier layouts like DataGrid).
-            if (forceEdgeForeground()) {
-                await clickHeadingIntoContent(page);
-                await sleep(250);
-            } else if (forceForeground) {
-                console.warn(`[sr-audit] ${component.slug}: Edge did not reach foreground — skipping content click; speech capture may read the wrong window`);
-            }
+            const route = await gotoComponentPage(page, baseUrl, component.slug);
 
             const componentResult = { route, steps: [] };
             let focusOk = false;
@@ -428,6 +741,35 @@ async function main() {
                 componentResult.steps.push({ row: step.row, action: step.action, key: step.key, expected: step.expected, actual, result });
             }
             report.components[component.name] = componentResult;
+        }
+
+        if (allMode) {
+            const allSlugs = await getAllSlugs(baseUrl);
+            const covered = new Set(COMPONENTS.map((c) => c.slug));
+            const genericSlugs = allSlugs.filter((s) => !covered.has(s));
+            console.log(`\n[sr-audit] --all: ${allSlugs.length} total component pages, ${covered.size} covered by the detailed sweep above, generic-probing the remaining ${genericSlugs.length}`);
+
+            report.generic = { totalSlugs: allSlugs.length, coveredByDetailedSweep: [...covered].sort(), swept: {} };
+            const counts = { spoke: 0, silent: 0, "no-focusable": 0, error: 0 };
+
+            for (const slug of genericSlugs) {
+                try {
+                    await gotoComponentPage(page, baseUrl, slug, { blazorTimeoutMs: 8000, settleMs: 300 });
+                    const result = await runGenericProbe(page, slug);
+                    report.generic.swept[slug] = result;
+                    counts[result.classification] = (counts[result.classification] || 0) + 1;
+                    const line = result.classification === "no-focusable"
+                        ? "no focusable element in demo area"
+                        : result.announcements.map((a) => `${a.key}: "${a.actual || "(empty)"}"`).join(" | ");
+                    console.log(`[sr-audit] --all ${slug}: [${result.classification}] ${line}`);
+                } catch (e) {
+                    console.warn(`[sr-audit] --all ${slug}: ERROR — ${e.message}`);
+                    report.generic.swept[slug] = { error: e.message, classification: "error" };
+                    counts.error += 1;
+                }
+            }
+
+            console.log(`\n[sr-audit] --all summary (${genericSlugs.length} pages generic-probed): spoke=${counts.spoke} silent=${counts.silent} no-focusable=${counts["no-focusable"]} error=${counts.error}`);
         }
 
         const date = new Date().toISOString().slice(0, 10);
