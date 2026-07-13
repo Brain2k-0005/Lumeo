@@ -43,7 +43,7 @@ public class StepperScrollSuppressionTests : IAsyncLifetime
             i => i.Identifier == "registerPreventDefaultKeys");
         Assert.Equal(tablistId, reg.Arguments[0]);
 
-        var rules = (IReadOnlyList<Lumeo.Services.PreventDefaultKeyRule>)reg.Arguments[1]!;
+        var rules = Lumeo.Tests.Helpers.PreventDefaultRuleCapture.Parse(reg.Arguments[1]);
         var keys = rules.Select(r => r.Key).ToList();
         Assert.Contains("Home", keys);
         Assert.Contains("End", keys);

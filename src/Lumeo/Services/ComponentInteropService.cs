@@ -30,6 +30,10 @@ public sealed class ComponentInteropService : IComponentInteropService
         _jsRuntime = jsRuntime;
     }
 
+    // Trim safety: the deserializer constructs ViewportSize purely via reflection, which the
+    // linker cannot see — without this the parameterless ctor/property setters get
+    // trimmed and JSRuntime throws ConstructorContainsNullParameterNames at runtime.
+    [System.Diagnostics.CodeAnalysis.DynamicDependency(System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.PublicParameterlessConstructor | System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.PublicProperties, typeof(ViewportSize))]
     private async Task<IJSObjectReference> GetModuleAsync()
     {
         _module ??= await _jsRuntime.InvokeAsync<IJSObjectReference>(
@@ -250,6 +254,10 @@ public sealed class ComponentInteropService : IComponentInteropService
 
     // --- Viewport Size ---
 
+    // Trim safety: the deserializer constructs ViewportSize purely via reflection, which the
+    // linker cannot see — without this the parameterless ctor/property setters get
+    // trimmed and JSRuntime throws ConstructorContainsNullParameterNames at runtime.
+    [System.Diagnostics.CodeAnalysis.DynamicDependency(System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.PublicParameterlessConstructor | System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.PublicProperties, typeof(ViewportSize))]
     public async ValueTask<ViewportSize> GetViewportSize()
     {
         var module = await GetModuleAsync();
@@ -1092,6 +1100,10 @@ public sealed class ComponentInteropService : IComponentInteropService
         catch (Exception) { return true; }
     }
 
+    // Trim safety: the deserializer constructs RipplePoint purely via reflection, which the
+    // linker cannot see — without this the parameterless ctor/property setters get
+    // trimmed and JSRuntime throws ConstructorContainsNullParameterNames at runtime.
+    [System.Diagnostics.CodeAnalysis.DynamicDependency(System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.PublicParameterlessConstructor | System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.PublicProperties, typeof(RipplePoint))]
     public async ValueTask<RipplePoint> TouchRippleCoords(string hostElementId, double clientX, double clientY)
     {
         try
@@ -1154,6 +1166,10 @@ public sealed class ComponentInteropService : IComponentInteropService
         catch (JSDisconnectedException) { }
     }
 
+    // Trim safety: the deserializer constructs MediaState purely via reflection, which the
+    // linker cannot see — without this the parameterless ctor/property setters get
+    // trimmed and JSRuntime throws ConstructorContainsNullParameterNames at runtime.
+    [System.Diagnostics.CodeAnalysis.DynamicDependency(System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.PublicParameterlessConstructor | System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.PublicProperties, typeof(MediaState))]
     public async ValueTask<MediaState> GetMediaState(Microsoft.AspNetCore.Components.ElementReference element)
     {
         try
@@ -1340,6 +1356,10 @@ public sealed class ComponentInteropService : IComponentInteropService
         public TabMeasurement() : this(0, 0) { }
     }
 
+    // Trim safety: the deserializer constructs TabMeasurement purely via reflection, which the
+    // linker cannot see — without this the parameterless ctor/property setters get
+    // trimmed and JSRuntime throws ConstructorContainsNullParameterNames at runtime.
+    [System.Diagnostics.CodeAnalysis.DynamicDependency(System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.PublicParameterlessConstructor | System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.PublicProperties, typeof(TabMeasurement))]
     public async ValueTask<TabMeasurement?> TabsMeasure(string elementId)
     {
         try

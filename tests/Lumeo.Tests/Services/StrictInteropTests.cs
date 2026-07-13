@@ -118,7 +118,7 @@ public class StrictInteropTests : IAsyncLifetime
 
         var invocation = _module.VerifyInvoke("registerPreventDefaultKeys");
         Assert.Equal("elem-1", invocation.Arguments[0]);
-        var rules = Assert.IsAssignableFrom<IReadOnlyList<PreventDefaultKeyRule>>(invocation.Arguments[1]);
+        var rules = Lumeo.Tests.Helpers.PreventDefaultRuleCapture.Parse(invocation.Arguments[1]);
         var rule = Assert.Single(rules);
         Assert.Equal("Enter", rule.Key);
         Assert.True(rule.SkipComposing);

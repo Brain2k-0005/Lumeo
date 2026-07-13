@@ -43,7 +43,7 @@ public class TagInputPreventDefaultTests : IAsyncLifetime
 
         var invocation = _module.VerifyInvoke("registerPreventDefaultKeys");
         Assert.Equal(inputId, invocation.Arguments[0]);
-        var rules = Assert.IsAssignableFrom<IReadOnlyList<PreventDefaultKeyRule>>(invocation.Arguments[1]);
+        var rules = Lumeo.Tests.Helpers.PreventDefaultRuleCapture.Parse(invocation.Arguments[1]);
         // Enter (with IME safety) plus the ArrowUp/Down combobox-navigation keys.
         var enter = Assert.Single(rules, r => r.Key == "Enter");
         Assert.True(enter.SkipComposing); // IME safety

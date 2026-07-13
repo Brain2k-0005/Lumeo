@@ -184,7 +184,7 @@ public class SegmentedTests : IAsyncLifetime
 
         var invocation = _module.VerifyInvoke("registerPreventDefaultKeys");
         Assert.Equal(groupId, invocation.Arguments[0]);
-        var rules = Assert.IsAssignableFrom<IReadOnlyList<PreventDefaultKeyRule>>(invocation.Arguments[1]);
+        var rules = Lumeo.Tests.Helpers.PreventDefaultRuleCapture.Parse(invocation.Arguments[1]);
         Assert.Contains("ArrowRight", rules.Select(r => r.Key));
     }
 

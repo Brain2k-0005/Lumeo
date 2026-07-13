@@ -64,7 +64,7 @@ public class DataGridKeyboardPreventDefaultTests : IAsyncLifetime
         var reg = Assert.Single(ctx.JSInterop.Invocations,
             i => i.Identifier == "registerPreventDefaultKeys" && (string)i.Arguments[0]! == tableId);
         var elementId = (string)reg.Arguments[0]!;
-        var rules = (IReadOnlyList<PreventDefaultKeyRule>)reg.Arguments[1]!;
+        var rules = Lumeo.Tests.Helpers.PreventDefaultRuleCapture.Parse(reg.Arguments[1]);
         return (elementId, rules);
     }
 

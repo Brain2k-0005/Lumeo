@@ -52,7 +52,7 @@ public class PivotGridPreventDefaultRegistrationTests : IAsyncLifetime
         _ctx.JSInterop.Invocations
             .Where(i => i.Identifier == "registerPreventDefaultKeys"
                         && i.Arguments[0] is string id && id == elementId)
-            .Select(i => i.Arguments[1] as IReadOnlyList<Lumeo.Services.PreventDefaultKeyRule>)
+            .Select(i => Lumeo.Tests.Helpers.PreventDefaultRuleCapture.TryParse(i.Arguments[1]))
             .LastOrDefault();
 
     [Fact]

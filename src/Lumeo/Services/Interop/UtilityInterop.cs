@@ -41,7 +41,26 @@ internal sealed class UtilityInterop
         string elementId,
         IReadOnlyList<PreventDefaultKeyRule> rules)
     {
-        await module.InvokeVoidAsync("registerPreventDefaultKeys", elementId, rules);
+        // Trim safety: serialize the rules as dictionaries, not as the record type.
+        // Under a trimmed publish the linker BOTH strips constructor parameter names
+        // (WASM metadata trimming — even on kept ctors) AND removes the record's
+        // unused parameterless ctor (reflection use is invisible to the linker), so
+        // JSRuntime's reflection serializer throws ConstructorContainsNullParameterNames
+        // at runtime — this crashed nearly every docs page live (keyboard scroll
+        // suppression runs on ~60 components). Dictionaries serialize to the identical
+        // JSON array-of-objects; the JS side is unchanged.
+        var payload = new List<Dictionary<string, object?>>(rules.Count);
+        foreach (var r in rules)
+        {
+            payload.Add(new Dictionary<string, object?>
+            {
+                ["key"] = r.Key,
+                ["requireNoModifiers"] = r.RequireNoModifiers,
+                ["skipComposing"] = r.SkipComposing,
+                ["skipEditable"] = r.SkipEditable,
+            });
+        }
+        await module.InvokeVoidAsync("registerPreventDefaultKeys", elementId, payload);
     }
 
     public async ValueTask UnregisterPreventDefaultKeys(IJSObjectReference module, string elementId)
@@ -98,6 +117,10 @@ internal sealed class UtilityInterop
 
     // --- Mention: Textarea Caret Position ---
 
+    // Trim safety: the deserializer constructs TextareaCaretInfo purely via reflection, which the
+    // linker cannot see — without this the parameterless ctor/property setters get
+    // trimmed and JSRuntime throws ConstructorContainsNullParameterNames at runtime.
+    [System.Diagnostics.CodeAnalysis.DynamicDependency(System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.PublicParameterlessConstructor | System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.PublicProperties, typeof(ComponentInteropService.TextareaCaretInfo))]
     public async ValueTask<ComponentInteropService.TextareaCaretInfo> GetTextareaCaretPosition(
         IJSObjectReference module,
         string elementId)

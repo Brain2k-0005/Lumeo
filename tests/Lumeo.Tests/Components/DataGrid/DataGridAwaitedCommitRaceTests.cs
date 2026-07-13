@@ -190,7 +190,7 @@ public class DataGridAwaitedCommitRaceTests : IAsyncLifetime
 
         var reg = Assert.Single(_ctx.JSInterop.Invocations,
             i => i.Identifier == "registerPreventDefaultKeys" && (string)i.Arguments[0]! == handleId);
-        var rules = (IReadOnlyList<PreventDefaultKeyRule>)reg.Arguments[1]!;
+        var rules = Lumeo.Tests.Helpers.PreventDefaultRuleCapture.Parse(reg.Arguments[1]);
         var keys = rules.Select(r => r.Key).ToList();
 
         Assert.Contains("ArrowLeft", keys);

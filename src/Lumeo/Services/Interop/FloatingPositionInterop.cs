@@ -72,6 +72,10 @@ internal sealed class FloatingPositionInterop
         await module.InvokeVoidAsync("positionAtPoint", contentId, x, y);
     }
 
+    // Trim safety: the deserializer constructs ElementRect purely via reflection, which the
+    // linker cannot see — without this the parameterless ctor/property setters get
+    // trimmed and JSRuntime throws ConstructorContainsNullParameterNames at runtime.
+    [System.Diagnostics.CodeAnalysis.DynamicDependency(System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.PublicParameterlessConstructor | System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.PublicProperties, typeof(ElementRect))]
     public async ValueTask<ElementRect?> GetElementRect(
         IJSObjectReference module,
         string elementId)
@@ -79,6 +83,10 @@ internal sealed class FloatingPositionInterop
         return await module.InvokeAsync<ElementRect?>("getElementRect", elementId);
     }
 
+    // Trim safety: the deserializer constructs ElementRect purely via reflection, which the
+    // linker cannot see — without this the parameterless ctor/property setters get
+    // trimmed and JSRuntime throws ConstructorContainsNullParameterNames at runtime.
+    [System.Diagnostics.CodeAnalysis.DynamicDependency(System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.PublicParameterlessConstructor | System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.PublicProperties, typeof(ElementRect))]
     public async ValueTask<ElementRect?> GetElementRectBySelector(
         IJSObjectReference module,
         string selector)

@@ -88,7 +88,7 @@ public class RatingTests : IAsyncLifetime
 
         var invocation = _module.VerifyInvoke("registerPreventDefaultKeys");
         Assert.Equal(groupId, invocation.Arguments[0]);
-        var rules = Assert.IsAssignableFrom<IReadOnlyList<PreventDefaultKeyRule>>(invocation.Arguments[1]);
+        var rules = Lumeo.Tests.Helpers.PreventDefaultRuleCapture.Parse(invocation.Arguments[1]);
         var keys = rules.Select(r => r.Key).ToList();
         Assert.Contains("ArrowUp", keys);
         Assert.Contains("ArrowDown", keys);
