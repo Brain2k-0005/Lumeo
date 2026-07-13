@@ -8,30 +8,28 @@
     data-col-id="@Column.Id"
     data-col-pin="@Column.Pin"
     data-reorderable="@(EffectiveReorderable ? "true" : null)"
+    data-groupable="@(Column.Groupable ? "true" : null)"
     role="columnheader"
     aria-colindex="@AriaColIndex"
     aria-sort="@AriaSort"
     tabindex="@TabIndexValue"
     @onkeydown="HandleKeyDown"
-    draggable="@(IsDraggable ? "true" : "false")"
-    @ondragstart="HandleDragStart"
-    @ondragend="HandleDragEnd"
-    @ondragover:preventDefault="true"
     @attributes="AdditionalAttributes">
     <div class="flex items-center gap-1">
         @* Dedicated reorder grip (ReUI drag-handle affordance). Discoverable cue
-           for both drag paths: it's the initiator for touch/pen (a JS pointer
-           listener registered on the grid delegates from [data-reorder-grip] and
-           drives a translate-in-place reorder — native HTML5 DnD never fires on
-           touch), while on desktop the whole draggable <th> still starts the
-           native drag. Only shown when the column is actually reorderable. *@
+           for the pointer engine (mouse + touch + pen, all unified): it's the
+           immediate initiator for every pointer type — a JS pointer listener
+           registered on the grid delegates from [data-reorder-grip] and drives a
+           translate-in-place drag. Only shown when the column is actually
+           reorderable. *@
         @* Zone model (column-header drag redesign): A = resize edges (handled by
            the resize handle below, unaffected). B = this whole row's content — the
            grip plus the sort button that now fills the remaining space — where a
-           CLICK sorts and a DRAG >5px (or a touch/pen long-press) reorders. C = the
-           action-cluster buttons after it (group-drag, filter, pin) — exclusive,
-           never a drag source, never sorts. See components.js's
-           registerColumnReorder for the pointer-engine half of this. *@
+           CLICK sorts and a DRAG >5px (or a touch/pen long-press) reorders OR
+           groups, depending on where the pointer is released (row = reorder, group
+           panel = group — see components.js's registerColumnReorder). C = the
+           action-cluster buttons after it (group-drag hint icon, filter, pin) —
+           exclusive, never a drag source, never sorts. *@
         @if (EffectiveReorderable)
         {
             <span data-reorder-grip
@@ -89,10 +87,14 @@
 
         @* 2.2.2: visible drag-to-group affordance on columns that can be
            grouped. Without this, users had to try each column header to
-           discover which ones supported drag-into-panel — draggable="true"
-           on its own gave no visual cue. Mirrors the filter button's
+           discover which ones supported drag-into-panel — the unified pointer
+           drag on its own gave no visual cue. Mirrors the filter button's
            opacity-on-hover pattern; hidden when ShowGroupPanel is off (no
-           point advertising drag-to-group when there's nowhere to drop). *@
+           point advertising drag-to-group when there's nowhere to drop). Purely
+           decorative — it isn't itself a drag source; the SAME grip/header-wide
+           pointerdown that starts a reorder also starts this gesture (rc.42),
+           see DataGridHeaderCell's data-groupable attribute above and
+           components.js's registerColumnReorder panel hit-testing. *@
         @if (Context?.ShowGroupPanel == true && Column.Groupable)
         {
             <Tooltip>
@@ -239,7 +241,6 @@
 @code {
     [CascadingParameter] private DataGridContext<TItem>? Context { get; set; }
     [CascadingParameter] private DataGrid<TItem>? ParentGrid { get; set; }
-    [CascadingParameter] private DataGridDragState? DragState { get; set; }
     @* Inject the interface, not the concrete service, so tests can substitute
        a TrackingInteropService for the interop surface — every method used by
        this component (PositionFixed, RegisterClickOutside, RegisterColumnResize,
@@ -448,26 +449,16 @@
     /// </summary>
     private bool EffectiveReorderable => Reorderable && Column.Reorderable;
 
-    /// <summary>True when this header is the source of an in-flight column
-    /// drag (the dragstart fired here and dragend / drop hasn't yet). Used
-    /// to dim the source th so the user can see which column is moving.</summary>
-    private bool IsDragSource =>
-        DragState?.SourceColumnId is { } src && src == Column.Id;
-
-    /// <summary>True when this header is HTML5-draggable. Native HTML5 DnD is now
-    /// used for exactly one gesture: dragging a column into the group panel to add
-    /// a grouping level (Groupable, drop on the group panel — rc.41). Column
-    /// REORDER no longer uses native DnD at all — it went through this same
-    /// draggable="true" + dragstart/drop-on-header pairing until the ReUI-parity
-    /// pass, which replaced it with the unified pointer-based path (grip/header
-    /// pointerdown, live sibling shift, no ghost/indicator) registered via
-    /// Interop.RegisterColumnReorder — see components.js. Keeping native DnD
-    /// scoped to grouping-only means a Reorderable+Groupable column still starts
-    /// a native drag from most of the header (for the group-panel gesture) while
-    /// the dedicated grip owns the reorder gesture (its pointerdown handler calls
-    /// preventDefault/stopPropagation so native dragstart never arms from the
-    /// grip).</summary>
-    private bool IsDraggable =>
+    /// <summary>True when this column both is Groupable AND the owning grid shows
+    /// the group panel — i.e. dropping this column's drag on the panel is a valid
+    /// grouping gesture. Purely a styling/affordance signal now (drives cursor-grab
+    /// and the drag-to-group hint icon) — rc.42 removed native HTML5 DnD entirely,
+    /// so this no longer sets an HTML <c>draggable</c> attribute anywhere. The
+    /// actual mode-switch (reorder-in-row vs. drop-on-panel) is decided purely in
+    /// JS by components.js's registerColumnReorder, which reads this column's
+    /// <c>data-groupable</c> attribute (see the markup above) together with the
+    /// grid's own group-panel element (present only when ShowGroupPanel is on).</summary>
+    private bool CanDragToGroup =>
         Context?.ShowGroupPanel == true && Column.Groupable;
 
     private string CssClass
@@ -488,15 +479,13 @@
                 "outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
                 pinClass,
                 // cursor-grab signals drag-affordance for reorder (grip/header pointer
-                // path) AND drag-to-group (native DnD, Groupable + ShowGroupPanel) —
-                // either capability lights it up so the cue isn't missed (2.2.2).
-                (EffectiveReorderable || IsDraggable) ? "cursor-grab" : null,
-                // Dim the dragged source header so users see at a glance which column
-                // is moving. The reorder path now shows this via IsDragSource too (the
-                // pointer JS doesn't set DragState — only native drag-to-group does —
-                // so this class currently lights up for group-drags; the pointer path's
-                // own opacity-0.8 is applied directly to the cell inline by JS).
-                IsDragSource ? "opacity-40 transition-opacity" : null,
+                // path) AND drag-to-group (same pointer path, dropped on the panel
+                // instead of a sibling header) — either capability lights it up so the
+                // cue isn't missed (2.2.2). The dragged source header's dim/lift is
+                // applied directly by JS as an inline style once the drag actually
+                // arms (components.js armDrag) — there's no separate Blazor-side
+                // "source" class to toggle now that native DnD is gone (rc.42).
+                (EffectiveReorderable || CanDragToGroup) ? "cursor-grab" : null,
                 Column.HeaderCssClass,
                 Class
             }.Where(s => !string.IsNullOrWhiteSpace(s)));
@@ -758,39 +747,22 @@
         await Interop.NudgeColumnResize(_resizeHandleId, delta);
     }
 
-    // --- Column Drag & Drop: group-panel gesture only ---
+    // --- Column Drag & Drop: unified with reorder (rc.42) ---
     //
-    // Native HTML5 DnD used to ALSO drive column reorder (dragstart on a header,
-    // dragenter/drop on a sibling header, a glow drop-indicator). The ReUI-parity
-    // pass replaced that entirely with the unified pointer-based path (mouse +
-    // touch + pen, live sibling shift, no ghost/indicator) registered via
-    // Interop.RegisterColumnReorder — see components.js `registerColumnReorder`.
-    // What's left here is native DnD's one remaining job: dragging a Groupable
-    // header into the group panel to add a grouping level (rc.41). Drag state is
-    // held by an instance-bound DataGridDragState cascaded from the owning
-    // DataGrid<TItem> — replaces the previous static-class holder which was
-    // process-global and cross-talked between grid instances on the same page.
-
-    private void HandleDragStart(DragEventArgs e)
-    {
-        if (!IsDraggable || DragState is null) return;
-        DragState.StartColumnDrag(ColumnIndex, Column.Id);
-    }
-
-    private void HandleDragEnd(DragEventArgs e)
-    {
-        // Fires on the SOURCE element regardless of whether the drop
-        // succeeded (drop target → ResetColumn already called) or was
-        // cancelled (Esc, drop outside any target). The handler itself is
-        // intentionally a no-op when there's no leftover state — but its
-        // presence triggers a Blazor re-render of the source cell, which
-        // clears the opacity-40 source-dim that IsDragSource toggled on.
-        // Defensive ResetColumn covers the cancel path where no drop ran.
-        if (DragState is not null && DragState.SourceColumnId == Column.Id)
-        {
-            DragState.ResetColumn();
-        }
-    }
+    // Native HTML5 DnD used to drive BOTH column reorder (dragstart on a header,
+    // dragenter/drop on a sibling header, a glow drop-indicator) and drag-to-group
+    // (dragstart on a Groupable header, drop on the group panel). The ReUI-parity
+    // pass replaced reorder with the unified pointer-based path (mouse + touch +
+    // pen, live sibling shift, no ghost/indicator); rc.42 finished the job by
+    // folding drag-to-group into that SAME engine instead of leaving native DnD as
+    // a second, incompatible drag surface (native dragstart fires pointercancel,
+    // which used to force the pointer engine to bail out of ANY header that still
+    // had draggable="true"). There is no C# drag state to hold here any more —
+    // components.js's registerColumnReorder hit-tests the pointer against the
+    // group panel's cached rect on every move and commits through the exact same
+    // Interop.RegisterColumnReorder channel reorder already used (a sentinel
+    // target id routes DataGrid.razor's commit lambda to AddGroupField instead of
+    // ReorderColumnByIdAsync — see DataGrid.razor's GroupPanelDropTargetId).
 
     public async ValueTask DisposeAsync()
     {

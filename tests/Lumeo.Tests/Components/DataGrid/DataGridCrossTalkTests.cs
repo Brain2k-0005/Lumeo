@@ -8,23 +8,25 @@ namespace Lumeo.Tests.Components.DataGrid;
 
 /// <summary>
 /// Regression tests for the rc.19 fix that replaced the process-global static
-/// drag-state holder in DataGridHeaderCell with an instance-bound
-/// <see cref="DataGridDragState"/>. Two grids on the same page must not see
-/// each other's in-flight drags.
+/// drag-state holder in DataGridHeaderCell with an instance-bound drag-state
+/// class (since removed entirely — see below).
 ///
 /// The column-reorder AND row-reorder cross-talk cases that used to live here
 /// (native HTML5 DnD: dragstart on grid A's header/row, drop on grid B's) were
 /// removed with the ReUI-parity pass — neither column nor row reorder uses
-/// native DnD or DataGridDragState any more. The unified pointer paths (mouse +
-/// touch + pen, registered via RegisterColumnReorder / RegisterRowReorder) are
-/// structurally immune to this class of cross-talk: each grid registers its
-/// own JS listener scoped to its own `[data-grid-id]` subtree and its own
-/// captured `dotnetRef`, so a drag started in grid A's DOM can never resolve
-/// headers/rows or invoke the commit callback belonging to grid B — there is
-/// no shared/global state to leak through in the first place (see
-/// DataGridReorderConstraintTests / DataGridRowReorderTests for the pointer
-/// commit-path coverage that replaced these). DataGridDragState now applies
-/// only to the drag-to-group-panel gesture.
+/// native DnD any more. rc.42 finished the job: drag-to-group (the last native-
+/// DnD gesture, and the last consumer of that instance-bound drag-state class)
+/// was folded into the SAME unified pointer engine, and the drag-state class
+/// itself (DataGridDragState) was deleted — there is no C# drag state left to
+/// hold at all. The unified pointer paths (mouse + touch + pen, registered via
+/// RegisterColumnReorder / RegisterRowReorder) are structurally immune to this
+/// class of cross-talk: each grid registers its own JS listener scoped to its
+/// own `[data-grid-id]` subtree and its own captured `dotnetRef`, so a drag
+/// started in grid A's DOM can never resolve headers/rows or invoke the commit
+/// callback belonging to grid B — there is no shared/global state to leak
+/// through in the first place (see DataGridReorderConstraintTests /
+/// DataGridRowReorderTests / DataGridReorderGroupPanelUnificationTests for the
+/// pointer commit-path coverage that replaced these).
 /// </summary>
 public class DataGridCrossTalkTests : IAsyncLifetime
 {

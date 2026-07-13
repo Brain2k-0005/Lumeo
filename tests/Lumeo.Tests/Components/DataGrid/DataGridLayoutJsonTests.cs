@@ -150,13 +150,12 @@ public class DataGridLayoutJsonTests : IAsyncLifetime
     [Fact]
     public void HeaderCell_Not_Reorderable_When_Column_Reorderable_False()
     {
-        // NOTE: `draggable` on the <th> no longer tracks Reorderable at all — the
-        // ReUI-parity pass moved column reorder off native HTML5 DnD entirely onto
-        // a unified pointer-based path (mouse + touch + pen). `draggable` now only
-        // reflects the unrelated drag-to-group-panel gesture (Groupable +
-        // ShowGroupPanel, neither set here, so it stays "false" throughout). The
-        // per-column Reorderable flag instead gates `data-reorderable` — the
-        // marker the JS pointer path keys off — and the grip.
+        // NOTE: the <th> never renders an HTML `draggable` attribute at all any
+        // more — rc.42 removed native HTML5 DnD entirely (both column reorder AND
+        // drag-to-group now share the one unified pointer-based path: mouse +
+        // touch + pen). The per-column Reorderable flag instead gates
+        // `data-reorderable` — the marker the JS pointer path keys off — and the
+        // grip.
         var cols = Cols();
         cols[1].Reorderable = false; // "Name" column locked
 
@@ -191,7 +190,7 @@ public class DataGridLayoutJsonTests : IAsyncLifetime
         var headerCells = cut.FindAll("th[data-slot='datagrid-header-cell']");
         foreach (var th in headerCells)
         {
-            Assert.Equal("false", th.GetAttribute("draggable"));
+            Assert.Null(th.GetAttribute("draggable"));
             Assert.Null(th.GetAttribute("data-reorderable"));
         }
         Assert.Empty(cut.FindAll("[data-reorder-grip]"));

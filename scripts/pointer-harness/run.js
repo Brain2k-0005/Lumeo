@@ -2707,6 +2707,219 @@ function assert(cond, msg) {
   assert(!!commit46, 'the long-press-armed touch drag commits a reorder on release over a sibling column');
   assert(commit46.args[2] === 'B', `the long-press touch drag commits targeting column B (got '${commit46 && commit46.args[2]}')`);
 
+  // ---------------------------------------------------------------
+  // TEST 47 — Unified drag-to-group (rc.42), scenario (a): dragging a
+  // Groupable column's grip onto the group panel commits via the
+  // GROUP_PANEL_DROP_TARGET_ID sentinel — the SAME OnColumnReorderCommit
+  // channel reorder itself uses, per DataGrid.razor's GroupPanelDropTargetId.
+  // Also proves the live sibling-shift preview a mid-row pass engaged gets
+  // relaxed back to identity the instant the pointer crosses into the panel,
+  // and that the panel's data-drop-target highlight only lights up while the
+  // drag is actually hovering it, clearing again once the drag ends.
+  // ---------------------------------------------------------------
+  await page.evaluate(() => {
+    document.getElementById('host').innerHTML = `
+      <div data-grid-id="g47">
+        <div data-slot="datagrid-group-panel" style="height:40px;width:340px;">Drop to group</div>
+        <table id="tbl47" style="width:340px">
+          <thead><tr>
+            <th data-col-id="A" data-col-pin="None" data-reorderable="true" style="width:110px">
+              <span data-reorder-grip>::</span>A</th>
+            <th data-col-id="B" data-col-pin="None" data-reorderable="true" data-groupable="true" style="width:110px">
+              <span data-reorder-grip>::</span>B</th>
+            <th data-col-id="C" data-col-pin="None" data-reorderable="true" style="width:110px">
+              <span data-reorder-grip>::</span>C</th>
+          </tr></thead>
+          <tbody><tr><td>a</td><td>b</td><td>c</td></tr></tbody>
+        </table>
+      </div>`;
+  });
+  await page.evaluate(() => {
+    window.__dotnetCalls.length = 0;
+    window.__C.registerColumnReorder('g47', window.__fakeDotNet);
+  });
+  const gripB47 = await page.$('div[data-grid-id="g47"] th[data-col-id="B"] [data-reorder-grip]');
+  const gripB47Box = await gripB47.boundingBox();
+  const thC47 = await page.$('div[data-grid-id="g47"] th[data-col-id="C"]');
+  const cBox47 = await thC47.boundingBox();
+  const panel47 = await page.$('div[data-grid-id="g47"] [data-slot="datagrid-group-panel"]');
+  const panelBox47 = await panel47.boundingBox();
+
+  await page.mouse.move(gripB47Box.x + gripB47Box.width / 2, gripB47Box.y + gripB47Box.height / 2);
+  await page.mouse.down();
+  // Pass over C first — engages the live sibling-shift reorder preview. Reads
+  // the raw inline style (not getComputedStyle) throughout this test — the
+  // shift is CSS-transitioned (~220ms), so a computed-style read moments after
+  // the JS write would observe a mid-transition INTERPOLATED value instead of
+  // the target applyProjection actually wrote (Codex-style false negative).
+  await page.mouse.move(cBox47.x + cBox47.width / 2, cBox47.y + cBox47.height / 2, { steps: 5 });
+  const cTxMidRow47 = await page.evaluate(() =>
+    document.querySelector('div[data-grid-id="g47"] th[data-col-id="C"]').style.transform);
+  assert(cTxMidRow47 !== '', `dragging B across C engages C's live sibling-shift preview first (got '${cTxMidRow47}')`);
+
+  // Now move UP into the group panel.
+  await page.mouse.move(panelBox47.x + panelBox47.width / 2, panelBox47.y + panelBox47.height / 2, { steps: 5 });
+  const overPanel47 = await page.evaluate(() => {
+    const panel = document.querySelector('div[data-grid-id="g47"] [data-slot="datagrid-group-panel"]');
+    const c = document.querySelector('div[data-grid-id="g47"] th[data-col-id="C"]');
+    return { panelDropTarget: panel.getAttribute('data-drop-target'), cTransform: c.style.transform };
+  });
+  assert(overPanel47.panelDropTarget === 'true', `panel gets data-drop-target="true" while a Groupable column hovers it (got '${overPanel47.panelDropTarget}')`);
+  assert(overPanel47.cTransform === '', `entering panel mode relaxes C's live-shift preview back to identity (got '${overPanel47.cTransform}')`);
+
+  await page.mouse.up();
+  await page.waitForTimeout(300);
+  const afterRelease47 = await page.evaluate(() => {
+    const panel = document.querySelector('div[data-grid-id="g47"] [data-slot="datagrid-group-panel"]');
+    return { panelDropTarget: panel.getAttribute('data-drop-target'), calls: window.__dotnetCalls };
+  });
+  const commit47 = afterRelease47.calls.find((c) => c.method === 'OnColumnReorderCommit');
+  assert(afterRelease47.panelDropTarget === null, 'panel highlight is cleared once the drag ends (commit or cancel)');
+  assert(!!commit47, 'releasing a Groupable column over the panel commits exactly once');
+  assert(commit47.args[1] === 'B', `commit sources from the dragged column B (got '${commit47 && commit47.args[1]}')`);
+  assert(commit47.args[2] === '__group-panel__', `commit targets the group-panel sentinel, not a real column id (got '${commit47 && commit47.args[2]}')`);
+
+  // ---------------------------------------------------------------
+  // TEST 48 — Unified drag-to-group (rc.42), scenario (b): the SAME drag,
+  // but released back in the header row instead of the panel — must reorder,
+  // NOT group. Proves mode-switching is fully reversible mid-drag, not a
+  // one-way trip once the pointer has touched the panel.
+  // ---------------------------------------------------------------
+  await page.evaluate(() => {
+    document.getElementById('host').innerHTML = `
+      <div data-grid-id="g48">
+        <div data-slot="datagrid-group-panel" style="height:40px;width:340px;">Drop to group</div>
+        <table id="tbl48" style="width:340px">
+          <thead><tr>
+            <th data-col-id="A" data-col-pin="None" data-reorderable="true" style="width:110px">
+              <span data-reorder-grip>::</span>A</th>
+            <th data-col-id="B" data-col-pin="None" data-reorderable="true" data-groupable="true" style="width:110px">
+              <span data-reorder-grip>::</span>B</th>
+            <th data-col-id="C" data-col-pin="None" data-reorderable="true" style="width:110px">
+              <span data-reorder-grip>::</span>C</th>
+          </tr></thead>
+          <tbody><tr><td>a</td><td>b</td><td>c</td></tr></tbody>
+        </table>
+      </div>`;
+  });
+  await page.evaluate(() => {
+    window.__dotnetCalls.length = 0;
+    window.__C.registerColumnReorder('g48', window.__fakeDotNet);
+  });
+  const gripB48 = await page.$('div[data-grid-id="g48"] th[data-col-id="B"] [data-reorder-grip]');
+  const gripB48Box = await gripB48.boundingBox();
+  const thC48 = await page.$('div[data-grid-id="g48"] th[data-col-id="C"]');
+  const cBox48 = await thC48.boundingBox();
+  const panel48 = await page.$('div[data-grid-id="g48"] [data-slot="datagrid-group-panel"]');
+  const panelBox48 = await panel48.boundingBox();
+
+  await page.mouse.move(gripB48Box.x + gripB48Box.width / 2, gripB48Box.y + gripB48Box.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(panelBox48.x + panelBox48.width / 2, panelBox48.y + panelBox48.height / 2, { steps: 5 });
+  const overPanel48 = await page.evaluate(() =>
+    document.querySelector('div[data-grid-id="g48"] [data-slot="datagrid-group-panel"]').getAttribute('data-drop-target'));
+  assert(overPanel48 === 'true', 'panel highlights while hovering it mid-drag (setup for the return-to-row check)');
+  // Move back down onto C, in the header row — leaves panel mode.
+  await page.mouse.move(cBox48.x + cBox48.width / 2, cBox48.y + cBox48.height / 2, { steps: 5 });
+  const backInRow48 = await page.evaluate(() =>
+    document.querySelector('div[data-grid-id="g48"] [data-slot="datagrid-group-panel"]').getAttribute('data-drop-target'));
+  assert(backInRow48 === null, 'panel highlight clears the instant the pointer leaves it, back over the row');
+
+  await page.mouse.up();
+  await page.waitForTimeout(300);
+  const commit48 = await page.evaluate(() => window.__dotnetCalls.find((c) => c.method === 'OnColumnReorderCommit'));
+  assert(!!commit48, 'releasing back in the row still commits — a normal reorder');
+  assert(commit48.args[2] === 'C', `commit targets sibling column C, NOT the group-panel sentinel (got '${commit48 && commit48.args[2]}')`);
+
+  // ---------------------------------------------------------------
+  // TEST 49 — Unified drag-to-group (rc.42), scenario (c): Escape while
+  // hovering the panel cancels everything — no group, no reorder, no commit
+  // call of any kind (mirrors Escape's existing cancel semantics anywhere
+  // else in the row).
+  // ---------------------------------------------------------------
+  await page.evaluate(() => {
+    document.getElementById('host').innerHTML = `
+      <div data-grid-id="g49">
+        <div data-slot="datagrid-group-panel" style="height:40px;width:230px;">Drop to group</div>
+        <table id="tbl49" style="width:230px">
+          <thead><tr>
+            <th data-col-id="A" data-col-pin="None" data-reorderable="true" data-groupable="true" style="width:115px">
+              <span data-reorder-grip>::</span>A</th>
+            <th data-col-id="B" data-col-pin="None" data-reorderable="true" style="width:115px">
+              <span data-reorder-grip>::</span>B</th>
+          </tr></thead>
+          <tbody><tr><td>a</td><td>b</td></tr></tbody>
+        </table>
+      </div>`;
+  });
+  await page.evaluate(() => {
+    window.__dotnetCalls.length = 0;
+    window.__C.registerColumnReorder('g49', window.__fakeDotNet);
+  });
+  const gripA49 = await page.$('div[data-grid-id="g49"] th[data-col-id="A"] [data-reorder-grip]');
+  const gripA49Box = await gripA49.boundingBox();
+  const panel49 = await page.$('div[data-grid-id="g49"] [data-slot="datagrid-group-panel"]');
+  const panelBox49 = await panel49.boundingBox();
+
+  await page.mouse.move(gripA49Box.x + gripA49Box.width / 2, gripA49Box.y + gripA49Box.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(panelBox49.x + panelBox49.width / 2, panelBox49.y + panelBox49.height / 2, { steps: 5 });
+  const overPanel49 = await page.evaluate(() =>
+    document.querySelector('div[data-grid-id="g49"] [data-slot="datagrid-group-panel"]').getAttribute('data-drop-target'));
+  assert(overPanel49 === 'true', 'panel highlights while hovering it (setup for the Escape-cancels check)');
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(300);
+  const afterEscape49 = await page.evaluate(() => {
+    const panel = document.querySelector('div[data-grid-id="g49"] [data-slot="datagrid-group-panel"]');
+    const a = document.querySelector('div[data-grid-id="g49"] th[data-col-id="A"]');
+    return { panelDropTarget: panel.getAttribute('data-drop-target'), aOpacity: a.style.opacity, calls: window.__dotnetCalls };
+  });
+  await page.mouse.up(); // release whatever's left of the (already-cancelled) gesture
+  assert(afterEscape49.panelDropTarget === null, 'Escape over the panel clears the highlight immediately');
+  assert(afterEscape49.aOpacity === '', `Escape glides the dragged header back to identity, not left mid-drag (opacity '${afterEscape49.aOpacity}')`);
+  assert(!afterEscape49.calls.some((c) => c.method === 'OnColumnReorderCommit'), 'Escape over the panel never fires a commit — no group, no reorder');
+
+  // ---------------------------------------------------------------
+  // TEST 50 — Unified drag-to-group (rc.42), scenario (d): a non-Groupable
+  // column dragged onto the panel gets NO highlight, and releasing it there
+  // is treated exactly like releasing outside any valid target — a plain
+  // cancel, not a reorder and not a group.
+  // ---------------------------------------------------------------
+  await page.evaluate(() => {
+    document.getElementById('host').innerHTML = `
+      <div data-grid-id="g50">
+        <div data-slot="datagrid-group-panel" style="height:40px;width:230px;">Drop to group</div>
+        <table id="tbl50" style="width:230px">
+          <thead><tr>
+            <th data-col-id="A" data-col-pin="None" data-reorderable="true" style="width:115px">
+              <span data-reorder-grip>::</span>A</th>
+            <th data-col-id="B" data-col-pin="None" data-reorderable="true" style="width:115px">
+              <span data-reorder-grip>::</span>B</th>
+          </tr></thead>
+          <tbody><tr><td>a</td><td>b</td></tr></tbody>
+        </table>
+      </div>`;
+  });
+  await page.evaluate(() => {
+    window.__dotnetCalls.length = 0;
+    window.__C.registerColumnReorder('g50', window.__fakeDotNet);
+  });
+  const gripA50 = await page.$('div[data-grid-id="g50"] th[data-col-id="A"] [data-reorder-grip]');
+  const gripA50Box = await gripA50.boundingBox();
+  const panel50 = await page.$('div[data-grid-id="g50"] [data-slot="datagrid-group-panel"]');
+  const panelBox50 = await panel50.boundingBox();
+
+  await page.mouse.move(gripA50Box.x + gripA50Box.width / 2, gripA50Box.y + gripA50Box.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(panelBox50.x + panelBox50.width / 2, panelBox50.y + panelBox50.height / 2, { steps: 5 });
+  const overPanel50 = await page.evaluate(() =>
+    document.querySelector('div[data-grid-id="g50"] [data-slot="datagrid-group-panel"]').getAttribute('data-drop-target'));
+  assert(overPanel50 === null, `non-Groupable column A never lights up the panel highlight (got '${overPanel50}')`);
+  await page.mouse.up();
+  await page.waitForTimeout(300);
+  const afterRelease50 = await page.evaluate(() => window.__dotnetCalls);
+  assert(!afterRelease50.some((c) => c.method === 'OnColumnReorderCommit'), 'dropping a non-Groupable column on the panel commits nothing — treated as a cancel');
+
   console.log(`\nALL TESTS PASSED (${passCount} assertions) — engine: ${ENGINE}`);
   await browser.close();
   server.close();

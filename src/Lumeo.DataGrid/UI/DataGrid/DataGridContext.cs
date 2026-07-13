@@ -87,9 +87,13 @@ public record DataGridContext<TItem>(
     /// <summary>Removes a field from the grouping levels.</summary>
     Action<string> RemoveGroupField,
     /// <summary>When true, the grid renders the group-panel strip and Groupable
-    /// column headers are drag-source-eligible (drag-to-group target is the panel
-    /// itself). Header cells read this to decide whether to set draggable=true
-    /// even for columns that aren't Reorderable. (rc.41)</summary>
+    /// column headers become valid drag-to-group drop sources — an in-progress
+    /// pointer-engine column drag (see components.js's registerColumnReorder)
+    /// released over the panel adds a grouping level instead of reordering.
+    /// Header cells read this (together with the column's own Groupable flag) to
+    /// decide whether to light up the cursor-grab affordance / drag-to-group hint
+    /// icon. No longer drives an HTML <c>draggable</c> attribute — rc.42 removed
+    /// native HTML5 DnD entirely in favour of one unified pointer path.</summary>
     bool ShowGroupPanel,
 
     // --- Tree-grid mode (rc.35) ---

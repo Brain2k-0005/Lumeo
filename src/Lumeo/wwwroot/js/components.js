@@ -3269,38 +3269,59 @@ export function animateColumnReorder(gridId, durationMs) {
     }, duration + 50);
 }
 
-// --- DataGrid Column Reorder: unified pointer-based (mouse + touch + pen) ---
+// --- DataGrid Column Reorder + Drag-to-Group: ONE unified pointer engine ---
+// (mouse + touch + pen — rc.42 folded drag-to-group into this same engine)
 //
 // ReUI parity (keenthemes/reui data-grid-table-dnd.tsx): ONE drag path drives
-// every pointer type. No ghost image, no drop-indicator line — the dragged
-// column (header + its body cells) translates IN PLACE following the pointer
-// at opacity 0.8 / z above siblings, while same-pin siblings LIVE-SHIFT aside
-// (transform-only, ~220ms ease) to continuously preview the final order as the
-// pointer crosses their midpoints. Native HTML5 drag-and-drop is no longer used
-// for reorder at all (see DataGridHeaderCell.IsDraggable — it now serves only
-// the unrelated drag-to-group-panel gesture).
+// every pointer type AND both drop semantics. No ghost image, no drop-
+// indicator line — the dragged column (header + its body cells) translates IN
+// PLACE following the pointer at opacity 0.8 / z above siblings, while
+// same-pin siblings LIVE-SHIFT aside (transform-only, ~220ms ease) to
+// continuously preview the final order as the pointer crosses their
+// midpoints. Native HTML5 drag-and-drop is no longer used at all — it used to
+// own drag-to-group as a SEPARATE drag surface (a header with draggable=true
+// firing its own dragstart), which is fundamentally incompatible with this
+// engine: a native dragstart on an element under an active pointer sequence
+// fires pointercancel, so the two could never coexist on the same header.
+// Folding drag-to-group in here is what makes it work at all, and gives touch
+// drag-to-group for free (native DnD never fired on touch in the first
+// place).
 //
-// Initiation:
+// Initiation (unchanged):
 //   * the dedicated grip (touch/pen/mouse) arms the drag immediately — it has
 //     no other function, so there's nothing to disambiguate;
 //   * the header itself ALSO arms it for MOUSE ONLY, but only past a small
 //     movement threshold (REORDER_MOVE_THRESHOLD) so a plain click still
 //     reaches the sort button / other header controls — touch/pen stay
-//     grip-only (a tap must stay unambiguous with tap-to-sort);
-//   * a header that's natively draggable (Groupable + ShowGroupPanel, for the
-//     drag-to-group gesture) only arms from the grip — the rest of its surface
-//     keeps native dragstart uncontested.
+//     grip-only (a tap must stay unambiguous with tap-to-sort).
 //
-// Every per-move computation (target index, sibling shift deltas) is cached at
-// drag start and only recomputed when the projected index actually changes —
-// zero .NET calls and zero layout reads in the pointermove hot loop, matching
-// the resize handle's perf law. Escape / pointercancel animates back to
-// identity and commits nothing; release settles the dragged column into its
-// projected slot then commits ONCE via OnColumnReorderCommit(gridId, srcId,
-// tgtId) — captureColumnRects (called right after, from HandleColumnReorder)
-// measures that settled preview as FLIP's "First" and clears the inline drag
-// styles itself, handing off seamlessly to the existing capture → mutate →
-// animate pipeline.
+// Mode-switching (new): once armed, drag.mode toggles between 'reorder' and
+// 'panel' on every pointermove by hit-testing the pointer against the grid's
+// group-panel element (cached rect — the panel doesn't move during a column
+// drag, only the table body scrolls; see onPointerDown). 'panel' mode relaxes
+// the live sibling-shift preview back to identity (the dragged header keeps
+// following the pointer horizontally, but nothing else moves) and — only when
+// the dragged column is itself Groupable (drag.groupable, from its
+// data-groupable attribute) — lights up the panel's data-drop-target
+// highlight. Leaving the panel (or dragging a non-groupable column over it)
+// falls straight back into normal reorder projection with no special-casing.
+//
+// Every per-move computation (target index, sibling shift deltas, panel hit
+// test) is cached at drag start and only recomputed when something actually
+// changes — zero .NET calls and zero layout reads in the pointermove hot
+// loop, matching the resize handle's perf law. Escape / pointercancel
+// animates back to identity and commits nothing, in EITHER mode; release
+// commits ONCE via OnColumnReorderCommit(gridId, srcId, tgtId) — 'reorder'
+// mode passes the projected sibling's column id (or null, cancel);  'panel'
+// mode passes GroupPanelDropTargetId when groupable (else null, cancel — a
+// non-groupable column dropped on the panel is treated exactly like a
+// release outside any valid target). DataGrid.razor's commit lambda branches
+// on that sentinel to call AddGroupField instead of ReorderColumnByIdAsync —
+// reusing the SAME DotNetObjectReference channel reorder already uses rather
+// than inventing a parallel one. A normal 'reorder' commit still hands off to
+// captureColumnRects (called right after, from HandleColumnReorder), which
+// measures the settled preview as FLIP's "First" and clears the inline drag
+// styles itself.
 
 const columnReorderPointerHandlers = new Map(); // gridId -> { grid, onPointerDown, ... }
 
@@ -3315,6 +3336,15 @@ const REORDER_LIFT_MS = 120;             // header lift (scale+shadow) pop-in du
 const REORDER_NUDGE_MS = 150;            // non-reorderable "can't drag this" nudge-and-spring duration
 const REORDER_AUTOSCROLL_EDGE_PX = 48;   // distance from the scroll container's edge that triggers auto-scroll
 const REORDER_AUTOSCROLL_MAX_PX = 18;    // px/frame at the very edge (accelerates linearly from 0 at the edge threshold)
+
+// Unified drag-to-group (rc.42): sentinel "target id" sent to OnColumnReorderCommit
+// when the drag was released over the group panel instead of another header — MUST
+// match DataGrid.razor's GroupPanelDropTargetId exactly. Opaque to JS beyond that;
+// never collides with a real column id (DataGridColumn.Id defaults to 8 hex chars).
+const GROUP_PANEL_DROP_TARGET_ID = '__group-panel__';
+// Attribute components.js toggles directly on the group panel element (no Blazor
+// round-trip) while an armed drag hovers it — see lumeo.css for the highlight rule.
+const GROUP_PANEL_DROP_ATTR = 'data-drop-target';
 
 export function registerColumnReorder(gridId, dotnetRef) {
     const grid = document.querySelector(`[data-grid-id="${CSS.escape(gridId)}"]`);
@@ -3519,6 +3549,31 @@ export function registerColumnReorder(gridId, dotnetRef) {
         window.setTimeout(() => th.classList.remove('lumeo-dg-reorder-nudge'), REORDER_NUDGE_MS + 20);
     };
 
+    // Unified drag-to-group (rc.42): hit-tests the pointer against the group
+    // panel's cached rect (measured once at pointerdown in onPointerDown — the
+    // panel doesn't move during a column drag, only the table body's own
+    // `.overflow-auto` wrapper scrolls) and toggles drag.mode between 'reorder'
+    // and 'panel'. Entering panel mode is what lets applyLiveTranslate below
+    // relax the live sibling-shift preview back to identity — the header row
+    // visually "lets go" the instant the pointer crosses into the panel, mirroring
+    // what leaving a valid native-DnD drop target used to look like. The
+    // accept-highlight (GROUP_PANEL_DROP_ATTR) only ever lights up when the
+    // dragged column is actually Groupable (drag.groupable, cached from its
+    // data-groupable attribute at pointerdown) — a non-groupable column hovering
+    // the panel must never look acceptable, since dropping it there is a no-op
+    // cancel (see onPointerUp).
+    const updateGroupPanelMode = (clientX, clientY) => {
+        if (!drag) return;
+        const r = drag.panelRect;
+        const overPanel = !!r && clientX >= r.left && clientX <= r.right && clientY >= r.top && clientY <= r.bottom;
+        const nextMode = overPanel ? 'panel' : 'reorder';
+        if (drag.mode === nextMode) return;
+        drag.mode = nextMode;
+        if (!drag.panelEl) return;
+        if (nextMode === 'panel' && drag.groupable) drag.panelEl.setAttribute(GROUP_PANEL_DROP_ATTR, 'true');
+        else drag.panelEl.removeAttribute(GROUP_PANEL_DROP_ATTR);
+    };
+
     // Writes the live drag-follow transform for the current pointer position,
     // composing the header's lift scale into the SAME transform string (never a
     // separate CSS rule — an inline `style.transform` write always wins outright
@@ -3544,7 +3599,11 @@ export function registerColumnReorder(gridId, dotnetRef) {
             const lift = i === 0 ? drag.liftTransform : '';
             drag.cells[i].style.transform = lift ? (translate ? `${translate} ${lift}` : lift) : translate;
         }
-        applyProjection(computeTargetIdx(clientX + scrollDelta));
+        // 'panel' mode relaxes the sibling preview back to identity (project onto
+        // the drag's own original index) instead of tracking computeTargetIdx —
+        // the dragged header keeps following the pointer horizontally, but nothing
+        // else moves while a group-drop is pending.
+        applyProjection(drag.mode === 'panel' ? drag.srcHeaderIdx : computeTargetIdx(clientX + scrollDelta));
     };
 
     const autoScrollTick = () => {
@@ -3691,6 +3750,12 @@ export function registerColumnReorder(gridId, dotnetRef) {
         document.body.style.cursor = '';
         document.documentElement.style.cursor = '';
         document.body.style.userSelect = '';
+        // Unconditional, unconditionally-safe cleanup for the group-panel highlight
+        // (rc.42) — every drag end path (commit, cancel, Escape, pointercancel)
+        // funnels through here, so this is the ONE place that needs to guarantee
+        // the panel never stays highlighted after the pointer that triggered it is
+        // gone. No-op when the attribute was never set.
+        if (d.panelEl) d.panelEl.removeAttribute(GROUP_PANEL_DROP_ATTR);
         if (!d.armed) { releaseGridDrag(gridId, 'column-reorder'); return; } // never engaged (plain click, or a touch/pen long-press that never fired) — nothing to animate/commit
         try { d.captureTarget.releasePointerCapture(d.pointerId); } catch (_) { }
 
@@ -3829,15 +3894,29 @@ export function registerColumnReorder(gridId, dotnetRef) {
         }
         if (e.cancelable) e.preventDefault();
         drag.lastClientX = e.clientX;
+        updateGroupPanelMode(e.clientX, e.clientY);
         applyLiveTranslate(e.clientX);
-        updateAutoScroll(e.clientX);
+        // No point auto-scrolling the row area while the pointer is hovering the
+        // (non-scrolling) group panel above it — and it would fight applyLiveTranslate's
+        // reset-to-identity projection in 'panel' mode.
+        if (drag.mode === 'panel') stopAutoScroll();
+        else updateAutoScroll(e.clientX);
     };
 
     const onPointerUp = (e) => {
         if (nudgeWatch && e.pointerId === nudgeWatch.pointerId) nudgeWatch = null;
         if (!drag || e.pointerId !== drag.pointerId) return;
-        const targetHeader = drag.headers[drag.lastProjectedIdx];
-        const commitTargetColId = targetHeader.colId !== drag.sourceColId ? targetHeader.colId : null;
+        let commitTargetColId;
+        if (drag.mode === 'panel') {
+            // Groupable → commit to the group panel via the sentinel id (see
+            // GROUP_PANEL_DROP_TARGET_ID / DataGrid.razor's GroupPanelDropTargetId).
+            // Non-groupable → exactly like releasing outside any valid target: null
+            // commits nothing, finishDrag glides everything back to identity.
+            commitTargetColId = drag.groupable ? GROUP_PANEL_DROP_TARGET_ID : null;
+        } else {
+            const targetHeader = drag.headers[drag.lastProjectedIdx];
+            commitTargetColId = targetHeader.colId !== drag.sourceColId ? targetHeader.colId : null;
+        }
         finishDrag(commitTargetColId);
     };
 
@@ -3886,10 +3965,13 @@ export function registerColumnReorder(gridId, dotnetRef) {
             // header-wide press inside an inner grid's header must not arm (or
             // nudge-watch) the OUTER grid either.
             if (!anyTh || anyTh.closest('[data-grid-id]') !== grid) return;
-            // A header that's ALSO native-drag-enabled (Groupable + ShowGroupPanel)
-            // keeps that gesture over most of its surface — only the grip
-            // initiates reorder there, so native dragstart (drag-to-group) isn't
-            // shadowed by our own pointer capture.
+            // Defensive escape hatch, not a live path for OUR OWN grids any more:
+            // rc.42 stopped ever setting draggable="true" on a header (drag-to-group
+            // is unified into this same pointer engine — see updateGroupPanelMode /
+            // GROUP_PANEL_DROP_TARGET_ID below). Kept so a consumer who explicitly
+            // sets draggable="true" via AdditionalAttributes still opts that header
+            // out of this engine, rather than the two silently fighting over the
+            // same pointerdown.
             if (anyTh.getAttribute('draggable') === 'true') return;
             // Don't hijack interactive controls living inside the header — EXCEPT
             // the sort button itself, which IS zone B (redesign point 2): clicking
@@ -3974,6 +4056,18 @@ export function registerColumnReorder(gridId, dotnetRef) {
         // so the non-autoscrolling path (scrollDelta always 0) is untouched.
         const scrollContainer = table.parentElement;
 
+        // Unified drag-to-group (rc.42): the group panel lives as a sibling of the
+        // table inside this same grid root, present in the DOM only when
+        // ShowGroupPanel is on — panelEl is simply null (and mode never becomes
+        // 'panel') for a grid without one, so this measurement is a harmless no-op
+        // there. Measured once here, like every other rect this drag cares about
+        // (sourceRect, headers[].baseRect) — the panel doesn't move DURING a column
+        // drag (only the table body's own scroll container does), so there's
+        // nothing to re-measure on later moves.
+        const panelEl = grid.querySelector('[data-slot="datagrid-group-panel"]');
+        const panelRect = panelEl ? panelEl.getBoundingClientRect() : null;
+        const groupable = th.dataset.groupable === 'true';
+
         drag = {
             pointerId: e.pointerId, captureTarget: viaGrip ? grip : th,
             startX: e.clientX, startY: e.clientY,
@@ -3985,6 +4079,8 @@ export function registerColumnReorder(gridId, dotnetRef) {
             suppressSortClick: !viaGrip,
             liftTransform: '', lastClientX: e.clientX,
             scrollContainer, startScrollLeft: scrollContainer ? scrollContainer.scrollLeft : 0,
+            // Drag-to-group (rc.42) — see updateGroupPanelMode.
+            panelEl, panelRect, groupable, mode: 'reorder',
         };
 
         if (viaGrip) {

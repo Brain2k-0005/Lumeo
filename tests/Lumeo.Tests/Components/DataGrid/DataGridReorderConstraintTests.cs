@@ -346,12 +346,16 @@ public class DataGridReorderConstraintTests : IAsyncLifetime
         Assert.Equal("Left", pinnedHeader.GetAttribute("data-col-pin"));
     }
 
-    // --- Native DnD removal (ReUI-parity pass) ---
+    // --- Native DnD removal + unified drag-to-group (rc.42) ---
     //
     // Column reorder no longer uses native HTML5 DnD at all — the unified JS
-    // pointer path (above) owns mouse + touch + pen. Native DnD is kept for
-    // exactly one, unrelated gesture: dragging a Groupable column into the group
-    // panel (DataGridDragOverHotPathTests / DataGridGroupPanelTests cover that).
+    // pointer path (above) owns mouse + touch + pen. rc.42 folded drag-to-group
+    // into that SAME engine (a header with draggable="true" firing its own
+    // dragstart is fundamentally incompatible with an active pointer sequence —
+    // it fires pointercancel), so NO header renders an HTML `draggable` attribute
+    // any more, Groupable or not. See DataGridReorderGroupPanelUnificationTests
+    // for the JS-registration-boundary coverage of the group-panel commit path
+    // (SimulateColumnReorderCommit with the sentinel target id).
 
     [Fact]
     public void Reorderable_NonGroupable_Header_Is_Not_Natively_Draggable()
@@ -361,12 +365,12 @@ public class DataGridReorderConstraintTests : IAsyncLifetime
 
         foreach (var header in cut.FindAll("th[data-slot='datagrid-header-cell']"))
         {
-            Assert.Equal("false", header.GetAttribute("draggable"));
+            Assert.Null(header.GetAttribute("draggable"));
         }
     }
 
     [Fact]
-    public void Groupable_Header_With_GroupPanel_Stays_Natively_Draggable_For_GroupDrag()
+    public void Groupable_Header_With_GroupPanel_Is_Not_Natively_Draggable_Either()
     {
         var cols = new List<DataGridColumn<Row>>
         {
@@ -381,12 +385,21 @@ public class DataGridReorderConstraintTests : IAsyncLifetime
             p.Add(g => g.ShowGroupPanel, true);
         });
 
-        // Groupable + ShowGroupPanel keeps native draggable="true" (drag-to-group);
-        // it also stays reorderable — the grip is that column's sole reorder
-        // initiator so the two gestures don't compete over the same pointerdown.
+        // Groupable + ShowGroupPanel used to keep native draggable="true" for the
+        // drag-to-group gesture — rc.42 retired that: the same header instead
+        // exposes data-groupable="true" (the marker components.js's pointer
+        // engine reads to decide whether a drop on the group panel is valid) and
+        // stays reorderable — the grip/header-wide pointerdown is now the SOLE
+        // initiator for both gestures, disambiguated purely by where the pointer
+        // is released.
         var groupableHeader = cut.FindAll("th[data-slot='datagrid-header-cell']")[1];
-        Assert.Equal("true", groupableHeader.GetAttribute("draggable"));
+        Assert.Null(groupableHeader.GetAttribute("draggable"));
+        Assert.Equal("true", groupableHeader.GetAttribute("data-groupable"));
         Assert.Equal("true", groupableHeader.GetAttribute("data-reorderable"));
+
+        // The non-Groupable column never advertises the marker.
+        var plainHeader = cut.FindAll("th[data-slot='datagrid-header-cell']")[0];
+        Assert.Null(plainHeader.GetAttribute("data-groupable"));
     }
 
     [Fact]
