@@ -300,11 +300,12 @@ async function scenarioDataGridDragCommit(page, rtt) {
 
 // ---------------------------------------------------------------------
 // Scenario 2: Toast burst — cap invariant holds visually.
-// KNOWN BROKEN — see README.md. The "at least one toast renders" assertion
-// is kept honest (not loosened/skipped, still exercised every run) via
-// assertKnownBroken() so a future fix is provable by this flipping XFAIL ->
-// XPASS, WITHOUT making a red exit code the permanent, ignorable default for
-// this leg (npm test / CI must be able to treat this leg as a real gate).
+// Formerly KNOWN BROKEN under Blazor Server (see README.md) — fixed by the
+// toast admission rework (#357: canonical TryAdmit/ReconcileGroup, synchronous
+// Leaving stamps, capped pending queue) and re-verified fixed on master via
+// this leg (issue #363, closed): XPASSed with all 8 server-leg assertions
+// green. Promoted from assertKnownBroken() to a plain assert() so a future
+// regression here fails the leg for real instead of only logging XFAIL.
 // ---------------------------------------------------------------------
 async function scenarioToastBurst(page, rtt) {
   console.log(`\n--- Scenario: Toast burst cap invariant under ${rtt}ms RTT ---`);
@@ -314,10 +315,10 @@ async function scenarioToastBurst(page, rtt) {
   await page.waitForTimeout(rtt * 4 + 1_000);
   const toastCount = await page.evaluate(() =>
     document.querySelectorAll('[role="status"], [role="alert"]').length);
-  assertKnownBroken(toastCount > 0,
+  assert(toastCount > 0,
     `at least one toast is visible after firing a burst of 8 (got ${toastCount}) — ` +
-    `KNOWN FAILURE: confirmed product bug, ToastProvider never renders under Blazor Server ` +
-    `(ToastService.OnShow fires, but no SignalR render batch is sent — see README.md)`);
+    `regression check: ToastProvider must render under Blazor Server ` +
+    `(ToastService.OnShow fires and a SignalR render batch must be sent — see README.md, issue #363)`);
   assert(toastCount <= 5,
     `visible toast count never exceeds MaxToasts=5 (got ${toastCount})`);
 }

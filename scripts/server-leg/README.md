@@ -46,55 +46,43 @@ settle-timer/round-trip races) this leg exists to catch.
    to actually detach from the DOM (driven by the real
    `OnExitAnimationEnd` interop round-trip, not a blind timer).
 
-## Confirmed product bug: Toast under Blazor Server
+## Fixed product bug: Toast under Blazor Server (issue #363, closed)
 
-**Scenario 2 fails, by design of the assertion (not loosened).** Building
-this leg surfaced a real, reproducible bug: `ToastProvider` never renders a
-toast under a genuine interactive-server circuit.
+**Scenario 2 now passes — a hard `assert()`, not loosened.** This leg
+originally surfaced a real, reproducible bug: `ToastProvider` never rendered
+a toast under a genuine interactive-server circuit.
 
-**Root-caused, not just observed:**
-- `ToastService.Show()` executes and returns a valid id — confirmed via a
+**Root-caused, not just observed (original diagnosis):**
+- `ToastService.Show()` executed and returned a valid id — confirmed via a
   second, independent subscriber added directly in `Home.razor`
-  (`Toast.OnShow += ...`), which *does* fire for every call.
+  (`Toast.OnShow += ...`), which *did* fire for every call.
 - `ToastProvider.HandleShow` is subscribed to the same event and calls
   `SafeAsyncDispatcher.FireAndForget(InvokeAsync, () => HandleShowAsync(...))`
   (see `src/Lumeo/UI/Toast/ToastProvider.razor` and
-  `src/Lumeo/Services/SafeAsyncDispatcher.cs`), which swallows lifecycle
-  exceptions and logs anything else to `Console.Error` — nothing was ever
-  logged.
+  `src/Lumeo/Services/SafeAsyncDispatcher.cs`).
 - Captured raw WebSocket frames on the `_blazor` circuit (Playwright's
-  `page.on('websocket')` / `framereceived`): **zero new frames arrive**
-  after the burst click, for as long as 3 seconds. No render batch is ever
-  sent — this is a server-side dispatch failure, not a slow/lost client
-  update.
-- Isolated to Toast specifically: the **same page**, same render-mode setup,
-  same circuit — Dialog's `@bind-Open` (same-component two-way binding) and
-  DatePicker's popover both work correctly and were verified interactively.
-  Only the cross-component **provider + fire-and-forget-event** pattern
-  (Toast's architecture) fails.
-- Not a prerendering artifact: reproduces identically with
-  `@rendermode="@(new InteractiveServerRenderMode(prerender: false))"`.
+  `page.on('websocket')` / `framereceived`) showed **zero new frames
+  arriving** after the burst click — a server-side dispatch failure, not a
+  slow/lost client update.
+- Isolated to Toast specifically: Dialog's `@bind-Open` and DatePicker's
+  popover both worked correctly on the same page/circuit. Only the
+  cross-component **provider + fire-and-forget-event** pattern (Toast's
+  architecture) failed.
 
-**Not fixed here** — per instructions, product issues are reported, not
-hacked around from a test harness. `Home.razor`'s `BurstToasts` carries a
-comment pointing back to this section. The assertion in `run.mjs` stays
-honest (asserts real toast visibility, not "it didn't crash") so a future
-fix in `ToastProvider`/`SafeAsyncDispatcher` is provable by this scenario
-flipping to PASS.
+**Fixed by the toast admission rework (#357):** the canonical
+`TryAdmit`/`ReconcileGroup` admission model with synchronous `Leaving`
+stamps and a capped pending queue. Re-verified fixed on master (post-#357
+merge) via this leg at 200ms RTT: after a burst of 8, 5 toasts are visible,
+the `MaxToasts=5` cap invariant holds, and there is no renderer crash — all
+8 server-leg assertions pass (7 PASS baseline + this scenario). The scenario
+had been flagged `assertKnownBroken()`/XFAIL since this leg's introduction;
+it flipped to XPASS after #357 and has now been promoted to a plain
+`assert()` in `run.mjs` so a future regression here fails the leg for real.
 
-**Bonus finding — it's not just cosmetic:** `run.mjs` deliberately runs the
-Dialog scenario *before* the Toast scenario. With Toast first, the 8
-fire-and-forget `SafeAsyncDispatcher` dispatches that never resolve left the
-circuit unable to complete Dialog's (unrelated) open round-trip within any
-reasonable timeout under RTT throttling — i.e. this isn't purely a "toasts
-don't render" bug, it may also degrade the circuit's ability to process
-later, unrelated interactive events. Worth confirming under a longer-running
-session (this harness only observed it once, immediately downstream).
-
-**Likely next step for whoever picks this up:** compare
-`SafeAsyncDispatcher.FireAndForget`'s dispatch path against a
-known-working Blazor Server cross-component `InvokeAsync` + `StateHasChanged`
-pattern under a *real* circuit (this codebase's test suite is 100% WASM/bUnit
-— bUnit's synchronous test renderer and WASM's single-threaded execution
-both appear to mask whatever this is; it needed a real SignalR circuit to
-surface).
+**Bonus finding from the original investigation — not just cosmetic:**
+`run.mjs` deliberately runs the Dialog scenario *before* the Toast scenario.
+With Toast first (pre-fix), the 8 fire-and-forget `SafeAsyncDispatcher`
+dispatches that never resolved left the circuit unable to complete Dialog's
+(unrelated) open round-trip within any reasonable timeout under RTT
+throttling. The ordering is left as-is since it no longer matters
+functionally (both scenarios pass either way post-fix) but doesn't hurt.

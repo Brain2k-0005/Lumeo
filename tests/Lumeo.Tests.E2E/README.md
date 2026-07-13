@@ -58,14 +58,11 @@ perceptual diff (ImageSharp). Add per-page tests as the docs surface stabilizes.
 
 ## CI integration
 
-These tests are **not yet wired into CI by default** — they require:
-1. A running docs server
-2. Playwright browser binaries
+Wired into CI via `.github/workflows/e2e.yml`, which runs on every push and
+PR to `master`: it builds the CSS bundles, builds `Lumeo.Tests.E2E` (Release,
+which also restores the Playwright assets), installs the Playwright Chromium
+browser, and runs the tests against a docs server the workflow starts.
 
-When ready, create a separate GitHub Actions workflow that:
-1. Builds and starts `Lumeo.Docs` in the background
-2. Runs `playwright.ps1 install --with-deps chromium`
-3. Runs the tests with `LUMEO_E2E_BASE_URL` pointing at the running server
-
-The test project builds cleanly in CI without any of the above (just
-`dotnet build`) — only **running** the tests requires the dev server.
+The test project also builds cleanly outside that workflow with a plain
+`dotnet build` — only **running** the tests requires a docs dev-server and
+Playwright browser binaries (see "Running locally" above).

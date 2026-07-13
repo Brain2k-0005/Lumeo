@@ -2,7 +2,7 @@
 
 **164 accessible Blazor components, AI-ready, motion-integrated, shadcn-inspired.**
 
-**164 components · 5,800+ tests** · 14 locales · mobile-first · MIT · .NET 8+
+**164 components · 5,900+ tests** · 14 locales · mobile-first · MIT · .NET 8+
 
 [![NuGet](https://img.shields.io/nuget/v/Lumeo?logo=nuget&label=Lumeo)](https://www.nuget.org/packages/Lumeo)
 [![NuGet Downloads](https://img.shields.io/nuget/dt/Lumeo?logo=nuget&label=downloads)](https://www.nuget.org/packages/Lumeo)
@@ -12,14 +12,14 @@
 [![GitHub stars](https://img.shields.io/github/stars/Brain2k-0005/Lumeo?style=flat&logo=github)](https://github.com/Brain2k-0005/Lumeo/stargazers)
 [![Sponsor](https://img.shields.io/github/sponsors/Brain2k-0005?logo=github-sponsors&color=ea4aaa)](https://github.com/sponsors/Brain2k-0005)
 
-> **Lumeo 4.2.0 is on NuGet** — a first-party **icon family** (16 trimmable packs), **`dotnet new`** app + full-stack templates, and a **shadcn-parity campaign** (overlay exit animations, `data-*` styling hooks, native form participation, menu-system + NavigationMenu parity, chart/AI a11y) on top of the 4.0 major (Radix / Base UI / shadcn parity audit + a 164-component battle-test, ~355 bugs fixed, 5,800+ tests, CLI **100% NuGet-free** eject). `dotnet add package Lumeo`. See [`CHANGELOG.md`](./CHANGELOG.md) — 4.1 is an additive, opt-in upgrade from 4.0 (a few documented behaviour changes); from 3.x see [`MIGRATION.md`](./MIGRATION.md).
+> **Lumeo 4.2.0 is on NuGet** — a first-party **icon family** (16 trimmable packs), **`dotnet new`** app + full-stack templates, and a **shadcn-parity campaign** (overlay exit animations, `data-*` styling hooks, native form participation, menu-system + NavigationMenu parity, chart/AI a11y) on top of the 4.0 major (Radix / Base UI / shadcn parity audit + a 164-component battle-test, ~355 bugs fixed, 5,900+ tests, CLI **100% NuGet-free** eject). `dotnet add package Lumeo`. See [`CHANGELOG.md`](./CHANGELOG.md) — 4.1 is an additive, opt-in upgrade from 4.0 (a few documented behaviour changes); from 3.x see [`MIGRATION.md`](./MIGRATION.md).
 
 ## What's new in 4.0
 
 4.0 pairs a Radix / Base UI / shadcn **parity audit** with a library-wide **correctness hardening** pass. There are **no API-signature breaks** — see [`MIGRATION.md`](./MIGRATION.md) for the handful of behaviour changes.
 
 - **NuGet-free standalone eject** — `lumeo eject` (or `lumeo init --standalone`) vendors components **plus the whole runtime** as source, so a project compiles and runs with zero `Lumeo` / satellite `PackageReference`. Proven across all 164 components.
-- **Battle-test campaign** — an adversarial sweep of all 164 components fixed ~355 confirmed bugs (UI state surviving data refreshes, keyboard / ARIA, edge data, lifecycle teardown, keyed reorder), each with a bUnit regression test (suite 5,800+ green).
+- **Battle-test campaign** — an adversarial sweep of all 164 components fixed ~355 confirmed bugs (UI state surviving data refreshes, keyboard / ARIA, edge data, lifecycle teardown, keyed reorder), each with a bUnit regression test (suite 5,900+ green).
 - **OKLCH theme palette** — base + all 8 themes (878 tokens) migrated HSL → OKLCH, exact 1:1 (brand identity unchanged), matching Tailwind v4 / current shadcn.
 - **RTL** — new `DirectionProvider` + a logical-utility migration (`ml-→ms-`, `left-→start-`, …); identical in LTR, mirrored in RTL.
 - **tweakcn / shadcn native compatibility** — a bare shadcn `--primary` (or a pasted tweakcn export) drives Lumeo's tokens 1:1 with zero setup.
@@ -48,7 +48,7 @@
 - **Form validation** — DataAnnotations + custom validators with styled error states
 - **Accessible** — ARIA roles, keyboard navigation, focus trapping, screen-reader support
 - **Mobile-first** — touch gestures (swipe, pinch, long-press, pull-to-refresh, swipe-actions), 44×44 px hit targets per WCAG 2.5.5, iOS-style wheel pickers, haptic feedback service, safe-area helpers — try it at `/docs/mobile`
-- **5,800+ tests** — CI-enforced on every PR
+- **5,900+ tests** — CI-enforced on every PR
 
 ## Component Categories
 
