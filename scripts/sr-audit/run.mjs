@@ -52,21 +52,28 @@ const pauseForForeground = args.includes("--pause");
 const forceForeground = args.includes("--force-foreground");
 const PORT = process.env.SR_AUDIT_PORT || 5292;
 
-// Spawn the PowerShell foreground helper synchronously; never throws (best-effort).
+// Spawn the PowerShell foreground helper synchronously; never throws. Returns true only
+// when the helper confirmed the Edge window actually became foreground — callers must gate
+// any physical input on this (Codex P2, PR #368: clicking while a security dialog or another
+// app still owns the desktop would send a real click into THAT window).
 function forceEdgeForeground() {
-    if (!forceForeground) return;
+    if (!forceForeground) return false;
     try {
         const ps = join(__dirname, "force-foreground.ps1");
         const r = spawnSync("powershell", ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", ps, "-Match", "Lumeo"], { encoding: "utf8" });
         if (r.stdout) process.stdout.write(`[sr-audit] ${r.stdout.trim()}\n`);
-    } catch (e) { console.warn(`[sr-audit] force-foreground failed: ${e.message}`); }
+        return r.status === 0;
+    } catch (e) { console.warn(`[sr-audit] force-foreground failed: ${e.message}`); return false; }
 }
 
-// After the window is foreground, physically click the page HEADING (h1) at its real screen
-// coords to move OS keyboard focus INTO the page content. el.focus() alone only sets DOM focus,
-// so without this NVDA keeps reading the browser toolbar. The heading is a neutral, per-page
-// target (no side effects; its Y differs per page, which is exactly why a fixed coordinate was
-// fragile — DataGrid's heading sits higher than Tabs'). Best-effort; never throws.
+// After the window is CONFIRMED foreground, physically click the page HEADING (h1) to move
+// OS keyboard focus INTO the page content. el.focus() alone only sets DOM focus, so without
+// this NVDA keeps reading the browser toolbar. The heading is a neutral, per-page target
+// (no side effects; its Y differs per page, which is exactly why a fixed coordinate was
+// fragile — DataGrid's heading sits higher than Tabs'). Passes CSS viewport coords +
+// innerHeight + dpr; click-at.ps1 anchors them to the OS window rect, deliberately avoiding
+// window.screenX/screenY whose meaning is ambiguous across Chromium versions (Codex P2).
+// Best-effort; never throws.
 async function clickHeadingIntoContent(page) {
     if (!forceForeground) return;
     try {
@@ -75,13 +82,17 @@ async function clickHeadingIntoContent(page) {
             if (!h) return null;
             const r = h.getBoundingClientRect();
             if (r.width === 0 && r.height === 0) return null;
-            const dpr = window.devicePixelRatio || 1;
-            const vx = window.screenX;                                   // viewport origin on screen (CSS px)
-            const vy = window.screenY + (window.outerHeight - window.innerHeight);
-            return { x: Math.round((vx + r.left + Math.min(r.width / 2, 80)) * dpr), y: Math.round((vy + r.top + r.height / 2) * dpr) };
+            return {
+                cssX: r.left + Math.min(r.width / 2, 80),
+                cssY: r.top + r.height / 2,
+                innerH: window.innerHeight,
+                dpr: window.devicePixelRatio || 1,
+            };
         });
         if (!c) return;
-        spawnSync("powershell", ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", join(__dirname, "click-at.ps1"), "-X", String(c.x), "-Y", String(c.y)], { encoding: "utf8" });
+        const r = spawnSync("powershell", ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", join(__dirname, "click-at.ps1"),
+            "-Match", "Lumeo", "-CssX", String(c.cssX), "-CssY", String(c.cssY), "-InnerH", String(c.innerH), "-Dpr", String(c.dpr)], { encoding: "utf8" });
+        if (r.stdout && !/OK/.test(r.stdout)) process.stdout.write(`[sr-audit] ${r.stdout.trim()}\n`);
     } catch (e) { console.warn(`[sr-audit] heading-click failed: ${e.message}`); }
 }
 
@@ -352,11 +363,16 @@ async function main() {
             await sleep(1000);
             // Re-assert Edge foreground before each component: NVDA only reads the
             // foreground window, and a mid-sweep navigation or dialog can steal it.
-            forceEdgeForeground();
-            // Then move OS keyboard focus into the page by clicking its heading — the missing
-            // piece that made NVDA read the toolbar for heavier layouts like DataGrid.
-            await clickHeadingIntoContent(page);
-            await sleep(250);
+            // Only follow up with the physical heading click when Edge is CONFIRMED
+            // foreground — otherwise the click would land in whatever window actually
+            // owns the desktop (Codex P2). The heading click is what moves OS keyboard
+            // focus into page content (the missing piece for heavier layouts like DataGrid).
+            if (forceEdgeForeground()) {
+                await clickHeadingIntoContent(page);
+                await sleep(250);
+            } else if (forceForeground) {
+                console.warn(`[sr-audit] ${component.slug}: Edge did not reach foreground — skipping content click; speech capture may read the wrong window`);
+            }
 
             const componentResult = { route, steps: [] };
             let focusOk = false;
