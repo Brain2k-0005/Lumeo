@@ -3693,8 +3693,15 @@ export function registerColumnReorder(gridId, dotnetRef) {
     // go", the ghost carries instead — pointer is in panel mode, or simply outside
     // the band by more than GHOST_BAND_SLOP_PX). No-op when this drag never got a
     // ghost at all (non-Groupable column, or a grid with no group panel).
+    //
+    // A Groupable-only drag (drag.canReorder false) never hides it again once
+    // armDrag showed it immediately — grouping is that drag's ONLY meaning, so
+    // there's no "still deciding, header carries the visual" phase for the
+    // band-exit rule to gate: the ghost stays the drag's sole visual for its
+    // entire lifetime, in-band or not.
     const updateGhostCarry = (clientX, clientY) => {
         if (!drag.ghostEl) return;
+        if (!drag.canReorder) { showGhost(clientX, clientY); return; }
         const r = drag.headerRowRect;
         const inBand = clientY >= r.top - GHOST_BAND_SLOP_PX && clientY <= r.bottom + GHOST_BAND_SLOP_PX;
         if (drag.mode === 'panel' || !inBand) showGhost(clientX, clientY);
@@ -3793,7 +3800,12 @@ export function registerColumnReorder(gridId, dotnetRef) {
         else if (dx === 0) stopAutoScroll();
     };
 
-    const armDrag = () => {
+    // clientX/clientY: the pointer position at the moment this drag actually
+    // arms — passed in (rather than read off `drag.lastClientX`, which isn't
+    // set until the FIRST armed pointermove) so a Groupable-only drag
+    // (drag.canReorder false) can show its ghost immediately below, before any
+    // move has happened at all.
+    const armDrag = (clientX, clientY) => {
         drag.armed = true;
         // Saved BEFORE overwriting so finishDrag can restore whatever a
         // consumer's own ColumnStyle inline declaration had on these four
@@ -3859,6 +3871,14 @@ export function registerColumnReorder(gridId, dotnetRef) {
             drag.ghostOffsetY = drag.pointerType === 'touch' ? GHOST_TOUCH_OFFSET_Y : GHOST_MOUSE_OFFSET;
             drag.ghostLastX = 0;
             drag.ghostLastY = 0;
+            // Groupable-only drag (not Reorderable): grouping is the drag's ONLY
+            // possible meaning, so the ghost previews it from the very first
+            // instant — no reorder preview ever runs for this drag (see
+            // applyLiveTranslate's canReorder gate) and updateGhostCarry's own
+            // header-row-exit band rule is what would otherwise delay this until
+            // the pointer physically left the header row. showGhost also dims the
+            // real header cell to 0.4 opacity, same as any other carrying ghost.
+            if (!drag.canReorder) showGhost(clientX, clientY);
         } else {
             drag.ghostEl = null;
         }
@@ -4049,7 +4069,7 @@ export function registerColumnReorder(gridId, dotnetRef) {
                 }
                 const dx = e.clientX - drag.startX, dy = e.clientY - drag.startY;
                 if ((dx * dx + dy * dy) < REORDER_MOVE_THRESHOLD * REORDER_MOVE_THRESHOLD) return;
-                armDrag();
+                armDrag(e.clientX, e.clientY);
             } else {
                 // Touch/pen header-wide long-press arming (zone B, redesign point 3):
                 // movement alone never arms a header-wide touch/pen drag — only the
@@ -4069,14 +4089,22 @@ export function registerColumnReorder(gridId, dotnetRef) {
         if (e.cancelable) e.preventDefault();
         drag.lastClientX = e.clientX;
         updateGroupPanelMode(e.clientX, e.clientY);
-        applyLiveTranslate(e.clientX);
+        // Groupable-only drag (drag.canReorder false): grouping is this drag's
+        // ONLY meaning — there is no reorder preview to run at all (no sibling
+        // shift, no in-row follow-the-pointer transform beyond the lift styling
+        // armDrag already applied to the origin cell), so applyLiveTranslate
+        // (which drives BOTH) is skipped entirely rather than special-cased
+        // inside it.
+        if (drag.canReorder) applyLiveTranslate(e.clientX);
         // Floating chip ghost: re-evaluated AFTER updateGroupPanelMode so it sees
         // this move's up-to-date drag.mode (panel vs reorder).
         updateGhostCarry(e.clientX, e.clientY);
         // No point auto-scrolling the row area while the pointer is hovering the
         // (non-scrolling) group panel above it — and it would fight applyLiveTranslate's
-        // reset-to-identity projection in 'panel' mode.
-        if (drag.mode === 'panel') stopAutoScroll();
+        // reset-to-identity projection in 'panel' mode. A Groupable-only drag never
+        // auto-scrolls either — there's no reorder preview or sibling-shift math
+        // that scrolling-while-dragging was ever in service of for it.
+        if (drag.mode === 'panel' || !drag.canReorder) stopAutoScroll();
         else updateAutoScroll(e.clientX);
     };
 
@@ -4090,9 +4118,15 @@ export function registerColumnReorder(gridId, dotnetRef) {
             // Non-groupable → exactly like releasing outside any valid target: null
             // commits nothing, finishDrag glides everything back to identity.
             commitTargetColId = drag.groupable ? GROUP_PANEL_DROP_TARGET_ID : null;
-        } else {
+        } else if (drag.canReorder) {
             const targetHeader = drag.headers[drag.lastProjectedIdx];
             commitTargetColId = targetHeader.colId !== drag.sourceColId ? targetHeader.colId : null;
+        } else {
+            // Groupable-only drag released anywhere other than the panel: a clean
+            // cancel, exactly like releasing a reorderable drag back over its own
+            // slot — there is no "target header" for a drag with no reorder
+            // meaning at all.
+            commitTargetColId = null;
         }
         finishDrag(commitTargetColId);
     };
@@ -4158,12 +4192,23 @@ export function registerColumnReorder(gridId, dotnetRef) {
             const interactive = e.target.closest('button, a, input, select, textarea, [data-slot="datagrid-resize-handle"]');
             if (interactive && interactive.getAttribute('data-slot') !== 'datagrid-sort-button') return;
 
-            if (anyTh.dataset.reorderable !== 'true') {
-                // Non-reorderable column: never arms a drag, never claims the grid
-                // arbiter — just watch for an attempted drag past the same
-                // threshold a real one would use, to show the nudge-and-spring
-                // "can't drag this" feedback (redesign point 7). Sorting/clicking
-                // is completely untouched since nothing here preventDefaults.
+            // Grouping-by-drag must be independent of reorderability: a column
+            // that isn't Reorderable but IS Groupable (with the panel actually
+            // shown) still has to arm — the drag's only possible meaning there is
+            // "drop on the group panel", never a row reorder (see canReorder/
+            // canGroup below and every mode branch downstream of it). Only a
+            // column that is NEITHER arms nothing at all and falls back to the
+            // nudge.
+            const canReorderHere = anyTh.dataset.reorderable === 'true';
+            const canGroupHere = anyTh.dataset.groupable === 'true'
+                && !!grid.querySelector('[data-slot="datagrid-group-panel"]');
+            if (!canReorderHere && !canGroupHere) {
+                // Neither reorderable nor groupable: never arms a drag, never
+                // claims the grid arbiter — just watch for an attempted drag past
+                // the same threshold a real one would use, to show the
+                // nudge-and-spring "can't drag this" feedback (redesign point 7).
+                // Sorting/clicking is completely untouched since nothing here
+                // preventDefaults.
                 nudgeWatch = { th: anyTh, pointerId: e.pointerId, startX: e.clientX, startY: e.clientY, firedNudge: false };
                 return;
             }
@@ -4174,6 +4219,13 @@ export function registerColumnReorder(gridId, dotnetRef) {
         if (!th) return;
         const sourceColId = th.dataset.colId;
         const sourcePin = th.dataset.colPin || 'None';
+        // Cached once for the whole drag — the grip branch above only ever
+        // targets a Reorderable column (the grip itself only renders for one —
+        // see DataGridHeaderCell.razor), so this is always true there; the
+        // header-wide branch already resolved the same flag as canReorderHere
+        // before letting `th` through, re-derived here from the same dataset
+        // attribute rather than threaded through as a parameter.
+        const canReorderSrc = th.dataset.reorderable === 'true';
 
         const headerRow = th.parentElement;
         const table = th.closest('table');
@@ -4185,7 +4237,13 @@ export function registerColumnReorder(gridId, dotnetRef) {
         // sibling-shift preview never reads layout in the pointermove loop.
         const allTh = ownedByGrid(headerRow.querySelectorAll('th[data-col-id]'), grid);
         const partitionTh = allTh.filter((h) => (h.dataset.colPin || 'None') === sourcePin);
-        if (partitionTh.length < 2) return; // nothing to reorder within the partition
+        // "Nothing to reorder within the partition" only matters when this drag
+        // could actually reorder — a Groupable-only drag (canReorderSrc false)
+        // has no sibling-shift preview at all (see applyLiveTranslate's
+        // canReorder gate below) and is perfectly valid even as the sole column
+        // in its pin partition, since its only possible destination is the
+        // group panel, not a sibling header.
+        if (canReorderSrc && partitionTh.length < 2) return;
 
         const headers = partitionTh.map((h) => {
             const idx = Array.prototype.indexOf.call(headerRow.children, h);
@@ -4256,6 +4314,11 @@ export function registerColumnReorder(gridId, dotnetRef) {
             startX: e.clientX, startY: e.clientY,
             sourceColId, sourcePin, cells, headers, srcHeaderIdx, sourceRect, bounds,
             lastProjectedIdx: srcHeaderIdx, armed: false,
+            // The four-quadrant split (canReorder × canGroup) every mode branch
+            // downstream keys off — see applyLiveTranslate's gate, armDrag's
+            // immediate-ghost rule, updateGhostCarry's always-show rule, and
+            // onPointerUp's release-anywhere-else cancel.
+            canReorder: canReorderSrc,
             pointerType: e.pointerType, longPressTimer: null,
             // Only a header-wide (non-grip) arm needs the post-arm click swallow —
             // see armSortClickSuppression's comment.
@@ -4273,7 +4336,7 @@ export function registerColumnReorder(gridId, dotnetRef) {
         };
 
         if (viaGrip) {
-            armDrag();
+            armDrag(e.clientX, e.clientY);
             e.preventDefault();
             e.stopPropagation();
         } else if (viaLongPress) {
@@ -4283,10 +4346,11 @@ export function registerColumnReorder(gridId, dotnetRef) {
             // arm a new, unrelated one that happens to be pending at the same
             // moment (mirrors this file's pendingSettle-style identity guards).
             const pendingDrag = drag;
+            const armX = e.clientX, armY = e.clientY; // pointer barely moves before a long-press fires — safe to reuse
             pendingDrag.longPressTimer = window.setTimeout(() => {
                 if (drag !== pendingDrag) return;
                 pendingDrag.longPressTimer = null;
-                armDrag();
+                armDrag(armX, armY);
             }, REORDER_LONGPRESS_MS);
         }
         // Header-wide mouse init stays UNARMED here — no preventDefault/capture

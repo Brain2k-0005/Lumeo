@@ -2975,6 +2975,253 @@ function assert(cond, msg) {
   const afterRelease50 = await page.evaluate(() => window.__dotnetCalls);
   assert(!afterRelease50.some((c) => c.method === 'OnColumnReorderCommit'), 'dropping a non-Groupable column on the panel commits nothing — treated as a cancel');
 
+  // ---------------------------------------------------------------
+  // TEST 51 — Grouping-by-drag decoupled from reorderability, scenario
+  // (a)+(b): a column that is Groupable but NOT Reorderable (data-reorderable
+  // absent/false — no grip rendered at all, exactly like
+  // DataGridHeaderCell.razor's @if (EffectiveReorderable) gate on the grip
+  // markup for a Reorderable=false grid) still arms a header-wide drag
+  // (canGroup alone is enough — see registerColumnReorder's onPointerDown
+  // canReorderHere/canGroupHere gate) and previews the group exclusively:
+  // the ghost shows IMMEDIATELY once armed — not only once the pointer
+  // reaches the panel, and not gated behind leaving the header row's band —
+  // because grouping is this drag's ONLY possible meaning (no reorder
+  // preview ever runs for it). Dropping on the panel still commits through
+  // the exact same GROUP_PANEL_DROP_TARGET_ID sentinel channel.
+  // ---------------------------------------------------------------
+  await page.evaluate(() => {
+    document.getElementById('host').innerHTML = `
+      <div data-grid-id="g51">
+        <div data-slot="datagrid-group-panel" style="height:40px;width:340px;">Drop to group</div>
+        <table id="tbl51" style="width:340px">
+          <thead><tr>
+            <th id="th51A" data-col-id="A" data-col-pin="None" data-reorderable="false" data-groupable="true" style="width:170px">
+              <button id="btn51A" data-slot="datagrid-sort-button" style="width:100%;height:100%;">A</button></th>
+            <th id="th51B" data-col-id="B" data-col-pin="None" data-reorderable="false" style="width:170px">
+              <button id="btn51B" data-slot="datagrid-sort-button" style="width:100%;height:100%;">B</button></th>
+          </tr></thead>
+          <tbody><tr><td>a</td><td>b</td></tr></tbody>
+        </table>
+      </div>`;
+  });
+  await page.evaluate(() => {
+    window.__dotnetCalls.length = 0;
+    window.__C.registerColumnReorder('g51', window.__fakeDotNet);
+  });
+  const btn51A = await page.$('#btn51A');
+  const box51A = await btn51A.boundingBox();
+  const th51B = await page.$('#th51B');
+  const box51B = await th51B.boundingBox();
+  const panel51 = await page.$('div[data-grid-id="g51"] [data-slot="datagrid-group-panel"]');
+  const panelBox51 = await panel51.boundingBox();
+
+  await page.mouse.move(box51A.x + box51A.width / 2, box51A.y + box51A.height / 2);
+  await page.mouse.down();
+  // Cross the 5px arm threshold, staying well INSIDE the header row's own
+  // band (no grip exists on this column at all — data-reorderable is
+  // "false" — so this header-wide mouse path is the ONLY way it can arm).
+  await page.mouse.move(box51A.x + box51A.width / 2 + 6, box51A.y + box51A.height / 2, { steps: 2 });
+  const justArmed51 = await page.evaluate(() => {
+    const ghost = document.querySelector('[data-slot="datagrid-drag-ghost"]');
+    return {
+      opacity: document.getElementById('th51A').style.opacity,
+      transform: document.getElementById('th51A').style.transform,
+      ghostExists: !!ghost, ghostOpacity: ghost ? ghost.style.opacity : null,
+    };
+  });
+  // Opacity lands at 0.4, not the usual 0.8 — armDrag's own loop sets 0.8
+  // first, but the immediate showGhost() call right after (see armDrag's
+  // ghost-creation block) dims it FURTHER to 0.4 the same instant, since the
+  // ghost is this drag's sole visual from the very start (no in-between
+  // "still deciding" phase the way a Reorderable+Groupable drag has).
+  assert(justArmed51.opacity === '0.4', `a Groupable-but-not-Reorderable column still arms a header-wide drag, with the ghost immediately dimming the origin to 0.4 (opacity got '${justArmed51.opacity}')`);
+  assert(justArmed51.transform.includes('scale'), `the origin still gets the lift scale styling (got '${justArmed51.transform}')`);
+  assert(justArmed51.ghostExists === true, 'the ghost element is created the instant this Groupable-only drag arms');
+  assert(justArmed51.ghostOpacity === '1', `the ghost is visible IMMEDIATELY on arm — not gated behind the header-row-exit band rule (got opacity '${justArmed51.ghostOpacity}')`);
+
+  // Pass over sibling B, still fully inside the header row — a Reorderable
+  // column would engage B's live sibling-shift preview here; a Groupable-
+  // only drag never runs one at all.
+  await page.mouse.move(box51B.x + box51B.width / 2, box51B.y + box51B.height / 2, { steps: 5 });
+  const midRow51 = await page.evaluate(() => {
+    const ghost = document.querySelector('[data-slot="datagrid-drag-ghost"]');
+    return {
+      bTransform: document.getElementById('th51B').style.transform,
+      ghostOpacity: ghost ? ghost.style.opacity : null,
+    };
+  });
+  assert(midRow51.bTransform === '', `no sibling-shift reorder preview ever runs for a Groupable-only drag (B's transform got '${midRow51.bTransform}')`);
+  assert(midRow51.ghostOpacity === '1', `the ghost stays visible while passing back over the header row too (got opacity '${midRow51.ghostOpacity}')`);
+
+  // Now carry into the group panel and drop.
+  await page.mouse.move(panelBox51.x + panelBox51.width / 2, panelBox51.y + panelBox51.height / 2, { steps: 5 });
+  const overPanel51 = await page.evaluate(() => ({
+    panelDropTarget: document.querySelector('div[data-grid-id="g51"] [data-slot="datagrid-group-panel"]').getAttribute('data-drop-target'),
+  }));
+  assert(overPanel51.panelDropTarget === 'true', `the panel highlights for a Groupable-only column exactly like a Reorderable+Groupable one (got '${overPanel51.panelDropTarget}')`);
+  await page.mouse.up();
+  await page.waitForTimeout(300);
+  const afterRelease51 = await page.evaluate(() => ({
+    calls: window.__dotnetCalls,
+    ghostExists: !!document.querySelector('[data-slot="datagrid-drag-ghost"]'),
+  }));
+  const commit51 = afterRelease51.calls.find((c) => c.method === 'OnColumnReorderCommit');
+  assert(!!commit51, 'dropping the Groupable-but-not-Reorderable column on the panel commits — reordering being OFF never blocks grouping');
+  assert(commit51.args[1] === 'A', `commit sources from the dragged column A (got '${commit51 && commit51.args[1]}')`);
+  assert(commit51.args[2] === '__group-panel__', `commit targets the group-panel sentinel (got '${commit51 && commit51.args[2]}')`);
+  assert(afterRelease51.ghostExists === false, 'the ghost is removed once the group-panel drop settles');
+
+  // ---------------------------------------------------------------
+  // TEST 52 — Grouping-by-drag decoupled from reorderability, scenario (c):
+  // releasing the SAME kind of drag anywhere OTHER than the panel (still
+  // inside the header row) is a clean cancel — no reorder (there IS no
+  // reorder target for a non-Reorderable column) and no sort click either
+  // (click-suppression still applies to a header-wide arm regardless of
+  // canReorder).
+  // ---------------------------------------------------------------
+  await page.evaluate(() => {
+    document.getElementById('host').innerHTML = `
+      <div data-grid-id="g52">
+        <div data-slot="datagrid-group-panel" style="height:40px;width:340px;">Drop to group</div>
+        <table id="tbl52" style="width:340px">
+          <thead><tr>
+            <th id="th52A" data-col-id="A" data-col-pin="None" data-reorderable="false" data-groupable="true" style="width:170px">
+              <button id="btn52A" data-slot="datagrid-sort-button" style="width:100%;height:100%;">A</button></th>
+            <th id="th52B" data-col-id="B" data-col-pin="None" data-reorderable="false" style="width:170px">
+              <button id="btn52B" data-slot="datagrid-sort-button" style="width:100%;height:100%;">B</button></th>
+          </tr></thead>
+          <tbody><tr><td>a</td><td>b</td></tr></tbody>
+        </table>
+      </div>`;
+    window.__sortClicks52 = 0;
+    document.getElementById('btn52A').addEventListener('click', () => { window.__sortClicks52++; });
+  });
+  await page.evaluate(() => {
+    window.__dotnetCalls.length = 0;
+    window.__C.registerColumnReorder('g52', window.__fakeDotNet);
+  });
+  const btn52A = await page.$('#btn52A');
+  const box52A = await btn52A.boundingBox();
+  const th52B = await page.$('#th52B');
+  const box52B = await th52B.boundingBox();
+  await page.mouse.move(box52A.x + box52A.width / 2, box52A.y + box52A.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box52A.x + box52A.width / 2 + 6, box52A.y + box52A.height / 2, { steps: 2 });
+  const armedOpacity52 = await page.evaluate(() => document.getElementById('th52A').style.opacity);
+  // Release over sibling B — still inside the header row, never near the panel.
+  await page.mouse.move(box52B.x + box52B.width / 2, box52B.y + box52B.height / 2, { steps: 5 });
+  await page.mouse.up();
+  await page.waitForTimeout(300);
+  const result52 = await page.evaluate(() => ({
+    clicks: window.__sortClicks52,
+    commit: window.__dotnetCalls.find((c) => c.method === 'OnColumnReorderCommit'),
+    transform: document.getElementById('th52A').style.transform,
+    opacity: document.getElementById('th52A').style.opacity,
+  }));
+  // 0.4, not 0.8 — see TEST 51's comment: the immediate showGhost() call
+  // dims the origin further the instant a Groupable-only drag arms.
+  assert(armedOpacity52 === '0.4', `the Groupable-only drag armed before release (opacity got '${armedOpacity52}')`);
+  assert(!result52.commit, 'releasing a Groupable-only drag anywhere but the panel never commits — no reorder target exists for it');
+  assert(result52.clicks === 0, `the completed drag never also fires the sort button's click (got ${result52.clicks})`);
+  assert(result52.transform === '', `the header glides back to identity after the clean cancel (got '${result52.transform}')`);
+  assert(result52.opacity === '', `the header's lift opacity is restored after the clean cancel (got '${result52.opacity}')`);
+
+  // ---------------------------------------------------------------
+  // TEST 53 — Grouping-by-drag decoupled from reorderability, scenario (d):
+  // Escape mid-drag cancels a Groupable-only drag exactly like every other
+  // drag in this engine — no commit, ghost removed, header glides back.
+  // ---------------------------------------------------------------
+  await page.evaluate(() => {
+    document.getElementById('host').innerHTML = `
+      <div data-grid-id="g53">
+        <div data-slot="datagrid-group-panel" style="height:40px;width:340px;">Drop to group</div>
+        <table id="tbl53" style="width:340px">
+          <thead><tr>
+            <th id="th53A" data-col-id="A" data-col-pin="None" data-reorderable="false" data-groupable="true" style="width:170px">
+              <button id="btn53A" data-slot="datagrid-sort-button" style="width:100%;height:100%;">A</button></th>
+            <th id="th53B" data-col-id="B" data-col-pin="None" data-reorderable="false" style="width:170px">
+              <button id="btn53B" data-slot="datagrid-sort-button" style="width:100%;height:100%;">B</button></th>
+          </tr></thead>
+          <tbody><tr><td>a</td><td>b</td></tr></tbody>
+        </table>
+      </div>`;
+  });
+  await page.evaluate(() => {
+    window.__dotnetCalls.length = 0;
+    window.__C.registerColumnReorder('g53', window.__fakeDotNet);
+  });
+  const btn53A = await page.$('#btn53A');
+  const box53A = await btn53A.boundingBox();
+  await page.mouse.move(box53A.x + box53A.width / 2, box53A.y + box53A.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box53A.x + box53A.width / 2 + 6, box53A.y + box53A.height / 2, { steps: 2 });
+  const armedOpacity53 = await page.evaluate(() => document.getElementById('th53A').style.opacity);
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(300);
+  await page.mouse.up();
+  await page.waitForTimeout(50);
+  const result53 = await page.evaluate(() => ({
+    commit: window.__dotnetCalls.find((c) => c.method === 'OnColumnReorderCommit'),
+    transform: document.getElementById('th53A').style.transform,
+    opacity: document.getElementById('th53A').style.opacity,
+    ghostExists: !!document.querySelector('[data-slot="datagrid-drag-ghost"]'),
+  }));
+  // 0.4, not 0.8 — see TEST 51's comment: the immediate showGhost() call
+  // dims the origin further the instant a Groupable-only drag arms.
+  assert(armedOpacity53 === '0.4', `the Groupable-only drag armed before Escape (opacity got '${armedOpacity53}')`);
+  assert(!result53.commit, 'Escape on a Groupable-only drag never commits — no group, no reorder');
+  assert(result53.transform === '', `Escape glides the header back to identity (got '${result53.transform}')`);
+  assert(result53.opacity === '', `Escape restores the header's lift opacity (got '${result53.opacity}')`);
+  assert(result53.ghostExists === false, 'Escape removes the ghost from the DOM too — no leaked fixed element');
+
+  // ---------------------------------------------------------------
+  // TEST 54 — Grouping-by-drag decoupled from reorderability, scenario (e):
+  // a column that is NEITHER Reorderable NOR Groupable, in the SAME grid,
+  // still gets the plain nudge-and-spring "can't drag this" feedback — the
+  // new canReorder||canGroup arm gate must not swallow the nudge path for a
+  // column that genuinely has neither capability.
+  // ---------------------------------------------------------------
+  await page.evaluate(() => {
+    document.getElementById('host').innerHTML = `
+      <div data-grid-id="g54">
+        <div data-slot="datagrid-group-panel" style="height:40px;width:340px;">Drop to group</div>
+        <table id="tbl54" style="width:340px">
+          <thead><tr>
+            <th id="th54A" data-col-id="A" data-col-pin="None" data-reorderable="false" data-groupable="true" style="width:170px">
+              <button id="btn54A" data-slot="datagrid-sort-button" style="width:100%;height:100%;">A</button></th>
+            <th id="th54B" data-col-id="B" data-col-pin="None" data-reorderable="false" style="width:170px">
+              <button id="btn54B" data-slot="datagrid-sort-button" style="width:100%;height:100%;">B</button></th>
+          </tr></thead>
+          <tbody><tr><td>a</td><td>b</td></tr></tbody>
+        </table>
+      </div>`;
+  });
+  await page.evaluate(() => {
+    window.__dotnetCalls.length = 0;
+    window.__C.registerColumnReorder('g54', window.__fakeDotNet);
+  });
+  const btn54B = await page.$('#btn54B');
+  const box54B = await btn54B.boundingBox();
+  await page.mouse.move(box54B.x + box54B.width / 2, box54B.y + box54B.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box54B.x + box54B.width / 2 + 6, box54B.y + box54B.height / 2, { steps: 3 });
+  await page.waitForTimeout(200); // REORDER_NUDGE_MS (150) + margin
+  const nudge54 = await page.evaluate(() => ({
+    // The nudge class self-removes after REORDER_NUDGE_MS + 20 (~170ms) —
+    // read dataset/opacity state instead of the class, which can't be
+    // reliably caught mid-animation from outside a rAF callback.
+    opacity: document.getElementById('th54A').style.opacity, // A must stay fully untouched
+    bOpacity: document.getElementById('th54B').style.opacity,
+    bArmed: getComputedStyle(document.getElementById('th54B')).opacity === '0.8',
+  }));
+  await page.mouse.up();
+  await page.waitForTimeout(50);
+  const commit54 = await page.evaluate(() => window.__dotnetCalls.find((c) => c.method === 'OnColumnReorderCommit'));
+  assert(nudge54.opacity === '', `the OTHER (Groupable) column A is never touched by B's nudge attempt (got '${nudge54.opacity}')`);
+  assert(nudge54.bOpacity === '', `a neither-capable column never arms a real drag lift (B's inline opacity got '${nudge54.bOpacity}')`);
+  assert(nudge54.bArmed === false, 'a neither-capable column never reaches the 0.8 armed-drag opacity');
+  assert(!commit54, 'a neither-capable column dragged past the threshold never commits anything — it only gets the nudge feedback');
+
   console.log(`\nALL TESTS PASSED (${passCount} assertions) — engine: ${ENGINE}`);
   await browser.close();
   server.close();

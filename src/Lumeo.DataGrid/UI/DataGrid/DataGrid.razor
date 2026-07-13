@@ -1791,8 +1791,20 @@
         // (AddGroupField) instead of ReorderColumnByIdAsync, reusing the SAME
         // DotNetObjectReference method the grid already registers rather than
         // standing up a parallel JS↔.NET channel. Re-check each render so a
-        // runtime Reorderable flip is honoured.
-        if (Reorderable && !_pointerReorderRegistered)
+        // runtime Reorderable/ShowGroupPanel flip is honoured.
+        //
+        // Registered whenever EITHER Reorderable OR ShowGroupPanel is on — NOT
+        // Reorderable alone. Grouping-by-drag must be independent of reorderability
+        // (a grid can have Reorderable=false + ShowGroupPanel=true, whose Groupable
+        // columns still need to arm a drag toward the panel): gating this listener
+        // on Reorderable alone used to kill the ENTIRE JS pointer engine — including
+        // the group-panel gesture — the moment column reordering was turned off,
+        // even though components.js's registerColumnReorder already computes its
+        // own per-column canReorder/canGroup split from data-reorderable/
+        // data-groupable and only arms a plain reorder when the source column is
+        // itself Reorderable (see ReorderColumnByIdAsync's own commit guard below,
+        // unaffected by this gate).
+        if ((Reorderable || ShowGroupPanel) && !_pointerReorderRegistered)
         {
             try
             {
@@ -1809,7 +1821,7 @@
             }
             catch (JSDisconnectedException) { }
         }
-        else if (!Reorderable && _pointerReorderRegistered)
+        else if (!Reorderable && !ShowGroupPanel && _pointerReorderRegistered)
         {
             try { await Interop.UnregisterColumnReorder(_gridId); }
             catch (JSDisconnectedException) { }
