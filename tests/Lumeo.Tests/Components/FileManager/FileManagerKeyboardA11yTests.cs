@@ -223,4 +223,194 @@ public class FileManagerKeyboardA11yTests : IAsyncLifetime
         Assert.NotNull(selected);
         Assert.Equal("report", selected!.Id);
     }
+
+    // ──────────────────────────────────────────────────────────────────────────
+    // Folder tree keyboard navigation (WCAG 2.1.1) — the tree pane had ARIA
+    // (aria-expanded/aria-selected/aria-level) but no tabindex and no
+    // @onkeydown: keyboard/screen-reader users could not reach or navigate it
+    // at all. The fix mirrors the file list's roving-tabindex pattern above
+    // (keyed by node Id, since the visible order reshapes on expand/collapse)
+    // plus TreeViewNode.razor's WAI-ARIA semantics: ArrowRight expands a
+    // collapsed folder or descends into an already-expanded one; ArrowLeft
+    // collapses an expanded folder or ascends to its parent; Home/End jump to
+    // the first/last VISIBLE node; Enter/Space navigate into the folder.
+    // ──────────────────────────────────────────────────────────────────────────
+
+    // Two root folders, one with a nested folder child (Reports) plus a file
+    // sibling (notes.txt — must NOT appear in the tree, only the file list),
+    // the other with an empty nested folder (Vacation). Enough shape to
+    // exercise expand/descend, collapse/ascend, and Home/End across siblings.
+    private static List<FileSystemNode> BuildTreeNavigationSample() =>
+    [
+        new FileSystemNode
+        {
+            Id = "documents",
+            Name = "Documents",
+            IsFolder = true,
+            Children =
+            [
+                new FileSystemNode
+                {
+                    Id = "reports",
+                    Name = "Reports",
+                    IsFolder = true,
+                    Children = [new FileSystemNode { Id = "q1", Name = "q1.pdf", IsFolder = false, Size = 1_024 }]
+                },
+                new FileSystemNode { Id = "notes", Name = "notes.txt", IsFolder = false, Size = 512 }
+            ]
+        },
+        new FileSystemNode
+        {
+            Id = "pictures",
+            Name = "Pictures",
+            IsFolder = true,
+            Children = [new FileSystemNode { Id = "vacation", Name = "Vacation", IsFolder = true, Children = [] }]
+        }
+    ];
+
+    // Treeitems carry a deterministic per-node id (TreeItemId: "{treeId}-item-{nodeId}"),
+    // so an id-suffix selector picks out exactly ONE node even once it has an
+    // expanded child nested inside its own DOM subtree — unlike a TextContent
+    // match, which would also pick up the (nested) child's name.
+    private static AngleSharp.Dom.IElement TreeItem(IRenderedComponent<Lumeo.FileManager> cut, string nodeId)
+        => cut.Find($"[id$='-item-{nodeId}']");
+
+    [Fact]
+    public void FileManager_Tree_Uses_Roving_Tabindex_Initially()
+    {
+        var cut = _ctx.Render<Lumeo.FileManager>(p => p
+            .Add(x => x.Root, BuildTreeNavigationSample()));
+
+        // Nothing is expanded yet, so only the two root folders are visible
+        // treeitems. Pre-fix EVERY treeitem had no tabindex attribute at all
+        // (mouse-only); the fix puts exactly one in the tab sequence.
+        var treeItems = cut.FindAll("[role='treeitem']");
+        Assert.Equal(2, treeItems.Count);
+        Assert.Equal(1, treeItems.Count(t => t.GetAttribute("tabindex") == "0"));
+
+        Assert.Equal("0", TreeItem(cut, "documents").GetAttribute("tabindex"));
+        Assert.Equal("-1", TreeItem(cut, "pictures").GetAttribute("tabindex"));
+    }
+
+    [Fact]
+    public void FileManager_Tree_ArrowDown_Then_ArrowUp_MovesRovingTabStop()
+    {
+        var cut = _ctx.Render<Lumeo.FileManager>(p => p
+            .Add(x => x.Root, BuildTreeNavigationSample()));
+
+        TreeItem(cut, "documents").KeyDown(new KeyboardEventArgs { Key = "ArrowDown" });
+
+        Assert.Equal(1, cut.FindAll("[role='treeitem']").Count(t => t.GetAttribute("tabindex") == "0"));
+        Assert.Equal("-1", TreeItem(cut, "documents").GetAttribute("tabindex"));
+        Assert.Equal("0", TreeItem(cut, "pictures").GetAttribute("tabindex"));
+
+        // ArrowUp moves it back.
+        TreeItem(cut, "pictures").KeyDown(new KeyboardEventArgs { Key = "ArrowUp" });
+        Assert.Equal("0", TreeItem(cut, "documents").GetAttribute("tabindex"));
+        Assert.Equal("-1", TreeItem(cut, "pictures").GetAttribute("tabindex"));
+    }
+
+    [Fact]
+    public void FileManager_Tree_ArrowDown_Focuses_The_Next_Treeitem_ById()
+    {
+        var interop = new TrackingInteropService();
+        _ctx.Services.AddSingleton<IComponentInteropService>(interop);
+
+        var cut = _ctx.Render<Lumeo.FileManager>(p => p
+            .Add(x => x.Root, BuildTreeNavigationSample()));
+
+        TreeItem(cut, "documents").KeyDown(new KeyboardEventArgs { Key = "ArrowDown" });
+
+        var picturesId = TreeItem(cut, "pictures").GetAttribute("id");
+        Assert.False(string.IsNullOrEmpty(picturesId));
+        cut.WaitForAssertion(() => Assert.Contains(picturesId!, interop.FocusElementCalls));
+    }
+
+    [Fact]
+    public void FileManager_Tree_ArrowRight_Expands_Then_Descends_Into_First_Child()
+    {
+        var cut = _ctx.Render<Lumeo.FileManager>(p => p
+            .Add(x => x.Root, BuildTreeNavigationSample()));
+
+        Assert.Equal("false", TreeItem(cut, "documents").GetAttribute("aria-expanded"));
+
+        // First ArrowRight expands the collapsed folder and stays on it (does
+        // NOT move the roving cursor yet — WAI-ARIA tree semantics).
+        TreeItem(cut, "documents").KeyDown(new KeyboardEventArgs { Key = "ArrowRight" });
+
+        Assert.Equal("true", TreeItem(cut, "documents").GetAttribute("aria-expanded"));
+        Assert.Equal("0", TreeItem(cut, "documents").GetAttribute("tabindex"));
+        // Only the folder child (Reports) is now visible — the sibling FILE
+        // (notes.txt) must never appear as a treeitem.
+        var afterExpand = cut.FindAll("[role='treeitem']");
+        Assert.Equal(3, afterExpand.Count);
+        Assert.Equal("2", TreeItem(cut, "reports").GetAttribute("aria-level"));
+        Assert.DoesNotContain(afterExpand, t => t.TextContent.Contains("notes.txt"));
+
+        // Second ArrowRight on the now-expanded folder descends into its
+        // first (folder) child.
+        TreeItem(cut, "documents").KeyDown(new KeyboardEventArgs { Key = "ArrowRight" });
+
+        Assert.Equal("0", TreeItem(cut, "reports").GetAttribute("tabindex"));
+        Assert.Equal("-1", TreeItem(cut, "documents").GetAttribute("tabindex"));
+    }
+
+    [Fact]
+    public void FileManager_Tree_ArrowLeft_Collapses_Then_Ascends_To_Parent()
+    {
+        var cut = _ctx.Render<Lumeo.FileManager>(p => p
+            .Add(x => x.Root, BuildTreeNavigationSample()));
+
+        // Expand Documents and descend onto Reports (mirrors the ArrowRight test).
+        TreeItem(cut, "documents").KeyDown(new KeyboardEventArgs { Key = "ArrowRight" });
+        TreeItem(cut, "documents").KeyDown(new KeyboardEventArgs { Key = "ArrowRight" });
+
+        // Reports has no folder children of its own (only a file), so ArrowLeft
+        // on it ascends straight to its parent, Documents.
+        TreeItem(cut, "reports").KeyDown(new KeyboardEventArgs { Key = "ArrowLeft" });
+
+        Assert.Equal("0", TreeItem(cut, "documents").GetAttribute("tabindex"));
+        Assert.Equal("true", TreeItem(cut, "documents").GetAttribute("aria-expanded")); // still expanded — only the cursor moved
+        Assert.Equal("-1", TreeItem(cut, "reports").GetAttribute("tabindex"));
+
+        // ArrowLeft again, now focused on the expanded Documents, collapses it
+        // (stays on the same node) — Reports drops out of the tree entirely.
+        TreeItem(cut, "documents").KeyDown(new KeyboardEventArgs { Key = "ArrowLeft" });
+
+        var afterCollapse = cut.FindAll("[role='treeitem']");
+        Assert.Equal(2, afterCollapse.Count);
+        Assert.Equal("false", TreeItem(cut, "documents").GetAttribute("aria-expanded"));
+        Assert.Equal("0", TreeItem(cut, "documents").GetAttribute("tabindex"));
+    }
+
+    [Fact]
+    public void FileManager_Tree_Home_And_End_JumpToFirstAndLastVisibleNode()
+    {
+        var cut = _ctx.Render<Lumeo.FileManager>(p => p
+            .Add(x => x.Root, BuildTreeNavigationSample()));
+
+        // Expand Documents so the visible order is [Documents, Reports, Pictures].
+        TreeItem(cut, "documents").KeyDown(new KeyboardEventArgs { Key = "ArrowRight" });
+
+        TreeItem(cut, "documents").KeyDown(new KeyboardEventArgs { Key = "End" });
+        Assert.Equal("0", TreeItem(cut, "pictures").GetAttribute("tabindex"));
+
+        TreeItem(cut, "pictures").KeyDown(new KeyboardEventArgs { Key = "Home" });
+        Assert.Equal("0", TreeItem(cut, "documents").GetAttribute("tabindex"));
+    }
+
+    [Theory]
+    [InlineData("Enter")]
+    [InlineData(" ")]
+    public void FileManager_Tree_EnterOrSpace_NavigatesIntoFolder(string key)
+    {
+        string? navigatedPath = "unset";
+        var cut = _ctx.Render<Lumeo.FileManager>(p => p
+            .Add(x => x.Root, BuildTreeNavigationSample())
+            .Add(x => x.CurrentPathChanged, EventCallback.Factory.Create<string?>(this, path => navigatedPath = path)));
+
+        TreeItem(cut, "pictures").KeyDown(new KeyboardEventArgs { Key = key });
+
+        Assert.Equal("pictures", navigatedPath);
+    }
 }

@@ -136,7 +136,18 @@
     <div class="flex flex-1 min-h-0 overflow-hidden">
 
         @* ── Left: folder tree ──────────────────────────────────────────── *@
-        <div class="w-52 shrink-0 border-e border-border/40 overflow-y-auto bg-card p-2" role="tree" aria-label="@L["FileManager.FolderTree"]">
+        <div id="@_treeId" class="w-52 shrink-0 border-e border-border/40 overflow-y-auto bg-card p-2" role="tree" aria-label="@L["FileManager.FolderTree"]">
+            @{
+                var visibleTreeNodes = GetVisibleTreeNodes();
+                // Keep the roving cursor pointing at a node that's actually visible
+                // (mirrors the file list's _activeItemIndex clamp above): the very
+                // first render, a Root swap, or a collapse that hid the previously
+                // active descendant all leave _activeTreeNodeId stale/null, so fall
+                // back to the first visible node — otherwise no treeitem would carry
+                // tabindex=0 and the tree would silently drop out of the tab order.
+                if (visibleTreeNodes.Count > 0 && (_activeTreeNodeId is null || !visibleTreeNodes.Any(t => t.Node.Id == _activeTreeNodeId)))
+                    _activeTreeNodeId = visibleTreeNodes[0].Node.Id;
+            }
             @foreach (var node in Root ?? [])
             {
                 @RenderTreeNode(node, 0)
@@ -319,6 +330,22 @@
     // Whether the file-list scroll-suppression keys are registered with JS.
     private bool _fileListPdRegistered;
     private string FileItemId(int index) => $"{_fileListId}-item-{index}";
+
+    // ── Folder tree roving-tabindex (a11y: WCAG 2.1.1 — the tree was mouse-only) ──
+    // Mirrors the file list's roving-tabindex pattern above, keyed by node Id
+    // rather than index: the visible tree order reshapes as folders expand/
+    // collapse, so an index would drift under the cursor while an Id stays
+    // stable. Also mirrors TreeViewNode.razor's WAI-ARIA keyboard semantics
+    // (ArrowRight expands-then-descends, ArrowLeft collapses-then-ascends) and
+    // its per-treeitem @onkeydown:stopPropagation — needed here because,
+    // unlike the flat file list, treeitems NEST inside their expanded parent's
+    // own DOM element, so an un-stopped keydown would bubble into every
+    // ancestor's onkeydown along the way.
+    private string? _activeTreeNodeId;
+    private readonly string _treeId = LumeoIds.New("fm-tree");
+    // Whether the tree's scroll-suppression keys are registered with JS.
+    private bool _treePdRegistered;
+    private string TreeItemId(string nodeId) => $"{_treeId}-item-{nodeId}";
 
     // ──────────────────────────────────────────────────────────────────────────
     // CSS helpers
@@ -845,6 +872,35 @@
             catch (JSDisconnectedException) { }
             catch (InvalidOperationException) { } // JS interop unavailable during prerender
         }
+
+        // Register the native scroll-suppression for the folder tree once it
+        // exists (mirrors the file list's #129 registration above): Space /
+        // Arrows / Home / End would otherwise scroll the tree pane while a
+        // treeitem has focus. Registered against the role="tree" container —
+        // not per treeitem — because the JS listener attaches once and relies
+        // on native DOM bubbling from whichever treeitem is focused; the
+        // per-treeitem @onkeydown:stopPropagation above only stops the .NET
+        // synthetic event, not the underlying DOM keydown this listens for.
+        if (!_treePdRegistered)
+        {
+            _treePdRegistered = true;
+            try
+            {
+                await Interop.RegisterPreventDefaultKeys(_treeId, new[]
+                {
+                    new Lumeo.Services.PreventDefaultKeyRule(" "),
+                    new Lumeo.Services.PreventDefaultKeyRule("Spacebar"),
+                    new Lumeo.Services.PreventDefaultKeyRule("ArrowDown"),
+                    new Lumeo.Services.PreventDefaultKeyRule("ArrowUp"),
+                    new Lumeo.Services.PreventDefaultKeyRule("ArrowLeft"),
+                    new Lumeo.Services.PreventDefaultKeyRule("ArrowRight"),
+                    new Lumeo.Services.PreventDefaultKeyRule("Home"),
+                    new Lumeo.Services.PreventDefaultKeyRule("End"),
+                });
+            }
+            catch (JSDisconnectedException) { }
+            catch (InvalidOperationException) { } // JS interop unavailable during prerender
+        }
     }
 
     public async ValueTask DisposeAsync()
@@ -857,6 +913,10 @@
         if (_fileListPdRegistered)
         {
             try { await Interop.UnregisterPreventDefaultKeys(_fileListId); } catch (JSDisconnectedException) { }
+        }
+        if (_treePdRegistered)
+        {
+            try { await Interop.UnregisterPreventDefaultKeys(_treeId); } catch (JSDisconnectedException) { }
         }
     }
 
@@ -957,6 +1017,128 @@
     }
 
     // ──────────────────────────────────────────────────────────────────────────
+    // Tree keyboard navigation (a11y: WAI-ARIA tree pattern, WCAG 2.1.1)
+    // ──────────────────────────────────────────────────────────────────────────
+
+    // Flattened VISIBLE tree order (document order, folders only, a collapsed
+    // ancestor hides its descendants) — used both to clamp the roving cursor
+    // in the container markup above and to resolve Arrow/Home/End targets
+    // below. Recomputed per call rather than cached: the tree is small and the
+    // set changes shape on every expand/collapse, so caching would need its
+    // own invalidation (mirrors GetCurrentFolderContents' recompute-on-demand
+    // approach elsewhere in this file).
+    private List<(FileSystemNode Node, int Level, FileSystemNode? Parent)> GetVisibleTreeNodes()
+    {
+        var result = new List<(FileSystemNode, int, FileSystemNode?)>();
+        void Walk(IEnumerable<FileSystemNode> nodes, int level, FileSystemNode? parent)
+        {
+            foreach (var n in nodes)
+            {
+                if (!n.IsFolder) continue;
+                result.Add((n, level, parent));
+                if (_expandedTreeNodes.Contains(n.Id) && n.Children is { Count: > 0 })
+                    Walk(n.Children, level + 1, n);
+            }
+        }
+        Walk(Root ?? [], 0, null);
+        return result;
+    }
+
+    // Click handler for a treeitem row: sync the roving active node to the
+    // clicked node (so a subsequent Arrow keypress continues from there) then
+    // run the normal folder navigation. Mirrors SelectRow above.
+    private async Task SelectTreeNode(FileSystemNode node)
+    {
+        _activeTreeNodeId = node.Id;
+        await NavigateToFolder(node);
+    }
+
+    // Moves DOM focus + the roving cursor to the given node id (no-op if it's
+    // already active). Mirrors MoveActiveItem's focus-by-id approach.
+    private async Task FocusTreeNode(string nodeId)
+    {
+        if (nodeId == _activeTreeNodeId) return;
+        _activeTreeNodeId = nodeId;
+        StateHasChanged();
+        try { await Interop.FocusElement(TreeItemId(nodeId)); } catch (JSDisconnectedException) { }
+    }
+
+    // Resolves the Arrow/Home/End navigation target for `node` against the
+    // flattened visible order and focuses it. Out-of-range / no-op targets
+    // (e.g. ArrowUp on the first node) are ignored, mirroring MoveActiveItem's
+    // clamp. ArrowRight/ArrowLeft are only reached here for the "move" half of
+    // their behavior — the "expand" / "collapse" half is handled by the caller
+    // (HandleTreeNodeKeyDown) before this runs.
+    private async Task MoveActiveTreeNode(FileSystemNode node, string key)
+    {
+        var visible = GetVisibleTreeNodes();
+        if (visible.Count == 0) return;
+        var index = visible.FindIndex(t => t.Node.Id == node.Id);
+        if (index < 0) return;
+
+        FileSystemNode? target = key switch
+        {
+            "ArrowDown" => index < visible.Count - 1 ? visible[index + 1].Node : null,
+            "ArrowUp" => index > 0 ? visible[index - 1].Node : null,
+            "Home" => visible[0].Node,
+            "End" => visible[^1].Node,
+            // Reached only when `node` is already expanded — the flattened
+            // order places its first child immediately after it.
+            "ArrowRight" => index + 1 < visible.Count && visible[index + 1].Parent?.Id == node.Id ? visible[index + 1].Node : null,
+            "ArrowLeft" => visible[index].Parent,
+            _ => null
+        };
+
+        if (target is not null && target.Id != node.Id)
+            await FocusTreeNode(target.Id);
+    }
+
+    // Keyboard handler for a treeitem (WAI-ARIA tree pattern, mirrors
+    // TreeViewNode.razor's semantics): ArrowDown/Up/Home/End rove the
+    // flattened visible order; ArrowRight expands a collapsed folder (or
+    // descends into an already-expanded one — a leaf is a no-op via
+    // MoveActiveTreeNode's null target); ArrowLeft collapses an expanded
+    // folder (or ascends to its parent); Enter/Space navigate into the folder
+    // (mirrors the row's onclick). Registered per-treeitem WITH
+    // @onkeydown:stopPropagation (unlike the flat file list's per-row
+    // handler) because treeitems nest inside their expanded parent's DOM
+    // element. The native scroll-suppression for these keys is wired
+    // separately via RegisterPreventDefaultKeys in OnAfterRenderAsync (#129
+    // precedent) — not @onkeydown:preventDefault, which would also swallow Tab.
+    private async Task HandleTreeNodeKeyDown(FileSystemNode node, KeyboardEventArgs e)
+    {
+        switch (e.Key)
+        {
+            case "ArrowDown":
+            case "ArrowUp":
+            case "Home":
+            case "End":
+                await MoveActiveTreeNode(node, e.Key);
+                return;
+            case "ArrowRight":
+            {
+                bool hasChildren = node.Children is { Count: > 0 } || (LoadChildren is not null && node.Children is null);
+                if (hasChildren && !_expandedTreeNodes.Contains(node.Id))
+                    await ToggleTreeFolder(node); // expand; stays on the same node
+                else
+                    await MoveActiveTreeNode(node, e.Key); // descend into first child (no-op if leaf)
+                return;
+            }
+            case "ArrowLeft":
+                if (_expandedTreeNodes.Contains(node.Id) && node.Children is { Count: > 0 })
+                    await ToggleTreeFolder(node); // collapse; stays on the same node
+                else
+                    await MoveActiveTreeNode(node, e.Key); // ascend to parent
+                return;
+            case "Enter":
+            case " ":
+            case "Spacebar": // legacy key name
+                await NavigateToFolder(node);
+                return;
+        }
+    }
+
+    // ──────────────────────────────────────────────────────────────────────────
     // Renderers
     // ──────────────────────────────────────────────────────────────────────────
 
@@ -967,6 +1149,7 @@
         bool expanded = _expandedTreeNodes.Contains(node.Id);
         bool isCurrentFolder = _pathStack.Count > 0 && _pathStack[^1].Id == node.Id;
         bool hasChildren = node.Children is { Count: > 0 } || (LoadChildren is not null && node.Children is null);
+        bool isActiveTreeNode = _activeTreeNodeId == node.Id;
 
         var rowClass = $"flex items-center gap-1.5 py-1 px-2 rounded-md text-sm cursor-pointer transition-colors {(isCurrentFolder ? "bg-accent text-accent-foreground" : "hover:bg-accent/50 text-foreground")}";
 
@@ -975,11 +1158,24 @@
         builder.AddAttribute(2, "aria-expanded", expanded.ToString().ToLowerInvariant());
         builder.AddAttribute(3, "aria-selected", isCurrentFolder.ToString().ToLowerInvariant());
         builder.AddAttribute(4, "aria-level", level + 1);
+        // Roving tabindex (a11y): only the active treeitem is in the tab
+        // sequence, mirroring the file list's tabindex handling (#128) — see
+        // GetVisibleTreeNodes / MoveActiveTreeNode above for the flattened-
+        // visible-order Arrow/Home/End navigation this drives.
+        builder.AddAttribute(5, "tabindex", isActiveTreeNode ? 0 : -1);
+        builder.AddAttribute(6, "id", TreeItemId(node.Id));
+        builder.AddAttribute(7, "onkeydown", Microsoft.AspNetCore.Components.EventCallback.Factory.Create<Microsoft.AspNetCore.Components.Web.KeyboardEventArgs>(this, e => HandleTreeNodeKeyDown(node, e)));
+        // Stop the .NET synthetic event from also bubbling into this node's
+        // ancestor treeitems (they wrap it in the DOM when expanded) — the
+        // native DOM keydown still bubbles to the role="tree" container for
+        // RegisterPreventDefaultKeys' JS listener (registered in
+        // OnAfterRenderAsync), which is unaffected by this Blazor-only flag.
+        builder.AddAttribute(8, "onkeydown:stopPropagation", true);
 
         builder.OpenElement(10, "div");
         builder.AddAttribute(11, "class", rowClass);
         builder.AddAttribute(12, "style", $"padding-left: {level * 12 + 4}px");
-        builder.AddAttribute(13, "onclick", Microsoft.AspNetCore.Components.EventCallback.Factory.Create<Microsoft.AspNetCore.Components.Web.MouseEventArgs>(this, _ => NavigateToFolder(node)));
+        builder.AddAttribute(13, "onclick", Microsoft.AspNetCore.Components.EventCallback.Factory.Create<Microsoft.AspNetCore.Components.Web.MouseEventArgs>(this, _ => SelectTreeNode(node)));
 
         // Chevron
         builder.OpenElement(20, "button");
@@ -987,6 +1183,7 @@
         builder.AddAttribute(22, "class", "shrink-0 w-4 h-4 flex items-center justify-center text-muted-foreground");
         builder.AddAttribute(23, "onclick", Microsoft.AspNetCore.Components.EventCallback.Factory.Create<Microsoft.AspNetCore.Components.Web.MouseEventArgs>(this, async (_evt) =>
         {
+            _activeTreeNodeId = node.Id;
             await ToggleTreeFolder(node);
         }));
         builder.AddAttribute(24, "onclick:stopPropagation", true);
