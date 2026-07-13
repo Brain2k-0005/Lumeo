@@ -3346,6 +3346,41 @@ const GROUP_PANEL_DROP_TARGET_ID = '__group-panel__';
 // round-trip) while an armed drag hovers it — see lumeo.css for the highlight rule.
 const GROUP_PANEL_DROP_ATTR = 'data-drop-target';
 
+// Floating chip ghost (drag-to-group visual): restores the "carrying the column up
+// to the panel" feel native drag-and-drop's browser-generated drag image used to
+// give for free, lost when drag-to-group was unified into this pointer engine
+// (rc.42, see the big comment block above). A real <th> can only translateX within
+// its own row (applyLiveTranslate below); a translateY toward the group panel would
+// be clipped by the table's own .overflow-auto wrapper, so nothing ever showed the
+// column visually leaving the row on its way up to the panel — grouping still
+// worked, it just felt like nothing was happening. One ghost element per drag
+// (created in armDrag, torn down in finishDrag — see createGhostEl/teardownGhost
+// inside registerColumnReorder), fixed-positioned and appended to document.body so
+// it's clipped by nothing, styled with the group panel's OWN chip class string
+// (DataGrid.razor's data-slot="datagrid-group-panel" chip div) so every theme token
+// (bg-card, border-border/60, etc.) applies exactly like "the chip this drop will
+// create." Hidden while the pointer is inside the header row's band — there the
+// real header cells already carry the drag visual via applyLiveTranslate's own
+// lift+shift — and shown, tracking the pointer 1:1 via a fixed transform (no layout
+// reads in the hot loop), the moment the pointer travels far enough outside that
+// band. See updateGhostCarry.
+const GHOST_CHIP_CLASS = 'inline-flex items-center gap-1 rounded bg-card border border-border/60 px-2 py-0.5 text-xs shadow-lg';
+// LumeoIcons.Group's own path data (src/Lumeo/Icons/LumeoIcons.g.cs) plus
+// SvgGlyph.razor's stroke-icon wrapper attributes, hardcoded here — the ghost is a
+// raw DOM node built by this file, not a Blazor-rendered component, so it can't
+// reference either directly. Kept in exact sync with the real chip's own icon
+// (DataGrid.razor's group-panel chip) so the ghost genuinely previews it.
+const GHOST_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="h-3 w-3 text-muted-foreground" aria-hidden="true"><path d="M3 7V5c0-1.1.9-2 2-2h2" /><path d="M17 3h2c1.1 0 2 .9 2 2v2" /><path d="M21 17v2c0 1.1-.9 2-2 2h-2" /><path d="M7 21H5c-1.1 0-2-.9-2-2v-2" /><rect width="7" height="5" x="7" y="7" rx="1" /><rect width="7" height="5" x="10" y="12" rx="1" /></svg>';
+// Above LITERALLY everything, including a Dialog/Sheet/Drawer hosting this grid —
+// see OverlayService.cs's BaseZIndex (50) and its stacked per-instance tiers, all of
+// which a mid-drag ghost must clear regardless of how deep the grid is nested.
+const GHOST_Z_INDEX = 2147483647;
+const GHOST_BAND_SLOP_PX = 8;     // px outside the header row's rect before the ghost takes over from the real header
+const GHOST_MOUSE_OFFSET = 12;    // px, both axes — cursor offset so the pointer never covers the ghost (mouse/pen)
+const GHOST_TOUCH_OFFSET_Y = -24; // px — touch gets an upward-only offset so the finger doesn't cover it
+const GHOST_EXIT_MS = 150;        // group-panel commit: ghost scale+fades "into" the real chip at the drop point
+const GHOST_CANCEL_FADE_MS = 120; // every other end path (drop elsewhere / cancel / Escape): quick fade, no scale
+
 export function registerColumnReorder(gridId, dotnetRef) {
     const grid = document.querySelector(`[data-grid-id="${CSS.escape(gridId)}"]`);
     if (!grid) return;
@@ -3574,6 +3609,123 @@ export function registerColumnReorder(gridId, dotnetRef) {
         else drag.panelEl.removeAttribute(GROUP_PANEL_DROP_ATTR);
     };
 
+    // Best-effort column title for the ghost's label. Mirrors
+    // DataGridHeaderCell.razor's title markup — the sort button's own `.truncate`
+    // span holds exactly `Column.Title ?? Column.Field` and nothing else (icons/
+    // badges are separate elements). Falls back to the header cell's own trimmed
+    // text for a consumer HeaderTemplate (Column.HeaderTemplate is not null, which
+    // skips the sort button entirely) so a custom header still gets SOME label
+    // rather than an empty chip — stripped of the reorder grip (and any other
+    // button-hosted zone-A/C control) on a clone first, so a decorative glyph
+    // never leaks into the ghost's label.
+    const resolveColumnTitle = (th) => {
+        const titleEl = th.querySelector('[data-slot="datagrid-sort-button"] .truncate');
+        if (titleEl) return titleEl.textContent.trim();
+        const clone = th.cloneNode(true);
+        clone.querySelectorAll('[data-reorder-grip], button').forEach((n) => n.remove());
+        return (clone.textContent || '').trim();
+    };
+
+    // Builds the one ghost element for this drag (see GHOST_CHIP_CLASS's comment),
+    // appended to document.body so it's clipped by nothing regardless of how deep
+    // the grid is nested (a scrolling container, a Dialog/Sheet, etc.). Starts
+    // invisible/off-screen — showGhost is what actually reveals+positions it, the
+    // first time the pointer carries outside the header row's band.
+    const createGhostEl = (title) => {
+        const el = document.createElement('div');
+        el.setAttribute('data-slot', 'datagrid-drag-ghost');
+        // Purely visual — DataGrid.razor's aria-live _columnReorderAnnouncement
+        // region already covers a11y for the reorder/group gesture itself.
+        el.setAttribute('aria-hidden', 'true');
+        el.className = GHOST_CHIP_CLASS;
+        el.style.position = 'fixed';
+        el.style.left = '0';
+        el.style.top = '0';
+        el.style.margin = '0';
+        el.style.pointerEvents = 'none';
+        el.style.zIndex = String(GHOST_Z_INDEX);
+        el.style.opacity = '0';
+        el.style.willChange = 'transform, opacity';
+        el.innerHTML = GHOST_ICON_SVG;
+        const label = document.createElement('span');
+        label.className = 'truncate';
+        label.textContent = title;
+        el.appendChild(label);
+        document.body.appendChild(el);
+        return el;
+    };
+
+    // Reveals/repositions the ghost for the current pointer position — called on
+    // every pointermove while carrying (see updateGhostCarry). transition is forced
+    // to 'none' on every call so it tracks the pointer 1:1 with zero lag; finishDrag
+    // (via teardownGhost) is the only place that ever sets a real transition on this
+    // element, for the exit/cancel animations. Caches the last tracked point on
+    // drag.ghostLastX/Y so teardownGhost's group-panel exit animation knows exactly
+    // where to scale+fade from without re-reading layout.
+    const showGhost = (clientX, clientY) => {
+        const el = drag.ghostEl;
+        drag.ghostLastX = clientX + drag.ghostOffsetX;
+        drag.ghostLastY = clientY + drag.ghostOffsetY;
+        el.style.transition = 'none';
+        el.style.transform = `translate3d(${drag.ghostLastX}px, ${drag.ghostLastY}px, 0)`;
+        if (!drag.ghostVisible) {
+            drag.ghostVisible = true;
+            el.style.opacity = '1';
+            // Dim the origin a touch more while the ghost is the one carrying the
+            // "this is what's moving" visual — reuses the SAME opacity channel
+            // armDrag already dropped to 0.8 for the whole drag, just deeper, rather
+            // than inventing a second dim mechanism.
+            for (const cell of drag.cells) cell.style.opacity = '0.4';
+        }
+    };
+
+    // Hides the ghost and restores the origin's normal (0.8) drag dim — the real
+    // header cells carry the drag visual again from here.
+    const hideGhost = () => {
+        if (!drag.ghostVisible) return;
+        drag.ghostVisible = false;
+        drag.ghostEl.style.opacity = '0';
+        for (const cell of drag.cells) cell.style.opacity = '0.8';
+    };
+
+    // Toggles the ghost between hidden (real header carries the visual — pointer is
+    // inside the header row's band) and showing-and-following (the header "lets
+    // go", the ghost carries instead — pointer is in panel mode, or simply outside
+    // the band by more than GHOST_BAND_SLOP_PX). No-op when this drag never got a
+    // ghost at all (non-Groupable column, or a grid with no group panel).
+    const updateGhostCarry = (clientX, clientY) => {
+        if (!drag.ghostEl) return;
+        const r = drag.headerRowRect;
+        const inBand = clientY >= r.top - GHOST_BAND_SLOP_PX && clientY <= r.bottom + GHOST_BAND_SLOP_PX;
+        if (drag.mode === 'panel' || !inBand) showGhost(clientX, clientY);
+        else hideGhost();
+    };
+
+    // Ends the ghost for this drag — finishDrag calls this exactly once, covering
+    // every end path (commit, cancel, Escape, pointercancel) since they all funnel
+    // through it. A drop that actually commits a NEW grouping level gets the
+    // "lands as the chip" exit: scale+fade at the last tracked point, so the
+    // hand-off to the real rendered chip (DataGrid.razor's data-slot=
+    // "datagrid-group-panel") reads as one continuous motion. Every other end path
+    // just fades the ghost away in place, no scale. Both skip straight to removal
+    // under prefers-reduced-motion, matching every other reduced-motion branch in
+    // this engine (armDrag's own lift, above). Always nulls d.ghostEl FIRST so a
+    // stray double-call can never double-remove/double-animate, and so a drag that
+    // never got a ghost (the common case) is a cheap no-op.
+    const teardownGhost = (d, groupCommit) => {
+        const el = d.ghostEl;
+        if (!el) return;
+        d.ghostEl = null;
+        if (!d.ghostVisible || reducedMotion()) { el.remove(); return; }
+        const ms = groupCommit ? GHOST_EXIT_MS : GHOST_CANCEL_FADE_MS;
+        el.style.transition = `transform ${ms}ms ${REORDER_EASE}, opacity ${ms}ms ${REORDER_EASE}`;
+        el.style.opacity = '0';
+        el.style.transform = groupCommit
+            ? `translate3d(${d.ghostLastX}px, ${d.ghostLastY}px, 0) scale(0.55)`
+            : `translate3d(${d.ghostLastX}px, ${d.ghostLastY}px, 0)`;
+        window.setTimeout(() => el.remove(), ms + 20);
+    };
+
     // Writes the live drag-follow transform for the current pointer position,
     // composing the header's lift scale into the SAME transform string (never a
     // separate CSS rule — an inline `style.transform` write always wins outright
@@ -3695,6 +3847,21 @@ export function registerColumnReorder(gridId, dotnetRef) {
         // itself (a sibling of the sort button), so its eventual click can never
         // land on the button in the first place.
         if (drag.suppressSortClick) armSortClickSuppression(headerCell);
+
+        // Floating chip ghost (see GHOST_CHIP_CLASS's comment above) — only
+        // relevant when this drag could actually end in a group-panel drop: a grid
+        // with no group panel, or a non-Groupable column, never gets one (mirrors
+        // the panel accept-highlight's own groupable gate in updateGroupPanelMode).
+        if (drag.panelEl && drag.groupable) {
+            drag.ghostEl = createGhostEl(resolveColumnTitle(headerCell));
+            drag.ghostVisible = false;
+            drag.ghostOffsetX = GHOST_MOUSE_OFFSET;
+            drag.ghostOffsetY = drag.pointerType === 'touch' ? GHOST_TOUCH_OFFSET_Y : GHOST_MOUSE_OFFSET;
+            drag.ghostLastX = 0;
+            drag.ghostLastY = 0;
+        } else {
+            drag.ghostEl = null;
+        }
     };
 
     const onKeyDown = (e) => {
@@ -3760,6 +3927,13 @@ export function registerColumnReorder(gridId, dotnetRef) {
         try { d.captureTarget.releasePointerCapture(d.pointerId); } catch (_) { }
 
         const isCommit = !!commitTargetColId;
+        // Floating chip ghost teardown — the SAME single funnel every drag end path
+        // (commit, cancel, Escape, pointercancel) already runs through, so this is
+        // the ONE place that needs to guarantee the ghost never outlives its drag. A
+        // no-op when this drag never got a ghost at all. Only a drop that actually
+        // committed a NEW group level gets the "lands as the chip" exit — see
+        // teardownGhost's own comment.
+        teardownGhost(d, commitTargetColId === GROUP_PANEL_DROP_TARGET_ID);
         const shiftedCells = d.headers.filter((h) => h.appliedTx).flatMap((h) => h.cells);
         // Settle position for the dragged column itself comes from the exact
         // same locked-preserving projection applyProjection used for its
@@ -3896,6 +4070,9 @@ export function registerColumnReorder(gridId, dotnetRef) {
         drag.lastClientX = e.clientX;
         updateGroupPanelMode(e.clientX, e.clientY);
         applyLiveTranslate(e.clientX);
+        // Floating chip ghost: re-evaluated AFTER updateGroupPanelMode so it sees
+        // this move's up-to-date drag.mode (panel vs reorder).
+        updateGhostCarry(e.clientX, e.clientY);
         // No point auto-scrolling the row area while the pointer is hovering the
         // (non-scrolling) group panel above it — and it would fight applyLiveTranslate's
         // reset-to-identity projection in 'panel' mode.
@@ -4067,6 +4244,12 @@ export function registerColumnReorder(gridId, dotnetRef) {
         const panelEl = grid.querySelector('[data-slot="datagrid-group-panel"]');
         const panelRect = panelEl ? panelEl.getBoundingClientRect() : null;
         const groupable = th.dataset.groupable === 'true';
+        // Floating chip ghost (see GHOST_CHIP_CLASS's comment): the header row's own
+        // rect is the "band" the ghost's visibility rule hit-tests the pointer
+        // against — measured once here, like every other rect this drag cares
+        // about, since the row itself doesn't move during a column drag (only the
+        // table body's own scroll container does).
+        const headerRowRect = headerRow.getBoundingClientRect();
 
         drag = {
             pointerId: e.pointerId, captureTarget: viaGrip ? grip : th,
@@ -4081,6 +4264,12 @@ export function registerColumnReorder(gridId, dotnetRef) {
             scrollContainer, startScrollLeft: scrollContainer ? scrollContainer.scrollLeft : 0,
             // Drag-to-group (rc.42) — see updateGroupPanelMode.
             panelEl, panelRect, groupable, mode: 'reorder',
+            // Floating chip ghost — see createGhostEl/updateGhostCarry/teardownGhost.
+            // ghostEl is populated (or explicitly left null) by armDrag, once the
+            // gesture actually arms; a click/nudge/cancelled-long-press that never
+            // arms never gets one.
+            headerRowRect, ghostEl: null, ghostVisible: false,
+            ghostOffsetX: 0, ghostOffsetY: 0, ghostLastX: 0, ghostLastY: 0,
         };
 
         if (viaGrip) {

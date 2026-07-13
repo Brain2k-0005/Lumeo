@@ -2753,31 +2753,54 @@ function assert(cond, msg) {
   // the JS write would observe a mid-transition INTERPOLATED value instead of
   // the target applyProjection actually wrote (Codex-style false negative).
   await page.mouse.move(cBox47.x + cBox47.width / 2, cBox47.y + cBox47.height / 2, { steps: 5 });
-  const cTxMidRow47 = await page.evaluate(() =>
-    document.querySelector('div[data-grid-id="g47"] th[data-col-id="C"]').style.transform);
-  assert(cTxMidRow47 !== '', `dragging B across C engages C's live sibling-shift preview first (got '${cTxMidRow47}')`);
+  const cTxMidRow47 = await page.evaluate(() => {
+    const ghost = document.querySelector('[data-slot="datagrid-drag-ghost"]');
+    return {
+      cTransform: document.querySelector('div[data-grid-id="g47"] th[data-col-id="C"]').style.transform,
+      ghostExists: !!ghost,
+      ghostOpacity: ghost ? ghost.style.opacity : null,
+    };
+  });
+  assert(cTxMidRow47.cTransform !== '', `dragging B across C engages C's live sibling-shift preview first (got '${cTxMidRow47.cTransform}')`);
+  // Floating chip ghost: created (lazily, on arm) but hidden while the pointer is
+  // still inside the header row's own band — the real header cells carry the drag
+  // visual there, not the ghost.
+  assert(cTxMidRow47.ghostExists === true, 'the ghost element is created once the drag arms (Groupable column)');
+  assert(cTxMidRow47.ghostOpacity === '0', `the ghost stays hidden while the pointer is still inside the header row (got opacity '${cTxMidRow47.ghostOpacity}')`);
 
   // Now move UP into the group panel.
   await page.mouse.move(panelBox47.x + panelBox47.width / 2, panelBox47.y + panelBox47.height / 2, { steps: 5 });
   const overPanel47 = await page.evaluate(() => {
     const panel = document.querySelector('div[data-grid-id="g47"] [data-slot="datagrid-group-panel"]');
     const c = document.querySelector('div[data-grid-id="g47"] th[data-col-id="C"]');
-    return { panelDropTarget: panel.getAttribute('data-drop-target'), cTransform: c.style.transform };
+    const ghost = document.querySelector('[data-slot="datagrid-drag-ghost"]');
+    return {
+      panelDropTarget: panel.getAttribute('data-drop-target'), cTransform: c.style.transform,
+      ghostOpacity: ghost ? ghost.style.opacity : null, ghostText: ghost ? ghost.textContent.trim() : null,
+    };
   });
   assert(overPanel47.panelDropTarget === 'true', `panel gets data-drop-target="true" while a Groupable column hovers it (got '${overPanel47.panelDropTarget}')`);
   assert(overPanel47.cTransform === '', `entering panel mode relaxes C's live-shift preview back to identity (got '${overPanel47.cTransform}')`);
+  // The ghost is the one carrying the drag visual now that the pointer has left
+  // the header row band for the panel — mirrors panelDropTarget's own toggle.
+  assert(overPanel47.ghostOpacity === '1', `the ghost becomes visible once the pointer carries into the group panel (got opacity '${overPanel47.ghostOpacity}')`);
+  assert(overPanel47.ghostText === 'B', `the ghost's label is the dragged column's own title (got '${overPanel47.ghostText}')`);
 
   await page.mouse.up();
   await page.waitForTimeout(300);
   const afterRelease47 = await page.evaluate(() => {
     const panel = document.querySelector('div[data-grid-id="g47"] [data-slot="datagrid-group-panel"]');
-    return { panelDropTarget: panel.getAttribute('data-drop-target'), calls: window.__dotnetCalls };
+    return {
+      panelDropTarget: panel.getAttribute('data-drop-target'), calls: window.__dotnetCalls,
+      ghostExists: !!document.querySelector('[data-slot="datagrid-drag-ghost"]'),
+    };
   });
   const commit47 = afterRelease47.calls.find((c) => c.method === 'OnColumnReorderCommit');
   assert(afterRelease47.panelDropTarget === null, 'panel highlight is cleared once the drag ends (commit or cancel)');
   assert(!!commit47, 'releasing a Groupable column over the panel commits exactly once');
   assert(commit47.args[1] === 'B', `commit sources from the dragged column B (got '${commit47 && commit47.args[1]}')`);
   assert(commit47.args[2] === '__group-panel__', `commit targets the group-panel sentinel, not a real column id (got '${commit47 && commit47.args[2]}')`);
+  assert(afterRelease47.ghostExists === false, 'the ghost is removed from the DOM (its "lands as the chip" exit animation finished) once the group-panel drop settles — no leaked fixed element');
 
   // ---------------------------------------------------------------
   // TEST 48 — Unified drag-to-group (rc.42), scenario (b): the SAME drag,
@@ -2816,20 +2839,37 @@ function assert(cond, msg) {
   await page.mouse.move(gripB48Box.x + gripB48Box.width / 2, gripB48Box.y + gripB48Box.height / 2);
   await page.mouse.down();
   await page.mouse.move(panelBox48.x + panelBox48.width / 2, panelBox48.y + panelBox48.height / 2, { steps: 5 });
-  const overPanel48 = await page.evaluate(() =>
-    document.querySelector('div[data-grid-id="g48"] [data-slot="datagrid-group-panel"]').getAttribute('data-drop-target'));
-  assert(overPanel48 === 'true', 'panel highlights while hovering it mid-drag (setup for the return-to-row check)');
+  const overPanel48 = await page.evaluate(() => {
+    const ghost = document.querySelector('[data-slot="datagrid-drag-ghost"]');
+    return {
+      panelDropTarget: document.querySelector('div[data-grid-id="g48"] [data-slot="datagrid-group-panel"]').getAttribute('data-drop-target'),
+      ghostOpacity: ghost ? ghost.style.opacity : null,
+    };
+  });
+  assert(overPanel48.panelDropTarget === 'true', 'panel highlights while hovering it mid-drag (setup for the return-to-row check)');
+  assert(overPanel48.ghostOpacity === '1', `the ghost is visible while carrying over the panel (got opacity '${overPanel48.ghostOpacity}')`);
   // Move back down onto C, in the header row — leaves panel mode.
   await page.mouse.move(cBox48.x + cBox48.width / 2, cBox48.y + cBox48.height / 2, { steps: 5 });
-  const backInRow48 = await page.evaluate(() =>
-    document.querySelector('div[data-grid-id="g48"] [data-slot="datagrid-group-panel"]').getAttribute('data-drop-target'));
-  assert(backInRow48 === null, 'panel highlight clears the instant the pointer leaves it, back over the row');
+  const backInRow48 = await page.evaluate(() => {
+    const ghost = document.querySelector('[data-slot="datagrid-drag-ghost"]');
+    return {
+      panelDropTarget: document.querySelector('div[data-grid-id="g48"] [data-slot="datagrid-group-panel"]').getAttribute('data-drop-target'),
+      ghostOpacity: ghost ? ghost.style.opacity : null,
+    };
+  });
+  assert(backInRow48.panelDropTarget === null, 'panel highlight clears the instant the pointer leaves it, back over the row');
+  assert(backInRow48.ghostOpacity === '0', `the ghost hides again the instant the pointer returns to the header row (got opacity '${backInRow48.ghostOpacity}')`);
 
   await page.mouse.up();
   await page.waitForTimeout(300);
-  const commit48 = await page.evaluate(() => window.__dotnetCalls.find((c) => c.method === 'OnColumnReorderCommit'));
+  const afterRelease48 = await page.evaluate(() => ({
+    calls: window.__dotnetCalls,
+    ghostExists: !!document.querySelector('[data-slot="datagrid-drag-ghost"]'),
+  }));
+  const commit48 = afterRelease48.calls.find((c) => c.method === 'OnColumnReorderCommit');
   assert(!!commit48, 'releasing back in the row still commits — a normal reorder');
   assert(commit48.args[2] === 'C', `commit targets sibling column C, NOT the group-panel sentinel (got '${commit48 && commit48.args[2]}')`);
+  assert(afterRelease48.ghostExists === false, 'the ghost is removed from the DOM once a plain (non-group) reorder settles — no leaked fixed element');
 
   // ---------------------------------------------------------------
   // TEST 49 — Unified drag-to-group (rc.42), scenario (c): Escape while
@@ -2864,20 +2904,30 @@ function assert(cond, msg) {
   await page.mouse.move(gripA49Box.x + gripA49Box.width / 2, gripA49Box.y + gripA49Box.height / 2);
   await page.mouse.down();
   await page.mouse.move(panelBox49.x + panelBox49.width / 2, panelBox49.y + panelBox49.height / 2, { steps: 5 });
-  const overPanel49 = await page.evaluate(() =>
-    document.querySelector('div[data-grid-id="g49"] [data-slot="datagrid-group-panel"]').getAttribute('data-drop-target'));
-  assert(overPanel49 === 'true', 'panel highlights while hovering it (setup for the Escape-cancels check)');
+  const overPanel49 = await page.evaluate(() => {
+    const ghost = document.querySelector('[data-slot="datagrid-drag-ghost"]');
+    return {
+      panelDropTarget: document.querySelector('div[data-grid-id="g49"] [data-slot="datagrid-group-panel"]').getAttribute('data-drop-target'),
+      ghostOpacity: ghost ? ghost.style.opacity : null,
+    };
+  });
+  assert(overPanel49.panelDropTarget === 'true', 'panel highlights while hovering it (setup for the Escape-cancels check)');
+  assert(overPanel49.ghostOpacity === '1', `the ghost is visible over the panel right before Escape cancels (got opacity '${overPanel49.ghostOpacity}')`);
   await page.keyboard.press('Escape');
   await page.waitForTimeout(300);
   const afterEscape49 = await page.evaluate(() => {
     const panel = document.querySelector('div[data-grid-id="g49"] [data-slot="datagrid-group-panel"]');
     const a = document.querySelector('div[data-grid-id="g49"] th[data-col-id="A"]');
-    return { panelDropTarget: panel.getAttribute('data-drop-target'), aOpacity: a.style.opacity, calls: window.__dotnetCalls };
+    return {
+      panelDropTarget: panel.getAttribute('data-drop-target'), aOpacity: a.style.opacity, calls: window.__dotnetCalls,
+      ghostExists: !!document.querySelector('[data-slot="datagrid-drag-ghost"]'),
+    };
   });
   await page.mouse.up(); // release whatever's left of the (already-cancelled) gesture
   assert(afterEscape49.panelDropTarget === null, 'Escape over the panel clears the highlight immediately');
   assert(afterEscape49.aOpacity === '', `Escape glides the dragged header back to identity, not left mid-drag (opacity '${afterEscape49.aOpacity}')`);
   assert(!afterEscape49.calls.some((c) => c.method === 'OnColumnReorderCommit'), 'Escape over the panel never fires a commit — no group, no reorder');
+  assert(afterEscape49.ghostExists === false, 'Escape removes the ghost from the DOM too (its cancel fade finished) — no leaked fixed element');
 
   // ---------------------------------------------------------------
   // TEST 50 — Unified drag-to-group (rc.42), scenario (d): a non-Groupable
@@ -2912,9 +2962,14 @@ function assert(cond, msg) {
   await page.mouse.move(gripA50Box.x + gripA50Box.width / 2, gripA50Box.y + gripA50Box.height / 2);
   await page.mouse.down();
   await page.mouse.move(panelBox50.x + panelBox50.width / 2, panelBox50.y + panelBox50.height / 2, { steps: 5 });
-  const overPanel50 = await page.evaluate(() =>
-    document.querySelector('div[data-grid-id="g50"] [data-slot="datagrid-group-panel"]').getAttribute('data-drop-target'));
-  assert(overPanel50 === null, `non-Groupable column A never lights up the panel highlight (got '${overPanel50}')`);
+  const overPanel50 = await page.evaluate(() => ({
+    panelDropTarget: document.querySelector('div[data-grid-id="g50"] [data-slot="datagrid-group-panel"]').getAttribute('data-drop-target'),
+    ghostExists: !!document.querySelector('[data-slot="datagrid-drag-ghost"]'),
+  }));
+  assert(overPanel50.panelDropTarget === null, `non-Groupable column A never lights up the panel highlight (got '${overPanel50.panelDropTarget}')`);
+  // A non-Groupable column dropped on the panel is a no-op cancel (see below) —
+  // it must never look "pick-up-able" either, so the ghost is never even created.
+  assert(overPanel50.ghostExists === false, `a non-Groupable column never gets a ghost, even while hovering the panel (got exists='${overPanel50.ghostExists}')`);
   await page.mouse.up();
   await page.waitForTimeout(300);
   const afterRelease50 = await page.evaluate(() => window.__dotnetCalls);
