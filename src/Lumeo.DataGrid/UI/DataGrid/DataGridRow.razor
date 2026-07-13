@@ -337,12 +337,20 @@
         get
         {
             var custom = Context?.RowClass?.Invoke(Item);
-            var key = (RowIndex, IsSelected, IsEditing, custom, Class);
+            // Hoverable was previously baked into the base class string unconditionally
+            // ("hover:bg-muted/50" always present), so DataGrid's Hoverable parameter
+            // was never actually consulted here — toggling it produced zero DOM change
+            // (battle-test "dead toggle" finding). Reading it live and folding it into
+            // the memo key makes a runtime flip of Hoverable re-render the row with the
+            // hover class added/removed, matching Compact's established pattern below.
+            var hoverable = Context?.Hoverable != false; // default true when Context is null (e.g. isolated render)
+            var key = (RowIndex, IsSelected, IsEditing, custom, Class, hoverable);
             if (_cssCache is { } c && c.Key.Equals(key)) return c.Css;
 
             var css = string.Join(" ", new[]
             {
-                "border-b border-border/40 transition-colors hover:bg-muted/50",
+                "border-b border-border/40 transition-colors",
+                hoverable ? "hover:bg-muted/50" : null,
                 IsSelected ? "bg-primary/5" : null,
                 IsEditing ? "bg-muted/20" : null,
                 custom,

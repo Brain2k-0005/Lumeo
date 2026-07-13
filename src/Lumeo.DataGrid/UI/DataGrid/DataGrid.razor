@@ -3847,6 +3847,45 @@
         StateHasChanged();
     }
 
+    /// <summary>
+    /// Pushes the per-column runtime-reactive affordance flags — Sortable, Filterable,
+    /// Resizable, Pinnable — from a re-rendered <see cref="DataGridColumnDef{TItem}"/>
+    /// onto the already-registered live <see cref="DataGridColumn{TItem}"/> instance.
+    /// Called from <see cref="DataGridColumnDef{TItem}.OnParametersSet"/> on every
+    /// parameter set, so a host binding like <c>Sortable="_pgSortable"</c> actually
+    /// reaches the header cell that reads <c>Column.Sortable</c>.
+    ///
+    /// Deliberately NOT routed through <see cref="AddColumnDef"/> re-registration
+    /// (<c>DataGridColumnDef.Register</c>): this mutates the four booleans directly on the SAME object
+    /// instance already held by <c>_orderedColumns</c>/<c>_visibleColumns</c>/
+    /// <see cref="DataGridContext{TItem}.Columns"/>, so header cells pick it up on the
+    /// grid's current render pass with zero extra bookkeeping — no
+    /// <see cref="RefreshVisibleColumns"/>, no <see cref="ScheduleAutoSave"/>. The
+    /// change-guard (skip when nothing actually differs) plus the caller's own
+    /// change-guard in <c>OnParametersSet</c> means a steady-state render never touches
+    /// this at all, which is what a wider "always Register() on parameters set" attempt
+    /// got wrong previously (see the comment in <c>DataGridColumnDef.OnParametersSet</c>):
+    /// unconditionally re-registering every cascading-context refresh went through
+    /// AddColumnDef's new-column bookkeeping and thrashed the layout autosave debounce.
+    /// </summary>
+    public void UpdateColumnFlags(string columnKey, bool sortable, bool filterable, bool resizable, bool pinnable)
+    {
+        var column = _columnDefs.FirstOrDefault(c => ColumnKey(c) == columnKey);
+        if (column is null) return;
+        if (column.Sortable == sortable && column.Filterable == filterable
+            && column.Resizable == resizable && column.Pinnable == pinnable) return;
+
+        column.Sortable = sortable;
+        column.Filterable = filterable;
+        column.Resizable = resizable;
+        column.Pinnable = pinnable;
+        // Belt-and-braces: the mutation above is visible immediately to anything that
+        // reads the shared instance later in THIS render pass (header cells render
+        // after ChildContent in document order), but an explicit nudge guarantees the
+        // change surfaces even if a future refactor reorders that render sequence.
+        _ = InvokeAsync(StateHasChanged);
+    }
+
     // End-user "pin column" action surfaced from the column chooser. Pin state
     // is purely visual layout (no data reprocessing required); we still refresh
     // the visible-columns cache so the header re-orders left/right pinned

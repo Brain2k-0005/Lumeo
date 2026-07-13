@@ -94,6 +94,7 @@
                           ShowAddRow="_pgShowAddRow"
                           NewItemFactory="@(() => new PlaygroundRow($"New entry {++_pgAddCounter}", "Team", "Role", 0, "Active", DateTime.Today))"
                           Virtualized="_pgVirtualized"
+                          VirtualizeThreshold="@_pgVirtualizeThreshold"
                           ColumnVirtualize="_pgColumnVirtualize"
                           MaxVisibleColumns="@_pgMaxVisibleColumnsInt"
                           ShowGroupPanel="_pgShowGroupPanel"
@@ -231,7 +232,13 @@
             @* ── Grouping ── *@
             @SectionHeader("Grouping")
             @ControlRow(label: "Show group panel",    active: true, control: @<Switch @bind-Checked="_pgShowGroupPanel" AriaLabel="Show group panel" />)
-            @ControlRow(label: "Expanded by default", active: true, control: @<Switch @bind-Checked="_pgGroupsExpanded" AriaLabel="Expanded by default" />)
+            @* Only meaningful once a grouping is active — GroupsExpandedByDefault seeds
+               the expand state of newly-formed group sections, so with "Group by: None"
+               there are no groups to expand and the toggle is an honest no-op. Gated
+               with the same Disabled-until-precondition pattern as "Show add-row button"
+               above (battle-test "dead toggle" finding: was always enabled but silently
+               inert when ungrouped). *@
+            @ControlRow(label: "Expanded by default", active: _pgGroupBySel != "None", control: @<Switch @bind-Checked="_pgGroupsExpanded" Disabled="@(_pgGroupBySel == "None")" AriaLabel="Expanded by default" />)
             <div class="px-4 pb-3 pt-1">
                 <Lumeo.Text Size="xs" Color="muted" Class="mb-1.5 block">Group by</Lumeo.Text>
                 <Segmented Value="_pgGroupBySel" ValueChanged="@((string v) => { _pgGroupBySel = v; StateHasChanged(); })" Block="true">
@@ -378,6 +385,16 @@
 
     // Virtualization
     private bool _pgVirtualized;
+
+    // "Virtualized rows": DataGrid.Virtualized (+OnRangeRequest) is server-window
+    // virtualization — this playground has no backend to page against, so that flag
+    // alone is an honest no-op here. What the toggle demonstrates instead is the
+    // grid's CLIENT virtualization path (<Virtualize> over VirtualizeThreshold),
+    // which the playground's 15-row dataset never crosses at the 500-row default.
+    // Dropping the threshold to 0 while the toggle is on makes UseVirtualization
+    // engage on the existing rows so the toggle is no longer a silent no-op
+    // (dead-toggle audit finding).
+    private int _pgVirtualizeThreshold => _pgVirtualized ? 0 : 500;
     private bool _pgColumnVirtualize;
     private double? _pgMaxVisibleColumns = 4;
     private int _pgMaxVisibleColumnsInt => (int)Math.Clamp((int)(_pgMaxVisibleColumns ?? 4), 2, 6);
