@@ -16,6 +16,7 @@ using System;
 using System.Runtime.InteropServices;
 using System.Text;
 public static class FG {
+  [StructLayout(LayoutKind.Sequential)] public struct RECT { public int L, T, R, B; }
   [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
   [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);
   [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
@@ -24,8 +25,19 @@ public static class FG {
   [DllImport("kernel32.dll")] public static extern uint GetCurrentThreadId();
   [DllImport("user32.dll")] public static extern bool AttachThreadInput(uint a, uint b, bool f);
   [DllImport("user32.dll")] public static extern void keybd_event(byte v, byte s, uint f, UIntPtr e);
+  [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h, out RECT r);
+  [DllImport("user32.dll")] public static extern bool SetCursorPos(int x, int y);
+  [DllImport("user32.dll")] public static extern void mouse_event(uint f, uint dx, uint dy, uint d, UIntPtr e);
   [DllImport("user32.dll", CharSet=CharSet.Auto)] public static extern int GetWindowText(IntPtr h, StringBuilder s, int m);
+  [DllImport("user32.dll", CharSet=CharSet.Auto)] public static extern IntPtr FindWindow(string cls, string title);
   public static string TitleOf(IntPtr h){ var sb=new StringBuilder(512); GetWindowText(h, sb, 512); return sb.ToString(); }
+  // NVDA's Speech Viewer is a visible window that aggressively holds foreground; NVDA then
+  // reads IT, not the page. Guidepup captures speech via NVDA's remote channel (not this
+  // window), so minimizing it is safe and stops it stealing focus mid-sweep.
+  public static void MinimizeSpeechViewer(){
+    IntPtr sv = FindWindow(null, "NVDA Speech Viewer");
+    if (sv != IntPtr.Zero) ShowWindow(sv, 6); // SW_MINIMIZE
+  }
   public static void Force(IntPtr h){
     ShowWindow(h, 9); BringWindowToTop(h);
     keybd_event(0x12,0,0,UIntPtr.Zero); keybd_event(0x12,0,2,UIntPtr.Zero);
@@ -34,6 +46,18 @@ public static class FG {
     AttachThreadInput(tCur, tFg, true);
     SetForegroundWindow(h); BringWindowToTop(h);
     AttachThreadInput(tCur, tFg, false);
+    // Bringing the window forward leaves OS KEYBOARD focus on the browser CHROME
+    // (toolbar/address bar) — el.focus() only sets DOM focus, so NVDA reads the toolbar
+    // and physical nav keys hit the chrome, not the page. A real left-click inside the
+    // web content moves OS focus there. Click high in the content column (just below the
+    // ~130px toolbar), where docs pages render non-interactive title/breadcrumb text.
+    RECT r; if (GetWindowRect(h, out r)) {
+      int cx = r.L + (r.R - r.L) / 2;
+      int cy = r.T + 170;
+      SetCursorPos(cx, cy);
+      mouse_event(0x0002, 0, 0, 0, UIntPtr.Zero); // LEFTDOWN
+      mouse_event(0x0004, 0, 0, 0, UIntPtr.Zero); // LEFTUP
+    }
   }
 }
 "@
@@ -48,6 +72,7 @@ foreach ($proc in $edge) {
 if ($hwnd -eq [IntPtr]::Zero -and $edge) { $hwnd = ($edge | Select-Object -First 1).MainWindowHandle }
 if ($hwnd -eq [IntPtr]::Zero) { Write-Host "[force-fg] no Edge window found"; exit 1 }
 
+[FG]::MinimizeSpeechViewer()
 [FG]::Force($hwnd)
 Start-Sleep -Milliseconds 500
 $fg = [FG]::GetForegroundWindow()
