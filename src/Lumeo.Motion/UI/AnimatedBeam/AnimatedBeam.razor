@@ -116,13 +116,17 @@
             if (changed)
                 await Interop.MotionDisposeAnimatedBeam(_elementId);
 
-            await Interop.MotionAnimatedBeam(_elementId, FromId, ToId, new
+            // Trim safety: Dictionary instead of an anonymous type — under a trimmed
+            // publish the linker strips anonymous types' constructor parameter names
+            // and JSRuntime's serializer throws "ConstructorContainsNullParameterNames"
+            // at runtime (same class of bug as BlurFade/PreventDefaultKeyRule).
+            await Interop.MotionAnimatedBeam(_elementId, FromId, ToId, new Dictionary<string, object?>
             {
-                containerId = ContainerId,
-                durationMs = DurationMs,
-                delayMs = DelayMs,
-                curvature = Curvature,
-                reverse = Reverse
+                ["containerId"] = ContainerId,
+                ["durationMs"] = DurationMs,
+                ["delayMs"] = DelayMs,
+                ["curvature"] = Curvature,
+                ["reverse"] = Reverse
             });
 
             _registered = true;

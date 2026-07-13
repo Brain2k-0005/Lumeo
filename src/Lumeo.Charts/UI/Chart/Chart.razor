@@ -771,8 +771,12 @@ else
     public async Task<string?> GetImageAsync(string type = "png", int pixelRatio = 2)
     {
         if (_module is null || !_initialized) return null;
+        // Trim safety: Dictionary instead of an anonymous type — under a trimmed
+        // publish the linker strips anonymous types' constructor parameter names
+        // and JSRuntime's serializer throws "ConstructorContainsNullParameterNames"
+        // at runtime (same class of bug as BlurFade/PreventDefaultKeyRule).
         return await _module.InvokeAsync<string?>("getDataURL", _chartId,
-            new { type, pixelRatio, backgroundColor = "#fff" });
+            new Dictionary<string, object?> { ["type"] = type, ["pixelRatio"] = pixelRatio, ["backgroundColor"] = "#fff" });
     }
 
     public async Task AppendDataAsync(int seriesIndex, string dataJson)

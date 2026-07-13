@@ -124,12 +124,17 @@
                 colorStops.Add(new object[] { 1.0, lastColor });
             }
 
+            // Trim safety: Dictionary instead of an anonymous type — under a trimmed
+            // publish the linker strips anonymous types' constructor parameter names
+            // and System.Text.Json's reflection-based serializer throws
+            // "ConstructorContainsNullParameterNames" at runtime (same class of bug as
+            // BlurFade/PreventDefaultKeyRule), even for this direct Serialize call.
             series.ExtensionData = new Dictionary<string, System.Text.Json.JsonElement>
             {
                 ["axisLine"] = System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(
-                    System.Text.Json.JsonSerializer.Serialize(new
+                    System.Text.Json.JsonSerializer.Serialize(new Dictionary<string, object?>
                     {
-                        lineStyle = new { width = 15, color = colorStops }
+                        ["lineStyle"] = new Dictionary<string, object?> { ["width"] = 15, ["color"] = colorStops }
                     }))
             };
         }

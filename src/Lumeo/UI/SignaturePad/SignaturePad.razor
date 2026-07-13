@@ -231,14 +231,19 @@
             _lastWidth = Width;
             _lastHeight = Height;
 
-            var options = new
+            // Trim safety: anonymous types crossing JS interop lose their constructor
+            // parameter names under a trimmed publish, and JSRuntime's reflection-based
+            // serializer throws NotSupportedException("ConstructorContainsNullParameterNames")
+            // at runtime (same class of bug as BlurFade/PreventDefaultKeyRule). Use a
+            // Dictionary instead — identical JSON, no constructor metadata involved.
+            var options = new Dictionary<string, object?>
             {
-                strokeColor = StrokeColor,
-                strokeWidth = StrokeWidth,
-                mimeType = MimeType,
-                debounceMs = 200,
-                disabled = Disabled,
-                initialDataUrl = _currentValue,
+                ["strokeColor"] = StrokeColor,
+                ["strokeWidth"] = StrokeWidth,
+                ["mimeType"] = MimeType,
+                ["debounceMs"] = 200,
+                ["disabled"] = Disabled,
+                ["initialDataUrl"] = _currentValue,
             };
 
             await Interop.SignaturePadInit(_canvasId, options, _selfRef);

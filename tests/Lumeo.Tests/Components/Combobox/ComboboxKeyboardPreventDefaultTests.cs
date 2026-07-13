@@ -44,7 +44,7 @@ public class ComboboxKeyboardPreventDefaultTests : IAsyncLifetime
         var reg = Assert.Single(_ctx.JSInterop.Invocations,
             i => i.Identifier == "registerPreventDefaultKeys" && (i.Arguments[0] as string) == inputId);
 
-        var rules = (IReadOnlyList<Lumeo.Services.PreventDefaultKeyRule>)reg.Arguments[1]!;
+        var rules = Lumeo.Tests.Helpers.PreventDefaultRuleCapture.Parse(reg.Arguments[1]);
         var keys = rules.Select(r => r.Key).ToList();
         Assert.Contains("ArrowDown", keys);
         Assert.Contains("ArrowUp", keys);

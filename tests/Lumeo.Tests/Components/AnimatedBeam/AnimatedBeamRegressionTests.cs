@@ -87,10 +87,12 @@ public class AnimatedBeamRegressionTests : IAsyncLifetime
             _motionModule.Invocations,
             i => i.Identifier == "motion.disposeAnimatedBeam");
 
-        // The re-applied options carry the new curvature (anonymous bag → reflect).
+        // The re-applied options carry the new curvature. Options are
+        // Dictionary<string, object?> (trim-safe — see AnimatedBeam.razor), not an
+        // anonymous type.
         var last = _motionModule.Invocations.Last(i => i.Identifier == "motion.animatedBeam");
-        var options = last.Arguments[3]!;
-        var curvature = (double)options.GetType().GetProperty("curvature")!.GetValue(options)!;
+        var options = (System.Collections.Generic.IDictionary<string, object?>)last.Arguments[3]!;
+        var curvature = (double)options["curvature"]!;
         Assert.Equal(50.0, curvature);
     }
 

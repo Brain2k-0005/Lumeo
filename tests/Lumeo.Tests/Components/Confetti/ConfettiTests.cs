@@ -105,9 +105,10 @@ public class ConfettiTests : IAsyncLifetime
         await cut.Instance.Fire();
 
         var invoke = _motionModule.VerifyInvoke("motion.confettiFire");
-        // The options bag is an anonymous object — assert via reflection.
-        var options = invoke.Arguments[1]!;
-        var colors = (string[])options.GetType().GetProperty("colors")!.GetValue(options)!;
+        // The options bag is a Dictionary<string, object?> (trim-safe — see
+        // Confetti.razor), not an anonymous type.
+        var options = (Dictionary<string, object?>)invoke.Arguments[1]!;
+        var colors = (string[])options["colors"]!;
         Assert.NotEmpty(colors);
     }
 
@@ -126,9 +127,10 @@ public class ConfettiTests : IAsyncLifetime
         await cut.Instance.Fire();
 
         var invoke = _motionModule.VerifyInvoke("motion.confettiFire");
-        var options = invoke.Arguments[1]!;
-        var type = options.GetType();
-        Assert.Equal(0, (int)type.GetProperty("particleCount")!.GetValue(options)!);
-        Assert.Equal(0, (int)type.GetProperty("spread")!.GetValue(options)!);
+        // Dictionary<string, object?> (trim-safe — see Confetti.razor), not an
+        // anonymous type.
+        var options = (Dictionary<string, object?>)invoke.Arguments[1]!;
+        Assert.Equal(0, (int)options["particleCount"]!);
+        Assert.Equal(0, (int)options["spread"]!);
     }
 }

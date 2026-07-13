@@ -556,11 +556,31 @@ internal static class ChartPlaceholderFactory
         var values = new List<double>(bars);
         for (int i = 0; i < bars; i++) values.Add(20 + rng.Next(70));
 
+        // Trim safety: EChartOption.Polar/AngleAxis/RadiusAxis are typed `object`/
+        // `List<object>` and are serialized via reflection-based System.Text.Json
+        // (EChartOption.ToJson). Under a trimmed publish the linker strips anonymous
+        // types' constructor parameter names and the serializer throws
+        // "ConstructorContainsNullParameterNames" at runtime (same class of bug as
+        // BlurFade/PreventDefaultKeyRule) — use Dictionary<string, object?> instead.
         return new EChartOption
         {
-            Polar = new { radius = new[] { "20%", "75%" } },
-            AngleAxis = new() { new { type = "category", data = CategoryLabels(bars), axisLabel = new { color = "transparent", backgroundColor = SkeletonBoxColor, width = 18, height = 8, borderRadius = 2 } } },
-            RadiusAxis = new() { new { axisLabel = new { color = "transparent", backgroundColor = SkeletonBoxColor, width = 18, height = 8, borderRadius = 2 } } },
+            Polar = new Dictionary<string, object?> { ["radius"] = new[] { "20%", "75%" } },
+            AngleAxis = new()
+            {
+                new Dictionary<string, object?>
+                {
+                    ["type"] = "category",
+                    ["data"] = CategoryLabels(bars),
+                    ["axisLabel"] = new Dictionary<string, object?> { ["color"] = "transparent", ["backgroundColor"] = SkeletonBoxColor, ["width"] = 18, ["height"] = 8, ["borderRadius"] = 2 }
+                }
+            },
+            RadiusAxis = new()
+            {
+                new Dictionary<string, object?>
+                {
+                    ["axisLabel"] = new Dictionary<string, object?> { ["color"] = "transparent", ["backgroundColor"] = SkeletonBoxColor, ["width"] = 18, ["height"] = 8, ["borderRadius"] = 2 }
+                }
+            },
             Series = new()
             {
                 new EChartSeries

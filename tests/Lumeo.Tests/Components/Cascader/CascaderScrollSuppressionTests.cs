@@ -77,7 +77,7 @@ public class CascaderActivationKeySuppressionTests : IAsyncLifetime
 
         var reg = Assert.Single(_ctx.JSInterop.Invocations,
             i => i.Identifier == "registerPreventDefaultKeys");
-        var rules = (IReadOnlyList<Lumeo.Services.PreventDefaultKeyRule>)reg.Arguments[1]!;
+        var rules = Lumeo.Tests.Helpers.PreventDefaultRuleCapture.Parse(reg.Arguments[1]);
         var keys = rules.Select(r => r.Key).ToList();
 
         Assert.Contains("Enter", keys);

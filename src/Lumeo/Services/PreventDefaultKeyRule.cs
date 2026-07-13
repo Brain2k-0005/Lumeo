@@ -17,4 +17,11 @@ public sealed record PreventDefaultKeyRule(
     string Key,
     bool RequireNoModifiers = false,
     bool SkipComposing = false,
-    bool SkipEditable = false);
+    bool SkipEditable = false)
+{
+    // Trim safety: JSRuntime's reflection-based serializer must never bind the positional
+    // ctor — the trimmer strips its parameter names ("ConstructorContainsNullParameterNames",
+    // crashes the component under a trimmed publish). With this parameterless ctor STJ
+    // uses property-based (de)serialization instead. Do not remove.
+    public PreventDefaultKeyRule() : this("") { }
+}

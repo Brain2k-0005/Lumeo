@@ -63,6 +63,10 @@ internal sealed class RichTextInterop
         catch (JSDisconnectedException) { }
     }
 
+    // Trim safety: the deserializer constructs RichTextActiveState purely via reflection, which the
+    // linker cannot see — without this the parameterless ctor/property setters get
+    // trimmed and JSRuntime throws ConstructorContainsNullParameterNames at runtime.
+    [System.Diagnostics.CodeAnalysis.DynamicDependency(System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.PublicParameterlessConstructor | System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.PublicProperties, typeof(RichTextActiveState))]
     public async ValueTask<RichTextActiveState?> GetActiveAsync(IJSRuntime js, string id)
     {
         try
@@ -159,4 +163,11 @@ public sealed record RichTextActiveState(
     bool CodeBlock,
     bool Link,
     bool CanUndo,
-    bool CanRedo);
+    bool CanRedo)
+{
+    // Trim safety: JSRuntime's reflection-based serializer must never bind the positional
+    // ctor — the trimmer strips its parameter names ("ConstructorContainsNullParameterNames",
+    // crashes the component under a trimmed publish). With this parameterless ctor STJ
+    // uses property-based (de)serialization instead. Do not remove.
+    public RichTextActiveState() : this(false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false) { }
+}

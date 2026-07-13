@@ -244,20 +244,25 @@ else
         // the delta so that mid-init refresh is never silently lost.
         var initEventsHash = _lastEventsHash;
 
-        var options = new
+        // Trim safety: anonymous types crossing JS interop lose their constructor
+        // parameter names under a trimmed publish, and JSRuntime's reflection-based
+        // serializer throws NotSupportedException("ConstructorContainsNullParameterNames")
+        // at runtime (same class of bug as BlurFade/PreventDefaultKeyRule). Use a
+        // Dictionary instead — identical JSON, no constructor metadata involved.
+        var options = new Dictionary<string, object?>
         {
-            view = InitialView.ToString(),
-            initialDate = (InitialDate ?? DateTime.Today).ToString("yyyy-MM-dd"),
-            events = _events.Select(ToJsEvent).ToArray(),
-            editable = Editable,
-            selectable = Selectable,
-            businessHours = BusinessHours,
-            height = Height,
-            firstDay = FirstDayOfWeek,
-            nowIndicator = NowIndicator,
-            slotMinTime = SlotMinTime.HasValue ? SlotMinTime.Value.ToString("HH:mm:ss") : (string?)null,
-            slotMaxTime = SlotMaxTime.HasValue ? SlotMaxTime.Value.ToString("HH:mm:ss") : (string?)null,
-            slotDuration = SlotDuration.HasValue ? $"{(int)SlotDuration.Value.TotalHours:D2}:{SlotDuration.Value.Minutes:D2}:{SlotDuration.Value.Seconds:D2}" : (string?)null
+            ["view"] = InitialView.ToString(),
+            ["initialDate"] = (InitialDate ?? DateTime.Today).ToString("yyyy-MM-dd"),
+            ["events"] = _events.Select(ToJsEvent).ToArray(),
+            ["editable"] = Editable,
+            ["selectable"] = Selectable,
+            ["businessHours"] = BusinessHours,
+            ["height"] = Height,
+            ["firstDay"] = FirstDayOfWeek,
+            ["nowIndicator"] = NowIndicator,
+            ["slotMinTime"] = SlotMinTime.HasValue ? SlotMinTime.Value.ToString("HH:mm:ss") : (string?)null,
+            ["slotMaxTime"] = SlotMaxTime.HasValue ? SlotMaxTime.Value.ToString("HH:mm:ss") : (string?)null,
+            ["slotDuration"] = SlotDuration.HasValue ? $"{(int)SlotDuration.Value.TotalHours:D2}:{SlotDuration.Value.Minutes:D2}:{SlotDuration.Value.Seconds:D2}" : (string?)null
         };
 
         try
@@ -325,44 +330,47 @@ else
             // source of truth, so even a >24h recurring window is represented faithfully.
             var span = ev.End - ev.Start;
             var crossesMidnight = ev.End.TimeOfDay <= ev.Start.TimeOfDay;
-            return new
+            // Trim safety: Dictionary instead of an anonymous type — see the options
+            // comment in OnAfterRenderAsync above.
+            return new Dictionary<string, object?>
             {
-                id = ev.Id,
-                title = ev.Title,
+                ["id"] = ev.Id,
+                ["title"] = ev.Title,
                 // Time-of-day string for recurring events (HH:mm:ss).
-                startTime = ev.Start.ToString("HH:mm:ss"),
+                ["startTime"] = ev.Start.ToString("HH:mm:ss"),
                 // Same-day window: keep the literal endTime (unchanged normal path).
                 // Cross-midnight window: omit endTime and supply a duration instead.
-                endTime = crossesMidnight ? (string?)null : ev.End.ToString("HH:mm:ss"),
-                duration = crossesMidnight && span > TimeSpan.Zero
+                ["endTime"] = crossesMidnight ? (string?)null : ev.End.ToString("HH:mm:ss"),
+                ["duration"] = crossesMidnight && span > TimeSpan.Zero
                     ? $"{(int)span.TotalHours:D2}:{span.Minutes:D2}:{span.Seconds:D2}"
                     : (string?)null,
-                daysOfWeek = ev.DaysOfWeek.Select(d => (int)d).ToArray(),
-                startRecur = ev.Start.ToString("yyyy-MM-dd"),
-                endRecur = ev.RecurrenceEnd.HasValue
+                ["daysOfWeek"] = ev.DaysOfWeek.Select(d => (int)d).ToArray(),
+                ["startRecur"] = ev.Start.ToString("yyyy-MM-dd"),
+                ["endRecur"] = ev.RecurrenceEnd.HasValue
                     ? ev.RecurrenceEnd.Value.ToString("yyyy-MM-dd")
                     : (string?)null,
-                exdate = ev.ExceptionDates?.Select(d => d.ToString("yyyy-MM-dd")).ToArray(),
-                allDay = ev.AllDay,
-                color = effectiveColor,
-                url = ev.Url,
-                classNames = effectiveClassNames,
-                extendedProps = ev.ExtendedProps
+                ["exdate"] = ev.ExceptionDates?.Select(d => d.ToString("yyyy-MM-dd")).ToArray(),
+                ["allDay"] = ev.AllDay,
+                ["color"] = effectiveColor,
+                ["url"] = ev.Url,
+                ["classNames"] = effectiveClassNames,
+                ["extendedProps"] = ev.ExtendedProps
             };
         }
 
-        // Standard (non-recurring) event.
-        return new
+        // Standard (non-recurring) event. Trim safety: Dictionary instead of an
+        // anonymous type — see the options comment in OnAfterRenderAsync above.
+        return new Dictionary<string, object?>
         {
-            id = ev.Id,
-            title = ev.Title,
-            start = ev.Start.ToString("o"),
-            end = ev.End.ToString("o"),
-            allDay = ev.AllDay,
-            color = effectiveColor,
-            url = ev.Url,
-            classNames = effectiveClassNames,
-            extendedProps = ev.ExtendedProps
+            ["id"] = ev.Id,
+            ["title"] = ev.Title,
+            ["start"] = ev.Start.ToString("o"),
+            ["end"] = ev.End.ToString("o"),
+            ["allDay"] = ev.AllDay,
+            ["color"] = effectiveColor,
+            ["url"] = ev.Url,
+            ["classNames"] = effectiveClassNames,
+            ["extendedProps"] = ev.ExtendedProps
         };
     }
 

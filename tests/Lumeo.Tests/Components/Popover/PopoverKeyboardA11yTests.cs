@@ -52,7 +52,7 @@ public class PopoverKeyboardA11yTests : IAsyncLifetime
         _ctx.JSInterop.Invocations
             .Where(i => i.Identifier == "registerPreventDefaultKeys"
                         && i.Arguments[0] is string id && id.StartsWith(idPrefix))
-            .Select(i => i.Arguments[1] as IReadOnlyList<PreventDefaultKeyRule>)
+            .Select(i => Lumeo.Tests.Helpers.PreventDefaultRuleCapture.TryParse(i.Arguments[1]))
             .LastOrDefault();
 
     [Fact]

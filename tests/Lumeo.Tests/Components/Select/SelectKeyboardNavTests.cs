@@ -415,7 +415,7 @@ public class SelectKeyboardNavTests : IAsyncLifetime
             i => i.Identifier == "registerPreventDefaultKeys");
         Assert.Equal(contentId, reg.Arguments[0]);
 
-        var rules = (IReadOnlyList<Lumeo.Services.PreventDefaultKeyRule>)reg.Arguments[1]!;
+        var rules = Lumeo.Tests.Helpers.PreventDefaultRuleCapture.Parse(reg.Arguments[1]);
         var keys = rules.Select(r => r.Key).ToList();
         Assert.Contains("ArrowDown", keys);
         Assert.Contains("ArrowUp", keys);

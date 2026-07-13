@@ -58,14 +58,18 @@ public class SchedulerEdgeDataTests : IAsyncLifetime
     private object[] InitEvents()
     {
         var init = Assert.Single(_module.Invocations, i => i.Identifier == "scheduler.init");
-        var options = init.Arguments[2]!;
-        var serialized = options.GetType().GetProperty("events")!.GetValue(options);
+        // Init options are Dictionary<string, object?> (trim-safe — see
+        // Scheduler.razor's OnAfterRenderAsync), not an anonymous type.
+        var options = (System.Collections.Generic.IDictionary<string, object?>)init.Arguments[2]!;
+        var serialized = options["events"];
         var array = Assert.IsAssignableFrom<System.Collections.IEnumerable>(serialized);
         return array.Cast<object>().ToArray();
     }
 
+    // Event payload entries are Dictionary<string, object?> (trim-safe — see
+    // Scheduler.razor's ToJsEvent), not anonymous types.
     private static object? Prop(object jsEvent, string name) =>
-        jsEvent.GetType().GetProperty(name)?.GetValue(jsEvent);
+        ((System.Collections.Generic.IDictionary<string, object?>)jsEvent).TryGetValue(name, out var v) ? v : null;
 
     // ── Finding #21: duplicate / blank Id must not silently mutate the wrong record ──────
 

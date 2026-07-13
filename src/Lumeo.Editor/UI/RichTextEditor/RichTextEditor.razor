@@ -395,8 +395,13 @@
         // the OnTriggerQuery JSInvokable below, which fans queries out to
         // the matching EditorTrigger registered server-side.
         var triggers = Triggers ?? Array.Empty<EditorTrigger>();
+        // Trim safety: anonymous types crossing JS interop lose their constructor
+        // parameter names under a trimmed publish, and JSRuntime's reflection-based
+        // serializer throws NotSupportedException("ConstructorContainsNullParameterNames")
+        // at runtime (same class of bug as BlurFade/PreventDefaultKeyRule). Use a
+        // Dictionary instead — identical JSON, no constructor metadata involved.
         var triggerMeta = triggers
-            .Select(t => new { @char = t.Char.ToString(), label = $"{t.Char} suggestions" })
+            .Select(t => new Dictionary<string, object?> { ["char"] = t.Char.ToString(), ["label"] = $"{t.Char} suggestions" })
             .ToArray();
         _lastTriggerChars = TriggerCharSet(triggers);
 
@@ -405,36 +410,36 @@
         // unrelated parameter change (e.g. Triggers) preserves in-progress edits.
         var seed = _lastSetValue ?? Value ?? string.Empty;
 
-        var options = new
+        var options = new Dictionary<string, object?>
         {
-            content = seed,
-            initialHtml = seed,
-            placeholder = EffectivePlaceholder,
-            disabled = Disabled,
-            readOnly = ReadOnly,
-            editable = !Disabled && !ReadOnly,
-            mentionTriggers = triggerMeta,
-            enableSlashCommand = EnableSlashCommand,
-            enableTables = EnableTables,
-            enableCodeBlock = EnableCodeBlock,
-            enableImages = EnableImages,
-            enableTaskList = EnableTaskList,
-            enableMarkdownShortcuts = EnableMarkdownShortcuts,
-            enableAiActions = EnableAiActions,
-            enableBubbleMenu = EnableBubbleMenu,
-            enableDragHandle = EnableDragHandle,
-            maxLength = MaxLength,
-            maxWordImportBytes = MaxWordImportBytes,
+            ["content"] = seed,
+            ["initialHtml"] = seed,
+            ["placeholder"] = EffectivePlaceholder,
+            ["disabled"] = Disabled,
+            ["readOnly"] = ReadOnly,
+            ["editable"] = !Disabled && !ReadOnly,
+            ["mentionTriggers"] = triggerMeta,
+            ["enableSlashCommand"] = EnableSlashCommand,
+            ["enableTables"] = EnableTables,
+            ["enableCodeBlock"] = EnableCodeBlock,
+            ["enableImages"] = EnableImages,
+            ["enableTaskList"] = EnableTaskList,
+            ["enableMarkdownShortcuts"] = EnableMarkdownShortcuts,
+            ["enableAiActions"] = EnableAiActions,
+            ["enableBubbleMenu"] = EnableBubbleMenu,
+            ["enableDragHandle"] = EnableDragHandle,
+            ["maxLength"] = MaxLength,
+            ["maxWordImportBytes"] = MaxWordImportBytes,
             // A11y: TipTap mounts the contenteditable as a child of the content
             // host, so role/aria-multiline/required/invalid and the label/desc
             // associations must be pushed onto it via editorProps.attributes too
             // (the host wrapper carries the same set for non-TipTap consumers).
-            role = "textbox",
-            ariaMultiline = true,
-            ariaRequired = Required,
-            ariaInvalid = EffectiveInvalid,
-            ariaLabelledBy = EditorLabelledBy,
-            ariaDescribedBy = EditorDescribedBy,
+            ["role"] = "textbox",
+            ["ariaMultiline"] = true,
+            ["ariaRequired"] = Required,
+            ["ariaInvalid"] = EffectiveInvalid,
+            ["ariaLabelledBy"] = EditorLabelledBy,
+            ["ariaDescribedBy"] = EditorDescribedBy,
         };
 
         try

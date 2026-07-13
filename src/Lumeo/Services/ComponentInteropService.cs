@@ -30,6 +30,10 @@ public sealed class ComponentInteropService : IComponentInteropService
         _jsRuntime = jsRuntime;
     }
 
+    // Trim safety: the deserializer constructs ViewportSize purely via reflection, which the
+    // linker cannot see — without this the parameterless ctor/property setters get
+    // trimmed and JSRuntime throws ConstructorContainsNullParameterNames at runtime.
+    [System.Diagnostics.CodeAnalysis.DynamicDependency(System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.PublicParameterlessConstructor | System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.PublicProperties, typeof(ViewportSize))]
     private async Task<IJSObjectReference> GetModuleAsync()
     {
         _module ??= await _jsRuntime.InvokeAsync<IJSObjectReference>(
@@ -250,6 +254,10 @@ public sealed class ComponentInteropService : IComponentInteropService
 
     // --- Viewport Size ---
 
+    // Trim safety: the deserializer constructs ViewportSize purely via reflection, which the
+    // linker cannot see — without this the parameterless ctor/property setters get
+    // trimmed and JSRuntime throws ConstructorContainsNullParameterNames at runtime.
+    [System.Diagnostics.CodeAnalysis.DynamicDependency(System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.PublicParameterlessConstructor | System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.PublicProperties, typeof(ViewportSize))]
     public async ValueTask<ViewportSize> GetViewportSize()
     {
         var module = await GetModuleAsync();
@@ -945,7 +953,15 @@ public sealed class ComponentInteropService : IComponentInteropService
     /// dropdown can be positioned absolutely and track the textarea on scroll.
     /// <see cref="LineHeight"/> is the computed line height so callers can drop the
     /// dropdown one line below the caret.</summary>
-    public record TextareaCaretInfo(double Top, double Left, int SelectionStart, double OffsetTop = 0, double OffsetLeft = 0, double LineHeight = 20);
+    public record TextareaCaretInfo(double Top, double Left, int SelectionStart, double OffsetTop = 0, double OffsetLeft = 0, double LineHeight = 20)
+    {
+        // Trim safety: JSRuntime's reflection-based serializer must never bind the
+        // positional ctor — the trimmer strips its parameter names
+        // ("ConstructorContainsNullParameterNames", crashes the component under a
+        // trimmed publish). With this parameterless ctor STJ uses property-based
+        // (de)serialization instead. Do not remove.
+        public TextareaCaretInfo() : this(0, 0, 0) { }
+    }
 
     // --- InputMask caret (text input selectionStart) ---
     // Read/restore the caret of a masked text <input> so edits insert and delete
@@ -1084,6 +1100,10 @@ public sealed class ComponentInteropService : IComponentInteropService
         catch (Exception) { return true; }
     }
 
+    // Trim safety: the deserializer constructs RipplePoint purely via reflection, which the
+    // linker cannot see — without this the parameterless ctor/property setters get
+    // trimmed and JSRuntime throws ConstructorContainsNullParameterNames at runtime.
+    [System.Diagnostics.CodeAnalysis.DynamicDependency(System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.PublicParameterlessConstructor | System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.PublicProperties, typeof(RipplePoint))]
     public async ValueTask<RipplePoint> TouchRippleCoords(string hostElementId, double clientX, double clientY)
     {
         try
@@ -1146,6 +1166,10 @@ public sealed class ComponentInteropService : IComponentInteropService
         catch (JSDisconnectedException) { }
     }
 
+    // Trim safety: the deserializer constructs MediaState purely via reflection, which the
+    // linker cannot see — without this the parameterless ctor/property setters get
+    // trimmed and JSRuntime throws ConstructorContainsNullParameterNames at runtime.
+    [System.Diagnostics.CodeAnalysis.DynamicDependency(System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.PublicParameterlessConstructor | System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.PublicProperties, typeof(MediaState))]
     public async ValueTask<MediaState> GetMediaState(Microsoft.AspNetCore.Components.ElementReference element)
     {
         try
@@ -1212,16 +1236,26 @@ public sealed class ComponentInteropService : IComponentInteropService
         catch (JSDisconnectedException) { }
     }
 
+    // NOTE (trim safety): JS-interop option bags must NOT be anonymous types. Under a
+    // trimmed publish (IsTrimmable) the linker strips the anonymous type's constructor
+    // parameter names, and JSRuntime's reflection-based serializer then throws
+    // NotSupportedException("ConstructorContainsNullParameterNames") at runtime —
+    // crashing the component (hit live on the docs site by BlurFade). A
+    // Dictionary<string, object?> serializes to the identical JSON object (keys pass
+    // through verbatim; JSRuntime applies no DictionaryKeyPolicy) with no constructor
+    // metadata involved, so the JS side is unchanged.
     public async ValueTask MotionRevealText(string elementId, int staggerMs, double threshold)
     {
         var module = await GetMotionModuleAsync();
-        await module.InvokeVoidAsync("motion.revealText", elementId, new { stagger = staggerMs, threshold });
+        await module.InvokeVoidAsync("motion.revealText", elementId,
+            new Dictionary<string, object?> { ["stagger"] = staggerMs, ["threshold"] = threshold });
     }
 
     public async ValueTask MotionBlurFade(string elementId, int delayMs, bool once, bool forceHidden = false)
     {
         var module = await GetMotionModuleAsync();
-        await module.InvokeVoidAsync("motion.blurFade", elementId, new { delayMs, once, forceHidden });
+        await module.InvokeVoidAsync("motion.blurFade", elementId,
+            new Dictionary<string, object?> { ["delayMs"] = delayMs, ["once"] = once, ["forceHidden"] = forceHidden });
     }
 
     public async ValueTask MotionDisposeObserver(string elementId)
@@ -1316,8 +1350,16 @@ public sealed class ComponentInteropService : IComponentInteropService
 
     // --- Tabs sliding indicator measurement ---
 
-    public record TabMeasurement(double X, double Width);
+    public record TabMeasurement(double X, double Width)
+    {
+        // Trim safety: see TextareaCaretInfo's parameterless ctor above. Do not remove.
+        public TabMeasurement() : this(0, 0) { }
+    }
 
+    // Trim safety: the deserializer constructs TabMeasurement purely via reflection, which the
+    // linker cannot see — without this the parameterless ctor/property setters get
+    // trimmed and JSRuntime throws ConstructorContainsNullParameterNames at runtime.
+    [System.Diagnostics.CodeAnalysis.DynamicDependency(System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.PublicParameterlessConstructor | System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.PublicProperties, typeof(TabMeasurement))]
     public async ValueTask<TabMeasurement?> TabsMeasure(string elementId)
     {
         try

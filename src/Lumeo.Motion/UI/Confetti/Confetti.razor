@@ -59,12 +59,16 @@
             // otherwise forward [] to JS, where colors[random*0] is undefined and
             // every particle paints black. Fall back to the festive palette.
             var colors = Colors is { Length: > 0 } ? Colors : new[] { "#ff595e", "#ffca3a", "#6a4c93", "#1982c4", "#8ac926", "#ff6b6b" };
-            await Interop.MotionConfettiFire(_elementId, new
+            // Trim safety: Dictionary instead of an anonymous type — under a trimmed
+            // publish the linker strips anonymous types' constructor parameter names
+            // and JSRuntime's serializer throws "ConstructorContainsNullParameterNames"
+            // at runtime (same class of bug as BlurFade/PreventDefaultKeyRule).
+            await Interop.MotionConfettiFire(_elementId, new Dictionary<string, object?>
             {
-                particleCount = ParticleCount,
-                spread = Spread,
-                colors,
-                origin = new { x = OriginX, y = OriginY }
+                ["particleCount"] = ParticleCount,
+                ["spread"] = Spread,
+                ["colors"] = colors,
+                ["origin"] = new Dictionary<string, object?> { ["x"] = OriginX, ["y"] = OriginY }
             });
         }
         catch (JSDisconnectedException) { }

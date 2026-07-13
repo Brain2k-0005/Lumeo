@@ -188,8 +188,9 @@ public class GanttControlledRollbackTests : IAsyncLifetime
 
         var lastArgs = _module.Invocations.Last(i => i.Identifier == "gantt.setTasks").Arguments;
         var pushedTasks = ((IEnumerable<object>)lastArgs[1]!).ToList();
-        var startProp = pushedTasks[0].GetType().GetProperty("start")!;
-        var pushedStart = (string)startProp.GetValue(pushedTasks[0])!;
+        // Task payload entries are Dictionary<string, object?> (trim-safe — see
+        // Gantt.razor's ToJsTask), not anonymous types.
+        var pushedStart = (string)((IDictionary<string, object?>)pushedTasks[0])["start"]!;
 
         // The original (pre-drag) start date, NOT the dragged 2026-01-03.
         Assert.Equal("2026-01-01", pushedStart);

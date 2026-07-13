@@ -174,19 +174,24 @@
         {
             _selfRef = DotNetObjectReference.Create(this);
 
-            var options = new
+            // Trim safety: anonymous types crossing JS interop lose their constructor
+            // parameter names under a trimmed publish, and JSRuntime's reflection-based
+            // serializer throws NotSupportedException("ConstructorContainsNullParameterNames")
+            // at runtime (same class of bug as BlurFade/PreventDefaultKeyRule). Use a
+            // Dictionary instead — identical JSON, no constructor metadata involved.
+            var options = new Dictionary<string, object?>
             {
-                value = Value ?? string.Empty,
-                language = Language,
-                theme = Theme,
-                lineNumbers = LineNumbers,
-                readOnly = ReadOnly,
-                tabSize = TabSize,
-                useTabs = UseTabs,
-                wordWrap = WordWrap,
-                placeholder = Placeholder,
-                minimap = ShowMinimap,
-                esmBase = EsmBase,
+                ["value"] = Value ?? string.Empty,
+                ["language"] = Language,
+                ["theme"] = Theme,
+                ["lineNumbers"] = LineNumbers,
+                ["readOnly"] = ReadOnly,
+                ["tabSize"] = TabSize,
+                ["useTabs"] = UseTabs,
+                ["wordWrap"] = WordWrap,
+                ["placeholder"] = Placeholder,
+                ["minimap"] = ShowMinimap,
+                ["esmBase"] = EsmBase,
             };
 
             // Guard the whole init path: if the module import or the JS init

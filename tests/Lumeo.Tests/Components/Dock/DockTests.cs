@@ -74,11 +74,11 @@ public class DockTests : IAsyncLifetime
             .Add(d => d.MagnifyRadius, 120));
 
         var invoke = _motionModule.VerifyInvoke("motion.dock");
-        // The options bag is an anonymous object — assert via reflection.
-        var options = invoke.Arguments[1]!;
-        var type = options.GetType();
-        Assert.Equal(2.0, (double)type.GetProperty("maxScale")!.GetValue(options)!);
-        Assert.Equal(120, (int)type.GetProperty("magnifyRadius")!.GetValue(options)!);
+        // The options bag is a Dictionary<string, object?> (trim-safe — see
+        // Dock.razor), not an anonymous type.
+        var options = (Dictionary<string, object?>)invoke.Arguments[1]!;
+        Assert.Equal(2.0, (double)options["maxScale"]!);
+        Assert.Equal(120, (int)options["magnifyRadius"]!);
     }
 
     [Fact]
@@ -122,10 +122,11 @@ public class DockTests : IAsyncLifetime
             _motionModule.Invocations,
             i => i.Identifier == "motion.disposeDock");
 
-        // The re-applied options carry the new maxScale (anonymous bag → reflect).
+        // The re-applied options carry the new maxScale. Dictionary<string, object?>
+        // (trim-safe — see Dock.razor), not an anonymous type.
         var last = _motionModule.Invocations.Last(i => i.Identifier == "motion.dock");
-        var options = last.Arguments[1]!;
-        var maxScale = (double)options.GetType().GetProperty("maxScale")!.GetValue(options)!;
+        var options = (Dictionary<string, object?>)last.Arguments[1]!;
+        var maxScale = (double)options["maxScale"]!;
         Assert.Equal(2.5, maxScale);
     }
 
