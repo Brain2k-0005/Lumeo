@@ -46,6 +46,9 @@ public class CascaderKeyboardTests : IAsyncLifetime
     // The content wrapper owns @onkeydown and is the first tabindex=-1 element in DOM order.
     private static IElement Content(IRenderedComponent<L.Cascader> cut) => cut.Find("[tabindex='-1']");
 
+    // The trigger is the only button without role=menuitem — the option buttons all carry it.
+    private static IElement Trigger(IRenderedComponent<L.Cascader> cut) => cut.Find("button:not([role='menuitem'])");
+
     private static string? Tab(IElement el) => el.GetAttribute("tabindex");
 
     [Fact]
@@ -57,6 +60,22 @@ public class CascaderKeyboardTests : IAsyncLifetime
         var fruit = Option(cut, "Fruit");
         Assert.Equal("menuitem", fruit.GetAttribute("role"));
         Assert.Equal("menu", fruit.GetAttribute("aria-haspopup")); // Fruit has children
+    }
+
+    // NVDA audit finding: the trigger button exposed no aria-haspopup/aria-expanded, so a
+    // screen reader announced only "button" — no indication it opens a cascading menu or
+    // whether that menu is currently open. Mirrors Select/SpeedDial trigger precedent.
+    [Fact]
+    public void Trigger_Advertises_Its_Menu_Popup()
+    {
+        var cut = Render();
+        var trigger = Trigger(cut);
+        Assert.Equal("menu", trigger.GetAttribute("aria-haspopup"));
+        Assert.Equal("false", trigger.GetAttribute("aria-expanded"));
+
+        trigger.Click(); // open
+
+        Assert.Equal("true", Trigger(cut).GetAttribute("aria-expanded"));
     }
 
     [Fact]
