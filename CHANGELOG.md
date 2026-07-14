@@ -5,6 +5,35 @@ All notable changes to Lumeo will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.3.1] - 2026-07-14
+
+DataGrid column-header interaction rework, driven by hands-on playground testing.
+
+### Changed
+- **Whole-header column drag.** Click anywhere on a header to sort; drag it (>5px,
+  or long-press on touch) to reorder — the grip remains as a hover affordance and
+  immediate handle. A completed drag never triggers a sort. Subtle lift animation
+  (scale + shadow, reduced-motion aware), edge auto-scroll, and a nudge-and-spring
+  cue on non-reorderable columns. `Alt+ArrowLeft/Right` moves the focused column
+  with a localized screen-reader announcement (all 14 locales).
+- **Unified drag-to-group.** Dragging a header over the group panel highlights it
+  and dropping groups by that column — one pointer-driven gesture for reorder and
+  grouping (native HTML5 drag-and-drop retired), including a floating chip ghost
+  that carries the column name to the panel, and full touch support for
+  drag-to-group. Grouping-by-drag now works independently of `Reorderable`.
+- Note: the public plumbing type `DataGridDragState` (native-DnD cascading state)
+  was removed with the native drag retirement; it was unusable outside the grid's
+  internals. New `DataGrid.UpdateColumnFlags` supports runtime column-flag updates.
+
+### Fixed
+- **Runtime-frozen column flags**: `Sortable`, `Filterable`, `Resizable`, `Pinnable`
+  and row `Hoverable` now react to parameter changes at runtime (previously captured
+  once at registration).
+- **Docs playground**: real `$` currency formatting (the docs' invariant-globalization
+  build rendered `¤` in 41 spots incl. exported CSV/Excel/PDF), accessible names for
+  all setting controls, precondition-gated toggles instead of silent no-ops, and the
+  site-wide `Lumeo.Docs.styles.css` 404 removed.
+
 ## [4.3.0] - 2026-07-13
 
 The trust release: a seven-point maturity campaign hardened over ~13 automated review
