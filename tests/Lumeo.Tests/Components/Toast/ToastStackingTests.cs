@@ -368,97 +368,82 @@ public class ToastStackingTests : IAsyncLifetime
         cut.WaitForAssertion(() =>
             Assert.Equal(5, cut.FindAll("[role='alert'],[role='status']").Count));
 
-        // Widen the exit window through the internal test seam: the deliberate
-        // 150ms mid-exit gap below raced the real 220ms timer (70ms margin) and
-        // still flaked under full-suite starvation. 800ms gives the same
-        // overlap semantics with a 650ms margin; the CSS animation length is
-        // irrelevant to the frozen-index bookkeeping under test.
-        cut.Instance.ExitAnimationMs = 800;
-
         var two = cut.FindAll("[role='alert'],[role='status']").Single(e => e.TextContent.Contains("Two"));
         Assert.Equal("3", Attr(two, "data-index"));
 
-        // "Four" starts leaving FIRST, at T0.
-        var four = cut.FindAll("[role='alert'],[role='status']").Single(e => e.TextContent.Contains("Four"));
-        four.QuerySelector("button")!.Click();
-        // Explicit generous timeout (not bUnit's 1s default): this test's whole point is real
-        // overlapping 220ms exit timers, and the full local/CI suite runs thousands of tests in
-        // parallel — under that contention, the thread pool can genuinely take longer than 1s to
-        // service a background render. A longer timeout costs nothing on the happy path (each
-        // WaitForAssertion still returns the instant the assertion first passes).
-        cut.WaitForAssertion(() =>
-        {
-            var leaving = cut.FindAll("[role='alert'],[role='status']").SingleOrDefault(e => e.TextContent.Contains("Four"));
-            Assert.NotNull(leaving);
-            Assert.Contains("animate-toast-out", Attr(leaving!, "class") ?? "");
-        }, TimeSpan.FromSeconds(5));
-
-        // Deliberate fixed real-time gap (well under the 220ms exit window —
-        // ToastProvider.ExitAnimationMs) before starting "Two"'s own exit, so
-        // the two overlapping animations have a KNOWN, comfortable ordering
-        // margin instead of an incidental few-millisecond gap that a busy CI
-        // runner (many tests in parallel) can easily erase — that's exactly
-        // what made an earlier version of this test flaky under full-suite
-        // load. `Task.Delay` (not `Thread.Sleep`): a blocking sleep would tie
-        // up a whole thread-pool worker for 150ms doing nothing, which under
-        // xUnit's parallel test execution can itself starve OTHER tests'
-        // background Task.Delay continuations — an unrelated hover-delay test
-        // elsewhere in the suite flaked from exactly that when this used
-        // Thread.Sleep. "Four" is
-        // still present (Leaving, not yet removed — 150 < 800); "Two" has
-        // already re-rendered to live index 3 — PR #357 P2 fix (AvailableLiveSlots):
-        // index 1 (Four's own frozen slot) is now reserved for every live toast's
-        // ranking, not just index 0, so "Three" (which the pre-fix compacted
-        // numbering would have placed AT index 1, colliding with Four) shifts to 2
-        // and "Two" shifts one further, to 3 — and stays there until its own
-        // dismissal below.
-        await Task.Delay(150);
-
-        // Re-find "Two" (not the `two` reference captured before "Four"'s
-        // dismissal re-rendered the tree — its event handler id is stale now)
-        // AND click it inside the SAME InvokeAsync dispatch. "Four" is mid-exit
-        // with its own live 220ms timer, so a background render from that
-        // timer's machinery (PauseTimer/ResumeTimer, StateHasChanged, …) can
-        // land on bUnit's renderer thread in the split second between a plain
-        // Find and a separate Click call, invalidating the just-found button's
-        // event handler id (UnknownEventHandlerIdException — flaked in CI:
-        // https://github.com/Brain2k-0005/Lumeo/actions — "Four" and "Two"'s
-        // independent timers overlapping is the whole point of this test, so
-        // the race is real, not incidental). Doing the find-then-click as one
-        // synchronous unit on the renderer's own dispatcher — bUnit's own
-        // documented workaround for this exception — closes that window.
+        // CI-flake root cause (Assert.NotNull at the post-unmount snapshot, e.g. CI run
+        // 29350360141 attempt 2): the old choreography raced two REAL exit timers — "Four"
+        // 800ms, a fixed Task.Delay(150) stagger, then "Two" 800ms — and finally took a BARE
+        // one-shot snapshot of "Two" right after a WaitForAssertion observed "Four"'s unmount.
+        // The whole proof rested on that 150ms stagger surviving CI starvation: when the thread
+        // pool delivered the two Task.Delay continuations back-to-back (or the checker woke
+        // late), "Two" was already gone by the time the snapshot ran. Deterministic
+        // re-choreography, same invariant:
+        //
+        //  1. BOTH dismissals happen inside ONE renderer dispatch. RemoveWithExitAsync stamps
+        //     Leaving + FrozenIndex synchronously (before its first await), so "Two"'s freeze
+        //     is computed while "Four" is Leaving-but-still-mounted BY CONSTRUCTION — there is
+        //     no wall-clock gap for a starved runner to erase anymore.
+        //  2. The exits get ASYMMETRIC windows via the internal test seam, mutated between the
+        //     two clicks: "Four" captures 1000ms, "Two" captures 5000ms (each dismissal reads
+        //     ExitAnimationMs when it reaches its own Task.Delay, still inside this dispatch —
+        //     every await before it, incl. the swipe-unregister interop, completes
+        //     synchronously under bUnit's loose-mode JSInterop). "Four" therefore always
+        //     unmounts ~4s before "Two": the "newer sibling finishes first" ordering is
+        //     enforced by construction, not by a 150ms-vs-800ms scheduling race.
+        //  3. Every subsequent check reads ONE FindAll snapshot inside ONE WaitForAssertion —
+        //     never a WaitForAssertion followed by a bare re-read that a late unmount can
+        //     invalidate in between.
         await cut.InvokeAsync(() =>
+        {
+            cut.Instance.ExitAnimationMs = 1000; // "Four"'s exit window
+            cut.FindAll("[role='alert'],[role='status']").Single(e => e.TextContent.Contains("Four"))
+                .QuerySelector("button")!.Click();
+            // "Four" is now Leaving (frozen at 1) and still mounted — stamped synchronously.
+            cut.Instance.ExitAnimationMs = 5000; // "Two"'s exit window — outlives every check below
             cut.FindAll("[role='alert'],[role='status']").Single(e => e.TextContent.Contains("Two"))
-                .QuerySelector("button")!.Click());
+                .QuerySelector("button")!.Click();
+        });
+
+        // Both mid-exit in one snapshot: "Four" (newer, frozen at 1) still mounted and leaving;
+        // "Two" leaving at frozen index 3 — PR #357 P2 (AvailableLiveSlots): "Four"'s frozen
+        // slot 1 stays reserved for the live ranking, so "Three" shifts to 2 and "Two" to 3. A
+        // 2 here would mean the freeze ranked against a group "Four" had already left. The
+        // first check runs inline immediately (straight-line code, well inside "Four"'s 1000ms
+        // window); the generous ceiling only buys headroom for re-checks under CI load.
         cut.WaitForAssertion(() =>
         {
-            var leaving = cut.FindAll("[role='alert'],[role='status']").SingleOrDefault(e => e.TextContent.Contains("Two"));
-            Assert.NotNull(leaving);
-            Assert.Contains("animate-toast-out", Attr(leaving!, "class") ?? "");
-            Assert.Equal("3", Attr(leaving!, "data-index"));
+            var all = cut.FindAll("[role='alert'],[role='status']");
+            var fourLeaving = all.SingleOrDefault(e => e.TextContent.Contains("Four"));
+            Assert.NotNull(fourLeaving);
+            Assert.Contains("animate-toast-out", Attr(fourLeaving!, "class") ?? "");
+            var twoLeaving = all.SingleOrDefault(e => e.TextContent.Contains("Two"));
+            Assert.NotNull(twoLeaving);
+            Assert.Contains("animate-toast-out", Attr(twoLeaving!, "class") ?? "");
+            Assert.Equal("3", Attr(twoLeaving!, "data-index"));
         }, TimeSpan.FromSeconds(5));
 
-        // Wait for "Four" to fully finish its exit and unmount — a newer
-        // sibling actually leaving the list, not just being marked Leaving.
-        // "Four" started ~150ms before "Two", so it reaches its own 220ms
-        // mark ~150ms before "Two" would reach its (independent) 220ms mark —
-        // "Two" should still be present and still mid-exit right here.
+        // The regression: once "Four" ACTUALLY unmounts (~1s — a newer sibling truly leaving
+        // the list, not just being marked Leaving), "Two" must still be mid-exit (its own
+        // window runs another ~4s) and must NOT be re-promoted (or demoted) by "Four"'s
+        // removal — data-index stays frozen at 3 for the rest of ITS OWN exit, matching
+        // whatever CSS selector it was already in the moment dismissal began. Checked in the
+        // SAME atomic snapshot that observes "Four" gone — the old split (WaitForAssertion,
+        // then a bare re-read) was exactly the recorded CI failure.
         cut.WaitForAssertion(() =>
-            Assert.DoesNotContain(cut.FindAll("[role='alert'],[role='status']"), e => e.TextContent.Contains("Four")),
-            TimeSpan.FromSeconds(5));
-
-        // The regression: "Two" must NOT be RE-promoted (or demoted) by "Four"'s actual
-        // removal — its data-index stays frozen at 3 (where it was already rendered before
-        // its own exit began) for the rest of ITS OWN exit, matching whatever CSS selector it
-        // was already in the moment dismissal began.
-        var twoStillLeaving = cut.FindAll("[role='alert'],[role='status']").SingleOrDefault(e => e.TextContent.Contains("Two"));
-        Assert.NotNull(twoStillLeaving);
-        Assert.Equal("3", Attr(twoStillLeaving!, "data-index"));
+        {
+            var all = cut.FindAll("[role='alert'],[role='status']");
+            Assert.DoesNotContain(all, e => e.TextContent.Contains("Four"));
+            var twoStillLeaving = all.SingleOrDefault(e => e.TextContent.Contains("Two"));
+            Assert.NotNull(twoStillLeaving);
+            Assert.Contains("animate-toast-out", Attr(twoStillLeaving!, "class") ?? "");
+            Assert.Equal("3", Attr(twoStillLeaving!, "data-index"));
+        }, TimeSpan.FromSeconds(10));
 
         // Let "Two"'s own exit finish too — no leftover element, no stale index.
         cut.WaitForAssertion(() =>
             Assert.DoesNotContain(cut.FindAll("[role='alert'],[role='status']"), e => e.TextContent.Contains("Two")),
-            TimeSpan.FromSeconds(5));
+            TimeSpan.FromSeconds(10));
     }
 
     // PR #357 round-4 (P2): dismissing the FRONT toast while an older sibling remains live must
