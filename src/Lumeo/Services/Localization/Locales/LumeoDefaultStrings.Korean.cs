@@ -36,6 +36,7 @@ internal static partial class LumeoDefaultStrings
         ["DataGrid.PinColumn"] = "열 고정",
         ["DataGrid.ResizeColumn"] = "열 너비 조정(화살표 키 사용, 더블클릭으로 자동 맞춤)",
         ["DataGrid.DragToReorder"] = "드래그하여 열 순서 변경",
+        ["DataGrid.ColumnMovedAnnouncement"] = "{0} 열이 {2}개 중 {1}번째 위치로 이동했습니다",
         ["DataGrid.FilterColumn"] = "{0} 필터링",
         ["DataGrid.SelectRow"] = "행 {0} 선택",
         ["DataGrid.SelectAllRows"] = "모든 행 선택",

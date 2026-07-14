@@ -36,6 +36,7 @@ internal static partial class LumeoDefaultStrings
         ["DataGrid.PinColumn"] = "Закрепить столбец",
         ["DataGrid.ResizeColumn"] = "Изменить ширину столбца (используйте клавиши со стрелками, двойной щелчок для автоподбора)",
         ["DataGrid.DragToReorder"] = "Перетащите, чтобы изменить порядок столбца",
+        ["DataGrid.ColumnMovedAnnouncement"] = "«{0}» перемещён на позицию {1} из {2}",
         ["DataGrid.FilterColumn"] = "Фильтровать {0}",
         ["DataGrid.SelectRow"] = "Выбрать строку {0}",
         ["DataGrid.SelectAllRows"] = "Выбрать все строки",

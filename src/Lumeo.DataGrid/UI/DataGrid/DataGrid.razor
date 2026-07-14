@@ -198,15 +198,16 @@
 
         @if (ShowGroupPanel)
         {
-            @* rc.41: real drop zone — header DnD now lands here. Visual highlight
-               via _isGroupPanelDragOver. The dropped column's field comes from
-               _dragState.SourceColumnId (set by HeaderCell.HandleDragStart). *@
+            @* rc.42: drop zone for the unified pointer engine — components.js's
+               registerColumnReorder hit-tests an armed column drag against this
+               element's cached rect directly and toggles data-drop-target itself
+               (no Blazor round-trip per pointermove; see lumeo.css for the
+               highlight style keyed off that attribute). The commit — adding the
+               dropped column as a grouping level — arrives through the SAME
+               Interop.RegisterColumnReorder channel column reorder already uses;
+               see GroupPanelDropTargetId below. *@
             <div data-slot="datagrid-group-panel"
-                 class="@($"flex flex-wrap items-center gap-2 px-3 py-2 border-b border-dashed text-xs transition-colors {(_isGroupPanelDragOver ? "border-primary bg-primary/10" : "border-border/40 bg-muted/30")}")"
-                 @ondragover:preventDefault="true"
-                 @ondragenter="HandleGroupPanelDragEnter"
-                 @ondragleave="HandleGroupPanelDragLeave"
-                 @ondrop="HandleGroupPanelDrop">
+                 class="flex flex-wrap items-center gap-2 px-3 py-2 border-b border-dashed text-xs border-border/40 bg-muted/30">
                 @if (_runtimeGroupFields.Count == 0)
                 {
                     <span class="text-muted-foreground select-none pointer-events-none">
@@ -369,11 +370,17 @@
                                 PageSizeChanged="HandlePageSizeChanged"
                                 PageSizeOptions="@PageSizeOptions" />
         }
+
+        @* Header-drag redesign: visually-hidden live region announcing keyboard
+           (Alt+Arrow) column reorders to assistive tech — the pointer-driven drag
+           already has a visible live-shift preview, but a keyboard move is
+           otherwise silent. Mirrors Sortable's own "Moved" live region (same
+           polite/aria-atomic/sr-only shape) — see DataGridHeaderCell.HandleKeyboardReorder. *@
+        <span aria-live="polite" aria-atomic="true" class="sr-only">@_columnReorderAnnouncement</span>
     </div>;
 }
 
 <CascadingValue Value="this" IsFixed="true">
-<CascadingValue Value="_dragState" IsFixed="true">
 <CascadingValue Value="context" IsFixed="false">
 <CascadingValue Value="_toolbarContext" IsFixed="false">
     @if (_isExpanded)
@@ -410,7 +417,6 @@
     {
         @gridRoot
     }
-</CascadingValue>
 </CascadingValue>
 </CascadingValue>
 </CascadingValue>
@@ -1246,6 +1252,11 @@
     private bool _pointerReorderRegistered;
     private const int ColumnReorderAnimationMs = 220;
 
+    // Header-drag redesign: backing field for the polite live region announcing
+    // keyboard (Alt+Arrow) column reorders — see AnnounceColumnReorderAsync and the
+    // <span aria-live="polite"> rendered inside gridRoot.
+    private string _columnReorderAnnouncement = string.Empty;
+
     // Same FLIP handshake, vertical mirror for row reorder — see
     // ReorderRowByKeyAsync / OnAfterRenderAsync's row-reorder block.
     private bool _pendingRowReorderAnimation;
@@ -1296,20 +1307,6 @@
     private DataGridLayoutService? _layoutService;
     private DataGridServerService? _serverService;
     private DataGridToolbarContext<TItem> _toolbarContext = new();
-
-    /// <summary>
-    /// Stable per-instance id used to scope drag state. Allocated once per
-    /// grid instance and cascaded via <see cref="DataGridDragState"/> so
-    /// header cells / rows can reject drops that originated in a different
-    /// grid instance on the same page.
-    /// </summary>
-    private readonly string _gridInstanceId = Guid.NewGuid().ToString("N");
-    private readonly DataGridDragState _dragState;
-
-    public DataGrid()
-    {
-        _dragState = new DataGridDragState(_gridInstanceId);
-    }
 
     // --- ToolbarContent component registration ---
 
@@ -1779,27 +1776,52 @@
             }
         }
 
-        // Unified pointer-based column reorder (mouse + touch + pen): one delegated
-        // listener on the grid drives the whole gesture in JS — grip/header
-        // pointerdown (with a movement threshold on mouse so header clicks still
-        // sort), live sibling-shift preview, Escape/pointercancel abort, single
-        // commit on release. Native HTML5 DnD is no longer used for reorder at all
-        // (it's kept for the unrelated drag-to-group-panel gesture only — see
-        // DataGridHeaderCell.IsDraggable). Re-check each render so a runtime
-        // Reorderable flip is honoured.
-        if (Reorderable && !_pointerReorderRegistered)
+        // Unified pointer-based column reorder AND drag-to-group (mouse + touch +
+        // pen, rc.42): one delegated listener on the grid drives the whole gesture
+        // in JS — grip/header pointerdown (with a movement threshold on mouse so
+        // header clicks still sort), live sibling-shift preview, Escape/
+        // pointercancel abort, single commit on release. Native HTML5 DnD is no
+        // longer used at all — it used to own drag-to-group as a SEPARATE
+        // incompatible drag surface (native dragstart fires pointercancel, forcing
+        // the pointer engine to bail on any header with draggable="true"); that
+        // gesture now shares this exact commit channel. JS hit-tests the pointer
+        // against the group panel's cached rect and, on a valid drop there, calls
+        // back with GroupPanelDropTargetId as the "target id" instead of a real
+        // column id — the branch below routes that to HandleColumnDroppedOnGroupPanel
+        // (AddGroupField) instead of ReorderColumnByIdAsync, reusing the SAME
+        // DotNetObjectReference method the grid already registers rather than
+        // standing up a parallel JS↔.NET channel. Re-check each render so a
+        // runtime Reorderable/ShowGroupPanel flip is honoured.
+        //
+        // Registered whenever EITHER Reorderable OR ShowGroupPanel is on — NOT
+        // Reorderable alone. Grouping-by-drag must be independent of reorderability
+        // (a grid can have Reorderable=false + ShowGroupPanel=true, whose Groupable
+        // columns still need to arm a drag toward the panel): gating this listener
+        // on Reorderable alone used to kill the ENTIRE JS pointer engine — including
+        // the group-panel gesture — the moment column reordering was turned off,
+        // even though components.js's registerColumnReorder already computes its
+        // own per-column canReorder/canGroup split from data-reorderable/
+        // data-groupable and only arms a plain reorder when the source column is
+        // itself Reorderable (see ReorderColumnByIdAsync's own commit guard below,
+        // unaffected by this gate).
+        if ((Reorderable || ShowGroupPanel) && !_pointerReorderRegistered)
         {
             try
             {
                 await Interop.RegisterColumnReorder(_gridId, async (srcId, tgtId) =>
                 {
+                    if (tgtId == GroupPanelDropTargetId)
+                    {
+                        HandleColumnDroppedOnGroupPanel(srcId);
+                        return;
+                    }
                     await ReorderColumnByIdAsync(srcId, tgtId);
                 });
                 _pointerReorderRegistered = true;
             }
             catch (JSDisconnectedException) { }
         }
-        else if (!Reorderable && _pointerReorderRegistered)
+        else if (!Reorderable && !ShowGroupPanel && _pointerReorderRegistered)
         {
             try { await Interop.UnregisterColumnReorder(_gridId); }
             catch (JSDisconnectedException) { }
@@ -2322,48 +2344,37 @@
         StateHasChanged();
     }
 
-    // --- Drag-to-group: panel drop-zone handlers (rc.41) -----------------
-    // HeaderCell sets _dragState.SourceColumnId on dragstart (when the column
-    // is Groupable + ShowGroupPanel). The panel reads it on drop and resolves
-    // back to the column field to add a grouping level.
-    private bool _isGroupPanelDragOver;
+    // --- Drag-to-group: unified with the pointer reorder engine (rc.42) ---
+    //
+    // Native HTML5 DnD (dragstart on a Groupable header, dragenter/dragleave for
+    // the accept-highlight, drop on the panel) is gone. components.js's
+    // registerColumnReorder now owns this gesture too: it hit-tests the pointer
+    // against the group panel's cached rect on every move of an ALREADY-armed
+    // column drag (grip, mouse-threshold, or touch long-press — same arming as
+    // reorder), toggles the panel's own data-drop-target attribute directly (no
+    // .NET round-trip, preserving the old dragover-hot-path perf fix's intent —
+    // it was ~198ms/render on a 640-row grid), and on release either commits a
+    // normal reorder OR — if the pointer was over the panel and the dragged
+    // column is Groupable — invokes the SAME OnColumnReorderCommit channel with
+    // this sentinel as the "target id". See the RegisterColumnReorder commit
+    // lambda above, which branches on it instead of standing up a parallel
+    // JS↔.NET channel.
+    private const string GroupPanelDropTargetId = "__group-panel__";
 
-    // Perf: there is deliberately no HandleGroupPanelDragOver. This panel lives on
-    // the DataGrid root, so a bound @ondragover re-rendered the WHOLE grid on every
-    // dragover tick (~60/s) — measured at ~198ms per render on a 640-row grid,
-    // freezing the main thread while dragging a header over the panel. dragover is
-    // left as a native :preventDefault-only directive in the markup so the browser
-    // still accepts the drop without any .NET round-trip. The accept-highlight is
-    // toggled by the enter/leave handlers below (boundary events, a few per drag).
-    private void HandleGroupPanelDragEnter(DragEventArgs e)
+    /// <summary>Reached when the pointer engine's single commit callback fires with
+    /// <see cref="GroupPanelDropTargetId"/> as its target — the column was released
+    /// over the group panel rather than another header. Resolves the dragged
+    /// column fresh by id (never trust anything cached across the drag's async
+    /// gap — mirrors <see cref="ValidateColumnReorderCommitAsync"/>'s rule) and
+    /// adds it as a grouping level through the exact same <see
+    /// cref="AddGroupField"/> entry point the panel's "Add group level" dropdown
+    /// (and the old native-drop handler) both use. A non-Groupable column dropped
+    /// on the panel never reaches here at all — JS only sends this sentinel when
+    /// the dragged column's own <c>data-groupable</c> attribute was true.</summary>
+    private void HandleColumnDroppedOnGroupPanel(string sourceColumnId)
     {
-        // Only show the drop-accept highlight when the dragged column is
-        // actually a valid drop target — Groupable, has a field, not already
-        // grouped. Avoids the misleading "primary-blue ready" highlight for
-        // Reorderable-only drags or columns the panel can't accept.
-        if (_dragState.SourceColumnIndex < 0) return;
-        var srcCol = EffectiveColumns.FirstOrDefault(c => c.Id == _dragState.SourceColumnId);
-        if (srcCol?.Groupable != true || srcCol.Field is null) return;
-        if (_runtimeGroupFields.Contains(srcCol.Field)) return;
-        _isGroupPanelDragOver = true;
-    }
-
-    private void HandleGroupPanelDragLeave(DragEventArgs e)
-    {
-        _isGroupPanelDragOver = false;
-    }
-
-    private void HandleGroupPanelDrop(DragEventArgs e)
-    {
-        _isGroupPanelDragOver = false;
-        if (_dragState.SourceColumnIndex < 0) return;
-
-        // Resolve source column → field. Fall back to ID-based lookup if the
-        // index drifted (column reorder during the drag); ID is stable.
-        var srcCol = EffectiveColumns.FirstOrDefault(c => c.Id == _dragState.SourceColumnId)
-                    ?? EffectiveColumns.ElementAtOrDefault(_dragState.SourceColumnIndex);
-        _dragState.ResetColumn();
-
+        if (!ShowGroupPanel) return;
+        var srcCol = EffectiveColumns.FirstOrDefault(c => c.Id == sourceColumnId);
         if (srcCol?.Field is null || !srcCol.Groupable) return;
         AddGroupField(srcCol.Field);
     }
@@ -3445,6 +3456,21 @@
     }
 
     /// <summary>
+    /// Updates the polite live region so assistive tech hears the result of a
+    /// keyboard (Alt+Arrow) column reorder — <see
+    /// cref="DataGridHeaderCell{TItem}.HandleKeyboardReorder"/> is the only caller.
+    /// A pointer-driven drag doesn't need this: its live sibling-shift preview is
+    /// itself a visible (if not audible) signal, and re-announcing every intermediate
+    /// projected slot during a drag would be far too chatty for a screen reader.
+    /// </summary>
+    internal Task AnnounceColumnReorderAsync(string message)
+    {
+        _columnReorderAnnouncement = message;
+        StateHasChanged();
+        return Task.CompletedTask;
+    }
+
+    /// <summary>
     /// Result of <see cref="ValidateColumnReorderCommitAsync"/>: whether the delayed
     /// JS pointer commit is still valid, and — only when it is — the resolved
     /// indices to reorder.
@@ -3831,6 +3857,45 @@
         if (!ServerMode) ProcessClientData();
         ScheduleAutoSave();
         StateHasChanged();
+    }
+
+    /// <summary>
+    /// Pushes the per-column runtime-reactive affordance flags — Sortable, Filterable,
+    /// Resizable, Pinnable — from a re-rendered <see cref="DataGridColumnDef{TItem}"/>
+    /// onto the already-registered live <see cref="DataGridColumn{TItem}"/> instance.
+    /// Called from <see cref="DataGridColumnDef{TItem}.OnParametersSet"/> on every
+    /// parameter set, so a host binding like <c>Sortable="_pgSortable"</c> actually
+    /// reaches the header cell that reads <c>Column.Sortable</c>.
+    ///
+    /// Deliberately NOT routed through <see cref="AddColumnDef"/> re-registration
+    /// (<c>DataGridColumnDef.Register</c>): this mutates the four booleans directly on the SAME object
+    /// instance already held by <c>_orderedColumns</c>/<c>_visibleColumns</c>/
+    /// <see cref="DataGridContext{TItem}.Columns"/>, so header cells pick it up on the
+    /// grid's current render pass with zero extra bookkeeping — no
+    /// <see cref="RefreshVisibleColumns"/>, no <see cref="ScheduleAutoSave"/>. The
+    /// change-guard (skip when nothing actually differs) plus the caller's own
+    /// change-guard in <c>OnParametersSet</c> means a steady-state render never touches
+    /// this at all, which is what a wider "always Register() on parameters set" attempt
+    /// got wrong previously (see the comment in <c>DataGridColumnDef.OnParametersSet</c>):
+    /// unconditionally re-registering every cascading-context refresh went through
+    /// AddColumnDef's new-column bookkeeping and thrashed the layout autosave debounce.
+    /// </summary>
+    public void UpdateColumnFlags(string columnKey, bool sortable, bool filterable, bool resizable, bool pinnable)
+    {
+        var column = _columnDefs.FirstOrDefault(c => ColumnKey(c) == columnKey);
+        if (column is null) return;
+        if (column.Sortable == sortable && column.Filterable == filterable
+            && column.Resizable == resizable && column.Pinnable == pinnable) return;
+
+        column.Sortable = sortable;
+        column.Filterable = filterable;
+        column.Resizable = resizable;
+        column.Pinnable = pinnable;
+        // Belt-and-braces: the mutation above is visible immediately to anything that
+        // reads the shared instance later in THIS render pass (header cells render
+        // after ChildContent in document order), but an explicit nudge guarantees the
+        // change surfaces even if a future refactor reorders that render sequence.
+        _ = InvokeAsync(StateHasChanged);
     }
 
     // End-user "pin column" action surfaced from the column chooser. Pin state

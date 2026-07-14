@@ -134,6 +134,14 @@
     private string? _registeredKey;
     private bool _lastVisibleParam;
 
+    // Last-pushed values of the per-column runtime-reactive affordance flags — the
+    // change-tracking baseline for the targeted UpdateColumnFlags push below (mirrors
+    // _lastVisibleParam's pattern for Visible).
+    private bool _lastSortable;
+    private bool _lastFilterable;
+    private bool _lastResizable;
+    private bool _lastPinnable;
+
     protected override void OnInitialized() => Register();
 
     protected override void OnParametersSet()
@@ -148,15 +156,30 @@
             _lastVisibleParam = Visible;
             ParentGrid?.SetColumnVisibility(_registeredKey, Visible);
         }
-    }
 
-    // NOTE: OnParametersSet was briefly wired to call Register() so per-column
-    // flags (Sortable / Filterable / Pinnable) updated reactively when bound
-    // to host-level state — but it re-registered on every cascading-context
-    // refresh and bumped the layout autosave generation in a tight loop,
-    // breaking the debounce window. Reverted: columns register once on
-    // initialization, host-level toggles need an explicit grid refresh
-    // (e.g. swap the @key on the grid).
+        // Runtime-reactive per-column affordance flags: Sortable/Filterable/Resizable/
+        // Pinnable must reflect the CURRENT parameter value on every render — e.g. a
+        // playground control bound to `Sortable="_pgSortable"` — not just whatever was
+        // captured at first registration (battle-test finding: 4/13 "dead toggle"
+        // regressions traced here). OnParametersSet used to be wired to call the FULL
+        // Register() for this and was reverted (see the removed note that lived here)
+        // because Register()/AddColumnDef's NEW-column branch bumps the layout autosave
+        // generation and re-nudges a render every cascading-context refresh, thrashing
+        // the debounce window. UpdateColumnFlags is the narrow fix: it mutates ONLY
+        // these four booleans on the already-registered column instance (no autosave,
+        // no SyncOrderedColumns, no unconditional re-render — see its remarks on
+        // DataGrid), gated by an actual-change check so a no-op render never touches it.
+        if (_registeredKey is not null &&
+            (Sortable != _lastSortable || Filterable != _lastFilterable ||
+             Resizable != _lastResizable || Pinnable != _lastPinnable))
+        {
+            _lastSortable = Sortable;
+            _lastFilterable = Filterable;
+            _lastResizable = Resizable;
+            _lastPinnable = Pinnable;
+            ParentGrid?.UpdateColumnFlags(_registeredKey, Sortable, Filterable, Resizable, Pinnable);
+        }
+    }
 
     private void Register()
     {
@@ -194,11 +217,16 @@
             VisibleChanged = VisibleChanged
         };
 
-        // Capture the stable key + seed the change-tracking baseline BEFORE handing
-        // the column to the grid, so OnParametersSet can diff future @bind-Visible
-        // changes against it. Field-less columns key on the generated Id.
+        // Capture the stable key + seed the change-tracking baselines BEFORE handing
+        // the column to the grid, so OnParametersSet can diff future @bind-Visible /
+        // Sortable / Filterable / Resizable / Pinnable changes against them. Field-less
+        // columns key on the generated Id.
         _registeredKey = !string.IsNullOrWhiteSpace(Field) ? Field : column.Id;
         _lastVisibleParam = Visible;
+        _lastSortable = Sortable;
+        _lastFilterable = Filterable;
+        _lastResizable = Resizable;
+        _lastPinnable = Pinnable;
 
         ParentGrid?.AddColumnDef(column);
     }

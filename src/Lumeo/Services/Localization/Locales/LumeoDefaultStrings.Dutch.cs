@@ -36,6 +36,7 @@ internal static partial class LumeoDefaultStrings
         ["DataGrid.PinColumn"] = "Kolom vastmaken",
         ["DataGrid.ResizeColumn"] = "Kolombreedte aanpassen (gebruik de pijltjestoetsen, dubbelklik om automatisch aan te passen)",
         ["DataGrid.DragToReorder"] = "Sleep om kolom te herschikken",
+        ["DataGrid.ColumnMovedAnnouncement"] = "{0} verplaatst naar positie {1} van {2}",
         ["DataGrid.FilterColumn"] = "{0} filteren",
         ["DataGrid.SelectRow"] = "Rij {0} selecteren",
         ["DataGrid.SelectAllRows"] = "Alle rijen selecteren",

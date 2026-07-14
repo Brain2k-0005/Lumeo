@@ -138,6 +138,7 @@ public class P2LocalizationSweepTests : IAsyncLifetime
         "AudioPlayer.Label", "AudioPlayer.Play", "AudioPlayer.Pause", "AudioPlayer.Seek",
         "AudioPlayer.Mute", "AudioPlayer.Unmute", "AudioPlayer.Download",
         "Theme.Color", "Theme.Mode",
+        "DataGrid.ColumnMovedAnnouncement",
     };
 
     [Theory]

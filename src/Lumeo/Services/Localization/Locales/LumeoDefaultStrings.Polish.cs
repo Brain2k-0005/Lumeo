@@ -36,6 +36,7 @@ internal static partial class LumeoDefaultStrings
         ["DataGrid.PinColumn"] = "Przypnij kolumnę",
         ["DataGrid.ResizeColumn"] = "Zmień szerokość kolumny (użyj klawiszy strzałek, kliknij dwukrotnie, aby dopasować automatycznie)",
         ["DataGrid.DragToReorder"] = "Przeciągnij, aby zmienić kolejność kolumny",
+        ["DataGrid.ColumnMovedAnnouncement"] = "{0} przeniesiono na pozycję {1} z {2}",
         ["DataGrid.FilterColumn"] = "Filtruj {0}",
         ["DataGrid.SelectRow"] = "Zaznacz wiersz {0}",
         ["DataGrid.SelectAllRows"] = "Zaznacz wszystkie wiersze",

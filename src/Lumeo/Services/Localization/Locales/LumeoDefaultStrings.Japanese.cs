@@ -36,6 +36,7 @@ internal static partial class LumeoDefaultStrings
         ["DataGrid.PinColumn"] = "列を固定",
         ["DataGrid.ResizeColumn"] = "列幅を変更(矢印キーを使用、ダブルクリックで自動調整)",
         ["DataGrid.DragToReorder"] = "ドラッグして列を並べ替え",
+        ["DataGrid.ColumnMovedAnnouncement"] = "{0} を {2} 個中 {1} 番目の位置に移動しました",
         ["DataGrid.FilterColumn"] = "{0} をフィルター",
         ["DataGrid.SelectRow"] = "行 {0} を選択",
         ["DataGrid.SelectAllRows"] = "すべての行を選択",

@@ -36,6 +36,7 @@ internal static partial class LumeoDefaultStrings
         ["DataGrid.PinColumn"] = "Sütunu sabitle",
         ["DataGrid.ResizeColumn"] = "Sütun genişliğini ayarla (ok tuşlarını kullanın, otomatik sığdırmak için çift tıklayın)",
         ["DataGrid.DragToReorder"] = "Sütunu yeniden sıralamak için sürükleyin",
+        ["DataGrid.ColumnMovedAnnouncement"] = "{0}, {2} sütun içinde {1}. sıraya taşındı",
         ["DataGrid.FilterColumn"] = "{0} filtrele",
         ["DataGrid.SelectRow"] = "{0} satırını seç",
         ["DataGrid.SelectAllRows"] = "Tüm satırları seç",
