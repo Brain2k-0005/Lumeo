@@ -5,6 +5,20 @@ All notable changes to Lumeo will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.3.2] - 2026-07-14
+
+### Fixed
+- **DataGrid: probabilistic "duplicate key" crash on large grids.** Row keys for
+  reference-type items without a user-supplied `RowKey` were derived from the runtime
+  identity hash, which is effectively 26-bit on CoreCLR — with ~1,200 distinct row
+  objects a render had a ~1.9% chance of two rows colliding (rising to ~53% at 10,000
+  rows), crashing the renderer with "More than one sibling of DataGridRow has the same
+  key value". Keys are now collision-free per-instance identity objects (weakly cached,
+  no leaks); DOM keys use a monotonic counter. Found via a CI test that was long
+  misread as flaky.
+- Test-only: the toast stacking depth-3 exit-choreography test was hardened against CI
+  scheduler starvation (deterministic exit windows instead of wall-clock racing).
+
 ## [4.3.1] - 2026-07-14
 
 DataGrid column-header interaction rework, driven by hands-on playground testing.
