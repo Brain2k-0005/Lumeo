@@ -193,6 +193,39 @@ public class InputNumberStepperTests : IAsyncLifetime
     }
 
     [Fact]
+    public void Increase_Falls_Back_To_Step_One_When_Step_Is_Zero()
+    {
+        // A step="0" must not freeze the button — native <input type="number"> treats a
+        // non-positive step as the default 1 (CodeRabbit finding on #378).
+        string? committed = null;
+        var cut = _ctx.Render<L.Input>(p => p
+            .AddUnmatched("type", "number")
+            .AddUnmatched("step", "0")
+            .Add(i => i.Value, "5")
+            .Add(i => i.ValueChanged, v => committed = v));
+
+        cut.Find("button[aria-label='Increase']").Click();
+
+        Assert.Equal("6", committed);
+    }
+
+    [Fact]
+    public void Increase_Falls_Back_To_Step_One_When_Step_Is_Negative()
+    {
+        // A negative step must not reverse the control (Increase would otherwise decrement).
+        string? committed = null;
+        var cut = _ctx.Render<L.Input>(p => p
+            .AddUnmatched("type", "number")
+            .AddUnmatched("step", "-2")
+            .Add(i => i.Value, "5")
+            .Add(i => i.ValueChanged, v => committed = v));
+
+        cut.Find("button[aria-label='Increase']").Click();
+
+        Assert.Equal("6", committed);
+    }
+
+    [Fact]
     public void Increase_Button_Disabled_At_Max()
     {
         var cut = _ctx.Render<L.Input>(p => p

@@ -531,7 +531,10 @@ else
 
     private double? NumberMin => TryGetNumberAttribute("min");
     private double? NumberMax => TryGetNumberAttribute("max");
-    private double NumberStep => TryGetNumberAttribute("step") ?? 1;
+    // A non-positive or unparsable step falls back to 1, mirroring native <input type="number">
+    // (the HTML spec treats step <= 0 / invalid as the default): step="0" must not freeze the
+    // buttons and a negative step must not reverse them.
+    private double NumberStep => TryGetNumberAttribute("step") is { } s && s > 0 ? s : 1;
 
     // The live value parsed as a number, InvariantCulture (what type="number" reports).
     // Null while empty or mid-typing something unparsable — used only for the disabled-at-
