@@ -5,6 +5,22 @@ All notable changes to Lumeo will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.3.3] - 2026-07-18
+
+### Added
+- **Custom number steppers on `Input`.** `<Input Type="number">` now renders themed
+  vertical ▲▼ stepper buttons in place of the browser's native spinner arrows (which
+  are always hidden for number inputs). They honour `min`/`max`/`step` from the usual
+  HTML attributes, disable at bounds, and respect a splatted `readonly`/`disabled`.
+  New `ShowStepButtons` parameter (default `true`) renders a clean, spinner-free number
+  field when set to `false`. The stepping core is shared with `NumberInput`.
+
+### Fixed
+- **Dead `disabled:opacity-50` on wrapped inputs.** The reduced-opacity style sat on the
+  wrapper `<div>` (which can never match `:disabled`) instead of the `<input>`, so
+  disabled inputs using the prefix/suffix/search/clearable/number layout did not dim.
+  Moved onto the input element.
+
 ## [4.3.2] - 2026-07-14
 
 ### Fixed
