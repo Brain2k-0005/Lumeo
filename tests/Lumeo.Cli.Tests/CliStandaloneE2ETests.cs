@@ -210,6 +210,39 @@ public sealed class CliStandaloneE2ETests : IDisposable
     }
 
     [Fact]
+    public void Standalone_Add_Input_Vendors_NumberStepper_And_Builds()
+    {
+        // Codex P2 (PR #378) — Input.razor's vertical +/- steppers for type="number" call into
+        // NumberStepper (Clamp/RoundStepped), which lives in UI/NumberInput/, NOT in Input's own
+        // UI/Input/ folder. The per-component file scan (RegistryGen Program.cs) only walks a
+        // component's OWN directory, so vendoring "input" alone would miss NumberStepper.cs unless
+        // the dependency graph adds an edge to "number-input". It already does: the pre-pass maps
+        // every public/internal type DECLARED under a component's folder to that component's key
+        // (`internal static class NumberStepper` -> "number-input"), and the type-ref scan over
+        // Input's own source (which calls `NumberStepper.RoundStepped`/`NumberStepper.Clamp`) adds
+        // "number-input" to Input's `dependencies` — see registry.json's input.dependencies
+        // (["form", "number-input"]). This proves that edge actually vendors the file AND that the
+        // vendored Input compiles standalone (NuGet-free) with the stepper wired up — no
+        // duplicated/hand-copied NumberStepper.cs, just the existing type-ref dependency edge.
+        File.WriteAllText(Path.Combine(_proj, "App.csproj"), MinimalCsproj());
+        Assert.Equal(0, RunCli("init", "--yes", "--standalone", "--namespace", "Acme.Ui", "--path", "Components/Ui", "--no-assets").Exit);
+
+        var add = RunCli("add", "input", "--local", "--yes", "--force");
+        Assert.True(add.Exit == 0, $"add input failed (exit {add.Exit}). {add.Stderr}{add.Stdout}");
+
+        Assert.True(File.Exists(Path.Combine(_proj, "Components", "Ui", "Input", "Input.razor")),
+            "Input itself was not vendored");
+        Assert.True(File.Exists(Path.Combine(_proj, "Components", "Ui", "NumberInput", "NumberStepper.cs")),
+            $"NumberStepper.cs was NOT vendored as a transitive dependency of Input — the stepper "
+          + $"buttons would reference a type that doesn't exist in a NuGet-free project.\n{add.Stdout}");
+
+        var build = RunDotnet("build", "-c", "Debug", "--nologo");
+        Assert.True(build.Exit == 0,
+            $"vendored Input (with its NumberStepper dependency) failed to build NuGet-free:\n{build.Stdout}\n{build.Stderr}");
+        Assert.DoesNotContain("Include=\"Lumeo\"", File.ReadAllText(Path.Combine(_proj, "App.csproj")));
+    }
+
+    [Fact]
     public void Standalone_Add_Emits_No_Lumeo_PackageReference()
     {
         File.WriteAllText(Path.Combine(_proj, "App.csproj"), MinimalCsproj());
