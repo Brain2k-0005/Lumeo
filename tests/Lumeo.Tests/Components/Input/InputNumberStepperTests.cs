@@ -379,4 +379,163 @@ public class InputNumberStepperTests : IAsyncLifetime
             Assert.Equal("button", button.GetAttribute("type"));
         }
     }
+
+    // --- (h) splatted readonly / disabled — Codex P2 x2 ---
+    // A number input can be made non-editable two ways the steppers previously ignored (they
+    // only checked the typed Disabled parameter): `readonly` splatted via AdditionalAttributes
+    // makes the <input> non-editable but left the ▲▼ buttons clickable and mutating _current;
+    // `disabled` splatted the same way (instead of via the Disabled parameter) disabled the
+    // <input> via @attributes but likewise left the buttons enabled.
+
+    [Fact]
+    public void Splatted_Readonly_Disables_Both_Stepper_Buttons()
+    {
+        var cut = _ctx.Render<L.Input>(p => p
+            .AddUnmatched("type", "number")
+            .AddUnmatched("readonly", true)
+            .Add(i => i.Value, "5"));
+
+        Assert.All(cut.FindAll("button"), b => Assert.True(b.HasAttribute("disabled")));
+    }
+
+    [Fact]
+    public void Splatted_Readonly_Makes_ApplyStep_A_NoOp()
+    {
+        var callCount = 0;
+        var cut = _ctx.Render<L.Input>(p => p
+            .AddUnmatched("type", "number")
+            .AddUnmatched("readonly", true)
+            .Add(i => i.Value, "5")
+            .Add(i => i.ValueChanged, _ => callCount++));
+
+        cut.Find("button[aria-label='Increase']").Click();
+
+        Assert.Equal(0, callCount);
+    }
+
+    [Fact]
+    public void Splatted_Disabled_Disables_Both_Stepper_Buttons()
+    {
+        // Splatted (not via the typed Disabled parameter) — still disables the whole <input>
+        // through @attributes, so the buttons must follow.
+        var cut = _ctx.Render<L.Input>(p => p
+            .AddUnmatched("type", "number")
+            .AddUnmatched("disabled", true)
+            .Add(i => i.Value, "5"));
+
+        Assert.All(cut.FindAll("button"), b => Assert.True(b.HasAttribute("disabled")));
+    }
+
+    [Fact]
+    public void Splatted_Disabled_Makes_ApplyStep_A_NoOp()
+    {
+        var callCount = 0;
+        var cut = _ctx.Render<L.Input>(p => p
+            .AddUnmatched("type", "number")
+            .AddUnmatched("disabled", true)
+            .Add(i => i.Value, "5")
+            .Add(i => i.ValueChanged, _ => callCount++));
+
+        cut.Find("button[aria-label='Increase']").Click();
+
+        Assert.Equal(0, callCount);
+    }
+
+    [Fact]
+    public void Splatted_Readonly_False_String_Leaves_Buttons_Enabled()
+    {
+        // HTML boolean-attribute semantics: an explicit "false" string means "not set" —
+        // only presence / true / empty-string count as set.
+        var cut = _ctx.Render<L.Input>(p => p
+            .AddUnmatched("type", "number")
+            .AddUnmatched("readonly", "false")
+            .Add(i => i.Value, "5"));
+
+        Assert.All(cut.FindAll("button"), b => Assert.False(b.HasAttribute("disabled")));
+    }
+
+    // --- (i) invariant parsing of BOUND numeric min/max/step attributes — Codex P2 ---
+    // A consumer may bind a numeric value directly (`min="@someDouble"`) instead of a string
+    // literal — kv.Value then arrives as an actual double, not a string. Under a comma-decimal
+    // culture, .ToString() on that double would render "0,5" and the invariant parse would
+    // misread the comma as a thousands separator (-> 500 instead of 0.5).
+
+    [Fact]
+    public void Bound_Double_Step_Parses_Correctly_Under_Comma_Decimal_Culture()
+    {
+        var original = System.Globalization.CultureInfo.CurrentCulture;
+        System.Globalization.CultureInfo.CurrentCulture = new System.Globalization.CultureInfo("de-DE");
+        try
+        {
+            string? committed = null;
+            var cut = _ctx.Render<L.Input>(p => p
+                .AddUnmatched("type", "number")
+                .AddUnmatched("step", 0.5d)
+                .Add(i => i.Value, "1")
+                .Add(i => i.ValueChanged, v => committed = v));
+
+            cut.Find("button[aria-label='Increase']").Click();
+
+            Assert.Equal("1.5", committed);
+        }
+        finally
+        {
+            System.Globalization.CultureInfo.CurrentCulture = original;
+        }
+    }
+
+    [Fact]
+    public void Bound_Double_Min_Clamps_Correctly_Under_Comma_Decimal_Culture()
+    {
+        var original = System.Globalization.CultureInfo.CurrentCulture;
+        System.Globalization.CultureInfo.CurrentCulture = new System.Globalization.CultureInfo("de-DE");
+        try
+        {
+            string? committed = null;
+            var cut = _ctx.Render<L.Input>(p => p
+                .AddUnmatched("type", "number")
+                .AddUnmatched("min", 0.5d)
+                .AddUnmatched("step", 0.1d)
+                .Add(i => i.Value, "0.5")
+                .Add(i => i.ValueChanged, v => committed = v));
+
+            // At the (bound double) min already — Decrease must clamp right back to 0.5,
+            // not misread "0,5" -> 500 and leave the field effectively unbounded downward.
+            Assert.True(cut.Find("button[aria-label='Decrease']").HasAttribute("disabled"));
+
+            cut.Find("button[aria-label='Increase']").Click();
+            Assert.Equal("0.6", committed);
+        }
+        finally
+        {
+            System.Globalization.CultureInfo.CurrentCulture = original;
+        }
+    }
+
+    [Fact]
+    public void Bound_Int_Max_Parses_Correctly()
+    {
+        var cut = _ctx.Render<L.Input>(p => p
+            .AddUnmatched("type", "number")
+            .AddUnmatched("max", 10)
+            .Add(i => i.Value, "10"));
+
+        Assert.True(cut.Find("button[aria-label='Increase']").HasAttribute("disabled"));
+    }
+
+    // --- (j) disabled opacity treatment — Codex P3 ---
+    // Routing type="number" through the wrapper branch (Prefix/Suffix/Search/Clearable/Number
+    // all share it) must not drop the reduced-opacity disabled look a plain disabled text Input
+    // gets from CssClass's disabled:opacity-50.
+
+    [Fact]
+    public void Disabled_Number_Input_Has_Reduced_Opacity_Class()
+    {
+        var cut = _ctx.Render<L.Input>(p => p
+            .AddUnmatched("type", "number")
+            .Add(i => i.Disabled, true));
+
+        var cls = cut.Find("input").GetAttribute("class");
+        Assert.Contains("disabled:opacity-50", cls);
+    }
 }

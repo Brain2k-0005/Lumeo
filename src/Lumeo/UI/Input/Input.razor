@@ -74,7 +74,7 @@
                 <button type="button"
                         class="@($"flex flex-1 items-center justify-center border-b {(EffectiveInvalid ? "border-destructive" : "border-border/60")} bg-muted text-muted-foreground transition-colors hover:bg-muted/80 focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:relative focus-visible:z-10 disabled:pointer-events-none disabled:opacity-50")"
                         tabindex="-1"
-                        disabled="@(Disabled || IsAtNumberMax)"
+                        disabled="@(IsNumberNonEditable || IsAtNumberMax)"
                         @onclick="StepUp"
                         aria-label="@L["NumberInput.Increase"]">
                     <SvgGlyph Svg="@(LumeoIcons.ChevronUp)" class="h-3 w-3" />
@@ -82,7 +82,7 @@
                 <button type="button"
                         class="@($"flex flex-1 items-center justify-center bg-muted text-muted-foreground transition-colors hover:bg-muted/80 focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:relative focus-visible:z-10 disabled:pointer-events-none disabled:opacity-50")"
                         tabindex="-1"
-                        disabled="@(Disabled || IsAtNumberMin)"
+                        disabled="@(IsNumberNonEditable || IsAtNumberMin)"
                         @onclick="StepDown"
                         aria-label="@L["NumberInput.Decrease"]">
                     <SvgGlyph Svg="@(LumeoIcons.ChevronDown)" class="h-3 w-3" />
@@ -410,7 +410,14 @@ else
         ? "[appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
         : null;
 
-    private string WrappedInputClass => $"flex-1 bg-transparent {WrappedInputSizeClasses} py-1 placeholder:text-muted-foreground focus-visible:outline-none disabled:cursor-not-allowed {NumberAppearanceClass}".Trim();
+    // disabled:opacity-50 lives HERE (on the <input> itself, which actually carries the
+    // `disabled` attribute) rather than on WrapperClass — a <div> wrapper can never match the
+    // CSS :disabled pseudo-class, so the identical utility on WrapperClass is permanently inert.
+    // Before IsNumberInput forced every number field through this wrapper branch, a plain
+    // (no Prefix/Suffix/Search/Clearable) number input rendered via the OTHER branch's CssClass,
+    // which already carries disabled:opacity-50 directly on the <input> — so routing type=number
+    // through here without this class would have visibly regressed the disabled look (Codex P2).
+    private string WrappedInputClass => $"flex-1 bg-transparent {WrappedInputSizeClasses} py-1 placeholder:text-muted-foreground focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50 {NumberAppearanceClass}".Trim();
 
     protected override void OnParametersSet()
     {
@@ -514,20 +521,60 @@ else
     // min/max/step arrive as plain HTML attributes through the splat (Input has no typed
     // Min/Max/Step params — a number input already carries these natively), read case-
     // insensitively and parsed with InvariantCulture, matching what the native <input
-    // type="number"> itself reports.
+    // type="number"> itself reports. A consumer may also BIND a numeric value directly
+    // (e.g. `min="@someDouble"`), in which case kv.Value arrives as an actual double/int/
+    // decimal — not a string — and .ToString() on it renders under CurrentCulture (a
+    // comma-decimal culture turns 0.5 into "0,5", which the invariant NumberStyles.Any
+    // parse below then misreads as "500" with a thousands separator). Numeric IConvertible
+    // values are therefore converted straight to double with InvariantCulture, bypassing
+    // ToString()/Parse entirely; only genuine strings go through the invariant parse (Codex P2).
     private double? TryGetNumberAttribute(string name)
     {
         if (AdditionalAttributes is null) return null;
         foreach (var kv in AdditionalAttributes)
         {
-            if (string.Equals(kv.Key, name, StringComparison.OrdinalIgnoreCase)
-                && double.TryParse(kv.Value?.ToString(), System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var d))
+            if (!string.Equals(kv.Key, name, StringComparison.OrdinalIgnoreCase)) continue;
+
+            switch (kv.Value)
             {
-                return d;
+                case null:
+                    continue;
+                case string s:
+                    if (double.TryParse(s, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var d))
+                        return d;
+                    continue;
+                case IConvertible convertible:
+                    try { return convertible.ToDouble(System.Globalization.CultureInfo.InvariantCulture); }
+                    catch (Exception ex) when (ex is FormatException or InvalidCastException or OverflowException) { continue; }
+                default:
+                    continue;
             }
         }
         return null;
     }
+
+    // A number input can be made non-editable two ways the steppers must respect beyond the
+    // typed Disabled parameter: `readonly` makes the <input> itself non-editable (via @attributes)
+    // but the stepper buttons would otherwise stay clickable and still mutate _current/fire
+    // ValueChanged; `disabled` supplied through the splat (instead of the Disabled parameter)
+    // disables the <input> the same way but likewise left the buttons enabled (Codex P2 x2).
+    // HTML boolean-attribute semantics: presence, `true`, or an empty string mean "set"; only an
+    // explicit `"false"` means "not set" — mirrors how Blazor/the browser interpret these splatted
+    // boolean attributes elsewhere (kv.Value can be a real bool when the consumer binds a bool
+    // expression, or a string when written as a literal HTML attribute).
+    private static bool IsAttributeTruthy(object? value) => value switch
+    {
+        null => false,
+        bool b => b,
+        string s => !string.Equals(s, "false", StringComparison.OrdinalIgnoreCase),
+        _ => true
+    };
+
+    private bool HasTruthyAttribute(string name) =>
+        AdditionalAttributes is not null
+        && AdditionalAttributes.Any(kv => string.Equals(kv.Key, name, StringComparison.OrdinalIgnoreCase) && IsAttributeTruthy(kv.Value));
+
+    private bool IsNumberNonEditable => Disabled || HasTruthyAttribute("readonly") || HasTruthyAttribute("disabled");
 
     private double? NumberMin => TryGetNumberAttribute("min");
     private double? NumberMax => TryGetNumberAttribute("max");
@@ -561,7 +608,7 @@ else
     // value mutations.
     private async Task ApplyStep(double delta)
     {
-        if (Disabled) return;
+        if (IsNumberNonEditable) return;
 
         var stepped = NumberStepper.RoundStepped((CurrentNumber ?? 0) + delta, NumberStep, null);
         var clamped = NumberStepper.Clamp(stepped, NumberMin, NumberMax);
