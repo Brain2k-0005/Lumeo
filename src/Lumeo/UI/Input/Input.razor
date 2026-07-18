@@ -19,7 +19,7 @@
    the branch off "has a value" recreated the <input> element on the first
    typed character (and again when deleting the last one), dropping focus and
    caret mid-typing. Only the clear BUTTON below is value-conditional. *@
-@if (Prefix != null || Suffix != null || Variant == InputVariant.Search || Clearable)
+@if (Prefix != null || Suffix != null || Variant == InputVariant.Search || Clearable || IsNumberInput)
 {
     @* AdditionalAttributes splat goes on the <input>, not the wrapper div,
        so consumer-passed placeholder / id / autocomplete / aria-label
@@ -58,6 +58,36 @@
         @if (Suffix != null)
         {
             <div class="@($"flex items-center {AccessoryPad} text-muted-foreground")">@Suffix</div>
+        }
+        @if (IsNumberInput && ShowStepButtons)
+        {
+            @* Vertical +/- steppers replacing the native browser spinner. Sit as a narrow
+               column on the logical END side, splitting the field height into two stacked
+               buttons with a divider between them — the "own border" idioms (color, hover,
+               focus-visible ring, disabled state) are copied verbatim from NumberInput's
+               horizontal steppers so the two controls look like one family. Unlike
+               NumberInput's buttons (which sit outside a shared wrapper and so draw their
+               OWN full border), this column lives INSIDE the already-bordered wrapper div,
+               so it only adds the border-s divider between itself and the input — adding a
+               full border here would double up with the wrapper's own outer border. *@
+            <div class="@($"flex flex-col w-6 border-s {(EffectiveInvalid ? "border-destructive" : "border-border/60")} overflow-hidden rounded-e-md")">
+                <button type="button"
+                        class="@($"flex flex-1 items-center justify-center border-b {(EffectiveInvalid ? "border-destructive" : "border-border/60")} bg-muted text-muted-foreground transition-colors hover:bg-muted/80 focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:relative focus-visible:z-10 disabled:pointer-events-none disabled:opacity-50")"
+                        tabindex="-1"
+                        disabled="@(Disabled || IsAtNumberMax)"
+                        @onclick="StepUp"
+                        aria-label="@L["NumberInput.Increase"]">
+                    <SvgGlyph Svg="@(LumeoIcons.ChevronUp)" class="h-3 w-3" />
+                </button>
+                <button type="button"
+                        class="@($"flex flex-1 items-center justify-center bg-muted text-muted-foreground transition-colors hover:bg-muted/80 focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:relative focus-visible:z-10 disabled:pointer-events-none disabled:opacity-50")"
+                        tabindex="-1"
+                        disabled="@(Disabled || IsAtNumberMin)"
+                        @onclick="StepDown"
+                        aria-label="@L["NumberInput.Decrease"]">
+                    <SvgGlyph Svg="@(LumeoIcons.ChevronDown)" class="h-3 w-3" />
+                </button>
+            </div>
         }
     </div>
 }
@@ -127,6 +157,16 @@ else
     /// <summary>Fires after the user clicks the clear button, once the value has already been reset to empty and echoed via <see cref="ValueChanged"/>.</summary>
     [Parameter] public EventCallback OnClear { get; set; }
 
+    /// <summary>
+    /// When <c>true</c> (the default) and the field is a <c>type="number"</c> input, renders the
+    /// custom vertical ▲▼ stepper column (replacing the native browser spinner, which is always
+    /// hidden for number inputs regardless of this setting). When <c>false</c>, no stepper
+    /// buttons are rendered — a clean bare number field with no visible spinner at all; native
+    /// ArrowUp/ArrowDown and mouse-drag-to-select still work since it's still a real
+    /// <c>&lt;input type="number"&gt;</c>. Has no effect on non-number inputs.
+    /// </summary>
+    [Parameter] public bool ShowStepButtons { get; set; } = true;
+
     /// <summary>Marks the field as required, setting <c>aria-required</c> and (outside a <c>FormField</c>) appending a destructive-colored asterisk to the label.</summary>
     [Parameter] public bool Required { get; set; }
 
@@ -189,6 +229,22 @@ else
         AdditionalAttributes is not null
         && AdditionalAttributes.TryGetValue("type", out var t)
         && string.Equals(t?.ToString(), "file", StringComparison.OrdinalIgnoreCase);
+
+    // Mirrors IsFileInput: detect type="number" arriving through the attribute splat so the
+    // generic Input can render its own vertical +/- steppers (replacing the tiny, unthemed
+    // native spinner) and always hide the native spinner arrows. Input has no typed Type
+    // param, so when the CALLER writes `<Input Type="number" />` the Razor compiler preserves
+    // whatever case the caller used in the generated markup — verified empirically (a bUnit
+    // render of that exact markup) that it lands as AdditionalAttributes["Type"] = "number",
+    // capital T. A consumer writing lowercase `type="number"` directly (as the rest of this
+    // file's docs/tests do for type="file"/"email"/etc.) is equally valid HTML and lands as
+    // "type" lowercase. Neither the KEY nor the VALUE casing is guaranteed, so both sides of
+    // the comparison are case-insensitive.
+    private bool IsNumberInput =>
+        AdditionalAttributes is not null
+        && AdditionalAttributes.Any(kv =>
+            string.Equals(kv.Key, "type", StringComparison.OrdinalIgnoreCase)
+            && string.Equals(kv.Value?.ToString(), "number", StringComparison.OrdinalIgnoreCase));
 
     // null => Blazor omits the `value` attribute entirely, the only legal state for a file input.
     private string? SafeValue => IsFileInput ? null : _current;
@@ -346,7 +402,15 @@ else
 
     private string WrapperClass => Cx.Merge("flex", WrapperSizeClasses, SearchSizeClass, "w-full rounded-md border", (EffectiveInvalid ? "border-destructive" : "border-input"), "bg-transparent transition-colors", (EffectiveInvalid ? "focus-within:ring-[1.5px] focus-within:ring-destructive/20" : "focus-within:ring-[1.5px] focus-within:ring-ring"), "disabled:cursor-not-allowed disabled:opacity-50", Class);
 
-    private string WrappedInputClass => $"flex-1 bg-transparent {WrappedInputSizeClasses} py-1 placeholder:text-muted-foreground focus-visible:outline-none disabled:cursor-not-allowed".Trim();
+    // ALWAYS hides the native spinner for a number input, even when ShowStepButtons is false —
+    // the whole point of the custom column is to replace the tiny unthemed native arrows, and a
+    // consumer that opts out of the column still doesn't want them creeping back. Classes copied
+    // verbatim from NumberInput's own input so no new Tailwind utility is introduced.
+    private string? NumberAppearanceClass => IsNumberInput
+        ? "[appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+        : null;
+
+    private string WrappedInputClass => $"flex-1 bg-transparent {WrappedInputSizeClasses} py-1 placeholder:text-muted-foreground focus-visible:outline-none disabled:cursor-not-allowed {NumberAppearanceClass}".Trim();
 
     protected override void OnParametersSet()
     {
@@ -445,4 +509,64 @@ else
         catch (Microsoft.JSInterop.JSDisconnectedException) { }
     }
 
+    // --- Vertical stepper support (type="number") ---
+
+    // min/max/step arrive as plain HTML attributes through the splat (Input has no typed
+    // Min/Max/Step params — a number input already carries these natively), read case-
+    // insensitively and parsed with InvariantCulture, matching what the native <input
+    // type="number"> itself reports.
+    private double? TryGetNumberAttribute(string name)
+    {
+        if (AdditionalAttributes is null) return null;
+        foreach (var kv in AdditionalAttributes)
+        {
+            if (string.Equals(kv.Key, name, StringComparison.OrdinalIgnoreCase)
+                && double.TryParse(kv.Value?.ToString(), System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var d))
+            {
+                return d;
+            }
+        }
+        return null;
+    }
+
+    private double? NumberMin => TryGetNumberAttribute("min");
+    private double? NumberMax => TryGetNumberAttribute("max");
+    private double NumberStep => TryGetNumberAttribute("step") ?? 1;
+
+    // The live value parsed as a number, InvariantCulture (what type="number" reports).
+    // Null while empty or mid-typing something unparsable — used only for the disabled-at-
+    // bound check below; stepping itself treats empty as 0 (see ApplyStep), matching
+    // NumberInput's "Value ?? 0" baseline.
+    private double? CurrentNumber =>
+        double.TryParse(_current, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var d)
+            ? d
+            : null;
+
+    // Mirrors NumberInput's IsAtMin/IsAtMax: only disables at a bound once there IS a value to
+    // compare — an empty field is never "at" a bound, so the buttons stay enabled while empty.
+    private bool IsAtNumberMin => NumberMin.HasValue && CurrentNumber.HasValue && CurrentNumber.Value <= NumberMin.Value;
+    private bool IsAtNumberMax => NumberMax.HasValue && CurrentNumber.HasValue && CurrentNumber.Value >= NumberMax.Value;
+
+    private Task StepUp() => ApplyStep(NumberStep);
+    private Task StepDown() => ApplyStep(-NumberStep);
+
+    // Shares the exact clamp + FP-cleanup helper NumberInput uses (NumberStepper), then pushes
+    // the result through the SAME _current/_lastPushed bookkeeping HandleInput uses, so a
+    // controlled parent's echo is recognised (caret/rerender stays quiet) and an uncontrolled
+    // parent's stale re-render doesn't clobber the freshly stepped value. Also fires OnInput
+    // with a synthetic ChangeEventArgs, mirroring HandleClear's precedent for non-keystroke
+    // value mutations.
+    private async Task ApplyStep(double delta)
+    {
+        if (Disabled) return;
+
+        var stepped = NumberStepper.RoundStepped((CurrentNumber ?? 0) + delta, NumberStep, null);
+        var clamped = NumberStepper.Clamp(stepped, NumberMin, NumberMax);
+        var formatted = clamped.ToString(System.Globalization.CultureInfo.InvariantCulture);
+
+        _current = formatted;
+        _lastPushed = formatted;
+        await OnInput.InvokeAsync(new ChangeEventArgs { Value = formatted });
+        await ValueChanged.InvokeAsync(_current);
+    }
 }
