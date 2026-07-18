@@ -562,11 +562,15 @@ else
     // explicit `"false"` means "not set" — mirrors how Blazor/the browser interpret these splatted
     // boolean attributes elsewhere (kv.Value can be a real bool when the consumer binds a bool
     // expression, or a string when written as a literal HTML attribute).
+    // readonly/disabled are HTML BOOLEAN attributes: the browser reads presence, not value, so
+    // readonly="false" splatted onto the <input> STILL makes it read-only (CodeRabbit #378). We
+    // must match what actually reaches the DOM: `@attributes` omits only a bool `false` (and null),
+    // rendering every other value — including the string "false" — as a present, therefore truthy,
+    // attribute. So only null and bool-false are non-editable-off; anything else present is on.
     private static bool IsAttributeTruthy(object? value) => value switch
     {
         null => false,
         bool b => b,
-        string s => !string.Equals(s, "false", StringComparison.OrdinalIgnoreCase),
         _ => true
     };
 

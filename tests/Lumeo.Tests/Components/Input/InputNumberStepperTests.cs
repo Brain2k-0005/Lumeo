@@ -442,13 +442,28 @@ public class InputNumberStepperTests : IAsyncLifetime
     }
 
     [Fact]
-    public void Splatted_Readonly_False_String_Leaves_Buttons_Enabled()
+    public void Splatted_Readonly_False_String_Still_Disables_Buttons()
     {
-        // HTML boolean-attribute semantics: an explicit "false" string means "not set" —
-        // only presence / true / empty-string count as set.
+        // HTML boolean-attribute semantics (CodeRabbit #378): readonly is boolean, so the browser
+        // treats readonly="false" splatted onto the <input> as PRESENT → read-only. A string value
+        // of any kind renders as a present attribute; only a bool false / null is omitted by
+        // @attributes. The steppers must match the DOM the consumer actually gets: disabled.
         var cut = _ctx.Render<L.Input>(p => p
             .AddUnmatched("type", "number")
             .AddUnmatched("readonly", "false")
+            .Add(i => i.Value, "5"));
+
+        Assert.All(cut.FindAll("button"), b => Assert.True(b.HasAttribute("disabled")));
+    }
+
+    [Fact]
+    public void Splatted_Disabled_Bool_False_Leaves_Buttons_Enabled()
+    {
+        // The one genuinely-off case: a bool false is omitted by @attributes (never reaches the
+        // DOM), so the field is editable and the steppers stay enabled.
+        var cut = _ctx.Render<L.Input>(p => p
+            .AddUnmatched("type", "number")
+            .AddUnmatched("disabled", false)
             .Add(i => i.Value, "5"));
 
         Assert.All(cut.FindAll("button"), b => Assert.False(b.HasAttribute("disabled")));
