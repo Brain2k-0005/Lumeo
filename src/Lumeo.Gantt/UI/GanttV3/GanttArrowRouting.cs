@@ -71,16 +71,32 @@ internal static class GanttArrowRouting
     // sx = source.x + source.w; sy = source.y + BAR_HEIGHT / 2 (gantt-v2.js:654-655).
     // "source.y" in v2 is the bar's already-computed top (taskById's stored `y`,
     // itself `barY` — see GanttScale.BarTop's remarks), not the row's raw top.
+    //
+    // The "+ GanttScale.HeaderHeight" below is NOT part of GanttScale.BarTop
+    // itself (adding it there would double-count it for GanttBar, which gets
+    // its own HeaderHeight offset for free via DOM nesting — see BarTop's own
+    // remarks: "the row CANVAS's own top offset, added by the caller"). A
+    // rendered GanttBar sits inside GanttTimeline's row-canvas div, which
+    // starts HeaderHeight px below the outer canvas div's top purely because
+    // the header div renders BEFORE it in normal document flow. GanttArrowLayer's
+    // <svg>, however, is "absolute inset-0" against that SAME OUTER canvas div
+    // (not the row-canvas div) — see GanttArrowLayer.razor's RootClass — so its
+    // own coordinate origin is the top of the HEADER, not the top of the rows.
+    // Without this offset every arrow rendered ~HeaderHeight px (56px) too high,
+    // floating near the header instead of touching the bars it connects
+    // (parity-harness finding, feat/gantt-v3 T4: v2's flat single-SVG canvas has
+    // no such split coordinate space, so its own barY already includes
+    // HEADER_HEIGHT — gantt-v2.js line 454 — and never had this bug).
     private static (double X, double Y) SourceEdge(BarGeometry source, int barHeight)
     {
-        var sy = GanttScale.BarTop(source.RowIndex, barHeight) + barHeight / 2.0;
+        var sy = GanttScale.HeaderHeight + GanttScale.BarTop(source.RowIndex, barHeight) + barHeight / 2.0;
         return (source.X + source.Width, sy);
     }
 
     // tx = target.x; ty = target.y + BAR_HEIGHT / 2 (gantt-v2.js:656-657).
     private static (double X, double Y) TargetEdge(BarGeometry target, int barHeight)
     {
-        var ty = GanttScale.BarTop(target.RowIndex, barHeight) + barHeight / 2.0;
+        var ty = GanttScale.HeaderHeight + GanttScale.BarTop(target.RowIndex, barHeight) + barHeight / 2.0;
         return (target.X, ty);
     }
 }

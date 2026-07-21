@@ -56,6 +56,32 @@ perceptual diff (ImageSharp). Add per-page tests as the docs surface stabilizes.
 
 ---
 
+## Gantt v2/v3 parity harness (feat/gantt-v3, T4)
+
+`Gantt/*.cs` and `Visual/GanttParityVisualTests.cs` are a SEPARATE harness from
+everything else in this project: they drive `tests/Lumeo.Tests.ServerHost` (a
+Blazor Server host, real SignalR circuit, no WASM boot) instead of the docs
+WASM site, via `/e2e/gantt-v2`, `/e2e/gantt-v3`, and `/e2e/gantt-v3-tree` — new
+pages added to that project specifically for this harness, rendering the same
+deterministic fixture (`tests/Lumeo.Tests.ServerHost/E2E/GanttParityFixtures.cs`)
+through v2's `Gantt` (JS/SVG) and the working-name v3 `Gantt3` (plain Razor) so
+their DOM output can be asserted for render-equivalence.
+
+Because the base URL differs, these specs do NOT use `PlaywrightTestBase.Goto`/
+`BaseUrl` (docs site, `LUMEO_E2E_BASE_URL`) — see `Gantt/GanttParityTestBase.cs`'s
+remarks for why that property can't be overridden. They resolve their own base
+URL from `LUMEO_GANTT_E2E_BASE_URL` (default `http://localhost:5299`).
+
+Running locally:
+```
+dotnet run --project tests/Lumeo.Tests.ServerHost/Lumeo.Tests.ServerHost.csproj --urls http://localhost:5299
+# in another terminal:
+dotnet test tests/Lumeo.Tests.E2E/Lumeo.Tests.E2E.csproj --filter "FullyQualifiedName~Gantt"
+```
+
+Not yet wired into `.github/workflows/e2e.yml` — CI currently only starts the
+docs server. See docs/superpowers/gantt-v3-t4-report.md for the CI follow-up.
+
 ## CI integration
 
 Wired into CI via `.github/workflows/e2e.yml`, which runs on every push and

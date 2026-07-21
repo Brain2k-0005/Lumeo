@@ -1,0 +1,36 @@
+@page "/e2e/gantt-v3"
+@using Lumeo.Tests.ServerHost.E2E
+
+@* Gantt v2/v3 parity harness (feat/gantt-v3, T4) — v3 counterpart of
+   GanttV2Page.razor. Renders the working-name Gantt3 against the IDENTICAL
+   fixture + params (Height/GroupBy/BarColor) so every DOM measurement taken
+   here has a like-for-like v2 baseline. See GanttV2Page.razor's remarks for
+   the ?fixture / ?viewMode query params. *@
+
+<PageTitle>E2E - Gantt v3</PageTitle>
+
+<div class="p-4" style="max-width: 1600px;">
+    <h1 data-testid="gantt-e2e-title">Gantt v3 (parity fixture)</h1>
+    <Gantt3 Tasks="@_tasks"
+            ViewMode="@_viewMode"
+            ViewModeChanged="@(m => _viewMode = m)"
+            Height="900px"
+            GroupBy="@(t => t.GroupLabel ?? "")"
+            BarColor="@GanttParityFixtures.GetBarColor"
+            data-testid="gantt-v3-root" />
+</div>
+
+@code {
+    [SupplyParameterFromQuery] public string? Fixture { get; set; }
+    [SupplyParameterFromQuery] public string? ViewMode { get; set; }
+
+    private GanttViewMode _viewMode = GanttViewMode.Day;
+    private List<GanttTask> _tasks = new();
+
+    protected override void OnInitialized()
+    {
+        _tasks = Fixture == "today" ? GanttParityFixtures.TodayMarkerTasks() : GanttParityFixtures.SharedTasks();
+        if (!string.IsNullOrEmpty(ViewMode) && Enum.TryParse<GanttViewMode>(ViewMode, out var parsed))
+            _viewMode = parsed;
+    }
+}

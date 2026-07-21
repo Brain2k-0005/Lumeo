@@ -66,6 +66,33 @@ public class GanttTreeAndArrowsTests : IAsyncLifetime
     }
 
     [Fact]
+    public void GanttTree_Toggle_Button_Renders_A_String_AriaExpanded_Not_An_Empty_Boolean_Attribute()
+    {
+        // Regression (feat/gantt-v3 T4 parity harness): binding aria-expanded
+        // directly to a C# bool ("@(!row.IsCollapsed)") makes Blazor's renderer
+        // treat it as an HTML BOOLEAN attribute (present-with-empty-value when
+        // true, entirely absent when false) instead of the literal "true"/
+        // "false" string aria-expanded requires — same gotcha ToggleGroupItem's
+        // aria-pressed works around via ".ToString().ToLower()". A Playwright
+        // assertion caught the empty-string value; this pins it in the fast suite.
+        var expandedRows = GanttRowModel.BuildVisibleRows(new[]
+        {
+            new L.GanttTask("parent", "Parent", D(2026, 1, 1), D(2026, 1, 5)),
+            new L.GanttTask("child", "Child", D(2026, 1, 1), D(2026, 1, 5)) { ParentId = "parent" },
+        }, new HashSet<string>());
+        var expandedCut = _ctx.Render<L.GanttTree>(p => p.Add(c => c.Rows, expandedRows));
+        Assert.Equal("true", expandedCut.Find(".lumeo-gantt-v3-tree-toggle").GetAttribute("aria-expanded"));
+
+        var collapsedRows = GanttRowModel.BuildVisibleRows(new[]
+        {
+            new L.GanttTask("parent", "Parent", D(2026, 1, 1), D(2026, 1, 5)),
+            new L.GanttTask("child", "Child", D(2026, 1, 1), D(2026, 1, 5)) { ParentId = "parent" },
+        }, new HashSet<string> { "parent" });
+        var collapsedCut = _ctx.Render<L.GanttTree>(p => p.Add(c => c.Rows, collapsedRows));
+        Assert.Equal("false", collapsedCut.Find(".lumeo-gantt-v3-tree-toggle").GetAttribute("aria-expanded"));
+    }
+
+    [Fact]
     public void GanttTree_Leaf_Row_Has_No_Toggle_Button()
     {
         var rows = GanttRowModel.BuildVisibleRows(new[]

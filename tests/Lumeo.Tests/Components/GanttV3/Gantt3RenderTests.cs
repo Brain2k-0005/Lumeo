@@ -169,6 +169,30 @@ public class Gantt3RenderTests : IAsyncLifetime
     }
 
     [Fact]
+    public void GanttTimeline_BarColor_Delegate_Colors_The_Bars_Background_Not_A_Literal_String()
+    {
+        // Regression (feat/gantt-v3 T4 parity harness): GanttTimeline's
+        // <GanttBar ... Color="row.Color" .../> was missing the "@" prefix —
+        // since GanttBar.Color is string-typed, Razor treated the unprefixed
+        // value as the LITERAL text "row.Color" instead of an expression, so
+        // EVERY bar rendered "background-color:row.Color" (invalid CSS,
+        // silently ignored by the browser) and BarColor never had any visible
+        // effect. A Playwright v2/v3 parity check caught the literal string in
+        // the rendered style attribute; this pins the fix in the fast suite.
+        var task = new L.GanttTask("t1", "Design", D(2026, 1, 2), D(2026, 1, 4));
+        var cut = _ctx.Render<L.GanttTimeline>(p => p
+            .Add(c => c.Tasks, new List<L.GanttTask> { task })
+            .Add(c => c.ViewMode, L.GanttViewMode.Day)
+            .Add(c => c.RangeStart, D(2026, 1, 1))
+            .Add(c => c.RangeEnd, D(2026, 1, 10))
+            .Add(c => c.BarColor, (Func<L.GanttTask, string?>)(_ => "#f59e0b")));
+
+        var bg = cut.Find("[data-task-id='t1'] .lumeo-gantt-v3-bar-bg");
+        Assert.Contains("background-color:#f59e0b", bg.GetAttribute("style"));
+        Assert.DoesNotContain("row.Color", cut.Markup);
+    }
+
+    [Fact]
     public void GanttTimeline_Header_Shows_Expected_Upper_And_Lower_Runs_For_Day_Mode_Crossing_A_Month_Boundary()
     {
         var rangeStart = D(2026, 1, 28);
