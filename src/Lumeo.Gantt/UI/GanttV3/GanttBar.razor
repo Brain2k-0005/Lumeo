@@ -156,6 +156,15 @@
             {
                 ["style"] = WrapperStyle,
                 ["data-task-id"] = Task.Id,
+                // Phase 2, T1 — the JS drag engine (gantt-v3.js) reads these directly
+                // at pointerdown so it can compute the committed Start/End via its own
+                // addDays (mirrors gantt-v2.js's toLocalDateString/parseDate) without a
+                // JS->.NET round trip mid-drag; ghost-only dragging with ONE commit on
+                // drop depends on JS already having the original dates in hand.
+                // "yyyy-MM-dd" — no time component, matching GanttTask's date-only
+                // contract and the format CommitDrag parses back with TryParseExact.
+                ["data-task-start"] = Task.Start.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+                ["data-task-end"] = Task.End.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
             };
             if (Task.IsMilestone) attrs["data-milestone"] = "true";
             // Author-supplied attributes win on collision (splat-last semantics

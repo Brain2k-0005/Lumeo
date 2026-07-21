@@ -799,6 +799,27 @@ public class TrackingInteropService : IComponentInteropService
         return Task.CompletedTask;
     }
 
+    // GanttV3 drag-engine registration tracking (design spec Phase 2, T1) —
+    // records each register/unregister call (and the last options bag) so a
+    // test can assert Readonly gates registration entirely (no calls at all,
+    // not merely a no-op call) and that a runtime Readonly flip un-registers.
+    private int _ganttV3RegisterDragCallCount;
+    private int _ganttV3UnregisterDragCallCount;
+    public int GanttV3RegisterDragCallCount => _ganttV3RegisterDragCallCount;
+    public int GanttV3UnregisterDragCallCount => _ganttV3UnregisterDragCallCount;
+    public object? LastGanttV3DragOptions { get; private set; }
+    public Task GanttV3RegisterDragAsync<T>(ElementReference el, DotNetObjectReference<T> dotNetRef, object options) where T : class
+    {
+        _ganttV3RegisterDragCallCount++;
+        LastGanttV3DragOptions = options;
+        return Task.CompletedTask;
+    }
+    public Task GanttV3UnregisterDragAsync(ElementReference el)
+    {
+        _ganttV3UnregisterDragCallCount++;
+        return Task.CompletedTask;
+    }
+
     public ValueTask<string> RichTextInitAsync<T>(ElementReference elementRef, DotNetObjectReference<T> dotNetRef, object options) where T : class => ValueTask.FromResult(string.Empty);
     public ValueTask RichTextSetContentAsync(string id, string? html) => ValueTask.CompletedTask;
     public ValueTask RichTextCommandAsync(string id, string name, params object?[]? args) => ValueTask.CompletedTask;

@@ -53,6 +53,8 @@
                            BarColor="@BarColor"
                            BarTemplate="@BarTemplate"
                            ScrollToTodayRequestId="@_scrollToTodayRequestId"
+                           Readonly="@Readonly"
+                           OnTaskUpdate="HandleTaskUpdateAsync"
                            Class="min-w-0 flex-1" />
         </div>
     </div>
@@ -61,6 +63,14 @@
 @code {
     /// <summary>The tasks (and milestones) rendered as bars.</summary>
     [Parameter] public IEnumerable<GanttTask>? Tasks { get; set; }
+
+    /// <summary>
+    /// Raised whenever the task set changes — either because <see cref="Tasks"/>
+    /// genuinely changed, or because the user dragged/resized a bar in the
+    /// chart (design spec Phase 2, T1 — v2-parity <c>TasksChanged</c>, same
+    /// contract as v2's <c>Gantt.TasksChanged</c>).
+    /// </summary>
+    [Parameter] public EventCallback<IEnumerable<GanttTask>> TasksChanged { get; set; }
 
     /// <summary>The active zoom level. Two-way bindable via <see cref="ViewModeChanged"/>. Default <see cref="GanttViewMode.Day"/>.</summary>
     [Parameter] public GanttViewMode ViewMode { get; set; } = GanttViewMode.Day;
@@ -102,6 +112,22 @@
     /// </summary>
     [Parameter] public bool? ShowTreePane { get; set; }
 
+    /// <summary>Disables drag-to-move/-resize editing in the chart (design spec Phase 2, T1 — v2-parity <c>Readonly</c>). Default <c>false</c>.</summary>
+    [Parameter] public bool Readonly { get; set; }
+
+    /// <summary>Raised after a task bar's start/end dates change via drag/resize, with the updated task (design spec Phase 2, T1 — v2-parity <c>OnDateChange</c>, same contract as v2's <c>Gantt.OnDateChange</c>). Also folded into <see cref="TasksChanged"/>.</summary>
+    [Parameter] public EventCallback<GanttTask> OnDateChange { get; set; }
+
+    /// <summary>
+    /// Unified commit-gate event (design spec Phase 2, T1 — the REUI
+    /// <c>onEventUpdate</c> analog): raised for EVERY drag/resize edit
+    /// alongside <see cref="OnDateChange"/>, carrying a
+    /// <see cref="GanttTaskUpdateSource"/> discriminator so a consumer can
+    /// branch on which gesture produced the update without a separate
+    /// callback per gesture.
+    /// </summary>
+    [Parameter] public EventCallback<GanttTaskUpdate> OnTaskUpdate { get; set; }
+
     /// <summary>Additional CSS classes merged onto the root element.</summary>
     [Parameter] public string? Class { get; set; }
 
@@ -137,6 +163,33 @@
     private GanttViewMode _lastPushedViewMode;
     private bool _rangeInitialized;
 
+    // Phase 2, T1 — Tasks/TasksChanged controlled/uncontrolled discriminators,
+    // ported from v2 Gantt.razor's _lastParentHash/_lastPushedTasksHash (see
+    // OnParametersSet's remarks for why these are now needed: a drag commit
+    // mutates _state directly, bypassing the Tasks parameter).
+    private int _lastParentTasksHash;
+    private int _lastPushedTasksHash;
+
+    private static int ComputeTasksHash(IReadOnlyList<GanttTask> tasks)
+    {
+        var hash = new HashCode();
+        foreach (var t in tasks)
+        {
+            hash.Add(t.Id);
+            hash.Add(t.Name);
+            hash.Add(t.Start);
+            hash.Add(t.End);
+            hash.Add(t.Progress);
+            hash.Add(t.CustomClass);
+            hash.Add(t.IsMilestone);
+            hash.Add(t.GroupLabel);
+            hash.Add(t.ParentId);
+            if (t.Dependencies is not null)
+                foreach (var d in t.Dependencies) hash.Add(d);
+        }
+        return hash.ToHashCode();
+    }
+
     protected override void OnInitialized()
     {
         _lastSeenViewMode = ViewMode;
@@ -145,17 +198,40 @@
         _state.SetTasks(SortedTasks(Tasks?.ToList() ?? new List<GanttTask>()));
         _state.SetVisibleRange(ComputeInitialRange(_state.ViewMode, _state.Tasks));
         _rangeInitialized = true;
+        _lastParentTasksHash = _lastPushedTasksHash = ComputeTasksHash(_state.Tasks);
     }
 
     protected override void OnParametersSet()
     {
-        // Captured BEFORE SetTasks so a genuine change can be detected below:
-        // GanttState.SetTasks no-ops (keeps the SAME list reference) when the
-        // incoming sequence is structurally equal to the current one, so a
-        // reference-inequality check after the call is a cheap, exact "did the
-        // effective task set actually change" signal — no separate hash needed.
+        // Phase 2, T1 fix: a drag/resize commit (HandleTaskUpdateAsync) mutates
+        // _state DIRECTLY — it never touches the Tasks PARAMETER. The old
+        // unconditional `_state.SetTasks(Tasks)` here would silently revert
+        // that edit the next time ANYTHING caused Gantt3 to re-render while an
+        // uncontrolled caller's Tasks parameter still held its stale (pre-drag)
+        // value. Applying the parameter is now gated exactly like v2's
+        // Gantt.razor: UNCONTROLLED (no TasksChanged binding) only applies it
+        // when the PARAMETER's own value moved since we last looked;
+        // CONTROLLED applies it unless it's merely an echo of what we just
+        // pushed via TasksChanged (a genuine veto — the parent kept some OTHER
+        // value — still wins and rolls the edit back, matching v2).
+        var incomingTasks = SortedTasks(Tasks?.ToList() ?? new List<GanttTask>());
+        var incomingHash = ComputeTasksHash(incomingTasks);
+        var parentMoved = TasksChanged.HasDelegate
+            ? incomingHash != _lastPushedTasksHash
+            : incomingHash != _lastParentTasksHash;
+
+        // Captured BEFORE a conditional SetTasks so a genuine change can be
+        // detected below: GanttState.SetTasks no-ops (keeps the SAME list
+        // reference) when the incoming sequence is structurally equal to the
+        // current one, so a reference-inequality check after the call is a
+        // cheap, exact "did the effective task set actually change" signal.
         var previousTasks = _state.Tasks;
-        _state.SetTasks(SortedTasks(Tasks?.ToList() ?? new List<GanttTask>()));
+        if (parentMoved)
+        {
+            _state.SetTasks(incomingTasks);
+            _lastPushedTasksHash = incomingHash;
+        }
+        _lastParentTasksHash = incomingHash;
         var tasksChanged = !ReferenceEquals(previousTasks, _state.Tasks);
 
         // CONTROLLED (ViewModeChanged bound): adopt ViewMode whenever it differs
@@ -305,4 +381,30 @@
     }
 
     private int _scrollToTodayRequestId;
+
+    // Phase 2, T1 — bubbled from GanttTimeline.OnTaskUpdate (its own JS-driven
+    // CommitDrag) exactly like GanttTree.OnToggleCollapse: Gantt3 is the only
+    // place that touches GanttState, so it applies the edit here rather than
+    // GanttTimeline doing so itself.
+    private async Task HandleTaskUpdateAsync(GanttTaskUpdate update)
+    {
+        var newTasks = _state.Tasks.Select(t => t.Id == update.Task.Id ? update.Task : t).ToList();
+        _state.SetTasks(newTasks);
+
+        if (TasksChanged.HasDelegate)
+        {
+            // Record _lastPushedTasksHash BEFORE invoking TasksChanged (same
+            // ordering as v2 Gantt.razor's JsOnDateChange): a controlled parent
+            // re-renders SYNCHRONOUSLY inside InvokeAsync, so OnParametersSet
+            // must already see this hash as "the value we just pushed" to
+            // distinguish an accepted echo (keep the edit) from a veto.
+            // Deliberately does NOT touch _lastParentTasksHash — that tracks
+            // the Tasks PARAMETER only, exactly like v2's _lastParentHash.
+            _lastPushedTasksHash = ComputeTasksHash(_state.Tasks);
+            await TasksChanged.InvokeAsync(_state.Tasks.ToList());
+        }
+
+        if (OnDateChange.HasDelegate) await OnDateChange.InvokeAsync(update.Task);
+        if (OnTaskUpdate.HasDelegate) await OnTaskUpdate.InvokeAsync(update);
+    }
 }

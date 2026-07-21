@@ -2,6 +2,7 @@
 @using System.ComponentModel
 @using System.Globalization
 @using Lumeo.GanttV3
+@implements IAsyncDisposable
 @inject Lumeo.Services.IComponentInteropService Interop
 @attribute [EditorBrowsable(EditorBrowsableState.Never)]
 
@@ -137,8 +138,32 @@
     /// </summary>
     [Parameter] public int ScrollToTodayRequestId { get; set; }
 
+    /// <summary>
+    /// Disables drag-to-move/-resize (design spec Phase 2, T1 — v2-parity
+    /// <c>Readonly</c>). Default <c>false</c> (interactive). Gates the CALL
+    /// SITE: when true, <see cref="SyncDragRegistrationAsync"/> never calls
+    /// <see cref="Lumeo.Services.IComponentInteropService.GanttV3RegisterDragAsync{T}"/>
+    /// at all — no pointer listener is ever attached, matching the plan's "no
+    /// listeners at all when readonly" requirement (not merely "listeners that
+    /// no-op").
+    /// </summary>
+    [Parameter] public bool Readonly { get; set; }
+
+    /// <summary>
+    /// Raised once, on drop, after a drag-move/-resize commits (design spec
+    /// Phase 2, T1's unified commit gate — <c>GanttTaskUpdate(Task, Source)</c>).
+    /// <see cref="Lumeo.Gantt3"/> subscribes to this to update its
+    /// <c>GanttState</c> and re-raise its OWN <c>OnTaskUpdate</c>/<c>OnDateChange</c>/
+    /// <c>TasksChanged</c> — this component never touches GanttState itself
+    /// (same bubbling contract as <see cref="GanttTree.OnToggleCollapse"/>).
+    /// </summary>
+    [Parameter] public EventCallback<GanttTaskUpdate> OnTaskUpdate { get; set; }
+
     private ElementReference _scrollHostRef;
     private int _lastSeenScrollToTodayRequestId;
+    private DotNetObjectReference<GanttTimeline>? _selfRef;
+    private bool _dragRegistered;
+    private int _lastDragOptionsHash;
 
     // Bug fix (Codex review wave): this root used to be "overflow-auto" (both
     // axes), establishing ITS OWN CSS scroll container even though it never
@@ -267,15 +292,119 @@
         {
             _lastSeenScrollToTodayRequestId = ScrollToTodayRequestId;
             if (TodayInRange) await ScrollToTodayCenterAsync();
-            return;
         }
-
-        if (ScrollToTodayRequestId != _lastSeenScrollToTodayRequestId)
+        else if (ScrollToTodayRequestId != _lastSeenScrollToTodayRequestId)
         {
             _lastSeenScrollToTodayRequestId = ScrollToTodayRequestId;
             if (TodayInRange) await ScrollToTodayCenterAsync();
         }
+
+        await SyncDragRegistrationAsync();
     }
 
     private Task ScrollToTodayCenterAsync() => Interop.GanttV3ScrollToXAsync(_scrollHostRef, TodayX);
+
+    // Phase 2, T1 — (un)registers gantt-v3.js's pointer drag engine against
+    // _scrollHostRef (the same element ScrollToTodayCenterAsync targets).
+    // Readonly is checked FRESH on every render (not just first-render), so a
+    // runtime Readonly flip un-registers/re-registers instead of only taking
+    // effect at mount. Re-registering when the drag-relevant OPTIONS change
+    // (a ColumnWidth override, or a ViewMode zoom that changes
+    // EffectiveColumnWidth/PixelsPerDay) is idempotent on the JS side — see
+    // ganttV3.registerDrag's own remarks — so calling it again simply updates
+    // the stored config instead of attaching a second listener.
+    private async Task SyncDragRegistrationAsync()
+    {
+        if (Readonly)
+        {
+            if (_dragRegistered)
+            {
+                _dragRegistered = false;
+                await Interop.GanttV3UnregisterDragAsync(_scrollHostRef);
+            }
+            return;
+        }
+
+        var optionsHash = HashCode.Combine(EffectiveColumnWidth, PixelsPerDay);
+        if (_dragRegistered && optionsHash == _lastDragOptionsHash) return;
+
+        _selfRef ??= DotNetObjectReference.Create(this);
+        _dragRegistered = true;
+        _lastDragOptionsHash = optionsHash;
+        await Interop.GanttV3RegisterDragAsync(_scrollHostRef, _selfRef, BuildDragOptions());
+    }
+
+    // gantt-v2.js's pixelsPerDay(viewMode) (lines 727-734) ported to C# as
+    // GanttScale.PixelsPerDay — "JS never re-derives" the snap config (Global
+    // constraints), so this number is computed HERE and handed to JS as a
+    // plain number, never recomputed from a view-mode table on the JS side.
+    private double PixelsPerDay => GanttScale.PixelsPerDay(ViewMode, EffectiveColumnWidth);
+
+    // Trim safety: see ComponentInteropService.GetModuleAsync's own comment —
+    // a Dictionary (not an anonymous type) so the option bag survives a
+    // trimmed publish (JSRuntime's reflection-based serializer otherwise
+    // throws ConstructorContainsNullParameterNames for an anonymous type).
+    private object BuildDragOptions() => new Dictionary<string, object?>
+    {
+        ["columnWidth"] = EffectiveColumnWidth,
+        ["pixelsPerDay"] = PixelsPerDay,
+        ["resizeHandlePx"] = 6,
+    };
+
+    /// <summary>
+    /// JS -&gt; .NET drag/resize commit (design spec Phase 2, T1): fired exactly
+    /// ONCE, on drop, by gantt-v3.js's <c>ganttV3.registerDrag</c> pointer engine
+    /// — the drag itself is entirely ghost-only in JS (ONE JSInvokable call, not
+    /// one per frame — the phase-2 plan's carry-forward watch item (a)).
+    /// <paramref name="mode"/> is one of <c>"move"</c>/<c>"resize-start"</c>/
+    /// <c>"resize-end"</c> (see gantt-v3.js's resolveHitMode); <paramref
+    /// name="newStartIso"/>/<paramref name="newEndIso"/> are "yyyy-MM-dd" (no
+    /// time component), matching <see cref="GanttBar"/>'s
+    /// data-task-start/-end attributes and <see cref="GanttTask"/>'s date-only
+    /// contract.
+    ///
+    /// Looks the original task up in <see cref="EffectiveRows"/> (not the raw
+    /// <see cref="Tasks"/> parameter) so a hierarchy-filtered/collapsed caller
+    /// still resolves correctly — any task with an active drag is, by
+    /// definition, currently rendered and therefore present there.
+    ///
+    /// A small defensive clamp mirrors gantt-v2.js:755's
+    /// <c>if (task.end &lt; task.start) task.end = task.start;</c> (and its
+    /// resize-start mirror) even though gantt-v3.js already applies the SAME
+    /// clamp before ever calling this — JSInvokable is a public surface a
+    /// future/buggy JS caller could still hit with an inverted range, and this
+    /// costs nothing to also guard on the .NET side.
+    /// </summary>
+    [JSInvokable]
+    public async Task CommitDrag(string taskId, string mode, string newStartIso, string newEndIso)
+    {
+        var original = EffectiveRows.Select(r => r.Task).FirstOrDefault(t => t is not null && t.Id == taskId);
+        if (original is null) return;
+
+        if (!DateTime.TryParseExact(newStartIso, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var newStart)) return;
+        if (!DateTime.TryParseExact(newEndIso, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var newEnd)) return;
+
+        var source = mode switch
+        {
+            "resize-start" => GanttTaskUpdateSource.ResizeStart,
+            "resize-end" => GanttTaskUpdateSource.ResizeEnd,
+            _ => GanttTaskUpdateSource.Move,
+        };
+
+        if (source == GanttTaskUpdateSource.ResizeEnd && newEnd < original.Start) newEnd = original.Start;
+        if (source == GanttTaskUpdateSource.ResizeStart && newStart > original.End) newStart = original.End;
+
+        var updated = original with { Start = newStart, End = newEnd };
+        if (OnTaskUpdate.HasDelegate) await OnTaskUpdate.InvokeAsync(new GanttTaskUpdate(updated, source));
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_dragRegistered)
+        {
+            try { await Interop.GanttV3UnregisterDragAsync(_scrollHostRef); }
+            catch (JSDisconnectedException) { }
+        }
+        _selfRef?.Dispose();
+    }
 }
