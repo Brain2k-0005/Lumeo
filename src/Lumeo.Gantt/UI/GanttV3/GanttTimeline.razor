@@ -4,6 +4,7 @@
 @using Lumeo.GanttV3
 @implements IAsyncDisposable
 @inject Lumeo.Services.IComponentInteropService Interop
+@inject Lumeo.Services.Localization.ILumeoLocalizer L
 @attribute [EditorBrowsable(EditorBrowsableState.Never)]
 
 @* GanttTimeline — the scrollable header + row canvas (design spec Phase 2, T2
@@ -61,6 +62,28 @@
 
         @* Row canvas. *@
         <div class="relative" style="@RowsContainerStyle">
+            @* Phase 2, T3 — empty-track drag-create hit targets. One per row,
+               rendered BEFORE the Virtualize block below so a bar (rendered
+               after, hence painted on top in this shared stacking context)
+               always wins the hit-test over its own row's track when the two
+               overlap — gantt-v3.js's onPointerDown only ever falls through to
+               '[data-gantt-row-track]' when e.target.closest('[data-task-id]')
+               found nothing. Only rendered at all when AllowCreate is on AND
+               not Readonly (Readonly wins unconditionally — see AllowCreate's
+               own remarks) so the opt-in feature costs nothing (no extra DOM,
+               no extra hit-test surface) for every existing v3 chart that
+               never turns it on. Deliberately NOT virtualized (unlike the bars
+               below) — a plain per-row div with no children is cheap, and
+               keeping it simple here avoids reconciling two different
+               Virtualize row-index spaces; worth revisiting if a future v3
+               chart with thousands of rows ever turns AllowCreate on. *@
+            @if (AllowCreate && !Readonly)
+            {
+                @foreach (var track in RowTrackItems)
+                {
+                    <div class="absolute" data-gantt-row-track="true" data-row-key="@track.Key" style="@RowTrackStyle(track.RowIndex)"></div>
+                }
+            }
             <Virtualize Items="@RowItems" Context="row" ItemSize="@((float)GanttScale.RowHeight)">
                 @if (row.Task is not null)
                 {
@@ -183,6 +206,23 @@
     /// </summary>
     [Parameter] public Func<GanttTask, GanttScheduleDropContext, bool>? CanDrop { get; set; }
 
+    /// <summary>
+    /// Opt-in drag-create on empty track background (design spec Phase 2, T3 — a
+    /// REUI-parity addition; v2 has no drag-create at all, so the default is
+    /// <c>false</c>, which keeps a v3 chart's interaction surface strict v2 parity
+    /// until a caller explicitly opts in). When <c>true</c> (and not
+    /// <see cref="Readonly"/>), a pointer-down on a row's empty track background
+    /// (never a bar — see <see cref="RowTrackItems"/>'s remarks on hit-test
+    /// ordering) followed by a horizontal drag paints a create-ghost spanning the
+    /// snapped range, committing via <see cref="CommitCreate"/> on release.
+    /// <see cref="Readonly"/> WINS over this unconditionally: when readonly, NO
+    /// listeners are ever registered at all (see <see cref="SyncDragRegistrationAsync"/>),
+    /// so a readonly chart never creates regardless of this flag's value — the
+    /// same "no listeners at all, not merely listeners that no-op" contract T1
+    /// established for move/resize.
+    /// </summary>
+    [Parameter] public bool AllowCreate { get; set; }
+
     private ElementReference _scrollHostRef;
     private int _lastSeenScrollToTodayRequestId;
     private DotNetObjectReference<GanttTimeline>? _selfRef;
@@ -298,6 +338,37 @@
         }
     }
 
+    // Phase 2, T3 — one (Key, RowIndex) pair per EffectiveRows entry, feeding the
+    // AllowCreate row-track markup above. Kept separate from RowItems (rather than
+    // adding a Key field there too) since RowItems' GanttTimelineRow is a hot,
+    // per-render-recomputed record already consumed by the (always-on) Virtualize
+    // block — this list only exists at all when AllowCreate is on.
+    private List<(string Key, int RowIndex)> RowTrackItems
+    {
+        get
+        {
+            var visibleRows = EffectiveRows;
+            var items = new List<(string, int)>(visibleRows.Count);
+            for (var i = 0; i < visibleRows.Count; i++)
+                items.Add((RowKey(visibleRows[i]), i));
+            return items;
+        }
+    }
+
+    private string RowTrackStyle(int rowIndex) =>
+        FormattableString.Invariant($"left:0px;top:{rowIndex * GanttScale.RowHeight}px;height:{GanttScale.RowHeight}px;width:{TotalWidth}px;");
+
+    // A stable identity for a GanttVisibleRow, independent of its list position
+    // (so a row reorder/collapse between pointerdown and the eventual CommitCreate
+    // round trip still resolves to the SAME row, unlike an index-based key would).
+    // Task rows key off the task's own id (unique by construction); GroupHeader
+    // rows key off GanttRowModel's own GroupToggleKey-derived ToggleKey (ALWAYS
+    // non-null for a header row — BuildFlatGroupRows sets it unconditionally),
+    // already namespaced ("group::" prefix) so it can never collide with a
+    // "task:"-prefixed key.
+    private static string RowKey(GanttVisibleRow row) =>
+        row.Kind == GanttRowKind.Task ? "task:" + row.Task!.Id : row.ToggleKey!;
+
     // P1 fix (Codex review wave): center the DOM's actual scrollLeft on today,
     // mirroring gantt-v2.js's init-time tryScroll (lines 673-693) — WITHOUT
     // this, Gantt3.ComputeInitialRange's ~60-day padding before the earliest
@@ -354,7 +425,16 @@
         // BuildDragOptions' hasCanDrop flag to JS even when ColumnWidth/
         // PixelsPerDay are unchanged, or a caller that starts/stops validating
         // drops mid-session would leave JS on a stale flag.
-        var optionsHash = HashCode.Combine(EffectiveColumnWidth, PixelsPerDay, CanDrop is not null);
+        // Phase 2, T3 — AllowCreate is folded in for the same reason (a runtime
+        // flip must re-push allowCreate). Origin is folded in too: unlike
+        // move/resize/progress (which anchor off an EXISTING bar's own
+        // data-task-start/-end, never needing an absolute reference date),
+        // drag-create has nothing to anchor off and needs BuildDragOptions'
+        // originIso — which tracks RangeStart/ViewMode, NOT
+        // EffectiveColumnWidth/PixelsPerDay, so panning via GanttNav's
+        // Previous/Next (which moves RangeStart without touching ColumnWidth)
+        // would otherwise leave JS computing create dates off a stale origin.
+        var optionsHash = HashCode.Combine(EffectiveColumnWidth, PixelsPerDay, CanDrop is not null, AllowCreate, Origin);
         if (_dragRegistered && optionsHash == _lastDragOptionsHash) return;
 
         _selfRef ??= DotNetObjectReference.Create(this);
@@ -386,6 +466,21 @@
         // when no validator is configured — so the gate lives on the JS side,
         // driven by this flag, not merely as a permissive .NET return value.
         ["hasCanDrop"] = CanDrop is not null,
+        // Phase 2, T3 — gates whether gantt-v3.js's onPointerDown even LOOKS for
+        // a [data-gantt-row-track] hit when no bar was hit. The row-track
+        // elements themselves are also only rendered at all when this is true
+        // (see the markup's own @if (AllowCreate && !Readonly) guard) — this
+        // flag is defense-in-depth on top of "the elements don't even exist",
+        // not the only thing stopping a stray create-drag.
+        ["allowCreate"] = AllowCreate,
+        // Phase 2, T3 — the row-canvas-space date origin (Origin below), needed
+        // ONLY for drag-create: unlike move/resize/progress (which always have
+        // an EXISTING bar's data-task-start/-end to anchor from), a brand-new
+        // create-drag has no anchor at all, so JS needs an absolute reference
+        // date to convert a snapped day-COLUMN index back into a real calendar
+        // date. "JS never re-derives" (Global constraints) — Origin is computed
+        // here from GanttScale.BuildDateUnits, never recalculated in JS.
+        ["originIso"] = Origin.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
     };
 
     /// <summary>
@@ -428,6 +523,94 @@
 
         var updated = original with { Start = newStart, End = newEnd };
         if (OnTaskUpdate.HasDelegate) await OnTaskUpdate.InvokeAsync(new GanttTaskUpdate(updated, source));
+    }
+
+    /// <summary>
+    /// JS -&gt; .NET drag-create commit (design spec Phase 2, T3): fired exactly
+    /// ONCE, on drop, by gantt-v3.js's empty-track pointer path — a REUI-parity
+    /// addition with no v2 equivalent (v2 has no drag-create at all). Builds a
+    /// brand-new <see cref="GanttTask"/> (a random <see cref="Guid"/>-derived id,
+    /// a localized "New task" name — same <see cref="Lumeo.Services.Localization.ILumeoLocalizer"/>
+    /// family <see cref="GanttTree"/> uses for its a11y labels) and invokes the
+    /// SAME <see cref="OnTaskUpdate"/> event move/resize/progress already use
+    /// (Source=<see cref="GanttTaskUpdateSource.Create"/>) — <see cref="Lumeo.Gantt3"/>'s
+    /// <c>HandleTaskUpdateAsync</c> is the one place that knows to APPEND rather
+    /// than replace-by-id for this source, and to raise its own dedicated
+    /// <c>OnTaskCreate</c> alongside it (mirroring the OnProgressChange/OnDateChange
+    /// per-source branches T2 already established).
+    ///
+    /// <paramref name="rowKey"/> resolves against <see cref="EffectiveRows"/> via
+    /// <see cref="RowKey"/> — see that method's remarks for why a row's IDENTITY
+    /// (task id / group toggle key), not its list position, is what JS captured
+    /// at pointerdown time. GroupLabel/ParentId inheritance (design spec: "group
+    /// row key or parent task... group-header or summary row targets that
+    /// group/parent, leaf row inherits THAT row's group/parent siblingship") is
+    /// resolved by <see cref="ResolveCreateContext"/> — see its own remarks for
+    /// the three cases and which one is genuinely ambiguous in the plan's wording.
+    ///
+    /// Defensively no-ops when <see cref="AllowCreate"/> is off (JS should never
+    /// call this in that case — no create listeners are ever registered — but a
+    /// JSInvokable is a public surface a future/buggy JS caller could still hit,
+    /// same "costs nothing to also guard on the .NET side" reasoning
+    /// <see cref="CommitDrag"/>'s own defensive clamp already documents) or when
+    /// <paramref name="rowKey"/> doesn't resolve to any currently-rendered row.
+    /// </summary>
+    [JSInvokable]
+    public async Task CommitCreate(string rowKey, string startIso, string endIso)
+    {
+        if (!AllowCreate) return;
+
+        if (!DateTime.TryParseExact(startIso, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var start)) return;
+        if (!DateTime.TryParseExact(endIso, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var end)) return;
+        if (end < start) (start, end) = (end, start); // defensive swap — JS always sends min/max already (see gantt-v3.js's startCreateDrag), same "JSInvokable is a public surface" reasoning as CommitDrag's own clamp
+
+        GanttVisibleRow? matchedRow = null;
+        foreach (var row in EffectiveRows)
+        {
+            if (RowKey(row) == rowKey) { matchedRow = row; break; }
+        }
+        if (matchedRow is null) return;
+
+        var (groupLabel, parentId) = ResolveCreateContext(matchedRow.Value);
+        var newTask = new GanttTask(Guid.NewGuid().ToString("N"), L["Gantt.NewTask"], start, end)
+        {
+            GroupLabel = groupLabel,
+            ParentId = parentId,
+        };
+
+        if (OnTaskUpdate.HasDelegate) await OnTaskUpdate.InvokeAsync(new GanttTaskUpdate(newTask, GanttTaskUpdateSource.Create));
+    }
+
+    /// <summary>
+    /// Resolves a new task's inherited <see cref="GanttTask.GroupLabel"/>/
+    /// <see cref="GanttTask.ParentId"/> from the row a drag-create landed on
+    /// (design spec Phase 2, T3). Three cases, per the plan's own wording:
+    /// <list type="bullet">
+    ///   <item><b>Group-header row</b> (<see cref="GanttRowKind.GroupHeader"/>):
+    ///   "targets that group" — the new task joins the group, at root (a flat
+    ///   group has no parent-task concept).</item>
+    ///   <item><b>Summary row</b> (a <see cref="GanttRowKind.Task"/> row with
+    ///   <see cref="GanttVisibleRow.HasChildren"/> true — a hierarchy PARENT):
+    ///   "targets that... parent" — resolved here as the new task becoming that
+    ///   row's CHILD (<see cref="GanttTask.ParentId"/> = the summary task's own
+    ///   id), the reading that makes "create on the parent row" behave like
+    ///   "add a child under this parent" rather than a no-op/sibling-of-parent.
+    ///   This is the plan's genuinely ambiguous case — flagged for reviewer
+    ///   sign-off, see the T3 report.</item>
+    ///   <item><b>Leaf row</b> (a <see cref="GanttRowKind.Task"/> row with no
+    ///   children): "inherits THAT row's group/parent siblingship" — the new
+    ///   task becomes that task's SIBLING (same <see cref="GanttTask.GroupLabel"/>/
+    ///   <see cref="GanttTask.ParentId"/>, not a child of it).</item>
+    /// </list>
+    /// </summary>
+    private static (string? GroupLabel, string? ParentId) ResolveCreateContext(GanttVisibleRow row)
+    {
+        if (row.Kind == GanttRowKind.GroupHeader) return (row.Label, null);
+
+        var task = row.Task!;
+        return row.HasChildren
+            ? (task.GroupLabel, task.Id)        // summary/hierarchy-parent row -> new task becomes ITS CHILD
+            : (task.GroupLabel, task.ParentId);  // leaf row -> new task becomes THAT task's SIBLING
     }
 
     /// <summary>

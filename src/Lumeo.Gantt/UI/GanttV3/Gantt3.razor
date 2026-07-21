@@ -57,6 +57,7 @@
                            OnTaskUpdate="HandleTaskUpdateAsync"
                            OnTaskClick="OnTaskClick"
                            CanDrop="CanDrop"
+                           AllowCreate="@AllowCreate"
                            Class="min-w-0 flex-1" />
         </div>
     </div>
@@ -138,6 +139,26 @@
 
     /// <summary>Live scheduling drag-drop validator (design spec Phase 2, T2 — the REUI <c>canDropEvent</c> analog). See <see cref="GanttTimeline.CanDrop"/> for the full contract; passed straight through unchanged.</summary>
     [Parameter] public Func<GanttTask, GanttScheduleDropContext, bool>? CanDrop { get; set; }
+
+    /// <summary>
+    /// Opt-in drag-create on empty track background (design spec Phase 2, T3 — a
+    /// REUI-parity addition; v2 has no drag-create at all, so this defaults to
+    /// <c>false</c>, keeping strict v2 parity until a caller opts in). Passed
+    /// straight through to <see cref="GanttTimeline.AllowCreate"/> — see there for
+    /// the full contract, including why <see cref="Readonly"/> always wins over it.
+    /// </summary>
+    [Parameter] public bool AllowCreate { get; set; }
+
+    /// <summary>
+    /// Raised when a drag-create commits (design spec Phase 2, T3 — REUI parity;
+    /// v2 has no equivalent). Fired alongside <see cref="OnTaskUpdate"/>
+    /// (Source=<see cref="GanttTaskUpdateSource.Create"/>) — mirrors how
+    /// <see cref="OnProgressChange"/>/<see cref="OnDateChange"/> are each raised
+    /// alongside <see cref="OnTaskUpdate"/> for their own gesture, per source, in
+    /// <see cref="HandleTaskUpdateAsync"/>. Also folded into <see cref="TasksChanged"/>
+    /// (the new task is APPENDED, not merged-by-id, for this source).
+    /// </summary>
+    [Parameter] public EventCallback<GanttTaskUpdate> OnTaskCreate { get; set; }
 
     /// <summary>Additional CSS classes merged onto the root element.</summary>
     [Parameter] public string? Class { get; set; }
@@ -399,7 +420,15 @@
     // GanttTimeline doing so itself.
     private async Task HandleTaskUpdateAsync(GanttTaskUpdate update)
     {
-        var newTasks = _state.Tasks.Select(t => t.Id == update.Task.Id ? update.Task : t).ToList();
+        // Phase 2, T3 — a Create-sourced update names a task that does NOT yet
+        // exist in _state.Tasks (GanttTimeline.CommitCreate minted a fresh Guid
+        // id), so the existing "replace whichever task shares this id" merge
+        // would silently no-op (no match) instead of adding it. Every OTHER
+        // source (Move/ResizeStart/ResizeEnd/Progress) edits an EXISTING task
+        // in place, same as before.
+        var newTasks = update.Source == GanttTaskUpdateSource.Create
+            ? _state.Tasks.Append(update.Task).ToList()
+            : _state.Tasks.Select(t => t.Id == update.Task.Id ? update.Task : t).ToList();
         _state.SetTasks(newTasks);
 
         if (TasksChanged.HasDelegate)
@@ -410,20 +439,31 @@
             // must already see this hash as "the value we just pushed" to
             // distinguish an accepted echo (keep the edit) from a veto.
             // Deliberately does NOT touch _lastParentTasksHash — that tracks
-            // the Tasks PARAMETER only, exactly like v2's _lastParentHash.
+            // the Tasks PARAMETER only, exactly like v2's _lastParentHash. A
+            // controlled parent that vetoes a Create (keeps its OWN, pre-create
+            // Tasks value) rolls back exactly like any other vetoed edit — the
+            // next OnParametersSet sees the parameter hasn't moved to match
+            // what was just pushed and reverts _state, discarding the new task.
             _lastPushedTasksHash = ComputeTasksHash(_state.Tasks);
             await TasksChanged.InvokeAsync(_state.Tasks.ToList());
         }
 
-        // Phase 2, T2 — v2 parity: v2's Gantt.razor fires JsOnDateChange OR
+        // Phase 2, T2/T3 — v2 parity: v2's Gantt.razor fires JsOnDateChange OR
         // JsOnProgressChange depending on WHICH gesture committed (gantt-v2.js's
         // commitDrag calls exactly one of them per branch, gantt-v2.js:750/756/761
         // -> Gantt.razor's JsOnDateChange/JsOnProgressChange, lines 483-515) — never
-        // both for the same edit. OnTaskUpdate (v3's own unified addition) still
-        // fires for every source, regardless of which v2-parity event also fired.
+        // both for the same edit. T3's OnTaskCreate joins that same per-source
+        // branch (v2 has no equivalent gesture at all, so this is a v3-only leg,
+        // not a v2-parity one) — a Create never also fires OnDateChange, even
+        // though it does carry Start/End like a date change would. OnTaskUpdate
+        // (v3's own unified addition) still fires for every source regardless.
         if (update.Source == GanttTaskUpdateSource.Progress)
         {
             if (OnProgressChange.HasDelegate) await OnProgressChange.InvokeAsync(update.Task);
+        }
+        else if (update.Source == GanttTaskUpdateSource.Create)
+        {
+            if (OnTaskCreate.HasDelegate) await OnTaskCreate.InvokeAsync(update);
         }
         else if (OnDateChange.HasDelegate)
         {

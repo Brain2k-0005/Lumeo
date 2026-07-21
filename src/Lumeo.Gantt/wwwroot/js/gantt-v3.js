@@ -92,6 +92,16 @@ export const ganttV3 = {
 //     mousedown falls back to a click; 'resize'/'progress' modes do not)
 //   - CanDrop live validation has NO v2 equivalent (REUI canDropEvent analog) —
 //     see GanttTimeline.ValidateDrop's remarks for the .NET side.
+//
+// Phase 2, T3 addition (drag-create) — ALSO no v2 equivalent (REUI parity: a
+// pointer-down on empty row-canvas TRACK background, never a bar, followed by
+// a horizontal drag). Handled by a SEPARATE entry point (startCreateDrag,
+// below) rather than folded into the bar-drag closure above: there is no
+// source bar element to clone a ghost from, no data-task-start/-end to anchor
+// against, and no CanDrop concern (T2's plan: "CanDrop is about scheduling
+// EXISTING tasks"), so the two code paths share only the module-level
+// constants (RESIZE_HANDLE_PX doesn't apply; DRAG_THRESHOLD_PX/GHOST_MIN_WIDTH_PX
+// do) and the date-format helpers below.
 
 const RESIZE_HANDLE_PX = 6;
 // gantt-v2.js:610 `if (Math.abs(dx) > 3) dragInitiated = true;` — pixels of
@@ -261,7 +271,18 @@ function registerDrag(el, dotNetRef, options) {
     reg.onPointerDown = (e) => {
         if (e.button !== 0) return; // left mouse / primary touch-pen contact only
         const barEl = e.target.closest('[data-task-id]');
-        if (!barEl || !el.contains(barEl)) return;
+        if (!barEl || !el.contains(barEl)) {
+            // Phase 2, T3 — no bar was hit. Only look for a create-track hit
+            // when the caller opted in (reg.options.allowCreate — see
+            // GanttTimeline.BuildDragOptions' own remarks: the row-track
+            // elements themselves also only exist in the DOM when this is
+            // true, so this check is defense-in-depth, not the only gate).
+            if (reg.options && reg.options.allowCreate) {
+                const trackEl = e.target.closest('[data-gantt-row-track]');
+                if (trackEl && el.contains(trackEl)) startCreateDrag(reg, trackEl, e);
+            }
+            return;
+        }
 
         const taskId = barEl.getAttribute('data-task-id');
         const isMilestone = barEl.getAttribute('data-milestone') === 'true';
@@ -438,6 +459,103 @@ function registerDrag(el, dotNetRef, options) {
 
     el.addEventListener('pointerdown', reg.onPointerDown);
     dragRegistrations.set(el, reg);
+}
+
+// Phase 2, T3 — drag-create on an empty row track (REUI parity addition, no v2
+// equivalent — v2 has no drag-create at all). Entered ONLY from onPointerDown's
+// "no bar was hit" branch above, so a genuine bar click/drag can never reach
+// here. trackEl is one of GanttTimeline's per-row `[data-gantt-row-track]`
+// divs (own remarks: rendered BEFORE the bars in DOM order so a bar always
+// wins the hit-test first) — its own inline `top`/`height` ARE the row's
+// row-canvas-space geometry (no CSS-var indirection to resolve, unlike a
+// bar's --lumeo-gantt-bar-x/-w — see readBarGeometry's own comment for why
+// THAT needs getComputedStyle), and its `data-row-key` is the stable row
+// identity GanttTimeline.CommitCreate resolves back against EffectiveRows.
+//
+// Unlike a bar drag, there is no existing element to clone a ghost from and no
+// original Start/End to anchor deltas against — the ghost is built from
+// scratch, and the pointer's OWN local X position (relative to the track,
+// which starts at row-canvas x=0) is converted to an absolute day-COLUMN index
+// via Math.floor (which grid column contains this pixel), not the delta-based
+// Math.round the move/resize paths use for a RELATIVE shift.
+function startCreateDrag(reg, trackEl, e) {
+    const rowKey = trackEl.getAttribute('data-row-key');
+    if (!rowKey) return;
+
+    e.preventDefault();
+    trackEl.setPointerCapture(e.pointerId);
+
+    const rect = trackEl.getBoundingClientRect();
+    const startLocalX = e.clientX - rect.left;
+    const rowTop = parseFloat(trackEl.style.top) || 0;
+    const rowHeight = parseFloat(trackEl.style.height) || 0;
+    const startClientX = e.clientX;
+    let dragInitiated = false;
+    let ghost = null;
+
+    function dayColumnRange(clientX) {
+        const dayPx = reg.options && reg.options.pixelsPerDay > 0 ? reg.options.pixelsPerDay : 1;
+        const localX = startLocalX + (clientX - startClientX);
+        const dayA = Math.floor(startLocalX / dayPx);
+        const dayB = Math.floor(localX / dayPx);
+        return { fromDay: Math.min(dayA, dayB), toDay: Math.max(dayA, dayB), dayPx };
+    }
+
+    const onPointerMove = (mv) => {
+        const dx = mv.clientX - startClientX;
+        if (!dragInitiated) {
+            // gantt-v2.js:610-style threshold (DRAG_THRESHOLD_PX) — the actual
+            // "below-threshold release -> no ghost residue, no call" gate the
+            // plan asks for; once past it, the resulting snapped range is
+            // guaranteed at least one day (span >= 1 snap unit) by construction.
+            if (Math.abs(dx) < DRAG_THRESHOLD_PX) return;
+            dragInitiated = true;
+            ghost = document.createElement('div');
+            ghost.className = 'lumeo-gantt-v3-drag-ghost lumeo-gantt-v3-create-ghost rounded';
+            ghost.style.position = 'absolute';
+            ghost.style.top = rowTop + 'px';
+            ghost.style.height = rowHeight + 'px';
+            ghost.style.opacity = '0.6';
+            ghost.style.pointerEvents = 'none';
+            ghost.style.zIndex = '50';
+            ghost.style.backgroundColor = 'var(--color-primary)';
+            trackEl.parentNode.appendChild(ghost);
+        }
+
+        const { fromDay, toDay, dayPx } = dayColumnRange(mv.clientX);
+        ghost.style.left = (fromDay * dayPx) + 'px';
+        ghost.style.width = Math.max(GHOST_MIN_WIDTH_PX, (toDay - fromDay + 1) * dayPx) + 'px';
+    };
+
+    const onPointerUp = (up) => {
+        cleanup();
+        if (!dragInitiated) return; // below threshold — no ghost residue, no call (plan requirement)
+
+        const { fromDay, toDay } = dayColumnRange(up.clientX);
+        const originIso = reg.options && reg.options.originIso;
+        const origin = originIso ? parseIsoDate(originIso) : null;
+        if (!origin) return; // no anchor date — nothing sane to commit
+
+        const startIso = toLocalDateString(addDays(origin, fromDay));
+        const endIso = toLocalDateString(addDays(origin, toDay));
+
+        const dotNet = reg.dotNetRef;
+        if (dotNet) dotNet.invokeMethodAsync('CommitCreate', rowKey, startIso, endIso).catch(() => {});
+    };
+
+    const onPointerCancel = () => { cleanup(); };
+
+    function cleanup() {
+        trackEl.removeEventListener('pointermove', onPointerMove);
+        trackEl.removeEventListener('pointerup', onPointerUp);
+        trackEl.removeEventListener('pointercancel', onPointerCancel);
+        try { trackEl.releasePointerCapture(e.pointerId); } catch (_) { /* already released */ }
+        if (ghost && ghost.parentNode) ghost.parentNode.removeChild(ghost);
+    }
+
+    trackEl.addEventListener('pointermove', onPointerMove);
+    trackEl.addEventListener('pointerup', onPointerUp);
+    trackEl.addEventListener('pointercancel', onPointerCancel);
 }
 
 function unregisterDrag(el) {

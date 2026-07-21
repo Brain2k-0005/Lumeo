@@ -485,6 +485,7 @@ internal static partial class LumeoDefaultStrings
         ["Gantt.NextPeriod"] = "Next period",
         ["Gantt.ExpandRow"] = "Expand {0}",
         ["Gantt.CollapseRow"] = "Collapse {0}",
+        ["Gantt.NewTask"] = "New task",
 
         // ── Theme ───────────────────────────────────────────────────
         ["Theme.Light"] = "Light",
@@ -1015,6 +1016,7 @@ internal static partial class LumeoDefaultStrings
         ["Gantt.NextPeriod"] = "Nächster Zeitraum",
         ["Gantt.ExpandRow"] = "{0} ausklappen",
         ["Gantt.CollapseRow"] = "{0} einklappen",
+        ["Gantt.NewTask"] = "Neue Aufgabe",
 
         // ── Theme ───────────────────────────────────────────────────
         ["Theme.Light"] = "Hell",
