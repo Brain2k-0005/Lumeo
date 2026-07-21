@@ -139,6 +139,14 @@ public class P2LocalizationSweepTests : IAsyncLifetime
         "AudioPlayer.Mute", "AudioPlayer.Unmute", "AudioPlayer.Download",
         "Theme.Color", "Theme.Mode",
         "DataGrid.ColumnMovedAnnouncement",
+        // Codex round 4, P2 #6: GanttV3's Gantt.* family was only ever complete
+        // in en/de (Day/Week/Month/Year existed in 5 more locales, everything
+        // else was missing entirely) — extended here rather than a new test
+        // file, per this test's own "extend it instead of duplicating" intent.
+        "Gantt.Day", "Gantt.Week", "Gantt.Month", "Gantt.Year",
+        "Gantt.Today", "Gantt.PreviousPeriod", "Gantt.NextPeriod",
+        "Gantt.ExpandRow", "Gantt.CollapseRow", "Gantt.NoTasksToDisplay",
+        "Gantt.TaskAriaLabel",
     };
 
     [Theory]

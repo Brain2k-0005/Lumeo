@@ -266,6 +266,14 @@ internal static partial class LumeoDefaultStrings
         ["Gantt.Week"] = "주",
         ["Gantt.Month"] = "월",
         ["Gantt.Year"] = "년",
+        // Codex round 4, P2 #6 — locale completeness: this block only ever had Day/Week/Month/Year
+        ["Gantt.Today"] = "오늘",
+        ["Gantt.PreviousPeriod"] = "이전 기간",
+        ["Gantt.NextPeriod"] = "다음 기간",
+        ["Gantt.ExpandRow"] = "{0} 펼치기",
+        ["Gantt.CollapseRow"] = "{0} 접기",
+        ["Gantt.NoTasksToDisplay"] = "표시할 작업이 없습니다",
+        ["Gantt.TaskAriaLabel"] = "{0}, {1}부터 {2}까지",
 
         // Editor
         ["Editor.Paragraph"] = "단락",

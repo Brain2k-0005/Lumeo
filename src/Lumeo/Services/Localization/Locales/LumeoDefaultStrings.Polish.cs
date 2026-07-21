@@ -316,5 +316,18 @@ internal static partial class LumeoDefaultStrings
         // ThemeSwitcher
         ["Theme.Color"] = "Kolor",
         ["Theme.Mode"] = "Tryb",
+
+        // Gantt (Codex round 4, P2 #6 — locale completeness: previously only en/de had any Gantt.* keys)
+        ["Gantt.Day"] = "Dzień",
+        ["Gantt.Week"] = "Tydzień",
+        ["Gantt.Month"] = "Miesiąc",
+        ["Gantt.Year"] = "Rok",
+        ["Gantt.Today"] = "Dziś",
+        ["Gantt.PreviousPeriod"] = "Poprzedni okres",
+        ["Gantt.NextPeriod"] = "Następny okres",
+        ["Gantt.ExpandRow"] = "Rozwiń {0}",
+        ["Gantt.CollapseRow"] = "Zwiń {0}",
+        ["Gantt.NoTasksToDisplay"] = "Brak zadań do wyświetlenia",
+        ["Gantt.TaskAriaLabel"] = "{0}, od {1} do {2}",
     };
 }

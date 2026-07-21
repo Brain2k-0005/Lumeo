@@ -266,6 +266,14 @@ internal static partial class LumeoDefaultStrings
         ["Gantt.Week"] = "周",
         ["Gantt.Month"] = "月",
         ["Gantt.Year"] = "年",
+        // Codex round 4, P2 #6 — locale completeness: this block only ever had Day/Week/Month/Year
+        ["Gantt.Today"] = "今天",
+        ["Gantt.PreviousPeriod"] = "上一时段",
+        ["Gantt.NextPeriod"] = "下一时段",
+        ["Gantt.ExpandRow"] = "展开 {0}",
+        ["Gantt.CollapseRow"] = "折叠 {0}",
+        ["Gantt.NoTasksToDisplay"] = "没有可显示的任务",
+        ["Gantt.TaskAriaLabel"] = "{0}，{1}至{2}",
 
         // Editor
         ["Editor.Paragraph"] = "段落",

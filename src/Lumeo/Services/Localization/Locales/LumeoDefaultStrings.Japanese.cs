@@ -313,5 +313,18 @@ internal static partial class LumeoDefaultStrings
         // ThemeSwitcher
         ["Theme.Color"] = "カラー",
         ["Theme.Mode"] = "モード",
+
+        // Gantt (Codex round 4, P2 #6 — locale completeness: previously only en/de had any Gantt.* keys)
+        ["Gantt.Day"] = "日",
+        ["Gantt.Week"] = "週",
+        ["Gantt.Month"] = "月",
+        ["Gantt.Year"] = "年",
+        ["Gantt.Today"] = "今日",
+        ["Gantt.PreviousPeriod"] = "前の期間",
+        ["Gantt.NextPeriod"] = "次の期間",
+        ["Gantt.ExpandRow"] = "{0} を展開",
+        ["Gantt.CollapseRow"] = "{0} を折りたたむ",
+        ["Gantt.NoTasksToDisplay"] = "表示するタスクがありません",
+        ["Gantt.TaskAriaLabel"] = "{0}、{1}から{2}まで",
     };
 }
