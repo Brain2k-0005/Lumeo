@@ -483,6 +483,8 @@ internal static partial class LumeoDefaultStrings
         ["Gantt.Today"] = "Today",
         ["Gantt.PreviousPeriod"] = "Previous period",
         ["Gantt.NextPeriod"] = "Next period",
+        ["Gantt.ExpandRow"] = "Expand {0}",
+        ["Gantt.CollapseRow"] = "Collapse {0}",
 
         // ── Theme ───────────────────────────────────────────────────
         ["Theme.Light"] = "Light",
@@ -1011,6 +1013,8 @@ internal static partial class LumeoDefaultStrings
         ["Gantt.Today"] = "Heute",
         ["Gantt.PreviousPeriod"] = "Vorheriger Zeitraum",
         ["Gantt.NextPeriod"] = "Nächster Zeitraum",
+        ["Gantt.ExpandRow"] = "{0} ausklappen",
+        ["Gantt.CollapseRow"] = "{0} einklappen",
 
         // ── Theme ───────────────────────────────────────────────────
         ["Theme.Light"] = "Hell",

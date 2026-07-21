@@ -81,6 +81,22 @@ public class GanttRowModelTests
     }
 
     [Fact]
+    public void Collapsing_A_Group_Does_Not_Hide_A_Later_Ungrouped_Task()
+    {
+        // Regression (Codex review wave): hidingCurrentGroup previously stayed
+        // true after a collapsed group, since it was only ever reset when a NEW
+        // group's header started — never when falling through to a plain
+        // ungrouped task. B here has no GroupLabel at all and must always render.
+        var tasks = new[] { Task("a", groupLabel: "Design"), Task("b") };
+        var collapsed = new HashSet<string> { GanttRowModel.GroupToggleKey("Design") };
+
+        var rows = GanttRowModel.BuildVisibleRows(tasks, collapsed);
+
+        Assert.DoesNotContain(rows, r => r.Task?.Id == "a"); // hidden — a member of the collapsed group
+        Assert.Contains(rows, r => r.Task?.Id == "b"); // must survive — never a member of "Design"
+    }
+
+    [Fact]
     public void Group_Header_Row_Always_Reports_HasChildren_And_A_ToggleKey()
     {
         var tasks = new[] { Task("t1", groupLabel: "Design") };

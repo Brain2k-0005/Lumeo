@@ -61,6 +61,30 @@ public class GanttInteropTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task JsOnDateChange_Preserves_ParentId_Across_The_JS_Payload_Round_Trip()
+    {
+        // Regression (Codex review wave, feat/gantt-v3): gantt-v2.js's taskToJson
+        // never serializes ParentId (v2 has no hierarchy concept), so the JS
+        // payload ReplaceTask receives always has ParentId == null. A
+        // GanttV3-hierarchy consumer dragging a v2-rendered bar for a task that
+        // DOES set ParentId must not silently lose it.
+        var hierarchyTask = Task1 with { ParentId = "epic-1" };
+        IEnumerable<L.GanttTask>? pushedTasks = null;
+        var cut = _ctx.Render<L.Gantt>(p => p
+            .Add(c => c.Tasks, new[] { hierarchyTask })
+            .Add(c => c.TasksChanged, (IEnumerable<L.GanttTask> ts) => { pushedTasks = ts; }));
+
+        // The JS payload never carries ParentId — mirror that exactly (default null).
+        var moved = Task1 with { Start = new DateTime(2026, 1, 3), End = new DateTime(2026, 1, 9) };
+        Assert.Null(moved.ParentId);
+        await cut.InvokeAsync(() => cut.Instance.JsOnDateChange(moved));
+
+        var replaced = Assert.Single(pushedTasks!);
+        Assert.Equal(new DateTime(2026, 1, 3), replaced.Start); // the edit itself still applied
+        Assert.Equal("epic-1", replaced.ParentId); // but ParentId survived the round-trip
+    }
+
+    [Fact]
     public async Task JsOnProgressChange_Updates_Progress_And_Raises_Callbacks()
     {
         L.GanttTask? progressChanged = null;

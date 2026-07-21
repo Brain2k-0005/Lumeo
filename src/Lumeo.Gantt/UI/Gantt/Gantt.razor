@@ -512,7 +512,19 @@ else
     private void ReplaceTask(GanttTask t)
     {
         var idx = _tasks.FindIndex(x => x.Id == t.Id);
-        if (idx >= 0) _tasks[idx] = t;
+        if (idx >= 0)
+        {
+            // Bug fix (Codex review wave; C#-only — gantt-v2.js itself is
+            // untouched, a recorded exception to the v2-untouched rule):
+            // taskToJson (gantt-v2.js) never serializes ParentId at all — v2
+            // has no hierarchy concept — so `t`, deserialized from the JS
+            // drag/resize/progress payload, always has ParentId == null.
+            // Replacing wholesale would silently drop it on every edit for a
+            // task a GanttV3-hierarchy consumer had set it on. Preserve the
+            // CURRENT task's ParentId across the replace instead.
+            t = t with { ParentId = _tasks[idx].ParentId };
+            _tasks[idx] = t;
+        }
         _lastTasksHash = ComputeTasksHash(_tasks);
     }
 

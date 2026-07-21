@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text.RegularExpressions;
 using Bunit;
 using Lumeo.GanttV3;
 using Lumeo.Tests.Helpers;
@@ -66,6 +67,15 @@ public class Gantt3RenderTests : IAsyncLifetime
             .Add(c => c.RowIndex, 0));
         Assert.Contains("lumeo-gantt-v3-milestone", milestoneCut.Markup);
         Assert.Equal("true", milestoneCut.Find("[data-task-id='m1']").GetAttribute("data-milestone"));
+
+        // Regression (Codex review wave): the un-rotated square must be sized to
+        // BarHeight/sqrt(2) so the ROTATED bounding box comes out to exactly
+        // BarHeight (v2 parity) — a plain BarHeight-side square rotated 45deg
+        // would bounding-box at BarHeight*sqrt(2), ~41% too large.
+        var expectedSide = GanttScale.DefaultBarHeight / Math.Sqrt(2);
+        var diamondStyle = milestoneCut.Find(".lumeo-gantt-v3-milestone").GetAttribute("style") ?? "";
+        Assert.Contains($"width:{expectedSide.ToString(CultureInfo.InvariantCulture)}px", diamondStyle);
+        Assert.Contains($"height:{expectedSide.ToString(CultureInfo.InvariantCulture)}px", diamondStyle);
 
         var regularCut = _ctx.Render<L.GanttBar>(p => p
             .Add(c => c.Task, regular)
@@ -193,6 +203,39 @@ public class Gantt3RenderTests : IAsyncLifetime
     }
 
     [Fact]
+    public void GanttTimeline_Bar_X_And_Today_Marker_Scale_With_A_ColumnWidth_Override()
+    {
+        // Regression (Codex review wave): GanttTimeline's header/grid already
+        // scaled correctly with a ColumnWidth override (they read
+        // EffectiveColumnWidth directly), but bar positions and the today
+        // marker went through DateToPixel/BarGeometry, which silently ignored
+        // the override and stayed on the mode's default 38px — visible
+        // misalignment against the correctly-rescaled grid.
+        var today = DateTime.Today;
+        var task = new L.GanttTask("t1", "Design", today.AddDays(2), today.AddDays(4));
+        var rangeStart = today.AddDays(-3);
+        var rangeEnd = today.AddDays(10);
+
+        var cut = _ctx.Render<L.GanttTimeline>(p => p
+            .Add(c => c.Tasks, new List<L.GanttTask> { task })
+            .Add(c => c.ViewMode, L.GanttViewMode.Day)
+            .Add(c => c.RangeStart, rangeStart)
+            .Add(c => c.RangeEnd, rangeEnd)
+            .Add(c => c.ColumnWidth, 76)
+            .Add(c => c.TodayHighlight, true));
+
+        var origin = GanttScale.BuildDateUnits(L.GanttViewMode.Day, rangeStart, rangeEnd)[0];
+        var expectedX = GanttScale.DateToPixel(L.GanttViewMode.Day, origin, task.Start, 76);
+        var expectedTodayX = GanttScale.DateToPixel(L.GanttViewMode.Day, origin, today, 76);
+
+        var barStyle = cut.Find("[data-task-id='t1']").GetAttribute("style") ?? "";
+        Assert.Contains($"--lumeo-gantt-bar-x:{expectedX.ToString(CultureInfo.InvariantCulture)}px", barStyle);
+
+        var todayStyle = cut.Find(".lumeo-gantt-v3-today-line").GetAttribute("style") ?? "";
+        Assert.Contains($"left:{expectedTodayX.ToString(CultureInfo.InvariantCulture)}px", todayStyle);
+    }
+
+    [Fact]
     public void GanttTimeline_Header_Shows_Expected_Upper_And_Lower_Runs_For_Day_Mode_Crossing_A_Month_Boundary()
     {
         var rangeStart = D(2026, 1, 28);
@@ -315,6 +358,31 @@ public class Gantt3RenderTests : IAsyncLifetime
         var cut = _ctx.Render<L.Gantt3>(p => p.Add(c => c.Tasks, tasks));
         Assert.Contains("Design", cut.Markup);
         Assert.Contains("Kickoff", cut.Markup);
+    }
+
+    [Fact]
+    public void Gantt3_Recomputes_VisibleRange_When_An_Entirely_New_Task_Set_Arrives()
+    {
+        var initialTasks = new List<L.GanttTask> { new("t1", "Old", D(2026, 1, 1), D(2026, 1, 5)) };
+        var cut = _ctx.Render<L.Gantt3>(p => p.Add(c => c.Tasks, initialTasks));
+
+        // Replace with a task set entirely outside the range materialized for
+        // initialTasks (two years later) — regression (Codex review wave):
+        // VisibleRange previously stayed pinned to the OLD range, so the new
+        // task's bar rendered many thousands of columns off-canvas.
+        var laterTasks = new List<L.GanttTask> { new("t2", "New", D(2028, 1, 1), D(2028, 1, 5)) };
+        cut.Render(p => p.Add(c => c.Tasks, laterTasks));
+
+        var barStyle = cut.Find("[data-task-id='t2']").GetAttribute("style") ?? "";
+        var xMatch = Regex.Match(barStyle, @"--lumeo-gantt-bar-x:(-?[\d.]+)px");
+        Assert.True(xMatch.Success, $"bar style missing --lumeo-gantt-bar-x: {barStyle}");
+        var x = double.Parse(xMatch.Groups[1].Value, CultureInfo.InvariantCulture);
+
+        // In-canvas: Day mode pads 60 columns (38px each) before the earliest
+        // task, so a correctly recomputed range places the bar within a few
+        // thousand pixels of the origin — nowhere near the tens of thousands
+        // of pixels off it would be if the window were still centered on 2026.
+        Assert.InRange(x, 0, 10_000);
     }
 
     [Fact]

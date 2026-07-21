@@ -33,7 +33,7 @@
             <div class="@InnerClass" @attributes="slot.Attributes">
                 @if (Task.IsMilestone)
                 {
-                    <div class="lumeo-gantt-v3-milestone h-full w-full rounded-sm" style="@ColorStyle"></div>
+                    <div class="lumeo-gantt-v3-milestone rounded-sm" style="@ColorStyle"></div>
                     <span class="lumeo-gantt-v3-milestone-label absolute start-full top-1/2 ms-2 -translate-y-1/2 whitespace-nowrap text-xs font-medium text-foreground">@Task.Name</span>
                 }
                 else
@@ -107,8 +107,22 @@
 
     private string ResolvedColor => Color ?? "var(--color-primary)";
 
+    // Bug fix (Codex review wave): a BarHeight-side square rotated 45deg has a
+    // bounding-box DIAGONAL of BarHeight*sqrt(2) — sizing the square to the full
+    // wrapper box (the old "h-full w-full") therefore rendered a diamond ~41%
+    // LARGER than v2's, which draws its diamond polygon with vertices at
+    // center +/- BarHeight/2 (gantt-v2.js lines 465-470) — a bounding box of
+    // EXACTLY BarHeight, not BarHeight*sqrt(2). Scaling the square's side down
+    // to BarHeight/sqrt(2) before rotating makes the ROTATED bounding box come
+    // out to exactly BarHeight again, matching v2 (and GanttScale.BarGeometry's
+    // own milestone bounding-box math, which was already correct — only this
+    // component's un-rotated square size was wrong) and letting dependency
+    // arrows (which terminate at the bounding-box edge, not the diamond itself)
+    // actually touch the diamond instead of landing short of it.
+    private double MilestoneSidePx => BarHeight / Math.Sqrt(2);
+
     private string ColorStyle => Task.IsMilestone
-        ? FormattableString.Invariant($"background-color:{ResolvedColor};transform:rotate(45deg);")
+        ? FormattableString.Invariant($"background-color:{ResolvedColor};transform:rotate(45deg);width:{MilestoneSidePx}px;height:{MilestoneSidePx}px;")
         : FormattableString.Invariant($"background-color:{ResolvedColor};");
 
     private string ProgressStyle

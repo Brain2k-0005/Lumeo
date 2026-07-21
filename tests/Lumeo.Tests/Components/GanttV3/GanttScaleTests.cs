@@ -301,4 +301,76 @@ public class GanttScaleTests
         var result = GanttScale.PixelToDate(GanttViewMode.QuarterDay, origin, pixel);
         Assert.Equal(origin.AddHours(expectedHours), result);
     }
+
+    // ── ColumnWidth override threading (Codex review wave) ──────────────────
+    //
+    // Regression: DateToPixel/PixelToDate/PixelsPerDay/BarGeometry previously
+    // always scaled by the view mode's CONFIG column width, ignoring a
+    // caller-supplied override entirely except for BarGeometry's milestone
+    // center-of-column term. A consumer setting Gantt3.ColumnWidth got a
+    // correctly-rescaled header/grid (GanttTimeline computes those directly
+    // from EffectiveColumnWidth) but bars/arrows/today-marker stayed on the
+    // mode's default width — visibly misaligned.
+
+    [Fact]
+    public void DateToPixel_Honors_A_ColumnWidth_Override_Instead_Of_The_Mode_Default()
+    {
+        var origin = Utc(2026, 3, 1);
+        var date = Utc(2026, 3, 3); // 2 days after origin
+
+        var withDefault = GanttScale.DateToPixel(GanttViewMode.Day, origin, date);
+        var withOverride = GanttScale.DateToPixel(GanttViewMode.Day, origin, date, columnWidthOverride: 76);
+
+        Assert.Equal(2 * 38.0, withDefault, precision: 10); // Day's default columnWidth is 38
+        Assert.Equal(2 * 76.0, withOverride, precision: 10); // scales linearly with the override
+    }
+
+    [Fact]
+    public void PixelToDate_Honors_A_ColumnWidth_Override_Instead_Of_The_Mode_Default()
+    {
+        var origin = Utc(2026, 3, 1);
+
+        // 152px = 2 days at a 76px override (vs. 4 days at the 38px default).
+        var result = GanttScale.PixelToDate(GanttViewMode.Day, origin, 152.0, columnWidthOverride: 76);
+
+        Assert.Equal(origin.AddDays(2), result);
+    }
+
+    [Fact]
+    public void PixelsPerDay_Honors_A_ColumnWidth_Override_Instead_Of_The_Mode_Default()
+    {
+        Assert.Equal(76.0, GanttScale.PixelsPerDay(GanttViewMode.Day, columnWidthOverride: 76), precision: 10);
+        Assert.Equal(38.0, GanttScale.PixelsPerDay(GanttViewMode.Day), precision: 10); // unchanged default behavior
+    }
+
+    [Fact]
+    public void BarGeometry_Bar_X_And_Width_Scale_With_A_ColumnWidth_Override()
+    {
+        var origin = Utc(2026, 3, 1);
+        var task = new GanttTask("t1", "Task", Utc(2026, 3, 3), Utc(2026, 3, 5)); // 2-day span, starting 2 days after origin
+
+        var (xDefault, widthDefault) = GanttScale.BarGeometry(task, GanttViewMode.Day, origin, columnWidth: 38, barHeight: 22);
+        var (xOverride, widthOverride) = GanttScale.BarGeometry(task, GanttViewMode.Day, origin, columnWidth: 76, barHeight: 22);
+
+        Assert.Equal(2 * 38.0, xDefault, precision: 10);
+        Assert.Equal(3 * 38.0, widthDefault, precision: 10); // end+1day inclusive -> 3 columns wide
+        Assert.Equal(2 * 76.0, xOverride, precision: 10);
+        Assert.Equal(3 * 76.0, widthOverride, precision: 10);
+    }
+
+    [Fact]
+    public void BarGeometry_Milestone_Center_And_Bounding_Box_Scale_With_A_ColumnWidth_Override()
+    {
+        var origin = Utc(2026, 3, 1);
+        var milestone = new GanttTask("m1", "Kickoff", Utc(2026, 3, 3), Utc(2026, 3, 3), IsMilestone: true);
+
+        var (xDefault, widthDefault) = GanttScale.BarGeometry(milestone, GanttViewMode.Day, origin, columnWidth: 38, barHeight: 22);
+        var (xOverride, widthOverride) = GanttScale.BarGeometry(milestone, GanttViewMode.Day, origin, columnWidth: 76, barHeight: 22);
+
+        // center = dateToX(start, colW) + colW/2; X = center - barHeight/2
+        Assert.Equal((2 * 38.0) + 19.0 - 11.0, xDefault, precision: 10);
+        Assert.Equal((2 * 76.0) + 38.0 - 11.0, xOverride, precision: 10);
+        Assert.Equal(22, widthDefault); // milestone bounding box is always barHeight regardless of columnWidth
+        Assert.Equal(22, widthOverride);
+    }
 }

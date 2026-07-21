@@ -206,21 +206,32 @@ internal static class GanttScale
     /// <summary>
     /// Maps a date to its pixel X offset relative to <paramref name="origin"/> (the
     /// first date unit — v2's <c>dateUnits[0]</c>). Faithful port of v2's <c>dateToX</c>
-    /// closure (gantt-v2.js lines 209-230).
+    /// closure (gantt-v2.js lines 209-230). <paramref name="columnWidthOverride"/>
+    /// (default null) scales the result by a caller-supplied column width instead of
+    /// the view mode's own config width — v2 threads its <c>columnWidth</c> option
+    /// (<c>inst.columnWidth</c>, gantt-v2.js's <c>render()</c> <c>cfg</c> override,
+    /// line 145) through EVERY use of <c>colW</c> including <c>dateToX</c> itself; this
+    /// port originally only exposed the override on <see cref="BarGeometry"/>'s
+    /// milestone-center term, silently leaving bar/today-marker pixel math on the
+    /// mode's DEFAULT width whenever a caller overrode <c>ColumnWidth</c> (Codex
+    /// review wave finding) — bars/today visibly misaligned against a
+    /// correctly-rescaled header/grid. Callers now pass their EFFECTIVE column width
+    /// (override ?? mode default) here explicitly.
     /// </summary>
-    internal static double DateToPixel(GanttViewMode mode, DateTime origin, DateTime date)
+    internal static double DateToPixel(GanttViewMode mode, DateTime origin, DateTime date, int? columnWidthOverride = null)
     {
         var cfg = GetConfig(mode);
+        var colW = columnWidthOverride ?? cfg.ColumnWidth;
         return cfg.Unit switch
         {
             // if (cfg.unit === 'day') { const days = dayDiff(dateUnits[0], d); return (days / cfg.step) * colW; }
-            GanttScaleUnit.Day => ((date.Date - origin.Date).TotalDays / cfg.Step) * cfg.ColumnWidth,
+            GanttScaleUnit.Day => ((date.Date - origin.Date).TotalDays / cfg.Step) * colW,
             // if (cfg.unit === 'month') { months = (d.Year-o.Year)*12 + (d.Month-o.Month); dayFraction = (d.getDate()-1)/30; return (months+dayFraction)*colW; }
-            GanttScaleUnit.Month => (((date.Year - origin.Year) * 12 + (date.Month - origin.Month)) + (date.Day - 1) / 30.0) * cfg.ColumnWidth,
+            GanttScaleUnit.Month => (((date.Year - origin.Year) * 12 + (date.Month - origin.Month)) + (date.Day - 1) / 30.0) * colW,
             // if (cfg.unit === 'year') { years = d.Year-o.Year; dayFraction = (d.getMonth()*30 + d.getDate())/365; return (years+dayFraction)*colW; }
-            GanttScaleUnit.Year => ((date.Year - origin.Year) + ((date.Month - 1) * 30 + date.Day) / 365.0) * cfg.ColumnWidth,
+            GanttScaleUnit.Year => ((date.Year - origin.Year) + ((date.Month - 1) * 30 + date.Day) / 365.0) * colW,
             // if (cfg.unit === 'hour') { hours = (d - dateUnits[0]) / 3_600_000; return (hours / cfg.step) * colW; }
-            GanttScaleUnit.Hour => ((date - origin).TotalHours / cfg.Step) * cfg.ColumnWidth,
+            GanttScaleUnit.Hour => ((date - origin).TotalHours / cfg.Step) * colW,
             _ => 0,
         };
     }
@@ -236,19 +247,20 @@ internal static class GanttScale
     /// implementation. Ties matter here whenever a drag lands on an exact half-column
     /// pixel offset (e.g. Day mode, -19px = half of a 38px column).
     /// </summary>
-    internal static DateTime PixelToDate(GanttViewMode mode, DateTime origin, double pixel)
+    internal static DateTime PixelToDate(GanttViewMode mode, DateTime origin, double pixel, int? columnWidthOverride = null)
     {
         var cfg = GetConfig(mode);
+        var colW = columnWidthOverride ?? cfg.ColumnWidth;
         return cfg.Unit switch
         {
             // if (cfg.unit === 'day') { days = Math.round((x/colW)*step); return addDays(dateUnits[0], days); }
-            GanttScaleUnit.Day => origin.AddDays(RoundToInt((pixel / cfg.ColumnWidth) * cfg.Step)),
+            GanttScaleUnit.Day => origin.AddDays(RoundToInt((pixel / colW) * cfg.Step)),
             // if (cfg.unit === 'month') { months = Math.round(x/colW); return addMonths(dateUnits[0], months); }
-            GanttScaleUnit.Month => origin.AddMonths(RoundToInt(pixel / cfg.ColumnWidth)),
+            GanttScaleUnit.Month => origin.AddMonths(RoundToInt(pixel / colW)),
             // if (cfg.unit === 'year') { years = Math.round(x/colW); return new Date(dateUnits[0].getFullYear()+years, 0, 1); }
-            GanttScaleUnit.Year => new DateTime(origin.Year + RoundToInt(pixel / cfg.ColumnWidth), 1, 1, 0, 0, 0, origin.Kind),
+            GanttScaleUnit.Year => new DateTime(origin.Year + RoundToInt(pixel / colW), 1, 1, 0, 0, 0, origin.Kind),
             // if (cfg.unit === 'hour') { hours = Math.round((x/colW)*step); d.setHours(d.getHours()+hours); return d; }
-            GanttScaleUnit.Hour => origin.AddHours(RoundToInt((pixel / cfg.ColumnWidth) * cfg.Step)),
+            GanttScaleUnit.Hour => origin.AddHours(RoundToInt((pixel / colW) * cfg.Step)),
             _ => origin,
         };
     }
@@ -278,16 +290,17 @@ internal static class GanttScale
     /// v2's standalone <c>pixelsPerDay()</c> helper (gantt-v2.js lines 727-734),
     /// used by <c>commitDrag</c> to convert a mouse-move delta into whole days.
     /// </summary>
-    internal static double PixelsPerDay(GanttViewMode mode)
+    internal static double PixelsPerDay(GanttViewMode mode, int? columnWidthOverride = null)
     {
         var cfg = GetConfig(mode);
+        var colW = columnWidthOverride ?? cfg.ColumnWidth;
         return cfg.Unit switch
         {
-            GanttScaleUnit.Day => cfg.ColumnWidth / (double)cfg.Step,       // Day:1, Week:20
-            GanttScaleUnit.Hour => (cfg.ColumnWidth * 24.0) / cfg.Step,
-            GanttScaleUnit.Month => cfg.ColumnWidth / 30.0,
-            GanttScaleUnit.Year => cfg.ColumnWidth / 365.0,
-            _ => cfg.ColumnWidth,
+            GanttScaleUnit.Day => colW / (double)cfg.Step,       // Day:1, Week:20
+            GanttScaleUnit.Hour => (colW * 24.0) / cfg.Step,
+            GanttScaleUnit.Month => colW / 30.0,
+            GanttScaleUnit.Year => colW / 365.0,
+            _ => colW,
         };
     }
 
@@ -320,26 +333,27 @@ internal static class GanttScale
     /// GanttTimeline.razor's own <c>RowItems</c> (T2) so <c>GanttArrowLayer</c> (T3)
     /// computes dependency-arrow endpoints from the IDENTICAL geometry a rendered
     /// <c>GanttBar</c> occupies — one shared formula, not two copies that could
-    /// silently drift apart. <paramref name="columnWidth"/> is used only for the
-    /// milestone center-of-column offset, matching what <c>GanttTimeline</c>
-    /// already passes as its own <c>EffectiveColumnWidth</c> (the view mode's
-    /// column width, or the caller's override) — <see cref="DateToPixel"/> itself
-    /// always scales by the view mode's OWN column width regardless of that
-    /// override (a pre-existing T2 behavior, out of scope for this task to change;
-    /// sharing this helper keeps arrows and bars equally affected by it instead of
-    /// only one of them being "correct").
+    /// silently drift apart. <paramref name="columnWidth"/> is <c>GanttTimeline</c>'s
+    /// own <c>EffectiveColumnWidth</c> (the view mode's column width, or the caller's
+    /// override) and is now threaded into EVERY <see cref="DateToPixel"/> call below,
+    /// not just the milestone center-of-column offset (Codex review wave fix —
+    /// previously only the milestone offset honored a <c>ColumnWidth</c> override;
+    /// bar/arrow X positions silently stayed on the mode's DEFAULT width, visibly
+    /// misaligned against a correctly-rescaled header/grid). Sharing this helper
+    /// keeps arrows and bars equally affected by the override, never just one of
+    /// them.
     /// </summary>
     internal static (double X, double Width) BarGeometry(GanttTask task, GanttViewMode mode, DateTime origin, int columnWidth, int barHeight)
     {
         if (task.IsMilestone)
         {
-            var center = DateToPixel(mode, origin, task.Start) + columnWidth / 2.0;
+            var center = DateToPixel(mode, origin, task.Start, columnWidth) + columnWidth / 2.0;
             var half = barHeight / 2.0;
             return (center - half, barHeight);
         }
 
-        var x1 = DateToPixel(mode, origin, task.Start);
-        var x2 = DateToPixel(mode, origin, task.End.AddDays(1));
+        var x1 = DateToPixel(mode, origin, task.Start, columnWidth);
+        var x2 = DateToPixel(mode, origin, task.End.AddDays(1), columnWidth);
         return (x1, Math.Max(8, x2 - x1));
     }
 

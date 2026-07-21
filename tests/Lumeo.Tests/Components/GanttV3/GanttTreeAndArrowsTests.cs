@@ -93,6 +93,30 @@ public class GanttTreeAndArrowsTests : IAsyncLifetime
     }
 
     [Fact]
+    public void GanttTree_Toggle_Button_Has_An_Accessible_Name_Naming_The_Row()
+    {
+        // Regression (Codex review wave): the toggle was icon-only with
+        // aria-expanded but no accessible name at all — a screen reader
+        // announced it as an unnamed button. Follows the DataGrid.ExpandRow/
+        // CollapseRow localization precedent (DataGridRow.razor).
+        var expandedRows = GanttRowModel.BuildVisibleRows(new[]
+        {
+            new L.GanttTask("parent", "Parent Task", D(2026, 1, 1), D(2026, 1, 5)),
+            new L.GanttTask("child", "Child", D(2026, 1, 1), D(2026, 1, 5)) { ParentId = "parent" },
+        }, new HashSet<string>());
+        var expandedCut = _ctx.Render<L.GanttTree>(p => p.Add(c => c.Rows, expandedRows));
+        Assert.Equal("Collapse Parent Task", expandedCut.Find(".lumeo-gantt-v3-tree-toggle").GetAttribute("aria-label"));
+
+        var collapsedRows = GanttRowModel.BuildVisibleRows(new[]
+        {
+            new L.GanttTask("parent", "Parent Task", D(2026, 1, 1), D(2026, 1, 5)),
+            new L.GanttTask("child", "Child", D(2026, 1, 1), D(2026, 1, 5)) { ParentId = "parent" },
+        }, new HashSet<string> { "parent" });
+        var collapsedCut = _ctx.Render<L.GanttTree>(p => p.Add(c => c.Rows, collapsedRows));
+        Assert.Equal("Expand Parent Task", collapsedCut.Find(".lumeo-gantt-v3-tree-toggle").GetAttribute("aria-label"));
+    }
+
+    [Fact]
     public void GanttTree_Leaf_Row_Has_No_Toggle_Button()
     {
         var rows = GanttRowModel.BuildVisibleRows(new[]
@@ -184,6 +208,42 @@ public class GanttTreeAndArrowsTests : IAsyncLifetime
         Assert.Equal(expectedPathD, path.GetAttribute("d"));
 
         Assert.Single(cut.FindAll(".lumeo-gantt-v3-arrowhead"));
+    }
+
+    [Fact]
+    public void GanttArrowLayer_Endpoints_Scale_With_A_ColumnWidth_Override()
+    {
+        // Regression (Codex review wave): arrows reuse GanttScale.BarGeometry for
+        // their endpoints, so the ColumnWidth-threading fix there (bars/today)
+        // must flow through to arrows too — closing the loop on "bar x + today x
+        // + arrow endpoints all scale" from the review finding.
+        var rangeStart = D(2026, 1, 1);
+        var upstream = new L.GanttTask("t1", "Design", D(2026, 1, 2), D(2026, 1, 4));
+        var downstream = new L.GanttTask("t2", "Build", D(2026, 1, 6), D(2026, 1, 8), Dependencies: new[] { "t1" });
+        var rows = GanttRowModel.BuildVisibleRows(new[] { upstream, downstream }, new HashSet<string>());
+        var origin = GanttScale.BuildDateUnits(L.GanttViewMode.Day, rangeStart, D(2026, 1, 12))[0];
+
+        var cut = _ctx.Render<L.GanttArrowLayer>(p => p
+            .Add(c => c.Rows, rows)
+            .Add(c => c.ViewMode, L.GanttViewMode.Day)
+            .Add(c => c.Origin, origin)
+            .Add(c => c.ColumnWidth, 76) // override — Day's default is 38
+            .Add(c => c.BarHeight, GanttScale.DefaultBarHeight)
+            .Add(c => c.Width, 3000d)
+            .Add(c => c.Height, 200d));
+
+        var path = cut.Find(".lumeo-gantt-v3-arrow");
+        var (upstreamX, upstreamWidth) = GanttScale.BarGeometry(upstream, L.GanttViewMode.Day, origin, 76, GanttScale.DefaultBarHeight);
+        var (downstreamX, _) = GanttScale.BarGeometry(downstream, L.GanttViewMode.Day, origin, 76, GanttScale.DefaultBarHeight);
+        var expectedPathD = GanttArrowRouting.ComputePathD(
+            new GanttArrowRouting.BarGeometry(upstreamX, upstreamWidth, 0),
+            new GanttArrowRouting.BarGeometry(downstreamX, 0, 1),
+            GanttScale.DefaultBarHeight);
+
+        Assert.Equal(expectedPathD, path.GetAttribute("d"));
+        // Sanity check the override actually moved the endpoint vs. the default width.
+        var (defaultUpstreamX, _) = GanttScale.BarGeometry(upstream, L.GanttViewMode.Day, origin, 38, GanttScale.DefaultBarHeight);
+        Assert.NotEqual(defaultUpstreamX, upstreamX);
     }
 
     [Fact]

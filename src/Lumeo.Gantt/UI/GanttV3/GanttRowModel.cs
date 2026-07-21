@@ -258,6 +258,18 @@ internal static class GanttRowModel
                 hidingCurrentGroup = collapsed.Contains(key);
                 rows.Add(new GanttVisibleRow(GanttRowKind.GroupHeader, null, task.GroupLabel, 0, true, key, hidingCurrentGroup));
             }
+            else if (task.GroupLabel is null)
+            {
+                // Bug fix (Codex review wave): an ungrouped task is never a member of
+                // the preceding group and must never inherit its collapsed-hidden
+                // status. Before this, hidingCurrentGroup stayed true here whenever the
+                // MOST RECENT group was collapsed, silently dropping every ungrouped
+                // task that followed it. lastGroupLabel is deliberately left untouched —
+                // v2's own lastGroupLabel-driven header-repeat-suppression (a later task
+                // with the SAME group label doesn't get a second header) is a separate,
+                // pre-existing parity behavior this fix must not disturb.
+                hidingCurrentGroup = false;
+            }
 
             if (hidingCurrentGroup) continue;
 
