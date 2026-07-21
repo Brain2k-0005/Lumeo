@@ -247,35 +247,49 @@ internal static class GanttRowModel
     {
         var rows = new List<GanttVisibleRow>(tasks.Count);
         string? lastGroupLabel = null;
-        var hidingCurrentGroup = false;
 
         foreach (var task in tasks)
         {
-            if (task.GroupLabel is not null && task.GroupLabel != lastGroupLabel)
+            // Bug fix (Codex round 2, P2 #6): v2's JS gates its own group-header
+            // check on plain truthiness (`task.groupLabel && ...`, gantt-v2.js:428)
+            // — an EMPTY string is falsy in JS, so v2 treats it exactly like "no
+            // group" (never starts a header, never indents). GanttTask.GroupLabel
+            // is a C# string?, where "" and null are distinct, so a consumer that
+            // sets GroupLabel = "" (rather than leaving it null) previously still
+            // triggered a (blank-labeled) header row here — normalized to null
+            // once, right here, so every check below (including the interleaved-
+            // collapse fix's own membership lookup) treats "" and null identically.
+            var groupLabel = string.IsNullOrEmpty(task.GroupLabel) ? null : task.GroupLabel;
+
+            if (groupLabel is not null && groupLabel != lastGroupLabel)
             {
-                lastGroupLabel = task.GroupLabel;
-                var key = GroupToggleKey(task.GroupLabel);
-                hidingCurrentGroup = collapsed.Contains(key);
-                rows.Add(new GanttVisibleRow(GanttRowKind.GroupHeader, null, task.GroupLabel, 0, true, key, hidingCurrentGroup));
-            }
-            else if (task.GroupLabel is null)
-            {
-                // Bug fix (Codex review wave): an ungrouped task is never a member of
-                // the preceding group and must never inherit its collapsed-hidden
-                // status. Before this, hidingCurrentGroup stayed true here whenever the
-                // MOST RECENT group was collapsed, silently dropping every ungrouped
-                // task that followed it. lastGroupLabel is deliberately left untouched —
-                // v2's own lastGroupLabel-driven header-repeat-suppression (a later task
-                // with the SAME group label doesn't get a second header) is a separate,
-                // pre-existing parity behavior this fix must not disturb.
-                hidingCurrentGroup = false;
+                lastGroupLabel = groupLabel;
+                var key = GroupToggleKey(groupLabel);
+                rows.Add(new GanttVisibleRow(GanttRowKind.GroupHeader, null, groupLabel, 0, true, key, collapsed.Contains(key)));
             }
 
-            if (hidingCurrentGroup) continue;
+            // Bug fix (Codex round 2, P2 #5): hiding used to be driven by a
+            // running "hidingCurrentGroup" flag set only when a NEW header row
+            // was rendered and reset to false by any ungrouped task in between
+            // (Codex review wave's earlier fix for THAT leak) — but that flag
+            // never accounted for an interleaved run like [Design(collapsed),
+            // Ungrouped, Design] with no GroupBy sort clustering same-labeled
+            // tasks together (a consumer can set GanttTask.GroupLabel directly
+            // without ever supplying GroupBy — v2 has no collapse feature at all,
+            // so this exact leak has no v2 equivalent to have caught it there):
+            // the ungrouped row's reset left hidingCurrentGroup false for the
+            // SECOND "Design" task too, even though its own group IS collapsed,
+            // silently un-hiding it. Membership-based hiding — "is THIS task's
+            // own group currently collapsed", independent of whatever header was
+            // most recently rendered — has no such gap; the header-render check
+            // above is now purely about "when does a NEW header row appear",
+            // decoupled from "is this task visible".
+            var isHidden = groupLabel is not null && collapsed.Contains(GroupToggleKey(groupLabel));
+            if (isHidden) continue;
 
             // A task under a group header is indented one level; an ungrouped
             // task (no GroupLabel at all) sits at depth 0 like a hierarchy root.
-            var depth = task.GroupLabel is not null ? 1 : 0;
+            var depth = groupLabel is not null ? 1 : 0;
             rows.Add(new GanttVisibleRow(GanttRowKind.Task, task, task.Name, depth, false, null, false));
         }
 

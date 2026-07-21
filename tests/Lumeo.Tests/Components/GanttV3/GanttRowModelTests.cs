@@ -97,6 +97,56 @@ public class GanttRowModelTests
     }
 
     [Fact]
+    public void Collapsing_A_Group_Hides_A_Later_Same_Group_Member_Interleaved_By_An_Ungrouped_Row()
+    {
+        // Regression (Codex round 2, P2 #5): a consumer can set GanttTask.GroupLabel
+        // directly (no GroupBy delegate, so no sort clusters same-labeled tasks
+        // together) in an order where a later "Design" member is separated from
+        // the first by an UNGROUPED row. Before the fix, "hidingCurrentGroup" was
+        // a running flag reset to false by ANY ungrouped row in between (the
+        // earlier Codex fix for "Collapsing_A_Group_Does_Not_Hide_A_Later_
+        // Ungrouped_Task" above) — which also incorrectly un-hid the SECOND
+        // "Design" task, since nothing re-armed the flag for it (no new header
+        // renders for an already-seen label). Membership-based hiding checks
+        // each task's OWN group against the collapsed set instead, independent
+        // of anything in between.
+        var tasks = new[]
+        {
+            Task("d1", groupLabel: "Design"),
+            Task("u1"), // ungrouped — sits between the two Design members
+            Task("d2", groupLabel: "Design"),
+        };
+        var collapsed = new HashSet<string> { GanttRowModel.GroupToggleKey("Design") };
+
+        var rows = GanttRowModel.BuildVisibleRows(tasks, collapsed);
+
+        Assert.DoesNotContain(rows, r => r.Task?.Id is "d1" or "d2"); // BOTH members hidden
+        Assert.Contains(rows, r => r.Task?.Id == "u1"); // ungrouped row unaffected
+        // Exactly one header row for "Design" — the second run doesn't get a
+        // duplicate header (v2-parity header-repeat-suppression, unchanged).
+        Assert.Single(rows, r => r.Kind == GanttRowKind.GroupHeader && r.Label == "Design");
+    }
+
+    [Fact]
+    public void Empty_String_GroupLabel_Is_Treated_As_Ungrouped_Like_V2s_JS_Truthiness_Check()
+    {
+        // Regression (Codex round 2, P2 #6): v2's JS gates its header check on
+        // `task.groupLabel && ...` (gantt-v2.js:428) — an empty string is falsy
+        // in JS, so v2 never starts a header for it and never indents the task.
+        // GanttTask.GroupLabel is a C# string?, where "" and null are distinct
+        // values, so a consumer that sets GroupLabel = "" (rather than leaving
+        // it null) previously still got a blank-labeled header row and depth-1
+        // indent here.
+        var tasks = new[] { Task("t1", groupLabel: "") };
+
+        var rows = GanttRowModel.BuildVisibleRows(tasks, None);
+
+        var row = Assert.Single(rows);
+        Assert.Equal(GanttRowKind.Task, row.Kind); // no synthetic header row at all
+        Assert.Equal(0, row.Depth); // root depth, exactly like a null GroupLabel
+    }
+
+    [Fact]
     public void Group_Header_Row_Always_Reports_HasChildren_And_A_ToggleKey()
     {
         var tasks = new[] { Task("t1", groupLabel: "Design") };
