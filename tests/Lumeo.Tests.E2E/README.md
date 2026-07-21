@@ -73,7 +73,7 @@ remarks for why that property can't be overridden. They resolve their own base
 URL from `LUMEO_GANTT_E2E_BASE_URL` (default `http://localhost:5299`).
 
 Running locally:
-```
+```sh
 dotnet run --project tests/Lumeo.Tests.ServerHost/Lumeo.Tests.ServerHost.csproj --urls http://localhost:5299
 # in another terminal:
 dotnet test tests/Lumeo.Tests.E2E/Lumeo.Tests.E2E.csproj --filter "FullyQualifiedName~Gantt"

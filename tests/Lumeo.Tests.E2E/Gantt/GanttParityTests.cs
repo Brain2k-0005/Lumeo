@@ -389,19 +389,28 @@ public class GanttParityTests : GanttParityTestBase
         throw new InvalidOperationException($"No v2 arrow found from {expectedStart} to {expectedEnd}");
     }
 
-    private async Task<int> WaitAndCountV2Bars(int expectedCountAtLeast = 1)
+    // Bug fix (CodeRabbit review — test smell): expectedCountAtLeast was
+    // accepted but never actually used to wait for anything beyond the FIRST
+    // element attaching — every call site happens to pass 1 (or the default),
+    // which made the gap invisible, but the contract the parameter implies
+    // ("wait until at least N bars exist") was dishonest. Polls CountAsync()
+    // up to Playwright's default timeout (bounded, no unbounded retry) instead
+    // of returning as soon as element [0] shows up.
+    private async Task<int> WaitAndCountAtLeast(ILocator bars, int expectedCountAtLeast)
     {
-        var bars = Page.Locator("[data-testid='gantt-v2-root'] g.lumeo-gantt-bar-wrapper");
         await bars.First.WaitForAsync(new() { State = WaitForSelectorState.Attached, Timeout = 15000 });
-        return await bars.CountAsync();
+        var deadline = DateTime.UtcNow.AddMilliseconds(15000);
+        int count;
+        while ((count = await bars.CountAsync()) < expectedCountAtLeast && DateTime.UtcNow < deadline)
+            await Task.Delay(50);
+        return count;
     }
 
-    private async Task<int> WaitAndCountV3Bars(int expectedCountAtLeast = 1)
-    {
-        var bars = Page.Locator("[data-testid='gantt-v3-root'] [data-task-id]");
-        await bars.First.WaitForAsync(new() { State = WaitForSelectorState.Attached, Timeout = 15000 });
-        return await bars.CountAsync();
-    }
+    private Task<int> WaitAndCountV2Bars(int expectedCountAtLeast = 1) =>
+        WaitAndCountAtLeast(Page.Locator("[data-testid='gantt-v2-root'] g.lumeo-gantt-bar-wrapper"), expectedCountAtLeast);
+
+    private Task<int> WaitAndCountV3Bars(int expectedCountAtLeast = 1) =>
+        WaitAndCountAtLeast(Page.Locator("[data-testid='gantt-v3-root'] [data-task-id]"), expectedCountAtLeast);
 
     private async Task<(double X, double Width)> ReadV2BarGeometry(string taskId)
     {

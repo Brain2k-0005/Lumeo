@@ -105,7 +105,34 @@ internal sealed class GanttState
     {
         if (a.Count != b.Count) return false;
         for (var i = 0; i < a.Count; i++)
-            if (a[i] != b[i]) return false;
+        {
+            // Bug fix (CodeRabbit review): GanttTask is a record, so plain `!=`
+            // uses its compiler-generated Equals — value-based for every
+            // property EXCEPT Dependencies, which is string[]? (arrays compare
+            // by REFERENCE, not content, even inside a record's own Equals).
+            // Two structurally-identical but freshly-allocated Dependencies
+            // arrays (a common shape for a caller re-materializing its Tasks
+            // list every render) would make otherwise-identical tasks compare
+            // unequal here, spuriously raising Changed on every such render;
+            // conversely, an array the caller mutates IN PLACE (same
+            // reference, different contents) would compare equal and silently
+            // skip a real update. Compare Dependencies by sequence content
+            // explicitly, then diff everything ELSE via a `with`-neutralized
+            // copy — deliberately NOT a hand-listed field comparison, so this
+            // stays automatically correct if GanttTask (shipped API; not
+            // touched here) ever gains another property.
+            if (!DependenciesEqual(a[i].Dependencies, b[i].Dependencies)) return false;
+            if (a[i] with { Dependencies = null } != b[i] with { Dependencies = null }) return false;
+        }
+        return true;
+    }
+
+    private static bool DependenciesEqual(string[]? a, string[]? b)
+    {
+        if (a is null || b is null) return a is null && b is null;
+        if (a.Length != b.Length) return false;
+        for (var i = 0; i < a.Length; i++)
+            if (!string.Equals(a[i], b[i], StringComparison.Ordinal)) return false;
         return true;
     }
 }

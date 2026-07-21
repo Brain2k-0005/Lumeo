@@ -142,7 +142,16 @@
     {
         get
         {
-            var top = (RowIndex * GanttScale.RowHeight) + (GanttScale.RowHeight - BarHeight) / 2.0;
+            // Bug fix (CodeRabbit review): this used to inline the exact same
+            // formula GanttScale.BarTop already encapsulates — precisely the
+            // divergence hoisting BarTop out was meant to prevent (see
+            // GanttScale.BarTop's own remarks: "so GanttArrowRouting can
+            // recover the exact same bar-center Y a rendered GanttBar uses,
+            // without a second, potentially-diverging copy of the formula" —
+            // GanttArrowRouting already called it; this component just hadn't
+            // been updated to). Calling it here instead removes the second
+            // copy.
+            var top = GanttScale.BarTop(RowIndex, BarHeight);
             return FormattableString.Invariant(
                 $"--lumeo-gantt-bar-x:{X}px;--lumeo-gantt-bar-w:{Width}px;--lumeo-gantt-bar-row:{RowIndex};left:var(--lumeo-gantt-bar-x);top:{top}px;width:var(--lumeo-gantt-bar-w);height:{BarHeight}px;");
         }
