@@ -216,13 +216,23 @@ public class Gantt3RenderTests : IAsyncLifetime
     public void GanttTimeline_Today_Marker_Present_When_TodayHighlight_And_Today_In_Range()
     {
         var today = DateTime.Today;
+        var rangeStart = today.AddDays(-3);
+        var rangeEnd = today.AddDays(3);
         var cut = _ctx.Render<L.GanttTimeline>(p => p
             .Add(c => c.ViewMode, L.GanttViewMode.Day)
-            .Add(c => c.RangeStart, today.AddDays(-3))
-            .Add(c => c.RangeEnd, today.AddDays(3))
+            .Add(c => c.RangeStart, rangeStart)
+            .Add(c => c.RangeEnd, rangeEnd)
             .Add(c => c.TodayHighlight, true));
 
         Assert.Contains("lumeo-gantt-v3-today-line", cut.Markup);
+
+        // Rigor parity with the bar/milestone tests: assert the marker's actual
+        // left px, not just its presence — a wrong Origin/off-by-one in TodayX
+        // would otherwise go uncaught.
+        var origin = GanttScale.BuildDateUnits(L.GanttViewMode.Day, rangeStart, rangeEnd)[0];
+        var expectedTodayX = GanttScale.DateToPixel(L.GanttViewMode.Day, origin, today);
+        var marker = cut.Find(".lumeo-gantt-v3-today-line");
+        Assert.Contains($"left:{expectedTodayX.ToString(CultureInfo.InvariantCulture)}px", marker.GetAttribute("style"));
     }
 
     [Fact]
