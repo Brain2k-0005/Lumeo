@@ -113,4 +113,24 @@ internal static class GanttParityFixtures
             new("today-2", "Up Next", today.AddDays(5), today.AddDays(15), Dependencies: new[] { "today-1" }),
         };
     }
+
+    /// <summary>
+    /// v3-only: 60 flat (no GroupLabel/ParentId) tasks, deliberately tall enough
+    /// to overflow the E2E host page's 900px pane (60 * GanttScale.RowHeight
+    /// (36) = 2160px of row content alone, before the header) — Codex round 2,
+    /// P1 #3's mandatory tall-fixture regression spec for the sticky-header
+    /// restructure (a fixture that never actually needs to scroll vertically
+    /// would trivially "pass" a stays-visible assertion without proving
+    /// anything). Fixed dates (March 2026), never <see cref="DateTime.Now"/>/
+    /// <see cref="DateTime.Today"/> — same determinism rule as
+    /// <see cref="SharedTasks"/>, this fixture has no today-marker concern at all.
+    /// </summary>
+    internal static List<GanttTask> TallFixture()
+    {
+        var start = new DateTime(2026, 3, 1);
+        var tasks = new List<GanttTask>(60);
+        for (var i = 0; i < 60; i++)
+            tasks.Add(new GanttTask($"tall-{i}", $"Task {i}", start.AddDays(i), start.AddDays(i + 3)));
+        return tasks;
+    }
 }

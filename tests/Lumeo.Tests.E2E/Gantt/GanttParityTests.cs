@@ -201,14 +201,19 @@ public class GanttParityTests : GanttParityTestBase
         var toRow = RowIndex[toId];
         var (fromX, fromW) = ExpectedGeometry(fromId);
         var (toX, toW) = ExpectedGeometry(toId);
-        var expectedPoints = GanttDayModeMath.ArrowPath((fromX, fromW, fromRow), (toX, toW, toRow));
+        // v2 and v3 now have DIFFERENT coordinate origins for this overlay
+        // (Codex round 2, P1 #3's sticky-header restructure removed v3's
+        // header-height offset — see GanttDayModeMath.ArrowPath's own remarks)
+        // — two separate ground-truth expectations, one per renderer.
+        var expectedPointsV2 = GanttDayModeMath.ArrowPath((fromX, fromW, fromRow), (toX, toW, toRow), includeHeaderHeight: true);
+        var expectedPointsV3 = GanttDayModeMath.ArrowPath((fromX, fromW, fromRow), (toX, toW, toRow), includeHeaderHeight: false);
 
         await GotoHost("/e2e/gantt-v2");
         await WaitAndCountV2Bars();
         // v2 has no data-arrow-from/to attributes, so the matching arrow is
         // located by its geometry (both endpoints — see FindMatchingV2Arrow's
         // remarks for why start alone can be ambiguous).
-        var v2Points = await FindMatchingV2Arrow(expectedPoints[0], expectedPoints[^1]);
+        var v2Points = await FindMatchingV2Arrow(expectedPointsV2[0], expectedPointsV2[^1]);
 
         await GotoHost("/e2e/gantt-v3");
         await WaitAndCountV3Bars();
@@ -216,12 +221,12 @@ public class GanttParityTests : GanttParityTestBase
         Assert.NotNull(v3D);
         var v3Points = GanttDayModeMath.ParsePathD(v3D!);
 
-        for (var i = 0; i < expectedPoints.Length; i++)
+        for (var i = 0; i < expectedPointsV2.Length; i++)
         {
-            AssertClose(expectedPoints[i].X, v2Points[i].X, PxTolerance, $"{fromId}->{toId} point[{i}].X v2");
-            AssertClose(expectedPoints[i].Y, v2Points[i].Y, PxTolerance, $"{fromId}->{toId} point[{i}].Y v2");
-            AssertClose(expectedPoints[i].X, v3Points[i].X, PxTolerance, $"{fromId}->{toId} point[{i}].X v3");
-            AssertClose(expectedPoints[i].Y, v3Points[i].Y, PxTolerance, $"{fromId}->{toId} point[{i}].Y v3");
+            AssertClose(expectedPointsV2[i].X, v2Points[i].X, PxTolerance, $"{fromId}->{toId} point[{i}].X v2");
+            AssertClose(expectedPointsV2[i].Y, v2Points[i].Y, PxTolerance, $"{fromId}->{toId} point[{i}].Y v2");
+            AssertClose(expectedPointsV3[i].X, v3Points[i].X, PxTolerance, $"{fromId}->{toId} point[{i}].X v3");
+            AssertClose(expectedPointsV3[i].Y, v3Points[i].Y, PxTolerance, $"{fromId}->{toId} point[{i}].Y v3");
         }
     }
 
@@ -270,7 +275,10 @@ public class GanttParityTests : GanttParityTestBase
 
         await GotoHost("/e2e/gantt-v3");
         await WaitAndCountV3Bars();
-        var v3LowerCellLocator = Page.Locator("[data-testid='gantt-v3-root'] .lumeo-gantt-v3-header > div:nth-child(2) > div");
+        // Codex round 2, P1 #3: .lumeo-gantt-v3-header now wraps ONE extra
+        // level (the scroll-synced _headerInnerRef div) before the upper/lower
+        // row divs — see GanttTimeline.razor's own remarks for why.
+        var v3LowerCellLocator = Page.Locator("[data-testid='gantt-v3-root'] .lumeo-gantt-v3-header > div > div:nth-child(2) > div");
         var v3InitialCount = await v3LowerCellLocator.CountAsync();
         await Page.Locator("[data-testid='gantt-v3-root'] button", new() { HasTextString = "Week" }).ClickAsync();
         await Assertions.Expect(v3LowerCellLocator).Not.ToHaveCountAsync(v3InitialCount, new() { Timeout = 10000 });
@@ -465,7 +473,9 @@ public class GanttParityTests : GanttParityTestBase
 
     private async Task<List<string>> ReadV3UpperRunTexts()
     {
-        var locator = Page.Locator("[data-testid='gantt-v3-root'] .lumeo-gantt-v3-header > div:nth-child(1) > div");
+        // Codex round 2, P1 #3: one extra nesting level — see
+        // Toolbar_view_mode_switch_recomputes_header_identically's own note.
+        var locator = Page.Locator("[data-testid='gantt-v3-root'] .lumeo-gantt-v3-header > div > div:nth-child(1) > div");
         var count = await locator.CountAsync();
         var result = new List<string>(count);
         for (var i = 0; i < count; i++) result.Add((await locator.Nth(i).TextContentAsync()) ?? "");
@@ -474,7 +484,7 @@ public class GanttParityTests : GanttParityTestBase
 
     private async Task<List<string>> ReadV3LowerLabelTexts()
     {
-        var locator = Page.Locator("[data-testid='gantt-v3-root'] .lumeo-gantt-v3-header > div:nth-child(2) > div");
+        var locator = Page.Locator("[data-testid='gantt-v3-root'] .lumeo-gantt-v3-header > div > div:nth-child(2) > div");
         var count = await locator.CountAsync();
         var result = new List<string>(count);
         for (var i = 0; i < count; i++) result.Add((await locator.Nth(i).TextContentAsync()) ?? "");

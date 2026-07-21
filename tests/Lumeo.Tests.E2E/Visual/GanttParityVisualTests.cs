@@ -67,6 +67,23 @@ public class GanttParityVisualTests : GanttParityTestBase
         // the pre-scroll position before this delay was added).
         await Page.WaitForTimeoutAsync(250);
 
+        if (route == "v3")
+        {
+            // Codex round 2, P2 #8 ("visual snapshot drift"): pin the scroll
+            // deterministically via the SAME latch GanttV3NavTests already uses
+            // (gantt-v3.js's centerOn stamps this attribute atomically with the
+            // scroll it performs) instead of relying solely on the blind delay
+            // above, which only ever bounded the RACE, not WHERE the scroll
+            // actually lands — that depends on ShouldAttemptTodayScroll's own
+            // v2-parity gate (GanttTimeline.razor's remarks) reacting correctly
+            // to wherever DateTime.Today/the browser's resolved date happens to
+            // fall relative to SharedTasks' fixed 2026 window on the day this
+            // runs, which the scroll-gate fix (not this wait) is what actually
+            // stabilizes; this wait only removes the SEPARATE async-landing race.
+            var scrollHost = Page.Locator($"[data-testid='{rootTestId}'] div[class*='overflow-x-auto']").First;
+            await Assertions.Expect(scrollHost).ToHaveAttributeAsync("data-gantt-v3-initial-scroll", "done", new() { Timeout = 5000 });
+        }
+
         var screenshotBytes = await Page.ScreenshotAsync(new PageScreenshotOptions
         {
             Clip = new Clip { X = 0, Y = 0, Width = ViewportWidth, Height = ViewportHeight },

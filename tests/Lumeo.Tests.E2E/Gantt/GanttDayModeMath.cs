@@ -59,12 +59,23 @@ internal static class GanttDayModeMath
     /// explicitly rather than folded into <see cref="BarTop"/> itself (which
     /// intentionally mirrors v3's GanttScale.BarTop, excluding it — see that
     /// method's own doc comment).
+    ///
+    /// <paramref name="includeHeaderHeight"/> (Codex round 2, P1 #3): v2's own
+    /// geometry ALWAYS includes it (pass <c>true</c>, the default — preserves
+    /// every existing v2 caller unchanged); v3's <c>GanttArrowRouting.SourceEdge</c>/
+    /// <c>TargetEdge</c> DROPPED the header offset as part of the sticky-header
+    /// restructure (the header no longer lives inside the same outer canvas div
+    /// GanttArrowLayer's SVG is positioned against — see that type's own
+    /// remarks), so a v3 ground-truth comparison must pass <c>false</c> here or
+    /// it would compare v3's (correctly, now header-less) rendered arrows
+    /// against a still-includes-the-header expectation.
     /// </summary>
-    internal static (double X, double Y)[] ArrowPath((double X, double Width, int RowIndex) source, (double X, double Width, int RowIndex) target, int barHeight = DefaultBarHeightPx)
+    internal static (double X, double Y)[] ArrowPath((double X, double Width, int RowIndex) source, (double X, double Width, int RowIndex) target, int barHeight = DefaultBarHeightPx, bool includeHeaderHeight = true)
     {
-        var sy = HeaderHeightPx + BarTop(source.RowIndex, barHeight) + barHeight / 2.0;
+        var headerOffset = includeHeaderHeight ? HeaderHeightPx : 0;
+        var sy = headerOffset + BarTop(source.RowIndex, barHeight) + barHeight / 2.0;
         var sx = source.X + source.Width;
-        var ty = HeaderHeightPx + BarTop(target.RowIndex, barHeight) + barHeight / 2.0;
+        var ty = headerOffset + BarTop(target.RowIndex, barHeight) + barHeight / 2.0;
         var tx = target.X;
         var midX = sx + 12;
         return new[] { (sx, sy), (midX, sy), (midX, ty), (tx - 4, ty) };
