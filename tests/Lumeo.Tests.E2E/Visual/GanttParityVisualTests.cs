@@ -80,7 +80,14 @@ public class GanttParityVisualTests : GanttParityTestBase
             // fall relative to SharedTasks' fixed 2026 window on the day this
             // runs, which the scroll-gate fix (not this wait) is what actually
             // stabilizes; this wait only removes the SEPARATE async-landing race.
-            var scrollHost = Page.Locator($"[data-testid='{rootTestId}'] div[class*='overflow-x-auto']").First;
+            // Codex round 3, P2 #1: the scroll-to-today latch attribute now
+            // lands on Gantt3's shared OUTER pane (the "overflow:auto" wrapper
+            // around the tree+timeline flex row), not on GanttTimeline's own
+            // row-canvas div — that div no longer scrolls (or carries
+            // overflow-x-auto) at all once Gantt3 supplies ScrollHost, since
+            // ITS scroll interop calls now all target the outer pane directly
+            // (see GanttTimeline.EffectiveScrollHost's remarks).
+            var scrollHost = Page.Locator($"[data-testid='{rootTestId}'] div[style*='overflow']").First;
             await Assertions.Expect(scrollHost).ToHaveAttributeAsync("data-gantt-v3-initial-scroll", "done", new() { Timeout = 5000 });
         }
 

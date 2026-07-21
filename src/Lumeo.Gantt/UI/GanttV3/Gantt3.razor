@@ -29,10 +29,17 @@
     @* Phase 2's "one shared scroll container wrapping both panes" (T3 design
        spec, scroll sync): tree pane + timeline are laid out side by side as
        plain flex siblings INSIDE this single overflow:auto div, so vertical
-       scrolling moves both together with no JS scroll-sync needed yet — the
-       timeline keeps its own nested horizontal scroll (GanttTimeline.RootClass)
-       for its much-wider canvas, which the tree pane never needs. *@
-    <div class="rounded-md border border-border/60" style="max-height:@Height;overflow:auto;">
+       scrolling moves both together with no JS scroll-sync needed yet.
+       Codex round 3, P2 #1: this div is now ALSO the timeline's horizontal
+       scroll owner (see ScrollHost below) — the timeline no longer nests its
+       own overflow-x-auto wrapper, so Blazor's Virtualize correctly resolves
+       ITS scroll ancestor to be THIS element (real, height-capped) instead of
+       that now-removed inner wrapper (content-sized, so every row measured as
+       "visible" — see GanttTimeline.ScrollHost's own remarks for the full
+       root-cause). GanttTree becomes sticky-left (see its RootClass) to stay
+       visually pinned to this pane's left edge as it now scrolls horizontally
+       too. *@
+    <div class="rounded-md border border-border/60" style="max-height:@Height;overflow:auto;" @ref="_scrollPaneRef">
         @* Rows is a computed property (see below) — read it into a local ONCE
            per render and hand the same value to both bindings below, rather
            than letting each binding re-invoke the property (which would run
@@ -55,6 +62,7 @@
                            BarTemplate="@BarTemplate"
                            ScrollToTodayRequestId="@_scrollToTodayRequestId"
                            Today="@EffectiveToday"
+                           ScrollHost="@_scrollPaneRef"
                            Class="min-w-0 flex-1" />
         </div>
     </div>
@@ -116,6 +124,12 @@
     // without either owning the other's lifetime (see GanttState's remarks).
     private readonly GanttState _state = new();
 
+    // Codex round 3, P2 #1 — the shared outer pane's own element reference,
+    // handed down to GanttTimeline as ScrollHost so it (and its Virtualize)
+    // resolve their scroll ancestor to THIS real, height-capped element
+    // instead of a now-removed inner wrapper. See the markup's own remarks.
+    private ElementReference _scrollPaneRef;
+
     private string RootClass => Cx.Merge("flex flex-col gap-3", Class);
 
     // The single, shared row list GanttTree/GanttTimeline/GanttArrowLayer all
@@ -163,6 +177,27 @@
     // changes mid-session), and re-querying every render would be wasteful.
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
+        if (firstRender)
+        {
+            // Bug fix (Codex round 3, P2 #1): _scrollPaneRef (this component's
+            // own outer-pane @ref, handed to GanttTimeline as ScrollHost) is
+            // already valid by THIS point (a component's own ref to its own
+            // element is populated before ITS OnAfterRenderAsync runs) — but
+            // GanttTimeline's ScrollHost PARAMETER during the render that
+            // produced it was fixed at whatever _scrollPaneRef held when this
+            // component's OWN render tree was BUILT, which precedes ref
+            // capture for that SAME pass (confirmed empirically: GanttTimeline
+            // observes an empty/uncaptured ElementReference on its own
+            // firstRender even though _scrollPaneRef is already valid here).
+            // A parent needing its own newly-captured ref available to a
+            // child on mount is a known Blazor pattern requiring one extra
+            // forced render — GanttTimeline treats the ref transitioning from
+            // "not yet captured" to "captured" as a scroll-reattempt trigger
+            // (see its own OnAfterRenderAsync remarks), so the retry isn't
+            // silently dropped once this second render delivers the real value.
+            StateHasChanged();
+        }
+
         if (!firstRender) return;
 
         var iso = await Interop.GanttV3GetLocalDateAsync();
@@ -229,7 +264,22 @@
             // user's current zoom level (possibly set via GanttNav's toolbar,
             // uncontrolled, and therefore not reflected by a possibly-stale
             // ViewMode PARAMETER) must survive a tasks-only change.
+            var wasEmpty = previousTasks.Count == 0;
             _state.SetVisibleRange(ComputeInitialRange(_state.ViewMode, _state.Tasks, EffectiveToday));
+
+            // Bug fix (Codex round 3, P2 #2): recomputing VisibleRange above
+            // repositions where things fall in the timeline's OWN pixel space,
+            // but — same reasoning as GoToTodayAsync's own remarks below —
+            // never touches the DOM's actual scrollLeft. An empty first render
+            // never scrolled anywhere meaningful (there was nothing to center
+            // on), so when tasks arrive later (the common async-load shape:
+            // render empty, then populate once a fetch completes), nothing
+            // previously told GanttTimeline to re-attempt its initial-viewport
+            // scroll — it just stayed wherever it happened to be, typically 0.
+            // Bumping the SAME change-token GoToTodayAsync uses re-triggers
+            // that attempt, exactly as if the now-populated task set had been
+            // there from the start.
+            if (wasEmpty) _scrollToTodayRequestId++;
         }
     }
 
@@ -339,7 +389,18 @@
         var width = range.End - range.Start;
         var today = EffectiveToday; // Codex round 2, P2 #9 — browser-local once resolved
         var half = new TimeSpan(width.Ticks / 2);
-        _state.SetVisibleRange(today - half, today + half);
+        // Bug fix (Codex round 3, P2 #6): a raw TimeSpan-based recenter (today
+        // -/+ half the window) lands the new range START mid-month/mid-year in
+        // Month/Year view modes, violating the aligned-origin invariant every
+        // other range-construction path (ComputeInitialRange, and GanttScale.
+        // DateToPixel's own assumption) relies on — every subsequent bar/grid
+        // pixel position would then be off by a fraction of a column. Snap the
+        // start to the mode's own unit boundary (reusing GanttScale's helper,
+        // not a second copy of the same snapping logic) and re-derive the end
+        // from the ORIGINAL width so the visible window's duration doesn't
+        // drift with each Today click.
+        var start = GanttScale.AlignToUnitStart(_state.ViewMode, today - half);
+        _state.SetVisibleRange(start, start + width);
         // P1 fix (Codex review wave): bump the change-token GanttTimeline
         // watches so it re-centers its DOM scrollLeft on today too — recomputing
         // VisibleRange alone repositions where today falls in the timeline's

@@ -72,7 +72,19 @@
     /// <summary>Captures unmatched attributes and applies them to the root pane element.</summary>
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
-    private string RootClass => Cx.Merge("relative w-56 shrink-0 border-e border-border/60 bg-card", Class);
+    // Codex round 3, P2 #1: sticky + left-0 (was "relative") — Gantt3's outer
+    // pane is now the timeline's horizontal scroll owner too (see
+    // GanttTimeline.ScrollHost's remarks), so without this, GanttTree would
+    // scroll away to the left along with the timeline instead of staying
+    // pinned as a fixed left-hand pane. `sticky` is itself a positioned value
+    // (same as `relative` was), so descendants needing a positioning context
+    // are unaffected, and `position:sticky` doesn't itself establish a scroll
+    // container (only a non-'visible' overflow does), so this has no effect
+    // on this component's OWN Virtualize resolving its scroll ancestor
+    // correctly (still Gantt3's outer pane, unaffected). z-20 keeps it opaque
+    // above bars/grid-lines that scroll underneath it; bg-card (already
+    // present) provides the opaque backdrop that needs.
+    private string RootClass => Cx.Merge("sticky left-0 z-20 w-56 shrink-0 border-e border-border/60 bg-card", Class);
 
     // Virtualize<TItem>.Items requires ICollection<TItem> (IReadOnlyList doesn't
     // implement it) — same pattern GanttTimeline.RowItems already uses for its

@@ -107,7 +107,10 @@ public class GanttV3NavTests : GanttParityTestBase
     public async Task Today_button_scrolls_the_today_marker_into_view()
     {
         await GotoHost("/e2e/gantt-v3?fixture=today");
-        var host = Page.Locator("[data-testid='gantt-v3-root'] div[class*='overflow-x-auto']").First;
+        // Codex round 3, P2 #1: Gantt3's shared outer pane is now the scroll
+        // owner (and latch target) — see GanttParityVisualTests' matching
+        // update for the full reasoning.
+        var host = Page.Locator("[data-testid='gantt-v3-root'] div[style*='overflow']").First;
         await host.WaitForAsync(new() { Timeout = 15000 });
 
         var todayLine = Page.Locator("[data-testid='gantt-v3-root'] .lumeo-gantt-v3-today-line");

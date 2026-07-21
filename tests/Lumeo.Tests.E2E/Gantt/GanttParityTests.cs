@@ -353,7 +353,10 @@ public class GanttParityTests : GanttParityTestBase
         // the scroll's own completion latch first just gives a clearer
         // failure message ("the scroll itself never landed" vs. "bar not
         // where expected") if the interop is ever slow enough to matter.
-        var v3Host = Page.Locator("[data-testid='gantt-v3-root'] div[class*='overflow-x-auto']").First;
+        // Codex round 3, P2 #1: the latch now lands on Gantt3's shared outer
+        // pane, not GanttTimeline's own row-canvas div — see
+        // GanttParityVisualTests' matching update for the full reasoning.
+        var v3Host = Page.Locator("[data-testid='gantt-v3-root'] div[style*='overflow']").First;
         await Assertions.Expect(v3Host).ToHaveAttributeAsync("data-gantt-v3-initial-scroll", "done", new() { Timeout = 15000 });
         var v3Bar = Page.Locator("[data-testid='gantt-v3-root'] [data-task-id]").First;
         await Assertions.Expect(v3Bar).ToBeInViewportAsync(new() { Timeout = 15000 });

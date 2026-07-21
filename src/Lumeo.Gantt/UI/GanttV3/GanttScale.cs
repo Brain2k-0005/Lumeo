@@ -284,6 +284,37 @@ internal static class GanttScale
     private static int RoundToInt(double value) => (int)Math.Floor(value + 0.5);
 
     /// <summary>
+    /// Snaps <paramref name="date"/> to the start of its scale unit for
+    /// <paramref name="mode"/> — day-1 of the month for <see cref="GanttScaleUnit.Month"/>,
+    /// Jan-1 for <see cref="GanttScaleUnit.Year"/>, unchanged for
+    /// <see cref="GanttScaleUnit.Day"/>/<see cref="GanttScaleUnit.Hour"/> (every date is
+    /// already a valid unit start at day/hour granularity).
+    /// </summary>
+    /// <remarks>
+    /// Bug fix (Codex round 3, P2 #6): <see cref="DateToPixel"/>'s Month/Year branches
+    /// (above) compute a fractional-unit offset from its own <c>origin</c> parameter,
+    /// assuming origin itself sits exactly on a unit boundary — an invariant <c>Gantt3.ComputeInitialRange</c>
+    /// establishes explicitly (its own Month/Year branches snap to day-1/Jan-1 before ever
+    /// building a <see cref="GanttDateRange"/>), but a naive <c>TimeSpan</c>-based recenter
+    /// (e.g. "today ± half the window") lands the new origin mid-month or mid-year,
+    /// silently breaking every subsequent pixel computation in that mode. This is the
+    /// SAME snapping logic <c>ComputeInitialRange</c> already applies to its own
+    /// min/max dates, hoisted here so a caller recentering an EXISTING range (rather
+    /// than computing a fresh one from task min/max) can reuse it instead of
+    /// re-deriving a second, potentially-diverging copy.
+    /// </remarks>
+    internal static DateTime AlignToUnitStart(GanttViewMode mode, DateTime date)
+    {
+        var cfg = GetConfig(mode);
+        return cfg.Unit switch
+        {
+            GanttScaleUnit.Month => new DateTime(date.Year, date.Month, 1, 0, 0, 0, date.Kind),
+            GanttScaleUnit.Year => new DateTime(date.Year, 1, 1, 0, 0, 0, date.Kind),
+            _ => date,
+        };
+    }
+
+    /// <summary>
     /// Pixels-per-calendar-day for the given view mode — used to snap a raw drag
     /// pixel delta to whole-day increments regardless of column granularity (e.g.
     /// Week's 140px columns represent 7 days, so 1 day = 20px). Faithful port of

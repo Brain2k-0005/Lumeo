@@ -37,6 +37,22 @@ public class GanttV3StickyHeaderTests : GanttParityTestBase
         var scrollPane = Page.Locator("[data-testid='gantt-v3-root'] div[style*='overflow']").First;
         await scrollPane.WaitForAsync(new() { Timeout = 15000 });
 
+        // Codex round 3, P2 #1: this pane is now the SHARED horizontal+vertical
+        // scroll owner (previously the row-canvas had its own, isolated
+        // horizontal scroll — see GanttTimeline.ScrollHost's remarks), so the
+        // pre-existing (v2-parity, round 2) mount-time "scroll toward today"
+        // auto-center — which loosely fires whenever TodayX > 0, even when
+        // today falls OUTSIDE the fixture's rendered range (see
+        // GanttTimeline.ShouldAttemptTodayScroll's remarks) — now ALSO shifts
+        // THIS pane horizontally on mount, since the tall fixture is fixed to
+        // March 2026 regardless of the real date this suite runs on. That
+        // horizontal position is irrelevant to this spec (vertical stickiness
+        // only) but would otherwise scroll the header off-screen horizontally,
+        // failing the in-viewport checks below for a reason unrelated to what
+        // they're testing — reset to a known, deterministic state first.
+        await Assertions.Expect(scrollPane).ToHaveAttributeAsync("data-gantt-v3-initial-scroll", "done", new() { Timeout = 15000 });
+        await scrollPane.EvaluateAsync("el => el.scrollLeft = 0");
+
         // Sanity check the fixture is ACTUALLY tall enough to need scrolling —
         // asserting stickiness on a pane that never scrolls at all would prove
         // nothing (the same mistake the wave-1 fix's untested claim made).
@@ -65,46 +81,66 @@ public class GanttV3StickyHeaderTests : GanttParityTestBase
         Assert.True(treeCount > 0 && treeCount < 60,
             $"expected GanttTree to virtualize (some but not all 60 rows materialized), got {treeCount}");
 
-        // KNOWN FOLLOW-UP (discovered by this spec, not one of the original 10
-        // findings): GanttTimeline's OWN pre-existing Virtualize (added before
-        // this task, T2's read-only-markup pass) does NOT actually virtualize
-        // in a real browser — it renders all 60 bars regardless of viewport.
-        // Root cause appears to be the SAME CSS-overflow-promotion quirk this
-        // whole finding is about: GanttTimeline's row-canvas wrapper
-        // (.lumeo-gantt-v3-canvas-scroll, overflow-x:auto) auto-promotes to
-        // overflow-y:auto too, and Blazor's <Virtualize> picks THAT unconstrained
-        // (content-sized, never-actually-clipping) element as its nearest
-        // scrolling ancestor instead of continuing up to Gantt3's true outer
-        // pane — the identical mechanism that broke position:sticky, just for
-        // Virtualize's own ancestor walk instead. This predates this task (the
-        // pre-fix RootClass had the exact same overflow-y:auto promotion), so
-        // it is not a regression THIS fix introduced, but it wasn't previously
-        // visible since nothing exercised GanttTimeline virtualizing at real
-        // browser scale until this tall fixture existed. Left unfixed here —
-        // flagged as a follow-up in the round-2 report — rather than another
-        // Global structural change on top of the sticky-header restructure.
+        // FIXED (Codex round 3, P2 #1 — pulled forward from Phase 3 T1, was the
+        // "KNOWN FOLLOW-UP" this spec previously documented): GanttTimeline's
+        // Virtualize now correctly resolves ITS scroll ancestor to be THIS
+        // outer pane (real, height-capped) instead of the row-canvas wrapper's
+        // own (content-sized, never-actually-clipping) overflow-x:auto div —
+        // that wrapper no longer sets overflow-x:auto at all when Gantt3
+        // supplies ScrollHost (see GanttTimeline.ScrollHost's remarks), so
+        // there's no longer an intervening scroll container to mis-anchor
+        // against. A tall (60-row) fixture must now materialize STRICTLY
+        // fewer than all 60 bars — proving virtualization actually engages,
+        // not just that SOME bars render.
         var bars = Page.Locator("[data-testid='gantt-v3-root'] [data-task-id]");
         var barCount = await bars.CountAsync();
-        Assert.Equal(60, barCount);
+        Assert.True(barCount > 0 && barCount < 60,
+            $"expected GanttTimeline to virtualize (some but not all 60 bars materialized), got {barCount}");
     }
 
     [Fact]
     public async Task Header_columns_stay_aligned_with_the_row_canvas_after_a_horizontal_scroll()
     {
-        // The header can no longer physically BE the row-canvas's own
-        // scrolling element post-restructure (gantt-v3.js's
-        // registerHeaderScrollSync mirrors scrollLeft onto it via transform
-        // instead) — this pins that the mirror actually keeps the two in
-        // sync, not just that the header stays vertically visible.
+        // Codex round 3, P2 #1: the row-canvas div is no longer a scroll
+        // container at all (overflow-x-auto moved up to Gantt3's shared outer
+        // pane — see GanttTimeline.ScrollHost's remarks), so the JS transform
+        // sync this spec used to assert (gantt-v3.js's registerHeaderScrollSync)
+        // is no longer registered in this mode either — it would double-apply
+        // the offset on top of the header's now-natural scroll movement (see
+        // GanttTimeline.OnAfterRenderAsync's own remarks). The header is a
+        // plain, non-transformed, non-sticky-horizontally element that lives
+        // inside the SAME scrolling ancestor as the row canvas now, so
+        // "columns stay aligned" is asserted directly against its on-screen
+        // position shifting by exactly the scroll delta — no transform to
+        // read anymore.
         await GotoHost("/e2e/gantt-v3?fixture=tall&viewMode=Day");
 
-        var canvasScroll = Page.Locator("[data-testid='gantt-v3-root'] .lumeo-gantt-v3-canvas-scroll");
-        await canvasScroll.WaitForAsync(new() { Timeout = 15000 });
+        var scrollPane = Page.Locator("[data-testid='gantt-v3-root'] div[style*='overflow']").First;
+        await scrollPane.WaitForAsync(new() { Timeout = 15000 });
         var headerInner = Page.Locator("[data-testid='gantt-v3-root'] .lumeo-gantt-v3-header > div").First;
+        await headerInner.WaitForAsync(new() { Timeout = 15000 });
 
-        await canvasScroll.EvaluateAsync("el => el.scrollLeft = 300");
-        // Native 'scroll' events dispatch asynchronously — poll via Playwright's
-        // auto-retrying assertion instead of a fixed timeout.
-        await Assertions.Expect(headerInner).ToHaveCSSAsync("transform", "matrix(1, 0, 0, 1, -300, 0)");
+        // Codex round 3, P2 #1: wait out the mount-time scroll-to-today
+        // auto-center (see the sticky-header spec's matching remarks — this
+        // pane now owns horizontal scroll too) and reset to a known scrollLeft
+        // before taking the "before" measurement, so the 300px delta asserted
+        // below isn't polluted by wherever that auto-center happened to land.
+        await Assertions.Expect(scrollPane).ToHaveAttributeAsync("data-gantt-v3-initial-scroll", "done", new() { Timeout = 15000 });
+        await scrollPane.EvaluateAsync("el => el.scrollLeft = 0");
+
+        var before = await headerInner.BoundingBoxAsync();
+        Assert.NotNull(before);
+
+        await scrollPane.EvaluateAsync("el => el.scrollLeft = 300");
+
+        // A plain scrollLeft assignment reflows synchronously (no async
+        // 'scroll'-event round-trip is involved anymore — see the remarks
+        // above), so a direct geometry read immediately after already
+        // reflects it; still allow a small tolerance for sub-pixel rounding.
+        var after = await headerInner.BoundingBoxAsync();
+        Assert.NotNull(after);
+        var delta = before!.X - after!.X;
+        Assert.True(delta is > 295 and < 305,
+            $"expected the header to shift left by ~300px in lockstep with the row canvas, got a delta of {delta}");
     }
 }

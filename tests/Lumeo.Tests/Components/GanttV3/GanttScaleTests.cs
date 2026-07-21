@@ -97,6 +97,48 @@ public class GanttScaleTests : IDisposable
         Assert.Equal(56, GanttScale.HeaderHeight);
     }
 
+    // ── AlignToUnitStart (Codex round 3, P2 #6) ──────────────────────────────
+
+    [Fact]
+    public void AlignToUnitStart_Month_Snaps_A_Mid_Month_Date_To_Day_One()
+    {
+        var aligned = GanttScale.AlignToUnitStart(GanttViewMode.Month, Utc(2026, 3, 15));
+        Assert.Equal(Utc(2026, 3, 1), aligned);
+    }
+
+    [Fact]
+    public void AlignToUnitStart_Year_Snaps_A_Mid_Year_Date_To_Jan_One()
+    {
+        var aligned = GanttScale.AlignToUnitStart(GanttViewMode.Year, Utc(2026, 7, 19));
+        Assert.Equal(Utc(2026, 1, 1), aligned);
+    }
+
+    [Fact]
+    public void AlignToUnitStart_Day_And_Hour_Leave_The_Date_Unchanged()
+    {
+        var date = Utc(2026, 3, 15, 14, 30);
+        Assert.Equal(date, GanttScale.AlignToUnitStart(GanttViewMode.Day, date));
+        Assert.Equal(date, GanttScale.AlignToUnitStart(GanttViewMode.QuarterDay, date));
+    }
+
+    [Fact]
+    public void AlignToUnitStart_Month_Restores_The_DateToPixel_Self_Origin_Invariant_A_Naive_Recenter_Breaks()
+    {
+        // The whole point of this fix (Month mode): DateToPixel(Month, origin,
+        // origin) must be exactly 0 — every grid line / header column
+        // boundary is drawn at exactly {index * columnWidth}px, which is only
+        // consistent with DateToPixel's own "(date.Day-1)/30" fractional term
+        // when origin sits exactly on day 1. A raw, TimeSpan-based recenter
+        // (e.g. "today +/- half the window") can land the origin mid-month,
+        // silently violating this — every bar in that mode ends up shifted by
+        // a constant (origin.Day-1)/30 columns relative to the header grid.
+        var misaligned = Utc(2026, 3, 15);
+        Assert.NotEqual(0, GanttScale.DateToPixel(GanttViewMode.Month, misaligned, misaligned));
+
+        var aligned = GanttScale.AlignToUnitStart(GanttViewMode.Month, misaligned);
+        Assert.Equal(0, GanttScale.DateToPixel(GanttViewMode.Month, aligned, aligned));
+    }
+
     // ── Snap math (pixelsPerDay) ─────────────────────────────────────────────
 
     [Theory]
