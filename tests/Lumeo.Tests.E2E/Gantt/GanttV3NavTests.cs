@@ -113,6 +113,16 @@ public class GanttV3NavTests : GanttParityTestBase
         var todayLine = Page.Locator("[data-testid='gantt-v3-root'] .lumeo-gantt-v3-today-line");
         await todayLine.WaitForAsync(new() { State = WaitForSelectorState.Attached, Timeout = 15000 });
 
+        // Deflake (CI-only race, review wave round 3): wait for the
+        // mount-time scroll-to-today to actually LAND (gantt-v3.js's centerOn
+        // stamps this attribute atomically with the scroll itself) BEFORE
+        // forcing the viewport away below. Without this, a slow runner could
+        // have the component's own initial scroll fire AFTER the manual
+        // scroll-away, dragging the marker back into view and failing the
+        // very next assertion non-deterministically — invisible locally,
+        // where the interop always lands well before this line executes.
+        await Assertions.Expect(host).ToHaveAttributeAsync("data-gantt-v3-initial-scroll", "done", new() { Timeout = 15000 });
+
         // Force the viewport away from today first, so the Today CLICK's own
         // scroll effect is what's actually asserted below — not just the
         // separate auto-center-on-mount behavior this same P1 fix also adds.

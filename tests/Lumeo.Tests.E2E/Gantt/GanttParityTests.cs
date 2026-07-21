@@ -338,6 +338,15 @@ public class GanttParityTests : GanttParityTestBase
 
         await GotoHost("/e2e/gantt-v3?fixture=today");
         await WaitAndCountV3Bars(expectedCountAtLeast: 1);
+        // Cheap extra robustness (review wave round 3): this assertion already
+        // polls the POSITIVE case (bar in viewport), so it's immune to the
+        // race direction that hit the Today-button spec — a late-landing
+        // scroll can only ever make it pass, never spuriously fail. Asserting
+        // the scroll's own completion latch first just gives a clearer
+        // failure message ("the scroll itself never landed" vs. "bar not
+        // where expected") if the interop is ever slow enough to matter.
+        var v3Host = Page.Locator("[data-testid='gantt-v3-root'] div[class*='overflow-x-auto']").First;
+        await Assertions.Expect(v3Host).ToHaveAttributeAsync("data-gantt-v3-initial-scroll", "done", new() { Timeout = 15000 });
         var v3Bar = Page.Locator("[data-testid='gantt-v3-root'] [data-task-id]").First;
         await Assertions.Expect(v3Bar).ToBeInViewportAsync(new() { Timeout = 15000 });
     }

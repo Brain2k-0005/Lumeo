@@ -18,12 +18,26 @@ export const ganttV3 = {
     // `scrollLeft = max(0, targetX - clientWidth / 2)`, retried via
     // requestAnimationFrame up to 30 attempts until the element reports a
     // real width.
+    //
+    // Deflake fix (CI-only race, review wave round 3): GanttV3ScrollToXAsync's
+    // Task resolves as soon as this call is DISPATCHED, not when the
+    // requestAnimationFrame-scheduled scroll actually lands — a Playwright
+    // spec that scrolls the host away and then asserts the today-marker is
+    // OUT of view had no way to know whether the component's own initial
+    // scroll-to-today had already fired-and-settled BEFORE it acted, so on a
+    // slow CI runner the initial scroll could land AFTER the test's
+    // scroll-away, dragging the marker back into view and failing the
+    // precondition. The stamp below is set in the SAME call that performs the
+    // scroll (atomic — not a second interop round-trip that could reorder
+    // relative to it), so a test can await it deterministically instead of
+    // guessing with a timeout.
     centerOn(el, targetX) {
         if (!el) return;
         const tryScroll = (attempt) => {
             const w = el.clientWidth;
             if (w > 50) {
                 el.scrollLeft = Math.max(0, targetX - w / 2);
+                el.setAttribute('data-gantt-v3-initial-scroll', 'done');
             } else if (attempt < 30) {
                 requestAnimationFrame(() => tryScroll(attempt + 1));
             }
