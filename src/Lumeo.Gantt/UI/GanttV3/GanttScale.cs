@@ -292,6 +292,58 @@ internal static class GanttScale
     }
 
     /// <summary>
+    /// Top pixel offset (relative to the row canvas, i.e. below the header) of a
+    /// bar rendered in row slot <paramref name="rowIndex"/> at the given
+    /// <paramref name="barHeight"/> — the bar is vertically centered within its
+    /// <see cref="RowHeight"/>-tall row. Faithful port of the inline computation
+    /// duplicated across v2's regular-bar and milestone branches (gantt-v2.js:
+    /// <c>const barY = rowY + (ROW_HEIGHT - BAR_HEIGHT) / 2;</c>, line 455, where
+    /// <c>rowY = HEADER_HEIGHT + idx * ROW_HEIGHT</c>, line 454 — the
+    /// <c>HEADER_HEIGHT</c> term is the row CANVAS's own top offset, added by the
+    /// caller when it positions the canvas itself, not by this helper). Hoisted
+    /// out of GanttBar.razor's own <c>WrapperStyle</c> (T2) so <c>GanttArrowRouting</c>
+    /// (T3) can recover the exact same bar-center Y a rendered <c>GanttBar</c> uses,
+    /// without a second, potentially-diverging copy of the formula.
+    /// </summary>
+    internal static double BarTop(int rowIndex, int barHeight) =>
+        (rowIndex * RowHeight) + (RowHeight - barHeight) / 2.0;
+
+    /// <summary>
+    /// Left pixel offset and width of a task's bar (or, for a milestone, its
+    /// diamond's square bounding box) within the timeline canvas. Faithful port
+    /// of v2's per-task geometry: milestone branch <c>cx = dateToX(task.start) +
+    /// colW/2; half = BAR_HEIGHT/2</c> (gantt-v2.js lines 461-463, bounding-box
+    /// left edge <c>cx - half</c>); regular-bar branch <c>x1 = dateToX(task.start);
+    /// x2 = dateToX(addDays(task.end, 1)); barW = max(8, x2 - x1)</c> (gantt-v2.js
+    /// lines 508-510 — the end-date's +1 day makes an inclusive end date render
+    /// as a full day-wide segment rather than a zero-width sliver). Hoisted out of
+    /// GanttTimeline.razor's own <c>RowItems</c> (T2) so <c>GanttArrowLayer</c> (T3)
+    /// computes dependency-arrow endpoints from the IDENTICAL geometry a rendered
+    /// <c>GanttBar</c> occupies — one shared formula, not two copies that could
+    /// silently drift apart. <paramref name="columnWidth"/> is used only for the
+    /// milestone center-of-column offset, matching what <c>GanttTimeline</c>
+    /// already passes as its own <c>EffectiveColumnWidth</c> (the view mode's
+    /// column width, or the caller's override) — <see cref="DateToPixel"/> itself
+    /// always scales by the view mode's OWN column width regardless of that
+    /// override (a pre-existing T2 behavior, out of scope for this task to change;
+    /// sharing this helper keeps arrows and bars equally affected by it instead of
+    /// only one of them being "correct").
+    /// </summary>
+    internal static (double X, double Width) BarGeometry(GanttTask task, GanttViewMode mode, DateTime origin, int columnWidth, int barHeight)
+    {
+        if (task.IsMilestone)
+        {
+            var center = DateToPixel(mode, origin, task.Start) + columnWidth / 2.0;
+            var half = barHeight / 2.0;
+            return (center - half, barHeight);
+        }
+
+        var x1 = DateToPixel(mode, origin, task.Start);
+        var x2 = DateToPixel(mode, origin, task.End.AddDays(1));
+        return (x1, Math.Max(8, x2 - x1));
+    }
+
+    /// <summary>
     /// The lower (per-column) header row's label for every date unit, in order.
     /// Faithful port of the <c>switch (cfg.headerFmt.lower)</c> block in v2's
     /// <c>render()</c> (gantt-v2.js lines 366-375).
