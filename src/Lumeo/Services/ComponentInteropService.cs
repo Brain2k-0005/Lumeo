@@ -1895,6 +1895,18 @@ public sealed class ComponentInteropService : IComponentInteropService
             }
         }
 
+        if (_ganttV3Module is not null)
+        {
+            try
+            {
+                await _ganttV3Module.DisposeAsync();
+            }
+            catch (JSDisconnectedException)
+            {
+                // Circuit disconnected, safe to ignore
+            }
+        }
+
         if (_toolbarModule is not null)
         {
             try

@@ -68,10 +68,20 @@ public class GanttInteropTests : IAsyncLifetime
         // payload ReplaceTask receives always has ParentId == null. A
         // GanttV3-hierarchy consumer dragging a v2-rendered bar for a task that
         // DOES set ParentId must not silently lose it.
+        //
+        // Round 2 (Codex review wave): the first version of this test only
+        // asserted `pushedTasks` (via TasksChanged) and passed even when
+        // OnDateChange's own argument still carried the UNMERGED task —
+        // ReplaceTask's `t = t with {...}` reassigns a by-value parameter, so
+        // returning nothing left every caller of ReplaceTask free to keep using
+        // its own stale local. Asserting BOTH callback surfaces here closes
+        // that gap.
         var hierarchyTask = Task1 with { ParentId = "epic-1" };
+        L.GanttTask? dateChanged = null;
         IEnumerable<L.GanttTask>? pushedTasks = null;
         var cut = _ctx.Render<L.Gantt>(p => p
             .Add(c => c.Tasks, new[] { hierarchyTask })
+            .Add(c => c.OnDateChange, (L.GanttTask t) => { dateChanged = t; })
             .Add(c => c.TasksChanged, (IEnumerable<L.GanttTask> ts) => { pushedTasks = ts; }));
 
         // The JS payload never carries ParentId — mirror that exactly (default null).
@@ -82,6 +92,29 @@ public class GanttInteropTests : IAsyncLifetime
         var replaced = Assert.Single(pushedTasks!);
         Assert.Equal(new DateTime(2026, 1, 3), replaced.Start); // the edit itself still applied
         Assert.Equal("epic-1", replaced.ParentId); // but ParentId survived the round-trip
+
+        Assert.NotNull(dateChanged);
+        Assert.Equal(new DateTime(2026, 1, 3), dateChanged!.Start);
+        Assert.Equal("epic-1", dateChanged.ParentId); // the OnDateChange ARGUMENT must carry it too
+    }
+
+    [Fact]
+    public async Task JsOnProgressChange_Preserves_ParentId_Across_The_JS_Payload_Round_Trip()
+    {
+        // Mirror of the JsOnDateChange case above, for the progress-change path.
+        var hierarchyTask = Task1 with { ParentId = "epic-1" };
+        L.GanttTask? progressChanged = null;
+        var cut = _ctx.Render<L.Gantt>(p => p
+            .Add(c => c.Tasks, new[] { hierarchyTask })
+            .Add(c => c.OnProgressChange, (L.GanttTask t) => { progressChanged = t; }));
+
+        var advanced = Task1 with { Progress = 75 };
+        Assert.Null(advanced.ParentId);
+        await cut.InvokeAsync(() => cut.Instance.JsOnProgressChange(advanced));
+
+        Assert.NotNull(progressChanged);
+        Assert.Equal(75, progressChanged!.Progress);
+        Assert.Equal("epic-1", progressChanged.ParentId); // the OnProgressChange ARGUMENT must carry it too
     }
 
     [Fact]

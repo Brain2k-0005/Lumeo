@@ -482,8 +482,13 @@ else
     [JSInvokable]
     public async Task JsOnDateChange(GanttTask t)
     {
-        ReplaceTask(t);
-        if (OnDateChange.HasDelegate) await OnDateChange.InvokeAsync(t);
+        // Fix (Codex review wave, round 2): ReplaceTask's ParentId merge only
+        // reached _tasks/TasksChanged before — `t` here is a BY-VALUE local, so
+        // `t = t with {...}` inside ReplaceTask reassigned ReplaceTask's own
+        // copy, never this caller's. Using the RETURN VALUE for OnDateChange
+        // is what actually carries the merge to that callback's argument.
+        var merged = ReplaceTask(t);
+        if (OnDateChange.HasDelegate) await OnDateChange.InvokeAsync(merged);
         if (TasksChanged.HasDelegate)
         {
             // Record _lastPushedTasksHash BEFORE invoking TasksChanged: a controlled
@@ -499,8 +504,9 @@ else
     [JSInvokable]
     public async Task JsOnProgressChange(GanttTask t)
     {
-        ReplaceTask(t);
-        if (OnProgressChange.HasDelegate) await OnProgressChange.InvokeAsync(t);
+        // See JsOnDateChange — same ParentId-merge return-value fix.
+        var merged = ReplaceTask(t);
+        if (OnProgressChange.HasDelegate) await OnProgressChange.InvokeAsync(merged);
         if (TasksChanged.HasDelegate)
         {
             // See JsOnDateChange — record the pushed-hash discriminator before invoking.
@@ -509,7 +515,7 @@ else
         }
     }
 
-    private void ReplaceTask(GanttTask t)
+    private GanttTask ReplaceTask(GanttTask t)
     {
         var idx = _tasks.FindIndex(x => x.Id == t.Id);
         if (idx >= 0)
@@ -521,11 +527,16 @@ else
             // drag/resize/progress payload, always has ParentId == null.
             // Replacing wholesale would silently drop it on every edit for a
             // task a GanttV3-hierarchy consumer had set it on. Preserve the
-            // CURRENT task's ParentId across the replace instead.
+            // CURRENT task's ParentId across the replace instead. Returned
+            // (not just stored in _tasks) so JsOnDateChange/JsOnProgressChange
+            // can pass the MERGED task to OnDateChange/OnProgressChange too —
+            // `t` is a by-value parameter, so reassigning it here never
+            // propagates back to either caller's own local on its own.
             t = t with { ParentId = _tasks[idx].ParentId };
             _tasks[idx] = t;
         }
         _lastTasksHash = ComputeTasksHash(_tasks);
+        return t;
     }
 
     public async ValueTask DisposeAsync()
