@@ -38,14 +38,35 @@
        "visible" — see GanttTimeline.ScrollHost's own remarks for the full
        root-cause). GanttTree becomes sticky-left (see its RootClass) to stay
        visually pinned to this pane's left edge as it now scrolls horizontally
-       too. *@
+       too.
+
+       Bug fix (Codex round 3, cx3 review): GanttTree's sticky-left ONLY has
+       room to actually stick if ITS containing block (this .flex row) is
+       genuinely as wide as the scrollable content. Two changes were needed,
+       not one — the first attempt (GanttTimeline's "grow shrink-0" + its own
+       RootStyle min-width, see that component's remarks) was NOT sufficient
+       by itself and still reproduced the bug live: a `display:flex` row's
+       OUTER box is a normal BLOCK-level box in normal flow, and a block
+       box's width comes from its OWN containing block (this scroll pane),
+       NOT from shrink-to-fit over its children's min-width/flex-basis — so
+       even with GanttTimeline's flex item correctly refusing to shrink below
+       TotalWidth, the .flex row's own measured box (what position:sticky's
+       containing block bounds actually resolve against) stayed pinned at
+       ~viewport width; only the rendered CONTENT visually spilled past it.
+       `width:max-content` below is what makes THIS box itself size to its
+       children's combined natural width (same "shrink-to-fit" sizing an
+       inline-block/table gets by default, opted into here for a block-level
+       flex container) — giving GanttTree's sticky positioning genuine room
+       across the full scroll range (reproduced live before this second
+       change: bbox still at x=-3114 after scrolling to 70% of maxScroll,
+       despite the first change already being in place). *@
     <div class="rounded-md border border-border/60" style="max-height:@Height;overflow:auto;" @ref="_scrollPaneRef">
         @* Rows is a computed property (see below) — read it into a local ONCE
            per render and hand the same value to both bindings below, rather
            than letting each binding re-invoke the property (which would run
            GanttRowModel.BuildVisibleRows twice per render for no reason). *@
         @{ var rows = Rows; }
-        <div class="flex">
+        <div class="flex" style="width:max-content;">
             @if (EffectiveShowTreePane)
             {
                 <GanttTree Rows="@rows" OnToggleCollapse="HandleToggleCollapseAsync" />
@@ -63,7 +84,7 @@
                            ScrollToTodayRequestId="@_scrollToTodayRequestId"
                            Today="@EffectiveToday"
                            ScrollHost="@_scrollPaneRef"
-                           Class="min-w-0 flex-1" />
+                           Class="grow shrink-0" />
         </div>
     </div>
 </div>

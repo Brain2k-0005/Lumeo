@@ -28,7 +28,7 @@
 
    [EditorBrowsable(Never)] keeps this working-name API out of consumer
    IntelliSense until the Phase-4 rename (fix-round follow-up). *@
-<div class="@RootClass" @attributes="AdditionalAttributes">
+<div class="@RootClass" style="@RootStyle" @attributes="AdditionalAttributes">
     @* Two-row header (Codex round 2, P1 #3 — "sticky header still broken").
        Deliberately OUTSIDE the horizontal-scroll wrapper below: `position:
        sticky` resolves against the NEAREST ancestor that establishes a
@@ -259,6 +259,28 @@
     // that split was necessary (an intervening `overflow-x:auto` ancestor,
     // even a never-actually-scrolling one, hijacks `position: sticky`).
     private string RootClass => Cx.Merge("w-full", Class);
+
+    // Bug fix (Codex round 3, cx3 review): when a caller supplies ScrollHost
+    // (Gantt3's shared-pane mode), this root needs a REAL min-width equal to
+    // the rendered content's TotalWidth — not just visually-overflowing
+    // descendants — so the surrounding flex row's own layout box genuinely
+    // spans the scrollable content width. GanttTree's sticky-left positioning
+    // is bounded within ITS containing block (that flex row), not the outer
+    // scroll container's full scrollWidth — a flex item that's merely allowed
+    // to shrink (min-w-0/flex-1) with only visually-overflowing content stays
+    // viewport-narrow in the LAYOUT sense even though bars visually spill
+    // thousands of pixels wider, leaving sticky nothing to stick within past
+    // that narrow extent (reproduced live: GanttTree's bbox at x=-458 after
+    // scrolling to scrollLeft=1497 — the "1:1 with GanttTree.RootClass" fix
+    // note this replaces described the INTENDED behavior, not what actually
+    // rendered). min-width (not width) so a range that fits within the
+    // available flex space still grows to fill it via Gantt3's "grow" class
+    // instead of leaving a gap. Standalone mode (ScrollHost null) is
+    // unaffected — it establishes its own inner horizontal scroll instead, so
+    // this root never needed to be content-width itself.
+    private string? RootStyle => ScrollHost is not null
+        ? FormattableString.Invariant($"min-width:{TotalWidth}px;")
+        : null;
 
     // Codex round 3, P2 #1 — see ScrollHost's own remarks. Only self-scrolls
     // (overflow-x-auto) in standalone mode; when a caller supplies ScrollHost,
@@ -497,7 +519,15 @@
             _lastSeenScrollToTodayRequestId = ScrollToTodayRequestId;
             _lastSeenToday = Today;
             _scrollHostWasReady = IsScrollHostReady;
-            if (ShouldAttemptTodayScroll) await ScrollToTodayCenterAsync();
+
+            // Minor tightening (cx3 review): this branch can also fire for a
+            // Today/ScrollToTodayRequestId change alone, independent of
+            // scrollHostBecameReady above — re-checking IsScrollHostReady here
+            // guards the (practically unreachable, since Gantt3's own ref is
+            // already valid by the time it could bump either of those, but not
+            // provably impossible for a future caller) case where one of them
+            // changes on the SAME render ScrollHost is still resolving.
+            if (IsScrollHostReady && ShouldAttemptTodayScroll) await ScrollToTodayCenterAsync();
         }
     }
 
