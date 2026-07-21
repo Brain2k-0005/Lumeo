@@ -506,10 +506,22 @@
     /// clamp before ever calling this — JSInvokable is a public surface a
     /// future/buggy JS caller could still hit with an inverted range, and this
     /// costs nothing to also guard on the .NET side.
+    ///
+    /// Phase-end fix-round: also no-ops when <see cref="Readonly"/> is true.
+    /// <see cref="SyncDragRegistrationAsync"/> unregisters the delegated
+    /// pointerdown listener on a Readonly flip, but a drag ALREADY in flight at
+    /// the moment of that flip has its move/up handlers living in gantt-v3.js's
+    /// own per-drag closure (attached directly to the bar element, not routed
+    /// through the delegated listener) — those survive the flip and still call
+    /// this JSInvokable on drop. A public JSInvokable is reachable independent
+    /// of whatever gated its own registration, so the guard belongs here too,
+    /// not only at the JS registration call site.
     /// </summary>
     [JSInvokable]
     public async Task CommitDrag(string taskId, string mode, string newStartIso, string newEndIso)
     {
+        if (Readonly) return;
+
         var original = FindTask(taskId);
         if (original is null) return;
 
@@ -554,11 +566,19 @@
     /// same "costs nothing to also guard on the .NET side" reasoning
     /// <see cref="CommitDrag"/>'s own defensive clamp already documents) or when
     /// <paramref name="rowKey"/> doesn't resolve to any currently-rendered row.
+    ///
+    /// Phase-end fix-round: ALSO no-ops when <see cref="Readonly"/> is true —
+    /// the original guard checked only <see cref="AllowCreate"/>, which left a
+    /// chart with BOTH <c>Readonly=true</c> AND <c>AllowCreate=true</c> mutable
+    /// via a direct JSInvokable call (Readonly is supposed to win over
+    /// AllowCreate unconditionally, per this parameter's own remarks). Same
+    /// mid-drag-flip reachability reasoning as <see cref="CommitDrag"/>'s own
+    /// Readonly guard.
     /// </summary>
     [JSInvokable]
     public async Task CommitCreate(string rowKey, string startIso, string endIso)
     {
-        if (!AllowCreate) return;
+        if (Readonly || !AllowCreate) return;
 
         if (!DateTime.TryParseExact(startIso, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var start)) return;
         if (!DateTime.TryParseExact(endIso, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var end)) return;
@@ -623,10 +643,16 @@
     /// <c>clampProgress</c> already does this before ever calling here — same
     /// "JSInvokable is a public surface" reasoning as <see cref="CommitDrag"/>'s
     /// own defensive clamp).
+    ///
+    /// Phase-end fix-round: also no-ops when <see cref="Readonly"/> is true —
+    /// same mid-drag-flip reachability reasoning as <see cref="CommitDrag"/>'s
+    /// own Readonly guard.
     /// </summary>
     [JSInvokable]
     public async Task CommitProgress(string taskId, int progress)
     {
+        if (Readonly) return;
+
         var original = FindTask(taskId);
         if (original is null) return;
 
@@ -656,10 +682,20 @@
     /// <c>'click'</c>, so it silently blocks EVERY regular-bar mousedown including
     /// the would-be click) per-shape-of-bar asymmetry, favoring one consistent
     /// "readonly means fully inert" rule over replicating what looks like a v2 bug.
+    ///
+    /// Phase-end fix-round: the "no listeners at all" contract above is only
+    /// true for a Readonly chart from the START of a drag session — a drag
+    /// already in flight at the moment of a MID-drag Readonly flip has its
+    /// pointerup handler living in gantt-v3.js's own per-drag closure
+    /// (attached directly to the bar element), which survives the flip and
+    /// still calls this JSInvokable on release. Guarded here too, same
+    /// reasoning as <see cref="CommitDrag"/>'s own Readonly guard.
     /// </summary>
     [JSInvokable]
     public async Task NotifyTaskClick(string taskId)
     {
+        if (Readonly) return;
+
         var task = FindTask(taskId);
         if (task is null) return;
         if (OnTaskClick.HasDelegate) await OnTaskClick.InvokeAsync(task);
@@ -680,10 +716,22 @@
     /// <see cref="CommitDrag"/>'s "no-op" for the same case, a bool-returning
     /// validator has no silent-no-op option, and rejecting an unprovable
     /// candidate position is the safer default over permitting one.
+    ///
+    /// Phase-end fix-round: returns <c>true</c> (never blocks, never consults
+    /// <see cref="CanDrop"/>) when <see cref="Readonly"/> is true. Unlike the
+    /// commit/notify JSInvokables above, permitting rather than no-opping is
+    /// correct here — a readonly chart drops nothing anyway (its ghost never
+    /// commits), so ValidateDrop's verdict is inert either way; returning
+    /// <c>true</c> just avoids invoking a consumer's <see cref="CanDrop"/>
+    /// predicate (and the invalid-ghost paint it would drive) for a drag that,
+    /// by the time it started, should never have been possible in the first
+    /// place under a mid-drag Readonly flip (same reachability reasoning as
+    /// <see cref="CommitDrag"/>'s own guard).
     /// </summary>
     [JSInvokable]
     public bool ValidateDrop(string taskId, string mode, string startIso, string endIso)
     {
+        if (Readonly) return true;
         if (CanDrop is null) return true;
 
         var task = FindTask(taskId);
