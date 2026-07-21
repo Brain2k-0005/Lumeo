@@ -50,6 +50,29 @@
                     }
                 }
             </div>
+            @* Progress handle (Phase 2, T2 — v2 parity: gantt-v2.js:564-574's
+               progressHandle circle, "small circle at the right edge of progress
+               overlay", shown only on hover via opacity 0->1, gantt-v2.js:578-586's
+               mouseenter/mouseleave — ported here as a pure CSS group-hover reveal
+               (WrapperClass carries "group"; see its own remarks) instead of JS
+               enter/leave listeners, since Blazor already renders the element
+               declaratively. v2 never creates this element at all when readonly
+               (gantt-v2.js:555 `if (!readonly) { ... progressHandle = ... }`) or
+               for a milestone (the milestone branch returns before reaching it,
+               gantt-v2.js:504) — both mirrored here as an @if guard, not a CSS
+               display:none, so gantt-v3.js's delegated pointerdown never even has
+               a [data-gantt-progress-handle] element to hit-test in either case.
+               Rendered as a SIBLING of the @InnerClass div (not nested inside it)
+               so its bottom-edge-straddling offset isn't clipped by InnerClass's
+               own "overflow-hidden" (needed to clip the bg/progress-fill/label to
+               the bar's rounded corners) — both are still descendants of the
+               "group"-classed, data-task-id-carrying Tooltip wrapper, which is
+               all gantt-v3.js's `e.target.closest('[data-task-id]')` needs. *@
+            @if (!Task.IsMilestone && !Readonly)
+            {
+                <div class="lumeo-gantt-v3-progress-handle absolute bottom-0 h-2 w-2 -translate-x-1/2 translate-y-1/2 cursor-ns-resize rounded-full border-2 border-background opacity-0 transition-opacity group-hover:opacity-100"
+                     style="@ProgressHandleStyle" data-gantt-progress-handle="true"></div>
+            }
         </ChildContentSlot>
     </TooltipTrigger>
     <TooltipContent>
@@ -93,13 +116,28 @@
     /// <summary>Additional CSS classes merged onto the positioned wrapper.</summary>
     [Parameter] public string? Class { get; set; }
 
+    /// <summary>
+    /// Disables the progress handle (design spec Phase 2, T2 — v2 parity:
+    /// <c>Gantt.Readonly</c>/<c>GanttTimeline.Readonly</c>). Threaded down from
+    /// <see cref="Lumeo.GanttTimeline"/>'s own <c>Readonly</c> parameter — mirrors
+    /// gantt-v2.js's own <c>if (!readonly) { progressHandle = ... }</c> (never
+    /// creating the handle element at all when readonly, gantt-v2.js:555). Default
+    /// <c>false</c> (interactive).
+    /// </summary>
+    [Parameter] public bool Readonly { get; set; }
+
     /// <summary>Captures unmatched attributes and applies them to the positioned wrapper.</summary>
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     // Tooltip's own root div defaults to "relative inline-flex" (see Tooltip.razor);
     // Cx.Merge resolves the relative/absolute conflict group so "absolute" (added
     // here) wins over Tooltip's "relative" while "inline-flex" survives untouched.
-    private string WrapperClass => Cx.Merge("absolute", Class);
+    // "group" (Phase 2, T2) lets the sibling progress-handle div reveal itself via
+    // a "group-hover:opacity-100" utility on HOVER OF THIS WRAPPER — the same
+    // element gantt-v3.js hit-tests via [data-task-id] (see WrapperAttributes) —
+    // rather than needing a JS mouseenter/mouseleave pair (v2's own approach,
+    // gantt-v2.js:578-586).
+    private string WrapperClass => Cx.Merge("group absolute", Class);
 
     private string InnerClass => Task.IsMilestone
         ? "relative flex h-full w-full items-center justify-center"
@@ -134,6 +172,21 @@
         }
     }
 
+    // "Small circle at the right edge of progress overlay" (gantt-v2.js:564-574) —
+    // v2 positions its circle's CENTER at the progress boundary (cx = x1 + progressW);
+    // this port's equivalent is centering the handle div's own horizontal midpoint
+    // (the -translate-x-1/2 in its class list) at that same {progress}% mark along
+    // the bar's own width via a logical inset-inline-start percentage (RTL-safe,
+    // unlike a raw physical "left").
+    private string ProgressHandleStyle
+    {
+        get
+        {
+            var progress = Math.Clamp(Task.Progress, 0, 100);
+            return FormattableString.Invariant($"inset-inline-start:{progress}%;background-color:{ResolvedColor};");
+        }
+    }
+
     // The wrapper carries BOTH the raw --lumeo-gantt-bar-* custom properties (so a
     // consumer stylesheet can read/override them) and the physical left/top/width/
     // height that consume them — see GanttScale's TZ/DST-safety note for why every
@@ -165,6 +218,11 @@
                 // contract and the format CommitDrag parses back with TryParseExact.
                 ["data-task-start"] = Task.Start.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
                 ["data-task-end"] = Task.End.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+                // Phase 2, T2 — same "JS reads the original value directly, no
+                // round trip" rationale as data-task-start/-end above: the progress
+                // drag's ghost-fill math (dx / barWidth * 100, relative to the
+                // ORIGINAL progress) needs this at pointerdown time.
+                ["data-task-progress"] = Math.Clamp(Task.Progress, 0, 100).ToString(CultureInfo.InvariantCulture),
             };
             if (Task.IsMilestone) attrs["data-milestone"] = "true";
             // Author-supplied attributes win on collision (splat-last semantics

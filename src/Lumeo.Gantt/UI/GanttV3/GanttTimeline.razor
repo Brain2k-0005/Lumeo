@@ -65,7 +65,8 @@
                 @if (row.Task is not null)
                 {
                     <GanttBar Task="row.Task" X="row.X" Width="row.Width" RowIndex="row.RowIndex"
-                              BarHeight="EffectiveBarHeight" Color="@row.Color" BarTemplate="BarTemplate" />
+                              BarHeight="EffectiveBarHeight" Color="@row.Color" BarTemplate="BarTemplate"
+                              Readonly="@Readonly" />
                 }
             </Virtualize>
         </div>
@@ -158,6 +159,29 @@
     /// (same bubbling contract as <see cref="GanttTree.OnToggleCollapse"/>).
     /// </summary>
     [Parameter] public EventCallback<GanttTaskUpdate> OnTaskUpdate { get; set; }
+
+    /// <summary>
+    /// Raised when a task bar is clicked WITHOUT a drag having been initiated
+    /// (design spec Phase 2, T2 — v2-parity <c>OnTaskClick</c>, a gap T1's report
+    /// flagged as out of scope: "v2 falls back to firing JsOnTaskClick... adding it
+    /// wasn't part of this task's deliverable"). See <see cref="NotifyTaskClick"/>
+    /// for the click-vs-drag discrimination this mirrors from gantt-v2.js.
+    /// </summary>
+    [Parameter] public EventCallback<GanttTask> OnTaskClick { get; set; }
+
+    /// <summary>
+    /// Live scheduling drag-drop validator (design spec Phase 2, T2 — the REUI
+    /// <c>canDropEvent</c> analog, applied to move/resize dragging). When set, the
+    /// JS drag engine calls <see cref="ValidateDrop"/> at most once per SNAPPED
+    /// position change during a move/resize drag (never for a progress drag — see
+    /// <see cref="GanttScheduleDropContext"/>'s remarks) and paints the ghost as
+    /// invalid when this predicate returns <c>false</c>; dropping on an invalid
+    /// position reverts silently (no <see cref="OnTaskUpdate"/>, no commit). When
+    /// <c>null</c> (the default), <see cref="BuildDragOptions"/> tells the JS side
+    /// so via <c>hasCanDrop: false</c> — NO <see cref="ValidateDrop"/> calls happen
+    /// at all, not even once.
+    /// </summary>
+    [Parameter] public Func<GanttTask, GanttScheduleDropContext, bool>? CanDrop { get; set; }
 
     private ElementReference _scrollHostRef;
     private int _lastSeenScrollToTodayRequestId;
@@ -325,7 +349,12 @@
             return;
         }
 
-        var optionsHash = HashCode.Combine(EffectiveColumnWidth, PixelsPerDay);
+        // Phase 2, T2 — CanDrop's null-ness is folded into the hash too: a
+        // runtime CanDrop change (null <-> non-null) must re-push
+        // BuildDragOptions' hasCanDrop flag to JS even when ColumnWidth/
+        // PixelsPerDay are unchanged, or a caller that starts/stops validating
+        // drops mid-session would leave JS on a stale flag.
+        var optionsHash = HashCode.Combine(EffectiveColumnWidth, PixelsPerDay, CanDrop is not null);
         if (_dragRegistered && optionsHash == _lastDragOptionsHash) return;
 
         _selfRef ??= DotNetObjectReference.Create(this);
@@ -349,6 +378,14 @@
         ["columnWidth"] = EffectiveColumnWidth,
         ["pixelsPerDay"] = PixelsPerDay,
         ["resizeHandlePx"] = 6,
+        // Phase 2, T2 — tells gantt-v3.js whether to bother calling ValidateDrop
+        // AT ALL during a move/resize drag. A plain "CanDrop is null on the C#
+        // side so just always return true from ValidateDrop" would still let JS
+        // invoke the JSInvokable once per snapped position for EVERY drag, which
+        // is exactly the "NO ValidateDrop calls happen at all" the plan rules out
+        // when no validator is configured — so the gate lives on the JS side,
+        // driven by this flag, not merely as a permissive .NET return value.
+        ["hasCanDrop"] = CanDrop is not null,
     };
 
     /// <summary>
@@ -378,18 +415,13 @@
     [JSInvokable]
     public async Task CommitDrag(string taskId, string mode, string newStartIso, string newEndIso)
     {
-        var original = EffectiveRows.Select(r => r.Task).FirstOrDefault(t => t is not null && t.Id == taskId);
+        var original = FindTask(taskId);
         if (original is null) return;
 
         if (!DateTime.TryParseExact(newStartIso, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var newStart)) return;
         if (!DateTime.TryParseExact(newEndIso, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var newEnd)) return;
 
-        var source = mode switch
-        {
-            "resize-start" => GanttTaskUpdateSource.ResizeStart,
-            "resize-end" => GanttTaskUpdateSource.ResizeEnd,
-            _ => GanttTaskUpdateSource.Move,
-        };
+        var source = ParseSource(mode);
 
         if (source == GanttTaskUpdateSource.ResizeEnd && newEnd < original.Start) newEnd = original.Start;
         if (source == GanttTaskUpdateSource.ResizeStart && newStart > original.End) newStart = original.End;
@@ -397,6 +429,102 @@
         var updated = original with { Start = newStart, End = newEnd };
         if (OnTaskUpdate.HasDelegate) await OnTaskUpdate.InvokeAsync(new GanttTaskUpdate(updated, source));
     }
+
+    /// <summary>
+    /// JS -&gt; .NET progress-drag commit (design spec Phase 2, T2): fired exactly
+    /// ONCE, on drop, by gantt-v3.js's progress-handle pointer path — v2 parity
+    /// (gantt-v2.js's <c>commitDrag</c> progress branch, lines 757-761) via a
+    /// dedicated JSInvokable rather than overloading <see cref="CommitDrag"/>,
+    /// since a progress edit carries an int percentage, not two ISO dates.
+    /// <paramref name="progress"/> is clamped 0-100 defensively (gantt-v3.js's own
+    /// <c>clampProgress</c> already does this before ever calling here — same
+    /// "JSInvokable is a public surface" reasoning as <see cref="CommitDrag"/>'s
+    /// own defensive clamp).
+    /// </summary>
+    [JSInvokable]
+    public async Task CommitProgress(string taskId, int progress)
+    {
+        var original = FindTask(taskId);
+        if (original is null) return;
+
+        var updated = original with { Progress = Math.Clamp(progress, 0, 100) };
+        if (OnTaskUpdate.HasDelegate) await OnTaskUpdate.InvokeAsync(new GanttTaskUpdate(updated, GanttTaskUpdateSource.Progress));
+    }
+
+    /// <summary>
+    /// JS -&gt; .NET click notification (design spec Phase 2, T2 — the v2-compat
+    /// gap T1's report flagged: "v2 falls back to firing JsOnTaskClick... adding
+    /// it wasn't part of this task's deliverable"). Called by gantt-v3.js's
+    /// <c>onPointerUp</c> ONLY when the pointer-down/up pair never crossed
+    /// <c>DRAG_THRESHOLD_PX</c> AND the resolved mode was <c>'move'</c> — mirrors
+    /// gantt-v2.js:617-622 exactly: a below-threshold 'resize'/'progress'-mode
+    /// mousedown is NOT a click fallback in v2 either (only 'move' has one), and
+    /// v3's milestones always resolve to 'move' (T1's <c>resolveHitMode</c>), so
+    /// they get click-on-no-drag for free without a separate code path — unlike
+    /// v2, where milestones have their own unconditional <c>click</c> listener
+    /// (gantt-v2.js:501-503) that fires even when <c>readonly</c>. v3 does NOT
+    /// reproduce that asymmetry: <see cref="Readonly"/> gates the ENTIRE delegated
+    /// pointerdown listener (no listeners at all — <see
+    /// cref="SyncDragRegistrationAsync"/>'s own contract), so a readonly v3 chart
+    /// never fires <see cref="OnTaskClick"/> for ANY bar, milestone included. This
+    /// is a deliberate deviation from v2's (arguably accidental — v2's own
+    /// readonly guard, <c>if (readonly &amp;&amp; mode !== 'click') return;</c>, is
+    /// unreachable dead code for regular bars since <c>mode</c> is never literally
+    /// <c>'click'</c>, so it silently blocks EVERY regular-bar mousedown including
+    /// the would-be click) per-shape-of-bar asymmetry, favoring one consistent
+    /// "readonly means fully inert" rule over replicating what looks like a v2 bug.
+    /// </summary>
+    [JSInvokable]
+    public async Task NotifyTaskClick(string taskId)
+    {
+        var task = FindTask(taskId);
+        if (task is null) return;
+        if (OnTaskClick.HasDelegate) await OnTaskClick.InvokeAsync(task);
+    }
+
+    /// <summary>
+    /// JS -&gt; .NET live scheduling drop validation (design spec Phase 2, T2 —
+    /// the REUI <c>canDropEvent</c> analog). Called by gantt-v3.js at most once
+    /// per SNAPPED position during a move/resize drag (never for a progress drag)
+    /// when <see cref="CanDrop"/> is set — see <see cref="BuildDragOptions"/>'s
+    /// <c>hasCanDrop</c> flag for why JS skips calling this AT ALL when it isn't.
+    /// Returns <c>true</c> (permit) when <see cref="CanDrop"/> is unset (defensive
+    /// — JS shouldn't be calling this at all in that case) or when
+    /// <paramref name="taskId"/> doesn't resolve (same "any task with an active
+    /// drag is, by definition, currently rendered" reasoning as
+    /// <see cref="CommitDrag"/>'s own lookup — unreachable in a real drag).
+    /// Returns <c>false</c> (reject) for an unparsable date string — unlike
+    /// <see cref="CommitDrag"/>'s "no-op" for the same case, a bool-returning
+    /// validator has no silent-no-op option, and rejecting an unprovable
+    /// candidate position is the safer default over permitting one.
+    /// </summary>
+    [JSInvokable]
+    public bool ValidateDrop(string taskId, string mode, string startIso, string endIso)
+    {
+        if (CanDrop is null) return true;
+
+        var task = FindTask(taskId);
+        if (task is null) return true;
+
+        if (!DateTime.TryParseExact(startIso, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var proposedStart)) return false;
+        if (!DateTime.TryParseExact(endIso, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var proposedEnd)) return false;
+
+        var context = new GanttScheduleDropContext(proposedStart, proposedEnd, ParseSource(mode));
+        return CanDrop(task, context);
+    }
+
+    private static GanttTaskUpdateSource ParseSource(string mode) => mode switch
+    {
+        "resize-start" => GanttTaskUpdateSource.ResizeStart,
+        "resize-end" => GanttTaskUpdateSource.ResizeEnd,
+        _ => GanttTaskUpdateSource.Move,
+    };
+
+    // Shared by CommitDrag/CommitProgress/NotifyTaskClick/ValidateDrop — resolves
+    // against EffectiveRows (not the raw Tasks parameter), see CommitDrag's own
+    // remarks for why that's correct for a hierarchy-filtered/collapsed caller.
+    private GanttTask? FindTask(string taskId) =>
+        EffectiveRows.Select(r => r.Task).FirstOrDefault(t => t is not null && t.Id == taskId);
 
     public async ValueTask DisposeAsync()
     {

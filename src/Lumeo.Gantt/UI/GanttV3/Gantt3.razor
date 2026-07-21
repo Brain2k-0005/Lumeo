@@ -55,6 +55,8 @@
                            ScrollToTodayRequestId="@_scrollToTodayRequestId"
                            Readonly="@Readonly"
                            OnTaskUpdate="HandleTaskUpdateAsync"
+                           OnTaskClick="OnTaskClick"
+                           CanDrop="CanDrop"
                            Class="min-w-0 flex-1" />
         </div>
     </div>
@@ -127,6 +129,15 @@
     /// callback per gesture.
     /// </summary>
     [Parameter] public EventCallback<GanttTaskUpdate> OnTaskUpdate { get; set; }
+
+    /// <summary>Raised after a task bar's progress changes via the progress handle (design spec Phase 2, T2 — v2-parity <c>OnProgressChange</c>, same contract as v2's <c>Gantt.OnProgressChange</c>). Also folded into <see cref="TasksChanged"/>.</summary>
+    [Parameter] public EventCallback<GanttTask> OnProgressChange { get; set; }
+
+    /// <summary>Raised when a task bar is clicked without a drag having been initiated (design spec Phase 2, T2 — v2-parity <c>OnTaskClick</c>, same contract as v2's <c>Gantt.OnTaskClick</c>). A pure pass-through of <see cref="GanttTimeline.OnTaskClick"/> — no <see cref="GanttState"/> mutation is involved, unlike <see cref="OnTaskUpdate"/>.</summary>
+    [Parameter] public EventCallback<GanttTask> OnTaskClick { get; set; }
+
+    /// <summary>Live scheduling drag-drop validator (design spec Phase 2, T2 — the REUI <c>canDropEvent</c> analog). See <see cref="GanttTimeline.CanDrop"/> for the full contract; passed straight through unchanged.</summary>
+    [Parameter] public Func<GanttTask, GanttScheduleDropContext, bool>? CanDrop { get; set; }
 
     /// <summary>Additional CSS classes merged onto the root element.</summary>
     [Parameter] public string? Class { get; set; }
@@ -404,7 +415,21 @@
             await TasksChanged.InvokeAsync(_state.Tasks.ToList());
         }
 
-        if (OnDateChange.HasDelegate) await OnDateChange.InvokeAsync(update.Task);
+        // Phase 2, T2 — v2 parity: v2's Gantt.razor fires JsOnDateChange OR
+        // JsOnProgressChange depending on WHICH gesture committed (gantt-v2.js's
+        // commitDrag calls exactly one of them per branch, gantt-v2.js:750/756/761
+        // -> Gantt.razor's JsOnDateChange/JsOnProgressChange, lines 483-515) — never
+        // both for the same edit. OnTaskUpdate (v3's own unified addition) still
+        // fires for every source, regardless of which v2-parity event also fired.
+        if (update.Source == GanttTaskUpdateSource.Progress)
+        {
+            if (OnProgressChange.HasDelegate) await OnProgressChange.InvokeAsync(update.Task);
+        }
+        else if (OnDateChange.HasDelegate)
+        {
+            await OnDateChange.InvokeAsync(update.Task);
+        }
+
         if (OnTaskUpdate.HasDelegate) await OnTaskUpdate.InvokeAsync(update);
     }
 }
