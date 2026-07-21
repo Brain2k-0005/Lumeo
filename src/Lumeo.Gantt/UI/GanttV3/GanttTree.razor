@@ -1,0 +1,85 @@
+@namespace Lumeo
+@using System.ComponentModel
+@using Lumeo.GanttV3
+@attribute [EditorBrowsable(EditorBrowsableState.Never)]
+
+@* GanttTree — v3's left tree/list pane (design spec Phase 2, T3): one row per
+   entry in Rows, the IDENTICAL row list GanttTimeline renders bars against
+   (see GanttRowModel), so the two panes always align — same GanttScale.RowHeight
+   per row, same order, same collapse-filtered visibility. Renders the task
+   name (or, for a flat-grouping GanttRowKind.GroupHeader row, the group's
+   label) indented per Depth, with a chevron toggle on any collapsible row
+   (a hierarchy parent, or a group header).
+
+   Purely presentational, same contract as GanttNav: every interaction
+   bubbles up via OnToggleCollapse into whatever owns GanttState (Gantt3) —
+   this component never touches GanttState itself. The leading spacer div
+   matches GanttTimeline's two-row header height so the two panes' row
+   canvases start at the same Y (Phase 2's "one shared scroll container"
+   design — see Gantt3's remarks — relies on this alignment, not on any
+   scroll-sync JS).
+
+   NOTE (accessibility): see GanttBar.razor's NOTE — the Razor compiler always
+   generates a component's class as `public`, so despite the task spec asking
+   for `internal`, this stays `public` and its new members are recorded in
+   PublicAPI.Unshipped.txt; flagged for the reviewer/team lead to confirm.
+   [EditorBrowsable(Never)] keeps this working-name API out of consumer
+   IntelliSense until the Phase-4 rename (fix-round follow-up). *@
+<div class="@RootClass" @attributes="AdditionalAttributes">
+    <div style="@HeaderSpacerStyle"></div>
+    @foreach (var row in Rows)
+    {
+        <div class="@RowClass(row)" style="@RowStyle" data-row-kind="@(row.Kind == GanttRowKind.GroupHeader ? "group" : "task")">
+            <span class="lumeo-gantt-v3-tree-indent shrink-0" style="@IndentStyle(row)"></span>
+            @if (row.ToggleKey is not null)
+            {
+                <button type="button"
+                        class="lumeo-gantt-v3-tree-toggle inline-flex h-4 w-4 shrink-0 items-center justify-center"
+                        aria-expanded="@(!row.IsCollapsed)"
+                        @onclick="() => HandleToggleAsync(row.ToggleKey)">
+                    <SvgGlyph Svg="@(row.IsCollapsed ? LumeoIcons.ChevronRight : LumeoIcons.ChevronDown)" class="h-3.5 w-3.5" />
+                </button>
+            }
+            else
+            {
+                <span class="lumeo-gantt-v3-tree-toggle-spacer inline-block h-4 w-4 shrink-0"></span>
+            }
+            <span class="lumeo-gantt-v3-tree-label truncate text-sm">@row.Label</span>
+        </div>
+    }
+</div>
+
+@code {
+    /// <summary>The visible row list — identical to what's fed to GanttTimeline/GanttArrowLayer (design spec: single source of truth for row order/visibility).</summary>
+    [Parameter] public IReadOnlyList<GanttVisibleRow> Rows { get; set; } = Array.Empty<GanttVisibleRow>();
+
+    /// <summary>Raised with a row's <see cref="GanttVisibleRow.ToggleKey"/> when its chevron is clicked. The owner (Gantt3) applies it via <c>GanttState.ToggleCollapsed</c>.</summary>
+    [Parameter] public EventCallback<string> OnToggleCollapse { get; set; }
+
+    /// <summary>Additional CSS classes merged onto the root pane element.</summary>
+    [Parameter] public string? Class { get; set; }
+
+    /// <summary>Captures unmatched attributes and applies them to the root pane element.</summary>
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private string RootClass => Cx.Merge("relative w-56 shrink-0 border-e border-border/60 bg-card", Class);
+
+    private string HeaderSpacerStyle => FormattableString.Invariant($"height:{GanttScale.HeaderHeight}px;");
+
+    private string RowStyle => FormattableString.Invariant($"height:{GanttScale.RowHeight}px;");
+
+    // Group headers AND hierarchy parent rows get the same "summary row" treatment
+    // (design spec point 4: "parent/group rows get a distinct CSS class... but NO
+    // rollup bars yet") — one shared class regardless of which mode produced the row.
+    private static string RowClass(GanttVisibleRow row) => Cx.Merge(
+        "flex items-center gap-1 border-b border-border/30 px-2 text-foreground",
+        row.Kind == GanttRowKind.GroupHeader || row.HasChildren
+            ? "lumeo-gantt-v3-tree-summary-row bg-accent/20 text-xs font-semibold uppercase tracking-wide text-muted-foreground"
+            : null);
+
+    private static string IndentStyle(GanttVisibleRow row) =>
+        FormattableString.Invariant($"width:{row.Depth * 16}px;");
+
+    private Task HandleToggleAsync(string? key) =>
+        key is not null && OnToggleCollapse.HasDelegate ? OnToggleCollapse.InvokeAsync(key) : Task.CompletedTask;
+}

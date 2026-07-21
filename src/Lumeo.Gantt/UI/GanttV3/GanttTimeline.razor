@@ -60,16 +60,38 @@
         @* Row canvas. *@
         <div class="relative" style="@RowsContainerStyle">
             <Virtualize Items="@RowItems" Context="row" ItemSize="@((float)GanttScale.RowHeight)">
-                <GanttBar Task="row.Task" X="row.X" Width="row.Width" RowIndex="row.RowIndex"
-                          BarHeight="EffectiveBarHeight" Color="row.Color" BarTemplate="BarTemplate" />
+                @if (row.Task is not null)
+                {
+                    <GanttBar Task="row.Task" X="row.X" Width="row.Width" RowIndex="row.RowIndex"
+                              BarHeight="EffectiveBarHeight" Color="row.Color" BarTemplate="BarTemplate" />
+                }
             </Virtualize>
         </div>
+
+        @* Dependency-arrow overlay — see GanttArrowLayer's own remarks for why it
+           recomputes geometry independently from the same EffectiveRows/GanttScale
+           inputs rather than reaching into this component's RowItems. *@
+        <GanttArrowLayer Rows="@EffectiveRows" ViewMode="@ViewMode" Origin="@Origin"
+                         ColumnWidth="@EffectiveColumnWidth" BarHeight="@EffectiveBarHeight"
+                         Width="@TotalWidth" Height="@CanvasHeight" />
     </div>
 </div>
 
 @code {
-    /// <summary>The tasks (and milestones) rendered as bars, in display order.</summary>
+    /// <summary>The tasks (and milestones) rendered as bars, in display order. Ignored when <see cref="Rows"/> is set.</summary>
     [Parameter] public IReadOnlyList<GanttTask> Tasks { get; set; } = Array.Empty<GanttTask>();
+
+    /// <summary>
+    /// The already-flattened, collapse-filtered row list (design spec Phase 2,
+    /// T3's tree-pane/hierarchy row model — see <c>GanttRowModel</c>) — the same
+    /// list a sibling <c>GanttTree</c> renders against, so both panes stay
+    /// row-for-row aligned. When set, this takes priority over <see cref="Tasks"/>
+    /// (which may still include header-hidden/collapsed tasks the caller never
+    /// meant to show). When null (T2's original contract, still exercised by
+    /// callers with no grouping/hierarchy), each entry of <see cref="Tasks"/>
+    /// becomes its own row, 1:1, in list order — unchanged from T2's behavior.
+    /// </summary>
+    [Parameter] public IReadOnlyList<GanttVisibleRow>? Rows { get; set; }
 
     /// <summary>The active zoom level — determines column width/unit/header format via <see cref="GanttScale"/>.</summary>
     [Parameter] public GanttViewMode ViewMode { get; set; } = GanttViewMode.Day;
@@ -110,7 +132,22 @@
     private IReadOnlyList<DateTime> Units => GanttScale.BuildDateUnits(ViewMode, RangeStart, RangeEnd);
     private DateTime Origin => Units.Count > 0 ? Units[0] : RangeStart;
     private double TotalWidth => Units.Count * (double)EffectiveColumnWidth;
-    private double CanvasHeight => GanttScale.HeaderHeight + Math.Max(1, Tasks.Count) * GanttScale.RowHeight;
+
+    // Falls back to a 1:1 Task-per-row list (T2's original contract) when the
+    // caller doesn't supply a pre-flattened Rows list — see the Rows parameter's
+    // remarks. Every entry is a GanttRowKind.Task row at depth 0 with no
+    // collapse/toggle affordance, matching what T2 always rendered.
+    private IReadOnlyList<GanttVisibleRow> EffectiveRows => Rows ?? BuildFallbackRows();
+
+    private List<GanttVisibleRow> BuildFallbackRows()
+    {
+        var rows = new List<GanttVisibleRow>(Tasks.Count);
+        foreach (var task in Tasks)
+            rows.Add(new GanttVisibleRow(GanttRowKind.Task, task, task.Name, 0, false, null, false));
+        return rows;
+    }
+
+    private double CanvasHeight => GanttScale.HeaderHeight + Math.Max(1, EffectiveRows.Count) * GanttScale.RowHeight;
 
     private IReadOnlyList<GanttHeaderRun> UpperRuns => GanttScale.UpperRuns(ViewMode, Units);
     private IReadOnlyList<string> LowerLabels => GanttScale.LowerLabels(ViewMode, Units);
@@ -135,13 +172,17 @@
         FormattableString.Invariant($"left:{TodayX}px;top:{GanttScale.HeaderHeight - 4}px;");
 
     private string RowsContainerStyle =>
-        FormattableString.Invariant($"height:{Math.Max(1, Tasks.Count) * GanttScale.RowHeight}px;width:{TotalWidth}px;");
+        FormattableString.Invariant($"height:{Math.Max(1, EffectiveRows.Count) * GanttScale.RowHeight}px;width:{TotalWidth}px;");
 
-    // One row's already-resolved geometry, computed fresh from GanttScale each
-    // render — see GanttScale's DateToPixel/PixelToDate for the underlying math
-    // this ports 1:1 from gantt-v2.js's dateToX (render(), lines 508-512 for a
-    // regular bar; lines 459-463 for a milestone's diamond center).
-    internal sealed record GanttTimelineRow(GanttTask Task, double X, double Width, int RowIndex, string? Color);
+    // One row slot's already-resolved geometry, computed fresh from GanttScale
+    // each render — see GanttScale.BarGeometry for the underlying math (a 1:1
+    // port of gantt-v2.js's dateToX usage: render() lines 508-512 for a regular
+    // bar, lines 459-463 for a milestone's diamond center). Task is null for a
+    // GanttRowKind.GroupHeader slot — Virtualize still allocates it a slot (so
+    // RowIndex stays list-position-aligned for every OTHER row, which its
+    // internal viewport math depends on), but no <GanttBar> renders for it
+    // (see the @if (row.Task is not null) guard in the markup above).
+    internal sealed record GanttTimelineRow(GanttTask? Task, double X, double Width, int RowIndex, string? Color);
 
     // Virtualize<TItem>.Items requires ICollection<TItem> (IReadOnlyList doesn't
     // implement it) — List<T> both satisfies that and matches the pattern
@@ -150,31 +191,21 @@
     {
         get
         {
-            var tasks = Tasks;
-            var rows = new List<GanttTimelineRow>(tasks.Count);
-            for (var i = 0; i < tasks.Count; i++)
+            var visibleRows = EffectiveRows;
+            var rows = new List<GanttTimelineRow>(visibleRows.Count);
+            for (var i = 0; i < visibleRows.Count; i++)
             {
-                var task = tasks[i];
+                var task = visibleRows[i].Task;
+                if (task is null)
+                {
+                    // Group-header slot: still occupies row index i (matching v2's
+                    // rowSlot, which advances for header rows too), but has no bar.
+                    rows.Add(new GanttTimelineRow(null, 0, 0, i, null));
+                    continue;
+                }
                 var color = BarColor?.Invoke(task);
-                if (task.IsMilestone)
-                {
-                    // v2: cx = dateToX(task.start) + colW/2; half = BAR_HEIGHT/2 — the
-                    // diamond's bounding-box left edge is cx - half.
-                    var center = GanttScale.DateToPixel(ViewMode, Origin, task.Start) + EffectiveColumnWidth / 2.0;
-                    var half = EffectiveBarHeight / 2.0;
-                    rows.Add(new GanttTimelineRow(task, center - half, EffectiveBarHeight, i, color));
-                }
-                else
-                {
-                    // v2: x1 = dateToX(task.start); x2 = dateToX(addDays(task.end, 1));
-                    // barW = max(8, x2 - x1) — the +1 day makes the bar's END edge fall
-                    // on the day AFTER task.End (an inclusive end date renders as a full
-                    // day-wide segment, not a zero-width sliver).
-                    var x1 = GanttScale.DateToPixel(ViewMode, Origin, task.Start);
-                    var x2 = GanttScale.DateToPixel(ViewMode, Origin, task.End.AddDays(1));
-                    var width = Math.Max(8, x2 - x1);
-                    rows.Add(new GanttTimelineRow(task, x1, width, i, color));
-                }
+                var (x, width) = GanttScale.BarGeometry(task, ViewMode, Origin, EffectiveColumnWidth, EffectiveBarHeight);
+                rows.Add(new GanttTimelineRow(task, x, width, i, color));
             }
             return rows;
         }

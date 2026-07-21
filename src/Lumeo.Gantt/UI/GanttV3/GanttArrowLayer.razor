@@ -1,0 +1,103 @@
+@namespace Lumeo
+@using System.ComponentModel
+@using Lumeo.GanttV3
+@attribute [EditorBrowsable(EditorBrowsableState.Never)]
+
+@* GanttArrowLayer — SVG overlay drawing one path + arrowhead per dependency
+   edge between two currently-visible rows (design spec Phase 2, T3). Absolutely
+   positioned over GanttTimeline's canvas at the canvas's own full size,
+   pointer-events:none so it never intercepts bar interaction (mirrors v2's own
+   arrows, which carry no pointer handlers either — gantt-v2.js lines 660-667).
+
+   Geometry is entirely delegated to GanttScale.BarGeometry (bar left/width) +
+   GanttArrowRouting (path/arrowhead math) — this component has no date/pixel
+   math of its own, and deliberately recomputes bar geometry independently
+   rather than reaching into GanttTimeline's private row state: both consume
+   the same Rows list + the same GanttScale helpers, so they can never
+   silently disagree without one of the shared pure functions itself being
+   wrong (and a wrong shared function would show up as a routing-math test
+   failure, not a rendering-layer coupling bug).
+
+   Arrows for a task hidden by a collapsed ancestor/group are simply absent:
+   that task never appears in Rows, so it has no entry in the geometry lookup
+   below, and any dependency naming it — as either source or target — is
+   silently skipped, mirroring v2's own guards (`if (!source) continue;` /
+   `if (!target) return;`, gantt-v2.js lines 649-653). *@
+<svg class="@RootClass" width="@Width" height="@Height" viewBox="@ViewBox" style="@RootStyle" @attributes="AdditionalAttributes">
+    @foreach (var arrow in Arrows)
+    {
+        <path class="lumeo-gantt-v3-arrow" d="@arrow.PathD" fill="none" stroke="var(--color-muted-foreground)" stroke-width="1.2" opacity="0.6" data-arrow-from="@arrow.FromTaskId" data-arrow-to="@arrow.ToTaskId" />
+        <polygon class="lumeo-gantt-v3-arrowhead" points="@arrow.ArrowheadPoints" fill="var(--color-muted-foreground)" opacity="0.6" />
+    }
+</svg>
+
+@code {
+    /// <summary>The currently visible rows — same list GanttTree/GanttTimeline render against, so a collapsed-away task never produces an arrow (see remarks above).</summary>
+    [Parameter] public IReadOnlyList<GanttVisibleRow> Rows { get; set; } = Array.Empty<GanttVisibleRow>();
+
+    /// <summary>The active zoom level — feeds <see cref="GanttScale.BarGeometry"/> for each visible task.</summary>
+    [Parameter] public GanttViewMode ViewMode { get; set; } = GanttViewMode.Day;
+
+    /// <summary>The timeline's date origin (first rendered column's date) — same value GanttTimeline computes as its own <c>Origin</c>.</summary>
+    [Parameter] public DateTime Origin { get; set; }
+
+    /// <summary>The effective column width in pixels — same value GanttTimeline passes as its own <c>EffectiveColumnWidth</c>.</summary>
+    [Parameter] public int ColumnWidth { get; set; }
+
+    /// <summary>The effective bar height in pixels — same value GanttTimeline passes as its own <c>EffectiveBarHeight</c>.</summary>
+    [Parameter] public int BarHeight { get; set; } = GanttScale.DefaultBarHeight;
+
+    /// <summary>The overlay's pixel width — matches GanttTimeline's canvas <c>TotalWidth</c>.</summary>
+    [Parameter] public double Width { get; set; }
+
+    /// <summary>The overlay's pixel height — matches GanttTimeline's canvas <c>CanvasHeight</c>.</summary>
+    [Parameter] public double Height { get; set; }
+
+    /// <summary>Additional CSS classes merged onto the root <c>&lt;svg&gt;</c>.</summary>
+    [Parameter] public string? Class { get; set; }
+
+    /// <summary>Captures unmatched attributes and applies them to the root <c>&lt;svg&gt;</c>.</summary>
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private string RootClass => Cx.Merge("pointer-events-none absolute inset-0", Class);
+    private string ViewBox => FormattableString.Invariant($"0 0 {Width} {Height}");
+    private string RootStyle => FormattableString.Invariant($"width:{Width}px;height:{Height}px;");
+
+    /// <summary>One resolved dependency edge ready to render, keyed by the two task ids it connects (for the DOM's <c>data-arrow-from</c>/<c>data-arrow-to</c>, and for test assertions).</summary>
+    internal readonly record struct GanttArrowInfo(string FromTaskId, string ToTaskId, string PathD, string ArrowheadPoints);
+
+    private List<GanttArrowInfo> Arrows
+    {
+        get
+        {
+            // Same geometry every visible GanttBar occupies — see the type
+            // remarks for why this is computed here rather than shared via a
+            // cross-component reference.
+            var geometryByTaskId = new Dictionary<string, GanttArrowRouting.BarGeometry>();
+            for (var i = 0; i < Rows.Count; i++)
+            {
+                var task = Rows[i].Task;
+                if (task is null) continue; // group-header slot — no bar, no geometry
+                var (x, width) = GanttScale.BarGeometry(task, ViewMode, Origin, ColumnWidth, BarHeight);
+                geometryByTaskId[task.Id] = new GanttArrowRouting.BarGeometry(x, width, i);
+            }
+
+            var arrows = new List<GanttArrowInfo>();
+            foreach (var row in Rows)
+            {
+                var task = row.Task;
+                if (task?.Dependencies is null || task.Dependencies.Length == 0) continue;
+                if (!geometryByTaskId.TryGetValue(task.Id, out var target)) continue;
+
+                foreach (var dependsOnId in task.Dependencies)
+                {
+                    if (!geometryByTaskId.TryGetValue(dependsOnId, out var source)) continue;
+                    var pathD = GanttArrowRouting.ComputePathD(source, target, BarHeight);
+                    var arrowheadPoints = GanttArrowRouting.ComputeArrowheadPoints(target, BarHeight);
+                    arrows.Add(new GanttArrowInfo(dependsOnId, task.Id, pathD, arrowheadPoints));
+                }
+            }
+            return arrows;
+        }
+    }
+}

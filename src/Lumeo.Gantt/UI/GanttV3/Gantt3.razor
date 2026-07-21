@@ -25,16 +25,30 @@
               OnPrevious="ShiftToPreviousAsync"
               OnNext="ShiftToNextAsync" />
 
+    @* Phase 2's "one shared scroll container wrapping both panes" (T3 design
+       spec, scroll sync): tree pane + timeline are laid out side by side as
+       plain flex siblings INSIDE this single overflow:auto div, so vertical
+       scrolling moves both together with no JS scroll-sync needed yet — the
+       timeline keeps its own nested horizontal scroll (GanttTimeline.RootClass)
+       for its much-wider canvas, which the tree pane never needs. *@
     <div class="rounded-md border border-border/60" style="max-height:@Height;overflow:auto;">
-        <GanttTimeline Tasks="@_state.Tasks"
-                       ViewMode="@_state.ViewMode"
-                       RangeStart="@_state.VisibleRange.Start"
-                       RangeEnd="@_state.VisibleRange.End"
-                       BarHeight="@BarHeight"
-                       ColumnWidth="@ColumnWidth"
-                       TodayHighlight="@TodayHighlight"
-                       BarColor="@BarColor"
-                       BarTemplate="@BarTemplate" />
+        <div class="flex">
+            @if (EffectiveShowTreePane)
+            {
+                <GanttTree Rows="@Rows" OnToggleCollapse="HandleToggleCollapseAsync" />
+            }
+            <GanttTimeline Tasks="@_state.Tasks"
+                           Rows="@Rows"
+                           ViewMode="@_state.ViewMode"
+                           RangeStart="@_state.VisibleRange.Start"
+                           RangeEnd="@_state.VisibleRange.End"
+                           BarHeight="@BarHeight"
+                           ColumnWidth="@ColumnWidth"
+                           TodayHighlight="@TodayHighlight"
+                           BarColor="@BarColor"
+                           BarTemplate="@BarTemplate"
+                           Class="min-w-0 flex-1" />
+        </div>
     </div>
 </div>
 
@@ -73,6 +87,15 @@
     /// <summary>Replaces a bar's default label content when set.</summary>
     [Parameter] public RenderFragment<GanttTask>? BarTemplate { get; set; }
 
+    /// <summary>
+    /// Shows the left tree/list pane (design spec Phase 2, T3). Null (the
+    /// default) resolves to <see cref="GanttRowModel.DefaultShowTreePane"/>: on
+    /// when <see cref="GroupBy"/> is set or any task sets
+    /// <see cref="GanttTask.ParentId"/>, off otherwise — a flat task list with
+    /// neither gets the same single-pane layout T2 always rendered.
+    /// </summary>
+    [Parameter] public bool? ShowTreePane { get; set; }
+
     /// <summary>Additional CSS classes merged onto the root element.</summary>
     [Parameter] public string? Class { get; set; }
 
@@ -86,6 +109,20 @@
     private readonly GanttState _state = new();
 
     private string RootClass => Cx.Merge("flex flex-col gap-3", Class);
+
+    // The single, shared row list GanttTree/GanttTimeline/GanttArrowLayer all
+    // render against (design spec Phase 2, T3 — see GanttRowModel's remarks).
+    // Recomputed fresh from _state each render; cheap (a linear pass over the
+    // task list) and always in lockstep with _state.Tasks/_state.Collapsed.
+    private IReadOnlyList<GanttVisibleRow> Rows => GanttRowModel.BuildVisibleRows(_state.Tasks, _state.Collapsed);
+
+    private bool EffectiveShowTreePane => ShowTreePane ?? GanttRowModel.DefaultShowTreePane(_state.Tasks, GroupBy is not null);
+
+    private Task HandleToggleCollapseAsync(string key)
+    {
+        _state.ToggleCollapsed(key);
+        return Task.CompletedTask;
+    }
 
     // Controlled/uncontrolled ViewMode discriminators — same pattern as v2's
     // Gantt.razor (_lastSeenViewMode/_lastPushedViewMode), trimmed to what a
