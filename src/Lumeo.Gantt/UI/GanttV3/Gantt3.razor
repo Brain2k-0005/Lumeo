@@ -83,7 +83,10 @@
                            BarTemplate="@BarTemplate"
                            ScrollToTodayRequestId="@_scrollToTodayRequestId"
                            Today="@EffectiveToday"
+                           ScrollTargetDate="@_scrollTargetDate"
+                           ScrollHostLeadingOffset="@(EffectiveShowTreePane ? GanttScale.TreePaneWidth : 0)"
                            ScrollHost="@_scrollPaneRef"
+                           OnTaskClick="OnTaskClick"
                            Class="grow shrink-0" />
         </div>
     </div>
@@ -123,6 +126,9 @@
 
     /// <summary>Replaces a bar's default label content when set.</summary>
     [Parameter] public RenderFragment<GanttTask>? BarTemplate { get; set; }
+
+    /// <summary>Raised when a bar is activated via click or keyboard (Enter/Space) — same contract as v2's <c>Gantt.OnTaskClick</c> (Codex round 4, P2 #5).</summary>
+    [Parameter] public EventCallback<GanttTask> OnTaskClick { get; set; }
 
     /// <summary>
     /// Shows the left tree/list pane (design spec Phase 2, T3). Null (the
@@ -300,7 +306,16 @@
             // Bumping the SAME change-token GoToTodayAsync uses re-triggers
             // that attempt, exactly as if the now-populated task set had been
             // there from the start.
-            if (wasEmpty) _scrollToTodayRequestId++;
+            if (wasEmpty)
+            {
+                // Codex round 4, P2 #8: this recenter always targets Today
+                // (ComputeInitialRange's fallback branch centers the empty
+                // window around it) — clear any stale centerDate a PREVIOUS
+                // view-mode switch may have left behind, same reasoning as
+                // GoToTodayAsync's own reset.
+                _scrollTargetDate = null;
+                _scrollToTodayRequestId++;
+            }
         }
     }
 
@@ -336,6 +351,17 @@
             maxDate = today.AddDays(14);
         }
 
+        return ApplyPadding(mode, minDate, maxDate);
+    }
+
+    // Bug fix (Codex round 4, P2 #8): extracted from ComputeInitialRange so
+    // HandleViewModeChangedAsync's own recenter (below) can apply the EXACT
+    // same per-mode padding math around an arbitrary center date instead of
+    // task min/max — a second, independently-written copy of this switch was
+    // exactly the kind of divergence risk this codebase avoids elsewhere
+    // (see e.g. GanttScale.BarTop's own remarks on the same principle).
+    private static GanttDateRange ApplyPadding(GanttViewMode mode, DateTime minDate, DateTime maxDate)
+    {
         var cfg = GanttScale.GetConfig(mode);
         return cfg.Unit switch
         {
@@ -373,10 +399,40 @@
     {
         if (mode == _state.ViewMode) return;
         _lastPushedViewMode = mode;
+
+        // Bug fix (Codex round 4, P2 #8): capture what the OLD mode's window
+        // had centered BEFORE recomputing it — ComputeInitialRange's task-
+        // derived window ignores wherever the user had actually scrolled/
+        // navigated to, so switching view modes used to silently reset the
+        // viewport back to the tasks' own min/max window (and, independent of
+        // THAT, never even told GanttTimeline to re-scroll the DOM at all —
+        // RangeStart/RangeEnd changing was never one of its scroll-reattempt
+        // triggers). The exact midpoint of the CURRENT VisibleRange is used as
+        // the practical proxy for "what's centered on screen" — VisibleRange
+        // is itself padded around whatever the user last centered on (today,
+        // a previous Today click, or a previous mode switch's own centerDate),
+        // so its midpoint tracks that reasonably closely without needing a
+        // live scrollLeft reading (no interop round-trip on the hot path of a
+        // toolbar click).
+        var centerDate = VisibleCenterDate;
         _state.SetViewMode(mode);
-        _state.SetVisibleRange(ComputeInitialRange(mode, _state.Tasks, EffectiveToday));
+        _state.SetVisibleRange(ApplyPadding(mode, centerDate, centerDate));
+        _scrollTargetDate = centerDate;
+        _scrollToTodayRequestId++; // re-request the DOM scroll — see GanttTimeline.ScrollTargetDate's remarks
         if (ViewModeChanged.HasDelegate) await ViewModeChanged.InvokeAsync(mode);
         else ViewMode = mode; // uncontrolled: keep our own field in lock-step for the next OnParametersSet comparison
+    }
+
+    // Codex round 4, P2 #8 — see HandleViewModeChangedAsync's own remarks for
+    // why the CURRENT range's midpoint is used as the "what's centered"
+    // proxy.
+    private DateTime VisibleCenterDate
+    {
+        get
+        {
+            var range = _state.VisibleRange;
+            return range.Start + new TimeSpan((range.End - range.Start).Ticks / 2);
+        }
     }
 
     // "Shift VisibleRange by the mode's step" — literally GanttScaleConfig.Step
@@ -422,6 +478,11 @@
         // drift with each Today click.
         var start = GanttScale.AlignToUnitStart(_state.ViewMode, today - half);
         _state.SetVisibleRange(start, start + width);
+        // Bug fix (Codex round 4, P2 #8): a PREVIOUS view-mode switch may have
+        // left _scrollTargetDate pointing at some other centerDate — the
+        // Today button must always target Today specifically, not whatever
+        // was last centered before it.
+        _scrollTargetDate = null;
         // P1 fix (Codex review wave): bump the change-token GanttTimeline
         // watches so it re-centers its DOM scrollLeft on today too — recomputing
         // VisibleRange alone repositions where today falls in the timeline's
@@ -432,4 +493,9 @@
     }
 
     private int _scrollToTodayRequestId;
+
+    // Codex round 4, P2 #8 — see HandleViewModeChangedAsync's own remarks.
+    // Null (the default) keeps GanttTimeline targeting Today, unchanged from
+    // every prior behavior.
+    private DateTime? _scrollTargetDate;
 }

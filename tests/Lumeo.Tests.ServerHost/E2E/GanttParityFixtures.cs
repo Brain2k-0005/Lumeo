@@ -124,13 +124,21 @@ internal static class GanttParityFixtures
     /// anything). Fixed dates (March 2026), never <see cref="DateTime.Now"/>/
     /// <see cref="DateTime.Today"/> — same determinism rule as
     /// <see cref="SharedTasks"/>, this fixture has no today-marker concern at all.
+    ///
+    /// A dependency CHAIN (each task depends on the one before it — 59 edges
+    /// total) was added for Codex round 4, P2 #3's arrow-virtualization
+    /// regression coverage: reuses this same 60-row fixture rather than adding
+    /// a parallel one, since arrow culling needs the identical "genuinely
+    /// taller than the viewport" property the bar/tree virtualization specs
+    /// already established here.
     /// </summary>
     internal static List<GanttTask> TallFixture()
     {
         var start = new DateTime(2026, 3, 1);
         var tasks = new List<GanttTask>(60);
         for (var i = 0; i < 60; i++)
-            tasks.Add(new GanttTask($"tall-{i}", $"Task {i}", start.AddDays(i), start.AddDays(i + 3)));
+            tasks.Add(new GanttTask($"tall-{i}", $"Task {i}", start.AddDays(i), start.AddDays(i + 3),
+                Dependencies: i > 0 ? new[] { $"tall-{i - 1}" } : null));
         return tasks;
     }
 }

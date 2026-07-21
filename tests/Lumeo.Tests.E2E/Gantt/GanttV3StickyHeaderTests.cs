@@ -63,6 +63,19 @@ public class GanttV3StickyHeaderTests : GanttParityTestBase
 
         await Assertions.Expect(header).ToBeInViewportAsync();
 
+        // Codex round 4, P2 #1: GanttTree's own header spacer (matches the
+        // timeline header's height, so both panes' rows start at the same Y)
+        // previously scrolled away with the tree rows behind it — even though
+        // the TIMELINE's header (asserted above) correctly stayed pinned —
+        // since only the tree's ROOT was sticky-left (horizontal only), never
+        // the spacer itself (vertical). Captured BEFORE scrolling so the
+        // "stays at the same Y" comparison below isn't just coincidentally
+        // true.
+        var treeSpacer = Page.Locator("[data-testid='gantt-v3-root'] .sticky.start-0 > div").First;
+        await treeSpacer.WaitForAsync(new() { Timeout = 15000 });
+        var treeSpacerBefore = await treeSpacer.BoundingBoxAsync();
+        Assert.NotNull(treeSpacerBefore);
+
         // Scroll the OUTER pane all the way down.
         await scrollPane.EvaluateAsync("el => el.scrollTop = el.scrollHeight");
 
@@ -70,6 +83,11 @@ public class GanttV3StickyHeaderTests : GanttParityTestBase
         // scrolled away with the row canvas instead of staying stuck to the
         // top of THIS pane.
         await Assertions.Expect(header).ToBeInViewportAsync();
+
+        var treeSpacerAfter = await treeSpacer.BoundingBoxAsync();
+        Assert.NotNull(treeSpacerAfter);
+        Assert.True(Math.Abs(treeSpacerBefore!.Y - treeSpacerAfter!.Y) < 2,
+            $"expected GanttTree's own header spacer to stay pinned at the pane's top (Y unchanged) after scrolling, went from Y={treeSpacerBefore.Y} to Y={treeSpacerAfter.Y}");
 
         // GanttTree's new virtualization (Codex round 2, P2 #10) actually
         // engages in a real browser (unlike bUnit's headless DOM, which

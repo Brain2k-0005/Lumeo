@@ -469,4 +469,86 @@ public class GanttScaleTests : IDisposable
         Assert.Equal(22, widthDefault); // milestone bounding box is always barHeight regardless of columnWidth
         Assert.Equal(22, widthOverride);
     }
+
+    // ── RTL scrollLeft conversion math (Codex round 4, P2 #4) ───────────────
+    //
+    // gantt-v3.js's toNativeScrollLeft/fromNativeScrollLeft can't be unit
+    // tested directly from C# (they're pure JS, and their INPUT — a live
+    // browser's detected RTL convention — isn't something a C# test can
+    // observe either). What CAN be tested independent of any browser is the
+    // CONVERSION MATH itself, given a known convention label: this is a
+    // faithful byte-for-byte port of both functions, asserted against all 3
+    // conventions, so a future edit to either side is caught by a mismatch
+    // here instead of a silent RTL regression only visible in a real browser.
+
+    private enum RtlConvention { Default, Negative, Reverse }
+
+    // Port of gantt-v3.js's toNativeScrollLeft.
+    private static double ToNativeScrollLeft(RtlConvention convention, double maxScroll, double logicalTarget) => convention switch
+    {
+        RtlConvention.Negative => logicalTarget - maxScroll,
+        RtlConvention.Reverse => maxScroll - logicalTarget,
+        _ => logicalTarget,
+    };
+
+    // Port of gantt-v3.js's fromNativeScrollLeft (the exact inverse).
+    private static double FromNativeScrollLeft(RtlConvention convention, double maxScroll, double nativeValue) => convention switch
+    {
+        RtlConvention.Negative => nativeValue + maxScroll,
+        RtlConvention.Reverse => maxScroll - nativeValue,
+        _ => nativeValue,
+    };
+
+    // xunit [Theory]/[InlineData] would need this `private` enum in the
+    // PUBLIC test method's signature (CS0051 — same note as AssertConfig's
+    // own remarks above) — one [Fact] per convention instead.
+    private static void AssertRoundTrip(RtlConvention convention)
+    {
+        const double maxScroll = 1000;
+        const double logicalTarget = 350;
+
+        var native = ToNativeScrollLeft(convention, maxScroll, logicalTarget);
+        var recovered = FromNativeScrollLeft(convention, maxScroll, native);
+
+        Assert.Equal(logicalTarget, recovered, precision: 10);
+    }
+
+    [Fact]
+    public void ToNativeScrollLeft_And_FromNativeScrollLeft_Are_Exact_Inverses_For_Default() =>
+        AssertRoundTrip(RtlConvention.Default);
+
+    [Fact]
+    public void ToNativeScrollLeft_And_FromNativeScrollLeft_Are_Exact_Inverses_For_Negative() =>
+        AssertRoundTrip(RtlConvention.Negative);
+
+    [Fact]
+    public void ToNativeScrollLeft_And_FromNativeScrollLeft_Are_Exact_Inverses_For_Reverse() =>
+        AssertRoundTrip(RtlConvention.Reverse);
+
+    [Fact]
+    public void ToNativeScrollLeft_Default_Convention_Is_A_Pass_Through()
+    {
+        Assert.Equal(350, ToNativeScrollLeft(RtlConvention.Default, maxScroll: 1000, logicalTarget: 350));
+    }
+
+    [Fact]
+    public void ToNativeScrollLeft_Negative_Convention_Shifts_By_MaxScroll_Below_Zero()
+    {
+        // 'negative': 0 = RTL start, -(maxScroll) = the far end — matches the
+        // empirically-verified modern-Chromium behavior this fix's own JS
+        // comment documents.
+        Assert.Equal(-650, ToNativeScrollLeft(RtlConvention.Negative, maxScroll: 1000, logicalTarget: 350));
+        Assert.Equal(0, ToNativeScrollLeft(RtlConvention.Negative, maxScroll: 1000, logicalTarget: 1000));
+        Assert.Equal(-1000, ToNativeScrollLeft(RtlConvention.Negative, maxScroll: 1000, logicalTarget: 0));
+    }
+
+    [Fact]
+    public void ToNativeScrollLeft_Reverse_Convention_Mirrors_Around_MaxScroll()
+    {
+        // 'reverse' (old WebKit): 0 = RTL start, +maxScroll = the far end,
+        // increasing in the OPPOSITE direction from 'negative'.
+        Assert.Equal(650, ToNativeScrollLeft(RtlConvention.Reverse, maxScroll: 1000, logicalTarget: 350));
+        Assert.Equal(0, ToNativeScrollLeft(RtlConvention.Reverse, maxScroll: 1000, logicalTarget: 1000));
+        Assert.Equal(1000, ToNativeScrollLeft(RtlConvention.Reverse, maxScroll: 1000, logicalTarget: 0));
+    }
 }

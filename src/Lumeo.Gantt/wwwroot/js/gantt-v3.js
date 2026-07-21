@@ -67,6 +67,8 @@ export const ganttV3 = {
 
     registerHeaderScrollSync,
     unregisterHeaderScrollSync,
+    registerVerticalScrollTracking,
+    unregisterVerticalScrollTracking,
 };
 
 // Sticky-header horizontal scroll sync (Codex round 2, P1 #3 — "sticky header
@@ -108,6 +110,44 @@ function unregisterHeaderScrollSync(canvasEl) {
     headerScrollSyncs.delete(canvasEl);
 }
 
+// Vertical scroll tracking (Codex round 4, P2 #3): GanttArrowLayer draws one
+// SVG path per dependency regardless of scroll position, unlike the bars/tree
+// rows it overlays (both already virtualized — see GanttTimeline.Virtualize's
+// own remarks and GanttTree's round-2 P2 #10 fix). Reports the scroll
+// container's scrollTop/clientHeight back to GanttTimeline (a NEW,
+// independent listener rather than piggy-backing on registerHeaderScrollSync
+// above: that one is deliberately SKIPPED entirely in Gantt3's shared-pane
+// mode — see GanttTimeline.OnAfterRenderAsync's own remarks on why —
+// precisely the mode where this virtualization actually matters at scale),
+// rAF-throttled so a fast scroll/drag doesn't flood Blazor with an
+// invokeMethodAsync round-trip per native 'scroll' event.
+const verticalScrollTrackers = new Map(); // el -> { dotNetRef, onScroll, pendingFrame }
+
+function registerVerticalScrollTracking(el, dotNetRef) {
+    if (!el || verticalScrollTrackers.has(el)) return;
+    const report = () => {
+        tracker.pendingFrame = null;
+        dotNetRef.invokeMethodAsync('OnGanttV3VerticalScroll', el.scrollTop, el.clientHeight);
+    };
+    const onScroll = () => {
+        if (tracker.pendingFrame) return; // already scheduled for this frame
+        tracker.pendingFrame = requestAnimationFrame(report);
+    };
+    const tracker = { dotNetRef, onScroll, pendingFrame: null };
+    el.addEventListener('scroll', onScroll, { passive: true });
+    verticalScrollTrackers.set(el, tracker);
+    report(); // initial position immediately — covers a pane that's already scrolled before this registers
+}
+
+function unregisterVerticalScrollTracking(el) {
+    if (!el) return;
+    const tracker = verticalScrollTrackers.get(el);
+    if (!tracker) return;
+    el.removeEventListener('scroll', tracker.onScroll);
+    if (tracker.pendingFrame) cancelAnimationFrame(tracker.pendingFrame);
+    verticalScrollTrackers.delete(el);
+}
+
 // RTL scrollLeft normalization (Codex round 3, P2 #7): every pixel v3 computes
 // (GanttScale.DateToPixel, bar/header positions) lives in one LOGICAL axis —
 // 0 = earliest date, increasing = later — and is NEVER mirrored for RTL (v2
@@ -137,14 +177,33 @@ function detectRtlScrollConvention() {
     const probe = document.createElement('div');
     probe.dir = 'rtl';
     probe.style.cssText = 'position:absolute;visibility:hidden;width:1px;height:1px;overflow:scroll;top:-9999px;left:-9999px;';
-    probe.innerHTML = '<div style="width:2px;height:1px;"></div>';
+    probe.innerHTML = '<div style="width:1000px;height:1px;"></div>';
     document.body.appendChild(probe);
-    probe.scrollLeft = 1;
+
+    // Bug fix (Codex round 4, P2 #4): the PREVIOUS probe assigned scrollLeft=1
+    // FIRST and inspected the result — but 'default' and 'reverse' both accept
+    // non-negative values in the SAME [0, maxScroll] numeric range (only
+    // 'negative' rejects/clamps a positive assignment), so a positive
+    // assignment reads back as 1 for BOTH 'default' and 'reverse' — the
+    // 'reverse' branch below could never be reached; every legacy-WebKit
+    // engine this was meant to detect was silently misclassified as
+    // 'default' instead. The canonical technique (the well-known
+    // "detectRTLScrollType" pattern, e.g. github.com/othree/jquery.rtl-scroll-type)
+    // checks the element's UNTOUCHED, natural initial scrollLeft FIRST,
+    // before any assignment ever overwrites it — 'reverse' engines are the
+    // ONLY ones whose freshly-rendered (never-yet-scrolled) initial position
+    // is already non-zero (they render an RTL overflow container pre-scrolled
+    // to reflect its natural reading start), which the OLD code destroyed by
+    // assigning scrollLeft=1 before ever reading the natural value. Modern
+    // evergreen engines (Chrome/Firefox/Safari — 'negative' convention,
+    // confirmed empirically: initial=0, +1 assignment clamps back to 0, -1
+    // assignment sticks) are unaffected by this fix; only the previously
+    // unreachable legacy branch is corrected.
     if (probe.scrollLeft > 0) {
-        _rtlScrollConvention = 'default';
+        _rtlScrollConvention = 'reverse';
     } else {
-        probe.scrollLeft = -1;
-        _rtlScrollConvention = probe.scrollLeft < 0 ? 'negative' : 'reverse';
+        probe.scrollLeft = 1;
+        _rtlScrollConvention = probe.scrollLeft === 0 ? 'negative' : 'default';
     }
     document.body.removeChild(probe);
     return _rtlScrollConvention;

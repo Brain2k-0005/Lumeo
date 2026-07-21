@@ -639,6 +639,24 @@ public interface IComponentInteropService : IAsyncDisposable, IDisposable
     /// <summary>Tears down the scroll mirror registered by <see cref="GanttV3RegisterHeaderScrollSyncAsync"/>. Default no-op.</summary>
     Task GanttV3UnregisterHeaderScrollSyncAsync(Microsoft.AspNetCore.Components.ElementReference canvasEl) => Task.CompletedTask;
 
+    /// <summary>
+    /// Registers a rAF-throttled vertical-scroll listener on <paramref name="scrollEl"/>
+    /// (Codex round 4, P2 #3) — reports <c>(scrollTop, clientHeight)</c> back via
+    /// <paramref name="dotNetRef"/>'s <c>OnGanttV3VerticalScroll</c> JSInvokable
+    /// method, so <c>GanttArrowLayer</c> can cull dependency arrows whose rows
+    /// are scrolled out of view (the row canvas's own bars/tree already
+    /// virtualize via <c>&lt;Virtualize&gt;</c>; the SVG arrow overlay
+    /// previously did not). Independent of <see cref="GanttV3RegisterHeaderScrollSyncAsync"/> —
+    /// that one is skipped entirely in Gantt3's shared-pane mode (see
+    /// <c>GanttTimeline.razor</c>'s own remarks), precisely the mode where
+    /// arrow virtualization matters most. Default no-op DIM so existing
+    /// implementers/test doubles keep compiling.
+    /// </summary>
+    Task GanttV3RegisterVerticalScrollTrackingAsync<[System.Diagnostics.CodeAnalysis.DynamicallyAccessedMembers(System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.PublicMethods)] T>(Microsoft.AspNetCore.Components.ElementReference scrollEl, DotNetObjectReference<T> dotNetRef) where T : class => Task.CompletedTask;
+
+    /// <summary>Tears down the listener registered by <see cref="GanttV3RegisterVerticalScrollTrackingAsync{T}"/>. Default no-op.</summary>
+    Task GanttV3UnregisterVerticalScrollTrackingAsync(Microsoft.AspNetCore.Components.ElementReference scrollEl) => Task.CompletedTask;
+
     // Toolbar overflow observer — registers a ResizeObserver on the toolbar
     // element and invokes the handler with (fittingCount, totalCount) whenever
     // the number of items that fit before the "..." overflow trigger changes.

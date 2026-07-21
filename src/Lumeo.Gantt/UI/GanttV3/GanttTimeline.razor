@@ -56,7 +56,24 @@
                     <div class="absolute truncate text-xs font-semibold text-foreground" style="@UpperRunStyle(run)">@run.Label</div>
                 }
             </div>
-            <div class="relative flex" style="height:@((GanttScale.HeaderHeight - 20).ToString(CultureInfo.InvariantCulture))px;">
+            @* Bug fix (Codex round 4, P2 #9): this row's date columns are
+               rendered in DOM order (earliest first) and rely on that DOM
+               order to lay out left-to-right — but it's the ONLY part of the
+               header using `display:flex` for layout (the upper run labels
+               above, like every bar/grid-line, use `position:absolute; left:
+               Xpx`, which is direction-agnostic). A flex container's default
+               `flex-direction:row` reverses child ORDER under an inherited
+               `dir="rtl"` (Lumeo's DirectionProvider), so under RTL this row
+               alone would visually flip to latest-first while the
+               grid-lines/bars/upper-labels stayed physically earliest-first,
+               misaligning every column. `dir="ltr"` forces this ONE flex
+               container's layout direction back to physical (DOM) order
+               regardless of the page's surrounding direction — matching how
+               every other coordinate in this canvas is already
+               direction-agnostic (v3's date axis is never mirrored for RTL;
+               see gantt-v3.js's own remarks on why only the SCROLL position
+               needed RTL handling, not the layout itself). *@
+            <div class="relative flex" dir="ltr" style="height:@((GanttScale.HeaderHeight - 20).ToString(CultureInfo.InvariantCulture))px;">
                 @for (var i = 0; i < Units.Count; i++)
                 {
                     var label = LowerLabels[i];
@@ -109,7 +126,8 @@
                     @if (row.Task is not null)
                     {
                         <GanttBar Task="row.Task" X="row.X" Width="row.Width" RowIndex="row.RowIndex"
-                                  BarHeight="EffectiveBarHeight" Color="@row.Color" BarTemplate="BarTemplate" />
+                                  BarHeight="EffectiveBarHeight" Color="@row.Color" BarTemplate="BarTemplate"
+                                  OnTaskClick="OnTaskClick" />
                     }
                     else
                     {
@@ -139,7 +157,7 @@
                inputs rather than reaching into this component's RowItems. *@
             <GanttArrowLayer Rows="@EffectiveRows" ViewMode="@ViewMode" Origin="@Origin"
                              ColumnWidth="@EffectiveColumnWidth" BarHeight="@EffectiveBarHeight"
-                             Width="@TotalWidth" Height="@CanvasHeight" />
+                             Width="@TotalWidth" Height="@CanvasHeight" VisibleRowRange="@_visibleRowRange" />
         </div>
     </div>
 </div>
@@ -184,6 +202,9 @@
     /// <summary>Replaces a bar's default label content when set.</summary>
     [Parameter] public RenderFragment<GanttTask>? BarTemplate { get; set; }
 
+    /// <summary>Raised when a bar is activated via click or keyboard (Enter/Space) — forwarded from every rendered <see cref="GanttBar"/> (Codex round 4, P2 #5). Same contract as v2's <c>Gantt.OnTaskClick</c>.</summary>
+    [Parameter] public EventCallback<GanttTask> OnTaskClick { get; set; }
+
     /// <summary>Additional CSS classes merged onto the root scroll container.</summary>
     [Parameter] public string? Class { get; set; }
 
@@ -212,6 +233,42 @@
     /// derives "today" via the browser's own <c>new Date()</c>).
     /// </summary>
     [Parameter] public DateTime Today { get; set; } = DateTime.Today;
+
+    /// <summary>
+    /// Overrides which date the scroll-to-center mechanism (<see cref="ScrollToTodayRequestId"/>,
+    /// firstRender, empty→populated) actually scrolls toward. Null (the default)
+    /// targets <see cref="Today"/>, unchanged from every existing behavior. Set
+    /// by <c>Gantt3</c> specifically when recentering after a view-mode switch
+    /// (Codex round 4, P2 #8) — the user's previously-centered date, not
+    /// necessarily today. <see cref="Today"/> itself still drives the MARKER's
+    /// own position (<see cref="TodayInRange"/>/<see cref="TodayLineStyle"/>) —
+    /// this only redirects where the DOM actually scrolls to.
+    /// </summary>
+    [Parameter] public DateTime? ScrollTargetDate { get; set; }
+
+    /// <summary>
+    /// Pixels of the <see cref="ScrollHost"/>'s own content that precede this
+    /// timeline's origin (x=0) — namely a sibling tree pane's width, when
+    /// <c>Gantt3</c> renders one (Codex round 4, P2 #2). Defaults to 0
+    /// (standalone mode, or no tree pane — this timeline's own coordinate
+    /// space already starts at the ScrollHost's content origin). Added to
+    /// every scroll TARGET before issuing it to <c>centerOn</c> — this
+    /// timeline's own internal pixel math (bar/grid/marker positions) is
+    /// entirely unaffected, since those are all relative to THIS component's
+    /// own origin, not the shared pane's.
+    /// </summary>
+    /// <remarks>
+    /// Bug fix (Codex round 4, P2 #2): before this fix, <c>EffectiveScrollHost</c>
+    /// (Gantt3's outer pane) scrolled based on ITS OWN content's absolute
+    /// position — which, with a tree pane shown, starts with
+    /// <see cref="GanttScale.TreePaneWidth"/> pixels of tree BEFORE this
+    /// timeline even begins — while every X this component computes
+    /// (<see cref="TodayX"/> included) is relative to ITS OWN origin (x=0 at
+    /// the first date column, i.e. immediately after the tree). Centering on
+    /// a raw, un-offset TodayX therefore landed the DOM's actual scroll
+    /// position short by exactly the tree's width in LTR-with-tree layouts.
+    /// </remarks>
+    [Parameter] public double ScrollHostLeadingOffset { get; set; }
 
     /// <summary>
     /// The element that owns horizontal (and vertical) scrolling for this
@@ -251,6 +308,15 @@
     private DateTime _lastSeenToday;
     private bool _scrollHostWasReady;
     private bool _headerScrollSyncRegistered;
+
+    // Codex round 4, P2 #3 — see GanttV3RegisterVerticalScrollTrackingAsync's
+    // own remarks. Null until the first scroll report arrives (registration
+    // is async; a JS round-trip separates mount from the first callback) —
+    // GanttArrowLayer treats null as "show every arrow, unculled" so there's
+    // no flash-of-no-arrows in that brief window.
+    private (int Start, int End)? _visibleRowRange;
+    private bool _verticalScrollTrackingRegistered;
+    private DotNetObjectReference<GanttTimeline>? _selfRef;
 
     // Codex round 2, P1 #3: this root no longer establishes any scroll
     // container itself at all — the header (sticky) and the row-canvas
@@ -335,6 +401,14 @@
     private double TodayX => GanttScale.DateToPixel(ViewMode, Origin, Today, EffectiveColumnWidth);
     private bool TodayInRange => TodayHighlight && Units.Count > 0 && TodayX >= 0 && TodayX <= TotalWidth;
 
+    // Codex round 4, P2 #8: the date the scroll-to-center mechanism actually
+    // targets — ScrollTargetDate when the caller (Gantt3, after a view-mode
+    // switch) supplies one, else Today, matching every prior behavior exactly
+    // when ScrollTargetDate is left null. Deliberately SEPARATE from TodayX —
+    // the marker must always reflect where TODAY is, regardless of what the
+    // viewport is currently being scrolled toward.
+    private double ScrollTargetX => GanttScale.DateToPixel(ViewMode, Origin, ScrollTargetDate ?? Today, EffectiveColumnWidth);
+
     // v2 parity (Codex round 2, P2 #8): v2's scroll-to-today gate is
     // `todayPx > 0` (gantt-v2.js:684) — deliberately LOOSER than the
     // today-LINE marker's own render gate (`todayInRange`, upper+lower
@@ -361,7 +435,16 @@
     // later is gated by inst.todayHighlight !== false. TodayHighlight now
     // controls ONLY TodayInRange (the marker); the scroll-attempt is
     // unconditional on it.
-    private bool ShouldAttemptTodayScroll => Units.Count > 0 && TodayX > 0;
+    //
+    // Codex round 4, P2 #8: gates on ScrollTargetX now (was TodayX) so this
+    // generalizes correctly to a non-Today scroll target — reduces to the
+    // exact prior behavior when ScrollTargetDate is null (ScrollTargetX ==
+    // TodayX in that case). A view-mode-switch's centerDate is, by
+    // construction, always the exact midpoint of the freshly-computed range
+    // (see Gantt3.HandleViewModeChangedAsync), so this gate is trivially
+    // satisfied for that caller — the loosened v2-parity semantics above
+    // only actually matter for the Today-targeting case, unchanged.
+    private bool ShouldAttemptTodayScroll => Units.Count > 0 && ScrollTargetX > 0;
 
     private string CanvasStyle => FormattableString.Invariant($"width:{TotalWidth}px;min-height:{CanvasHeight}px;");
     private string HeaderOuterStyle => FormattableString.Invariant($"height:{GanttScale.HeaderHeight}px;");
@@ -477,6 +560,14 @@
             _lastSeenToday = Today;
             _scrollHostWasReady = IsScrollHostReady;
 
+            // Codex round 4, P2 #3: registered unconditionally (both modes —
+            // unlike the header-scroll-sync above, this one is NOT skipped for
+            // Gantt3's shared-pane mode; see its own registration method
+            // remarks for why). Same "not yet captured" ElementReference race
+            // as the scroll-to-today attempt below — gated on IsScrollHostReady
+            // and retried on the same scrollHostBecameReady transition.
+            if (IsScrollHostReady) await RegisterVerticalScrollTrackingAsync();
+
             // Bug fix (Codex round 3, P2 #1): a caller-supplied ScrollHost's
             // value DURING this render is unavoidably whatever the ancestor's
             // own ref field held when the ANCESTOR's render tree was built —
@@ -528,7 +619,58 @@
             // provably impossible for a future caller) case where one of them
             // changes on the SAME render ScrollHost is still resolving.
             if (IsScrollHostReady && ShouldAttemptTodayScroll) await ScrollToTodayCenterAsync();
+
+            // Codex round 4, P2 #3: retry the (possibly still-unregistered,
+            // same ElementReference race) vertical-scroll tracking registration
+            // on the SAME becameReady transition — RegisterVerticalScrollTrackingAsync
+            // itself is idempotent (no-ops if already registered against the
+            // current EffectiveScrollHost), so this is safe to call again
+            // unconditionally whenever we're in this branch at all.
+            if (IsScrollHostReady) await RegisterVerticalScrollTrackingAsync();
         }
+    }
+
+    // Codex round 4, P2 #3. Idempotent per EffectiveScrollHost value — the JS
+    // side (registerVerticalScrollTracking) also guards via its own Map, but
+    // guarding here too avoids a redundant interop round-trip on every retry
+    // once already registered.
+    private Task RegisterVerticalScrollTrackingAsync()
+    {
+        if (_verticalScrollTrackingRegistered) return System.Threading.Tasks.Task.CompletedTask;
+        _verticalScrollTrackingRegistered = true;
+        _selfRef ??= DotNetObjectReference.Create(this);
+        return Interop.GanttV3RegisterVerticalScrollTrackingAsync(EffectiveScrollHost, _selfRef);
+    }
+
+    /// <summary>
+    /// Reports the shared scroll pane's current scrollTop/clientHeight (Codex
+    /// round 4, P2 #3) — invoked from JS via <c>registerVerticalScrollTracking</c>'s
+    /// rAF-throttled listener. Recomputes which row indices are actually
+    /// visible (+ a small buffer margin, matching the spirit of Blazor's own
+    /// Virtualize overscan) so <c>GanttArrowLayer</c> can cull arrows whose
+    /// endpoints are both scrolled out of view. Public because <c>[JSInvokable]</c>
+    /// requires it — not meant for direct C# callers.
+    /// </summary>
+    [JSInvokable]
+    public void OnGanttV3VerticalScroll(double scrollTop, double clientHeight)
+    {
+        if (GanttScale.RowHeight <= 0 || clientHeight <= 0) return;
+
+        // A few rows of buffer above/below the exact pixel-visible range —
+        // Blazor's own Virtualize renders a similar overscan margin so its
+        // placeholder-swap doesn't visibly pop in/out at the viewport edge;
+        // arrows use the SAME margin so an arrow terminating at a
+        // just-off-screen (but still Virtualize-rendered) bar doesn't
+        // disappear a frame before its own endpoint does.
+        const int marginRows = 10;
+        var start = (int)Math.Floor(scrollTop / GanttScale.RowHeight) - marginRows;
+        var end = (int)Math.Ceiling((scrollTop + clientHeight) / GanttScale.RowHeight) + marginRows;
+        var rowCount = EffectiveRows.Count;
+        start = Math.Clamp(start, 0, Math.Max(0, rowCount - 1));
+        end = Math.Clamp(end, 0, Math.Max(0, rowCount - 1));
+
+        _visibleRowRange = (start, end);
+        StateHasChanged();
     }
 
     // True once ScrollHost is either not in use (standalone mode, always
@@ -538,7 +680,12 @@
     // ElementReference can start out uncaptured).
     private bool IsScrollHostReady => ScrollHost is null || !string.IsNullOrEmpty(ScrollHost.Value.Id);
 
-    private Task ScrollToTodayCenterAsync() => Interop.GanttV3ScrollToXAsync(EffectiveScrollHost, TodayX);
+    // Codex round 4, P2 #2/#8: ScrollHostLeadingOffset (a sibling tree pane's
+    // width, when Gantt3 shows one) + ScrollTargetX (Today or a caller-supplied
+    // override) — both default to their prior values (0 offset, Today), so
+    // this reduces to exactly the previous "Interop.GanttV3ScrollToXAsync(
+    // EffectiveScrollHost, TodayX)" call for every existing caller.
+    private Task ScrollToTodayCenterAsync() => Interop.GanttV3ScrollToXAsync(EffectiveScrollHost, ScrollHostLeadingOffset + ScrollTargetX);
 
     public async ValueTask DisposeAsync()
     {
@@ -547,5 +694,11 @@
             try { await Interop.GanttV3UnregisterHeaderScrollSyncAsync(_scrollHostRef); }
             catch (JSDisconnectedException) { }
         }
+        if (_verticalScrollTrackingRegistered)
+        {
+            try { await Interop.GanttV3UnregisterVerticalScrollTrackingAsync(EffectiveScrollHost); }
+            catch (JSDisconnectedException) { }
+        }
+        _selfRef?.Dispose();
     }
 }

@@ -829,6 +829,32 @@ public class TrackingInteropService : IComponentInteropService
         return Task.CompletedTask;
     }
 
+    // GanttV3 vertical-scroll-tracking registration tracking (Codex round 4,
+    // P2 #3) — records register/unregister calls, and captures the raw
+    // DotNetObjectReference so a test can simulate a JS-side scroll report
+    // (mirroring SimulateColumnResizeCommit's own pattern) without a real
+    // browser/JS scroll listener.
+    public int GanttV3RegisterVerticalScrollTrackingCallCount { get; private set; }
+    public int GanttV3UnregisterVerticalScrollTrackingCallCount { get; private set; }
+    private object? _ganttV3VerticalScrollDotNetRef;
+    public Task GanttV3RegisterVerticalScrollTrackingAsync<T>(ElementReference scrollEl, DotNetObjectReference<T> dotNetRef) where T : class
+    {
+        GanttV3RegisterVerticalScrollTrackingCallCount++;
+        _ganttV3VerticalScrollDotNetRef = dotNetRef.Value;
+        return Task.CompletedTask;
+    }
+    public Task GanttV3UnregisterVerticalScrollTrackingAsync(ElementReference scrollEl)
+    {
+        GanttV3UnregisterVerticalScrollTrackingCallCount++;
+        return Task.CompletedTask;
+    }
+    /// <summary>Simulates a JS-side vertical scroll report by invoking the captured component's own <c>OnGanttV3VerticalScroll</c> method directly.</summary>
+    public void RaiseGanttV3VerticalScroll(double scrollTop, double clientHeight)
+    {
+        var method = _ganttV3VerticalScrollDotNetRef?.GetType().GetMethod("OnGanttV3VerticalScroll");
+        method?.Invoke(_ganttV3VerticalScrollDotNetRef, new object[] { scrollTop, clientHeight });
+    }
+
     public ValueTask<string> RichTextInitAsync<T>(ElementReference elementRef, DotNetObjectReference<T> dotNetRef, object options) where T : class => ValueTask.FromResult(string.Empty);
     public ValueTask RichTextSetContentAsync(string id, string? html) => ValueTask.CompletedTask;
     public ValueTask RichTextCommandAsync(string id, string name, params object?[]? args) => ValueTask.CompletedTask;

@@ -45,4 +45,40 @@ public class GanttV3RtlTests : GanttParityTestBase
 
         await Assertions.Expect(todayLine).ToBeInViewportAsync(new() { Timeout = 10000 });
     }
+
+    [Fact]
+    public async Task Lower_header_date_labels_keep_physical_earliest_to_latest_order_under_rtl()
+    {
+        // Bug fix (Codex round 4, P2 #9): the lower-header row is the ONLY
+        // part of the header using `display:flex` for layout (upper-run
+        // labels, grid lines, and bars all use `position:absolute; left:Xpx`,
+        // which is direction-agnostic) — a flex container's default
+        // `flex-direction:row` reverses child ORDER under an inherited
+        // `dir="rtl"`, so this row alone would visually flip to latest-first
+        // while everything else stayed physically earliest-first, misaligning
+        // every column. Fixed via `dir="ltr"` forcing this one container's
+        // layout back to physical (DOM) order regardless of page direction.
+        //
+        // Asserted via DOM-order-vs-physical-order comparison rather than
+        // against a specific scroll position: under RTL, the native
+        // scrollLeft=0 position is the RTL START (physically the far right of
+        // the whole un-mirrored, much-wider-than-viewport canvas — NOT "the
+        // earliest rendered date"), so there is no simple "reset to the
+        // logical start" scroll value to assert against directly here; two
+        // ADJACENT labels' relative physical order is scroll-position-
+        // independent and is exactly what the bug actually broke.
+        await GotoHost("/e2e/gantt-v3?fixture=tall&viewMode=Day&rtl=1");
+
+        var scrollPane = Page.Locator("[data-testid='gantt-v3-root'] div[style*='overflow']").First;
+        await scrollPane.WaitForAsync(new() { Timeout = 15000 });
+
+        var labels = Page.Locator("[data-testid='gantt-v3-root'] .lumeo-gantt-v3-header .flex > div");
+        var firstBox = await labels.Nth(0).BoundingBoxAsync();
+        var secondBox = await labels.Nth(1).BoundingBoxAsync();
+        Assert.NotNull(firstBox);
+        Assert.NotNull(secondBox);
+
+        Assert.True(firstBox!.X < secondBox!.X,
+            $"expected the DOM-earlier (earlier-date) header label to sit physically LEFT of the DOM-later one under RTL, got label[0].X={firstBox.X}, label[1].X={secondBox.X}");
+    }
 }

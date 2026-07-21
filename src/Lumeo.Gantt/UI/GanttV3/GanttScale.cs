@@ -118,6 +118,20 @@ internal static class GanttScale
     internal const int HeaderHeight = 56;
 
     /// <summary>
+    /// GanttTree's fixed pane width in pixels (Codex round 4, P2 #2) — the
+    /// SINGLE source of truth for both GanttTree's own rendered width (a
+    /// Tailwind utility class can't be parameterized from C#, so GanttTree
+    /// uses an inline style built from this constant instead of a fixed
+    /// `w-56` class) and Gantt3's <c>GanttTimeline.ScrollHostLeadingOffset</c>
+    /// calculation — before this constant existed, the tree's width (224px,
+    /// Tailwind's `w-56`) was a magic number baked into GanttTree's markup
+    /// with nothing else in the codebase able to reference it, which is
+    /// exactly how the P2 #2 bug (scroll centering ignoring the tree's width)
+    /// went unnoticed: there was no shared value to even offset by.
+    /// </summary>
+    internal const int TreePaneWidth = 224;
+
+    /// <summary>
     /// Faithful port of gantt-v2.js's <c>VIEW_MODES</c> table (lines 29-36). Every
     /// field below is copied verbatim from the corresponding JS literal; see each
     /// <see cref="GanttScaleUnit"/>/<see cref="GanttHeaderUpperKind"/>/<see cref="GanttHeaderLowerKind"/>

@@ -27,8 +27,24 @@
    PublicAPI.Unshipped.txt; flagged for the reviewer/team lead to confirm.
    [EditorBrowsable(Never)] keeps this working-name API out of consumer
    IntelliSense until the Phase-4 rename (fix-round follow-up). *@
-<div class="@RootClass" @attributes="AdditionalAttributes">
-    <div style="@HeaderSpacerStyle"></div>
+<div class="@RootClass" style="@RootStyle" @attributes="AdditionalAttributes">
+    @* Bug fix (Codex round 4, P2 #1): this spacer only reserved vertical
+       space matching GanttTimeline's header height — it never itself stayed
+       pinned, so scrolling the shared pane down scrolled this spacer (and
+       the first few tree rows behind it) away while the TIMELINE's own
+       header (sticky top-0, in the sibling pane) stayed put, leaving the
+       tree pane's own "header row" (blank space where GanttTimeline's column
+       headers visually align) drift out of sync with what's actually
+       pinned. `sticky top-0` here — same mechanism as GanttTree's own
+       sticky-left (see RootClass's remarks) and GanttTimeline's header —
+       pins JUST this spacer, not the whole tree pane (which must still
+       scroll vertically WITH the row canvas, only pinning horizontally).
+       bg-card keeps rows scrolling underneath it from showing through;
+       z-10 matches GanttTimeline's own header z-index (this spacer sits in
+       a DIFFERENT stacking context — GanttTree's own root already
+       establishes one via z-20 — so this only needs to beat ITS OWN
+       siblings, i.e. the tree rows scrolling past underneath it). *@
+    <div class="sticky top-0 z-10 bg-card" style="@HeaderSpacerStyle"></div>
     @* Virtualized (Codex round 2, P2 #10) — mirrors GanttTimeline's own
        Virtualize (same Rows list, same GanttScale.RowHeight ItemSize) so both
        panes stay consistent: before this fix, GanttTree rendered every row's
@@ -84,7 +100,28 @@
     // correctly (still Gantt3's outer pane, unaffected). z-20 keeps it opaque
     // above bars/grid-lines that scroll underneath it; bg-card (already
     // present) provides the opaque backdrop that needs.
-    private string RootClass => Cx.Merge("sticky left-0 z-20 w-56 shrink-0 border-e border-border/60 bg-card", Class);
+    //
+    // Bug fix (Codex round 4, P2 #10): `left-0` (was a PHYSICAL offset) pinned
+    // the tree to the physical left edge unconditionally — under RTL, a
+    // tree/sidebar's natural "leading" edge is the physical RIGHT (matching
+    // every other Lumeo RTL-aware component's own logical-property idiom —
+    // see GanttBar's `start-full`/`ms-2`), so a page rendered RTL saw the
+    // tree stuck to the WRONG side (physical left, i.e. the RTL trailing/end
+    // edge) instead of pinning to its leading edge. `start-0` (CSS
+    // `inset-inline-start:0`) resolves to `left:0` under LTR (byte-identical
+    // to the previous behavior there) and `right:0` under RTL — sticky
+    // positioning resolves logical inset properties the same way it resolves
+    // physical ones, so this is a drop-in swap.
+    private string RootClass => Cx.Merge("sticky start-0 z-20 shrink-0 border-e border-border/60 bg-card", Class);
+
+    // Bug fix (Codex round 4, P2 #2): an inline style built from
+    // GanttScale.TreePaneWidth (was Tailwind's `w-56` utility class, a fixed
+    // 224px that couldn't be referenced from C#) — Gantt3's scroll-centering
+    // math needs this SAME width as an offset (see GanttTimeline.
+    // ScrollHostLeadingOffset's remarks), so it's now a single shared
+    // constant instead of a magic number duplicated between a CSS class here
+    // and nothing anywhere else.
+    private string RootStyle => FormattableString.Invariant($"width:{GanttScale.TreePaneWidth}px;");
 
     // Virtualize<TItem>.Items requires ICollection<TItem> (IReadOnlyList doesn't
     // implement it) — same pattern GanttTimeline.RowItems already uses for its

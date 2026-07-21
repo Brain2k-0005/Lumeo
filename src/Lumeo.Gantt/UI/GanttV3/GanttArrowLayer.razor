@@ -53,6 +53,21 @@
     /// <summary>The overlay's pixel height — matches GanttTimeline's canvas <c>CanvasHeight</c>.</summary>
     [Parameter] public double Height { get; set; }
 
+    /// <summary>
+    /// The (inclusive) row-index range currently virtualized into view, with
+    /// its own overscan margin already applied (Codex round 4, P2 #3) —
+    /// arrows whose SOURCE and TARGET rows are BOTH outside this range are
+    /// culled, matching the bars/tree pane this layer overlays (both already
+    /// virtualize via <c>&lt;Virtualize&gt;</c>). Null (the default, and the
+    /// value used before the first scroll-position report arrives) disables
+    /// culling entirely — every arrow renders, unchanged from prior behavior.
+    /// An arrow with ONE endpoint in range is deliberately kept (its visible
+    /// endpoint still needs a line leading to/from it, matching how a bar
+    /// half-scrolled off-screen still partially renders rather than
+    /// vanishing outright).
+    /// </summary>
+    [Parameter] public (int Start, int End)? VisibleRowRange { get; set; }
+
     /// <summary>Additional CSS classes merged onto the root <c>&lt;svg&gt;</c>.</summary>
     [Parameter] public string? Class { get; set; }
 
@@ -92,6 +107,20 @@
                 foreach (var dependsOnId in task.Dependencies)
                 {
                     if (!geometryByTaskId.TryGetValue(dependsOnId, out var source)) continue;
+
+                    // Bug fix (Codex round 4, P2 #3): cull an arrow whose
+                    // source AND target rows are BOTH outside the virtualized
+                    // window — see VisibleRowRange's own remarks for why ONE
+                    // endpoint in range is enough to keep it, and why null
+                    // (culling not yet active) renders everything, unchanged
+                    // from prior behavior.
+                    if (VisibleRowRange is { } range
+                        && (source.RowIndex < range.Start || source.RowIndex > range.End)
+                        && (target.RowIndex < range.Start || target.RowIndex > range.End))
+                    {
+                        continue;
+                    }
+
                     var pathD = GanttArrowRouting.ComputePathD(source, target, BarHeight);
                     var arrowheadPoints = GanttArrowRouting.ComputeArrowheadPoints(target, BarHeight);
                     arrows.Add(new GanttArrowInfo(dependsOnId, task.Id, pathD, arrowheadPoints));

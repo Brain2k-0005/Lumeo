@@ -284,7 +284,21 @@ public class GanttParityTests : GanttParityTestBase
         await Assertions.Expect(v3LowerCellLocator).Not.ToHaveCountAsync(v3InitialCount, new() { Timeout = 10000 });
         var v3Lower = await ReadV3LowerLabelTexts();
 
-        Assert.Equal(v2Lower, v3Lower);
+        // PARITY DELTA (Codex round 4, P2 #8 — deliberate, pinned): v2 always
+        // recomputes its date window from the TASKS' own min/max on every
+        // view-mode switch (gantt-v2.js's render() re-derives it from
+        // whatever `tasks` it sees on every call); v3 now instead recenters
+        // the new mode's window around wherever the PREVIOUS mode's viewport
+        // was actually centered (see Gantt3.HandleViewModeChangedAsync's own
+        // remarks — matching what users expect and what REUI does, per the
+        // finding's own framing), so the two legitimately land on DIFFERENT
+        // date windows after a Day->Week switch and their header label TEXT
+        // is no longer expected to match verbatim. Verified instead: v3's OWN
+        // Week-mode format is still correct (the same "d/M" weekRange shape
+        // v2 also switched to, confirming the mode change actually took
+        // effect) — the format-correctness half of what the old exact-equality
+        // assertion was really checking.
+        Assert.All(v3Lower, l => Assert.Matches(@"^\d{1,2}/\d{1,2}$", l));
         // Week's weekRange format ("d/M") looks nothing like Day's zero-padded
         // day number — a cheap sanity check that the switch actually happened.
         Assert.DoesNotContain(v2Lower, l => l.Length == 2 && l.All(char.IsDigit) && int.Parse(l) > 12);

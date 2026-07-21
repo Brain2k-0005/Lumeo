@@ -14,7 +14,16 @@
    which every logical-CSS utility and gantt-v3.js's own RTL scrollLeft
    normalization resolve against) instead of a page-specific ad-hoc dir
    attribute, so this harness exercises the SAME code path a real RTL
-   consumer would use. *@
+   consumer would use.
+
+   ?tree=0 (Codex round 4, P2 #2): every fixture on this page always passes a
+   non-null GroupBy, which unconditionally satisfies GanttRowModel.
+   DefaultShowTreePane's "GroupBy is set" branch regardless of whether any
+   task actually HAS a GroupLabel — meaning the tree pane always renders here
+   by default. The P2 #2 regression spec needs a like-for-like "without tree"
+   comparison case (does scroll-centering math still land correctly when
+   there's no tree-width offset to add at all), so this explicitly overrides
+   Gantt3's ShowTreePane parameter to false when present. *@
 
 <PageTitle>E2E - Gantt v3</PageTitle>
 
@@ -28,6 +37,7 @@
                     ViewModeChanged="@(m => _viewMode = m)"
                     Height="900px"
                     GroupBy="@(t => t.GroupLabel ?? "")"
+                    ShowTreePane="@_showTreePaneOverride"
                     BarColor="@GanttParityFixtures.GetBarColor"
                     data-testid="gantt-v3-root" />
         </DirectionProvider>
@@ -39,6 +49,7 @@
                 ViewModeChanged="@(m => _viewMode = m)"
                 Height="900px"
                 GroupBy="@(t => t.GroupLabel ?? "")"
+                ShowTreePane="@_showTreePaneOverride"
                 BarColor="@GanttParityFixtures.GetBarColor"
                 data-testid="gantt-v3-root" />
     }
@@ -48,9 +59,11 @@
     [SupplyParameterFromQuery] public string? Fixture { get; set; }
     [SupplyParameterFromQuery] public string? ViewMode { get; set; }
     [SupplyParameterFromQuery] public string? Rtl { get; set; }
+    [SupplyParameterFromQuery] public string? Tree { get; set; }
 
     private GanttViewMode _viewMode = GanttViewMode.Day;
     private List<GanttTask> _tasks = new();
+    private bool? _showTreePaneOverride;
 
     protected override void OnInitialized()
     {
@@ -62,5 +75,6 @@
         };
         if (!string.IsNullOrEmpty(ViewMode) && Enum.TryParse<GanttViewMode>(ViewMode, out var parsed))
             _viewMode = parsed;
+        if (Tree == "0") _showTreePaneOverride = false;
     }
 }

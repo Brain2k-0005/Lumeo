@@ -69,4 +69,50 @@ public class GanttV3StickyLeftTests : GanttParityTestBase
         // at the right X while clipped/hidden by something else.
         await Assertions.Expect(treeRow).ToBeInViewportAsync();
     }
+
+    [Fact]
+    public async Task GanttTree_Stays_Pinned_To_The_Physical_Right_Edge_Under_Rtl()
+    {
+        // Bug fix (Codex round 4, P2 #10): GanttTree.RootClass used a PHYSICAL
+        // `left-0`, which pins to the physical left edge unconditionally — but
+        // under RTL, a tree/sidebar's "leading" edge (where every OTHER
+        // RTL-aware Lumeo component pins via a logical property — see
+        // GanttBar's own `start-full`/`ms-2`) is the physical RIGHT. Fixed by
+        // swapping to `start-0` (CSS `inset-inline-start:0`), which resolves
+        // to `left:0` under LTR (unchanged — see the LTR spec above) and
+        // `right:0` under RTL.
+        await GotoHost("/e2e/gantt-v3?fixture=tall&viewMode=Day&rtl=1");
+
+        var scrollPane = Page.Locator("[data-testid='gantt-v3-root'] div[style*='overflow']").First;
+        await scrollPane.WaitForAsync(new() { Timeout = 15000 });
+        await Assertions.Expect(scrollPane).ToHaveAttributeAsync("data-gantt-v3-initial-scroll", "done", new() { Timeout = 15000 });
+
+        var treeRow = Page.Locator("[data-testid='gantt-v3-root'] [data-row-kind]").First;
+        await treeRow.WaitForAsync(new() { Timeout = 15000 });
+
+        async Task AssertPinnedToPhysicalRightEdge(string when)
+        {
+            var treeBox = await treeRow.BoundingBoxAsync();
+            var paneBox = await scrollPane.BoundingBoxAsync();
+            Assert.NotNull(treeBox);
+            Assert.NotNull(paneBox);
+            var treeRightEdge = treeBox!.X + treeBox.Width;
+            var paneRightEdge = paneBox!.X + paneBox.Width;
+            Assert.True(Math.Abs(treeRightEdge - paneRightEdge) < 3,
+                $"expected GanttTree to be pinned to the pane's physical right edge under RTL ({when}), tree right edge={treeRightEdge}, pane right edge={paneRightEdge}");
+        }
+
+        await AssertPinnedToPhysicalRightEdge("at mount");
+
+        // Under the 'negative' RTL scrollLeft convention (the modern
+        // evergreen-browser standard — see gantt-v3.js's own remarks),
+        // 0 is the RTL start and valid values run negative toward
+        // -(scrollWidth - clientWidth); scroll partway to prove the pin
+        // holds across a real scroll, not just coincidentally at mount.
+        var maxScroll = await scrollPane.EvaluateAsync<double>("el => el.scrollWidth - el.clientWidth");
+        await scrollPane.EvaluateAsync($"el => el.scrollLeft = {-maxScroll * 0.5}");
+        await Page.WaitForTimeoutAsync(200);
+
+        await AssertPinnedToPhysicalRightEdge("after scrolling to 50% of maxScroll");
+    }
 }

@@ -2,6 +2,7 @@
 @using System.ComponentModel
 @using System.Globalization
 @using Lumeo.GanttV3
+@inject Lumeo.Services.Localization.ILumeoLocalizer L
 @attribute [EditorBrowsable(EditorBrowsableState.Never)]
 
 @* GanttBar — v3's single task-bar renderer (design spec Phase 2, T2 "read-only
@@ -90,6 +91,13 @@
     /// <summary>Replaces the bar's default label content when set. Not used for milestones (v2 parity: milestones always show their name next to the diamond).</summary>
     [Parameter] public RenderFragment<GanttTask>? BarTemplate { get; set; }
 
+    /// <summary>
+    /// Raised when the bar is activated via mouse click OR keyboard (Enter/Space
+    /// on the now-focusable bar — Codex round 4, P2 #5). Same contract as v2's
+    /// <c>Gantt.OnTaskClick</c> (<c>EventCallback&lt;GanttTask&gt;</c>).
+    /// </summary>
+    [Parameter] public EventCallback<GanttTask> OnTaskClick { get; set; }
+
     /// <summary>Additional CSS classes merged onto the positioned wrapper.</summary>
     [Parameter] public string? Class { get; set; }
 
@@ -99,7 +107,23 @@
     // Tooltip's own root div defaults to "relative inline-flex" (see Tooltip.razor);
     // Cx.Merge resolves the relative/absolute conflict group so "absolute" (added
     // here) wins over Tooltip's "relative" while "inline-flex" survives untouched.
-    private string WrapperClass => Cx.Merge("absolute", Class);
+    //
+    // Bug fix (Codex round 4, P2 #7): Task.CustomClass never reached the
+    // rendered bar at all — GanttTimeline already hands this component the
+    // FULL Task object (`Task="row.Task"`), so no cross-component forwarding
+    // was actually missing; WrapperClass itself just never merged it in. v2
+    // parity note: gantt-v2.js documents a `customClass` task field in its
+    // own schema comment (line 12) but its renderer never actually applies it
+    // anywhere to a bar element — v2's own feature is unshipped/dead code, so
+    // there is no existing v2 PLACEMENT to mirror here; merged onto the outer
+    // bar wrapper (this component's own "bar-wrapper" equivalent) as the most
+    // semantically natural placement for a whole-bar class override.
+    // Bug fix (Codex round 4, P2 #5): focus-visible ring on the SAME element
+    // that becomes focusable (WrapperAttributes' tabindex) — Lumeo's standard
+    // focus idiom (see Button.razor's BaseClasses for the same four classes).
+    private string WrapperClass => Cx.Merge(
+        "absolute rounded focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-2",
+        Task.CustomClass, Class);
 
     private string InnerClass => Task.IsMilestone
         ? "relative flex h-full w-full items-center justify-center"
@@ -171,6 +195,36 @@
         }
     }
 
+    // Bug fix (Codex round 4, P2 #5): same Start/end normalization the
+    // tooltip already applies (round 3, P2 #5) — a milestone's End is
+    // geometrically irrelevant (GanttScale.BarGeometry positions it from
+    // Start alone), so the announced date range shouldn't imply a span.
+    private string TaskAriaLabel => L["Gantt.TaskAriaLabel", Task.Name,
+        Task.Start.ToString("MMM d, yyyy", CultureInfo.CurrentCulture),
+        TooltipEndDate.ToString("MMM d, yyyy", CultureInfo.CurrentCulture)];
+
+    // Bug fix (Codex round 4, P2 #5): bars had no keyboard affordance at all —
+    // WrapperAttributes below adds tabindex="0" (focus-visible ring via
+    // WrapperClass) so a bar can receive focus, which ALSO makes Tooltip's own
+    // existing focusin handling open the tooltip on keyboard focus for free
+    // (Tooltip.razor's `@onfocusin` bubbles from any focusable descendant —
+    // see its own HandleFocusIn remarks; no separate wiring needed here).
+    // Enter/Space mirrors the native <button> activation keys (v3 has no
+    // drag/edit capability yet at all — see this component's own top-of-file
+    // remarks — so there is no "readonly" gate to check here; OnTaskClick is
+    // purely a read notification, same as v2's).
+    // Named "Task" as a property already (the bar's own GanttTask), so
+    // System.Threading.Tasks.Task must stay fully qualified anywhere this
+    // class needs the TYPE rather than the property — "Task.CompletedTask"
+    // would otherwise try (and fail) to resolve a static member off the
+    // GanttTask-typed property instead of the Task type.
+    private System.Threading.Tasks.Task HandleKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key is "Enter" or " " && OnTaskClick.HasDelegate)
+            return OnTaskClick.InvokeAsync(Task);
+        return System.Threading.Tasks.Task.CompletedTask;
+    }
+
     private Dictionary<string, object> WrapperAttributes
     {
         get
@@ -179,6 +233,19 @@
             {
                 ["style"] = WrapperStyle,
                 ["data-task-id"] = Task.Id,
+                ["tabindex"] = "0",
+                ["role"] = "button",
+                ["aria-label"] = TaskAriaLabel,
+                // NOT an "onclick" entry here too (Codex round 4, P2 #5): Tooltip's
+                // own root already binds `@onclick="HandleTap"` directly in its
+                // markup (touch tap-to-pin — see its own remarks) BEFORE its
+                // `@attributes` splat point, so a splatted "onclick" here would
+                // silently WIN and replace it (Blazor's attribute-frame diffing:
+                // whichever same-named attribute frame is added LAST takes
+                // effect), breaking tap-to-pin on touch devices. This finding only
+                // asks for keyboard (Enter/Space) activation, which the
+                // "onkeydown" entry below covers without touching click at all.
+                ["onkeydown"] = EventCallback.Factory.Create<KeyboardEventArgs>(this, HandleKeyDown),
             };
             if (Task.IsMilestone) attrs["data-milestone"] = "true";
             // Author-supplied attributes win on collision (splat-last semantics
