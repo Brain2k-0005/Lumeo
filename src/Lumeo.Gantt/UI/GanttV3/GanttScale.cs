@@ -374,14 +374,28 @@ internal static class GanttScale
     private static string LowerLabel(GanttHeaderLowerKind kind, DateTime d) => kind switch
     {
         // case 'dayNum': lowerText = fmtDayNum(d); -> String(d.getDate()).padStart(2, '0')
+        // Locale-independent (plain digits, no month/day NAME involved) — matches
+        // v2's own locale-independent String.padStart, so InvariantCulture stays
+        // correct here (see the MonthName case below for the case that ISN'T).
         GanttHeaderLowerKind.DayNum => d.Day.ToString("D2", CultureInfo.InvariantCulture),
         // case 'weekRange': lowerText = `${d.getDate()}/${d.getMonth() + 1}`;
         GanttHeaderLowerKind.WeekRange => $"{d.Day}/{d.Month}",
         // case 'monthName': lowerText = fmtMonthShort(d);
-        GanttHeaderLowerKind.MonthName => d.ToString("MMM", CultureInfo.InvariantCulture),
-        // case 'yearNum': lowerText = fmtYear(d);
+        // Bug fix (Codex round 2, P2 #4): v2's fmtMonthShort is
+        // `d.toLocaleString(undefined, { month: 'short' })` — the `undefined`
+        // locale argument means "the BROWSER's own locale", not hardcoded
+        // English. InvariantCulture here forced every v3 chart to always show
+        // English month abbreviations regardless of the visiting user's locale,
+        // a real parity gap (not a "v2 hardcodes English" case, which was the
+        // other hypothesis raised for this finding — checked and ruled out:
+        // v2 is locale-AWARE, v3 was locale-BLIND). CurrentCulture mirrors the
+        // ASP.NET Core request culture (typically derived from Accept-Language,
+        // the server-side equivalent of "the browser's locale"), matching
+        // Gantt3.PeriodLabel's own existing CurrentCulture usage.
+        GanttHeaderLowerKind.MonthName => d.ToString("MMM", CultureInfo.CurrentCulture),
+        // case 'yearNum': lowerText = fmtYear(d); — plain digits, locale-independent.
         GanttHeaderLowerKind.YearNum => d.Year.ToString(CultureInfo.InvariantCulture),
-        // case 'time6h': case 'time12h': lowerText = `${d.getHours()}:00`;
+        // case 'time6h': case 'time12h': lowerText = `${d.getHours()}:00`; — plain digits.
         GanttHeaderLowerKind.Time6h or GanttHeaderLowerKind.Time12h => $"{d.Hour}:00",
         _ => string.Empty,
     };
@@ -419,11 +433,15 @@ internal static class GanttScale
     private static string UpperLabel(GanttHeaderUpperKind kind, DateTime d) => kind switch
     {
         // case 'month': upperText = fmtMonth(d); -> d.toLocaleString(undefined, { month: 'long' })
-        GanttHeaderUpperKind.Month => d.ToString("MMMM", CultureInfo.InvariantCulture),
-        // case 'year': upperText = fmtYear(d);
+        // Bug fix (Codex round 2, P2 #4) — same v2-parity fix as LowerLabel's
+        // MonthName case above: v2's `undefined` locale argument follows the
+        // BROWSER's locale, so InvariantCulture's hardcoded English diverged
+        // from v2 for any non-English locale.
+        GanttHeaderUpperKind.Month => d.ToString("MMMM", CultureInfo.CurrentCulture),
+        // case 'year': upperText = fmtYear(d); — plain digits, locale-independent.
         GanttHeaderUpperKind.Year => d.Year.ToString(CultureInfo.InvariantCulture),
         // case 'day': upperText = `${fmtMonth(d)} ${d.getDate()}`;
-        GanttHeaderUpperKind.Day => $"{d.ToString("MMMM", CultureInfo.InvariantCulture)} {d.Day}",
+        GanttHeaderUpperKind.Day => $"{d.ToString("MMMM", CultureInfo.CurrentCulture)} {d.Day}",
         _ => string.Empty,
     };
 }

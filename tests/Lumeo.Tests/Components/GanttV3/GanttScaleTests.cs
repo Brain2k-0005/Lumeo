@@ -1,3 +1,4 @@
+using System.Globalization;
 using Lumeo.GanttV3;
 using Xunit;
 
@@ -15,9 +16,30 @@ namespace Lumeo.Tests.Components.GanttV3;
 /// tests are deterministic regardless of the CI/dev machine's local timezone —
 /// see the TZ/DST-safety comment on <see cref="GanttScale"/> for why the math
 /// itself is Kind-agnostic (no ToLocalTime/TimeZoneInfo call anywhere in it).
+///
+/// Culture note (Codex round 2, P2 #4): GanttScale.UpperLabel/LowerLabel's month
+/// names now follow CultureInfo.CurrentCulture (v2 parity — v2's fmtMonth/
+/// fmtMonthShort use `toLocaleString(undefined, ...)`, the BROWSER's locale, not
+/// hardcoded English), so the English month-name assertions below ("January",
+/// "Nov", etc.) pin CurrentCulture to en-US for the class's lifetime — same
+/// save/restore pattern as AnimatedBeamRegressionTests' StrokeWidths_Use_Invariant_
+/// Decimal_Separator_On_Comma_Cultures — so these specs stay deterministic
+/// regardless of the CI/dev machine's actual OS locale.
 /// </summary>
-public class GanttScaleTests
+public class GanttScaleTests : IDisposable
 {
+    private readonly CultureInfo _originalCulture = CultureInfo.CurrentCulture;
+
+    public GanttScaleTests()
+    {
+        CultureInfo.CurrentCulture = CultureInfo.GetCultureInfo("en-US");
+    }
+
+    public void Dispose()
+    {
+        CultureInfo.CurrentCulture = _originalCulture;
+    }
+
     private static DateTime Utc(int y, int m, int d, int h = 0, int min = 0) =>
         new(y, m, d, h, min, 0, DateTimeKind.Utc);
 
@@ -92,6 +114,38 @@ public class GanttScaleTests
     public void PixelsPerDay_Year_Matches_V2_pixelsPerDay()
     {
         Assert.Equal(120.0 / 365.0, GanttScale.PixelsPerDay(GanttViewMode.Year), precision: 10);
+    }
+
+    // ── Culture-aware month names (Codex round 2, P2 #4) ────────────────────
+
+    [Fact]
+    public void Month_Names_Follow_CurrentCulture_Not_Hardcoded_English()
+    {
+        // Regression: proves the fix actually follows CultureInfo.CurrentCulture
+        // (v2 parity — its fmtMonth/fmtMonthShort follow the BROWSER's locale via
+        // `toLocaleString(undefined, ...)`) rather than merely happening to still
+        // pass under the class's en-US pin above, which alone couldn't distinguish
+        // "genuinely culture-aware" from "still hardcoded to English by coincidence".
+        var original = CultureInfo.CurrentCulture;
+        try
+        {
+            CultureInfo.CurrentCulture = CultureInfo.GetCultureInfo("de-DE");
+            var units = GanttScale.BuildDateUnits(GanttViewMode.Day, Utc(2026, 1, 30), Utc(2026, 2, 2));
+
+            var upper = GanttScale.UpperRuns(GanttViewMode.Day, units);
+            Assert.Equal(new[]
+            {
+                new GanttHeaderRun(0, 2, "Januar"),
+                new GanttHeaderRun(2, 2, "Februar"),
+            }, upper);
+
+            var monthUnits = GanttScale.BuildDateUnits(GanttViewMode.Month, Utc(2026, 1, 1), Utc(2026, 1, 1));
+            Assert.Equal(new[] { "Jan" }, GanttScale.LowerLabels(GanttViewMode.Month, monthUnits));
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = original;
+        }
     }
 
     // ── Header segmentation — all 6 modes ───────────────────────────────────
