@@ -1,28 +1,53 @@
 @page "/e2e/gantt-v3"
 @using Lumeo.Tests.ServerHost.E2E
+@using Lumeo.Services
 
 @* Gantt v2/v3 parity harness (feat/gantt-v3, T4) — v3 counterpart of
    GanttV2Page.razor. Renders the working-name Gantt3 against the IDENTICAL
    fixture + params (Height/GroupBy/BarColor) so every DOM measurement taken
    here has a like-for-like v2 baseline. See GanttV2Page.razor's remarks for
-   the ?fixture / ?viewMode query params. *@
+   the ?fixture / ?viewMode query params.
+
+   ?rtl=1 (Codex round 3, P2 #7): wraps Gantt3 in Lumeo's own DirectionProvider
+   (the standard idiom every RTL-aware Lumeo component relies on — see
+   DirectionProvider.razor's own remarks — sets dir="rtl" on a wrapping div,
+   which every logical-CSS utility and gantt-v3.js's own RTL scrollLeft
+   normalization resolve against) instead of a page-specific ad-hoc dir
+   attribute, so this harness exercises the SAME code path a real RTL
+   consumer would use. *@
 
 <PageTitle>E2E - Gantt v3</PageTitle>
 
 <div class="p-4" style="max-width: 1600px;">
     <h1 data-testid="gantt-e2e-title">Gantt v3 (parity fixture)</h1>
-    <Gantt3 Tasks="@_tasks"
-            ViewMode="@_viewMode"
-            ViewModeChanged="@(m => _viewMode = m)"
-            Height="900px"
-            GroupBy="@(t => t.GroupLabel ?? "")"
-            BarColor="@GanttParityFixtures.GetBarColor"
-            data-testid="gantt-v3-root" />
+    @if (Rtl == "1")
+    {
+        <DirectionProvider Direction="LayoutDirection.Rtl">
+            <Gantt3 Tasks="@_tasks"
+                    ViewMode="@_viewMode"
+                    ViewModeChanged="@(m => _viewMode = m)"
+                    Height="900px"
+                    GroupBy="@(t => t.GroupLabel ?? "")"
+                    BarColor="@GanttParityFixtures.GetBarColor"
+                    data-testid="gantt-v3-root" />
+        </DirectionProvider>
+    }
+    else
+    {
+        <Gantt3 Tasks="@_tasks"
+                ViewMode="@_viewMode"
+                ViewModeChanged="@(m => _viewMode = m)"
+                Height="900px"
+                GroupBy="@(t => t.GroupLabel ?? "")"
+                BarColor="@GanttParityFixtures.GetBarColor"
+                data-testid="gantt-v3-root" />
+    }
 </div>
 
 @code {
     [SupplyParameterFromQuery] public string? Fixture { get; set; }
     [SupplyParameterFromQuery] public string? ViewMode { get; set; }
+    [SupplyParameterFromQuery] public string? Rtl { get; set; }
 
     private GanttViewMode _viewMode = GanttViewMode.Day;
     private List<GanttTask> _tasks = new();

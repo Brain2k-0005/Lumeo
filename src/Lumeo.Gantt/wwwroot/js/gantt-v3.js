@@ -36,7 +36,8 @@ export const ganttV3 = {
         const tryScroll = (attempt) => {
             const w = el.clientWidth;
             if (w > 50) {
-                el.scrollLeft = Math.max(0, targetX - w / 2);
+                const logicalTarget = Math.max(0, targetX - w / 2);
+                el.scrollLeft = toNativeScrollLeft(el, logicalTarget);
                 el.setAttribute('data-gantt-v3-initial-scroll', 'done');
             } else if (attempt < 30) {
                 requestAnimationFrame(() => tryScroll(attempt + 1));
@@ -91,7 +92,8 @@ function registerHeaderScrollSync(canvasEl, headerInnerEl) {
     if (!canvasEl || !headerInnerEl) return;
     if (headerScrollSyncs.has(canvasEl)) return; // idempotent — same canvas, same listener
     const onScroll = () => {
-        headerInnerEl.style.transform = `translateX(${-canvasEl.scrollLeft}px)`;
+        const logical = fromNativeScrollLeft(canvasEl, canvasEl.scrollLeft);
+        headerInnerEl.style.transform = `translateX(${-logical}px)`;
     };
     canvasEl.addEventListener('scroll', onScroll, { passive: true });
     headerScrollSyncs.set(canvasEl, { headerInnerEl, onScroll });
@@ -104,6 +106,74 @@ function unregisterHeaderScrollSync(canvasEl) {
     if (!reg) return;
     canvasEl.removeEventListener('scroll', reg.onScroll);
     headerScrollSyncs.delete(canvasEl);
+}
+
+// RTL scrollLeft normalization (Codex round 3, P2 #7): every pixel v3 computes
+// (GanttScale.DateToPixel, bar/header positions) lives in one LOGICAL axis —
+// 0 = earliest date, increasing = later — and is NEVER mirrored for RTL (v2
+// doesn't mirror its SVG either; a timeline's date order reading left-to-right
+// is a separate concern from the surrounding page's text direction). Native
+// `scrollLeft`, however, changes MEANING once an element's *computed*
+// `direction` is `rtl` (inherited from a `dir="rtl"` ancestor — Lumeo's own
+// RTL surface — even when the scroller itself never sets `dir`), and engines
+// have historically disagreed on exactly how:
+//   - "default"  (rare/legacy): behaves exactly like LTR — 0 at the physical
+//     left edge, increasing rightward — even though direction is rtl.
+//   - "negative" (the standardized behavior in evergreen Chrome/Firefox/
+//     Safari): 0 sits at the RTL start (physical right edge); scrolling
+//     toward the end of the content (physically left) makes scrollLeft
+//     NEGATIVE, down to -(scrollWidth - clientWidth).
+//   - "reverse"  (old WebKit): 0 also sits at the physical right edge, but
+//     scrolling toward the end makes scrollLeft INCREASE instead of going
+//     negative.
+// Detected once via a throwaway probe (the well-known "detectRTLScrollBehavior"
+// pattern used by several JS grid libraries) and cached — the convention is a
+// property of the browser engine, not of any one element.
+let _rtlScrollConvention = null; // 'default' | 'negative' | 'reverse'
+
+function detectRtlScrollConvention() {
+    if (_rtlScrollConvention) return _rtlScrollConvention;
+    if (typeof document === 'undefined') return 'negative'; // non-browser test host — assume the modern standard
+    const probe = document.createElement('div');
+    probe.dir = 'rtl';
+    probe.style.cssText = 'position:absolute;visibility:hidden;width:1px;height:1px;overflow:scroll;top:-9999px;left:-9999px;';
+    probe.innerHTML = '<div style="width:2px;height:1px;"></div>';
+    document.body.appendChild(probe);
+    probe.scrollLeft = 1;
+    if (probe.scrollLeft > 0) {
+        _rtlScrollConvention = 'default';
+    } else {
+        probe.scrollLeft = -1;
+        _rtlScrollConvention = probe.scrollLeft < 0 ? 'negative' : 'reverse';
+    }
+    document.body.removeChild(probe);
+    return _rtlScrollConvention;
+}
+
+// Converts a LOGICAL target scrollLeft (0 = earliest date, as GanttScale
+// always computes) into the NATIVE scrollLeft value that achieves the same
+// logical position on el, given el's own computed direction and the
+// detected engine convention. No-ops under LTR.
+function toNativeScrollLeft(el, logicalTarget) {
+    if (getComputedStyle(el).direction !== 'rtl') return logicalTarget;
+    const maxScroll = Math.max(0, el.scrollWidth - el.clientWidth);
+    const convention = detectRtlScrollConvention();
+    if (convention === 'negative') return logicalTarget - maxScroll;
+    if (convention === 'reverse') return maxScroll - logicalTarget;
+    return logicalTarget;
+}
+
+// Inverse of toNativeScrollLeft — recovers the LOGICAL position from a
+// native scrollLeft reading (used by the header scroll-sync, which needs
+// the logical offset to keep the header's own un-mirrored date labels
+// aligned with the row canvas's un-mirrored bars).
+function fromNativeScrollLeft(el, nativeValue) {
+    if (getComputedStyle(el).direction !== 'rtl') return nativeValue;
+    const maxScroll = Math.max(0, el.scrollWidth - el.clientWidth);
+    const convention = detectRtlScrollConvention();
+    if (convention === 'negative') return nativeValue + maxScroll;
+    if (convention === 'reverse') return maxScroll - nativeValue;
+    return nativeValue;
 }
 
 export default ganttV3;
