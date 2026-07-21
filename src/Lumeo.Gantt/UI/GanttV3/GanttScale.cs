@@ -171,6 +171,12 @@ internal static class GanttScale
             case GanttScaleUnit.Month:
             {
                 // for (let d = startDate; d <= endDate; d = addMonths(d, 1))
+                // v2 hardcodes +1 here (gantt-v2.js:176) rather than reading cfg.step —
+                // Month is the only mode using this unit and its VIEW_MODES step is 1,
+                // so `cfg.Step` and the literal 1 are equivalent today. Using cfg.Step
+                // instead of a hardcoded 1 is a deliberate generalization (keeps this
+                // branch correct if a future step-2+ month mode is ever added) that
+                // stays byte-identical to v2 for every currently-shipped view mode.
                 for (var d = rangeStart; d <= rangeEnd; d = d.AddMonths(cfg.Step))
                     units.Add(d);
                 break;
@@ -178,6 +184,8 @@ internal static class GanttScale
             case GanttScaleUnit.Year:
             {
                 // for (let y = startYear; y <= endYear; y++) dateUnits.push(new Date(y, 0, 1));
+                // v2 hardcodes +1 here too (gantt-v2.js:180) — same note as the Month
+                // branch above: Year's VIEW_MODES step is 1, so cfg.Step === 1 today.
                 for (var y = rangeStart.Year; y <= rangeEnd.Year; y += cfg.Step)
                     units.Add(new DateTime(y, 1, 1, 0, 0, 0, rangeStart.Kind));
                 break;
@@ -220,9 +228,13 @@ internal static class GanttScale
     /// <summary>
     /// Maps a pixel X offset (relative to <paramref name="origin"/>) back to a date.
     /// Faithful port of v2's <c>xToDate</c> closure (gantt-v2.js lines 232-252).
-    /// Rounds to the nearest whole unit exactly as v2's <c>Math.round</c> does (v2 has
-    /// no fractional-unit dates); ties round away from zero, which only matters at an
-    /// exact half-unit pixel offset — not a case v2 itself needs to disambiguate either.
+    /// Rounds to the nearest whole unit exactly as v2's <c>Math.round</c> does. JS
+    /// <c>Math.round</c> rounds an exact half-integer tie toward POSITIVE infinity
+    /// (<c>Math.round(-0.5) === -0</c>, <c>Math.round(-2.5) === -2</c>) — NOT away from
+    /// zero (that would give -1/-3 for those two examples). <see cref="RoundToInt"/>
+    /// mirrors that exact tie-breaking direction; see its own comment for the
+    /// implementation. Ties matter here whenever a drag lands on an exact half-column
+    /// pixel offset (e.g. Day mode, -19px = half of a 38px column).
     /// </summary>
     internal static DateTime PixelToDate(GanttViewMode mode, DateTime origin, double pixel)
     {
@@ -241,7 +253,23 @@ internal static class GanttScale
         };
     }
 
-    private static int RoundToInt(double value) => (int)Math.Round(value, MidpointRounding.AwayFromZero);
+    /// <summary>
+    /// Rounds like JS <c>Math.round</c>: half-integer ties round toward POSITIVE
+    /// infinity (<c>Math.round(-0.5) === -0</c>, <c>Math.round(2.5) === 3</c>,
+    /// <c>Math.round(-2.5) === -2</c>) — .NET's <see cref="Math.Round(double, MidpointRounding)"/>
+    /// with <see cref="MidpointRounding.AwayFromZero"/> instead rounds ties away from
+    /// zero (would give -1/-3 for the negative examples above), which silently
+    /// diverges from v2 at exact half-column pixel offsets (battle-tested review
+    /// finding: Day mode, pixel -19 — half of a 38px column — landed one day earlier
+    /// in v3 than v2). <c>Math.Floor(value + 0.5)</c> reproduces the JS behavior
+    /// exactly: adding 0.5 turns every tie into an exact integer that Floor then
+    /// resolves toward positive infinity, same as Math.round's tie-break. Doubles
+    /// have 52 bits of mantissa (~15-17 significant decimal digits); the pixel
+    /// magnitudes this method ever sees (single/low-double-digit thousands, per the
+    /// windowed-range design) are nowhere near where +0.5 could lose precision, so
+    /// there is no large-magnitude edge case to worry about here.
+    /// </summary>
+    private static int RoundToInt(double value) => (int)Math.Floor(value + 0.5);
 
     /// <summary>
     /// Pixels-per-calendar-day for the given view mode — used to snap a raw drag

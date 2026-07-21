@@ -250,4 +250,55 @@ public class GanttScaleTests
             Utc(2026, 3, 29, 12, 0),
         }, units);
     }
+
+    // ── Negative-tie rounding (review finding: PixelToDate must match JS Math.round,
+    //    which breaks exact half-integer ties toward POSITIVE infinity, NOT away from
+    //    zero) ───────────────────────────────────────────────────────────────────────
+    //
+    // Every pixel value below was chosen so the division/multiplication chain inside
+    // PixelToDate lands on an EXACT (bit-for-bit) half-integer — verified empirically
+    // (dotnet-script) before writing these, not just hand-derived — so the assertions
+    // pin real tie-breaking behavior, not floating-point noise near a tie:
+    //   Day:        pixel / 38 * 1  -> -19  => -0.5,  -95  => -2.5 (38 = 2*19, so
+    //               n/38 is exactly representable whenever n is a multiple of 19).
+    //   QuarterDay: pixel / 38 * 6  -> -9.5 => -1.5, -28.5 => -4.5 (colW/step's 3
+    //               factor cancels only against an odd multiple of colW/8, which is
+    //               why -0.5/-2.5 themselves aren't exactly reachable for this mode —
+    //               -1.5/-4.5 are the equivalent nearest exact ties).
+    //
+    // For every case, JS Math.round rounds the tie toward +infinity (the fractional
+    // part rounds UP even though the number is negative), which is one less negative
+    // than MidpointRounding.AwayFromZero would give — that divergence is exactly the
+    // dormant bug this review caught (Day mode, pixel -19 -> v2 kept the same day,
+    // a pre-fix v3 silently moved one day earlier).
+
+    [Theory]
+    [InlineData(-19.0, -0.5, 0)]   // JS Math.round(-0.5) === -0 (i.e. 0); AwayFromZero would give -1
+    [InlineData(-95.0, -2.5, -2)]  // JS Math.round(-2.5) === -2; AwayFromZero would give -3
+    public void PixelToDate_Day_Rounds_Negative_Ties_Toward_Positive_Infinity_Like_JS(
+        double pixel, double expectedExactValue, int expectedDays)
+    {
+        var origin = Utc(2026, 6, 15);
+
+        // Precondition: pin that this pixel really does produce an exact tie (not an
+        // approximation near one) before asserting the rounding direction on it.
+        Assert.Equal(expectedExactValue, (pixel / 38.0) * 1.0, precision: 15);
+
+        var result = GanttScale.PixelToDate(GanttViewMode.Day, origin, pixel);
+        Assert.Equal(origin.AddDays(expectedDays), result);
+    }
+
+    [Theory]
+    [InlineData(-9.5, -1.5, -1)]   // JS Math.round(-1.5) === -1; AwayFromZero would give -2
+    [InlineData(-28.5, -4.5, -4)]  // JS Math.round(-4.5) === -4; AwayFromZero would give -5
+    public void PixelToDate_QuarterDay_Rounds_Negative_Ties_Toward_Positive_Infinity_Like_JS(
+        double pixel, double expectedExactValue, int expectedHours)
+    {
+        var origin = Utc(2026, 6, 15);
+
+        Assert.Equal(expectedExactValue, (pixel / 38.0) * 6.0, precision: 15);
+
+        var result = GanttScale.PixelToDate(GanttViewMode.QuarterDay, origin, pixel);
+        Assert.Equal(origin.AddHours(expectedHours), result);
+    }
 }
