@@ -1,5 +1,6 @@
 @namespace Lumeo
 @using System.ComponentModel
+@using System.Linq
 @using Lumeo.GanttV3
 @inject Lumeo.Services.Localization.ILumeoLocalizer L
 @attribute [EditorBrowsable(EditorBrowsableState.Never)]
@@ -28,8 +29,15 @@
    IntelliSense until the Phase-4 rename (fix-round follow-up). *@
 <div class="@RootClass" @attributes="AdditionalAttributes">
     <div style="@HeaderSpacerStyle"></div>
-    @foreach (var row in Rows)
-    {
+    @* Virtualized (Codex round 2, P2 #10) — mirrors GanttTimeline's own
+       Virtualize (same Rows list, same GanttScale.RowHeight ItemSize) so both
+       panes stay consistent: before this fix, GanttTree rendered every row's
+       markup unconditionally while GanttTimeline (already virtualized since
+       T2) only materialized the visible slice — harmless for row ALIGNMENT
+       (both still occupy one ItemSize-tall slot per row, virtualized or not),
+       but meant a very long/deep tree paid the tree pane's full DOM cost on
+       every render regardless of what was actually scrolled into view. *@
+    <Virtualize Items="@RowItems" Context="row" ItemSize="@((float)GanttScale.RowHeight)">
         <div class="@RowClass(row)" style="@RowStyle" data-row-kind="@(row.Kind == GanttRowKind.GroupHeader ? "group" : "task")">
             <span class="lumeo-gantt-v3-tree-indent shrink-0" style="@IndentStyle(row)"></span>
             @if (row.ToggleKey is not null)
@@ -48,7 +56,7 @@
             }
             <span class="lumeo-gantt-v3-tree-label truncate text-sm">@row.Label</span>
         </div>
-    }
+    </Virtualize>
 </div>
 
 @code {
@@ -65,6 +73,15 @@
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     private string RootClass => Cx.Merge("relative w-56 shrink-0 border-e border-border/60 bg-card", Class);
+
+    // Virtualize<TItem>.Items requires ICollection<TItem> (IReadOnlyList doesn't
+    // implement it) — same pattern GanttTimeline.RowItems already uses for its
+    // own Virtualize (Codex round 2, P2 #10). Recomputed each render (cheap: a
+    // single list copy over whatever Rows already is) rather than assuming the
+    // caller's IReadOnlyList happens to also implement ICollection — a caller
+    // could hand in anything (an array, a custom IReadOnlyList<T>), and an
+    // unsafe cast would throw for exactly those.
+    private List<GanttVisibleRow> RowItems => Rows as List<GanttVisibleRow> ?? Rows.ToList();
 
     private string HeaderSpacerStyle => FormattableString.Invariant($"height:{GanttScale.HeaderHeight}px;");
 

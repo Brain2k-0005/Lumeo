@@ -2,6 +2,7 @@
 @using System.ComponentModel
 @using System.Globalization
 @using Lumeo.GanttV3
+@inject Lumeo.Services.IComponentInteropService Interop
 @attribute [EditorBrowsable(EditorBrowsableState.Never)]
 
 @* Gantt3 — v3's root component (design spec Phase 2, T2 "read-only markup";
@@ -53,6 +54,7 @@
                            BarColor="@BarColor"
                            BarTemplate="@BarTemplate"
                            ScrollToTodayRequestId="@_scrollToTodayRequestId"
+                           Today="@EffectiveToday"
                            Class="min-w-0 flex-1" />
         </div>
     </div>
@@ -137,14 +139,54 @@
     private GanttViewMode _lastPushedViewMode;
     private bool _rangeInitialized;
 
+    // Browser-local "today" (Codex round 2, P2 #9) — resolved once via JS on
+    // Gantt3's first post-render; DateTime.Today (the SERVER's local date) is
+    // the fallback used for every render before that resolves, including
+    // prerendering (where the JS call itself never runs at all — see
+    // OnAfterRenderAsync below, which only fires post-circuit).
+    private DateTime? _browserToday;
+    private DateTime EffectiveToday => _browserToday ?? DateTime.Today;
+
     protected override void OnInitialized()
     {
         _lastSeenViewMode = ViewMode;
         _lastPushedViewMode = ViewMode;
         _state.SetViewMode(ViewMode);
         _state.SetTasks(SortedTasks(Tasks?.ToList() ?? new List<GanttTask>()));
-        _state.SetVisibleRange(ComputeInitialRange(_state.ViewMode, _state.Tasks));
+        _state.SetVisibleRange(ComputeInitialRange(_state.ViewMode, _state.Tasks, EffectiveToday));
         _rangeInitialized = true;
+    }
+
+    // Codex round 2, P2 #9 — see EffectiveToday's remarks. Only fires once
+    // (firstRender): a later browser-date resolution racing a SECOND distinct
+    // circuit reconnect is out of scope (the calendar day essentially never
+    // changes mid-session), and re-querying every render would be wasteful.
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+
+        var iso = await Interop.GanttV3GetLocalDateAsync();
+        if (iso is null) return; // interop unavailable (prerendering already excluded by firstRender; a torn-down circuit) — keep the server-Today fallback
+        if (!DateTime.TryParseExact(iso, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var browserToday)) return;
+
+        var changedDay = browserToday.Date != EffectiveToday.Date;
+        _browserToday = browserToday.Date;
+        if (!changedDay) return; // server and browser already agreed on the calendar day — nothing to correct
+
+        // VisibleRange itself is only ever SEEDED from "today" when the task
+        // list is EMPTY (ComputeInitialRange's fallback branch) — the common
+        // (non-empty tasks) case derives its window from the tasks' own
+        // min/max dates, unaffected by which day "today" is, so there is
+        // nothing stale to recompute there. The empty-list window WAS seeded
+        // from the (possibly wrong) server-Today at OnInitialized time, so it
+        // gets one corrective recompute here, now that the browser's actual
+        // date is known.
+        if (_state.Tasks.Count == 0)
+            _state.SetVisibleRange(ComputeInitialRange(_state.ViewMode, _state.Tasks, EffectiveToday));
+
+        // Re-renders GanttTimeline's Today parameter too (marker position /
+        // scroll-to-today math) with the corrected date.
+        StateHasChanged();
     }
 
     protected override void OnParametersSet()
@@ -172,7 +214,7 @@
         {
             _lastPushedViewMode = ViewMode;
             _state.SetViewMode(ViewMode);
-            _state.SetVisibleRange(ComputeInitialRange(_state.ViewMode, _state.Tasks));
+            _state.SetVisibleRange(ComputeInitialRange(_state.ViewMode, _state.Tasks, EffectiveToday));
             _rangeInitialized = true;
         }
         else if (tasksChanged)
@@ -187,7 +229,7 @@
             // user's current zoom level (possibly set via GanttNav's toolbar,
             // uncontrolled, and therefore not reflected by a possibly-stale
             // ViewMode PARAMETER) must survive a tasks-only change.
-            _state.SetVisibleRange(ComputeInitialRange(_state.ViewMode, _state.Tasks));
+            _state.SetVisibleRange(ComputeInitialRange(_state.ViewMode, _state.Tasks, EffectiveToday));
         }
     }
 
@@ -205,7 +247,7 @@
     // Faithful port of gantt-v2.js's render() min/max + per-unit padding preamble
     // (gantt-v2.js lines 155-190) — GanttScale.BuildDateUnits deliberately leaves
     // this to its caller (see its own remarks), and this is that caller.
-    private static GanttDateRange ComputeInitialRange(GanttViewMode mode, IReadOnlyList<GanttTask> tasks)
+    private static GanttDateRange ComputeInitialRange(GanttViewMode mode, IReadOnlyList<GanttTask> tasks, DateTime today)
     {
         DateTime minDate, maxDate;
         if (tasks.Count > 0)
@@ -215,7 +257,10 @@
         }
         else
         {
-            var today = DateTime.Today;
+            // "today" here is the CALLER's EffectiveToday (Codex round 2, P2 #9
+            // — browser-local once resolved, server DateTime.Today until then),
+            // not a fresh DateTime.Today read — kept a pure/static/testable
+            // method by threading it in as a parameter instead.
             minDate = today.AddDays(-7);
             maxDate = today.AddDays(14);
         }
@@ -258,7 +303,7 @@
         if (mode == _state.ViewMode) return;
         _lastPushedViewMode = mode;
         _state.SetViewMode(mode);
-        _state.SetVisibleRange(ComputeInitialRange(mode, _state.Tasks));
+        _state.SetVisibleRange(ComputeInitialRange(mode, _state.Tasks, EffectiveToday));
         if (ViewModeChanged.HasDelegate) await ViewModeChanged.InvokeAsync(mode);
         else ViewMode = mode; // uncontrolled: keep our own field in lock-step for the next OnParametersSet comparison
     }
@@ -292,7 +337,7 @@
     {
         var range = _state.VisibleRange;
         var width = range.End - range.Start;
-        var today = DateTime.Today;
+        var today = EffectiveToday; // Codex round 2, P2 #9 — browser-local once resolved
         var half = new TimeSpan(width.Ticks / 2);
         _state.SetVisibleRange(today - half, today + half);
         // P1 fix (Codex review wave): bump the change-token GanttTimeline

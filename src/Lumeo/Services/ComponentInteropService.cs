@@ -1638,6 +1638,36 @@ public sealed class ComponentInteropService : IComponentInteropService
         catch (JSDisconnectedException) { }
     }
 
+    public async Task<string?> GanttV3GetLocalDateAsync()
+    {
+        try
+        {
+            var module = await GetGanttV3ModuleAsync();
+            return await module.InvokeAsync<string>("ganttV3.getLocalDateIso");
+        }
+        catch (JSDisconnectedException) { return null; }
+    }
+
+    public async Task GanttV3RegisterHeaderScrollSyncAsync(Microsoft.AspNetCore.Components.ElementReference canvasEl, Microsoft.AspNetCore.Components.ElementReference headerInnerEl)
+    {
+        try
+        {
+            var module = await GetGanttV3ModuleAsync();
+            await module.InvokeVoidAsync("ganttV3.registerHeaderScrollSync", canvasEl, headerInnerEl);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
+    public async Task GanttV3UnregisterHeaderScrollSyncAsync(Microsoft.AspNetCore.Components.ElementReference canvasEl)
+    {
+        try
+        {
+            var module = await GetGanttV3ModuleAsync();
+            await module.InvokeVoidAsync("ganttV3.unregisterHeaderScrollSync", canvasEl);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
     // --- Toolbar overflow observer ---
     // Toolbar ships its own tiny JS module (toolbar.js) that wraps a
     // ResizeObserver to measure how many child items fit before an overflow

@@ -598,6 +598,47 @@ public interface IComponentInteropService : IAsyncDisposable, IDisposable
     /// </summary>
     Task GanttV3ScrollToXAsync(Microsoft.AspNetCore.Components.ElementReference el, double targetX) => Task.CompletedTask;
 
+    /// <summary>
+    /// Browser-local "today" as an ISO <c>"yyyy-MM-dd"</c> string (Codex round 2,
+    /// P2 #9) — v2 parity: v2 derives "today" via the BROWSER's <c>new Date()</c>
+    /// (gantt-v2.js), while <c>Gantt3</c>/<c>GanttTimeline</c> previously used C#'s
+    /// <c>DateTime.Today</c>, which on Blazor Server is the SERVER's local date,
+    /// not the visiting browser's. Called once from <c>Gantt3</c>'s first
+    /// post-render (never during prerendering, where JS interop would throw —
+    /// see <c>Gantt3.OnAfterRenderAsync</c>'s remarks). Returns <c>null</c> when
+    /// JS interop isn't available (a non-Gantt implementer, prerendering, or a
+    /// torn-down circuit), in which case the caller keeps its server-side
+    /// <see cref="System.DateTime.Today"/> fallback. This is additive surface on
+    /// an interface that otherwise stays UI-framework-agnostic — recorded in
+    /// PublicAPI alongside the rest of GanttV3's Additive set, joining the same
+    /// "narrow, Gantt-specific, default no-op DIM" precedent as
+    /// <see cref="GanttV3ScrollToXAsync"/> rather than a general-purpose
+    /// "get the client's locale/timezone" API (out of scope — no other consumer
+    /// has asked for one). Default no-op DIM so existing implementers/test
+    /// doubles keep compiling.
+    /// </summary>
+    Task<string?> GanttV3GetLocalDateAsync() => Task.FromResult<string?>(null);
+
+    /// <summary>
+    /// Registers a one-way horizontal-scroll mirror from <paramref name="canvasEl"/>
+    /// (the row-canvas's own scrollable element) onto <paramref name="headerInnerEl"/>
+    /// (a <c>transform: translateX(...)</c> target) — Codex round 2, P1 #3's sticky-
+    /// header fix. The header can no longer physically BE the same scrolling
+    /// element as the row canvas (see <c>GanttTimeline.razor</c>'s remarks for why:
+    /// <c>position: sticky</c> must resolve against Gantt3's shared OUTER vertical
+    /// scroller, which requires NO intervening scroll-container-establishing
+    /// ancestor between the header and it), so this keeps the two horizontally
+    /// column-aligned instead. Idempotent for the same <paramref name="canvasEl"/> —
+    /// calling again updates nothing (a fresh <paramref name="headerInnerEl"/> would
+    /// require an unregister first; <c>GanttTimeline</c> only ever registers once,
+    /// on mount). Default no-op DIM so existing implementers/test doubles keep
+    /// compiling.
+    /// </summary>
+    Task GanttV3RegisterHeaderScrollSyncAsync(Microsoft.AspNetCore.Components.ElementReference canvasEl, Microsoft.AspNetCore.Components.ElementReference headerInnerEl) => Task.CompletedTask;
+
+    /// <summary>Tears down the scroll mirror registered by <see cref="GanttV3RegisterHeaderScrollSyncAsync"/>. Default no-op.</summary>
+    Task GanttV3UnregisterHeaderScrollSyncAsync(Microsoft.AspNetCore.Components.ElementReference canvasEl) => Task.CompletedTask;
+
     // Toolbar overflow observer — registers a ResizeObserver on the toolbar
     // element and invokes the handler with (fittingCount, totalCount) whenever
     // the number of items that fit before the "..." overflow trigger changes.

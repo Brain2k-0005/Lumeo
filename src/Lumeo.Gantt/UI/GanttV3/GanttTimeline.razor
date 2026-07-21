@@ -2,6 +2,7 @@
 @using System.ComponentModel
 @using System.Globalization
 @using Lumeo.GanttV3
+@implements IAsyncDisposable
 @inject Lumeo.Services.IComponentInteropService Interop
 @attribute [EditorBrowsable(EditorBrowsableState.Never)]
 
@@ -26,10 +27,28 @@
 
    [EditorBrowsable(Never)] keeps this working-name API out of consumer
    IntelliSense until the Phase-4 rename (fix-round follow-up). *@
-<div class="@RootClass" @ref="_scrollHostRef" @attributes="AdditionalAttributes">
-    <div class="relative" style="@CanvasStyle">
-        @* Two-row header — sticky so it stays visible while the row canvas scrolls vertically. *@
-        <div class="lumeo-gantt-v3-header sticky top-0 z-10 border-b border-border/60 bg-card" style="@HeaderStyle">
+<div class="@RootClass" @attributes="AdditionalAttributes">
+    @* Two-row header (Codex round 2, P1 #3 — "sticky header still broken").
+       Deliberately OUTSIDE the horizontal-scroll wrapper below: `position:
+       sticky` resolves against the NEAREST ancestor that establishes a
+       scroll container, and the row-canvas wrapper's own `overflow-x:auto`
+       counts as one — EVEN THOUGH its height auto-fits its content and it
+       therefore never has anything to scroll vertically — so the header
+       kept sticking to THAT (never-actually-scrolling) wrapper instead of
+       to Gantt3's shared OUTER (vertical) scroller, and scrolled away with
+       everything else the moment the outer pane actually moved. The wave-1
+       "overflow-y-visible" fix never worked: the CSS Overflow spec silently
+       PROMOTES a sibling `overflow-y: visible` to `overflow-y: auto` the
+       moment `overflow-x` is anything but `visible`/`clip` on the SAME box,
+       so that wrapper was STILL a scroll container on both axes regardless.
+       With the header moved here (no intervening scroll container between
+       it and Gantt3's outer pane), it can no longer physically BE the same
+       scrolling element as the row canvas below — HeaderInnerStyle's width
+       spans every column same as before, and gantt-v3.js's
+       registerHeaderScrollSync mirrors the canvas's scrollLeft onto it via
+       a transform so the two stay column-aligned. *@
+    <div class="lumeo-gantt-v3-header sticky top-0 z-10 overflow-hidden border-b border-border/60 bg-card" style="@HeaderOuterStyle">
+        <div @ref="_headerInnerRef" style="@HeaderInnerStyle">
             <div class="relative" style="height:20px;">
                 @foreach (var run in UpperRuns)
                 {
@@ -44,37 +63,63 @@
                 }
             </div>
         </div>
+    </div>
 
-        @* Vertical grid lines, spanning the full row canvas height below the header. *@
-        <div class="pointer-events-none absolute inset-x-0" style="@GridLinesContainerStyle">
-            @for (var i = 0; i <= Units.Count; i++)
-            {
-                <div class="absolute inset-y-0 border-s border-border/40" style="@GridLineStyle(i)"></div>
-            }
-        </div>
-
-        @if (TodayInRange)
-        {
-            <div class="lumeo-gantt-v3-today-line pointer-events-none absolute inset-y-0 border-s border-primary opacity-60" style="@TodayLineStyle"></div>
-        }
-
-        @* Row canvas. *@
-        <div class="relative" style="@RowsContainerStyle">
-            <Virtualize Items="@RowItems" Context="row" ItemSize="@((float)GanttScale.RowHeight)">
-                @if (row.Task is not null)
+    @* Row-canvas horizontal-scroll host — the ONLY scrolling element now (no
+       sticky descendant left inside it, so its own overflow-y-auto side
+       effect — see the header's remarks above — is harmless: nothing here
+       needs to escape it via sticky positioning anymore). Coordinate origin
+       is row 0's own top (no header allowance — the header lives outside
+       this subtree entirely now), so GridLinesContainerStyle/TodayLineStyle/
+       CanvasHeight and GanttArrowRouting's SourceEdge/TargetEdge all dropped
+       their previous "+GanttScale.HeaderHeight" terms accordingly. *@
+    <div class="lumeo-gantt-v3-canvas-scroll w-full overflow-x-auto" @ref="_scrollHostRef">
+        <div class="relative" style="@CanvasStyle">
+            @* Vertical grid lines, spanning the full row canvas height. *@
+            <div class="pointer-events-none absolute inset-x-0" style="@GridLinesContainerStyle">
+                @for (var i = 0; i <= Units.Count; i++)
                 {
-                    <GanttBar Task="row.Task" X="row.X" Width="row.Width" RowIndex="row.RowIndex"
-                              BarHeight="EffectiveBarHeight" Color="@row.Color" BarTemplate="BarTemplate" />
+                    <div class="absolute inset-y-0 border-s border-border/40" style="@GridLineStyle(i)"></div>
                 }
-            </Virtualize>
-        </div>
+            </div>
 
-        @* Dependency-arrow overlay — see GanttArrowLayer's own remarks for why it
-           recomputes geometry independently from the same EffectiveRows/GanttScale
-           inputs rather than reaching into this component's RowItems. *@
-        <GanttArrowLayer Rows="@EffectiveRows" ViewMode="@ViewMode" Origin="@Origin"
-                         ColumnWidth="@EffectiveColumnWidth" BarHeight="@EffectiveBarHeight"
-                         Width="@TotalWidth" Height="@CanvasHeight" />
+            @if (TodayInRange)
+            {
+                <div class="lumeo-gantt-v3-today-line pointer-events-none absolute inset-y-0 border-s border-primary opacity-60" style="@TodayLineStyle"></div>
+            }
+
+            @* Row canvas. *@
+            <div class="relative" style="@RowsContainerStyle">
+                <Virtualize Items="@RowItems" Context="row" ItemSize="@((float)GanttScale.RowHeight)">
+                    @if (row.Task is not null)
+                    {
+                        <GanttBar Task="row.Task" X="row.X" Width="row.Width" RowIndex="row.RowIndex"
+                                  BarHeight="EffectiveBarHeight" Color="@row.Color" BarTemplate="BarTemplate" />
+                    }
+                    else
+                    {
+                        @* Group-header row (Codex round 2, P2 #7): before this fix a
+                           GanttRowKind.GroupHeader slot rendered NOTHING here at all —
+                           an empty gap in the row canvas — even though GanttTree (the
+                           sibling pane) already shows a labeled summary row for the
+                           SAME slot. v2 parity: gantt-v2.js:428-449 draws a full-width
+                           translucent stripe (tokens.accent, 0.18 fill-opacity) plus an
+                           uppercase, bold, muted-color label, left-padded 8px, vertically
+                           centered in the row — ported 1:1 below via Tailwind utilities
+                           + the bg-accent/[0.18] arbitrary-opacity value matching v2's
+                           literal 0.18 exactly. *@
+                        <div class="lumeo-gantt-v3-group-header absolute inset-x-0 flex items-center bg-accent/[0.18] px-2 text-[11px] font-bold uppercase tracking-wide text-muted-foreground" style="@GroupHeaderStyle(row.RowIndex)">@row.Label</div>
+                    }
+                </Virtualize>
+            </div>
+
+            @* Dependency-arrow overlay — see GanttArrowLayer's own remarks for why it
+               recomputes geometry independently from the same EffectiveRows/GanttScale
+               inputs rather than reaching into this component's RowItems. *@
+            <GanttArrowLayer Rows="@EffectiveRows" ViewMode="@ViewMode" Origin="@Origin"
+                             ColumnWidth="@EffectiveColumnWidth" BarHeight="@EffectiveBarHeight"
+                             Width="@TotalWidth" Height="@CanvasHeight" />
+        </div>
     </div>
 </div>
 
@@ -137,26 +182,29 @@
     /// </summary>
     [Parameter] public int ScrollToTodayRequestId { get; set; }
 
-    private ElementReference _scrollHostRef;
-    private int _lastSeenScrollToTodayRequestId;
+    /// <summary>
+    /// "Today", resolved by the caller (Codex round 2, P2 #9 — see <c>Gantt3</c>'s
+    /// remarks). Defaults to <see cref="DateTime.Today"/> (the SERVER's local
+    /// date) so a caller using <c>GanttTimeline</c> standalone without <c>Gantt3</c>
+    /// keeps its exact prior behavior; <c>Gantt3</c> instead passes down the
+    /// BROWSER's local date once JS interop resolves it, for v2 parity (v2
+    /// derives "today" via the browser's own <c>new Date()</c>).
+    /// </summary>
+    [Parameter] public DateTime Today { get; set; } = DateTime.Today;
 
-    // Bug fix (Codex review wave): this root used to be "overflow-auto" (both
-    // axes), establishing ITS OWN CSS scroll container even though it never
-    // actually needs to scroll vertically (its content just grows to
-    // CanvasHeight — see Gantt3.razor's own remarks: "the timeline keeps its
-    // own nested horizontal scroll ... which the tree pane never needs", the
-    // STATED design intent this class string didn't actually implement).
-    // "position:sticky" sticks relative to its nearest ancestor that
-    // establishes a scroll container, REGARDLESS of whether that ancestor ever
-    // scrolls — so the two-row header stuck to THIS div (which never moves)
-    // instead of to Gantt3's shared outer pane (which does), and scrolled
-    // straight off-screen on any chart tall enough to need vertical scrolling.
-    // "overflow-x-auto" alone still creates one (CSS computes overflow-y to
-    // "auto" too when only overflow-x is non-visible — a well-known spec
-    // quirk), so overflow-y-visible is required alongside it to actually stop
-    // establishing a container and let vertical scroll bubble up to Gantt3's
-    // pane, restoring the header's sticky-to-the-ACTUAL-scroller behavior.
-    private string RootClass => Cx.Merge("relative w-full overflow-x-auto overflow-y-visible", Class);
+    private ElementReference _scrollHostRef;
+    private ElementReference _headerInnerRef;
+    private int _lastSeenScrollToTodayRequestId;
+    private DateTime _lastSeenToday;
+    private bool _headerScrollSyncRegistered;
+
+    // Codex round 2, P1 #3: this root no longer establishes any scroll
+    // container itself at all — the header (sticky) and the row-canvas
+    // (overflow-x-auto) are now separate children with their own concerns;
+    // see the header's own markup remarks for the CSS-spec detail behind why
+    // that split was necessary (an intervening `overflow-x:auto` ancestor,
+    // even a never-actually-scrolling one, hijacks `position: sticky`).
+    private string RootClass => Cx.Merge("w-full", Class);
 
     private GanttScaleConfig Cfg => GanttScale.GetConfig(ViewMode);
     private int EffectiveColumnWidth => ColumnWidth ?? Cfg.ColumnWidth;
@@ -180,7 +228,12 @@
         return rows;
     }
 
-    private double CanvasHeight => GanttScale.HeaderHeight + Math.Max(1, EffectiveRows.Count) * GanttScale.RowHeight;
+    // Codex round 2, P1 #3: no longer includes GanttScale.HeaderHeight — the
+    // header lives OUTSIDE this canvas subtree entirely now (see the markup's
+    // own remarks), so row 0 starts at y=0 in this coordinate space instead
+    // of y=HeaderHeight. GanttArrowRouting.SourceEdge/TargetEdge dropped the
+    // matching "+HeaderHeight" term for the same reason.
+    private double CanvasHeight => Math.Max(1, EffectiveRows.Count) * GanttScale.RowHeight;
 
     private IReadOnlyList<GanttHeaderRun> UpperRuns => GanttScale.UpperRuns(ViewMode, Units);
     private IReadOnlyList<string> LowerLabels => GanttScale.LowerLabels(ViewMode, Units);
@@ -190,24 +243,54 @@
     // given, which silently ignored a caller's ColumnWidth override here (the
     // header/grid, which compute column positions via EffectiveColumnWidth
     // directly rather than through DateToPixel, were already correct).
-    private double TodayX => GanttScale.DateToPixel(ViewMode, Origin, DateTime.Today, EffectiveColumnWidth);
+    private double TodayX => GanttScale.DateToPixel(ViewMode, Origin, Today, EffectiveColumnWidth);
     private bool TodayInRange => TodayHighlight && Units.Count > 0 && TodayX >= 0 && TodayX <= TotalWidth;
 
+    // v2 parity (Codex round 2, P2 #8): v2's scroll-to-today gate is
+    // `todayPx > 0` (gantt-v2.js:684) — deliberately LOOSER than the
+    // today-LINE marker's own render gate (`todayInRange`, upper+lower
+    // bounded, gantt-v2.js:329, mirrored by TodayInRange above). v2 still
+    // attempts `scrollLeft = todayPx - w/2` even when today is PAST the
+    // rendered window's end, relying on the BROWSER's own scrollLeft clamp
+    // (assigning past the max valid value clamps to the far edge) to land at
+    // the latest-visible dates instead of leaving scrollLeft at its DOM
+    // default 0 (the EARLIEST dates — visibly wrong, and the mechanism behind
+    // the visual-snapshot-drift finding: a fixed-date fixture whose "today"
+    // has since moved past its rendered window silently flipped from
+    // "scrolled toward today" to "stuck at the far left" the moment
+    // TodayInRange went false, with no equivalent recovery on the OTHER side
+    // of that flip). TodayInRange itself stays the MARKER's own gate,
+    // unchanged — only the scroll-ATTEMPT condition needed loosening.
+    private bool ShouldAttemptTodayScroll => TodayHighlight && Units.Count > 0 && TodayX > 0;
+
     private string CanvasStyle => FormattableString.Invariant($"width:{TotalWidth}px;min-height:{CanvasHeight}px;");
-    private string HeaderStyle => FormattableString.Invariant($"height:{GanttScale.HeaderHeight}px;width:{TotalWidth}px;");
+    private string HeaderOuterStyle => FormattableString.Invariant($"height:{GanttScale.HeaderHeight}px;");
+    private string HeaderInnerStyle => FormattableString.Invariant($"width:{TotalWidth}px;");
     private string ColumnCellStyle => FormattableString.Invariant($"width:{EffectiveColumnWidth}px;");
 
     private string UpperRunStyle(GanttHeaderRun run) =>
         FormattableString.Invariant($"left:{run.StartIndex * EffectiveColumnWidth}px;top:2px;padding-inline-start:8px;");
 
-    private string GridLinesContainerStyle =>
-        FormattableString.Invariant($"top:{GanttScale.HeaderHeight}px;bottom:0;");
+    // Codex round 2, P1 #3: top:0 (was top:HeaderHeight) — see CanvasHeight's
+    // own remarks for why the header no longer occupies space in this
+    // coordinate system at all.
+    private string GridLinesContainerStyle => "top:0;bottom:0;";
 
     private string GridLineStyle(int columnIndex) =>
         FormattableString.Invariant($"left:{columnIndex * EffectiveColumnWidth}px;");
 
+    // Codex round 2, P1 #3: top:-4px (was HeaderHeight-4) — the same 4px
+    // decorative overhang above row 0's own top, just relative to THIS
+    // canvas's new (header-less) origin instead of the header's old bottom edge.
     private string TodayLineStyle =>
-        FormattableString.Invariant($"left:{TodayX}px;top:{GanttScale.HeaderHeight - 4}px;");
+        FormattableString.Invariant($"left:{TodayX}px;top:-4px;");
+
+    // Positions a GanttRowKind.GroupHeader slot's full-width stripe (Codex round
+    // 2, P2 #7) — mirrors GanttBar's own RowIndex*RowHeight top math (see its
+    // WrapperStyle) but spans the full row width (inset-x-0) rather than a
+    // date-bounded bar.
+    private string GroupHeaderStyle(int rowIndex) =>
+        FormattableString.Invariant($"top:{rowIndex * GanttScale.RowHeight}px;height:{GanttScale.RowHeight}px;");
 
     private string RowsContainerStyle =>
         FormattableString.Invariant($"height:{Math.Max(1, EffectiveRows.Count) * GanttScale.RowHeight}px;width:{TotalWidth}px;");
@@ -220,7 +303,7 @@
     // RowIndex stays list-position-aligned for every OTHER row, which its
     // internal viewport math depends on), but no <GanttBar> renders for it
     // (see the @if (row.Task is not null) guard in the markup above).
-    internal sealed record GanttTimelineRow(GanttTask? Task, double X, double Width, int RowIndex, string? Color);
+    internal sealed record GanttTimelineRow(GanttTask? Task, double X, double Width, int RowIndex, string? Color, string? Label);
 
     // Virtualize<TItem>.Items requires ICollection<TItem> (IReadOnlyList doesn't
     // implement it) — List<T> both satisfies that and matches the pattern
@@ -237,13 +320,15 @@
                 if (task is null)
                 {
                     // Group-header slot: still occupies row index i (matching v2's
-                    // rowSlot, which advances for header rows too), but has no bar.
-                    rows.Add(new GanttTimelineRow(null, 0, 0, i, null));
+                    // rowSlot, which advances for header rows too) — Label carries
+                    // the group's own name (Codex round 2, P2 #7) so the markup's
+                    // else-branch above can render v2's section-header stripe here.
+                    rows.Add(new GanttTimelineRow(null, 0, 0, i, null, visibleRows[i].Label));
                     continue;
                 }
                 var color = BarColor?.Invoke(task);
                 var (x, width) = GanttScale.BarGeometry(task, ViewMode, Origin, EffectiveColumnWidth, EffectiveBarHeight);
-                rows.Add(new GanttTimelineRow(task, x, width, i, color));
+                rows.Add(new GanttTimelineRow(task, x, width, i, color, null));
             }
             return rows;
         }
@@ -265,17 +350,41 @@
     {
         if (firstRender)
         {
+            // Registered BEFORE the scroll-to-today attempt below, so the
+            // header-scroll-sync listener already exists by the time that
+            // scroll's own (asynchronous, requestAnimationFrame-scheduled)
+            // native 'scroll' event fires — otherwise the header could miss
+            // mirroring the very first centering scroll.
+            _headerScrollSyncRegistered = true;
+            await Interop.GanttV3RegisterHeaderScrollSyncAsync(_scrollHostRef, _headerInnerRef);
+
             _lastSeenScrollToTodayRequestId = ScrollToTodayRequestId;
-            if (TodayInRange) await ScrollToTodayCenterAsync();
+            _lastSeenToday = Today;
+            if (ShouldAttemptTodayScroll) await ScrollToTodayCenterAsync();
             return;
         }
 
-        if (ScrollToTodayRequestId != _lastSeenScrollToTodayRequestId)
+        // Today (Codex round 2, P2 #9) changing — e.g. Gantt3's browser-date
+        // resolution landing a render or two after mount — is treated exactly
+        // like a ScrollToTodayRequestId bump: recentering VisibleRange/TodayX
+        // alone never touches the DOM's actual scrollLeft (same reasoning as
+        // the pre-existing ScrollToTodayRequestId check below).
+        if (ScrollToTodayRequestId != _lastSeenScrollToTodayRequestId || Today != _lastSeenToday)
         {
             _lastSeenScrollToTodayRequestId = ScrollToTodayRequestId;
-            if (TodayInRange) await ScrollToTodayCenterAsync();
+            _lastSeenToday = Today;
+            if (ShouldAttemptTodayScroll) await ScrollToTodayCenterAsync();
         }
     }
 
     private Task ScrollToTodayCenterAsync() => Interop.GanttV3ScrollToXAsync(_scrollHostRef, TodayX);
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_headerScrollSyncRegistered)
+        {
+            try { await Interop.GanttV3UnregisterHeaderScrollSyncAsync(_scrollHostRef); }
+            catch (JSDisconnectedException) { }
+        }
+    }
 }

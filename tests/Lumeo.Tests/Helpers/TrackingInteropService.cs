@@ -799,6 +799,36 @@ public class TrackingInteropService : IComponentInteropService
         return Task.CompletedTask;
     }
 
+    // GanttV3 browser-local-"today" tracking (Codex round 2, P2 #9) — settable
+    // so a test can simulate the browser reporting a date that differs from
+    // whatever DateTime.Today happens to be on the machine running the suite.
+    // Defaults to null (interop unavailable), matching the interface's own
+    // default DIM, so existing Gantt tests that never touch this keep behaving
+    // exactly as before (server-Today fallback).
+    public string? GanttV3LocalDateToReturn { get; set; }
+    public int GanttV3GetLocalDateCallCount { get; private set; }
+    public Task<string?> GanttV3GetLocalDateAsync()
+    {
+        GanttV3GetLocalDateCallCount++;
+        return Task.FromResult(GanttV3LocalDateToReturn);
+    }
+
+    // GanttV3 sticky-header scroll-sync registration tracking (Codex round 2,
+    // P1 #3) — records register/unregister calls so a test can assert the
+    // (un)registration lifecycle without a real browser/JS scroll listener.
+    public int GanttV3RegisterHeaderScrollSyncCallCount { get; private set; }
+    public int GanttV3UnregisterHeaderScrollSyncCallCount { get; private set; }
+    public Task GanttV3RegisterHeaderScrollSyncAsync(ElementReference canvasEl, ElementReference headerInnerEl)
+    {
+        GanttV3RegisterHeaderScrollSyncCallCount++;
+        return Task.CompletedTask;
+    }
+    public Task GanttV3UnregisterHeaderScrollSyncAsync(ElementReference canvasEl)
+    {
+        GanttV3UnregisterHeaderScrollSyncCallCount++;
+        return Task.CompletedTask;
+    }
+
     public ValueTask<string> RichTextInitAsync<T>(ElementReference elementRef, DotNetObjectReference<T> dotNetRef, object options) where T : class => ValueTask.FromResult(string.Empty);
     public ValueTask RichTextSetContentAsync(string id, string? html) => ValueTask.CompletedTask;
     public ValueTask RichTextCommandAsync(string id, string name, params object?[]? args) => ValueTask.CompletedTask;
