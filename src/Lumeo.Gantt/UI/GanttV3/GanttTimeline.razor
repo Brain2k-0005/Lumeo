@@ -1,0 +1,177 @@
+@namespace Lumeo
+@using System.Globalization
+@using Lumeo.GanttV3
+
+@* GanttTimeline — the scrollable header + row canvas (design spec Phase 2, T2
+   "read-only markup"). Renders the two-row grouped header from
+   GanttScale.BuildHeaderRows-equivalent helpers (UpperRuns/LowerLabels),
+   vertical grid column lines, the today marker, and one GanttBar per task via
+   a vertical Virtualize<T>.
+
+   Deliberately takes Tasks/ViewMode/RangeStart/RangeEnd as plain parameters
+   instead of a GanttState reference: GanttState is still `internal` (Phase-3
+   promotion, per its own remarks — "becomes public API once a component
+   actually exposes a State parameter wired to it"), and this component's
+   generated partial class is unavoidably `public` (the Razor compiler always
+   emits an explicit `public` modifier for component classes — there is no
+   supported directive to change it; see dotnet/aspnetcore#5516 and
+   dotnet/razor#8715, both open feature requests). A public `GanttState State`
+   parameter would either force GanttState public too (jumping the gun on
+   Phase 3) or fail to compile (CS0053, a public member can't expose a
+   less-accessible type) — so Gantt3 (the shared-state owner) unpacks its
+   GanttState into these primitives instead. *@
+<div class="@RootClass" @attributes="AdditionalAttributes">
+    <div class="relative" style="@CanvasStyle">
+        @* Two-row header — sticky so it stays visible while the row canvas scrolls vertically. *@
+        <div class="lumeo-gantt-v3-header sticky top-0 z-10 border-b border-border/60 bg-card" style="@HeaderStyle">
+            <div class="relative" style="height:20px;">
+                @foreach (var run in UpperRuns)
+                {
+                    <div class="absolute truncate text-xs font-semibold text-foreground" style="@UpperRunStyle(run)">@run.Label</div>
+                }
+            </div>
+            <div class="relative flex" style="height:@((GanttScale.HeaderHeight - 20).ToString(CultureInfo.InvariantCulture))px;">
+                @for (var i = 0; i < Units.Count; i++)
+                {
+                    var label = LowerLabels[i];
+                    <div class="shrink-0 text-center text-xs text-muted-foreground" style="@ColumnCellStyle">@label</div>
+                }
+            </div>
+        </div>
+
+        @* Vertical grid lines, spanning the full row canvas height below the header. *@
+        <div class="pointer-events-none absolute inset-x-0" style="@GridLinesContainerStyle">
+            @for (var i = 0; i <= Units.Count; i++)
+            {
+                <div class="absolute inset-y-0 border-s border-border/40" style="@GridLineStyle(i)"></div>
+            }
+        </div>
+
+        @if (TodayInRange)
+        {
+            <div class="lumeo-gantt-v3-today-line pointer-events-none absolute inset-y-0 border-s border-primary opacity-60" style="@TodayLineStyle"></div>
+        }
+
+        @* Row canvas. *@
+        <div class="relative" style="@RowsContainerStyle">
+            <Virtualize Items="@RowItems" Context="row" ItemSize="@((float)GanttScale.RowHeight)">
+                <GanttBar Task="row.Task" X="row.X" Width="row.Width" RowIndex="row.RowIndex"
+                          BarHeight="EffectiveBarHeight" Color="row.Color" BarTemplate="BarTemplate" />
+            </Virtualize>
+        </div>
+    </div>
+</div>
+
+@code {
+    /// <summary>The tasks (and milestones) rendered as bars, in display order.</summary>
+    [Parameter] public IReadOnlyList<GanttTask> Tasks { get; set; } = Array.Empty<GanttTask>();
+
+    /// <summary>The active zoom level — determines column width/unit/header format via <see cref="GanttScale"/>.</summary>
+    [Parameter] public GanttViewMode ViewMode { get; set; } = GanttViewMode.Day;
+
+    /// <summary>The materialized date window's start (inclusive).</summary>
+    [Parameter] public DateTime RangeStart { get; set; }
+
+    /// <summary>The materialized date window's end (inclusive).</summary>
+    [Parameter] public DateTime RangeEnd { get; set; }
+
+    /// <summary>Override the pixel height of each task bar. Defaults to <see cref="GanttScale.DefaultBarHeight"/>.</summary>
+    [Parameter] public int? BarHeight { get; set; }
+
+    /// <summary>Override the pixel width of each date column for the current view mode.</summary>
+    [Parameter] public int? ColumnWidth { get; set; }
+
+    /// <summary>Highlight today with a vertical marker line. Default true.</summary>
+    [Parameter] public bool TodayHighlight { get; set; } = true;
+
+    /// <summary>Per-task bar colour override — see <c>Lumeo.Gantt</c>'s v2 <c>Gantt.BarColor</c> for the contract.</summary>
+    [Parameter] public Func<GanttTask, string?>? BarColor { get; set; }
+
+    /// <summary>Replaces a bar's default label content when set.</summary>
+    [Parameter] public RenderFragment<GanttTask>? BarTemplate { get; set; }
+
+    /// <summary>Additional CSS classes merged onto the root scroll container.</summary>
+    [Parameter] public string? Class { get; set; }
+
+    /// <summary>Captures unmatched attributes and applies them to the root scroll container.</summary>
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private string RootClass => Cx.Merge("relative w-full overflow-auto", Class);
+
+    private GanttScaleConfig Cfg => GanttScale.GetConfig(ViewMode);
+    private int EffectiveColumnWidth => ColumnWidth ?? Cfg.ColumnWidth;
+    private int EffectiveBarHeight => BarHeight ?? GanttScale.DefaultBarHeight;
+
+    private IReadOnlyList<DateTime> Units => GanttScale.BuildDateUnits(ViewMode, RangeStart, RangeEnd);
+    private DateTime Origin => Units.Count > 0 ? Units[0] : RangeStart;
+    private double TotalWidth => Units.Count * (double)EffectiveColumnWidth;
+    private double CanvasHeight => GanttScale.HeaderHeight + Math.Max(1, Tasks.Count) * GanttScale.RowHeight;
+
+    private IReadOnlyList<GanttHeaderRun> UpperRuns => GanttScale.UpperRuns(ViewMode, Units);
+    private IReadOnlyList<string> LowerLabels => GanttScale.LowerLabels(ViewMode, Units);
+
+    private double TodayX => GanttScale.DateToPixel(ViewMode, Origin, DateTime.Today);
+    private bool TodayInRange => TodayHighlight && Units.Count > 0 && TodayX >= 0 && TodayX <= TotalWidth;
+
+    private string CanvasStyle => FormattableString.Invariant($"width:{TotalWidth}px;min-height:{CanvasHeight}px;");
+    private string HeaderStyle => FormattableString.Invariant($"height:{GanttScale.HeaderHeight}px;width:{TotalWidth}px;");
+    private string ColumnCellStyle => FormattableString.Invariant($"width:{EffectiveColumnWidth}px;");
+
+    private string UpperRunStyle(GanttHeaderRun run) =>
+        FormattableString.Invariant($"left:{run.StartIndex * EffectiveColumnWidth}px;top:2px;padding-inline-start:8px;");
+
+    private string GridLinesContainerStyle =>
+        FormattableString.Invariant($"top:{GanttScale.HeaderHeight}px;bottom:0;");
+
+    private string GridLineStyle(int columnIndex) =>
+        FormattableString.Invariant($"left:{columnIndex * EffectiveColumnWidth}px;");
+
+    private string TodayLineStyle =>
+        FormattableString.Invariant($"left:{TodayX}px;top:{GanttScale.HeaderHeight - 4}px;");
+
+    private string RowsContainerStyle =>
+        FormattableString.Invariant($"height:{Math.Max(1, Tasks.Count) * GanttScale.RowHeight}px;width:{TotalWidth}px;");
+
+    // One row's already-resolved geometry, computed fresh from GanttScale each
+    // render — see GanttScale's DateToPixel/PixelToDate for the underlying math
+    // this ports 1:1 from gantt-v2.js's dateToX (render(), lines 508-512 for a
+    // regular bar; lines 459-463 for a milestone's diamond center).
+    internal sealed record GanttTimelineRow(GanttTask Task, double X, double Width, int RowIndex, string? Color);
+
+    // Virtualize<TItem>.Items requires ICollection<TItem> (IReadOnlyList doesn't
+    // implement it) — List<T> both satisfies that and matches the pattern
+    // DataGridBody uses for its own Virtualize Items source (_indexedItems).
+    private List<GanttTimelineRow> RowItems
+    {
+        get
+        {
+            var tasks = Tasks;
+            var rows = new List<GanttTimelineRow>(tasks.Count);
+            for (var i = 0; i < tasks.Count; i++)
+            {
+                var task = tasks[i];
+                var color = BarColor?.Invoke(task);
+                if (task.IsMilestone)
+                {
+                    // v2: cx = dateToX(task.start) + colW/2; half = BAR_HEIGHT/2 — the
+                    // diamond's bounding-box left edge is cx - half.
+                    var center = GanttScale.DateToPixel(ViewMode, Origin, task.Start) + EffectiveColumnWidth / 2.0;
+                    var half = EffectiveBarHeight / 2.0;
+                    rows.Add(new GanttTimelineRow(task, center - half, EffectiveBarHeight, i, color));
+                }
+                else
+                {
+                    // v2: x1 = dateToX(task.start); x2 = dateToX(addDays(task.end, 1));
+                    // barW = max(8, x2 - x1) — the +1 day makes the bar's END edge fall
+                    // on the day AFTER task.End (an inclusive end date renders as a full
+                    // day-wide segment, not a zero-width sliver).
+                    var x1 = GanttScale.DateToPixel(ViewMode, Origin, task.Start);
+                    var x2 = GanttScale.DateToPixel(ViewMode, Origin, task.End.AddDays(1));
+                    var width = Math.Max(8, x2 - x1);
+                    rows.Add(new GanttTimelineRow(task, x1, width, i, color));
+                }
+            }
+            return rows;
+        }
+    }
+}

@@ -1,0 +1,150 @@
+@namespace Lumeo
+@using System.Globalization
+@using Lumeo.GanttV3
+
+@* GanttBar — v3's single task-bar renderer (design spec Phase 2, T2 "read-only
+   markup"). Renders EITHER a duration bar (background + progress fill) or,
+   for Task.IsMilestone, a diamond (a rotated square — port of gantt-v2.js's
+   SVG polygon geometry, gantt-v2.js lines 459-484: a square of side BarHeight
+   rotated 45deg is exactly the same shape as v2's 4-point diamond polygon).
+   Positioning is entirely via the --lumeo-gantt-bar-* CSS custom properties
+   set on the absolutely positioned Tooltip wrapper (the wrapper carries the
+   position/size so the AsChild inner div can stay a plain flex box) — the
+   caller (GanttTimeline) computes X/Width/RowIndex from GanttScale and hands
+   them in; this component has no knowledge of dates, view modes, or the
+   scale table itself.
+
+   NOTE (accessibility): the task spec asked for this component to be
+   `internal`. The Razor compiler unconditionally generates a component's
+   class as `public partial class` — there is no supported directive to make
+   it `internal` (open feature requests: dotnet/aspnetcore#5516,
+   dotnet/razor#8715), so a code-behind `internal partial class` here would
+   only produce CS0262 (conflicting partial-declaration accessibility). This
+   component is therefore `public` and its new members are recorded in
+   PublicAPI.Unshipped.txt like any other public addition — see the T2 report
+   for the full rationale; flagged for the reviewer/team lead to confirm. *@
+<Tooltip Class="@WrapperClass" AdditionalAttributes="@WrapperAttributes">
+    <TooltipTrigger AsChild>
+        <ChildContentSlot Context="slot">
+            <div class="@InnerClass" @attributes="slot.Attributes">
+                @if (Task.IsMilestone)
+                {
+                    <div class="lumeo-gantt-v3-milestone h-full w-full rounded-sm" style="@ColorStyle"></div>
+                    <span class="lumeo-gantt-v3-milestone-label absolute start-full top-1/2 ms-2 -translate-y-1/2 whitespace-nowrap text-xs font-medium text-foreground">@Task.Name</span>
+                }
+                else
+                {
+                    <div class="lumeo-gantt-v3-bar-bg absolute inset-0 rounded opacity-30" style="@ColorStyle"></div>
+                    <div class="lumeo-gantt-v3-bar-progress absolute inset-y-0 start-0 rounded" style="@ProgressStyle"></div>
+                    @if (BarTemplate is not null)
+                    {
+                        @BarTemplate(Task)
+                    }
+                    else
+                    {
+                        <span class="lumeo-gantt-v3-bar-label relative truncate px-2 text-xs font-medium text-foreground">@Task.Name</span>
+                    }
+                }
+            </div>
+        </ChildContentSlot>
+    </TooltipTrigger>
+    <TooltipContent>
+        <div class="font-medium">@Task.Name</div>
+        <div class="mt-0.5 opacity-75">@Task.Start.ToString("MMM d, yyyy", CultureInfo.CurrentCulture) &#8594; @Task.End.ToString("MMM d, yyyy", CultureInfo.CurrentCulture)</div>
+        <div class="opacity-75">@Task.Progress% complete</div>
+    </TooltipContent>
+</Tooltip>
+
+@code {
+    /// <summary>The task/milestone this bar represents.</summary>
+    [Parameter, EditorRequired] public GanttTask Task { get; set; } = null!;
+
+    /// <summary>
+    /// Left pixel offset within the timeline canvas, already resolved by the
+    /// caller via <see cref="GanttScale.DateToPixel"/>. For a milestone this is
+    /// the diamond's bounding-box left edge (center-column minus half the bar
+    /// height), not the task's raw start-date pixel.
+    /// </summary>
+    [Parameter] public double X { get; set; }
+
+    /// <summary>Pixel width of the bar (or, for a milestone, the diamond's square bounding box — equal to <see cref="BarHeight"/>).</summary>
+    [Parameter] public double Width { get; set; }
+
+    /// <summary>Zero-based row slot within the timeline (mirrors v2's rowSlot — may differ from the task's index when group header rows are interleaved by a future task).</summary>
+    [Parameter] public int RowIndex { get; set; }
+
+    /// <summary>Bar height in pixels. Defaults to <see cref="GanttScale.DefaultBarHeight"/>.</summary>
+    [Parameter] public int BarHeight { get; set; } = GanttScale.DefaultBarHeight;
+
+    /// <summary>
+    /// Per-task colour override (hex, rgb, or a CSS variable reference) — mirrors
+    /// v2's <c>BarColor</c> delegate output. Null falls back to the primary theme
+    /// colour token.
+    /// </summary>
+    [Parameter] public string? Color { get; set; }
+
+    /// <summary>Replaces the bar's default label content when set. Not used for milestones (v2 parity: milestones always show their name next to the diamond).</summary>
+    [Parameter] public RenderFragment<GanttTask>? BarTemplate { get; set; }
+
+    /// <summary>Additional CSS classes merged onto the positioned wrapper.</summary>
+    [Parameter] public string? Class { get; set; }
+
+    /// <summary>Captures unmatched attributes and applies them to the positioned wrapper.</summary>
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    // Tooltip's own root div defaults to "relative inline-flex" (see Tooltip.razor);
+    // Cx.Merge resolves the relative/absolute conflict group so "absolute" (added
+    // here) wins over Tooltip's "relative" while "inline-flex" survives untouched.
+    private string WrapperClass => Cx.Merge("absolute", Class);
+
+    private string InnerClass => Task.IsMilestone
+        ? "relative flex h-full w-full items-center justify-center"
+        : "relative flex h-full w-full items-center overflow-hidden rounded";
+
+    private string ResolvedColor => Color ?? "var(--color-primary)";
+
+    private string ColorStyle => Task.IsMilestone
+        ? FormattableString.Invariant($"background-color:{ResolvedColor};transform:rotate(45deg);")
+        : FormattableString.Invariant($"background-color:{ResolvedColor};");
+
+    private string ProgressStyle
+    {
+        get
+        {
+            var progress = Math.Clamp(Task.Progress, 0, 100);
+            return FormattableString.Invariant($"width:{progress}%;background-color:{ResolvedColor};");
+        }
+    }
+
+    // The wrapper carries BOTH the raw --lumeo-gantt-bar-* custom properties (so a
+    // consumer stylesheet can read/override them) and the physical left/top/width/
+    // height that consume them — see GanttScale's TZ/DST-safety note for why every
+    // number here comes from plain arithmetic, never culture-sensitive formatting.
+    private string WrapperStyle
+    {
+        get
+        {
+            var top = (RowIndex * GanttScale.RowHeight) + (GanttScale.RowHeight - BarHeight) / 2.0;
+            return FormattableString.Invariant(
+                $"--lumeo-gantt-bar-x:{X}px;--lumeo-gantt-bar-w:{Width}px;--lumeo-gantt-bar-row:{RowIndex};left:var(--lumeo-gantt-bar-x);top:{top}px;width:var(--lumeo-gantt-bar-w);height:{BarHeight}px;");
+        }
+    }
+
+    private Dictionary<string, object> WrapperAttributes
+    {
+        get
+        {
+            var attrs = new Dictionary<string, object>
+            {
+                ["style"] = WrapperStyle,
+                ["data-task-id"] = Task.Id,
+            };
+            if (Task.IsMilestone) attrs["data-milestone"] = "true";
+            // Author-supplied attributes win on collision (splat-last semantics
+            // used throughout Lumeo — see TooltipTrigger.BuildAttrs for the same pattern).
+            if (AdditionalAttributes is not null)
+                foreach (var kv in AdditionalAttributes) attrs[kv.Key] = kv.Value;
+            return attrs;
+        }
+    }
+}

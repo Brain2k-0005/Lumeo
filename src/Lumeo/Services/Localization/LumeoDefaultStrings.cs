@@ -480,6 +480,9 @@ internal static partial class LumeoDefaultStrings
         ["Gantt.Week"] = "Week",
         ["Gantt.Month"] = "Month",
         ["Gantt.Year"] = "Year",
+        ["Gantt.Today"] = "Today",
+        ["Gantt.PreviousPeriod"] = "Previous period",
+        ["Gantt.NextPeriod"] = "Next period",
 
         // ── Theme ───────────────────────────────────────────────────
         ["Theme.Light"] = "Light",
@@ -1005,6 +1008,9 @@ internal static partial class LumeoDefaultStrings
         ["Gantt.Week"] = "Woche",
         ["Gantt.Month"] = "Monat",
         ["Gantt.Year"] = "Jahr",
+        ["Gantt.Today"] = "Heute",
+        ["Gantt.PreviousPeriod"] = "Vorheriger Zeitraum",
+        ["Gantt.NextPeriod"] = "Nächster Zeitraum",
 
         // ── Theme ───────────────────────────────────────────────────
         ["Theme.Light"] = "Hell",

@@ -1,0 +1,232 @@
+@namespace Lumeo
+@using System.Globalization
+@using Lumeo.GanttV3
+
+@* Gantt3 — v3's root component (design spec Phase 2, T2 "read-only markup";
+   working name — renamed in Phase 4 once it replaces the v2 Gantt public API).
+   Owns a GanttState instance and renders GanttNav + GanttTimeline against it.
+   No drag/resize/progress editing and no JS interop here — that is later
+   phases; this is a pure, static read model of GanttScale + GanttState.
+   The tree pane (T3) is deliberately NOT built here.
+
+   NOTE (accessibility): see GanttBar.razor's NOTE — the Razor compiler always
+   generates a component's class as `public`, so despite the task spec asking
+   for `internal`, this stays `public` and its new members are recorded in
+   PublicAPI.Unshipped.txt; flagged for the reviewer/team lead to confirm. *@
+<div class="@RootClass" @attributes="AdditionalAttributes">
+    <GanttNav ViewMode="@_state.ViewMode"
+              ViewModeChanged="HandleViewModeChangedAsync"
+              PeriodLabel="@PeriodLabel"
+              OnToday="GoToTodayAsync"
+              OnPrevious="ShiftToPreviousAsync"
+              OnNext="ShiftToNextAsync" />
+
+    <div class="rounded-md border border-border/60" style="max-height:@Height;overflow:auto;">
+        <GanttTimeline Tasks="@_state.Tasks"
+                       ViewMode="@_state.ViewMode"
+                       RangeStart="@_state.VisibleRange.Start"
+                       RangeEnd="@_state.VisibleRange.End"
+                       BarHeight="@BarHeight"
+                       ColumnWidth="@ColumnWidth"
+                       TodayHighlight="@TodayHighlight"
+                       BarColor="@BarColor"
+                       BarTemplate="@BarTemplate" />
+    </div>
+</div>
+
+@code {
+    /// <summary>The tasks (and milestones) rendered as bars.</summary>
+    [Parameter] public IEnumerable<GanttTask>? Tasks { get; set; }
+
+    /// <summary>The active zoom level. Two-way bindable via <see cref="ViewModeChanged"/>. Default <see cref="GanttViewMode.Day"/>.</summary>
+    [Parameter] public GanttViewMode ViewMode { get; set; } = GanttViewMode.Day;
+
+    /// <summary>Raised when the user picks a new zoom level from <see cref="GanttNav"/>'s toolbar.</summary>
+    [Parameter] public EventCallback<GanttViewMode> ViewModeChanged { get; set; }
+
+    /// <summary>CSS max-height of the timeline's scrollable viewport. Default <c>"500px"</c>.</summary>
+    [Parameter] public string Height { get; set; } = "500px";
+
+    /// <summary>Highlight today with a vertical marker line. Default true.</summary>
+    [Parameter] public bool TodayHighlight { get; set; } = true;
+
+    /// <summary>Override the pixel height of each task bar (default <see cref="GanttScale.DefaultBarHeight"/>).</summary>
+    [Parameter] public int? BarHeight { get; set; }
+
+    /// <summary>Override the pixel width of each date column for the current view mode.</summary>
+    [Parameter] public int? ColumnWidth { get; set; }
+
+    /// <summary>Per-task bar colour override — same contract as v2's <c>Gantt.BarColor</c>.</summary>
+    [Parameter] public Func<GanttTask, string?>? BarColor { get; set; }
+
+    /// <summary>
+    /// Optional grouping function. When set, tasks are sorted by group label
+    /// (stable within a group) before rendering — mirrors v2's GroupBy sort.
+    /// Visual group-header rows are a tree-pane (T3) concern, not built here.
+    /// </summary>
+    [Parameter] public Func<GanttTask, string>? GroupBy { get; set; }
+
+    /// <summary>Replaces a bar's default label content when set.</summary>
+    [Parameter] public RenderFragment<GanttTask>? BarTemplate { get; set; }
+
+    /// <summary>Additional CSS classes merged onto the root element.</summary>
+    [Parameter] public string? Class { get; set; }
+
+    /// <summary>Captures unmatched attributes and applies them to the root element.</summary>
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    // Owned outright for now (design spec "keep it simple: internal field for
+    // now") — Phase 3 promotes this to a hoistable `State` parameter so a
+    // separately rendered GanttNav/GanttTimeline pair can share one instance
+    // without either owning the other's lifetime (see GanttState's remarks).
+    private readonly GanttState _state = new();
+
+    private string RootClass => Cx.Merge("flex flex-col gap-3", Class);
+
+    // Controlled/uncontrolled ViewMode discriminators — same pattern as v2's
+    // Gantt.razor (_lastSeenViewMode/_lastPushedViewMode), trimmed to what a
+    // read-only tree needs: no drag/refresh interop to reconcile against.
+    private GanttViewMode _lastSeenViewMode;
+    private GanttViewMode _lastPushedViewMode;
+    private bool _rangeInitialized;
+
+    protected override void OnInitialized()
+    {
+        _lastSeenViewMode = ViewMode;
+        _lastPushedViewMode = ViewMode;
+        _state.SetViewMode(ViewMode);
+        _state.SetTasks(SortedTasks(Tasks?.ToList() ?? new List<GanttTask>()));
+        _state.SetVisibleRange(ComputeInitialRange(_state.ViewMode, _state.Tasks));
+        _rangeInitialized = true;
+    }
+
+    protected override void OnParametersSet()
+    {
+        _state.SetTasks(SortedTasks(Tasks?.ToList() ?? new List<GanttTask>()));
+
+        // CONTROLLED (ViewModeChanged bound): adopt ViewMode whenever it differs
+        // from what we last pushed — an echo of our own push is a no-op.
+        // UNCONTROLLED: only a genuine change against the last SEEN parameter
+        // value is authoritative, so an unrelated parent re-render doesn't
+        // silently revert a toolbar zoom the user just picked.
+        var viewModeChanged = ViewModeChanged.HasDelegate
+            ? ViewMode != _lastPushedViewMode
+            : ViewMode != _lastSeenViewMode;
+        _lastSeenViewMode = ViewMode;
+
+        if (viewModeChanged || !_rangeInitialized)
+        {
+            _lastPushedViewMode = ViewMode;
+            _state.SetViewMode(ViewMode);
+            _state.SetVisibleRange(ComputeInitialRange(_state.ViewMode, _state.Tasks));
+            _rangeInitialized = true;
+        }
+    }
+
+    private List<GanttTask> SortedTasks(List<GanttTask> raw)
+    {
+        if (GroupBy is null) return raw;
+        return raw
+            .Select((t, i) => (t, i))
+            .OrderBy(x => GroupBy(x.t))
+            .ThenBy(x => x.i)
+            .Select(x => x.t)
+            .ToList();
+    }
+
+    // Faithful port of gantt-v2.js's render() min/max + per-unit padding preamble
+    // (gantt-v2.js lines 155-190) — GanttScale.BuildDateUnits deliberately leaves
+    // this to its caller (see its own remarks), and this is that caller.
+    private static GanttDateRange ComputeInitialRange(GanttViewMode mode, IReadOnlyList<GanttTask> tasks)
+    {
+        DateTime minDate, maxDate;
+        if (tasks.Count > 0)
+        {
+            minDate = tasks.Min(t => t.Start);
+            maxDate = tasks.Max(t => t.IsMilestone ? t.Start : t.End);
+        }
+        else
+        {
+            var today = DateTime.Today;
+            minDate = today.AddDays(-7);
+            maxDate = today.AddDays(14);
+        }
+
+        var cfg = GanttScale.GetConfig(mode);
+        return cfg.Unit switch
+        {
+            GanttScaleUnit.Day => new GanttDateRange(
+                minDate.AddDays(-cfg.PadBefore * cfg.Step),
+                maxDate.AddDays(cfg.PadAfter * cfg.Step)),
+            GanttScaleUnit.Month => new GanttDateRange(
+                new DateTime(minDate.Year, minDate.Month, 1, 0, 0, 0, minDate.Kind).AddMonths(-cfg.PadBefore),
+                new DateTime(maxDate.Year, maxDate.Month, 1, 0, 0, 0, maxDate.Kind).AddMonths(cfg.PadAfter)),
+            GanttScaleUnit.Year => new GanttDateRange(
+                new DateTime(minDate.Year - cfg.PadBefore, 1, 1, 0, 0, 0, minDate.Kind),
+                new DateTime(maxDate.Year + cfg.PadAfter, 1, 1, 0, 0, 0, maxDate.Kind)),
+            GanttScaleUnit.Hour => new GanttDateRange(
+                minDate.AddDays(-Math.Ceiling(cfg.PadBefore * cfg.Step / 24.0)),
+                maxDate.AddDays(Math.Ceiling(cfg.PadAfter * cfg.Step / 24.0))),
+            _ => new GanttDateRange(minDate, maxDate),
+        };
+    }
+
+    private string PeriodLabel
+    {
+        get
+        {
+            var range = _state.VisibleRange;
+            return _state.ViewMode switch
+            {
+                GanttViewMode.Year => $"{range.Start.Year}–{range.End.Year}",
+                GanttViewMode.Month => range.Start.ToString("MMMM yyyy", CultureInfo.CurrentCulture),
+                _ => $"{range.Start.ToString("MMM d, yyyy", CultureInfo.CurrentCulture)} – {range.End.ToString("MMM d, yyyy", CultureInfo.CurrentCulture)}",
+            };
+        }
+    }
+
+    private async Task HandleViewModeChangedAsync(GanttViewMode mode)
+    {
+        if (mode == _state.ViewMode) return;
+        _lastPushedViewMode = mode;
+        _state.SetViewMode(mode);
+        _state.SetVisibleRange(ComputeInitialRange(mode, _state.Tasks));
+        if (ViewModeChanged.HasDelegate) await ViewModeChanged.InvokeAsync(mode);
+        else ViewMode = mode; // uncontrolled: keep our own field in lock-step for the next OnParametersSet comparison
+    }
+
+    // "Shift VisibleRange by the mode's step" — literally GanttScaleConfig.Step
+    // in GanttScaleConfig.Unit, applied to both ends of the window so its
+    // duration is preserved (a single page forward/back, not a resize).
+    private Task ShiftAsync(int direction)
+    {
+        var cfg = GanttScale.GetConfig(_state.ViewMode);
+        var range = _state.VisibleRange;
+        var amount = direction * cfg.Step;
+        var (start, end) = cfg.Unit switch
+        {
+            GanttScaleUnit.Day => (range.Start.AddDays(amount), range.End.AddDays(amount)),
+            GanttScaleUnit.Month => (range.Start.AddMonths(amount), range.End.AddMonths(amount)),
+            GanttScaleUnit.Year => (range.Start.AddYears(amount), range.End.AddYears(amount)),
+            GanttScaleUnit.Hour => (range.Start.AddHours(amount), range.End.AddHours(amount)),
+            _ => (range.Start, range.End),
+        };
+        _state.SetVisibleRange(start, end);
+        return Task.CompletedTask;
+    }
+
+    private Task ShiftToPreviousAsync() => ShiftAsync(-1);
+    private Task ShiftToNextAsync() => ShiftAsync(1);
+
+    // Recenters the CURRENT window (same duration) on today, rather than
+    // resetting to the tasks' original padded range.
+    private Task GoToTodayAsync()
+    {
+        var range = _state.VisibleRange;
+        var width = range.End - range.Start;
+        var today = DateTime.Today;
+        var half = new TimeSpan(width.Ticks / 2);
+        _state.SetVisibleRange(today - half, today + half);
+        return Task.CompletedTask;
+    }
+}

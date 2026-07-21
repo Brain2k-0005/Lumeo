@@ -1,0 +1,124 @@
+@namespace Lumeo
+@inject Lumeo.Services.Localization.ILumeoLocalizer L
+
+@* GanttNav — v3's toolbar (design spec Phase 2, T2 "read-only markup"): Today
+   button, prev/next period buttons, the current period's title, and a
+   Day/Week/Month/Year zoom switcher (same toolbar-representable subset as v2's
+   Gantt.razor — QuarterDay/HalfDay have no button here either, consistent with
+   that precedent). Purely presentational: every interaction bubbles up via
+   callbacks into whatever owns the shared GanttState (Gantt3 in Phase 2/3) —
+   this component never touches GanttState itself, so it can be rendered
+   standalone against any state owner.
+
+   NOTE (accessibility): see GanttBar.razor's NOTE — the Razor compiler always
+   generates a component's class as `public`, so despite the task spec asking
+   for `internal`, this stays `public` and its new members are recorded in
+   PublicAPI.Unshipped.txt; flagged for the reviewer/team lead to confirm. *@
+<div class="@RootClass" @attributes="AdditionalAttributes">
+    <div class="flex items-center gap-1">
+        <Button Variant="Button.ButtonVariant.Outline" Size="Button.ButtonSize.Sm" OnClick="HandleTodayAsync">
+            @L["Gantt.Today"]
+        </Button>
+        <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Icon" aria-label="@L["Gantt.PreviousPeriod"]" OnClick="HandlePreviousAsync">
+            <SvgGlyph Svg="@(LumeoIcons.ChevronLeft)" class="h-4 w-4" />
+        </Button>
+        <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Icon" aria-label="@L["Gantt.NextPeriod"]" OnClick="HandleNextAsync">
+            <SvgGlyph Svg="@(LumeoIcons.ChevronRight)" class="h-4 w-4" />
+        </Button>
+        @if (!string.IsNullOrEmpty(PeriodLabel))
+        {
+            <span class="ms-1 text-sm font-medium text-foreground">@PeriodLabel</span>
+        }
+    </div>
+
+    <ToggleGroup Type="ToggleGroup.ToggleGroupType.Single"
+                 Variant="ToggleGroup.ToggleGroupVariant.Outline"
+                 Size="Lumeo.Size.Sm"
+                 Value="@ToolbarValue"
+                 ValueChanged="HandleViewModeChangedAsync">
+        @foreach (var level in ResolvedZoomLevels)
+        {
+            <ToggleGroupItem Value="@level.ToString()">@L[ZoomLabelKey(level)]</ToggleGroupItem>
+        }
+    </ToggleGroup>
+</div>
+
+@code {
+    /// <summary>The active zoom level. Two-way bindable via <see cref="ViewModeChanged"/>.</summary>
+    [Parameter] public GanttViewMode ViewMode { get; set; } = GanttViewMode.Day;
+
+    /// <summary>Raised when the user picks a new zoom level from the toolbar.</summary>
+    [Parameter] public EventCallback<GanttViewMode> ViewModeChanged { get; set; }
+
+    /// <summary>
+    /// Restricts which zoom buttons render, in the given order. Null/empty shows
+    /// the full default set (Day, Week, Month, Year) — mirrors v2's Gantt.razor
+    /// ZoomLevels contract exactly, including the QuarterDay/HalfDay exclusion
+    /// (no toolbar-representable label for either).
+    /// </summary>
+    [Parameter] public IReadOnlyList<GanttViewMode>? ZoomLevels { get; set; }
+
+    /// <summary>The current period's title (e.g. "January 2026"), computed by whatever owns the GanttState's VisibleRange.</summary>
+    [Parameter] public string? PeriodLabel { get; set; }
+
+    /// <summary>Raised when Today is clicked — the owner recenters VisibleRange on today.</summary>
+    [Parameter] public EventCallback OnToday { get; set; }
+
+    /// <summary>Raised when the previous-period button is clicked — the owner shifts VisibleRange back by the view mode's step.</summary>
+    [Parameter] public EventCallback OnPrevious { get; set; }
+
+    /// <summary>Raised when the next-period button is clicked — the owner shifts VisibleRange forward by the view mode's step.</summary>
+    [Parameter] public EventCallback OnNext { get; set; }
+
+    /// <summary>Additional CSS classes merged onto the root toolbar element.</summary>
+    [Parameter] public string? Class { get; set; }
+
+    /// <summary>Captures unmatched attributes and applies them to the root toolbar element.</summary>
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private string RootClass => Cx.Merge("flex flex-wrap items-center justify-between gap-2", Class);
+
+    private static readonly GanttViewMode[] DefaultZoomLevels =
+    {
+        GanttViewMode.Day, GanttViewMode.Week, GanttViewMode.Month, GanttViewMode.Year,
+    };
+
+    // Only the toolbar-representable levels, in canonical order — same precedent
+    // as v2's Gantt.razor ResolvedZoomLevels.
+    private IReadOnlyList<GanttViewMode> ResolvedZoomLevels =>
+        ZoomLevels is { Count: > 0 }
+            ? ZoomLevels.Where(l => Array.IndexOf(DefaultZoomLevels, l) >= 0).ToList()
+            : DefaultZoomLevels;
+
+    // Unselected (null) when ViewMode is QuarterDay/HalfDay or excluded by ZoomLevels
+    // — same as v2's _toolbarViewValue.
+    private string? ToolbarValue => ViewMode switch
+    {
+        GanttViewMode.Day => "Day",
+        GanttViewMode.Week => "Week",
+        GanttViewMode.Month => "Month",
+        GanttViewMode.Year => "Year",
+        _ => null,
+    };
+
+    private static string ZoomLabelKey(GanttViewMode level) => level switch
+    {
+        GanttViewMode.Day => "Gantt.Day",
+        GanttViewMode.Week => "Gantt.Week",
+        GanttViewMode.Month => "Gantt.Month",
+        GanttViewMode.Year => "Gantt.Year",
+        _ => "Gantt.Day",
+    };
+
+    private async Task HandleViewModeChangedAsync(string? v)
+    {
+        if (string.IsNullOrEmpty(v)) return;
+        if (!Enum.TryParse<GanttViewMode>(v, out var parsed)) return;
+        if (parsed == ViewMode) return;
+        if (ViewModeChanged.HasDelegate) await ViewModeChanged.InvokeAsync(parsed);
+    }
+
+    private Task HandleTodayAsync(MouseEventArgs e) => OnToday.HasDelegate ? OnToday.InvokeAsync() : Task.CompletedTask;
+    private Task HandlePreviousAsync(MouseEventArgs e) => OnPrevious.HasDelegate ? OnPrevious.InvokeAsync() : Task.CompletedTask;
+    private Task HandleNextAsync(MouseEventArgs e) => OnNext.HasDelegate ? OnNext.InvokeAsync() : Task.CompletedTask;
+}
