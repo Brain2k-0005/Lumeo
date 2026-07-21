@@ -54,7 +54,7 @@
     </TooltipTrigger>
     <TooltipContent>
         <div class="font-medium">@Task.Name</div>
-        <div class="mt-0.5 opacity-75">@Task.Start.ToString("MMM d, yyyy", CultureInfo.CurrentCulture) &#8594; @Task.End.ToString("MMM d, yyyy", CultureInfo.CurrentCulture)</div>
+        <div class="mt-0.5 opacity-75">@Task.Start.ToString("MMM d, yyyy", CultureInfo.CurrentCulture) &#8594; @TooltipEndDate.ToString("MMM d, yyyy", CultureInfo.CurrentCulture)</div>
         <div class="opacity-75">@Task.Progress% complete</div>
     </TooltipContent>
 </Tooltip>
@@ -106,6 +106,20 @@
         : "relative flex h-full w-full items-center overflow-hidden rounded";
 
     private string ResolvedColor => Color ?? "var(--color-primary)";
+
+    // Bug fix (Codex round 3, P2 #5): GanttScale.BarGeometry's milestone branch
+    // positions the diamond using ONLY Task.Start (a milestone is a POINT, not
+    // a span — Task.End is geometrically irrelevant to where it renders), but
+    // this tooltip used to print the raw Task.Start/Task.End pair verbatim —
+    // if a consumer's milestone happened to carry an End different from Start
+    // (nothing enforces they match), the tooltip claimed a multi-day range for
+    // a bar that visually occupies a single point, which is misleading. v2
+    // parity: gantt-v2.js's own normalizeTasks forces `end = start` for every
+    // milestone (gantt-v2.js:90) BEFORE its tooltip ever reads it, so v2's
+    // tooltip always shows a same-date range for milestones, never the raw
+    // (possibly inconsistent) end. Reproduced here at display time — Task.End
+    // itself is left untouched, this only affects what the tooltip shows.
+    private DateTime TooltipEndDate => Task.IsMilestone ? Task.Start : Task.End;
 
     // Bug fix (Codex review wave): a BarHeight-side square rotated 45deg has a
     // bounding-box DIAGONAL of BarHeight*sqrt(2) — sizing the square to the full
