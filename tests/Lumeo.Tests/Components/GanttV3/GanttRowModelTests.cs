@@ -160,6 +160,64 @@ public class GanttRowModelTests
         Assert.Equal(0, row.Depth);
     }
 
+    // ── Cyclic ParentId (invalid input — must render, never silently drop) ──
+    //
+    // A cyclic ParentId graph is invalid input (no task in the cycle is
+    // reachable from a real root, and none of them is a "true orphan" either,
+    // since every parent id in the cycle DOES correspond to a real task) —
+    // but it must never cause those tasks to silently vanish from the row
+    // list. Empirically verified (before the safety-net pass below existed):
+    // a two-node cycle rendered NEITHER member, and a self-loop rendered 0
+    // rows. The fix walks `tasks` in original order and promotes the first
+    // not-yet-visited member of a remaining cycle to a root row, letting the
+    // rest of that cycle unwind as its descendants (Walk's own visited-guard
+    // stops it from re-entering the loop) — deterministic given the input's
+    // own order, not the "smartest" possible rendering of invalid data.
+
+    [Fact]
+    public void Two_Node_Cycle_Renders_Both_Members_Instead_Of_Silently_Dropping_Them()
+    {
+        var tasks = new[] { Task("a", parentId: "b"), Task("b", parentId: "a") };
+
+        var rows = GanttRowModel.BuildVisibleRows(tasks, None);
+
+        // "a" is the first unvisited task in input order, so it's promoted to
+        // a root; "b" — its bucket's only "child" per the cyclic ParentId
+        // wiring — renders once, one level deeper, and the recursion back
+        // into "a" is silently absorbed by the visited-guard instead of looping.
+        Assert.Equal(new[] { "a", "b" }, rows.Select(r => r.Task!.Id).ToArray());
+        Assert.Equal(new[] { 0, 1 }, rows.Select(r => r.Depth).ToArray());
+    }
+
+    [Fact]
+    public void Self_Loop_ParentId_Renders_The_Task_Once_Instead_Of_Zero_Rows()
+    {
+        var tasks = new[] { Task("a", parentId: "a") };
+
+        var rows = GanttRowModel.BuildVisibleRows(tasks, None);
+
+        var row = Assert.Single(rows);
+        Assert.Equal("a", row.Task!.Id);
+        Assert.Equal(0, row.Depth);
+    }
+
+    [Fact]
+    public void Cycle_With_A_Non_Cyclic_Tail_Renders_The_Tail_Task_Under_The_Cycles_Entry_Point()
+    {
+        // A/B cycle each other; C is a genuine (non-cyclic) child of A.
+        var tasks = new[]
+        {
+            Task("a", parentId: "b"),
+            Task("b", parentId: "a"),
+            Task("c", parentId: "a"),
+        };
+
+        var rows = GanttRowModel.BuildVisibleRows(tasks, None);
+
+        Assert.Equal(new[] { "a", "b", "c" }, rows.Select(r => r.Task!.Id).ToArray());
+        Assert.Equal(new[] { 0, 1, 1 }, rows.Select(r => r.Depth).ToArray());
+    }
+
     [Fact]
     public void UsesHierarchy_Wins_Over_Flat_Grouping_When_Both_Are_Present_On_The_Same_List()
     {

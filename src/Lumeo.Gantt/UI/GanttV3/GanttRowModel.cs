@@ -128,8 +128,10 @@ internal static class GanttRowModel
         // before this runs).
         var childrenByParentId = new Dictionary<string, List<GanttTask>>();
         var roots = new List<GanttTask>();
+        var taskById = new Dictionary<string, GanttTask>(tasks.Count);
         foreach (var t in tasks)
         {
+            taskById[t.Id] = t; // last-wins on a duplicate id — out-of-scope invalid input, just don't throw
             if (t.ParentId is null) { roots.Add(t); continue; }
             if (!childrenByParentId.TryGetValue(t.ParentId, out var siblings))
                 childrenByParentId[t.ParentId] = siblings = new List<GanttTask>();
@@ -172,6 +174,54 @@ internal static class GanttRowModel
         {
             if (allTaskIds.Contains(parentId)) continue; // real parent task — reachable (or intentionally collapsed-hidden) via the walk above
             Walk(orphanSiblings, 0);
+        }
+
+        // A task can still be unvisited at this point for TWO different reasons,
+        // which must NOT be handled the same way:
+        //   1. It's a legitimate descendant of a COLLAPSED ancestor (Walk added
+        //      the ancestor's row but deliberately did not recurse into it) —
+        //      still correctly hidden, must NOT be promoted.
+        //   2. It sits on a cyclic ParentId chain (A's parent is B, B's parent
+        //      is A — or a self-loop, A's parent is A) that no root/orphan walk
+        //      above could ever reach — genuinely invalid input, but silently
+        //      dropping those rows is worse than rendering them somewhere
+        //      deterministic (reviewer-verified without any safety net:
+        //      [A(parent:B), B(parent:A), D] rendered only D — A/B vanished —
+        //      and [A(parent:A)] rendered 0 rows).
+        // IsHiddenByCollapsedAncestor distinguishes the two by chasing the
+        // ParentId chain upward: if it ever reaches a task already in `visited`,
+        // that ancestor WAS rendered (case 1 — collapse suppressed recursion
+        // past it) and this task must stay hidden. If instead the chain loops
+        // back on itself (a real GanttTask id repeats within this single
+        // upward walk) without ever touching `visited`, there is no rendered
+        // ancestor to hide behind — it's case 2, a genuine cycle, and safe to
+        // promote.
+        bool IsHiddenByCollapsedAncestor(GanttTask start)
+        {
+            var seenInThisChain = new HashSet<string> { start.Id };
+            var parentId = start.ParentId;
+            while (parentId is not null)
+            {
+                if (visited.Contains(parentId)) return true;
+                if (!seenInThisChain.Add(parentId)) return false; // looped back within this chain -> a cycle, not a collapsed ancestor
+                if (!taskById.TryGetValue(parentId, out var parentTask)) return false; // dangling reference already handled by the orphan pass above
+                parentId = parentTask.ParentId;
+            }
+            return false; // chain reached a real root (null ParentId) without ever being visited — the root walk above always covers this first, so this is unreachable in practice
+        }
+
+        // Cycle safety net: walk `tasks` in original order and promote the
+        // first still-unvisited, not-collapse-hidden member of each remaining
+        // cycle to a root (depth 0) — breaks the cycle at a stable, input-order
+        // point. Walk's own `visited` guard (above) stops it from re-entering
+        // the loop it just broke out of, so any other member of the SAME cycle
+        // reachable as that root's "child" renders once, at depth 1+, instead
+        // of being re-promoted to its own fake root.
+        foreach (var t in tasks)
+        {
+            if (visited.Contains(t.Id)) continue;
+            if (IsHiddenByCollapsedAncestor(t)) continue;
+            Walk(new[] { t }, 0);
         }
 
         return rows;

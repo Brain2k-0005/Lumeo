@@ -32,13 +32,18 @@
        timeline keeps its own nested horizontal scroll (GanttTimeline.RootClass)
        for its much-wider canvas, which the tree pane never needs. *@
     <div class="rounded-md border border-border/60" style="max-height:@Height;overflow:auto;">
+        @* Rows is a computed property (see below) — read it into a local ONCE
+           per render and hand the same value to both bindings below, rather
+           than letting each binding re-invoke the property (which would run
+           GanttRowModel.BuildVisibleRows twice per render for no reason). *@
+        @{ var rows = Rows; }
         <div class="flex">
             @if (EffectiveShowTreePane)
             {
-                <GanttTree Rows="@Rows" OnToggleCollapse="HandleToggleCollapseAsync" />
+                <GanttTree Rows="@rows" OnToggleCollapse="HandleToggleCollapseAsync" />
             }
             <GanttTimeline Tasks="@_state.Tasks"
-                           Rows="@Rows"
+                           Rows="@rows"
                            ViewMode="@_state.ViewMode"
                            RangeStart="@_state.VisibleRange.Start"
                            RangeEnd="@_state.VisibleRange.End"
