@@ -52,6 +52,7 @@
                            TodayHighlight="@TodayHighlight"
                            BarColor="@BarColor"
                            BarTemplate="@BarTemplate"
+                           ScrollToTodayRequestId="@_scrollToTodayRequestId"
                            Class="min-w-0 flex-1" />
         </div>
     </div>
@@ -148,7 +149,14 @@
 
     protected override void OnParametersSet()
     {
+        // Captured BEFORE SetTasks so a genuine change can be detected below:
+        // GanttState.SetTasks no-ops (keeps the SAME list reference) when the
+        // incoming sequence is structurally equal to the current one, so a
+        // reference-inequality check after the call is a cheap, exact "did the
+        // effective task set actually change" signal — no separate hash needed.
+        var previousTasks = _state.Tasks;
         _state.SetTasks(SortedTasks(Tasks?.ToList() ?? new List<GanttTask>()));
+        var tasksChanged = !ReferenceEquals(previousTasks, _state.Tasks);
 
         // CONTROLLED (ViewModeChanged bound): adopt ViewMode whenever it differs
         // from what we last pushed — an echo of our own push is a no-op.
@@ -166,6 +174,20 @@
             _state.SetViewMode(ViewMode);
             _state.SetVisibleRange(ComputeInitialRange(_state.ViewMode, _state.Tasks));
             _rangeInitialized = true;
+        }
+        else if (tasksChanged)
+        {
+            // Bug fix (Codex review wave): an async-loaded (or otherwise later-
+            // arriving) task set can land entirely outside the range computed
+            // at mount/last-recompute — mirrors v2, which re-derives its
+            // min/max-driven date window from whatever `tasks` render() sees
+            // on every call (gantt-v2.js lines 156-164), never keeping a
+            // stale window across a task-set change. Recompute around the NEW
+            // tasks, but do NOT touch ViewMode/_state.SetViewMode here: the
+            // user's current zoom level (possibly set via GanttNav's toolbar,
+            // uncontrolled, and therefore not reflected by a possibly-stale
+            // ViewMode PARAMETER) must survive a tasks-only change.
+            _state.SetVisibleRange(ComputeInitialRange(_state.ViewMode, _state.Tasks));
         }
     }
 
@@ -273,6 +295,14 @@
         var today = DateTime.Today;
         var half = new TimeSpan(width.Ticks / 2);
         _state.SetVisibleRange(today - half, today + half);
+        // P1 fix (Codex review wave): bump the change-token GanttTimeline
+        // watches so it re-centers its DOM scrollLeft on today too — recomputing
+        // VisibleRange alone repositions where today falls in the timeline's
+        // OWN pixel space, but never touches the browser's actual horizontal
+        // scroll position (see GanttTimeline.OnAfterRenderAsync's remarks).
+        _scrollToTodayRequestId++;
         return Task.CompletedTask;
     }
+
+    private int _scrollToTodayRequestId;
 }

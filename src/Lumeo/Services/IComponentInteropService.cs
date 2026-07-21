@@ -587,6 +587,17 @@ public interface IComponentInteropService : IAsyncDisposable, IDisposable
     /// </summary>
     Task GanttRefreshAsync(string id, object options) => Task.CompletedTask;
 
+    /// <summary>
+    /// Centers <paramref name="targetX"/> (a pixel offset within the timeline's own
+    /// scrollable content) in <paramref name="el"/>'s viewport — GanttV3's own tiny
+    /// scroll slice (gantt-v3.js), used to mirror v2's init-time
+    /// center-on-today behavior (gantt-v2.js's <c>tryScroll</c>) so the initial
+    /// viewport shows task data instead of the empty padding columns
+    /// <c>Gantt3.ComputeInitialRange</c> adds before the first task. Default no-op so
+    /// existing implementers / test doubles keep compiling.
+    /// </summary>
+    Task GanttV3ScrollToXAsync(Microsoft.AspNetCore.Components.ElementReference el, double targetX) => Task.CompletedTask;
+
     // Toolbar overflow observer — registers a ResizeObserver on the toolbar
     // element and invokes the handler with (fittingCount, totalCount) whenever
     // the number of items that fit before the "..." overflow trigger changes.

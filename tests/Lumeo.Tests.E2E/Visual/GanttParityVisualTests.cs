@@ -58,6 +58,14 @@ public class GanttParityVisualTests : GanttParityTestBase
 
         await Page.AddStyleTagAsync(new() { Content = "*, *::before, *::after { animation-duration: 0s !important; animation-delay: 0s !important; transition-duration: 0s !important; transition-delay: 0s !important; }" });
         await Page.EvaluateAsync("() => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))");
+        // GanttV3ScrollToXAsync's Task resolves as soon as the JS call is
+        // dispatched, NOT when its internal requestAnimationFrame-scheduled
+        // scroll actually lands (gantt-v3.js's centerOn is fire-and-forget by
+        // design — see its own remarks) — a screenshot taken right after the
+        // two rAF ticks above could still race that scroll (Codex review wave
+        // P1 fix; caught here because the Month-mode baseline briefly showed
+        // the pre-scroll position before this delay was added).
+        await Page.WaitForTimeoutAsync(250);
 
         var screenshotBytes = await Page.ScreenshotAsync(new PageScreenshotOptions
         {

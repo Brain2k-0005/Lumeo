@@ -95,4 +95,32 @@ public class GanttV3NavTests : GanttParityTestBase
         var afterToday = ParseLabel(afterTodayText);
         Assert.Equal(new DateTime(expectedStart.Year, expectedStart.Month, 1), afterToday);
     }
+
+    // P1 fix (Codex review wave): v3-only — GanttNav's Today button is new v3
+    // functionality (see class remarks), so there's no v2 counterpart to
+    // compare against here, only v3's own behavior: clicking Today must
+    // actually scroll the DOM's horizontal scroll position so the marker is
+    // visible, not just recompute VisibleRange (a state change that, on its
+    // own, never touches scrollLeft — see GanttTimeline.OnAfterRenderAsync's
+    // remarks).
+    [Fact]
+    public async Task Today_button_scrolls_the_today_marker_into_view()
+    {
+        await GotoHost("/e2e/gantt-v3?fixture=today");
+        var host = Page.Locator("[data-testid='gantt-v3-root'] div[class*='overflow-x-auto']").First;
+        await host.WaitForAsync(new() { Timeout = 15000 });
+
+        var todayLine = Page.Locator("[data-testid='gantt-v3-root'] .lumeo-gantt-v3-today-line");
+        await todayLine.WaitForAsync(new() { State = WaitForSelectorState.Attached, Timeout = 15000 });
+
+        // Force the viewport away from today first, so the Today CLICK's own
+        // scroll effect is what's actually asserted below — not just the
+        // separate auto-center-on-mount behavior this same P1 fix also adds.
+        await host.EvaluateAsync("el => el.scrollLeft = 0");
+        await Assertions.Expect(todayLine).Not.ToBeInViewportAsync(new() { Timeout = 5000 });
+
+        await Page.GetByRole(AriaRole.Button, new() { Name = "Today", Exact = true }).ClickAsync();
+
+        await Assertions.Expect(todayLine).ToBeInViewportAsync(new() { Timeout = 10000 });
+    }
 }

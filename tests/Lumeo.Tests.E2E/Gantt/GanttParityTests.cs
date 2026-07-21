@@ -314,6 +314,34 @@ public class GanttParityTests : GanttParityTestBase
         AssertClose(expectedX, v3X, PxTolerance, "today marker v3.X");
     }
 
+    // ── Initial viewport (P1, Codex review wave) ─────────────────────────────
+    //
+    // Regression: Gantt3.ComputeInitialRange pads ~60 Day-mode columns before
+    // the earliest task, and nothing ever moved scrollLeft off its default 0 —
+    // the committed v3 Day visual baseline itself showed an empty grid on first
+    // paint. Uses the today-anchored fixture (not the shared, date-fixed one):
+    // v2's own init-time scroll centers on DateTime.Today (gantt-v2.js's
+    // tryScroll), and the shared fixture's fixed 2026-03 dates are nowhere near
+    // whatever today happens to be when this runs — a correct implementation of
+    // "center on today" would legitimately show an empty viewport for THAT
+    // fixture, which would make this assertion meaningless. The today fixture's
+    // tasks straddle DateTime.Today by construction, so centering on today is
+    // guaranteed to bring one into view on both routes.
+
+    [Fact]
+    public async Task Initial_viewport_shows_at_least_one_bar_on_both_routes()
+    {
+        await GotoHost("/e2e/gantt-v2?fixture=today");
+        await WaitAndCountV2Bars(expectedCountAtLeast: 1);
+        var v2Bar = Page.Locator("[data-testid='gantt-v2-root'] g.lumeo-gantt-bar-wrapper").First;
+        await Assertions.Expect(v2Bar).ToBeInViewportAsync(new() { Timeout = 15000 });
+
+        await GotoHost("/e2e/gantt-v3?fixture=today");
+        await WaitAndCountV3Bars(expectedCountAtLeast: 1);
+        var v3Bar = Page.Locator("[data-testid='gantt-v3-root'] [data-task-id]").First;
+        await Assertions.Expect(v3Bar).ToBeInViewportAsync(new() { Timeout = 15000 });
+    }
+
     // ── Helpers ────────────────────────────────────────────────────────────────
 
     private static (double X, double Width) ExpectedGeometry(string taskId)

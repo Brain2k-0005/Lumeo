@@ -2,6 +2,7 @@
 @using System.ComponentModel
 @using System.Globalization
 @using Lumeo.GanttV3
+@inject Lumeo.Services.IComponentInteropService Interop
 @attribute [EditorBrowsable(EditorBrowsableState.Never)]
 
 @* GanttTimeline — the scrollable header + row canvas (design spec Phase 2, T2
@@ -25,7 +26,7 @@
 
    [EditorBrowsable(Never)] keeps this working-name API out of consumer
    IntelliSense until the Phase-4 rename (fix-round follow-up). *@
-<div class="@RootClass" @attributes="AdditionalAttributes">
+<div class="@RootClass" @ref="_scrollHostRef" @attributes="AdditionalAttributes">
     <div class="relative" style="@CanvasStyle">
         @* Two-row header — sticky so it stays visible while the row canvas scrolls vertically. *@
         <div class="lumeo-gantt-v3-header sticky top-0 z-10 border-b border-border/60 bg-card" style="@HeaderStyle">
@@ -123,7 +124,39 @@
     /// <summary>Captures unmatched attributes and applies them to the root scroll container.</summary>
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
-    private string RootClass => Cx.Merge("relative w-full overflow-auto", Class);
+    /// <summary>
+    /// P1 fix (Codex review wave): incremented by <c>Gantt3</c> each time its "Today"
+    /// nav button recenters <c>VisibleRange</c>. Purely a change-token — the VALUE
+    /// carries no meaning, only "did it change since the last render" does — so
+    /// GanttTimeline knows to re-center the DOM's actual horizontal scroll position on
+    /// today again (recentering VisibleRange alone doesn't move scrollLeft; see
+    /// <see cref="ScrollToTodayCenterAsync"/>'s remarks). Left at its default (0) by
+    /// any caller that never wires GanttNav's Today button to this — a component
+    /// using GanttTimeline standalone without Gantt3 simply never sees this fire
+    /// again after the first-render center.
+    /// </summary>
+    [Parameter] public int ScrollToTodayRequestId { get; set; }
+
+    private ElementReference _scrollHostRef;
+    private int _lastSeenScrollToTodayRequestId;
+
+    // Bug fix (Codex review wave): this root used to be "overflow-auto" (both
+    // axes), establishing ITS OWN CSS scroll container even though it never
+    // actually needs to scroll vertically (its content just grows to
+    // CanvasHeight — see Gantt3.razor's own remarks: "the timeline keeps its
+    // own nested horizontal scroll ... which the tree pane never needs", the
+    // STATED design intent this class string didn't actually implement).
+    // "position:sticky" sticks relative to its nearest ancestor that
+    // establishes a scroll container, REGARDLESS of whether that ancestor ever
+    // scrolls — so the two-row header stuck to THIS div (which never moves)
+    // instead of to Gantt3's shared outer pane (which does), and scrolled
+    // straight off-screen on any chart tall enough to need vertical scrolling.
+    // "overflow-x-auto" alone still creates one (CSS computes overflow-y to
+    // "auto" too when only overflow-x is non-visible — a well-known spec
+    // quirk), so overflow-y-visible is required alongside it to actually stop
+    // establishing a container and let vertical scroll bubble up to Gantt3's
+    // pane, restoring the header's sticky-to-the-ACTUAL-scroller behavior.
+    private string RootClass => Cx.Merge("relative w-full overflow-x-auto overflow-y-visible", Class);
 
     private GanttScaleConfig Cfg => GanttScale.GetConfig(ViewMode);
     private int EffectiveColumnWidth => ColumnWidth ?? Cfg.ColumnWidth;
@@ -152,7 +185,12 @@
     private IReadOnlyList<GanttHeaderRun> UpperRuns => GanttScale.UpperRuns(ViewMode, Units);
     private IReadOnlyList<string> LowerLabels => GanttScale.LowerLabels(ViewMode, Units);
 
-    private double TodayX => GanttScale.DateToPixel(ViewMode, Origin, DateTime.Today);
+    // Bug fix (Codex review wave): must pass EffectiveColumnWidth explicitly —
+    // DateToPixel defaults to the mode's own config width when no override is
+    // given, which silently ignored a caller's ColumnWidth override here (the
+    // header/grid, which compute column positions via EffectiveColumnWidth
+    // directly rather than through DateToPixel, were already correct).
+    private double TodayX => GanttScale.DateToPixel(ViewMode, Origin, DateTime.Today, EffectiveColumnWidth);
     private bool TodayInRange => TodayHighlight && Units.Count > 0 && TodayX >= 0 && TodayX <= TotalWidth;
 
     private string CanvasStyle => FormattableString.Invariant($"width:{TotalWidth}px;min-height:{CanvasHeight}px;");
@@ -210,4 +248,34 @@
             return rows;
         }
     }
+
+    // P1 fix (Codex review wave): center the DOM's actual scrollLeft on today,
+    // mirroring gantt-v2.js's init-time tryScroll (lines 673-693) — WITHOUT
+    // this, Gantt3.ComputeInitialRange's ~60-day padding before the earliest
+    // task left scrollLeft at its default 0, showing an empty grid on first
+    // paint (the committed v3 Day visual baseline showed exactly this bug).
+    // Fires (a) once on first render, mirroring v2's ONE-TIME init-scroll
+    // (v2 explicitly does NOT re-scroll on every refresh — see its own
+    // "_initialScrolled" flag/comment — recentering on every render would
+    // clobber a user's manual pan), and (b) again whenever
+    // ScrollToTodayRequestId changes (Gantt3's GoToTodayAsync bumps it) —
+    // recentering VisibleRange alone doesn't move the DOM's scrollLeft, since
+    // Blazor's diff of a parameter change is not itself a scroll action.
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            _lastSeenScrollToTodayRequestId = ScrollToTodayRequestId;
+            if (TodayInRange) await ScrollToTodayCenterAsync();
+            return;
+        }
+
+        if (ScrollToTodayRequestId != _lastSeenScrollToTodayRequestId)
+        {
+            _lastSeenScrollToTodayRequestId = ScrollToTodayRequestId;
+            if (TodayInRange) await ScrollToTodayCenterAsync();
+        }
+    }
+
+    private Task ScrollToTodayCenterAsync() => Interop.GanttV3ScrollToXAsync(_scrollHostRef, TodayX);
 }

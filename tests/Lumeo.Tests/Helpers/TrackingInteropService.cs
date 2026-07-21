@@ -787,6 +787,18 @@ public class TrackingInteropService : IComponentInteropService
     public Task GanttChangeViewModeAsync(string id, string mode) => Task.CompletedTask;
     public Task GanttDestroyAsync(string id) => Task.CompletedTask;
 
+    // GanttV3 scroll-to-center tracking (P1 fix, Codex review wave) — records
+    // each requested target X so a test can assert the timeline centers on
+    // today at mount and again after a Today-nav click, without a real browser.
+    private readonly List<double> _ganttV3ScrollToXCalls = new();
+    public int GanttV3ScrollToXCallCount => _ganttV3ScrollToXCalls.Count;
+    public IReadOnlyList<double> GanttV3ScrollToXCalls => _ganttV3ScrollToXCalls;
+    public Task GanttV3ScrollToXAsync(ElementReference el, double targetX)
+    {
+        _ganttV3ScrollToXCalls.Add(targetX);
+        return Task.CompletedTask;
+    }
+
     public ValueTask<string> RichTextInitAsync<T>(ElementReference elementRef, DotNetObjectReference<T> dotNetRef, object options) where T : class => ValueTask.FromResult(string.Empty);
     public ValueTask RichTextSetContentAsync(string id, string? html) => ValueTask.CompletedTask;
     public ValueTask RichTextCommandAsync(string id, string name, params object?[]? args) => ValueTask.CompletedTask;

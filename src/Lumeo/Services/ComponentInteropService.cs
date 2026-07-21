@@ -1613,6 +1613,31 @@ public sealed class ComponentInteropService : IComponentInteropService
         catch (JSDisconnectedException) { }
     }
 
+    // --- GanttV3 (Blazor-rendered timeline) scroll interop ---
+    // Its own tiny module (gantt-v3.js), separate from gantt-v2's Frappe-style
+    // wrapper module above — v3 has no JS renderer of its own, only this one
+    // scroll helper, so a shared module would be a needless coupling between
+    // the two independently-lifecycled Gantt implementations.
+
+    private IJSObjectReference? _ganttV3Module;
+
+    private async Task<IJSObjectReference> GetGanttV3ModuleAsync()
+    {
+        _ganttV3Module ??= await _jsRuntime.InvokeAsync<IJSObjectReference>(
+            "import", "./_content/Lumeo.Gantt/js/gantt-v3.js");
+        return _ganttV3Module;
+    }
+
+    public async Task GanttV3ScrollToXAsync(Microsoft.AspNetCore.Components.ElementReference el, double targetX)
+    {
+        try
+        {
+            var module = await GetGanttV3ModuleAsync();
+            await module.InvokeVoidAsync("ganttV3.centerOn", el, targetX);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
     // --- Toolbar overflow observer ---
     // Toolbar ships its own tiny JS module (toolbar.js) that wraps a
     // ResizeObserver to measure how many child items fit before an overflow
