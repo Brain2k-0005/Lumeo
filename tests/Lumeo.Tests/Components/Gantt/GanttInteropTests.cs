@@ -40,6 +40,28 @@ public class GanttInteropTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task JsOnTaskClick_Reports_The_Tasks_Current_ParentId_Not_The_Raw_JS_Payloads_Null()
+    {
+        // Bug fix (Codex round 2, P2 #2): gantt-v2.js's taskToJson never
+        // serializes ParentId — the raw JS click payload always carries
+        // ParentId == null, even for a task a GanttV3-hierarchy consumer has
+        // set it on. OnTaskClick's argument must reflect the CURRENT stored
+        // task's ParentId instead of forwarding the payload verbatim.
+        var hierarchyTask = Task1 with { ParentId = "epic-1" };
+        L.GanttTask? clicked = null;
+        var cut = _ctx.Render<L.Gantt>(p => p
+            .Add(c => c.Tasks, new[] { hierarchyTask })
+            .Add(c => c.OnTaskClick, (L.GanttTask t) => { clicked = t; }));
+
+        // The JS click payload never carries ParentId — mirror that exactly.
+        Assert.Null(Task1.ParentId);
+        await cut.InvokeAsync(() => cut.Instance.JsOnTaskClick(Task1));
+
+        Assert.NotNull(clicked);
+        Assert.Equal("epic-1", clicked!.ParentId);
+    }
+
+    [Fact]
     public async Task JsOnDateChange_Replaces_The_Task_And_Raises_OnDateChange_And_TasksChanged()
     {
         L.GanttTask? dateChanged = null;

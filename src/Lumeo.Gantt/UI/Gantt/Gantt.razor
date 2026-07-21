@@ -431,6 +431,15 @@ else
             hash.Add(t.CustomClass);
             hash.Add(t.IsMilestone);
             hash.Add(t.GroupLabel);
+            // Bug fix (Codex round 2, P1 #1): ParentId was never folded into this
+            // hash, so a ParentId-ONLY change (e.g. re-parenting a task in a
+            // GanttV3-hierarchy consumer, then handing the SAME Tasks list back
+            // down) hashed identically to the unchanged task — the change-gates
+            // above (parentMoved / the controlled/uncontrolled discriminators)
+            // saw "no change" and silently kept the OLD ParentId, so the next
+            // drag/resize/progress edit (via ReplaceTask) persisted the stale
+            // parent instead of the caller's update.
+            hash.Add(t.ParentId);
             if (t.Dependencies is not null)
                 foreach (var d in t.Dependencies) hash.Add(d);
             // Fold the delegate output so a BarColor / GroupBy swap that leaves the
@@ -476,7 +485,18 @@ else
     [JSInvokable]
     public async Task JsOnTaskClick(GanttTask t)
     {
-        if (OnTaskClick.HasDelegate) await OnTaskClick.InvokeAsync(t);
+        // Bug fix (Codex round 2, P2 #2): `t` is deserialized straight from
+        // gantt-v2.js's taskToJson payload, which never serializes ParentId (v2
+        // has no hierarchy concept) — same root cause ReplaceTask's ParentId
+        // merge fixes for JsOnDateChange/JsOnProgressChange, so OnTaskClick's own
+        // argument always reported ParentId == null for a GanttV3-hierarchy
+        // consumer, even though the task's ACTUAL ParentId (in _tasks) was set.
+        // Reuses only the LOOKUP half of ReplaceTask's fix, not ReplaceTask
+        // itself — a click never edits the task, so there is nothing to write
+        // back into _tasks/_lastTasksHash here, only a stale field to correct
+        // before handing the task to the consumer's callback.
+        var current = _tasks.Find(x => x.Id == t.Id);
+        if (OnTaskClick.HasDelegate) await OnTaskClick.InvokeAsync(current ?? t);
     }
 
     [JSInvokable]

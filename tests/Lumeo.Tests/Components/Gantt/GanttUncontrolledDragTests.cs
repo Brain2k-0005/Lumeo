@@ -113,4 +113,28 @@ public class GanttUncontrolledDragTests : IAsyncLifetime
             SetTasksCount(_module) > setTasksAfterInit,
             "A genuine parent-driven task change after a drag must still re-push via gantt.setTasks.");
     }
+
+    [Fact]
+    public void A_ParentId_only_parent_change_still_repushes()
+    {
+        // Regression (Codex round 2, P1 #1): ComputeTasksHash never folded
+        // ParentId in, so a re-parent-ONLY change (every other field identical)
+        // hashed the same as the unchanged task — parentMoved stayed false, the
+        // re-parent was silently dropped, and _tasks kept the STALE ParentId
+        // until (if ever) some OTHER field also changed. Unlike the drag-based
+        // tests above, this needs no JsOnDateChange round trip at all: a plain
+        // parent-driven re-parent, with nothing else touched, must still reach
+        // gantt.setTasks on its own.
+        var original = Task1 with { ParentId = "epic-1" };
+        var cut = _ctx.Render<L.Gantt>(p => p.Add(c => c.Tasks, new[] { original }));
+
+        var setTasksAfterInit = SetTasksCount(_module);
+
+        var reparented = Task1 with { ParentId = "epic-2" };
+        cut.Render(p => p.Add(c => c.Tasks, new[] { reparented }));
+
+        Assert.True(
+            SetTasksCount(_module) > setTasksAfterInit,
+            "A ParentId-only change must still be detected as a genuine parent-driven task change.");
+    }
 }
