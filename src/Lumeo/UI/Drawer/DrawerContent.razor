@@ -249,8 +249,22 @@ else if (Context.IsOpen || _exiting)
         _ => ""
     };
 
+    // Bug fix (feedback wave): the panel caps its OWN height (PositionClasses:
+    // max-h-[96vh] for Top/Bottom, max-h-screen for Left/Right) but never gave
+    // itself a scroll fallback. Verified with a real headless Chromium render
+    // (not just reasoning about the flexbox spec): once content — an EditForm
+    // with enough fields, or any sufficiently tall block content — exceeds that
+    // cap, the excess simply overflows past the panel's bottom edge (the
+    // browser's default overflow:visible) with NO way to scroll to it. The
+    // header (first child) stays visible; everything below a certain point,
+    // INCLUDING THE FOOTER/SUBMIT BUTTON, renders completely off-screen and is
+    // permanently unreachable — from a user's perspective the form is simply
+    // gone, which is what got reported as "the drawer collapses my form."
+    // overflow-y-auto turns that same overflow into an internally-scrollable
+    // panel instead, so the full form (and the footer beneath it) is always
+    // reachable regardless of how tall the content grows.
     private string CssClass =>
-        Cx.Merge("fixed mt-24 flex h-auto flex-col bg-background shadow-lg", PositionClasses, AnimationClass, PointerClass, Class);
+        Cx.Merge("fixed mt-24 flex h-auto flex-col overflow-y-auto bg-background shadow-lg", PositionClasses, AnimationClass, PointerClass, Class);
 
     // A scoped <DirectionProvider> wins over the global ThemeService, so a subtree
     // can be RTL even if the app is LTR. Null when no provider wraps this drawer.
