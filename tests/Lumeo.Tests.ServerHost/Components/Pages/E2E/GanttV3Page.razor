@@ -23,12 +23,20 @@
    by default. The P2 #2 regression spec needs a like-for-like "without tree"
    comparison case (does scroll-centering math still land correctly when
    there's no tree-width offset to add at all), so this explicitly overrides
-   Gantt3's ShowTreePane parameter to false when present. *@
+   Gantt3's ShowTreePane parameter to false when present.
+
+   OnTaskClick sink (Codex round 5 review, Minor): the round-5 click-
+   composition fix (P1 #1) only had bUnit coverage, which can't prove real
+   DOM event bubbling — this host wires OnTaskClick to a plain
+   data-testid="gantt-v3-last-clicked" element so an E2E spec can drive a
+   REAL Playwright click on a rendered bar and assert the handler actually
+   fired, closing that gap. *@
 
 <PageTitle>E2E - Gantt v3</PageTitle>
 
 <div class="p-4" style="max-width: 1600px;">
     <h1 data-testid="gantt-e2e-title">Gantt v3 (parity fixture)</h1>
+    <div data-testid="gantt-v3-last-clicked">@_lastClickedTaskId</div>
     @if (Rtl == "1")
     {
         <DirectionProvider Direction="LayoutDirection.Rtl">
@@ -39,6 +47,7 @@
                     GroupBy="@(t => t.GroupLabel ?? "")"
                     ShowTreePane="@_showTreePaneOverride"
                     BarColor="@GanttParityFixtures.GetBarColor"
+                    OnTaskClick="HandleTaskClick"
                     data-testid="gantt-v3-root" />
         </DirectionProvider>
     }
@@ -51,6 +60,7 @@
                 GroupBy="@(t => t.GroupLabel ?? "")"
                 ShowTreePane="@_showTreePaneOverride"
                 BarColor="@GanttParityFixtures.GetBarColor"
+                OnTaskClick="HandleTaskClick"
                 data-testid="gantt-v3-root" />
     }
 </div>
@@ -64,6 +74,9 @@
     private GanttViewMode _viewMode = GanttViewMode.Day;
     private List<GanttTask> _tasks = new();
     private bool? _showTreePaneOverride;
+    private string _lastClickedTaskId = "";
+
+    private void HandleTaskClick(GanttTask task) => _lastClickedTaskId = task.Id;
 
     protected override void OnInitialized()
     {
