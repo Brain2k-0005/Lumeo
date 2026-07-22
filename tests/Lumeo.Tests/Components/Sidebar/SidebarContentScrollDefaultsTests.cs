@@ -1,6 +1,9 @@
+using System.Linq;
 using Bunit;
+using Microsoft.AspNetCore.Components;
 using Xunit;
 using Lumeo.Tests.Helpers;
+using L = Lumeo;
 
 namespace Lumeo.Tests.Components.Sidebar;
 
@@ -55,5 +58,40 @@ public class SidebarContentScrollDefaultsTests : IAsyncLifetime
         var cssClass = cut.Find("div").GetAttribute("class");
         Assert.Contains("my-sidebar-content", cssClass);
         Assert.Contains("overflow-y-auto", cssClass);
+    }
+
+    // ── #381 Codex P1: scrollbar-gutter scoped to the EXPANDED state only ───
+    // (a classic-scrollbar platform's reserved ~15px track would otherwise eat
+    // a real chunk of a collapsed icon rail's 48px width, which never scrolls).
+
+    private IRenderedComponent<L.SidebarProvider> RenderWithProvider(bool isCollapsed)
+    {
+        return _ctx.Render<L.SidebarProvider>(p => p
+            .Add(x => x.IsCollapsed, isCollapsed)
+            .Add(x => x.ChildContent, (RenderFragment)(b =>
+            {
+                b.OpenComponent<L.SidebarContent>(0);
+                b.CloseComponent();
+            })));
+    }
+
+    [Fact]
+    public void Scrollbar_Gutter_Present_When_Sidebar_Is_Expanded()
+    {
+        var cut = RenderWithProvider(isCollapsed: false);
+
+        var sidebarContentDiv = cut.FindAll("div").First(d => (d.GetAttribute("class") ?? "").Contains("overflow-y-auto"));
+        Assert.Contains("scrollbar-gutter:stable", sidebarContentDiv.GetAttribute("class"));
+    }
+
+    [Fact]
+    public void Scrollbar_Gutter_Omitted_When_Sidebar_Is_Collapsed()
+    {
+        var cut = RenderWithProvider(isCollapsed: true);
+
+        var sidebarContentDiv = cut.FindAll("div").First(d => (d.GetAttribute("class") ?? "").Contains("overflow-y-auto"));
+        Assert.DoesNotContain("scrollbar-gutter:stable", sidebarContentDiv.GetAttribute("class"));
+        // The vertical-only scroll fix itself is unaffected by collapse state.
+        Assert.Contains("overflow-y-auto", sidebarContentDiv.GetAttribute("class"));
     }
 }
