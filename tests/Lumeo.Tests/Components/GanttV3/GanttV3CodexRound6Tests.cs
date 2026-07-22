@@ -115,4 +115,54 @@ public class GanttV3CodexRound6Tests : IAsyncLifetime
         var arrows = cut.FindAll(".lumeo-gantt-v3-arrow");
         Assert.NotEmpty(arrows);
     }
+
+    // -- GanttBar: Space-preventDefault reconciles every render, not just firstRender (cx6b, Important #2) --
+
+    [Fact]
+    public void GanttBar_Registers_PreventDefaultKeys_When_OnTaskClick_Is_Attached_After_The_First_Render()
+    {
+        // Bug fix (Codex round 6 review / cx6b, Important #2): the original
+        // fix only registered on `firstRender && OnTaskClick.HasDelegate` -
+        // role/onkeydown/onclick in InnerAttributes re-evaluate HasDelegate
+        // on EVERY render, so a consumer attaching OnTaskClick AFTER mount
+        // got the live keyboard/click wiring without the matching
+        // preventDefault suppression ever registering.
+        var task = new L.GanttTask("t1", "Design", D(2026, 1, 2), D(2026, 1, 9));
+        var cut = _ctx.Render<L.GanttBar>(p => p
+            .Add(c => c.Task, task)
+            .Add(c => c.X, 0d)
+            .Add(c => c.Width, 114d)); // no OnTaskClick at mount
+
+        Assert.Empty(_interop.RegisterPreventDefaultKeysElementIds);
+
+        cut.Render(p => p
+            .Add(c => c.Task, task)
+            .Add(c => c.X, 0d)
+            .Add(c => c.Width, 114d)
+            .Add(c => c.OnTaskClick, (L.GanttTask _) => { })); // attached AFTER the first render
+
+        Assert.Single(_interop.RegisterPreventDefaultKeysElementIds);
+    }
+
+    [Fact]
+    public void GanttBar_Unregisters_PreventDefaultKeys_When_OnTaskClick_Is_Detached()
+    {
+        var task = new L.GanttTask("t1", "Design", D(2026, 1, 2), D(2026, 1, 9));
+        var cut = _ctx.Render<L.GanttBar>(p => p
+            .Add(c => c.Task, task)
+            .Add(c => c.X, 0d)
+            .Add(c => c.Width, 114d)
+            .Add(c => c.OnTaskClick, (L.GanttTask _) => { }));
+
+        Assert.Single(_interop.RegisterPreventDefaultKeysElementIds);
+        Assert.Empty(_interop.UnregisterPreventDefaultKeysElementIds);
+
+        cut.Render(p => p
+            .Add(c => c.Task, task)
+            .Add(c => c.X, 0d)
+            .Add(c => c.Width, 114d)
+            .Add(c => c.OnTaskClick, default(Microsoft.AspNetCore.Components.EventCallback<L.GanttTask>))); // detached
+
+        Assert.Single(_interop.UnregisterPreventDefaultKeysElementIds);
+    }
 }

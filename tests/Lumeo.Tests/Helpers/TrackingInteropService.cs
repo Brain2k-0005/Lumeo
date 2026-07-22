@@ -458,7 +458,17 @@ public class TrackingInteropService : IComponentInteropService
         _registerPreventDefaultKeysRules[elementId] = rules;
         return ValueTask.CompletedTask;
     }
-    public ValueTask UnregisterPreventDefaultKeys(string elementId) => ValueTask.CompletedTask;
+    // Codex round 6 review / cx6b, Important #2 — tracks unregister calls too
+    // (previously a pure no-op) so a test can confirm a reconciled
+    // register/unregister lifecycle, not just that SOME registration
+    // happened at some point.
+    private readonly List<string> _unregisterPreventDefaultKeysElementIds = new();
+    public IReadOnlyList<string> UnregisterPreventDefaultKeysElementIds => _unregisterPreventDefaultKeysElementIds;
+    public ValueTask UnregisterPreventDefaultKeys(string elementId)
+    {
+        _unregisterPreventDefaultKeysElementIds.Add(elementId);
+        return ValueTask.CompletedTask;
+    }
     public ValueTask ScrollSelectorIntoView(string selector) => ValueTask.CompletedTask;
 
     // Scroll-into-view tracking — Command palette scrolls its active item into

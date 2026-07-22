@@ -323,15 +323,56 @@ internal static class GanttScale
     // (GanttScale's own aligned-origin invariant — see BuildDateUnits/
     // AlignToUnitStart's remarks), so AddMonths lands on day-1 of the target
     // month too, matching what DateToPixel's own "(day-1)/30.0" term assumes.
+    //
+    // Bug fix (Codex round 6 review / cx6b, Important #1): DateToPixel's own
+    // /30.0 divisor is a FIXED, v2-parity approximation applied to EVERY
+    // month regardless of its actual length (gantt-v2.js's own
+    // `dayFraction = (d.getDate()-1)/30`, ported verbatim) — it is NOT "1/30
+    // of this month's real length", it is "1/30 of a day, however many of
+    // those the month actually has room for". The exact analytic inverse of
+    // that fraction is a day OFFSET of `fraction*30.0` — correct as far as it
+    // goes, but for a month SHORTER than 30 days (February) that offset can
+    // exceed the month's own last valid day (day 28's own offset from day 1
+    // is only 27), and the previous code's plain `AddDays` let .NET's
+    // calendar arithmetic silently roll over into the NEXT month (a February
+    // 30th doesn't exist) — confirmed live: origin=Jan 1 2026, totalMonths=
+    // 1.99 landed on 2026-03-02 instead of within February, a ~5px error at
+    // Month mode's 120px column. Clamping the day offset to the month's own
+    // [0, daysInMonth-1] range keeps the result inside the CORRECT month.
+    // This is not a lossy approximation of some reachable answer — DateToPixel
+    // itself can NEVER produce a fraction above (daysInMonth-1)/30.0 for any
+    // REAL date in a short month either (a real February date's own day-1
+    // term saturates at 27/30 = 0.9), so a fraction beyond that is asking for
+    // a position DateToPixel has no representation for in the first place;
+    // the clamp lands on the best — and only self-consistent — answer.
+    // Below that saturation point (the common case in practice, since
+    // Gantt3's caller only ever feeds this a LIVE scroll position that
+    // itself came from real rendered content), the unclamped exact inverse
+    // applies and round-trips through DateToPixel precisely.
     private static DateTime AddContinuousMonths(DateTime origin, double totalMonths)
     {
         var whole = Math.Floor(totalMonths);
         var fraction = totalMonths - whole;
-        return origin.AddMonths((int)whole).AddDays(fraction * 30.0);
+        var monthStart = origin.AddMonths((int)whole);
+        var daysInMonth = DateTime.DaysInMonth(monthStart.Year, monthStart.Month);
+        var dayOffset = Math.Min(fraction * 30.0, daysInMonth - 1);
+        return monthStart.AddDays(dayOffset);
     }
 
     // Same reasoning as AddContinuousMonths, for DateToPixel's Year formula
     // (`yearsDiff + ((month-1)*30+day)/365.0`) — origin is always Jan 1 here.
+    //
+    // Confirmed SAFE without a clamp (Codex round 6 review / cx6b, Important
+    // #1's own follow-up check): DateToPixel's Year formula divides by a
+    // FIXED 365.0 regardless of whether the target year is a leap year — it
+    // NEVER checks leap-ness, so its own day-of-year term can reach at most
+    // 365 (Dec 31 of a non-leap year) and never more. A leap year has 366
+    // days, i.e. MORE room than the fixed 365 divisor ever assumes exists —
+    // so a fraction approaching (but never reaching) 1.0 here can only ever
+    // UNDERSHOOT a leap year's actual Dec 31 (landing a fraction of a day
+    // short of it), never overshoot into the following year the way a SHORT
+    // month could overshoot into the next month above. No overflow risk, no
+    // clamp needed.
     private static DateTime AddContinuousYears(DateTime origin, double totalYears)
     {
         var whole = Math.Floor(totalYears);

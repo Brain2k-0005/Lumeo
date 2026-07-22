@@ -364,6 +364,72 @@ public class GanttScaleTests : IDisposable
         Assert.NotEqual(1, continuous.Month); // continuous lands mid-year instead
     }
 
+    // ── PixelToDateContinuous: short-month overflow fix (Codex round 6 review / cx6b, Important #1) ──
+
+    [Fact]
+    public void PixelToDateContinuous_Does_Not_Overflow_Into_The_Next_Month_For_A_Short_February()
+    {
+        // origin=Jan 1, 2026 (non-leap year - February has 28 days),
+        // totalMonths=1.99 landed on 2026-03-02 under the OLD fixed-30-day-
+        // per-month assumption: the exact analytic inverse of DateToPixel's
+        // own /30.0 divisor implies a day offset of 0.99*30=29.7, which
+        // silently overflowed past February's own last day when added via
+        // plain AddDays. The fix clamps the day offset to the month's own
+        // actual length, keeping the result inside February.
+        var origin = Utc(2026, 1, 1);
+        var cfg = GanttScale.GetConfig(GanttViewMode.Month);
+        var px = cfg.ColumnWidth * 1.99;
+
+        var continuous = GanttScale.PixelToDateContinuous(GanttViewMode.Month, origin, px);
+
+        Assert.Equal(2026, continuous.Year);
+        Assert.Equal(2, continuous.Month); // stays in February - NOT March
+        Assert.True(continuous.Day <= 28,
+            $"expected the result to stay within February 2026's own 28 days, got day={continuous.Day}");
+    }
+
+    [Fact]
+    public void PixelToDateContinuous_Does_Not_Overflow_Past_A_Leap_Year_Februarys_29_Days()
+    {
+        // 2028 is a leap year (February has 29 days) - the same overflow
+        // risk as the non-leap case above, confirming DateTime.DaysInMonth
+        // (not a hardcoded 28) is what actually gates the clamp.
+        var origin = Utc(2028, 1, 1);
+        var cfg = GanttScale.GetConfig(GanttViewMode.Month);
+        var px = cfg.ColumnWidth * 1.99;
+
+        var continuous = GanttScale.PixelToDateContinuous(GanttViewMode.Month, origin, px);
+
+        Assert.Equal(2028, continuous.Year);
+        Assert.Equal(2, continuous.Month); // stays in February - NOT March
+        Assert.True(continuous.Day <= 29,
+            $"expected the result to stay within leap-year February 2028's own 29 days, got day={continuous.Day}");
+    }
+
+    [Fact]
+    public void PixelToDateContinuous_Roundtrips_Precisely_For_A_Reachable_MidMonth_Offset_In_A_31Day_Month()
+    {
+        // A fraction WITHIN what a 31-day month can actually represent -
+        // unlike the overflow tests above, which deliberately probe past a
+        // SHORT month's own saturation point, this is the common case in
+        // practice (Gantt3 only ever feeds this a live scroll position that
+        // itself came from real rendered content) and round-trips exactly:
+        // day offset 29 (of January's 31 days) is a WHOLE number, so there
+        // is no residual time-of-day component for DateToPixel's own
+        // integer day/month read to drop.
+        var origin = Utc(2026, 1, 1); // January has 31 days
+        var cfg = GanttScale.GetConfig(GanttViewMode.Month);
+        var px = cfg.ColumnWidth * (29.0 / 30.0); // day offset 29 exactly -> Jan 30
+
+        var continuous = GanttScale.PixelToDateContinuous(GanttViewMode.Month, origin, px);
+        var roundtripPx = GanttScale.DateToPixel(GanttViewMode.Month, origin, continuous);
+
+        Assert.Equal(1, continuous.Month);
+        Assert.Equal(30, continuous.Day);
+        Assert.True(Math.Abs(roundtripPx - px) < 1.0,
+            $"expected an exact round-trip for a reachable mid-month offset, got px={px}, roundtripPx={roundtripPx}");
+    }
+
     [Fact]
     public void DateToPixel_Roundtrip_Is_Stable_Across_The_2026_EU_Spring_Forward_DST_Date()
     {

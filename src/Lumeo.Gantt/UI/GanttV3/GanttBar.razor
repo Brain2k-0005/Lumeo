@@ -315,9 +315,22 @@
     // OnTaskClick actually has a delegate — matching InnerAttributes' own
     // gating (round 5, P2 #3): with no delegate, Space does nothing here at
     // all, so there's nothing to protect from the browser's default either.
+    //
+    // Bug fix (Codex round 6 review / cx6b, Important #2): the FIRST version
+    // of this only registered on `firstRender && OnTaskClick.HasDelegate`,
+    // but role/onkeydown/onclick in InnerAttributes above re-evaluate
+    // HasDelegate on EVERY render — a consumer attaching OnTaskClick AFTER
+    // mount (or detaching it later) got the live keyboard/click wiring
+    // without ever registering (or unregistering) the matching preventDefault
+    // suppression. Reconciled on every render instead, mirroring Card.razor's
+    // OWN ripple-listener precedent two methods below its identical
+    // firstRender-only prevent-default registration (that one is safe only
+    // because Card's own IsInteractive flip happens to always go through a
+    // full remount via an `@if`, which this component has no equivalent of).
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (firstRender && OnTaskClick.HasDelegate)
+        var wantPreventDefault = OnTaskClick.HasDelegate;
+        if (wantPreventDefault && !_preventDefaultKeysRegistered)
         {
             try
             {
@@ -326,6 +339,16 @@
             }
             catch (Microsoft.JSInterop.JSDisconnectedException) { }
             catch (InvalidOperationException) { } // JS interop unavailable during prerender
+        }
+        else if (!wantPreventDefault && _preventDefaultKeysRegistered)
+        {
+            try
+            {
+                await Interop.UnregisterPreventDefaultKeys(_barId);
+            }
+            catch (Microsoft.JSInterop.JSDisconnectedException) { }
+            catch (InvalidOperationException) { }
+            _preventDefaultKeysRegistered = false;
         }
     }
 
