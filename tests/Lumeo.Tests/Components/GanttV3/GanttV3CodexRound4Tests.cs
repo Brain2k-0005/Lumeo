@@ -168,16 +168,22 @@ public class GanttV3CodexRound4Tests : IAsyncLifetime
     [Fact]
     public void GanttBar_Is_Keyboard_Focusable_With_An_Aria_Label_Naming_The_Task_And_Its_Dates()
     {
+        // Bug fix (Codex round 5, P1 #1 / P2 #2): tabindex/role/aria-label
+        // moved off the outer [data-task-id] wrapper (Tooltip's own root)
+        // onto GanttBar's inner content div — see GanttBar.InnerAttributes'
+        // own remarks for why. It's the OUTER element's sole direct child
+        // (TooltipTrigger's AsChild mode adds no wrapper of its own).
         var task = new L.GanttTask("t1", "Design", D(2026, 1, 2), D(2026, 1, 9));
         var cut = _ctx.Render<L.GanttBar>(p => p
             .Add(c => c.Task, task)
             .Add(c => c.X, 0d)
-            .Add(c => c.Width, 114d));
+            .Add(c => c.Width, 114d)
+            .Add(c => c.OnTaskClick, _ => { }));
 
-        var wrapper = cut.Find("[data-task-id='t1']");
-        Assert.Equal("0", wrapper.GetAttribute("tabindex"));
-        Assert.Equal("button", wrapper.GetAttribute("role"));
-        var label = wrapper.GetAttribute("aria-label");
+        var interactive = cut.Find("[data-task-id='t1'] > div");
+        Assert.Equal("0", interactive.GetAttribute("tabindex"));
+        Assert.Equal("button", interactive.GetAttribute("role"));
+        var label = interactive.GetAttribute("aria-label");
         Assert.Contains("Design", label);
         Assert.Contains("Jan 2, 2026", label);
         Assert.Contains("Jan 9, 2026", label);
@@ -194,7 +200,7 @@ public class GanttV3CodexRound4Tests : IAsyncLifetime
             .Add(c => c.X, 0d)
             .Add(c => c.Width, 22d));
 
-        var label = cut.Find("[data-milestone='true']").GetAttribute("aria-label");
+        var label = cut.Find("[data-milestone='true'] > div").GetAttribute("aria-label");
         Assert.Contains("Mar 8, 2026", label);
         Assert.DoesNotContain("Mar 20, 2026", label);
     }
@@ -210,7 +216,7 @@ public class GanttV3CodexRound4Tests : IAsyncLifetime
             .Add(c => c.Width, 114d)
             .Add(c => c.OnTaskClick, t => clicked = t));
 
-        await cut.Find("[data-task-id='t1']").TriggerEventAsync("onkeydown", new Microsoft.AspNetCore.Components.Web.KeyboardEventArgs { Key = "Enter" });
+        await cut.Find("[data-task-id='t1'] > div").TriggerEventAsync("onkeydown", new Microsoft.AspNetCore.Components.Web.KeyboardEventArgs { Key = "Enter" });
 
         Assert.Same(task, clicked);
     }
@@ -226,7 +232,7 @@ public class GanttV3CodexRound4Tests : IAsyncLifetime
             .Add(c => c.Width, 114d)
             .Add(c => c.OnTaskClick, t => clicked = t));
 
-        await cut.Find("[data-task-id='t1']").TriggerEventAsync("onkeydown", new Microsoft.AspNetCore.Components.Web.KeyboardEventArgs { Key = " " });
+        await cut.Find("[data-task-id='t1'] > div").TriggerEventAsync("onkeydown", new Microsoft.AspNetCore.Components.Web.KeyboardEventArgs { Key = " " });
 
         Assert.Same(task, clicked);
     }
@@ -242,7 +248,7 @@ public class GanttV3CodexRound4Tests : IAsyncLifetime
             .Add(c => c.Width, 114d)
             .Add(c => c.OnTaskClick, _ => invoked = true));
 
-        await cut.Find("[data-task-id='t1']").TriggerEventAsync("onkeydown", new Microsoft.AspNetCore.Components.Web.KeyboardEventArgs { Key = "Tab" });
+        await cut.Find("[data-task-id='t1'] > div").TriggerEventAsync("onkeydown", new Microsoft.AspNetCore.Components.Web.KeyboardEventArgs { Key = "Tab" });
 
         Assert.False(invoked);
     }

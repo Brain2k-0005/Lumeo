@@ -81,4 +81,81 @@ public class GanttV3RtlTests : GanttParityTestBase
         Assert.True(firstBox!.X < secondBox!.X,
             $"expected the DOM-earlier (earlier-date) header label to sit physically LEFT of the DOM-later one under RTL, got label[0].X={firstBox.X}, label[1].X={secondBox.X}");
     }
+
+    [Fact]
+    public async Task Initial_centering_lands_the_today_marker_mid_viewport_with_the_tree_pane_shown_under_rtl()
+    {
+        // Bug fix (Codex round 5, P1 #4): under RTL, the outer flex row
+        // wrapping GanttTree + GanttTimeline reverses its children's VISUAL
+        // order (the same mechanism GanttV3StickyLeftTests' RTL sticky-right
+        // spec confirms live) even though DOM order stays [Tree, Timeline] —
+        // so Timeline's own box lands FIRST physically (at the scrollable
+        // content's own physical-left origin) under RTL, with Tree occupying
+        // the TRAILING (physically rightmost) chunk instead. Gantt3's round-4
+        // fix (ScrollHostLeadingOffset) added the tree's width unconditionally
+        // whenever a tree pane is shown, which overshot the target under RTL
+        // by exactly that width — this fixture (?rtl=1 always shows the tree
+        // pane by default — see GanttV3Page's own remarks) previously landed
+        // the marker a whole tree-width off-center; a correct fix keeps it
+        // within a few pixels of the pane's own horizontal center, same
+        // tolerance as the LTR counterpart in GanttV3ScrollCenteringTests.
+        await GotoHost("/e2e/gantt-v3?fixture=today&rtl=1");
+
+        var scrollPane = Page.Locator("[data-testid='gantt-v3-root'] div[style*='overflow']").First;
+        await scrollPane.WaitForAsync(new() { Timeout = 15000 });
+        await Assertions.Expect(scrollPane).ToHaveAttributeAsync("data-gantt-v3-initial-scroll", "done", new() { Timeout = 15000 });
+
+        var todayLine = Page.Locator("[data-testid='gantt-v3-root'] .lumeo-gantt-v3-today-line");
+        await todayLine.WaitForAsync(new() { Timeout = 15000 });
+
+        var lineBox = await todayLine.BoundingBoxAsync();
+        var paneBox = await scrollPane.BoundingBoxAsync();
+        Assert.NotNull(lineBox);
+        Assert.NotNull(paneBox);
+
+        var paneCenterX = paneBox!.X + paneBox.Width / 2;
+        Assert.True(Math.Abs(lineBox!.X - paneCenterX) < 5,
+            $"expected the today marker to land within 5px of the pane's horizontal center WITH the tree pane shown under RTL, marker.X={lineBox.X}, pane center={paneCenterX}");
+    }
+
+    [Fact]
+    public async Task A_Scroll_Target_Before_The_Rendered_Range_Clamps_To_The_Earliest_Edge_Under_Rtl()
+    {
+        // Bug fix (Codex round 5, P2 #9): ShouldAttemptTodayScroll used to
+        // ALSO require ScrollTargetX > 0, silently skipping the whole scroll
+        // attempt (leaving native scrollLeft at its own untouched default)
+        // whenever the target fell before the very first rendered column.
+        // That default only happens to BE the earliest edge under LTR
+        // (native scrollLeft 0 there IS the physical-left origin); under
+        // RTL's 'negative' convention, native 0 is the RTL START — the
+        // PHYSICAL RIGHT edge, i.e. wherever GanttTree ends up pinned — so
+        // skipping the attempt left the timeline scrolled entirely out of
+        // view, showing only the tree pane. GanttParityFixtures.
+        // FutureOnlyFixture's tasks sit 90+ days beyond today, well past Day
+        // mode's 60-day padding, guaranteeing today's ScrollTargetX is
+        // negative — exactly the branch this fix targets.
+        await GotoHost("/e2e/gantt-v3?fixture=future&rtl=1");
+
+        var scrollPane = Page.Locator("[data-testid='gantt-v3-root'] div[style*='overflow']").First;
+        await scrollPane.WaitForAsync(new() { Timeout = 15000 });
+        await Assertions.Expect(scrollPane).ToHaveAttributeAsync("data-gantt-v3-initial-scroll", "done", new() { Timeout = 15000 });
+
+        // The timeline's own earliest column (its Origin, x=0) sits at
+        // PHYSICAL 0 under RTL - a correctly-clamped scroll lands it flush
+        // against the pane's own LEFT edge. Checking a SPECIFIC task bar
+        // instead (e.g. future-1) would prove nothing here: FutureOnlyFixture's
+        // own tasks start ~60 columns past Origin (Day mode's own 60-day
+        // padding-before-minDate), well beyond one viewport width, so even a
+        // CORRECTLY clamped scroll never brings a task bar into view - only
+        // the empty padding zone immediately past Origin. The OLD bug left
+        // the whole timeline (Origin included) scrolled out of view entirely,
+        // showing ONLY the tree pane, which THIS assertion catches directly.
+        var canvasRelative = Page.Locator("[data-testid='gantt-v3-root'] .lumeo-gantt-v3-canvas-scroll > div").First;
+        var canvasBox = await canvasRelative.BoundingBoxAsync();
+        var paneBox = await scrollPane.BoundingBoxAsync();
+        Assert.NotNull(canvasBox);
+        Assert.NotNull(paneBox);
+        Assert.True(Math.Abs(canvasBox!.X - paneBox!.X) < 5,
+            $"expected the timeline's own canvas (its Origin) to sit flush against the pane's left edge after clamping to the earliest edge, canvas.X={canvasBox.X}, pane.X={paneBox.X}");
+    }
 }

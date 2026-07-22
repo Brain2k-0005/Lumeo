@@ -70,4 +70,63 @@ public class GanttV3ArrowVirtualizationTests : GanttParityTestBase
         // LIVE scroll position rather than a static, mount-time snapshot.
         await Assertions.Expect(lastArrow).ToBeAttachedAsync(new() { Timeout = 10000 });
     }
+
+    [Fact]
+    public async Task A_Long_Dependency_Spanning_The_Visible_Window_Is_Not_Culled_When_Both_Endpoints_Are_Offscreen()
+    {
+        // Bug fix (Codex round 5, P2 #7): GanttArrowLayer's round-4 culling
+        // check tested source/target EACH individually against the visible
+        // row range — but a source ABOVE the window and a target BELOW it
+        // both satisfy "individually outside" even though the edge's own
+        // path necessarily crosses straight THROUGH the visible rows, so it
+        // was wrongly culled. GanttParityFixtures.CrossingDependencyFixture's
+        // single edge (row 5 -> row 70) is sized specifically so a
+        // scrolled-to-center window (plus its 10-row overscan margin)
+        // excludes BOTH endpoints individually while the edge's own [5, 70]
+        // span still fully brackets that window.
+        await GotoHost("/e2e/gantt-v3?fixture=crossing&viewMode=Day");
+
+        var scrollPane = Page.Locator("[data-testid='gantt-v3-root'] div[style*='overflow']").First;
+        await scrollPane.WaitForAsync(new() { Timeout = 15000 });
+        await Assertions.Expect(scrollPane).ToHaveAttributeAsync("data-gantt-v3-initial-scroll", "done", new() { Timeout = 15000 });
+        await scrollPane.EvaluateAsync("el => el.scrollLeft = 0");
+
+        await scrollPane.EvaluateAsync("el => el.scrollTop = (el.scrollHeight - el.clientHeight) / 2");
+
+        var crossingArrow = Page.Locator("[data-testid='gantt-v3-root'] .lumeo-gantt-v3-arrow[data-arrow-from='cross-5'][data-arrow-to='cross-70']");
+        await Assertions.Expect(crossingArrow).ToBeAttachedAsync(new() { Timeout = 10000 });
+    }
+
+    [Fact]
+    public async Task Horizontal_Only_Scroll_Does_Not_Trigger_A_Vertical_Scroll_Report()
+    {
+        // Bug fix (Codex round 5, P2 #8): registerVerticalScrollTracking
+        // listens for the pane's native 'scroll' event, which fires
+        // identically for a horizontal-only pan (browsing dates sideways) —
+        // there is no separate horizontal/vertical scroll event — so every
+        // sideways drag used to ALSO dispatch a full invokeMethodAsync
+        // round-trip reporting an unchanged scrollTop, for no purpose (the
+        // culled row range is a pure function of scrollTop/clientHeight).
+        // gantt-v3.js now stamps a `data-gantt-v3-vertical-report-count`
+        // attribute on an actual (post-dedup) report — a deterministic,
+        // Playwright-observable proxy for the otherwise-invisible interop
+        // call count, matching the existing data-gantt-v3-initial-scroll
+        // latch's own reasoning.
+        await GotoHost("/e2e/gantt-v3?fixture=tall&viewMode=Day");
+
+        var scrollPane = Page.Locator("[data-testid='gantt-v3-root'] div[style*='overflow']").First;
+        await scrollPane.WaitForAsync(new() { Timeout = 15000 });
+        await Assertions.Expect(scrollPane).ToHaveAttributeAsync("data-gantt-v3-initial-scroll", "done", new() { Timeout = 15000 });
+
+        // The tracker's OWN registration always fires one report immediately
+        // (see registerVerticalScrollTracking's remarks) — wait for that
+        // baseline "1" to actually land before measuring, so this doesn't
+        // race it.
+        await Assertions.Expect(scrollPane).ToHaveAttributeAsync("data-gantt-v3-vertical-report-count", "1", new() { Timeout = 15000 });
+
+        await scrollPane.EvaluateAsync("el => el.scrollLeft = 500"); // horizontal-only — scrollTop unchanged
+        await Page.WaitForTimeoutAsync(300); // comfortably outlasts a single rAF frame
+
+        await Assertions.Expect(scrollPane).ToHaveAttributeAsync("data-gantt-v3-vertical-report-count", "1");
+    }
 }

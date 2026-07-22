@@ -98,12 +98,22 @@ public class GanttV3CodexRound2Tests : IAsyncLifetime
     }
 
     [Fact]
-    public void GanttTimeline_Does_Not_Attempt_A_Scroll_When_Today_Is_Before_The_Window_Start()
+    public void GanttTimeline_Still_Attempts_A_Scroll_When_Today_Is_Before_The_Window_Start()
     {
-        // Symmetric v2 behavior: `todayPx > 0` is false when today is before
-        // the window's origin, so v2 doesn't scroll either — this side was
-        // already correct before the fix (both TodayInRange and the new
-        // ShouldAttemptTodayScroll agree here), pinned as a regression guard.
+        // Bug fix (Codex round 5, P2 #9): this test originally asserted the
+        // OPPOSITE — v2's `todayPx > 0` gate (mirrored here) skips the scroll
+        // attempt entirely when today is before the window's origin, relying
+        // on the DOM's own untouched default scrollLeft to already show "the
+        // earliest edge". That default only happens to BE the earliest edge
+        // under LTR; under RTL it is NOT (see ShouldAttemptTodayScroll's own
+        // remarks — native scrollLeft 0 there is the RTL START, the physical
+        // RIGHT edge, wherever GanttTree ends up pinned), so relying on it
+        // left the timeline scrolled entirely out of view under RTL. The
+        // fix always attempts the scroll now and lets centerOn's own
+        // Math.max(0, ...) clamp (direction-correct in both directions) land
+        // at the earliest edge instead of skipping the call and hoping the
+        // DOM's own default happens to agree — this is a deliberate,
+        // documented behavior change, not a regression.
         var cut = _ctx.Render<L.GanttTimeline>(p => p
             .Add(c => c.Tasks, new List<L.GanttTask> { new("t1", "Task", D(2026, 1, 1), D(2026, 1, 5)) })
             .Add(c => c.ViewMode, L.GanttViewMode.Day)
@@ -111,7 +121,7 @@ public class GanttV3CodexRound2Tests : IAsyncLifetime
             .Add(c => c.RangeEnd, D(2026, 1, 10))
             .Add(c => c.Today, D(2025, 1, 1))); // before RangeStart
 
-        Assert.Equal(0, _interop.GanttV3ScrollToXCallCount);
+        Assert.Equal(1, _interop.GanttV3ScrollToXCallCount);
     }
 
     [Fact]

@@ -65,6 +65,24 @@ export const ganttV3 = {
         return `${y}-${m}-${day}`;
     },
 
+    // Reads el's CURRENT logical horizontal center (Codex round 5, P2 #5) —
+    // the same "logical" coordinate space (0 = the scrollable content's own
+    // physical-left origin, RTL-normalized via fromNativeScrollLeft) that
+    // centerOn's own targetX already uses, so a caller can round-trip a
+    // value read here straight back into GanttV3ScrollToXAsync. Gantt3 uses
+    // this to capture what the user ACTUALLY has scrolled to before a
+    // view-mode switch recomputes the visible range, instead of assuming the
+    // outgoing range's own midpoint (a proxy that silently diverges from
+    // reality the moment the user pans manually without touching Today or
+    // the range itself). Returns null when the element can't be measured yet
+    // (matches centerOn's own clientWidth<=50 "not laid out" guard) so the
+    // caller can fall back to its own proxy.
+    getScrollCenterX(el) {
+        if (!el || el.clientWidth <= 50) return null;
+        const logical = fromNativeScrollLeft(el, el.scrollLeft);
+        return logical + el.clientWidth / 2;
+    },
+
     registerHeaderScrollSync,
     unregisterHeaderScrollSync,
     registerVerticalScrollTracking,
@@ -121,19 +139,41 @@ function unregisterHeaderScrollSync(canvasEl) {
 // precisely the mode where this virtualization actually matters at scale),
 // rAF-throttled so a fast scroll/drag doesn't flood Blazor with an
 // invokeMethodAsync round-trip per native 'scroll' event.
-const verticalScrollTrackers = new Map(); // el -> { dotNetRef, onScroll, pendingFrame }
+const verticalScrollTrackers = new Map(); // el -> { dotNetRef, onScroll, pendingFrame, lastScrollTop }
 
 function registerVerticalScrollTracking(el, dotNetRef) {
     if (!el || verticalScrollTrackers.has(el)) return;
     const report = () => {
         tracker.pendingFrame = null;
+        // Bug fix (Codex round 5, P2 #8): a horizontal-only pan (scrolling the
+        // SAME shared pane sideways to browse dates) fires the identical
+        // native 'scroll' event this listener reacts to — there is only one
+        // 'scroll' event per element, not separate horizontal/vertical ones —
+        // so every horizontal drag previously ALSO dispatched a full
+        // invokeMethodAsync round-trip reporting an UNCHANGED scrollTop, for
+        // no purpose (GanttArrowLayer's culled row-range is a pure function
+        // of scrollTop/clientHeight, so recomputing it from the identical
+        // inputs can only reproduce the identical result). Caching the last
+        // REPORTED scrollTop and skipping the call when it hasn't actually
+        // moved fixes this without weakening the rAF gate above, which still
+        // caps this check itself to at most once per animation frame.
+        if (el.scrollTop === tracker.lastScrollTop) return;
+        tracker.lastScrollTop = el.scrollTop;
+        // Debug/test-observability counter (Codex round 5, P2 #8): the
+        // invokeMethodAsync call below crosses a Blazor Server SignalR
+        // round-trip with no console/network signal an E2E test could
+        // observe directly — this data attribute, incremented ONLY on an
+        // actual (post-dedup) report, gives Playwright a deterministic count
+        // to assert "no report fired" against, matching the existing
+        // data-gantt-v3-initial-scroll latch's own reasoning (centerOn's remarks).
+        el.dataset.ganttV3VerticalReportCount = String((Number(el.dataset.ganttV3VerticalReportCount) || 0) + 1);
         dotNetRef.invokeMethodAsync('OnGanttV3VerticalScroll', el.scrollTop, el.clientHeight);
     };
     const onScroll = () => {
         if (tracker.pendingFrame) return; // already scheduled for this frame
         tracker.pendingFrame = requestAnimationFrame(report);
     };
-    const tracker = { dotNetRef, onScroll, pendingFrame: null };
+    const tracker = { dotNetRef, onScroll, pendingFrame: null, lastScrollTop: null };
     el.addEventListener('scroll', onScroll, { passive: true });
     verticalScrollTrackers.set(el, tracker);
     report(); // initial position immediately — covers a pane that's already scrolled before this registers

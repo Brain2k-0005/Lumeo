@@ -115,6 +115,26 @@ internal static class GanttParityFixtures
     }
 
     /// <summary>
+    /// v-only fixture anchored on <see cref="DateTime.Today"/> like <see cref="TodayMarkerTasks"/>,
+    /// but shifted entirely into the future (Codex round 5, P2 #9) so the
+    /// rendered Day-mode window (task min/max &#177; the mode's own 60-day
+    /// padding — see <c>GanttScale.ViewModes</c>) starts well AFTER today. The
+    /// one scenario that exercises <c>GanttTimeline.ShouldAttemptTodayScroll</c>'s
+    /// "scroll target before the very first rendered column" branch
+    /// (<c>ScrollTargetX &lt;= 0</c>), which the RTL scrollLeft-clamp fix
+    /// targets — 90 days out clears the 60-day pad with margin to spare.
+    /// </summary>
+    internal static List<GanttTask> FutureOnlyFixture()
+    {
+        var today = DateTime.Today;
+        return new List<GanttTask>
+        {
+            new("future-1", "Kickoff", today.AddDays(90), today.AddDays(100)),
+            new("future-2", "Build", today.AddDays(100), today.AddDays(110), Dependencies: new[] { "future-1" }),
+        };
+    }
+
+    /// <summary>
     /// v3-only: 60 flat (no GroupLabel/ParentId) tasks, deliberately tall enough
     /// to overflow the E2E host page's 900px pane (60 * GanttScale.RowHeight
     /// (36) = 2160px of row content alone, before the header) — Codex round 2,
@@ -139,6 +159,30 @@ internal static class GanttParityFixtures
         for (var i = 0; i < 60; i++)
             tasks.Add(new GanttTask($"tall-{i}", $"Task {i}", start.AddDays(i), start.AddDays(i + 3),
                 Dependencies: i > 0 ? new[] { $"tall-{i - 1}" } : null));
+        return tasks;
+    }
+
+    /// <summary>
+    /// v3-only: 80 flat tasks with exactly ONE dependency, spanning row 5 to
+    /// row 70 (Codex round 5, P2 #7) — dedicated to the arrow-culling
+    /// window-CROSSING regression rather than adding this edge to
+    /// <see cref="TallFixture"/>: several existing specs hardcode that
+    /// fixture's exact 59-edge chain count, and this needs its two endpoints
+    /// placed far enough apart that a scrolled-to-center window (plus its
+    /// overscan margin) excludes BOTH individually while the edge's own
+    /// [5, 70] span still fully brackets that window — the exact shape the
+    /// round-4 culling check ("both endpoints individually outside") got
+    /// wrong.
+    /// </summary>
+    internal static List<GanttTask> CrossingDependencyFixture()
+    {
+        var start = new DateTime(2026, 3, 1);
+        var tasks = new List<GanttTask>(80);
+        for (var i = 0; i < 80; i++)
+        {
+            var deps = i == 70 ? new[] { "cross-5" } : null;
+            tasks.Add(new GanttTask($"cross-{i}", $"Task {i}", start.AddDays(i), start.AddDays(i + 3), Dependencies: deps));
+        }
         return tasks;
     }
 }

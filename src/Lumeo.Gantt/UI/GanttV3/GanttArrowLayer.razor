@@ -108,17 +108,32 @@
                 {
                     if (!geometryByTaskId.TryGetValue(dependsOnId, out var source)) continue;
 
-                    // Bug fix (Codex round 4, P2 #3): cull an arrow whose
-                    // source AND target rows are BOTH outside the virtualized
-                    // window — see VisibleRowRange's own remarks for why ONE
-                    // endpoint in range is enough to keep it, and why null
-                    // (culling not yet active) renders everything, unchanged
-                    // from prior behavior.
-                    if (VisibleRowRange is { } range
-                        && (source.RowIndex < range.Start || source.RowIndex > range.End)
-                        && (target.RowIndex < range.Start || target.RowIndex > range.End))
+                    // Bug fix (Codex round 4, P2 #3; corrected Codex round 5,
+                    // P2 #7): the round-4 version culled whenever source AND
+                    // target were EACH individually outside the window — but
+                    // "each individually outside" does not mean "the arrow
+                    // doesn't cross the window": a long-spanning edge with its
+                    // source ABOVE the window and its target BELOW it
+                    // satisfies both individual checks (source too-low AND
+                    // target too-high) even though the edge's own path
+                    // necessarily passes straight THROUGH the visible window
+                    // — that arrow was wrongly culled, unlike a bar (which
+                    // has no equivalent "spans past both edges" shape to get
+                    // this wrong for). The correct test is interval overlap:
+                    // treat the arrow as occupying every row between its two
+                    // endpoints ([min, max]) and only cull when that WHOLE
+                    // interval fails to intersect the window — this reduces
+                    // to the exact same outcome as the old check whenever
+                    // source/target are both on the SAME side of the window
+                    // (interval endpoints move together), and additionally
+                    // keeps a genuinely crossing edge that the old check
+                    // dropped. See VisibleRowRange's own remarks for why null
+                    // (culling not yet active) still renders everything, unchanged.
+                    if (VisibleRowRange is { } range)
                     {
-                        continue;
+                        var lo = Math.Min(source.RowIndex, target.RowIndex);
+                        var hi = Math.Max(source.RowIndex, target.RowIndex);
+                        if (hi < range.Start || lo > range.End) continue;
                     }
 
                     var pathD = GanttArrowRouting.ComputePathD(source, target, BarHeight);

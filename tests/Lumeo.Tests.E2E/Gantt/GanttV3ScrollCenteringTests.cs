@@ -114,4 +114,50 @@ public class GanttV3ScrollCenteringTests : GanttParityTestBase
         // ToBeInViewportAsync catches directly.
         await Assertions.Expect(centeredBar).ToBeInViewportAsync(new() { Timeout = 5000 });
     }
+
+    [Fact]
+    public async Task Switching_view_mode_after_a_manual_pan_keeps_the_panned_to_date_visible()
+    {
+        // Bug fix (Codex round 5, P2 #5): the round-4 fix above recenters on
+        // the OUTGOING VisibleRange's own MIDPOINT as a proxy for "what's
+        // centered on screen" — which tracks correctly for a Today click or a
+        // PREVIOUS mode switch (both explicitly set VisibleRange around
+        // themselves) but goes stale the moment the user pans the DOM
+        // manually: nothing keeps VisibleRange's own midpoint in sync with an
+        // arbitrary scroll position that was never accompanied by a
+        // VisibleRange change at all. Gantt3 now reads the pane's ACTUAL live
+        // scroll center via a new interop round-trip before recomputing the
+        // range, so a manual pan survives a mode switch too, not just a
+        // Today-click-driven one.
+        await GotoHost("/e2e/gantt-v3?viewMode=Day"); // no ?fixture= -> GanttV3Page's default branch -> GanttParityFixtures.SharedTasks
+
+        var scrollPane = Page.Locator("[data-testid='gantt-v3-root'] div[style*='overflow']").First;
+        await scrollPane.WaitForAsync(new() { Timeout = 15000 });
+        await Assertions.Expect(scrollPane).ToHaveAttributeAsync("data-gantt-v3-initial-scroll", "done", new() { Timeout = 15000 });
+
+        // Pan far away from wherever the initial mount-time centering landed —
+        // deliberately NOT near the range's own midpoint, so the round-4
+        // proxy (VisibleRange's midpoint) and the ACTUAL scroll position
+        // meaningfully diverge. be6 ("Support Handoff") sits near the LATE
+        // end of SharedTasks' own task dates, but Day mode pads ~60 days
+        // PAST it before the range actually ends — scrolling to the pane's
+        // absolute scrollWidth edge overshoots into that empty padding zone
+        // instead of landing on be6 itself, so this uses the browser's own
+        // scrollIntoView (via the bar's locator) instead of a hand-computed
+        // pixel position.
+        var pannedToBar = Page.Locator("[data-testid='gantt-v3-root'] [data-task-id='be6']");
+        await pannedToBar.ScrollIntoViewIfNeededAsync();
+        await Assertions.Expect(pannedToBar).ToBeInViewportAsync(new() { Timeout = 10000 });
+
+        var monthToggle = Page.GetByRole(AriaRole.Button, new() { Name = "Month", Exact = true });
+        await monthToggle.ClickAsync();
+
+        await Assertions.Expect(scrollPane).ToHaveAttributeAsync("data-gantt-v3-initial-scroll", "done", new() { Timeout = 15000 });
+
+        // The panned-to task must still be visible after the switch — the
+        // round-4-only fix would instead recenter on SharedTasks' overall
+        // range midpoint (somewhere in the Frontend group, nowhere near be6),
+        // scrolling be6 out of view.
+        await Assertions.Expect(pannedToBar).ToBeInViewportAsync(new() { Timeout = 5000 });
+    }
 }

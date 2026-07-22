@@ -855,6 +855,19 @@ public class TrackingInteropService : IComponentInteropService
         method?.Invoke(_ganttV3VerticalScrollDotNetRef, new object[] { scrollTop, clientHeight });
     }
 
+    // GanttV3 live scroll-center reading (Codex round 5, P2 #5) — settable so
+    // a test can simulate the pane reporting a specific logical scroll
+    // center without a real browser; null (the default, matching the
+    // interface's own default DIM) simulates "not measurable", exercising the
+    // range-midpoint fallback.
+    public double? GanttV3ScrollCenterXToReturn { get; set; }
+    public int GanttV3GetScrollCenterXCallCount { get; private set; }
+    public Task<double?> GanttV3GetScrollCenterXAsync(ElementReference el)
+    {
+        GanttV3GetScrollCenterXCallCount++;
+        return Task.FromResult(GanttV3ScrollCenterXToReturn);
+    }
+
     public ValueTask<string> RichTextInitAsync<T>(ElementReference elementRef, DotNetObjectReference<T> dotNetRef, object options) where T : class => ValueTask.FromResult(string.Empty);
     public ValueTask RichTextSetContentAsync(string id, string? html) => ValueTask.CompletedTask;
     public ValueTask RichTextCommandAsync(string id, string name, params object?[]? args) => ValueTask.CompletedTask;

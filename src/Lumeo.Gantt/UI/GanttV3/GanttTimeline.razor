@@ -324,7 +324,28 @@
     // see the header's own markup remarks for the CSS-spec detail behind why
     // that split was necessary (an intervening `overflow-x:auto` ancestor,
     // even a never-actually-scrolling one, hijacks `position: sticky`).
-    private string RootClass => Cx.Merge("w-full", Class);
+    // Bug fix (Codex round 5, P1 #4 root cause): "w-full" (width:100%) here,
+    // combined with the shared `.flex` row's own `width:max-content` shrink-
+    // to-fit sizing (Gantt3's markup) and this item's `min-width:TotalWidth`
+    // (RootStyle) + the caller's `grow` class, resolves this box's rendered
+    // width to TotalWidth + GanttScale.TreePaneWidth instead of exactly
+    // TotalWidth (confirmed via a live diagnostic: this root measured 224px
+    // WIDER than its own `_headerInnerRef`/canvas-relative children, which
+    // stay correctly sized at TotalWidth) — a percentage-width flex item
+    // inside a shrink-to-fit container is a known circular-sizing case
+    // browsers resolve inconsistently. That extra 224px inflates
+    // `el.scrollWidth`, which corrupts `maxScroll` (`scrollWidth-clientWidth`)
+    // in gantt-v3.js's RTL scrollLeft conversion (`toNativeScrollLeft`/
+    // `fromNativeScrollLeft`) specifically — LTR's conversion is a no-op that
+    // never reads `maxScroll` at all, which is why this defect was invisible
+    // under LTR (scroll-to-today centering happened to still land correctly
+    // there) but threw RTL's centering off by exactly TreePaneWidth. "w-full"
+    // is now dropped in Gantt3's shared-pane mode (ScrollHost supplied) —
+    // width is already fully governed there by RootStyle's min-width plus
+    // the caller's own "grow" class, so it was redundant AND the actual
+    // source of the bug. Standalone mode (ScrollHost null) is unaffected —
+    // it never had a sibling Tree/shared-width scenario to trigger this.
+    private string RootClass => Cx.Merge(ScrollHost is null ? "w-full" : null, Class);
 
     // Bug fix (Codex round 3, cx3 review): when a caller supplies ScrollHost
     // (Gantt3's shared-pane mode), this root needs a REAL min-width equal to
@@ -444,7 +465,27 @@
     // (see Gantt3.HandleViewModeChangedAsync), so this gate is trivially
     // satisfied for that caller — the loosened v2-parity semantics above
     // only actually matter for the Today-targeting case, unchanged.
-    private bool ShouldAttemptTodayScroll => Units.Count > 0 && ScrollTargetX > 0;
+    //
+    // Bug fix (Codex round 5, P2 #9): this used to ALSO require
+    // "ScrollTargetX > 0" (matching v2's identical `todayPx > 0` gate,
+    // gantt-v2.js:684), skipping the scroll ATTEMPT entirely whenever the
+    // target fell before the very first rendered column — relying on the
+    // DOM's own untouched default scrollLeft to already show "the earliest
+    // edge" instead of an explicit clamp. That default only happens to BE
+    // the earliest edge under LTR (native scrollLeft's own default, 0, is
+    // the physical-left origin there); under RTL's 'negative' convention
+    // (gantt-v3.js's own remarks), native scrollLeft 0 is the RTL START —
+    // the PHYSICAL RIGHT edge, i.e. wherever GanttTree ends up pinned (see
+    // ScrollHostLeadingOffset's remarks on Gantt3) — so skipping the attempt
+    // under RTL left the timeline scrolled entirely out of view instead,
+    // showing only the tree pane. centerOn's own `Math.max(0, targetX - w/2)`
+    // clamp (applied AFTER toNativeScrollLeft's direction-correct mapping)
+    // already lands correctly at the earliest edge in BOTH directions when
+    // actually invoked — so the fix is simply to always attempt the scroll
+    // whenever there is a rendered range to scroll within, and let that
+    // clamp do the direction-aware work instead of skipping the call
+    // entirely and hoping the DOM's own default happens to agree.
+    private bool ShouldAttemptTodayScroll => Units.Count > 0;
 
     private string CanvasStyle => FormattableString.Invariant($"width:{TotalWidth}px;min-height:{CanvasHeight}px;");
     private string HeaderOuterStyle => FormattableString.Invariant($"height:{GanttScale.HeaderHeight}px;");

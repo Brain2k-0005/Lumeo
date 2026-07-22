@@ -657,6 +657,21 @@ public interface IComponentInteropService : IAsyncDisposable, IDisposable
     /// <summary>Tears down the listener registered by <see cref="GanttV3RegisterVerticalScrollTrackingAsync{T}"/>. Default no-op.</summary>
     Task GanttV3UnregisterVerticalScrollTrackingAsync(Microsoft.AspNetCore.Components.ElementReference scrollEl) => Task.CompletedTask;
 
+    /// <summary>
+    /// Reads <paramref name="el"/>'s CURRENT logical horizontal scroll center
+    /// (Codex round 5, P2 #5) — in the SAME "logical" coordinate space (0 =
+    /// the scrollable content's own physical-left origin, RTL-normalized)
+    /// that <see cref="GanttV3ScrollToXAsync"/>'s own targetX already uses.
+    /// <c>Gantt3</c> uses this to capture what the user ACTUALLY has
+    /// centered on screen before a view-mode switch recomputes the visible
+    /// range, instead of assuming the outgoing range's own midpoint (a proxy
+    /// that silently diverges the moment a user pans manually). Returns null
+    /// when the element can't be measured (not yet laid out, or JS interop
+    /// unavailable) so the caller can fall back to that proxy. Default no-op
+    /// DIM so existing implementers/test doubles keep compiling.
+    /// </summary>
+    Task<double?> GanttV3GetScrollCenterXAsync(Microsoft.AspNetCore.Components.ElementReference el) => Task.FromResult<double?>(null);
+
     // Toolbar overflow observer — registers a ResizeObserver on the toolbar
     // element and invokes the handler with (fittingCount, totalCount) whenever
     // the number of items that fit before the "..." overflow trigger changes.

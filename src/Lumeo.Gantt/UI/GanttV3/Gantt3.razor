@@ -2,7 +2,9 @@
 @using System.ComponentModel
 @using System.Globalization
 @using Lumeo.GanttV3
+@using Lumeo.Services
 @inject Lumeo.Services.IComponentInteropService Interop
+@inject Lumeo.Services.IThemeService Theme
 @attribute [EditorBrowsable(EditorBrowsableState.Never)]
 
 @* Gantt3 — v3's root component (design spec Phase 2, T2 "read-only markup";
@@ -84,7 +86,7 @@
                            ScrollToTodayRequestId="@_scrollToTodayRequestId"
                            Today="@EffectiveToday"
                            ScrollTargetDate="@_scrollTargetDate"
-                           ScrollHostLeadingOffset="@(EffectiveShowTreePane ? GanttScale.TreePaneWidth : 0)"
+                           ScrollHostLeadingOffset="@ScrollHostLeadingOffset"
                            ScrollHost="@_scrollPaneRef"
                            OnTaskClick="OnTaskClick"
                            Class="grow shrink-0" />
@@ -166,6 +168,39 @@
     private IReadOnlyList<GanttVisibleRow> Rows => GanttRowModel.BuildVisibleRows(_state.Tasks, _state.Collapsed);
 
     private bool EffectiveShowTreePane => ShowTreePane ?? GanttRowModel.DefaultShowTreePane(_state.Tasks, GroupBy is not null);
+
+    // Bug fix (Codex round 5, P1 #4): the ambient text direction, resolved the
+    // same way every other RTL-aware Lumeo component does (Carousel/Tabs/
+    // Splitter/etc.'s own EffectiveDirection) — a DirectionProvider ancestor
+    // wins via the cascaded "LumeoDirection" value; otherwise the global
+    // ThemeService's own current direction applies.
+    [CascadingParameter(Name = "LumeoDirection")] private LayoutDirection? ScopedDirection { get; set; }
+    private LayoutDirection EffectiveDirection => ScopedDirection ?? Theme.CurrentDirection;
+
+    /// <summary>
+    /// Pixels of the shared scroll pane's own content that precede the
+    /// timeline's origin, forwarded to <c>GanttTimeline.ScrollHostLeadingOffset</c>.
+    /// </summary>
+    /// <remarks>
+    /// Bug fix (Codex round 5, P1 #4): under RTL, the outer <c>.flex</c> row
+    /// wrapping GanttTree + GanttTimeline reverses its children's VISUAL
+    /// order (flex's default <c>row-reverse</c>-under-<c>dir="rtl"</c> — the
+    /// same mechanism <c>GanttTree.RootClass</c>'s <c>start-0</c> fix relies
+    /// on, confirmed live by <c>GanttV3StickyLeftTests</c>' RTL sticky-right
+    /// spec) even though DOM order stays [Tree, Timeline] unchanged — so
+    /// under RTL, GanttTimeline's own box is laid out FIRST physically (at
+    /// the scrollable content's own physical-left origin), with GanttTree
+    /// occupying the TRAILING (physically rightmost) chunk instead. The
+    /// round-4 fix added <see cref="GanttScale.TreePaneWidth"/> unconditionally
+    /// whenever a tree pane is shown, which is only correct for LTR (where
+    /// Tree genuinely precedes Timeline physically) — under RTL, Timeline's
+    /// own origin already sits at the content's physical 0, so adding the
+    /// tree's width overshot the target by exactly that amount, landing the
+    /// centered viewport a whole tree-width off from where the marker
+    /// actually needed to be.
+    /// </remarks>
+    private double ScrollHostLeadingOffset =>
+        EffectiveShowTreePane && EffectiveDirection == LayoutDirection.Ltr ? GanttScale.TreePaneWidth : 0;
 
     private Task HandleToggleCollapseAsync(string key)
     {
@@ -400,21 +435,21 @@
         if (mode == _state.ViewMode) return;
         _lastPushedViewMode = mode;
 
-        // Bug fix (Codex round 4, P2 #8): capture what the OLD mode's window
-        // had centered BEFORE recomputing it — ComputeInitialRange's task-
-        // derived window ignores wherever the user had actually scrolled/
-        // navigated to, so switching view modes used to silently reset the
-        // viewport back to the tasks' own min/max window (and, independent of
-        // THAT, never even told GanttTimeline to re-scroll the DOM at all —
-        // RangeStart/RangeEnd changing was never one of its scroll-reattempt
-        // triggers). The exact midpoint of the CURRENT VisibleRange is used as
-        // the practical proxy for "what's centered on screen" — VisibleRange
-        // is itself padded around whatever the user last centered on (today,
-        // a previous Today click, or a previous mode switch's own centerDate),
-        // so its midpoint tracks that reasonably closely without needing a
-        // live scrollLeft reading (no interop round-trip on the hot path of a
-        // toolbar click).
-        var centerDate = VisibleCenterDate;
+        // Bug fix (Codex round 4, P2 #8; corrected Codex round 5, P2 #5):
+        // capture what's ACTUALLY centered on screen BEFORE recomputing the
+        // range — ComputeInitialRange's task-derived window ignores wherever
+        // the user had actually scrolled/navigated to, so switching view
+        // modes used to silently reset the viewport back to the tasks' own
+        // min/max window. Round 4 approximated "what's centered" via the
+        // CURRENT VisibleRange's own midpoint — but that's only a proxy: it
+        // tracks Today/a previous mode switch's own centerDate correctly
+        // (those explicitly set VisibleRange around themselves), yet goes
+        // stale the moment a user pans the DOM manually with no corresponding
+        // VisibleRange change at all (nothing currently keeps them in sync
+        // outside those two triggers). ResolveCurrentCenterDateAsync reads
+        // the DOM's own live scroll position instead, falling back to the
+        // same range-midpoint proxy only when that read isn't possible.
+        var centerDate = await ResolveCurrentCenterDateAsync();
         _state.SetViewMode(mode);
         _state.SetVisibleRange(ApplyPadding(mode, centerDate, centerDate));
         _scrollTargetDate = centerDate;
@@ -423,9 +458,40 @@
         else ViewMode = mode; // uncontrolled: keep our own field in lock-step for the next OnParametersSet comparison
     }
 
-    // Codex round 4, P2 #8 — see HandleViewModeChangedAsync's own remarks for
-    // why the CURRENT range's midpoint is used as the "what's centered"
-    // proxy.
+    // Bug fix (Codex round 5, P2 #5): reads the shared scroll pane's ACTUAL
+    // current logical center via JS (see GanttV3GetScrollCenterXAsync's own
+    // remarks), subtracts the SAME ScrollHostLeadingOffset GanttTimeline adds
+    // when scrolling TO a target (so this is a genuine, direction-correct
+    // inverse of that write path — the offset doesn't change with ViewMode,
+    // only with EffectiveShowTreePane/EffectiveDirection, neither of which a
+    // mode switch touches), then converts that Timeline-relative pixel back
+    // into a date via GanttScale.PixelToDate against the OUTGOING (still
+    // current at this point — called before SetViewMode below) mode's own
+    // Origin/column width, replicating exactly what GanttTimeline itself
+    // would compute as its own Origin for the SAME RangeStart/RangeEnd/
+    // ViewMode inputs it's currently rendering against.
+    //
+    // Falls back to the pre-existing range-midpoint proxy when the pane
+    // can't be measured (not yet laid out — practically unreachable here,
+    // since a view-mode switch only ever fires from a toolbar click well
+    // after mount — or JS interop unavailable, e.g. a torn-down circuit).
+    private async Task<DateTime> ResolveCurrentCenterDateAsync()
+    {
+        var logicalCenterX = await Interop.GanttV3GetScrollCenterXAsync(_scrollPaneRef);
+        if (logicalCenterX is { } x)
+        {
+            var timelineRelativeX = x - ScrollHostLeadingOffset;
+            var units = GanttScale.BuildDateUnits(_state.ViewMode, _state.VisibleRange.Start, _state.VisibleRange.End);
+            var origin = units.Count > 0 ? units[0] : _state.VisibleRange.Start;
+            var colWidth = ColumnWidth ?? GanttScale.GetConfig(_state.ViewMode).ColumnWidth;
+            return GanttScale.PixelToDate(_state.ViewMode, origin, timelineRelativeX, colWidth);
+        }
+        return VisibleCenterDate;
+    }
+
+    // Codex round 4, P2 #8 — the range-midpoint fallback used by
+    // ResolveCurrentCenterDateAsync when a live scroll reading isn't
+    // available.
     private DateTime VisibleCenterDate
     {
         get
