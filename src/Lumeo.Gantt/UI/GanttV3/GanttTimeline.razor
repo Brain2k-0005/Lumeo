@@ -232,15 +232,16 @@
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     /// <summary>
-    /// P1 fix (Codex review wave): incremented by <c>Gantt3</c> each time its "Today"
-    /// nav button recenters <c>VisibleRange</c>. Purely a change-token — the VALUE
-    /// carries no meaning, only "did it change since the last render" does — so
-    /// GanttTimeline knows to re-center the DOM's actual horizontal scroll position on
-    /// today again (recentering VisibleRange alone doesn't move scrollLeft; see
-    /// <see cref="ScrollToTodayCenterAsync"/>'s remarks). Left at its default (0) by
-    /// any caller that never wires GanttNav's Today button to this — a component
-    /// using GanttTimeline standalone without Gantt3 simply never sees this fire
-    /// again after the first-render center.
+    /// The scroll-intent version (Codex round 14). <c>Gantt3</c> bumps it each
+    /// time it issues a recenter (Today nav, a view-mode/geometry recenter, an
+    /// emptiness transition). Purely a change-token — only "did it change since
+    /// the last render" matters — so GanttTimeline knows to re-center the DOM's
+    /// horizontal scroll (recentering <c>VisibleRange</c> alone doesn't move
+    /// scrollLeft; see <see cref="ScrollToCenterAsync"/>). The paired
+    /// <see cref="ScrollTargetDate"/> is honored ONCE per bump and then expires
+    /// (see <see cref="ResolveScrollTargetX"/>). Left at its default (0) by any
+    /// caller that never wires this — a standalone GanttTimeline never sees it
+    /// fire again after the first-render center.
     /// </summary>
     [Parameter] public int ScrollToTodayRequestId { get; set; }
 
@@ -324,7 +325,12 @@
 
     private ElementReference _scrollHostRef;
     private ElementReference _headerInnerRef;
-    private int _lastSeenScrollToTodayRequestId;
+    // The last scroll-intent version actually CONSUMED (applied to the DOM).
+    // ScrollToTodayRequestId differing from this means an intent is pending;
+    // once applied they match and ScrollTargetDate expires (Codex round 14,
+    // finding #3). Starts below any real request id so the first render's
+    // intent (the initial center) counts as pending and is applied.
+    private int _lastConsumedScrollRequestId = int.MinValue;
     private DateTime _lastSeenToday;
 
     // Bug fix (Codex round 7 review, P2 #2): this used to be a plain
@@ -465,13 +471,21 @@
     private double TodayX => GanttScale.DateToPixel(ViewMode, Origin, Today, EffectiveColumnWidth);
     private bool TodayInRange => TodayHighlight && Units.Count > 0 && TodayX >= 0 && TodayX <= TotalWidth;
 
-    // Codex round 4, P2 #8: the date the scroll-to-center mechanism actually
-    // targets — ScrollTargetDate when the caller (Gantt3, after a view-mode
-    // switch) supplies one, else Today, matching every prior behavior exactly
-    // when ScrollTargetDate is left null. Deliberately SEPARATE from TodayX —
-    // the marker must always reflect where TODAY is, regardless of what the
-    // viewport is currently being scrolled toward.
-    private double ScrollTargetX => GanttScale.DateToPixel(ViewMode, Origin, ScrollTargetDate ?? Today, EffectiveColumnWidth);
+    // Codex round 4, P2 #8: the pixel the scroll-to-center mechanism targets —
+    // ScrollTargetDate when the caller (Gantt3, after a recenter) supplies one,
+    // else Today. Deliberately SEPARATE from TodayX — the marker must always
+    // reflect where TODAY is, regardless of what the viewport is being scrolled
+    // toward.
+    //
+    // Codex round 14, finding #3: the explicit ScrollTargetDate is honored ONLY
+    // while its scroll intent is still pending (its ScrollToTodayRequestId bump
+    // hasn't been applied yet) — an AMBIENT re-scroll (a browser-"today" change
+    // at midnight, a host swap) passes intentPending=false and so targets Today,
+    // letting a consumed preserved-center intent expire instead of re-applying
+    // it forever. A standalone timeline leaves ScrollTargetDate null, so this is
+    // always Today there, unchanged.
+    private double ResolveScrollTargetX(bool intentPending) =>
+        GanttScale.DateToPixel(ViewMode, Origin, (intentPending ? ScrollTargetDate : null) ?? Today, EffectiveColumnWidth);
 
     // v2 parity (Codex round 2, P2 #8): v2's scroll-to-today gate is
     // `todayPx > 0` (gantt-v2.js:684) — deliberately LOOSER than the
@@ -638,7 +652,6 @@
             // mirroring the very first centering scroll.
             await ReconcileHeaderScrollSyncAsync();
 
-            _lastSeenScrollToTodayRequestId = ScrollToTodayRequestId;
             _lastSeenToday = Today;
             _lastSeenScrollHostId = CurrentHostId;
 
@@ -666,7 +679,12 @@
             // usage (ScrollHost null) is unaffected — IsScrollHostReady is
             // trivially true in that mode, so this still scrolls on
             // firstRender exactly as before ScrollHost existed.
-            if (IsScrollHostReady && ShouldAttemptTodayScroll) await ScrollToTodayCenterAsync();
+            if (IsScrollHostReady && ShouldAttemptTodayScroll)
+            {
+                var initialIntentPending = ScrollToTodayRequestId != _lastConsumedScrollRequestId;
+                await ScrollToCenterAsync(ResolveScrollTargetX(initialIntentPending));
+                _lastConsumedScrollRequestId = ScrollToTodayRequestId;
+            }
             return;
         }
 
@@ -690,20 +708,29 @@
         // an otherwise-unchanged, already-valid reference.
         var currentHostId = CurrentHostId;
         var scrollHostChanged = currentHostId != _lastSeenScrollHostId;
-        if (ScrollToTodayRequestId != _lastSeenScrollToTodayRequestId || Today != _lastSeenToday || scrollHostChanged)
+        // Codex round 14, finding #3: an intent is pending until its request-id
+        // bump is actually applied — so an intent deferred because the host
+        // wasn't ready yet is still applied on the later host-ready render.
+        var intentPending = ScrollToTodayRequestId != _lastConsumedScrollRequestId;
+        if (intentPending || Today != _lastSeenToday || scrollHostChanged)
         {
-            _lastSeenScrollToTodayRequestId = ScrollToTodayRequestId;
             _lastSeenToday = Today;
             _lastSeenScrollHostId = currentHostId;
 
             // Minor tightening (cx3 review): this branch can also fire for a
-            // Today/ScrollToTodayRequestId change alone, independent of
-            // scrollHostChanged above — re-checking IsScrollHostReady here
-            // guards the (practically unreachable, since Gantt3's own ref is
-            // already valid by the time it could bump either of those, but not
-            // provably impossible for a future caller) case where one of them
-            // changes on the SAME render ScrollHost is still resolving.
-            if (IsScrollHostReady && ShouldAttemptTodayScroll) await ScrollToTodayCenterAsync();
+            // Today change alone, independent of scrollHostChanged above —
+            // re-checking IsScrollHostReady here guards the (practically
+            // unreachable, since Gantt3's own ref is already valid by the time
+            // it could bump either of those, but not provably impossible for a
+            // future caller) case where one of them changes on the SAME render
+            // ScrollHost is still resolving. The explicit ScrollTargetDate is
+            // honored only while intentPending; a pure Today/host re-scroll
+            // targets Today (finding #3).
+            if (IsScrollHostReady && ShouldAttemptTodayScroll)
+            {
+                await ScrollToCenterAsync(ResolveScrollTargetX(intentPending));
+                _lastConsumedScrollRequestId = ScrollToTodayRequestId;
+            }
 
             // Codex round 7 review, P2 #2: a genuine host-identity change
             // must tear down the OLD registration (against the OLD host)
@@ -885,11 +912,11 @@
     private string? CurrentHostId => IsScrollHostReady ? EffectiveScrollHost.Id : null;
 
     // Codex round 4, P2 #2/#8: ScrollHostLeadingOffset (a sibling tree pane's
-    // width, when Gantt3 shows one) + ScrollTargetX (Today or a caller-supplied
-    // override) — both default to their prior values (0 offset, Today), so
-    // this reduces to exactly the previous "Interop.GanttV3ScrollToXAsync(
-    // EffectiveScrollHost, TodayX)" call for every existing caller.
-    private Task ScrollToTodayCenterAsync() => Interop.GanttV3ScrollToXAsync(EffectiveScrollHost, ScrollHostLeadingOffset + ScrollTargetX);
+    // width, when Gantt3 shows one) + the resolved target pixel (Today or a
+    // caller-supplied override) — the offset defaults to 0, so this reduces to
+    // exactly the previous "Interop.GanttV3ScrollToXAsync(EffectiveScrollHost,
+    // TodayX)" call for a standalone timeline.
+    private Task ScrollToCenterAsync(double targetX) => Interop.GanttV3ScrollToXAsync(EffectiveScrollHost, ScrollHostLeadingOffset + targetX);
 
     public async ValueTask DisposeAsync()
     {

@@ -67,6 +67,20 @@ internal sealed class GanttState
         RaiseChanged();
     }
 
+    /// <summary>
+    /// Whether <see cref="SetTasks"/> with <paramref name="candidate"/> would
+    /// actually change the task set (same structural comparison <see cref="SetTasks"/>
+    /// uses). Lets a caller detect a task-set change WITHOUT committing it yet —
+    /// <c>Gantt3</c>'s viewport reconcile needs the answer before it commits, so it
+    /// can capture the live scroll center under the OLD tasks/range first (Codex
+    /// round 14, finding #4).
+    /// </summary>
+    public bool WouldChangeTasks(IReadOnlyList<GanttTask> candidate)
+    {
+        ArgumentNullException.ThrowIfNull(candidate);
+        return !TasksEqual(_tasks, candidate);
+    }
+
     /// <summary>Sets the active view mode. No-op when unchanged.</summary>
     public void SetViewMode(GanttViewMode mode)
     {

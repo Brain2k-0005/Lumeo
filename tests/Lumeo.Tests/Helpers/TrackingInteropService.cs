@@ -872,9 +872,17 @@ public class TrackingInteropService : IComponentInteropService
     // range-midpoint fallback.
     public double? GanttV3ScrollCenterXToReturn { get; set; }
     public int GanttV3GetScrollCenterXCallCount { get; private set; }
+    /// <summary>When set, <see cref="GanttV3GetScrollCenterXAsync"/> returns this
+    /// gate's Task instead of a completed one — letting a test SUSPEND Gantt3's
+    /// reconcile mid-capture (before it commits tasks/mode/range) to prove no
+    /// half-reconciled frame is observable while the capture is in flight (Codex
+    /// round 14, finding #4). Complete it with the desired logical center to
+    /// resume.</summary>
+    public TaskCompletionSource<double?>? GanttV3ScrollCenterXGate { get; set; }
     public Task<double?> GanttV3GetScrollCenterXAsync(ElementReference el)
     {
         GanttV3GetScrollCenterXCallCount++;
+        if (GanttV3ScrollCenterXGate is not null) return GanttV3ScrollCenterXGate.Task;
         return Task.FromResult(GanttV3ScrollCenterXToReturn);
     }
 
