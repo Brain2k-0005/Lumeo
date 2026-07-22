@@ -1188,18 +1188,25 @@ const drawerSnapHandlers = new Map();
 // whole panel out from under the user's scroll attempt.
 //
 // vaul's own rule (the reference this drawer follows) is the fix: a
-// dismiss/close-direction drag only ever ARMS once the panel's scrollable
-// content is already at the boundary the drag would otherwise scroll PAST —
-// scrollTop 0 for a "drag down to close" (Bottom drawer), or fully
-// scrolled-to-bottom for "drag up to close" (Top drawer). Until that boundary
-// is reached, the native scroll wins outright (these listeners are `passive`
-// and never call preventDefault, so scrolling was never blocked — only the
-// panel's OWN transform-dragging needed gating). `sign` is each caller's own
-// dismiss-direction constant (+1 = drag-down closes, -1 = drag-up closes) —
-// same convention both registerDrawerSwipe (dismissSign) and
-// registerDrawerSnap (sign) already use.
-function isScrolledToClosingBoundary(el, sign) {
-    return sign > 0
+// drag along the shared axis only ever ARMS (drags/snaps the panel) once the
+// panel's scrollable content is already at the boundary the drag would
+// otherwise scroll PAST — scrollTop 0 for a "drag down" (Bottom drawer), or
+// fully scrolled-to-bottom for "drag up" (Top drawer). Until that boundary is
+// reached, the native scroll wins outright (these listeners are `passive` and
+// never call preventDefault, so scrolling was never blocked — only the
+// panel's OWN transform-dragging needed gating).
+//
+// #381 Codex round 3 (P1): this is now symmetric — applied to WHICHEVER
+// direction the current drag is attempting, not just the closing direction.
+// A snap-point drawer resting below its most-open snap has an "open further"
+// drag too, which competes with scrolling the SAME way a "close" drag does;
+// gating only the closing direction (round 1/2's shape) let an opening drag
+// snap the drawer even while the content itself could still scroll that way.
+// `directionSign` is the CURRENT drag's own direction (+1 = finger moving
+// down, -1 = finger moving up) — the caller passes whichever direction is
+// actually being attempted right now, not a fixed per-registration constant.
+function isAtScrollBoundaryForDirection(el, directionSign) {
+    return directionSign > 0
         ? el.scrollTop <= 0
         : el.scrollTop + el.clientHeight >= el.scrollHeight - 1; // 1px rounding slack
 }
@@ -1305,7 +1312,11 @@ export function registerDrawerSwipe(elementId, direction, dotnetRef, options) {
             // Wait for the finger to travel far enough to commit to a gesture,
             // then lock the gesture to the dominant axis. If the dominant axis
             // isn't ours, abort — don't touch the transform, let the inner
-            // content scroll.
+            // content scroll. This threshold gate runs ONLY here (not on every
+            // frame) — it's a "was there a real gesture at all" check on the
+            // OVERALL vector from touch start, not something a later frame
+            // should re-litigate; micro-jitter must never retroactively un-arm
+            // an already-active drag.
             const absDx = Math.abs(dx);
             const absDy = Math.abs(dy);
             if (absDx < ACTIVATION_THRESHOLD && absDy < ACTIVATION_THRESHOLD) return;
@@ -1314,33 +1325,30 @@ export function registerDrawerSwipe(elementId, direction, dotnetRef, options) {
                 aborted = true;
                 return;
             }
-            // #381 Codex P1/P2 (round 2) — see isScrolledToClosingBoundary's own
-            // remarks (Top/Bottom drawer: dismiss and scroll share the vertical
-            // axis) and startedOnDragHandle's (the handle always bypasses this
-            // gate entirely). Only gates the CLOSING direction: a drag the wrong
-            // way (e.g. swiping up on a bottom drawer) never actually drags the
-            // panel anyway (the sign !== dismissSign branch below already resets
-            // the transform to a no-op every frame), so it can't fight scrolling
-            // regardless of this check.
-            //
-            // Round 2 fix: this is now a ONE-TIME decision for the WHOLE touch,
-            // not just the current event. The original version only `return`ed
-            // from this single call — a LATER move within the SAME touch (after
-            // native scroll carries the panel to the boundary mid-gesture) would
-            // re-evaluate true and let dismiss arm mid-scroll, which read as the
-            // drawer suddenly starting to close while the user was still
-            // scrolling. `contentOwned` latches the verdict instead: once a
-            // touch is decided to begin away from the boundary, it stays
-            // content-owned — no dismiss/drag logic at all — until the finger
-            // lifts and a NEW touch starts (onTouchStart resets it).
-            if (!isHorizontal && !startedOnHandle) {
-                const closingDirection = Math.sign(dy) === dismissSign;
-                if (closingDirection && !isScrolledToClosingBoundary(el, dismissSign)) {
-                    contentOwned = true;
-                    return;
-                }
-            }
             active = true;
+        }
+
+        // #381 Codex round 3 (P1/P2) — see isAtScrollBoundaryForDirection's own
+        // remarks (symmetric: gates EITHER direction, not just closing) and
+        // startedOnDragHandle's (the handle always bypasses this gate
+        // entirely). Evaluated on EVERY frame from here on, NOT nested inside
+        // `if (!active)` above (round 3 fix, P2): the round-2 shape only ran
+        // this while `!active`, so a touch whose FIRST resolved direction
+        // wasn't gated (e.g. the opening direction, which round 2 never
+        // gated at all) set `active = true` permanently — a LATER reversal
+        // within the SAME touch into the actual dismiss direction would then
+        // never be checked against the scroll boundary at all, since the gate
+        // lived behind a branch that had already been permanently skipped.
+        // Running it unconditionally here means a direction reversal mid-touch
+        // is gated exactly like a touch that started in that direction from
+        // the outset.
+        if (!isHorizontal && !startedOnHandle) {
+            const directionSign = Math.sign(dy);
+            if (directionSign !== 0 && !isAtScrollBoundaryForDirection(el, directionSign)) {
+                contentOwned = true;
+                el.style.transform = ''; // undo any partial drag from before this reversal
+                return;
+            }
         }
 
         // Measure travel along our axis, subtract the threshold so the visual
@@ -1471,6 +1479,79 @@ export function registerDrawerSnap(elementId, direction, dotnetRef, options) {
     const offsetFor = (i) => sign * H * (1 - snapPoints[i]);
     const closedOffset = () => sign * H;
 
+    // #381 Codex round 3 (P1) — snap mode's PERSISTENT transform (needed
+    // while actively dragging, for smooth compositor-only feedback on every
+    // touchmove) makes the panel a permanent containing block for
+    // position:fixed descendants once settled at rest: a popover/dropdown
+    // opened from content inside a snapped drawer renders clipped/mispositioned
+    // against the DRAWER's own box instead of the viewport. This is the exact
+    // same containing-block bug class attachOverlaySlideEnd already solves for
+    // the slide/zoom-in ANIMATION path (see its own extensive history above) —
+    // clear the transform once settled, just via a different mechanism here:
+    // snap mode has no CSS @keyframes animation to hook (transform is driven
+    // directly by touch deltas via inline style), so this hooks the CSS
+    // TRANSITION (also exposed through getAnimations(), just as
+    // `transitionProperty` instead of `animationName`) that eases the panel
+    // to each new snap/dismiss target instead.
+    //
+    // Representation: AT REST, the snap fraction is expressed as a `bottom`
+    // (Bottom drawer) or `top` (Top drawer) OFFSET instead of `translateY` —
+    // a normal layout property, not a transform, so it never establishes a
+    // containing block. DURING an active drag or the eased transition toward
+    // a new target, `transform` is kept exactly as before: cheap and
+    // compositor-only. A popover opened in that brief transient window is an
+    // accepted edge case (per the task) — the common case (popover opened
+    // while the drawer sits still at a snap) is what this fixes.
+    const restProperty = direction === 'up' ? 'top' : 'bottom';
+
+    // translateY(px) <-> bottom/top offset(px): for a Bottom drawer (sign>0),
+    // a positive translateY (pushed DOWN, off-screen) is a NEGATIVE bottom
+    // value (the box's bottom edge sits that far below the viewport's bottom
+    // edge); for a Top drawer (sign<0) the top offset matches translateY's
+    // own sign directly (a negative translateY, pushed UP, is an equally
+    // negative top value).
+    const toRestOffset = (translateYPx) => (restProperty === 'bottom' ? -translateYPx : translateYPx);
+    const toTransformOffset = (restPx) => (restProperty === 'bottom' ? -restPx : restPx);
+
+    let settleGeneration = 0; // bumped by every new drag/settle; invalidates stale "wait for transition" callbacks
+
+    // Reverses settleAtRest below: if the panel is CURRENTLY resting via the
+    // bottom/top offset (no transform), convert it back to the equivalent
+    // translateY first, with no visible jump, so the drag math below (which
+    // measures offsets relative to the bottom:0/top:0 CSS baseline) always
+    // operates against a consistent representation. No-op in the common case
+    // (a drag starting right after another drag/settle never actually
+    // finished converting, or already in transform form).
+    function enterDragRepresentation() {
+        const current = el.style[restProperty];
+        if (!current) return;
+        const restPx = parseFloat(current) || 0;
+        el.style[restProperty] = '';
+        el.style.transform = `translateY(${toTransformOffset(restPx)}px)`;
+    }
+
+    // Call AFTER setting a new `transition: EASING` + `transform` target.
+    // Waits (one rAF, so the browser has actually started the CSS transition
+    // and getAnimations() can see it — transitions don't register
+    // synchronously in the same task as the triggering style change) for the
+    // in-flight transform transition to finish, then converts to the
+    // containing-block-safe rest representation — unless a NEWER drag/settle
+    // has started in the meantime (the generation check), in which case this
+    // stale callback is a no-op; whatever started more recently owns the
+    // element's representation now.
+    function settleAtRest(targetOffsetPx, generation) {
+        requestAnimationFrame(() => {
+            if (generation !== settleGeneration) return;
+            const anim = el.getAnimations({ subtree: false }).find(a => a.transitionProperty === 'transform');
+            const done = anim ? anim.finished.catch(() => {}) : Promise.resolve();
+            done.then(() => {
+                if (generation !== settleGeneration) return;
+                el.style.transform = '';
+                el.style[restProperty] = toRestOffset(targetOffsetPx) + 'px';
+            });
+        });
+    }
+
     // Open sequence: commit the fully-closed transform synchronously (before
     // the browser paints), then rAF up to the active snap. JS owns the
     // transform for the drawer's whole lifetime, so Blazor re-renders (which
@@ -1482,6 +1563,7 @@ export function registerDrawerSnap(elementId, direction, dotnetRef, options) {
     requestAnimationFrame(() => {
         el.style.transition = EASING;
         el.style.transform = `translateY(${offsetFor(activeIndex)}px)`;
+        settleAtRest(offsetFor(activeIndex), ++settleGeneration);
     });
 
     let startY = 0, baseOffset = 0, isDragging = false, samples = [];
@@ -1498,6 +1580,15 @@ export function registerDrawerSnap(elementId, direction, dotnetRef, options) {
 
     const onTouchStart = (e) => {
         H = el.offsetHeight || H;
+        // #381 Codex round 3 (P1) — the panel may currently be resting via
+        // the containing-block-safe bottom/top offset (see settleAtRest's
+        // remarks); convert back to the equivalent transform FIRST so the
+        // drag math below (baseOffset + finger delta, applied as translateY)
+        // starts from a consistent representation. Bumping the generation
+        // also invalidates any stale in-flight settleAtRest callback from a
+        // still-transitioning previous drag/snap-change.
+        enterDragRepresentation();
+        settleGeneration++;
         startY = e.touches[0].clientY;
         baseOffset = offsetFor(activeIndex);
         isDragging = true;
@@ -1514,21 +1605,31 @@ export function registerDrawerSnap(elementId, direction, dotnetRef, options) {
         samples.push({ pos: y, t: now });
         while (samples.length > 2 && now - samples[0].t > VELOCITY_WINDOW_MS) samples.shift();
 
-        // #381 Codex P1/P2 (round 2) — see isScrolledToClosingBoundary's own
-        // remarks (shared with registerDrawerSwipe) and startedOnDragHandle's
-        // (the handle always bypasses this gate entirely). This is a ONE-TIME
-        // decision for the WHOLE touch, not just the current event: the
-        // original version rebased startY/baseOffset and returned, which let a
-        // LATER move within the SAME touch (once native scroll reached the
-        // boundary mid-gesture) re-arm the drag — the panel would suddenly
-        // start closing mid-scroll. `contentOwned` latches the verdict instead
-        // (checked at the top of this function): once a touch is decided to
-        // begin away from the boundary, this gesture never drags the panel at
-        // all — no rebase-and-retry, no re-arm — until the finger lifts and a
-        // NEW touch starts (onTouchStart resets it).
+        // #381 Codex P1/P2 (round 2 + 3) — see isAtScrollBoundaryForDirection's
+        // own remarks (shared with registerDrawerSwipe) and
+        // startedOnDragHandle's (the handle always bypasses this gate
+        // entirely). This is a ONE-TIME decision for the WHOLE touch, not just
+        // the current event: the original (round 1) version rebased
+        // startY/baseOffset and returned, which let a LATER move within the
+        // SAME touch (once native scroll reached the boundary mid-gesture)
+        // re-arm the drag — the panel would suddenly start closing mid-scroll.
+        // `contentOwned` latches the verdict instead (checked at the top of
+        // this function): once a touch is decided to begin away from the
+        // boundary, this gesture never drags the panel at all — no
+        // rebase-and-retry, no re-arm — until the finger lifts and a NEW touch
+        // starts (onTouchStart resets it).
+        //
+        // Round 3 (P1): gates BOTH directions symmetrically, not just closing.
+        // A snap-point drawer resting below its most-open snap has an "open
+        // further" drag too (dragging toward a taller snap), which competes
+        // with scrolling the content the SAME way a close-drag does — the
+        // round-1/2 shape only ever gated the closing direction (`sign`),
+        // so an opening-direction drag snapped the drawer unconditionally
+        // even while the content itself could still scroll that way.
+        // `directionSign` is THIS move's own direction, whichever it is.
         if (!startedOnHandle) {
-            const closingDirection = Math.sign(y - startY) === sign;
-            if (closingDirection && !isScrolledToClosingBoundary(el, sign)) {
+            const directionSign = Math.sign(y - startY);
+            if (directionSign !== 0 && !isAtScrollBoundaryForDirection(el, directionSign)) {
                 contentOwned = true;
                 return;
             }
@@ -1588,7 +1689,11 @@ export function registerDrawerSnap(elementId, direction, dotnetRef, options) {
         }
 
         el.style.transition = EASING;
+        settleGeneration++;
         if (dismiss) {
+            // Closing entirely — no settleAtRest needed here: nothing inside a
+            // fully-closed, off-screen drawer would ever open a popover, and
+            // the panel is about to unmount once OnDrawerSnapDismiss resolves.
             el.style.transform = `translateY(${closedOffset()}px)`;
             // Respect OnBeforeClose: if C# vetoes the dismiss, snap back to the
             // active snap instead of leaving the panel translated off-screen. (#345)
@@ -1597,11 +1702,16 @@ export function registerDrawerSnap(elementId, direction, dotnetRef, options) {
                     if (ok === false) {
                         el.style.transition = EASING;
                         el.style.transform = `translateY(${offsetFor(activeIndex)}px)`;
+                        // Vetoed — the drawer stays open at its previous snap, so
+                        // it DOES need to settle into the containing-block-safe
+                        // rest representation once this reopening eases in.
+                        settleAtRest(offsetFor(activeIndex), ++settleGeneration);
                     }
                 })
                 .catch(() => {});
         } else {
             el.style.transform = `translateY(${offsetFor(targetIndex)}px)`;
+            settleAtRest(offsetFor(targetIndex), settleGeneration);
             if (targetIndex !== activeIndex) {
                 activeIndex = targetIndex;
                 dotnetRef.invokeMethodAsync('OnDrawerSnapChange', elementId, targetIndex);
@@ -1618,10 +1728,12 @@ export function registerDrawerSnap(elementId, direction, dotnetRef, options) {
         // setActive lets C# move the drawer programmatically (two-way ActiveSnapPoint).
         setActive(i) {
             if (!Number.isInteger(i) || i < 0 || i > lastIndex || i === activeIndex) return;
+            enterDragRepresentation();
             activeIndex = i;
             H = el.offsetHeight || H;
             el.style.transition = EASING;
             el.style.transform = `translateY(${offsetFor(i)}px)`;
+            settleAtRest(offsetFor(i), ++settleGeneration);
         }
     });
 }
