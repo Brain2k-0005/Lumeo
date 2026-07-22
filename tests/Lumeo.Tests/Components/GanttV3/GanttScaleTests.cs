@@ -310,6 +310,60 @@ public class GanttScaleTests : IDisposable
         Assert.Equal(date, roundtrip);
     }
 
+    // ── PixelToDateContinuous (Codex round 6, P1 #1) ────────────────────────
+
+    [Theory]
+    [InlineData(GanttViewMode.Month)]
+    [InlineData(GanttViewMode.Year)]
+    public void PixelToDateContinuous_Then_DateToPixel_Roundtrips_Within_Tolerance_For_A_MidUnit_Offset(GanttViewMode mode)
+    {
+        // A deliberately non-unit-aligned pixel offset (mid-month / mid-year) —
+        // exactly the case PixelToDate's own whole-unit rounding snaps away
+        // from. The round-trip isn't expected to be bit-exact (the
+        // continuous inverse folds its fractional part back in as a plain
+        // day count — see AddContinuousMonths/AddContinuousYears' own
+        // remarks — which can leave a small residual time-of-day component
+        // DateToPixel's day-of-month/day-of-year read then drops), so this
+        // asserts "close" (sub-pixel) rather than exact.
+        var origin = Utc(2026, 1, 1);
+        var cfg = GanttScale.GetConfig(mode);
+        var px = cfg.ColumnWidth * 2.5;
+
+        var continuous = GanttScale.PixelToDateContinuous(mode, origin, px);
+        var roundtripPx = GanttScale.DateToPixel(mode, origin, continuous);
+
+        Assert.True(Math.Abs(roundtripPx - px) < 1.0,
+            $"expected the continuous inverse to round-trip within ~1px, got px={px}, roundtripPx={roundtripPx}");
+    }
+
+    [Fact]
+    public void PixelToDateContinuous_Lands_MidMonth_Instead_Of_Snapping_To_A_Whole_Month()
+    {
+        var origin = Utc(2026, 1, 1);
+        var cfg = GanttScale.GetConfig(GanttViewMode.Month);
+        var px = cfg.ColumnWidth * 2.5; // half-way between month 2 and month 3
+
+        var snapped = GanttScale.PixelToDate(GanttViewMode.Month, origin, px);
+        var continuous = GanttScale.PixelToDateContinuous(GanttViewMode.Month, origin, px);
+
+        Assert.Equal(1, snapped.Day); // PixelToDate always lands on day-1 for Month mode
+        Assert.NotEqual(1, continuous.Day); // continuous lands mid-month instead
+    }
+
+    [Fact]
+    public void PixelToDateContinuous_Lands_MidYear_Instead_Of_Snapping_To_A_Whole_Year()
+    {
+        var origin = Utc(2026, 1, 1);
+        var cfg = GanttScale.GetConfig(GanttViewMode.Year);
+        var px = cfg.ColumnWidth * 2.5; // half-way between year 2 and year 3
+
+        var snapped = GanttScale.PixelToDate(GanttViewMode.Year, origin, px);
+        var continuous = GanttScale.PixelToDateContinuous(GanttViewMode.Year, origin, px);
+
+        Assert.Equal(1, snapped.Month); // PixelToDate always lands on Jan 1 for Year mode
+        Assert.NotEqual(1, continuous.Month); // continuous lands mid-year instead
+    }
+
     [Fact]
     public void DateToPixel_Roundtrip_Is_Stable_Across_The_2026_EU_Spring_Forward_DST_Date()
     {

@@ -139,7 +139,7 @@ function unregisterHeaderScrollSync(canvasEl) {
 // precisely the mode where this virtualization actually matters at scale),
 // rAF-throttled so a fast scroll/drag doesn't flood Blazor with an
 // invokeMethodAsync round-trip per native 'scroll' event.
-const verticalScrollTrackers = new Map(); // el -> { dotNetRef, onScroll, pendingFrame, lastScrollTop }
+const verticalScrollTrackers = new Map(); // el -> { dotNetRef, onScroll, pendingFrame, lastScrollTop, lastClientHeight, resizeObserver }
 
 function registerVerticalScrollTracking(el, dotNetRef) {
     if (!el || verticalScrollTrackers.has(el)) return;
@@ -157,8 +157,16 @@ function registerVerticalScrollTracking(el, dotNetRef) {
         // REPORTED scrollTop and skipping the call when it hasn't actually
         // moved fixes this without weakening the rAF gate above, which still
         // caps this check itself to at most once per animation frame.
-        if (el.scrollTop === tracker.lastScrollTop) return;
+        //
+        // Bug fix (Codex round 6, P1 #2): the dedup above ONLY compared
+        // scrollTop, so a pane RESIZE with an unchanged scrollTop (the common
+        // case — a window resize rarely also happens to move the scroll
+        // position) was silently swallowed by this SAME check, even though
+        // clientHeight is the other half of the culling window's own inputs.
+        // Now requires BOTH to be unchanged before skipping.
+        if (el.scrollTop === tracker.lastScrollTop && el.clientHeight === tracker.lastClientHeight) return;
         tracker.lastScrollTop = el.scrollTop;
+        tracker.lastClientHeight = el.clientHeight;
         // Debug/test-observability counter (Codex round 5, P2 #8): the
         // invokeMethodAsync call below crosses a Blazor Server SignalR
         // round-trip with no console/network signal an E2E test could
@@ -173,8 +181,27 @@ function registerVerticalScrollTracking(el, dotNetRef) {
         if (tracker.pendingFrame) return; // already scheduled for this frame
         tracker.pendingFrame = requestAnimationFrame(report);
     };
-    const tracker = { dotNetRef, onScroll, pendingFrame: null, lastScrollTop: null };
+    const tracker = { dotNetRef, onScroll, pendingFrame: null, lastScrollTop: null, lastClientHeight: null, resizeObserver: null };
     el.addEventListener('scroll', onScroll, { passive: true });
+    // Bug fix (Codex round 6, P1 #2): a rows-count change never fires this
+    // native 'scroll' event at all (nothing about the SCROLL POSITION
+    // changes), but neither does a PANE-SIZE change on its own (e.g. the host
+    // page's layout reflowing, or a consumer resizing the Height parameter's
+    // container) — the culling window's OTHER input, clientHeight, can go
+    // stale independently of any scroll. A ResizeObserver on the SAME element
+    // reuses the identical rAF-gated `onScroll` scheduler (report() already
+    // reads clientHeight fresh each time), so this is the cheapest correct
+    // addition: no new dedupe/throttle logic, no per-frame .NET calls beyond
+    // what already existed. The rows-count case itself is handled entirely in
+    // C# (GanttTimeline.OnAfterRenderAsync re-derives the culling window
+    // locally from the last-reported values — see its own remarks) since a
+    // ResizeObserver on this element can't see a rows-count change at all
+    // (the pane's own box is height-capped and doesn't resize when its
+    // SCROLLABLE CONTENT grows/shrinks).
+    if (typeof ResizeObserver !== 'undefined') {
+        tracker.resizeObserver = new ResizeObserver(onScroll);
+        tracker.resizeObserver.observe(el);
+    }
     verticalScrollTrackers.set(el, tracker);
     report(); // initial position immediately — covers a pane that's already scrolled before this registers
 }
@@ -184,30 +211,90 @@ function unregisterVerticalScrollTracking(el) {
     const tracker = verticalScrollTrackers.get(el);
     if (!tracker) return;
     el.removeEventListener('scroll', tracker.onScroll);
+    if (tracker.resizeObserver) tracker.resizeObserver.disconnect();
     if (tracker.pendingFrame) cancelAnimationFrame(tracker.pendingFrame);
     verticalScrollTrackers.delete(el);
 }
 
 // RTL scrollLeft normalization (Codex round 3, P2 #7): every pixel v3 computes
 // (GanttScale.DateToPixel, bar/header positions) lives in one LOGICAL axis —
-// 0 = earliest date, increasing = later — and is NEVER mirrored for RTL (v2
-// doesn't mirror its SVG either; a timeline's date order reading left-to-right
-// is a separate concern from the surrounding page's text direction). Native
-// `scrollLeft`, however, changes MEANING once an element's *computed*
-// `direction` is `rtl` (inherited from a `dir="rtl"` ancestor — Lumeo's own
-// RTL surface — even when the scroller itself never sets `dir`), and engines
-// have historically disagreed on exactly how:
-//   - "default"  (rare/legacy): behaves exactly like LTR — 0 at the physical
-//     left edge, increasing rightward — even though direction is rtl.
-//   - "negative" (the standardized behavior in evergreen Chrome/Firefox/
-//     Safari): 0 sits at the RTL start (physical right edge); scrolling
-//     toward the end of the content (physically left) makes scrollLeft
-//     NEGATIVE, down to -(scrollWidth - clientWidth).
-//   - "reverse"  (old WebKit): 0 also sits at the physical right edge, but
-//     scrolling toward the end makes scrollLeft INCREASE instead of going
-//     negative.
-// Detected once via a throwaway probe (the well-known "detectRTLScrollBehavior"
-// pattern used by several JS grid libraries) and cached — the convention is a
+// 0 = earliest date (always the content's own physical-LEFT edge — see
+// GanttTimeline.ScrollHostLeadingOffset's own remarks on why that holds even
+// under RTL once the round-5 layout fix landed), increasing = later — and is
+// NEVER mirrored for RTL (v2 doesn't mirror its SVG either; a timeline's date
+// order reading left-to-right is a separate concern from the surrounding
+// page's text direction). Native `scrollLeft`, however, changes MEANING once
+// an element's *computed* `direction` is `rtl` (inherited from a `dir="rtl"`
+// ancestor — Lumeo's own RTL surface — even when the scroller itself never
+// sets `dir`), and engines have historically disagreed on exactly how.
+//
+// Bug fix (Codex round 6, P2 #3 — THIRD iteration on this probe; round 4,
+// P2 #4 fixed which branch was reachable, this fixes which LABEL each
+// reachable branch actually gets, since a wrong label pairs the right
+// detection with the WRONG conversion formula down in toNativeScrollLeft/
+// fromNativeScrollLeft). Independently re-derived from first principles
+// below with concrete numbers (scrollWidth=1000, clientWidth=200,
+// maxScroll=800) rather than trusted-by-inspection — every row is checkable
+// against toNativeScrollLeft's own formula:
+//
+// | Label      | Natural (untouched) scrollLeft | Assigning +1 (from 0)      | native @ logical=0 (phys-left) | native @ logical=maxScroll (phys-right) | Formula (native from logical) |
+// |------------|---------------------------------|----------------------------|----------------------------------|--------------------------------------------|--------------------------------|
+// | "negative" | 0                                | clamps back to 0           | -maxScroll (-800)                 | 0                                          | native = logical - maxScroll   |
+// | "default"  | POSITIVE (~maxScroll, ~800)      | (not reached — already >0) | 0                                  | maxScroll (800)                            | native = logical (pass-through)|
+// | "reverse"  | 0                                | STICKS, reads back as 1     | maxScroll (800)                    | 0                                          | native = maxScroll - logical   |
+//
+// Reasoning per row (also see toNativeScrollLeft/fromNativeScrollLeft, which
+// implement these same three formulas verbatim):
+//   - "negative" (standardized behavior in evergreen Chrome/Firefox/Safari):
+//     0 is the RTL START (physical right edge, where reading begins);
+//     scrolling toward the "end" of the content (physically left, later
+//     dates) makes scrollLeft NEGATIVE, down to -(scrollWidth-clientWidth).
+//     Natural/rest state is already 0 (no adjustment needed to show the RTL
+//     start), and a POSITIVE assignment is out of range so it clamps back to
+//     0 — the ONLY one of the three where that clamp happens, which is
+//     exactly what the `probe.scrollLeft === 0` check after assigning +1
+//     detects.
+//   - "default" (old WebKit/Chrome, pre-RTL-scroll-remapping): scrollLeft
+//     keeps its LTR-identical numbering even under dir=rtl — 0 is the
+//     physical LEFT edge, scrollWidth-clientWidth is the physical RIGHT edge,
+//     completely unaffected by direction. Since numbering is LTR-identical,
+//     converting our logical axis (which ALSO defines 0=phys-left) needs NO
+//     transform at all: native = logical, a straight pass-through. The engine
+//     still wants a freshly-rendered, never-touched RTL container to VISUALLY
+//     default to showing its RTL reading-start (physical right) — since
+//     showing the right edge under this LTR-identical numbering REQUIRES
+//     scrollLeft ≈ maxScroll, the natural/rest value here is POSITIVE. This
+//     is the ONLY one of the three conventions with a positive natural
+//     initial value, which is exactly what `probe.scrollLeft > 0` (checked
+//     BEFORE any assignment ever touches it) detects.
+//   - "reverse" (old IE/Edge): 0 is ALSO the RTL start (physical right edge,
+//     same starting point as "negative" — no adjustment needed at rest, so
+//     natural initial is 0 here too) but INCREASES — rather than going
+//     negative — as the viewport moves toward showing more physical-left
+//     (later) content, topping out at scrollLeft=maxScroll for the physical
+//     left edge. A positive assignment therefore STICKS (reads back as
+//     whatever was assigned, e.g. 1) instead of clamping — the discriminator
+//     between this and "negative" once the natural-initial check has already
+//     ruled out "default".
+//
+// PREVIOUS (round 4) code had the "default" and "reverse" LABELS swapped
+// relative to this table — the natural-initial-positive branch was labelled
+// 'reverse' (which pairs with the maxScroll-minus-logical formula: WRONG,
+// that branch needs the pass-through) and the zero-initial-sticks branch was
+// labelled 'default' (which falls through to pass-through in
+// toNativeScrollLeft: ALSO wrong, that branch needs maxScroll-minus-logical).
+// Both real legacy engines this probe targets are effectively unreachable in
+// this environment (no CI/local test runner using genuinely pre-2015 WebKit
+// or any IE/Edge-Legacy build exists to reproduce the wrong-formula symptom
+// directly), so this was verified by re-deriving the three rows above from
+// first principles with concrete numbers rather than against a live legacy
+// engine — see the unit tests mirroring toNativeScrollLeft/fromNativeScrollLeft
+// in C# (GanttScaleTests) for the checkable, independently-run version of the
+// same three formulas.
+//
+// Detected once via a throwaway probe (the well-known "detectRTLScrollType"
+// pattern used by several JS grid libraries, e.g.
+// github.com/othree/jquery.rtl-scroll-type) and cached — the convention is a
 // property of the browser engine, not of any one element.
 let _rtlScrollConvention = null; // 'default' | 'negative' | 'reverse'
 
@@ -220,30 +307,28 @@ function detectRtlScrollConvention() {
     probe.innerHTML = '<div style="width:1000px;height:1px;"></div>';
     document.body.appendChild(probe);
 
-    // Bug fix (Codex round 4, P2 #4): the PREVIOUS probe assigned scrollLeft=1
-    // FIRST and inspected the result — but 'default' and 'reverse' both accept
-    // non-negative values in the SAME [0, maxScroll] numeric range (only
-    // 'negative' rejects/clamps a positive assignment), so a positive
-    // assignment reads back as 1 for BOTH 'default' and 'reverse' — the
-    // 'reverse' branch below could never be reached; every legacy-WebKit
-    // engine this was meant to detect was silently misclassified as
-    // 'default' instead. The canonical technique (the well-known
-    // "detectRTLScrollType" pattern, e.g. github.com/othree/jquery.rtl-scroll-type)
-    // checks the element's UNTOUCHED, natural initial scrollLeft FIRST,
-    // before any assignment ever overwrites it — 'reverse' engines are the
-    // ONLY ones whose freshly-rendered (never-yet-scrolled) initial position
-    // is already non-zero (they render an RTL overflow container pre-scrolled
-    // to reflect its natural reading start), which the OLD code destroyed by
-    // assigning scrollLeft=1 before ever reading the natural value. Modern
-    // evergreen engines (Chrome/Firefox/Safari — 'negative' convention,
-    // confirmed empirically: initial=0, +1 assignment clamps back to 0, -1
-    // assignment sticks) are unaffected by this fix; only the previously
-    // unreachable legacy branch is corrected.
+    // Bug fix (Codex round 4, P2 #4): the PREVIOUS-PREVIOUS probe assigned
+    // scrollLeft=1 FIRST and inspected the result — but "default" and
+    // "reverse" both accept non-negative values in the SAME [0, maxScroll]
+    // numeric range (only "negative" rejects/clamps a positive assignment),
+    // so a positive assignment read back as 1 for BOTH — the natural-initial
+    // check below (checking BEFORE any assignment) is what actually
+    // distinguishes them, per the table above.
     if (probe.scrollLeft > 0) {
-        _rtlScrollConvention = 'reverse';
+        // Bug fix (Codex round 6, P2 #3): was mislabelled 'reverse' — see the
+        // table above. A positive NATURAL (untouched) initial value is
+        // "default"'s own signature; "default" needs the pass-through
+        // formula, which is what the 'default' label routes to in
+        // toNativeScrollLeft/fromNativeScrollLeft (the fallthrough case).
+        _rtlScrollConvention = 'default';
     } else {
         probe.scrollLeft = 1;
-        _rtlScrollConvention = probe.scrollLeft === 0 ? 'negative' : 'default';
+        // Bug fix (Codex round 6, P2 #3): the non-clamping ("sticks") branch
+        // was mislabelled 'default' — see the table above. This is
+        // "reverse"'s own signature (zero natural initial, but a positive
+        // assignment sticks instead of clamping), and "reverse" needs the
+        // maxScroll-minus-logical formula.
+        _rtlScrollConvention = probe.scrollLeft === 0 ? 'negative' : 'reverse';
     }
     document.body.removeChild(probe);
     return _rtlScrollConvention;

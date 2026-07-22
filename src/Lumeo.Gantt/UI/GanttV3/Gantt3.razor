@@ -465,11 +465,23 @@
     // inverse of that write path — the offset doesn't change with ViewMode,
     // only with EffectiveShowTreePane/EffectiveDirection, neither of which a
     // mode switch touches), then converts that Timeline-relative pixel back
-    // into a date via GanttScale.PixelToDate against the OUTGOING (still
-    // current at this point — called before SetViewMode below) mode's own
-    // Origin/column width, replicating exactly what GanttTimeline itself
-    // would compute as its own Origin for the SAME RangeStart/RangeEnd/
-    // ViewMode inputs it's currently rendering against.
+    // into a date against the OUTGOING (still current at this point — called
+    // before SetViewMode below) mode's own Origin/column width, replicating
+    // exactly what GanttTimeline itself would compute as its own Origin for
+    // the SAME RangeStart/RangeEnd/ViewMode inputs it's currently rendering
+    // against.
+    //
+    // Bug fix (Codex round 6, P1 #1): this used to go through
+    // GanttScale.PixelToDate — the DRAG-snapping inverse, which rounds to the
+    // nearest WHOLE month/year in those view modes. That rounding is correct
+    // for drag math but far too coarse here: Month/Year's unit is huge
+    // relative to a typical scroll-pixel delta, so the preserved center
+    // silently snapped to whichever month/year boundary was nearest,
+    // visibly jumping on repeated switches instead of tracking the actual
+    // scrolled-to position. GanttScale.PixelToDateContinuous is the
+    // non-snapping counterpart added specifically for this call site — see
+    // its own remarks; PixelToDate itself is untouched and still backs every
+    // drag/resize computation.
     //
     // Falls back to the pre-existing range-midpoint proxy when the pane
     // can't be measured (not yet laid out — practically unreachable here,
@@ -484,7 +496,7 @@
             var units = GanttScale.BuildDateUnits(_state.ViewMode, _state.VisibleRange.Start, _state.VisibleRange.End);
             var origin = units.Count > 0 ? units[0] : _state.VisibleRange.Start;
             var colWidth = ColumnWidth ?? GanttScale.GetConfig(_state.ViewMode).ColumnWidth;
-            return GanttScale.PixelToDate(_state.ViewMode, origin, timelineRelativeX, colWidth);
+            return GanttScale.PixelToDateContinuous(_state.ViewMode, origin, timelineRelativeX, colWidth);
         }
         return VisibleCenterDate;
     }

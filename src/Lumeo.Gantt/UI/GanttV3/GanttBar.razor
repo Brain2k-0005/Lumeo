@@ -2,7 +2,9 @@
 @using System.ComponentModel
 @using System.Globalization
 @using Lumeo.GanttV3
+@implements IAsyncDisposable
 @inject Lumeo.Services.Localization.ILumeoLocalizer L
+@inject Lumeo.Services.IComponentInteropService Interop
 @attribute [EditorBrowsable(EditorBrowsableState.Never)]
 
 @* GanttBar — v3's single task-bar renderer (design spec Phase 2, T2 "read-only
@@ -273,6 +275,7 @@
     {
         var attrs = new Dictionary<string, object>(slotAttributes)
         {
+            ["id"] = _barId,
             ["tabindex"] = "0",
             ["aria-label"] = TaskAriaLabel,
         };
@@ -283,6 +286,59 @@
             attrs["onclick"] = EventCallback.Factory.Create<MouseEventArgs>(this, HandleClick);
         }
         return attrs;
+    }
+
+    // Codex round 6, P2 #4 — a stable id for RegisterPreventDefaultKeys below
+    // (document.getElementById-based; see its own remarks). Always present
+    // (not conditional on OnTaskClick.HasDelegate) so it's harmless overhead
+    // on a merely-focusable bar and doesn't churn if a delegate is added
+    // later. Lumeo.Internal.LumeoIds (the core project's own id-generator,
+    // same "{prefix}-{guidN}" convention it uses) is `internal` to the core
+    // Lumeo assembly and not visible from this one (Lumeo.Gantt) — no
+    // InternalsVisibleTo grants it — so this inlines the identical format
+    // directly instead.
+    private readonly string _barId = $"gantt-bar-{Guid.NewGuid():N}";
+    private bool _preventDefaultKeysRegistered;
+
+    // Bug fix (Codex round 6, P2 #4): a div[role=button] has no NATIVE
+    // Space-activation semantics — the browser still runs its own default
+    // action for Space (scroll the viewport) alongside HandleKeyDown's own
+    // OnTaskClick invocation, since nothing tells it Space was "handled"
+    // here the way it would be for a real &lt;button&gt;. Declarative
+    // @onkeydown:preventDefault is all-or-nothing (would ALSO swallow Tab/
+    // arrow-key navigation reaching this element, since Blazor's directive
+    // can't be conditioned per-key), so this uses the SAME targeted,
+    // key-specific interop every other Lumeo role=button-on-a-div component
+    // already relies on for the identical problem (see Card.razor's own
+    // remarks — same finding, same fix). Enter has no default browser action
+    // on a div, so only Space needs suppressing. Registered only when
+    // OnTaskClick actually has a delegate — matching InnerAttributes' own
+    // gating (round 5, P2 #3): with no delegate, Space does nothing here at
+    // all, so there's nothing to protect from the browser's default either.
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && OnTaskClick.HasDelegate)
+        {
+            try
+            {
+                await Interop.RegisterPreventDefaultKeys(_barId, new[] { new Lumeo.Services.PreventDefaultKeyRule(" ") });
+                _preventDefaultKeysRegistered = true;
+            }
+            catch (Microsoft.JSInterop.JSDisconnectedException) { }
+            catch (InvalidOperationException) { } // JS interop unavailable during prerender
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (!_preventDefaultKeysRegistered) return;
+        try
+        {
+            await Interop.UnregisterPreventDefaultKeys(_barId);
+        }
+        catch (Microsoft.JSInterop.JSDisconnectedException) { }
+        catch (ObjectDisposedException) { }
+        catch (InvalidOperationException) { }
     }
 
     private Dictionary<string, object> WrapperAttributes

@@ -318,6 +318,16 @@
     private bool _verticalScrollTrackingRegistered;
     private DotNetObjectReference<GanttTimeline>? _selfRef;
 
+    // Codex round 6, P1 #2 — the last scrollTop/clientHeight actually reported
+    // (by JS, OR re-derived here) and the row count the culling window was
+    // last computed against. Cached so a rows-count change (empty->populated,
+    // collapse/expand) can re-run the EXACT SAME clamping synchronously in
+    // C#, without waiting for a native 'scroll' event that may never come —
+    // see RecomputeVisibleRowRange's own remarks.
+    private double? _lastReportedScrollTop;
+    private double? _lastReportedClientHeight;
+    private int _lastCulledRowCount = -1;
+
     // Codex round 2, P1 #3: this root no longer establishes any scroll
     // container itself at all — the header (sticky) and the row-canvas
     // (overflow-x-auto) are now separate children with their own concerns;
@@ -669,6 +679,25 @@
             // unconditionally whenever we're in this branch at all.
             if (IsScrollHostReady) await RegisterVerticalScrollTrackingAsync();
         }
+
+        // Bug fix (Codex round 6, P1 #2): a rows-count change (empty->populated,
+        // collapse/expand toggling row visibility) never re-triggers the
+        // vertical-scroll-tracking JS listener at all — no native 'scroll'
+        // event fires, and the pane's own size (what a ResizeObserver would
+        // watch) doesn't change either, only its SCROLLABLE CONTENT does. Left
+        // unhandled, GanttArrowLayer kept culling against whatever row count
+        // was last reported, silently hiding every arrow the moment a task
+        // list went from empty to populated (bars/tree render immediately via
+        // Virtualize; only the arrow-culling window was stale). Re-derives the
+        // SAME clamping synchronously in C# from the last actually-reported
+        // scrollTop/clientHeight — no JS round-trip needed, since nothing
+        // about the SCROLL POSITION itself changed, only which row indices it
+        // now maps to.
+        var rowCount = EffectiveRows.Count;
+        if (rowCount != _lastCulledRowCount && _lastReportedScrollTop is { } st && _lastReportedClientHeight is { } ch)
+        {
+            RecomputeVisibleRowRange(st, ch);
+        }
     }
 
     // Codex round 4, P2 #3. Idempotent per EffectiveScrollHost value — the JS
@@ -686,14 +715,32 @@
     /// <summary>
     /// Reports the shared scroll pane's current scrollTop/clientHeight (Codex
     /// round 4, P2 #3) — invoked from JS via <c>registerVerticalScrollTracking</c>'s
-    /// rAF-throttled listener. Recomputes which row indices are actually
-    /// visible (+ a small buffer margin, matching the spirit of Blazor's own
-    /// Virtualize overscan) so <c>GanttArrowLayer</c> can cull arrows whose
-    /// endpoints are both scrolled out of view. Public because <c>[JSInvokable]</c>
-    /// requires it — not meant for direct C# callers.
+    /// rAF-throttled listener, on a native 'scroll' event OR (Codex round 6,
+    /// P1 #2) a ResizeObserver firing for a pane-size change. Public because
+    /// <c>[JSInvokable]</c> requires it — not meant for direct C# callers.
     /// </summary>
     [JSInvokable]
     public void OnGanttV3VerticalScroll(double scrollTop, double clientHeight)
+    {
+        _lastReportedScrollTop = scrollTop;
+        _lastReportedClientHeight = clientHeight;
+        RecomputeVisibleRowRange(scrollTop, clientHeight);
+    }
+
+    // Codex round 6, P1 #2: extracted so a rows-count change (empty->populated,
+    // collapse/expand) can re-run this SAME clamping without a JS round-trip —
+    // it was previously inlined directly in OnGanttV3VerticalScroll, the ONLY
+    // thing that ever invalidated the culling window. A rows-count change
+    // never touches scrollTop/clientHeight at all (no native 'scroll' event,
+    // no resize), so it silently left GanttArrowLayer culling against a
+    // STALE row count until the user happened to scroll again — e.g. an
+    // empty->populated task list showed no arrows at all until then, even
+    // though bars/tree rows themselves render immediately via Virtualize.
+    // Recomputes which row indices are actually visible (+ a small buffer
+    // margin, matching the spirit of Blazor's own Virtualize overscan) so
+    // GanttArrowLayer can cull arrows whose endpoints are both scrolled out
+    // of view.
+    private void RecomputeVisibleRowRange(double scrollTop, double clientHeight)
     {
         if (GanttScale.RowHeight <= 0 || clientHeight <= 0) return;
 
@@ -710,7 +757,10 @@
         start = Math.Clamp(start, 0, Math.Max(0, rowCount - 1));
         end = Math.Clamp(end, 0, Math.Max(0, rowCount - 1));
 
-        _visibleRowRange = (start, end);
+        _lastCulledRowCount = rowCount;
+        var newRange = (start, end);
+        if (_visibleRowRange == newRange) return; // no-op: avoid a redundant re-render
+        _visibleRowRange = newRange;
         StateHasChanged();
     }
 

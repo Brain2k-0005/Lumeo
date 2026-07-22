@@ -280,6 +280,67 @@ internal static class GanttScale
     }
 
     /// <summary>
+    /// Continuous (unsnapped) inverse of <see cref="DateToPixel"/> — LINEARLY
+    /// interpolates a date WITHIN its scale unit instead of rounding to the
+    /// nearest whole one (Codex round 6, P1 #1). <see cref="PixelToDate"/>'s
+    /// rounding is deliberate and load-bearing for DRAG math (a user dragging
+    /// a bar in Month/Year view SHOULD snap to whole months/years — that's
+    /// the intended UX, and nothing here changes it), but the SAME rounding
+    /// used for Gantt3's view-mode-switch center-preservation read
+    /// (its <c>ResolveCurrentCenterDateAsync</c> call site) had
+    /// a much coarser side effect there: Month/Year's unit is huge relative to
+    /// typical scroll-pixel deltas, so reading the live scroll center through
+    /// <see cref="PixelToDate"/> snapped it to whichever whole month/year
+    /// boundary happened to be nearest — repeated mode switches could visibly
+    /// jump the preserved center by up to half a month/year instead of
+    /// tracking the actual scrolled-to position. This method is that
+    /// non-snapping counterpart, used ONLY by the center-preservation path;
+    /// <see cref="PixelToDate"/> itself is UNCHANGED and still backs every
+    /// drag/resize computation.
+    /// </summary>
+    internal static DateTime PixelToDateContinuous(GanttViewMode mode, DateTime origin, double pixel, int? columnWidthOverride = null)
+    {
+        var cfg = GetConfig(mode);
+        var colW = columnWidthOverride ?? cfg.ColumnWidth;
+        return cfg.Unit switch
+        {
+            // Day/Hour's own DateToPixel formulas are already linear in whole
+            // days/hours (TotalDays/TotalHours), so simply not rounding here
+            // (AddDays/AddHours both accept fractional values directly) is
+            // already the exact continuous inverse — no separate helper needed.
+            GanttScaleUnit.Day => origin.Date.AddDays((pixel / colW) * cfg.Step),
+            GanttScaleUnit.Month => AddContinuousMonths(origin, pixel / colW),
+            GanttScaleUnit.Year => AddContinuousYears(origin, pixel / colW),
+            GanttScaleUnit.Hour => origin.AddHours((pixel / colW) * cfg.Step),
+            _ => origin,
+        };
+    }
+
+    // DateToPixel's Month formula is `monthsDiff + (day-1)/30.0` — the exact
+    // inverse splits the continuous unit count into a whole-month part (via
+    // AddMonths, which preserves day-of-month) and a fractional part folded
+    // back in as (up to) 30 days. Origin is always day-1 of its month here
+    // (GanttScale's own aligned-origin invariant — see BuildDateUnits/
+    // AlignToUnitStart's remarks), so AddMonths lands on day-1 of the target
+    // month too, matching what DateToPixel's own "(day-1)/30.0" term assumes.
+    private static DateTime AddContinuousMonths(DateTime origin, double totalMonths)
+    {
+        var whole = Math.Floor(totalMonths);
+        var fraction = totalMonths - whole;
+        return origin.AddMonths((int)whole).AddDays(fraction * 30.0);
+    }
+
+    // Same reasoning as AddContinuousMonths, for DateToPixel's Year formula
+    // (`yearsDiff + ((month-1)*30+day)/365.0`) — origin is always Jan 1 here.
+    private static DateTime AddContinuousYears(DateTime origin, double totalYears)
+    {
+        var whole = Math.Floor(totalYears);
+        var fraction = totalYears - whole;
+        var yearStart = new DateTime(origin.Year + (int)whole, 1, 1, 0, 0, 0, origin.Kind);
+        return yearStart.AddDays(fraction * 365.0);
+    }
+
+    /// <summary>
     /// Rounds like JS <c>Math.round</c>: half-integer ties round toward POSITIVE
     /// infinity (<c>Math.round(-0.5) === -0</c>, <c>Math.round(2.5) === 3</c>,
     /// <c>Math.round(-2.5) === -2</c>) — .NET's <see cref="Math.Round(double, MidpointRounding)"/>

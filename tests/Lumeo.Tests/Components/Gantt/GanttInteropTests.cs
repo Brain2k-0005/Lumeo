@@ -62,6 +62,38 @@ public class GanttInteropTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task JsOnTaskClick_Merges_Only_ParentId_Onto_The_Renderer_Normalized_Payload()
+    {
+        // Bug fix (Codex round 6, P2 #5): the fix above (ParentId merge)
+        // originally substituted the WHOLE stored task instead of merging
+        // just the missing field — losing gantt-v2.js's own renderer
+        // normalization (e.g. a milestone's End forced to match Start
+        // before the JS payload is even built — see GanttBar.razor's own
+        // remarks on this same v2 normalization). This milestone's STORED
+        // End (2026-03-20) deliberately differs from its Start (2026-03-08)
+        // — nothing enforces they match — so the JS-normalized payload
+        // argument carries End == Start, while the stored copy in _tasks
+        // does not. The callback's argument must keep the NORMALIZED End
+        // AND still gain the stored ParentId — not replace one for the
+        // other.
+        var storedTask = new L.GanttTask("m1", "Kickoff", new DateTime(2026, 3, 8), new DateTime(2026, 3, 20), IsMilestone: true) { ParentId = "root" };
+        L.GanttTask? clicked = null;
+        var cut = _ctx.Render<L.Gantt>(p => p
+            .Add(c => c.Tasks, new[] { storedTask })
+            .Add(c => c.OnTaskClick, (L.GanttTask t) => { clicked = t; }));
+
+        // Mirrors gantt-v2.js's own taskToJson payload for this task exactly:
+        // normalizeTasks already forced End = Start for the milestone, and
+        // ParentId is never serialized at all (reports null).
+        var normalizedPayloadFromJs = storedTask with { End = storedTask.Start, ParentId = null };
+        await cut.InvokeAsync(() => cut.Instance.JsOnTaskClick(normalizedPayloadFromJs));
+
+        Assert.NotNull(clicked);
+        Assert.Equal(storedTask.Start, clicked!.End); // normalization preserved, not replaced by the stale stored End
+        Assert.Equal("root", clicked.ParentId); // ParentId still merged in from the stored task
+    }
+
+    [Fact]
     public async Task JsOnDateChange_Replaces_The_Task_And_Raises_OnDateChange_And_TasksChanged()
     {
         L.GanttTask? dateChanged = null;

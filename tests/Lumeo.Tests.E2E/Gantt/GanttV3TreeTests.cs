@@ -56,6 +56,44 @@ public class GanttV3TreeTests : GanttParityTestBase
         await Assertions.Expect(arrows).ToHaveCountAsync(0); // child2->child1 arrow: both endpoints hidden
     }
 
+    [Fact]
+    public async Task Collapsing_And_Reexpanding_A_Tall_Group_Refreshes_Arrow_Culling_Without_Any_Scroll()
+    {
+        // Bug fix (Codex round 6, P1 #2): the arrow-culling window used to
+        // ONLY recompute in response to a native 'scroll' event -
+        // collapsing/expanding a hierarchy node changes the row count
+        // WITHOUT ever firing one, so the window stayed at whatever it was
+        // last computed against. GanttParityFixtures.TallHierarchyFixture's
+        // root + 50 chained children (51 rows * 36px = 1836px) is tall
+        // enough to need real virtualization/culling in the 900px pane,
+        // unlike TreeTasks' own 5-row fixture (too short to ever
+        // meaningfully cull anything either way - see
+        // Collapsing_a_parent_hides_its_descendant_rows_bars_and_arrows above).
+        await GotoHost("/e2e/gantt-v3-tree?fixture=tall");
+
+        var rows = Page.Locator("[data-testid='gantt-v3-tree-root'] [data-row-kind='task']");
+        await rows.First.WaitForAsync(new() { Timeout = 15000 });
+
+        var arrows = Page.Locator("[data-testid='gantt-v3-tree-root'] path.lumeo-gantt-v3-arrow");
+        // Fewer than the full 49-edge chain render initially - some rows
+        // are scrolled out of the 900px pane, proving culling is genuinely
+        // active for this fixture (unlike TreeTasks').
+        await Assertions.Expect(arrows).Not.ToHaveCountAsync(49, new() { Timeout = 10000 });
+        var beforeCount = await arrows.CountAsync();
+        Assert.True(beforeCount > 0 && beforeCount < 49,
+            $"expected the tall hierarchy fixture's 49-edge chain to be partially culled, got {beforeCount}");
+
+        var rootRow = Page.Locator("[data-testid='gantt-v3-tree-root'] [data-row-kind='task']", new() { HasTextString = "Root" });
+        var toggle = rootRow.Locator("button.lumeo-gantt-v3-tree-toggle");
+        await toggle.ClickAsync(); // collapse - all 50 children hidden, row count drops to 1
+        await Assertions.Expect(arrows).ToHaveCountAsync(0);
+
+        await toggle.ClickAsync(); // re-expand - row count jumps back to 51, with NO scroll at all
+        // If the culling window were still stuck at whatever it settled on
+        // for the collapsed (1-row) state, every arrow would stay culled here.
+        await Assertions.Expect(arrows).Not.ToHaveCountAsync(0, new() { Timeout = 10000 });
+    }
+
     private async Task AssertDepth(string label, int expectedIndentPx)
     {
         var row = Page.Locator("[data-testid='gantt-v3-tree-root'] [data-row-kind='task']", new() { HasTextString = label });

@@ -99,6 +99,32 @@ internal static class GanttParityFixtures
     };
 
     /// <summary>
+    /// v3-only: one root + 50 chained children (Codex round 6, P1 #2) — tall
+    /// enough (51 rows * <c>GanttScale.RowHeight</c> (36) = 1836px) to need
+    /// real virtualization/arrow-culling in the 900px E2E host pane, unlike
+    /// <see cref="TreeTasks"/>'s own 5-row fixture (too short for the
+    /// culling window's overscan margin to ever exclude anything either
+    /// way). Collapsing/re-expanding the root changes the row count from 51
+    /// down to 1 and back WITHOUT any scroll — exactly the arrow-culling-
+    /// window-invalidation regression this finding targets. Used by
+    /// <c>/e2e/gantt-v3-tree?fixture=tall</c>.
+    /// </summary>
+    internal static List<GanttTask> TallHierarchyFixture()
+    {
+        var start = new DateTime(2026, 3, 1);
+        var tasks = new List<GanttTask> { new("th-root", "Root", start, start.AddDays(200)) };
+        for (var i = 0; i < 50; i++)
+        {
+            tasks.Add(new GanttTask($"th-{i}", $"Child {i}", start.AddDays(i), start.AddDays(i + 3),
+                Dependencies: i > 0 ? new[] { $"th-{i - 1}" } : null)
+            {
+                ParentId = "th-root",
+            });
+        }
+        return tasks;
+    }
+
+    /// <summary>
     /// A dedicated, small fixture anchored on <see cref="DateTime.Today"/> — the ONLY
     /// place in this file that reads the clock, and only because the today-marker
     /// itself only renders when "today" falls inside the (deterministic, ±60-day-padded
