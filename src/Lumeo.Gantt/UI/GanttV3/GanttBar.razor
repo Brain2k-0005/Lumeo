@@ -362,6 +362,24 @@
                     return;
                 }
 
+                // Bug fix (Codex round 17 review, P2): OnTaskClick can be
+                // REMOVED (flip to no delegate) in a LATER render while THIS
+                // register call is still in flight — wantPreventDefault above
+                // was read at the START of this render, so it's already stale
+                // by the time this await resolves. Re-reading
+                // OnTaskClick.HasDelegate now (the live, current value) and
+                // unregistering immediately if it's gone avoids committing
+                // "registered" against a desired state that no longer holds —
+                // the complement of the disposed check above, same
+                // "resume, recheck, correct" idiom.
+                if (!OnTaskClick.HasDelegate)
+                {
+                    try { await Interop.UnregisterPreventDefaultKeys(_barId); }
+                    catch (Microsoft.JSInterop.JSDisconnectedException) { }
+                    catch (InvalidOperationException) { }
+                    return;
+                }
+
                 _preventDefaultKeysRegistered = true;
             }
             catch (Microsoft.JSInterop.JSDisconnectedException) { }

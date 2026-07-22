@@ -862,10 +862,18 @@ public class TrackingInteropService : IComponentInteropService
     public int GanttV3RegisterVerticalScrollTrackingCallCount { get; private set; }
     public int GanttV3UnregisterVerticalScrollTrackingCallCount { get; private set; }
     private object? _ganttV3VerticalScrollDotNetRef;
+    /// <summary>When set, <see cref="GanttV3RegisterVerticalScrollTrackingAsync{T}"/>
+    /// returns this gate's Task instead of a completed one — letting a test
+    /// SUSPEND the register call mid-flight (Codex round 17 review, P2
+    /// finding #3, mirroring the same gate idiom already used for
+    /// RegisterPreventDefaultKeysGate/GanttV3ScrollCenterXGate). Complete it
+    /// to resume.</summary>
+    public TaskCompletionSource? GanttV3RegisterVerticalScrollTrackingGate { get; set; }
     public Task GanttV3RegisterVerticalScrollTrackingAsync<T>(ElementReference scrollEl, DotNetObjectReference<T> dotNetRef) where T : class
     {
         GanttV3RegisterVerticalScrollTrackingCallCount++;
         _ganttV3VerticalScrollDotNetRef = dotNetRef.Value;
+        if (GanttV3RegisterVerticalScrollTrackingGate is not null) return GanttV3RegisterVerticalScrollTrackingGate.Task;
         return Task.CompletedTask;
     }
     public Task GanttV3UnregisterVerticalScrollTrackingAsync(ElementReference scrollEl)

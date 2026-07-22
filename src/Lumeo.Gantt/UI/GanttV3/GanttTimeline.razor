@@ -389,6 +389,12 @@
     private bool _verticalScrollTrackingRegistered;
     private DotNetObjectReference<GanttTimeline>? _selfRef;
 
+    // Codex round 17 review, P2 — see RegisterVerticalScrollTrackingAsync's
+    // own remarks. Same "track disposed state, recheck after the register
+    // call's own await" pattern GanttBar.razor already uses for its
+    // identical key-handler-registration-vs-dispose race.
+    private bool _disposed;
+
     // Codex round 6, P1 #2 — the last scrollTop/clientHeight actually reported
     // (by JS, OR re-derived here) and the row count the culling window was
     // last computed against. Cached so a rows-count change (empty->populated,
@@ -464,8 +470,19 @@
     private ElementReference EffectiveScrollHost => ScrollHost ?? _scrollHostRef;
 
     private GanttScaleConfig Cfg => GanttScale.GetConfig(ViewMode);
-    private int EffectiveColumnWidth => ColumnWidth ?? Cfg.ColumnWidth;
-    private int EffectiveBarHeight => BarHeight ?? GanttScale.DefaultBarHeight;
+
+    // Bug fix (Codex round 17 review, P2): v2 resolves both overrides via a
+    // plain JS truthy check (gantt-v2.js: `inst.columnWidth ? ... : ...` /
+    // `inst.barHeight || DEFAULT_BAR_HEIGHT`) — 0 (or a negative value) is
+    // FALSY, so v2 silently treats it the same as "unset" and falls back to
+    // the default. `??` only checks for null, so a caller passing an explicit
+    // 0 here (whether deliberately or via some computed value that happens to
+    // resolve to it) got a genuinely broken chart in v3 (zero-width columns,
+    // zero-height bars) instead of the graceful default v2 falls back to —
+    // `> 0` on a nullable int is false for both null and non-positive values,
+    // matching v2's own truthy check exactly.
+    private int EffectiveColumnWidth => ColumnWidth > 0 ? ColumnWidth!.Value : Cfg.ColumnWidth;
+    private int EffectiveBarHeight => BarHeight > 0 ? BarHeight!.Value : GanttScale.DefaultBarHeight;
 
     private IReadOnlyList<DateTime> Units => GanttScale.BuildDateUnits(ViewMode, RangeStart, RangeEnd);
     private DateTime Origin => Units.Count > 0 ? Units[0] : RangeStart;
@@ -842,13 +859,34 @@
     // (Codex round 7 review, P2 #2) so a later identity change can unregister
     // the RIGHT (old) element rather than whatever EffectiveScrollHost has
     // since become.
-    private Task RegisterVerticalScrollTrackingAsync()
+    //
+    // Bug fix (Codex round 17 review, P2): _verticalScrollTrackingRegistered
+    // is set TRUE synchronously, right here, before the interop call below
+    // even starts — so DisposeAsync landing while that call is still in
+    // flight already sees it as "registered" and DOES fire its own unregister
+    // call. That isn't quite enough on its own: DisposeAsync's unregister can
+    // race the JS side's own (still in-flight) register call and lose —
+    // arriving before the register's own effects land there — leaving the
+    // listener registered forever with nothing left to ever tear it down
+    // again. Mirrors GanttBar's own register-vs-dispose fix: explicitly await
+    // the register call here (this method is now genuinely async, not just
+    // returning the interop Task for the caller to await), then re-check
+    // disposed state immediately after and issue one more unregister if so —
+    // deterministically closing the ordering gap DisposeAsync's own
+    // best-effort attempt can't guarantee alone.
+    private async Task RegisterVerticalScrollTrackingAsync()
     {
-        if (_verticalScrollTrackingRegistered) return System.Threading.Tasks.Task.CompletedTask;
+        if (_verticalScrollTrackingRegistered) return;
         _verticalScrollTrackingRegistered = true;
         _registeredScrollHostRef = EffectiveScrollHost;
         _selfRef ??= DotNetObjectReference.Create(this);
-        return Interop.GanttV3RegisterVerticalScrollTrackingAsync(EffectiveScrollHost, _selfRef);
+        await Interop.GanttV3RegisterVerticalScrollTrackingAsync(EffectiveScrollHost, _selfRef);
+
+        if (_disposed)
+        {
+            try { await Interop.GanttV3UnregisterVerticalScrollTrackingAsync(_registeredScrollHostRef.Value); }
+            catch (JSDisconnectedException) { }
+        }
     }
 
     // Codex round 7 review, P2 #2: tears down vertical-scroll tracking on the
@@ -978,6 +1016,11 @@
 
     public async ValueTask DisposeAsync()
     {
+        // Codex round 17 review, P2 — set UNCONDITIONALLY, before anything
+        // else: RegisterVerticalScrollTrackingAsync's own in-flight register
+        // call checks this right after its own await (see its remarks).
+        _disposed = true;
+
         if (_headerScrollSyncRegistered)
         {
             try { await Interop.GanttV3UnregisterHeaderScrollSyncAsync(_scrollHostRef); }

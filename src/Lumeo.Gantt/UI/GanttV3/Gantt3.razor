@@ -216,7 +216,17 @@
     // by mode (rather than reading _state.ViewMode) so a reconcile records the
     // width against the mode it belongs to, not whatever mode happens to be
     // committed at the moment (Codex round 14, finding #1).
-    private int EffectiveColumnWidthFor(GanttViewMode mode) => ColumnWidth ?? GanttScale.GetConfig(mode).ColumnWidth;
+    //
+    // Bug fix (Codex round 17 review, P2): `> 0` (not `??`) — mirrors
+    // GanttTimeline.EffectiveColumnWidth's OWN identical fix (see its own
+    // remarks for the full v2-parity reasoning: v2 treats a 0/negative
+    // override as "unset" via a plain JS truthy check). Kept consistent with
+    // that property deliberately — this value feeds the reconcile's own
+    // snapshot/capture math, so if it disagreed with what GanttTimeline
+    // actually renders, the reconcile would decide "did ColumnWidth change"
+    // and decode captured scroll positions against a DIFFERENT width than
+    // the one on screen.
+    private int EffectiveColumnWidthFor(GanttViewMode mode) => ColumnWidth > 0 ? ColumnWidth!.Value : GanttScale.GetConfig(mode).ColumnWidth;
 
     // The resolved tree-pane visibility for an ARBITRARY task set — the same
     // rule as EffectiveShowTreePane (used in markup against _state.Tasks), but
@@ -296,6 +306,27 @@
              prospectiveTaskRange.Value.Start > _state.VisibleRange.End);
 
         var decision = GanttViewportReconciler.Decide(prev, next, taskRangeDisjoint);
+
+        // Bug fix (Codex round 17 review, P1): an unrelated parent re-render
+        // (e.g. a Class-only change, or literally the same values re-pushed)
+        // reaches OnParametersSetAsync's own unconditional ReconcileAsync call
+        // on EVERY pass — before this fix, THIS call would still run all the
+        // way down to BeginReconcile() below even when Decide finds NOTHING
+        // changed at all, claiming a generation for no reason and silently
+        // aborting a genuinely useful, currently-suspended reconcile (e.g. a
+        // toolbar mode switch whose own capture await is still outstanding) —
+        // the exact same class of bug round 16's own theme-notification fix
+        // closed for the OnThemeChanged path, now closed here for the
+        // parameter path. Range==Keep && Target==None is provably "nothing in
+        // the diff changed at all" (see GanttViewportReconciler.Decide's own
+        // structure: tasksChanged always forces TaskDerived, viewModeChanged
+        // always forces SelfCenteredOnCapture/CapturedCenter, so Keep+None can
+        // only result when tasksChanged/viewModeChanged/geometryChanged are
+        // ALL false) — which also means `next` is field-for-field identical
+        // to `prev` already, so there is nothing left to do; abandon before
+        // ever claiming a generation.
+        if (decision.Range == GanttRangeSource.Keep && decision.Target == GanttScrollTarget.None)
+            return false;
 
         // CAPTURE PHASE — read the pane's live center under the OLD geometry,
         // BEFORE any state mutation, so the intermediate render Blazor Server
@@ -513,6 +544,22 @@
     public void Dispose()
     {
         Theme.OnThemeChanged -= OnThemeChanged;
+
+        // Bug fix (Codex round 17 review, P2): a reconcile currently suspended
+        // awaiting the live-center capture (ResolveCurrentCenterDateAsync)
+        // used to have NOTHING invalidate it on disposal — only unsubscribing
+        // from the theme event above, which does nothing for a reconcile
+        // already in flight via any of the OTHER two triggers (a parameter
+        // pass, a toolbar click). Its resumed continuation would still commit
+        // to _state, call StateHasChanged, or fire ViewModeChanged on an
+        // already-disposed component. Claiming one final generation here
+        // reuses the EXISTING abandon mechanism (round 15) rather than a
+        // second, independent "_disposed" flag: any suspended reconcile's own
+        // IsCurrentReconcile check fails the instant it resumes, so it
+        // abandons cleanly — no further state mutation, no interop, no
+        // callback — through the exact same path an ordinary superseding
+        // reconcile already takes.
+        BeginReconcile();
     }
 
     // Codex round 2, P2 #9 — see EffectiveToday's remarks. Resolved once via
