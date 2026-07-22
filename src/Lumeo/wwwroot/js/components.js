@@ -1179,6 +1179,31 @@ export function unregisterPinchZoom(elementId) {
 const drawerHandlers = new Map();
 const drawerSnapHandlers = new Map();
 
+// #381 Codex P1 — the drawer panel itself became a scroll container
+// (overflow-y-auto, so tall content stays reachable) alongside these
+// touch-driven dismiss/snap gestures, which are ALSO vertical for a
+// Top/Bottom drawer — the same axis. Without this check, a finger drag that's
+// meant to scroll the panel's own content is indistinguishable from a
+// drag meant to close it, and the swipe handler would start dragging the
+// whole panel out from under the user's scroll attempt.
+//
+// vaul's own rule (the reference this drawer follows) is the fix: a
+// dismiss/close-direction drag only ever ARMS once the panel's scrollable
+// content is already at the boundary the drag would otherwise scroll PAST —
+// scrollTop 0 for a "drag down to close" (Bottom drawer), or fully
+// scrolled-to-bottom for "drag up to close" (Top drawer). Until that boundary
+// is reached, the native scroll wins outright (these listeners are `passive`
+// and never call preventDefault, so scrolling was never blocked — only the
+// panel's OWN transform-dragging needed gating). `sign` is each caller's own
+// dismiss-direction constant (+1 = drag-down closes, -1 = drag-up closes) —
+// same convention both registerDrawerSwipe (dismissSign) and
+// registerDrawerSnap (sign) already use.
+function isScrolledToClosingBoundary(el, sign) {
+    return sign > 0
+        ? el.scrollTop <= 0
+        : el.scrollTop + el.clientHeight >= el.scrollHeight - 1; // 1px rounding slack
+}
+
 export function registerDrawerSwipe(elementId, direction, dotnetRef, options) {
     const el = document.getElementById(elementId);
     if (!el) return;
@@ -1269,6 +1294,21 @@ export function registerDrawerSwipe(elementId, direction, dotnetRef, options) {
             if (dominantHorizontal !== isHorizontal) {
                 aborted = true;
                 return;
+            }
+            // #381 Codex P1 — see isScrolledToClosingBoundary's own remarks
+            // (Top/Bottom drawer: dismiss and scroll share the vertical axis).
+            // Only gates the CLOSING direction: a drag the wrong way (e.g.
+            // swiping up on a bottom drawer) never actually drags the panel
+            // anyway (the sign !== dismissSign branch below already resets
+            // the transform to a no-op every frame), so it can't fight
+            // scrolling regardless of this check. Deliberately NOT `aborted`
+            // — unlike the axis mismatch above (a permanent geometric fact
+            // about this gesture), "not yet at the scroll boundary" can
+            // resolve later in the SAME gesture as native scrolling
+            // continues, so this re-checks on every subsequent move instead.
+            if (!isHorizontal) {
+                const closingDirection = Math.sign(dy) === dismissSign;
+                if (closingDirection && !isScrolledToClosingBoundary(el, dismissSign)) return;
             }
             active = true;
         }
@@ -1439,6 +1479,22 @@ export function registerDrawerSnap(elementId, direction, dotnetRef, options) {
         const now = performance.now();
         samples.push({ pos: y, t: now });
         while (samples.length > 2 && now - samples[0].t > VELOCITY_WINDOW_MS) samples.shift();
+
+        // #381 Codex P1 — see isScrolledToClosingBoundary's own remarks
+        // (shared with registerDrawerSwipe). Unlike that gesture (which has
+        // an activation threshold to rebase the visual offset from), this
+        // one drags from the very first touchmove — so while gated, rebase
+        // startY/baseOffset to the CURRENT position on every gated frame.
+        // Once the gate clears (native scroll reaches the boundary), the
+        // drag starts from a zero delta instead of jumping by however far
+        // the finger already travelled while gated.
+        const closingDirection = Math.sign(y - startY) === sign;
+        if (closingDirection && !isScrolledToClosingBoundary(el, sign)) {
+            startY = y;
+            baseOffset = offsetFor(activeIndex);
+            return;
+        }
+
         const proposed = clampOffset(baseOffset + (y - startY));
         el.style.transform = `translateY(${proposed}px)`;
     };
