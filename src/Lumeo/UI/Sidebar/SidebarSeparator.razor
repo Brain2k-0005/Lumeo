@@ -1,8 +1,28 @@
 @namespace Lumeo
 
-<div class="@CssClass" role="none" @attributes="AdditionalAttributes"></div>
+@* Bug fix (feedback wave): a <div> root is invalid directly inside a <ul>
+   (SidebarMenu) — see SidebarMenu's own remarks on the cascaded
+   LumeoSidebarInsideMenu marker this reads to auto-detect that placement. *@
+@if (InsideMenu)
+{
+    <li role="presentation">
+        <div class="@CssClass" role="none" @attributes="AdditionalAttributes"></div>
+    </li>
+}
+else
+{
+    <div class="@CssClass" role="none" @attributes="AdditionalAttributes"></div>
+}
 
 @code {
+    /// <summary>
+    /// Cascaded by <see cref="Lumeo.SidebarMenu"/> when this separator is used to break
+    /// up a single menu's items into visual sub-sections. Absent (false) everywhere
+    /// else — e.g. between two <see cref="Lumeo.SidebarGroup"/>s, the pattern this
+    /// library's own docs demonstrate.
+    /// </summary>
+    [CascadingParameter(Name = "LumeoSidebarInsideMenu")] private bool InsideMenu { get; set; }
+
     /// <summary>Additional CSS classes merged onto the root <c>div</c> element.</summary>
     [Parameter] public string? Class { get; set; }
 
