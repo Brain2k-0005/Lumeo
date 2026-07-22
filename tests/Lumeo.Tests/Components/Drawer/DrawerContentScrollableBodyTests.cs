@@ -98,4 +98,19 @@ public class DrawerContentScrollableBodyTests : IAsyncLifetime
         var footers = cut.FindAll("div").Where(d => d.TextContent.Contains("Actions")).ToList();
         Assert.Contains(footers, f => (f.GetAttribute("class") ?? "").Contains("shrink-0"));
     }
+
+    // #381 Codex P2: overflow-y-auto alone computes overflow-x to "auto" too
+    // (the same CSS quirk class documented on GanttTimeline's RootClass, the
+    // other axis) — clipping anything that visually extends past the panel's
+    // horizontal edges, including a focus ring on flush-edge content. p-1.5
+    // reserves just enough inset to contain a standard ring-offset-2 ring;
+    // verified with a real headless Chromium render (a flush button's ring
+    // clips at zero padding, is fully visible at 6px/p-1.5).
+    [Fact]
+    public void Panel_Root_Reserves_Padding_So_Flush_Edge_Focus_Rings_Are_Not_Clipped()
+    {
+        var cut = RenderDrawer(b => b.AddContent(0, "Content"));
+
+        Assert.Contains("p-1.5", cut.Find("[role='dialog']").GetAttribute("class"));
+    }
 }
