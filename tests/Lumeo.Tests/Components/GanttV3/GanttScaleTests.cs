@@ -114,11 +114,42 @@ public class GanttScaleTests : IDisposable
     }
 
     [Fact]
-    public void AlignToUnitStart_Day_And_Hour_Leave_The_Date_Unchanged()
+    public void AlignToUnitStart_Day_Leaves_The_Date_Unchanged()
     {
+        // Day-unit modes (Day/Week) have no sub-day boundary to snap to — a
+        // real time-of-day carried through to a rendered column's own
+        // "day number" label is unaffected by it (that label reads only the
+        // .Day property), unlike Hour-unit modes below.
         var date = Utc(2026, 3, 15, 14, 30);
         Assert.Equal(date, GanttScale.AlignToUnitStart(GanttViewMode.Day, date));
-        Assert.Equal(date, GanttScale.AlignToUnitStart(GanttViewMode.QuarterDay, date));
+    }
+
+    // Bug fix (Codex round 11 review, P2 #2): Hour-unit modes (QuarterDay/
+    // HalfDay) used to ALSO leave the date unchanged (the test above covered
+    // both before this fix) — but a live-scroll-captured continuous center
+    // carries arbitrary minutes/seconds, which a sub-day mode's own rendered
+    // header labels (Time6h/Time12h) show verbatim, misaligning every column
+    // boundary against a clean 6-/12-hour grid. See GanttScale.AlignToUnitStart's
+    // own remarks for the full reasoning.
+    [Fact]
+    public void AlignToUnitStart_QuarterDay_Floors_To_The_Nearest_Six_Hour_Boundary()
+    {
+        var aligned = GanttScale.AlignToUnitStart(GanttViewMode.QuarterDay, Utc(2026, 3, 15, 14, 37));
+        Assert.Equal(Utc(2026, 3, 15, 12, 0), aligned);
+    }
+
+    [Fact]
+    public void AlignToUnitStart_HalfDay_Floors_To_The_Nearest_Twelve_Hour_Boundary()
+    {
+        var aligned = GanttScale.AlignToUnitStart(GanttViewMode.HalfDay, Utc(2026, 3, 15, 14, 37));
+        Assert.Equal(Utc(2026, 3, 15, 12, 0), aligned);
+    }
+
+    [Fact]
+    public void AlignToUnitStart_QuarterDay_Already_On_A_Boundary_Stays_Unchanged()
+    {
+        var aligned = GanttScale.AlignToUnitStart(GanttViewMode.QuarterDay, Utc(2026, 3, 15, 18, 0));
+        Assert.Equal(Utc(2026, 3, 15, 18, 0), aligned);
     }
 
     [Fact]

@@ -429,6 +429,21 @@ internal static class GanttScale
         {
             GanttScaleUnit.Month => new DateTime(date.Year, date.Month, 1, 0, 0, 0, date.Kind),
             GanttScaleUnit.Year => new DateTime(date.Year, 1, 1, 0, 0, 0, date.Kind),
+            // Bug fix (Codex round 11 review, P2 #2): sub-day modes (QuarterDay/
+            // HalfDay, Hour unit) previously fell through to the `_ => date`
+            // default below — a live-scroll-captured continuous center carries
+            // arbitrary minutes/seconds (PixelToDateContinuous's Hour branch is
+            // `origin.AddHours(...)`, no rounding), so re-centering on it left the
+            // new range's own start (and therefore every subsequent column
+            // boundary BuildDateUnits generates from it) sitting at, say,
+            // 14:37 instead of a clean 6-/12-hour boundary — every rendered
+            // Time6h/Time12h header label would show the wrong time, offset by
+            // that same arbitrary remainder. Floors the hour to the nearest
+            // multiple of the mode's own step (6 for QuarterDay, 12 for HalfDay)
+            // and drops minutes/seconds/sub-second ticks entirely, mirroring
+            // the Month/Year branches' own "snap down to the unit's own
+            // boundary" semantics.
+            GanttScaleUnit.Hour => new DateTime(date.Year, date.Month, date.Day, (date.Hour / cfg.Step) * cfg.Step, 0, 0, date.Kind),
             _ => date,
         };
     }
