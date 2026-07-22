@@ -179,10 +179,29 @@ public class GanttParityVisualTests : GanttParityTestBase
         }
     }
 
+    // Bug fix (Codex round 7 review / cx7b, Important #1): a fixed 5-level
+    // `..` walk from AppContext.BaseDirectory assumes
+    // tests/Lumeo.Tests.E2E/bin/{Config}/net10.0/ — but running with
+    // `--arch x64` (this repo's own documented local-dev requirement; see
+    // the toolchain notes) adds an extra RID segment
+    // (bin/{Config}/net10.0/win-x64/), so the fixed walk landed one level too
+    // SHALLOW, doubling the "tests" segment (tests/tests/Lumeo.Tests.E2E/...)
+    // and reporting every baseline as "missing" regardless of whether it
+    // actually exists — the visual suite could never run locally at all
+    // under the arch flag this repo's own test instructions require. Anchors
+    // on Lumeo.slnx instead (same pattern as CliVendorE2ETests/
+    // DocsCoverageTests' own FindRepoRoot), which is RID-segment-agnostic.
     private static string GetSnapshotsDir()
     {
-        var here = AppContext.BaseDirectory;
-        var repo = Path.GetFullPath(Path.Combine(here, "..", "..", "..", "..", ".."));
+        var repo = FindRepoRoot(AppContext.BaseDirectory)
+            ?? throw new InvalidOperationException("Repo root (Lumeo.slnx) not found above " + AppContext.BaseDirectory);
         return Path.Combine(repo, "tests", "Lumeo.Tests.E2E", "Snapshots");
+    }
+
+    private static string? FindRepoRoot(string start)
+    {
+        for (var d = new DirectoryInfo(start); d is not null; d = d.Parent)
+            if (File.Exists(Path.Combine(d.FullName, "Lumeo.slnx"))) return d.FullName;
+        return null;
     }
 }

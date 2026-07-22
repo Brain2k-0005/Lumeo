@@ -1,4 +1,5 @@
 using System.Linq;
+using System.Reflection;
 using Bunit;
 using Lumeo.GanttV3;
 using Lumeo.Tests.Helpers;
@@ -15,6 +16,11 @@ namespace Lumeo.Tests.Components.GanttV3;
 /// docs/superpowers/gantt-v3-cx7-report.md for the full per-finding writeup.
 /// Finding #1 (GanttScale month-fraction clamp degeneracy) is covered in
 /// GanttScaleTests.cs alongside the existing round-6 tests it refines.
+///
+/// Also carries the cx7b review fix-round's own coverage (2 Important:
+/// visual-suite path anchoring - covered by GanttParityVisualTests itself,
+/// no bUnit angle - and the browser-today thrash fix below). See
+/// docs/superpowers/gantt-v3-cx7-report.md's own cx7b section.
 /// </summary>
 public class GanttV3CodexRound7Tests : IAsyncLifetime
 {
@@ -123,22 +129,45 @@ public class GanttV3CodexRound7Tests : IAsyncLifetime
         Assert.Equal(2, _interop.GanttV3GetLocalDateCallCount);
     }
 
-    [Fact]
-    public void Gantt3_Reresolves_The_Browser_Date_On_A_Later_Render_Once_The_Servers_Own_Day_Has_Advanced()
+    // ── Gantt3: browser-date thrash fix (cx7b review, Important #2) ────────
+    //
+    // Superseded the original round-7 "Gantt3_Reresolves_The_Browser_Date_
+    // On_A_Later_Render_Once_The_Servers_Own_Day_Has_Advanced" test, which
+    // asserted the OLD (buggy) staleness gate's own behavior - comparing the
+    // server's current day against the CACHED BROWSER day. That looked
+    // right but wasn't: for a user whose browser sits WEST of the server,
+    // the server's own midnight lands hours before theirs, so
+    // "server day > cached browser day" stayed true for the WHOLE gap in
+    // between, re-querying the browser on literally every render in that
+    // window (proven directly below: 15 renders, still cached far in the
+    // past, and only the ONE firstRender query ever happens now). Fixed by
+    // gating on the SERVER's own day advancing since the LAST CHECK
+    // (_lastCheckedServerDay) instead of against the browser's cached value.
+    //
+    // These tests use reflection to read/write the private
+    // _lastCheckedServerDay field directly - there's no other observable way
+    // to simulate "the server's day already advanced since the component's
+    // last check" without controlling the real wall clock, and the field's
+    // own semantics (a plain per-instance timestamp of the last check, nothing
+    // event-driven) make direct manipulation safe and precise here.
+
+    private static void SetLastCheckedServerDay(L.Gantt3 instance, DateTime value)
     {
-        // Complements the explicit-click test above: even WITHOUT a Today
-        // click, a later render must re-query the browser once the cheap,
-        // interop-free staleness signal fires (the server's own current day
-        // has advanced past whatever was cached) - this is what actually
-        // corrects a long-mounted chart's marker/highlight without requiring
-        // user interaction at all. Uses a browser date placed in the PAST
-        // relative to the real system clock this suite runs under, so the
-        // signal is guaranteed to already be true - in fact this fires on the
-        // very NEXT render this component performs on its own (the firstRender
-        // resolution's own StateHasChanged calls are enough to trigger it),
-        // regardless of which day the suite happens to execute on. Asserting
-        // "at least 2" rather than an exact count keeps this robust against
-        // exactly how many follow-up renders bUnit's dispatcher schedules.
+        var field = typeof(L.Gantt3).GetField("_lastCheckedServerDay", BindingFlags.NonPublic | BindingFlags.Instance);
+        Assert.NotNull(field);
+        field!.SetValue(instance, (DateTime?)value);
+    }
+
+    [Fact]
+    public void Gantt3_Does_Not_Requery_The_Browser_On_Every_Render_While_The_Servers_Day_Is_Unchanged()
+    {
+        // Regression for the west-of-server thrash: a cached browser date far
+        // in the past (simulating a user whose browser hasn't yet reached
+        // the server's own current calendar day) must NOT trigger a fresh
+        // interop call on every subsequent render - only firstRender's own
+        // resolution should have queried at all, since _lastCheckedServerDay
+        // gets seeded to the server's CURRENT day right after that, and stays
+        // unchanged (same real day) for every render performed by this test.
         _interop.GanttV3LocalDateToReturn = "2020-01-01";
 
         var task = new L.GanttTask("t1", "Task", D(2020, 1, 1), D(2020, 1, 5));
@@ -146,7 +175,53 @@ public class GanttV3CodexRound7Tests : IAsyncLifetime
             .Add(c => c.Tasks, new List<L.GanttTask> { task })
             .Add(c => c.ViewMode, L.GanttViewMode.Month));
 
-        cut.WaitForAssertion(() => Assert.True(_interop.GanttV3GetLocalDateCallCount >= 2,
-            $"expected the stale cached date to trigger at least one re-query, got {_interop.GanttV3GetLocalDateCallCount} calls"));
+        cut.WaitForAssertion(() => Assert.Equal(1, _interop.GanttV3GetLocalDateCallCount));
+
+        // Several more renders, all still the same real server day - the OLD
+        // gate would have re-queried on every single one of these (server's
+        // real today is always > the far-past 2020-01-01 cached value).
+        for (var i = 0; i < 5; i++)
+        {
+            cut.Render(p => p
+                .Add(c => c.Tasks, new List<L.GanttTask> { task, new($"t{i}", $"Task {i}", D(2020, 1, 1), D(2020, 1, 2)) })
+                .Add(c => c.ViewMode, L.GanttViewMode.Month));
+        }
+
+        Assert.Equal(1, _interop.GanttV3GetLocalDateCallCount);
+    }
+
+    [Fact]
+    public void Gantt3_Requeries_Exactly_Once_When_The_Servers_Own_Day_Has_Advanced_Since_The_Last_Check()
+    {
+        // Complements the no-thrash test above: the gate must still actually
+        // fire - exactly once - once the SERVER's own day genuinely advances
+        // past whatever was recorded at the last check. Simulates that
+        // advance directly (see SetLastCheckedServerDay's own remarks) rather
+        // than waiting on the real wall clock.
+        _interop.GanttV3LocalDateToReturn = "2026-07-22";
+
+        var task = new L.GanttTask("t1", "Task", D(2026, 1, 1), D(2026, 1, 5));
+        var cut = _ctx.Render<L.Gantt3>(p => p
+            .Add(c => c.Tasks, new List<L.GanttTask> { task })
+            .Add(c => c.ViewMode, L.GanttViewMode.Month));
+
+        cut.WaitForAssertion(() => Assert.Equal(1, _interop.GanttV3GetLocalDateCallCount));
+
+        SetLastCheckedServerDay(cut.Instance, DateTime.Today.AddDays(-1));
+
+        cut.Render(p => p
+            .Add(c => c.Tasks, new List<L.GanttTask> { task })
+            .Add(c => c.ViewMode, L.GanttViewMode.Month));
+
+        Assert.Equal(2, _interop.GanttV3GetLocalDateCallCount);
+
+        // A further render on the SAME (now-current, just-re-seeded) server
+        // day must not re-query again - the "exactly once per advance" half
+        // of the contract.
+        cut.Render(p => p
+            .Add(c => c.Tasks, new List<L.GanttTask> { task })
+            .Add(c => c.ViewMode, L.GanttViewMode.Month));
+
+        Assert.Equal(2, _interop.GanttV3GetLocalDateCallCount);
     }
 }

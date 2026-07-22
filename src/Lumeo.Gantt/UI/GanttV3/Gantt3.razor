@@ -229,6 +229,13 @@
     private DateTime? _browserToday;
     private DateTime EffectiveToday => _browserToday ?? DateTime.Today;
 
+    // Codex round 7 review / cx7b, Important #2 — see the staleness check in
+    // OnAfterRenderAsync below. The SERVER's own current day the last time
+    // that check ran (NOT the browser's cached day) — deliberately a
+    // separate value from _browserToday so the check's trigger condition
+    // never depends on how far apart the server's and browser's clocks are.
+    private DateTime? _lastCheckedServerDay;
+
     protected override void OnInitialized()
     {
         _lastSeenViewMode = ViewMode;
@@ -266,6 +273,11 @@
             StateHasChanged();
 
             await RefreshBrowserTodayAsync();
+            // Seeds the server-day baseline the staleness check below
+            // compares against, so the very next render doesn't immediately
+            // re-query again just because _lastCheckedServerDay was still
+            // null (this firstRender pass already resolved the value).
+            _lastCheckedServerDay = DateTime.Today.Date;
             return;
         }
 
@@ -275,22 +287,41 @@
         // true for a chart left open across local midnight (a dashboard tab
         // kept open overnight, say), which then reported yesterday as "today"
         // for the rest of its lifetime: stale Today marker/highlight column,
-        // and a Today-button click that recentered on the wrong day. A full
-        // JS round-trip on EVERY render would be wasteful for a value that
-        // changes at most once a day, so this gates the re-query behind a
-        // cheap, synchronous, interop-free signal first: the SERVER's own
-        // current calendar day advancing past whatever was last cached. That
-        // signal can lag a little around a client/server timezone mismatch
-        // (a browser several hours behind or ahead of the server's own clock)
-        // but self-corrects the SAME way the original firstRender resolution
-        // did — a render or two later — and never leaves the value stale
-        // indefinitely the way the old one-shot design did. No timer: this
-        // check piggybacks on renders that are already happening for other
-        // reasons, which is sufficient for a value that only needs to be
-        // "eventually correct within a render or two of midnight passing",
-        // not "corrected at the exact instant midnight passes".
-        if (_browserToday is { } cachedToday && DateTime.Today.Date > cachedToday.Date)
-            await RefreshBrowserTodayAsync();
+        // and a Today-button click that recentered on the wrong day.
+        //
+        // Bug fix (Codex round 7 review / cx7b, Important #2): the FIRST
+        // attempt at this gated the re-query behind "the server's current day
+        // is past the CACHED BROWSER day" — which sounds equivalent but isn't:
+        // for a user whose browser is WEST of the server (the server's local
+        // midnight lands hours before theirs), that condition stays TRUE for
+        // the entire gap between the server's midnight and the browser's own
+        // — every render in that (potentially many-hour) window re-queried
+        // the browser, each one correctly finding nothing had actually
+        // changed yet. A full JS round-trip on every render defeats the whole
+        // point of gating this at all.
+        //
+        // Fixed by comparing the server's day against the server's OWN day at
+        // the last check (_lastCheckedServerDay), not against the browser's
+        // cached value — this can only become true once per SERVER calendar
+        // day, however many renders happen in between, regardless of how far
+        // apart the server's and browser's clocks are. _lastCheckedServerDay
+        // is updated unconditionally on every check (not only when a
+        // re-query actually happens), so a render landing just after the
+        // server's midnight consumes the one allotted check for that whole
+        // day even if the browser itself hasn't rolled over yet (still
+        // correctly a no-op inside RefreshBrowserTodayAsync in that case).
+        // Trade-off, accepted deliberately: a user WEST of the server whose
+        // own midnight falls AFTER the server's may not get re-checked again
+        // until the FOLLOWING server midnight, rather than immediately after
+        // their own — same "eventually correct, not instantly" contract the
+        // original design already had, just now bounded to at most one
+        // interop call per server day instead of thrashing every render. The
+        // Today button's own unconditional refresh remains the instant-
+        // correction path for any user who actually needs it right now.
+        var serverToday = DateTime.Today.Date;
+        var serverDayAdvanced = _lastCheckedServerDay is null || serverToday > _lastCheckedServerDay.Value;
+        _lastCheckedServerDay = serverToday;
+        if (serverDayAdvanced) await RefreshBrowserTodayAsync();
     }
 
     // Queries the browser's local date via JS and reconciles it against the
