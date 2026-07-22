@@ -509,179 +509,195 @@
             : ViewMode != _lastSeenViewMode;
         _lastSeenViewMode = ViewMode;
 
-        // Bug fix (Codex round 7 review, P2 #4; extended Codex round 8 review,
-        // P2 #1/#2): TWO distinct things can change what physical position on
-        // screen a given ScrollTargetX pixel maps to, on an ALREADY-MOUNTED
-        // chart, without VisibleRange itself changing at all:
-        //
-        //  - direction flipping (a DirectionProvider ancestor toggling
-        //    Direction, or the global ThemeService's CurrentDirection
-        //    changing) — even when ScrollHostLeadingOffset stays the SAME
-        //    numeric value (e.g. no tree pane shown at all), the DOM's own
-        //    logical-to-native scrollLeft convention still differs between
-        //    LTR and RTL (the same RTL-scroll-normalization machinery
-        //    GanttV3ScrollToXAsync's own JS side applies), so the native
-        //    scrollLeft the browser is CURRENTLY holding no longer corresponds
-        //    to the same visual position under the new direction.
-        //  - ScrollHostLeadingOffset itself changing (round 8, P2 #1):
-        //    EffectiveShowTreePane flipping (ShowTreePane parameter change,
-        //    GroupBy added/removed, or the first task setting ParentId all
-        //    feed GanttRowModel.DefaultShowTreePane) shifts where the
-        //    timeline's own physical origin sits relative to the shared
-        //    scroll pane by exactly TreePaneWidth.
-        //
-        // Both recomputed ScrollHostLeadingOffset/flex-side layout correctly
-        // on their own (it's a plain, live-read computed property) — what was
-        // missing is telling GanttTimeline to re-request its OWN DOM
-        // scrollLeft against the NEW layout at all.
-        //
-        // Bug fix (Codex round 8 review, P2 #2): re-requesting via the SAME
-        // change-token GanttTimeline already watches used to just fall
-        // through to GanttTimeline's own ScrollTargetX (ScrollTargetDate ??
-        // Today) — correct for the common case (a fresh mount, or right
-        // after a view-mode switch, both of which DO set ScrollTargetDate),
-        // but wrong the moment a user has manually panned the DOM with
-        // neither trigger involved: the flip/offset-change would silently
-        // snap back to Today (or a stale prior centerDate) instead of
-        // preserving whatever the user was actually looking at. Reuses the
-        // SAME live-scroll-read approach HandleViewModeChangedAsync's own
-        // ResolveCurrentCenterDateAsync already established for the
-        // identical "preserve what's actually on screen" problem — captured
-        // BEFORE this render pushes the new direction/tree-pane layout to
-        // the browser (Blazor defers rendering until this whole async method
-        // completes), using the OLD leading offset (reconstructed from the
-        // tracked previous showTreePane/direction values) rather than the
-        // NEW live property, since the DOM itself hasn't visually changed
-        // yet at this point but ScrollHostLeadingOffset's OWN read already
-        // reflects the NEW parameter values.
-        //
-        // Extracted (Codex round 9 review, P2 #7) so OnThemeChanged (see
-        // OnInitialized's own remarks) can run the IDENTICAL reconcile for a
-        // direction change that arrives via the global ThemeService directly
-        // rather than a DirectionProvider parameter — this method itself has
-        // no idea which trigger fired it, it just compares the tracked
-        // "last seen" values against the current ones, exactly as before.
-        //
-        // Bug fix (Codex round 10 review, P2 #2; consolidated into this ONE
-        // call Codex round 11 review, P2 #1): a PARENT-driven ViewMode
-        // parameter change (a two-way-bound consumer setting it directly,
-        // not a click through GanttNav's own toolbar) needs the EXACT same
-        // "capture live center, rebuild range around it, recenter" treatment
-        // as a tree-pane/direction change — round 10's fix routed it through
-        // a SEPARATE call to ApplyViewModeChangeAsync instead, which captured
-        // its OWN live center independently; when a ViewMode change landed
-        // in the SAME render as a tree-pane/direction change, that produced
-        // TWO captures under inconsistent, order-dependent geometry (see
-        // ReconcileRecenterTriggersAsync's own remarks for the exact
-        // mechanics). Passing viewModeChanged (gated on _rangeInitialized —
-        // first mount is handled entirely separately below, with no live
-        // center to preserve at all) folds it into the SAME single
-        // capture-then-recenter pass instead.
-        await ReconcileRecenterTriggersAsync(viewModeChanged && _rangeInitialized);
-
         if (!_rangeInitialized)
         {
             // First mount only — nothing has been scrolled to yet, so there is
             // no live center to preserve; seed the range from the tasks' own
             // min/max (or the empty-list today-based fallback) exactly as
-            // before.
+            // before. Tree-pane/direction tracking is seeded here too so the
+            // very next render's own comparisons (in whichever branch below
+            // runs then) have a real baseline instead of null.
             _lastPushedViewMode = ViewMode;
             _state.SetViewMode(ViewMode);
             _state.SetVisibleRange(ComputeInitialRange(_state.ViewMode, _state.Tasks, EffectiveToday));
             _rangeInitialized = true;
+            _lastSeenEffectiveShowTreePane = EffectiveShowTreePane;
+            _lastSeenDirection = EffectiveDirection;
+            return;
         }
-        else if (viewModeChanged)
-        {
-            // Already fully handled by ReconcileRecenterTriggersAsync above
-            // (mode set, range rebuilt, recenter requested) — kept as its own
-            // branch (rather than folding tasksChanged's own condition into
-            // `else if (tasksChanged && !viewModeChanged)`) to preserve the
-            // ORIGINAL mutual exclusivity: a ViewMode change landing in the
-            // SAME render as a task-set change still wins outright here, same
-            // as before this round — tasksChanged's own min/max-driven range
-            // rebuild must not run right after and clobber the live-center
-            // recenter ReconcileRecenterTriggersAsync just applied.
-        }
-        else if (tasksChanged)
-        {
-            // Bug fix (Codex review wave): an async-loaded (or otherwise later-
-            // arriving) task set can land entirely outside the range computed
-            // at mount/last-recompute — mirrors v2, which re-derives its
-            // min/max-driven date window from whatever `tasks` render() sees
-            // on every call (gantt-v2.js lines 156-164), never keeping a
-            // stale window across a task-set change. Recompute around the NEW
-            // tasks, but do NOT touch ViewMode/_state.SetViewMode here: the
-            // user's current zoom level (possibly set via GanttNav's toolbar,
-            // uncontrolled, and therefore not reflected by a possibly-stale
-            // ViewMode PARAMETER) must survive a tasks-only change.
-            var wasEmpty = previousTasks.Count == 0;
-            var nowEmpty = _state.Tasks.Count == 0;
-            _state.SetVisibleRange(ComputeInitialRange(_state.ViewMode, _state.Tasks, EffectiveToday));
 
-            // Bug fix (Codex round 3, P2 #2): recomputing VisibleRange above
-            // repositions where things fall in the timeline's OWN pixel space,
-            // but — same reasoning as GoToTodayAsync's own remarks below —
-            // never touches the DOM's actual scrollLeft. An empty first render
-            // never scrolled anywhere meaningful (there was nothing to center
-            // on), so when tasks arrive later (the common async-load shape:
-            // render empty, then populate once a fetch completes), nothing
-            // previously told GanttTimeline to re-attempt its initial-viewport
-            // scroll — it just stayed wherever it happened to be, typically 0.
-            // Bumping the SAME change-token GoToTodayAsync uses re-triggers
-            // that attempt, exactly as if the now-populated task set had been
-            // there from the start.
-            //
-            // Bug fix (Codex round 11 review, P2 #3): the REVERSE transition
-            // (populated -> empty — a consumer clearing Tasks, e.g. after a
-            // delete-all action) rebuilt the range around the empty-list
-            // today-based fallback above but never requested a recenter
-            // either — the viewport stayed wherever it was under the OLD
-            // (populated) range's coordinate space, now showing an ARBITRARY
-            // region of the brand-new fallback window (and the "No tasks to
-            // display" empty-state message, itself unaffected by this fix,
-            // could easily sit outside that arbitrary scroll position too).
-            // wasEmpty != nowEmpty covers BOTH transitions with the SAME
-            // logic — a populated->populated task-set change (nowEmpty stays
-            // false either way) is intentionally UNAFFECTED, matching this
-            // finding's own scope.
-            if (wasEmpty != nowEmpty)
-            {
-                // Codex round 4, P2 #8: this recenter targets Today by
-                // default (ComputeInitialRange's own EMPTY-list fallback
-                // branch centers that window around it) — clear any stale
-                // centerDate a PREVIOUS view-mode switch may have left
-                // behind, same reasoning as GoToTodayAsync's own reset.
-                //
-                // Bug fix (Codex round 9 review, P2 #5): but the NEWLY
-                // arrived tasks are what ComputeInitialRange just derived
-                // the range FROM (the non-empty branch, since previousTasks
-                // was empty and _state.Tasks isn't anymore) — if those tasks
-                // sit entirely in the past or future, Today isn't rendered
-                // anywhere in the just-computed range at all, so targeting
-                // it would center the viewport on empty padding instead of
-                // the actual tasks that just arrived. v2's own first-render
-                // tryScroll has an analogous gate (`if (todayPx > 0)`
-                // gantt-v2.js line 684) that leaves scrollLeft untouched
-                // (0, the default) when today's pixel position isn't
-                // meaningfully positioned — v3 has no "just don't move"
-                // equivalent (GanttTimeline always performs a deterministic
-                // scroll-to-center once a target is requested, rather than
-                // relying on v2's own DOM-persistence trick), so the closest
-                // sensible analog — and a deliberate, documented delta from
-                // v2 where the two can't behave identically — is to center
-                // on the newly-computed RANGE itself (its own midpoint,
-                // VisibleCenterDate) instead of Today whenever Today falls
-                // outside it. For the populated->empty direction specifically,
-                // the empty-list fallback range is ALWAYS centered on Today by
-                // construction (ComputeInitialRange's own today.AddDays(-7)/
-                // (14) window), so todayInRange is always true there and this
-                // simply targets Today, exactly as intended.
-                var newRange = _state.VisibleRange;
-                var todayInRange = EffectiveToday >= newRange.Start && EffectiveToday <= newRange.End;
-                _scrollTargetDate = todayInRange ? null : VisibleCenterDate;
-                _scrollToTodayRequestId++;
-            }
+        // Bug fix (Codex round 12 review, P1): explicit, exhaustive
+        // tasksChanged x viewModeChanged matrix — the PREVIOUS structure
+        // treated a ViewMode change as always taking outright precedence
+        // over a task-set change in the SAME render (mirroring the ORIGINAL,
+        // pre-round-11 mutual exclusivity), which was fine when the mode-only
+        // path only ever recentered on a captured LIVE SCROLL POSITION — but
+        // that path has NO idea the task set also changed, so async-loaded
+        // FIRST tasks arriving in the same render as (or shortly forcing) a
+        // mode change landed the range self-centered on wherever the OLD
+        // (often still-empty) chart's own scroll position was, entirely
+        // ignoring where the new tasks actually are. Case 4 below is this
+        // round's fix; cases 1-3 are UNCHANGED from round 11's own
+        // consolidation, just made structurally explicit here.
+        //
+        //  tasksChanged | viewModeChanged | range source                        | recenter target
+        //  ------------ | --------------- | ------------------------------------ | ---------------------------------------------
+        //  false        | false           | unchanged                            | none, UNLESS tree-pane/direction ALSO changed
+        //                                                                          this render (then: preserved live-scroll center)
+        //  false        | true            | self-centered around the captured    | the SAME captured center (preserved)
+        //               |                 | center (ApplyPadding, NEW mode)       |
+        //  true         | false           | task-derived (ComputeInitialRange,   | none, UNLESS an emptiness transition
+        //               |                 | mode unchanged)                       | (wasEmpty != nowEmpty) — then Today, or the
+        //                                                                          new range's own midpoint if Today falls
+        //                                                                          outside it (round 9's own delta from v2)
+        //  true         | true            | task-derived (ComputeInitialRange,   | emptiness transition ? (Today/midpoint, same
+        //               |                 | the NEW mode)                         | as above) : the PRESERVED live-scroll center
+        //                                                                          (captured under the OLD mode/offset, same as
+        //                                                                          the false/true row, just against the NEW
+        //                                                                          tasks-derived range instead of a self-centered one)
+        //
+        // Cases 1/2 (tasksChanged false) route through ReconcileRecenterTriggersAsync,
+        // UNCHANGED since round 11. Case 3 (tasksChanged true, viewModeChanged
+        // false) still runs ReconcileRecenterTriggersAsync FIRST (viewModeChanged:
+        // false) — using the STILL-OLD VisibleRange/ViewMode for its own
+        // tree-pane/direction capture, preserving the original ordering — then
+        // its own task-derived range/emptiness-recenter logic, exactly as
+        // round 11 left it. Case 4 is handled by its own dedicated method,
+        // which does its OWN single capture (under the OLD geometry, before
+        // either the mode or the task-derived range change) rather than
+        // layering on top of ReconcileRecenterTriggersAsync — see that
+        // method's own remarks for why.
+        if (tasksChanged && viewModeChanged)
+        {
+            await ReconcileTasksAndViewModeChangeAsync(previousTasks);
         }
+        else
+        {
+            await ReconcileRecenterTriggersAsync(viewModeChanged);
+            if (tasksChanged) ReconcileTasksChangedOnly(previousTasks);
+        }
+    }
+
+    // Case 3 of the matrix above (tasksChanged, ViewMode unchanged) —
+    // extracted verbatim from what was previously inlined directly in
+    // OnParametersSetAsync, no behavior change.
+    private void ReconcileTasksChangedOnly(IReadOnlyList<GanttTask> previousTasks)
+    {
+        // Bug fix (Codex review wave): an async-loaded (or otherwise later-
+        // arriving) task set can land entirely outside the range computed
+        // at mount/last-recompute — mirrors v2, which re-derives its
+        // min/max-driven date window from whatever `tasks` render() sees
+        // on every call (gantt-v2.js lines 156-164), never keeping a
+        // stale window across a task-set change. Recompute around the NEW
+        // tasks, but do NOT touch ViewMode/_state.SetViewMode here: the
+        // user's current zoom level (possibly set via GanttNav's toolbar,
+        // uncontrolled, and therefore not reflected by a possibly-stale
+        // ViewMode PARAMETER) must survive a tasks-only change.
+        var wasEmpty = previousTasks.Count == 0;
+        var nowEmpty = _state.Tasks.Count == 0;
+        _state.SetVisibleRange(ComputeInitialRange(_state.ViewMode, _state.Tasks, EffectiveToday));
+
+        // Bug fix (Codex round 3, P2 #2): recomputing VisibleRange above
+        // repositions where things fall in the timeline's OWN pixel space,
+        // but — same reasoning as GoToTodayAsync's own remarks below —
+        // never touches the DOM's actual scrollLeft. An empty first render
+        // never scrolled anywhere meaningful (there was nothing to center
+        // on), so when tasks arrive later (the common async-load shape:
+        // render empty, then populate once a fetch completes), nothing
+        // previously told GanttTimeline to re-attempt its initial-viewport
+        // scroll — it just stayed wherever it happened to be, typically 0.
+        // Bumping the SAME change-token GoToTodayAsync uses re-triggers
+        // that attempt, exactly as if the now-populated task set had been
+        // there from the start.
+        //
+        // Bug fix (Codex round 11 review, P2 #3): the REVERSE transition
+        // (populated -> empty — a consumer clearing Tasks, e.g. after a
+        // delete-all action) rebuilt the range around the empty-list
+        // today-based fallback above but never requested a recenter
+        // either — the viewport stayed wherever it was under the OLD
+        // (populated) range's coordinate space, now showing an ARBITRARY
+        // region of the brand-new fallback window (and the "No tasks to
+        // display" empty-state message, itself unaffected by this fix,
+        // could easily sit outside that arbitrary scroll position too).
+        // wasEmpty != nowEmpty covers BOTH transitions with the SAME
+        // logic — a populated->populated task-set change (nowEmpty stays
+        // false either way) is intentionally UNAFFECTED, matching this
+        // finding's own scope.
+        if (wasEmpty != nowEmpty)
+        {
+            var newRange = _state.VisibleRange;
+            var todayInRange = EffectiveToday >= newRange.Start && EffectiveToday <= newRange.End;
+            _scrollTargetDate = todayInRange ? null : VisibleCenterDate;
+            _scrollToTodayRequestId++;
+        }
+    }
+
+    // Bug fix (Codex round 12 review, P1) — case 4 of the matrix above:
+    // tasksChanged AND viewModeChanged in the SAME render. Previously, a
+    // ViewMode change unconditionally won outright (the original mutual-
+    // exclusivity round 10/11 preserved), running ONLY
+    // ReconcileRecenterTriggersAsync's own mode-change path — which
+    // self-centers the range around a captured LIVE SCROLL position with
+    // zero awareness that the task set ALSO changed. For the common
+    // async-load shape (render once with an empty/placeholder task list at
+    // some default ViewMode, then populate real tasks — possibly alongside
+    // a caller ALSO switching modes in that same update), the real tasks
+    // could land far outside that self-centered range entirely, with no
+    // recenter ever bringing them into view.
+    //
+    // Does its OWN single live-center capture (under the OLD ViewMode/
+    // VisibleRange/offset — before ANY of the changes below are applied),
+    // rather than delegating to ReconcileRecenterTriggersAsync, because that
+    // method's own mode-change branch unconditionally self-centers the range
+    // (RecenterOn) — exactly the behavior this case must NOT use; the range
+    // here must be TASK-derived (ComputeInitialRange, mirroring case 3),
+    // with the captured center only used as the RECENTER TARGET when this
+    // ISN'T an emptiness transition.
+    private async Task ReconcileTasksAndViewModeChangeAsync(IReadOnlyList<GanttTask> previousTasks)
+    {
+        var oldShowTreePane = _lastSeenEffectiveShowTreePane ?? EffectiveShowTreePane;
+        var oldDirection = _lastSeenDirection ?? EffectiveDirection;
+        var oldLeadingOffset = ComputeLeadingOffset(oldShowTreePane, oldDirection);
+        // Captured BEFORE SetViewMode/SetVisibleRange below — still reads the
+        // OLD ViewMode's own Origin/ColumnWidth and the OLD (pre-tasks-change)
+        // VisibleRange.
+        var preservedCenter = await ResolveCurrentCenterDateAsync(oldLeadingOffset);
+
+        _lastPushedViewMode = ViewMode;
+        _state.SetViewMode(ViewMode);
+
+        var wasEmpty = previousTasks.Count == 0;
+        var nowEmpty = _state.Tasks.Count == 0;
+        // Task-derived range using the NEW mode — mirrors ReconcileTasksChangedOnly's
+        // own ComputeInitialRange call exactly, just against _state.ViewMode
+        // now that SetViewMode above has updated it.
+        _state.SetVisibleRange(ComputeInitialRange(_state.ViewMode, _state.Tasks, EffectiveToday));
+
+        if (wasEmpty != nowEmpty)
+        {
+            // Emptiness transition — same target rule as ReconcileTasksChangedOnly's
+            // own (round 9/11) delta from v2: Today if it falls inside the
+            // NEW range, otherwise the range's own midpoint.
+            var newRange = _state.VisibleRange;
+            var todayInRange = EffectiveToday >= newRange.Start && EffectiveToday <= newRange.End;
+            _scrollTargetDate = todayInRange ? null : VisibleCenterDate;
+        }
+        else
+        {
+            // Not an emptiness transition (e.g. a non-empty task list was
+            // simply replaced with a different non-empty one, in the SAME
+            // render as a mode switch) — preserve continuity with whatever
+            // the user was actually looking at before, against the NEW
+            // tasks-derived range/mode, rather than resetting to Today.
+            _scrollTargetDate = preservedCenter;
+        }
+
+        _scrollToTodayRequestId++;
+
+        // Tree-pane/direction bookkeeping, matching ReconcileRecenterTriggersAsync's
+        // own tail exactly — kept in sync regardless of which branch above ran.
+        _lastSeenEffectiveShowTreePane = EffectiveShowTreePane;
+        _lastSeenDirection = EffectiveDirection;
     }
 
     private List<GanttTask> SortedTasks(List<GanttTask> raw)
