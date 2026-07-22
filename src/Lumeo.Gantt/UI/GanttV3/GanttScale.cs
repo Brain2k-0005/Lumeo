@@ -316,46 +316,49 @@ internal static class GanttScale
         };
     }
 
-    // DateToPixel's Month formula is `monthsDiff + (day-1)/30.0` — the exact
-    // inverse splits the continuous unit count into a whole-month part (via
-    // AddMonths, which preserves day-of-month) and a fractional part folded
-    // back in as (up to) 30 days. Origin is always day-1 of its month here
-    // (GanttScale's own aligned-origin invariant — see BuildDateUnits/
-    // AlignToUnitStart's remarks), so AddMonths lands on day-1 of the target
-    // month too, matching what DateToPixel's own "(day-1)/30.0" term assumes.
+    // DateToPixel's Month formula is `monthsDiff + (day-1)/30.0` — a FIXED,
+    // v2-parity approximation applied to EVERY month regardless of its
+    // actual length (gantt-v2.js's own `dayFraction = (d.getDate()-1)/30`,
+    // ported verbatim). Origin is always day-1 of its month here (GanttScale's
+    // own aligned-origin invariant — see BuildDateUnits/AlignToUnitStart's
+    // remarks), so AddMonths lands on day-1 of the target month too.
     //
-    // Bug fix (Codex round 6 review / cx6b, Important #1): DateToPixel's own
-    // /30.0 divisor is a FIXED, v2-parity approximation applied to EVERY
-    // month regardless of its actual length (gantt-v2.js's own
-    // `dayFraction = (d.getDate()-1)/30`, ported verbatim) — it is NOT "1/30
-    // of this month's real length", it is "1/30 of a day, however many of
-    // those the month actually has room for". The exact analytic inverse of
-    // that fraction is a day OFFSET of `fraction*30.0` — correct as far as it
-    // goes, but for a month SHORTER than 30 days (February) that offset can
-    // exceed the month's own last valid day (day 28's own offset from day 1
-    // is only 27), and the previous code's plain `AddDays` let .NET's
-    // calendar arithmetic silently roll over into the NEXT month (a February
-    // 30th doesn't exist) — confirmed live: origin=Jan 1 2026, totalMonths=
-    // 1.99 landed on 2026-03-02 instead of within February, a ~5px error at
-    // Month mode's 120px column. Clamping the day offset to the month's own
-    // [0, daysInMonth-1] range keeps the result inside the CORRECT month.
-    // This is not a lossy approximation of some reachable answer — DateToPixel
-    // itself can NEVER produce a fraction above (daysInMonth-1)/30.0 for any
-    // REAL date in a short month either (a real February date's own day-1
-    // term saturates at 27/30 = 0.9), so a fraction beyond that is asking for
-    // a position DateToPixel has no representation for in the first place;
-    // the clamp lands on the best — and only self-consistent — answer.
-    // Below that saturation point (the common case in practice, since
-    // Gantt3's caller only ever feeds this a LIVE scroll position that
-    // itself came from real rendered content), the unclamped exact inverse
-    // applies and round-trips through DateToPixel precisely.
+    // Bug fix (Codex round 6 review / cx6b, Important #1): a literal analytic
+    // inverse of that /30.0 divisor (`dayOffset = fraction*30.0`) overflows a
+    // month SHORTER than 30 days (February) past its own last valid day, and
+    // a plain `AddDays` let .NET's calendar arithmetic silently roll into the
+    // NEXT month (a February 30th doesn't exist) — confirmed live: origin=
+    // Jan 1 2026, totalMonths=1.99 landed on 2026-03-02 instead of within
+    // February. cx6b's own fix clamped the day offset to [0, daysInMonth-1],
+    // which stopped the overflow but introduced a DIFFERENT bug (Codex round
+    // 7, P2 #1): every fraction above the month's own saturation point
+    // (daysInMonth-1)/30.0 clamps to the SAME offset, so distinct pixel
+    // positions in that "unreachable gap" collapse onto the identical date —
+    // a real round-trip degeneracy for a live scroll-position probe (which
+    // has no guarantee of landing inside the reachable sub-range).
+    //
+    // Fix (round 7): stop trying to invert DateToPixel's fixed /30.0 divisor
+    // at all in the gap region. Instead, scale the fractional part against
+    // the TARGET month's own actual day count — `fraction*daysInMonth` — so
+    // the WHOLE [0, 1) unit maps bijectively (strictly monotonic, no
+    // collapsing) onto that month's whole day range [0, daysInMonth). This
+    // can never overflow (fraction<1 implies dayOffset<daysInMonth, always
+    // inside the month), needs no clamp, and is exact — round-trips through
+    // DateToPixel with zero error — for any month whose length happens to BE
+    // 30 (April, June, September, November); for other month lengths it
+    // trades a small amount of round-trip fidelity against DateToPixel's own
+    // fixed-30 approximation (worst case a handful of pixels, growing with
+    // |daysInMonth-30| and with how far into the month the fraction reaches)
+    // in exchange for never losing information about the input position.
+    // Continuous is a live-probe interpretation, not the same contract as
+    // DateToPixel's own forward math, so this trade is the right one.
     private static DateTime AddContinuousMonths(DateTime origin, double totalMonths)
     {
         var whole = Math.Floor(totalMonths);
         var fraction = totalMonths - whole;
         var monthStart = origin.AddMonths((int)whole);
         var daysInMonth = DateTime.DaysInMonth(monthStart.Year, monthStart.Month);
-        var dayOffset = Math.Min(fraction * 30.0, daysInMonth - 1);
+        var dayOffset = fraction * daysInMonth;
         return monthStart.AddDays(dayOffset);
     }
 

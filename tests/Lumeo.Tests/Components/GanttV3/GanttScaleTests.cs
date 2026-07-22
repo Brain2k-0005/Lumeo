@@ -365,6 +365,10 @@ public class GanttScaleTests : IDisposable
     }
 
     // ── PixelToDateContinuous: short-month overflow fix (Codex round 6 review / cx6b, Important #1) ──
+    // Still green under the round-7 fix (Codex round 7, P2 #1): scaling the
+    // fractional part against the target month's OWN day count means
+    // fraction<1 always implies dayOffset<daysInMonth, so overflow past the
+    // month boundary can never happen regardless of which fraction is used.
 
     [Fact]
     public void PixelToDateContinuous_Does_Not_Overflow_Into_The_Next_Month_For_A_Short_February()
@@ -374,8 +378,8 @@ public class GanttScaleTests : IDisposable
         // per-month assumption: the exact analytic inverse of DateToPixel's
         // own /30.0 divisor implies a day offset of 0.99*30=29.7, which
         // silently overflowed past February's own last day when added via
-        // plain AddDays. The fix clamps the day offset to the month's own
-        // actual length, keeping the result inside February.
+        // plain AddDays. The fix scales the day offset against the month's
+        // own actual length instead, keeping the result inside February.
         var origin = Utc(2026, 1, 1);
         var cfg = GanttScale.GetConfig(GanttViewMode.Month);
         var px = cfg.ColumnWidth * 1.99;
@@ -413,13 +417,15 @@ public class GanttScaleTests : IDisposable
         // unlike the overflow tests above, which deliberately probe past a
         // SHORT month's own saturation point, this is the common case in
         // practice (Gantt3 only ever feeds this a live scroll position that
-        // itself came from real rendered content) and round-trips exactly:
-        // day offset 29 (of January's 31 days) is a WHOLE number, so there
-        // is no residual time-of-day component for DateToPixel's own
-        // integer day/month read to drop.
+        // itself came from real rendered content). Under the round-7 formula
+        // the day offset is (29/30)*31=29.9667 (not a whole number), but that
+        // still lands on Jan 30 (23:12, before crossing into day 31), and
+        // DateToPixel's own integer day read of 30 happens to reconstruct the
+        // exact same input fraction (29/30) here, so the round-trip is still
+        // effectively exact for this specific probe.
         var origin = Utc(2026, 1, 1); // January has 31 days
         var cfg = GanttScale.GetConfig(GanttViewMode.Month);
-        var px = cfg.ColumnWidth * (29.0 / 30.0); // day offset 29 exactly -> Jan 30
+        var px = cfg.ColumnWidth * (29.0 / 30.0); // -> Jan 30
 
         var continuous = GanttScale.PixelToDateContinuous(GanttViewMode.Month, origin, px);
         var roundtripPx = GanttScale.DateToPixel(GanttViewMode.Month, origin, continuous);
@@ -428,6 +434,69 @@ public class GanttScaleTests : IDisposable
         Assert.Equal(30, continuous.Day);
         Assert.True(Math.Abs(roundtripPx - px) < 1.0,
             $"expected an exact round-trip for a reachable mid-month offset, got px={px}, roundtripPx={roundtripPx}");
+    }
+
+    // ── PixelToDateContinuous: clamp-degeneracy fix (Codex round 7 review, P2 #1) ──
+
+    [Fact]
+    public void PixelToDateContinuous_Maps_Two_Distinct_Late_February_Pixel_Positions_To_Distinct_Dates()
+    {
+        // Under cx6b's clamp-based fix, EVERY fraction above February's own
+        // saturation point (27/30 = 0.9) clamped to the same day offset
+        // (daysInMonth-1 = 27), so both of the positions probed below
+        // collapsed onto the identical instant (2026-02-28 00:00:00) - a
+        // real round-trip degeneracy for a live scroll-position probe. The
+        // round-7 fix (scaling against the month's own day count instead of
+        // clamping a fixed /30.0 inverse) keeps every distinct input pixel
+        // mapped to a distinct, distinguishable date.
+        var origin = Utc(2026, 1, 1); // February 2026 has 28 days
+        var cfg = GanttScale.GetConfig(GanttViewMode.Month);
+        var pxA = cfg.ColumnWidth * 1.95; // fraction 0.95 - past the old saturation point
+        var pxB = cfg.ColumnWidth * 1.99; // fraction 0.99 - further past it
+
+        var dateA = GanttScale.PixelToDateContinuous(GanttViewMode.Month, origin, pxA);
+        var dateB = GanttScale.PixelToDateContinuous(GanttViewMode.Month, origin, pxB);
+
+        Assert.NotEqual(dateA, dateB);
+        Assert.True(dateA < dateB,
+            $"expected the larger pixel input to map to a later date (order-preserving), got dateA={dateA:O}, dateB={dateB:O}");
+        // Both stay inside February - the fix must not reintroduce the
+        // original month-boundary overflow bug while closing the gap.
+        Assert.Equal(2, dateA.Month);
+        Assert.Equal(2, dateB.Month);
+    }
+
+    [Fact]
+    public void PixelToDateContinuous_Roundtrip_Sweep_Across_A_February_Boundary_Stays_Within_A_Bounded_Error()
+    {
+        // Sweeps pixel positions in 1px steps across the January -> February
+        // 2026 boundary and round-trips each one through DateToPixel. The
+        // error is not zero away from the exact boundary - DateToPixel's own
+        // /30.0 divisor is a fixed approximation that neither the old clamp
+        // fix nor this one can invert exactly for a non-30-day month - but it
+        // must stay bounded (no unbounded drift, no overflow into the wrong
+        // month) across the whole swept window. Tolerance is expressed
+        // relative to the column width to stay meaningful if the Month
+        // column width configuration ever changes.
+        var origin = Utc(2026, 1, 1);
+        var cfg = GanttScale.GetConfig(GanttViewMode.Month);
+        var boundaryPx = cfg.ColumnWidth * 1.0; // exact Jan/Feb boundary
+        var tolerancePx = cfg.ColumnWidth * 0.1; // documented approximation budget
+
+        for (var offset = -15; offset <= 15; offset++)
+        {
+            var px = boundaryPx + offset;
+            var continuous = GanttScale.PixelToDateContinuous(GanttViewMode.Month, origin, px);
+            var roundtripPx = GanttScale.DateToPixel(GanttViewMode.Month, origin, continuous);
+            var error = Math.Abs(roundtripPx - px);
+
+            Assert.True(error < tolerancePx,
+                $"offset={offset}: expected round-trip error under {tolerancePx}px, got px={px}, roundtripPx={roundtripPx}, error={error}, continuous={continuous:O}");
+            // Never overflows into March or back into December regardless of
+            // how far the swept pixel sits from the exact boundary.
+            Assert.True(continuous.Month is 1 or 2,
+                $"offset={offset}: expected the swept position to stay within January or February, got {continuous:O}");
+        }
     }
 
     [Fact]

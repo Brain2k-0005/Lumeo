@@ -306,7 +306,20 @@
     private ElementReference _headerInnerRef;
     private int _lastSeenScrollToTodayRequestId;
     private DateTime _lastSeenToday;
-    private bool _scrollHostWasReady;
+
+    // Bug fix (Codex round 7 review, P2 #2): this used to be a plain
+    // `_scrollHostWasReady` bool, tracking only the ONE-WAY "not yet
+    // captured -> captured" transition. That missed a genuinely different
+    // trigger: a caller supplying a LATER or REPLACED host — a standalone
+    // timeline whose ScrollHost arrives after mount, or a parent that swaps
+    // in a different host element outright — never re-registers, because the
+    // bool had already flipped true once and can never flip again. Tracking
+    // the host's own captured Id (not just a readiness bool) lets a genuine
+    // identity change be detected on ANY render, not just the first
+    // not-ready-to-ready one. Null means "not currently registered against
+    // any host" (either not yet ready, or nothing registered yet).
+    private string? _lastSeenScrollHostId;
+    private ElementReference? _registeredScrollHostRef;
     private bool _headerScrollSyncRegistered;
 
     // Codex round 4, P2 #3 — see GanttV3RegisterVerticalScrollTrackingAsync's
@@ -609,14 +622,14 @@
 
             _lastSeenScrollToTodayRequestId = ScrollToTodayRequestId;
             _lastSeenToday = Today;
-            _scrollHostWasReady = IsScrollHostReady;
+            _lastSeenScrollHostId = CurrentHostId;
 
             // Codex round 4, P2 #3: registered unconditionally (both modes —
             // unlike the header-scroll-sync above, this one is NOT skipped for
             // Gantt3's shared-pane mode; see its own registration method
             // remarks for why). Same "not yet captured" ElementReference race
             // as the scroll-to-today attempt below — gated on IsScrollHostReady
-            // and retried on the same scrollHostBecameReady transition.
+            // and retried on the same scrollHostChanged transition.
             if (IsScrollHostReady) await RegisterVerticalScrollTrackingAsync();
 
             // Bug fix (Codex round 3, P2 #1): a caller-supplied ScrollHost's
@@ -646,38 +659,45 @@
         // the pre-existing ScrollToTodayRequestId check below).
         //
         // ScrollHost transitioning from "not yet captured" to "captured"
-        // (Codex round 3, P2 #1) is the SAME kind of trigger: Gantt3 forces
-        // exactly one extra render after its own ref resolves (see its own
-        // OnAfterRenderAsync remarks) specifically so this component gets a
-        // second chance at the scroll with a now-valid host. Deliberately a
-        // one-way READINESS transition (not "did ScrollHost's value change at
-        // all") — comparing the raw value on every render would also fire for
-        // harmless identity churn a test host (or a future caller) might
-        // produce on an otherwise-unchanged, already-valid reference, which
-        // would re-trigger the scroll on every unrelated re-render.
-        var scrollHostBecameReady = !_scrollHostWasReady && IsScrollHostReady;
-        if (ScrollToTodayRequestId != _lastSeenScrollToTodayRequestId || Today != _lastSeenToday || scrollHostBecameReady)
+        // (Codex round 3, P2 #1), OR a genuinely DIFFERENT host arriving
+        // later (Codex round 7 review, P2 #2 — a standalone timeline
+        // receiving a parent host after mount, or a parent replacing the
+        // host element outright), is the SAME kind of trigger: the timeline
+        // needs to (re)bind its scroll-tracking registration and re-request
+        // the pending centering scroll against whichever host is current.
+        // Comparing the CAPTURED ID (not the raw ElementReference struct, and
+        // not just a one-way readiness bool) is what makes this a genuine
+        // identity-change check rather than either a one-shot latch (the old
+        // bug) or something that fires on harmless struct-identity churn for
+        // an otherwise-unchanged, already-valid reference.
+        var currentHostId = CurrentHostId;
+        var scrollHostChanged = currentHostId != _lastSeenScrollHostId;
+        if (ScrollToTodayRequestId != _lastSeenScrollToTodayRequestId || Today != _lastSeenToday || scrollHostChanged)
         {
             _lastSeenScrollToTodayRequestId = ScrollToTodayRequestId;
             _lastSeenToday = Today;
-            _scrollHostWasReady = IsScrollHostReady;
+            _lastSeenScrollHostId = currentHostId;
 
             // Minor tightening (cx3 review): this branch can also fire for a
             // Today/ScrollToTodayRequestId change alone, independent of
-            // scrollHostBecameReady above — re-checking IsScrollHostReady here
+            // scrollHostChanged above — re-checking IsScrollHostReady here
             // guards the (practically unreachable, since Gantt3's own ref is
             // already valid by the time it could bump either of those, but not
             // provably impossible for a future caller) case where one of them
             // changes on the SAME render ScrollHost is still resolving.
             if (IsScrollHostReady && ShouldAttemptTodayScroll) await ScrollToTodayCenterAsync();
 
-            // Codex round 4, P2 #3: retry the (possibly still-unregistered,
-            // same ElementReference race) vertical-scroll tracking registration
-            // on the SAME becameReady transition — RegisterVerticalScrollTrackingAsync
-            // itself is idempotent (no-ops if already registered against the
-            // current EffectiveScrollHost), so this is safe to call again
-            // unconditionally whenever we're in this branch at all.
-            if (IsScrollHostReady) await RegisterVerticalScrollTrackingAsync();
+            // Codex round 7 review, P2 #2: a genuine host-identity change
+            // must tear down the OLD registration (against the OLD host)
+            // before registering the new one — RegisterVerticalScrollTrackingAsync
+            // alone is a no-op once _verticalScrollTrackingRegistered is
+            // already true, which is exactly what let the old host go on
+            // reporting scroll positions for the wrong element forever.
+            // RebindVerticalScrollTrackingAsync handles both this and the
+            // plain not-ready-to-ready case (unregister is a no-op there,
+            // since nothing was registered yet).
+            if (scrollHostChanged) await RebindVerticalScrollTrackingAsync();
+            else if (IsScrollHostReady) await RegisterVerticalScrollTrackingAsync();
         }
 
         // Bug fix (Codex round 6, P1 #2): a rows-count change (empty->populated,
@@ -703,13 +723,35 @@
     // Codex round 4, P2 #3. Idempotent per EffectiveScrollHost value — the JS
     // side (registerVerticalScrollTracking) also guards via its own Map, but
     // guarding here too avoids a redundant interop round-trip on every retry
-    // once already registered.
+    // once already registered. Records which host it registered against
+    // (Codex round 7 review, P2 #2) so a later identity change can unregister
+    // the RIGHT (old) element rather than whatever EffectiveScrollHost has
+    // since become.
     private Task RegisterVerticalScrollTrackingAsync()
     {
         if (_verticalScrollTrackingRegistered) return System.Threading.Tasks.Task.CompletedTask;
         _verticalScrollTrackingRegistered = true;
+        _registeredScrollHostRef = EffectiveScrollHost;
         _selfRef ??= DotNetObjectReference.Create(this);
         return Interop.GanttV3RegisterVerticalScrollTrackingAsync(EffectiveScrollHost, _selfRef);
+    }
+
+    // Codex round 7 review, P2 #2: tears down vertical-scroll tracking on the
+    // PREVIOUSLY-registered host (if any) before registering against the
+    // current one. Safe to call whenever CurrentHostId has changed, whether
+    // that's the first "not ready -> ready" capture (nothing to unregister
+    // yet) or a genuinely different host replacing an already-registered one.
+    private async Task RebindVerticalScrollTrackingAsync()
+    {
+        if (_verticalScrollTrackingRegistered && _registeredScrollHostRef is { } oldHost)
+        {
+            _verticalScrollTrackingRegistered = false;
+            _registeredScrollHostRef = null;
+            try { await Interop.GanttV3UnregisterVerticalScrollTrackingAsync(oldHost); }
+            catch (JSDisconnectedException) { }
+        }
+
+        if (IsScrollHostReady) await RegisterVerticalScrollTrackingAsync();
     }
 
     /// <summary>
@@ -771,6 +813,14 @@
     // ElementReference can start out uncaptured).
     private bool IsScrollHostReady => ScrollHost is null || !string.IsNullOrEmpty(ScrollHost.Value.Id);
 
+    // Codex round 7 review, P2 #2: the captured host's own Id when ready,
+    // null otherwise — used to detect a genuine host IDENTITY change (a
+    // different Id, not just "not ready -> ready") across renders. In
+    // standalone mode (ScrollHost null) EffectiveScrollHost is always this
+    // component's own, stable _scrollHostRef, so this never spuriously
+    // "changes" there.
+    private string? CurrentHostId => IsScrollHostReady ? EffectiveScrollHost.Id : null;
+
     // Codex round 4, P2 #2/#8: ScrollHostLeadingOffset (a sibling tree pane's
     // width, when Gantt3 shows one) + ScrollTargetX (Today or a caller-supplied
     // override) — both default to their prior values (0 offset, Today), so
@@ -787,7 +837,11 @@
         }
         if (_verticalScrollTrackingRegistered)
         {
-            try { await Interop.GanttV3UnregisterVerticalScrollTrackingAsync(EffectiveScrollHost); }
+            // Unregister against whichever host was ACTUALLY registered
+            // (Codex round 7 review, P2 #2) — falls back to EffectiveScrollHost
+            // only for the (unreachable in practice) case where the flag is
+            // set but the tracked reference somehow isn't.
+            try { await Interop.GanttV3UnregisterVerticalScrollTrackingAsync(_registeredScrollHostRef ?? EffectiveScrollHost); }
             catch (JSDisconnectedException) { }
         }
         _selfRef?.Dispose();

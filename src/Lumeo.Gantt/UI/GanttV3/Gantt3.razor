@@ -215,6 +215,12 @@
     private GanttViewMode _lastPushedViewMode;
     private bool _rangeInitialized;
 
+    // Codex round 7 review, P2 #4 — see the directionChanged check in
+    // OnParametersSet below. Null until the first OnParametersSet pass so
+    // mount itself is never mistaken for a "flip" (GanttTimeline's OWN
+    // firstRender already attempts the initial centering scroll regardless).
+    private LayoutDirection? _lastSeenDirection;
+
     // Browser-local "today" (Codex round 2, P2 #9) — resolved once via JS on
     // Gantt3's first post-render; DateTime.Today (the SERVER's local date) is
     // the fallback used for every render before that resolves, including
@@ -233,10 +239,10 @@
         _rangeInitialized = true;
     }
 
-    // Codex round 2, P2 #9 — see EffectiveToday's remarks. Only fires once
-    // (firstRender): a later browser-date resolution racing a SECOND distinct
-    // circuit reconnect is out of scope (the calendar day essentially never
-    // changes mid-session), and re-querying every render would be wasteful.
+    // Codex round 2, P2 #9 — see EffectiveToday's remarks. Resolved once via
+    // JS on firstRender; re-checked on later renders too (Codex round 7
+    // review, P2 #3 — see RefreshBrowserTodayAsync's own remarks for why a
+    // long-mounted chart needs more than a single resolution).
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (firstRender)
@@ -258,17 +264,50 @@
             // (see its own OnAfterRenderAsync remarks), so the retry isn't
             // silently dropped once this second render delivers the real value.
             StateHasChanged();
+
+            await RefreshBrowserTodayAsync();
+            return;
         }
 
-        if (!firstRender) return;
+        // Bug fix (Codex round 7 review, P2 #3): the ORIGINAL fix resolved
+        // _browserToday exactly ONCE (firstRender) on the stated assumption
+        // that "the calendar day essentially never changes mid-session" — not
+        // true for a chart left open across local midnight (a dashboard tab
+        // kept open overnight, say), which then reported yesterday as "today"
+        // for the rest of its lifetime: stale Today marker/highlight column,
+        // and a Today-button click that recentered on the wrong day. A full
+        // JS round-trip on EVERY render would be wasteful for a value that
+        // changes at most once a day, so this gates the re-query behind a
+        // cheap, synchronous, interop-free signal first: the SERVER's own
+        // current calendar day advancing past whatever was last cached. That
+        // signal can lag a little around a client/server timezone mismatch
+        // (a browser several hours behind or ahead of the server's own clock)
+        // but self-corrects the SAME way the original firstRender resolution
+        // did — a render or two later — and never leaves the value stale
+        // indefinitely the way the old one-shot design did. No timer: this
+        // check piggybacks on renders that are already happening for other
+        // reasons, which is sufficient for a value that only needs to be
+        // "eventually correct within a render or two of midnight passing",
+        // not "corrected at the exact instant midnight passes".
+        if (_browserToday is { } cachedToday && DateTime.Today.Date > cachedToday.Date)
+            await RefreshBrowserTodayAsync();
+    }
 
+    // Queries the browser's local date via JS and reconciles it against the
+    // cached _browserToday (Codex round 2, P2 #9; re-armed for re-use beyond
+    // firstRender in round 7 review, P2 #3). Safe to call as often as a
+    // caller likes — a no-op re-query (unchanged day) is cheap, and the
+    // interop call itself already tolerates prerendering/JSDisconnected via
+    // GanttV3GetLocalDateAsync's own null-return contract.
+    private async Task RefreshBrowserTodayAsync()
+    {
         var iso = await Interop.GanttV3GetLocalDateAsync();
-        if (iso is null) return; // interop unavailable (prerendering already excluded by firstRender; a torn-down circuit) — keep the server-Today fallback
+        if (iso is null) return; // interop unavailable (prerendering; a torn-down circuit) — keep whatever fallback EffectiveToday currently resolves to
         if (!DateTime.TryParseExact(iso, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var browserToday)) return;
 
         var changedDay = browserToday.Date != EffectiveToday.Date;
         _browserToday = browserToday.Date;
-        if (!changedDay) return; // server and browser already agreed on the calendar day — nothing to correct
+        if (!changedDay) return; // server and browser already agree on the calendar day — nothing to correct
 
         // VisibleRange itself is only ever SEEDED from "today" when the task
         // list is EMPTY (ComputeInitialRange's fallback branch) — the common
@@ -306,6 +345,25 @@
             ? ViewMode != _lastPushedViewMode
             : ViewMode != _lastSeenViewMode;
         _lastSeenViewMode = ViewMode;
+
+        // Bug fix (Codex round 7 review, P2 #4): an LTR<->RTL flip on an
+        // ALREADY-MOUNTED chart (a DirectionProvider ancestor toggling
+        // Direction, or the global ThemeService's CurrentDirection changing)
+        // recomputes ScrollHostLeadingOffset and the flex-side layout
+        // correctly — both are plain, live-read computed properties — but
+        // nothing previously told GanttTimeline to re-request its OWN DOM
+        // scrollLeft against the NEW physical layout, so it kept whatever
+        // scroll position it had under the OLD direction, landing the
+        // marker/viewport in the wrong spot the instant the flip happened.
+        // Detected the same way ViewMode/Tasks changes are detected here
+        // (compare against the last-SEEN value) and re-uses the SAME
+        // change-token GanttTimeline already watches for a Today-recenter —
+        // no new interop, no new plumbing, and it re-centers on WHATEVER was
+        // already centered (Today or a caller's ScrollTargetDate), not a
+        // reset to Today the way GoToTodayAsync's own bump is.
+        var directionChanged = _lastSeenDirection is { } lastDirection && lastDirection != EffectiveDirection;
+        _lastSeenDirection = EffectiveDirection;
+        if (directionChanged) _scrollToTodayRequestId++;
 
         if (viewModeChanged || !_rangeInitialized)
         {
@@ -538,11 +596,22 @@
 
     // Recenters the CURRENT window (same duration) on today, rather than
     // resetting to the tasks' original padded range.
-    private Task GoToTodayAsync()
+    private async Task GoToTodayAsync()
     {
+        // Bug fix (Codex round 7 review, P2 #3): an explicit Today click is
+        // exactly the moment a stale cached date is most visible to the user
+        // (it recenters on the WRONG day) — so this always re-queries the
+        // browser here, unconditionally, rather than relying on the cheap
+        // server-day heuristic in OnAfterRenderAsync (which only self-corrects
+        // a render or two later). RefreshBrowserTodayAsync is a no-op cost-
+        // wise when the day hasn't actually changed (still one interop round-
+        // trip, but that's the existing per-click cost of any interop-backed
+        // action, not a new one).
+        await RefreshBrowserTodayAsync();
+
         var range = _state.VisibleRange;
         var width = range.End - range.Start;
-        var today = EffectiveToday; // Codex round 2, P2 #9 — browser-local once resolved
+        var today = EffectiveToday; // Codex round 2, P2 #9 — browser-local once resolved, now freshly re-checked above
         var half = new TimeSpan(width.Ticks / 2);
         // Bug fix (Codex round 3, P2 #6): a raw TimeSpan-based recenter (today
         // -/+ half the window) lands the new range START mid-month/mid-year in
@@ -567,7 +636,6 @@
         // OWN pixel space, but never touches the browser's actual horizontal
         // scroll position (see GanttTimeline.OnAfterRenderAsync's remarks).
         _scrollToTodayRequestId++;
-        return Task.CompletedTask;
     }
 
     private int _scrollToTodayRequestId;

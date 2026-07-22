@@ -158,4 +158,46 @@ public class GanttV3RtlTests : GanttParityTestBase
         Assert.True(Math.Abs(canvasBox!.X - paneBox!.X) < 5,
             $"expected the timeline's own canvas (its Origin) to sit flush against the pane's left edge after clamping to the earliest edge, canvas.X={canvasBox.X}, pane.X={paneBox.X}");
     }
+
+    [Fact]
+    public async Task Flipping_Direction_On_An_Already_Mounted_Chart_Brings_The_Today_Marker_Back_Into_Viewport()
+    {
+        // Bug fix (Codex round 7 review, P2 #4): an LTR<->RTL flip on an
+        // ALREADY-MOUNTED chart (a DirectionProvider ancestor toggling
+        // Direction, or the global ThemeService's CurrentDirection changing)
+        // recomputes ScrollHostLeadingOffset/flex-side layout correctly on
+        // its own (both are plain, live-read computed properties), but the
+        // ACTUAL DOM scrollLeft never moved, so the physical repositioning
+        // left the marker outside the viewport the instant the flip happened
+        // — only a FRESH page load under ?rtl=1 (the previous specs in this
+        // file) ever exercised the correct centering; nothing previously
+        // re-requested it on a LIVE flip. GanttV3Page's toggle-direction
+        // button drives a real DirectionProvider re-render, the same path a
+        // real app's own direction toggle would take.
+        await GotoHost("/e2e/gantt-v3?fixture=today");
+
+        var scrollPane = Page.Locator("[data-testid='gantt-v3-root'] div[style*='overflow']").First;
+        await scrollPane.WaitForAsync(new() { Timeout = 15000 });
+        await Assertions.Expect(scrollPane).ToHaveAttributeAsync("data-gantt-v3-initial-scroll", "done", new() { Timeout = 15000 });
+
+        var todayLine = Page.Locator("[data-testid='gantt-v3-root'] .lumeo-gantt-v3-today-line");
+        await todayLine.WaitForAsync(new() { State = WaitForSelectorState.Attached, Timeout = 15000 });
+
+        // Sanity: centered correctly under the INITIAL (LTR) direction —
+        // proves the flip below is what matters, not just an accident of the
+        // fixture's own initial layout.
+        await Assertions.Expect(todayLine).ToBeInViewportAsync(new() { Timeout = 10000 });
+
+        await Page.Locator("[data-testid='gantt-v3-toggle-direction']").ClickAsync();
+
+        var direction = await scrollPane.EvaluateAsync<string>("el => getComputedStyle(el).direction");
+        Assert.Equal("rtl", direction);
+
+        // The fix's own job: the marker must come back into view under the
+        // NEW direction without a page reload — Playwright's own polling
+        // assertion absorbs the async re-render + interop + rAF-scheduled
+        // scroll chain the fix triggers, the same way every other scroll-
+        // completion assertion in this file does.
+        await Assertions.Expect(todayLine).ToBeInViewportAsync(new() { Timeout = 10000 });
+    }
 }
