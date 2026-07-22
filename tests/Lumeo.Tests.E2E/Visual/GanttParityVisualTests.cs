@@ -49,6 +49,44 @@ public class GanttParityVisualTests : GanttParityTestBase
             return;
         }
 
+        // Bug fix (Codex round 5 review, Important #2): both v2 and v3 resolve
+        // "today" from the BROWSER's real clock (v2's gantt-v2.js directly,
+        // v3 via getLocalDateIso() — see Gantt3's own Codex round 2, P2 #9
+        // remarks on why it reads the browser's date rather than the server's).
+        // The v3-only scroll-to-today LATCH below (added for round 2's P1 fix)
+        // stabilizes the RACE against that async resolution, but neither route
+        // was ever protected from the clock itself moving: SharedTasks' dates
+        // are fixed at Feb–Apr 2026, so as real time advances past that
+        // window, the rendered today-marker's column silently drifts a pixel
+        // (or several) further along the SAME baseline image every time the
+        // suite runs on a later date — exactly what caused the recurring,
+        // seemingly-random v2 baseline diffs this round flagged. Freezing the
+        // browser's own Date BEFORE the page loads (test-side only — gantt-v2.js/
+        // gantt-v3.js are untouched) makes "today" a fixed instant chosen
+        // WITHIN SharedTasks' own date range for both routes, converting the
+        // marker's rendered position from clock-derived to effectively
+        // fixture-derived and permanently reproducible — the alternative
+        // (scrolling to a window where the marker never appears) doesn't hold
+        // for Month/Year mode, where a single 1400px-wide viewport at that
+        // zoom level unavoidably spans years and can't exclude "today" while
+        // still showing SharedTasks' own bars.
+        // Function-based override, not a `class X extends Date` subclass — the
+        // latter silently failed to actually take effect in this init-script
+        // context (verified live: `new Date().toString()` still returned the
+        // real wall-clock date with the class-based version in place; this
+        // form was verified live to actually shift both `new Date()` and
+        // Blazor's own SignalR log timestamps to the frozen date).
+        await Page.AddInitScriptAsync(@"
+            window.__lumeoFrozenNow = new Date(2026, 2, 15).getTime(); // March 15, 2026 — inside SharedTasks' Feb 23 - Apr 3 2026 range
+            var RealDate = Date;
+            window.Date = function (...args) {
+                if (args.length === 0) return new RealDate(window.__lumeoFrozenNow);
+                return new RealDate(...args);
+            };
+            window.Date.now = function () { return window.__lumeoFrozenNow; };
+            window.Date.prototype = RealDate.prototype;
+        ");
+
         await Page.SetViewportSizeAsync(ViewportWidth, ViewportHeight);
         await GotoHost($"/e2e/gantt-{route}?viewMode={viewMode}");
 
