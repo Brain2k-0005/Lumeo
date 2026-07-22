@@ -112,8 +112,53 @@ internal static class GanttRowModel
     /// remarks for why v2's <c>GroupLabel</c> field, not the <c>GroupBy</c> sort
     /// delegate, is what actually drives header rows).
     /// </summary>
-    internal static IReadOnlyList<GanttVisibleRow> BuildVisibleRows(IReadOnlyList<GanttTask> tasks, IReadOnlySet<string> collapsed) =>
-        UsesHierarchy(tasks) ? BuildHierarchyRows(tasks, collapsed) : BuildFlatGroupRows(tasks, collapsed);
+    internal static IReadOnlyList<GanttVisibleRow> BuildVisibleRows(IReadOnlyList<GanttTask> tasks, IReadOnlySet<string> collapsed)
+    {
+        var validTasks = FilterInvalidDurationTasks(tasks);
+        return UsesHierarchy(validTasks) ? BuildHierarchyRows(validTasks, collapsed) : BuildFlatGroupRows(validTasks, collapsed);
+    }
+
+    // Bug fix (Codex round 8 review, P2 #5): v2's normalizeTasks (gantt-v2.js)
+    // drops any task whose End is before its Start (`.filter(t => t.end >=
+    // t.start)`) BEFORE the renderer ever sees it — no bar, no row; v3 had no
+    // equivalent, so a genuinely invalid End<Start task rendered an 8px
+    // sliver bar (BarGeometry's own Math.Max(8, ...) width clamp) instead of
+    // being dropped. Milestones are effectively EXEMPT from v2's rule — not
+    // because the rule special-cases them, but because normalizeTasks forces
+    // `end = start` for every milestone BEFORE this check runs (gantt-v2.js
+    // line 90: `if (isMilestone && start) end = start`), so a milestone's own
+    // End/Start relationship can never trip this filter in the first place.
+    // Mirrored the same way here: a milestone's End is never compared against
+    // its Start at all, only a non-milestone task's is.
+    //
+    // Filtering here (BuildVisibleRows' single entry point, before either row-
+    // building strategy runs) means the dropped task never reaches GanttTree/
+    // GanttTimeline/GanttArrowLayer at all — a dependency elsewhere pointing
+    // AT it therefore naturally fails GanttArrowLayer's own
+    // geometryByTaskId.TryGetValue lookup and is silently skipped, the exact
+    // same outcome v2's own arrow loop produces for a filtered-out task
+    // (`const source = taskById.get(depId); if (!source) continue;` —
+    // gantt-v2.js line 653) — no separate dependency-cleanup step needed.
+    private static IReadOnlyList<GanttTask> FilterInvalidDurationTasks(IReadOnlyList<GanttTask> tasks)
+    {
+        List<GanttTask>? filtered = null;
+        for (var i = 0; i < tasks.Count; i++)
+        {
+            var task = tasks[i];
+            var isInvalid = !task.IsMilestone && task.End < task.Start;
+            if (isInvalid)
+            {
+                if (filtered is null)
+                {
+                    filtered = new List<GanttTask>(tasks.Count);
+                    for (var j = 0; j < i; j++) filtered.Add(tasks[j]);
+                }
+                continue;
+            }
+            filtered?.Add(task);
+        }
+        return filtered ?? tasks;
+    }
 
     // ── ParentId hierarchy ───────────────────────────────────────────────────
 

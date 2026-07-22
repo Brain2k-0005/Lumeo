@@ -608,17 +608,15 @@
             // staying vertically pinned via its own sticky top-0 — no JS needed.
             // Registering the sync anyway in this mode would double-apply the
             // horizontal offset (once via natural scroll, once via the extra
-            // transform), so it's skipped entirely rather than redirected.
-            if (ScrollHost is null)
-            {
-                // Registered BEFORE the scroll-to-today attempt below, so the
-                // header-scroll-sync listener already exists by the time that
-                // scroll's own (asynchronous, requestAnimationFrame-scheduled)
-                // native 'scroll' event fires — otherwise the header could miss
-                // mirroring the very first centering scroll.
-                _headerScrollSyncRegistered = true;
-                await Interop.GanttV3RegisterHeaderScrollSyncAsync(_scrollHostRef, _headerInnerRef);
-            }
+            // transform), so ReconcileHeaderScrollSyncAsync (see its own
+            // remarks) skips it entirely in that mode rather than redirecting.
+            //
+            // Registered BEFORE the scroll-to-today attempt below, so the
+            // header-scroll-sync listener already exists by the time that
+            // scroll's own (asynchronous, requestAnimationFrame-scheduled)
+            // native 'scroll' event fires — otherwise the header could miss
+            // mirroring the very first centering scroll.
+            await ReconcileHeaderScrollSyncAsync();
 
             _lastSeenScrollToTodayRequestId = ScrollToTodayRequestId;
             _lastSeenToday = Today;
@@ -698,6 +696,18 @@
             // since nothing was registered yet).
             if (scrollHostChanged) await RebindVerticalScrollTrackingAsync();
             else if (IsScrollHostReady) await RegisterVerticalScrollTrackingAsync();
+
+            // Bug fix (Codex round 8 review, P2 #3): the header-sync
+            // registration used to be decided ONLY on firstRender — a
+            // standalone timeline (ScrollHost null at mount) later receiving
+            // a parent host, or a shared-pane timeline later losing its host
+            // (ScrollHost reverting to null), never reconfigured it: the
+            // firstRender snapshot latched forever, the SAME latch class as
+            // the vertical-scroll-tracking bug above. Shares this EXACT
+            // scrollHostChanged trigger rather than a second, independent
+            // detection mechanism — see ReconcileHeaderScrollSyncAsync's own
+            // remarks for what "reconfigure" means here.
+            if (scrollHostChanged) await ReconcileHeaderScrollSyncAsync();
         }
 
         // Bug fix (Codex round 6, P1 #2): a rows-count change (empty->populated,
@@ -752,6 +762,39 @@
         }
 
         if (IsScrollHostReady) await RegisterVerticalScrollTrackingAsync();
+    }
+
+    // Bug fix (Codex round 8 review, P2 #3): reconciles the header-scroll-sync
+    // JS listener against whichever mode is CURRENT, rather than the
+    // firstRender-only registration this used to be — a standalone timeline
+    // (ScrollHost null at mount) later receiving a parent host, or the
+    // reverse, never reconfigured the listener before this fix, the same
+    // one-shot-latch class RebindVerticalScrollTrackingAsync closes above for
+    // vertical-scroll tracking. Header sync is wanted in standalone mode
+    // ONLY (ScrollHost null — see the firstRender remarks above for why it
+    // would double-apply the horizontal offset otherwise), so this is a
+    // plain "does the CURRENT mode want it, does that match what's actually
+    // registered" reconcile — idempotent, safe to call on every firstRender
+    // AND every scrollHostChanged transition, sharing this ONE code path
+    // instead of the two independent ones (an inline firstRender block plus
+    // nothing at all for later transitions) that existed before.
+    private async Task ReconcileHeaderScrollSyncAsync()
+    {
+        var wantHeaderSync = ScrollHost is null;
+        if (wantHeaderSync == _headerScrollSyncRegistered) return;
+
+        if (_headerScrollSyncRegistered)
+        {
+            _headerScrollSyncRegistered = false;
+            try { await Interop.GanttV3UnregisterHeaderScrollSyncAsync(_scrollHostRef); }
+            catch (JSDisconnectedException) { }
+        }
+
+        if (wantHeaderSync)
+        {
+            _headerScrollSyncRegistered = true;
+            await Interop.GanttV3RegisterHeaderScrollSyncAsync(_scrollHostRef, _headerInnerRef);
+        }
     }
 
     /// <summary>

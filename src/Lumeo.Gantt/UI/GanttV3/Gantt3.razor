@@ -199,8 +199,15 @@
     /// centered viewport a whole tree-width off from where the marker
     /// actually needed to be.
     /// </remarks>
-    private double ScrollHostLeadingOffset =>
-        EffectiveShowTreePane && EffectiveDirection == LayoutDirection.Ltr ? GanttScale.TreePaneWidth : 0;
+    private double ScrollHostLeadingOffset => ComputeLeadingOffset(EffectiveShowTreePane, EffectiveDirection);
+
+    // Extracted (Codex round 8 review, P2 #1/#2) so the "what offset was in
+    // effect BEFORE a tree-pane-visibility or direction change" computation
+    // below shares the EXACT same formula as the live property above instead
+    // of risking a second, independently-written copy drifting out of sync
+    // (the same principle ApplyPadding's own remarks describe).
+    private static double ComputeLeadingOffset(bool showTreePane, LayoutDirection direction) =>
+        showTreePane && direction == LayoutDirection.Ltr ? GanttScale.TreePaneWidth : 0;
 
     private Task HandleToggleCollapseAsync(string key)
     {
@@ -216,10 +223,15 @@
     private bool _rangeInitialized;
 
     // Codex round 7 review, P2 #4 — see the directionChanged check in
-    // OnParametersSet below. Null until the first OnParametersSet pass so
-    // mount itself is never mistaken for a "flip" (GanttTimeline's OWN
-    // firstRender already attempts the initial centering scroll regardless).
+    // OnParametersSetAsync below. Null until the first pass so mount itself
+    // is never mistaken for a "flip" (GanttTimeline's OWN firstRender already
+    // attempts the initial centering scroll regardless).
     private LayoutDirection? _lastSeenDirection;
+
+    // Codex round 8 review, P2 #1 — see the showTreePaneChanged check in
+    // OnParametersSetAsync below. Same "null until the first pass" guard as
+    // _lastSeenDirection, same reason.
+    private bool? _lastSeenEffectiveShowTreePane;
 
     // Browser-local "today" (Codex round 2, P2 #9) — resolved once via JS on
     // Gantt3's first post-render; DateTime.Today (the SERVER's local date) is
@@ -356,7 +368,7 @@
         StateHasChanged();
     }
 
-    protected override void OnParametersSet()
+    protected override async Task OnParametersSetAsync()
     {
         // Captured BEFORE SetTasks so a genuine change can be detected below:
         // GanttState.SetTasks no-ops (keeps the SAME list reference) when the
@@ -377,24 +389,67 @@
             : ViewMode != _lastSeenViewMode;
         _lastSeenViewMode = ViewMode;
 
-        // Bug fix (Codex round 7 review, P2 #4): an LTR<->RTL flip on an
-        // ALREADY-MOUNTED chart (a DirectionProvider ancestor toggling
-        // Direction, or the global ThemeService's CurrentDirection changing)
-        // recomputes ScrollHostLeadingOffset and the flex-side layout
-        // correctly — both are plain, live-read computed properties — but
-        // nothing previously told GanttTimeline to re-request its OWN DOM
-        // scrollLeft against the NEW physical layout, so it kept whatever
-        // scroll position it had under the OLD direction, landing the
-        // marker/viewport in the wrong spot the instant the flip happened.
-        // Detected the same way ViewMode/Tasks changes are detected here
-        // (compare against the last-SEEN value) and re-uses the SAME
-        // change-token GanttTimeline already watches for a Today-recenter —
-        // no new interop, no new plumbing, and it re-centers on WHATEVER was
-        // already centered (Today or a caller's ScrollTargetDate), not a
-        // reset to Today the way GoToTodayAsync's own bump is.
+        // Bug fix (Codex round 7 review, P2 #4; extended Codex round 8 review,
+        // P2 #1/#2): TWO distinct things can change what physical position on
+        // screen a given ScrollTargetX pixel maps to, on an ALREADY-MOUNTED
+        // chart, without VisibleRange itself changing at all:
+        //
+        //  - direction flipping (a DirectionProvider ancestor toggling
+        //    Direction, or the global ThemeService's CurrentDirection
+        //    changing) — even when ScrollHostLeadingOffset stays the SAME
+        //    numeric value (e.g. no tree pane shown at all), the DOM's own
+        //    logical-to-native scrollLeft convention still differs between
+        //    LTR and RTL (the same RTL-scroll-normalization machinery
+        //    GanttV3ScrollToXAsync's own JS side applies), so the native
+        //    scrollLeft the browser is CURRENTLY holding no longer corresponds
+        //    to the same visual position under the new direction.
+        //  - ScrollHostLeadingOffset itself changing (round 8, P2 #1):
+        //    EffectiveShowTreePane flipping (ShowTreePane parameter change,
+        //    GroupBy added/removed, or the first task setting ParentId all
+        //    feed GanttRowModel.DefaultShowTreePane) shifts where the
+        //    timeline's own physical origin sits relative to the shared
+        //    scroll pane by exactly TreePaneWidth.
+        //
+        // Both recomputed ScrollHostLeadingOffset/flex-side layout correctly
+        // on their own (it's a plain, live-read computed property) — what was
+        // missing is telling GanttTimeline to re-request its OWN DOM
+        // scrollLeft against the NEW layout at all.
+        //
+        // Bug fix (Codex round 8 review, P2 #2): re-requesting via the SAME
+        // change-token GanttTimeline already watches used to just fall
+        // through to GanttTimeline's own ScrollTargetX (ScrollTargetDate ??
+        // Today) — correct for the common case (a fresh mount, or right
+        // after a view-mode switch, both of which DO set ScrollTargetDate),
+        // but wrong the moment a user has manually panned the DOM with
+        // neither trigger involved: the flip/offset-change would silently
+        // snap back to Today (or a stale prior centerDate) instead of
+        // preserving whatever the user was actually looking at. Reuses the
+        // SAME live-scroll-read approach HandleViewModeChangedAsync's own
+        // ResolveCurrentCenterDateAsync already established for the
+        // identical "preserve what's actually on screen" problem — captured
+        // HERE, in OnParametersSetAsync, BEFORE this render pushes the new
+        // direction/tree-pane layout to the browser (Blazor defers rendering
+        // until this whole async method completes), using the OLD leading
+        // offset (reconstructed from the tracked previous showTreePane/
+        // direction values) rather than the NEW live property, since the DOM
+        // itself hasn't visually changed yet at this point but
+        // ScrollHostLeadingOffset's OWN read already reflects the NEW
+        // parameter values.
+        var effectiveShowTreePane = EffectiveShowTreePane;
+        var showTreePaneChanged = _lastSeenEffectiveShowTreePane is { } lastShowTreePane && lastShowTreePane != effectiveShowTreePane;
         var directionChanged = _lastSeenDirection is { } lastDirection && lastDirection != EffectiveDirection;
+
+        if (showTreePaneChanged || directionChanged)
+        {
+            var oldShowTreePane = _lastSeenEffectiveShowTreePane ?? effectiveShowTreePane;
+            var oldDirection = _lastSeenDirection ?? EffectiveDirection;
+            var oldLeadingOffset = ComputeLeadingOffset(oldShowTreePane, oldDirection);
+            _scrollTargetDate = await ResolveCurrentCenterDateAsync(oldLeadingOffset);
+            _scrollToTodayRequestId++;
+        }
+
+        _lastSeenEffectiveShowTreePane = effectiveShowTreePane;
         _lastSeenDirection = EffectiveDirection;
-        if (directionChanged) _scrollToTodayRequestId++;
 
         if (viewModeChanged || !_rangeInitialized)
         {
@@ -544,7 +599,7 @@
         _scrollTargetDate = centerDate;
         _scrollToTodayRequestId++; // re-request the DOM scroll — see GanttTimeline.ScrollTargetDate's remarks
         if (ViewModeChanged.HasDelegate) await ViewModeChanged.InvokeAsync(mode);
-        else ViewMode = mode; // uncontrolled: keep our own field in lock-step for the next OnParametersSet comparison
+        else ViewMode = mode; // uncontrolled: keep our own field in lock-step for the next OnParametersSetAsync comparison
     }
 
     // Bug fix (Codex round 5, P2 #5): reads the shared scroll pane's ACTUAL
@@ -576,12 +631,23 @@
     // can't be measured (not yet laid out — practically unreachable here,
     // since a view-mode switch only ever fires from a toolbar click well
     // after mount — or JS interop unavailable, e.g. a torn-down circuit).
-    private async Task<DateTime> ResolveCurrentCenterDateAsync()
+    private Task<DateTime> ResolveCurrentCenterDateAsync() => ResolveCurrentCenterDateAsync(ScrollHostLeadingOffset);
+
+    // Bug fix (Codex round 8 review, P2 #1/#2): parameterized the leading
+    // offset instead of always reading the LIVE ScrollHostLeadingOffset
+    // property — the direction-flip/tree-pane-change reconcile in
+    // OnParametersSetAsync needs the OLD offset (from BEFORE the change being
+    // reconciled), since by the time it runs, EffectiveShowTreePane/
+    // EffectiveDirection already reflect the NEW parameter values even though
+    // the DOM itself hasn't been re-rendered under them yet. The view-mode
+    // switch call site above is unaffected — it passes the (unchanged, still
+    // live) current offset, exactly as before.
+    private async Task<DateTime> ResolveCurrentCenterDateAsync(double leadingOffset)
     {
         var logicalCenterX = await Interop.GanttV3GetScrollCenterXAsync(_scrollPaneRef);
         if (logicalCenterX is { } x)
         {
-            var timelineRelativeX = x - ScrollHostLeadingOffset;
+            var timelineRelativeX = x - leadingOffset;
             var units = GanttScale.BuildDateUnits(_state.ViewMode, _state.VisibleRange.Start, _state.VisibleRange.End);
             var origin = units.Count > 0 ? units[0] : _state.VisibleRange.Start;
             var colWidth = ColumnWidth ?? GanttScale.GetConfig(_state.ViewMode).ColumnWidth;

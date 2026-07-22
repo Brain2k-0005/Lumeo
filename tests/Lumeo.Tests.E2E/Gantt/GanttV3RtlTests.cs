@@ -200,4 +200,47 @@ public class GanttV3RtlTests : GanttParityTestBase
         // completion assertion in this file does.
         await Assertions.Expect(todayLine).ToBeInViewportAsync(new() { Timeout = 10000 });
     }
+
+    [Fact]
+    public async Task Flipping_Direction_After_A_Manual_Pan_Preserves_The_Panned_To_Position_Not_Today()
+    {
+        // Bug fix (Codex round 8 review, P2 #2): the round-7 fix's recenter
+        // fell through to GanttTimeline's own ScrollTargetX (ScrollTargetDate
+        // ?? Today) whenever neither was set — correct right after mount or a
+        // view-mode switch (both DO set ScrollTargetDate), but WRONG the
+        // moment a user has manually panned the DOM with neither trigger
+        // involved: a direction flip silently snapped back to Today instead
+        // of preserving what the user was actually looking at. Uses the
+        // "future" fixture specifically because its tasks sit ~60 columns
+        // past Origin — well beyond the initial (clamped-to-earliest-edge,
+        // per the round-5 spec above) viewport, so bringing future-1 into
+        // view here is a REAL, otherwise-untriggered pan, not an accident of
+        // the initial centering.
+        await GotoHost("/e2e/gantt-v3?fixture=future");
+
+        var scrollPane = Page.Locator("[data-testid='gantt-v3-root'] div[style*='overflow']").First;
+        await scrollPane.WaitForAsync(new() { Timeout = 15000 });
+        await Assertions.Expect(scrollPane).ToHaveAttributeAsync("data-gantt-v3-initial-scroll", "done", new() { Timeout = 15000 });
+
+        var futureBar = Page.Locator("[data-testid='gantt-v3-root'] [data-task-id='future-1']");
+        await futureBar.WaitForAsync(new() { State = WaitForSelectorState.Attached, Timeout = 15000 });
+
+        // A genuine manual pan — a real DOM scroll, not gantt-v3.js's own
+        // centerOn — mirroring how a user would actually bring this bar into
+        // view. Confirms the pan itself worked before the flip is even
+        // attempted, so a later failure can only be attributed to the flip.
+        await futureBar.ScrollIntoViewIfNeededAsync();
+        await Assertions.Expect(futureBar).ToBeInViewportAsync(new() { Timeout = 10000 });
+
+        await Page.Locator("[data-testid='gantt-v3-toggle-direction']").ClickAsync();
+
+        // Polling assertion (not a one-shot EvaluateAsync read) — the click's
+        // own re-render is async, so a bare read right after ClickAsync can
+        // race it.
+        await Assertions.Expect(scrollPane).ToHaveCSSAsync("direction", "rtl", new() { Timeout = 10000 });
+
+        // The fix's own job: future-1 — NOT today, which is nowhere near this
+        // fixture's rendered window — must stay in viewport across the flip.
+        await Assertions.Expect(futureBar).ToBeInViewportAsync(new() { Timeout = 10000 });
+    }
 }

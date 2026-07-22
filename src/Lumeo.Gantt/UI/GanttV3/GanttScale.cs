@@ -495,15 +495,37 @@ internal static class GanttScale
     /// </summary>
     internal static (double X, double Width) BarGeometry(GanttTask task, GanttViewMode mode, DateTime origin, int columnWidth, int barHeight)
     {
+        // Bug fix (Codex round 8 review, P2 #4): v2's normalizeTasks/parseDate
+        // (gantt-v2.js) truncate every task's Start/End to a plain calendar
+        // date — `d.getFullYear()/getMonth()/getDate()`, ALWAYS, unconditional
+        // on view mode — BEFORE the renderer ever sees them; v2 has no notion
+        // of a sub-day task time anywhere. v3 never had an equivalent
+        // truncation step, so a task carrying a real time-of-day (e.g.
+        // Start=2026-03-04 14:37) rendered at that exact fractional pixel
+        // offset instead of snapping to the day boundary — invisible in Day
+        // mode's own coarse columns but visibly wrong in QuarterDay/HalfDay,
+        // where a task is supposed to occupy whole quarter/half-day columns
+        // starting exactly at their boundary, not wherever a stray time
+        // happens to land. Truncated HERE — the single shared geometry
+        // formula bars AND arrows both go through (see this method's own
+        // remarks) — rather than on GanttTask itself, so a consumer's own
+        // Start/End (round-tripped through OnTaskClick, a drag commit, etc.)
+        // keeps whatever time-of-day they actually supplied; only the
+        // RENDERED POSITION is date-truncated, mirroring v2's own semantic
+        // layer (its renderer never sees the untruncated value at all,
+        // either) without touching the public data model.
+        var start = task.Start.Date;
+        var end = task.End.Date;
+
         if (task.IsMilestone)
         {
-            var center = DateToPixel(mode, origin, task.Start, columnWidth) + columnWidth / 2.0;
+            var center = DateToPixel(mode, origin, start, columnWidth) + columnWidth / 2.0;
             var half = barHeight / 2.0;
             return (center - half, barHeight);
         }
 
-        var x1 = DateToPixel(mode, origin, task.Start, columnWidth);
-        var x2 = DateToPixel(mode, origin, task.End.AddDays(1), columnWidth);
+        var x1 = DateToPixel(mode, origin, start, columnWidth);
+        var x2 = DateToPixel(mode, origin, end.AddDays(1), columnWidth);
         return (x1, Math.Max(8, x2 - x1));
     }
 
