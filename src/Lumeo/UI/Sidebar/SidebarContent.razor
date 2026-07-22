@@ -14,5 +14,20 @@
     /// <summary>Unmatched attributes are splatted onto the root <c>div</c> element.</summary>
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
-    private string CssClass => Cx.Merge("flex flex-1 flex-col gap-1 overflow-auto px-2 py-3", Class);
+    // Bug fix (feedback wave): "overflow-auto" scrolls BOTH axes. The nav content
+    // routinely grows taller than the viewport (that's the whole point of this
+    // container), so the vertical scrollbar appears and steals width from the
+    // content box — every w-full entry (menu buttons, etc.) then reports as
+    // slightly too wide for the now-narrower box and a HORIZONTAL scrollbar
+    // appears too, even though nothing is actually overflowing horizontally.
+    // overflow-y-auto/overflow-x-hidden (the same pair SidebarComponent's own
+    // <aside> already uses, and CommandList/DialogContent/PullToRefresh
+    // elsewhere in this library) scrolls only the axis that's ever meant to
+    // scroll here. scrollbar-gutter:stable reserves the vertical scrollbar's
+    // track space up front (Tailwind has no built-in utility for this
+    // property, hence the arbitrary-property bracket syntax already used by
+    // this same file's transition-[width,translate]) so content doesn't
+    // reflow width-wise the moment the list grows past one page and the
+    // scrollbar appears.
+    private string CssClass => Cx.Merge("flex flex-1 flex-col gap-1 overflow-y-auto overflow-x-hidden [scrollbar-gutter:stable] px-2 py-3", Class);
 }
