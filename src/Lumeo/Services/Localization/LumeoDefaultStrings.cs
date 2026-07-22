@@ -487,6 +487,7 @@ internal static partial class LumeoDefaultStrings
         ["Gantt.CollapseRow"] = "Collapse {0}",
         ["Gantt.NoTasksToDisplay"] = "No tasks to display",
         ["Gantt.TaskAriaLabel"] = "{0}, {1} to {2}",
+        ["Gantt.PercentComplete"] = "{0}% complete",
 
         // ── Theme ───────────────────────────────────────────────────
         ["Theme.Light"] = "Light",
@@ -1019,6 +1020,7 @@ internal static partial class LumeoDefaultStrings
         ["Gantt.CollapseRow"] = "{0} einklappen",
         ["Gantt.NoTasksToDisplay"] = "Keine Aufgaben vorhanden",
         ["Gantt.TaskAriaLabel"] = "{0}, {1} bis {2}",
+        ["Gantt.PercentComplete"] = "{0}% abgeschlossen",
 
         // ── Theme ───────────────────────────────────────────────────
         ["Theme.Light"] = "Hell",

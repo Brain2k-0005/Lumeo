@@ -277,6 +277,7 @@ internal static partial class LumeoDefaultStrings
         ["Gantt.CollapseRow"] = "Свернуть {0}",
         ["Gantt.NoTasksToDisplay"] = "Нет задач для отображения",
         ["Gantt.TaskAriaLabel"] = "{0}, с {1} по {2}",
+        ["Gantt.PercentComplete"] = "Выполнено {0}%",
 
         // Editor
         ["Editor.Paragraph"] = "Абзац",

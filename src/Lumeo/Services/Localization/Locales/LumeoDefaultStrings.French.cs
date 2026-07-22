@@ -326,5 +326,6 @@ internal static partial class LumeoDefaultStrings
         ["Gantt.CollapseRow"] = "Réduire {0}",
         ["Gantt.NoTasksToDisplay"] = "Aucune tâche à afficher",
         ["Gantt.TaskAriaLabel"] = "{0}, du {1} au {2}",
+        ["Gantt.PercentComplete"] = "{0}% terminé",
     };
 }

@@ -329,5 +329,6 @@ internal static partial class LumeoDefaultStrings
         ["Gantt.CollapseRow"] = "Zwiń {0}",
         ["Gantt.NoTasksToDisplay"] = "Brak zadań do wyświetlenia",
         ["Gantt.TaskAriaLabel"] = "{0}, od {1} do {2}",
+        ["Gantt.PercentComplete"] = "{0}% ukończone",
     };
 }

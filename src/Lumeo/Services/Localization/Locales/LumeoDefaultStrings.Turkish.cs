@@ -274,6 +274,7 @@ internal static partial class LumeoDefaultStrings
         ["Gantt.CollapseRow"] = "{0} öğesini daralt",
         ["Gantt.NoTasksToDisplay"] = "Gösterilecek görev yok",
         ["Gantt.TaskAriaLabel"] = "{0}, {1} - {2}",
+        ["Gantt.PercentComplete"] = "%{0} tamamlandı",
 
         // Editor
         ["Editor.Paragraph"] = "Paragraf",
