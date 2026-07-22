@@ -134,4 +134,105 @@ public class SidebarMenuAuxiliaryListValidityTests : IAsyncLifetime
         Assert.Empty(cut.FindAll("li"));
         Assert.Contains("Platform", cut.Find("div.flex.h-8").TextContent);
     }
+
+    // ── #381 Codex P2: the cascade describes ANCESTRY, not DOM parentage — a
+    // GroupLabel/Separator nested inside a SidebarMenuItem (already inside an
+    // <li>, one level deeper than a direct SidebarMenu child) must NOT also
+    // wrap itself in a second, invalid nested <li>. ─────────────────────────
+
+    [Fact]
+    public void Separator_Nested_Inside_SidebarMenuItem_Does_Not_Get_A_Second_Nested_Li()
+    {
+        var cut = _ctx.Render(builder =>
+        {
+            builder.OpenComponent<L.SidebarMenu>(0);
+            builder.AddAttribute(1, "ChildContent", (RenderFragment)(b =>
+            {
+                b.OpenComponent<L.SidebarMenuItem>(0);
+                b.AddAttribute(1, "ChildContent", (RenderFragment)(item =>
+                {
+                    item.OpenComponent<L.SidebarSeparator>(0);
+                    item.CloseComponent();
+                }));
+                b.CloseComponent();
+            }));
+            builder.CloseComponent();
+        });
+
+        // Exactly one <li> (SidebarMenuItem's own) — the separator inside it
+        // must render its plain <div>, not a second nested <li>.
+        var lis = cut.FindAll("li");
+        Assert.Single(lis);
+        Assert.Null(lis[0].QuerySelector("li"));
+        Assert.NotNull(lis[0].QuerySelector("div[role='none']"));
+    }
+
+    [Fact]
+    public void GroupLabel_Nested_Inside_SidebarMenuItem_Does_Not_Get_A_Second_Nested_Li()
+    {
+        var cut = _ctx.Render(builder =>
+        {
+            builder.OpenComponent<L.SidebarMenu>(0);
+            builder.AddAttribute(1, "ChildContent", (RenderFragment)(b =>
+            {
+                b.OpenComponent<L.SidebarMenuItem>(0);
+                b.AddAttribute(1, "ChildContent", (RenderFragment)(item =>
+                {
+                    item.OpenComponent<L.SidebarGroupLabel>(0);
+                    item.AddAttribute(1, "ChildContent", (RenderFragment)(inner => inner.AddContent(0, "Nested")));
+                    item.CloseComponent();
+                }));
+                b.CloseComponent();
+            }));
+            builder.CloseComponent();
+        });
+
+        var lis = cut.FindAll("li");
+        Assert.Single(lis);
+        Assert.Null(lis[0].QuerySelector("li"));
+        Assert.Contains("Nested", lis[0].TextContent);
+    }
+
+    // ── AsListItem explicit override (escape hatch for shapes the cascade
+    // can't auto-detect — e.g. a consumer's own custom wrapper). ────────────
+
+    [Fact]
+    public void Separator_AsListItem_True_Forces_The_Li_Wrapper_Outside_A_Menu()
+    {
+        var cut = _ctx.Render<L.SidebarSeparator>(p => p
+            .Add(c => c.AsListItem, true));
+
+        var li = cut.Find("li");
+        Assert.Equal("presentation", li.GetAttribute("role"));
+    }
+
+    [Fact]
+    public void Separator_AsListItem_False_Suppresses_The_Li_Wrapper_Inside_A_Menu()
+    {
+        var cut = _ctx.Render(builder =>
+        {
+            builder.OpenComponent<L.SidebarMenu>(0);
+            builder.AddAttribute(1, "ChildContent", (RenderFragment)(b =>
+            {
+                b.OpenComponent<L.SidebarSeparator>(0);
+                b.AddAttribute(1, "AsListItem", false);
+                b.CloseComponent();
+            }));
+            builder.CloseComponent();
+        });
+
+        Assert.Empty(cut.FindAll("li"));
+    }
+
+    [Fact]
+    public void GroupLabel_AsListItem_True_Forces_The_Li_Wrapper_Outside_A_Menu()
+    {
+        var cut = _ctx.Render<L.SidebarGroupLabel>(p => p
+            .Add(c => c.AsListItem, true)
+            .AddChildContent("Forced"));
+
+        var li = cut.Find("li");
+        Assert.Equal("presentation", li.GetAttribute("role"));
+        Assert.Contains("Forced", li.TextContent);
+    }
 }
