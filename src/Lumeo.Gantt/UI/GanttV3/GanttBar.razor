@@ -62,7 +62,7 @@
            literal ("N% complete") regardless of the active culture — every
            OTHER string in this component (and the rest of GanttV3) already
            routes through the same Gantt.* localization family. *@
-        <div class="opacity-75">@L["Gantt.PercentComplete", Task.Progress]</div>
+        <div class="opacity-75">@L["Gantt.PercentComplete", ClampedProgress]</div>
     </TooltipContent>
 </Tooltip>
 
@@ -175,14 +175,16 @@
         ? FormattableString.Invariant($"background-color:{ResolvedColor};transform:rotate(45deg);width:{MilestoneSidePx}px;height:{MilestoneSidePx}px;")
         : FormattableString.Invariant($"background-color:{ResolvedColor};");
 
-    private string ProgressStyle
-    {
-        get
-        {
-            var progress = Math.Clamp(Task.Progress, 0, 100);
-            return FormattableString.Invariant($"width:{progress}%;background-color:{ResolvedColor};");
-        }
-    }
+    // Bug fix (Codex round 9 review, P2 #6): extracted so the tooltip's own
+    // display (below) uses the IDENTICAL clamp as the progress fill's width,
+    // instead of risking a second, unclamped read of Task.Progress —
+    // Task.Progress is a caller-supplied value with no enforced range (a
+    // consumer setting Progress=150 previously got a fill correctly capped
+    // at 100% width, but a tooltip claiming "150% complete").
+    private int ClampedProgress => Math.Clamp(Task.Progress, 0, 100);
+
+    private string ProgressStyle =>
+        FormattableString.Invariant($"width:{ClampedProgress}%;background-color:{ResolvedColor};");
 
     // The wrapper carries BOTH the raw --lumeo-gantt-bar-* custom properties (so a
     // consumer stylesheet can read/override them) and the physical left/top/width/

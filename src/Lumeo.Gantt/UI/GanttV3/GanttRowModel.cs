@@ -114,22 +114,40 @@ internal static class GanttRowModel
     /// </summary>
     internal static IReadOnlyList<GanttVisibleRow> BuildVisibleRows(IReadOnlyList<GanttTask> tasks, IReadOnlySet<string> collapsed)
     {
-        var validTasks = FilterInvalidDurationTasks(tasks);
+        var validTasks = FilterValidDurationTasks(tasks);
         return UsesHierarchy(validTasks) ? BuildHierarchyRows(validTasks, collapsed) : BuildFlatGroupRows(validTasks, collapsed);
     }
 
-    // Bug fix (Codex round 8 review, P2 #5): v2's normalizeTasks (gantt-v2.js)
-    // drops any task whose End is before its Start (`.filter(t => t.end >=
-    // t.start)`) BEFORE the renderer ever sees it — no bar, no row; v3 had no
-    // equivalent, so a genuinely invalid End<Start task rendered an 8px
-    // sliver bar (BarGeometry's own Math.Max(8, ...) width clamp) instead of
-    // being dropped. Milestones are effectively EXEMPT from v2's rule — not
-    // because the rule special-cases them, but because normalizeTasks forces
-    // `end = start` for every milestone BEFORE this check runs (gantt-v2.js
-    // line 90: `if (isMilestone && start) end = start`), so a milestone's own
-    // End/Start relationship can never trip this filter in the first place.
-    // Mirrored the same way here: a milestone's End is never compared against
-    // its Start at all, only a non-milestone task's is.
+    // Bug fix (Codex round 8 review, P2 #5; corrected Codex round 9 review,
+    // P2 #1): v2's normalizeTasks (gantt-v2.js) drops any task whose End is
+    // before its Start (`.filter(t => t.end >= t.start)`) BEFORE the renderer
+    // ever sees it — no bar, no row; v3 had no equivalent, so a genuinely
+    // invalid End<Start task rendered an 8px sliver bar (BarGeometry's own
+    // Math.Max(8, ...) width clamp) instead of being dropped. Milestones are
+    // effectively EXEMPT from v2's rule — not because the rule special-cases
+    // them, but because normalizeTasks forces `end = start` for every
+    // milestone BEFORE this check runs (gantt-v2.js line 90: `if
+    // (isMilestone && start) end = start`), so a milestone's own End/Start
+    // relationship can never trip this filter in the first place. Mirrored
+    // the same way here: a milestone's End is never compared against its
+    // Start at all, only a non-milestone task's is.
+    //
+    // Bug fix (Codex round 9 review, P2 #1): the round-8 fix compared RAW
+    // Start/End times — but v2's OWN pipeline order is truncate-THEN-filter
+    // (parseDate strips time-of-day for every task before normalizeTasks'
+    // own `.filter(t => t.end >= t.start)` ever runs — see parseDate's
+    // remarks), so a same-day task like 17:00 -> 09:00 (End's CLOCK time
+    // before Start's, but the same CALENDAR day) is VALID in v2 (both
+    // truncate to that one day, End.Date >= Start.Date holds) yet v3's raw-
+    // time comparison wrongly dropped it. Compares .Date (calendar day only)
+    // on both sides now, matching v2's own truncate-first order exactly — a
+    // task is only ever dropped for a GENUINE End-day-before-Start-day span.
+    //
+    // Shared with Gantt3.ComputeInitialRange's own min/max computation
+    // (Codex round 9 review, P2 #3 — the range must exclude the SAME invalid
+    // tasks this row filter drops, closing the gap the round-8 report
+    // flagged) via HasValidDuration below, so the two can never diverge on
+    // WHAT counts as invalid again.
     //
     // Filtering here (BuildVisibleRows' single entry point, before either row-
     // building strategy runs) means the dropped task never reaches GanttTree/
@@ -139,14 +157,16 @@ internal static class GanttRowModel
     // same outcome v2's own arrow loop produces for a filtered-out task
     // (`const source = taskById.get(depId); if (!source) continue;` —
     // gantt-v2.js line 653) — no separate dependency-cleanup step needed.
-    private static IReadOnlyList<GanttTask> FilterInvalidDurationTasks(IReadOnlyList<GanttTask> tasks)
+    internal static bool HasValidDuration(GanttTask task) =>
+        task.IsMilestone || task.End.Date >= task.Start.Date;
+
+    internal static IReadOnlyList<GanttTask> FilterValidDurationTasks(IReadOnlyList<GanttTask> tasks)
     {
         List<GanttTask>? filtered = null;
         for (var i = 0; i < tasks.Count; i++)
         {
             var task = tasks[i];
-            var isInvalid = !task.IsMilestone && task.End < task.Start;
-            if (isInvalid)
+            if (!HasValidDuration(task))
             {
                 if (filtered is null)
                 {

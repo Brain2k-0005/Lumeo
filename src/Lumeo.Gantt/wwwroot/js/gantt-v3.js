@@ -126,6 +126,17 @@ function unregisterHeaderScrollSync(canvasEl) {
     if (!reg) return;
     canvasEl.removeEventListener('scroll', reg.onScroll);
     headerScrollSyncs.delete(canvasEl);
+    // Bug fix (Codex round 9 review, P2 #4): the LAST onScroll call left a
+    // translateX(...) frozen on the header inline style - unregistering
+    // (e.g. a standalone timeline transitioning to Gantt3's shared-pane
+    // mode, where the header goes back to natural DOM flow with no offset
+    // needed at all - see GanttTimeline's own remarks) never cleared it, so
+    // the header stayed visually shifted by whatever the last scroll
+    // position happened to be. Cleared here so a re-registration later
+    // (the reverse transition) also starts from a clean baseline instead of
+    // briefly showing the stale offset for one frame before its own first
+    // onScroll() call overwrites it.
+    reg.headerInnerEl.style.transform = '';
 }
 
 // Vertical scroll tracking (Codex round 4, P2 #3): GanttArrowLayer draws one

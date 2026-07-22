@@ -6,6 +6,7 @@
 @inject Lumeo.Services.IComponentInteropService Interop
 @inject Lumeo.Services.IThemeService Theme
 @attribute [EditorBrowsable(EditorBrowsableState.Never)]
+@implements IDisposable
 
 @* Gantt3 — v3's root component (design spec Phase 2, T2 "read-only markup";
    working name — renamed in Phase 4 once it replaces the v2 Gantt public API).
@@ -209,6 +210,29 @@
     private static double ComputeLeadingOffset(bool showTreePane, LayoutDirection direction) =>
         showTreePane && direction == LayoutDirection.Ltr ? GanttScale.TreePaneWidth : 0;
 
+    // Codex round 8 review, P2 #1/#2; extracted for reuse Codex round 9
+    // review, P2 #7 — see OnParametersSetAsync's own remarks for the full
+    // reasoning and OnInitialized's for why this needs a second caller
+    // (Theme.OnThemeChanged) beyond the normal parameter lifecycle.
+    private async Task ReconcileLeadingOffsetChangeAsync()
+    {
+        var effectiveShowTreePane = EffectiveShowTreePane;
+        var showTreePaneChanged = _lastSeenEffectiveShowTreePane is { } lastShowTreePane && lastShowTreePane != effectiveShowTreePane;
+        var directionChanged = _lastSeenDirection is { } lastDirection && lastDirection != EffectiveDirection;
+
+        if (showTreePaneChanged || directionChanged)
+        {
+            var oldShowTreePane = _lastSeenEffectiveShowTreePane ?? effectiveShowTreePane;
+            var oldDirection = _lastSeenDirection ?? EffectiveDirection;
+            var oldLeadingOffset = ComputeLeadingOffset(oldShowTreePane, oldDirection);
+            _scrollTargetDate = await ResolveCurrentCenterDateAsync(oldLeadingOffset);
+            _scrollToTodayRequestId++;
+        }
+
+        _lastSeenEffectiveShowTreePane = effectiveShowTreePane;
+        _lastSeenDirection = EffectiveDirection;
+    }
+
     private Task HandleToggleCollapseAsync(string key)
     {
         _state.ToggleCollapsed(key);
@@ -256,6 +280,41 @@
         _state.SetTasks(SortedTasks(Tasks?.ToList() ?? new List<GanttTask>()));
         _state.SetVisibleRange(ComputeInitialRange(_state.ViewMode, _state.Tasks, EffectiveToday));
         _rangeInitialized = true;
+
+        // Bug fix (Codex round 9 review, P2 #7): the direction-flip/tree-
+        // pane-offset reconcile in OnParametersSetAsync only ever runs when a
+        // PARENT re-renders this component (Blazor's parameter lifecycle) —
+        // a DirectionProvider ancestor toggling its Direction PARAMETER goes
+        // through exactly that path (the cascading value change forces a
+        // re-render), but the global ThemeService's own CurrentDirection
+        // changing directly (no DirectionProvider ancestor at all — see
+        // EffectiveDirection's own ScopedDirection ?? Theme.CurrentDirection
+        // fallback) raises ONLY Theme.OnThemeChanged, with no parent re-
+        // render involved at all, so OnParametersSetAsync never runs and the
+        // flip went unnoticed. Subscribes here the same way every other
+        // theme-aware Lumeo component does (see ThemeToggle.razor's own
+        // OnThemeChanged/Dispose pair) and unsubscribes in Dispose below.
+        Theme.OnThemeChanged += OnThemeChanged;
+    }
+
+    // Bug fix (Codex round 9 review, P2 #7) — see OnInitialized's own
+    // remarks. Mirrors ThemeToggle's handler shape (a plain void delegate for
+    // the Action-typed event), but this component's own reconcile needs an
+    // interop round-trip, so the async work is dispatched via InvokeAsync
+    // rather than done inline — InvokeAsync also marshals back onto the
+    // renderer's sync context, matching every other OnThemeChanged handler.
+    private void OnThemeChanged()
+    {
+        _ = InvokeAsync(async () =>
+        {
+            await ReconcileLeadingOffsetChangeAsync();
+            StateHasChanged();
+        });
+    }
+
+    public void Dispose()
+    {
+        Theme.OnThemeChanged -= OnThemeChanged;
     }
 
     // Codex round 2, P2 #9 — see EffectiveToday's remarks. Resolved once via
@@ -427,29 +486,21 @@
         // SAME live-scroll-read approach HandleViewModeChangedAsync's own
         // ResolveCurrentCenterDateAsync already established for the
         // identical "preserve what's actually on screen" problem — captured
-        // HERE, in OnParametersSetAsync, BEFORE this render pushes the new
-        // direction/tree-pane layout to the browser (Blazor defers rendering
-        // until this whole async method completes), using the OLD leading
-        // offset (reconstructed from the tracked previous showTreePane/
-        // direction values) rather than the NEW live property, since the DOM
-        // itself hasn't visually changed yet at this point but
-        // ScrollHostLeadingOffset's OWN read already reflects the NEW
-        // parameter values.
-        var effectiveShowTreePane = EffectiveShowTreePane;
-        var showTreePaneChanged = _lastSeenEffectiveShowTreePane is { } lastShowTreePane && lastShowTreePane != effectiveShowTreePane;
-        var directionChanged = _lastSeenDirection is { } lastDirection && lastDirection != EffectiveDirection;
-
-        if (showTreePaneChanged || directionChanged)
-        {
-            var oldShowTreePane = _lastSeenEffectiveShowTreePane ?? effectiveShowTreePane;
-            var oldDirection = _lastSeenDirection ?? EffectiveDirection;
-            var oldLeadingOffset = ComputeLeadingOffset(oldShowTreePane, oldDirection);
-            _scrollTargetDate = await ResolveCurrentCenterDateAsync(oldLeadingOffset);
-            _scrollToTodayRequestId++;
-        }
-
-        _lastSeenEffectiveShowTreePane = effectiveShowTreePane;
-        _lastSeenDirection = EffectiveDirection;
+        // BEFORE this render pushes the new direction/tree-pane layout to
+        // the browser (Blazor defers rendering until this whole async method
+        // completes), using the OLD leading offset (reconstructed from the
+        // tracked previous showTreePane/direction values) rather than the
+        // NEW live property, since the DOM itself hasn't visually changed
+        // yet at this point but ScrollHostLeadingOffset's OWN read already
+        // reflects the NEW parameter values.
+        //
+        // Extracted (Codex round 9 review, P2 #7) so OnThemeChanged (see
+        // OnInitialized's own remarks) can run the IDENTICAL reconcile for a
+        // direction change that arrives via the global ThemeService directly
+        // rather than a DirectionProvider parameter — this method itself has
+        // no idea which trigger fired it, it just compares the tracked
+        // "last seen" values against the current ones, exactly as before.
+        await ReconcileLeadingOffsetChangeAsync();
 
         if (viewModeChanged || !_rangeInitialized)
         {
@@ -487,12 +538,35 @@
             // there from the start.
             if (wasEmpty)
             {
-                // Codex round 4, P2 #8: this recenter always targets Today
-                // (ComputeInitialRange's fallback branch centers the empty
-                // window around it) — clear any stale centerDate a PREVIOUS
-                // view-mode switch may have left behind, same reasoning as
-                // GoToTodayAsync's own reset.
-                _scrollTargetDate = null;
+                // Codex round 4, P2 #8: this recenter targets Today by
+                // default (ComputeInitialRange's own EMPTY-list fallback
+                // branch centers that window around it) — clear any stale
+                // centerDate a PREVIOUS view-mode switch may have left
+                // behind, same reasoning as GoToTodayAsync's own reset.
+                //
+                // Bug fix (Codex round 9 review, P2 #5): but the NEWLY
+                // arrived tasks are what ComputeInitialRange just derived
+                // the range FROM (the non-empty branch, since previousTasks
+                // was empty and _state.Tasks isn't anymore) — if those tasks
+                // sit entirely in the past or future, Today isn't rendered
+                // anywhere in the just-computed range at all, so targeting
+                // it would center the viewport on empty padding instead of
+                // the actual tasks that just arrived. v2's own first-render
+                // tryScroll has an analogous gate (`if (todayPx > 0)`
+                // gantt-v2.js line 684) that leaves scrollLeft untouched
+                // (0, the default) when today's pixel position isn't
+                // meaningfully positioned — v3 has no "just don't move"
+                // equivalent (GanttTimeline always performs a deterministic
+                // scroll-to-center once a target is requested, rather than
+                // relying on v2's own DOM-persistence trick), so the closest
+                // sensible analog — and a deliberate, documented delta from
+                // v2 where the two can't behave identically — is to center
+                // on the newly-computed RANGE itself (its own midpoint,
+                // VisibleCenterDate) instead of Today whenever Today falls
+                // outside it.
+                var newRange = _state.VisibleRange;
+                var todayInRange = EffectiveToday >= newRange.Start && EffectiveToday <= newRange.End;
+                _scrollTargetDate = todayInRange ? null : VisibleCenterDate;
                 _scrollToTodayRequestId++;
             }
         }
@@ -512,13 +586,27 @@
     // Faithful port of gantt-v2.js's render() min/max + per-unit padding preamble
     // (gantt-v2.js lines 155-190) — GanttScale.BuildDateUnits deliberately leaves
     // this to its caller (see its own remarks), and this is that caller.
+    // Bug fix (Codex round 9 review, P2 #2/#3): two related gaps against v2's
+    // own normalizeTasks pipeline (truncate -> filter), both closed here by
+    // routing through GanttRowModel's shared normalize+filter step (the SAME
+    // one BuildVisibleRows uses — see its own remarks) rather than a second,
+    // independently-written copy that could silently diverge:
+    //  - the min/max used RAW Start/End (not date-truncated) — a task
+    //    carrying a real time-of-day skewed the computed range by that
+    //    fractional day, misaligning it against BarGeometry's own (round-8
+    //    fixed) date-truncated bar geometry in sub-day modes.
+    //  - the min/max read the UNFILTERED task list, so a genuinely invalid
+    //    End<Start task (dropped from Rows entirely by GanttRowModel) could
+    //    still stretch the computed range even though it renders no row —
+    //    the exact skew the round-8 report flagged as out of scope then.
     private static GanttDateRange ComputeInitialRange(GanttViewMode mode, IReadOnlyList<GanttTask> tasks, DateTime today)
     {
+        var validTasks = GanttRowModel.FilterValidDurationTasks(tasks);
         DateTime minDate, maxDate;
-        if (tasks.Count > 0)
+        if (validTasks.Count > 0)
         {
-            minDate = tasks.Min(t => t.Start);
-            maxDate = tasks.Max(t => t.IsMilestone ? t.Start : t.End);
+            minDate = validTasks.Min(t => t.Start.Date);
+            maxDate = validTasks.Max(t => (t.IsMilestone ? t.Start : t.End).Date);
         }
         else
         {
