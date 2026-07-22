@@ -141,7 +141,23 @@
                        against the SAME ancestor as before (RowsContainerStyle's own
                        `.relative` div above), so visual geometry is byte-identical;
                        this only adds a correctly-sized IN-FLOW box alongside it. *@
-                    <div class="lumeo-gantt-v3-row-item" style="height:@(GanttScale.RowHeight)px;">
+                    @* Bug fix (Codex round 15 review, P2): this wrapper carried
+                       no @key at all — a live task-set update (or a GroupBy-
+                       driven reorder) that changes WHICH task occupies a given
+                       row index let Blazor's diffing reuse the SAME <GanttBar>
+                       component instance across renders for what is now a
+                       DIFFERENT task, since without a key Blazor matches
+                       children positionally. GanttBar owns its own JS-interop-
+                       backed state (tooltip visibility, etc. — see GanttBar's
+                       own remarks) that must reset per-task, not silently
+                       survive onto whatever task now lands in that slot.
+                       row.Task's own Id is the SAME stable per-task identity
+                       GanttRowModel.ToggleKey already establishes for a task
+                       row (see GanttVisibleRow's remarks); a group-header slot
+                       has no Task at all, so it falls back to its row index —
+                       stable enough since no GanttBar (the component actually
+                       carrying reusable interop state) ever renders there. *@
+                    <div class="lumeo-gantt-v3-row-item" @key="@((object?)row.Task?.Id ?? $"group-{row.RowIndex}")" style="height:@(GanttScale.RowHeight)px;">
                         @if (row.Task is not null)
                         {
                             <GanttBar Task="row.Task" X="row.X" Width="row.Width" RowIndex="row.RowIndex"
@@ -682,8 +698,27 @@
             if (IsScrollHostReady && ShouldAttemptTodayScroll)
             {
                 var initialIntentPending = ScrollToTodayRequestId != _lastConsumedScrollRequestId;
+                // Bug fix (Codex round 15 review, P2): capture the request id
+                // being applied BEFORE the await below — ScrollToCenterAsync is
+                // an interop round-trip, and if a NEWER ScrollToTodayRequestId
+                // arrives while it's outstanding (a second render pushing
+                // another recenter before this one's scroll lands), re-reading
+                // the LIVE ScrollToTodayRequestId afterward would mark that
+                // newer, not-yet-applied request as consumed too — its own
+                // target never gets a fresh apply.
+                //
+                // Math.Max (not a flat overwrite) so the REVERSE interleaving
+                // is also safe: if the newer request's own apply already ran
+                // and completed WHILE this one was still stuck (recording the
+                // newer id first), this call resuming afterward must not roll
+                // _lastConsumedScrollRequestId back down to its OWN (now
+                // stale) id — that would spuriously mark the already-applied
+                // newer target "pending" again on some later, unrelated
+                // render. Whichever id is numerically highest is always the
+                // one that was actually (or will be) applied last.
+                var requestIdBeingApplied = ScrollToTodayRequestId;
                 await ScrollToCenterAsync(ResolveScrollTargetX(initialIntentPending));
-                _lastConsumedScrollRequestId = ScrollToTodayRequestId;
+                _lastConsumedScrollRequestId = Math.Max(_lastConsumedScrollRequestId, requestIdBeingApplied);
             }
             return;
         }
@@ -728,8 +763,15 @@
             // targets Today (finding #3).
             if (IsScrollHostReady && ShouldAttemptTodayScroll)
             {
+                // Bug fix (Codex round 15 review, P2) — see the firstRender
+                // branch's own remarks above for the full reasoning: capture
+                // the id this call is actually applying before the await, mark
+                // THAT one consumed (via Math.Max, not a flat overwrite — see
+                // the same remarks for why), not whatever ScrollToTodayRequestId
+                // happens to read once the interop round-trip resolves.
+                var requestIdBeingApplied = ScrollToTodayRequestId;
                 await ScrollToCenterAsync(ResolveScrollTargetX(intentPending));
-                _lastConsumedScrollRequestId = ScrollToTodayRequestId;
+                _lastConsumedScrollRequestId = Math.Max(_lastConsumedScrollRequestId, requestIdBeingApplied);
             }
 
             // Codex round 7 review, P2 #2: a genuine host-identity change

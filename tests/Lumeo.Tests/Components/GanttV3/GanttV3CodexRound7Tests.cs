@@ -182,8 +182,15 @@ public class GanttV3CodexRound7Tests : IAsyncLifetime
         // real today is always > the far-past 2020-01-01 cached value).
         for (var i = 0; i < 5; i++)
         {
+            // "extra-{i}" (not "t{i}") -- the fixture's own task above is
+            // already "t1", and Task.Id must stay unique per Gantt3 instance
+            // (GanttBar's own @key relies on it; see Gantt3CodexRound15Tests'
+            // finding #4). "t{i}" collided with it at i=1, which used to be a
+            // harmless accident (nothing enforced task-id uniqueness before
+            // round 15's @key fix) but now throws a duplicate-key render
+            // exception -- unrelated to what this test actually exercises.
             cut.Render(p => p
-                .Add(c => c.Tasks, new List<L.GanttTask> { task, new($"t{i}", $"Task {i}", D(2020, 1, 1), D(2020, 1, 2)) })
+                .Add(c => c.Tasks, new List<L.GanttTask> { task, new($"extra-{i}", $"Task {i}", D(2020, 1, 1), D(2020, 1, 2)) })
                 .Add(c => c.ViewMode, L.GanttViewMode.Month));
         }
 

@@ -246,6 +246,20 @@
     // shared by the three triggers: OnParametersSetAsync (parameter lifecycle),
     // HandleViewModeChangedAsync (the toolbar), and OnThemeChanged (a global
     // ThemeService direction flip with no parent re-render).
+    //
+    // Bug fix (Codex round 15 review, P1): an overlapping SECOND call into this
+    // method — e.g. a theme flip's OnThemeChanged firing while a parameter-
+    // driven ReconcileAsync's own capture await above is still outstanding —
+    // could previously finish its OWN (faster) capture-and-commit first, only
+    // for the FIRST, slower call to resume afterward and commit on top,
+    // clobbering the second call's fresher outcome with a stale one decided
+    // under now-superseded geometry. Every call claims the next generation via
+    // BeginReconcile() before its own capture await and re-checks
+    // IsCurrentReconcile(...) the instant that await resolves: whichever call
+    // claimed the NEWEST generation is authoritative, regardless of which
+    // call's own interop round-trip happens to resolve first — an
+    // earlier-started call that resumes later abandons its ENTIRE commit
+    // (including _lastSnapshot) rather than risk overwriting a newer one.
     private async Task ReconcileAsync(IReadOnlyList<GanttTask> nextTasks, GanttViewMode nextMode)
     {
         var prev = _lastSnapshot;
@@ -260,9 +274,19 @@
         // can interleave at this await still shows a fully OLD, coherent frame
         // (finding #4: the old code committed the new tasks first, exposing a
         // half-reconciled frame — new tasks, un-moved scroll).
+        var generation = BeginReconcile();
         DateTime? capturedCenter = null;
         if (decision.NeedsLiveCenterCapture)
             capturedCenter = await ResolveCurrentCenterDateAsync(prev.LeadingOffset, prev.ColumnWidth);
+
+        // Bug fix (Codex round 15 review, P1): abandon entirely if a NEWER
+        // reconcile has already claimed a later generation while the capture
+        // above was in flight — that newer call already committed (or will
+        // commit) fresher state derived from a more current snapshot; this
+        // call's own decision/capture were computed against an OLD prev/next
+        // pair that no longer reflects reality, so nothing below (including
+        // the _lastSnapshot tail write) may run.
+        if (!IsCurrentReconcile(generation)) return;
 
         // COMMIT PHASE — synchronous from here to the end, so the next render is
         // one coherent frame (tasks, mode, and range all move together).
@@ -343,6 +367,18 @@
     // copy of this is the exact tasksChanged signal, kept as a plain value so
     // the reconcile decision is a pure snapshot diff.
     private int _tasksVersion;
+
+    // Codex round 15 review, P1 — see ReconcileAsync's own remarks. Every
+    // reconcile call claims the next generation (synchronously, before its own
+    // capture await can yield to anything else queued on the renderer's sync
+    // context) and re-checks it immediately after that await resolves: a
+    // mismatch means some OTHER call started later and is now the authoritative
+    // one, so this call must abandon its entire commit.
+    private long _reconcileGeneration;
+
+    private long BeginReconcile() => ++_reconcileGeneration;
+
+    private bool IsCurrentReconcile(long generation) => generation == _reconcileGeneration;
 
     // The ViewMode PARAMETER value seen on the last parameter pass — the
     // uncontrolled-mode discriminator only (a controlled binding keeps the
@@ -520,7 +556,22 @@
         // from the (possibly wrong) server-Today at OnInitialized time, so it
         // gets one corrective recompute here, now that the browser's actual
         // date is known.
-        if (_state.Tasks.Count == 0)
+        //
+        // Bug fix (Codex round 15 review, P2): this used to check the RAW,
+        // unfiltered _state.Tasks.Count — the same class of bug BuildSnapshot's
+        // own RenderableEmpty already closed for the reconcile pass (round 14,
+        // finding #2), just missed here since this correction runs OUTSIDE
+        // ReconcileAsync entirely. A task list containing ONLY invalid-duration
+        // tasks (End<Start, non-milestone) is non-empty by raw count but
+        // renders as an empty chart (GanttRowModel.FilterValidDurationTasks
+        // drops them all before ComputeInitialRange's own min/max branch ever
+        // sees them) — ComputeInitialRange would internally already fall
+        // through to its today-based branch for such a list, but this OUTER
+        // gate, using the wrong (raw) count, never even attempted the
+        // recompute, so the stale server-Today-seeded range survived a
+        // browser-Today correction it genuinely needed. Uses the SAME filtered
+        // set every other emptiness decision in this file uses.
+        if (GanttRowModel.FilterValidDurationTasks(_state.Tasks).Count == 0)
             _state.SetVisibleRange(ComputeInitialRange(_state.ViewMode, _state.Tasks, EffectiveToday));
 
         // Re-renders GanttTimeline's Today parameter too (marker position /

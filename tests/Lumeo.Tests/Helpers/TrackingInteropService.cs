@@ -803,9 +803,17 @@ public class TrackingInteropService : IComponentInteropService
     private readonly List<double> _ganttV3ScrollToXCalls = new();
     public int GanttV3ScrollToXCallCount => _ganttV3ScrollToXCalls.Count;
     public IReadOnlyList<double> GanttV3ScrollToXCalls => _ganttV3ScrollToXCalls;
+    /// <summary>When set, <see cref="GanttV3ScrollToXAsync"/> returns this gate's
+    /// Task instead of a completed one — letting a test SUSPEND GanttTimeline's
+    /// scroll-apply mid-flight (the target is still recorded immediately, before
+    /// the gate) to reproduce a second, newer ScrollToTodayRequestId arriving
+    /// while an older apply is still outstanding (Codex round 15, finding #3).
+    /// Complete it to resume.</summary>
+    public TaskCompletionSource? GanttV3ScrollToXGate { get; set; }
     public Task GanttV3ScrollToXAsync(ElementReference el, double targetX)
     {
         _ganttV3ScrollToXCalls.Add(targetX);
+        if (GanttV3ScrollToXGate is not null) return GanttV3ScrollToXGate.Task;
         return Task.CompletedTask;
     }
 
