@@ -2431,6 +2431,29 @@
     }
 
     // ---- Single-level grouping (classic; now with per-group aggregates) ----
+    // Bug fix: group ORDER (the order the group sections/nodes themselves
+    // appear in, as opposed to row order WITHIN a group) used to be hardcoded
+    // ascending-by-key regardless of the grid's active Sorts — so clicking a
+    // grouped column's header to toggle Ascending/Descending had no visible
+    // effect at all, which is what got reported as "sorting doesn't work
+    // while grouping is active." Sorting a DIFFERENT (non-grouped) column
+    // already worked correctly (LINQ's GroupBy preserves _processedItems'
+    // pre-sorted relative order within each group), so this fix is scoped to
+    // group ORDER only.
+    //
+    // Semantic chosen (matches TanStack Table / AG Grid / MUI DataGrid's
+    // grouped-column behaviour, and is the only one under which sorting a
+    // grouped column can ever be visible at all): a group's member rows all
+    // share the SAME value for the grouped field by definition, so "sort
+    // within the group" is a no-op for that field — the ONLY way a user's
+    // Asc/Desc choice on the grouped column can express itself is by
+    // reordering the GROUPS. When the active Sorts contains an entry for the
+    // grouping field, its Direction governs group order (Descending reverses
+    // the normal alphabetical run); otherwise (no sort on that field, or
+    // explicitly None) falls back to the original ascending-by-key default.
+    private SortDirection GroupOrderDirection(string field) =>
+        _sorts.FirstOrDefault(s => s.Field == field)?.Direction ?? SortDirection.Ascending;
+
     private bool ProcessSingleLevelGrouping(string field)
     {
         var groupCol = EffectiveColumns.FirstOrDefault(c => c.Field == field);
@@ -2439,9 +2462,12 @@
         var groupByChanged = field != _lastGroupBy;
         _lastGroupBy = field;
 
-        _groupedSections = _processedItems
-            .GroupBy(item => groupCol.GetFormattedValue(item, EffectiveCulture))
-            .OrderBy(g => g.Key, StringComparer.CurrentCulture)
+        var groupedByKey = _processedItems.GroupBy(item => groupCol.GetFormattedValue(item, EffectiveCulture));
+        var orderedGroups = GroupOrderDirection(field) == SortDirection.Descending
+            ? groupedByKey.OrderByDescending(g => g.Key, StringComparer.CurrentCulture)
+            : groupedByKey.OrderBy(g => g.Key, StringComparer.CurrentCulture);
+
+        _groupedSections = orderedGroups
             .Select(g =>
             {
                 var its = g.ToList();
@@ -2572,9 +2598,16 @@
             // Skip a missing field — try the next level so grouping degrades gracefully.
             return BuildGroupNodes(items, fields, level + 1, parentPath);
         }
-        return items
-            .GroupBy(it => col.GetFormattedValue(it, EffectiveCulture))
-            .OrderBy(g => g.Key, StringComparer.CurrentCulture)
+        // Same group-order-follows-the-grouped-field's-Sort fix as
+        // ProcessSingleLevelGrouping (see GroupOrderDirection's own remarks) —
+        // applied per LEVEL, since each nesting level groups by its own field
+        // and should honour ITS OWN Sorts entry independently.
+        var groupedByKey = items.GroupBy(it => col.GetFormattedValue(it, EffectiveCulture));
+        var orderedGroups = GroupOrderDirection(fields[level]) == SortDirection.Descending
+            ? groupedByKey.OrderByDescending(g => g.Key, StringComparer.CurrentCulture)
+            : groupedByKey.OrderBy(g => g.Key, StringComparer.CurrentCulture);
+
+        return orderedGroups
             .Select(g =>
             {
                 var its = g.ToList();
