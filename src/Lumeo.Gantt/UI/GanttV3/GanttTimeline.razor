@@ -123,32 +123,52 @@
             @* Row canvas. *@
             <div class="relative" style="@RowsContainerStyle">
                 <Virtualize Items="@RowItems" Context="row" ItemSize="@((float)GanttScale.RowHeight)">
-                    @if (row.Task is not null)
-                    {
-                        <GanttBar Task="row.Task" X="row.X" Width="row.Width" RowIndex="row.RowIndex"
-                                  BarHeight="EffectiveBarHeight" Color="@row.Color" BarTemplate="BarTemplate"
-                                  OnTaskClick="OnTaskClick" />
-                    }
-                    else
-                    {
-                        @* Group-header row (Codex round 2, P2 #7): before this fix a
-                           GanttRowKind.GroupHeader slot rendered NOTHING here at all —
-                           an empty gap in the row canvas — even though GanttTree (the
-                           sibling pane) already shows a labeled summary row for the
-                           SAME slot. v2 parity: gantt-v2.js:428-449 draws a full-width
-                           translucent stripe (tokens.accent, 0.18 fill-opacity) plus an
-                           uppercase, bold, muted-color label, left-padded 8px, vertically
-                           centered in the row — ported below via Tailwind utilities +
-                           the bg-accent/[0.18] arbitrary-opacity value matching v2's
-                           literal 0.18 exactly. NOT a literal 1:1 port in every detail
-                           (Codex round 3, Minor #8 — corrected wording): the label uses
-                           Tailwind's tracking-wide (0.025em), not v2's literal
-                           letter-spacing:0.04em — a deliberate, tiny typographic delta
-                           (matching Lumeo's own type-scale token rather than hand-picking
-                           an arbitrary value for a 1px-at-typical-sizes difference), not
-                           a CSS-bundle-churning arbitrary tracking value. *@
-                        <div class="lumeo-gantt-v3-group-header absolute inset-x-0 flex items-center bg-accent/[0.18] px-2 text-[11px] font-bold uppercase tracking-wide text-muted-foreground" style="@GroupHeaderStyle(row.RowIndex)">@row.Label</div>
-                    }
+                    @* Bug fix (Codex round 10 review, P2 #1): every item template
+                       below renders ONLY absolutely-positioned content (GanttBar's
+                       own wrapper, the group-header stripe) — neither establishes
+                       any IN-FLOW box, so each materialized <Virtualize> item
+                       contributed 0px to normal document flow. Virtualize's own
+                       placeholder/spacer sizing (and, on some runtimes, its
+                       IntersectionObserver-based "load more" triggering) depends on
+                       rendered items actually occupying real, measurable space in
+                       flow, not just on the ItemSize parameter used for spacer math
+                       — a 0-height rendered window is a real mismatch between what
+                       Virtualize assumes is on screen and what actually is. This
+                       wrapper is plain (no position:relative/absolute of its own),
+                       so it does NOT become a new containing block for the
+                       absolutely-positioned content inside it — GanttBar/the
+                       group-header stripe keep resolving their `position:absolute`
+                       against the SAME ancestor as before (RowsContainerStyle's own
+                       `.relative` div above), so visual geometry is byte-identical;
+                       this only adds a correctly-sized IN-FLOW box alongside it. *@
+                    <div class="lumeo-gantt-v3-row-item" style="height:@(GanttScale.RowHeight)px;">
+                        @if (row.Task is not null)
+                        {
+                            <GanttBar Task="row.Task" X="row.X" Width="row.Width" RowIndex="row.RowIndex"
+                                      BarHeight="EffectiveBarHeight" Color="@row.Color" BarTemplate="BarTemplate"
+                                      OnTaskClick="OnTaskClick" />
+                        }
+                        else
+                        {
+                            @* Group-header row (Codex round 2, P2 #7): before this fix a
+                               GanttRowKind.GroupHeader slot rendered NOTHING here at all —
+                               an empty gap in the row canvas — even though GanttTree (the
+                               sibling pane) already shows a labeled summary row for the
+                               SAME slot. v2 parity: gantt-v2.js:428-449 draws a full-width
+                               translucent stripe (tokens.accent, 0.18 fill-opacity) plus an
+                               uppercase, bold, muted-color label, left-padded 8px, vertically
+                               centered in the row — ported below via Tailwind utilities +
+                               the bg-accent/[0.18] arbitrary-opacity value matching v2's
+                               literal 0.18 exactly. NOT a literal 1:1 port in every detail
+                               (Codex round 3, Minor #8 — corrected wording): the label uses
+                               Tailwind's tracking-wide (0.025em), not v2's literal
+                               letter-spacing:0.04em — a deliberate, tiny typographic delta
+                               (matching Lumeo's own type-scale token rather than hand-picking
+                               an arbitrary value for a 1px-at-typical-sizes difference), not
+                               a CSS-bundle-churning arbitrary tracking value. *@
+                            <div class="lumeo-gantt-v3-group-header absolute inset-x-0 flex items-center bg-accent/[0.18] px-2 text-[11px] font-bold uppercase tracking-wide text-muted-foreground" style="@GroupHeaderStyle(row.RowIndex)">@row.Label</div>
+                        }
+                    </div>
                 </Virtualize>
             </div>
 

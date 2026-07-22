@@ -168,7 +168,16 @@
     // task list) and always in lockstep with _state.Tasks/_state.Collapsed.
     private IReadOnlyList<GanttVisibleRow> Rows => GanttRowModel.BuildVisibleRows(_state.Tasks, _state.Collapsed);
 
-    private bool EffectiveShowTreePane => ShowTreePane ?? GanttRowModel.DefaultShowTreePane(_state.Tasks, GroupBy is not null);
+    // Bug fix (Codex round 10 review, P2 #3): DefaultShowTreePane used to
+    // check the RAW, unfiltered _state.Tasks for a ParentId — an invalid-
+    // duration task (End<Start, non-milestone; see GanttRowModel's own
+    // FilterValidDurationTasks) carrying the ONLY ParentId in the list showed
+    // the tree pane for what is, in the actually-rendered Rows, a flat chart
+    // (that task never reaches Rows at all). Uses the SAME shared filtered
+    // set BuildVisibleRows itself filters against, so this default can never
+    // disagree with what actually ends up on screen.
+    private bool EffectiveShowTreePane =>
+        ShowTreePane ?? GanttRowModel.DefaultShowTreePane(GanttRowModel.FilterValidDurationTasks(_state.Tasks), GroupBy is not null);
 
     // Bug fix (Codex round 5, P1 #4): the ambient text direction, resolved the
     // same way every other RTL-aware Lumeo component does (Carousel/Tabs/
@@ -502,12 +511,36 @@
         // "last seen" values against the current ones, exactly as before.
         await ReconcileLeadingOffsetChangeAsync();
 
-        if (viewModeChanged || !_rangeInitialized)
+        if (!_rangeInitialized)
         {
+            // First mount only — nothing has been scrolled to yet, so there is
+            // no live center to preserve; seed the range from the tasks' own
+            // min/max (or the empty-list today-based fallback) exactly as
+            // before.
             _lastPushedViewMode = ViewMode;
             _state.SetViewMode(ViewMode);
             _state.SetVisibleRange(ComputeInitialRange(_state.ViewMode, _state.Tasks, EffectiveToday));
             _rangeInitialized = true;
+        }
+        else if (viewModeChanged)
+        {
+            // Bug fix (Codex round 10 review, P2 #2): a PARENT-driven ViewMode
+            // parameter change (a two-way-bound consumer setting it directly,
+            // not a click through GanttNav's own toolbar) used to fall into
+            // the SAME branch as first-mount above — recomputing the range
+            // from the tasks' own min/max and never bumping the recenter
+            // token at all. That silently discarded whatever the user had
+            // actually scrolled to (ComputeInitialRange has no idea what was
+            // on screen) and never told GanttTimeline to move the DOM's
+            // scrollLeft to match the NEW range's own coordinate space
+            // either — only the toolbar path (HandleViewModeChangedAsync)
+            // did the right thing. Routes through the EXACT SAME
+            // ApplyViewModeChangeAsync that path uses (extracted below) —
+            // one "capture live center, rebuild range around it, recenter"
+            // implementation for both triggers, not two independently-
+            // written copies that could silently diverge.
+            _lastPushedViewMode = ViewMode;
+            await ApplyViewModeChangeAsync(ViewMode);
         }
         else if (tasksChanged)
         {
@@ -648,6 +681,14 @@
         };
     }
 
+    // Codex round 10 review, P2 #4 — see GoToTodayAsync's own remarks. The
+    // number of Month-unit columns GanttScale.BuildDateUnits would generate
+    // between two ALREADY unit-aligned dates (both are day-1 of their own
+    // month, per this codebase's aligned-origin invariant), independent of
+    // day-of-month.
+    private static int MonthsBetween(DateTime start, DateTime end) =>
+        (end.Year - start.Year) * 12 + (end.Month - start.Month);
+
     private string PeriodLabel
     {
         get
@@ -666,28 +707,39 @@
     {
         if (mode == _state.ViewMode) return;
         _lastPushedViewMode = mode;
+        await ApplyViewModeChangeAsync(mode);
+        if (ViewModeChanged.HasDelegate) await ViewModeChanged.InvokeAsync(mode);
+        else ViewMode = mode; // uncontrolled: keep our own field in lock-step for the next OnParametersSetAsync comparison
+    }
 
-        // Bug fix (Codex round 4, P2 #8; corrected Codex round 5, P2 #5):
-        // capture what's ACTUALLY centered on screen BEFORE recomputing the
-        // range — ComputeInitialRange's task-derived window ignores wherever
-        // the user had actually scrolled/navigated to, so switching view
-        // modes used to silently reset the viewport back to the tasks' own
-        // min/max window. Round 4 approximated "what's centered" via the
-        // CURRENT VisibleRange's own midpoint — but that's only a proxy: it
-        // tracks Today/a previous mode switch's own centerDate correctly
-        // (those explicitly set VisibleRange around themselves), yet goes
-        // stale the moment a user pans the DOM manually with no corresponding
-        // VisibleRange change at all (nothing currently keeps them in sync
-        // outside those two triggers). ResolveCurrentCenterDateAsync reads
-        // the DOM's own live scroll position instead, falling back to the
-        // same range-midpoint proxy only when that read isn't possible.
+    // Bug fix (Codex round 4, P2 #8; corrected Codex round 5, P2 #5):
+    // capture what's ACTUALLY centered on screen BEFORE recomputing the
+    // range — ComputeInitialRange's task-derived window ignores wherever
+    // the user had actually scrolled/navigated to, so switching view
+    // modes used to silently reset the viewport back to the tasks' own
+    // min/max window. Round 4 approximated "what's centered" via the
+    // CURRENT VisibleRange's own midpoint — but that's only a proxy: it
+    // tracks Today/a previous mode switch's own centerDate correctly
+    // (those explicitly set VisibleRange around themselves), yet goes
+    // stale the moment a user pans the DOM manually with no corresponding
+    // VisibleRange change at all (nothing currently keeps them in sync
+    // outside those two triggers). ResolveCurrentCenterDateAsync reads
+    // the DOM's own live scroll position instead, falling back to the
+    // same range-midpoint proxy only when that read isn't possible.
+    //
+    // Extracted (Codex round 10 review, P2 #2) so OnParametersSetAsync's
+    // own viewModeChanged branch (a PARENT-driven ViewMode parameter
+    // change, as opposed to this method's own toolbar trigger) can apply
+    // the IDENTICAL "capture live center, rebuild range around it, request
+    // a recenter" behavior instead of falling back to a task-min/max
+    // recompute with no recenter at all.
+    private async Task ApplyViewModeChangeAsync(GanttViewMode mode)
+    {
         var centerDate = await ResolveCurrentCenterDateAsync();
         _state.SetViewMode(mode);
         _state.SetVisibleRange(ApplyPadding(mode, centerDate, centerDate));
         _scrollTargetDate = centerDate;
         _scrollToTodayRequestId++; // re-request the DOM scroll — see GanttTimeline.ScrollTargetDate's remarks
-        if (ViewModeChanged.HasDelegate) await ViewModeChanged.InvokeAsync(mode);
-        else ViewMode = mode; // uncontrolled: keep our own field in lock-step for the next OnParametersSetAsync comparison
     }
 
     // Bug fix (Codex round 5, P2 #5): reads the shared scroll pane's ACTUAL
@@ -805,11 +857,32 @@
         // DateToPixel's own assumption) relies on — every subsequent bar/grid
         // pixel position would then be off by a fraction of a column. Snap the
         // start to the mode's own unit boundary (reusing GanttScale's helper,
-        // not a second copy of the same snapping logic) and re-derive the end
-        // from the ORIGINAL width so the visible window's duration doesn't
-        // drift with each Today click.
+        // not a second copy of the same snapping logic).
         var start = GanttScale.AlignToUnitStart(_state.ViewMode, today - half);
-        _state.SetVisibleRange(start, start + width);
+        // Bug fix (Codex round 10 review, P2 #4): re-deriving the end as
+        // `start + width` (the ORIGINAL TimeSpan) is only correct for Day/
+        // Week/Hour modes, where a "day"/"hour" is a fixed duration. Month
+        // and Year units are NOT fixed-duration — the same TimeSpan applied
+        // from a DIFFERENT calendar start can span one column more or fewer,
+        // since months/years have variable day-lengths (e.g. a 12-month-wide
+        // window's exact tick count depends on how many of those 12 months
+        // were 28/29/30/31 days; re-applying that SAME tick count from a
+        // start that lands in a different set of months does not reliably
+        // reproduce 12 columns). Preserves the RENDERED COLUMN COUNT instead
+        // for unit-aligned modes — the number of months/years BuildDateUnits
+        // would actually generate between the OLD range's own Start/End —
+        // by re-deriving the end via AddMonths/AddYears from that count, not
+        // from the raw tick span. Switches on cfg.Unit (not ViewMode
+        // directly), matching ApplyPadding's own convention, so this stays
+        // correct if a future view mode ever reuses the Month/Year unit.
+        var cfg = GanttScale.GetConfig(_state.ViewMode);
+        var end = cfg.Unit switch
+        {
+            GanttScaleUnit.Month => start.AddMonths(MonthsBetween(range.Start, range.End)),
+            GanttScaleUnit.Year => start.AddYears(range.End.Year - range.Start.Year),
+            _ => start + width,
+        };
+        _state.SetVisibleRange(start, end);
         // Bug fix (Codex round 4, P2 #8): a PREVIOUS view-mode switch may have
         // left _scrollTargetDate pointing at some other centerDate — the
         // Today button must always target Today specifically, not whatever
