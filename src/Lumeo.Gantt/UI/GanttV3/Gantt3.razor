@@ -219,6 +219,17 @@
     private static double ComputeLeadingOffset(bool showTreePane, LayoutDirection direction) =>
         showTreePane && direction == LayoutDirection.Ltr ? GanttScale.TreePaneWidth : 0;
 
+    // Bug fix (Codex round 13 review, P2): the pixel-per-column scale a live
+    // scroll-center reading is decoded against — a caller's ColumnWidth
+    // override when set, else the current ViewMode's own default. Was
+    // previously read INLINE, live, wherever ResolveCurrentCenterDateAsync
+    // needed it (see that method's own remarks for why that's wrong for a
+    // reconcile capture specifically) — extracted here so the "what column
+    // width was in effect BEFORE this render's changes" reconstruction below
+    // can share the exact same formula, same principle as ComputeLeadingOffset
+    // above.
+    private int EffectiveColumnWidth => ColumnWidth ?? GanttScale.GetConfig(_state.ViewMode).ColumnWidth;
+
     // Codex round 8 review, P2 #1/#2; extracted for reuse Codex round 9
     // review, P2 #7 — see OnParametersSetAsync's own remarks for the full
     // reasoning and OnInitialized's for why this needs a second caller
@@ -245,21 +256,41 @@
     // been touched yet at this point), THEN apply the ViewMode change (if
     // any), THEN ONE recenter via the shared RecenterOn helper using
     // whichever ViewMode is now current.
+    // Bug fix (Codex round 13 review, P2): folded EffectiveColumnWidth in as
+    // a THIRD reconcile trigger, alongside tree-pane/direction/ViewMode.
+    // ColumnWidth is a plain [Parameter] with no prior tracking at all — (a)
+    // a ColumnWidth-alone change (ViewMode unchanged) previously triggered
+    // NOTHING here, so the DOM's raw scrollLeft pixel value stayed put while
+    // every bar/grid position rescaled to the new column width underneath
+    // it — the SAME physical scroll position now decodes to a DIFFERENT
+    // date, a visible "jump" with no recenter ever correcting it; (b) even
+    // when ViewMode ALSO changed in the same render (which DID already
+    // trigger a capture), that capture's own OLD-geometry reconstruction
+    // never accounted for ColumnWidth specifically — see
+    // ResolveCurrentCenterDateAsync's own remarks — so a caller changing
+    // BOTH ColumnWidth and ViewMode at once decoded the still-old physical
+    // scroll position using the ALREADY-NEW ColumnWidth parameter value,
+    // silently misinterpreting it.
     private async Task ReconcileRecenterTriggersAsync(bool viewModeChanged)
     {
         var effectiveShowTreePane = EffectiveShowTreePane;
         var showTreePaneChanged = _lastSeenEffectiveShowTreePane is { } lastShowTreePane && lastShowTreePane != effectiveShowTreePane;
         var directionChanged = _lastSeenDirection is { } lastDirection && lastDirection != EffectiveDirection;
+        var effectiveColumnWidth = EffectiveColumnWidth;
+        var columnWidthChanged = _lastSeenColumnWidth is { } lastColumnWidth && lastColumnWidth != effectiveColumnWidth;
 
-        if (showTreePaneChanged || directionChanged || viewModeChanged)
+        if (showTreePaneChanged || directionChanged || viewModeChanged || columnWidthChanged)
         {
             var oldShowTreePane = _lastSeenEffectiveShowTreePane ?? effectiveShowTreePane;
             var oldDirection = _lastSeenDirection ?? EffectiveDirection;
             var oldLeadingOffset = ComputeLeadingOffset(oldShowTreePane, oldDirection);
+            var oldColumnWidth = _lastSeenColumnWidth ?? effectiveColumnWidth;
             // Captured BEFORE SetViewMode below, so this still reads the OLD
-            // ViewMode's own Origin/ColumnWidth (ResolveCurrentCenterDateAsync
-            // uses _state.ViewMode/_state.VisibleRange internally).
-            var centerDate = await ResolveCurrentCenterDateAsync(oldLeadingOffset);
+            // ViewMode's own Origin (ResolveCurrentCenterDateAsync uses
+            // _state.ViewMode/_state.VisibleRange internally) — and now the
+            // OLD ColumnWidth explicitly, rather than whatever the (possibly
+            // already-changed) live parameter currently holds.
+            var centerDate = await ResolveCurrentCenterDateAsync(oldLeadingOffset, oldColumnWidth);
 
             if (viewModeChanged)
             {
@@ -274,17 +305,18 @@
             }
             else
             {
-                // Tree-pane/direction changed alone — the underlying date
-                // RANGE itself is unaffected (same ViewMode, same task
-                // window); only the recenter TARGET needs to move to
-                // wherever centerDate was under the OLD geometry. Deliberately
-                // NOT routed through RecenterOn — that helper also rebuilds
-                // VisibleRange via ApplyPadding, which would replace the
-                // task-derived (or otherwise established) range with a brand
-                // new one narrowly self-centered on centerDate, discarding
-                // whatever range was actually in effect for no reason (an
-                // early draft of this consolidation did exactly that and
-                // broke round 8's own ShowTreePane-change regression test).
+                // Tree-pane/direction/ColumnWidth changed alone — the
+                // underlying date RANGE itself is unaffected (same ViewMode,
+                // same task window); only the recenter TARGET needs to move
+                // to wherever centerDate was under the OLD geometry.
+                // Deliberately NOT routed through RecenterOn — that helper
+                // also rebuilds VisibleRange via ApplyPadding, which would
+                // replace the task-derived (or otherwise established) range
+                // with a brand new one narrowly self-centered on centerDate,
+                // discarding whatever range was actually in effect for no
+                // reason (an early draft of this consolidation did exactly
+                // that and broke round 8's own ShowTreePane-change
+                // regression test).
                 _scrollTargetDate = centerDate;
                 _scrollToTodayRequestId++;
             }
@@ -292,6 +324,7 @@
 
         _lastSeenEffectiveShowTreePane = effectiveShowTreePane;
         _lastSeenDirection = EffectiveDirection;
+        _lastSeenColumnWidth = effectiveColumnWidth;
     }
 
     private Task HandleToggleCollapseAsync(string key)
@@ -317,6 +350,11 @@
     // OnParametersSetAsync below. Same "null until the first pass" guard as
     // _lastSeenDirection, same reason.
     private bool? _lastSeenEffectiveShowTreePane;
+
+    // Codex round 13 review, P2 — see the columnWidthChanged check in
+    // ReconcileRecenterTriggersAsync. Same "null until the first pass" guard
+    // as _lastSeenDirection/_lastSeenEffectiveShowTreePane, same reason.
+    private int? _lastSeenColumnWidth;
 
     // Browser-local "today" (Codex round 2, P2 #9) — resolved once via JS on
     // Gantt3's first post-render; DateTime.Today (the SERVER's local date) is
@@ -514,15 +552,17 @@
             // First mount only — nothing has been scrolled to yet, so there is
             // no live center to preserve; seed the range from the tasks' own
             // min/max (or the empty-list today-based fallback) exactly as
-            // before. Tree-pane/direction tracking is seeded here too so the
-            // very next render's own comparisons (in whichever branch below
-            // runs then) have a real baseline instead of null.
+            // before. Tree-pane/direction/column-width tracking is seeded
+            // here too so the very next render's own comparisons (in
+            // whichever branch below runs then) have a real baseline instead
+            // of null.
             _lastPushedViewMode = ViewMode;
             _state.SetViewMode(ViewMode);
             _state.SetVisibleRange(ComputeInitialRange(_state.ViewMode, _state.Tasks, EffectiveToday));
             _rangeInitialized = true;
             _lastSeenEffectiveShowTreePane = EffectiveShowTreePane;
             _lastSeenDirection = EffectiveDirection;
+            _lastSeenColumnWidth = EffectiveColumnWidth;
             return;
         }
 
@@ -540,33 +580,54 @@
         // round's fix; cases 1-3 are UNCHANGED from round 11's own
         // consolidation, just made structurally explicit here.
         //
+        // Bug fix (Codex round 13 review, P2): the matrix is really
+        // tasksChanged x viewModeChanged x columnWidthChanged (ColumnWidth
+        // folded into ReconcileRecenterTriggersAsync's own trigger set — see
+        // its own remarks) — collapsed into the table below rather than an
+        // 8-row cube, since ColumnWidth behaves EXACTLY like tree-pane/
+        // direction in every cell it can independently affect: a trigger
+        // alongside ViewMode (row 2/4, captured under the OLD width same as
+        // the OLD offset), or a scroll-target-only trigger on its own (row 1,
+        // same bucket as tree-pane/direction).
+        //
         //  tasksChanged | viewModeChanged | range source                        | recenter target
         //  ------------ | --------------- | ------------------------------------ | ---------------------------------------------
-        //  false        | false           | unchanged                            | none, UNLESS tree-pane/direction ALSO changed
-        //                                                                          this render (then: preserved live-scroll center)
-        //  false        | true            | self-centered around the captured    | the SAME captured center (preserved)
-        //               |                 | center (ApplyPadding, NEW mode)       |
+        //  false        | false           | unchanged                            | none, UNLESS tree-pane/direction/ColumnWidth
+        //                                                                          ALSO changed this render (then: preserved
+        //                                                                          live-scroll center, decoded under the OLD
+        //                                                                          offset/width)
+        //  false        | true            | self-centered around the captured    | the SAME captured center (preserved) —
+        //               |                 | center (ApplyPadding, NEW mode)       | captured under the OLD offset AND OLD
+        //                                                                          ColumnWidth regardless of whether ColumnWidth
+        //                                                                          ALSO changed this render
         //  true         | false           | task-derived (ComputeInitialRange,   | none, UNLESS an emptiness transition
         //               |                 | mode unchanged)                       | (wasEmpty != nowEmpty) — then Today, or the
         //                                                                          new range's own midpoint if Today falls
-        //                                                                          outside it (round 9's own delta from v2)
+        //                                                                          outside it (round 9's own delta from v2).
+        //                                                                          A ColumnWidth-alone change (no mode, no
+        //                                                                          emptiness transition) still gets its own
+        //                                                                          scroll-target-only recenter via
+        //                                                                          ReconcileRecenterTriggersAsync, same as row 1.
         //  true         | true            | task-derived (ComputeInitialRange,   | emptiness transition ? (Today/midpoint, same
         //               |                 | the NEW mode)                         | as above) : the PRESERVED live-scroll center
-        //                                                                          (captured under the OLD mode/offset, same as
-        //                                                                          the false/true row, just against the NEW
-        //                                                                          tasks-derived range instead of a self-centered one)
+        //                                                                          (captured under the OLD mode/offset/
+        //                                                                          ColumnWidth, same as row 2, just against the
+        //                                                                          NEW tasks-derived range instead of a
+        //                                                                          self-centered one)
         //
         // Cases 1/2 (tasksChanged false) route through ReconcileRecenterTriggersAsync,
-        // UNCHANGED since round 11. Case 3 (tasksChanged true, viewModeChanged
-        // false) still runs ReconcileRecenterTriggersAsync FIRST (viewModeChanged:
-        // false) — using the STILL-OLD VisibleRange/ViewMode for its own
-        // tree-pane/direction capture, preserving the original ordering — then
-        // its own task-derived range/emptiness-recenter logic, exactly as
-        // round 11 left it. Case 4 is handled by its own dedicated method,
-        // which does its OWN single capture (under the OLD geometry, before
-        // either the mode or the task-derived range change) rather than
-        // layering on top of ReconcileRecenterTriggersAsync — see that
-        // method's own remarks for why.
+        // UNCHANGED since round 11 except for the added ColumnWidth trigger
+        // (round 13). Case 3 (tasksChanged true, viewModeChanged false) still
+        // runs ReconcileRecenterTriggersAsync FIRST (viewModeChanged: false) —
+        // using the STILL-OLD VisibleRange/ViewMode for its own tree-pane/
+        // direction/ColumnWidth capture, preserving the original ordering —
+        // then its own task-derived range/emptiness-recenter logic, exactly
+        // as round 11 left it. Case 4 is handled by its own dedicated method,
+        // which does its OWN single capture (under the OLD geometry —
+        // offset AND ColumnWidth — before either the mode or the task-derived
+        // range change) rather than layering on top of
+        // ReconcileRecenterTriggersAsync — see that method's own remarks for
+        // why.
         if (tasksChanged && viewModeChanged)
         {
             await ReconcileTasksAndViewModeChangeAsync(previousTasks);
@@ -658,10 +719,16 @@
         var oldShowTreePane = _lastSeenEffectiveShowTreePane ?? EffectiveShowTreePane;
         var oldDirection = _lastSeenDirection ?? EffectiveDirection;
         var oldLeadingOffset = ComputeLeadingOffset(oldShowTreePane, oldDirection);
+        // Bug fix (Codex round 13 review, P2): explicit OLD column width too
+        // — a caller changing ColumnWidth in the SAME render as BOTH tasks
+        // and ViewMode needs the capture decoded against what was actually
+        // in effect before any of these changes, not the live parameter
+        // (already the NEW value by this point).
+        var oldColumnWidth = _lastSeenColumnWidth ?? EffectiveColumnWidth;
         // Captured BEFORE SetViewMode/SetVisibleRange below — still reads the
-        // OLD ViewMode's own Origin/ColumnWidth and the OLD (pre-tasks-change)
+        // OLD ViewMode's own Origin and the OLD (pre-tasks-change)
         // VisibleRange.
-        var preservedCenter = await ResolveCurrentCenterDateAsync(oldLeadingOffset);
+        var preservedCenter = await ResolveCurrentCenterDateAsync(oldLeadingOffset, oldColumnWidth);
 
         _lastPushedViewMode = ViewMode;
         _state.SetViewMode(ViewMode);
@@ -694,10 +761,12 @@
 
         _scrollToTodayRequestId++;
 
-        // Tree-pane/direction bookkeeping, matching ReconcileRecenterTriggersAsync's
-        // own tail exactly — kept in sync regardless of which branch above ran.
+        // Tree-pane/direction/column-width bookkeeping, matching
+        // ReconcileRecenterTriggersAsync's own tail exactly — kept in sync
+        // regardless of which branch above ran.
         _lastSeenEffectiveShowTreePane = EffectiveShowTreePane;
         _lastSeenDirection = EffectiveDirection;
+        _lastSeenColumnWidth = EffectiveColumnWidth;
     }
 
     private List<GanttTask> SortedTasks(List<GanttTask> raw)
@@ -833,6 +902,24 @@
         var centerDate = await ResolveCurrentCenterDateAsync();
         _state.SetViewMode(mode);
         RecenterOn(centerDate, mode);
+
+        // Bug fix (Codex round 13 review, P2 — caught while implementing the
+        // fix, not itself in the dispatch): EffectiveColumnWidth reads
+        // _state.ViewMode (falls back to the CURRENT mode's own default
+        // width when no explicit ColumnWidth override is set), which
+        // SetViewMode above just changed. Without re-seeding
+        // _lastSeenColumnWidth here, the NEXT OnParametersSetAsync pass
+        // (triggered by a controlled ViewModeChanged echoing this mode back
+        // down as a parameter — GanttV3Page's own harness does exactly this)
+        // would see EffectiveColumnWidth having "changed" against the STALE
+        // (pre-switch) tracked value, spuriously firing
+        // ReconcileRecenterTriggersAsync's own columnWidthChanged branch —
+        // which then re-decodes the ALREADY-MOVED scroll position using the
+        // WRONG (stale) old width and clobbers the correct recenter this
+        // method just performed. Caught by
+        // GanttV3ScrollCenteringTests.Switching_view_mode_keeps_the_previously_centered_date_visible
+        // going red in E2E during this round's own gates.
+        _lastSeenColumnWidth = EffectiveColumnWidth;
     }
 
     // Bug fix (Codex round 11 review, P2 #1): shared by both
@@ -893,7 +980,7 @@
     // can't be measured (not yet laid out — practically unreachable here,
     // since a view-mode switch only ever fires from a toolbar click well
     // after mount — or JS interop unavailable, e.g. a torn-down circuit).
-    private Task<DateTime> ResolveCurrentCenterDateAsync() => ResolveCurrentCenterDateAsync(ScrollHostLeadingOffset);
+    private Task<DateTime> ResolveCurrentCenterDateAsync() => ResolveCurrentCenterDateAsync(ScrollHostLeadingOffset, EffectiveColumnWidth);
 
     // Bug fix (Codex round 8 review, P2 #1/#2): parameterized the leading
     // offset instead of always reading the LIVE ScrollHostLeadingOffset
@@ -904,7 +991,18 @@
     // the DOM itself hasn't been re-rendered under them yet. The view-mode
     // switch call site above is unaffected — it passes the (unchanged, still
     // live) current offset, exactly as before.
-    private async Task<DateTime> ResolveCurrentCenterDateAsync(double leadingOffset)
+    //
+    // Bug fix (Codex round 13 review, P2): parameterized the column width the
+    // SAME way — it used to be read INLINE here as `ColumnWidth ?? ...`,
+    // always the LIVE parameter value. That's correct for the unparameterized
+    // overload above (nothing about ColumnWidth is changing in that call
+    // path), but wrong for a reconcile capture: if a caller changes
+    // ColumnWidth in the SAME render as a tree-pane/direction/ViewMode
+    // change, this method would decode the STILL-PHYSICALLY-UNMOVED scroll
+    // position using the ALREADY-NEW ColumnWidth, silently misinterpreting
+    // it. Callers now explicitly pass whichever column width the position
+    // was actually captured under.
+    private async Task<DateTime> ResolveCurrentCenterDateAsync(double leadingOffset, int columnWidth)
     {
         var logicalCenterX = await Interop.GanttV3GetScrollCenterXAsync(_scrollPaneRef);
         if (logicalCenterX is { } x)
@@ -912,8 +1010,7 @@
             var timelineRelativeX = x - leadingOffset;
             var units = GanttScale.BuildDateUnits(_state.ViewMode, _state.VisibleRange.Start, _state.VisibleRange.End);
             var origin = units.Count > 0 ? units[0] : _state.VisibleRange.Start;
-            var colWidth = ColumnWidth ?? GanttScale.GetConfig(_state.ViewMode).ColumnWidth;
-            return GanttScale.PixelToDateContinuous(_state.ViewMode, origin, timelineRelativeX, colWidth);
+            return GanttScale.PixelToDateContinuous(_state.ViewMode, origin, timelineRelativeX, columnWidth);
         }
         return VisibleCenterDate;
     }
