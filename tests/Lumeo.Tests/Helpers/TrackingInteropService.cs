@@ -452,10 +452,17 @@ public class TrackingInteropService : IComponentInteropService
     // not just that SOME registration happened against an id.
     private readonly Dictionary<string, IReadOnlyList<PreventDefaultKeyRule>> _registerPreventDefaultKeysRules = new();
     public IReadOnlyDictionary<string, IReadOnlyList<PreventDefaultKeyRule>> RegisterPreventDefaultKeysRules => _registerPreventDefaultKeysRules;
+    /// <summary>When set, <see cref="RegisterPreventDefaultKeys"/> returns this
+    /// gate's Task instead of a completed one — letting a test SUSPEND a
+    /// register call mid-flight (e.g. GanttBar's own registration) to
+    /// reproduce a dispose landing while it's still outstanding (Codex round
+    /// 16 review, P2 finding #6). Complete it to resume.</summary>
+    public TaskCompletionSource? RegisterPreventDefaultKeysGate { get; set; }
     public ValueTask RegisterPreventDefaultKeys(string elementId, IReadOnlyList<PreventDefaultKeyRule> rules)
     {
         _registerPreventDefaultKeysElementIds.Add(elementId);
         _registerPreventDefaultKeysRules[elementId] = rules;
+        if (RegisterPreventDefaultKeysGate is not null) return new ValueTask(RegisterPreventDefaultKeysGate.Task);
         return ValueTask.CompletedTask;
     }
     // Codex round 6 review / cx6b, Important #2 — tracks unregister calls too
@@ -887,9 +894,16 @@ public class TrackingInteropService : IComponentInteropService
     /// round 14, finding #4). Complete it with the desired logical center to
     /// resume.</summary>
     public TaskCompletionSource<double?>? GanttV3ScrollCenterXGate { get; set; }
-    public Task<double?> GanttV3GetScrollCenterXAsync(ElementReference el)
+    // Codex round 16 review, P2 finding #5 — records each call's own direction
+    // argument (null = caller omitted it, relying on the JS side's live
+    // getComputedStyle read) so a test can assert WHICH direction a capture
+    // was actually decoded under, not just that a capture happened.
+    private readonly List<string?> _ganttV3GetScrollCenterXDirections = new();
+    public IReadOnlyList<string?> GanttV3GetScrollCenterXDirections => _ganttV3GetScrollCenterXDirections;
+    public Task<double?> GanttV3GetScrollCenterXAsync(ElementReference el, string? direction = null)
     {
         GanttV3GetScrollCenterXCallCount++;
+        _ganttV3GetScrollCenterXDirections.Add(direction);
         if (GanttV3ScrollCenterXGate is not null) return GanttV3ScrollCenterXGate.Task;
         return Task.FromResult(GanttV3ScrollCenterXToReturn);
     }

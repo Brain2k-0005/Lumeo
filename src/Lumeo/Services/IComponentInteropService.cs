@@ -670,7 +670,15 @@ public interface IComponentInteropService : IAsyncDisposable, IDisposable
     /// unavailable) so the caller can fall back to that proxy. Default no-op
     /// DIM so existing implementers/test doubles keep compiling.
     /// </summary>
-    Task<double?> GanttV3GetScrollCenterXAsync(Microsoft.AspNetCore.Components.ElementReference el) => Task.FromResult<double?>(null);
+    /// <param name="direction">Optional explicit <c>"ltr"</c>/<c>"rtl"</c> override
+    /// (Codex round 16 review, P2 finding #5), forwarded to the JS-side RTL
+    /// normalization instead of letting it read the element's OWN live
+    /// <c>getComputedStyle(...).direction</c> — needed for a ThemeService-driven
+    /// direction flip, whose own DOM mutation can already have landed by the
+    /// time this capture runs, well before Blazor's async lifecycle would
+    /// otherwise repaint it. Null (the default) keeps the prior live-DOM-read
+    /// behavior for every other caller.</param>
+    Task<double?> GanttV3GetScrollCenterXAsync(Microsoft.AspNetCore.Components.ElementReference el, string? direction = null) => Task.FromResult<double?>(null);
 
     // Toolbar overflow observer — registers a ResizeObserver on the toolbar
     // element and invokes the handler with (fittingCount, totalCount) whenever

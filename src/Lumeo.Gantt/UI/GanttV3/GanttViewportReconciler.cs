@@ -121,13 +121,15 @@ internal static class GanttViewportReconciler
 {
     /// <summary>
     /// Decides how the viewport reconciles from <paramref name="prev"/> to
-    /// <paramref name="next"/>. The matrix, derived from the two snapshots alone:
+    /// <paramref name="next"/>. The matrix, derived from the two snapshots plus
+    /// <paramref name="taskRangeDisjoint"/>:
     ///
     /// <code>
     /// tasksChanged | viewModeChanged | range                | target
     /// ------------ | --------------- | -------------------- | -----------------------------------------
     /// true         | (either)        | TaskDerived          | emptiness transition ? TodayOrMidpoint
-    ///              |                 |                      |   : (mode/geometry changed ? CapturedCenter : None)
+    ///              |                 |                      |   : (mode/geometry changed ? CapturedCenter
+    ///              |                 |                      |   : (disjoint range ? TodayOrMidpoint : None))
     /// false        | true            | SelfCenteredOnCapture| CapturedCenter
     /// false        | false           | Keep                 | geometry changed ? CapturedCenter : None
     /// </code>
@@ -138,8 +140,28 @@ internal static class GanttViewportReconciler
     /// change re-derives it from the new tasks. An emptiness transition (renderable
     /// empty ⇄ populated) always wins the target, since preserving a live center
     /// across it is meaningless.
+    ///
+    /// <paramref name="taskRangeDisjoint"/> (Codex round 16, finding #4) only
+    /// matters in the "nothing else changed" corner: a PLAIN task replacement
+    /// (viewMode/geometry both unchanged) whose new task-derived range doesn't
+    /// overlap the range currently in effect at all used to leave the DOM's own
+    /// untouched scroll position in place under None — meaningless once the range
+    /// becomes disjoint from it, landing on empty space unrelated to either the
+    /// old or the new tasks. Deliberately does NOT override the mode/geometry-
+    /// changed branch above: a tasksChanged+viewModeChanged combination (round
+    /// 12/14's own case 4 — an async-loaded task swap arriving together with a
+    /// mode switch) keeps preserving the captured center even across a disjoint
+    /// replacement, by design — it never resets to Today just because the new
+    /// tasks happen to be far away.
     /// </summary>
-    public static GanttViewportDecision Decide(GanttViewportSnapshot prev, GanttViewportSnapshot next)
+    /// <param name="taskRangeDisjoint">True when <paramref name="prev"/> and
+    /// <paramref name="next"/> both have tasks (no emptiness transition) but the
+    /// newly task-derived date range doesn't overlap the range currently in effect
+    /// at all — computed by the caller from actual date data, which this snapshot
+    /// type deliberately doesn't carry (see its own remarks: everything here reduces
+    /// to plain diffable facts, not full range state) so this decision stays a pure
+    /// function of simple, cheaply-computed inputs.</param>
+    public static GanttViewportDecision Decide(GanttViewportSnapshot prev, GanttViewportSnapshot next, bool taskRangeDisjoint)
     {
         var tasksChanged = next.TasksVersion != prev.TasksVersion;
         var viewModeChanged = next.ViewMode != prev.ViewMode;
@@ -158,12 +180,25 @@ internal static class GanttViewportReconciler
             // own min/max (mirrors v2, which never keeps a stale window across
             // a task-set change). The target then depends on emptiness first,
             // else on whether the user's live center is worth preserving.
+            //
+            // taskRangeDisjoint (round 16 finding #4) ONLY overrides the
+            // "nothing else changed" None branch — a tasksChanged+viewModeChanged
+            // (or +geometryChanged) combination deliberately keeps preserving the
+            // captured center even across a disjoint task-range replacement (round
+            // 12/14's own case-4 behavior: an async-loaded task swap arriving
+            // together with a mode switch preserves continuity with whatever the
+            // user was looking at, never resets to Today just because the new
+            // tasks happen to be far away). The dispatch's own finding is scoped
+            // to the "with unchanged params" case specifically — a plain task
+            // replacement with NOTHING else changing, where None used to mean "the
+            // DOM's own untouched scroll position" (meaningless once the range
+            // becomes disjoint from it), not "the captured center."
             range = GanttRangeSource.TaskDerived;
             target = emptinessTransition
                 ? GanttScrollTarget.TodayOrMidpoint
                 : (viewModeChanged || geometryChanged)
                     ? GanttScrollTarget.CapturedCenter
-                    : GanttScrollTarget.None;
+                    : (taskRangeDisjoint ? GanttScrollTarget.TodayOrMidpoint : GanttScrollTarget.None);
         }
         else if (viewModeChanged)
         {

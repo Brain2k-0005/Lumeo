@@ -156,8 +156,24 @@
                        row (see GanttVisibleRow's remarks); a group-header slot
                        has no Task at all, so it falls back to its row index —
                        stable enough since no GanttBar (the component actually
-                       carrying reusable interop state) ever renders there. *@
-                    <div class="lumeo-gantt-v3-row-item" @key="@((object?)row.Task?.Id ?? $"group-{row.RowIndex}")" style="height:@(GanttScale.RowHeight)px;">
+                       carrying reusable interop state) ever renders there.
+
+                       Bug fix (Codex round 16 review, P2): the task-id branch
+                       and the group-header fallback shared ONE flat string
+                       namespace — a task whose own Id happened to literally BE
+                       "group-0" (or any other value matching the synthetic
+                       "group-{index}" pattern) could collide with a REAL
+                       group-header row's key at that same index, since nothing
+                       distinguished "a task whose id is the string group-0"
+                       from "the synthetic key for row 0's own group header".
+                       Prefixed both branches distinctly ("t:"/"g:") — the same
+                       separate-namespace-via-prefix idiom
+                       GanttRowModel.GroupToggleKey already established for the
+                       identical class of collision risk between a task's own
+                       Id and a group label in GanttState.Collapsed's shared
+                       key set (see its own remarks: "a distinct namespace so a
+                       task id can never collide with a group key"). *@
+                    <div class="lumeo-gantt-v3-row-item" @key="@(row.Task is not null ? "t:" + row.Task.Id : $"g:{row.RowIndex}")" style="height:@(GanttScale.RowHeight)px;">
                         @if (row.Task is not null)
                         {
                             <GanttBar Task="row.Task" X="row.X" Width="row.Width" RowIndex="row.RowIndex"

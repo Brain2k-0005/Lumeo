@@ -301,6 +301,11 @@
     // directly instead.
     private readonly string _barId = $"gantt-bar-{Guid.NewGuid():N}";
     private bool _preventDefaultKeysRegistered;
+    // Codex round 16 review, P2 finding #6 — see OnAfterRenderAsync's own
+    // remarks below for why the register call needs to check this AFTER its
+    // own await, mirroring Affix.razor's identical RegisterAsync/_disposed
+    // pattern for the same class of late-interop leak.
+    private bool _disposed;
 
     // Bug fix (Codex round 6, P2 #4): a div[role=button] has no NATIVE
     // Space-activation semantics — the browser still runs its own default
@@ -337,6 +342,26 @@
             try
             {
                 await Interop.RegisterPreventDefaultKeys(_barId, new[] { new Lumeo.Services.PreventDefaultKeyRule(" ") });
+
+                // Bug fix (Codex round 16 review, P2 finding #6): virtualization
+                // can dispose this bar (scrolled out of view) WHILE the register
+                // call above is still in flight. DisposeAsync would then run
+                // BEFORE _preventDefaultKeysRegistered is set below, see nothing
+                // to tear down (its own `if (!_preventDefaultKeysRegistered)
+                // return;` guard), and return early — leaking the JS-side
+                // registration forever, since this instance is gone and nothing
+                // will ever call Unregister for its barId afterward. Mirrors
+                // Affix.razor's own RegisterAsync: check disposed state
+                // immediately after the await and unregister right away instead
+                // of committing to "registered" on a torn-down instance.
+                if (_disposed)
+                {
+                    try { await Interop.UnregisterPreventDefaultKeys(_barId); }
+                    catch (Microsoft.JSInterop.JSDisconnectedException) { }
+                    catch (ObjectDisposedException) { }
+                    return;
+                }
+
                 _preventDefaultKeysRegistered = true;
             }
             catch (Microsoft.JSInterop.JSDisconnectedException) { }
@@ -356,6 +381,13 @@
 
     public async ValueTask DisposeAsync()
     {
+        // Codex round 16 review, P2 finding #6: set UNCONDITIONALLY, before the
+        // early-return below — OnAfterRenderAsync's own in-flight register call
+        // checks this flag right after its await to catch exactly the case
+        // where dispose lands while _preventDefaultKeysRegistered is still
+        // false (so the early return here would otherwise skip teardown
+        // entirely, believing there was nothing registered yet).
+        _disposed = true;
         if (!_preventDefaultKeysRegistered) return;
         try
         {

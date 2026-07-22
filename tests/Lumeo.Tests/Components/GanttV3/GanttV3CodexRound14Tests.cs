@@ -62,7 +62,7 @@ public class GanttV3CodexRound14Tests : IAsyncLifetime
     public void Decide_No_Change_Is_A_Noop()
     {
         var s = Snap();
-        var d = GanttViewportReconciler.Decide(s, s);
+        var d = GanttViewportReconciler.Decide(s, s, taskRangeDisjoint: false);
         Assert.Equal(new GanttViewportDecision(false, GanttRangeSource.Keep, GanttScrollTarget.None), d);
     }
 
@@ -75,7 +75,7 @@ public class GanttV3CodexRound14Tests : IAsyncLifetime
     {
         var prev = Snap(columnWidth: prevW, showTreePane: prevTree, direction: prevDir);
         var next = Snap(columnWidth: nextW, showTreePane: nextTree, direction: nextDir);
-        var d = GanttViewportReconciler.Decide(prev, next);
+        var d = GanttViewportReconciler.Decide(prev, next, taskRangeDisjoint: false);
         Assert.Equal(new GanttViewportDecision(true, GanttRangeSource.Keep, GanttScrollTarget.CapturedCenter), d);
     }
 
@@ -84,7 +84,7 @@ public class GanttV3CodexRound14Tests : IAsyncLifetime
     {
         var prev = Snap(mode: L.GanttViewMode.Day, columnWidth: 38);
         var next = Snap(mode: L.GanttViewMode.Week, columnWidth: 140);
-        var d = GanttViewportReconciler.Decide(prev, next);
+        var d = GanttViewportReconciler.Decide(prev, next, taskRangeDisjoint: false);
         Assert.Equal(new GanttViewportDecision(true, GanttRangeSource.SelfCenteredOnCapture, GanttScrollTarget.CapturedCenter), d);
     }
 
@@ -93,7 +93,7 @@ public class GanttV3CodexRound14Tests : IAsyncLifetime
     {
         var prev = Snap(tasksVersion: 1, renderableEmpty: false);
         var next = Snap(tasksVersion: 2, renderableEmpty: false);
-        var d = GanttViewportReconciler.Decide(prev, next);
+        var d = GanttViewportReconciler.Decide(prev, next, taskRangeDisjoint: false);
         Assert.Equal(new GanttViewportDecision(false, GanttRangeSource.TaskDerived, GanttScrollTarget.None), d);
     }
 
@@ -104,7 +104,7 @@ public class GanttV3CodexRound14Tests : IAsyncLifetime
     {
         var prev = Snap(tasksVersion: 1, renderableEmpty: prevEmpty);
         var next = Snap(tasksVersion: 2, renderableEmpty: nextEmpty);
-        var d = GanttViewportReconciler.Decide(prev, next);
+        var d = GanttViewportReconciler.Decide(prev, next, taskRangeDisjoint: false);
         Assert.Equal(new GanttViewportDecision(false, GanttRangeSource.TaskDerived, GanttScrollTarget.TodayOrMidpoint), d);
     }
 
@@ -113,7 +113,7 @@ public class GanttV3CodexRound14Tests : IAsyncLifetime
     {
         var prev = Snap(tasksVersion: 1, renderableEmpty: false, mode: L.GanttViewMode.Day, columnWidth: 38);
         var next = Snap(tasksVersion: 2, renderableEmpty: false, mode: L.GanttViewMode.Week, columnWidth: 140);
-        var d = GanttViewportReconciler.Decide(prev, next);
+        var d = GanttViewportReconciler.Decide(prev, next, taskRangeDisjoint: false);
         Assert.Equal(new GanttViewportDecision(true, GanttRangeSource.TaskDerived, GanttScrollTarget.CapturedCenter), d);
     }
 
@@ -122,7 +122,7 @@ public class GanttV3CodexRound14Tests : IAsyncLifetime
     {
         var prev = Snap(tasksVersion: 1, renderableEmpty: true, mode: L.GanttViewMode.Day);
         var next = Snap(tasksVersion: 2, renderableEmpty: false, mode: L.GanttViewMode.Week, columnWidth: 140);
-        var d = GanttViewportReconciler.Decide(prev, next);
+        var d = GanttViewportReconciler.Decide(prev, next, taskRangeDisjoint: false);
         Assert.Equal(new GanttViewportDecision(false, GanttRangeSource.TaskDerived, GanttScrollTarget.TodayOrMidpoint), d);
     }
 

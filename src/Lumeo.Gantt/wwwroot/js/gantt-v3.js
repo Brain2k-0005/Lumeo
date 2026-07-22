@@ -77,9 +77,20 @@ export const ganttV3 = {
     // the range itself). Returns null when the element can't be measured yet
     // (matches centerOn's own clientWidth<=50 "not laid out" guard) so the
     // caller can fall back to its own proxy.
-    getScrollCenterX(el) {
+    //
+    // Bug fix (Codex round 16 review, P2 finding #5): accepts an optional
+    // `direction` ('ltr'/'rtl') forwarded straight to fromNativeScrollLeft.
+    // Gantt3's ThemeService-driven reconcile passes the OLD (pre-flip)
+    // direction explicitly here, since by the time that capture runs,
+    // document.documentElement's own `dir` (and so getComputedStyle(el).direction)
+    // may already reflect the NEW direction — ThemeService's own flip mutates
+    // the DOM synchronously, independent of Blazor's render pipeline, unlike a
+    // DirectionProvider-cascading-parameter change (which repaints only AFTER
+    // Blazor's async lifecycle, including this same capture, has already run).
+    // Every OTHER caller omits it, keeping the live-DOM-read behavior.
+    getScrollCenterX(el, direction) {
         if (!el || el.clientWidth <= 50) return null;
-        const logical = fromNativeScrollLeft(el, el.scrollLeft);
+        const logical = fromNativeScrollLeft(el, el.scrollLeft, direction);
         return logical + el.clientWidth / 2;
     },
 
@@ -362,8 +373,19 @@ function toNativeScrollLeft(el, logicalTarget) {
 // native scrollLeft reading (used by the header scroll-sync, which needs
 // the logical offset to keep the header's own un-mirrored date labels
 // aligned with the row canvas's un-mirrored bars).
-function fromNativeScrollLeft(el, nativeValue) {
-    if (getComputedStyle(el).direction !== 'rtl') return nativeValue;
+//
+// Bug fix (Codex round 16 review, P2 finding #5): accepts an optional
+// directionOverride ('ltr'/'rtl') — see getScrollCenterX's own remarks for
+// why a caller (Gantt3's ThemeService-driven reconcile) needs to force the
+// conversion to a KNOWN-old direction instead of trusting
+// getComputedStyle(el).direction, which can already reflect a NEW direction
+// by the time that caller's own capture runs. The header-scroll-sync call
+// site below never passes one — it always wants the CURRENT live direction,
+// since it runs on every native 'scroll' event, always reflecting whatever
+// the DOM is under right now.
+function fromNativeScrollLeft(el, nativeValue, directionOverride) {
+    const direction = directionOverride ?? getComputedStyle(el).direction;
+    if (direction !== 'rtl') return nativeValue;
     const maxScroll = Math.max(0, el.scrollWidth - el.clientWidth);
     const convention = detectRtlScrollConvention();
     if (convention === 'negative') return nativeValue + maxScroll;

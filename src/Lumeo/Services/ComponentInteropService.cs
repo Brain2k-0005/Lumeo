@@ -1688,12 +1688,12 @@ public sealed class ComponentInteropService : IComponentInteropService
         catch (JSDisconnectedException) { }
     }
 
-    public async Task<double?> GanttV3GetScrollCenterXAsync(Microsoft.AspNetCore.Components.ElementReference el)
+    public async Task<double?> GanttV3GetScrollCenterXAsync(Microsoft.AspNetCore.Components.ElementReference el, string? direction = null)
     {
         try
         {
             var module = await GetGanttV3ModuleAsync();
-            return await module.InvokeAsync<double?>("ganttV3.getScrollCenterX", el);
+            return await module.InvokeAsync<double?>("ganttV3.getScrollCenterX", el, direction);
         }
         catch (JSDisconnectedException) { return null; }
     }

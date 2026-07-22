@@ -260,24 +260,57 @@
     // call's own interop round-trip happens to resolve first — an
     // earlier-started call that resumes later abandons its ENTIRE commit
     // (including _lastSnapshot) rather than risk overwriting a newer one.
-    private async Task ReconcileAsync(IReadOnlyList<GanttTask> nextTasks, GanttViewMode nextMode)
+    //
+    // Bug fix (Codex round 16 review, P1 finding #2): returns whether this
+    // call actually committed (true) or was superseded/abandoned (false) — a
+    // caller with its OWN post-reconcile side effects (HandleViewModeChangedAsync's
+    // ViewModeChanged callback; OnThemeChanged's StateHasChanged) must suppress
+    // them too when abandoned, not just the commit itself. The abandon check
+    // below already covered the commit AND the scroll-intent emit (both sit
+    // after it); this only adds the RETURN VALUE so callers outside this
+    // method can extend the same guard to their own side effects.
+    private async Task<bool> ReconcileAsync(IReadOnlyList<GanttTask> nextTasks, GanttViewMode nextMode)
     {
         var prev = _lastSnapshot;
         var tasksChanged = _state.WouldChangeTasks(nextTasks);
         var nextTasksVersion = tasksChanged ? _tasksVersion + 1 : _tasksVersion;
         var next = BuildSnapshot(nextTasksVersion, nextTasks, nextMode);
 
-        var decision = GanttViewportReconciler.Decide(prev, next);
+        // Bug fix (Codex round 16 review, P2 finding #4): a nonempty->nonempty
+        // task replacement into a DISJOINT date range (no overlap with the
+        // range currently in effect) used to fall through Decide's own "no
+        // emptiness transition, no mode/geometry change" branch as a plain
+        // target=None — the range itself rebuilds around the new tasks, but
+        // nothing ever requests a recenter, so the DOM's own untouched scroll
+        // position (meaningful only under the OLD range) lands on empty space
+        // under the brand-new, unrelated one. Computed here as pure range math
+        // (no interop needed, so it's safe to do before the capture phase) and
+        // folded into Decide as an extra fact alongside the pre-existing
+        // emptiness-transition trigger — computed ONCE and reused by the
+        // COMMIT phase below instead of calling ComputeInitialRange twice.
+        var prospectiveTaskRange = tasksChanged
+            ? ComputeInitialRange(nextMode, nextTasks, EffectiveToday)
+            : (GanttDateRange?)null;
+        var taskRangeDisjoint = tasksChanged &&
+            (prospectiveTaskRange!.Value.End < _state.VisibleRange.Start ||
+             prospectiveTaskRange.Value.Start > _state.VisibleRange.End);
+
+        var decision = GanttViewportReconciler.Decide(prev, next, taskRangeDisjoint);
 
         // CAPTURE PHASE — read the pane's live center under the OLD geometry,
         // BEFORE any state mutation, so the intermediate render Blazor Server
         // can interleave at this await still shows a fully OLD, coherent frame
         // (finding #4: the old code committed the new tasks first, exposing a
         // half-reconciled frame — new tasks, un-moved scroll).
+        //
+        // Bug fix (Codex round 16 review, P2 finding #5): passes prev.Direction
+        // explicitly now too (was: leadingOffset/columnWidth only) — see
+        // ResolveCurrentCenterDateAsync's own remarks for why the live DOM
+        // direction can't be trusted here for a ThemeService-driven flip.
         var generation = BeginReconcile();
         DateTime? capturedCenter = null;
         if (decision.NeedsLiveCenterCapture)
-            capturedCenter = await ResolveCurrentCenterDateAsync(prev.LeadingOffset, prev.ColumnWidth);
+            capturedCenter = await ResolveCurrentCenterDateAsync(prev.LeadingOffset, prev.ColumnWidth, prev.Direction);
 
         // Bug fix (Codex round 15 review, P1): abandon entirely if a NEWER
         // reconcile has already claimed a later generation while the capture
@@ -286,7 +319,7 @@
         // call's own decision/capture were computed against an OLD prev/next
         // pair that no longer reflects reality, so nothing below (including
         // the _lastSnapshot tail write) may run.
-        if (!IsCurrentReconcile(generation)) return;
+        if (!IsCurrentReconcile(generation)) return false;
 
         // COMMIT PHASE — synchronous from here to the end, so the next render is
         // one coherent frame (tasks, mode, and range all move together).
@@ -300,7 +333,7 @@
         switch (decision.Range)
         {
             case GanttRangeSource.TaskDerived:
-                _state.SetVisibleRange(ComputeInitialRange(_state.ViewMode, _state.Tasks, EffectiveToday));
+                _state.SetVisibleRange(prospectiveTaskRange!.Value);
                 break;
             case GanttRangeSource.SelfCenteredOnCapture:
                 // A genuine mode switch reshapes the range around the captured
@@ -322,7 +355,8 @@
                 EmitScrollIntent(capturedCenter);
                 break;
             case GanttScrollTarget.TodayOrMidpoint:
-                // An emptiness transition: Today when it falls inside the new
+                // An emptiness transition (or, since round 16, a disjoint
+                // task-range replacement): Today when it falls inside the new
                 // range (always true for the empty-list fallback, which is
                 // centered on Today by construction), else the new range's own
                 // midpoint (Codex round 9's delta from v2, for far-from-today
@@ -335,6 +369,7 @@
         }
 
         _lastSnapshot = next;
+        return true;
     }
 
     // Issues a one-shot scroll intent: a target date (null = Today) plus a
@@ -440,12 +475,38 @@
     {
         _ = InvokeAsync(async () =>
         {
+            // Bug fix (Codex round 16 review, P1 finding #1): ThemeService.OnThemeChanged
+            // fires for ANY theme change, not just a direction flip — a pure
+            // color-mode toggle (light/dark) leaves EffectiveDirection completely
+            // unchanged. ReconcileAsync unconditionally claims a new generation
+            // via BeginReconcile() before it even decides whether anything needs
+            // to change (round 15's own generation guard) — so a no-op
+            // notification like this one would still claim the newest
+            // generation, silently aborting a genuinely in-flight, direction-
+            // relevant reconcile (e.g. a view-mode switch whose own capture await
+            // was still outstanding) with nothing useful committed to replace
+            // it. Checking the ACTUAL trigger (direction) before ever entering
+            // ReconcileAsync means a no-op notification never claims a
+            // generation at all. Compared against _lastSnapshot.Direction (the
+            // last COMMITTED direction) rather than some separately-tracked
+            // field, for the same reason GanttViewportReconciler.Decide's own
+            // diff uses it — an in-flight reconcile hasn't updated it yet, so
+            // this still reflects "has direction changed since the last known
+            // committed state," consistent with what Decide would also compute.
+            if (EffectiveDirection == _lastSnapshot.Direction) return;
+
             // Nothing but the ambient direction can have changed here (no
             // parameter pass), so reconcile the CURRENT tasks/mode against the
             // new direction — the snapshot diff picks up the direction flip as
             // a geometry-only change and preserves the live center.
-            await ReconcileAsync(_state.Tasks, _state.ViewMode);
-            StateHasChanged();
+            //
+            // Bug fix (Codex round 16 review, P1 finding #2): only re-render if
+            // this call actually committed — a superseded reconcile has nothing
+            // new to show, and StateHasChanged here would be a redundant,
+            // information-free render on top of whatever the superseding
+            // reconcile's own caller already triggered.
+            var committed = await ReconcileAsync(_state.Tasks, _state.ViewMode);
+            if (committed) StateHasChanged();
         });
     }
 
@@ -714,7 +775,15 @@
     private async Task HandleViewModeChangedAsync(GanttViewMode mode)
     {
         if (mode == _state.ViewMode) return;
-        await ReconcileAsync(_state.Tasks, mode);
+        var committed = await ReconcileAsync(_state.Tasks, mode);
+        // Bug fix (Codex round 16 review, P1 finding #2): a reconcile superseded
+        // by a NEWER one (round 15's generation guard) already skips its own
+        // commit — but this callback sits OUTSIDE ReconcileAsync, so without this
+        // check it would still fire ViewModeChanged with a mode that was never
+        // actually applied to _state.ViewMode (the superseding reconcile decided
+        // something else entirely). Suppress every side effect below, not just
+        // the commit, when superseded.
+        if (!committed) return;
         // Controlled: echo the new mode up; the resulting parameter pass finds
         // _state.ViewMode already committed, so it diffs to a no-op. Uncontrolled:
         // nothing to push — _state.ViewMode is the committed truth the next
@@ -773,9 +842,29 @@
     // position using the ALREADY-NEW ColumnWidth, silently misinterpreting
     // it. Callers now explicitly pass whichever column width the position
     // was actually captured under.
-    private async Task<DateTime> ResolveCurrentCenterDateAsync(double leadingOffset, int columnWidth)
+    //
+    // Bug fix (Codex round 16 review, P2 finding #5): parameterized the
+    // direction the SAME way, for the SAME reason. The JS-side read
+    // (gantt-v3.js's getScrollCenterX/fromNativeScrollLeft) needs to know
+    // whether to un-apply RTL's scrollLeft convention, and it used to decide
+    // that by reading the element's OWN getComputedStyle(...).direction live
+    // — correct for a DirectionProvider-cascading-parameter flip (Blazor's own
+    // async lifecycle runs, including this capture, BEFORE the render diff
+    // repaints the new `dir` attribute onto the real DOM, so a live read still
+    // observes the OLD direction there) but WRONG for a ThemeService-driven
+    // global flip: ThemeService's own direction-setting mechanism mutates
+    // document.documentElement's `dir` synchronously, independently of
+    // Blazor's render pipeline — by the time OnThemeChanged's dispatched
+    // continuation even starts running, the DOM is already under the NEW
+    // direction's convention, so a live read decoded the still-physically-
+    // unmoved scrollLeft value using the wrong (new) convention. Passing the
+    // OLD direction explicitly (prev.Direction — always known synchronously,
+    // for every reconcile trigger, not just the theme one) removes the DOM-
+    // timing dependency entirely instead of special-casing just this one path.
+    private async Task<DateTime> ResolveCurrentCenterDateAsync(double leadingOffset, int columnWidth, LayoutDirection direction)
     {
-        var logicalCenterX = await Interop.GanttV3GetScrollCenterXAsync(_scrollPaneRef);
+        var directionArg = direction == LayoutDirection.Rtl ? "rtl" : "ltr";
+        var logicalCenterX = await Interop.GanttV3GetScrollCenterXAsync(_scrollPaneRef, directionArg);
         if (logicalCenterX is { } x)
         {
             var timelineRelativeX = x - leadingOffset;
