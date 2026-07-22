@@ -113,4 +113,39 @@ public class DrawerContentScrollableBodyTests : IAsyncLifetime
 
         Assert.Contains("p-1.5", cut.Find("[role='dialog']").GetAttribute("class"));
     }
+
+    // #381 Codex round 2, P2: the visual drag handle is the stable DOM hook
+    // components.js's gesture handlers use to identify a touch that started
+    // on it (those always arm dismiss regardless of the panel's scroll
+    // position). Asserting the structural hook is what's bUnit-able —
+    // the actual touch-gesture discrimination is JS-only behavior; see the
+    // task report for the manual/E2E verification steps.
+    [Fact]
+    public void Drag_Handle_Carries_The_Stable_Gesture_Hook_For_A_Top_Or_Bottom_Drawer()
+    {
+        var cut = RenderDrawer(b => b.AddContent(0, "Content")); // default Side.Bottom -> handle shown
+
+        var handle = cut.Find("[data-drawer-handle]");
+        Assert.Equal("true", handle.GetAttribute("data-drawer-handle"));
+    }
+
+    [Fact]
+    public void No_Drag_Handle_Hook_For_A_Left_Or_Right_Drawer()
+    {
+        var cut = _ctx.Render(builder =>
+        {
+            builder.OpenComponent<L.Drawer>(0);
+            builder.AddAttribute(1, "IsOpen", true);
+            builder.AddAttribute(2, "ChildContent", (RenderFragment)(b =>
+            {
+                b.OpenComponent<L.DrawerContent>(0);
+                b.AddAttribute(1, "Side", L.Side.Right);
+                b.AddAttribute(2, "ChildContent", (RenderFragment)(inner => inner.AddContent(0, "Content")));
+                b.CloseComponent();
+            }));
+            builder.CloseComponent();
+        });
+
+        Assert.Empty(cut.FindAll("[data-drawer-handle]"));
+    }
 }

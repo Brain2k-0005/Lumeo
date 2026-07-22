@@ -1204,6 +1204,17 @@ function isScrolledToClosingBoundary(el, sign) {
         : el.scrollTop + el.clientHeight >= el.scrollHeight - 1; // 1px rounding slack
 }
 
+// #381 Codex P2 (round 2) — a touch that starts on the visual drag handle
+// (DrawerContent.razor's [data-drawer-handle]) always arms dismiss regardless
+// of the panel's scroll position: the handle sits OUTSIDE the scrollable
+// content (it's a sibling of @ChildContent, not part of it), so there is no
+// competing "the user meant to scroll" reading for a touch that starts there
+// at all — gating it on scrollTop would only ever produce false negatives.
+function startedOnDragHandle(target, panelEl) {
+    const handle = target.closest && target.closest('[data-drawer-handle]');
+    return !!(handle && panelEl.contains(handle));
+}
+
 export function registerDrawerSwipe(elementId, direction, dotnetRef, options) {
     const el = document.getElementById(elementId);
     if (!el) return;
@@ -1255,6 +1266,8 @@ export function registerDrawerSwipe(elementId, direction, dotnetRef, options) {
     let isDragging = false;
     let active = false;       // gesture passed activation threshold
     let aborted = false;      // axis-lock determined this gesture is for the wrong axis
+    let contentOwned = false; // #381 round 2 — see its own remarks below
+    let startedOnHandle = false;
     let samples = [];         // recent {pos, t} on the active axis for velocity
 
     const onTouchStart = (e) => {
@@ -1264,12 +1277,18 @@ export function registerDrawerSwipe(elementId, direction, dotnetRef, options) {
         isDragging = true;
         active = false;
         aborted = false;
+        contentOwned = false;
+        // #381 Codex P2 (round 2) — captured ONCE per touch, at the same
+        // point origStart/origEnd-style anchors are captured elsewhere in
+        // this file: a touch that starts on the handle always arms dismiss,
+        // scroll position never enters into it for that touch.
+        startedOnHandle = startedOnDragHandle(e.target, el);
         samples = [{ pos: currentPos, t: performance.now() }];
         el.style.transition = 'none';
     };
 
     const onTouchMove = (e) => {
-        if (!isDragging || aborted) return;
+        if (!isDragging || aborted || contentOwned) return;
         const x = e.touches[0].clientX;
         const y = e.touches[0].clientY;
         const dx = x - startX;
@@ -1295,20 +1314,31 @@ export function registerDrawerSwipe(elementId, direction, dotnetRef, options) {
                 aborted = true;
                 return;
             }
-            // #381 Codex P1 — see isScrolledToClosingBoundary's own remarks
-            // (Top/Bottom drawer: dismiss and scroll share the vertical axis).
-            // Only gates the CLOSING direction: a drag the wrong way (e.g.
-            // swiping up on a bottom drawer) never actually drags the panel
-            // anyway (the sign !== dismissSign branch below already resets
-            // the transform to a no-op every frame), so it can't fight
-            // scrolling regardless of this check. Deliberately NOT `aborted`
-            // — unlike the axis mismatch above (a permanent geometric fact
-            // about this gesture), "not yet at the scroll boundary" can
-            // resolve later in the SAME gesture as native scrolling
-            // continues, so this re-checks on every subsequent move instead.
-            if (!isHorizontal) {
+            // #381 Codex P1/P2 (round 2) — see isScrolledToClosingBoundary's own
+            // remarks (Top/Bottom drawer: dismiss and scroll share the vertical
+            // axis) and startedOnDragHandle's (the handle always bypasses this
+            // gate entirely). Only gates the CLOSING direction: a drag the wrong
+            // way (e.g. swiping up on a bottom drawer) never actually drags the
+            // panel anyway (the sign !== dismissSign branch below already resets
+            // the transform to a no-op every frame), so it can't fight scrolling
+            // regardless of this check.
+            //
+            // Round 2 fix: this is now a ONE-TIME decision for the WHOLE touch,
+            // not just the current event. The original version only `return`ed
+            // from this single call — a LATER move within the SAME touch (after
+            // native scroll carries the panel to the boundary mid-gesture) would
+            // re-evaluate true and let dismiss arm mid-scroll, which read as the
+            // drawer suddenly starting to close while the user was still
+            // scrolling. `contentOwned` latches the verdict instead: once a
+            // touch is decided to begin away from the boundary, it stays
+            // content-owned — no dismiss/drag logic at all — until the finger
+            // lifts and a NEW touch starts (onTouchStart resets it).
+            if (!isHorizontal && !startedOnHandle) {
                 const closingDirection = Math.sign(dy) === dismissSign;
-                if (closingDirection && !isScrolledToClosingBoundary(el, dismissSign)) return;
+                if (closingDirection && !isScrolledToClosingBoundary(el, dismissSign)) {
+                    contentOwned = true;
+                    return;
+                }
             }
             active = true;
         }
@@ -1455,6 +1485,8 @@ export function registerDrawerSnap(elementId, direction, dotnetRef, options) {
     });
 
     let startY = 0, baseOffset = 0, isDragging = false, samples = [];
+    let contentOwned = false; // #381 round 2 — see registerDrawerSwipe's own remarks
+    let startedOnHandle = false;
 
     const clampOffset = (off) => {
         const openLimit = offsetFor(lastIndex);   // most-open snap
@@ -1469,30 +1501,37 @@ export function registerDrawerSnap(elementId, direction, dotnetRef, options) {
         startY = e.touches[0].clientY;
         baseOffset = offsetFor(activeIndex);
         isDragging = true;
+        contentOwned = false;
+        startedOnHandle = startedOnDragHandle(e.target, el);
         samples = [{ pos: startY, t: performance.now() }];
         el.style.transition = 'none';
     };
 
     const onTouchMove = (e) => {
-        if (!isDragging) return;
+        if (!isDragging || contentOwned) return;
         const y = e.touches[0].clientY;
         const now = performance.now();
         samples.push({ pos: y, t: now });
         while (samples.length > 2 && now - samples[0].t > VELOCITY_WINDOW_MS) samples.shift();
 
-        // #381 Codex P1 — see isScrolledToClosingBoundary's own remarks
-        // (shared with registerDrawerSwipe). Unlike that gesture (which has
-        // an activation threshold to rebase the visual offset from), this
-        // one drags from the very first touchmove — so while gated, rebase
-        // startY/baseOffset to the CURRENT position on every gated frame.
-        // Once the gate clears (native scroll reaches the boundary), the
-        // drag starts from a zero delta instead of jumping by however far
-        // the finger already travelled while gated.
-        const closingDirection = Math.sign(y - startY) === sign;
-        if (closingDirection && !isScrolledToClosingBoundary(el, sign)) {
-            startY = y;
-            baseOffset = offsetFor(activeIndex);
-            return;
+        // #381 Codex P1/P2 (round 2) — see isScrolledToClosingBoundary's own
+        // remarks (shared with registerDrawerSwipe) and startedOnDragHandle's
+        // (the handle always bypasses this gate entirely). This is a ONE-TIME
+        // decision for the WHOLE touch, not just the current event: the
+        // original version rebased startY/baseOffset and returned, which let a
+        // LATER move within the SAME touch (once native scroll reached the
+        // boundary mid-gesture) re-arm the drag — the panel would suddenly
+        // start closing mid-scroll. `contentOwned` latches the verdict instead
+        // (checked at the top of this function): once a touch is decided to
+        // begin away from the boundary, this gesture never drags the panel at
+        // all — no rebase-and-retry, no re-arm — until the finger lifts and a
+        // NEW touch starts (onTouchStart resets it).
+        if (!startedOnHandle) {
+            const closingDirection = Math.sign(y - startY) === sign;
+            if (closingDirection && !isScrolledToClosingBoundary(el, sign)) {
+                contentOwned = true;
+                return;
+            }
         }
 
         const proposed = clampOffset(baseOffset + (y - startY));
@@ -1502,6 +1541,10 @@ export function registerDrawerSnap(elementId, direction, dotnetRef, options) {
     const onTouchEnd = (e) => {
         if (!isDragging) return;
         isDragging = false;
+        // The panel's transform was never touched for a content-owned touch
+        // (the gate above returns before ever setting it) — nothing to settle
+        // or dismiss; the drawer stays exactly at its last committed snap.
+        if (contentOwned) return;
         const endY = (e.changedTouches && e.changedTouches[0]) ? e.changedTouches[0].clientY : startY;
         const currentOffset = clampOffset(baseOffset + (endY - startY));
 
