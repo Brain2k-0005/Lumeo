@@ -77,7 +77,17 @@ public class ToastBattleTestRegressionTests : IAsyncLifetime
         cut.WaitForState(
             () => cut.FindAll(".animate-toast-out").Count == 1,
             TimeSpan.FromSeconds(5));
-        Assert.Equal(1, dismissCount);
+
+        // Deflake (CI-starvation incident, overlay-exit doctrine applied): this used to be a bare
+        // `Assert.Equal(1, dismissCount)` immediately after the poll above. That races a real gap
+        // inside RemoveWithExitAsync: `Leaving = true` is stamped and StateHasChanged() called
+        // (making .animate-toast-out observable — what the poll above waits for) BEFORE
+        // `await UnregisterSwipe(id)`, and only AFTER that await resolves does `OnDismiss()` actually
+        // fire. Under a starved CI thread pool that continuation can be delayed well past the moment
+        // the "leaving" render commits, so the bare assert could read dismissCount==0. dismissCount
+        // reaching (and, per this test's own idempotency guarantee, staying at) 1 is a genuine
+        // monotonic latch, so poll for it instead of asserting on the assumption it already settled.
+        cut.WaitForAssertion(() => Assert.Equal(1, dismissCount), TimeSpan.FromSeconds(5));
 
         // Second dismissal while the toast is still leaving must be a no-op.
         // Without the fix it re-runs OnDismiss (count -> 2) and truncates the
