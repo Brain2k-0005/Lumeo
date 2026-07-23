@@ -1344,6 +1344,14 @@ function startedOnDragHandle(target, panelEl) {
 //      consumer-supplied inset (e.g. a safe-area padding via
 //      AdditionalAttributes) survives every settle, not just the final
 //      teardown restore from rule #5 (round 7, finding #3).
+//   13. The programmatic setActive path (two-way ActiveSnapPoint) goes
+//      through the EXACT SAME rest -> dragging conversion as a real touch
+//      drag — disable transition, convert, force reflow, re-arm — rather
+//      than a parallel mechanism; converting the representation while a
+//      transition is still armed (the common case: rest leaves transition
+//      untouched per this table) would animate the conversion itself
+//      instead of applying it instantly, and the panel would appear to
+//      animate from the wrong origin (round 8, finding #1).
 
 export function registerDrawerSwipe(elementId, direction, dotnetRef, options) {
     const el = document.getElementById(elementId);
@@ -1984,6 +1992,22 @@ export function registerDrawerSnap(elementId, direction, dotnetRef, options) {
         // setActive lets C# move the drawer programmatically (two-way ActiveSnapPoint).
         setActive(i) {
             if (!Number.isInteger(i) || i < 0 || i > lastIndex || i === activeIndex) return;
+            // #381 round 8 (P1) — routed through the SAME disable-transition
+            // + convert + reflow + re-arm sequence onTouchMove's lazy entry
+            // (round 6, finding #1) and settleAtRest's own swap (round 4,
+            // finding #4) both use — no parallel mechanism. A resting panel
+            // typically still has `transition: EASING` armed from its last
+            // settle (see the state-model contract: rest leaves transition
+            // untouched). Converting from the rest-offset representation to
+            // transform via enterDragRepresentation() while that transition
+            // is still armed animates the CONVERSION itself (transform going
+            // from `none` to the equivalent value) instead of applying it
+            // instantly, so the panel visibly jumps/animates from the wrong
+            // origin before ever starting toward the real target. Disabling
+            // the transition first makes the conversion instant; the
+            // existing `H = el.offsetHeight || H` read below already forces
+            // the reflow that commits it before EASING re-arms.
+            el.style.transition = 'none';
             enterDragRepresentation();
             activeIndex = i;
             H = el.offsetHeight || H;
