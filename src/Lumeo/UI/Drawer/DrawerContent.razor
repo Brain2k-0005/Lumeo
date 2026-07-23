@@ -41,8 +41,26 @@ else if (Context.IsOpen || _exiting)
                    components.js's gesture handlers use to identify a touch that
                    started on the visual drag handle: those touches always arm
                    dismiss regardless of the panel's scroll position (the handle
-                   itself is never part of the scrollable content). *@
-                <div class="mx-auto mt-4 h-2 w-[100px] rounded-full bg-muted" data-drawer-handle="true"></div>
+                   itself is never part of the scrollable content).
+
+                   #381 round 6 (P2) — this element is a sibling of the child
+                   content inside the SAME overflow-y-auto flex column as
+                   _contentId (the scroll container the JS gesture also reads
+                   scrollTop/scrollHeight from for boundary gating — it must
+                   stay that element, so the fix is CSS-only, not a restructure
+                   onto a separate inner scroller). Without "sticky", the
+                   handle was an ordinary in-flow flex item: scrolling the
+                   content scrolled the handle away with it, so a drawer with
+                   content taller than the panel lost its grab handle the
+                   moment the user scrolled down. "sticky top-0" pins it to the
+                   scroll container's own top edge instead; "bg-background"
+                   (matches the panel's own background) keeps scrolling
+                   content from showing through behind it, and "shrink-0"
+                   matches DrawerHeader/DrawerFooter's own defensive
+                   flex-shrink guard for the same overflow-y-auto flex column. *@
+                <div class="sticky top-0 z-10 shrink-0 bg-background pb-2" data-drawer-handle="true">
+                    <div class="mx-auto mt-4 h-2 w-[100px] rounded-full bg-muted"></div>
+                </div>
             }
             @ChildContent
         </div>

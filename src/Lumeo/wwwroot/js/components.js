@@ -1226,23 +1226,26 @@ function startedOnDragHandle(target, panelEl) {
 // and registerDrawerSnap below. This is the CONTRACT every early-return in
 // their onTouchMove/onTouchEnd handlers is checked against.
 //
-//   state               | transform            | rest offset (snap only) | meaning
+//   state               | transform            | rest offset (snap only) | transition (snap only)
 //   --------------------+----------------------+--------------------------+---------------------------------
-//   rest                 | none (cleared)       | set to current snap      | settled; safe containing block
-//                        |                      |                          | for descendant popovers
-//   dragging             | translateY(finger)   | cleared                  | finger owns the panel; no
-//                        |                      |                          | transition, compositor-only
-//   transitioning         | translateY(target),  | cleared                  | eased CSS transition toward a
-//                        | transition: EASING   |                          | new snap/dismiss target
-//   content-owned-touch  | untouched            | untouched                | this touch never drags the
-//                        |                      |                          | panel; native scroll owns it
-//                        |                      |                          | start-to-end
-//   tap (no move)        | untouched            | untouched                | touchstart -> touchend with
-//                        |                      |                          | ZERO touchmove events in
-//                        |                      |                          | between (e.g. tapping a button
-//                        |                      |                          | inside a resting drawer); never
-//                        |                      |                          | entered `dragging`, so touchend
-//                        |                      |                          | must be a full no-op too
+//   rest                 | none (cleared)       | set to current snap      | untouched (whatever the last
+//                        |                      |                          | transition/none left behind)
+//   dragging             | translateY(finger)   | cleared                  | none (compositor-only, set
+//                        |                      |                          | LAZILY when dragging begins)
+//   transitioning         | translateY(target),  | cleared                  | EASING
+//                        | transition: EASING   |                          |
+//   content-owned-touch  | untouched            | untouched                | untouched — a running opening/
+//                        |                      |                          | snap transition is left alone
+//   tap (no move)        | untouched            | untouched                | untouched — same as
+//                        |                      |                          | content-owned-touch
+//
+//   (meaning) rest = settled; safe containing block for descendant popovers.
+//   dragging = finger owns the panel. transitioning = eased CSS transition
+//   toward a new snap/dismiss target. content-owned-touch = this touch never
+//   drags the panel; native scroll owns it start-to-end. tap (no move) =
+//   touchstart -> touchend with ZERO touchmove events in between (e.g.
+//   tapping a button inside a resting drawer); never entered `dragging`, so
+//   touchend must be a full no-op too.
 //
 // Transition contract:
 //   1. rest -> dragging happens LAZILY, on the first onTouchMove frame that
@@ -1274,6 +1277,15 @@ function startedOnDragHandle(target, panelEl) {
 //      registration for the same element — so a late callback can never
 //      write style properties against cleared/replaced state (round 5,
 //      finding #2).
+//   8. `transition: none` is ALSO only ever set lazily, at the exact moment
+//      dragging is entered (never at onTouchStart) — a tap or
+//      content-owned-touch landing while an opening/snap transition is
+//      still running must not kill it (round 6, finding #1).
+//   9. The FIRST frame of the opening sequence (closed -> initial snap) is
+//      guarded by the same generation token as settleAtRest, captured
+//      before the rAF is scheduled — a registration torn down or replaced
+//      before the browser ever runs that frame leaves it a no-op too
+//      (round 6, finding #2).
 
 export function registerDrawerSwipe(elementId, direction, dotnetRef, options) {
     const el = document.getElementById(elementId);
@@ -1524,6 +1536,15 @@ export function registerDrawerSnap(elementId, direction, dotnetRef, options) {
         unregisterDrawerSnap(elementId);
     }
 
+    // #381 round 6 (P2) — save whatever inline `top`/`bottom` the element
+    // already had (e.g. a consumer-supplied style via AdditionalAttributes)
+    // BEFORE this registration ever writes to them. Our rest-offset
+    // representation reuses these same two properties, so without this,
+    // unregistering would clobber a consumer's own inline styling by
+    // clearing it to empty instead of putting it back.
+    const preExistingTop = el.style.top;
+    const preExistingBottom = el.style.bottom;
+
     const snapPoints = (options && Array.isArray(options.snapPoints)) ? options.snapPoints.slice() : [];
     if (snapPoints.length === 0) return;
 
@@ -1647,10 +1668,19 @@ export function registerDrawerSnap(elementId, direction, dotnetRef, options) {
     el.style.transition = 'none';
     el.style.transform = `translateY(${closedOffset()}px)`;
     void el.offsetHeight; // force reflow so the closed state is the paint baseline
+    // #381 round 6 (P2) — capture the generation this opening frame belongs
+    // to and guard the rAF callback with it, same principle as settleAtRest:
+    // if this registration is torn down or replaced (unregisterDrawerSnap,
+    // or a re-register for changed options) before the browser ever runs
+    // this first frame, invalidatePendingSettle() bumps settleGeneration and
+    // this stale callback becomes a no-op instead of writing to `el` on
+    // behalf of state that no longer owns it.
+    const openGeneration = ++settleGeneration;
     requestAnimationFrame(() => {
+        if (openGeneration !== settleGeneration) return;
         el.style.transition = EASING;
         el.style.transform = `translateY(${offsetFor(activeIndex)}px)`;
-        settleAtRest(offsetFor(activeIndex), ++settleGeneration);
+        settleAtRest(offsetFor(activeIndex), openGeneration);
     });
 
     let startY = 0, baseOffset = 0, isDragging = false, samples = [];
@@ -1685,7 +1715,12 @@ export function registerDrawerSnap(elementId, direction, dotnetRef, options) {
         dragRepresentationEntered = false;
         startedOnHandle = startedOnDragHandle(e.target, el);
         samples = [{ pos: startY, t: performance.now() }];
-        el.style.transition = 'none';
+        // #381 round 6 (P2) — do NOT disable the transition here
+        // unconditionally anymore either: see onTouchMove's lazy-entry
+        // remarks. A tap or content-owned touch landing DURING a running
+        // opening/snap transition must not kill it — transition:none is now
+        // set lazily, alongside enterDragRepresentation(), only once a real
+        // drag actually begins.
     };
 
     const onTouchMove = (e) => {
@@ -1735,7 +1770,16 @@ export function registerDrawerSnap(elementId, direction, dotnetRef, options) {
         // content-owned touchend is a no-op by design. Entering here instead
         // means a content-owned touch never leaves `rest`, so there's
         // nothing to restore.
+        //
+        // #381 round 6 (P2) — disabling the transition also moved here, for
+        // the same reason: it used to happen unconditionally at
+        // onTouchStart, which meant a tap or content-owned touch landing
+        // DURING a running opening/snap transition killed that transition
+        // outright. Disabling it right here — the moment a real drag
+        // actually begins — leaves an in-flight transition alone for every
+        // touch that never turns into a drag.
         if (!dragRepresentationEntered) {
+            el.style.transition = 'none';
             enterDragRepresentation();
             settleGeneration++;
             dragRepresentationEntered = true;
@@ -1863,7 +1907,11 @@ export function registerDrawerSnap(elementId, direction, dotnetRef, options) {
         // prior registration for the same element.
         invalidatePendingSettle() {
             settleGeneration++;
-        }
+        },
+        // #381 round 6 (P2) — see the capture site's own remarks above;
+        // unregisterDrawerSnap restores these instead of clearing to empty.
+        preExistingTop,
+        preExistingBottom
     });
 }
 
@@ -1890,10 +1938,15 @@ export function unregisterDrawerSnap(elementId) {
             // #381 round 4 (P2) — teardown symmetry: registerDrawerSnap may
             // have left the panel resting via an inline `top` or `bottom`
             // offset (the containing-block-safe rest representation), not
-            // just `transform`. Clear both unconditionally rather than only
-            // whichever one happened to be live at the moment of removal.
-            el.style.top = '';
-            el.style.bottom = '';
+            // just `transform`.
+            //
+            // #381 round 6 (P2) — RESTORE whatever the consumer's own inline
+            // top/bottom were before this registration started writing to
+            // them, instead of clearing to empty unconditionally — clearing
+            // would permanently clobber a consumer-supplied inline style
+            // (e.g. via AdditionalAttributes) the moment the drawer closes.
+            el.style.top = handlers.preExistingTop;
+            el.style.bottom = handlers.preExistingBottom;
         }
         drawerSnapHandlers.delete(elementId);
     }
