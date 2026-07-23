@@ -1205,10 +1205,44 @@ const drawerSnapHandlers = new Map();
 // `directionSign` is the CURRENT drag's own direction (+1 = finger moving
 // down, -1 = finger moving up) — the caller passes whichever direction is
 // actually being attempted right now, not a fixed per-registration constant.
-function isAtScrollBoundaryForDirection(el, directionSign) {
-    return directionSign > 0
-        ? el.scrollTop <= 0
-        : el.scrollTop + el.clientHeight >= el.scrollHeight - 1; // 1px rounding slack
+//
+// #381 round 7 (P1) — this used to always read the PANEL's own scrollTop,
+// silently assuming the panel itself is the scrollable element under the
+// finger. A drawer with a NESTED scrollable region (an inner list, a tabs
+// body, anything with its own overflow-y) under the finger breaks that
+// assumption: the panel could already be at ITS boundary while the inner
+// region can still happily absorb the delta, and the drag would incorrectly
+// arm and fight the user's scroll. `startTarget` is the touch's ORIGINAL
+// target, captured once at touchstart (Touch.target/TouchEvent.target stay
+// pinned to where the touch began for the whole gesture, per spec — no need
+// to re-resolve on every move). Walk from there up to (and including) the
+// panel, testing every genuinely scrollable element found along the way:
+// content still owns the gesture if ANY of them can still absorb the delta
+// in this direction, even if a DIFFERENT ancestor further up the chain (e.g.
+// the panel itself) happens to already be at its own boundary.
+function isAtScrollBoundaryForDirection(startTarget, panelEl, directionSign) {
+    let node = startTarget;
+    while (node) {
+        if (isScrollableElement(node)) {
+            const atBoundary = directionSign > 0
+                ? node.scrollTop <= 0
+                : node.scrollTop + node.clientHeight >= node.scrollHeight - 1; // 1px rounding slack
+            if (!atBoundary) return false;
+        }
+        if (node === panelEl) break;
+        node = node.parentElement;
+    }
+    return true;
+}
+
+// An element genuinely scrolls on the Y axis: it has overflow content AND a
+// computed overflow-y that actually permits scrolling (auto/scroll) — a tall
+// child left at the default overflow:visible is not a scroll boundary at all
+// (its content just overflows into the panel's own scroll region instead).
+function isScrollableElement(el) {
+    if (el.scrollHeight <= el.clientHeight) return false;
+    const overflowY = getComputedStyle(el).overflowY;
+    return overflowY === 'auto' || overflowY === 'scroll';
 }
 
 // #381 Codex P2 (round 2) — a touch that starts on the visual drag handle
@@ -1234,18 +1268,25 @@ function startedOnDragHandle(target, panelEl) {
 //                        |                      |                          | LAZILY when dragging begins)
 //   transitioning         | translateY(target),  | cleared                  | EASING
 //                        | transition: EASING   |                          |
-//   content-owned-touch  | untouched            | untouched                | untouched — a running opening/
-//                        |                      |                          | snap transition is left alone
-//   tap (no move)        | untouched            | untouched                | untouched — same as
-//                        |                      |                          | content-owned-touch
+//   content-owned-touch  | untouched IF it never| untouched IF it never    | untouched — a running opening/
+//   (never dragged)      | entered `dragging`   | entered `dragging`       | snap transition is left alone
+//   content-owned-touch  | animated back to the | cleared during the       | EASING while animating back,
+//   (reversed mid-drag)  | pre-gesture snap,     | animation, then set to   | then untouched (whatever the
+//                        | then cleared          | the pre-gesture snap     | settle left behind — see #4)
+//   tap (no move)        | untouched             | untouched                | untouched — same as
+//                        |                      |                          | content-owned-touch (never dragged)
 //
 //   (meaning) rest = settled; safe containing block for descendant popovers.
 //   dragging = finger owns the panel. transitioning = eased CSS transition
-//   toward a new snap/dismiss target. content-owned-touch = this touch never
-//   drags the panel; native scroll owns it start-to-end. tap (no move) =
-//   touchstart -> touchend with ZERO touchmove events in between (e.g.
-//   tapping a button inside a resting drawer); never entered `dragging`, so
-//   touchend must be a full no-op too.
+//   toward a new snap/dismiss target. content-owned-touch (never dragged) =
+//   this touch never entered `dragging` at all; native scroll owns it
+//   start-to-end. content-owned-touch (reversed mid-drag) = this touch WAS
+//   dragging (started at the boundary, moved the panel) before a direction
+//   reversal handed ownership to a scrollable ancestor — the panel must not
+//   be stranded off-snap, so it animates back to where it rested before this
+//   gesture. tap (no move) = touchstart -> touchend with ZERO touchmove
+//   events in between (e.g. tapping a button inside a resting drawer); never
+//   entered `dragging`, so touchend must be a full no-op too.
 //
 // Transition contract:
 //   1. rest -> dragging happens LAZILY, on the first onTouchMove frame that
@@ -1286,6 +1327,23 @@ function startedOnDragHandle(target, panelEl) {
 //      before the rAF is scheduled — a registration torn down or replaced
 //      before the browser ever runs that frame leaves it a no-op too
 //      (round 6, finding #2).
+//   10. The ownership/boundary latch resolves the scrollable ancestor chain
+//      from the touch's ORIGINAL target up to the panel — content ownership
+//      goes to whichever scrollable element (panel or a nested one, e.g. an
+//      inner list) can still absorb the delta, not always the panel itself
+//      (round 7, finding #2).
+//   11. A reversal into content-owned-touch AFTER dragging has already
+//      begun (case 10 above) animates the panel back to the snap it rested
+//      at before this gesture, reusing settleAtRest/its generation — a
+//      content-owned touchend is a no-op (rule #6), so nothing downstream
+//      would otherwise undo the stranded mid-drag position (round 7,
+//      finding #1).
+//   12. The rest-offset property composes ONTO any pre-existing consumer
+//      inline top/bottom (captured once at registration, restBase below) —
+//      our own offset is ADDED on top of it, never a replacement, so a
+//      consumer-supplied inset (e.g. a safe-area padding via
+//      AdditionalAttributes) survives every settle, not just the final
+//      teardown restore from rule #5 (round 7, finding #3).
 
 export function registerDrawerSwipe(elementId, direction, dotnetRef, options) {
     const el = document.getElementById(elementId);
@@ -1340,6 +1398,7 @@ export function registerDrawerSwipe(elementId, direction, dotnetRef, options) {
     let aborted = false;      // axis-lock determined this gesture is for the wrong axis
     let contentOwned = false; // #381 round 2 — see its own remarks below
     let startedOnHandle = false;
+    let touchStartTarget = null; // #381 round 7 — see isAtScrollBoundaryForDirection's own remarks
     let samples = [];         // recent {pos, t} on the active axis for velocity
 
     const onTouchStart = (e) => {
@@ -1355,6 +1414,7 @@ export function registerDrawerSwipe(elementId, direction, dotnetRef, options) {
         // this file: a touch that starts on the handle always arms dismiss,
         // scroll position never enters into it for that touch.
         startedOnHandle = startedOnDragHandle(e.target, el);
+        touchStartTarget = e.target;
         samples = [{ pos: currentPos, t: performance.now() }];
         el.style.transition = 'none';
     };
@@ -1387,7 +1447,7 @@ export function registerDrawerSwipe(elementId, direction, dotnetRef, options) {
         // frame. See the shared state-model contract above registerDrawerSwipe.
         if (!isHorizontal && !startedOnHandle) {
             const directionSign = Math.sign(dy);
-            if (directionSign !== 0 && !isAtScrollBoundaryForDirection(el, directionSign)) {
+            if (directionSign !== 0 && !isAtScrollBoundaryForDirection(touchStartTarget, el, directionSign)) {
                 contentOwned = true;
                 el.style.transform = ''; // undo any partial drag from before this reversal
                 return;
@@ -1597,14 +1657,28 @@ export function registerDrawerSnap(elementId, direction, dotnetRef, options) {
     // while the drawer sits still at a snap) is what this fixes.
     const restProperty = direction === 'up' ? 'top' : 'bottom';
 
+    // #381 round 7 (P2) — the numeric baseline this registration's rest
+    // offset composes ONTO, instead of clobbering: whatever inline
+    // top/bottom pixel value the consumer already had (captured as
+    // preExistingTop/preExistingBottom above, e.g. a safe-area inset applied
+    // via AdditionalAttributes), parsed once. 0 if there wasn't one (the
+    // common case) or it wasn't a plain pixel value. See the state-model
+    // contract above registerDrawerSwipe for the documented semantic: our
+    // rest offset is ADDED on top of the consumer's own inset, never a
+    // replacement for it.
+    const restBase = parseFloat(restProperty === 'bottom' ? preExistingBottom : preExistingTop) || 0;
+
     // translateY(px) <-> bottom/top offset(px): for a Bottom drawer (sign>0),
     // a positive translateY (pushed DOWN, off-screen) is a NEGATIVE bottom
     // value (the box's bottom edge sits that far below the viewport's bottom
     // edge); for a Top drawer (sign<0) the top offset matches translateY's
     // own sign directly (a negative translateY, pushed UP, is an equally
-    // negative top value).
-    const toRestOffset = (translateYPx) => (restProperty === 'bottom' ? -translateYPx : translateYPx);
-    const toTransformOffset = (restPx) => (restProperty === 'bottom' ? -restPx : restPx);
+    // negative top value). Both compose with restBase — toTransformOffset is
+    // the exact algebraic inverse of toRestOffset, restBase included, so a
+    // round trip (rest -> transform -> rest) always lands back on the same
+    // pixel value.
+    const toRestOffset = (translateYPx) => restBase + (restProperty === 'bottom' ? -translateYPx : translateYPx);
+    const toTransformOffset = (restPx) => (restProperty === 'bottom' ? (restBase - restPx) : (restPx - restBase));
 
     let settleGeneration = 0; // bumped by every new drag/settle; invalidates stale "wait for transition" callbacks
 
@@ -1686,6 +1760,7 @@ export function registerDrawerSnap(elementId, direction, dotnetRef, options) {
     let startY = 0, baseOffset = 0, isDragging = false, samples = [];
     let contentOwned = false; // #381 round 2 — see registerDrawerSwipe's own remarks
     let startedOnHandle = false;
+    let touchStartTarget = null; // #381 round 7 — see isAtScrollBoundaryForDirection's own remarks
     let dragRepresentationEntered = false; // #381 round 4 — see onTouchMove's own remarks
 
     const clampOffset = (off) => {
@@ -1714,6 +1789,7 @@ export function registerDrawerSnap(elementId, direction, dotnetRef, options) {
         // point and the shared state-model contract above registerDrawerSwipe.
         dragRepresentationEntered = false;
         startedOnHandle = startedOnDragHandle(e.target, el);
+        touchStartTarget = e.target;
         samples = [{ pos: startY, t: performance.now() }];
         // #381 round 6 (P2) — do NOT disable the transition here
         // unconditionally anymore either: see onTouchMove's lazy-entry
@@ -1754,8 +1830,25 @@ export function registerDrawerSnap(elementId, direction, dotnetRef, options) {
         // `directionSign` is THIS move's own direction, whichever it is.
         if (!startedOnHandle) {
             const directionSign = Math.sign(y - startY);
-            if (directionSign !== 0 && !isAtScrollBoundaryForDirection(el, directionSign)) {
+            if (directionSign !== 0 && !isAtScrollBoundaryForDirection(touchStartTarget, el, directionSign)) {
                 contentOwned = true;
+                // #381 round 7 (P1) — a touch that started AT the boundary
+                // enters `dragging` on its first move (see the lazy-entry
+                // remarks below); if it then REVERSES into scrollable
+                // territory partway through, this frame is the first time
+                // ownership flips to content-owned — but onTouchEnd is a
+                // no-op for a content-owned touch by design (round 5,
+                // finding #1), so without this the panel would be
+                // permanently stranded off-snap with a live transform.
+                // Animate back to the snap it was resting at before this
+                // gesture started, reusing the exact same settleAtRest
+                // machinery (and its generation token) every other settle
+                // goes through.
+                if (dragRepresentationEntered) {
+                    el.style.transition = EASING;
+                    el.style.transform = `translateY(${offsetFor(activeIndex)}px)`;
+                    settleAtRest(offsetFor(activeIndex), ++settleGeneration);
+                }
                 return;
             }
         }
