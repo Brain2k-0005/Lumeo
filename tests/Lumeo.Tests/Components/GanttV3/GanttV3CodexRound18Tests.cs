@@ -1,6 +1,7 @@
 using System.Reflection;
 using Bunit;
 using Lumeo.GanttV3;
+using Lumeo.Services;
 using Lumeo.Tests.Helpers;
 using Microsoft.AspNetCore.Components;
 using Microsoft.Extensions.DependencyInjection;
@@ -46,28 +47,29 @@ public class GanttV3CodexRound18Tests : IAsyncLifetime
 
     private static DateTime D(int y, int m, int d) => new(y, m, d);
 
-    // ── Finding #1: navigation supersedes a suspended reconcile ─────────────
+    // ── Finding #1 (refined by Codex round 18-f2, P1): navigation supersedes a
+    //    suspended reconcile WITHOUT dropping its pending parameter inputs ─────
 
-    [Fact]
-    public async Task Finding1_A_Navigation_During_A_Suspended_Reconcile_Supersedes_It()
+    // Suspends a parameter-driven Day->Month reconcile, then runs a navigation
+    // via `nav` while it is stuck. The navigation supersedes the stale reconcile
+    // AND re-applies the pending Month, so the mode LANDS after navigating —
+    // asserted by the period label becoming Month's single "MMMM yyyy" (no "–").
+    // Under the round-18 (pre-f2) behavior the mode was silently DROPPED and the
+    // label stayed a Day-mode "… – …" range.
+    private async Task AssertNavigationReappliesPendingModeAsync(string navMethod)
     {
         var task = new L.GanttTask("t1", "Task", D(2026, 1, 10), D(2026, 1, 20));
         var tasks = new List<L.GanttTask> { task };
         var cut = _ctx.Render<L.Gantt3>(p => p
             .Add(c => c.Tasks, tasks)
-            .Add(c => c.ViewMode, L.GanttViewMode.Day)
+            .Add(c => c.ViewMode, L.GanttViewMode.Day)   // UNCONTROLLED (no ViewModeChanged)
             .Add(c => c.ShowTreePane, false));
 
-        // The mount range in Day mode (task min/max ± padding) — a date RANGE.
-        var mountPeriod = cut.Find("span.text-sm.font-medium").TextContent;
-        Assert.Contains("–", mountPeriod);
+        Assert.Contains("–", cut.Find("span.text-sm.font-medium").TextContent); // mount: Day range
 
-        // Reconcile: Day -> Month (needs a live-center capture). Suspend it in
-        // that capture, so it is stuck having claimed a generation but not yet
-        // committed SetViewMode/SetVisibleRange.
+        // Parent pushes Day -> Month; suspend its live-center capture.
         var gate = new TaskCompletionSource<double?>();
         _interop.GanttV3ScrollCenterXGate = gate;
-
         Task reconcile = Task.CompletedTask;
         await cut.InvokeAsync(() =>
         {
@@ -78,49 +80,93 @@ public class GanttV3CodexRound18Tests : IAsyncLifetime
                 [nameof(L.Gantt3.ShowTreePane)] = false,
             }));
         });
-        Assert.False(reconcile.IsCompleted, "the reconcile should still be awaiting its live-center capture");
+        Assert.False(reconcile.IsCompleted, "the mode reconcile should still be awaiting its capture");
 
-        // A Today navigation lands WHILE the reconcile is suspended. It mutates
-        // VisibleRange directly (still in Day mode) and must supersede the
-        // in-flight reconcile.
-        var goToToday = typeof(L.Gantt3).GetMethod("GoToTodayAsync", BindingFlags.NonPublic | BindingFlags.Instance)!;
-        await cut.InvokeAsync(async () => await (Task)goToToday.Invoke(cut.Instance, null)!);
+        // Un-gate subsequent captures so the navigation's OWN re-apply can
+        // complete; the suspended pass keeps awaiting the ORIGINAL gate above.
+        _interop.GanttV3ScrollCenterXGate = null;
+        _interop.GanttV3ScrollCenterXToReturn = 0;
 
-        // Resume the reconcile. Under the bug it would now commit its Month mode
-        // + self-centered range on top of the Today navigation — so the label
-        // would flip to Month's single "MMMM yyyy" (no "–"). Under the fix it
-        // finds its generation superseded by the nav and abandons its ENTIRE
-        // commit, leaving the Today-navigated Day range in place.
+        var nav = typeof(L.Gantt3).GetMethod(navMethod, BindingFlags.NonPublic | BindingFlags.Instance)!;
+        await cut.InvokeAsync(async () => await (Task)nav.Invoke(cut.Instance, null)!);
+
+        // Resume the superseded original reconcile — it abandons cleanly.
         gate.SetResult(0);
         await reconcile;
 
-        var finalPeriod = cut.Find("span.text-sm.font-medium").TextContent;
-        // Still Day mode — the Month switch abandoned (a superseded reconcile
-        // never even runs SetViewMode).
-        Assert.Contains("–", finalPeriod);
-        // …and the Today navigation stands: it recentered the window on today
-        // (far from the task's own Jan-2026 range), so the range actually moved.
-        Assert.NotEqual(mountPeriod, finalPeriod);
+        // The pending Month LANDED after the navigation (not dropped): the label
+        // is Month's "MMMM yyyy", not a Day/Week "… – …" range.
+        Assert.DoesNotContain("–", cut.Find("span.text-sm.font-medium").TextContent);
     }
 
     [Fact]
-    public async Task Finding1_A_Shift_During_A_Suspended_Reconcile_Supersedes_It()
+    public Task Reapply_A_Today_Navigation_During_A_Suspended_Mode_Change_Still_Lands_The_Mode()
+        => AssertNavigationReappliesPendingModeAsync("GoToTodayAsync");
+
+    [Fact]
+    public Task Reapply_A_Shift_Navigation_During_A_Suspended_Mode_Change_Still_Lands_The_Mode()
+        => AssertNavigationReappliesPendingModeAsync("ShiftToNextAsync");
+
+    [Fact]
+    public async Task Reapply_A_Superseded_Tasks_And_Mode_Pass_Lands_Both_After_A_Navigation()
     {
-        // Same guarantee for the prev/next path (ShiftAsync), which is fully
-        // synchronous — so it can only ever run BEFORE or AFTER a suspended
-        // reconcile's capture, never interleaved within it.
+        // Finding #2 (round 18-f2): the pending-input preservation is general —
+        // a superseded pass carrying BOTH a task-set change AND a mode change
+        // must land both after the navigation supersedes it.
+        var taskA = new L.GanttTask("a", "A", D(2026, 1, 10), D(2026, 1, 20));
+        var taskB = new L.GanttTask("b", "B", D(2026, 3, 1), D(2026, 3, 10)); // a different, non-empty set
+        var cut = _ctx.Render<L.Gantt3>(p => p
+            .Add(c => c.Tasks, new List<L.GanttTask> { taskA })
+            .Add(c => c.ViewMode, L.GanttViewMode.Day)
+            .Add(c => c.ShowTreePane, false));
+        Assert.Single(cut.FindAll("[data-task-id='a']"));
+
+        var gate = new TaskCompletionSource<double?>();
+        _interop.GanttV3ScrollCenterXGate = gate;
+        Task reconcile = Task.CompletedTask;
+        await cut.InvokeAsync(() =>
+        {
+            reconcile = cut.Instance.SetParametersAsync(ParameterView.FromDictionary(new Dictionary<string, object?>
+            {
+                [nameof(L.Gantt3.Tasks)] = new List<L.GanttTask> { taskB },
+                [nameof(L.Gantt3.ViewMode)] = L.GanttViewMode.Month,
+                [nameof(L.Gantt3.ShowTreePane)] = false,
+            }));
+        });
+        Assert.False(reconcile.IsCompleted);
+
+        _interop.GanttV3ScrollCenterXGate = null;
+        _interop.GanttV3ScrollCenterXToReturn = 0;
+
+        var shiftNext = typeof(L.Gantt3).GetMethod("ShiftToNextAsync", BindingFlags.NonPublic | BindingFlags.Instance)!;
+        await cut.InvokeAsync(async () => await (Task)shiftNext.Invoke(cut.Instance, null)!);
+
+        gate.SetResult(0);
+        await reconcile;
+
+        // Both the new task set AND the Month mode landed.
+        Assert.Empty(cut.FindAll("[data-task-id='a']"));
+        Assert.Single(cut.FindAll("[data-task-id='b']"));
+        Assert.DoesNotContain("–", cut.Find("span.text-sm.font-medium").TextContent);
+    }
+
+    [Fact]
+    public async Task Reapply_A_Theme_Direction_Flip_During_A_Suspended_Mode_Change_Still_Lands_The_Mode()
+    {
+        // The theme path has the same absorb-before-commit hazard as the nav
+        // path: a ThemeService direction flip supersedes an in-flight parameter
+        // reconcile, so it must carry that reconcile's pending mode forward, not
+        // just the direction.
         var task = new L.GanttTask("t1", "Task", D(2026, 1, 10), D(2026, 1, 20));
         var tasks = new List<L.GanttTask> { task };
         var cut = _ctx.Render<L.Gantt3>(p => p
             .Add(c => c.Tasks, tasks)
             .Add(c => c.ViewMode, L.GanttViewMode.Day)
             .Add(c => c.ShowTreePane, false));
-
-        var mountPeriod = cut.Find("span.text-sm.font-medium").TextContent;
+        Assert.Contains("–", cut.Find("span.text-sm.font-medium").TextContent);
 
         var gate = new TaskCompletionSource<double?>();
         _interop.GanttV3ScrollCenterXGate = gate;
-
         Task reconcile = Task.CompletedTask;
         await cut.InvokeAsync(() =>
         {
@@ -133,15 +179,18 @@ public class GanttV3CodexRound18Tests : IAsyncLifetime
         });
         Assert.False(reconcile.IsCompleted);
 
-        var shiftNext = typeof(L.Gantt3).GetMethod("ShiftToNextAsync", BindingFlags.NonPublic | BindingFlags.Instance)!;
-        await cut.InvokeAsync(async () => await (Task)shiftNext.Invoke(cut.Instance, null)!);
+        _interop.GanttV3ScrollCenterXGate = null;
+        _interop.GanttV3ScrollCenterXToReturn = 0;
+
+        var themeService = _ctx.Services.GetRequiredService<IThemeService>();
+        await cut.InvokeAsync(async () => await themeService.SetDirectionAsync(LayoutDirection.Rtl));
+        await cut.InvokeAsync(() => { }); // pump the fire-and-forget OnThemeChanged continuation
 
         gate.SetResult(0);
         await reconcile;
 
-        var finalPeriod = cut.Find("span.text-sm.font-medium").TextContent;
-        Assert.Contains("–", finalPeriod);      // still Day mode — the Month switch abandoned
-        Assert.NotEqual(mountPeriod, finalPeriod); // the shift moved the window and stands
+        cut.WaitForAssertion(() =>
+            Assert.DoesNotContain("–", cut.Find("span.text-sm.font-medium").TextContent));
     }
 
     // ── Finding #2: standalone timeline applies the duration filter ─────────
