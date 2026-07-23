@@ -64,6 +64,26 @@ internal enum GanttRangeSource
     SelfCenteredOnCapture,
 }
 
+/// <summary>
+/// The result of one <c>Gantt3.ReconcileAsync</c> call (Codex round 18-f2). A
+/// caller must distinguish these three, not just "did it commit": a
+/// <see cref="Superseded"/> pass never applied its pending parameter inputs, so
+/// the SUPERSEDING action (a navigation, a theme flip) must re-apply them; a
+/// <see cref="NoOp"/> pass had nothing to apply (nothing changed since the last
+/// commit) and needs no follow-up.
+/// </summary>
+internal enum GanttReconcileOutcome
+{
+    /// <summary>The pass captured (if needed), committed tasks/mode/range, and emitted its scroll intent.</summary>
+    Committed,
+
+    /// <summary>Nothing in the snapshot diff changed — the pass abandoned before claiming a generation, committing nothing.</summary>
+    NoOp,
+
+    /// <summary>A newer generation was claimed while this pass's capture was in flight — it abandoned its entire commit, so its pending inputs are still un-applied.</summary>
+    Superseded,
+}
+
 /// <summary>What date the one-shot scroll intent targets for a pass.</summary>
 internal enum GanttScrollTarget
 {

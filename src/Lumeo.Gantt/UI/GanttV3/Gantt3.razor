@@ -279,7 +279,7 @@
     // below already covered the commit AND the scroll-intent emit (both sit
     // after it); this only adds the RETURN VALUE so callers outside this
     // method can extend the same guard to their own side effects.
-    private async Task<bool> ReconcileAsync(IReadOnlyList<GanttTask> nextTasks, GanttViewMode nextMode)
+    private async Task<GanttReconcileOutcome> ReconcileAsync(IReadOnlyList<GanttTask> nextTasks, GanttViewMode nextMode)
     {
         var prev = _lastSnapshot;
         var tasksChanged = _state.WouldChangeTasks(nextTasks);
@@ -326,7 +326,7 @@
         // to `prev` already, so there is nothing left to do; abandon before
         // ever claiming a generation.
         if (decision.Range == GanttRangeSource.Keep && decision.Target == GanttScrollTarget.None)
-            return false;
+            return GanttReconcileOutcome.NoOp;
 
         // CAPTURE PHASE — read the pane's live center under the OLD geometry,
         // BEFORE any state mutation, so the intermediate render Blazor Server
@@ -350,7 +350,7 @@
         // call's own decision/capture were computed against an OLD prev/next
         // pair that no longer reflects reality, so nothing below (including
         // the _lastSnapshot tail write) may run.
-        if (!IsCurrentReconcile(generation)) return false;
+        if (!IsCurrentReconcile(generation)) return GanttReconcileOutcome.Superseded;
 
         // COMMIT PHASE — synchronous from here to the end, so the next render is
         // one coherent frame (tasks, mode, and range all move together).
@@ -400,7 +400,7 @@
         }
 
         _lastSnapshot = next;
-        return true;
+        return GanttReconcileOutcome.Committed;
     }
 
     // Issues a one-shot scroll intent: a target date (null = Today) plus a
@@ -446,12 +446,72 @@
 
     private bool IsCurrentReconcile(long generation) => generation == _reconcileGeneration;
 
+    // Bug fix (Codex round 18 review, P1): a direct-navigation action
+    // (prev/next/Today) mutates VisibleRange OUTSIDE the reconcile pipeline. It
+    // must SUPERSEDE any reconcile currently suspended in its live-center capture
+    // await — that reconcile claimed an EARLIER generation and, on resume, would
+    // otherwise still pass its IsCurrentReconcile check and commit its now-stale
+    // mode/range on top of the navigated one (the DOM would jump back to where a
+    // mode switch had been reshaping toward, discarding the nav the user just
+    // performed).
+    //
+    // Bug fix (Codex round 18-f2 review, P1 findings #1/#2): superseding must
+    // NOT silently drop the superseded reconcile's own pending PARAMETER inputs
+    // (a mode and/or task-set change the parent pushed that hadn't committed
+    // yet). After navigating (which only moved the range), RE-APPLY the current
+    // parameters against the just-navigated state with a FRESH capture — so the
+    // pending change still lands (no stale jump), or a no-op if nothing was
+    // pending. The re-apply's own reconcile claims a later generation, so the
+    // original suspended reconcile still abandons; the navigation stands AND the
+    // pending delta lands.
+    private async Task SupersedeReconcileForNavigationAsync()
+    {
+        BeginReconcile(); // supersede any in-flight reconcile (its capture is now stale)
+        await ReapplyCurrentParametersAsync();
+    }
+
+    // Re-runs the reconcile against the CURRENT parameters after a supersession
+    // (a navigation or a theme flip) — re-applying a pending parameter delta the
+    // superseded pass never committed (Codex round 18-f2). The uncontrolled mode
+    // discriminator here compares against _committedViewModeParam (the last
+    // param value an actual COMMIT applied), NOT the eager _lastSeenViewModeParam
+    // OnParametersSetAsync uses: a supersession means the last pass's eager
+    // advance never became real, so only the committed reference correctly
+    // reports "the parent's ViewMode is still un-applied". Advances both
+    // references (and only) on an actual commit.
+    private async Task<GanttReconcileOutcome> ReapplyCurrentParametersAsync()
+    {
+        var nextTasks = SortedTasks(Tasks?.ToList() ?? new List<GanttTask>());
+        var incomingMode = ViewModeChanged.HasDelegate
+            ? ViewMode
+            : (ViewMode != _committedViewModeParam ? ViewMode : _state.ViewMode);
+        var outcome = await ReconcileAsync(nextTasks, incomingMode);
+        if (outcome == GanttReconcileOutcome.Committed)
+        {
+            _committedViewModeParam = ViewMode;
+            _lastSeenViewModeParam = ViewMode;
+        }
+        return outcome;
+    }
+
     // The ViewMode PARAMETER value seen on the last parameter pass — the
-    // uncontrolled-mode discriminator only (a controlled binding keeps the
-    // parameter authoritative; an uncontrolled one must let _state.ViewMode,
-    // possibly set by the toolbar, survive an unrelated parent re-render that
-    // re-pushes the original parameter value). See OnParametersSetAsync.
+    // uncontrolled-mode discriminator OnParametersSetAsync uses. Advances EAGERLY
+    // (every pass, before the reconcile even runs) so that while a mode-switch
+    // reconcile is in flight, an unrelated parent re-render re-pushing that SAME
+    // in-flight target diffs to a no-op instead of superseding it (Codex round
+    // 17, P1). A controlled binding keeps the parameter authoritative; an
+    // uncontrolled one must let _state.ViewMode (possibly set by the toolbar)
+    // survive an unrelated re-render re-pushing the original value.
     private GanttViewMode _lastSeenViewModeParam;
+
+    // The ViewMode PARAMETER value the last actual COMMIT applied (or the mount
+    // value) — the discriminator the post-supersession RE-APPLY uses (Codex
+    // round 18-f2). Distinct from the eager _lastSeenViewModeParam above: when a
+    // reconcile is SUPERSEDED, its eager advance never became a commit, so only
+    // this committed reference still reports the parent's ViewMode as pending and
+    // un-applied — which is exactly what lets the superseding navigation/theme
+    // re-apply that dropped change. See ReapplyCurrentParametersAsync.
+    private GanttViewMode _committedViewModeParam;
 
     // Browser-local "today" (Codex round 2, P2 #9) — resolved once via JS on
     // Gantt3's first post-render; DateTime.Today (the SERVER's local date) is
@@ -471,6 +531,7 @@
     protected override void OnInitialized()
     {
         _lastSeenViewModeParam = ViewMode;
+        _committedViewModeParam = ViewMode;
         _state.SetViewMode(ViewMode);
         _state.SetTasks(SortedTasks(Tasks?.ToList() ?? new List<GanttTask>()));
         _tasksVersion = 1;
@@ -526,18 +587,23 @@
             // committed state," consistent with what Decide would also compute.
             if (EffectiveDirection == _lastSnapshot.Direction) return;
 
-            // Nothing but the ambient direction can have changed here (no
-            // parameter pass), so reconcile the CURRENT tasks/mode against the
-            // new direction — the snapshot diff picks up the direction flip as
-            // a geometry-only change and preserves the live center.
+            // Reconcile the direction flip. Bug fix (Codex round 18-f2): route
+            // through the CURRENT-parameters re-apply rather than _state.Tasks/
+            // _state.ViewMode — the theme flip SUPERSEDES any in-flight parameter
+            // reconcile (BeginReconcile inside ReconcileAsync), so it must carry
+            // that reconcile's pending mode/task delta forward too, not just the
+            // direction, or the delta evaporates exactly as it did on the nav
+            // path. When nothing is pending this reduces to the old behavior
+            // (incomingMode == _state.ViewMode, tasks unchanged) plus the
+            // direction change the snapshot diff picks up as a geometry change.
             //
             // Bug fix (Codex round 16 review, P1 finding #2): only re-render if
             // this call actually committed — a superseded reconcile has nothing
             // new to show, and StateHasChanged here would be a redundant,
             // information-free render on top of whatever the superseding
             // reconcile's own caller already triggered.
-            var committed = await ReconcileAsync(_state.Tasks, _state.ViewMode);
-            if (committed) StateHasChanged();
+            var outcome = await ReapplyCurrentParametersAsync();
+            if (outcome == GanttReconcileOutcome.Committed) StateHasChanged();
         });
     }
 
@@ -701,7 +767,7 @@
         var incomingMode = ViewModeChanged.HasDelegate
             ? ViewMode
             : (ViewMode != _lastSeenViewModeParam ? ViewMode : _state.ViewMode);
-        _lastSeenViewModeParam = ViewMode;
+        _lastSeenViewModeParam = ViewMode; // eager — see the field's remarks (round 17 / cx17)
 
         if (!_initialized)
         {
@@ -712,7 +778,12 @@
             return;
         }
 
-        await ReconcileAsync(nextTasks, incomingMode);
+        // Advance the COMMITTED discriminator only when the reconcile actually
+        // commits (Codex round 18-f2): a superseded pass never applied ViewMode,
+        // so leaving _committedViewModeParam behind is exactly what lets the
+        // superseding navigation/theme re-apply the dropped change.
+        var outcome = await ReconcileAsync(nextTasks, incomingMode);
+        if (outcome == GanttReconcileOutcome.Committed) _committedViewModeParam = ViewMode;
     }
 
     private List<GanttTask> SortedTasks(List<GanttTask> raw)
@@ -822,15 +893,15 @@
     private async Task HandleViewModeChangedAsync(GanttViewMode mode)
     {
         if (mode == _state.ViewMode) return;
-        var committed = await ReconcileAsync(_state.Tasks, mode);
+        var outcome = await ReconcileAsync(_state.Tasks, mode);
         // Bug fix (Codex round 16 review, P1 finding #2): a reconcile superseded
         // by a NEWER one (round 15's generation guard) already skips its own
         // commit — but this callback sits OUTSIDE ReconcileAsync, so without this
         // check it would still fire ViewModeChanged with a mode that was never
         // actually applied to _state.ViewMode (the superseding reconcile decided
         // something else entirely). Suppress every side effect below, not just
-        // the commit, when superseded.
-        if (!committed) return;
+        // the commit, when superseded or a no-op.
+        if (outcome != GanttReconcileOutcome.Committed) return;
         // Controlled: echo the new mode up; the resulting parameter pass finds
         // _state.ViewMode already committed, so it diffs to a no-op. Uncontrolled:
         // nothing to push — _state.ViewMode is the committed truth the next
@@ -937,7 +1008,7 @@
     // "Shift VisibleRange by the mode's step" — literally GanttScaleConfig.Step
     // in GanttScaleConfig.Unit, applied to both ends of the window so its
     // duration is preserved (a single page forward/back, not a resize).
-    private Task ShiftAsync(int direction)
+    private async Task ShiftAsync(int direction)
     {
         var cfg = GanttScale.GetConfig(_state.ViewMode);
         var range = _state.VisibleRange;
@@ -951,7 +1022,10 @@
             _ => (range.Start, range.End),
         };
         _state.SetVisibleRange(start, end);
-        return Task.CompletedTask;
+        // Supersede any reconcile suspended in its capture await, so it can't
+        // resume and commit a stale range on top of this shift — then re-apply
+        // that reconcile's own pending parameter delta, if any (round 18-f2).
+        await SupersedeReconcileForNavigationAsync();
     }
 
     private Task ShiftToPreviousAsync() => ShiftAsync(-1);
@@ -971,6 +1045,13 @@
         // trip, but that's the existing per-click cost of any interop-backed
         // action, not a new one).
         await RefreshBrowserTodayAsync();
+
+        // Supersede any reconcile suspended in its capture await, then re-apply
+        // its pending parameter delta (round 18-f2, P1) — done FIRST so a pending
+        // mode change lands before the Today recenter below computes its window
+        // in the CURRENT mode; the Today scroll intent emitted at the tail then
+        // wins over whatever the re-apply requested.
+        await SupersedeReconcileForNavigationAsync();
 
         var range = _state.VisibleRange;
         var width = range.End - range.Start;
