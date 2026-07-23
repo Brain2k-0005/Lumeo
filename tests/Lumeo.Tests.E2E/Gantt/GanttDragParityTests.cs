@@ -466,6 +466,7 @@ public class GanttDragParityTests : GanttParityTestBase
         await v2Milestone.ClickAsync();
         var v2Json = await WaitForSinkChangeAsync("event-sink-click", null);
         Assert.Equal("fe-ms", ParseTask(v2Json).Id);
+        Assert.Equal("1", await ReadSinkRawAsync("event-sink-click-count"));
 
         await GotoHost("/e2e/gantt-v3?readonly=1");
         await WaitV3ReadyAsync();
@@ -473,6 +474,13 @@ public class GanttDragParityTests : GanttParityTestBase
         await v3Milestone.ScrollIntoViewIfNeededAsync();
         await v3Milestone.ClickAsync();
         var v3Json = await WaitForSinkChangeAsync("event-sink-click", null);
+        // CRITICAL fix (Phase-1/Phase-2 reconciliation): under Readonly,
+        // GanttTimeline never registers its own JS engine at all (see
+        // SyncDragRegistrationAsync's own Readonly guard), so GanttBar's
+        // native onclick (never suppressed here — SuppressPointerClick is
+        // wired as `!Readonly`) is the ONLY path; confirms it fires once, not
+        // zero times and not twice.
+        Assert.Equal("1", await ReadSinkRawAsync("event-sink-click-count"));
         Assert.Equal("fe-ms", ParseTask(v3Json).Id);
     }
 
@@ -743,6 +751,23 @@ public class GanttDragParityTests : GanttParityTestBase
         await Page.GetByRole(AriaRole.Button, new() { Name = "Next period" }).ClickAsync();
         await Assertions.Expect(periodLabel).Not.ToHaveTextAsync(initialLabel, new() { Timeout = 10000 });
 
+        // Deflake (found investigating a reported "wildly wrong date" failure
+        // under heavy parallel test-suite load): panning changes Origin, which
+        // GanttTimeline.SyncDragRegistrationAsync's own options-hash check
+        // detects on the NEXT render — it re-pushes originIso to the JS drag
+        // engine via a genuine interop round-trip (the listener itself stays
+        // attached throughout; only the STORED originIso option updates,
+        // asynchronously). The period LABEL re-renders synchronously with the
+        // click (nothing to wait for there), but that round-trip is a
+        // SEPARATE, later async step with no DOM-observable "done" signal to
+        // wait on (unlike data-gantt-v3-initial-scroll for the initial
+        // centering). Racing ahead of it lets the second drag-create compute
+        // its dates against the STALE (pre-pan) origin. A short, bounded
+        // settle covers a single SignalR round-trip under realistic load;
+        // flagged in the reconcile report as a candidate for a proper
+        // DOM-observable signal if this ever proves insufficient.
+        await Page.WaitForTimeoutAsync(500);
+
         var track2 = Page.Locator($"{V3Root} [data-gantt-row-track][data-row-key='task:fe3']");
         var box2 = await track2.BoundingBoxAsync();
         Assert.NotNull(box2);
@@ -850,6 +875,10 @@ public class GanttDragParityTests : GanttParityTestBase
         var v2Task = ParseTask(v2Json);
         Assert.Equal("be4", v2Task.Id);
         Assert.Equal(new DateTime(2026, 3, 25), v2Task.Start);
+        // CRITICAL fix (Phase-1/Phase-2 reconciliation): a pointer click must
+        // invoke OnTaskClick EXACTLY once, not merely leave the sink's final
+        // value correct (which a double-fire can't distinguish from a single one).
+        Assert.Equal("1", await ReadSinkRawAsync("event-sink-click-count"));
 
         await GotoHost("/e2e/gantt-v3");
         await WaitV3ReadyAsync();
@@ -860,6 +889,7 @@ public class GanttDragParityTests : GanttParityTestBase
         var v3Task = ParseTask(v3Json);
         Assert.Equal("be4", v3Task.Id);
         Assert.Equal(new DateTime(2026, 3, 25), v3Task.Start);
+        Assert.Equal("1", await ReadSinkRawAsync("event-sink-click-count"));
     }
 
     [Fact]
@@ -873,6 +903,11 @@ public class GanttDragParityTests : GanttParityTestBase
         await WaitForSinkChangeAsync("event-sink-taskupdate", null);
 
         Assert.True(string.IsNullOrEmpty(await ReadSinkRawAsync("event-sink-click")));
+        // CRITICAL fix (Phase-1/Phase-2 reconciliation): a completed drag must
+        // invoke OnTaskClick exactly ZERO times, not just leave the value sink
+        // empty (a double-fire-then-veto could theoretically still leave an
+        // empty JSON value while having actually invoked the callback).
+        Assert.Equal("0", await ReadSinkRawAsync("event-sink-click-count"));
 
         // Bar re-rendered at its NEW position after the commit — re-locate before clicking.
         var movedBar = Page.Locator($"{V3Root} [data-task-id='be3']");
@@ -880,5 +915,7 @@ public class GanttDragParityTests : GanttParityTestBase
         await movedBar.ClickAsync();
         var clickJson = await WaitForSinkChangeAsync("event-sink-click", null);
         Assert.Equal("be3", ParseTask(clickJson).Id);
+        // ...and the NEXT genuine click fires exactly once, not twice.
+        Assert.Equal("1", await ReadSinkRawAsync("event-sink-click-count"));
     }
 }

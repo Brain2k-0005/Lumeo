@@ -88,6 +88,7 @@
     </DirectionProvider>
 
     <pre data-testid="event-sink-click" style="display:none">@_lastClickJson</pre>
+    <pre data-testid="event-sink-click-count" style="display:none">@_clickCount</pre>
     <pre data-testid="event-sink-datechange" style="display:none">@_lastDateChangeJson</pre>
     <pre data-testid="event-sink-progresschange" style="display:none">@_lastProgressChangeJson</pre>
     <pre data-testid="event-sink-taskupdate" style="display:none">@_lastTaskUpdateJson</pre>
@@ -123,6 +124,14 @@
     private LayoutDirection _direction = LayoutDirection.Ltr;
 
     private string? _lastClickJson;
+    // Invocation-COUNT sink (Phase-1/Phase-2 reconciliation fix-round): the
+    // sinks above only ever exposed the LAST payload's VALUE, which stays
+    // identical whether OnTaskClick fired once or twice for the same click —
+    // blind to the double-fire this round's own CRITICAL finding closed
+    // (GanttBar's native onclick + GanttTimeline's JS-driven NotifyTaskClick
+    // both invoking it). Counts every call so a spec can assert the exact
+    // invocation count, not just the final value.
+    private int _clickCount;
     private string? _lastDateChangeJson;
     private string? _lastProgressChangeJson;
     private string? _lastTaskUpdateJson;
@@ -159,6 +168,7 @@
     {
         _lastClickedTaskId = t.Id;
         _lastClickJson = JsonSerializer.Serialize(t);
+        _clickCount++;
         return Task.CompletedTask;
     }
 

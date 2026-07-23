@@ -140,6 +140,34 @@
     /// </summary>
     [Parameter] public bool Readonly { get; set; }
 
+    /// <summary>
+    /// Suppresses this bar's OWN native <c>onclick</c> wiring while still keeping
+    /// <c>onkeydown</c> (Enter/Space) active (design spec Phase-1/Phase-2
+    /// reconciliation fix — CRITICAL: <c>OnTaskClick</c> double-firing on every
+    /// non-readonly pointer click). <see cref="Lumeo.GanttTimeline"/> registers its
+    /// OWN JS-driven delegated pointerdown listener whenever it isn't
+    /// <see cref="Lumeo.GanttTimeline.Readonly"/> (gantt-v3.js's
+    /// <c>ganttV3.registerDrag</c>), which ALREADY discriminates a below-threshold
+    /// click from a drag and invokes <c>NotifyTaskClick</c> exactly once per
+    /// pointer click — independently of this component's own native
+    /// <c>onclick</c>, which would otherwise ALSO fire for the identical physical
+    /// click. GanttTimeline sets this to <c>true</c> for every bar it renders
+    /// whenever its own engine is registered (i.e. whenever <c>!Readonly</c> —
+    /// registration never depends on <c>AllowCreate</c>/<c>CanDrop</c>, only on
+    /// <c>Readonly</c>), and to <c>false</c> when readonly (no engine is ever
+    /// registered there, so this component's own native <c>onclick</c> remains the
+    /// ONLY pointer-click path). Default <c>false</c> so a caller rendering
+    /// <see cref="GanttBar"/> directly (standalone, no <see cref="GanttTimeline"/>
+    /// — including every existing bUnit test that clicks a bar in isolation, with
+    /// no real gantt-v3.js engine to fall back on) keeps its exact prior
+    /// click-fires-once behavior unchanged. Keyboard activation (Enter/Space)
+    /// NEVER routes through gantt-v3.js's pointer engine at all (it only ever
+    /// listens for pointerdown/pointermove/pointerup), so <c>onkeydown</c> is
+    /// never suppressed by this flag — there is no double-fire risk there to
+    /// guard against.
+    /// </summary>
+    [Parameter] public bool SuppressPointerClick { get; set; }
+
     /// <summary>Captures unmatched attributes and applies them to the positioned wrapper.</summary>
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
@@ -339,7 +367,18 @@
         {
             attrs["role"] = "button";
             attrs["onkeydown"] = EventCallback.Factory.Create<KeyboardEventArgs>(this, HandleKeyDown);
-            attrs["onclick"] = EventCallback.Factory.Create<MouseEventArgs>(this, HandleClick);
+            // CRITICAL fix (Phase-1/Phase-2 reconciliation): see
+            // SuppressPointerClick's own remarks — GanttTimeline's delegated JS
+            // pointer engine (registered whenever it isn't Readonly) already
+            // invokes NotifyTaskClick exactly once per below-threshold pointer
+            // click, so wiring this native onclick TOO double-fires OnTaskClick
+            // for the identical physical click. onkeydown above is NEVER gated
+            // by this flag — keyboard activation never touches the pointer
+            // engine at all.
+            if (!SuppressPointerClick)
+            {
+                attrs["onclick"] = EventCallback.Factory.Create<MouseEventArgs>(this, HandleClick);
+            }
         }
         return attrs;
     }

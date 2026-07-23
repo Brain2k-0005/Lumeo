@@ -40,6 +40,12 @@ public class GanttV3ClickActivationTests : GanttParityTestBase
         await bar.ClickAsync();
 
         await Assertions.Expect(lastClicked).ToHaveTextAsync("fe1");
+        // CRITICAL fix (Phase-1/Phase-2 reconciliation): GanttBar's own native
+        // onclick used to ALWAYS fire alongside GanttTimeline's JS-driven
+        // NotifyTaskClick for the identical physical pointer click — the sink
+        // above only ever asserted the final VALUE (identical either way),
+        // blind to a double invocation. Exactly one count proves the fix.
+        await Assertions.Expect(Page.Locator("[data-testid='event-sink-click-count']")).ToHaveTextAsync("1");
     }
 
     [Fact]
@@ -83,5 +89,11 @@ public class GanttV3ClickActivationTests : GanttParityTestBase
 
         Assert.Equal(scrollTopBefore, scrollTopAfter);
         await Assertions.Expect(lastClicked).ToHaveTextAsync("fe1");
+        // CRITICAL fix (Phase-1/Phase-2 reconciliation): keyboard activation
+        // NEVER routes through gantt-v3.js's pointer engine at all (it only
+        // listens for pointerdown/pointermove/pointerup), so there was never
+        // a double-fire risk here — this pins that exactly-once contract
+        // explicitly rather than leaving it merely implied.
+        await Assertions.Expect(Page.Locator("[data-testid='event-sink-click-count']")).ToHaveTextAsync("1");
     }
 }

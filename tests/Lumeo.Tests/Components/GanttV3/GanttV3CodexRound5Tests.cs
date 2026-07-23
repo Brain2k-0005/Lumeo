@@ -57,6 +57,48 @@ public class GanttV3CodexRound5Tests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task GanttBar_SuppressPointerClick_Omits_Onclick_But_Keeps_Onkeydown()
+    {
+        // CRITICAL fix (Phase-1/Phase-2 reconciliation): GanttTimeline's own
+        // JS-driven delegated pointer engine (registered whenever it isn't
+        // Readonly) already discriminates a below-threshold click from a
+        // drag and invokes NotifyTaskClick exactly once per pointer click —
+        // GanttBar's own native onclick firing TOO double-invokes
+        // OnTaskClick for the identical physical click. GanttTimeline sets
+        // SuppressPointerClick=true for exactly that case; this pins the
+        // component-level contract: onclick attribute is absent, onkeydown
+        // survives unconditionally (keyboard never touches the JS pointer
+        // engine at all), and a keyboard Enter still invokes OnTaskClick.
+        var clickCount = 0;
+        L.GanttTask? clicked = null;
+        var task = new L.GanttTask("t1", "Design", D(2026, 1, 2), D(2026, 1, 9));
+        var cut = _ctx.Render<L.GanttBar>(p => p
+            .Add(c => c.Task, task)
+            .Add(c => c.X, 0d)
+            .Add(c => c.Width, 114d)
+            .Add(c => c.SuppressPointerClick, true)
+            .Add(c => c.OnTaskClick, t => { clicked = t; clickCount++; }));
+
+        var inner = cut.Find("[data-task-id='t1'] > div[role='button']");
+        // With no onclick handler wired on the inner div itself, bUnit
+        // (matching real DOM bubbling) resolves the event by bubbling it up
+        // to Tooltip's OWN root onclick (its unrelated tap-to-pin handler) —
+        // it does not throw here the way it would for a :stopPropagation
+        // element with no handler of its own. clickCount staying at 0 is the
+        // actual proof OnTaskClick was never invoked via this path.
+        await inner.TriggerEventAsync("onclick", new MouseEventArgs());
+        Assert.Equal(0, clickCount);
+
+        // Keyboard activation is NEVER suppressed — it doesn't touch
+        // gantt-v3.js's pointer engine at all, so it stays GanttBar's own
+        // sole path regardless of SuppressPointerClick.
+        await inner.TriggerEventAsync("onkeydown", new KeyboardEventArgs { Key = "Enter" });
+
+        Assert.Same(task, clicked);
+        Assert.Equal(1, clickCount);
+    }
+
+    [Fact]
     public async Task GanttBar_Touch_Tap_Still_Pins_The_Tooltip_Open()
     {
         // Bug fix (Codex round 5, P1 #1 / P2 #2): proves Tooltip's OWN

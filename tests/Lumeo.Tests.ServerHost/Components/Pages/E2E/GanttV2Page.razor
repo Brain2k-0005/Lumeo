@@ -39,6 +39,7 @@
            data-testid="gantt-v2-root" />
 
     <pre data-testid="event-sink-click" style="display:none">@_lastClickJson</pre>
+    <pre data-testid="event-sink-click-count" style="display:none">@_clickCount</pre>
     <pre data-testid="event-sink-datechange" style="display:none">@_lastDateChangeJson</pre>
     <pre data-testid="event-sink-progresschange" style="display:none">@_lastProgressChangeJson</pre>
 </div>
@@ -55,6 +56,12 @@
     private string? _lastClickJson;
     private string? _lastDateChangeJson;
     private string? _lastProgressChangeJson;
+    // Invocation-COUNT sink (Phase-1/Phase-2 reconciliation fix-round): the
+    // above sinks only ever exposed the LAST payload's VALUE, which stays
+    // identical whether OnTaskClick fired once or twice for the same click —
+    // blind to a double-fire. Counts every call so an E2E spec can assert the
+    // exact invocation count, not just the final value.
+    private int _clickCount;
 
     protected override void OnInitialized()
     {
@@ -67,6 +74,7 @@
     private Task HandleTaskClick(GanttTask t)
     {
         _lastClickJson = JsonSerializer.Serialize(t);
+        _clickCount++;
         return Task.CompletedTask;
     }
 
