@@ -40,6 +40,12 @@ public class GanttV3ClickActivationTests : GanttParityTestBase
         await bar.ClickAsync();
 
         await Assertions.Expect(lastClicked).ToHaveTextAsync("fe1");
+        // CRITICAL fix (Phase-1/Phase-2 reconciliation): GanttBar's own native
+        // onclick used to ALWAYS fire alongside GanttTimeline's JS-driven
+        // NotifyTaskClick for the identical physical pointer click — the sink
+        // above only ever asserted the final VALUE (identical either way),
+        // blind to a double invocation. Exactly one count proves the fix.
+        await Assertions.Expect(Page.Locator("[data-testid='event-sink-click-count']")).ToHaveTextAsync("1");
     }
 
     [Fact]
@@ -64,7 +70,16 @@ public class GanttV3ClickActivationTests : GanttParityTestBase
         // The bar's OWN interactive element is its inner content div (round
         // 5's fix moved tabindex/role/keydown there, off the outer Tooltip
         // wrapper) — see GanttBar.InnerAttributes' own remarks.
-        var bar = Page.Locator("[data-testid='gantt-v3-root'] [data-task-id='fe1'] > div");
+        //
+        // Phase-1/Phase-2 reconciliation fix: "> div" alone used to be
+        // unambiguous (GanttBar had exactly one div child) but no longer is —
+        // Phase 2's progress-drag handle (GanttBar's own
+        // "!Task.IsMilestone && !Readonly" markup) renders a SECOND direct
+        // div child for any non-milestone, non-readonly bar like fe1,
+        // triggering a Playwright strict-mode violation ("resolved to 2
+        // elements"). [role='button'] disambiguates to the one InnerAttributes
+        // actually sets it on — the SAME div this spec means to target.
+        var bar = Page.Locator("[data-testid='gantt-v3-root'] [data-task-id='fe1'] > div[role='button']");
         await bar.ScrollIntoViewIfNeededAsync();
         await bar.FocusAsync();
 
@@ -74,5 +89,11 @@ public class GanttV3ClickActivationTests : GanttParityTestBase
 
         Assert.Equal(scrollTopBefore, scrollTopAfter);
         await Assertions.Expect(lastClicked).ToHaveTextAsync("fe1");
+        // CRITICAL fix (Phase-1/Phase-2 reconciliation): keyboard activation
+        // NEVER routes through gantt-v3.js's pointer engine at all (it only
+        // listens for pointerdown/pointermove/pointerup), so there was never
+        // a double-fire risk here — this pins that exactly-once contract
+        // explicitly rather than leaving it merely implied.
+        await Assertions.Expect(Page.Locator("[data-testid='event-sink-click-count']")).ToHaveTextAsync("1");
     }
 }

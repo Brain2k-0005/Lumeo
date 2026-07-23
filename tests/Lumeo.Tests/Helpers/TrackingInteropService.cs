@@ -824,6 +824,27 @@ public class TrackingInteropService : IComponentInteropService
         return Task.CompletedTask;
     }
 
+    // GanttV3 drag-engine registration tracking (design spec Phase 2, T1) —
+    // records each register/unregister call (and the last options bag) so a
+    // test can assert Readonly gates registration entirely (no calls at all,
+    // not merely a no-op call) and that a runtime Readonly flip un-registers.
+    private int _ganttV3RegisterDragCallCount;
+    private int _ganttV3UnregisterDragCallCount;
+    public int GanttV3RegisterDragCallCount => _ganttV3RegisterDragCallCount;
+    public int GanttV3UnregisterDragCallCount => _ganttV3UnregisterDragCallCount;
+    public object? LastGanttV3DragOptions { get; private set; }
+    public Task GanttV3RegisterDragAsync<T>(ElementReference el, DotNetObjectReference<T> dotNetRef, object options) where T : class
+    {
+        _ganttV3RegisterDragCallCount++;
+        LastGanttV3DragOptions = options;
+        return Task.CompletedTask;
+    }
+    public Task GanttV3UnregisterDragAsync(ElementReference el)
+    {
+        _ganttV3UnregisterDragCallCount++;
+        return Task.CompletedTask;
+    }
+
     // GanttV3 browser-local-"today" tracking (Codex round 2, P2 #9) — settable
     // so a test can simulate the browser reporting a date that differs from
     // whatever DateTime.Today happens to be on the machine running the suite.

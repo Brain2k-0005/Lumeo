@@ -53,6 +53,29 @@
                     }
                 }
             </div>
+            @* Progress handle (Phase 2, T2 — v2 parity: gantt-v2.js:564-574's
+               progressHandle circle, "small circle at the right edge of progress
+               overlay", shown only on hover via opacity 0->1, gantt-v2.js:578-586's
+               mouseenter/mouseleave — ported here as a pure CSS group-hover reveal
+               (WrapperClass carries "group"; see its own remarks) instead of JS
+               enter/leave listeners, since Blazor already renders the element
+               declaratively. v2 never creates this element at all when readonly
+               (gantt-v2.js:555 `if (!readonly) { ... progressHandle = ... }`) or
+               for a milestone (the milestone branch returns before reaching it,
+               gantt-v2.js:504) — both mirrored here as an @if guard, not a CSS
+               display:none, so gantt-v3.js's delegated pointerdown never even has
+               a [data-gantt-progress-handle] element to hit-test in either case.
+               Rendered as a SIBLING of the @InnerClass div (not nested inside it)
+               so its bottom-edge-straddling offset isn't clipped by InnerClass's
+               own "overflow-hidden" (needed to clip the bg/progress-fill/label to
+               the bar's rounded corners) — both are still descendants of the
+               "group"-classed, data-task-id-carrying Tooltip wrapper, which is
+               all gantt-v3.js's `e.target.closest('[data-task-id]')` needs. *@
+            @if (!Task.IsMilestone && !Readonly)
+            {
+                <div class="lumeo-gantt-v3-progress-handle absolute bottom-0 h-2 w-2 -translate-x-1/2 translate-y-1/2 cursor-ns-resize rounded-full border-2 border-background opacity-0 transition-opacity group-hover:opacity-100"
+                     style="@ProgressHandleStyle" data-gantt-progress-handle="true"></div>
+            }
         </ChildContentSlot>
     </TooltipTrigger>
     <TooltipContent>
@@ -107,12 +130,56 @@
     /// <summary>Additional CSS classes merged onto the positioned wrapper.</summary>
     [Parameter] public string? Class { get; set; }
 
+    /// <summary>
+    /// Disables the progress handle (design spec Phase 2, T2 — v2 parity:
+    /// <c>Gantt.Readonly</c>/<c>GanttTimeline.Readonly</c>). Threaded down from
+    /// <see cref="Lumeo.GanttTimeline"/>'s own <c>Readonly</c> parameter — mirrors
+    /// gantt-v2.js's own <c>if (!readonly) { progressHandle = ... }</c> (never
+    /// creating the handle element at all when readonly, gantt-v2.js:555). Default
+    /// <c>false</c> (interactive).
+    /// </summary>
+    [Parameter] public bool Readonly { get; set; }
+
+    /// <summary>
+    /// Suppresses this bar's OWN native <c>onclick</c> wiring while still keeping
+    /// <c>onkeydown</c> (Enter/Space) active (design spec Phase-1/Phase-2
+    /// reconciliation fix — CRITICAL: <c>OnTaskClick</c> double-firing on every
+    /// non-readonly pointer click). <see cref="Lumeo.GanttTimeline"/> registers its
+    /// OWN JS-driven delegated pointerdown listener whenever it isn't
+    /// <see cref="Lumeo.GanttTimeline.Readonly"/> (gantt-v3.js's
+    /// <c>ganttV3.registerDrag</c>), which ALREADY discriminates a below-threshold
+    /// click from a drag and invokes <c>NotifyTaskClick</c> exactly once per
+    /// pointer click — independently of this component's own native
+    /// <c>onclick</c>, which would otherwise ALSO fire for the identical physical
+    /// click. GanttTimeline sets this to <c>true</c> for every bar it renders
+    /// whenever its own engine is registered (i.e. whenever <c>!Readonly</c> —
+    /// registration never depends on <c>AllowCreate</c>/<c>CanDrop</c>, only on
+    /// <c>Readonly</c>), and to <c>false</c> when readonly (no engine is ever
+    /// registered there, so this component's own native <c>onclick</c> remains the
+    /// ONLY pointer-click path). Default <c>false</c> so a caller rendering
+    /// <see cref="GanttBar"/> directly (standalone, no <see cref="GanttTimeline"/>
+    /// — including every existing bUnit test that clicks a bar in isolation, with
+    /// no real gantt-v3.js engine to fall back on) keeps its exact prior
+    /// click-fires-once behavior unchanged. Keyboard activation (Enter/Space)
+    /// NEVER routes through gantt-v3.js's pointer engine at all (it only ever
+    /// listens for pointerdown/pointermove/pointerup), so <c>onkeydown</c> is
+    /// never suppressed by this flag — there is no double-fire risk there to
+    /// guard against.
+    /// </summary>
+    [Parameter] public bool SuppressPointerClick { get; set; }
+
     /// <summary>Captures unmatched attributes and applies them to the positioned wrapper.</summary>
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     // Tooltip's own root div defaults to "relative inline-flex" (see Tooltip.razor);
     // Cx.Merge resolves the relative/absolute conflict group so "absolute" (added
     // here) wins over Tooltip's "relative" while "inline-flex" survives untouched.
+    //
+    // "group" (Phase 2, T2) lets the sibling progress-handle div reveal itself via
+    // a "group-hover:opacity-100" utility on HOVER OF THIS WRAPPER — the same
+    // element gantt-v3.js hit-tests via [data-task-id] (see WrapperAttributes) —
+    // rather than needing a JS mouseenter/mouseleave pair (v2's own approach,
+    // gantt-v2.js:578-586).
     //
     // Bug fix (Codex round 4, P2 #7): Task.CustomClass never reached the
     // rendered bar at all — GanttTimeline already hands this component the
@@ -124,7 +191,7 @@
     // there is no existing v2 PLACEMENT to mirror here; merged onto the outer
     // bar wrapper (this component's own "bar-wrapper" equivalent) as the most
     // semantically natural placement for a whole-bar class override.
-    private string WrapperClass => Cx.Merge("absolute rounded", Task.CustomClass, Class);
+    private string WrapperClass => Cx.Merge("group absolute rounded", Task.CustomClass, Class);
 
     // Bug fix (Codex round 4, P2 #5; moved Codex round 5, P1 #1 / P2 #2/#3):
     // the focus-visible ring classes used to live on WrapperClass (the outer
@@ -185,6 +252,21 @@
 
     private string ProgressStyle =>
         FormattableString.Invariant($"width:{ClampedProgress}%;background-color:{ResolvedColor};");
+
+    // "Small circle at the right edge of progress overlay" (gantt-v2.js:564-574) —
+    // v2 positions its circle's CENTER at the progress boundary (cx = x1 + progressW);
+    // this port's equivalent is centering the handle div's own horizontal midpoint
+    // (the -translate-x-1/2 in its class list) at that same {progress}% mark along
+    // the bar's own width via a logical inset-inline-start percentage (RTL-safe,
+    // unlike a raw physical "left").
+    private string ProgressHandleStyle
+    {
+        get
+        {
+            var progress = Math.Clamp(Task.Progress, 0, 100);
+            return FormattableString.Invariant($"inset-inline-start:{progress}%;background-color:{ResolvedColor};");
+        }
+    }
 
     // The wrapper carries BOTH the raw --lumeo-gantt-bar-* custom properties (so a
     // consumer stylesheet can read/override them) and the physical left/top/width/
@@ -285,7 +367,18 @@
         {
             attrs["role"] = "button";
             attrs["onkeydown"] = EventCallback.Factory.Create<KeyboardEventArgs>(this, HandleKeyDown);
-            attrs["onclick"] = EventCallback.Factory.Create<MouseEventArgs>(this, HandleClick);
+            // CRITICAL fix (Phase-1/Phase-2 reconciliation): see
+            // SuppressPointerClick's own remarks — GanttTimeline's delegated JS
+            // pointer engine (registered whenever it isn't Readonly) already
+            // invokes NotifyTaskClick exactly once per below-threshold pointer
+            // click, so wiring this native onclick TOO double-fires OnTaskClick
+            // for the identical physical click. onkeydown above is NEVER gated
+            // by this flag — keyboard activation never touches the pointer
+            // engine at all.
+            if (!SuppressPointerClick)
+            {
+                attrs["onclick"] = EventCallback.Factory.Create<MouseEventArgs>(this, HandleClick);
+            }
         }
         return attrs;
     }
@@ -424,6 +517,20 @@
             {
                 ["style"] = WrapperStyle,
                 ["data-task-id"] = Task.Id,
+                // Phase 2, T1 — the JS drag engine (gantt-v3.js) reads these directly
+                // at pointerdown so it can compute the committed Start/End via its own
+                // addDays (mirrors gantt-v2.js's toLocalDateString/parseDate) without a
+                // JS->.NET round trip mid-drag; ghost-only dragging with ONE commit on
+                // drop depends on JS already having the original dates in hand.
+                // "yyyy-MM-dd" — no time component, matching GanttTask's date-only
+                // contract and the format CommitDrag parses back with TryParseExact.
+                ["data-task-start"] = Task.Start.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+                ["data-task-end"] = Task.End.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+                // Phase 2, T2 — same "JS reads the original value directly, no
+                // round trip" rationale as data-task-start/-end above: the progress
+                // drag's ghost-fill math (dx / barWidth * 100, relative to the
+                // ORIGINAL progress) needs this at pointerdown time.
+                ["data-task-progress"] = Math.Clamp(Task.Progress, 0, 100).ToString(CultureInfo.InvariantCulture),
             };
             if (Task.IsMilestone) attrs["data-milestone"] = "true";
             // Author-supplied attributes win on collision (splat-last semantics

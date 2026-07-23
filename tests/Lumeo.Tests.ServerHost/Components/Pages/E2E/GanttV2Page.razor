@@ -1,4 +1,5 @@
 @page "/e2e/gantt-v2"
+@using System.Text.Json
 @using Lumeo.Tests.ServerHost.E2E
 
 @* Gantt v2/v3 parity harness (feat/gantt-v3, T4). Renders v2's Gantt against the
@@ -9,7 +10,17 @@
    hardcoded like the rest). ?viewMode=<GanttViewMode> seeds the initial zoom
    level so the header-label-run test can visit all 6 view modes directly —
    only Day/Week/Month/Year have a toolbar button, so QuarterDay/HalfDay are
-   otherwise unreachable by clicking. *@
+   otherwise unreachable by clicking. ?readonly=1 disables in-chart editing
+   (Phase 2, T4 drag parity suite — readonly-blocks-everything specs).
+
+   Event sink (Phase 2, T4): the last OnTaskClick/OnDateChange/OnProgressChange
+   payload is rendered as JSON into a hidden data-testid element per event, so
+   the drag parity Playwright specs can assert payload equality against the v3
+   route for the identical gesture (both routes render the SAME GanttTask type,
+   so default System.Text.Json output is byte-identical shape). Hidden via
+   inline style rather than omitted from the DOM — Playwright's TextContentAsync
+   doesn't require visibility, and "hidden but present" is simpler than
+   conditionally rendering. *@
 
 <PageTitle>E2E - Gantt v2</PageTitle>
 
@@ -21,20 +32,61 @@
            Height="900px"
            GroupBy="@(t => t.GroupLabel ?? "")"
            BarColor="@GanttParityFixtures.GetBarColor"
+           Readonly="@_readonly"
+           OnTaskClick="HandleTaskClick"
+           OnDateChange="HandleDateChange"
+           OnProgressChange="HandleProgressChange"
            data-testid="gantt-v2-root" />
+
+    <pre data-testid="event-sink-click" style="display:none">@_lastClickJson</pre>
+    <pre data-testid="event-sink-click-count" style="display:none">@_clickCount</pre>
+    <pre data-testid="event-sink-datechange" style="display:none">@_lastDateChangeJson</pre>
+    <pre data-testid="event-sink-progresschange" style="display:none">@_lastProgressChangeJson</pre>
 </div>
 
 @code {
     [SupplyParameterFromQuery] public string? Fixture { get; set; }
     [SupplyParameterFromQuery] public string? ViewMode { get; set; }
+    [SupplyParameterFromQuery] public string? Readonly { get; set; }
 
     private GanttViewMode _viewMode = GanttViewMode.Day;
     private List<GanttTask> _tasks = new();
+    private bool _readonly;
+
+    private string? _lastClickJson;
+    private string? _lastDateChangeJson;
+    private string? _lastProgressChangeJson;
+    // Invocation-COUNT sink (Phase-1/Phase-2 reconciliation fix-round): the
+    // above sinks only ever exposed the LAST payload's VALUE, which stays
+    // identical whether OnTaskClick fired once or twice for the same click —
+    // blind to a double-fire. Counts every call so an E2E spec can assert the
+    // exact invocation count, not just the final value.
+    private int _clickCount;
 
     protected override void OnInitialized()
     {
         _tasks = Fixture == "today" ? GanttParityFixtures.TodayMarkerTasks() : GanttParityFixtures.SharedTasks();
         if (!string.IsNullOrEmpty(ViewMode) && Enum.TryParse<GanttViewMode>(ViewMode, out var parsed))
             _viewMode = parsed;
+        _readonly = Readonly == "1";
+    }
+
+    private Task HandleTaskClick(GanttTask t)
+    {
+        _lastClickJson = JsonSerializer.Serialize(t);
+        _clickCount++;
+        return Task.CompletedTask;
+    }
+
+    private Task HandleDateChange(GanttTask t)
+    {
+        _lastDateChangeJson = JsonSerializer.Serialize(t);
+        return Task.CompletedTask;
+    }
+
+    private Task HandleProgressChange(GanttTask t)
+    {
+        _lastProgressChangeJson = JsonSerializer.Serialize(t);
+        return Task.CompletedTask;
     }
 }

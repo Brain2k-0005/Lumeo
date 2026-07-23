@@ -680,6 +680,33 @@ public interface IComponentInteropService : IAsyncDisposable, IDisposable
     /// behavior for every other caller.</param>
     Task<double?> GanttV3GetScrollCenterXAsync(Microsoft.AspNetCore.Components.ElementReference el, string? direction = null) => Task.FromResult<double?>(null);
 
+    /// <summary>
+    /// Registers GanttV3's pointer drag engine (design spec Phase 2, T1 — gantt-v3.js's
+    /// <c>ganttV3.registerDrag</c>) on <paramref name="el"/> — the SAME scroll-host
+    /// element <see cref="GanttV3ScrollToXAsync"/> targets. A single delegated
+    /// <c>pointerdown</c> listener handles move/resize-left/resize-right for every
+    /// <c>[data-task-id]</c> bar underneath, so re-registering after a Virtualize
+    /// recycle is never needed. Calling this again for an already-registered
+    /// <paramref name="el"/> updates the stored <paramref name="dotNetRef"/>/
+    /// <paramref name="options"/> in place (idempotent) rather than attaching a
+    /// second listener — <c>GanttTimeline</c> relies on this to re-push
+    /// <c>columnWidth</c>/<c>pixelsPerDay</c> whenever the view mode or a
+    /// <c>ColumnWidth</c> override changes, without an explicit unregister first.
+    /// <c>GanttTimeline.Readonly</c> gates the CALL SITE, not this method — a
+    /// readonly timeline never calls this at all, so there is no listener to gate
+    /// internally. Generic in the .NET reference type (mirrors
+    /// <see cref="AttachOverlayExitEnd{T}"/>/<see cref="AiObserveScrollButton{T}"/>)
+    /// so this core interop interface stays decoupled from the GanttTimeline UI
+    /// component. Default no-op DIM so existing implementers/test doubles keep
+    /// compiling; <see cref="Lumeo.Services.ComponentInteropService"/> overrides
+    /// both with the real registration.
+    /// </summary>
+    Task GanttV3RegisterDragAsync<[System.Diagnostics.CodeAnalysis.DynamicallyAccessedMembers(System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.PublicMethods)] T>(Microsoft.AspNetCore.Components.ElementReference el, DotNetObjectReference<T> dotNetRef, object options) where T : class
+        => Task.CompletedTask;
+
+    /// <summary>Tears down the drag engine registered by <see cref="GanttV3RegisterDragAsync{T}"/> — removes the delegated listener and releases any drag in flight. Default no-op.</summary>
+    Task GanttV3UnregisterDragAsync(Microsoft.AspNetCore.Components.ElementReference el) => Task.CompletedTask;
+
     // Toolbar overflow observer — registers a ResizeObserver on the toolbar
     // element and invokes the handler with (fittingCount, totalCount) whenever
     // the number of items that fit before the "..." overflow trigger changes.

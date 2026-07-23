@@ -1,4 +1,6 @@
 @page "/e2e/gantt-v3"
+@using System.Text.Json
+@using Lumeo.GanttV3
 @using Lumeo.Tests.ServerHost.E2E
 @using Lumeo.Services
 
@@ -7,6 +9,25 @@
    fixture + params (Height/GroupBy/BarColor) so every DOM measurement taken
    here has a like-for-like v2 baseline. See GanttV2Page.razor's remarks for
    the ?fixture / ?viewMode query params.
+
+   Phase 2, T4 (drag parity suite) additions:
+   - ?readonly=1 -> Gantt3.Readonly (shared with v2's ?readonly=1).
+   - ?allowCreate=1 -> Gantt3.AllowCreate (v3-only; REUI parity, no v2 equivalent).
+   - ?candrop=1 -> wires a CanDrop predicate that rejects any proposed drag/resize
+     landing with Start earlier than GanttParityFixtures.CanDropBlackoutBefore
+     (see that field's remarks for why 2026-03-05 against fixture task "fe3" is a
+     clean, deterministic boundary) and counts every real ValidateDrop
+     invocation into a sink (data-testid="candrop-call-count") so the E2E specs
+     can assert the "0 calls when unset / 1 per snapped position / 0 during
+     progress or create" call-frequency contract against the ACTUAL JS->.NET
+     interop, not just BuildDragOptions' hasCanDrop flag (which is all bUnit
+     could already assert without a real browser).
+   - Event sinks (click/dateChange/progressChange/taskUpdate/taskCreate) mirror
+     GanttV2Page.razor's — same rationale, same hidden <pre> convention. Also
+     TasksChanged is bound (making this route "controlled" in Gantt3's
+     controlled/uncontrolled discriminator sense) purely as a pass-through
+     (always accepts what Gantt3 pushes) so a created task's ids are observable
+     in their own sink without ever vetoing/reverting an edit.
 
    ?rtl=1 (Codex round 3, P2 #7): wraps Gantt3 in Lumeo's own DirectionProvider
    (the standard idiom every RTL-aware Lumeo component relies on — see
@@ -28,7 +49,8 @@
    OnTaskClick sink (Codex round 5 review, Minor): the round-5 click-
    composition fix (P1 #1) only had bUnit coverage, which can't prove real
    DOM event bubbling — this host wires OnTaskClick to a plain
-   data-testid="gantt-v3-last-clicked" element so an E2E spec can drive a
+   data-testid="gantt-v3-last-clicked" element (AND the Phase-2 click
+   event-sink JSON below, from the same handler) so an E2E spec can drive a
    REAL Playwright click on a rendered bar and assert the handler actually
    fired, closing that gap.
 
@@ -47,15 +69,32 @@
     <div data-testid="gantt-v3-last-clicked">@_lastClickedTaskId</div>
     <DirectionProvider Direction="@_direction">
         <Gantt3 Tasks="@_tasks"
+                TasksChanged="HandleTasksChanged"
                 ViewMode="@_viewMode"
                 ViewModeChanged="@(m => _viewMode = m)"
                 Height="900px"
                 GroupBy="@(t => t.GroupLabel ?? "")"
                 ShowTreePane="@_showTreePaneOverride"
                 BarColor="@GanttParityFixtures.GetBarColor"
+                Readonly="@_readonly"
+                AllowCreate="@_allowCreate"
+                CanDrop="@(_useCanDrop ? CanDropHandler : null)"
                 OnTaskClick="HandleTaskClick"
+                OnDateChange="HandleDateChange"
+                OnProgressChange="HandleProgressChange"
+                OnTaskUpdate="HandleTaskUpdate"
+                OnTaskCreate="HandleTaskCreate"
                 data-testid="gantt-v3-root" />
     </DirectionProvider>
+
+    <pre data-testid="event-sink-click" style="display:none">@_lastClickJson</pre>
+    <pre data-testid="event-sink-click-count" style="display:none">@_clickCount</pre>
+    <pre data-testid="event-sink-datechange" style="display:none">@_lastDateChangeJson</pre>
+    <pre data-testid="event-sink-progresschange" style="display:none">@_lastProgressChangeJson</pre>
+    <pre data-testid="event-sink-taskupdate" style="display:none">@_lastTaskUpdateJson</pre>
+    <pre data-testid="event-sink-taskcreate" style="display:none">@_lastTaskCreateJson</pre>
+    <pre data-testid="event-sink-taskschanged" style="display:none">@_lastTasksChangedJson</pre>
+    <pre data-testid="candrop-call-count" style="display:none">@_validateDropCallCount</pre>
     @* Bug fix (cx7b review): kept BELOW the chart, not above it - the visual
        snapshot suite screenshots a FIXED viewport clip from (0,0), so any
        harness control placed ABOVE the chart shifts the whole captured
@@ -68,16 +107,36 @@
 @code {
     [SupplyParameterFromQuery] public string? Fixture { get; set; }
     [SupplyParameterFromQuery] public string? ViewMode { get; set; }
+    [SupplyParameterFromQuery] public string? Readonly { get; set; }
+    [SupplyParameterFromQuery] public string? AllowCreate { get; set; }
+    [SupplyParameterFromQuery(Name = "candrop")] public string? CanDropQuery { get; set; }
     [SupplyParameterFromQuery] public string? Rtl { get; set; }
     [SupplyParameterFromQuery] public string? Tree { get; set; }
 
     private GanttViewMode _viewMode = GanttViewMode.Day;
     private List<GanttTask> _tasks = new();
+    private bool _readonly;
+    private bool _allowCreate;
+    private bool _useCanDrop;
+    private int _validateDropCallCount;
     private bool? _showTreePaneOverride;
     private string _lastClickedTaskId = "";
     private LayoutDirection _direction = LayoutDirection.Ltr;
 
-    private void HandleTaskClick(GanttTask task) => _lastClickedTaskId = task.Id;
+    private string? _lastClickJson;
+    // Invocation-COUNT sink (Phase-1/Phase-2 reconciliation fix-round): the
+    // sinks above only ever exposed the LAST payload's VALUE, which stays
+    // identical whether OnTaskClick fired once or twice for the same click —
+    // blind to the double-fire this round's own CRITICAL finding closed
+    // (GanttBar's native onclick + GanttTimeline's JS-driven NotifyTaskClick
+    // both invoking it). Counts every call so a spec can assert the exact
+    // invocation count, not just the final value.
+    private int _clickCount;
+    private string? _lastDateChangeJson;
+    private string? _lastProgressChangeJson;
+    private string? _lastTaskUpdateJson;
+    private string? _lastTaskCreateJson;
+    private string? _lastTasksChangedJson;
 
     private void ToggleDirection() =>
         _direction = _direction == LayoutDirection.Ltr ? LayoutDirection.Rtl : LayoutDirection.Ltr;
@@ -94,7 +153,72 @@
         };
         if (!string.IsNullOrEmpty(ViewMode) && Enum.TryParse<GanttViewMode>(ViewMode, out var parsed))
             _viewMode = parsed;
+        _readonly = Readonly == "1";
+        _allowCreate = AllowCreate == "1";
+        _useCanDrop = CanDropQuery == "1";
         if (Tree == "0") _showTreePaneOverride = false;
         if (Rtl == "1") _direction = LayoutDirection.Rtl;
+    }
+
+    // Phase 2, T2/T3 (drag-parity sinks) + Codex round 5 review (real-DOM
+    // click proof) share this one handler: sets the plain last-clicked-id
+    // sink AND serializes the full task into the click event-sink JSON, so
+    // a single Playwright click can drive both assertions.
+    private Task HandleTaskClick(GanttTask t)
+    {
+        _lastClickedTaskId = t.Id;
+        _lastClickJson = JsonSerializer.Serialize(t);
+        _clickCount++;
+        return Task.CompletedTask;
+    }
+
+    private Task HandleDateChange(GanttTask t)
+    {
+        _lastDateChangeJson = JsonSerializer.Serialize(t);
+        return Task.CompletedTask;
+    }
+
+    private Task HandleProgressChange(GanttTask t)
+    {
+        _lastProgressChangeJson = JsonSerializer.Serialize(t);
+        return Task.CompletedTask;
+    }
+
+    private Task HandleTaskUpdate(GanttTaskUpdate u)
+    {
+        _lastTaskUpdateJson = JsonSerializer.Serialize(new { u.Task, Source = u.Source.ToString() });
+        return Task.CompletedTask;
+    }
+
+    private Task HandleTaskCreate(GanttTaskUpdate u)
+    {
+        _lastTaskCreateJson = JsonSerializer.Serialize(new { u.Task, Source = u.Source.ToString() });
+        return Task.CompletedTask;
+    }
+
+    private Task HandleTasksChanged(IEnumerable<GanttTask> tasks)
+    {
+        // Pass-through only: never vetoes, so this binding cannot alter behavior
+        // for any route that doesn't exercise it (existing bar/arrow/nav specs
+        // never fire a task edit, so _tasks here never actually changes for them).
+        _tasks = tasks.ToList();
+        _lastTasksChangedJson = JsonSerializer.Serialize(new { Count = _tasks.Count, Ids = _tasks.Select(t => t.Id) });
+        return Task.CompletedTask;
+    }
+
+    private bool CanDropHandler(GanttTask task, GanttScheduleDropContext context)
+    {
+        // CanDrop is a plain Func, not an EventCallback — invoked synchronously
+        // from GanttTimeline.ValidateDrop's [JSInvokable] method body, so unlike
+        // the EventCallback-bound sinks above (whose receivers Blazor
+        // auto-re-renders after invocation) mutating this page's own field here
+        // does NOT by itself schedule a re-render of THIS component. Without an
+        // explicit StateHasChanged, the candrop-call-count sink's <pre> would
+        // never actually update in the DOM even though the field's value did —
+        // invisible to a real browser/Playwright assertion.
+        _validateDropCallCount++;
+        var valid = context.ProposedStart >= GanttParityFixtures.CanDropBlackoutBefore;
+        StateHasChanged();
+        return valid;
     }
 }

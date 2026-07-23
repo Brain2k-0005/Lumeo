@@ -89,7 +89,11 @@
                            ScrollTargetDate="@_scrollTargetDate"
                            ScrollHostLeadingOffset="@ScrollHostLeadingOffset"
                            ScrollHost="@_scrollPaneRef"
+                           Readonly="@Readonly"
+                           OnTaskUpdate="HandleTaskUpdateAsync"
                            OnTaskClick="OnTaskClick"
+                           CanDrop="CanDrop"
+                           AllowCreate="@AllowCreate"
                            Class="grow shrink-0" />
         </div>
     </div>
@@ -98,6 +102,14 @@
 @code {
     /// <summary>The tasks (and milestones) rendered as bars.</summary>
     [Parameter] public IEnumerable<GanttTask>? Tasks { get; set; }
+
+    /// <summary>
+    /// Raised whenever the task set changes — either because <see cref="Tasks"/>
+    /// genuinely changed, or because the user dragged/resized a bar in the
+    /// chart (design spec Phase 2, T1 — v2-parity <c>TasksChanged</c>, same
+    /// contract as v2's <c>Gantt.TasksChanged</c>).
+    /// </summary>
+    [Parameter] public EventCallback<IEnumerable<GanttTask>> TasksChanged { get; set; }
 
     /// <summary>The active zoom level. Two-way bindable via <see cref="ViewModeChanged"/>. Default <see cref="GanttViewMode.Day"/>.</summary>
     [Parameter] public GanttViewMode ViewMode { get; set; } = GanttViewMode.Day;
@@ -141,6 +153,48 @@
     /// neither gets the same single-pane layout T2 always rendered.
     /// </summary>
     [Parameter] public bool? ShowTreePane { get; set; }
+
+    /// <summary>Disables drag-to-move/-resize editing in the chart (design spec Phase 2, T1 — v2-parity <c>Readonly</c>). Default <c>false</c>.</summary>
+    [Parameter] public bool Readonly { get; set; }
+
+    /// <summary>Raised after a task bar's start/end dates change via drag/resize, with the updated task (design spec Phase 2, T1 — v2-parity <c>OnDateChange</c>, same contract as v2's <c>Gantt.OnDateChange</c>). Also folded into <see cref="TasksChanged"/>.</summary>
+    [Parameter] public EventCallback<GanttTask> OnDateChange { get; set; }
+
+    /// <summary>
+    /// Unified commit-gate event (design spec Phase 2, T1 — the REUI
+    /// <c>onEventUpdate</c> analog): raised for EVERY drag/resize edit
+    /// alongside <see cref="OnDateChange"/>, carrying a
+    /// <see cref="GanttTaskUpdateSource"/> discriminator so a consumer can
+    /// branch on which gesture produced the update without a separate
+    /// callback per gesture.
+    /// </summary>
+    [Parameter] public EventCallback<GanttTaskUpdate> OnTaskUpdate { get; set; }
+
+    /// <summary>Raised after a task bar's progress changes via the progress handle (design spec Phase 2, T2 — v2-parity <c>OnProgressChange</c>, same contract as v2's <c>Gantt.OnProgressChange</c>). Also folded into <see cref="TasksChanged"/>.</summary>
+    [Parameter] public EventCallback<GanttTask> OnProgressChange { get; set; }
+
+    /// <summary>Live scheduling drag-drop validator (design spec Phase 2, T2 — the REUI <c>canDropEvent</c> analog). See <see cref="GanttTimeline.CanDrop"/> for the full contract; passed straight through unchanged.</summary>
+    [Parameter] public Func<GanttTask, GanttScheduleDropContext, bool>? CanDrop { get; set; }
+
+    /// <summary>
+    /// Opt-in drag-create on empty track background (design spec Phase 2, T3 — a
+    /// REUI-parity addition; v2 has no drag-create at all, so this defaults to
+    /// <c>false</c>, keeping strict v2 parity until a caller opts in). Passed
+    /// straight through to <see cref="GanttTimeline.AllowCreate"/> — see there for
+    /// the full contract, including why <see cref="Readonly"/> always wins over it.
+    /// </summary>
+    [Parameter] public bool AllowCreate { get; set; }
+
+    /// <summary>
+    /// Raised when a drag-create commits (design spec Phase 2, T3 — REUI parity;
+    /// v2 has no equivalent). Fired alongside <see cref="OnTaskUpdate"/>
+    /// (Source=<see cref="GanttTaskUpdateSource.Create"/>) — mirrors how
+    /// <see cref="OnProgressChange"/>/<see cref="OnDateChange"/> are each raised
+    /// alongside <see cref="OnTaskUpdate"/> for their own gesture, per source, in
+    /// <see cref="HandleTaskUpdateAsync"/>. Also folded into <see cref="TasksChanged"/>
+    /// (the new task is APPENDED, not merged-by-id, for this source).
+    /// </summary>
+    [Parameter] public EventCallback<GanttTaskUpdate> OnTaskCreate { get; set; }
 
     /// <summary>Additional CSS classes merged onto the root element.</summary>
     [Parameter] public string? Class { get; set; }
@@ -468,11 +522,39 @@
     // never depends on how far apart the server's and browser's clocks are.
     private DateTime? _lastCheckedServerDay;
 
+    // Phase 2, T1 — Tasks/TasksChanged controlled/uncontrolled discriminators,
+    // ported from v2 Gantt.razor's _lastParentHash/_lastPushedTasksHash (see
+    // OnParametersSetAsync's remarks for why these are now needed: a drag
+    // commit mutates _state directly, bypassing the Tasks parameter).
+    private int _lastParentTasksHash;
+    private int _lastPushedTasksHash;
+
+    private static int ComputeTasksHash(IReadOnlyList<GanttTask> tasks)
+    {
+        var hash = new HashCode();
+        foreach (var t in tasks)
+        {
+            hash.Add(t.Id);
+            hash.Add(t.Name);
+            hash.Add(t.Start);
+            hash.Add(t.End);
+            hash.Add(t.Progress);
+            hash.Add(t.CustomClass);
+            hash.Add(t.IsMilestone);
+            hash.Add(t.GroupLabel);
+            hash.Add(t.ParentId);
+            if (t.Dependencies is not null)
+                foreach (var d in t.Dependencies) hash.Add(d);
+        }
+        return hash.ToHashCode();
+    }
+
     protected override void OnInitialized()
     {
         _lastSeenViewModeParam = ViewMode;
         _state.SetViewMode(ViewMode);
         _state.SetTasks(SortedTasks(Tasks?.ToList() ?? new List<GanttTask>()));
+        _lastParentTasksHash = _lastPushedTasksHash = ComputeTasksHash(_state.Tasks);
         _tasksVersion = 1;
         _state.SetVisibleRange(ComputeInitialRange(_state.ViewMode, _state.Tasks, EffectiveToday));
         // Seed the reconcile baseline from the just-committed mount state; the
@@ -689,7 +771,27 @@
 
     protected override async Task OnParametersSetAsync()
     {
-        var nextTasks = SortedTasks(Tasks?.ToList() ?? new List<GanttTask>());
+        // Phase 2, T1 fix — see HandleTaskUpdateAsync's own remarks: a
+        // drag/resize commit mutates _state DIRECTLY, bypassing the Tasks
+        // PARAMETER. Naively handing the raw parameter to ReconcileAsync on
+        // every pass would silently revert that edit the next time ANYTHING
+        // causes Gantt3 to re-render while an uncontrolled caller's Tasks
+        // parameter still holds its stale (pre-drag) value. Resolved exactly
+        // like v2's Gantt.razor: UNCONTROLLED (no TasksChanged binding) only
+        // applies the parameter when its own value moved since we last
+        // looked; CONTROLLED applies it unless it's merely an echo of what
+        // HandleTaskUpdateAsync just pushed via TasksChanged (a genuine veto —
+        // the parent kept some OTHER value — still wins and rolls the edit
+        // back, matching v2). Otherwise the reconciler targets the currently-
+        // committed (possibly drag-edited) _state.Tasks, so its own
+        // WouldChangeTasks diff sees no change and the edit survives.
+        var incomingTasks = SortedTasks(Tasks?.ToList() ?? new List<GanttTask>());
+        var incomingHash = ComputeTasksHash(incomingTasks);
+        var parentMoved = TasksChanged.HasDelegate
+            ? incomingHash != _lastPushedTasksHash
+            : incomingHash != _lastParentTasksHash;
+        _lastParentTasksHash = incomingHash;
+        var nextTasks = parentMoved ? incomingTasks : _state.Tasks;
 
         // The mode to reconcile TO. CONTROLLED (ViewModeChanged bound): the
         // parameter is authoritative — a toolbar push already committed the new
@@ -1028,4 +1130,68 @@
     // Null (the default) keeps GanttTimeline targeting Today, unchanged from
     // every prior behavior.
     private DateTime? _scrollTargetDate;
+
+    // Phase 2, T1 — bubbled from GanttTimeline.OnTaskUpdate (its own JS-driven
+    // CommitDrag) exactly like GanttTree.OnToggleCollapse: Gantt3 is the only
+    // place that touches GanttState, so it applies the edit here rather than
+    // GanttTimeline doing so itself. Commits DIRECTLY to _state rather than
+    // through ReconcileAsync — a drag/resize/progress/create edit is a local,
+    // DOM-driven change to one task and must never trigger the reconciler's
+    // own scroll-recentering decision; OnParametersSetAsync's own hash-based
+    // parameter gating (above) is what keeps this edit from being silently
+    // reverted by the NEXT unrelated parent re-render.
+    private async Task HandleTaskUpdateAsync(GanttTaskUpdate update)
+    {
+        // Phase 2, T3 — a Create-sourced update names a task that does NOT yet
+        // exist in _state.Tasks (GanttTimeline.CommitCreate minted a fresh Guid
+        // id), so the existing "replace whichever task shares this id" merge
+        // would silently no-op (no match) instead of adding it. Every OTHER
+        // source (Move/ResizeStart/ResizeEnd/Progress) edits an EXISTING task
+        // in place, same as before.
+        var newTasks = update.Source == GanttTaskUpdateSource.Create
+            ? _state.Tasks.Append(update.Task).ToList()
+            : _state.Tasks.Select(t => t.Id == update.Task.Id ? update.Task : t).ToList();
+        _state.SetTasks(newTasks);
+
+        if (TasksChanged.HasDelegate)
+        {
+            // Record _lastPushedTasksHash BEFORE invoking TasksChanged (same
+            // ordering as v2 Gantt.razor's JsOnDateChange): a controlled parent
+            // re-renders SYNCHRONOUSLY inside InvokeAsync, so OnParametersSetAsync
+            // must already see this hash as "the value we just pushed" to
+            // distinguish an accepted echo (keep the edit) from a veto.
+            // Deliberately does NOT touch _lastParentTasksHash — that tracks
+            // the Tasks PARAMETER only, exactly like v2's _lastParentHash. A
+            // controlled parent that vetoes a Create (keeps its OWN, pre-create
+            // Tasks value) rolls back exactly like any other vetoed edit — the
+            // next OnParametersSetAsync sees the parameter hasn't moved to match
+            // what was just pushed and reverts _state, discarding the new task.
+            _lastPushedTasksHash = ComputeTasksHash(_state.Tasks);
+            await TasksChanged.InvokeAsync(_state.Tasks.ToList());
+        }
+
+        // Phase 2, T2/T3 — v2 parity: v2's Gantt.razor fires JsOnDateChange OR
+        // JsOnProgressChange depending on WHICH gesture committed (gantt-v2.js's
+        // commitDrag calls exactly one of them per branch, gantt-v2.js:750/756/761
+        // -> Gantt.razor's JsOnDateChange/JsOnProgressChange, lines 483-515) — never
+        // both for the same edit. T3's OnTaskCreate joins that same per-source
+        // branch (v2 has no equivalent gesture at all, so this is a v3-only leg,
+        // not a v2-parity one) — a Create never also fires OnDateChange, even
+        // though it does carry Start/End like a date change would. OnTaskUpdate
+        // (v3's own unified addition) still fires for every source regardless.
+        if (update.Source == GanttTaskUpdateSource.Progress)
+        {
+            if (OnProgressChange.HasDelegate) await OnProgressChange.InvokeAsync(update.Task);
+        }
+        else if (update.Source == GanttTaskUpdateSource.Create)
+        {
+            if (OnTaskCreate.HasDelegate) await OnTaskCreate.InvokeAsync(update);
+        }
+        else if (OnDateChange.HasDelegate)
+        {
+            await OnDateChange.InvokeAsync(update.Task);
+        }
+
+        if (OnTaskUpdate.HasDelegate) await OnTaskUpdate.InvokeAsync(update);
+    }
 }
