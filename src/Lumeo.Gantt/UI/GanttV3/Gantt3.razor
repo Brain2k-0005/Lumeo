@@ -446,6 +446,18 @@
 
     private bool IsCurrentReconcile(long generation) => generation == _reconcileGeneration;
 
+    // Bug fix (Codex round 18 review, P1): a direct-navigation action
+    // (prev/next/Today) mutates VisibleRange OUTSIDE the reconcile pipeline. It
+    // must SUPERSEDE any reconcile currently suspended in its live-center capture
+    // await — that reconcile claimed an EARLIER generation and, on resume, would
+    // otherwise still pass its IsCurrentReconcile check and commit its now-stale
+    // mode/range on top of the navigated one (the DOM would jump back to where a
+    // mode switch had been reshaping toward, discarding the nav the user just
+    // performed). Claiming the next generation here — the same token the
+    // reconcile pipeline already guards on — forces that suspended reconcile to
+    // abandon its entire commit, so the navigation stands.
+    private void SupersedeReconcileForNavigation() => BeginReconcile();
+
     // The ViewMode PARAMETER value seen on the last parameter pass — the
     // uncontrolled-mode discriminator only (a controlled binding keeps the
     // parameter authoritative; an uncontrolled one must let _state.ViewMode,
@@ -951,6 +963,9 @@
             _ => (range.Start, range.End),
         };
         _state.SetVisibleRange(start, end);
+        // Supersede any reconcile suspended in its capture await, so it can't
+        // resume and commit a stale range on top of this shift (round 18, P1).
+        SupersedeReconcileForNavigation();
         return Task.CompletedTask;
     }
 
@@ -1009,6 +1024,11 @@
             _ => start + width,
         };
         _state.SetVisibleRange(start, end);
+        // Supersede any reconcile suspended in its capture await, so it can't
+        // resume and commit a stale mode/range on top of this Today recenter
+        // (round 18, P1). Claimed after the RefreshBrowserTodayAsync await above,
+        // so it invalidates every reconcile in flight up to this commit point.
+        SupersedeReconcileForNavigation();
         // Bug fix (Codex round 4, P2 #8): a PREVIOUS view-mode switch may have
         // left _scrollTargetDate pointing at some other centerDate — the
         // Today button must always target Today specifically, not whatever
