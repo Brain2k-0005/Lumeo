@@ -1237,6 +1237,12 @@ function startedOnDragHandle(target, panelEl) {
 //   content-owned-touch  | untouched            | untouched                | this touch never drags the
 //                        |                      |                          | panel; native scroll owns it
 //                        |                      |                          | start-to-end
+//   tap (no move)        | untouched            | untouched                | touchstart -> touchend with
+//                        |                      |                          | ZERO touchmove events in
+//                        |                      |                          | between (e.g. tapping a button
+//                        |                      |                          | inside a resting drawer); never
+//                        |                      |                          | entered `dragging`, so touchend
+//                        |                      |                          | must be a full no-op too
 //
 // Transition contract:
 //   1. rest -> dragging happens LAZILY, on the first onTouchMove frame that
@@ -1257,6 +1263,17 @@ function startedOnDragHandle(target, panelEl) {
 //   5. Teardown (unregisterDrawerSnap) clears BOTH representations —
 //      transform AND top/bottom — not just whichever one happened to be
 //      live at the moment of removal (finding #5).
+//   6. onTouchEnd's settle/dismiss logic never runs unless `dragging` was
+//      actually entered at least once this touch — a tap (zero touchmove
+//      events) is exactly as inert as a content-owned touch, since neither
+//      ever moved the panel out of `rest` (round 5, finding #1).
+//   7. A pending settleAtRest call (its rAF + getAnimations().finished
+//      chain) is invalidated via the SAME generation token whenever the
+//      registration it belongs to is torn down — by unregisterDrawerSnap,
+//      or by registerDrawerSnap defensively tearing down a stale prior
+//      registration for the same element — so a late callback can never
+//      write style properties against cleared/replaced state (round 5,
+//      finding #2).
 
 export function registerDrawerSwipe(elementId, direction, dotnetRef, options) {
     const el = document.getElementById(elementId);
@@ -1496,6 +1513,17 @@ export function registerDrawerSnap(elementId, direction, dotnetRef, options) {
     const el = document.getElementById(elementId);
     if (!el) return;
 
+    // #381 round 5 (P2) — the C# side always calls unregisterDrawerSnap
+    // before re-registering with changed options (SnapPoints/Side edits),
+    // but guard here too: if a STALE registration for this element is still
+    // live, tear it down through the normal path first (removes its
+    // listeners, invalidates its pending settle, clears its inline styles)
+    // rather than letting it leak alongside — and possibly race against —
+    // the new one.
+    if (drawerSnapHandlers.has(elementId)) {
+        unregisterDrawerSnap(elementId);
+    }
+
     const snapPoints = (options && Array.isArray(options.snapPoints)) ? options.snapPoints.slice() : [];
     if (snapPoints.length === 0) return;
 
@@ -1720,6 +1748,19 @@ export function registerDrawerSnap(elementId, direction, dotnetRef, options) {
     const onTouchEnd = (e) => {
         if (!isDragging) return;
         isDragging = false;
+        // #381 round 5 (P1) — a touch that never entered the drag
+        // representation (see onTouchMove's lazy-entry remarks) never moved
+        // the panel at all, so touchend has nothing to settle. This covers a
+        // TAP (touchstart -> touchend with zero touchmove events, e.g.
+        // tapping a button inside a resting drawer) as well as the
+        // content-owned case below. Without this, a tap fell through to the
+        // settle logic further down, which unconditionally writes
+        // `transition`/`transform` — pulling the panel out of its rest
+        // (bottom/top offset) representation on every single tap, stacking a
+        // spurious transform on top of the still-live rest offset, and
+        // playing a pointless eased transition for a touch that never
+        // dragged anything.
+        if (!dragRepresentationEntered) return;
         // The panel's transform was never touched for a content-owned touch
         // (the gate above returns before ever setting it) — nothing to settle
         // or dismiss; the drawer stays exactly at its last committed snap.
@@ -1812,6 +1853,16 @@ export function registerDrawerSnap(elementId, direction, dotnetRef, options) {
             el.style.transition = EASING;
             el.style.transform = `translateY(${offsetFor(i)}px)`;
             settleAtRest(offsetFor(i), ++settleGeneration);
+        },
+        // #381 round 5 (P2) — bumps the generation token this registration's
+        // settleAtRest closures check against. Any settle already in flight
+        // (waiting on its rAF or getAnimations().finished) becomes a no-op on
+        // arrival instead of writing style properties against state this
+        // registration no longer owns. Called from unregisterDrawerSnap, and
+        // defensively from registerDrawerSnap when it tears down a stale
+        // prior registration for the same element.
+        invalidatePendingSettle() {
+            settleGeneration++;
         }
     });
 }
@@ -1824,6 +1875,11 @@ export function setDrawerSnap(elementId, index) {
 export function unregisterDrawerSnap(elementId) {
     const handlers = drawerSnapHandlers.get(elementId);
     if (handlers) {
+        // #381 round 5 (P2) — see invalidatePendingSettle's own remarks: a
+        // settleAtRest chain from this registration may still be waiting on
+        // its rAF/transition; invalidate it BEFORE tearing anything else
+        // down so its late callback (if it fires anyway) is already a no-op.
+        handlers.invalidatePendingSettle();
         const el = document.getElementById(elementId);
         if (el) {
             el.removeEventListener('touchstart', handlers.onTouchStart);
