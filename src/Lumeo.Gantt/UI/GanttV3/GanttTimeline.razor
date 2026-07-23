@@ -1,0 +1,1040 @@
+@namespace Lumeo
+@using System.ComponentModel
+@using System.Globalization
+@using Lumeo.GanttV3
+@implements IAsyncDisposable
+@inject Lumeo.Services.IComponentInteropService Interop
+@inject Lumeo.Services.Localization.ILumeoLocalizer L
+@attribute [EditorBrowsable(EditorBrowsableState.Never)]
+
+@* GanttTimeline — the scrollable header + row canvas (design spec Phase 2, T2
+   "read-only markup"). Renders the two-row grouped header from
+   GanttScale.BuildHeaderRows-equivalent helpers (UpperRuns/LowerLabels),
+   vertical grid column lines, the today marker, and one GanttBar per task via
+   a vertical Virtualize<T>.
+
+   Deliberately takes Tasks/ViewMode/RangeStart/RangeEnd as plain parameters
+   instead of a GanttState reference: GanttState is still `internal` (Phase-3
+   promotion, per its own remarks — "becomes public API once a component
+   actually exposes a State parameter wired to it"), and this component's
+   generated partial class is unavoidably `public` (the Razor compiler always
+   emits an explicit `public` modifier for component classes — there is no
+   supported directive to change it; see dotnet/aspnetcore#5516 and
+   dotnet/razor#8715, both open feature requests). A public `GanttState State`
+   parameter would either force GanttState public too (jumping the gun on
+   Phase 3) or fail to compile (CS0053, a public member can't expose a
+   less-accessible type) — so Gantt3 (the shared-state owner) unpacks its
+   GanttState into these primitives instead.
+
+   [EditorBrowsable(Never)] keeps this working-name API out of consumer
+   IntelliSense until the Phase-4 rename (fix-round follow-up). *@
+<div class="@RootClass" style="@RootStyle" @attributes="AdditionalAttributes">
+    @* Two-row header (Codex round 2, P1 #3 — "sticky header still broken").
+       Deliberately OUTSIDE the horizontal-scroll wrapper below: `position:
+       sticky` resolves against the NEAREST ancestor that establishes a
+       scroll container, and the row-canvas wrapper's own `overflow-x:auto`
+       counts as one — EVEN THOUGH its height auto-fits its content and it
+       therefore never has anything to scroll vertically — so the header
+       kept sticking to THAT (never-actually-scrolling) wrapper instead of
+       to Gantt3's shared OUTER (vertical) scroller, and scrolled away with
+       everything else the moment the outer pane actually moved. The wave-1
+       "overflow-y-visible" fix never worked: the CSS Overflow spec silently
+       PROMOTES a sibling `overflow-y: visible` to `overflow-y: auto` the
+       moment `overflow-x` is anything but `visible`/`clip` on the SAME box,
+       so that wrapper was STILL a scroll container on both axes regardless.
+       With the header moved here (no intervening scroll container between
+       it and Gantt3's outer pane), it can no longer physically BE the same
+       scrolling element as the row canvas below — HeaderInnerStyle's width
+       spans every column same as before, and gantt-v3.js's
+       registerHeaderScrollSync mirrors the canvas's scrollLeft onto it via
+       a transform so the two stay column-aligned. *@
+    <div class="lumeo-gantt-v3-header sticky top-0 z-10 overflow-hidden border-b border-border/60 bg-card" style="@HeaderOuterStyle">
+        <div @ref="_headerInnerRef" style="@HeaderInnerStyle">
+            <div class="relative" style="height:20px;">
+                @foreach (var run in UpperRuns)
+                {
+                    <div class="absolute truncate text-xs font-semibold text-foreground" style="@UpperRunStyle(run)">@run.Label</div>
+                }
+            </div>
+            @* Bug fix (Codex round 4, P2 #9): this row's date columns are
+               rendered in DOM order (earliest first) and rely on that DOM
+               order to lay out left-to-right — but it's the ONLY part of the
+               header using `display:flex` for layout (the upper run labels
+               above, like every bar/grid-line, use `position:absolute; left:
+               Xpx`, which is direction-agnostic). A flex container's default
+               `flex-direction:row` reverses child ORDER under an inherited
+               `dir="rtl"` (Lumeo's DirectionProvider), so under RTL this row
+               alone would visually flip to latest-first while the
+               grid-lines/bars/upper-labels stayed physically earliest-first,
+               misaligning every column. `dir="ltr"` forces this ONE flex
+               container's layout direction back to physical (DOM) order
+               regardless of the page's surrounding direction — matching how
+               every other coordinate in this canvas is already
+               direction-agnostic (v3's date axis is never mirrored for RTL;
+               see gantt-v3.js's own remarks on why only the SCROLL position
+               needed RTL handling, not the layout itself). *@
+            <div class="relative flex" dir="ltr" style="height:@((GanttScale.HeaderHeight - 20).ToString(CultureInfo.InvariantCulture))px;">
+                @for (var i = 0; i < Units.Count; i++)
+                {
+                    var label = LowerLabels[i];
+                    <div class="shrink-0 text-center text-xs text-muted-foreground" style="@ColumnCellStyle">@label</div>
+                }
+            </div>
+        </div>
+    </div>
+
+    @* Row-canvas horizontal-scroll host — the ONLY scrolling element now (no
+       sticky descendant left inside it, so its own overflow-y-auto side
+       effect — see the header's remarks above — is harmless: nothing here
+       needs to escape it via sticky positioning anymore). Coordinate origin
+       is row 0's own top (no header allowance — the header lives outside
+       this subtree entirely now), so GridLinesContainerStyle/TodayLineStyle/
+       CanvasHeight and GanttArrowRouting's SourceEdge/TargetEdge all dropped
+       their previous "+GanttScale.HeaderHeight" terms accordingly. *@
+    <div class="@CanvasScrollClass" @ref="_scrollHostRef">
+        <div class="relative" style="@CanvasStyle">
+            @* Vertical grid lines, spanning the full row canvas height. *@
+            <div class="pointer-events-none absolute inset-x-0" style="@GridLinesContainerStyle">
+                @for (var i = 0; i <= Units.Count; i++)
+                {
+                    <div class="absolute inset-y-0 border-s border-border/40" style="@GridLineStyle(i)"></div>
+                }
+            </div>
+
+            @if (TodayInRange)
+            {
+                <div class="lumeo-gantt-v3-today-line pointer-events-none absolute inset-y-0 border-s border-primary opacity-60" style="@TodayLineStyle"></div>
+            }
+
+            @* Empty state (Codex round 3, P2 #4): v2 renders a centered "No
+               tasks to display" text node when tasks.length === 0
+               (gantt-v2.js:407-417); v3 previously rendered nothing at all —
+               a blank grid with no explanation for why. Ported as a plain
+               centered message rather than v2's SVG <text> (v3 has no SVG
+               canvas to place it on), localized via the same Gantt.* resource
+               family as every other Gantt string. Only shown when there are
+               NO rows at all (a GroupHeader-only row list still has content
+               worth showing). *@
+            @if (EffectiveRows.Count == 0)
+            {
+                <div class="lumeo-gantt-v3-empty pointer-events-none absolute inset-0 flex items-center justify-center text-sm text-muted-foreground">@L["Gantt.NoTasksToDisplay"]</div>
+            }
+
+            @* Row canvas. *@
+            <div class="relative" style="@RowsContainerStyle">
+                <Virtualize Items="@RowItems" Context="row" ItemSize="@((float)GanttScale.RowHeight)">
+                    @* Bug fix (Codex round 10 review, P2 #1): every item template
+                       below renders ONLY absolutely-positioned content (GanttBar's
+                       own wrapper, the group-header stripe) — neither establishes
+                       any IN-FLOW box, so each materialized <Virtualize> item
+                       contributed 0px to normal document flow. Virtualize's own
+                       placeholder/spacer sizing (and, on some runtimes, its
+                       IntersectionObserver-based "load more" triggering) depends on
+                       rendered items actually occupying real, measurable space in
+                       flow, not just on the ItemSize parameter used for spacer math
+                       — a 0-height rendered window is a real mismatch between what
+                       Virtualize assumes is on screen and what actually is. This
+                       wrapper is plain (no position:relative/absolute of its own),
+                       so it does NOT become a new containing block for the
+                       absolutely-positioned content inside it — GanttBar/the
+                       group-header stripe keep resolving their `position:absolute`
+                       against the SAME ancestor as before (RowsContainerStyle's own
+                       `.relative` div above), so visual geometry is byte-identical;
+                       this only adds a correctly-sized IN-FLOW box alongside it. *@
+                    @* Bug fix (Codex round 15 review, P2): this wrapper carried
+                       no @key at all — a live task-set update (or a GroupBy-
+                       driven reorder) that changes WHICH task occupies a given
+                       row index let Blazor's diffing reuse the SAME <GanttBar>
+                       component instance across renders for what is now a
+                       DIFFERENT task, since without a key Blazor matches
+                       children positionally. GanttBar owns its own JS-interop-
+                       backed state (tooltip visibility, etc. — see GanttBar's
+                       own remarks) that must reset per-task, not silently
+                       survive onto whatever task now lands in that slot.
+                       row.Task's own Id is the SAME stable per-task identity
+                       GanttRowModel.ToggleKey already establishes for a task
+                       row (see GanttVisibleRow's remarks); a group-header slot
+                       has no Task at all, so it falls back to its row index —
+                       stable enough since no GanttBar (the component actually
+                       carrying reusable interop state) ever renders there.
+
+                       Bug fix (Codex round 16 review, P2): the task-id branch
+                       and the group-header fallback shared ONE flat string
+                       namespace — a task whose own Id happened to literally BE
+                       "group-0" (or any other value matching the synthetic
+                       "group-{index}" pattern) could collide with a REAL
+                       group-header row's key at that same index, since nothing
+                       distinguished "a task whose id is the string group-0"
+                       from "the synthetic key for row 0's own group header".
+                       Prefixed both branches distinctly ("t:"/"g:") — the same
+                       separate-namespace-via-prefix idiom
+                       GanttRowModel.GroupToggleKey already established for the
+                       identical class of collision risk between a task's own
+                       Id and a group label in GanttState.Collapsed's shared
+                       key set (see its own remarks: "a distinct namespace so a
+                       task id can never collide with a group key"). *@
+                    <div class="lumeo-gantt-v3-row-item" @key="@(row.Task is not null ? "t:" + row.Task.Id : $"g:{row.RowIndex}")" style="height:@(GanttScale.RowHeight)px;">
+                        @if (row.Task is not null)
+                        {
+                            <GanttBar Task="row.Task" X="row.X" Width="row.Width" RowIndex="row.RowIndex"
+                                      BarHeight="EffectiveBarHeight" Color="@row.Color" BarTemplate="BarTemplate"
+                                      OnTaskClick="OnTaskClick" />
+                        }
+                        else
+                        {
+                            @* Group-header row (Codex round 2, P2 #7): before this fix a
+                               GanttRowKind.GroupHeader slot rendered NOTHING here at all —
+                               an empty gap in the row canvas — even though GanttTree (the
+                               sibling pane) already shows a labeled summary row for the
+                               SAME slot. v2 parity: gantt-v2.js:428-449 draws a full-width
+                               translucent stripe (tokens.accent, 0.18 fill-opacity) plus an
+                               uppercase, bold, muted-color label, left-padded 8px, vertically
+                               centered in the row — ported below via Tailwind utilities +
+                               the bg-accent/[0.18] arbitrary-opacity value matching v2's
+                               literal 0.18 exactly. NOT a literal 1:1 port in every detail
+                               (Codex round 3, Minor #8 — corrected wording): the label uses
+                               Tailwind's tracking-wide (0.025em), not v2's literal
+                               letter-spacing:0.04em — a deliberate, tiny typographic delta
+                               (matching Lumeo's own type-scale token rather than hand-picking
+                               an arbitrary value for a 1px-at-typical-sizes difference), not
+                               a CSS-bundle-churning arbitrary tracking value. *@
+                            <div class="lumeo-gantt-v3-group-header absolute inset-x-0 flex items-center bg-accent/[0.18] px-2 text-[11px] font-bold uppercase tracking-wide text-muted-foreground" style="@GroupHeaderStyle(row.RowIndex)">@row.Label</div>
+                        }
+                    </div>
+                </Virtualize>
+            </div>
+
+            @* Dependency-arrow overlay — see GanttArrowLayer's own remarks for why it
+               recomputes geometry independently from the same EffectiveRows/GanttScale
+               inputs rather than reaching into this component's RowItems. *@
+            <GanttArrowLayer Rows="@EffectiveRows" ViewMode="@ViewMode" Origin="@Origin"
+                             ColumnWidth="@EffectiveColumnWidth" BarHeight="@EffectiveBarHeight"
+                             Width="@TotalWidth" Height="@CanvasHeight" VisibleRowRange="@_visibleRowRange" />
+        </div>
+    </div>
+</div>
+
+@code {
+    /// <summary>The tasks (and milestones) rendered as bars, in display order. Ignored when <see cref="Rows"/> is set.</summary>
+    [Parameter] public IReadOnlyList<GanttTask> Tasks { get; set; } = Array.Empty<GanttTask>();
+
+    /// <summary>
+    /// The already-flattened, collapse-filtered row list (design spec Phase 2,
+    /// T3's tree-pane/hierarchy row model — see <c>GanttRowModel</c>) — the same
+    /// list a sibling <c>GanttTree</c> renders against, so both panes stay
+    /// row-for-row aligned. When set, this takes priority over <see cref="Tasks"/>
+    /// (which may still include header-hidden/collapsed tasks the caller never
+    /// meant to show). When null (T2's original contract, still exercised by
+    /// callers with no grouping/hierarchy), each entry of <see cref="Tasks"/>
+    /// becomes its own row, 1:1, in list order — unchanged from T2's behavior.
+    /// </summary>
+    [Parameter] public IReadOnlyList<GanttVisibleRow>? Rows { get; set; }
+
+    /// <summary>The active zoom level — determines column width/unit/header format via <see cref="GanttScale"/>.</summary>
+    [Parameter] public GanttViewMode ViewMode { get; set; } = GanttViewMode.Day;
+
+    /// <summary>The materialized date window's start (inclusive).</summary>
+    [Parameter] public DateTime RangeStart { get; set; }
+
+    /// <summary>The materialized date window's end (inclusive).</summary>
+    [Parameter] public DateTime RangeEnd { get; set; }
+
+    /// <summary>Override the pixel height of each task bar. Defaults to <see cref="GanttScale.DefaultBarHeight"/>.</summary>
+    [Parameter] public int? BarHeight { get; set; }
+
+    /// <summary>Override the pixel width of each date column for the current view mode.</summary>
+    [Parameter] public int? ColumnWidth { get; set; }
+
+    /// <summary>Highlight today with a vertical marker line. Default true.</summary>
+    [Parameter] public bool TodayHighlight { get; set; } = true;
+
+    /// <summary>Per-task bar colour override — see <c>Lumeo.Gantt</c>'s v2 <c>Gantt.BarColor</c> for the contract.</summary>
+    [Parameter] public Func<GanttTask, string?>? BarColor { get; set; }
+
+    /// <summary>Replaces a bar's default label content when set.</summary>
+    [Parameter] public RenderFragment<GanttTask>? BarTemplate { get; set; }
+
+    /// <summary>Raised when a bar is activated via click or keyboard (Enter/Space) — forwarded from every rendered <see cref="GanttBar"/> (Codex round 4, P2 #5). Same contract as v2's <c>Gantt.OnTaskClick</c>.</summary>
+    [Parameter] public EventCallback<GanttTask> OnTaskClick { get; set; }
+
+    /// <summary>Additional CSS classes merged onto the root scroll container.</summary>
+    [Parameter] public string? Class { get; set; }
+
+    /// <summary>Captures unmatched attributes and applies them to the root scroll container.</summary>
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    /// <summary>
+    /// The scroll-intent version (Codex round 14). <c>Gantt3</c> bumps it each
+    /// time it issues a recenter (Today nav, a view-mode/geometry recenter, an
+    /// emptiness transition). Purely a change-token — only "did it change since
+    /// the last render" matters — so GanttTimeline knows to re-center the DOM's
+    /// horizontal scroll (recentering <c>VisibleRange</c> alone doesn't move
+    /// scrollLeft; see <see cref="ScrollToCenterAsync"/>). The paired
+    /// <see cref="ScrollTargetDate"/> is honored ONCE per bump and then expires
+    /// (see <see cref="ResolveScrollTargetX"/>). Left at its default (0) by any
+    /// caller that never wires this — a standalone GanttTimeline never sees it
+    /// fire again after the first-render center.
+    /// </summary>
+    [Parameter] public int ScrollToTodayRequestId { get; set; }
+
+    /// <summary>
+    /// "Today", resolved by the caller (Codex round 2, P2 #9 — see <c>Gantt3</c>'s
+    /// remarks). Defaults to <see cref="DateTime.Today"/> (the SERVER's local
+    /// date) so a caller using <c>GanttTimeline</c> standalone without <c>Gantt3</c>
+    /// keeps its exact prior behavior; <c>Gantt3</c> instead passes down the
+    /// BROWSER's local date once JS interop resolves it, for v2 parity (v2
+    /// derives "today" via the browser's own <c>new Date()</c>).
+    /// </summary>
+    [Parameter] public DateTime Today { get; set; } = DateTime.Today;
+
+    /// <summary>
+    /// Overrides which date the scroll-to-center mechanism (<see cref="ScrollToTodayRequestId"/>,
+    /// firstRender, empty→populated) actually scrolls toward. Null (the default)
+    /// targets <see cref="Today"/>, unchanged from every existing behavior. Set
+    /// by <c>Gantt3</c> specifically when recentering after a view-mode switch
+    /// (Codex round 4, P2 #8) — the user's previously-centered date, not
+    /// necessarily today. <see cref="Today"/> itself still drives the MARKER's
+    /// own position (<see cref="TodayInRange"/>/<see cref="TodayLineStyle"/>) —
+    /// this only redirects where the DOM actually scrolls to.
+    /// </summary>
+    [Parameter] public DateTime? ScrollTargetDate { get; set; }
+
+    /// <summary>
+    /// Pixels of the <see cref="ScrollHost"/>'s own content that precede this
+    /// timeline's origin (x=0) — namely a sibling tree pane's width, when
+    /// <c>Gantt3</c> renders one (Codex round 4, P2 #2). Defaults to 0
+    /// (standalone mode, or no tree pane — this timeline's own coordinate
+    /// space already starts at the ScrollHost's content origin). Added to
+    /// every scroll TARGET before issuing it to <c>centerOn</c> — this
+    /// timeline's own internal pixel math (bar/grid/marker positions) is
+    /// entirely unaffected, since those are all relative to THIS component's
+    /// own origin, not the shared pane's.
+    /// </summary>
+    /// <remarks>
+    /// Bug fix (Codex round 4, P2 #2): before this fix, <c>EffectiveScrollHost</c>
+    /// (Gantt3's outer pane) scrolled based on ITS OWN content's absolute
+    /// position — which, with a tree pane shown, starts with
+    /// <see cref="GanttScale.TreePaneWidth"/> pixels of tree BEFORE this
+    /// timeline even begins — while every X this component computes
+    /// (<see cref="TodayX"/> included) is relative to ITS OWN origin (x=0 at
+    /// the first date column, i.e. immediately after the tree). Centering on
+    /// a raw, un-offset TodayX therefore landed the DOM's actual scroll
+    /// position short by exactly the tree's width in LTR-with-tree layouts.
+    /// </remarks>
+    [Parameter] public double ScrollHostLeadingOffset { get; set; }
+
+    /// <summary>
+    /// The element that owns horizontal (and vertical) scrolling for this
+    /// timeline, when a caller (namely <c>Gantt3</c>) provides one of its own.
+    /// Null (the default) keeps this component's PRIOR, fully self-contained
+    /// behavior: <c>.lumeo-gantt-v3-canvas-scroll</c> gets its own
+    /// <c>overflow-x-auto</c> and every scroll interop call targets it directly
+    /// — unchanged for any existing standalone usage (e.g. a bUnit test that
+    /// renders <c>GanttTimeline</c> alone, with no <c>Gantt3</c> wrapping it).
+    /// </summary>
+    /// <remarks>
+    /// Bug fix (Codex round 3, P2 #1 — pulled forward from Phase 3 T1):
+    /// <c>.lumeo-gantt-v3-canvas-scroll</c>'s own <c>overflow-x-auto</c> made it
+    /// a scroll container on BOTH axes (the same CSS-overflow-promotion rule
+    /// behind the round-2 sticky-header bug — see that fix's remarks above:
+    /// setting overflow-x to anything but visible/clip silently promotes a
+    /// sibling overflow-y:visible to overflow-y:auto too), so Blazor's
+    /// <c>Virtualize</c> picked THIS div as its scroll ancestor instead of
+    /// Gantt3's real outer (vertical) pane — and because this div's height
+    /// auto-fits its content (<c>CanvasStyle</c>'s <c>min-height</c>, not a
+    /// capped height), Virtualize's IntersectionObserver root was effectively
+    /// unbounded, so EVERY row measured as "visible" and rendered — a tall
+    /// fixture rendered all N bars regardless of the actual viewport height.
+    /// When <c>Gantt3</c> supplies its own outer pane here (which already sets
+    /// an explicit <c>overflow:auto</c> with a real <c>max-height</c> — no
+    /// promotion ambiguity, since BOTH axes are already non-visible on that
+    /// element deliberately), this component drops its own
+    /// <c>overflow-x-auto</c> entirely — there is no longer an intervening
+    /// scroll container between <c>Virtualize</c> and the real, height-capped
+    /// scroll ancestor, so it correctly virtualizes against that instead.
+    /// </remarks>
+    [Parameter] public ElementReference? ScrollHost { get; set; }
+
+    private ElementReference _scrollHostRef;
+    private ElementReference _headerInnerRef;
+    // The last scroll-intent version actually CONSUMED (applied to the DOM).
+    // ScrollToTodayRequestId differing from this means an intent is pending;
+    // once applied they match and ScrollTargetDate expires (Codex round 14,
+    // finding #3). Starts below any real request id so the first render's
+    // intent (the initial center) counts as pending and is applied.
+    private int _lastConsumedScrollRequestId = int.MinValue;
+    private DateTime _lastSeenToday;
+
+    // Bug fix (Codex round 7 review, P2 #2): this used to be a plain
+    // `_scrollHostWasReady` bool, tracking only the ONE-WAY "not yet
+    // captured -> captured" transition. That missed a genuinely different
+    // trigger: a caller supplying a LATER or REPLACED host — a standalone
+    // timeline whose ScrollHost arrives after mount, or a parent that swaps
+    // in a different host element outright — never re-registers, because the
+    // bool had already flipped true once and can never flip again. Tracking
+    // the host's own captured Id (not just a readiness bool) lets a genuine
+    // identity change be detected on ANY render, not just the first
+    // not-ready-to-ready one. Null means "not currently registered against
+    // any host" (either not yet ready, or nothing registered yet).
+    private string? _lastSeenScrollHostId;
+    private ElementReference? _registeredScrollHostRef;
+    private bool _headerScrollSyncRegistered;
+
+    // Codex round 4, P2 #3 — see GanttV3RegisterVerticalScrollTrackingAsync's
+    // own remarks. Null until the first scroll report arrives (registration
+    // is async; a JS round-trip separates mount from the first callback) —
+    // GanttArrowLayer treats null as "show every arrow, unculled" so there's
+    // no flash-of-no-arrows in that brief window.
+    private (int Start, int End)? _visibleRowRange;
+    private bool _verticalScrollTrackingRegistered;
+    private DotNetObjectReference<GanttTimeline>? _selfRef;
+
+    // Codex round 17 review, P2 — see RegisterVerticalScrollTrackingAsync's
+    // own remarks. Same "track disposed state, recheck after the register
+    // call's own await" pattern GanttBar.razor already uses for its
+    // identical key-handler-registration-vs-dispose race.
+    private bool _disposed;
+
+    // Codex round 6, P1 #2 — the last scrollTop/clientHeight actually reported
+    // (by JS, OR re-derived here) and the row count the culling window was
+    // last computed against. Cached so a rows-count change (empty->populated,
+    // collapse/expand) can re-run the EXACT SAME clamping synchronously in
+    // C#, without waiting for a native 'scroll' event that may never come —
+    // see RecomputeVisibleRowRange's own remarks.
+    private double? _lastReportedScrollTop;
+    private double? _lastReportedClientHeight;
+    private int _lastCulledRowCount = -1;
+
+    // Codex round 2, P1 #3: this root no longer establishes any scroll
+    // container itself at all — the header (sticky) and the row-canvas
+    // (overflow-x-auto) are now separate children with their own concerns;
+    // see the header's own markup remarks for the CSS-spec detail behind why
+    // that split was necessary (an intervening `overflow-x:auto` ancestor,
+    // even a never-actually-scrolling one, hijacks `position: sticky`).
+    // Bug fix (Codex round 5, P1 #4 root cause): "w-full" (width:100%) here,
+    // combined with the shared `.flex` row's own `width:max-content` shrink-
+    // to-fit sizing (Gantt3's markup) and this item's `min-width:TotalWidth`
+    // (RootStyle) + the caller's `grow` class, resolves this box's rendered
+    // width to TotalWidth + GanttScale.TreePaneWidth instead of exactly
+    // TotalWidth (confirmed via a live diagnostic: this root measured 224px
+    // WIDER than its own `_headerInnerRef`/canvas-relative children, which
+    // stay correctly sized at TotalWidth) — a percentage-width flex item
+    // inside a shrink-to-fit container is a known circular-sizing case
+    // browsers resolve inconsistently. That extra 224px inflates
+    // `el.scrollWidth`, which corrupts `maxScroll` (`scrollWidth-clientWidth`)
+    // in gantt-v3.js's RTL scrollLeft conversion (`toNativeScrollLeft`/
+    // `fromNativeScrollLeft`) specifically — LTR's conversion is a no-op that
+    // never reads `maxScroll` at all, which is why this defect was invisible
+    // under LTR (scroll-to-today centering happened to still land correctly
+    // there) but threw RTL's centering off by exactly TreePaneWidth. "w-full"
+    // is now dropped in Gantt3's shared-pane mode (ScrollHost supplied) —
+    // width is already fully governed there by RootStyle's min-width plus
+    // the caller's own "grow" class, so it was redundant AND the actual
+    // source of the bug. Standalone mode (ScrollHost null) is unaffected —
+    // it never had a sibling Tree/shared-width scenario to trigger this.
+    private string RootClass => Cx.Merge(ScrollHost is null ? "w-full" : null, Class);
+
+    // Bug fix (Codex round 3, cx3 review): when a caller supplies ScrollHost
+    // (Gantt3's shared-pane mode), this root needs a REAL min-width equal to
+    // the rendered content's TotalWidth — not just visually-overflowing
+    // descendants — so the surrounding flex row's own layout box genuinely
+    // spans the scrollable content width. GanttTree's sticky-left positioning
+    // is bounded within ITS containing block (that flex row), not the outer
+    // scroll container's full scrollWidth — a flex item that's merely allowed
+    // to shrink (min-w-0/flex-1) with only visually-overflowing content stays
+    // viewport-narrow in the LAYOUT sense even though bars visually spill
+    // thousands of pixels wider, leaving sticky nothing to stick within past
+    // that narrow extent (reproduced live: GanttTree's bbox at x=-458 after
+    // scrolling to scrollLeft=1497 — the "1:1 with GanttTree.RootClass" fix
+    // note this replaces described the INTENDED behavior, not what actually
+    // rendered). min-width (not width) so a range that fits within the
+    // available flex space still grows to fill it via Gantt3's "grow" class
+    // instead of leaving a gap. Standalone mode (ScrollHost null) is
+    // unaffected — it establishes its own inner horizontal scroll instead, so
+    // this root never needed to be content-width itself.
+    private string? RootStyle => ScrollHost is not null
+        ? FormattableString.Invariant($"min-width:{TotalWidth}px;")
+        : null;
+
+    // Codex round 3, P2 #1 — see ScrollHost's own remarks. Only self-scrolls
+    // (overflow-x-auto) in standalone mode; when a caller supplies ScrollHost,
+    // horizontal scrolling lives entirely at THEIR level instead, so this div
+    // stays a plain, non-scrolling block (no overflow set at all — not even
+    // hidden/clip, which would still block Virtualize's ancestor walk from
+    // reaching past it in the same way auto/scroll does).
+    private string CanvasScrollClass => Cx.Merge("lumeo-gantt-v3-canvas-scroll w-full", ScrollHost is null ? "overflow-x-auto" : null);
+
+    // The element every scroll interop call targets — Gantt3's outer pane when
+    // supplied, else this component's own row-canvas div (unchanged prior
+    // behavior for standalone usage).
+    private ElementReference EffectiveScrollHost => ScrollHost ?? _scrollHostRef;
+
+    private GanttScaleConfig Cfg => GanttScale.GetConfig(ViewMode);
+
+    // Bug fix (Codex round 17 review, P2): v2 resolves both overrides via a
+    // plain JS truthy check (gantt-v2.js: `inst.columnWidth ? ... : ...` /
+    // `inst.barHeight || DEFAULT_BAR_HEIGHT`) — 0 (or a negative value) is
+    // FALSY, so v2 silently treats it the same as "unset" and falls back to
+    // the default. `??` only checks for null, so a caller passing an explicit
+    // 0 here (whether deliberately or via some computed value that happens to
+    // resolve to it) got a genuinely broken chart in v3 (zero-width columns,
+    // zero-height bars) instead of the graceful default v2 falls back to —
+    // `> 0` on a nullable int is false for both null and non-positive values,
+    // matching v2's own truthy check exactly.
+    private int EffectiveColumnWidth => ColumnWidth > 0 ? ColumnWidth!.Value : Cfg.ColumnWidth;
+    private int EffectiveBarHeight => BarHeight > 0 ? BarHeight!.Value : GanttScale.DefaultBarHeight;
+
+    private IReadOnlyList<DateTime> Units => GanttScale.BuildDateUnits(ViewMode, RangeStart, RangeEnd);
+    private DateTime Origin => Units.Count > 0 ? Units[0] : RangeStart;
+    private double TotalWidth => Units.Count * (double)EffectiveColumnWidth;
+
+    // Falls back to a 1:1 Task-per-row list (T2's original contract) when the
+    // caller doesn't supply a pre-flattened Rows list — see the Rows parameter's
+    // remarks. Every entry is a GanttRowKind.Task row at depth 0 with no
+    // collapse/toggle affordance, matching what T2 always rendered.
+    private IReadOnlyList<GanttVisibleRow> EffectiveRows => Rows ?? BuildFallbackRows();
+
+    private List<GanttVisibleRow> BuildFallbackRows()
+    {
+        var rows = new List<GanttVisibleRow>(Tasks.Count);
+        foreach (var task in Tasks)
+            rows.Add(new GanttVisibleRow(GanttRowKind.Task, task, task.Name, 0, false, null, false));
+        return rows;
+    }
+
+    // Codex round 2, P1 #3: no longer includes GanttScale.HeaderHeight — the
+    // header lives OUTSIDE this canvas subtree entirely now (see the markup's
+    // own remarks), so row 0 starts at y=0 in this coordinate space instead
+    // of y=HeaderHeight. GanttArrowRouting.SourceEdge/TargetEdge dropped the
+    // matching "+HeaderHeight" term for the same reason.
+    private double CanvasHeight => Math.Max(1, EffectiveRows.Count) * GanttScale.RowHeight;
+
+    private IReadOnlyList<GanttHeaderRun> UpperRuns => GanttScale.UpperRuns(ViewMode, Units);
+    private IReadOnlyList<string> LowerLabels => GanttScale.LowerLabels(ViewMode, Units);
+
+    // Bug fix (Codex review wave): must pass EffectiveColumnWidth explicitly —
+    // DateToPixel defaults to the mode's own config width when no override is
+    // given, which silently ignored a caller's ColumnWidth override here (the
+    // header/grid, which compute column positions via EffectiveColumnWidth
+    // directly rather than through DateToPixel, were already correct).
+    private double TodayX => GanttScale.DateToPixel(ViewMode, Origin, Today, EffectiveColumnWidth);
+    private bool TodayInRange => TodayHighlight && Units.Count > 0 && TodayX >= 0 && TodayX <= TotalWidth;
+
+    // Codex round 4, P2 #8: the pixel the scroll-to-center mechanism targets —
+    // ScrollTargetDate when the caller (Gantt3, after a recenter) supplies one,
+    // else Today. Deliberately SEPARATE from TodayX — the marker must always
+    // reflect where TODAY is, regardless of what the viewport is being scrolled
+    // toward.
+    //
+    // Codex round 14, finding #3: the explicit ScrollTargetDate is honored ONLY
+    // while its scroll intent is still pending (its ScrollToTodayRequestId bump
+    // hasn't been applied yet) — an AMBIENT re-scroll (a browser-"today" change
+    // at midnight, a host swap) passes intentPending=false and so targets Today,
+    // letting a consumed preserved-center intent expire instead of re-applying
+    // it forever. A standalone timeline leaves ScrollTargetDate null, so this is
+    // always Today there, unchanged.
+    private double ResolveScrollTargetX(bool intentPending) =>
+        GanttScale.DateToPixel(ViewMode, Origin, (intentPending ? ScrollTargetDate : null) ?? Today, EffectiveColumnWidth);
+
+    // v2 parity (Codex round 2, P2 #8): v2's scroll-to-today gate is
+    // `todayPx > 0` (gantt-v2.js:684) — deliberately LOOSER than the
+    // today-LINE marker's own render gate (`todayInRange`, upper+lower
+    // bounded, gantt-v2.js:329, mirrored by TodayInRange above). v2 still
+    // attempts `scrollLeft = todayPx - w/2` even when today is PAST the
+    // rendered window's end, relying on the BROWSER's own scrollLeft clamp
+    // (assigning past the max valid value clamps to the far edge) to land at
+    // the latest-visible dates instead of leaving scrollLeft at its DOM
+    // default 0 (the EARLIEST dates — visibly wrong, and the mechanism behind
+    // the visual-snapshot-drift finding: a fixed-date fixture whose "today"
+    // has since moved past its rendered window silently flipped from
+    // "scrolled toward today" to "stuck at the far left" the moment
+    // TodayInRange went false, with no equivalent recovery on the OTHER side
+    // of that flip). TodayInRange itself stays the MARKER's own gate,
+    // unchanged — only the scroll-ATTEMPT condition needed loosening.
+    //
+    // Bug fix (Codex round 3, P2 #3): this used to ALSO require TodayHighlight,
+    // conflating "should the marker line render" with "should the viewport
+    // center on today" — a consumer setting TodayHighlight="false" (wanting no
+    // visual line, nothing more) got the EXACT SAME "empty grid on first
+    // paint" regression the P1 fix above exists to prevent, just gated by a
+    // different flag. v2 parity: gantt-v2.js's scroll block (lines 673-693,
+    // tryScroll) runs unconditionally — only the marker draw a few lines
+    // later is gated by inst.todayHighlight !== false. TodayHighlight now
+    // controls ONLY TodayInRange (the marker); the scroll-attempt is
+    // unconditional on it.
+    //
+    // Codex round 4, P2 #8: gates on ScrollTargetX now (was TodayX) so this
+    // generalizes correctly to a non-Today scroll target — reduces to the
+    // exact prior behavior when ScrollTargetDate is null (ScrollTargetX ==
+    // TodayX in that case). A view-mode-switch's centerDate is, by
+    // construction, always the exact midpoint of the freshly-computed range
+    // (see Gantt3.HandleViewModeChangedAsync), so this gate is trivially
+    // satisfied for that caller — the loosened v2-parity semantics above
+    // only actually matter for the Today-targeting case, unchanged.
+    //
+    // Bug fix (Codex round 5, P2 #9): this used to ALSO require
+    // "ScrollTargetX > 0" (matching v2's identical `todayPx > 0` gate,
+    // gantt-v2.js:684), skipping the scroll ATTEMPT entirely whenever the
+    // target fell before the very first rendered column — relying on the
+    // DOM's own untouched default scrollLeft to already show "the earliest
+    // edge" instead of an explicit clamp. That default only happens to BE
+    // the earliest edge under LTR (native scrollLeft's own default, 0, is
+    // the physical-left origin there); under RTL's 'negative' convention
+    // (gantt-v3.js's own remarks), native scrollLeft 0 is the RTL START —
+    // the PHYSICAL RIGHT edge, i.e. wherever GanttTree ends up pinned (see
+    // ScrollHostLeadingOffset's remarks on Gantt3) — so skipping the attempt
+    // under RTL left the timeline scrolled entirely out of view instead,
+    // showing only the tree pane. centerOn's own `Math.max(0, targetX - w/2)`
+    // clamp (applied AFTER toNativeScrollLeft's direction-correct mapping)
+    // already lands correctly at the earliest edge in BOTH directions when
+    // actually invoked — so the fix is simply to always attempt the scroll
+    // whenever there is a rendered range to scroll within, and let that
+    // clamp do the direction-aware work instead of skipping the call
+    // entirely and hoping the DOM's own default happens to agree.
+    private bool ShouldAttemptTodayScroll => Units.Count > 0;
+
+    private string CanvasStyle => FormattableString.Invariant($"width:{TotalWidth}px;min-height:{CanvasHeight}px;");
+    private string HeaderOuterStyle => FormattableString.Invariant($"height:{GanttScale.HeaderHeight}px;");
+    private string HeaderInnerStyle => FormattableString.Invariant($"width:{TotalWidth}px;");
+    private string ColumnCellStyle => FormattableString.Invariant($"width:{EffectiveColumnWidth}px;");
+
+    private string UpperRunStyle(GanttHeaderRun run) =>
+        FormattableString.Invariant($"left:{run.StartIndex * EffectiveColumnWidth}px;top:2px;padding-inline-start:8px;");
+
+    // Codex round 2, P1 #3: top:0 (was top:HeaderHeight) — see CanvasHeight's
+    // own remarks for why the header no longer occupies space in this
+    // coordinate system at all.
+    private string GridLinesContainerStyle => "top:0;bottom:0;";
+
+    private string GridLineStyle(int columnIndex) =>
+        FormattableString.Invariant($"left:{columnIndex * EffectiveColumnWidth}px;");
+
+    // Codex round 2, P1 #3: top:-4px (was HeaderHeight-4) — the same 4px
+    // decorative overhang above row 0's own top, just relative to THIS
+    // canvas's new (header-less) origin instead of the header's old bottom edge.
+    private string TodayLineStyle =>
+        FormattableString.Invariant($"left:{TodayX}px;top:-4px;");
+
+    // Positions a GanttRowKind.GroupHeader slot's full-width stripe (Codex round
+    // 2, P2 #7) — mirrors GanttBar's own RowIndex*RowHeight top math (see its
+    // WrapperStyle) but spans the full row width (inset-x-0) rather than a
+    // date-bounded bar.
+    private string GroupHeaderStyle(int rowIndex) =>
+        FormattableString.Invariant($"top:{rowIndex * GanttScale.RowHeight}px;height:{GanttScale.RowHeight}px;");
+
+    private string RowsContainerStyle =>
+        FormattableString.Invariant($"height:{Math.Max(1, EffectiveRows.Count) * GanttScale.RowHeight}px;width:{TotalWidth}px;");
+
+    // One row slot's already-resolved geometry, computed fresh from GanttScale
+    // each render — see GanttScale.BarGeometry for the underlying math (a 1:1
+    // port of gantt-v2.js's dateToX usage: render() lines 508-512 for a regular
+    // bar, lines 459-463 for a milestone's diamond center). Task is null for a
+    // GanttRowKind.GroupHeader slot — Virtualize still allocates it a slot (so
+    // RowIndex stays list-position-aligned for every OTHER row, which its
+    // internal viewport math depends on), but no <GanttBar> renders for it
+    // (see the @if (row.Task is not null) guard in the markup above).
+    internal sealed record GanttTimelineRow(GanttTask? Task, double X, double Width, int RowIndex, string? Color, string? Label);
+
+    // Virtualize<TItem>.Items requires ICollection<TItem> (IReadOnlyList doesn't
+    // implement it) — List<T> both satisfies that and matches the pattern
+    // DataGridBody uses for its own Virtualize Items source (_indexedItems).
+    private List<GanttTimelineRow> RowItems
+    {
+        get
+        {
+            var visibleRows = EffectiveRows;
+            var rows = new List<GanttTimelineRow>(visibleRows.Count);
+            for (var i = 0; i < visibleRows.Count; i++)
+            {
+                var task = visibleRows[i].Task;
+                if (task is null)
+                {
+                    // Group-header slot: still occupies row index i (matching v2's
+                    // rowSlot, which advances for header rows too) — Label carries
+                    // the group's own name (Codex round 2, P2 #7) so the markup's
+                    // else-branch above can render v2's section-header stripe here.
+                    rows.Add(new GanttTimelineRow(null, 0, 0, i, null, visibleRows[i].Label));
+                    continue;
+                }
+                var color = BarColor?.Invoke(task);
+                var (x, width) = GanttScale.BarGeometry(task, ViewMode, Origin, EffectiveColumnWidth, EffectiveBarHeight);
+                rows.Add(new GanttTimelineRow(task, x, width, i, color, null));
+            }
+            return rows;
+        }
+    }
+
+    // P1 fix (Codex review wave): center the DOM's actual scrollLeft on today,
+    // mirroring gantt-v2.js's init-time tryScroll (lines 673-693) — WITHOUT
+    // this, Gantt3.ComputeInitialRange's ~60-day padding before the earliest
+    // task left scrollLeft at its default 0, showing an empty grid on first
+    // paint (the committed v3 Day visual baseline showed exactly this bug).
+    // Fires (a) once on first render, mirroring v2's ONE-TIME init-scroll
+    // (v2 explicitly does NOT re-scroll on every refresh — see its own
+    // "_initialScrolled" flag/comment — recentering on every render would
+    // clobber a user's manual pan), and (b) again whenever
+    // ScrollToTodayRequestId changes (Gantt3's GoToTodayAsync bumps it) —
+    // recentering VisibleRange alone doesn't move the DOM's scrollLeft, since
+    // Blazor's diff of a parameter change is not itself a scroll action.
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            // Codex round 3, P2 #1: the JS scroll-sync transform exists ONLY to
+            // work around an intervening overflow-x:auto ancestor hijacking the
+            // header's own `position:sticky` (see the header markup's remarks) —
+            // when ScrollHost is supplied, this component's row-canvas div is no
+            // longer such an ancestor (CanvasScrollClass drops overflow-x-auto
+            // entirely), so there is nothing left for native sticky positioning
+            // to be defeated BY: the header naturally scrolls horizontally with
+            // the shared outer pane's content (ordinary document flow) while
+            // staying vertically pinned via its own sticky top-0 — no JS needed.
+            // Registering the sync anyway in this mode would double-apply the
+            // horizontal offset (once via natural scroll, once via the extra
+            // transform), so ReconcileHeaderScrollSyncAsync (see its own
+            // remarks) skips it entirely in that mode rather than redirecting.
+            //
+            // Registered BEFORE the scroll-to-today attempt below, so the
+            // header-scroll-sync listener already exists by the time that
+            // scroll's own (asynchronous, requestAnimationFrame-scheduled)
+            // native 'scroll' event fires — otherwise the header could miss
+            // mirroring the very first centering scroll.
+            await ReconcileHeaderScrollSyncAsync();
+
+            _lastSeenToday = Today;
+            _lastSeenScrollHostId = CurrentHostId;
+
+            // Codex round 4, P2 #3: registered unconditionally (both modes —
+            // unlike the header-scroll-sync above, this one is NOT skipped for
+            // Gantt3's shared-pane mode; see its own registration method
+            // remarks for why). Same "not yet captured" ElementReference race
+            // as the scroll-to-today attempt below — gated on IsScrollHostReady
+            // and retried on the same scrollHostChanged transition.
+            if (IsScrollHostReady) await RegisterVerticalScrollTrackingAsync();
+
+            // Bug fix (Codex round 3, P2 #1): a caller-supplied ScrollHost's
+            // value DURING this render is unavoidably whatever the ancestor's
+            // own ref field held when the ANCESTOR's render tree was built —
+            // which precedes that SAME render's own ref-capture step (verified
+            // empirically: Gantt3's own _scrollPaneRef is already valid inside
+            // ITS OnAfterRenderAsync, yet this component sees an uncaptured/
+            // empty-Id ElementReference for the identical value on this SAME
+            // pass). Attempting the scroll against a not-yet-ready host would
+            // silently no-op (gantt-v3.js's centerOn no-ops on a null/
+            // unresolvable element) — skipped here entirely rather than
+            // wasting the round-trip, deferring to the guaranteed retry below
+            // (Gantt3 forces exactly one extra render specifically so this
+            // component gets a second chance with a now-valid host). Standalone
+            // usage (ScrollHost null) is unaffected — IsScrollHostReady is
+            // trivially true in that mode, so this still scrolls on
+            // firstRender exactly as before ScrollHost existed.
+            if (IsScrollHostReady && ShouldAttemptTodayScroll)
+            {
+                var initialIntentPending = ScrollToTodayRequestId != _lastConsumedScrollRequestId;
+                // Bug fix (Codex round 15 review, P2): capture the request id
+                // being applied BEFORE the await below — ScrollToCenterAsync is
+                // an interop round-trip, and if a NEWER ScrollToTodayRequestId
+                // arrives while it's outstanding (a second render pushing
+                // another recenter before this one's scroll lands), re-reading
+                // the LIVE ScrollToTodayRequestId afterward would mark that
+                // newer, not-yet-applied request as consumed too — its own
+                // target never gets a fresh apply.
+                //
+                // Math.Max (not a flat overwrite) so the REVERSE interleaving
+                // is also safe: if the newer request's own apply already ran
+                // and completed WHILE this one was still stuck (recording the
+                // newer id first), this call resuming afterward must not roll
+                // _lastConsumedScrollRequestId back down to its OWN (now
+                // stale) id — that would spuriously mark the already-applied
+                // newer target "pending" again on some later, unrelated
+                // render. Whichever id is numerically highest is always the
+                // one that was actually (or will be) applied last.
+                var requestIdBeingApplied = ScrollToTodayRequestId;
+                await ScrollToCenterAsync(ResolveScrollTargetX(initialIntentPending));
+                _lastConsumedScrollRequestId = Math.Max(_lastConsumedScrollRequestId, requestIdBeingApplied);
+            }
+            return;
+        }
+
+        // Today (Codex round 2, P2 #9) changing — e.g. Gantt3's browser-date
+        // resolution landing a render or two after mount — is treated exactly
+        // like a ScrollToTodayRequestId bump: recentering VisibleRange/TodayX
+        // alone never touches the DOM's actual scrollLeft (same reasoning as
+        // the pre-existing ScrollToTodayRequestId check below).
+        //
+        // ScrollHost transitioning from "not yet captured" to "captured"
+        // (Codex round 3, P2 #1), OR a genuinely DIFFERENT host arriving
+        // later (Codex round 7 review, P2 #2 — a standalone timeline
+        // receiving a parent host after mount, or a parent replacing the
+        // host element outright), is the SAME kind of trigger: the timeline
+        // needs to (re)bind its scroll-tracking registration and re-request
+        // the pending centering scroll against whichever host is current.
+        // Comparing the CAPTURED ID (not the raw ElementReference struct, and
+        // not just a one-way readiness bool) is what makes this a genuine
+        // identity-change check rather than either a one-shot latch (the old
+        // bug) or something that fires on harmless struct-identity churn for
+        // an otherwise-unchanged, already-valid reference.
+        var currentHostId = CurrentHostId;
+        var scrollHostChanged = currentHostId != _lastSeenScrollHostId;
+        // Codex round 14, finding #3: an intent is pending until its request-id
+        // bump is actually applied — so an intent deferred because the host
+        // wasn't ready yet is still applied on the later host-ready render.
+        var intentPending = ScrollToTodayRequestId != _lastConsumedScrollRequestId;
+        if (intentPending || Today != _lastSeenToday || scrollHostChanged)
+        {
+            _lastSeenToday = Today;
+            _lastSeenScrollHostId = currentHostId;
+
+            // Minor tightening (cx3 review): this branch can also fire for a
+            // Today change alone, independent of scrollHostChanged above —
+            // re-checking IsScrollHostReady here guards the (practically
+            // unreachable, since Gantt3's own ref is already valid by the time
+            // it could bump either of those, but not provably impossible for a
+            // future caller) case where one of them changes on the SAME render
+            // ScrollHost is still resolving. The explicit ScrollTargetDate is
+            // honored only while intentPending; a pure Today/host re-scroll
+            // targets Today (finding #3).
+            if (IsScrollHostReady && ShouldAttemptTodayScroll)
+            {
+                // Bug fix (Codex round 15 review, P2) — see the firstRender
+                // branch's own remarks above for the full reasoning: capture
+                // the id this call is actually applying before the await, mark
+                // THAT one consumed (via Math.Max, not a flat overwrite — see
+                // the same remarks for why), not whatever ScrollToTodayRequestId
+                // happens to read once the interop round-trip resolves.
+                var requestIdBeingApplied = ScrollToTodayRequestId;
+                await ScrollToCenterAsync(ResolveScrollTargetX(intentPending));
+                _lastConsumedScrollRequestId = Math.Max(_lastConsumedScrollRequestId, requestIdBeingApplied);
+            }
+
+            // Codex round 7 review, P2 #2: a genuine host-identity change
+            // must tear down the OLD registration (against the OLD host)
+            // before registering the new one — RegisterVerticalScrollTrackingAsync
+            // alone is a no-op once _verticalScrollTrackingRegistered is
+            // already true, which is exactly what let the old host go on
+            // reporting scroll positions for the wrong element forever.
+            // RebindVerticalScrollTrackingAsync handles both this and the
+            // plain not-ready-to-ready case (unregister is a no-op there,
+            // since nothing was registered yet).
+            if (scrollHostChanged) await RebindVerticalScrollTrackingAsync();
+            else if (IsScrollHostReady) await RegisterVerticalScrollTrackingAsync();
+
+            // Bug fix (Codex round 8 review, P2 #3): the header-sync
+            // registration used to be decided ONLY on firstRender — a
+            // standalone timeline (ScrollHost null at mount) later receiving
+            // a parent host, or a shared-pane timeline later losing its host
+            // (ScrollHost reverting to null), never reconfigured it: the
+            // firstRender snapshot latched forever, the SAME latch class as
+            // the vertical-scroll-tracking bug above. Shares this EXACT
+            // scrollHostChanged trigger rather than a second, independent
+            // detection mechanism — see ReconcileHeaderScrollSyncAsync's own
+            // remarks for what "reconfigure" means here.
+            if (scrollHostChanged) await ReconcileHeaderScrollSyncAsync();
+        }
+
+        // Bug fix (Codex round 6, P1 #2): a rows-count change (empty->populated,
+        // collapse/expand toggling row visibility) never re-triggers the
+        // vertical-scroll-tracking JS listener at all — no native 'scroll'
+        // event fires, and the pane's own size (what a ResizeObserver would
+        // watch) doesn't change either, only its SCROLLABLE CONTENT does. Left
+        // unhandled, GanttArrowLayer kept culling against whatever row count
+        // was last reported, silently hiding every arrow the moment a task
+        // list went from empty to populated (bars/tree render immediately via
+        // Virtualize; only the arrow-culling window was stale). Re-derives the
+        // SAME clamping synchronously in C# from the last actually-reported
+        // scrollTop/clientHeight — no JS round-trip needed, since nothing
+        // about the SCROLL POSITION itself changed, only which row indices it
+        // now maps to.
+        var rowCount = EffectiveRows.Count;
+        if (rowCount != _lastCulledRowCount && _lastReportedScrollTop is { } st && _lastReportedClientHeight is { } ch)
+        {
+            RecomputeVisibleRowRange(st, ch);
+        }
+    }
+
+    // Codex round 4, P2 #3. Idempotent per EffectiveScrollHost value — the JS
+    // side (registerVerticalScrollTracking) also guards via its own Map, but
+    // guarding here too avoids a redundant interop round-trip on every retry
+    // once already registered. Records which host it registered against
+    // (Codex round 7 review, P2 #2) so a later identity change can unregister
+    // the RIGHT (old) element rather than whatever EffectiveScrollHost has
+    // since become.
+    //
+    // Bug fix (Codex round 17 review, P2): _verticalScrollTrackingRegistered
+    // is set TRUE synchronously, right here, before the interop call below
+    // even starts — so DisposeAsync landing while that call is still in
+    // flight already sees it as "registered" and DOES fire its own unregister
+    // call. That isn't quite enough on its own: DisposeAsync's unregister can
+    // race the JS side's own (still in-flight) register call and lose —
+    // arriving before the register's own effects land there — leaving the
+    // listener registered forever with nothing left to ever tear it down
+    // again. Mirrors GanttBar's own register-vs-dispose fix: explicitly await
+    // the register call here (this method is now genuinely async, not just
+    // returning the interop Task for the caller to await), then re-check
+    // disposed state immediately after and issue one more unregister if so —
+    // deterministically closing the ordering gap DisposeAsync's own
+    // best-effort attempt can't guarantee alone.
+    private async Task RegisterVerticalScrollTrackingAsync()
+    {
+        if (_verticalScrollTrackingRegistered) return;
+        _verticalScrollTrackingRegistered = true;
+        _registeredScrollHostRef = EffectiveScrollHost;
+        _selfRef ??= DotNetObjectReference.Create(this);
+        await Interop.GanttV3RegisterVerticalScrollTrackingAsync(EffectiveScrollHost, _selfRef);
+
+        if (_disposed)
+        {
+            try { await Interop.GanttV3UnregisterVerticalScrollTrackingAsync(_registeredScrollHostRef.Value); }
+            catch (JSDisconnectedException) { }
+        }
+    }
+
+    // Codex round 7 review, P2 #2: tears down vertical-scroll tracking on the
+    // PREVIOUSLY-registered host (if any) before registering against the
+    // current one. Safe to call whenever CurrentHostId has changed, whether
+    // that's the first "not ready -> ready" capture (nothing to unregister
+    // yet) or a genuinely different host replacing an already-registered one.
+    private async Task RebindVerticalScrollTrackingAsync()
+    {
+        if (_verticalScrollTrackingRegistered && _registeredScrollHostRef is { } oldHost)
+        {
+            _verticalScrollTrackingRegistered = false;
+            _registeredScrollHostRef = null;
+            try { await Interop.GanttV3UnregisterVerticalScrollTrackingAsync(oldHost); }
+            catch (JSDisconnectedException) { }
+        }
+
+        if (IsScrollHostReady) await RegisterVerticalScrollTrackingAsync();
+    }
+
+    // Bug fix (Codex round 8 review, P2 #3): reconciles the header-scroll-sync
+    // JS listener against whichever mode is CURRENT, rather than the
+    // firstRender-only registration this used to be — a standalone timeline
+    // (ScrollHost null at mount) later receiving a parent host, or the
+    // reverse, never reconfigured the listener before this fix, the same
+    // one-shot-latch class RebindVerticalScrollTrackingAsync closes above for
+    // vertical-scroll tracking. Header sync is wanted in standalone mode
+    // ONLY (ScrollHost null — see the firstRender remarks above for why it
+    // would double-apply the horizontal offset otherwise), so this is a
+    // plain "does the CURRENT mode want it, does that match what's actually
+    // registered" reconcile — idempotent, safe to call on every firstRender
+    // AND every scrollHostChanged transition, sharing this ONE code path
+    // instead of the two independent ones (an inline firstRender block plus
+    // nothing at all for later transitions) that existed before.
+    private async Task ReconcileHeaderScrollSyncAsync()
+    {
+        var wantHeaderSync = ScrollHost is null;
+        if (wantHeaderSync == _headerScrollSyncRegistered) return;
+
+        if (_headerScrollSyncRegistered)
+        {
+            _headerScrollSyncRegistered = false;
+            try { await Interop.GanttV3UnregisterHeaderScrollSyncAsync(_scrollHostRef); }
+            catch (JSDisconnectedException) { }
+        }
+
+        if (wantHeaderSync)
+        {
+            _headerScrollSyncRegistered = true;
+            await Interop.GanttV3RegisterHeaderScrollSyncAsync(_scrollHostRef, _headerInnerRef);
+        }
+    }
+
+    /// <summary>
+    /// Reports the shared scroll pane's current scrollTop/clientHeight (Codex
+    /// round 4, P2 #3) — invoked from JS via <c>registerVerticalScrollTracking</c>'s
+    /// rAF-throttled listener, on a native 'scroll' event OR (Codex round 6,
+    /// P1 #2) a ResizeObserver firing for a pane-size change. Public because
+    /// <c>[JSInvokable]</c> requires it — not meant for direct C# callers.
+    /// </summary>
+    [JSInvokable]
+    public void OnGanttV3VerticalScroll(double scrollTop, double clientHeight)
+    {
+        _lastReportedScrollTop = scrollTop;
+        _lastReportedClientHeight = clientHeight;
+        RecomputeVisibleRowRange(scrollTop, clientHeight);
+    }
+
+    // Codex round 6, P1 #2: extracted so a rows-count change (empty->populated,
+    // collapse/expand) can re-run this SAME clamping without a JS round-trip —
+    // it was previously inlined directly in OnGanttV3VerticalScroll, the ONLY
+    // thing that ever invalidated the culling window. A rows-count change
+    // never touches scrollTop/clientHeight at all (no native 'scroll' event,
+    // no resize), so it silently left GanttArrowLayer culling against a
+    // STALE row count until the user happened to scroll again — e.g. an
+    // empty->populated task list showed no arrows at all until then, even
+    // though bars/tree rows themselves render immediately via Virtualize.
+    // Recomputes which row indices are actually visible (+ a small buffer
+    // margin, matching the spirit of Blazor's own Virtualize overscan) so
+    // GanttArrowLayer can cull arrows whose endpoints are both scrolled out
+    // of view.
+    private void RecomputeVisibleRowRange(double scrollTop, double clientHeight)
+    {
+        if (GanttScale.RowHeight <= 0 || clientHeight <= 0) return;
+
+        // A few rows of buffer above/below the exact pixel-visible range —
+        // Blazor's own Virtualize renders a similar overscan margin so its
+        // placeholder-swap doesn't visibly pop in/out at the viewport edge;
+        // arrows use the SAME margin so an arrow terminating at a
+        // just-off-screen (but still Virtualize-rendered) bar doesn't
+        // disappear a frame before its own endpoint does.
+        const int marginRows = 10;
+        var start = (int)Math.Floor(scrollTop / GanttScale.RowHeight) - marginRows;
+        var end = (int)Math.Ceiling((scrollTop + clientHeight) / GanttScale.RowHeight) + marginRows;
+        var rowCount = EffectiveRows.Count;
+        start = Math.Clamp(start, 0, Math.Max(0, rowCount - 1));
+        end = Math.Clamp(end, 0, Math.Max(0, rowCount - 1));
+
+        _lastCulledRowCount = rowCount;
+        var newRange = (start, end);
+        if (_visibleRowRange == newRange) return; // no-op: avoid a redundant re-render
+        _visibleRowRange = newRange;
+        StateHasChanged();
+    }
+
+    // True once ScrollHost is either not in use (standalone mode, always
+    // "ready" — this component always has a valid ref to its own element by
+    // OnAfterRenderAsync) or has actually been captured by Blazor (a non-empty
+    // Id — see OnAfterRenderAsync's remarks for why a caller-supplied
+    // ElementReference can start out uncaptured).
+    private bool IsScrollHostReady => ScrollHost is null || !string.IsNullOrEmpty(ScrollHost.Value.Id);
+
+    // Codex round 7 review, P2 #2: the captured host's own Id when ready,
+    // null otherwise — used to detect a genuine host IDENTITY change (a
+    // different Id, not just "not ready -> ready") across renders. In
+    // standalone mode (ScrollHost null) EffectiveScrollHost is always this
+    // component's own, stable _scrollHostRef, so this never spuriously
+    // "changes" there.
+    private string? CurrentHostId => IsScrollHostReady ? EffectiveScrollHost.Id : null;
+
+    // Codex round 4, P2 #2/#8: ScrollHostLeadingOffset (a sibling tree pane's
+    // width, when Gantt3 shows one) + the resolved target pixel (Today or a
+    // caller-supplied override) — the offset defaults to 0, so this reduces to
+    // exactly the previous "Interop.GanttV3ScrollToXAsync(EffectiveScrollHost,
+    // TodayX)" call for a standalone timeline.
+    private Task ScrollToCenterAsync(double targetX) => Interop.GanttV3ScrollToXAsync(EffectiveScrollHost, ScrollHostLeadingOffset + targetX);
+
+    public async ValueTask DisposeAsync()
+    {
+        // Codex round 17 review, P2 — set UNCONDITIONALLY, before anything
+        // else: RegisterVerticalScrollTrackingAsync's own in-flight register
+        // call checks this right after its own await (see its remarks).
+        _disposed = true;
+
+        if (_headerScrollSyncRegistered)
+        {
+            try { await Interop.GanttV3UnregisterHeaderScrollSyncAsync(_scrollHostRef); }
+            catch (JSDisconnectedException) { }
+        }
+        if (_verticalScrollTrackingRegistered)
+        {
+            // Unregister against whichever host was ACTUALLY registered
+            // (Codex round 7 review, P2 #2) — falls back to EffectiveScrollHost
+            // only for the (unreachable in practice) case where the flag is
+            // set but the tracked reference somehow isn't.
+            try { await Interop.GanttV3UnregisterVerticalScrollTrackingAsync(_registeredScrollHostRef ?? EffectiveScrollHost); }
+            catch (JSDisconnectedException) { }
+        }
+        _selfRef?.Dispose();
+    }
+}

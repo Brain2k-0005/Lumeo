@@ -1,5 +1,22 @@
+using System.Globalization;
 using Lumeo;
 using Lumeo.Tests.ServerHost.Components;
+
+// Codex round 2, P2 #4/#8: GanttScale's month-name header labels (and Gantt3's
+// pre-existing PeriodLabel) render via CultureInfo.CurrentCulture — v2 parity
+// (v2's fmtMonth/fmtMonthShort follow the BROWSER's locale, not hardcoded
+// English), but a Blazor Server circuit's ambient culture otherwise falls back
+// to whatever the HOST PROCESS's OS default locale happens to be. Pinning the
+// default thread culture here (BEFORE the host builds/runs, so every circuit —
+// which each get their own thread from ASP.NET Core's thread pool — inherits
+// it) makes the Gantt E2E/visual specs' English month-name assertions
+// deterministic regardless of the dev machine's or CI runner's actual OS
+// locale, rather than accidentally passing only when that locale happens to
+// be English. Not a RequestLocalization pipeline (no per-request culture
+// negotiation needed here) — this harness has exactly one audience (the E2E
+// suite), not real end users choosing a locale.
+CultureInfo.DefaultThreadCurrentCulture = CultureInfo.GetCultureInfo("en-US");
+CultureInfo.DefaultThreadCurrentUICulture = CultureInfo.GetCultureInfo("en-US");
 
 var builder = WebApplication.CreateBuilder(args);
 

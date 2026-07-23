@@ -1613,6 +1613,91 @@ public sealed class ComponentInteropService : IComponentInteropService
         catch (JSDisconnectedException) { }
     }
 
+    // --- GanttV3 (Blazor-rendered timeline) scroll interop ---
+    // Its own tiny module (gantt-v3.js), separate from gantt-v2's Frappe-style
+    // wrapper module above — v3 has no JS renderer of its own, only this one
+    // scroll helper, so a shared module would be a needless coupling between
+    // the two independently-lifecycled Gantt implementations.
+
+    private IJSObjectReference? _ganttV3Module;
+
+    private async Task<IJSObjectReference> GetGanttV3ModuleAsync()
+    {
+        _ganttV3Module ??= await _jsRuntime.InvokeAsync<IJSObjectReference>(
+            "import", "./_content/Lumeo.Gantt/js/gantt-v3.js");
+        return _ganttV3Module;
+    }
+
+    public async Task GanttV3ScrollToXAsync(Microsoft.AspNetCore.Components.ElementReference el, double targetX)
+    {
+        try
+        {
+            var module = await GetGanttV3ModuleAsync();
+            await module.InvokeVoidAsync("ganttV3.centerOn", el, targetX);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
+    public async Task<string?> GanttV3GetLocalDateAsync()
+    {
+        try
+        {
+            var module = await GetGanttV3ModuleAsync();
+            return await module.InvokeAsync<string>("ganttV3.getLocalDateIso");
+        }
+        catch (JSDisconnectedException) { return null; }
+    }
+
+    public async Task GanttV3RegisterHeaderScrollSyncAsync(Microsoft.AspNetCore.Components.ElementReference canvasEl, Microsoft.AspNetCore.Components.ElementReference headerInnerEl)
+    {
+        try
+        {
+            var module = await GetGanttV3ModuleAsync();
+            await module.InvokeVoidAsync("ganttV3.registerHeaderScrollSync", canvasEl, headerInnerEl);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
+    public async Task GanttV3UnregisterHeaderScrollSyncAsync(Microsoft.AspNetCore.Components.ElementReference canvasEl)
+    {
+        try
+        {
+            var module = await GetGanttV3ModuleAsync();
+            await module.InvokeVoidAsync("ganttV3.unregisterHeaderScrollSync", canvasEl);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
+    public async Task GanttV3RegisterVerticalScrollTrackingAsync<[System.Diagnostics.CodeAnalysis.DynamicallyAccessedMembers(System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.PublicMethods)] T>(Microsoft.AspNetCore.Components.ElementReference scrollEl, DotNetObjectReference<T> dotNetRef) where T : class
+    {
+        try
+        {
+            var module = await GetGanttV3ModuleAsync();
+            await module.InvokeVoidAsync("ganttV3.registerVerticalScrollTracking", scrollEl, dotNetRef);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
+    public async Task GanttV3UnregisterVerticalScrollTrackingAsync(Microsoft.AspNetCore.Components.ElementReference scrollEl)
+    {
+        try
+        {
+            var module = await GetGanttV3ModuleAsync();
+            await module.InvokeVoidAsync("ganttV3.unregisterVerticalScrollTracking", scrollEl);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
+    public async Task<double?> GanttV3GetScrollCenterXAsync(Microsoft.AspNetCore.Components.ElementReference el, string? direction = null)
+    {
+        try
+        {
+            var module = await GetGanttV3ModuleAsync();
+            return await module.InvokeAsync<double?>("ganttV3.getScrollCenterX", el, direction);
+        }
+        catch (JSDisconnectedException) { return null; }
+    }
+
     // --- Toolbar overflow observer ---
     // Toolbar ships its own tiny JS module (toolbar.js) that wraps a
     // ResizeObserver to measure how many child items fit before an overflow
@@ -1863,6 +1948,18 @@ public sealed class ComponentInteropService : IComponentInteropService
             try
             {
                 await _ganttModule.DisposeAsync();
+            }
+            catch (JSDisconnectedException)
+            {
+                // Circuit disconnected, safe to ignore
+            }
+        }
+
+        if (_ganttV3Module is not null)
+        {
+            try
+            {
+                await _ganttV3Module.DisposeAsync();
             }
             catch (JSDisconnectedException)
             {

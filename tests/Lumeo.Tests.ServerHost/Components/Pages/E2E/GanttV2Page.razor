@@ -1,0 +1,40 @@
+@page "/e2e/gantt-v2"
+@using Lumeo.Tests.ServerHost.E2E
+
+@* Gantt v2/v3 parity harness (feat/gantt-v3, T4). Renders v2's Gantt against the
+   SAME fixture GanttV3Page.razor renders through Gantt3, so the Lumeo.Tests.E2E
+   Playwright suite can assert render-equivalence. ?fixture=today swaps in the
+   DateTime.Today-anchored fixture for the today-marker test (see
+   GanttParityFixtures.TodayMarkerTasks' remarks for why that one isn't
+   hardcoded like the rest). ?viewMode=<GanttViewMode> seeds the initial zoom
+   level so the header-label-run test can visit all 6 view modes directly —
+   only Day/Week/Month/Year have a toolbar button, so QuarterDay/HalfDay are
+   otherwise unreachable by clicking. *@
+
+<PageTitle>E2E - Gantt v2</PageTitle>
+
+<div class="p-4" style="max-width: 1600px;">
+    <h1 data-testid="gantt-e2e-title">Gantt v2 (parity fixture)</h1>
+    <Gantt Tasks="@_tasks"
+           ViewMode="@_viewMode"
+           ViewModeChanged="@(m => _viewMode = m)"
+           Height="900px"
+           GroupBy="@(t => t.GroupLabel ?? "")"
+           BarColor="@GanttParityFixtures.GetBarColor"
+           data-testid="gantt-v2-root" />
+</div>
+
+@code {
+    [SupplyParameterFromQuery] public string? Fixture { get; set; }
+    [SupplyParameterFromQuery] public string? ViewMode { get; set; }
+
+    private GanttViewMode _viewMode = GanttViewMode.Day;
+    private List<GanttTask> _tasks = new();
+
+    protected override void OnInitialized()
+    {
+        _tasks = Fixture == "today" ? GanttParityFixtures.TodayMarkerTasks() : GanttParityFixtures.SharedTasks();
+        if (!string.IsNullOrEmpty(ViewMode) && Enum.TryParse<GanttViewMode>(ViewMode, out var parsed))
+            _viewMode = parsed;
+    }
+}
