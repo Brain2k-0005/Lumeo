@@ -431,6 +431,15 @@ else
             hash.Add(t.CustomClass);
             hash.Add(t.IsMilestone);
             hash.Add(t.GroupLabel);
+            // Bug fix (Codex round 2, P1 #1): ParentId was never folded into this
+            // hash, so a ParentId-ONLY change (e.g. re-parenting a task in a
+            // GanttV3-hierarchy consumer, then handing the SAME Tasks list back
+            // down) hashed identically to the unchanged task — the change-gates
+            // above (parentMoved / the controlled/uncontrolled discriminators)
+            // saw "no change" and silently kept the OLD ParentId, so the next
+            // drag/resize/progress edit (via ReplaceTask) persisted the stale
+            // parent instead of the caller's update.
+            hash.Add(t.ParentId);
             if (t.Dependencies is not null)
                 foreach (var d in t.Dependencies) hash.Add(d);
             // Fold the delegate output so a BarColor / GroupBy swap that leaves the
@@ -476,7 +485,30 @@ else
     [JSInvokable]
     public async Task JsOnTaskClick(GanttTask t)
     {
-        if (OnTaskClick.HasDelegate) await OnTaskClick.InvokeAsync(t);
+        // Bug fix (Codex round 2, P2 #2): `t` is deserialized straight from
+        // gantt-v2.js's taskToJson payload, which never serializes ParentId (v2
+        // has no hierarchy concept) — same root cause ReplaceTask's ParentId
+        // merge fixes for JsOnDateChange/JsOnProgressChange, so OnTaskClick's own
+        // argument always reported ParentId == null for a GanttV3-hierarchy
+        // consumer, even though the task's ACTUAL ParentId (in _tasks) was set.
+        //
+        // Bug fix (Codex round 6, P2 #5): the original fix substituted the
+        // WHOLE stored task (`current ?? t`) instead of merging just the one
+        // missing field — but `t` here is gantt-v2.js's own RENDERER-NORMALIZED
+        // payload (e.g. normalizeTasks forces a milestone's `end = start`
+        // before taskToJson ever serializes it — see GanttBar.razor's own
+        // remarks on this same v2 normalization for the round-3 tooltip fix),
+        // while `current` (looked up from `_tasks`) is whatever the CONSUMER
+        // originally supplied, which nothing enforces stays consistent (e.g.
+        // a milestone's End field can differ from its Start). Replacing `t`
+        // outright with `current` silently threw that normalization away —
+        // a milestone click could report an inconsistent multi-day End again.
+        // Only ParentId is actually missing from `t`; merging JUST that field
+        // onto the normalized payload fixes the hierarchy gap without losing
+        // the normalization the renderer already did.
+        var stored = _tasks.Find(x => x.Id == t.Id);
+        var merged = stored is not null ? t with { ParentId = stored.ParentId } : t;
+        if (OnTaskClick.HasDelegate) await OnTaskClick.InvokeAsync(merged);
     }
 
     [JSInvokable]

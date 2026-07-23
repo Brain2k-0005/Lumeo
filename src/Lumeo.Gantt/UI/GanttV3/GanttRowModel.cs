@@ -112,8 +112,73 @@ internal static class GanttRowModel
     /// remarks for why v2's <c>GroupLabel</c> field, not the <c>GroupBy</c> sort
     /// delegate, is what actually drives header rows).
     /// </summary>
-    internal static IReadOnlyList<GanttVisibleRow> BuildVisibleRows(IReadOnlyList<GanttTask> tasks, IReadOnlySet<string> collapsed) =>
-        UsesHierarchy(tasks) ? BuildHierarchyRows(tasks, collapsed) : BuildFlatGroupRows(tasks, collapsed);
+    internal static IReadOnlyList<GanttVisibleRow> BuildVisibleRows(IReadOnlyList<GanttTask> tasks, IReadOnlySet<string> collapsed)
+    {
+        var validTasks = FilterValidDurationTasks(tasks);
+        return UsesHierarchy(validTasks) ? BuildHierarchyRows(validTasks, collapsed) : BuildFlatGroupRows(validTasks, collapsed);
+    }
+
+    // Bug fix (Codex round 8 review, P2 #5; corrected Codex round 9 review,
+    // P2 #1): v2's normalizeTasks (gantt-v2.js) drops any task whose End is
+    // before its Start (`.filter(t => t.end >= t.start)`) BEFORE the renderer
+    // ever sees it — no bar, no row; v3 had no equivalent, so a genuinely
+    // invalid End<Start task rendered an 8px sliver bar (BarGeometry's own
+    // Math.Max(8, ...) width clamp) instead of being dropped. Milestones are
+    // effectively EXEMPT from v2's rule — not because the rule special-cases
+    // them, but because normalizeTasks forces `end = start` for every
+    // milestone BEFORE this check runs (gantt-v2.js line 90: `if
+    // (isMilestone && start) end = start`), so a milestone's own End/Start
+    // relationship can never trip this filter in the first place. Mirrored
+    // the same way here: a milestone's End is never compared against its
+    // Start at all, only a non-milestone task's is.
+    //
+    // Bug fix (Codex round 9 review, P2 #1): the round-8 fix compared RAW
+    // Start/End times — but v2's OWN pipeline order is truncate-THEN-filter
+    // (parseDate strips time-of-day for every task before normalizeTasks'
+    // own `.filter(t => t.end >= t.start)` ever runs — see parseDate's
+    // remarks), so a same-day task like 17:00 -> 09:00 (End's CLOCK time
+    // before Start's, but the same CALENDAR day) is VALID in v2 (both
+    // truncate to that one day, End.Date >= Start.Date holds) yet v3's raw-
+    // time comparison wrongly dropped it. Compares .Date (calendar day only)
+    // on both sides now, matching v2's own truncate-first order exactly — a
+    // task is only ever dropped for a GENUINE End-day-before-Start-day span.
+    //
+    // Shared with Gantt3.ComputeInitialRange's own min/max computation
+    // (Codex round 9 review, P2 #3 — the range must exclude the SAME invalid
+    // tasks this row filter drops, closing the gap the round-8 report
+    // flagged) via HasValidDuration below, so the two can never diverge on
+    // WHAT counts as invalid again.
+    //
+    // Filtering here (BuildVisibleRows' single entry point, before either row-
+    // building strategy runs) means the dropped task never reaches GanttTree/
+    // GanttTimeline/GanttArrowLayer at all — a dependency elsewhere pointing
+    // AT it therefore naturally fails GanttArrowLayer's own
+    // geometryByTaskId.TryGetValue lookup and is silently skipped, the exact
+    // same outcome v2's own arrow loop produces for a filtered-out task
+    // (`const source = taskById.get(depId); if (!source) continue;` —
+    // gantt-v2.js line 653) — no separate dependency-cleanup step needed.
+    internal static bool HasValidDuration(GanttTask task) =>
+        task.IsMilestone || task.End.Date >= task.Start.Date;
+
+    internal static IReadOnlyList<GanttTask> FilterValidDurationTasks(IReadOnlyList<GanttTask> tasks)
+    {
+        List<GanttTask>? filtered = null;
+        for (var i = 0; i < tasks.Count; i++)
+        {
+            var task = tasks[i];
+            if (!HasValidDuration(task))
+            {
+                if (filtered is null)
+                {
+                    filtered = new List<GanttTask>(tasks.Count);
+                    for (var j = 0; j < i; j++) filtered.Add(tasks[j]);
+                }
+                continue;
+            }
+            filtered?.Add(task);
+        }
+        return filtered ?? tasks;
+    }
 
     // ── ParentId hierarchy ───────────────────────────────────────────────────
 
@@ -247,35 +312,49 @@ internal static class GanttRowModel
     {
         var rows = new List<GanttVisibleRow>(tasks.Count);
         string? lastGroupLabel = null;
-        var hidingCurrentGroup = false;
 
         foreach (var task in tasks)
         {
-            if (task.GroupLabel is not null && task.GroupLabel != lastGroupLabel)
+            // Bug fix (Codex round 2, P2 #6): v2's JS gates its own group-header
+            // check on plain truthiness (`task.groupLabel && ...`, gantt-v2.js:428)
+            // — an EMPTY string is falsy in JS, so v2 treats it exactly like "no
+            // group" (never starts a header, never indents). GanttTask.GroupLabel
+            // is a C# string?, where "" and null are distinct, so a consumer that
+            // sets GroupLabel = "" (rather than leaving it null) previously still
+            // triggered a (blank-labeled) header row here — normalized to null
+            // once, right here, so every check below (including the interleaved-
+            // collapse fix's own membership lookup) treats "" and null identically.
+            var groupLabel = string.IsNullOrEmpty(task.GroupLabel) ? null : task.GroupLabel;
+
+            if (groupLabel is not null && groupLabel != lastGroupLabel)
             {
-                lastGroupLabel = task.GroupLabel;
-                var key = GroupToggleKey(task.GroupLabel);
-                hidingCurrentGroup = collapsed.Contains(key);
-                rows.Add(new GanttVisibleRow(GanttRowKind.GroupHeader, null, task.GroupLabel, 0, true, key, hidingCurrentGroup));
-            }
-            else if (task.GroupLabel is null)
-            {
-                // Bug fix (Codex review wave): an ungrouped task is never a member of
-                // the preceding group and must never inherit its collapsed-hidden
-                // status. Before this, hidingCurrentGroup stayed true here whenever the
-                // MOST RECENT group was collapsed, silently dropping every ungrouped
-                // task that followed it. lastGroupLabel is deliberately left untouched —
-                // v2's own lastGroupLabel-driven header-repeat-suppression (a later task
-                // with the SAME group label doesn't get a second header) is a separate,
-                // pre-existing parity behavior this fix must not disturb.
-                hidingCurrentGroup = false;
+                lastGroupLabel = groupLabel;
+                var key = GroupToggleKey(groupLabel);
+                rows.Add(new GanttVisibleRow(GanttRowKind.GroupHeader, null, groupLabel, 0, true, key, collapsed.Contains(key)));
             }
 
-            if (hidingCurrentGroup) continue;
+            // Bug fix (Codex round 2, P2 #5): hiding used to be driven by a
+            // running "hidingCurrentGroup" flag set only when a NEW header row
+            // was rendered and reset to false by any ungrouped task in between
+            // (Codex review wave's earlier fix for THAT leak) — but that flag
+            // never accounted for an interleaved run like [Design(collapsed),
+            // Ungrouped, Design] with no GroupBy sort clustering same-labeled
+            // tasks together (a consumer can set GanttTask.GroupLabel directly
+            // without ever supplying GroupBy — v2 has no collapse feature at all,
+            // so this exact leak has no v2 equivalent to have caught it there):
+            // the ungrouped row's reset left hidingCurrentGroup false for the
+            // SECOND "Design" task too, even though its own group IS collapsed,
+            // silently un-hiding it. Membership-based hiding — "is THIS task's
+            // own group currently collapsed", independent of whatever header was
+            // most recently rendered — has no such gap; the header-render check
+            // above is now purely about "when does a NEW header row appear",
+            // decoupled from "is this task visible".
+            var isHidden = groupLabel is not null && collapsed.Contains(GroupToggleKey(groupLabel));
+            if (isHidden) continue;
 
             // A task under a group header is indented one level; an ungrouped
             // task (no GroupLabel at all) sits at depth 0 like a hierarchy root.
-            var depth = task.GroupLabel is not null ? 1 : 0;
+            var depth = groupLabel is not null ? 1 : 0;
             rows.Add(new GanttVisibleRow(GanttRowKind.Task, task, task.Name, depth, false, null, false));
         }
 

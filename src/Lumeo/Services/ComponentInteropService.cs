@@ -1638,6 +1638,66 @@ public sealed class ComponentInteropService : IComponentInteropService
         catch (JSDisconnectedException) { }
     }
 
+    public async Task<string?> GanttV3GetLocalDateAsync()
+    {
+        try
+        {
+            var module = await GetGanttV3ModuleAsync();
+            return await module.InvokeAsync<string>("ganttV3.getLocalDateIso");
+        }
+        catch (JSDisconnectedException) { return null; }
+    }
+
+    public async Task GanttV3RegisterHeaderScrollSyncAsync(Microsoft.AspNetCore.Components.ElementReference canvasEl, Microsoft.AspNetCore.Components.ElementReference headerInnerEl)
+    {
+        try
+        {
+            var module = await GetGanttV3ModuleAsync();
+            await module.InvokeVoidAsync("ganttV3.registerHeaderScrollSync", canvasEl, headerInnerEl);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
+    public async Task GanttV3UnregisterHeaderScrollSyncAsync(Microsoft.AspNetCore.Components.ElementReference canvasEl)
+    {
+        try
+        {
+            var module = await GetGanttV3ModuleAsync();
+            await module.InvokeVoidAsync("ganttV3.unregisterHeaderScrollSync", canvasEl);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
+    public async Task GanttV3RegisterVerticalScrollTrackingAsync<[System.Diagnostics.CodeAnalysis.DynamicallyAccessedMembers(System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.PublicMethods)] T>(Microsoft.AspNetCore.Components.ElementReference scrollEl, DotNetObjectReference<T> dotNetRef) where T : class
+    {
+        try
+        {
+            var module = await GetGanttV3ModuleAsync();
+            await module.InvokeVoidAsync("ganttV3.registerVerticalScrollTracking", scrollEl, dotNetRef);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
+    public async Task GanttV3UnregisterVerticalScrollTrackingAsync(Microsoft.AspNetCore.Components.ElementReference scrollEl)
+    {
+        try
+        {
+            var module = await GetGanttV3ModuleAsync();
+            await module.InvokeVoidAsync("ganttV3.unregisterVerticalScrollTracking", scrollEl);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
+    public async Task<double?> GanttV3GetScrollCenterXAsync(Microsoft.AspNetCore.Components.ElementReference el, string? direction = null)
+    {
+        try
+        {
+            var module = await GetGanttV3ModuleAsync();
+            return await module.InvokeAsync<double?>("ganttV3.getScrollCenterX", el, direction);
+        }
+        catch (JSDisconnectedException) { return null; }
+    }
+
     public async Task GanttV3RegisterDragAsync<[System.Diagnostics.CodeAnalysis.DynamicallyAccessedMembers(System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.PublicMethods)] T>(Microsoft.AspNetCore.Components.ElementReference el, DotNetObjectReference<T> dotNetRef, object options) where T : class
     {
         try

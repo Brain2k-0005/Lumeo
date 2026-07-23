@@ -599,6 +599,88 @@ public interface IComponentInteropService : IAsyncDisposable, IDisposable
     Task GanttV3ScrollToXAsync(Microsoft.AspNetCore.Components.ElementReference el, double targetX) => Task.CompletedTask;
 
     /// <summary>
+    /// Browser-local "today" as an ISO <c>"yyyy-MM-dd"</c> string (Codex round 2,
+    /// P2 #9) — v2 parity: v2 derives "today" via the BROWSER's <c>new Date()</c>
+    /// (gantt-v2.js), while <c>Gantt3</c>/<c>GanttTimeline</c> previously used C#'s
+    /// <c>DateTime.Today</c>, which on Blazor Server is the SERVER's local date,
+    /// not the visiting browser's. Called once from <c>Gantt3</c>'s first
+    /// post-render (never during prerendering, where JS interop would throw —
+    /// see <c>Gantt3.OnAfterRenderAsync</c>'s remarks). Returns <c>null</c> when
+    /// JS interop isn't available (a non-Gantt implementer, prerendering, or a
+    /// torn-down circuit), in which case the caller keeps its server-side
+    /// <see cref="System.DateTime.Today"/> fallback. This is additive surface on
+    /// an interface that otherwise stays UI-framework-agnostic — recorded in
+    /// PublicAPI alongside the rest of GanttV3's Additive set, joining the same
+    /// "narrow, Gantt-specific, default no-op DIM" precedent as
+    /// <see cref="GanttV3ScrollToXAsync"/> rather than a general-purpose
+    /// "get the client's locale/timezone" API (out of scope — no other consumer
+    /// has asked for one). Default no-op DIM so existing implementers/test
+    /// doubles keep compiling.
+    /// </summary>
+    Task<string?> GanttV3GetLocalDateAsync() => Task.FromResult<string?>(null);
+
+    /// <summary>
+    /// Registers a one-way horizontal-scroll mirror from <paramref name="canvasEl"/>
+    /// (the row-canvas's own scrollable element) onto <paramref name="headerInnerEl"/>
+    /// (a <c>transform: translateX(...)</c> target) — Codex round 2, P1 #3's sticky-
+    /// header fix. The header can no longer physically BE the same scrolling
+    /// element as the row canvas (see <c>GanttTimeline.razor</c>'s remarks for why:
+    /// <c>position: sticky</c> must resolve against Gantt3's shared OUTER vertical
+    /// scroller, which requires NO intervening scroll-container-establishing
+    /// ancestor between the header and it), so this keeps the two horizontally
+    /// column-aligned instead. Idempotent for the same <paramref name="canvasEl"/> —
+    /// calling again updates nothing (a fresh <paramref name="headerInnerEl"/> would
+    /// require an unregister first; <c>GanttTimeline</c> only ever registers once,
+    /// on mount). Default no-op DIM so existing implementers/test doubles keep
+    /// compiling.
+    /// </summary>
+    Task GanttV3RegisterHeaderScrollSyncAsync(Microsoft.AspNetCore.Components.ElementReference canvasEl, Microsoft.AspNetCore.Components.ElementReference headerInnerEl) => Task.CompletedTask;
+
+    /// <summary>Tears down the scroll mirror registered by <see cref="GanttV3RegisterHeaderScrollSyncAsync"/>. Default no-op.</summary>
+    Task GanttV3UnregisterHeaderScrollSyncAsync(Microsoft.AspNetCore.Components.ElementReference canvasEl) => Task.CompletedTask;
+
+    /// <summary>
+    /// Registers a rAF-throttled vertical-scroll listener on <paramref name="scrollEl"/>
+    /// (Codex round 4, P2 #3) — reports <c>(scrollTop, clientHeight)</c> back via
+    /// <paramref name="dotNetRef"/>'s <c>OnGanttV3VerticalScroll</c> JSInvokable
+    /// method, so <c>GanttArrowLayer</c> can cull dependency arrows whose rows
+    /// are scrolled out of view (the row canvas's own bars/tree already
+    /// virtualize via <c>&lt;Virtualize&gt;</c>; the SVG arrow overlay
+    /// previously did not). Independent of <see cref="GanttV3RegisterHeaderScrollSyncAsync"/> —
+    /// that one is skipped entirely in Gantt3's shared-pane mode (see
+    /// <c>GanttTimeline.razor</c>'s own remarks), precisely the mode where
+    /// arrow virtualization matters most. Default no-op DIM so existing
+    /// implementers/test doubles keep compiling.
+    /// </summary>
+    Task GanttV3RegisterVerticalScrollTrackingAsync<[System.Diagnostics.CodeAnalysis.DynamicallyAccessedMembers(System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.PublicMethods)] T>(Microsoft.AspNetCore.Components.ElementReference scrollEl, DotNetObjectReference<T> dotNetRef) where T : class => Task.CompletedTask;
+
+    /// <summary>Tears down the listener registered by <see cref="GanttV3RegisterVerticalScrollTrackingAsync{T}"/>. Default no-op.</summary>
+    Task GanttV3UnregisterVerticalScrollTrackingAsync(Microsoft.AspNetCore.Components.ElementReference scrollEl) => Task.CompletedTask;
+
+    /// <summary>
+    /// Reads <paramref name="el"/>'s CURRENT logical horizontal scroll center
+    /// (Codex round 5, P2 #5) — in the SAME "logical" coordinate space (0 =
+    /// the scrollable content's own physical-left origin, RTL-normalized)
+    /// that <see cref="GanttV3ScrollToXAsync"/>'s own targetX already uses.
+    /// <c>Gantt3</c> uses this to capture what the user ACTUALLY has
+    /// centered on screen before a view-mode switch recomputes the visible
+    /// range, instead of assuming the outgoing range's own midpoint (a proxy
+    /// that silently diverges the moment a user pans manually). Returns null
+    /// when the element can't be measured (not yet laid out, or JS interop
+    /// unavailable) so the caller can fall back to that proxy. Default no-op
+    /// DIM so existing implementers/test doubles keep compiling.
+    /// </summary>
+    /// <param name="direction">Optional explicit <c>"ltr"</c>/<c>"rtl"</c> override
+    /// (Codex round 16 review, P2 finding #5), forwarded to the JS-side RTL
+    /// normalization instead of letting it read the element's OWN live
+    /// <c>getComputedStyle(...).direction</c> — needed for a ThemeService-driven
+    /// direction flip, whose own DOM mutation can already have landed by the
+    /// time this capture runs, well before Blazor's async lifecycle would
+    /// otherwise repaint it. Null (the default) keeps the prior live-DOM-read
+    /// behavior for every other caller.</param>
+    Task<double?> GanttV3GetScrollCenterXAsync(Microsoft.AspNetCore.Components.ElementReference el, string? direction = null) => Task.FromResult<double?>(null);
+
+    /// <summary>
     /// Registers GanttV3's pointer drag engine (design spec Phase 2, T1 — gantt-v3.js's
     /// <c>ganttV3.registerDrag</c>) on <paramref name="el"/> — the SAME scroll-host
     /// element <see cref="GanttV3ScrollToXAsync"/> targets. A single delegated

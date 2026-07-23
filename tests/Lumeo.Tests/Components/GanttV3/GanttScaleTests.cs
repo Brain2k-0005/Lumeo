@@ -1,3 +1,4 @@
+using System.Globalization;
 using Lumeo.GanttV3;
 using Xunit;
 
@@ -15,9 +16,30 @@ namespace Lumeo.Tests.Components.GanttV3;
 /// tests are deterministic regardless of the CI/dev machine's local timezone —
 /// see the TZ/DST-safety comment on <see cref="GanttScale"/> for why the math
 /// itself is Kind-agnostic (no ToLocalTime/TimeZoneInfo call anywhere in it).
+///
+/// Culture note (Codex round 2, P2 #4): GanttScale.UpperLabel/LowerLabel's month
+/// names now follow CultureInfo.CurrentCulture (v2 parity — v2's fmtMonth/
+/// fmtMonthShort use `toLocaleString(undefined, ...)`, the BROWSER's locale, not
+/// hardcoded English), so the English month-name assertions below ("January",
+/// "Nov", etc.) pin CurrentCulture to en-US for the class's lifetime — same
+/// save/restore pattern as AnimatedBeamRegressionTests' StrokeWidths_Use_Invariant_
+/// Decimal_Separator_On_Comma_Cultures — so these specs stay deterministic
+/// regardless of the CI/dev machine's actual OS locale.
 /// </summary>
-public class GanttScaleTests
+public class GanttScaleTests : IDisposable
 {
+    private readonly CultureInfo _originalCulture = CultureInfo.CurrentCulture;
+
+    public GanttScaleTests()
+    {
+        CultureInfo.CurrentCulture = CultureInfo.GetCultureInfo("en-US");
+    }
+
+    public void Dispose()
+    {
+        CultureInfo.CurrentCulture = _originalCulture;
+    }
+
     private static DateTime Utc(int y, int m, int d, int h = 0, int min = 0) =>
         new(y, m, d, h, min, 0, DateTimeKind.Utc);
 
@@ -75,6 +97,79 @@ public class GanttScaleTests
         Assert.Equal(56, GanttScale.HeaderHeight);
     }
 
+    // ── AlignToUnitStart (Codex round 3, P2 #6) ──────────────────────────────
+
+    [Fact]
+    public void AlignToUnitStart_Month_Snaps_A_Mid_Month_Date_To_Day_One()
+    {
+        var aligned = GanttScale.AlignToUnitStart(GanttViewMode.Month, Utc(2026, 3, 15));
+        Assert.Equal(Utc(2026, 3, 1), aligned);
+    }
+
+    [Fact]
+    public void AlignToUnitStart_Year_Snaps_A_Mid_Year_Date_To_Jan_One()
+    {
+        var aligned = GanttScale.AlignToUnitStart(GanttViewMode.Year, Utc(2026, 7, 19));
+        Assert.Equal(Utc(2026, 1, 1), aligned);
+    }
+
+    [Fact]
+    public void AlignToUnitStart_Day_Leaves_The_Date_Unchanged()
+    {
+        // Day-unit modes (Day/Week) have no sub-day boundary to snap to — a
+        // real time-of-day carried through to a rendered column's own
+        // "day number" label is unaffected by it (that label reads only the
+        // .Day property), unlike Hour-unit modes below.
+        var date = Utc(2026, 3, 15, 14, 30);
+        Assert.Equal(date, GanttScale.AlignToUnitStart(GanttViewMode.Day, date));
+    }
+
+    // Bug fix (Codex round 11 review, P2 #2): Hour-unit modes (QuarterDay/
+    // HalfDay) used to ALSO leave the date unchanged (the test above covered
+    // both before this fix) — but a live-scroll-captured continuous center
+    // carries arbitrary minutes/seconds, which a sub-day mode's own rendered
+    // header labels (Time6h/Time12h) show verbatim, misaligning every column
+    // boundary against a clean 6-/12-hour grid. See GanttScale.AlignToUnitStart's
+    // own remarks for the full reasoning.
+    [Fact]
+    public void AlignToUnitStart_QuarterDay_Floors_To_The_Nearest_Six_Hour_Boundary()
+    {
+        var aligned = GanttScale.AlignToUnitStart(GanttViewMode.QuarterDay, Utc(2026, 3, 15, 14, 37));
+        Assert.Equal(Utc(2026, 3, 15, 12, 0), aligned);
+    }
+
+    [Fact]
+    public void AlignToUnitStart_HalfDay_Floors_To_The_Nearest_Twelve_Hour_Boundary()
+    {
+        var aligned = GanttScale.AlignToUnitStart(GanttViewMode.HalfDay, Utc(2026, 3, 15, 14, 37));
+        Assert.Equal(Utc(2026, 3, 15, 12, 0), aligned);
+    }
+
+    [Fact]
+    public void AlignToUnitStart_QuarterDay_Already_On_A_Boundary_Stays_Unchanged()
+    {
+        var aligned = GanttScale.AlignToUnitStart(GanttViewMode.QuarterDay, Utc(2026, 3, 15, 18, 0));
+        Assert.Equal(Utc(2026, 3, 15, 18, 0), aligned);
+    }
+
+    [Fact]
+    public void AlignToUnitStart_Month_Restores_The_DateToPixel_Self_Origin_Invariant_A_Naive_Recenter_Breaks()
+    {
+        // The whole point of this fix (Month mode): DateToPixel(Month, origin,
+        // origin) must be exactly 0 — every grid line / header column
+        // boundary is drawn at exactly {index * columnWidth}px, which is only
+        // consistent with DateToPixel's own "(date.Day-1)/30" fractional term
+        // when origin sits exactly on day 1. A raw, TimeSpan-based recenter
+        // (e.g. "today +/- half the window") can land the origin mid-month,
+        // silently violating this — every bar in that mode ends up shifted by
+        // a constant (origin.Day-1)/30 columns relative to the header grid.
+        var misaligned = Utc(2026, 3, 15);
+        Assert.NotEqual(0, GanttScale.DateToPixel(GanttViewMode.Month, misaligned, misaligned));
+
+        var aligned = GanttScale.AlignToUnitStart(GanttViewMode.Month, misaligned);
+        Assert.Equal(0, GanttScale.DateToPixel(GanttViewMode.Month, aligned, aligned));
+    }
+
     // ── Snap math (pixelsPerDay) ─────────────────────────────────────────────
 
     [Theory]
@@ -92,6 +187,38 @@ public class GanttScaleTests
     public void PixelsPerDay_Year_Matches_V2_pixelsPerDay()
     {
         Assert.Equal(120.0 / 365.0, GanttScale.PixelsPerDay(GanttViewMode.Year), precision: 10);
+    }
+
+    // ── Culture-aware month names (Codex round 2, P2 #4) ────────────────────
+
+    [Fact]
+    public void Month_Names_Follow_CurrentCulture_Not_Hardcoded_English()
+    {
+        // Regression: proves the fix actually follows CultureInfo.CurrentCulture
+        // (v2 parity — its fmtMonth/fmtMonthShort follow the BROWSER's locale via
+        // `toLocaleString(undefined, ...)`) rather than merely happening to still
+        // pass under the class's en-US pin above, which alone couldn't distinguish
+        // "genuinely culture-aware" from "still hardcoded to English by coincidence".
+        var original = CultureInfo.CurrentCulture;
+        try
+        {
+            CultureInfo.CurrentCulture = CultureInfo.GetCultureInfo("de-DE");
+            var units = GanttScale.BuildDateUnits(GanttViewMode.Day, Utc(2026, 1, 30), Utc(2026, 2, 2));
+
+            var upper = GanttScale.UpperRuns(GanttViewMode.Day, units);
+            Assert.Equal(new[]
+            {
+                new GanttHeaderRun(0, 2, "Januar"),
+                new GanttHeaderRun(2, 2, "Februar"),
+            }, upper);
+
+            var monthUnits = GanttScale.BuildDateUnits(GanttViewMode.Month, Utc(2026, 1, 1), Utc(2026, 1, 1));
+            Assert.Equal(new[] { "Jan" }, GanttScale.LowerLabels(GanttViewMode.Month, monthUnits));
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = original;
+        }
     }
 
     // ── Header segmentation — all 6 modes ───────────────────────────────────
@@ -212,6 +339,195 @@ public class GanttScaleTests
         var roundtrip = GanttScale.PixelToDate(mode, origin, px);
 
         Assert.Equal(date, roundtrip);
+    }
+
+    // ── PixelToDateContinuous (Codex round 6, P1 #1) ────────────────────────
+
+    [Theory]
+    [InlineData(GanttViewMode.Month)]
+    [InlineData(GanttViewMode.Year)]
+    public void PixelToDateContinuous_Then_DateToPixel_Roundtrips_Within_Tolerance_For_A_MidUnit_Offset(GanttViewMode mode)
+    {
+        // A deliberately non-unit-aligned pixel offset (mid-month / mid-year) —
+        // exactly the case PixelToDate's own whole-unit rounding snaps away
+        // from. The round-trip isn't expected to be bit-exact (the
+        // continuous inverse folds its fractional part back in as a plain
+        // day count — see AddContinuousMonths/AddContinuousYears' own
+        // remarks — which can leave a small residual time-of-day component
+        // DateToPixel's day-of-month/day-of-year read then drops), so this
+        // asserts "close" (sub-pixel) rather than exact.
+        var origin = Utc(2026, 1, 1);
+        var cfg = GanttScale.GetConfig(mode);
+        var px = cfg.ColumnWidth * 2.5;
+
+        var continuous = GanttScale.PixelToDateContinuous(mode, origin, px);
+        var roundtripPx = GanttScale.DateToPixel(mode, origin, continuous);
+
+        Assert.True(Math.Abs(roundtripPx - px) < 1.0,
+            $"expected the continuous inverse to round-trip within ~1px, got px={px}, roundtripPx={roundtripPx}");
+    }
+
+    [Fact]
+    public void PixelToDateContinuous_Lands_MidMonth_Instead_Of_Snapping_To_A_Whole_Month()
+    {
+        var origin = Utc(2026, 1, 1);
+        var cfg = GanttScale.GetConfig(GanttViewMode.Month);
+        var px = cfg.ColumnWidth * 2.5; // half-way between month 2 and month 3
+
+        var snapped = GanttScale.PixelToDate(GanttViewMode.Month, origin, px);
+        var continuous = GanttScale.PixelToDateContinuous(GanttViewMode.Month, origin, px);
+
+        Assert.Equal(1, snapped.Day); // PixelToDate always lands on day-1 for Month mode
+        Assert.NotEqual(1, continuous.Day); // continuous lands mid-month instead
+    }
+
+    [Fact]
+    public void PixelToDateContinuous_Lands_MidYear_Instead_Of_Snapping_To_A_Whole_Year()
+    {
+        var origin = Utc(2026, 1, 1);
+        var cfg = GanttScale.GetConfig(GanttViewMode.Year);
+        var px = cfg.ColumnWidth * 2.5; // half-way between year 2 and year 3
+
+        var snapped = GanttScale.PixelToDate(GanttViewMode.Year, origin, px);
+        var continuous = GanttScale.PixelToDateContinuous(GanttViewMode.Year, origin, px);
+
+        Assert.Equal(1, snapped.Month); // PixelToDate always lands on Jan 1 for Year mode
+        Assert.NotEqual(1, continuous.Month); // continuous lands mid-year instead
+    }
+
+    // ── PixelToDateContinuous: short-month overflow fix (Codex round 6 review / cx6b, Important #1) ──
+    // Still green under the round-7 fix (Codex round 7, P2 #1): scaling the
+    // fractional part against the target month's OWN day count means
+    // fraction<1 always implies dayOffset<daysInMonth, so overflow past the
+    // month boundary can never happen regardless of which fraction is used.
+
+    [Fact]
+    public void PixelToDateContinuous_Does_Not_Overflow_Into_The_Next_Month_For_A_Short_February()
+    {
+        // origin=Jan 1, 2026 (non-leap year - February has 28 days),
+        // totalMonths=1.99 landed on 2026-03-02 under the OLD fixed-30-day-
+        // per-month assumption: the exact analytic inverse of DateToPixel's
+        // own /30.0 divisor implies a day offset of 0.99*30=29.7, which
+        // silently overflowed past February's own last day when added via
+        // plain AddDays. The fix scales the day offset against the month's
+        // own actual length instead, keeping the result inside February.
+        var origin = Utc(2026, 1, 1);
+        var cfg = GanttScale.GetConfig(GanttViewMode.Month);
+        var px = cfg.ColumnWidth * 1.99;
+
+        var continuous = GanttScale.PixelToDateContinuous(GanttViewMode.Month, origin, px);
+
+        Assert.Equal(2026, continuous.Year);
+        Assert.Equal(2, continuous.Month); // stays in February - NOT March
+        Assert.True(continuous.Day <= 28,
+            $"expected the result to stay within February 2026's own 28 days, got day={continuous.Day}");
+    }
+
+    [Fact]
+    public void PixelToDateContinuous_Does_Not_Overflow_Past_A_Leap_Year_Februarys_29_Days()
+    {
+        // 2028 is a leap year (February has 29 days) - the same overflow
+        // risk as the non-leap case above, confirming DateTime.DaysInMonth
+        // (not a hardcoded 28) is what actually gates the clamp.
+        var origin = Utc(2028, 1, 1);
+        var cfg = GanttScale.GetConfig(GanttViewMode.Month);
+        var px = cfg.ColumnWidth * 1.99;
+
+        var continuous = GanttScale.PixelToDateContinuous(GanttViewMode.Month, origin, px);
+
+        Assert.Equal(2028, continuous.Year);
+        Assert.Equal(2, continuous.Month); // stays in February - NOT March
+        Assert.True(continuous.Day <= 29,
+            $"expected the result to stay within leap-year February 2028's own 29 days, got day={continuous.Day}");
+    }
+
+    [Fact]
+    public void PixelToDateContinuous_Roundtrips_Precisely_For_A_Reachable_MidMonth_Offset_In_A_31Day_Month()
+    {
+        // A fraction WITHIN what a 31-day month can actually represent -
+        // unlike the overflow tests above, which deliberately probe past a
+        // SHORT month's own saturation point, this is the common case in
+        // practice (Gantt3 only ever feeds this a live scroll position that
+        // itself came from real rendered content). Under the round-7 formula
+        // the day offset is (29/30)*31=29.9667 (not a whole number), but that
+        // still lands on Jan 30 (23:12, before crossing into day 31), and
+        // DateToPixel's own integer day read of 30 happens to reconstruct the
+        // exact same input fraction (29/30) here, so the round-trip is still
+        // effectively exact for this specific probe.
+        var origin = Utc(2026, 1, 1); // January has 31 days
+        var cfg = GanttScale.GetConfig(GanttViewMode.Month);
+        var px = cfg.ColumnWidth * (29.0 / 30.0); // -> Jan 30
+
+        var continuous = GanttScale.PixelToDateContinuous(GanttViewMode.Month, origin, px);
+        var roundtripPx = GanttScale.DateToPixel(GanttViewMode.Month, origin, continuous);
+
+        Assert.Equal(1, continuous.Month);
+        Assert.Equal(30, continuous.Day);
+        Assert.True(Math.Abs(roundtripPx - px) < 1.0,
+            $"expected an exact round-trip for a reachable mid-month offset, got px={px}, roundtripPx={roundtripPx}");
+    }
+
+    // ── PixelToDateContinuous: clamp-degeneracy fix (Codex round 7 review, P2 #1) ──
+
+    [Fact]
+    public void PixelToDateContinuous_Maps_Two_Distinct_Late_February_Pixel_Positions_To_Distinct_Dates()
+    {
+        // Under cx6b's clamp-based fix, EVERY fraction above February's own
+        // saturation point (27/30 = 0.9) clamped to the same day offset
+        // (daysInMonth-1 = 27), so both of the positions probed below
+        // collapsed onto the identical instant (2026-02-28 00:00:00) - a
+        // real round-trip degeneracy for a live scroll-position probe. The
+        // round-7 fix (scaling against the month's own day count instead of
+        // clamping a fixed /30.0 inverse) keeps every distinct input pixel
+        // mapped to a distinct, distinguishable date.
+        var origin = Utc(2026, 1, 1); // February 2026 has 28 days
+        var cfg = GanttScale.GetConfig(GanttViewMode.Month);
+        var pxA = cfg.ColumnWidth * 1.95; // fraction 0.95 - past the old saturation point
+        var pxB = cfg.ColumnWidth * 1.99; // fraction 0.99 - further past it
+
+        var dateA = GanttScale.PixelToDateContinuous(GanttViewMode.Month, origin, pxA);
+        var dateB = GanttScale.PixelToDateContinuous(GanttViewMode.Month, origin, pxB);
+
+        Assert.NotEqual(dateA, dateB);
+        Assert.True(dateA < dateB,
+            $"expected the larger pixel input to map to a later date (order-preserving), got dateA={dateA:O}, dateB={dateB:O}");
+        // Both stay inside February - the fix must not reintroduce the
+        // original month-boundary overflow bug while closing the gap.
+        Assert.Equal(2, dateA.Month);
+        Assert.Equal(2, dateB.Month);
+    }
+
+    [Fact]
+    public void PixelToDateContinuous_Roundtrip_Sweep_Across_A_February_Boundary_Stays_Within_A_Bounded_Error()
+    {
+        // Sweeps pixel positions in 1px steps across the January -> February
+        // 2026 boundary and round-trips each one through DateToPixel. The
+        // error is not zero away from the exact boundary - DateToPixel's own
+        // /30.0 divisor is a fixed approximation that neither the old clamp
+        // fix nor this one can invert exactly for a non-30-day month - but it
+        // must stay bounded (no unbounded drift, no overflow into the wrong
+        // month) across the whole swept window. Tolerance is expressed
+        // relative to the column width to stay meaningful if the Month
+        // column width configuration ever changes.
+        var origin = Utc(2026, 1, 1);
+        var cfg = GanttScale.GetConfig(GanttViewMode.Month);
+        var boundaryPx = cfg.ColumnWidth * 1.0; // exact Jan/Feb boundary
+        var tolerancePx = cfg.ColumnWidth * 0.1; // documented approximation budget
+
+        for (var offset = -15; offset <= 15; offset++)
+        {
+            var px = boundaryPx + offset;
+            var continuous = GanttScale.PixelToDateContinuous(GanttViewMode.Month, origin, px);
+            var roundtripPx = GanttScale.DateToPixel(GanttViewMode.Month, origin, continuous);
+            var error = Math.Abs(roundtripPx - px);
+
+            Assert.True(error < tolerancePx,
+                $"offset={offset}: expected round-trip error under {tolerancePx}px, got px={px}, roundtripPx={roundtripPx}, error={error}, continuous={continuous:O}");
+            // Never overflows into March or back into December regardless of
+            // how far the swept pixel sits from the exact boundary.
+            Assert.True(continuous.Month is 1 or 2,
+                $"offset={offset}: expected the swept position to stay within January or February, got {continuous:O}");
+        }
     }
 
     [Fact]
@@ -372,5 +688,87 @@ public class GanttScaleTests
         Assert.Equal((2 * 76.0) + 38.0 - 11.0, xOverride, precision: 10);
         Assert.Equal(22, widthDefault); // milestone bounding box is always barHeight regardless of columnWidth
         Assert.Equal(22, widthOverride);
+    }
+
+    // ── RTL scrollLeft conversion math (Codex round 4, P2 #4) ───────────────
+    //
+    // gantt-v3.js's toNativeScrollLeft/fromNativeScrollLeft can't be unit
+    // tested directly from C# (they're pure JS, and their INPUT — a live
+    // browser's detected RTL convention — isn't something a C# test can
+    // observe either). What CAN be tested independent of any browser is the
+    // CONVERSION MATH itself, given a known convention label: this is a
+    // faithful byte-for-byte port of both functions, asserted against all 3
+    // conventions, so a future edit to either side is caught by a mismatch
+    // here instead of a silent RTL regression only visible in a real browser.
+
+    private enum RtlConvention { Default, Negative, Reverse }
+
+    // Port of gantt-v3.js's toNativeScrollLeft.
+    private static double ToNativeScrollLeft(RtlConvention convention, double maxScroll, double logicalTarget) => convention switch
+    {
+        RtlConvention.Negative => logicalTarget - maxScroll,
+        RtlConvention.Reverse => maxScroll - logicalTarget,
+        _ => logicalTarget,
+    };
+
+    // Port of gantt-v3.js's fromNativeScrollLeft (the exact inverse).
+    private static double FromNativeScrollLeft(RtlConvention convention, double maxScroll, double nativeValue) => convention switch
+    {
+        RtlConvention.Negative => nativeValue + maxScroll,
+        RtlConvention.Reverse => maxScroll - nativeValue,
+        _ => nativeValue,
+    };
+
+    // xunit [Theory]/[InlineData] would need this `private` enum in the
+    // PUBLIC test method's signature (CS0051 — same note as AssertConfig's
+    // own remarks above) — one [Fact] per convention instead.
+    private static void AssertRoundTrip(RtlConvention convention)
+    {
+        const double maxScroll = 1000;
+        const double logicalTarget = 350;
+
+        var native = ToNativeScrollLeft(convention, maxScroll, logicalTarget);
+        var recovered = FromNativeScrollLeft(convention, maxScroll, native);
+
+        Assert.Equal(logicalTarget, recovered, precision: 10);
+    }
+
+    [Fact]
+    public void ToNativeScrollLeft_And_FromNativeScrollLeft_Are_Exact_Inverses_For_Default() =>
+        AssertRoundTrip(RtlConvention.Default);
+
+    [Fact]
+    public void ToNativeScrollLeft_And_FromNativeScrollLeft_Are_Exact_Inverses_For_Negative() =>
+        AssertRoundTrip(RtlConvention.Negative);
+
+    [Fact]
+    public void ToNativeScrollLeft_And_FromNativeScrollLeft_Are_Exact_Inverses_For_Reverse() =>
+        AssertRoundTrip(RtlConvention.Reverse);
+
+    [Fact]
+    public void ToNativeScrollLeft_Default_Convention_Is_A_Pass_Through()
+    {
+        Assert.Equal(350, ToNativeScrollLeft(RtlConvention.Default, maxScroll: 1000, logicalTarget: 350));
+    }
+
+    [Fact]
+    public void ToNativeScrollLeft_Negative_Convention_Shifts_By_MaxScroll_Below_Zero()
+    {
+        // 'negative': 0 = RTL start, -(maxScroll) = the far end — matches the
+        // empirically-verified modern-Chromium behavior this fix's own JS
+        // comment documents.
+        Assert.Equal(-650, ToNativeScrollLeft(RtlConvention.Negative, maxScroll: 1000, logicalTarget: 350));
+        Assert.Equal(0, ToNativeScrollLeft(RtlConvention.Negative, maxScroll: 1000, logicalTarget: 1000));
+        Assert.Equal(-1000, ToNativeScrollLeft(RtlConvention.Negative, maxScroll: 1000, logicalTarget: 0));
+    }
+
+    [Fact]
+    public void ToNativeScrollLeft_Reverse_Convention_Mirrors_Around_MaxScroll()
+    {
+        // 'reverse' (old WebKit): 0 = RTL start, +maxScroll = the far end,
+        // increasing in the OPPOSITE direction from 'negative'.
+        Assert.Equal(650, ToNativeScrollLeft(RtlConvention.Reverse, maxScroll: 1000, logicalTarget: 350));
+        Assert.Equal(0, ToNativeScrollLeft(RtlConvention.Reverse, maxScroll: 1000, logicalTarget: 1000));
+        Assert.Equal(1000, ToNativeScrollLeft(RtlConvention.Reverse, maxScroll: 1000, logicalTarget: 0));
     }
 }

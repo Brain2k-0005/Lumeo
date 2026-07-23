@@ -72,31 +72,25 @@ internal static class GanttArrowRouting
     // "source.y" in v2 is the bar's already-computed top (taskById's stored `y`,
     // itself `barY` — see GanttScale.BarTop's remarks), not the row's raw top.
     //
-    // The "+ GanttScale.HeaderHeight" below is NOT part of GanttScale.BarTop
-    // itself (adding it there would double-count it for GanttBar, which gets
-    // its own HeaderHeight offset for free via DOM nesting — see BarTop's own
-    // remarks: "the row CANVAS's own top offset, added by the caller"). A
-    // rendered GanttBar sits inside GanttTimeline's row-canvas div, which
-    // starts HeaderHeight px below the outer canvas div's top purely because
-    // the header div renders BEFORE it in normal document flow. GanttArrowLayer's
-    // <svg>, however, is "absolute inset-0" against that SAME OUTER canvas div
-    // (not the row-canvas div) — see GanttArrowLayer.razor's RootClass — so its
-    // own coordinate origin is the top of the HEADER, not the top of the rows.
-    // Without this offset every arrow rendered ~HeaderHeight px (56px) too high,
-    // floating near the header instead of touching the bars it connects
-    // (parity-harness finding, feat/gantt-v3 T4: v2's flat single-SVG canvas has
-    // no such split coordinate space, so its own barY already includes
-    // HEADER_HEIGHT — gantt-v2.js line 454 — and never had this bug).
+    // No "+ GanttScale.HeaderHeight" term here (Codex round 2, P1 #3 — removed;
+    // this used to add it because GanttArrowLayer's <svg> was "absolute inset-0"
+    // against the SAME outer canvas div the header rendered inside of, via
+    // normal document flow, so its own coordinate origin sat at the top of the
+    // HEADER rather than the top of the rows — see GanttTimeline.razor's own
+    // remarks for the sticky-header restructure that moved the header OUTSIDE
+    // this coordinate space entirely: the outer canvas div's origin now
+    // directly aligns with row 0, matching a rendered GanttBar's own
+    // RowIndex*RowHeight math with no offset needed on either side anymore).
     private static (double X, double Y) SourceEdge(BarGeometry source, int barHeight)
     {
-        var sy = GanttScale.HeaderHeight + GanttScale.BarTop(source.RowIndex, barHeight) + barHeight / 2.0;
+        var sy = GanttScale.BarTop(source.RowIndex, barHeight) + barHeight / 2.0;
         return (source.X + source.Width, sy);
     }
 
     // tx = target.x; ty = target.y + BAR_HEIGHT / 2 (gantt-v2.js:656-657).
     private static (double X, double Y) TargetEdge(BarGeometry target, int barHeight)
     {
-        var ty = GanttScale.HeaderHeight + GanttScale.BarTop(target.RowIndex, barHeight) + barHeight / 2.0;
+        var ty = GanttScale.BarTop(target.RowIndex, barHeight) + barHeight / 2.0;
         return (target.X, ty);
     }
 }

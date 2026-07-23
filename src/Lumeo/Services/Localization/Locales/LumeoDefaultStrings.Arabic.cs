@@ -271,6 +271,15 @@ internal static partial class LumeoDefaultStrings
         ["Gantt.Week"] = "أسبوع",
         ["Gantt.Month"] = "شهر",
         ["Gantt.Year"] = "سنة",
+        // Codex round 4, P2 #6 — locale completeness: this block only ever had Day/Week/Month/Year
+        ["Gantt.Today"] = "اليوم",
+        ["Gantt.PreviousPeriod"] = "الفترة السابقة",
+        ["Gantt.NextPeriod"] = "الفترة التالية",
+        ["Gantt.ExpandRow"] = "توسيع {0}",
+        ["Gantt.CollapseRow"] = "طي {0}",
+        ["Gantt.NoTasksToDisplay"] = "لا توجد مهام لعرضها",
+        ["Gantt.TaskAriaLabel"] = "{0}, من {1} إلى {2}",
+        ["Gantt.PercentComplete"] = "اكتمل {0}%",
 
         // Editor
         ["Editor.Paragraph"] = "فقرة",

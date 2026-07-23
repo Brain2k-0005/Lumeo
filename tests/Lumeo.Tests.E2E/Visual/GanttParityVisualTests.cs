@@ -49,6 +49,44 @@ public class GanttParityVisualTests : GanttParityTestBase
             return;
         }
 
+        // Bug fix (Codex round 5 review, Important #2): both v2 and v3 resolve
+        // "today" from the BROWSER's real clock (v2's gantt-v2.js directly,
+        // v3 via getLocalDateIso() — see Gantt3's own Codex round 2, P2 #9
+        // remarks on why it reads the browser's date rather than the server's).
+        // The v3-only scroll-to-today LATCH below (added for round 2's P1 fix)
+        // stabilizes the RACE against that async resolution, but neither route
+        // was ever protected from the clock itself moving: SharedTasks' dates
+        // are fixed at Feb–Apr 2026, so as real time advances past that
+        // window, the rendered today-marker's column silently drifts a pixel
+        // (or several) further along the SAME baseline image every time the
+        // suite runs on a later date — exactly what caused the recurring,
+        // seemingly-random v2 baseline diffs this round flagged. Freezing the
+        // browser's own Date BEFORE the page loads (test-side only — gantt-v2.js/
+        // gantt-v3.js are untouched) makes "today" a fixed instant chosen
+        // WITHIN SharedTasks' own date range for both routes, converting the
+        // marker's rendered position from clock-derived to effectively
+        // fixture-derived and permanently reproducible — the alternative
+        // (scrolling to a window where the marker never appears) doesn't hold
+        // for Month/Year mode, where a single 1400px-wide viewport at that
+        // zoom level unavoidably spans years and can't exclude "today" while
+        // still showing SharedTasks' own bars.
+        // Function-based override, not a `class X extends Date` subclass — the
+        // latter silently failed to actually take effect in this init-script
+        // context (verified live: `new Date().toString()` still returned the
+        // real wall-clock date with the class-based version in place; this
+        // form was verified live to actually shift both `new Date()` and
+        // Blazor's own SignalR log timestamps to the frozen date).
+        await Page.AddInitScriptAsync(@"
+            window.__lumeoFrozenNow = new Date(2026, 2, 15).getTime(); // March 15, 2026 — inside SharedTasks' Feb 23 - Apr 3 2026 range
+            var RealDate = Date;
+            window.Date = function (...args) {
+                if (args.length === 0) return new RealDate(window.__lumeoFrozenNow);
+                return new RealDate(...args);
+            };
+            window.Date.now = function () { return window.__lumeoFrozenNow; };
+            window.Date.prototype = RealDate.prototype;
+        ");
+
         await Page.SetViewportSizeAsync(ViewportWidth, ViewportHeight);
         await GotoHost($"/e2e/gantt-{route}?viewMode={viewMode}");
 
@@ -66,6 +104,30 @@ public class GanttParityVisualTests : GanttParityTestBase
         // P1 fix; caught here because the Month-mode baseline briefly showed
         // the pre-scroll position before this delay was added).
         await Page.WaitForTimeoutAsync(250);
+
+        if (route == "v3")
+        {
+            // Codex round 2, P2 #8 ("visual snapshot drift"): pin the scroll
+            // deterministically via the SAME latch GanttV3NavTests already uses
+            // (gantt-v3.js's centerOn stamps this attribute atomically with the
+            // scroll it performs) instead of relying solely on the blind delay
+            // above, which only ever bounded the RACE, not WHERE the scroll
+            // actually lands — that depends on ShouldAttemptTodayScroll's own
+            // v2-parity gate (GanttTimeline.razor's remarks) reacting correctly
+            // to wherever DateTime.Today/the browser's resolved date happens to
+            // fall relative to SharedTasks' fixed 2026 window on the day this
+            // runs, which the scroll-gate fix (not this wait) is what actually
+            // stabilizes; this wait only removes the SEPARATE async-landing race.
+            // Codex round 3, P2 #1: the scroll-to-today latch attribute now
+            // lands on Gantt3's shared OUTER pane (the "overflow:auto" wrapper
+            // around the tree+timeline flex row), not on GanttTimeline's own
+            // row-canvas div — that div no longer scrolls (or carries
+            // overflow-x-auto) at all once Gantt3 supplies ScrollHost, since
+            // ITS scroll interop calls now all target the outer pane directly
+            // (see GanttTimeline.EffectiveScrollHost's remarks).
+            var scrollHost = Page.Locator($"[data-testid='{rootTestId}'] div[style*='overflow']").First;
+            await Assertions.Expect(scrollHost).ToHaveAttributeAsync("data-gantt-v3-initial-scroll", "done", new() { Timeout = 5000 });
+        }
 
         var screenshotBytes = await Page.ScreenshotAsync(new PageScreenshotOptions
         {
@@ -117,10 +179,29 @@ public class GanttParityVisualTests : GanttParityTestBase
         }
     }
 
+    // Bug fix (Codex round 7 review / cx7b, Important #1): a fixed 5-level
+    // `..` walk from AppContext.BaseDirectory assumes
+    // tests/Lumeo.Tests.E2E/bin/{Config}/net10.0/ — but running with
+    // `--arch x64` (this repo's own documented local-dev requirement; see
+    // the toolchain notes) adds an extra RID segment
+    // (bin/{Config}/net10.0/win-x64/), so the fixed walk landed one level too
+    // SHALLOW, doubling the "tests" segment (tests/tests/Lumeo.Tests.E2E/...)
+    // and reporting every baseline as "missing" regardless of whether it
+    // actually exists — the visual suite could never run locally at all
+    // under the arch flag this repo's own test instructions require. Anchors
+    // on Lumeo.slnx instead (same pattern as CliVendorE2ETests/
+    // DocsCoverageTests' own FindRepoRoot), which is RID-segment-agnostic.
     private static string GetSnapshotsDir()
     {
-        var here = AppContext.BaseDirectory;
-        var repo = Path.GetFullPath(Path.Combine(here, "..", "..", "..", "..", ".."));
+        var repo = FindRepoRoot(AppContext.BaseDirectory)
+            ?? throw new InvalidOperationException("Repo root (Lumeo.slnx) not found above " + AppContext.BaseDirectory);
         return Path.Combine(repo, "tests", "Lumeo.Tests.E2E", "Snapshots");
+    }
+
+    private static string? FindRepoRoot(string start)
+    {
+        for (var d = new DirectoryInfo(start); d is not null; d = d.Parent)
+            if (File.Exists(Path.Combine(d.FullName, "Lumeo.slnx"))) return d.FullName;
+        return null;
     }
 }

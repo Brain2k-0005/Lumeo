@@ -99,6 +99,32 @@ internal static class GanttParityFixtures
     };
 
     /// <summary>
+    /// v3-only: one root + 50 chained children (Codex round 6, P1 #2) — tall
+    /// enough (51 rows * <c>GanttScale.RowHeight</c> (36) = 1836px) to need
+    /// real virtualization/arrow-culling in the 900px E2E host pane, unlike
+    /// <see cref="TreeTasks"/>'s own 5-row fixture (too short for the
+    /// culling window's overscan margin to ever exclude anything either
+    /// way). Collapsing/re-expanding the root changes the row count from 51
+    /// down to 1 and back WITHOUT any scroll — exactly the arrow-culling-
+    /// window-invalidation regression this finding targets. Used by
+    /// <c>/e2e/gantt-v3-tree?fixture=tall</c>.
+    /// </summary>
+    internal static List<GanttTask> TallHierarchyFixture()
+    {
+        var start = new DateTime(2026, 3, 1);
+        var tasks = new List<GanttTask> { new("th-root", "Root", start, start.AddDays(200)) };
+        for (var i = 0; i < 50; i++)
+        {
+            tasks.Add(new GanttTask($"th-{i}", $"Child {i}", start.AddDays(i), start.AddDays(i + 3),
+                Dependencies: i > 0 ? new[] { $"th-{i - 1}" } : null)
+            {
+                ParentId = "th-root",
+            });
+        }
+        return tasks;
+    }
+
+    /// <summary>
     /// A dedicated, small fixture anchored on <see cref="DateTime.Today"/> — the ONLY
     /// place in this file that reads the clock, and only because the today-marker
     /// itself only renders when "today" falls inside the (deterministic, ±60-day-padded
@@ -125,4 +151,76 @@ internal static class GanttParityFixtures
     /// valid bidirectional ghost-repaint assertion (Phase 2, T4 pin item I).
     /// </summary>
     internal static readonly DateTime CanDropBlackoutBefore = new(2026, 3, 5);
+
+    /// <summary>
+    /// v-only fixture anchored on <see cref="DateTime.Today"/> like <see cref="TodayMarkerTasks"/>,
+    /// but shifted entirely into the future (Codex round 5, P2 #9) so the
+    /// rendered Day-mode window (task min/max &#177; the mode's own 60-day
+    /// padding — see <c>GanttScale.ViewModes</c>) starts well AFTER today. The
+    /// one scenario that exercises <c>GanttTimeline.ShouldAttemptTodayScroll</c>'s
+    /// "scroll target before the very first rendered column" branch
+    /// (<c>ScrollTargetX &lt;= 0</c>), which the RTL scrollLeft-clamp fix
+    /// targets — 90 days out clears the 60-day pad with margin to spare.
+    /// </summary>
+    internal static List<GanttTask> FutureOnlyFixture()
+    {
+        var today = DateTime.Today;
+        return new List<GanttTask>
+        {
+            new("future-1", "Kickoff", today.AddDays(90), today.AddDays(100)),
+            new("future-2", "Build", today.AddDays(100), today.AddDays(110), Dependencies: new[] { "future-1" }),
+        };
+    }
+
+    /// <summary>
+    /// v3-only: 60 flat (no GroupLabel/ParentId) tasks, deliberately tall enough
+    /// to overflow the E2E host page's 900px pane (60 * GanttScale.RowHeight
+    /// (36) = 2160px of row content alone, before the header) — Codex round 2,
+    /// P1 #3's mandatory tall-fixture regression spec for the sticky-header
+    /// restructure (a fixture that never actually needs to scroll vertically
+    /// would trivially "pass" a stays-visible assertion without proving
+    /// anything). Fixed dates (March 2026), never <see cref="DateTime.Now"/>/
+    /// <see cref="DateTime.Today"/> — same determinism rule as
+    /// <see cref="SharedTasks"/>, this fixture has no today-marker concern at all.
+    ///
+    /// A dependency CHAIN (each task depends on the one before it — 59 edges
+    /// total) was added for Codex round 4, P2 #3's arrow-virtualization
+    /// regression coverage: reuses this same 60-row fixture rather than adding
+    /// a parallel one, since arrow culling needs the identical "genuinely
+    /// taller than the viewport" property the bar/tree virtualization specs
+    /// already established here.
+    /// </summary>
+    internal static List<GanttTask> TallFixture()
+    {
+        var start = new DateTime(2026, 3, 1);
+        var tasks = new List<GanttTask>(60);
+        for (var i = 0; i < 60; i++)
+            tasks.Add(new GanttTask($"tall-{i}", $"Task {i}", start.AddDays(i), start.AddDays(i + 3),
+                Dependencies: i > 0 ? new[] { $"tall-{i - 1}" } : null));
+        return tasks;
+    }
+
+    /// <summary>
+    /// v3-only: 80 flat tasks with exactly ONE dependency, spanning row 5 to
+    /// row 70 (Codex round 5, P2 #7) — dedicated to the arrow-culling
+    /// window-CROSSING regression rather than adding this edge to
+    /// <see cref="TallFixture"/>: several existing specs hardcode that
+    /// fixture's exact 59-edge chain count, and this needs its two endpoints
+    /// placed far enough apart that a scrolled-to-center window (plus its
+    /// overscan margin) excludes BOTH individually while the edge's own
+    /// [5, 70] span still fully brackets that window — the exact shape the
+    /// round-4 culling check ("both endpoints individually outside") got
+    /// wrong.
+    /// </summary>
+    internal static List<GanttTask> CrossingDependencyFixture()
+    {
+        var start = new DateTime(2026, 3, 1);
+        var tasks = new List<GanttTask>(80);
+        for (var i = 0; i < 80; i++)
+        {
+            var deps = i == 70 ? new[] { "cross-5" } : null;
+            tasks.Add(new GanttTask($"cross-{i}", $"Task {i}", start.AddDays(i), start.AddDays(i + 3), Dependencies: deps));
+        }
+        return tasks;
+    }
 }

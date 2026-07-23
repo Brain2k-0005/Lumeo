@@ -118,6 +118,20 @@ internal static class GanttScale
     internal const int HeaderHeight = 56;
 
     /// <summary>
+    /// GanttTree's fixed pane width in pixels (Codex round 4, P2 #2) — the
+    /// SINGLE source of truth for both GanttTree's own rendered width (a
+    /// Tailwind utility class can't be parameterized from C#, so GanttTree
+    /// uses an inline style built from this constant instead of a fixed
+    /// `w-56` class) and Gantt3's <c>GanttTimeline.ScrollHostLeadingOffset</c>
+    /// calculation — before this constant existed, the tree's width (224px,
+    /// Tailwind's `w-56`) was a magic number baked into GanttTree's markup
+    /// with nothing else in the codebase able to reference it, which is
+    /// exactly how the P2 #2 bug (scroll centering ignoring the tree's width)
+    /// went unnoticed: there was no shared value to even offset by.
+    /// </summary>
+    internal const int TreePaneWidth = 224;
+
+    /// <summary>
     /// Faithful port of gantt-v2.js's <c>VIEW_MODES</c> table (lines 29-36). Every
     /// field below is copied verbatim from the corresponding JS literal; see each
     /// <see cref="GanttScaleUnit"/>/<see cref="GanttHeaderUpperKind"/>/<see cref="GanttHeaderLowerKind"/>
@@ -266,6 +280,111 @@ internal static class GanttScale
     }
 
     /// <summary>
+    /// Continuous (unsnapped) inverse of <see cref="DateToPixel"/> — LINEARLY
+    /// interpolates a date WITHIN its scale unit instead of rounding to the
+    /// nearest whole one (Codex round 6, P1 #1). <see cref="PixelToDate"/>'s
+    /// rounding is deliberate and load-bearing for DRAG math (a user dragging
+    /// a bar in Month/Year view SHOULD snap to whole months/years — that's
+    /// the intended UX, and nothing here changes it), but the SAME rounding
+    /// used for Gantt3's view-mode-switch center-preservation read
+    /// (its <c>ResolveCurrentCenterDateAsync</c> call site) had
+    /// a much coarser side effect there: Month/Year's unit is huge relative to
+    /// typical scroll-pixel deltas, so reading the live scroll center through
+    /// <see cref="PixelToDate"/> snapped it to whichever whole month/year
+    /// boundary happened to be nearest — repeated mode switches could visibly
+    /// jump the preserved center by up to half a month/year instead of
+    /// tracking the actual scrolled-to position. This method is that
+    /// non-snapping counterpart, used ONLY by the center-preservation path;
+    /// <see cref="PixelToDate"/> itself is UNCHANGED and still backs every
+    /// drag/resize computation.
+    /// </summary>
+    internal static DateTime PixelToDateContinuous(GanttViewMode mode, DateTime origin, double pixel, int? columnWidthOverride = null)
+    {
+        var cfg = GetConfig(mode);
+        var colW = columnWidthOverride ?? cfg.ColumnWidth;
+        return cfg.Unit switch
+        {
+            // Day/Hour's own DateToPixel formulas are already linear in whole
+            // days/hours (TotalDays/TotalHours), so simply not rounding here
+            // (AddDays/AddHours both accept fractional values directly) is
+            // already the exact continuous inverse — no separate helper needed.
+            GanttScaleUnit.Day => origin.Date.AddDays((pixel / colW) * cfg.Step),
+            GanttScaleUnit.Month => AddContinuousMonths(origin, pixel / colW),
+            GanttScaleUnit.Year => AddContinuousYears(origin, pixel / colW),
+            GanttScaleUnit.Hour => origin.AddHours((pixel / colW) * cfg.Step),
+            _ => origin,
+        };
+    }
+
+    // DateToPixel's Month formula is `monthsDiff + (day-1)/30.0` — a FIXED,
+    // v2-parity approximation applied to EVERY month regardless of its
+    // actual length (gantt-v2.js's own `dayFraction = (d.getDate()-1)/30`,
+    // ported verbatim). Origin is always day-1 of its month here (GanttScale's
+    // own aligned-origin invariant — see BuildDateUnits/AlignToUnitStart's
+    // remarks), so AddMonths lands on day-1 of the target month too.
+    //
+    // Bug fix (Codex round 6 review / cx6b, Important #1): a literal analytic
+    // inverse of that /30.0 divisor (`dayOffset = fraction*30.0`) overflows a
+    // month SHORTER than 30 days (February) past its own last valid day, and
+    // a plain `AddDays` let .NET's calendar arithmetic silently roll into the
+    // NEXT month (a February 30th doesn't exist) — confirmed live: origin=
+    // Jan 1 2026, totalMonths=1.99 landed on 2026-03-02 instead of within
+    // February. cx6b's own fix clamped the day offset to [0, daysInMonth-1],
+    // which stopped the overflow but introduced a DIFFERENT bug (Codex round
+    // 7, P2 #1): every fraction above the month's own saturation point
+    // (daysInMonth-1)/30.0 clamps to the SAME offset, so distinct pixel
+    // positions in that "unreachable gap" collapse onto the identical date —
+    // a real round-trip degeneracy for a live scroll-position probe (which
+    // has no guarantee of landing inside the reachable sub-range).
+    //
+    // Fix (round 7): stop trying to invert DateToPixel's fixed /30.0 divisor
+    // at all in the gap region. Instead, scale the fractional part against
+    // the TARGET month's own actual day count — `fraction*daysInMonth` — so
+    // the WHOLE [0, 1) unit maps bijectively (strictly monotonic, no
+    // collapsing) onto that month's whole day range [0, daysInMonth). This
+    // can never overflow (fraction<1 implies dayOffset<daysInMonth, always
+    // inside the month), needs no clamp, and is exact — round-trips through
+    // DateToPixel with zero error — for any month whose length happens to BE
+    // 30 (April, June, September, November); for other month lengths it
+    // trades a small amount of round-trip fidelity against DateToPixel's own
+    // fixed-30 approximation (worst case a handful of pixels, growing with
+    // |daysInMonth-30| and with how far into the month the fraction reaches)
+    // in exchange for never losing information about the input position.
+    // Continuous is a live-probe interpretation, not the same contract as
+    // DateToPixel's own forward math, so this trade is the right one.
+    private static DateTime AddContinuousMonths(DateTime origin, double totalMonths)
+    {
+        var whole = Math.Floor(totalMonths);
+        var fraction = totalMonths - whole;
+        var monthStart = origin.AddMonths((int)whole);
+        var daysInMonth = DateTime.DaysInMonth(monthStart.Year, monthStart.Month);
+        var dayOffset = fraction * daysInMonth;
+        return monthStart.AddDays(dayOffset);
+    }
+
+    // Same reasoning as AddContinuousMonths, for DateToPixel's Year formula
+    // (`yearsDiff + ((month-1)*30+day)/365.0`) — origin is always Jan 1 here.
+    //
+    // Confirmed SAFE without a clamp (Codex round 6 review / cx6b, Important
+    // #1's own follow-up check): DateToPixel's Year formula divides by a
+    // FIXED 365.0 regardless of whether the target year is a leap year — it
+    // NEVER checks leap-ness, so its own day-of-year term can reach at most
+    // 365 (Dec 31 of a non-leap year) and never more. A leap year has 366
+    // days, i.e. MORE room than the fixed 365 divisor ever assumes exists —
+    // so a fraction approaching (but never reaching) 1.0 here can only ever
+    // UNDERSHOOT a leap year's actual Dec 31 (landing a fraction of a day
+    // short of it), never overshoot into the following year the way a SHORT
+    // month could overshoot into the next month above. No overflow risk, no
+    // clamp needed.
+    private static DateTime AddContinuousYears(DateTime origin, double totalYears)
+    {
+        var whole = Math.Floor(totalYears);
+        var fraction = totalYears - whole;
+        var yearStart = new DateTime(origin.Year + (int)whole, 1, 1, 0, 0, 0, origin.Kind);
+        return yearStart.AddDays(fraction * 365.0);
+    }
+
+    /// <summary>
     /// Rounds like JS <c>Math.round</c>: half-integer ties round toward POSITIVE
     /// infinity (<c>Math.round(-0.5) === -0</c>, <c>Math.round(2.5) === 3</c>,
     /// <c>Math.round(-2.5) === -2</c>) — .NET's <see cref="Math.Round(double, MidpointRounding)"/>
@@ -282,6 +401,52 @@ internal static class GanttScale
     /// there is no large-magnitude edge case to worry about here.
     /// </summary>
     private static int RoundToInt(double value) => (int)Math.Floor(value + 0.5);
+
+    /// <summary>
+    /// Snaps <paramref name="date"/> to the start of its scale unit for
+    /// <paramref name="mode"/> — day-1 of the month for <see cref="GanttScaleUnit.Month"/>,
+    /// Jan-1 for <see cref="GanttScaleUnit.Year"/>, unchanged for
+    /// <see cref="GanttScaleUnit.Day"/>/<see cref="GanttScaleUnit.Hour"/> (every date is
+    /// already a valid unit start at day/hour granularity).
+    /// </summary>
+    /// <remarks>
+    /// Bug fix (Codex round 3, P2 #6): <see cref="DateToPixel"/>'s Month/Year branches
+    /// (above) compute a fractional-unit offset from its own <c>origin</c> parameter,
+    /// assuming origin itself sits exactly on a unit boundary — an invariant <c>Gantt3.ComputeInitialRange</c>
+    /// establishes explicitly (its own Month/Year branches snap to day-1/Jan-1 before ever
+    /// building a <see cref="GanttDateRange"/>), but a naive <c>TimeSpan</c>-based recenter
+    /// (e.g. "today ± half the window") lands the new origin mid-month or mid-year,
+    /// silently breaking every subsequent pixel computation in that mode. This is the
+    /// SAME snapping logic <c>ComputeInitialRange</c> already applies to its own
+    /// min/max dates, hoisted here so a caller recentering an EXISTING range (rather
+    /// than computing a fresh one from task min/max) can reuse it instead of
+    /// re-deriving a second, potentially-diverging copy.
+    /// </remarks>
+    internal static DateTime AlignToUnitStart(GanttViewMode mode, DateTime date)
+    {
+        var cfg = GetConfig(mode);
+        return cfg.Unit switch
+        {
+            GanttScaleUnit.Month => new DateTime(date.Year, date.Month, 1, 0, 0, 0, date.Kind),
+            GanttScaleUnit.Year => new DateTime(date.Year, 1, 1, 0, 0, 0, date.Kind),
+            // Bug fix (Codex round 11 review, P2 #2): sub-day modes (QuarterDay/
+            // HalfDay, Hour unit) previously fell through to the `_ => date`
+            // default below — a live-scroll-captured continuous center carries
+            // arbitrary minutes/seconds (PixelToDateContinuous's Hour branch is
+            // `origin.AddHours(...)`, no rounding), so re-centering on it left the
+            // new range's own start (and therefore every subsequent column
+            // boundary BuildDateUnits generates from it) sitting at, say,
+            // 14:37 instead of a clean 6-/12-hour boundary — every rendered
+            // Time6h/Time12h header label would show the wrong time, offset by
+            // that same arbitrary remainder. Floors the hour to the nearest
+            // multiple of the mode's own step (6 for QuarterDay, 12 for HalfDay)
+            // and drops minutes/seconds/sub-second ticks entirely, mirroring
+            // the Month/Year branches' own "snap down to the unit's own
+            // boundary" semantics.
+            GanttScaleUnit.Hour => new DateTime(date.Year, date.Month, date.Day, (date.Hour / cfg.Step) * cfg.Step, 0, 0, date.Kind),
+            _ => date,
+        };
+    }
 
     /// <summary>
     /// Pixels-per-calendar-day for the given view mode — used to snap a raw drag
@@ -345,15 +510,37 @@ internal static class GanttScale
     /// </summary>
     internal static (double X, double Width) BarGeometry(GanttTask task, GanttViewMode mode, DateTime origin, int columnWidth, int barHeight)
     {
+        // Bug fix (Codex round 8 review, P2 #4): v2's normalizeTasks/parseDate
+        // (gantt-v2.js) truncate every task's Start/End to a plain calendar
+        // date — `d.getFullYear()/getMonth()/getDate()`, ALWAYS, unconditional
+        // on view mode — BEFORE the renderer ever sees them; v2 has no notion
+        // of a sub-day task time anywhere. v3 never had an equivalent
+        // truncation step, so a task carrying a real time-of-day (e.g.
+        // Start=2026-03-04 14:37) rendered at that exact fractional pixel
+        // offset instead of snapping to the day boundary — invisible in Day
+        // mode's own coarse columns but visibly wrong in QuarterDay/HalfDay,
+        // where a task is supposed to occupy whole quarter/half-day columns
+        // starting exactly at their boundary, not wherever a stray time
+        // happens to land. Truncated HERE — the single shared geometry
+        // formula bars AND arrows both go through (see this method's own
+        // remarks) — rather than on GanttTask itself, so a consumer's own
+        // Start/End (round-tripped through OnTaskClick, a drag commit, etc.)
+        // keeps whatever time-of-day they actually supplied; only the
+        // RENDERED POSITION is date-truncated, mirroring v2's own semantic
+        // layer (its renderer never sees the untruncated value at all,
+        // either) without touching the public data model.
+        var start = task.Start.Date;
+        var end = task.End.Date;
+
         if (task.IsMilestone)
         {
-            var center = DateToPixel(mode, origin, task.Start, columnWidth) + columnWidth / 2.0;
+            var center = DateToPixel(mode, origin, start, columnWidth) + columnWidth / 2.0;
             var half = barHeight / 2.0;
             return (center - half, barHeight);
         }
 
-        var x1 = DateToPixel(mode, origin, task.Start, columnWidth);
-        var x2 = DateToPixel(mode, origin, task.End.AddDays(1), columnWidth);
+        var x1 = DateToPixel(mode, origin, start, columnWidth);
+        var x2 = DateToPixel(mode, origin, end.AddDays(1), columnWidth);
         return (x1, Math.Max(8, x2 - x1));
     }
 
@@ -374,14 +561,28 @@ internal static class GanttScale
     private static string LowerLabel(GanttHeaderLowerKind kind, DateTime d) => kind switch
     {
         // case 'dayNum': lowerText = fmtDayNum(d); -> String(d.getDate()).padStart(2, '0')
+        // Locale-independent (plain digits, no month/day NAME involved) — matches
+        // v2's own locale-independent String.padStart, so InvariantCulture stays
+        // correct here (see the MonthName case below for the case that ISN'T).
         GanttHeaderLowerKind.DayNum => d.Day.ToString("D2", CultureInfo.InvariantCulture),
         // case 'weekRange': lowerText = `${d.getDate()}/${d.getMonth() + 1}`;
         GanttHeaderLowerKind.WeekRange => $"{d.Day}/{d.Month}",
         // case 'monthName': lowerText = fmtMonthShort(d);
-        GanttHeaderLowerKind.MonthName => d.ToString("MMM", CultureInfo.InvariantCulture),
-        // case 'yearNum': lowerText = fmtYear(d);
+        // Bug fix (Codex round 2, P2 #4): v2's fmtMonthShort is
+        // `d.toLocaleString(undefined, { month: 'short' })` — the `undefined`
+        // locale argument means "the BROWSER's own locale", not hardcoded
+        // English. InvariantCulture here forced every v3 chart to always show
+        // English month abbreviations regardless of the visiting user's locale,
+        // a real parity gap (not a "v2 hardcodes English" case, which was the
+        // other hypothesis raised for this finding — checked and ruled out:
+        // v2 is locale-AWARE, v3 was locale-BLIND). CurrentCulture mirrors the
+        // ASP.NET Core request culture (typically derived from Accept-Language,
+        // the server-side equivalent of "the browser's locale"), matching
+        // Gantt3.PeriodLabel's own existing CurrentCulture usage.
+        GanttHeaderLowerKind.MonthName => d.ToString("MMM", CultureInfo.CurrentCulture),
+        // case 'yearNum': lowerText = fmtYear(d); — plain digits, locale-independent.
         GanttHeaderLowerKind.YearNum => d.Year.ToString(CultureInfo.InvariantCulture),
-        // case 'time6h': case 'time12h': lowerText = `${d.getHours()}:00`;
+        // case 'time6h': case 'time12h': lowerText = `${d.getHours()}:00`; — plain digits.
         GanttHeaderLowerKind.Time6h or GanttHeaderLowerKind.Time12h => $"{d.Hour}:00",
         _ => string.Empty,
     };
@@ -419,11 +620,15 @@ internal static class GanttScale
     private static string UpperLabel(GanttHeaderUpperKind kind, DateTime d) => kind switch
     {
         // case 'month': upperText = fmtMonth(d); -> d.toLocaleString(undefined, { month: 'long' })
-        GanttHeaderUpperKind.Month => d.ToString("MMMM", CultureInfo.InvariantCulture),
-        // case 'year': upperText = fmtYear(d);
+        // Bug fix (Codex round 2, P2 #4) — same v2-parity fix as LowerLabel's
+        // MonthName case above: v2's `undefined` locale argument follows the
+        // BROWSER's locale, so InvariantCulture's hardcoded English diverged
+        // from v2 for any non-English locale.
+        GanttHeaderUpperKind.Month => d.ToString("MMMM", CultureInfo.CurrentCulture),
+        // case 'year': upperText = fmtYear(d); — plain digits, locale-independent.
         GanttHeaderUpperKind.Year => d.Year.ToString(CultureInfo.InvariantCulture),
         // case 'day': upperText = `${fmtMonth(d)} ${d.getDate()}`;
-        GanttHeaderUpperKind.Day => $"{d.ToString("MMMM", CultureInfo.InvariantCulture)} {d.Day}",
+        GanttHeaderUpperKind.Day => $"{d.ToString("MMMM", CultureInfo.CurrentCulture)} {d.Day}",
         _ => string.Empty,
     };
 }

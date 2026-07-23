@@ -452,13 +452,30 @@ public class TrackingInteropService : IComponentInteropService
     // not just that SOME registration happened against an id.
     private readonly Dictionary<string, IReadOnlyList<PreventDefaultKeyRule>> _registerPreventDefaultKeysRules = new();
     public IReadOnlyDictionary<string, IReadOnlyList<PreventDefaultKeyRule>> RegisterPreventDefaultKeysRules => _registerPreventDefaultKeysRules;
+    /// <summary>When set, <see cref="RegisterPreventDefaultKeys"/> returns this
+    /// gate's Task instead of a completed one — letting a test SUSPEND a
+    /// register call mid-flight (e.g. GanttBar's own registration) to
+    /// reproduce a dispose landing while it's still outstanding (Codex round
+    /// 16 review, P2 finding #6). Complete it to resume.</summary>
+    public TaskCompletionSource? RegisterPreventDefaultKeysGate { get; set; }
     public ValueTask RegisterPreventDefaultKeys(string elementId, IReadOnlyList<PreventDefaultKeyRule> rules)
     {
         _registerPreventDefaultKeysElementIds.Add(elementId);
         _registerPreventDefaultKeysRules[elementId] = rules;
+        if (RegisterPreventDefaultKeysGate is not null) return new ValueTask(RegisterPreventDefaultKeysGate.Task);
         return ValueTask.CompletedTask;
     }
-    public ValueTask UnregisterPreventDefaultKeys(string elementId) => ValueTask.CompletedTask;
+    // Codex round 6 review / cx6b, Important #2 — tracks unregister calls too
+    // (previously a pure no-op) so a test can confirm a reconciled
+    // register/unregister lifecycle, not just that SOME registration
+    // happened at some point.
+    private readonly List<string> _unregisterPreventDefaultKeysElementIds = new();
+    public IReadOnlyList<string> UnregisterPreventDefaultKeysElementIds => _unregisterPreventDefaultKeysElementIds;
+    public ValueTask UnregisterPreventDefaultKeys(string elementId)
+    {
+        _unregisterPreventDefaultKeysElementIds.Add(elementId);
+        return ValueTask.CompletedTask;
+    }
     public ValueTask ScrollSelectorIntoView(string selector) => ValueTask.CompletedTask;
 
     // Scroll-into-view tracking — Command palette scrolls its active item into
@@ -793,9 +810,17 @@ public class TrackingInteropService : IComponentInteropService
     private readonly List<double> _ganttV3ScrollToXCalls = new();
     public int GanttV3ScrollToXCallCount => _ganttV3ScrollToXCalls.Count;
     public IReadOnlyList<double> GanttV3ScrollToXCalls => _ganttV3ScrollToXCalls;
+    /// <summary>When set, <see cref="GanttV3ScrollToXAsync"/> returns this gate's
+    /// Task instead of a completed one — letting a test SUSPEND GanttTimeline's
+    /// scroll-apply mid-flight (the target is still recorded immediately, before
+    /// the gate) to reproduce a second, newer ScrollToTodayRequestId arriving
+    /// while an older apply is still outstanding (Codex round 15, finding #3).
+    /// Complete it to resume.</summary>
+    public TaskCompletionSource? GanttV3ScrollToXGate { get; set; }
     public Task GanttV3ScrollToXAsync(ElementReference el, double targetX)
     {
         _ganttV3ScrollToXCalls.Add(targetX);
+        if (GanttV3ScrollToXGate is not null) return GanttV3ScrollToXGate.Task;
         return Task.CompletedTask;
     }
 
@@ -818,6 +843,98 @@ public class TrackingInteropService : IComponentInteropService
     {
         _ganttV3UnregisterDragCallCount++;
         return Task.CompletedTask;
+    }
+
+    // GanttV3 browser-local-"today" tracking (Codex round 2, P2 #9) — settable
+    // so a test can simulate the browser reporting a date that differs from
+    // whatever DateTime.Today happens to be on the machine running the suite.
+    // Defaults to null (interop unavailable), matching the interface's own
+    // default DIM, so existing Gantt tests that never touch this keep behaving
+    // exactly as before (server-Today fallback).
+    public string? GanttV3LocalDateToReturn { get; set; }
+    public int GanttV3GetLocalDateCallCount { get; private set; }
+    public Task<string?> GanttV3GetLocalDateAsync()
+    {
+        GanttV3GetLocalDateCallCount++;
+        return Task.FromResult(GanttV3LocalDateToReturn);
+    }
+
+    // GanttV3 sticky-header scroll-sync registration tracking (Codex round 2,
+    // P1 #3) — records register/unregister calls so a test can assert the
+    // (un)registration lifecycle without a real browser/JS scroll listener.
+    public int GanttV3RegisterHeaderScrollSyncCallCount { get; private set; }
+    public int GanttV3UnregisterHeaderScrollSyncCallCount { get; private set; }
+    public Task GanttV3RegisterHeaderScrollSyncAsync(ElementReference canvasEl, ElementReference headerInnerEl)
+    {
+        GanttV3RegisterHeaderScrollSyncCallCount++;
+        return Task.CompletedTask;
+    }
+    public Task GanttV3UnregisterHeaderScrollSyncAsync(ElementReference canvasEl)
+    {
+        GanttV3UnregisterHeaderScrollSyncCallCount++;
+        return Task.CompletedTask;
+    }
+
+    // GanttV3 vertical-scroll-tracking registration tracking (Codex round 4,
+    // P2 #3) — records register/unregister calls, and captures the raw
+    // DotNetObjectReference so a test can simulate a JS-side scroll report
+    // (mirroring SimulateColumnResizeCommit's own pattern) without a real
+    // browser/JS scroll listener.
+    public int GanttV3RegisterVerticalScrollTrackingCallCount { get; private set; }
+    public int GanttV3UnregisterVerticalScrollTrackingCallCount { get; private set; }
+    private object? _ganttV3VerticalScrollDotNetRef;
+    /// <summary>When set, <see cref="GanttV3RegisterVerticalScrollTrackingAsync{T}"/>
+    /// returns this gate's Task instead of a completed one — letting a test
+    /// SUSPEND the register call mid-flight (Codex round 17 review, P2
+    /// finding #3, mirroring the same gate idiom already used for
+    /// RegisterPreventDefaultKeysGate/GanttV3ScrollCenterXGate). Complete it
+    /// to resume.</summary>
+    public TaskCompletionSource? GanttV3RegisterVerticalScrollTrackingGate { get; set; }
+    public Task GanttV3RegisterVerticalScrollTrackingAsync<T>(ElementReference scrollEl, DotNetObjectReference<T> dotNetRef) where T : class
+    {
+        GanttV3RegisterVerticalScrollTrackingCallCount++;
+        _ganttV3VerticalScrollDotNetRef = dotNetRef.Value;
+        if (GanttV3RegisterVerticalScrollTrackingGate is not null) return GanttV3RegisterVerticalScrollTrackingGate.Task;
+        return Task.CompletedTask;
+    }
+    public Task GanttV3UnregisterVerticalScrollTrackingAsync(ElementReference scrollEl)
+    {
+        GanttV3UnregisterVerticalScrollTrackingCallCount++;
+        return Task.CompletedTask;
+    }
+    /// <summary>Simulates a JS-side vertical scroll report by invoking the captured component's own <c>OnGanttV3VerticalScroll</c> method directly.</summary>
+    public void RaiseGanttV3VerticalScroll(double scrollTop, double clientHeight)
+    {
+        var method = _ganttV3VerticalScrollDotNetRef?.GetType().GetMethod("OnGanttV3VerticalScroll");
+        method?.Invoke(_ganttV3VerticalScrollDotNetRef, new object[] { scrollTop, clientHeight });
+    }
+
+    // GanttV3 live scroll-center reading (Codex round 5, P2 #5) — settable so
+    // a test can simulate the pane reporting a specific logical scroll
+    // center without a real browser; null (the default, matching the
+    // interface's own default DIM) simulates "not measurable", exercising the
+    // range-midpoint fallback.
+    public double? GanttV3ScrollCenterXToReturn { get; set; }
+    public int GanttV3GetScrollCenterXCallCount { get; private set; }
+    /// <summary>When set, <see cref="GanttV3GetScrollCenterXAsync"/> returns this
+    /// gate's Task instead of a completed one — letting a test SUSPEND Gantt3's
+    /// reconcile mid-capture (before it commits tasks/mode/range) to prove no
+    /// half-reconciled frame is observable while the capture is in flight (Codex
+    /// round 14, finding #4). Complete it with the desired logical center to
+    /// resume.</summary>
+    public TaskCompletionSource<double?>? GanttV3ScrollCenterXGate { get; set; }
+    // Codex round 16 review, P2 finding #5 — records each call's own direction
+    // argument (null = caller omitted it, relying on the JS side's live
+    // getComputedStyle read) so a test can assert WHICH direction a capture
+    // was actually decoded under, not just that a capture happened.
+    private readonly List<string?> _ganttV3GetScrollCenterXDirections = new();
+    public IReadOnlyList<string?> GanttV3GetScrollCenterXDirections => _ganttV3GetScrollCenterXDirections;
+    public Task<double?> GanttV3GetScrollCenterXAsync(ElementReference el, string? direction = null)
+    {
+        GanttV3GetScrollCenterXCallCount++;
+        _ganttV3GetScrollCenterXDirections.Add(direction);
+        if (GanttV3ScrollCenterXGate is not null) return GanttV3ScrollCenterXGate.Task;
+        return Task.FromResult(GanttV3ScrollCenterXToReturn);
     }
 
     public ValueTask<string> RichTextInitAsync<T>(ElementReference elementRef, DotNetObjectReference<T> dotNetRef, object options) where T : class => ValueTask.FromResult(string.Empty);

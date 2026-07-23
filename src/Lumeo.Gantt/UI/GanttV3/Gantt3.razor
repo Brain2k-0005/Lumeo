@@ -2,7 +2,11 @@
 @using System.ComponentModel
 @using System.Globalization
 @using Lumeo.GanttV3
+@using Lumeo.Services
+@inject Lumeo.Services.IComponentInteropService Interop
+@inject Lumeo.Services.IThemeService Theme
 @attribute [EditorBrowsable(EditorBrowsableState.Never)]
+@implements IDisposable
 
 @* Gantt3 — v3's root component (design spec Phase 2, T2 "read-only markup";
    working name — renamed in Phase 4 once it replaces the v2 Gantt public API).
@@ -28,16 +32,44 @@
     @* Phase 2's "one shared scroll container wrapping both panes" (T3 design
        spec, scroll sync): tree pane + timeline are laid out side by side as
        plain flex siblings INSIDE this single overflow:auto div, so vertical
-       scrolling moves both together with no JS scroll-sync needed yet — the
-       timeline keeps its own nested horizontal scroll (GanttTimeline.RootClass)
-       for its much-wider canvas, which the tree pane never needs. *@
-    <div class="rounded-md border border-border/60" style="max-height:@Height;overflow:auto;">
+       scrolling moves both together with no JS scroll-sync needed yet.
+       Codex round 3, P2 #1: this div is now ALSO the timeline's horizontal
+       scroll owner (see ScrollHost below) — the timeline no longer nests its
+       own overflow-x-auto wrapper, so Blazor's Virtualize correctly resolves
+       ITS scroll ancestor to be THIS element (real, height-capped) instead of
+       that now-removed inner wrapper (content-sized, so every row measured as
+       "visible" — see GanttTimeline.ScrollHost's own remarks for the full
+       root-cause). GanttTree becomes sticky-left (see its RootClass) to stay
+       visually pinned to this pane's left edge as it now scrolls horizontally
+       too.
+
+       Bug fix (Codex round 3, cx3 review): GanttTree's sticky-left ONLY has
+       room to actually stick if ITS containing block (this .flex row) is
+       genuinely as wide as the scrollable content. Two changes were needed,
+       not one — the first attempt (GanttTimeline's "grow shrink-0" + its own
+       RootStyle min-width, see that component's remarks) was NOT sufficient
+       by itself and still reproduced the bug live: a `display:flex` row's
+       OUTER box is a normal BLOCK-level box in normal flow, and a block
+       box's width comes from its OWN containing block (this scroll pane),
+       NOT from shrink-to-fit over its children's min-width/flex-basis — so
+       even with GanttTimeline's flex item correctly refusing to shrink below
+       TotalWidth, the .flex row's own measured box (what position:sticky's
+       containing block bounds actually resolve against) stayed pinned at
+       ~viewport width; only the rendered CONTENT visually spilled past it.
+       `width:max-content` below is what makes THIS box itself size to its
+       children's combined natural width (same "shrink-to-fit" sizing an
+       inline-block/table gets by default, opted into here for a block-level
+       flex container) — giving GanttTree's sticky positioning genuine room
+       across the full scroll range (reproduced live before this second
+       change: bbox still at x=-3114 after scrolling to 70% of maxScroll,
+       despite the first change already being in place). *@
+    <div class="rounded-md border border-border/60" style="max-height:@Height;overflow:auto;" @ref="_scrollPaneRef">
         @* Rows is a computed property (see below) — read it into a local ONCE
            per render and hand the same value to both bindings below, rather
            than letting each binding re-invoke the property (which would run
            GanttRowModel.BuildVisibleRows twice per render for no reason). *@
         @{ var rows = Rows; }
-        <div class="flex">
+        <div class="flex" style="width:max-content;">
             @if (EffectiveShowTreePane)
             {
                 <GanttTree Rows="@rows" OnToggleCollapse="HandleToggleCollapseAsync" />
@@ -53,12 +85,16 @@
                            BarColor="@BarColor"
                            BarTemplate="@BarTemplate"
                            ScrollToTodayRequestId="@_scrollToTodayRequestId"
+                           Today="@EffectiveToday"
+                           ScrollTargetDate="@_scrollTargetDate"
+                           ScrollHostLeadingOffset="@ScrollHostLeadingOffset"
+                           ScrollHost="@_scrollPaneRef"
                            Readonly="@Readonly"
                            OnTaskUpdate="HandleTaskUpdateAsync"
                            OnTaskClick="OnTaskClick"
                            CanDrop="CanDrop"
                            AllowCreate="@AllowCreate"
-                           Class="min-w-0 flex-1" />
+                           Class="grow shrink-0" />
         </div>
     </div>
 </div>
@@ -106,6 +142,9 @@
     /// <summary>Replaces a bar's default label content when set.</summary>
     [Parameter] public RenderFragment<GanttTask>? BarTemplate { get; set; }
 
+    /// <summary>Raised when a bar is activated via click or keyboard (Enter/Space) — same contract as v2's <c>Gantt.OnTaskClick</c> (Codex round 4, P2 #5).</summary>
+    [Parameter] public EventCallback<GanttTask> OnTaskClick { get; set; }
+
     /// <summary>
     /// Shows the left tree/list pane (design spec Phase 2, T3). Null (the
     /// default) resolves to <see cref="GanttRowModel.DefaultShowTreePane"/>: on
@@ -133,9 +172,6 @@
 
     /// <summary>Raised after a task bar's progress changes via the progress handle (design spec Phase 2, T2 — v2-parity <c>OnProgressChange</c>, same contract as v2's <c>Gantt.OnProgressChange</c>). Also folded into <see cref="TasksChanged"/>.</summary>
     [Parameter] public EventCallback<GanttTask> OnProgressChange { get; set; }
-
-    /// <summary>Raised when a task bar is clicked without a drag having been initiated (design spec Phase 2, T2 — v2-parity <c>OnTaskClick</c>, same contract as v2's <c>Gantt.OnTaskClick</c>). A pure pass-through of <see cref="GanttTimeline.OnTaskClick"/> — no <see cref="GanttState"/> mutation is involved, unlike <see cref="OnTaskUpdate"/>.</summary>
-    [Parameter] public EventCallback<GanttTask> OnTaskClick { get; set; }
 
     /// <summary>Live scheduling drag-drop validator (design spec Phase 2, T2 — the REUI <c>canDropEvent</c> analog). See <see cref="GanttTimeline.CanDrop"/> for the full contract; passed straight through unchanged.</summary>
     [Parameter] public Func<GanttTask, GanttScheduleDropContext, bool>? CanDrop { get; set; }
@@ -172,6 +208,12 @@
     // without either owning the other's lifetime (see GanttState's remarks).
     private readonly GanttState _state = new();
 
+    // Codex round 3, P2 #1 — the shared outer pane's own element reference,
+    // handed down to GanttTimeline as ScrollHost so it (and its Virtualize)
+    // resolve their scroll ancestor to THIS real, height-capped element
+    // instead of a now-removed inner wrapper. See the markup's own remarks.
+    private ElementReference _scrollPaneRef;
+
     private string RootClass => Cx.Merge("flex flex-col gap-3", Class);
 
     // The single, shared row list GanttTree/GanttTimeline/GanttArrowLayer all
@@ -180,7 +222,251 @@
     // task list) and always in lockstep with _state.Tasks/_state.Collapsed.
     private IReadOnlyList<GanttVisibleRow> Rows => GanttRowModel.BuildVisibleRows(_state.Tasks, _state.Collapsed);
 
-    private bool EffectiveShowTreePane => ShowTreePane ?? GanttRowModel.DefaultShowTreePane(_state.Tasks, GroupBy is not null);
+    // Bug fix (Codex round 10 review, P2 #3): DefaultShowTreePane used to
+    // check the RAW, unfiltered _state.Tasks for a ParentId — an invalid-
+    // duration task (End<Start, non-milestone; see GanttRowModel's own
+    // FilterValidDurationTasks) carrying the ONLY ParentId in the list showed
+    // the tree pane for what is, in the actually-rendered Rows, a flat chart
+    // (that task never reaches Rows at all). Uses the SAME shared filtered
+    // set BuildVisibleRows itself filters against, so this default can never
+    // disagree with what actually ends up on screen.
+    private bool EffectiveShowTreePane =>
+        ShowTreePane ?? GanttRowModel.DefaultShowTreePane(GanttRowModel.FilterValidDurationTasks(_state.Tasks), GroupBy is not null);
+
+    // Bug fix (Codex round 5, P1 #4): the ambient text direction, resolved the
+    // same way every other RTL-aware Lumeo component does (Carousel/Tabs/
+    // Splitter/etc.'s own EffectiveDirection) — a DirectionProvider ancestor
+    // wins via the cascaded "LumeoDirection" value; otherwise the global
+    // ThemeService's own current direction applies.
+    [CascadingParameter(Name = "LumeoDirection")] private LayoutDirection? ScopedDirection { get; set; }
+    private LayoutDirection EffectiveDirection => ScopedDirection ?? Theme.CurrentDirection;
+
+    /// <summary>
+    /// Pixels of the shared scroll pane's own content that precede the
+    /// timeline's origin, forwarded to <c>GanttTimeline.ScrollHostLeadingOffset</c>.
+    /// </summary>
+    /// <remarks>
+    /// Bug fix (Codex round 5, P1 #4): under RTL, the outer <c>.flex</c> row
+    /// wrapping GanttTree + GanttTimeline reverses its children's VISUAL
+    /// order (flex's default <c>row-reverse</c>-under-<c>dir="rtl"</c> — the
+    /// same mechanism <c>GanttTree.RootClass</c>'s <c>start-0</c> fix relies
+    /// on, confirmed live by <c>GanttV3StickyLeftTests</c>' RTL sticky-right
+    /// spec) even though DOM order stays [Tree, Timeline] unchanged — so
+    /// under RTL, GanttTimeline's own box is laid out FIRST physically (at
+    /// the scrollable content's own physical-left origin), with GanttTree
+    /// occupying the TRAILING (physically rightmost) chunk instead. The
+    /// round-4 fix added <see cref="GanttScale.TreePaneWidth"/> unconditionally
+    /// whenever a tree pane is shown, which is only correct for LTR (where
+    /// Tree genuinely precedes Timeline physically) — under RTL, Timeline's
+    /// own origin already sits at the content's physical 0, so adding the
+    /// tree's width overshot the target by exactly that amount, landing the
+    /// centered viewport a whole tree-width off from where the marker
+    /// actually needed to be.
+    /// </remarks>
+    private double ScrollHostLeadingOffset => GanttViewportGeometry.LeadingOffset(EffectiveShowTreePane, EffectiveDirection);
+
+    // The effective pixel-per-column width for a given mode — a caller's
+    // ColumnWidth override when set, else the mode's own default. Parameterized
+    // by mode (rather than reading _state.ViewMode) so a reconcile records the
+    // width against the mode it belongs to, not whatever mode happens to be
+    // committed at the moment (Codex round 14, finding #1).
+    //
+    // Bug fix (Codex round 17 review, P2): `> 0` (not `??`) — mirrors
+    // GanttTimeline.EffectiveColumnWidth's OWN identical fix (see its own
+    // remarks for the full v2-parity reasoning: v2 treats a 0/negative
+    // override as "unset" via a plain JS truthy check). Kept consistent with
+    // that property deliberately — this value feeds the reconcile's own
+    // snapshot/capture math, so if it disagreed with what GanttTimeline
+    // actually renders, the reconcile would decide "did ColumnWidth change"
+    // and decode captured scroll positions against a DIFFERENT width than
+    // the one on screen.
+    private int EffectiveColumnWidthFor(GanttViewMode mode) => ColumnWidth > 0 ? ColumnWidth!.Value : GanttScale.GetConfig(mode).ColumnWidth;
+
+    // The resolved tree-pane visibility for an ARBITRARY task set — the same
+    // rule as EffectiveShowTreePane (used in markup against _state.Tasks), but
+    // parameterized so a reconcile can resolve it for the INCOMING, not-yet-
+    // committed tasks (Codex round 10 review, P2 #3 — filter first, so the
+    // default can never disagree with the actually-rendered rows).
+    private bool ResolveShowTreePane(IReadOnlyList<GanttTask> tasks) =>
+        ShowTreePane ?? GanttRowModel.DefaultShowTreePane(GanttRowModel.FilterValidDurationTasks(tasks), GroupBy is not null);
+
+    // Builds the value snapshot of every viewport input for a given task set +
+    // mode (Codex round 14 consolidation). The renderable-empty flag uses the
+    // FILTERED set — the same one that reaches the panes — so a list of only
+    // invalid-duration tasks is correctly seen as empty (finding #2); the
+    // column width is resolved against THIS mode, not _state's (finding #1).
+    private GanttViewportSnapshot BuildSnapshot(int tasksVersion, IReadOnlyList<GanttTask> tasks, GanttViewMode mode) =>
+        new(tasksVersion,
+            GanttRowModel.FilterValidDurationTasks(tasks).Count == 0,
+            mode,
+            EffectiveColumnWidthFor(mode),
+            ResolveShowTreePane(tasks),
+            EffectiveDirection);
+
+    // The single viewport reconcile (Codex round 14): capture the live scroll
+    // center (when the decision needs it) under the OLD geometry BEFORE
+    // committing anything, then commit tasks/mode/range synchronously (one
+    // coherent frame — finding #4), then emit the one-shot scroll intent. All
+    // shared by the three triggers: OnParametersSetAsync (parameter lifecycle),
+    // HandleViewModeChangedAsync (the toolbar), and OnThemeChanged (a global
+    // ThemeService direction flip with no parent re-render).
+    //
+    // Bug fix (Codex round 15 review, P1): an overlapping SECOND call into this
+    // method — e.g. a theme flip's OnThemeChanged firing while a parameter-
+    // driven ReconcileAsync's own capture await above is still outstanding —
+    // could previously finish its OWN (faster) capture-and-commit first, only
+    // for the FIRST, slower call to resume afterward and commit on top,
+    // clobbering the second call's fresher outcome with a stale one decided
+    // under now-superseded geometry. Every call claims the next generation via
+    // BeginReconcile() before its own capture await and re-checks
+    // IsCurrentReconcile(...) the instant that await resolves: whichever call
+    // claimed the NEWEST generation is authoritative, regardless of which
+    // call's own interop round-trip happens to resolve first — an
+    // earlier-started call that resumes later abandons its ENTIRE commit
+    // (including _lastSnapshot) rather than risk overwriting a newer one.
+    //
+    // Bug fix (Codex round 16 review, P1 finding #2): returns whether this
+    // call actually committed (true) or was superseded/abandoned (false) — a
+    // caller with its OWN post-reconcile side effects (HandleViewModeChangedAsync's
+    // ViewModeChanged callback; OnThemeChanged's StateHasChanged) must suppress
+    // them too when abandoned, not just the commit itself. The abandon check
+    // below already covered the commit AND the scroll-intent emit (both sit
+    // after it); this only adds the RETURN VALUE so callers outside this
+    // method can extend the same guard to their own side effects.
+    private async Task<bool> ReconcileAsync(IReadOnlyList<GanttTask> nextTasks, GanttViewMode nextMode)
+    {
+        var prev = _lastSnapshot;
+        var tasksChanged = _state.WouldChangeTasks(nextTasks);
+        var nextTasksVersion = tasksChanged ? _tasksVersion + 1 : _tasksVersion;
+        var next = BuildSnapshot(nextTasksVersion, nextTasks, nextMode);
+
+        // Bug fix (Codex round 16 review, P2 finding #4): a nonempty->nonempty
+        // task replacement into a DISJOINT date range (no overlap with the
+        // range currently in effect) used to fall through Decide's own "no
+        // emptiness transition, no mode/geometry change" branch as a plain
+        // target=None — the range itself rebuilds around the new tasks, but
+        // nothing ever requests a recenter, so the DOM's own untouched scroll
+        // position (meaningful only under the OLD range) lands on empty space
+        // under the brand-new, unrelated one. Computed here as pure range math
+        // (no interop needed, so it's safe to do before the capture phase) and
+        // folded into Decide as an extra fact alongside the pre-existing
+        // emptiness-transition trigger — computed ONCE and reused by the
+        // COMMIT phase below instead of calling ComputeInitialRange twice.
+        var prospectiveTaskRange = tasksChanged
+            ? ComputeInitialRange(nextMode, nextTasks, EffectiveToday)
+            : (GanttDateRange?)null;
+        var taskRangeDisjoint = tasksChanged &&
+            (prospectiveTaskRange!.Value.End < _state.VisibleRange.Start ||
+             prospectiveTaskRange.Value.Start > _state.VisibleRange.End);
+
+        var decision = GanttViewportReconciler.Decide(prev, next, taskRangeDisjoint);
+
+        // Bug fix (Codex round 17 review, P1): an unrelated parent re-render
+        // (e.g. a Class-only change, or literally the same values re-pushed)
+        // reaches OnParametersSetAsync's own unconditional ReconcileAsync call
+        // on EVERY pass — before this fix, THIS call would still run all the
+        // way down to BeginReconcile() below even when Decide finds NOTHING
+        // changed at all, claiming a generation for no reason and silently
+        // aborting a genuinely useful, currently-suspended reconcile (e.g. a
+        // toolbar mode switch whose own capture await is still outstanding) —
+        // the exact same class of bug round 16's own theme-notification fix
+        // closed for the OnThemeChanged path, now closed here for the
+        // parameter path. Range==Keep && Target==None is provably "nothing in
+        // the diff changed at all" (see GanttViewportReconciler.Decide's own
+        // structure: tasksChanged always forces TaskDerived, viewModeChanged
+        // always forces SelfCenteredOnCapture/CapturedCenter, so Keep+None can
+        // only result when tasksChanged/viewModeChanged/geometryChanged are
+        // ALL false) — which also means `next` is field-for-field identical
+        // to `prev` already, so there is nothing left to do; abandon before
+        // ever claiming a generation.
+        if (decision.Range == GanttRangeSource.Keep && decision.Target == GanttScrollTarget.None)
+            return false;
+
+        // CAPTURE PHASE — read the pane's live center under the OLD geometry,
+        // BEFORE any state mutation, so the intermediate render Blazor Server
+        // can interleave at this await still shows a fully OLD, coherent frame
+        // (finding #4: the old code committed the new tasks first, exposing a
+        // half-reconciled frame — new tasks, un-moved scroll).
+        //
+        // Bug fix (Codex round 16 review, P2 finding #5): passes prev.Direction
+        // explicitly now too (was: leadingOffset/columnWidth only) — see
+        // ResolveCurrentCenterDateAsync's own remarks for why the live DOM
+        // direction can't be trusted here for a ThemeService-driven flip.
+        var generation = BeginReconcile();
+        DateTime? capturedCenter = null;
+        if (decision.NeedsLiveCenterCapture)
+            capturedCenter = await ResolveCurrentCenterDateAsync(prev.LeadingOffset, prev.ColumnWidth, prev.Direction);
+
+        // Bug fix (Codex round 15 review, P1): abandon entirely if a NEWER
+        // reconcile has already claimed a later generation while the capture
+        // above was in flight — that newer call already committed (or will
+        // commit) fresher state derived from a more current snapshot; this
+        // call's own decision/capture were computed against an OLD prev/next
+        // pair that no longer reflects reality, so nothing below (including
+        // the _lastSnapshot tail write) may run.
+        if (!IsCurrentReconcile(generation)) return false;
+
+        // COMMIT PHASE — synchronous from here to the end, so the next render is
+        // one coherent frame (tasks, mode, and range all move together).
+        if (tasksChanged)
+        {
+            _state.SetTasks(nextTasks);
+            _tasksVersion = nextTasksVersion;
+        }
+        _state.SetViewMode(nextMode); // no-op when unchanged
+
+        switch (decision.Range)
+        {
+            case GanttRangeSource.TaskDerived:
+                _state.SetVisibleRange(prospectiveTaskRange!.Value);
+                break;
+            case GanttRangeSource.SelfCenteredOnCapture:
+                // A genuine mode switch reshapes the range around the captured
+                // center. Align the center to the target mode's own unit
+                // boundary for the range's min/max (Codex round 11, P2 #2 — a
+                // live-scroll center carries arbitrary minutes in sub-day
+                // modes), but keep the RAW center as the recenter target below.
+                var aligned = GanttScale.AlignToUnitStart(_state.ViewMode, capturedCenter!.Value);
+                _state.SetVisibleRange(ApplyPadding(_state.ViewMode, aligned, aligned));
+                break;
+            // GanttRangeSource.Keep: VisibleRange untouched (only the target moves).
+        }
+
+        // EMIT PHASE — one expiring scroll intent (consumed exactly once by
+        // GanttTimeline; see EmitScrollIntent).
+        switch (decision.Target)
+        {
+            case GanttScrollTarget.CapturedCenter:
+                EmitScrollIntent(capturedCenter);
+                break;
+            case GanttScrollTarget.TodayOrMidpoint:
+                // An emptiness transition (or, since round 16, a disjoint
+                // task-range replacement): Today when it falls inside the new
+                // range (always true for the empty-list fallback, which is
+                // centered on Today by construction), else the new range's own
+                // midpoint (Codex round 9's delta from v2, for far-from-today
+                // async-loaded tasks).
+                var range = _state.VisibleRange;
+                var todayInRange = EffectiveToday >= range.Start && EffectiveToday <= range.End;
+                EmitScrollIntent(todayInRange ? null : VisibleCenterDate);
+                break;
+            // GanttScrollTarget.None: no scroll — the DOM keeps its position.
+        }
+
+        _lastSnapshot = next;
+        return true;
+    }
+
+    // Issues a one-shot scroll intent: a target date (null = Today) plus a
+    // version bump. GanttTimeline honors the target on the version bump ONLY,
+    // and treats it as consumed thereafter — a later ambient re-scroll (a
+    // browser-"today" change at midnight, a host swap) targets Today, never a
+    // stale preserved center (Codex round 14, finding #3).
+    private void EmitScrollIntent(DateTime? target)
+    {
+        _scrollTargetDate = target;
+        _scrollToTodayRequestId++;
+    }
 
     private Task HandleToggleCollapseAsync(string key)
     {
@@ -188,17 +474,58 @@
         return Task.CompletedTask;
     }
 
-    // Controlled/uncontrolled ViewMode discriminators — same pattern as v2's
-    // Gantt.razor (_lastSeenViewMode/_lastPushedViewMode), trimmed to what a
-    // read-only tree needs: no drag/refresh interop to reconcile against.
-    private GanttViewMode _lastSeenViewMode;
-    private GanttViewMode _lastPushedViewMode;
-    private bool _rangeInitialized;
+    // The whole viewport-tracking state (Codex round 14): ONE snapshot of the
+    // last reconciled inputs, replacing the six per-parameter fields rounds
+    // 11-13 accreted (_lastSeenViewMode/_lastPushedViewMode/_lastSeenDirection/
+    // _lastSeenEffectiveShowTreePane/_lastSeenColumnWidth/_rangeInitialized).
+    // Every "did X change" question is now one diff against this snapshot.
+    private GanttViewportSnapshot _lastSnapshot;
+    private bool _initialized;
+
+    // Monotonic task-set version — bumped only when the effective task set
+    // actually changes (GanttState.WouldChangeTasks). A diff on the snapshot's
+    // copy of this is the exact tasksChanged signal, kept as a plain value so
+    // the reconcile decision is a pure snapshot diff.
+    private int _tasksVersion;
+
+    // Codex round 15 review, P1 — see ReconcileAsync's own remarks. Every
+    // reconcile call claims the next generation (synchronously, before its own
+    // capture await can yield to anything else queued on the renderer's sync
+    // context) and re-checks it immediately after that await resolves: a
+    // mismatch means some OTHER call started later and is now the authoritative
+    // one, so this call must abandon its entire commit.
+    private long _reconcileGeneration;
+
+    private long BeginReconcile() => ++_reconcileGeneration;
+
+    private bool IsCurrentReconcile(long generation) => generation == _reconcileGeneration;
+
+    // The ViewMode PARAMETER value seen on the last parameter pass — the
+    // uncontrolled-mode discriminator only (a controlled binding keeps the
+    // parameter authoritative; an uncontrolled one must let _state.ViewMode,
+    // possibly set by the toolbar, survive an unrelated parent re-render that
+    // re-pushes the original parameter value). See OnParametersSetAsync.
+    private GanttViewMode _lastSeenViewModeParam;
+
+    // Browser-local "today" (Codex round 2, P2 #9) — resolved once via JS on
+    // Gantt3's first post-render; DateTime.Today (the SERVER's local date) is
+    // the fallback used for every render before that resolves, including
+    // prerendering (where the JS call itself never runs at all — see
+    // OnAfterRenderAsync below, which only fires post-circuit).
+    private DateTime? _browserToday;
+    private DateTime EffectiveToday => _browserToday ?? DateTime.Today;
+
+    // Codex round 7 review / cx7b, Important #2 — see the staleness check in
+    // OnAfterRenderAsync below. The SERVER's own current day the last time
+    // that check ran (NOT the browser's cached day) — deliberately a
+    // separate value from _browserToday so the check's trigger condition
+    // never depends on how far apart the server's and browser's clocks are.
+    private DateTime? _lastCheckedServerDay;
 
     // Phase 2, T1 — Tasks/TasksChanged controlled/uncontrolled discriminators,
     // ported from v2 Gantt.razor's _lastParentHash/_lastPushedTasksHash (see
-    // OnParametersSet's remarks for why these are now needed: a drag commit
-    // mutates _state directly, bypassing the Tasks parameter).
+    // OnParametersSetAsync's remarks for why these are now needed: a drag
+    // commit mutates _state directly, bypassing the Tasks parameter).
     private int _lastParentTasksHash;
     private int _lastPushedTasksHash;
 
@@ -224,79 +551,270 @@
 
     protected override void OnInitialized()
     {
-        _lastSeenViewMode = ViewMode;
-        _lastPushedViewMode = ViewMode;
+        _lastSeenViewModeParam = ViewMode;
         _state.SetViewMode(ViewMode);
         _state.SetTasks(SortedTasks(Tasks?.ToList() ?? new List<GanttTask>()));
-        _state.SetVisibleRange(ComputeInitialRange(_state.ViewMode, _state.Tasks));
-        _rangeInitialized = true;
         _lastParentTasksHash = _lastPushedTasksHash = ComputeTasksHash(_state.Tasks);
+        _tasksVersion = 1;
+        _state.SetVisibleRange(ComputeInitialRange(_state.ViewMode, _state.Tasks, EffectiveToday));
+        // Seed the reconcile baseline from the just-committed mount state; the
+        // first OnParametersSetAsync then just flips _initialized and returns
+        // (GanttTimeline's OWN firstRender performs the initial center).
+        _lastSnapshot = BuildSnapshot(_tasksVersion, _state.Tasks, _state.ViewMode);
+
+        // Bug fix (Codex round 9 review, P2 #7): the direction-flip/tree-
+        // pane-offset reconcile in OnParametersSetAsync only ever runs when a
+        // PARENT re-renders this component (Blazor's parameter lifecycle) —
+        // a DirectionProvider ancestor toggling its Direction PARAMETER goes
+        // through exactly that path (the cascading value change forces a
+        // re-render), but the global ThemeService's own CurrentDirection
+        // changing directly (no DirectionProvider ancestor at all — see
+        // EffectiveDirection's own ScopedDirection ?? Theme.CurrentDirection
+        // fallback) raises ONLY Theme.OnThemeChanged, with no parent re-
+        // render involved at all, so OnParametersSetAsync never runs and the
+        // flip went unnoticed. Subscribes here the same way every other
+        // theme-aware Lumeo component does (see ThemeToggle.razor's own
+        // OnThemeChanged/Dispose pair) and unsubscribes in Dispose below.
+        Theme.OnThemeChanged += OnThemeChanged;
     }
 
-    protected override void OnParametersSet()
+    // Bug fix (Codex round 9 review, P2 #7) — see OnInitialized's own
+    // remarks. Mirrors ThemeToggle's handler shape (a plain void delegate for
+    // the Action-typed event), but this component's own reconcile needs an
+    // interop round-trip, so the async work is dispatched via InvokeAsync
+    // rather than done inline — InvokeAsync also marshals back onto the
+    // renderer's sync context, matching every other OnThemeChanged handler.
+    private void OnThemeChanged()
     {
-        // Phase 2, T1 fix: a drag/resize commit (HandleTaskUpdateAsync) mutates
-        // _state DIRECTLY — it never touches the Tasks PARAMETER. The old
-        // unconditional `_state.SetTasks(Tasks)` here would silently revert
-        // that edit the next time ANYTHING caused Gantt3 to re-render while an
-        // uncontrolled caller's Tasks parameter still held its stale (pre-drag)
-        // value. Applying the parameter is now gated exactly like v2's
-        // Gantt.razor: UNCONTROLLED (no TasksChanged binding) only applies it
-        // when the PARAMETER's own value moved since we last looked;
-        // CONTROLLED applies it unless it's merely an echo of what we just
-        // pushed via TasksChanged (a genuine veto — the parent kept some OTHER
-        // value — still wins and rolls the edit back, matching v2).
+        _ = InvokeAsync(async () =>
+        {
+            // Bug fix (Codex round 16 review, P1 finding #1): ThemeService.OnThemeChanged
+            // fires for ANY theme change, not just a direction flip — a pure
+            // color-mode toggle (light/dark) leaves EffectiveDirection completely
+            // unchanged. ReconcileAsync unconditionally claims a new generation
+            // via BeginReconcile() before it even decides whether anything needs
+            // to change (round 15's own generation guard) — so a no-op
+            // notification like this one would still claim the newest
+            // generation, silently aborting a genuinely in-flight, direction-
+            // relevant reconcile (e.g. a view-mode switch whose own capture await
+            // was still outstanding) with nothing useful committed to replace
+            // it. Checking the ACTUAL trigger (direction) before ever entering
+            // ReconcileAsync means a no-op notification never claims a
+            // generation at all. Compared against _lastSnapshot.Direction (the
+            // last COMMITTED direction) rather than some separately-tracked
+            // field, for the same reason GanttViewportReconciler.Decide's own
+            // diff uses it — an in-flight reconcile hasn't updated it yet, so
+            // this still reflects "has direction changed since the last known
+            // committed state," consistent with what Decide would also compute.
+            if (EffectiveDirection == _lastSnapshot.Direction) return;
+
+            // Nothing but the ambient direction can have changed here (no
+            // parameter pass), so reconcile the CURRENT tasks/mode against the
+            // new direction — the snapshot diff picks up the direction flip as
+            // a geometry-only change and preserves the live center.
+            //
+            // Bug fix (Codex round 16 review, P1 finding #2): only re-render if
+            // this call actually committed — a superseded reconcile has nothing
+            // new to show, and StateHasChanged here would be a redundant,
+            // information-free render on top of whatever the superseding
+            // reconcile's own caller already triggered.
+            var committed = await ReconcileAsync(_state.Tasks, _state.ViewMode);
+            if (committed) StateHasChanged();
+        });
+    }
+
+    public void Dispose()
+    {
+        Theme.OnThemeChanged -= OnThemeChanged;
+
+        // Bug fix (Codex round 17 review, P2): a reconcile currently suspended
+        // awaiting the live-center capture (ResolveCurrentCenterDateAsync)
+        // used to have NOTHING invalidate it on disposal — only unsubscribing
+        // from the theme event above, which does nothing for a reconcile
+        // already in flight via any of the OTHER two triggers (a parameter
+        // pass, a toolbar click). Its resumed continuation would still commit
+        // to _state, call StateHasChanged, or fire ViewModeChanged on an
+        // already-disposed component. Claiming one final generation here
+        // reuses the EXISTING abandon mechanism (round 15) rather than a
+        // second, independent "_disposed" flag: any suspended reconcile's own
+        // IsCurrentReconcile check fails the instant it resumes, so it
+        // abandons cleanly — no further state mutation, no interop, no
+        // callback — through the exact same path an ordinary superseding
+        // reconcile already takes.
+        BeginReconcile();
+    }
+
+    // Codex round 2, P2 #9 — see EffectiveToday's remarks. Resolved once via
+    // JS on firstRender; re-checked on later renders too (Codex round 7
+    // review, P2 #3 — see RefreshBrowserTodayAsync's own remarks for why a
+    // long-mounted chart needs more than a single resolution).
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            // Bug fix (Codex round 3, P2 #1): _scrollPaneRef (this component's
+            // own outer-pane @ref, handed to GanttTimeline as ScrollHost) is
+            // already valid by THIS point (a component's own ref to its own
+            // element is populated before ITS OnAfterRenderAsync runs) — but
+            // GanttTimeline's ScrollHost PARAMETER during the render that
+            // produced it was fixed at whatever _scrollPaneRef held when this
+            // component's OWN render tree was BUILT, which precedes ref
+            // capture for that SAME pass (confirmed empirically: GanttTimeline
+            // observes an empty/uncaptured ElementReference on its own
+            // firstRender even though _scrollPaneRef is already valid here).
+            // A parent needing its own newly-captured ref available to a
+            // child on mount is a known Blazor pattern requiring one extra
+            // forced render — GanttTimeline treats the ref transitioning from
+            // "not yet captured" to "captured" as a scroll-reattempt trigger
+            // (see its own OnAfterRenderAsync remarks), so the retry isn't
+            // silently dropped once this second render delivers the real value.
+            StateHasChanged();
+
+            await RefreshBrowserTodayAsync();
+            // Seeds the server-day baseline the staleness check below
+            // compares against, so the very next render doesn't immediately
+            // re-query again just because _lastCheckedServerDay was still
+            // null (this firstRender pass already resolved the value).
+            _lastCheckedServerDay = DateTime.Today.Date;
+            return;
+        }
+
+        // Bug fix (Codex round 7 review, P2 #3): the ORIGINAL fix resolved
+        // _browserToday exactly ONCE (firstRender) on the stated assumption
+        // that "the calendar day essentially never changes mid-session" — not
+        // true for a chart left open across local midnight (a dashboard tab
+        // kept open overnight, say), which then reported yesterday as "today"
+        // for the rest of its lifetime: stale Today marker/highlight column,
+        // and a Today-button click that recentered on the wrong day.
+        //
+        // Bug fix (Codex round 7 review / cx7b, Important #2): the FIRST
+        // attempt at this gated the re-query behind "the server's current day
+        // is past the CACHED BROWSER day" — which sounds equivalent but isn't:
+        // for a user whose browser is WEST of the server (the server's local
+        // midnight lands hours before theirs), that condition stays TRUE for
+        // the entire gap between the server's midnight and the browser's own
+        // — every render in that (potentially many-hour) window re-queried
+        // the browser, each one correctly finding nothing had actually
+        // changed yet. A full JS round-trip on every render defeats the whole
+        // point of gating this at all.
+        //
+        // Fixed by comparing the server's day against the server's OWN day at
+        // the last check (_lastCheckedServerDay), not against the browser's
+        // cached value — this can only become true once per SERVER calendar
+        // day, however many renders happen in between, regardless of how far
+        // apart the server's and browser's clocks are. _lastCheckedServerDay
+        // is updated unconditionally on every check (not only when a
+        // re-query actually happens), so a render landing just after the
+        // server's midnight consumes the one allotted check for that whole
+        // day even if the browser itself hasn't rolled over yet (still
+        // correctly a no-op inside RefreshBrowserTodayAsync in that case).
+        // Trade-off, accepted deliberately: a user WEST of the server whose
+        // own midnight falls AFTER the server's may not get re-checked again
+        // until the FOLLOWING server midnight, rather than immediately after
+        // their own — same "eventually correct, not instantly" contract the
+        // original design already had, just now bounded to at most one
+        // interop call per server day instead of thrashing every render. The
+        // Today button's own unconditional refresh remains the instant-
+        // correction path for any user who actually needs it right now.
+        var serverToday = DateTime.Today.Date;
+        var serverDayAdvanced = _lastCheckedServerDay is null || serverToday > _lastCheckedServerDay.Value;
+        _lastCheckedServerDay = serverToday;
+        if (serverDayAdvanced) await RefreshBrowserTodayAsync();
+    }
+
+    // Queries the browser's local date via JS and reconciles it against the
+    // cached _browserToday (Codex round 2, P2 #9; re-armed for re-use beyond
+    // firstRender in round 7 review, P2 #3). Safe to call as often as a
+    // caller likes — a no-op re-query (unchanged day) is cheap, and the
+    // interop call itself already tolerates prerendering/JSDisconnected via
+    // GanttV3GetLocalDateAsync's own null-return contract.
+    private async Task RefreshBrowserTodayAsync()
+    {
+        var iso = await Interop.GanttV3GetLocalDateAsync();
+        if (iso is null) return; // interop unavailable (prerendering; a torn-down circuit) — keep whatever fallback EffectiveToday currently resolves to
+        if (!DateTime.TryParseExact(iso, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var browserToday)) return;
+
+        var changedDay = browserToday.Date != EffectiveToday.Date;
+        _browserToday = browserToday.Date;
+        if (!changedDay) return; // server and browser already agree on the calendar day — nothing to correct
+
+        // VisibleRange itself is only ever SEEDED from "today" when the task
+        // list is EMPTY (ComputeInitialRange's fallback branch) — the common
+        // (non-empty tasks) case derives its window from the tasks' own
+        // min/max dates, unaffected by which day "today" is, so there is
+        // nothing stale to recompute there. The empty-list window WAS seeded
+        // from the (possibly wrong) server-Today at OnInitialized time, so it
+        // gets one corrective recompute here, now that the browser's actual
+        // date is known.
+        //
+        // Bug fix (Codex round 15 review, P2): this used to check the RAW,
+        // unfiltered _state.Tasks.Count — the same class of bug BuildSnapshot's
+        // own RenderableEmpty already closed for the reconcile pass (round 14,
+        // finding #2), just missed here since this correction runs OUTSIDE
+        // ReconcileAsync entirely. A task list containing ONLY invalid-duration
+        // tasks (End<Start, non-milestone) is non-empty by raw count but
+        // renders as an empty chart (GanttRowModel.FilterValidDurationTasks
+        // drops them all before ComputeInitialRange's own min/max branch ever
+        // sees them) — ComputeInitialRange would internally already fall
+        // through to its today-based branch for such a list, but this OUTER
+        // gate, using the wrong (raw) count, never even attempted the
+        // recompute, so the stale server-Today-seeded range survived a
+        // browser-Today correction it genuinely needed. Uses the SAME filtered
+        // set every other emptiness decision in this file uses.
+        if (GanttRowModel.FilterValidDurationTasks(_state.Tasks).Count == 0)
+            _state.SetVisibleRange(ComputeInitialRange(_state.ViewMode, _state.Tasks, EffectiveToday));
+
+        // Re-renders GanttTimeline's Today parameter too (marker position /
+        // scroll-to-today math) with the corrected date.
+        StateHasChanged();
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        // Phase 2, T1 fix — see HandleTaskUpdateAsync's own remarks: a
+        // drag/resize commit mutates _state DIRECTLY, bypassing the Tasks
+        // PARAMETER. Naively handing the raw parameter to ReconcileAsync on
+        // every pass would silently revert that edit the next time ANYTHING
+        // causes Gantt3 to re-render while an uncontrolled caller's Tasks
+        // parameter still holds its stale (pre-drag) value. Resolved exactly
+        // like v2's Gantt.razor: UNCONTROLLED (no TasksChanged binding) only
+        // applies the parameter when its own value moved since we last
+        // looked; CONTROLLED applies it unless it's merely an echo of what
+        // HandleTaskUpdateAsync just pushed via TasksChanged (a genuine veto —
+        // the parent kept some OTHER value — still wins and rolls the edit
+        // back, matching v2). Otherwise the reconciler targets the currently-
+        // committed (possibly drag-edited) _state.Tasks, so its own
+        // WouldChangeTasks diff sees no change and the edit survives.
         var incomingTasks = SortedTasks(Tasks?.ToList() ?? new List<GanttTask>());
         var incomingHash = ComputeTasksHash(incomingTasks);
         var parentMoved = TasksChanged.HasDelegate
             ? incomingHash != _lastPushedTasksHash
             : incomingHash != _lastParentTasksHash;
-
-        // Captured BEFORE a conditional SetTasks so a genuine change can be
-        // detected below: GanttState.SetTasks no-ops (keeps the SAME list
-        // reference) when the incoming sequence is structurally equal to the
-        // current one, so a reference-inequality check after the call is a
-        // cheap, exact "did the effective task set actually change" signal.
-        var previousTasks = _state.Tasks;
-        if (parentMoved)
-        {
-            _state.SetTasks(incomingTasks);
-            _lastPushedTasksHash = incomingHash;
-        }
         _lastParentTasksHash = incomingHash;
-        var tasksChanged = !ReferenceEquals(previousTasks, _state.Tasks);
+        var nextTasks = parentMoved ? incomingTasks : _state.Tasks;
 
-        // CONTROLLED (ViewModeChanged bound): adopt ViewMode whenever it differs
-        // from what we last pushed — an echo of our own push is a no-op.
-        // UNCONTROLLED: only a genuine change against the last SEEN parameter
-        // value is authoritative, so an unrelated parent re-render doesn't
-        // silently revert a toolbar zoom the user just picked.
-        var viewModeChanged = ViewModeChanged.HasDelegate
-            ? ViewMode != _lastPushedViewMode
-            : ViewMode != _lastSeenViewMode;
-        _lastSeenViewMode = ViewMode;
+        // The mode to reconcile TO. CONTROLLED (ViewModeChanged bound): the
+        // parameter is authoritative — a toolbar push already committed the new
+        // mode into _state, so the echoed parameter simply matches and the diff
+        // reports no change. UNCONTROLLED: honor a GENUINE parameter change
+        // (parent set it directly), but when the parameter is unchanged since
+        // last pass, keep the committed _state.ViewMode — so an unrelated parent
+        // re-render re-pushing the original value never reverts a toolbar zoom.
+        var incomingMode = ViewModeChanged.HasDelegate
+            ? ViewMode
+            : (ViewMode != _lastSeenViewModeParam ? ViewMode : _state.ViewMode);
+        _lastSeenViewModeParam = ViewMode;
 
-        if (viewModeChanged || !_rangeInitialized)
+        if (!_initialized)
         {
-            _lastPushedViewMode = ViewMode;
-            _state.SetViewMode(ViewMode);
-            _state.SetVisibleRange(ComputeInitialRange(_state.ViewMode, _state.Tasks));
-            _rangeInitialized = true;
+            // The very first parameter pass lands on the mount state OnInitialized
+            // already seeded (and GanttTimeline's own firstRender does the initial
+            // center) — just adopt it as the reconcile baseline and skip.
+            _initialized = true;
+            return;
         }
-        else if (tasksChanged)
-        {
-            // Bug fix (Codex review wave): an async-loaded (or otherwise later-
-            // arriving) task set can land entirely outside the range computed
-            // at mount/last-recompute — mirrors v2, which re-derives its
-            // min/max-driven date window from whatever `tasks` render() sees
-            // on every call (gantt-v2.js lines 156-164), never keeping a
-            // stale window across a task-set change. Recompute around the NEW
-            // tasks, but do NOT touch ViewMode/_state.SetViewMode here: the
-            // user's current zoom level (possibly set via GanttNav's toolbar,
-            // uncontrolled, and therefore not reflected by a possibly-stale
-            // ViewMode PARAMETER) must survive a tasks-only change.
-            _state.SetVisibleRange(ComputeInitialRange(_state.ViewMode, _state.Tasks));
-        }
+
+        await ReconcileAsync(nextTasks, incomingMode);
     }
 
     private List<GanttTask> SortedTasks(List<GanttTask> raw)
@@ -313,21 +831,49 @@
     // Faithful port of gantt-v2.js's render() min/max + per-unit padding preamble
     // (gantt-v2.js lines 155-190) — GanttScale.BuildDateUnits deliberately leaves
     // this to its caller (see its own remarks), and this is that caller.
-    private static GanttDateRange ComputeInitialRange(GanttViewMode mode, IReadOnlyList<GanttTask> tasks)
+    // Bug fix (Codex round 9 review, P2 #2/#3): two related gaps against v2's
+    // own normalizeTasks pipeline (truncate -> filter), both closed here by
+    // routing through GanttRowModel's shared normalize+filter step (the SAME
+    // one BuildVisibleRows uses — see its own remarks) rather than a second,
+    // independently-written copy that could silently diverge:
+    //  - the min/max used RAW Start/End (not date-truncated) — a task
+    //    carrying a real time-of-day skewed the computed range by that
+    //    fractional day, misaligning it against BarGeometry's own (round-8
+    //    fixed) date-truncated bar geometry in sub-day modes.
+    //  - the min/max read the UNFILTERED task list, so a genuinely invalid
+    //    End<Start task (dropped from Rows entirely by GanttRowModel) could
+    //    still stretch the computed range even though it renders no row —
+    //    the exact skew the round-8 report flagged as out of scope then.
+    private static GanttDateRange ComputeInitialRange(GanttViewMode mode, IReadOnlyList<GanttTask> tasks, DateTime today)
     {
+        var validTasks = GanttRowModel.FilterValidDurationTasks(tasks);
         DateTime minDate, maxDate;
-        if (tasks.Count > 0)
+        if (validTasks.Count > 0)
         {
-            minDate = tasks.Min(t => t.Start);
-            maxDate = tasks.Max(t => t.IsMilestone ? t.Start : t.End);
+            minDate = validTasks.Min(t => t.Start.Date);
+            maxDate = validTasks.Max(t => (t.IsMilestone ? t.Start : t.End).Date);
         }
         else
         {
-            var today = DateTime.Today;
+            // "today" here is the CALLER's EffectiveToday (Codex round 2, P2 #9
+            // — browser-local once resolved, server DateTime.Today until then),
+            // not a fresh DateTime.Today read — kept a pure/static/testable
+            // method by threading it in as a parameter instead.
             minDate = today.AddDays(-7);
             maxDate = today.AddDays(14);
         }
 
+        return ApplyPadding(mode, minDate, maxDate);
+    }
+
+    // Bug fix (Codex round 4, P2 #8): extracted from ComputeInitialRange so
+    // HandleViewModeChangedAsync's own recenter (below) can apply the EXACT
+    // same per-mode padding math around an arbitrary center date instead of
+    // task min/max — a second, independently-written copy of this switch was
+    // exactly the kind of divergence risk this codebase avoids elsewhere
+    // (see e.g. GanttScale.BarTop's own remarks on the same principle).
+    private static GanttDateRange ApplyPadding(GanttViewMode mode, DateTime minDate, DateTime maxDate)
+    {
         var cfg = GanttScale.GetConfig(mode);
         return cfg.Unit switch
         {
@@ -347,6 +893,14 @@
         };
     }
 
+    // Codex round 10 review, P2 #4 — see GoToTodayAsync's own remarks. The
+    // number of Month-unit columns GanttScale.BuildDateUnits would generate
+    // between two ALREADY unit-aligned dates (both are day-1 of their own
+    // month, per this codebase's aligned-origin invariant), independent of
+    // day-of-month.
+    private static int MonthsBetween(DateTime start, DateTime end) =>
+        (end.Year - start.Year) * 12 + (end.Month - start.Month);
+
     private string PeriodLabel
     {
         get
@@ -361,14 +915,125 @@
         }
     }
 
+    // The GanttNav toolbar's zoom trigger. A mode-only change against the
+    // CURRENT task set — routed through the SAME reconcile every other trigger
+    // uses (Codex round 14), which decides it as a self-centered recenter that
+    // preserves the live scroll position (capture live center, reshape the
+    // range around it, emit a one-shot scroll intent). No separate
+    // ApplyViewModeChangeAsync/RecenterOn copy of that pipeline anymore.
     private async Task HandleViewModeChangedAsync(GanttViewMode mode)
     {
         if (mode == _state.ViewMode) return;
-        _lastPushedViewMode = mode;
-        _state.SetViewMode(mode);
-        _state.SetVisibleRange(ComputeInitialRange(mode, _state.Tasks));
+        var committed = await ReconcileAsync(_state.Tasks, mode);
+        // Bug fix (Codex round 16 review, P1 finding #2): a reconcile superseded
+        // by a NEWER one (round 15's generation guard) already skips its own
+        // commit — but this callback sits OUTSIDE ReconcileAsync, so without this
+        // check it would still fire ViewModeChanged with a mode that was never
+        // actually applied to _state.ViewMode (the superseding reconcile decided
+        // something else entirely). Suppress every side effect below, not just
+        // the commit, when superseded.
+        if (!committed) return;
+        // Controlled: echo the new mode up; the resulting parameter pass finds
+        // _state.ViewMode already committed, so it diffs to a no-op. Uncontrolled:
+        // nothing to push — _state.ViewMode is the committed truth the next
+        // OnParametersSetAsync compares against (a re-pushed original parameter
+        // value never reverts it, see OnParametersSetAsync's incomingMode).
         if (ViewModeChanged.HasDelegate) await ViewModeChanged.InvokeAsync(mode);
-        else ViewMode = mode; // uncontrolled: keep our own field in lock-step for the next OnParametersSet comparison
+    }
+
+    // Bug fix (Codex round 5, P2 #5): reads the shared scroll pane's ACTUAL
+    // current logical center via JS (see GanttV3GetScrollCenterXAsync's own
+    // remarks), subtracts the SAME ScrollHostLeadingOffset GanttTimeline adds
+    // when scrolling TO a target (so this is a genuine, direction-correct
+    // inverse of that write path — the offset doesn't change with ViewMode,
+    // only with EffectiveShowTreePane/EffectiveDirection, neither of which a
+    // mode switch touches), then converts that Timeline-relative pixel back
+    // into a date against the OUTGOING (still current at this point — called
+    // before SetViewMode below) mode's own Origin/column width, replicating
+    // exactly what GanttTimeline itself would compute as its own Origin for
+    // the SAME RangeStart/RangeEnd/ViewMode inputs it's currently rendering
+    // against.
+    //
+    // Bug fix (Codex round 6, P1 #1): this used to go through
+    // GanttScale.PixelToDate — the DRAG-snapping inverse, which rounds to the
+    // nearest WHOLE month/year in those view modes. That rounding is correct
+    // for drag math but far too coarse here: Month/Year's unit is huge
+    // relative to a typical scroll-pixel delta, so the preserved center
+    // silently snapped to whichever month/year boundary was nearest,
+    // visibly jumping on repeated switches instead of tracking the actual
+    // scrolled-to position. GanttScale.PixelToDateContinuous is the
+    // non-snapping counterpart added specifically for this call site — see
+    // its own remarks; PixelToDate itself is untouched and still backs every
+    // drag/resize computation.
+    //
+    // Falls back to the pre-existing range-midpoint proxy when the pane
+    // can't be measured (not yet laid out — practically unreachable here,
+    // since a recenter only ever fires well after mount — or JS interop
+    // unavailable, e.g. a torn-down circuit).
+    //
+    // Bug fix (Codex round 8 review, P2 #1/#2): parameterized the leading
+    // offset instead of always reading the LIVE ScrollHostLeadingOffset
+    // property — the direction-flip/tree-pane-change reconcile in
+    // OnParametersSetAsync needs the OLD offset (from BEFORE the change being
+    // reconciled), since by the time it runs, EffectiveShowTreePane/
+    // EffectiveDirection already reflect the NEW parameter values even though
+    // the DOM itself hasn't been re-rendered under them yet. The view-mode
+    // switch call site above is unaffected — it passes the (unchanged, still
+    // live) current offset, exactly as before.
+    //
+    // Bug fix (Codex round 13 review, P2): parameterized the column width the
+    // SAME way — it used to be read INLINE here as `ColumnWidth ?? ...`,
+    // always the LIVE parameter value. That's correct for the unparameterized
+    // overload above (nothing about ColumnWidth is changing in that call
+    // path), but wrong for a reconcile capture: if a caller changes
+    // ColumnWidth in the SAME render as a tree-pane/direction/ViewMode
+    // change, this method would decode the STILL-PHYSICALLY-UNMOVED scroll
+    // position using the ALREADY-NEW ColumnWidth, silently misinterpreting
+    // it. Callers now explicitly pass whichever column width the position
+    // was actually captured under.
+    //
+    // Bug fix (Codex round 16 review, P2 finding #5): parameterized the
+    // direction the SAME way, for the SAME reason. The JS-side read
+    // (gantt-v3.js's getScrollCenterX/fromNativeScrollLeft) needs to know
+    // whether to un-apply RTL's scrollLeft convention, and it used to decide
+    // that by reading the element's OWN getComputedStyle(...).direction live
+    // — correct for a DirectionProvider-cascading-parameter flip (Blazor's own
+    // async lifecycle runs, including this capture, BEFORE the render diff
+    // repaints the new `dir` attribute onto the real DOM, so a live read still
+    // observes the OLD direction there) but WRONG for a ThemeService-driven
+    // global flip: ThemeService's own direction-setting mechanism mutates
+    // document.documentElement's `dir` synchronously, independently of
+    // Blazor's render pipeline — by the time OnThemeChanged's dispatched
+    // continuation even starts running, the DOM is already under the NEW
+    // direction's convention, so a live read decoded the still-physically-
+    // unmoved scrollLeft value using the wrong (new) convention. Passing the
+    // OLD direction explicitly (prev.Direction — always known synchronously,
+    // for every reconcile trigger, not just the theme one) removes the DOM-
+    // timing dependency entirely instead of special-casing just this one path.
+    private async Task<DateTime> ResolveCurrentCenterDateAsync(double leadingOffset, int columnWidth, LayoutDirection direction)
+    {
+        var directionArg = direction == LayoutDirection.Rtl ? "rtl" : "ltr";
+        var logicalCenterX = await Interop.GanttV3GetScrollCenterXAsync(_scrollPaneRef, directionArg);
+        if (logicalCenterX is { } x)
+        {
+            var timelineRelativeX = x - leadingOffset;
+            var units = GanttScale.BuildDateUnits(_state.ViewMode, _state.VisibleRange.Start, _state.VisibleRange.End);
+            var origin = units.Count > 0 ? units[0] : _state.VisibleRange.Start;
+            return GanttScale.PixelToDateContinuous(_state.ViewMode, origin, timelineRelativeX, columnWidth);
+        }
+        return VisibleCenterDate;
+    }
+
+    // Codex round 4, P2 #8 — the range-midpoint fallback used by
+    // ResolveCurrentCenterDateAsync when a live scroll reading isn't
+    // available.
+    private DateTime VisibleCenterDate
+    {
+        get
+        {
+            var range = _state.VisibleRange;
+            return range.Start + new TimeSpan((range.End - range.Start).Ticks / 2);
+        }
     }
 
     // "Shift VisibleRange by the mode's step" — literally GanttScaleConfig.Step
@@ -396,28 +1061,85 @@
 
     // Recenters the CURRENT window (same duration) on today, rather than
     // resetting to the tasks' original padded range.
-    private Task GoToTodayAsync()
+    private async Task GoToTodayAsync()
     {
+        // Bug fix (Codex round 7 review, P2 #3): an explicit Today click is
+        // exactly the moment a stale cached date is most visible to the user
+        // (it recenters on the WRONG day) — so this always re-queries the
+        // browser here, unconditionally, rather than relying on the cheap
+        // server-day heuristic in OnAfterRenderAsync (which only self-corrects
+        // a render or two later). RefreshBrowserTodayAsync is a no-op cost-
+        // wise when the day hasn't actually changed (still one interop round-
+        // trip, but that's the existing per-click cost of any interop-backed
+        // action, not a new one).
+        await RefreshBrowserTodayAsync();
+
         var range = _state.VisibleRange;
         var width = range.End - range.Start;
-        var today = DateTime.Today;
+        var today = EffectiveToday; // Codex round 2, P2 #9 — browser-local once resolved, now freshly re-checked above
         var half = new TimeSpan(width.Ticks / 2);
-        _state.SetVisibleRange(today - half, today + half);
+        // Bug fix (Codex round 3, P2 #6): a raw TimeSpan-based recenter (today
+        // -/+ half the window) lands the new range START mid-month/mid-year in
+        // Month/Year view modes, violating the aligned-origin invariant every
+        // other range-construction path (ComputeInitialRange, and GanttScale.
+        // DateToPixel's own assumption) relies on — every subsequent bar/grid
+        // pixel position would then be off by a fraction of a column. Snap the
+        // start to the mode's own unit boundary (reusing GanttScale's helper,
+        // not a second copy of the same snapping logic).
+        var start = GanttScale.AlignToUnitStart(_state.ViewMode, today - half);
+        // Bug fix (Codex round 10 review, P2 #4): re-deriving the end as
+        // `start + width` (the ORIGINAL TimeSpan) is only correct for Day/
+        // Week/Hour modes, where a "day"/"hour" is a fixed duration. Month
+        // and Year units are NOT fixed-duration — the same TimeSpan applied
+        // from a DIFFERENT calendar start can span one column more or fewer,
+        // since months/years have variable day-lengths (e.g. a 12-month-wide
+        // window's exact tick count depends on how many of those 12 months
+        // were 28/29/30/31 days; re-applying that SAME tick count from a
+        // start that lands in a different set of months does not reliably
+        // reproduce 12 columns). Preserves the RENDERED COLUMN COUNT instead
+        // for unit-aligned modes — the number of months/years BuildDateUnits
+        // would actually generate between the OLD range's own Start/End —
+        // by re-deriving the end via AddMonths/AddYears from that count, not
+        // from the raw tick span. Switches on cfg.Unit (not ViewMode
+        // directly), matching ApplyPadding's own convention, so this stays
+        // correct if a future view mode ever reuses the Month/Year unit.
+        var cfg = GanttScale.GetConfig(_state.ViewMode);
+        var end = cfg.Unit switch
+        {
+            GanttScaleUnit.Month => start.AddMonths(MonthsBetween(range.Start, range.End)),
+            GanttScaleUnit.Year => start.AddYears(range.End.Year - range.Start.Year),
+            _ => start + width,
+        };
+        _state.SetVisibleRange(start, end);
+        // Bug fix (Codex round 4, P2 #8): a PREVIOUS view-mode switch may have
+        // left _scrollTargetDate pointing at some other centerDate — the
+        // Today button must always target Today specifically, not whatever
+        // was last centered before it.
+        _scrollTargetDate = null;
         // P1 fix (Codex review wave): bump the change-token GanttTimeline
         // watches so it re-centers its DOM scrollLeft on today too — recomputing
         // VisibleRange alone repositions where today falls in the timeline's
         // OWN pixel space, but never touches the browser's actual horizontal
         // scroll position (see GanttTimeline.OnAfterRenderAsync's remarks).
         _scrollToTodayRequestId++;
-        return Task.CompletedTask;
     }
 
     private int _scrollToTodayRequestId;
 
+    // Codex round 4, P2 #8 — see HandleViewModeChangedAsync's own remarks.
+    // Null (the default) keeps GanttTimeline targeting Today, unchanged from
+    // every prior behavior.
+    private DateTime? _scrollTargetDate;
+
     // Phase 2, T1 — bubbled from GanttTimeline.OnTaskUpdate (its own JS-driven
     // CommitDrag) exactly like GanttTree.OnToggleCollapse: Gantt3 is the only
     // place that touches GanttState, so it applies the edit here rather than
-    // GanttTimeline doing so itself.
+    // GanttTimeline doing so itself. Commits DIRECTLY to _state rather than
+    // through ReconcileAsync — a drag/resize/progress/create edit is a local,
+    // DOM-driven change to one task and must never trigger the reconciler's
+    // own scroll-recentering decision; OnParametersSetAsync's own hash-based
+    // parameter gating (above) is what keeps this edit from being silently
+    // reverted by the NEXT unrelated parent re-render.
     private async Task HandleTaskUpdateAsync(GanttTaskUpdate update)
     {
         // Phase 2, T3 — a Create-sourced update names a task that does NOT yet
@@ -435,14 +1157,14 @@
         {
             // Record _lastPushedTasksHash BEFORE invoking TasksChanged (same
             // ordering as v2 Gantt.razor's JsOnDateChange): a controlled parent
-            // re-renders SYNCHRONOUSLY inside InvokeAsync, so OnParametersSet
+            // re-renders SYNCHRONOUSLY inside InvokeAsync, so OnParametersSetAsync
             // must already see this hash as "the value we just pushed" to
             // distinguish an accepted echo (keep the edit) from a veto.
             // Deliberately does NOT touch _lastParentTasksHash — that tracks
             // the Tasks PARAMETER only, exactly like v2's _lastParentHash. A
             // controlled parent that vetoes a Create (keeps its OWN, pre-create
             // Tasks value) rolls back exactly like any other vetoed edit — the
-            // next OnParametersSet sees the parameter hasn't moved to match
+            // next OnParametersSetAsync sees the parameter hasn't moved to match
             // what was just pushed and reverts _state, discarding the new task.
             _lastPushedTasksHash = ComputeTasksHash(_state.Tasks);
             await TasksChanged.InvokeAsync(_state.Tasks.ToList());

@@ -15,8 +15,8 @@ namespace Lumeo.Tests.Components.GanttV3;
 /// </summary>
 public class GanttStateTests
 {
-    private static Lumeo.GanttTask Task(string id, string? parentId = null) =>
-        new(id, id, new DateTime(2026, 1, 1), new DateTime(2026, 1, 5)) { ParentId = parentId };
+    private static Lumeo.GanttTask Task(string id, string? parentId = null, string[]? dependencies = null) =>
+        new(id, id, new DateTime(2026, 1, 1), new DateTime(2026, 1, 5), Dependencies: dependencies) { ParentId = parentId };
 
     [Fact]
     public void Defaults_Are_Empty_Tasks_Day_ViewMode_And_No_Collapsed_Rows()
@@ -73,6 +73,41 @@ public class GanttStateTests
 
         Assert.Equal(1, raised);
         Assert.Equal("p1", Assert.Single(state.Tasks).ParentId);
+    }
+
+    [Fact]
+    public void SetTasks_With_Fresh_But_Content_Equal_Dependencies_Arrays_Does_Not_Raise_Changed()
+    {
+        // Bug fix (CodeRabbit review): GanttTask.Dependencies is string[]?,
+        // which the record's own Equals compares by REFERENCE — a caller that
+        // re-materializes its Tasks list every render (a common shape) would
+        // pass a brand-new Dependencies array instance each time even when its
+        // CONTENT is unchanged, spuriously raising Changed forever.
+        var state = new GanttState();
+        state.SetTasks(new[] { Task("t1", dependencies: new[] { "a", "b" }) });
+
+        var raised = 0;
+        state.Changed += () => raised++;
+
+        // A NEW array instance, same elements in the same order.
+        state.SetTasks(new[] { Task("t1", dependencies: new[] { "a", "b" }) });
+
+        Assert.Equal(0, raised);
+    }
+
+    [Fact]
+    public void SetTasks_With_A_Genuinely_Different_Dependencies_Sequence_Raises_Changed()
+    {
+        var state = new GanttState();
+        state.SetTasks(new[] { Task("t1", dependencies: new[] { "a", "b" }) });
+
+        var raised = 0;
+        state.Changed += () => raised++;
+
+        state.SetTasks(new[] { Task("t1", dependencies: new[] { "a", "c" } ) });
+
+        Assert.Equal(1, raised);
+        Assert.Equal(new[] { "a", "c" }, Assert.Single(state.Tasks).Dependencies);
     }
 
     [Fact]

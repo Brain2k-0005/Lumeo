@@ -1,7 +1,7 @@
 {
   "$schema": "https://lumeo.nativ.sh/components-api-schema.json",
   "version": "4.3.3",
-  "generated": "2026-07-21T16:32:50.1654965Z",
+  "generated": "2026-07-23T09:37:49.2974262Z",
   "stats": {
     "componentCount": 164,
     "totalParameters": 4275,
@@ -1702,6 +1702,42 @@
           "summary": null
         },
         {
+          "name": "GanttV3GetLocalDateAsync",
+          "returnType": "Task<string?>",
+          "signature": "GanttV3GetLocalDateAsync()",
+          "summary": null
+        },
+        {
+          "name": "GanttV3RegisterHeaderScrollSyncAsync",
+          "returnType": "Task",
+          "signature": "GanttV3RegisterHeaderScrollSyncAsync(Microsoft.AspNetCore.Components.ElementReference canvasEl, Microsoft.AspNetCore.Components.ElementReference headerInnerEl)",
+          "summary": null
+        },
+        {
+          "name": "GanttV3UnregisterHeaderScrollSyncAsync",
+          "returnType": "Task",
+          "signature": "GanttV3UnregisterHeaderScrollSyncAsync(Microsoft.AspNetCore.Components.ElementReference canvasEl)",
+          "summary": null
+        },
+        {
+          "name": "GanttV3RegisterVerticalScrollTrackingAsync",
+          "returnType": "Task",
+          "signature": "GanttV3RegisterVerticalScrollTrackingAsync<[System.Diagnostics.CodeAnalysis.DynamicallyAccessedMembers(System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.PublicMethods)] T>(Microsoft.AspNetCore.Components.ElementReference scrollEl, DotNetObjectReference<T> dotNetRef)",
+          "summary": null
+        },
+        {
+          "name": "GanttV3UnregisterVerticalScrollTrackingAsync",
+          "returnType": "Task",
+          "signature": "GanttV3UnregisterVerticalScrollTrackingAsync(Microsoft.AspNetCore.Components.ElementReference scrollEl)",
+          "summary": null
+        },
+        {
+          "name": "GanttV3GetScrollCenterXAsync",
+          "returnType": "Task<double?>",
+          "signature": "GanttV3GetScrollCenterXAsync(Microsoft.AspNetCore.Components.ElementReference el, string? direction = null)",
+          "summary": null
+        },
+        {
           "name": "GanttV3RegisterDragAsync",
           "returnType": "Task",
           "signature": "GanttV3RegisterDragAsync<[System.Diagnostics.CodeAnalysis.DynamicallyAccessedMembers(System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.PublicMethods)] T>(Microsoft.AspNetCore.Components.ElementReference el, DotNetObjectReference<T> dotNetRef, object options)",
@@ -3022,6 +3058,42 @@
           "returnType": "Task",
           "signature": "GanttV3ScrollToXAsync(Microsoft.AspNetCore.Components.ElementReference el, double targetX)",
           "summary": "Centers targetX (a pixel offset within the timeline's own scrollable content) in el's viewport — GanttV3's own tiny scroll slice (gantt-v3.js), used to mirror v2's init-time center-on-today behavior (gantt-v2.js's tryScroll) so the initial viewport shows task data instead of the empty padding columns Gantt3.ComputeInitialRange adds before the first task. Default no-op so existing implementers / test doubles keep compiling."
+        },
+        {
+          "name": "GanttV3GetLocalDateAsync",
+          "returnType": "Task<string?>",
+          "signature": "GanttV3GetLocalDateAsync()",
+          "summary": "Browser-local \"today\" as an ISO \"yyyy-MM-dd\" string (Codex round 2, P2 #9) — v2 parity: v2 derives \"today\" via the BROWSER's new Date() (gantt-v2.js), while Gantt3/GanttTimeline previously used C#'s DateTime.Today, which on Blazor Server is the SERVER's local date, not the visiting browser's. Called once from Gantt3's first post-render (never during prerendering, where JS interop would throw — see Gantt3.OnAfterRenderAsync's remarks). Returns null when JS interop isn't available (a non-Gantt implementer, prerendering, or a torn-down circuit), in which case the caller keeps its server-side Today fallback. This is additive surface on an interface that otherwise stays UI-framework-agnostic — recorded in PublicAPI alongside the rest of GanttV3's Additive set, joining the same \"narrow, Gantt-specific, default no-op DIM\" precedent as GanttV3ScrollToXAsync rather than a general-purpose \"get the client's locale/timezone\" API (out of scope — no other consumer has asked for one). Default no-op DIM so existing implementers/test doubles keep compiling."
+        },
+        {
+          "name": "GanttV3RegisterHeaderScrollSyncAsync",
+          "returnType": "Task",
+          "signature": "GanttV3RegisterHeaderScrollSyncAsync(Microsoft.AspNetCore.Components.ElementReference canvasEl, Microsoft.AspNetCore.Components.ElementReference headerInnerEl)",
+          "summary": "Registers a one-way horizontal-scroll mirror from canvasEl (the row-canvas's own scrollable element) onto headerInnerEl (a transform: translateX(...) target) — Codex round 2, P1 #3's sticky- header fix. The header can no longer physically BE the same scrolling element as the row canvas (see GanttTimeline.razor's remarks for why: position: sticky must resolve against Gantt3's shared OUTER vertical scroller, which requires NO intervening scroll-container-establishing ancestor between the header and it), so this keeps the two horizontally column-aligned instead. Idempotent for the same canvasEl — calling again updates nothing (a fresh headerInnerEl would require an unregister first; GanttTimeline only ever registers once, on mount). Default no-op DIM so existing implementers/test doubles keep compiling."
+        },
+        {
+          "name": "GanttV3UnregisterHeaderScrollSyncAsync",
+          "returnType": "Task",
+          "signature": "GanttV3UnregisterHeaderScrollSyncAsync(Microsoft.AspNetCore.Components.ElementReference canvasEl)",
+          "summary": "Tears down the scroll mirror registered by GanttV3RegisterHeaderScrollSyncAsync. Default no-op."
+        },
+        {
+          "name": "GanttV3RegisterVerticalScrollTrackingAsync",
+          "returnType": "Task",
+          "signature": "GanttV3RegisterVerticalScrollTrackingAsync<[System.Diagnostics.CodeAnalysis.DynamicallyAccessedMembers(System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.PublicMethods)] T>(Microsoft.AspNetCore.Components.ElementReference scrollEl, DotNetObjectReference<T> dotNetRef)",
+          "summary": "Registers a rAF-throttled vertical-scroll listener on scrollEl (Codex round 4, P2 #3) — reports (scrollTop, clientHeight) back via dotNetRef's OnGanttV3VerticalScroll JSInvokable method, so GanttArrowLayer can cull dependency arrows whose rows are scrolled out of view (the row canvas's own bars/tree already virtualize via &lt;Virtualize&gt;; the SVG arrow overlay previously did not). Independent of GanttV3RegisterHeaderScrollSyncAsync — that one is skipped entirely in Gantt3's shared-pane mode (see GanttTimeline.razor's own remarks), precisely the mode where arrow virtualization matters most. Default no-op DIM so existing implementers/test doubles keep compiling."
+        },
+        {
+          "name": "GanttV3UnregisterVerticalScrollTrackingAsync",
+          "returnType": "Task",
+          "signature": "GanttV3UnregisterVerticalScrollTrackingAsync(Microsoft.AspNetCore.Components.ElementReference scrollEl)",
+          "summary": "Tears down the listener registered by GanttV3RegisterVerticalScrollTrackingAsync{T}. Default no-op."
+        },
+        {
+          "name": "GanttV3GetScrollCenterXAsync",
+          "returnType": "Task<double?>",
+          "signature": "GanttV3GetScrollCenterXAsync(Microsoft.AspNetCore.Components.ElementReference el, string? direction = null)",
+          "summary": "Reads el's CURRENT logical horizontal scroll center (Codex round 5, P2 #5) — in the SAME \"logical\" coordinate space (0 = the scrollable content's own physical-left origin, RTL-normalized) that GanttV3ScrollToXAsync's own targetX already uses. Gantt3 uses this to capture what the user ACTUALLY has centered on screen before a view-mode switch recomputes the visible range, instead of assuming the outgoing range's own midpoint (a proxy that silently diverges the moment a user pans manually). Returns null when the element can't be measured (not yet laid out, or JS interop unavailable) so the caller can fall back to that proxy. Default no-op DIM so existing implementers/test doubles keep compiling."
         },
         {
           "name": "GanttV3RegisterDragAsync",

@@ -39,7 +39,7 @@ namespace Lumeo.Tests.E2E.Gantt;
 ///      <see cref="Sub_threshold_interaction_on_resize_and_progress_zones_leaves_no_residue_no_commit_and_no_click"/>
 ///   E: <see cref="Milestone_pointerdown_drag_moves_the_whole_bar_in_v3_but_v2_has_no_milestone_drag_at_all"/>
 ///   F: <see cref="Readonly_blocks_every_real_drag_gesture_on_both_routes"/>,
-///      <see cref="Readonly_milestone_click_fires_on_v2_but_not_on_v3"/>
+///      <see cref="Readonly_milestone_click_fires_identically_on_v2_and_v3"/>
 ///   G: <see cref="No_move_ghost_survives_a_completed_drag"/>,
 ///      <see cref="Pointercancel_mid_drag_removes_the_ghost_and_commits_nothing"/>
 ///   H: <see cref="Arrow_endpoints_reroute_correctly_after_a_move_drag"/>
@@ -97,6 +97,44 @@ public class GanttDragParityTests : GanttParityTestBase
     private async Task WaitV3ReadyAsync() =>
         await Page.Locator($"{V3Root} [data-task-id]").First
             .WaitForAsync(new() { State = WaitForSelectorState.Attached, Timeout = 15000 });
+
+    // Phase-1 reconciliation fix: master's own v2-parity hardening (Codex round
+    // 2, P2 #8 / round 3, P2 #3 — see GanttTimeline.ShouldAttemptTodayScroll's
+    // own remarks) made the initial scroll-to-today ATTEMPT unconditional, even
+    // when Today falls entirely outside the rendered range — relying on the
+    // browser's own scrollLeft clamp to land at the LATEST visible dates
+    // instead of leaving scrollLeft at its DOM default 0. This suite's fixed
+    // 2026-02/03-dated fixtures (SharedTasks) no longer include "today" by the
+    // time this runs, so the pane now auto-scrolls to the far right on load —
+    // a real, deliberate, already-reviewed behavior change, not a regression.
+    // The drag-CREATE specs below compute their interaction point as an offset
+    // from a row-track's OWN (very wide, TotalWidth-spanning) bounding box
+    // rather than from a specific visible element, so they need a KNOWN
+    // scrollLeft=0 baseline to stay meaningful — ScrollIntoViewIfNeededAsync
+    // alone doesn't guarantee this for an element already technically
+    // intersecting the viewport at any scroll position. Resets the shared
+    // outer pane (the same "div[style*='overflow']" locator convention every
+    // other Gantt v3 E2E spec already uses) back to its physical-left origin
+    // deterministically, rather than guessing at a wait/timeout.
+    //
+    // Deflake (round 2): resetting scrollLeft immediately after WaitV3ReadyAsync
+    // (which — like every wait in THIS suite — only confirms a bar attached to
+    // the DOM, true on the synchronous first render) raced the SAME
+    // server-driven auto-scroll-to-today attempt described above: the reset
+    // could land BEFORE that async attempt completes, only for the attempt to
+    // finish afterward and scroll back to the far right, undoing the reset.
+    // Waits for the SAME "data-gantt-v3-initial-scroll=done" marker every OTHER
+    // Gantt v3 E2E spec in this project already waits on (see e.g.
+    // GanttV3ScrollCenteringTests/GanttV3RtlTests) — set atomically by
+    // gantt-v3.js's own centerOn, in the SAME call that performs whatever
+    // scroll it lands on — so the reset below is guaranteed to run AFTER that
+    // attempt has already settled, wherever it landed.
+    private async Task ResetScrollLeftAsync()
+    {
+        var scrollPane = Page.Locator($"{V3Root} div[style*='overflow']").First;
+        await Assertions.Expect(scrollPane).ToHaveAttributeAsync("data-gantt-v3-initial-scroll", "done", new() { Timeout = 15000 });
+        await scrollPane.EvaluateAsync("el => el.scrollLeft = 0");
+    }
 
     // ── Geometry helpers ─────────────────────────────────────────────────────
 
@@ -183,6 +221,7 @@ public class GanttDragParityTests : GanttParityTestBase
 
         await GotoHost($"/e2e/gantt-v3?viewMode={viewMode}");
         await WaitV3ReadyAsync();
+        await ResetScrollLeftAsync();
         var v3Bar = Page.Locator($"{V3Root} [data-task-id='fe3']");
         var v3Center = await CenterAsync(v3Bar);
         await DragAsync(v3Center, (v3Center.X + dxPixels, v3Center.Y));
@@ -395,13 +434,26 @@ public class GanttDragParityTests : GanttParityTestBase
     }
 
     [Fact]
-    public async Task Readonly_milestone_click_fires_on_v2_but_not_on_v3()
+    public async Task Readonly_milestone_click_fires_identically_on_v2_and_v3()
     {
-        // Pinned delta: v2's milestone click listener is UNCONDITIONAL (never
-        // guarded by readonly, gantt-v2.js:501-503); v3's Readonly unregisters
-        // the ENTIRE delegated pointerdown listener (T1's "no listeners at all"
-        // contract), so a real click produces nothing at all in v3. See
-        // GanttTimeline.NotifyTaskClick's own remarks for the full rationale.
+        // Phase-1 reconciliation update: this used to assert a pinned v2/v3
+        // DEVIATION — "v3's Readonly unregisters the ENTIRE delegated
+        // pointerdown listener, so a real click produces nothing at all in
+        // v3" — true only against phase-2's OWN pre-merge GanttBar, which had
+        // no click/keyboard activation path of its own at all. Master's
+        // independently-hardened GanttBar (Codex round 4, P2 #5 — see its own
+        // InnerAttributes/HandleClick remarks) wires a native onclick/onkeydown
+        // pair gated ONLY on OnTaskClick.HasDelegate, never on Readonly — the
+        // SAME accessible click path a keyboard user relies on regardless of
+        // whether drag/resize editing is enabled. Readonly still fully gates
+        // GanttTimeline's own delegated JS pointerdown listener (no ghost, no
+        // CommitDrag/CommitProgress/NotifyTaskClick — see
+        // Readonly_blocks_every_real_drag_gesture_on_both_routes), but a real
+        // mouse click now reaches GanttBar's own independent path either way —
+        // closing the v2/v3 gap this test used to pin instead of widening it:
+        // v2's own milestone click listener was ALREADY unconditional
+        // (gantt-v2.js:501-503, never guarded by readonly), so v3 now matches
+        // it exactly rather than diverging from it.
         await GotoHost("/e2e/gantt-v2?readonly=1");
         await WaitV2ReadyAsync();
         // Click the polygon itself, not the wrapping <g>: the group's own
@@ -420,7 +472,8 @@ public class GanttDragParityTests : GanttParityTestBase
         var v3Milestone = Page.Locator($"{V3Root} [data-task-id='fe-ms']");
         await v3Milestone.ScrollIntoViewIfNeededAsync();
         await v3Milestone.ClickAsync();
-        Assert.True(string.IsNullOrEmpty(await ReadSinkRawAsync("event-sink-click")));
+        var v3Json = await WaitForSinkChangeAsync("event-sink-click", null);
+        Assert.Equal("fe-ms", ParseTask(v3Json).Id);
     }
 
     // ── G: post-drop DOM cleanliness ────────────────────────────────────────
@@ -486,7 +539,11 @@ public class GanttDragParityTests : GanttParityTestBase
         var newFe2End = new DateTime(2026, 3, 11);
         var (fe1X, fe1W) = GanttDayModeMath.BarGeometry(origin, new DateTime(2026, 2, 23), new DateTime(2026, 3, 1), isMilestone: false);
         var (fe2X, fe2W) = GanttDayModeMath.BarGeometry(origin, newFe2Start, newFe2End, isMilestone: false);
-        var expected = GanttDayModeMath.ArrowPath((fe1X, fe1W, 1), (fe2X, fe2W, 2));
+        // v3-only route: GanttArrowLayer's canvas coordinate space excludes the
+        // header (Codex round 2, P1 #3 — the header now lives OUTSIDE the
+        // row-canvas subtree entirely, see GanttTimeline.razor's own remarks),
+        // matching GanttParityTests' own v3 call site below.
+        var expected = GanttDayModeMath.ArrowPath((fe1X, fe1W, 1), (fe2X, fe2W, 2), includeHeaderHeight: false);
 
         var d = await Page.Locator($"{V3Root} path.lumeo-gantt-v3-arrow[data-arrow-from='fe1'][data-arrow-to='fe2']").GetAttributeAsync("d");
         Assert.NotNull(d);
@@ -600,8 +657,11 @@ public class GanttDragParityTests : GanttParityTestBase
 
         await GotoHost("/e2e/gantt-v3?candrop=1&allowCreate=1");
         await WaitV3ReadyAsync();
+        await ResetScrollLeftAsync();
         var track = Page.Locator($"{V3Root} [data-gantt-row-track][data-row-key='task:fe3']");
-        await track.ScrollIntoViewIfNeededAsync();
+        // No ScrollIntoViewIfNeededAsync here — see the sibling drag-create
+        // spec's own remarks: it re-scrolls this wide element right back under
+        // the sticky tree pane, undoing ResetScrollLeftAsync's known-good baseline.
         var box = await track.BoundingBoxAsync();
         Assert.NotNull(box);
         var createFrom = ((float)(box!.X + 100), (float)(box.Y + box.Height / 2));
@@ -617,13 +677,25 @@ public class GanttDragParityTests : GanttParityTestBase
     {
         await GotoHost("/e2e/gantt-v3?allowCreate=1");
         await WaitV3ReadyAsync();
+        await ResetScrollLeftAsync();
         var track = Page.Locator($"{V3Root} [data-gantt-row-track][data-row-key='task:fe3']");
-        await track.ScrollIntoViewIfNeededAsync();
         var box = await track.BoundingBoxAsync();
         Assert.NotNull(box);
         // 100px in and +114px further (Day mode, 38px/day): well within the
         // initial (scrollLeft=0) viewport, far to the left of fe3's own bar
         // (which sits ~60 days later) — an EMPTY area on fe3's OWN occupied row.
+        //
+        // Deliberately NOT calling ScrollIntoViewIfNeededAsync on this locator:
+        // it's a very wide (TotalWidth-spanning) element, and Playwright's own
+        // heuristic re-scrolled the shared pane by exactly GanttTree's sticky
+        // width (Codex round 3's sticky-left tree hardening) to bring MORE of
+        // it into view — landing this offset right back under the STICKY tree
+        // pane, which visually covers whatever content scrolls underneath it
+        // regardless of scroll position. ResetScrollLeftAsync above already
+        // established a known-good scrollLeft=0 baseline (the fixture's dozen
+        // rows all fit within Height="900px", so no vertical scroll is needed
+        // either) — reading the bounding box directly, without an intervening
+        // re-scroll, is what keeps that baseline intact.
         var from = ((float)(box!.X + 100), (float)(box.Y + box.Height / 2));
         var to = (from.Item1 + DayPxDay * 3, from.Item2);
 
@@ -646,8 +718,10 @@ public class GanttDragParityTests : GanttParityTestBase
     {
         await GotoHost("/e2e/gantt-v3?allowCreate=1");
         await WaitV3ReadyAsync();
+        await ResetScrollLeftAsync();
         var track = Page.Locator($"{V3Root} [data-gantt-row-track][data-row-key='task:fe3']");
-        await track.ScrollIntoViewIfNeededAsync();
+        // No ScrollIntoViewIfNeededAsync — see Drag_create_beside_an_existing_bar's
+        // own remarks: it undoes ResetScrollLeftAsync's known-good baseline.
         var box = await track.BoundingBoxAsync();
         Assert.NotNull(box);
         var from = ((float)(box!.X + 100), (float)(box.Y + box.Height / 2));
@@ -663,13 +737,13 @@ public class GanttDragParityTests : GanttParityTestBase
         // which is orthogonal to what this spec is proving).
         await GotoHost("/e2e/gantt-v3?allowCreate=1");
         await WaitV3ReadyAsync();
+        await ResetScrollLeftAsync();
         var periodLabel = Page.Locator($"{V3Root} span.text-sm.font-medium");
         var initialLabel = (await periodLabel.TextContentAsync())!;
         await Page.GetByRole(AriaRole.Button, new() { Name = "Next period" }).ClickAsync();
         await Assertions.Expect(periodLabel).Not.ToHaveTextAsync(initialLabel, new() { Timeout = 10000 });
 
         var track2 = Page.Locator($"{V3Root} [data-gantt-row-track][data-row-key='task:fe3']");
-        await track2.ScrollIntoViewIfNeededAsync();
         var box2 = await track2.BoundingBoxAsync();
         Assert.NotNull(box2);
         var from2 = ((float)(box2!.X + 100), (float)(box2.Y + box2.Height / 2));
@@ -739,8 +813,11 @@ public class GanttDragParityTests : GanttParityTestBase
     {
         await GotoHost("/e2e/gantt-v3?allowCreate=1");
         await WaitV3ReadyAsync();
+        await ResetScrollLeftAsync();
         var track = Page.Locator($"{V3Root} [data-gantt-row-track][data-row-key='task:fe3']");
-        await track.ScrollIntoViewIfNeededAsync();
+        // No ScrollIntoViewIfNeededAsync — see Drag_create_beside_an_existing_bar's
+        // own remarks: it undoes ResetScrollLeftAsync's known-good baseline,
+        // re-scrolling this wide element right back under the sticky tree pane.
         var box = await track.BoundingBoxAsync();
         Assert.NotNull(box);
         var from = ((float)(box!.X + 100), (float)(box.Y + box.Height / 2));

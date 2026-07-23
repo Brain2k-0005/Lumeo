@@ -172,6 +172,34 @@ public class GanttTreeAndArrowsTests : IAsyncLifetime
         Assert.Equal("parent", bars[0].GetAttribute("data-task-id"));
     }
 
+    [Fact]
+    public void GanttTimeline_Renders_A_Visible_Section_Header_Stripe_For_A_GroupHeader_Row()
+    {
+        // Regression (Codex round 2, P2 #7): a GanttRowKind.GroupHeader slot
+        // (row.Task == null) previously rendered NOTHING in the timeline's row
+        // canvas at all — an empty gap — even though the sibling GanttTree pane
+        // already shows a labeled summary row for the identical slot. v2 parity:
+        // gantt-v2.js:428-449 draws a full-width, translucent, labeled stripe.
+        var tasks = new[]
+        {
+            new L.GanttTask("t1", "Design", D(2026, 1, 1), D(2026, 1, 5)) { GroupLabel = "Phase 1" },
+        };
+        var rows = GanttRowModel.BuildVisibleRows(tasks, new HashSet<string>());
+
+        var cut = _ctx.Render<L.GanttTimeline>(p => p
+            .Add(c => c.Rows, rows)
+            .Add(c => c.ViewMode, L.GanttViewMode.Day)
+            .Add(c => c.RangeStart, D(2026, 1, 1))
+            .Add(c => c.RangeEnd, D(2026, 1, 10)));
+
+        var header = cut.Find(".lumeo-gantt-v3-group-header");
+        Assert.Contains("Phase 1", header.TextContent);
+        // Row 0 (the header itself occupies rowSlot 0 — see GanttRowModel's own
+        // rowSlot-advancement remarks), full row height, matching GanttScale.RowHeight.
+        Assert.Contains("top:0px", header.GetAttribute("style"));
+        Assert.Contains($"height:{GanttScale.RowHeight}px", header.GetAttribute("style"));
+    }
+
     // ── GanttArrowLayer ──────────────────────────────────────────────────────
 
     [Fact]
