@@ -52,6 +52,29 @@ public class ToastBattleTestRegressionTests : IAsyncLifetime
         var toastService = GetToastService();
         var cut = _ctx.Render<L.ToastProvider>();
 
+        // Deflake round 2 (CI-starvation incident: ElementNotFoundException on
+        // `button` at what's now the second Find/Click below). Round 1 fixed a
+        // real race in the FIRST half of this test (the dismissCount assert), but
+        // the DEEPER race sat here all along: RemoveWithExitAsync's own exit
+        // window is a real ~220ms Task.Delay, started the instant the FIRST click
+        // stamps Leaving=true — well before either poll below even begins. Every
+        // synchronous instruction this test executes between that stamp and the
+        // SECOND Find("button") below eats into that same fixed 220ms wall-clock
+        // budget. Under CI starvation (reported as "common on GitHub runners",
+        // not just rare under a local burner load), that budget can run out
+        // before the second Find/Click runs at all — the product's own exit
+        // timer completes, RemoveItemAsync actually deletes the toast, and the
+        // button is gone. Pinning ExitAnimationMs to a large, fixed value (the
+        // SAME internal test seam ToastAdmissionInvariantTests already widens
+        // for its own concurrency proof) removes the race at its root: the
+        // window this test's own synchronous code has to work within is now
+        // wide enough that no realistic CI stall can exceed it. Must be set
+        // BEFORE the first dismissal — RemoveWithExitAsync reads this property's
+        // CURRENT value at the moment it calls Task.Delay, baking it into that
+        // specific call; changing it afterward would not retroactively shorten
+        // (or lengthen) an already-started delay.
+        cut.Instance.ExitAnimationMs = 10000;
+
         var dismissCount = 0;
         // Duration=0 disables the auto-dismiss timer so ONLY our close clicks
         // drive dismissal; OnDismiss increments a counter we can assert on.
@@ -66,41 +89,43 @@ public class ToastBattleTestRegressionTests : IAsyncLifetime
             TimeSpan.FromSeconds(5));
 
         // First dismissal: runs OnDismiss once and marks the toast "leaving",
-        // keeping it in the DOM (with .animate-toast-out) for the exit animation.
+        // keeping it in the DOM (with .animate-toast-out) for the (now pinned,
+        // 10s-wide) exit window.
         cut.Find("button").Click();
         // WaitForState blocks until the toast is confirmed still-mounted AND leaving
         // (.animate-toast-out present), so the second dismissal below is guaranteed to
         // land while the toast is in the "leaving" state — the exact branch under test.
-        // The exit window is a real ~220 ms Task.Delay; the generous ceiling only guards
-        // against a starved thread pool delaying the leaving re-render, and returns the
-        // instant the class appears.
         cut.WaitForState(
             () => cut.FindAll(".animate-toast-out").Count == 1,
             TimeSpan.FromSeconds(5));
 
-        // Deflake (CI-starvation incident, overlay-exit doctrine applied): this used to be a bare
-        // `Assert.Equal(1, dismissCount)` immediately after the poll above. That races a real gap
-        // inside RemoveWithExitAsync: `Leaving = true` is stamped and StateHasChanged() called
-        // (making .animate-toast-out observable — what the poll above waits for) BEFORE
-        // `await UnregisterSwipe(id)`, and only AFTER that await resolves does `OnDismiss()` actually
-        // fire. Under a starved CI thread pool that continuation can be delayed well past the moment
-        // the "leaving" render commits, so the bare assert could read dismissCount==0. dismissCount
-        // reaching (and, per this test's own idempotency guarantee, staying at) 1 is a genuine
-        // monotonic latch, so poll for it instead of asserting on the assumption it already settled.
+        // Deflake round 1 (CI-starvation incident, overlay-exit doctrine applied): this
+        // used to be a bare `Assert.Equal(1, dismissCount)` immediately after the poll
+        // above. That races a real gap inside RemoveWithExitAsync: `Leaving = true` is
+        // stamped and StateHasChanged() called (making .animate-toast-out observable —
+        // what the poll above waits for) BEFORE `await UnregisterSwipe(id)`, and only
+        // AFTER that await resolves does `OnDismiss()` actually fire. dismissCount
+        // reaching (and, per this test's own idempotency guarantee, staying at) 1 is a
+        // genuine monotonic latch, so poll for it instead of asserting on the
+        // assumption it already settled.
         cut.WaitForAssertion(() => Assert.Equal(1, dismissCount), TimeSpan.FromSeconds(5));
 
         // Second dismissal while the toast is still leaving must be a no-op.
         // Without the fix it re-runs OnDismiss (count -> 2) and truncates the
         // exit animation; with the fix it bails on toast.Leaving. The toast is
-        // confirmed mounted by the WaitForState immediately above, so Find("button")
-        // cannot throw on an empty match (the historic FindAll[0] index race).
+        // confirmed mounted by the WaitForState immediately above, and the
+        // pinned 10s exit window (not the historic ~220ms) guarantees it is
+        // STILL mounted now regardless of any CI scheduling delay between here
+        // and there, so Find("button") cannot throw on an empty match (the
+        // round-2 ElementNotFoundException this fixes).
         cut.Find("button").Click();
 
-        // The panel unmounts when the first exit timer completes; poll for it with a
-        // generous ceiling (real 220 ms timer, starvation-tolerant) rather than a sleep.
+        // The panel unmounts once the (pinned, 10s) exit timer completes; poll for
+        // it with a ceiling comfortably past that pinned duration, rather than a
+        // sleep. Real timer, starvation-tolerant — returns the instant it fires.
         cut.WaitForState(
             () => cut.FindAll("[role='alert'],[role='status']").Count == 0,
-            TimeSpan.FromSeconds(5));
+            TimeSpan.FromSeconds(15));
 
         Assert.Equal(1, dismissCount);
     }
