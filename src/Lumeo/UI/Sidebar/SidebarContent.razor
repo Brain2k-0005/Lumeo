@@ -5,6 +5,8 @@
 </div>
 
 @code {
+    [CascadingParameter] public SidebarProvider.SidebarState? State { get; set; }
+
     /// <summary>The <see cref="SidebarGroup"/> and other sections scrolled inside the sidebar's main content area.</summary>
     [Parameter] public RenderFragment? ChildContent { get; set; }
 
@@ -14,5 +16,35 @@
     /// <summary>Unmatched attributes are splatted onto the root <c>div</c> element.</summary>
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
-    private string CssClass => Cx.Merge("flex flex-1 flex-col gap-1 overflow-auto px-2 py-3", Class);
+    // Mirrors SidebarComponent's own EffectiveCollapsed (State is null when this
+    // is rendered without a SidebarProvider ancestor, e.g. in isolation in a test).
+    private bool EffectiveCollapsed => State?.EffectiveCollapsed ?? false;
+
+    // Bug fix (feedback wave): "overflow-auto" scrolls BOTH axes. The nav content
+    // routinely grows taller than the viewport (that's the whole point of this
+    // container), so the vertical scrollbar appears and steals width from the
+    // content box — every w-full entry (menu buttons, etc.) then reports as
+    // slightly too wide for the now-narrower box and a HORIZONTAL scrollbar
+    // appears too, even though nothing is actually overflowing horizontally.
+    // overflow-y-auto/overflow-x-hidden (the same pair SidebarComponent's own
+    // <aside> already uses, and CommandList/DialogContent/PullToRefresh
+    // elsewhere in this library) scrolls only the axis that's ever meant to
+    // scroll here.
+    //
+    // #381 Codex P1: scrollbar-gutter:stable reserves the vertical scrollbar's
+    // track space up front (Tailwind has no built-in utility for this property,
+    // hence the arbitrary-property bracket syntax already used by this same
+    // file's transition-[width,translate]) so content doesn't reflow width-wise
+    // the moment the list grows past one page — but on classic-scrollbar
+    // platforms (Windows/Linux, non-overlay scrollbars) that reserved ~15px
+    // track eats a real chunk of a COLLAPSED icon rail's 48px width (SidebarComponent's
+    // w-12), which never scrolls (an icon rail's content is one row per icon,
+    // never taller than the rail). Scoped to the EXPANDED state only — the only
+    // state where the sidebar's nav content is ever tall enough to need a
+    // scrollbar at all, and where a 64-unit-wide (w-64) rail can afford the
+    // reserved track without a visible squeeze.
+    private string CssClass => Cx.Merge(
+        "flex flex-1 flex-col gap-1 overflow-y-auto overflow-x-hidden px-2 py-3",
+        Cx.When(!EffectiveCollapsed, "[scrollbar-gutter:stable]"),
+        Class);
 }

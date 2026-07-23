@@ -1,11 +1,59 @@
 @namespace Lumeo
 
-<div class="@CssClass" @attributes="AdditionalAttributes">
-    @ChildContent
-</div>
+@* Bug fix (feedback wave): a <div> root is invalid directly inside a <ul>
+   (SidebarMenu) — see SidebarMenu's own remarks on the cascaded
+   LumeoSidebarInsideMenu marker this reads to auto-detect that placement.
+   The RECOMMENDED/canonical placement stays OUTSIDE SidebarMenu entirely —
+   as a sibling before it, both direct children of SidebarGroup (SidebarGroup's
+   own doc summary and every example in this library's docs already show this)
+   — this <li>-wrapped fallback exists for the narrower case of labelling a
+   sub-section WITHIN one already-open SidebarMenu list.
+   #381 Codex P2: the cascade only reflects the DIRECT-child shape correctly
+   (SidebarMenuItem re-cascades false for its own deeper content — see its
+   own remarks); AsListItem is the explicit override for any OTHER nesting
+   shape (e.g. a consumer's own wrapper inside a SidebarMenu) the cascade
+   can't auto-detect, in either direction. *@
+@if (EffectiveInsideMenu)
+{
+    <li role="presentation">
+        <div class="@CssClass" @attributes="AdditionalAttributes">
+            @ChildContent
+        </div>
+    </li>
+}
+else
+{
+    <div class="@CssClass" @attributes="AdditionalAttributes">
+        @ChildContent
+    </div>
+}
 
 @code {
     [CascadingParameter] public SidebarProvider.SidebarState? State { get; set; }
+
+    /// <summary>
+    /// Cascaded by <see cref="Lumeo.SidebarMenu"/> when this label is used to head a
+    /// sub-section WITHIN a single menu's items. Absent (false) in the canonical
+    /// placement — a sibling of <see cref="Lumeo.SidebarMenu"/> inside
+    /// <see cref="Lumeo.SidebarGroup"/> — which every example in this library's docs uses.
+    /// Only correct for a DIRECT SidebarMenu child or a plain
+    /// <see cref="Lumeo.SidebarMenuItem"/> descendant (which re-cascades false) —
+    /// see <see cref="AsListItem"/> for any other nesting shape.
+    /// </summary>
+    [CascadingParameter(Name = "LumeoSidebarInsideMenu")] private bool InsideMenu { get; set; }
+
+    /// <summary>
+    /// Explicit override for whether this label renders its <c>&lt;li role="presentation"&gt;</c>
+    /// wrapper. Null (the default) defers to the cascaded <see cref="InsideMenu"/> marker, which is
+    /// correct for the two shapes Lumeo itself recognizes (a direct <see cref="Lumeo.SidebarMenu"/>
+    /// child, or one nested inside a <see cref="Lumeo.SidebarMenuItem"/>). Set explicitly when neither
+    /// applies — e.g. a custom wrapper component of your own nested inside a SidebarMenu that should
+    /// still get the &lt;li&gt; wrapper, or the reverse.
+    /// </summary>
+    [Parameter] public bool? AsListItem { get; set; }
+
+    private bool EffectiveInsideMenu => AsListItem ?? InsideMenu;
+
     /// <summary>The group's heading text/content. Fades out and collapses its own height when the sidebar collapses.</summary>
     [Parameter] public RenderFragment? ChildContent { get; set; }
 

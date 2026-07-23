@@ -1,7 +1,26 @@
 @namespace Lumeo
 
+@* Bug fix (feedback wave): a <ul> may only directly contain <li> (and
+   script-supporting) elements. SidebarMenuItem already renders an <li> root,
+   so it's always valid here — but SidebarSeparator/SidebarGroupLabel (both
+   <div> roots) are NOT, if a consumer drops one in to break up a single
+   menu's items into visual sub-sections (rather than starting a whole new
+   SidebarGroup — see SidebarGroup's own remarks for the canonical, RECOMMENDED
+   placement of SidebarGroupLabel outside the menu entirely). Cascading this
+   marker lets both of those components auto-detect "I'm inside a <ul> right
+   now" and wrap themselves in <li role="presentation"> (the ARIA-recommended
+   pattern for a non-interactive list item — role="none"/"presentation" tells
+   assistive tech to skip announcing it as a list item) WITHOUT the consumer
+   having to know or opt in to anything; used outside a SidebarMenu (the
+   docs' own recommended SidebarGroupLabel placement, and SidebarSeparator
+   between two SidebarGroups) they render their plain <div> root exactly as
+   before. IsFixed: the value never changes after this render, matching the
+   fixed-cascading-value pattern used elsewhere in this library for markers
+   that are structural rather than reactive state. *@
 <ul class="@CssClass" @attributes="AdditionalAttributes">
-    @ChildContent
+    <CascadingValue Value="true" Name="LumeoSidebarInsideMenu" IsFixed="true">
+        @ChildContent
+    </CascadingValue>
 </ul>
 
 @code {

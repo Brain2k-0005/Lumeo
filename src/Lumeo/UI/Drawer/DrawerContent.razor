@@ -37,7 +37,30 @@ else if (Context.IsOpen || _exiting)
         <div id="@_contentId" class="@CssClass" style="z-index:@ContentZ" role="dialog" aria-modal="@(Context.IsOpen ? "true" : "false")" aria-labelledby="@Context.TitleId" aria-describedby="@DescribedBy" @onkeydown="HandleKeyDown" @onkeydown:stopPropagation tabindex="-1" inert="@ExitInert" @attributes="AdditionalAttributes">
             @if (ShowDragHandle)
             {
-                <div class="mx-auto mt-4 h-2 w-[100px] rounded-full bg-muted"></div>
+                @* #381 Codex P2 (round 2) — data-drawer-handle is the stable hook
+                   components.js's gesture handlers use to identify a touch that
+                   started on the visual drag handle: those touches always arm
+                   dismiss regardless of the panel's scroll position (the handle
+                   itself is never part of the scrollable content).
+
+                   #381 round 6 (P2) — this element is a sibling of the child
+                   content inside the SAME overflow-y-auto flex column as
+                   _contentId (the scroll container the JS gesture also reads
+                   scrollTop/scrollHeight from for boundary gating — it must
+                   stay that element, so the fix is CSS-only, not a restructure
+                   onto a separate inner scroller). Without "sticky", the
+                   handle was an ordinary in-flow flex item: scrolling the
+                   content scrolled the handle away with it, so a drawer with
+                   content taller than the panel lost its grab handle the
+                   moment the user scrolled down. "sticky top-0" pins it to the
+                   scroll container's own top edge instead; "bg-background"
+                   (matches the panel's own background) keeps scrolling
+                   content from showing through behind it, and "shrink-0"
+                   matches DrawerHeader/DrawerFooter's own defensive
+                   flex-shrink guard for the same overflow-y-auto flex column. *@
+                <div class="sticky top-0 z-10 shrink-0 bg-background pb-2" data-drawer-handle="true">
+                    <div class="mx-auto mt-4 h-2 w-[100px] rounded-full bg-muted"></div>
+                </div>
             }
             @ChildContent
         </div>
@@ -249,8 +272,44 @@ else if (Context.IsOpen || _exiting)
         _ => ""
     };
 
+    // Bug fix (feedback wave): the panel caps its OWN height (PositionClasses:
+    // max-h-[96vh] for Top/Bottom, max-h-screen for Left/Right) but never gave
+    // itself a scroll fallback. Verified with a real headless Chromium render
+    // (not just reasoning about the flexbox spec): once content — an EditForm
+    // with enough fields, or any sufficiently tall block content — exceeds that
+    // cap, the excess simply overflows past the panel's bottom edge (the
+    // browser's default overflow:visible) with NO way to scroll to it. The
+    // header (first child) stays visible; everything below a certain point,
+    // INCLUDING THE FOOTER/SUBMIT BUTTON, renders completely off-screen and is
+    // permanently unreachable — from a user's perspective the form is simply
+    // gone, which is what got reported as "the drawer collapses my form."
+    // overflow-y-auto turns that same overflow into an internally-scrollable
+    // panel instead, so the full form (and the footer beneath it) is always
+    // reachable regardless of how tall the content grows.
+    //
+    // #381 Codex P2: setting ONLY overflow-y is a well-known CSS quirk (the
+    // same class of quirk documented on GanttTimeline's own RootClass, just
+    // the other axis here) — a browser computes the OTHER axis's overflow to
+    // "auto" too the moment either axis is non-visible (verified: overflow-x
+    // resolves to "auto" here even though this class list never sets it
+    // explicitly), so ANY content that visually extends past the panel's
+    // horizontal edges — including a focus ring drawn via box-shadow with a
+    // ring-offset, which extends a few px past its own element's border box —
+    // gets hard-clipped where it wasn't before. Confirmed with a real headless
+    // Chromium render: a flush-edge button's ring-offset-2 ring clips on both
+    // sides with no padding, fully visible with p-1.5. This is genuinely
+    // Lumeo's own responsibility to guard against (this panel decides its own
+    // overflow), unlike bug #4's fix (a consumer's own content). p-1.5 is a
+    // baseline inset just for this — content still gets its OWN padding from
+    // DrawerHeader/DrawerFooter (p-4) or whatever the consumer wraps it in;
+    // this only protects RAW content placed directly, and costs a barely
+    // perceptible few px more inset even where a p-4 wrapper already exists.
+    // A consumer drawing their OWN focus rings can also reach for ring-inset
+    // (already this library's established idiom for a ring inside a
+    // scrolling/clipping context — see Image/PasswordInput/PivotGrid/
+    // SwipeActions/ToolCallCard) to avoid needing any reserved inset at all.
     private string CssClass =>
-        Cx.Merge("fixed mt-24 flex h-auto flex-col bg-background shadow-lg", PositionClasses, AnimationClass, PointerClass, Class);
+        Cx.Merge("fixed mt-24 flex h-auto flex-col overflow-y-auto p-1.5 bg-background shadow-lg", PositionClasses, AnimationClass, PointerClass, Class);
 
     // A scoped <DirectionProvider> wins over the global ThemeService, so a subtree
     // can be RTL even if the app is LTR. Null when no provider wraps this drawer.
