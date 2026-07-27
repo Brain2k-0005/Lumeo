@@ -468,6 +468,51 @@ public class GanttV3CreateTests : IAsyncLifetime
         Assert.Equal("t1", cut.Find("[data-task-id]").GetAttribute("data-task-id"));
     }
 
+    // ── Codex PR-383 finding (Gantt3.razor, blocked until PR #382 merged) ────
+
+    [Fact]
+    public async Task Gantt3_Create_Commit_Inserts_New_Task_Into_Its_Inherited_Groups_Existing_Run()
+    {
+        // [P2] "Insert created tasks into their inherited group" — for a
+        // grouped chart (GroupBy set), HandleTaskUpdateAsync used to append
+        // every Create at the very end of the list regardless of which group
+        // it inherited. BuildFlatGroupRows detects a group from CONSECUTIVE
+        // same-GroupLabel tasks, so appending a "Group A" task after a "Group B"
+        // one split Group A into two runs (a duplicate header) instead of
+        // joining it to Group A's existing one. An uncontrolled parent (this
+        // test) never echoes a re-sorted TasksChanged value back to repair it.
+        var tasks = new List<L.GanttTask>
+        {
+            new("g1a", "G1 Task A", D(2026, 1, 1), D(2026, 1, 3)) { GroupLabel = "Group A" },
+            new("g2a", "G2 Task A", D(2026, 2, 1), D(2026, 2, 3)) { GroupLabel = "Group B" },
+        };
+
+        IEnumerable<L.GanttTask>? pushed = null;
+        var cut = _ctx.Render<L.Gantt3>(p => p
+            .Add(c => c.Tasks, tasks)
+            .Add(c => c.GroupBy, (Func<L.GanttTask, string>)(t => t.GroupLabel ?? ""))
+            .Add(c => c.AllowCreate, true)
+            .Add(c => c.TasksChanged, (IEnumerable<L.GanttTask> t) => { pushed = t; }));
+
+        var timeline = cut.FindComponent<L.GanttTimeline>();
+        // Create beside the Group A leaf — the new task inherits GroupLabel
+        // "Group A" (already covered by CommitCreate_Leaf_Row_Flat_Group_
+        // Inherits_GroupLabel_Sibling above).
+        await cut.InvokeAsync(() => timeline.Instance.CommitCreate("task:g1a", "2026-01-05", "2026-01-06"));
+
+        Assert.NotNull(pushed);
+        var list = pushed!.ToList();
+        Assert.Equal(3, list.Count);
+
+        // The new task must land WITHIN Group A's own run (immediately after
+        // g1a, before Group B's g2a) — not appended after everything, which
+        // would put g2a ("Group B") at index 1 instead of the new task.
+        Assert.Equal("Group A", list[0].GroupLabel);
+        Assert.Equal("Group A", list[1].GroupLabel);
+        Assert.Equal("g2a", list[2].Id);
+        Assert.Equal("Group B", list[2].GroupLabel);
+    }
+
     [Fact]
     public void Gantt3_AllowCreate_Passthrough_Reaches_The_Nested_Timeline()
     {

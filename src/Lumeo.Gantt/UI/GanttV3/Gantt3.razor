@@ -1704,10 +1704,109 @@
         // would silently no-op (no match) instead of adding it. Every OTHER
         // source (Move/ResizeStart/ResizeEnd/Progress) edits an EXISTING task
         // in place, same as before.
+        //
+        // Bug fix (Codex PR-383 review, P2 "Insert created tasks into their
+        // inherited group"): appending unconditionally always put a Create at
+        // the very end of the list. For a grouped chart (GroupBy set) that
+        // splits the created task's inherited group into two runs — a second
+        // header for the same GroupLabel — because BuildFlatGroupRows detects a
+        // group from CONSECUTIVE same-label tasks, and an uncontrolled parent
+        // never echoes a re-sorted TasksChanged value back to repair it.
+        // SortedTasks (already this component's one grouping-sort authority —
+        // see OnInitialized/MaterializeTasks) folds the new task into its
+        // group's existing run the same way a genuine parameter delivery
+        // would; it is a no-op when GroupBy is null, so the ungrouped path is
+        // unaffected.
         var newTasks = update.Source == GanttTaskUpdateSource.Create
-            ? _state.Tasks.Append(update.Task).ToList()
+            ? SortedTasks(_state.Tasks.Append(update.Task).ToList())
             : _state.Tasks.Select(t => t.Id == update.Task.Id ? update.Task : t).ToList();
+
+        // Bug fix (Codex PR-383 review, P1 "Expand the visible range after
+        // date edits"): a move/resize that places a task outside the current
+        // padded VisibleRange used to leave the range — and _tasksVersion/
+        // _lastSnapshot — describing the PRE-edit task set. The timeline kept
+        // its old header/grid width, so the moved bar could render outside
+        // that dated canvas (or land unreachable at a negative offset), and no
+        // LATER pass ever repairs it: OnParametersSetAsync's own T1 gating
+        // above targets the currently-committed (already-edited) _state.Tasks
+        // whenever the parameter hasn't moved, so WouldChangeTasks compares it
+        // against itself and reports no change.
+        //
+        // Deliberately does NOT route through ReconcileAsync's own TaskDerived
+        // branch (GanttViewportReconciler.Decide) — that REPLACES VisibleRange
+        // outright from the whole task set's min/max, which for one local edit
+        // is a spurious RESHAPE: it could shrink the window around unrelated
+        // tasks, and if the recomputed min lands earlier than the current
+        // Start it silently shifts where date-zero sits in pixel space out
+        // from under an untouched DOM scrollLeft — exactly the "preserve the
+        // user's scroll center" hazard this fix exists to avoid. This only
+        // ever GROWS the window (a union with the current range, never a
+        // replacement) and re-anchors the live scroll position on whichever
+        // calendar date was centered before the edit whenever a boundary
+        // actually had to move.
+        var taskDerivedRange = ComputeInitialRange(_state.ViewMode, newTasks, EffectiveToday);
+        var expandedStart = taskDerivedRange.Start < _state.VisibleRange.Start ? taskDerivedRange.Start : _state.VisibleRange.Start;
+        var expandedEnd = taskDerivedRange.End > _state.VisibleRange.End ? taskDerivedRange.End : _state.VisibleRange.End;
+        var rangeExpanded = expandedStart != _state.VisibleRange.Start || expandedEnd != _state.VisibleRange.End;
+
+        // Captured BEFORE any commit below, under the geometry the user is
+        // still actually looking at — the same capture-before-commit ordering
+        // every other range change in this file uses (Codex round 16, finding
+        // #4: committing first and capturing after exposes an intermediate
+        // "new tasks, un-moved scroll" frame). Guarded with the disposal check
+        // RefreshBrowserTodayAsync's own out-of-pipeline interop call uses —
+        // this direct-commit path intentionally does not go through
+        // ReconcileAsync's generation machinery (see this method's own
+        // top-level remarks), so that is not the guard to reuse here.
+        DateTime? capturedCenter = null;
+        if (rangeExpanded)
+        {
+            capturedCenter = await ResolveCurrentCenterDateAsync(
+                ScrollHostLeadingOffset, EffectiveColumnWidthFor(_state.ViewMode), EffectiveDirection);
+            if (_disposed) return;
+        }
+
         _state.SetTasks(newTasks);
+        if (rangeExpanded) _state.SetVisibleRange(expandedStart, expandedEnd);
+        _tasksVersion++;
+        _lastSnapshot = BuildSnapshot(_tasksVersion, _state.Tasks, _state.ViewMode);
+        if (rangeExpanded) EmitScrollIntent(capturedCenter);
+
+        // Phase 2, T2/T3 — v2 parity: v2's Gantt.razor fires JsOnDateChange OR
+        // JsOnProgressChange depending on WHICH gesture committed (gantt-v2.js's
+        // commitDrag calls exactly one of them per branch, gantt-v2.js:750/756/761
+        // -> Gantt.razor's JsOnDateChange/JsOnProgressChange, lines 483-515) — never
+        // both for the same edit. T3's OnTaskCreate joins that same per-source
+        // branch (v2 has no equivalent gesture at all, so this is a v3-only leg,
+        // not a v2-parity one) — a Create never also fires OnDateChange, even
+        // though it does carry Start/End like a date change would. OnTaskUpdate
+        // (v3's own unified addition) still fires for every source regardless.
+        //
+        // Bug fix (Codex PR-383 review, P2 "Notify edit callbacks before
+        // TasksChanged"): these gesture-specific/unified notifications used to
+        // run AFTER TasksChanged, reversing v2's own commit sequence. A
+        // controlled parent can synchronously normalize or veto the proposed
+        // list and rerender from INSIDE TasksChanged, so running the edit
+        // callbacks afterward meant they only ever saw whatever the chart had
+        // already adopted or rolled back to — and an exception raised out of
+        // TasksChanged suppressed them entirely. Firing them first, against
+        // the value this method itself just committed, restores that
+        // ordering and means they always run regardless of what TasksChanged
+        // (or a subscriber's own handler) does with it.
+        if (update.Source == GanttTaskUpdateSource.Progress)
+        {
+            if (OnProgressChange.HasDelegate) await OnProgressChange.InvokeAsync(update.Task);
+        }
+        else if (update.Source == GanttTaskUpdateSource.Create)
+        {
+            if (OnTaskCreate.HasDelegate) await OnTaskCreate.InvokeAsync(update);
+        }
+        else if (OnDateChange.HasDelegate)
+        {
+            await OnDateChange.InvokeAsync(update.Task);
+        }
+
+        if (OnTaskUpdate.HasDelegate) await OnTaskUpdate.InvokeAsync(update);
 
         if (TasksChanged.HasDelegate)
         {
@@ -1725,29 +1824,5 @@
             _lastPushedTasksHash = ComputeTasksHash(_state.Tasks);
             await TasksChanged.InvokeAsync(_state.Tasks.ToList());
         }
-
-        // Phase 2, T2/T3 — v2 parity: v2's Gantt.razor fires JsOnDateChange OR
-        // JsOnProgressChange depending on WHICH gesture committed (gantt-v2.js's
-        // commitDrag calls exactly one of them per branch, gantt-v2.js:750/756/761
-        // -> Gantt.razor's JsOnDateChange/JsOnProgressChange, lines 483-515) — never
-        // both for the same edit. T3's OnTaskCreate joins that same per-source
-        // branch (v2 has no equivalent gesture at all, so this is a v3-only leg,
-        // not a v2-parity one) — a Create never also fires OnDateChange, even
-        // though it does carry Start/End like a date change would. OnTaskUpdate
-        // (v3's own unified addition) still fires for every source regardless.
-        if (update.Source == GanttTaskUpdateSource.Progress)
-        {
-            if (OnProgressChange.HasDelegate) await OnProgressChange.InvokeAsync(update.Task);
-        }
-        else if (update.Source == GanttTaskUpdateSource.Create)
-        {
-            if (OnTaskCreate.HasDelegate) await OnTaskCreate.InvokeAsync(update);
-        }
-        else if (OnDateChange.HasDelegate)
-        {
-            await OnDateChange.InvokeAsync(update.Task);
-        }
-
-        if (OnTaskUpdate.HasDelegate) await OnTaskUpdate.InvokeAsync(update);
     }
 }

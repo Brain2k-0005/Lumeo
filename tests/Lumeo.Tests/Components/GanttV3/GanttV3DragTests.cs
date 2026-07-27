@@ -1,3 +1,4 @@
+using System.Reflection;
 using Bunit;
 using Lumeo.GanttV3;
 using Lumeo.Services;
@@ -37,6 +38,11 @@ public class GanttV3DragTests : IAsyncLifetime
 
     private static DateTime D(int y, int m, int d) => new(y, m, d);
     private static L.GanttTask Task1 => new("t1", "Design", D(2026, 1, 2), D(2026, 1, 6));
+
+    private static GanttState State(IRenderedComponent<L.Gantt3> cut) =>
+        (GanttState)typeof(L.Gantt3)
+            .GetField("_state", BindingFlags.NonPublic | BindingFlags.Instance)!
+            .GetValue(cut.Instance)!;
 
     // ── Readonly gating (GanttTimeline) ──────────────────────────────────────
 
@@ -370,6 +376,60 @@ public class GanttV3DragTests : IAsyncLifetime
             .Add(c => c.TasksChanged, (IEnumerable<L.GanttTask> _) => { }));
 
         Assert.Equal("2026-01-02", cut.Find("[data-task-id='t1']").GetAttribute("data-task-start"));
+    }
+
+    // ── Codex PR-383 findings (Gantt3.razor, blocked until PR #382 merged) ───
+
+    [Fact]
+    public async Task Gantt3_Drag_Commit_Expands_VisibleRange_To_Cover_A_Task_Moved_Outside_It()
+    {
+        // [P1] "Expand the visible range after date edits" — HandleTaskUpdateAsync
+        // used to touch ONLY _state.Tasks, leaving VisibleRange (and
+        // _tasksVersion/_lastSnapshot) describing the pre-drag task set. Task1
+        // mounts at Jan 2-6, 2026; Day mode pads +/-60 days around it (see
+        // GanttScale's own Day config), so the mount VisibleRange stops well
+        // short of August. A move far past that padded End must grow the range
+        // to cover it (a union with the current range — see the fix's own
+        // remarks for why not a full ComputeInitialRange replacement).
+        var cut = _ctx.Render<L.Gantt3>(p => p.Add(c => c.Tasks, new List<L.GanttTask> { Task1 }));
+
+        var mountRange = State(cut).VisibleRange;
+        var newEnd = D(2026, 8, 5);
+        Assert.True(newEnd > mountRange.End, "test setup: the drag target must fall outside the mount-padded range");
+
+        await cut.InvokeAsync(() => cut.FindComponent<L.GanttTimeline>().Instance
+            .CommitDrag("t1", "move", "2026-08-01", "2026-08-05"));
+
+        var padAfterDays = GanttScale.GetConfig(L.GanttViewMode.Day).PadAfter;
+        var expectedEnd = newEnd.AddDays(padAfterDays);
+        Assert.Equal(expectedEnd, State(cut).VisibleRange.End);
+        // The Start boundary didn't need to move for THIS edit — expansion is a
+        // union, never a wholesale replacement, so it stays exactly where mount
+        // left it.
+        Assert.Equal(mountRange.Start, State(cut).VisibleRange.Start);
+    }
+
+    [Fact]
+    public async Task Gantt3_Drag_Commit_Fires_Edit_Callbacks_Before_TasksChanged()
+    {
+        // [P2] "Notify edit callbacks before TasksChanged" — v2 parity requires
+        // the gesture-specific/unified edit callbacks (OnDateChange/
+        // OnProgressChange/OnTaskCreate/OnTaskUpdate) to fire BEFORE
+        // TasksChanged, not after: a controlled parent's TasksChanged handler
+        // can synchronously normalize/veto and rerender, so anything that runs
+        // afterward only ever observes whatever the chart already adopted or
+        // rolled back to.
+        var order = new List<string>();
+        var cut = _ctx.Render<L.Gantt3>(p => p
+            .Add(c => c.Tasks, new List<L.GanttTask> { Task1 })
+            .Add(c => c.TasksChanged, (IEnumerable<L.GanttTask> _) => order.Add("TasksChanged"))
+            .Add(c => c.OnDateChange, (L.GanttTask _) => order.Add("OnDateChange"))
+            .Add(c => c.OnTaskUpdate, (GanttTaskUpdate _) => order.Add("OnTaskUpdate")));
+
+        var timeline = cut.FindComponent<L.GanttTimeline>();
+        await cut.InvokeAsync(() => timeline.Instance.CommitDrag("t1", "move", "2026-01-05", "2026-01-09"));
+
+        Assert.Equal(new[] { "OnDateChange", "OnTaskUpdate", "TasksChanged" }, order);
     }
 
     [Fact]
