@@ -1,0 +1,76 @@
+@page "/e2e/gantt-v3-preview"
+
+@* Work-in-progress preview of the Gantt v3 rewrite (working name Gantt3).
+   Deliberately NOT linked in navigation and NOT part of the component registry —
+   the v3 API is EditorBrowsable(Never) until the final-phase swap renames it to
+   Gantt. This page exists so the branch preview deploy lets stakeholders see and
+   click the v3 renderer next to the shipping v2 without a local checkout.
+   Remove this page (or fold it into the Gantt docs page) at the swap. *@
+
+<PageTitle>Gantt v3 preview — Lumeo</PageTitle>
+
+<PageHeader Title="Gantt v3 (work in progress)"
+            Description="Side-by-side preview of the Razor-first Gantt rewrite against the shipping v2 renderer. Same data, two engines. Not a public API yet." />
+
+<Alert Variant="Alert.AlertVariant.Warning" ShowIcon="true" Class="mt-6">
+    <ChildContent>
+        <strong>Unreleased working-name API.</strong> Everything below renders the in-progress
+        <code>Gantt3</code> component tree. Read-only phase: dragging, resizing and progress
+        editing are v2-only until the interaction phase lands.
+    </ChildContent>
+</Alert>
+
+<Stack Gap="8" Class="mt-8">
+    <div class="space-y-3">
+        <Heading Id="v3-flat" Level="2" Class="scroll-mt-20">v3 — dependencies, milestone, custom colours</Heading>
+        <Gantt3 Tasks="_planTasks" ViewMode="GanttViewMode.Day" Height="380px" BarColor="_barColor" />
+    </div>
+
+    <div class="space-y-3">
+        <Heading Id="v3-grouped" Level="2" Class="scroll-mt-20">v3 — grouped (flat swim-lanes)</Heading>
+        <Gantt3 Tasks="_planTasks" ViewMode="GanttViewMode.Day" Height="420px" GroupBy="_groupBy" />
+    </div>
+
+    <div class="space-y-3">
+        <Heading Id="v3-tree" Level="2" Class="scroll-mt-20">v3 — ParentId hierarchy with tree pane (new in v3)</Heading>
+        <Gantt3 Tasks="_treeTasks" ViewMode="GanttViewMode.Day" Height="380px" />
+    </div>
+
+    <div class="space-y-3">
+        <Heading Id="v2-reference" Level="2" Class="scroll-mt-20">v2 reference — same data, shipping renderer</Heading>
+        <Gantt Tasks="_planTasks" ViewMode="GanttViewMode.Day" Height="380px" BarColor="_barColor" />
+    </div>
+</Stack>
+
+@code {
+    // Deterministic offsets around today so the today marker is always in range.
+    private static readonly DateTime _t = DateTime.Today;
+
+    private readonly Func<GanttTask, string?> _barColor = t => t.Id switch
+    {
+        "design" => "var(--color-chart-2)",
+        "review" => "var(--color-destructive)",
+        _ => null,
+    };
+
+    private readonly Func<GanttTask, string> _groupBy = t => t.GroupLabel ?? "Other";
+
+    private readonly List<GanttTask> _planTasks = new()
+    {
+        new("kickoff", "Kickoff", _t.AddDays(-6), _t.AddDays(-6), Progress: 100, IsMilestone: true, GroupLabel: "Planning"),
+        new("spec", "Write spec", _t.AddDays(-5), _t.AddDays(-2), Progress: 100, Dependencies: new[] { "kickoff" }, GroupLabel: "Planning"),
+        new("design", "Design pass", _t.AddDays(-1), _t.AddDays(2), Progress: 60, Dependencies: new[] { "spec" }, GroupLabel: "Build"),
+        new("impl", "Implementation", _t, _t.AddDays(5), Progress: 35, Dependencies: new[] { "spec" }, GroupLabel: "Build"),
+        new("review", "Review", _t.AddDays(6), _t.AddDays(8), Dependencies: new[] { "design", "impl" }, GroupLabel: "Ship"),
+        new("release", "Release", _t.AddDays(9), _t.AddDays(9), IsMilestone: true, Dependencies: new[] { "review" }, GroupLabel: "Ship"),
+    };
+
+    private readonly List<GanttTask> _treeTasks = new()
+    {
+        new("platform", "Platform", _t.AddDays(-4), _t.AddDays(6), Progress: 45),
+        new("api", "API", _t.AddDays(-4), _t.AddDays(1), Progress: 80) { ParentId = "platform" },
+        new("ui", "UI", _t.AddDays(-1), _t.AddDays(6), Progress: 30) { ParentId = "platform" },
+        new("uiTheme", "Theming", _t.AddDays(2), _t.AddDays(6), Progress: 10, Dependencies: new[] { "api" }) { ParentId = "ui" },
+        new("qa", "QA", _t.AddDays(4), _t.AddDays(8)),
+    };
+}

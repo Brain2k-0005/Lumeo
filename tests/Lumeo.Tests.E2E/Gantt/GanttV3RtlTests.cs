@@ -1,0 +1,246 @@
+using Microsoft.Playwright;
+using Xunit;
+
+namespace Lumeo.Tests.E2E.Gantt;
+
+/// <summary>
+/// v3-ONLY: RTL scroll-normalization regression coverage (Codex round 3, P2 #7).
+/// v2 has no RTL-aware scroll handling to compare against (gantt-v2.js's
+/// tryScroll assumes an LTR scrollLeft convention outright), so there is no v2
+/// parity baseline here — this asserts v3's own behavior against Lumeo's
+/// standard RTL idiom, <c>DirectionProvider</c> (see <c>GanttV3Page.razor</c>'s
+/// <c>?rtl=1</c> handling).
+///
+/// GanttTimeline/GanttScale never mirror the actual date-column layout for RTL
+/// (a timeline's date order reading left-to-right is independent of the page's
+/// text direction — see gantt-v3.js's own remarks on this), so the ONLY thing
+/// that needs to work correctly under <c>dir="rtl"</c> is the scroll-to-today
+/// centering: without the JS-side scrollLeft convention normalization, the
+/// computed target either silently clamps to 0 or lands in the wrong place,
+/// leaving the today marker outside the initial viewport.
+/// </summary>
+public class GanttV3RtlTests : GanttParityTestBase
+{
+    [Fact]
+    public async Task Initial_centering_lands_the_today_marker_in_viewport_under_rtl()
+    {
+        await GotoHost("/e2e/gantt-v3?fixture=today&rtl=1");
+
+        var scrollPane = Page.Locator("[data-testid='gantt-v3-root'] div[style*='overflow']").First;
+        await scrollPane.WaitForAsync(new() { Timeout = 15000 });
+
+        // Sanity check the page actually rendered under RTL — a page that
+        // silently fell back to LTR would trivially pass everything below
+        // without proving the normalization does anything.
+        var direction = await scrollPane.EvaluateAsync<string>("el => getComputedStyle(el).direction");
+        Assert.Equal("rtl", direction);
+
+        var todayLine = Page.Locator("[data-testid='gantt-v3-root'] .lumeo-gantt-v3-today-line");
+        await todayLine.WaitForAsync(new() { State = WaitForSelectorState.Attached, Timeout = 15000 });
+
+        // Same completion latch every other scroll-to-today spec uses (gantt-v3.js's
+        // centerOn stamps this atomically with the scroll it performs) — waits out
+        // the fire-and-forget interop race rather than a blind delay.
+        await Assertions.Expect(scrollPane).ToHaveAttributeAsync("data-gantt-v3-initial-scroll", "done", new() { Timeout = 15000 });
+
+        await Assertions.Expect(todayLine).ToBeInViewportAsync(new() { Timeout = 10000 });
+    }
+
+    [Fact]
+    public async Task Lower_header_date_labels_keep_physical_earliest_to_latest_order_under_rtl()
+    {
+        // Bug fix (Codex round 4, P2 #9): the lower-header row is the ONLY
+        // part of the header using `display:flex` for layout (upper-run
+        // labels, grid lines, and bars all use `position:absolute; left:Xpx`,
+        // which is direction-agnostic) — a flex container's default
+        // `flex-direction:row` reverses child ORDER under an inherited
+        // `dir="rtl"`, so this row alone would visually flip to latest-first
+        // while everything else stayed physically earliest-first, misaligning
+        // every column. Fixed via `dir="ltr"` forcing this one container's
+        // layout back to physical (DOM) order regardless of page direction.
+        //
+        // Asserted via DOM-order-vs-physical-order comparison rather than
+        // against a specific scroll position: under RTL, the native
+        // scrollLeft=0 position is the RTL START (physically the far right of
+        // the whole un-mirrored, much-wider-than-viewport canvas — NOT "the
+        // earliest rendered date"), so there is no simple "reset to the
+        // logical start" scroll value to assert against directly here; two
+        // ADJACENT labels' relative physical order is scroll-position-
+        // independent and is exactly what the bug actually broke.
+        await GotoHost("/e2e/gantt-v3?fixture=tall&viewMode=Day&rtl=1");
+
+        var scrollPane = Page.Locator("[data-testid='gantt-v3-root'] div[style*='overflow']").First;
+        await scrollPane.WaitForAsync(new() { Timeout = 15000 });
+
+        var labels = Page.Locator("[data-testid='gantt-v3-root'] .lumeo-gantt-v3-header .flex > div");
+        var firstBox = await labels.Nth(0).BoundingBoxAsync();
+        var secondBox = await labels.Nth(1).BoundingBoxAsync();
+        Assert.NotNull(firstBox);
+        Assert.NotNull(secondBox);
+
+        Assert.True(firstBox!.X < secondBox!.X,
+            $"expected the DOM-earlier (earlier-date) header label to sit physically LEFT of the DOM-later one under RTL, got label[0].X={firstBox.X}, label[1].X={secondBox.X}");
+    }
+
+    [Fact]
+    public async Task Initial_centering_lands_the_today_marker_mid_viewport_with_the_tree_pane_shown_under_rtl()
+    {
+        // Bug fix (Codex round 5, P1 #4): under RTL, the outer flex row
+        // wrapping GanttTree + GanttTimeline reverses its children's VISUAL
+        // order (the same mechanism GanttV3StickyLeftTests' RTL sticky-right
+        // spec confirms live) even though DOM order stays [Tree, Timeline] —
+        // so Timeline's own box lands FIRST physically (at the scrollable
+        // content's own physical-left origin) under RTL, with Tree occupying
+        // the TRAILING (physically rightmost) chunk instead. Gantt3's round-4
+        // fix (ScrollHostLeadingOffset) added the tree's width unconditionally
+        // whenever a tree pane is shown, which overshot the target under RTL
+        // by exactly that width — this fixture (?rtl=1 always shows the tree
+        // pane by default — see GanttV3Page's own remarks) previously landed
+        // the marker a whole tree-width off-center; a correct fix keeps it
+        // within a few pixels of the pane's own horizontal center, same
+        // tolerance as the LTR counterpart in GanttV3ScrollCenteringTests.
+        await GotoHost("/e2e/gantt-v3?fixture=today&rtl=1");
+
+        var scrollPane = Page.Locator("[data-testid='gantt-v3-root'] div[style*='overflow']").First;
+        await scrollPane.WaitForAsync(new() { Timeout = 15000 });
+        await Assertions.Expect(scrollPane).ToHaveAttributeAsync("data-gantt-v3-initial-scroll", "done", new() { Timeout = 15000 });
+
+        var todayLine = Page.Locator("[data-testid='gantt-v3-root'] .lumeo-gantt-v3-today-line");
+        await todayLine.WaitForAsync(new() { Timeout = 15000 });
+
+        var lineBox = await todayLine.BoundingBoxAsync();
+        var paneBox = await scrollPane.BoundingBoxAsync();
+        Assert.NotNull(lineBox);
+        Assert.NotNull(paneBox);
+
+        var paneCenterX = paneBox!.X + paneBox.Width / 2;
+        Assert.True(Math.Abs(lineBox!.X - paneCenterX) < 5,
+            $"expected the today marker to land within 5px of the pane's horizontal center WITH the tree pane shown under RTL, marker.X={lineBox.X}, pane center={paneCenterX}");
+    }
+
+    [Fact]
+    public async Task A_Scroll_Target_Before_The_Rendered_Range_Clamps_To_The_Earliest_Edge_Under_Rtl()
+    {
+        // Bug fix (Codex round 5, P2 #9): ShouldAttemptTodayScroll used to
+        // ALSO require ScrollTargetX > 0, silently skipping the whole scroll
+        // attempt (leaving native scrollLeft at its own untouched default)
+        // whenever the target fell before the very first rendered column.
+        // That default only happens to BE the earliest edge under LTR
+        // (native scrollLeft 0 there IS the physical-left origin); under
+        // RTL's 'negative' convention, native 0 is the RTL START — the
+        // PHYSICAL RIGHT edge, i.e. wherever GanttTree ends up pinned — so
+        // skipping the attempt left the timeline scrolled entirely out of
+        // view, showing only the tree pane. GanttParityFixtures.
+        // FutureOnlyFixture's tasks sit 90+ days beyond today, well past Day
+        // mode's 60-day padding, guaranteeing today's ScrollTargetX is
+        // negative — exactly the branch this fix targets.
+        await GotoHost("/e2e/gantt-v3?fixture=future&rtl=1");
+
+        var scrollPane = Page.Locator("[data-testid='gantt-v3-root'] div[style*='overflow']").First;
+        await scrollPane.WaitForAsync(new() { Timeout = 15000 });
+        await Assertions.Expect(scrollPane).ToHaveAttributeAsync("data-gantt-v3-initial-scroll", "done", new() { Timeout = 15000 });
+
+        // The timeline's own earliest column (its Origin, x=0) sits at
+        // PHYSICAL 0 under RTL - a correctly-clamped scroll lands it flush
+        // against the pane's own LEFT edge. Checking a SPECIFIC task bar
+        // instead (e.g. future-1) would prove nothing here: FutureOnlyFixture's
+        // own tasks start ~60 columns past Origin (Day mode's own 60-day
+        // padding-before-minDate), well beyond one viewport width, so even a
+        // CORRECTLY clamped scroll never brings a task bar into view - only
+        // the empty padding zone immediately past Origin. The OLD bug left
+        // the whole timeline (Origin included) scrolled out of view entirely,
+        // showing ONLY the tree pane, which THIS assertion catches directly.
+        var canvasRelative = Page.Locator("[data-testid='gantt-v3-root'] .lumeo-gantt-v3-canvas-scroll > div").First;
+        var canvasBox = await canvasRelative.BoundingBoxAsync();
+        var paneBox = await scrollPane.BoundingBoxAsync();
+        Assert.NotNull(canvasBox);
+        Assert.NotNull(paneBox);
+        Assert.True(Math.Abs(canvasBox!.X - paneBox!.X) < 5,
+            $"expected the timeline's own canvas (its Origin) to sit flush against the pane's left edge after clamping to the earliest edge, canvas.X={canvasBox.X}, pane.X={paneBox.X}");
+    }
+
+    [Fact]
+    public async Task Flipping_Direction_On_An_Already_Mounted_Chart_Brings_The_Today_Marker_Back_Into_Viewport()
+    {
+        // Bug fix (Codex round 7 review, P2 #4): an LTR<->RTL flip on an
+        // ALREADY-MOUNTED chart (a DirectionProvider ancestor toggling
+        // Direction, or the global ThemeService's CurrentDirection changing)
+        // recomputes ScrollHostLeadingOffset/flex-side layout correctly on
+        // its own (both are plain, live-read computed properties), but the
+        // ACTUAL DOM scrollLeft never moved, so the physical repositioning
+        // left the marker outside the viewport the instant the flip happened
+        // — only a FRESH page load under ?rtl=1 (the previous specs in this
+        // file) ever exercised the correct centering; nothing previously
+        // re-requested it on a LIVE flip. GanttV3Page's toggle-direction
+        // button drives a real DirectionProvider re-render, the same path a
+        // real app's own direction toggle would take.
+        await GotoHost("/e2e/gantt-v3?fixture=today");
+
+        var scrollPane = Page.Locator("[data-testid='gantt-v3-root'] div[style*='overflow']").First;
+        await scrollPane.WaitForAsync(new() { Timeout = 15000 });
+        await Assertions.Expect(scrollPane).ToHaveAttributeAsync("data-gantt-v3-initial-scroll", "done", new() { Timeout = 15000 });
+
+        var todayLine = Page.Locator("[data-testid='gantt-v3-root'] .lumeo-gantt-v3-today-line");
+        await todayLine.WaitForAsync(new() { State = WaitForSelectorState.Attached, Timeout = 15000 });
+
+        // Sanity: centered correctly under the INITIAL (LTR) direction —
+        // proves the flip below is what matters, not just an accident of the
+        // fixture's own initial layout.
+        await Assertions.Expect(todayLine).ToBeInViewportAsync(new() { Timeout = 10000 });
+
+        await Page.Locator("[data-testid='gantt-v3-toggle-direction']").ClickAsync();
+
+        var direction = await scrollPane.EvaluateAsync<string>("el => getComputedStyle(el).direction");
+        Assert.Equal("rtl", direction);
+
+        // The fix's own job: the marker must come back into view under the
+        // NEW direction without a page reload — Playwright's own polling
+        // assertion absorbs the async re-render + interop + rAF-scheduled
+        // scroll chain the fix triggers, the same way every other scroll-
+        // completion assertion in this file does.
+        await Assertions.Expect(todayLine).ToBeInViewportAsync(new() { Timeout = 10000 });
+    }
+
+    [Fact]
+    public async Task Flipping_Direction_After_A_Manual_Pan_Preserves_The_Panned_To_Position_Not_Today()
+    {
+        // Bug fix (Codex round 8 review, P2 #2): the round-7 fix's recenter
+        // fell through to GanttTimeline's own ScrollTargetX (ScrollTargetDate
+        // ?? Today) whenever neither was set — correct right after mount or a
+        // view-mode switch (both DO set ScrollTargetDate), but WRONG the
+        // moment a user has manually panned the DOM with neither trigger
+        // involved: a direction flip silently snapped back to Today instead
+        // of preserving what the user was actually looking at. Uses the
+        // "future" fixture specifically because its tasks sit ~60 columns
+        // past Origin — well beyond the initial (clamped-to-earliest-edge,
+        // per the round-5 spec above) viewport, so bringing future-1 into
+        // view here is a REAL, otherwise-untriggered pan, not an accident of
+        // the initial centering.
+        await GotoHost("/e2e/gantt-v3?fixture=future");
+
+        var scrollPane = Page.Locator("[data-testid='gantt-v3-root'] div[style*='overflow']").First;
+        await scrollPane.WaitForAsync(new() { Timeout = 15000 });
+        await Assertions.Expect(scrollPane).ToHaveAttributeAsync("data-gantt-v3-initial-scroll", "done", new() { Timeout = 15000 });
+
+        var futureBar = Page.Locator("[data-testid='gantt-v3-root'] [data-task-id='future-1']");
+        await futureBar.WaitForAsync(new() { State = WaitForSelectorState.Attached, Timeout = 15000 });
+
+        // A genuine manual pan — a real DOM scroll, not gantt-v3.js's own
+        // centerOn — mirroring how a user would actually bring this bar into
+        // view. Confirms the pan itself worked before the flip is even
+        // attempted, so a later failure can only be attributed to the flip.
+        await futureBar.ScrollIntoViewIfNeededAsync();
+        await Assertions.Expect(futureBar).ToBeInViewportAsync(new() { Timeout = 10000 });
+
+        await Page.Locator("[data-testid='gantt-v3-toggle-direction']").ClickAsync();
+
+        // Polling assertion (not a one-shot EvaluateAsync read) — the click's
+        // own re-render is async, so a bare read right after ClickAsync can
+        // race it.
+        await Assertions.Expect(scrollPane).ToHaveCSSAsync("direction", "rtl", new() { Timeout = 10000 });
+
+        // The fix's own job: future-1 — NOT today, which is nowhere near this
+        // fixture's rendered window — must stay in viewport across the flip.
+        await Assertions.Expect(futureBar).ToBeInViewportAsync(new() { Timeout = 10000 });
+    }
+}

@@ -573,6 +573,11 @@ var cssVarMap = new Dictionary<string, string>
 var componentDirs = uiRoots
     .Where(Directory.Exists)
     .SelectMany(root => Directory.GetDirectories(root))
+    // GanttV3 is the in-progress Razor rewrite of Gantt (working name — it gets
+    // swapped in and renamed to Gantt in its final phase). Its components are
+    // EditorBrowsable(Never) work-in-progress API; keep the folder out of the
+    // registry until the swap, then delete this filter.
+    .Where(d => !string.Equals(Path.GetFileName(d), "GanttV3", StringComparison.OrdinalIgnoreCase))
     .OrderBy(d => Path.GetFileName(d), StringComparer.OrdinalIgnoreCase)
     .ToArray();
 var knownComponentNames = componentDirs.Select(Path.GetFileName).Where(n => !string.IsNullOrEmpty(n)).Select(n => n!).ToHashSet(StringComparer.OrdinalIgnoreCase);

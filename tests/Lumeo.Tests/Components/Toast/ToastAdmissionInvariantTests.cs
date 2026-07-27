@@ -470,13 +470,44 @@ public class ToastAdmissionInvariantTests : IAsyncLifetime
     /// their ~<c>ExitAnimationMs</c> exits run CONCURRENTLY, not one full exit-wait per eviction —
     /// see the doc comment on <c>ReconcileGroup</c>'s eviction pass. <c>MaxToasts=5</c>, 5 already
     /// mounted, then 5 more arrive in one burst: fully draining needs marking all 5 ORIGINAL toasts
-    /// Leaving. Serialized (the round-7 behaviour this closes), that's ~5×<c>ExitAnimationMs</c>
-    /// wall-clock; overlapped, it's ~1×. <c>ExitAnimationMs</c> is widened via the internal test
-    /// seam (same idiom as <c>ToastStackingTests</c>) purely so the assertion threshold has a wide,
-    /// CI-safe margin — the ~5x-vs-~1x ratio being tested is independent of the absolute value.
+    /// Leaving.
+    /// <para>
+    /// Deflake (CI-starvation incident, overlay-exit doctrine applied): the original version proved
+    /// "concurrent, not serialized" via wall-clock alone — a <see cref="System.Diagnostics.Stopwatch"/>
+    /// plus a <c>WaitForAssertion</c> ceiling of <c>ExitAnimationMs * 2.5</c> — racing a REAL product
+    /// timer under a starved CI thread pool: even the CORRECT (overlapping) path can take longer than
+    /// that ceiling when the whole process is starved, since the ceiling has no way to distinguish
+    /// "slow because serialized" from "slow because the CI box was busy". That's a fixed wall-clock
+    /// threshold used as a correctness assertion — exactly the anti-pattern the doctrine forbids.
+    /// </para>
+    /// <para>
+    /// Fixed by proving concurrency SYNCHRONOUSLY instead, with no timing dependency at all: each
+    /// <c>Show()</c> call's own admission (<c>HandleShow</c> → <c>TryAdmit</c> → <c>ReconcileGroup</c>)
+    /// is dispatched via <c>SafeAsyncDispatcher.FireAndForget</c>, so the 5-call burst above only
+    /// QUEUES 5 dispatches — it does not run them. One empty <c>cut.InvokeAsync(() => Task.CompletedTask)</c>
+    /// pump, queued strictly AFTER all 5 (bUnit's dispatcher is FIFO), only completes once every
+    /// dispatch ahead of it has fully run — and each of THOSE runs its own marking loop synchronously,
+    /// to completion, with no timer-based await in between (only the actual ~<c>ExitAnimationMs</c>
+    /// exit delays are real waits, and those are kicked off via <c>Task.WhenAll</c>, never awaited
+    /// inline inside the marking loop itself — see <c>ReconcileGroup</c>'s own field comment). So
+    /// immediately after that ONE pump resolves, the state is fully settled for however many
+    /// reconcile passes the burst needed: a genuinely CONCURRENT implementation marks all 5 evictions
+    /// (proven directly via <see cref="ToastProvider.LiveNonPersistentMountedCount"/> dropping to 0
+    /// while <see cref="ToastProvider.NonPersistentMountedCount"/> stays at <c>maxToasts</c> — nothing
+    /// has actually been removed yet, only marked); a SERIALIZED implementation could only ever have
+    /// marked ONE, since it would still be awaiting the first eviction's own exit delay before even
+    /// considering the second candidate. Verified empirically before writing this (a throwaway
+    /// diagnostic assert) that the pump reliably settles to live=0/raw=5, not some partial state.
+    /// </para>
+    /// <para>
+    /// The remaining "does it actually finish mounting the 5 new toasts" check stays a
+    /// <c>WaitForAssertion</c> poll with a generous ceiling — that IS a monotonic latch (the group
+    /// settles at cap once the real exit delays complete, and nothing else touches it afterwards), so
+    /// a starved CI thread pool merely waits longer and can never spuriously fail it.
+    /// </para>
     /// </summary>
     [Fact]
-    public void Burst_Overflow_Runs_Its_Evictions_Concurrently_Not_One_Exit_Wait_At_A_Time()
+    public async Task Burst_Overflow_Runs_Its_Evictions_Concurrently_Not_One_Exit_Wait_At_A_Time()
     {
         const int maxToasts = 5;
         var toastService = GetToastService();
@@ -490,27 +521,35 @@ public class ToastAdmissionInvariantTests : IAsyncLifetime
         cut.WaitForAssertion(() => Assert.Equal(maxToasts,
             cut.Instance.LiveNonPersistentMountedCount(L.ToastViewport.ToastPosition.BottomRight)));
 
-        var sw = System.Diagnostics.Stopwatch.StartNew();
-
         // All 5 fired back-to-back, no awaits in between — a real spam burst, exactly like every
-        // other racing sequence in this class.
+        // other racing sequence in this class. Each Show() only QUEUES its own admission dispatch
+        // (SafeAsyncDispatcher.FireAndForget); none of the 5 reconcile passes has actually RUN yet.
         for (var i = 0; i < maxToasts; i++)
         {
             toastService.Show(new ToastOptions { Title = $"New-{i}", Duration = 60000 });
         }
 
-        // If this settles inside ~2×ExitAnimationMs, the 5 needed evictions overlapped (at most
-        // two sequential exit-windows' worth of wall-clock, covering dispatch/render jitter) —
-        // serialized, 5 evictions would need close to 5×ExitAnimationMs (3000ms) minimum.
+        // Drain exactly those 5 queued dispatches — FIFO, so this pump (queued strictly after all
+        // 5 Show() calls above) cannot complete until every one of them has fully run its own
+        // synchronous marking pass.
+        await cut.InvokeAsync(() => Task.CompletedTask);
+
+        // PROOF the 5 evictions were marked CONCURRENTLY, not one at a time — synchronous, no
+        // wall-clock wait of any kind. See the class/method doc comment above for the full
+        // reasoning. LiveNonPersistentMountedCount == 0 means every "Old-*" toast is ALREADY marked
+        // Leaving; NonPersistentMountedCount staying at maxToasts proves none of the real exit
+        // delays have elapsed yet — this is purely the synchronous marking loop's own work.
+        Assert.Equal(0, cut.Instance.LiveNonPersistentMountedCount(L.ToastViewport.ToastPosition.BottomRight));
+        Assert.Equal(maxToasts, cut.Instance.NonPersistentMountedCount(L.ToastViewport.ToastPosition.BottomRight));
+
+        // The group eventually settles back at the cap once the (now-overlapping) exit animations
+        // actually complete and the 5 new toasts get admitted — a monotonic latch (settles once and
+        // stays there; nothing else touches this group afterwards), so a generous ceiling is safe
+        // regardless of CI scheduling.
         cut.WaitForAssertion(
             () => Assert.Equal(maxToasts,
                 cut.Instance.LiveNonPersistentMountedCount(L.ToastViewport.ToastPosition.BottomRight)),
-            TimeSpan.FromMilliseconds(cut.Instance.ExitAnimationMs * 2.5));
-        sw.Stop();
-
-        Assert.True(sw.ElapsedMilliseconds < cut.Instance.ExitAnimationMs * 3,
-            $"expected overlapping evictions to settle well under {maxToasts}x{cut.Instance.ExitAnimationMs}ms " +
-            $"(serialized), took {sw.ElapsedMilliseconds}ms");
+            TimeSpan.FromSeconds(10));
 
         // The 5 newest survive; every "Old-*" toast is gone.
         cut.WaitForAssertion(() =>

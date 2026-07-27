@@ -480,6 +480,14 @@ internal static partial class LumeoDefaultStrings
         ["Gantt.Week"] = "Week",
         ["Gantt.Month"] = "Month",
         ["Gantt.Year"] = "Year",
+        ["Gantt.Today"] = "Today",
+        ["Gantt.PreviousPeriod"] = "Previous period",
+        ["Gantt.NextPeriod"] = "Next period",
+        ["Gantt.ExpandRow"] = "Expand {0}",
+        ["Gantt.CollapseRow"] = "Collapse {0}",
+        ["Gantt.NoTasksToDisplay"] = "No tasks to display",
+        ["Gantt.TaskAriaLabel"] = "{0}, {1} to {2}",
+        ["Gantt.PercentComplete"] = "{0}% complete",
 
         // ── Theme ───────────────────────────────────────────────────
         ["Theme.Light"] = "Light",
@@ -1005,6 +1013,14 @@ internal static partial class LumeoDefaultStrings
         ["Gantt.Week"] = "Woche",
         ["Gantt.Month"] = "Monat",
         ["Gantt.Year"] = "Jahr",
+        ["Gantt.Today"] = "Heute",
+        ["Gantt.PreviousPeriod"] = "Vorheriger Zeitraum",
+        ["Gantt.NextPeriod"] = "Nächster Zeitraum",
+        ["Gantt.ExpandRow"] = "{0} ausklappen",
+        ["Gantt.CollapseRow"] = "{0} einklappen",
+        ["Gantt.NoTasksToDisplay"] = "Keine Aufgaben vorhanden",
+        ["Gantt.TaskAriaLabel"] = "{0}, {1} bis {2}",
+        ["Gantt.PercentComplete"] = "{0}% abgeschlossen",
 
         // ── Theme ───────────────────────────────────────────────────
         ["Theme.Light"] = "Hell",

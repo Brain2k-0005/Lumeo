@@ -127,6 +127,34 @@ public class P2LocalizationSweepTests : IAsyncLifetime
         });
     }
 
+    [Fact]
+    public async Task GanttBar_Progress_Tooltip_Is_Localized()
+    {
+        // Bug fix (Codex round 5, P2 #6): GanttBar's progress-tooltip line
+        // used to read a hardcoded English "N% complete" literal regardless
+        // of the active culture. TooltipContent only renders once actually
+        // open, so a touch tap (pin-to-open — doesn't depend on any interop
+        // return value, unlike the focus-visible path) opens it first.
+        async Task<string> RenderAndOpenTooltip()
+        {
+            var cut = _ctx.Render<Lumeo.GanttBar>(p => p
+                .Add(b => b.Task, new Lumeo.GanttTask("t1", "Design", new DateTime(2026, 1, 2), new DateTime(2026, 1, 9), Progress: 42))
+                .Add(b => b.X, 0d)
+                .Add(b => b.Width, 114d));
+            var wrapper = cut.Find("[data-task-id='t1']");
+            await wrapper.TriggerEventAsync("onpointerdown", new Microsoft.AspNetCore.Components.Web.PointerEventArgs { PointerType = "touch" });
+            await wrapper.TriggerEventAsync("onclick", new Microsoft.AspNetCore.Components.Web.MouseEventArgs());
+            return cut.Markup;
+        }
+
+        string enMarkup = null!, deMarkup = null!;
+        WithUICulture("en-US", () => enMarkup = RenderAndOpenTooltip().GetAwaiter().GetResult());
+        Assert.Contains("42% complete", enMarkup);
+
+        WithUICulture("de-DE", () => deMarkup = RenderAndOpenTooltip().GetAwaiter().GetResult());
+        Assert.Contains("42% abgeschlossen", deMarkup);
+    }
+
     // --- Key completeness: every new key exists in every shipped locale ---
 
     private static readonly string[] NewKeys =
@@ -139,6 +167,19 @@ public class P2LocalizationSweepTests : IAsyncLifetime
         "AudioPlayer.Mute", "AudioPlayer.Unmute", "AudioPlayer.Download",
         "Theme.Color", "Theme.Mode",
         "DataGrid.ColumnMovedAnnouncement",
+        // Codex round 4, P2 #6: GanttV3's Gantt.* family was only ever complete
+        // in en/de (Day/Week/Month/Year existed in 5 more locales, everything
+        // else was missing entirely) — extended here rather than a new test
+        // file, per this test's own "extend it instead of duplicating" intent.
+        "Gantt.Day", "Gantt.Week", "Gantt.Month", "Gantt.Year",
+        "Gantt.Today", "Gantt.PreviousPeriod", "Gantt.NextPeriod",
+        "Gantt.ExpandRow", "Gantt.CollapseRow", "Gantt.NoTasksToDisplay",
+        "Gantt.TaskAriaLabel",
+        // Codex round 5, P2 #6: the hardcoded English "N% complete" progress
+        // tooltip line localized — added straight to the completeness guard
+        // above rather than a new key list, matching round 4's own "extend,
+        // don't duplicate" precedent.
+        "Gantt.PercentComplete",
     };
 
     [Theory]
