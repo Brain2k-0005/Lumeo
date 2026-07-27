@@ -464,10 +464,15 @@
     // pending. The re-apply's own reconcile claims a later generation, so the
     // original suspended reconcile still abandons; the navigation stands AND the
     // pending delta lands.
-    private async Task SupersedeReconcileForNavigationAsync()
+    // Bug fix (Codex PR-382 review, P1, lines ~1028/~1056): returns the
+    // re-apply's own outcome so callers (ShiftAsync, GoToTodayAsync) can react
+    // to it — specifically, detect a Superseded result and bail out of their
+    // OWN subsequent direct-mutation tail instead of unconditionally running it
+    // on top of whatever a NEWER action already committed.
+    private async Task<GanttReconcileOutcome> SupersedeReconcileForNavigationAsync()
     {
         BeginReconcile(); // supersede any in-flight reconcile (its capture is now stale)
-        await ReapplyCurrentParametersAsync();
+        return await ReapplyCurrentParametersAsync();
     }
 
     // Re-runs the reconcile against the CURRENT parameters after a supersession
@@ -479,17 +484,47 @@
     // advance never became real, so only the committed reference correctly
     // reports "the parent's ViewMode is still un-applied". Advances both
     // references (and only) on an actual commit.
+    // Bug fix (Codex PR-382 review, P1, line ~487): a toolbar mode selection
+    // still awaiting ITS OWN live-center capture takes priority over the
+    // parameter-derived mode below — see _pendingToolbarMode's own remarks.
+    // Without this, a supersession landing here while HandleViewModeChangedAsync's
+    // own reconcile is stuck would see neither ViewMode (a controlled parameter
+    // only echoes the toolbar's pick back AFTER a commit) nor
+    // _committedViewModeParam (an uncontrolled discriminator, likewise blind to a
+    // not-yet-committed toolbar pick) — silently losing the user's zoom selection.
     private async Task<GanttReconcileOutcome> ReapplyCurrentParametersAsync()
     {
         var nextTasks = SortedTasks(Tasks?.ToList() ?? new List<GanttTask>());
-        var incomingMode = ViewModeChanged.HasDelegate
+        var pendingToolbarMode = _pendingToolbarMode;
+        var incomingMode = pendingToolbarMode ?? (ViewModeChanged.HasDelegate
             ? ViewMode
-            : (ViewMode != _committedViewModeParam ? ViewMode : _state.ViewMode);
+            : (ViewMode != _committedViewModeParam ? ViewMode : _state.ViewMode));
         var outcome = await ReconcileAsync(nextTasks, incomingMode);
-        if (outcome == GanttReconcileOutcome.Committed)
+        // Bug fix (Codex PR-382 review, P2, line ~786): advance on NoOp too, not
+        // just Committed — see OnParametersSetAsync's own matching fix for the
+        // full reasoning (a NoOp here is only possible when incomingMode already
+        // equals the committed _state.ViewMode, so the parameter is genuinely
+        // accounted for either way). Superseded alone is excluded: that pass
+        // never resolved whether incomingMode landed, so the reference must stay
+        // reporting "still pending" for a later re-apply to pick up.
+        if (outcome != GanttReconcileOutcome.Superseded)
         {
             _committedViewModeParam = ViewMode;
             _lastSeenViewModeParam = ViewMode;
+            if (pendingToolbarMode is not null)
+            {
+                // The pending toolbar pick has now been resolved (applied, or
+                // found to already match) — clear it so a later re-apply doesn't
+                // keep re-carrying a satisfied/stale request forward. Only echo
+                // it up (controlled binding) when it actually just committed —
+                // mirrors HandleViewModeChangedAsync's own callback-after-commit
+                // contract, and keeps the two-way binding in sync with _state
+                // even though this landed via a re-apply rather than that
+                // method's own (superseded) call.
+                _pendingToolbarMode = null;
+                if (outcome == GanttReconcileOutcome.Committed && ViewModeChanged.HasDelegate)
+                    await ViewModeChanged.InvokeAsync(pendingToolbarMode.Value);
+            }
         }
         return outcome;
     }
@@ -512,6 +547,25 @@
     // un-applied — which is exactly what lets the superseding navigation/theme
     // re-apply that dropped change. See ReapplyCurrentParametersAsync.
     private GanttViewMode _committedViewModeParam;
+
+    // Bug fix (Codex PR-382 review, P1, line ~487): the toolbar's own selected
+    // mode, recorded by HandleViewModeChangedAsync BEFORE its reconcile enters
+    // the live-center capture await — carried forward by
+    // ReapplyCurrentParametersAsync so a superseding navigation/theme flip's
+    // re-apply doesn't lose it. Neither ViewMode nor _committedViewModeParam
+    // reflect the toolbar's target while its own reconcile's capture is still
+    // outstanding (ViewModeChanged is only invoked AFTER that reconcile
+    // commits), so without this field the pending zoom selection is silently
+    // dropped whenever something else supersedes it mid-capture. Cleared once
+    // consumed (by a re-apply, Committed or NoOp) or by
+    // HandleViewModeChangedAsync's own successful, non-superseded commit. Left
+    // untouched by a DIFFERENT, competing reconcile (e.g. OnParametersSetAsync's
+    // own direct call superseding it) — those already fully abandon the
+    // toolbar's pick outright (see GanttV3CodexRound16Tests' own
+    // Finding2_A_Superseded_Toolbar_Reconcile_Fires_No_ViewModeChanged_Callback),
+    // so OnParametersSetAsync explicitly clears it too on its own commit — see
+    // its own remarks.
+    private GanttViewMode? _pendingToolbarMode;
 
     // Browser-local "today" (Codex round 2, P2 #9) — resolved once via JS on
     // Gantt3's first post-render; DateTime.Today (the SERVER's local date) is
@@ -782,8 +836,35 @@
         // commits (Codex round 18-f2): a superseded pass never applied ViewMode,
         // so leaving _committedViewModeParam behind is exactly what lets the
         // superseding navigation/theme re-apply the dropped change.
+        //
+        // Bug fix (Codex PR-382 review, P2, line ~786): advance on a NoOp
+        // outcome too, not just Committed. NoOp only ever results from
+        // ReconcileAsync's own round-17 short-circuit (Range==Keep &&
+        // Target==None), which requires next to be field-for-field identical to
+        // prev — i.e. incomingMode ALREADY equals the committed _state.ViewMode.
+        // Leaving _committedViewModeParam behind in that case (e.g. an
+        // uncontrolled parent pushing a value the toolbar had already
+        // independently applied) meant a LATER toolbar selection's own
+        // supersession would misread this stale reference as "the parent's old
+        // value is still pending" and revert the newer mode. Superseded is still
+        // excluded — that pass genuinely never resolved whether incomingMode
+        // landed, so the parameter must stay reported as pending for the
+        // eventual re-apply to pick it up.
         var outcome = await ReconcileAsync(nextTasks, incomingMode);
-        if (outcome == GanttReconcileOutcome.Committed) _committedViewModeParam = ViewMode;
+        if (outcome != GanttReconcileOutcome.Superseded)
+        {
+            _committedViewModeParam = ViewMode;
+            // A genuine, authoritative parameter-driven commit just landed —
+            // it supersedes any stale toolbar pick still parked in
+            // _pendingToolbarMode (see GanttV3CodexRound16Tests' own
+            // Finding2_A_Superseded_Toolbar_Reconcile_Fires_No_ViewModeChanged_Callback:
+            // a competing parameter push already wins outright over an
+            // in-flight toolbar reconcile). Without clearing it here, a LATER
+            // nav/theme re-apply would incorrectly resurrect that abandoned
+            // toolbar request instead of preserving what this pass (or
+            // whatever ran after it) actually committed.
+            if (outcome == GanttReconcileOutcome.Committed) _pendingToolbarMode = null;
+        }
     }
 
     private List<GanttTask> SortedTasks(List<GanttTask> raw)
@@ -893,6 +974,12 @@
     private async Task HandleViewModeChangedAsync(GanttViewMode mode)
     {
         if (mode == _state.ViewMode) return;
+        // Bug fix (Codex PR-382 review, P1, line ~487): recorded BEFORE this
+        // reconcile's own live-center capture await, so a navigation/theme flip
+        // superseding THIS call can still carry the toolbar's own selected mode
+        // forward via ReapplyCurrentParametersAsync instead of silently losing
+        // it — see _pendingToolbarMode's own remarks.
+        _pendingToolbarMode = mode;
         var outcome = await ReconcileAsync(_state.Tasks, mode);
         // Bug fix (Codex round 16 review, P1 finding #2): a reconcile superseded
         // by a NEWER one (round 15's generation guard) already skips its own
@@ -900,8 +987,12 @@
         // check it would still fire ViewModeChanged with a mode that was never
         // actually applied to _state.ViewMode (the superseding reconcile decided
         // something else entirely). Suppress every side effect below, not just
-        // the commit, when superseded or a no-op.
+        // the commit, when superseded or a no-op. _pendingToolbarMode is
+        // deliberately left untouched here when superseded — whatever superseded
+        // this call is responsible for carrying it forward (or, for a competing
+        // direct commit, explicitly abandoning it — see OnParametersSetAsync).
         if (outcome != GanttReconcileOutcome.Committed) return;
+        _pendingToolbarMode = null;
         // Controlled: echo the new mode up; the resulting parameter pass finds
         // _state.ViewMode already committed, so it diffs to a no-op. Uncontrolled:
         // nothing to push — _state.ViewMode is the committed truth the next
@@ -1008,12 +1099,15 @@
     // "Shift VisibleRange by the mode's step" — literally GanttScaleConfig.Step
     // in GanttScaleConfig.Unit, applied to both ends of the window so its
     // duration is preserved (a single page forward/back, not a resize).
-    private async Task ShiftAsync(int direction)
+    // Extracted (Codex PR-382 review, P1, line ~1028) so ShiftAsync can apply
+    // the SAME math a second time against a freshly task-derived range — a
+    // second, independently-written copy is exactly the kind of divergence
+    // risk this codebase avoids elsewhere (see e.g. ApplyPadding's own remarks).
+    private static (DateTime Start, DateTime End) ComputeShiftedRange(GanttViewMode mode, GanttDateRange range, int direction)
     {
-        var cfg = GanttScale.GetConfig(_state.ViewMode);
-        var range = _state.VisibleRange;
+        var cfg = GanttScale.GetConfig(mode);
         var amount = direction * cfg.Step;
-        var (start, end) = cfg.Unit switch
+        return cfg.Unit switch
         {
             GanttScaleUnit.Day => (range.Start.AddDays(amount), range.End.AddDays(amount)),
             GanttScaleUnit.Month => (range.Start.AddMonths(amount), range.End.AddMonths(amount)),
@@ -1021,11 +1115,36 @@
             GanttScaleUnit.Hour => (range.Start.AddHours(amount), range.End.AddHours(amount)),
             _ => (range.Start, range.End),
         };
+    }
+
+    private async Task ShiftAsync(int direction)
+    {
+        var (start, end) = ComputeShiftedRange(_state.ViewMode, _state.VisibleRange, direction);
         _state.SetVisibleRange(start, end);
+
         // Supersede any reconcile suspended in its capture await, so it can't
         // resume and commit a stale range on top of this shift — then re-apply
         // that reconcile's own pending parameter delta, if any (round 18-f2).
-        await SupersedeReconcileForNavigationAsync();
+        var tasksVersionBeforeReapply = _tasksVersion;
+        var outcome = await SupersedeReconcileForNavigationAsync();
+
+        // Bug fix (Codex PR-382 review, P1, line ~1028): a suspended pass
+        // carrying a pending TASK-SET change lands via
+        // GanttRangeSource.TaskDerived (GanttViewportReconciler.Decide:
+        // tasksChanged always forces TaskDerived), which unconditionally
+        // re-derives VisibleRange from the NEW tasks' own min/max — silently
+        // erasing the shift just applied above even though the reapply itself
+        // succeeded (the pending tasks/mode DO land). _tasksVersion having
+        // moved is the exact "this commit was TaskDerived" signal (it's bumped
+        // ONLY inside that same tasksChanged branch — see ReconcileAsync's own
+        // commit phase), so re-derive the SAME shift on top of whatever range
+        // that commit just produced instead of tracking a second, parallel
+        // "was it TaskDerived" flag.
+        if (outcome == GanttReconcileOutcome.Committed && _tasksVersion != tasksVersionBeforeReapply)
+        {
+            var (reshiftedStart, reshiftedEnd) = ComputeShiftedRange(_state.ViewMode, _state.VisibleRange, direction);
+            _state.SetVisibleRange(reshiftedStart, reshiftedEnd);
+        }
     }
 
     private Task ShiftToPreviousAsync() => ShiftAsync(-1);
@@ -1051,7 +1170,17 @@
         // mode change lands before the Today recenter below computes its window
         // in the CURRENT mode; the Today scroll intent emitted at the tail then
         // wins over whatever the re-apply requested.
-        await SupersedeReconcileForNavigationAsync();
+        var outcome = await SupersedeReconcileForNavigationAsync();
+        // Bug fix (Codex PR-382 review, P1, line ~1056): if THIS re-apply is
+        // itself superseded (a LATER Previous/Next — or another Today — click
+        // landed while this one was still awaiting ITS OWN live-center capture),
+        // that newer action already committed fresher, more current state.
+        // Continuing into the recenter below would unconditionally overwrite it
+        // with what this now-stale Today click decided, reversing the
+        // generation guard's own newest-action-wins ordering. Bail out here,
+        // exactly like every OTHER ReconcileAsync caller already does for a
+        // Superseded outcome.
+        if (outcome == GanttReconcileOutcome.Superseded) return;
 
         var range = _state.VisibleRange;
         var width = range.End - range.Start;
