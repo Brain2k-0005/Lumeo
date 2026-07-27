@@ -100,6 +100,20 @@ else if (Context.IsOpen || _exiting)
     [Parameter] public bool PreventClose { get; set; }
 
     /// <summary>
+    /// When <c>true</c> (default), the panel is a vertically-scrollable container
+    /// so content taller than its height cap (<c>max-h-[96vh]</c>/<c>max-h-screen</c>)
+    /// stays reachable. Set to <c>false</c> to keep the panel <c>overflow-visible</c>
+    /// instead, if you host an absolutely-positioned overlay inside (e.g. a
+    /// <c>MegaMenuPanel</c> or <c>NavigationMenuViewport</c>) that needs to extend
+    /// past the panel's own bounds — <c>overflow</c> other than <c>visible</c> clips
+    /// any <c>position: absolute</c> descendant regardless of its containing block,
+    /// a hard CSS constraint no positioning trick inside the panel can work around.
+    /// With this <c>false</c>, your own content becomes responsible for fitting the
+    /// height cap or scrolling itself, since the panel no longer will.
+    /// </summary>
+    [Parameter] public bool ScrollableBody { get; set; } = true;
+
+    /// <summary>
     /// vaul-style snap points: fractional resting heights in ascending order,
     /// each <c>0 &lt; f ≤ 1</c> (e.g. <c>[0.4, 0.75, 1]</c> = 40% / 75% / fully
     /// open). When set on a Top/Bottom drawer, the panel rests at one of these
@@ -250,6 +264,26 @@ else if (Context.IsOpen || _exiting)
     private bool _gestureRegistered;
     private bool _registeredWithSnap;
 
+    // #381 round 12 (P1) — true once OnAfterRenderAsync's OWN initial
+    // RegisterGestureAsync call has returned for the CURRENT open session.
+    // _interopReady flips true SYNCHRONOUSLY, before LockScroll/
+    // SetupFocusTrap/AttachOverlaySlideEnd/RegisterGestureAsync ever run —
+    // a realistic window on Blazor Server for a parameter update to land
+    // (triggering OnParametersSetAsync) while that chain is still
+    // suspended. Gesture reconciliation below reads _interopReady as its
+    // own "is it safe to touch the gesture yet" gate, but with only that
+    // gate a reconciliation could fire (and legitimately decide "yes,
+    // register") BEFORE the original chain's own RegisterGestureAsync call
+    // has ever run — both call it, `registerDrawerSwipe` has no de-dupe
+    // guard (unlike registerDrawerSnap, which already tears down a stale
+    // registration first — see its own round-5 remarks), so the second
+    // call's addEventListener calls stack a SECOND set of listeners
+    // instead of replacing the first, and unregister only ever removes
+    // whichever set is currently in the map. Gating reconciliation on this
+    // flag too closes the window: nothing here touches the gesture until
+    // the session's own first registration has actually landed.
+    private bool _initialGestureSetupComplete;
+
     // The swipe direction + snap-point geometry baked into the live JS gesture.
     // A runtime Side/RTL flip (#76) or a same-count SnapPoints fraction change
     // (#77) doesn't trip the mode-flip gate below, so the gesture would keep the
@@ -338,8 +372,39 @@ else if (Context.IsOpen || _exiting)
     // (already this library's established idiom for a ring inside a
     // scrolling/clipping context — see Image/PasswordInput/PivotGrid/
     // SwipeActions/ToolCallCard) to avoid needing any reserved inset at all.
+    //
+    // #381 round 12 (P2) — "Keep descendant overlays outside the scroll
+    // clip": overflow-y-auto (any overflow value but visible) ALSO clips
+    // position:absolute descendants whose containing block sits inside this
+    // panel — e.g. MegaMenuPanel / NavigationMenuViewport, both `absolute
+    // top-full` off their own trigger. This is a HARD CSS constraint, not a
+    // bug in either component: unlike position:fixed (which escapes an
+    // ancestor's overflow clip once that ancestor isn't its containing
+    // block — the mechanism the earlier Codex round-3 popover-clipping fix
+    // relies on), a position:absolute element is clipped by EVERY ancestor
+    // between it and the viewport that has overflow != visible, full stop,
+    // regardless of which ancestor is its actual containing block.
+    // Verified empirically (Chromium/Firefox/WebKit, identical result): a
+    // MegaMenuPanel-shaped absolute overlay taller than its drawer is
+    // invisible past the drawer's own bounds with ScrollableBody true, and
+    // renders in full with it false.
+    //
+    // There is consequently no single default that gives both "tall content
+    // scrolls automatically" AND "an absolutely-positioned overlay anywhere
+    // inside can always escape" — those are mutually exclusive under plain
+    // CSS (the alternatives are DOM portaling or switching those components
+    // to JS-positioned position:fixed, both changes to MegaMenuPanel/
+    // NavigationMenuViewport themselves, well outside a Drawer fix). Instead
+    // of guessing which a given consumer needs, ScrollableBody makes the
+    // trade-off explicit: true (default, unchanged behavior) keeps content
+    // taller than the height cap reachable via scrolling; false restores
+    // overflow-visible so a hosted overlay can extend past the panel — at
+    // the cost of the consumer's own content needing to fit the height cap,
+    // or scroll itself, since the panel no longer will.
     private string CssClass =>
-        Cx.Merge("fixed mt-24 flex h-auto flex-col overflow-y-auto p-1.5 bg-background shadow-lg", PositionClasses, AnimationClass, PointerClass, Class);
+        Cx.Merge("fixed mt-24 flex h-auto flex-col p-1.5 bg-background shadow-lg",
+            ScrollableBody ? "overflow-y-auto" : "overflow-visible",
+            PositionClasses, AnimationClass, PointerClass, Class);
 
     // A scoped <DirectionProvider> wins over the global ThemeService, so a subtree
     // can be RTL even if the app is LTR. Null when no provider wraps this drawer.
@@ -391,6 +456,11 @@ else if (Context.IsOpen || _exiting)
                     await Interop.AttachOverlaySlideEnd(_contentId);
                 }
                 await RegisterGestureAsync();
+                // #381 round 12 — see the field's own remarks: only flips once
+                // THIS call has actually returned, closing the window where a
+                // concurrent OnParametersSetAsync could otherwise reconcile
+                // against a gesture that hasn't been registered even once yet.
+                _initialGestureSetupComplete = true;
             }
             catch (JSDisconnectedException) { }
 
@@ -402,6 +472,7 @@ else if (Context.IsOpen || _exiting)
             {
                 await Cleanup();
                 _interopReady = false;
+                _initialGestureSetupComplete = false;
             }
         }
         else if (!Context.IsOpen && _interopReady)
@@ -412,6 +483,7 @@ else if (Context.IsOpen || _exiting)
             // only.
             await Cleanup();
             _interopReady = false;
+            _initialGestureSetupComplete = false;
         }
 
         // Radix-Presence parity: hand the unmount to the panel's OWN exit
@@ -549,7 +621,14 @@ else if (Context.IsOpen || _exiting)
         // actually open; skip it during the exit phase (Context.IsOpen == false,
         // panel only kept mounted for the animation — Cleanup already unwired the
         // gesture in the close branch of OnAfterRenderAsync).
-        if (!_interopReady || !Context.IsOpen) return;
+        //
+        // #381 round 12 (P1) — also skip until _initialGestureSetupComplete:
+        // _interopReady alone flips true synchronously, before
+        // OnAfterRenderAsync's own RegisterGestureAsync call has actually run.
+        // A parameter update landing in that window used to let reconciliation
+        // register a gesture ahead of — and then a second time duplicated by —
+        // the original chain resuming; see the field's own remarks.
+        if (!_interopReady || !Context.IsOpen || !_initialGestureSetupComplete) return;
 
         // SnapPoints/Side changed while open → the gesture mode flipped (e.g.
         // empty→populated SnapPoints); re-register so the right JS is attached.

@@ -225,4 +225,75 @@ public class DrawerContentScrollableBodyTests : IAsyncLifetime
 
         Assert.NotEmpty(cut.FindAll("[data-drawer-handle]"));
     }
+
+    // ── #381 round 12 (P2) — "Keep descendant overlays outside the scroll
+    // clip": overflow-y-auto clips ANY position:absolute descendant whose
+    // containing block sits inside the panel (e.g. MegaMenuPanel,
+    // NavigationMenuViewport — both `absolute top-full`), regardless of
+    // where that containing block is — a hard CSS constraint, unlike the
+    // position:fixed escape the earlier popover-clipping fix relies on.
+    // Verified empirically (Chromium/Firefox/WebKit, identical result): a
+    // MegaMenuPanel-shaped absolute overlay taller than its drawer is
+    // clipped with ScrollableBody true, fully visible with it false. There
+    // is no default that gives both properties at once, so ScrollableBody
+    // makes the trade-off explicit instead. ──────────────────────────────
+
+    [Fact]
+    public void ScrollableBody_True_Default_Keeps_Overflow_Y_Auto()
+    {
+        var cut = RenderDrawer(b => b.AddContent(0, "Content"));
+
+        var cls = cut.Find("[role='dialog']").GetAttribute("class") ?? "";
+        Assert.Contains("overflow-y-auto", cls);
+        Assert.DoesNotContain("overflow-visible", cls);
+    }
+
+    [Fact]
+    public void ScrollableBody_False_Switches_To_Overflow_Visible()
+    {
+        var cut = _ctx.Render(builder =>
+        {
+            builder.OpenComponent<L.Drawer>(0);
+            builder.AddAttribute(1, "IsOpen", true);
+            builder.AddAttribute(2, "ChildContent", (RenderFragment)(b =>
+            {
+                b.OpenComponent<L.DrawerContent>(0);
+                b.AddAttribute(1, "ScrollableBody", false);
+                b.AddAttribute(2, "ChildContent", (RenderFragment)(inner => inner.AddContent(0, "Content")));
+                b.CloseComponent();
+            }));
+            builder.CloseComponent();
+        });
+
+        var cls = cut.Find("[role='dialog']").GetAttribute("class") ?? "";
+        Assert.Contains("overflow-visible", cls);
+        Assert.DoesNotContain("overflow-y-auto", cls);
+    }
+
+    [Fact]
+    public void ScrollableBody_False_Still_Applies_The_Height_Cap_And_Other_Panel_Classes()
+    {
+        // The escape hatch only swaps the overflow keyword — it must not
+        // drop the height cap, background, shadow, or a consumer's own
+        // Class alongside it.
+        var cut = _ctx.Render(builder =>
+        {
+            builder.OpenComponent<L.Drawer>(0);
+            builder.AddAttribute(1, "IsOpen", true);
+            builder.AddAttribute(2, "ChildContent", (RenderFragment)(b =>
+            {
+                b.OpenComponent<L.DrawerContent>(0);
+                b.AddAttribute(1, "ScrollableBody", false);
+                b.AddAttribute(2, "Class", "my-custom-class");
+                b.AddAttribute(3, "ChildContent", (RenderFragment)(inner => inner.AddContent(0, "Content")));
+                b.CloseComponent();
+            }));
+            builder.CloseComponent();
+        });
+
+        var cls = cut.Find("[role='dialog']").GetAttribute("class") ?? "";
+        Assert.Contains("max-h-[96vh]", cls); // default Side.Bottom height cap
+        Assert.Contains("bg-background", cls);
+        Assert.Contains("my-custom-class", cls);
+    }
 }

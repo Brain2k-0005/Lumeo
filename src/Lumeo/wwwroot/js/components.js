@@ -1371,6 +1371,22 @@ export function registerDrawerSwipe(elementId, direction, dotnetRef, options) {
     const el = document.getElementById(elementId);
     if (!el) return;
 
+    // #381 round 12 (P1) — defense in depth alongside the C#-side fix (see
+    // DrawerContent.razor's _initialGestureSetupComplete remarks): mirrors
+    // the exact guard registerDrawerSnap already has (its own round 5) so
+    // THIS registrar is idempotent too, regardless of what timing race a
+    // caller manages to hit. Without it, a second call for the same
+    // element added a SECOND set of touchstart/touchmove/touchend
+    // listeners (addEventListener never replaces an existing one) while
+    // drawerHandlers.set below only ever remembers the latest set — so
+    // unregisterDrawerSwipe's removeEventListener calls could only ever
+    // tear down whichever set is currently in the map, permanently
+    // leaking the other (and letting it keep firing dismiss independent
+    // of anything the C# side thinks it unregistered).
+    if (drawerHandlers.has(elementId)) {
+        unregisterDrawerSwipe(elementId);
+    }
+
     const isHorizontal = direction === 'left' || direction === 'right';
     // Axis configuration: which signed direction along the active axis dismisses the sheet.
     const dismissSign = (direction === 'down' || direction === 'right') ? +1 : -1;
@@ -1467,9 +1483,26 @@ export function registerDrawerSwipe(elementId, direction, dotnetRef, options) {
         // call — no matter how little the finger has travelled — is decided
         // before anything else in the function is allowed to conclude the
         // frame. See the shared state-model contract above registerDrawerSwipe.
+        //
+        // #381 round 12 (P2) — "Delay scroll ownership until the direction is
+        // established": round 4 made the LATCH itself unconditional too, not
+        // just its evaluation — a single SUB-threshold jitter (well under
+        // ACTIVATION_THRESHOLD, the same "was there a real gesture at all"
+        // bar the block below already applies) in the direction away from a
+        // scroll boundary permanently committed `contentOwned`, so a
+        // deliberate dismiss drag immediately afterward — in the OPPOSITE,
+        // correct direction — was silently swallowed for the rest of the
+        // touch (the one-time-latch contract above is exactly why: once
+        // committed, nothing un-commits it). Still evaluated every frame
+        // (unchanged), but the verdict only LATCHES once cumulative movement
+        // has actually cleared the same threshold that decides whether this
+        // is a real gesture at all — noise below that bar leaves ownership
+        // undecided rather than wrong.
         if (!isHorizontal && !startedOnHandle) {
             const directionSign = Math.sign(dy);
-            if (directionSign !== 0 && !isAtScrollBoundaryForDirection(touchStartTarget, el, directionSign)) {
+            if (directionSign !== 0
+                && (Math.abs(dx) >= ACTIVATION_THRESHOLD || Math.abs(dy) >= ACTIVATION_THRESHOLD)
+                && !isAtScrollBoundaryForDirection(touchStartTarget, el, directionSign)) {
                 contentOwned = true;
                 el.style.transform = ''; // undo any partial drag from before this reversal
                 return;
@@ -1644,6 +1677,18 @@ export function registerDrawerSnap(elementId, direction, dotnetRef, options) {
     // A protected drawer (PreventClose) still snaps between points; it just
     // never dismisses — dragging past the lowest snap settles back there. (#345)
     const dismissAllowed = !(options && options.dismissible === false);
+    // #381 round 12 (P2) — "Delay scroll ownership until the direction is
+    // established": the SAME micro-jitter tolerance registerDrawerSwipe's
+    // own ACTIVATION_THRESHOLD provides (10px, iOS's gesture lock-in), used
+    // ONLY to gate the ownership-latch decision below — the snap path has
+    // no activation-threshold concept of its own for the DRAG itself (it
+    // follows the finger from the first qualifying pixel once ownership
+    // resolves to the panel, unchanged), but the ownership VERDICT still
+    // needs one: without it, a single sub-threshold jitter away from a
+    // scroll boundary permanently committed contentOwned, silently
+    // swallowing a deliberate drag in the opposite (correct) direction for
+    // the rest of the touch. See onTouchMove's own remarks.
+    const OWNERSHIP_THRESHOLD = 10;
 
     const lastIndex = snapPoints.length - 1;
     let activeIndex = (options && Number.isInteger(options.activeIndex))
@@ -1902,9 +1947,20 @@ export function registerDrawerSnap(elementId, direction, dotnetRef, options) {
         // so an opening-direction drag snapped the drawer unconditionally
         // even while the content itself could still scroll that way.
         // `directionSign` is THIS move's own direction, whichever it is.
+        //
+        // #381 round 12 (P2) — "Delay scroll ownership until the direction is
+        // established": gated on OWNERSHIP_THRESHOLD (its own remarks) for
+        // the same reason registerDrawerSwipe's mirror of this check is —
+        // without it, a single sub-threshold jitter away from a scroll
+        // boundary permanently committed contentOwned before the user's
+        // actual, deliberate drag (which may go the OTHER way) ever got a
+        // chance to register. Still evaluated every frame; only the LATCH
+        // itself waits for real signal.
         if (!startedOnHandle) {
             const directionSign = Math.sign(y - startY);
-            if (directionSign !== 0 && !isAtScrollBoundaryForDirection(touchStartTarget, el, directionSign)) {
+            if (directionSign !== 0
+                && Math.abs(y - startY) >= OWNERSHIP_THRESHOLD
+                && !isAtScrollBoundaryForDirection(touchStartTarget, el, directionSign)) {
                 contentOwned = true;
                 // #381 round 7 (P1) — a touch that started AT the boundary
                 // enters `dragging` on its first move (see the lazy-entry
@@ -2058,26 +2114,44 @@ export function registerDrawerSnap(elementId, direction, dotnetRef, options) {
         // setActive lets C# move the drawer programmatically (two-way ActiveSnapPoint).
         setActive(i) {
             if (!Number.isInteger(i) || i < 0 || i > lastIndex || i === activeIndex) return;
-            // #381 round 8 (P1) — routed through the SAME disable-transition
-            // + convert + reflow + re-arm sequence onTouchMove's lazy entry
-            // (round 6, finding #1) and settleAtRest's own swap (round 4,
-            // finding #4) both use — no parallel mechanism. A resting panel
-            // typically still has `transition: EASING` armed from its last
-            // settle (see the state-model contract: rest leaves transition
-            // untouched). Converting from the rest-offset representation to
-            // transform via enterDragRepresentation() while that transition
-            // is still armed animates the CONVERSION itself (transform going
-            // from `none` to the equivalent value) instead of applying it
-            // instantly, so the panel visibly jumps/animates from the wrong
-            // origin before ever starting toward the real target. Disabling
-            // the transition first makes the conversion instant; the
-            // existing `H = el.offsetHeight || H` read below already forces
-            // the reflow that commits it before EASING re-arms.
-            el.style.transition = 'none';
-            enterDragRepresentation();
+            // #381 round 8 (P1), corrected round 12 (finding "Preserve the
+            // in-flight position before disabling transitions") — routed
+            // through the SAME disable-transition + convert + reflow +
+            // re-arm sequence onTouchMove's lazy entry (round 6, finding #1)
+            // and settleAtRest's own swap (round 4, finding #4) both use,
+            // but ONLY when there's an actual rest-offset representation to
+            // convert FROM (atRest true). A resting panel typically still
+            // has `transition: EASING` armed from its last settle (see the
+            // state-model contract: rest leaves transition untouched).
+            // Converting from the rest-offset representation to transform
+            // via enterDragRepresentation() while that transition is still
+            // armed animates the CONVERSION itself instead of applying it
+            // instantly, so disabling the transition first makes it instant.
+            //
+            // When atRest is FALSE — the opening sequence or a PREVIOUS
+            // setActive/drag's own transition is still in flight, so the
+            // panel is ALREADY in the transform representation —
+            // enterDragRepresentation() is correctly a no-op (its own
+            // remarks), but disabling the transition unconditionally BEFORE
+            // that no-op still killed the live transition: the very next
+            // `H = el.offsetHeight` reflow flushed the panel to whatever
+            // `transform` was CURRENTLY SPECIFIED — the OLD in-flight
+            // transition's own target, not wherever it had actually
+            // interpolated to — before a brand-new transition even started
+            // toward the real new target, a visible double-jump. Skipping
+            // the disable/convert/reflow/re-arm dance when there is nothing
+            // to convert leaves that already-armed transition in place, so
+            // changing the transform target below lets the browser smoothly
+            // redirect from the CURRENTLY RENDERED position instead.
+            if (atRest) {
+                el.style.transition = 'none';
+                enterDragRepresentation();
+                H = el.offsetHeight || H; // forces the reflow that commits the swap above before EASING re-arms
+                el.style.transition = EASING;
+            } else {
+                H = el.offsetHeight || H; // refresh only — nothing to convert, nothing to commit
+            }
             activeIndex = i;
-            H = el.offsetHeight || H;
-            el.style.transition = EASING;
             el.style.transform = `translateY(${offsetFor(i)}px)`;
             settleAtRest(offsetFor(i), ++settleGeneration);
         },

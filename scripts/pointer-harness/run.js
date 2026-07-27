@@ -51,7 +51,11 @@ function assert(cond, msg) {
   console.log(`=== pointer-harness — engine: ${ENGINE} (port ${PORT}) ===`);
   const server = await serve();
   const browser = await playwright[ENGINE].launch();
-  const page = await browser.newPage({ viewport: { width: 1200, height: 800 } });
+  // hasTouch: true — additive capability flag (enables Touch/TouchEvent/
+  // document.createTouch support without disabling mouse emulation), needed
+  // by TEST 59/60's real touch-gesture dispatch. Every other test in this
+  // suite drives DataGrid/Drawer purely via page.mouse, unaffected by it.
+  const page = await browser.newPage({ viewport: { width: 1200, height: 800 }, hasTouch: true });
   page.on('pageerror', (e) => console.error('PAGEERROR', e));
   page.on('console', (m) => { if (m.type() === 'error') console.error('CONSOLE ERROR', m.text()); });
   await page.goto(`http://localhost:${PORT}/harness.html`);
@@ -3432,6 +3436,180 @@ function assert(cond, msg) {
   assert(drawer58Teardown.inlineBottom === '', `teardown restores NO inline bottom — the class alone governs again, exactly as before registration (got '${drawer58Teardown.inlineBottom}')`);
   assert(Math.abs((viewportHeight58 - drawer58Teardown.rect.bottom) - 16) < 1,
     `after teardown the class's own bottom: 1rem is back in sole effect (got ${(viewportHeight58 - drawer58Teardown.rect.bottom).toFixed(2)}px)`);
+
+  // ---------------------------------------------------------------
+  // TEST 59 — registerDrawerSwipe: "Delay scroll ownership until the
+  // direction is established" (PR #381 finding). At a scroll boundary
+  // (scrollTop 0), a 1px upward jitter must NOT permanently hand ownership
+  // to the content — a deliberate downward drag immediately afterward (in
+  // the OPPOSITE, correct direction, well past both the activation and
+  // dismiss thresholds) must still dismiss. Dispatches REAL touch events
+  // through the actual listeners (no public JS API bypasses the
+  // ownership-latch code path) — cross-engine Touch/TouchEvent
+  // construction differs (Chromium/Firefox accept `new Touch(...)` +
+  // plain arrays; WebKit requires the legacy document.createTouch/
+  // createTouchList APIs and rejects both the modern constructor and
+  // plain-array touch lists), so a small per-engine helper picks whichever
+  // the current engine supports.
+  // ---------------------------------------------------------------
+  await page.evaluate(() => {
+    document.getElementById('host').innerHTML = `
+      <div id="drawer59" style="position:fixed; left:0; right:0; bottom:0; height:200px; overflow:hidden; background:blue;">
+        <div id="scrollable59" style="height:100%; overflow-y:auto;">
+          <div style="height:600px;">tall scrollable content</div>
+        </div>
+      </div>`;
+  });
+  await page.evaluate(() => {
+    window.__dotnetCalls.length = 0;
+    window.__C.registerDrawerSwipe('drawer59', 'down', window.__fakeDotNet, {});
+  });
+  const test59 = await page.evaluate(() => {
+    function makeTouch(el, x, y) {
+      // Prefer the standard constructor (Chromium + Firefox both support it,
+      // and it takes clientX/clientY explicitly). WebKit throws "Illegal
+      // constructor" here, so fall back to the legacy document.createTouch —
+      // whose params are (view, target, id, pageX, pageY, screenX, screenY),
+      // NOT clientX/clientY; with this page unscrolled, clientX/Y derive
+      // from pageX/Y identically, which is why the standard constructor is
+      // preferred wherever it works rather than relying on that derivation.
+      try {
+        return new Touch({ identifier: 1, target: el, clientX: x, clientY: y, pageX: x, pageY: y });
+      } catch (e) {
+        return document.createTouch(window, el, 1, x, y, x, y);
+      }
+    }
+    function makeList(touches) {
+      if (typeof document.createTouchList === 'function') return document.createTouchList(...touches);
+      return touches;
+    }
+    function dispatch(el, type, x, y) {
+      const t = makeTouch(el, x, y);
+      const active = makeList(type === 'touchend' ? [] : [t]);
+      const changed = makeList([t]);
+      el.dispatchEvent(new TouchEvent(type, { touches: active, targetTouches: active, changedTouches: changed, bubbles: true, cancelable: true }));
+    }
+    const scrollable = document.getElementById('scrollable59');
+    scrollable.scrollTop = 0; // at the TOP scroll boundary
+    dispatch(scrollable, 'touchstart', 50, 100);
+    dispatch(scrollable, 'touchmove', 50, 99);  // 1px UP jitter — sub-threshold
+    dispatch(scrollable, 'touchmove', 50, 250); // deliberate 150px DOWN drag — past activation (10px) and dismiss (100px) thresholds
+    dispatch(scrollable, 'touchend', 50, 250);
+    return { dismissCalls: window.__dotnetCalls.filter(c => c.method === 'OnSwipeDismiss').length, scrollTopStayedZero: scrollable.scrollTop === 0 };
+  });
+  assert(test59.dismissCalls === 1,
+    `a deliberate downward dismiss drag fires OnSwipeDismiss even after a 1px upward jitter at the scroll boundary (got ${test59.dismissCalls} calls)`);
+  await page.evaluate(() => window.__C.unregisterDrawerSwipe('drawer59'));
+
+  // ---------------------------------------------------------------
+  // TEST 60 — registerDrawerSnap: the SAME ownership-latch fix, snap path
+  // ("the snap path repeats the same ordering" per the finding). A 1px
+  // upward jitter at scrollTop 0 must not strand a deliberate downward
+  // dismiss drag content-owned for the rest of the touch.
+  // ---------------------------------------------------------------
+  await page.evaluate(() => {
+    document.getElementById('host').innerHTML = `
+      <div id="drawer60" style="position:fixed; left:0; right:0; bottom:0; height:200px; background:green;">
+        <div id="scrollable60" style="height:100%; overflow-y:auto;">
+          <div style="height:600px;">tall scrollable content</div>
+        </div>
+      </div>`;
+  });
+  await page.evaluate(() => {
+    window.__dotnetCalls.length = 0;
+    window.__C.registerDrawerSnap('drawer60', 'down', window.__fakeDotNet,
+      { snapPoints: [0.5, 1], activeIndex: 0, dismissible: true, velocity: 0 });
+  });
+  await page.waitForTimeout(500); // let the open sequence settle at rest
+  const test60 = await page.evaluate(() => {
+    function makeTouch(el, x, y) {
+      // Prefer the standard constructor (Chromium + Firefox both support it,
+      // and it takes clientX/clientY explicitly). WebKit throws "Illegal
+      // constructor" here, so fall back to the legacy document.createTouch —
+      // whose params are (view, target, id, pageX, pageY, screenX, screenY),
+      // NOT clientX/clientY; with this page unscrolled, clientX/Y derive
+      // from pageX/Y identically, which is why the standard constructor is
+      // preferred wherever it works rather than relying on that derivation.
+      try {
+        return new Touch({ identifier: 1, target: el, clientX: x, clientY: y, pageX: x, pageY: y });
+      } catch (e) {
+        return document.createTouch(window, el, 1, x, y, x, y);
+      }
+    }
+    function makeList(touches) {
+      if (typeof document.createTouchList === 'function') return document.createTouchList(...touches);
+      return touches;
+    }
+    function dispatch(el, type, x, y) {
+      const t = makeTouch(el, x, y);
+      const active = makeList(type === 'touchend' ? [] : [t]);
+      const changed = makeList([t]);
+      el.dispatchEvent(new TouchEvent(type, { touches: active, targetTouches: active, changedTouches: changed, bubbles: true, cancelable: true }));
+    }
+    const scrollable = document.getElementById('scrollable60');
+    scrollable.scrollTop = 0;
+    dispatch(scrollable, 'touchstart', 50, 100);
+    dispatch(scrollable, 'touchmove', 50, 99);  // 1px UP jitter
+    dispatch(scrollable, 'touchmove', 50, 400); // deliberate large DOWN drag well past the lowest snap, toward dismiss
+    dispatch(scrollable, 'touchend', 50, 400);
+    return {
+      transformAfterDrag: document.getElementById('drawer60').style.transform,
+    };
+  });
+  await page.waitForTimeout(400); // let OnDrawerSnapDismiss's promise + any settle resolve
+  const test60Calls = await page.evaluate(() => window.__dotnetCalls.filter(c => c.method === 'OnDrawerSnapDismiss').length);
+  assert(test60Calls === 1,
+    `a deliberate downward dismiss drag fires OnDrawerSnapDismiss on the snap path too, even after a 1px upward jitter at the scroll boundary (got ${test60Calls} calls)`);
+  await page.evaluate(() => window.__C.unregisterDrawerSnap('drawer60'));
+
+  // ---------------------------------------------------------------
+  // TEST 61 — setDrawerSnap: "Preserve the in-flight position before
+  // disabling transitions" (PR #381 finding). Interrupting a snap
+  // transition that hasn't settled yet (atRest still false) with ANOTHER
+  // setDrawerSnap call must not snap the panel to the FIRST call's own
+  // target before redirecting toward the second — it must continue
+  // smoothly from wherever it currently is.
+  //
+  // Isolates the bug from real-clock interpolation timing (which would
+  // make a precise mid-transition position assertion flaky across
+  // engines/hardware) by interrupting essentially IMMEDIATELY — one
+  // animation frame after the first setDrawerSnap call, i.e. while the
+  // panel is still very close to its ORIGINAL position (0, fully open),
+  // nowhere near the first call's own target (210px, the 30% snap). The
+  // bug's signature is a large, easily distinguished jump: the very next
+  // painted frame after the interrupting call would show the panel
+  // suddenly at (or near) 210 — a value it should not have reached yet by
+  // any legitimate interpolation this early — before continuing on toward
+  // the second call's real target. The fix keeps it near its true
+  // near-the-start position instead.
+  // ---------------------------------------------------------------
+  await page.evaluate(() => {
+    document.getElementById('host').innerHTML = `
+      <style>.bottom-0-t61 { bottom: 0; }</style>
+      <div id="drawer61" class="bottom-0-t61" style="position:fixed; left:0; right:0; height:300px; background:orange;"></div>`;
+  });
+  await page.evaluate(() => {
+    window.__C.registerDrawerSnap('drawer61', 'down', window.__fakeDotNet,
+      { snapPoints: [0.3, 0.6, 1], activeIndex: 2, dismissible: true }); // starts fully open
+  });
+  await page.waitForTimeout(500); // let the open sequence fully settle (atRest -> true)
+  await page.evaluate(() => window.__C.setDrawerSnap('drawer61', 0)); // start moving toward the 30% snap (offset 210px)
+  const test61 = await page.evaluate(() => new Promise((resolve) => {
+    requestAnimationFrame(() => {
+      // Interrupt essentially immediately — the panel is still near its
+      // starting offset (0), nowhere near the first call's own target
+      // (210px) by any legitimate interpolation this early.
+      window.__C.setDrawerSnap('drawer61', 1); // redirect toward the 60% snap (offset 120px)
+      requestAnimationFrame(() => {
+        const rect = document.getElementById('drawer61').getBoundingClientRect();
+        resolve({ offsetPx: rect.bottom - window.innerHeight });
+      });
+    });
+  }));
+  assert(test61.offsetPx < 100,
+    `interrupting an in-flight snap transition with a new target does not jump to the FIRST call's own target (210px) first — the panel should still be near its true near-the-start position (got offset ${test61.offsetPx.toFixed(2)}px)`);
+  await page.waitForTimeout(500); // let it settle before teardown
+  await page.evaluate(() => window.__C.unregisterDrawerSnap('drawer61'));
 
   console.log(`\nALL TESTS PASSED (${passCount} assertions) — engine: ${ENGINE}`);
   await browser.close();
