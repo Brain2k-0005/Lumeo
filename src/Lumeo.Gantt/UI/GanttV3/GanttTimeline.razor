@@ -223,21 +223,29 @@
                                a CSS-bundle-churning arbitrary tracking value.
 
                                Bug fix (Codex P2 finding, "Make group-header
-                               tracks hittable"): this stripe paints ON TOP of
-                               (and is a DOM sibling of, not a descendant of)
-                               its row's own [data-gantt-row-track] div above
-                               — gantt-v3.js's onPointerDown hit-tests via
+                               tracks hittable"): a plain per-row
+                               [data-gantt-row-track] div (the loop above)
+                               painted BELOW this stripe — gantt-v3.js's
+                               onPointerDown hit-tests via
                                e.target.closest('[data-gantt-row-track]'),
-                               which a click on this stripe could never
-                               satisfy, so AllowCreate's drag-create path was
-                               unreachable for any grouped row. Carrying the
-                               SAME data-* pair directly on the stripe (gated
-                               on the identical AllowCreate/Readonly condition
-                               the underlying track div's own @if uses, so a
-                               chart with the feature off still emits neither
-                               attribute) routes the hit straight to this
-                               element instead — see GanttTimelineRow.GroupRowKey's
-                               own remarks for where the key comes from. *@
+                               which a click on the (fully covered, hence
+                               unreachable) div below could never satisfy, so
+                               AllowCreate's drag-create path was unreachable
+                               for any grouped row. Fixed by carrying the SAME
+                               data-* pair directly on the stripe (gated on the
+                               identical AllowCreate/Readonly condition the
+                               track-div loop uses, so a chart with the feature
+                               off still emits neither attribute) — see
+                               GanttTimelineRow.GroupRowKey's own remarks for
+                               where the key comes from.
+                               Follow-up bug fix (E2E strict-mode violation —
+                               two elements answering
+                               '[data-gantt-row-track][data-row-key=...]' for
+                               the SAME group row): RowTrackItems now EXCLUDES
+                               GroupHeader rows outright (see its own remarks),
+                               so this stripe is the row's ONLY element
+                               carrying the pair — not a sibling duplicating
+                               it. *@
                             <div class="lumeo-gantt-v3-group-header absolute inset-x-0 flex items-center bg-accent/[0.18] px-2 text-[11px] font-bold uppercase tracking-wide text-muted-foreground"
                                  style="@GroupHeaderStyle(row.RowIndex)"
                                  data-gantt-row-track="@(AllowCreate && !Readonly ? "true" : null)"
@@ -747,14 +755,14 @@
     //
     // GroupRowKey (Codex P2 finding, "Make group-header tracks hittable"):
     // only ever set for a GroupHeader slot (Task is null) — the SAME RowKey
-    // an AllowCreate chart's RowTrackItems already computes for this row
-    // index, duplicated here so the markup's group-header stripe (rendered
-    // ON TOP of, and as a SIBLING of, the underlying [data-gantt-row-track]
-    // div for this row — see the markup's own remarks) can carry the
-    // data-gantt-row-track/data-row-key pair itself. Without this, a pointer
-    // on that stripe hit-tests the stripe (not a descendant of the track
-    // div), e.target.closest('[data-gantt-row-track]') finds nothing, and
-    // gantt-v3.js's drag-create path can never start for a grouped row.
+    // RowTrackItems would otherwise compute for this row index, threaded
+    // here instead so the markup's group-header stripe can carry the
+    // data-gantt-row-track/data-row-key pair ITSELF. Without this, a pointer
+    // on that stripe hit-tests the stripe, e.target.closest('[data-gantt-row-track]')
+    // finds nothing, and gantt-v3.js's drag-create path can never start for a
+    // grouped row. RowTrackItems now excludes GroupHeader rows outright (see
+    // its own remarks) — this stripe is the row's ONLY carrier of the pair,
+    // not a second one layered over a sibling div that duplicated it.
     internal sealed record GanttTimelineRow(GanttTask? Task, double X, double Width, int RowIndex, string? Color, string? Label, string? GroupRowKey = null);
 
     // Virtualize<TItem>.Items requires ICollection<TItem> (IReadOnlyList doesn't
@@ -793,6 +801,23 @@
     // adding a Key field there too) since RowItems' GanttTimelineRow is a hot,
     // per-render-recomputed record already consumed by the (always-on) Virtualize
     // block — this list only exists at all when AllowCreate is on.
+    //
+    // Bug fix (E2E follow-up to the "Make group-header tracks hittable" P2
+    // finding): a GanttRowKind.GroupHeader row is EXCLUDED here — its own
+    // group-header stripe (the markup's `else` branch below) now carries the
+    // identical data-gantt-row-track/data-row-key pair itself (see
+    // GanttTimelineRow.GroupRowKey's remarks) and paints ON TOP of, covering
+    // the EXACT SAME rectangle as, the blind div this loop would otherwise add
+    // for that row. That div was never reachable by a pointer for a group row
+    // even before this fix — closest('[data-gantt-row-track]') walks up from
+    // the click target, and the stripe (rendered later, hence higher paint
+    // order, at the SAME position) always intercepts first — so keeping BOTH
+    // produced no hit-test coverage the stripe didn't already provide, only
+    // TWO elements answering `[data-gantt-row-track][data-row-key='group::X']`
+    // (a Playwright strict-mode violation, and an ambiguous DOM contract for
+    // any other consumer of that pair). A Task row has no such duplicate —
+    // GanttBar renders no data-gantt-row-track attribute of its own — so this
+    // loop remains its ONLY source and stays unconditional for it.
     private List<(string Key, int RowIndex)> RowTrackItems
     {
         get
@@ -800,7 +825,10 @@
             var visibleRows = EffectiveRows;
             var items = new List<(string, int)>(visibleRows.Count);
             for (var i = 0; i < visibleRows.Count; i++)
+            {
+                if (visibleRows[i].Kind == GanttRowKind.GroupHeader) continue;
                 items.Add((RowKey(visibleRows[i]), i));
+            }
             return items;
         }
     }

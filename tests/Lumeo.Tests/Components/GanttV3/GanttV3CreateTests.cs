@@ -205,14 +205,17 @@ public class GanttV3CreateTests : IAsyncLifetime
     }
 
     [Fact]
-    public void Group_Header_Stripe_Adds_A_Second_Row_Track_Match_Alongside_The_Underlying_Track_Div()
+    public void Group_Header_Stripe_Is_The_Rows_Only_Row_Track_Element_Not_A_Duplicate_Of_The_Underlying_Div()
     {
-        // Both the underlying [data-gantt-row-track] div (always rendered,
-        // pre-existing) AND the group-header stripe (this fix) now match the
-        // selector for a grouped row's index — the stripe is additive, not a
-        // replacement, so a chart with NO group headers (Row_Track_Markup_
-        // Rendered_When_AllowCreate_True's own single-task scenario) still
-        // sees exactly one match per row.
+        // E2E follow-up (Playwright strict-mode violation: a locator for
+        // "[data-gantt-row-track][data-row-key='group::Phase 1']" resolved to
+        // TWO elements — the stripe AND a blind per-row div underneath it that
+        // no pointer could ever actually reach, since the stripe paints on
+        // top and covers the identical rectangle). RowTrackItems now excludes
+        // GroupHeader rows outright, so the group row has exactly ONE
+        // [data-gantt-row-track] element: the stripe itself. A plain task row
+        // is unaffected — it still gets its own underlying div (GanttBar
+        // carries no such attribute of its own).
         var tasks = new List<L.GanttTask>
         {
             new("t1", "Design", D(2026, 1, 2), D(2026, 1, 6)) { GroupLabel = "Phase 1" },
@@ -227,9 +230,17 @@ public class GanttV3CreateTests : IAsyncLifetime
             .Add(c => c.RangeEnd, D(2026, 1, 20))
             .Add(c => c.AllowCreate, true));
 
-        // 2 rows (group header + task) x 1 underlying track div each, PLUS 1
-        // extra match for the header row's own stripe = 3.
-        Assert.Equal(3, cut.FindAll("[data-gantt-row-track]").Count);
+        // Exactly 2 matches total: one per row (group header + task) — never
+        // 3, which would mean the group row is claimed by two elements again.
+        Assert.Equal(2, cut.FindAll("[data-gantt-row-track]").Count);
+
+        // The specific key-scoped query an E2E/JS consumer actually issues
+        // (Playwright's strict mode, and gantt-v3.js's own closest() lookup)
+        // must resolve to exactly one element: the stripe.
+        var headerKey = rows.Single(r => r.Kind == GanttRowKind.GroupHeader).ToggleKey!;
+        var headerTrack = cut.FindAll($"[data-gantt-row-track][data-row-key='{headerKey}']");
+        var single = Assert.Single(headerTrack);
+        Assert.Contains("lumeo-gantt-v3-group-header", single.ClassList);
     }
 
     // ── GanttTimeline.CommitCreate (JSInvokable) ─────────────────────────────
